@@ -16,11 +16,51 @@ description = "Blurt on Windows/Linux as the host for Blurt on the phone: the re
 # core (src/*.rs, owned by the core port)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# the session: X25519 ephemerals, HKDF-SHA256, HMAC proof, ChaCha20-Poly1305 seals (RustCrypto, pure Rust)
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+# the server: TCP + UDP listeners, the relay's WebSocket (wss:// with the web's roots, and plain ws://), DNS-SD
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "__rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "0.26"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+socket2 = { version = "0.6", features = ["all"] }
+mdns-sd = "0.13"
+if-addrs = "0.13"
+url = "2"
+gethostname = "1"
 
 # Windows backend (src/platform/windows): capture, encode, input
 [target.'cfg(windows)'.dependencies]
+# the same version as apps/desktop/src-tauri (one copy in the app's tree). Pure Rust bindings: no C toolchain for the target.
+windows = { version = "0.62", features = [
+  "Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_Performance", "Win32_System_Power", "Win32_System_SystemInformation",
+  "Win32_System_SystemServices", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_WinRT", "Win32_System_StationsAndDesktops",
+  # input: SendInput, the pointer, the cursor's look, the IME's state, the clipboard (paste for long text)
+  "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Ime", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi",
+  "Win32_System_DataExchange", "Win32_System_Memory", "Win32_Graphics_Gdi",
+  # screen: Windows.Graphics.Capture (DXGI Desktop Duplication as the fallback), the D3D11 video processor, Media Foundation's encoders
+  "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common",
+  "Win32_System_WinRT_Direct3D11", "Win32_System_WinRT_Graphics_Capture", "Win32_Media_MediaFoundation",
+  "Foundation", "Foundation_Collections", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11",
+  "Security_Authorization_AppCapabilityAccess",
+] }
+# the pointer's shape as PNG (already in the app's tree)
+png = "0.17"
 
 # Linux backend (src/platform/linux): portal ScreenCast + RemoteDesktop, PipeWire, GStreamer
 [target.'cfg(target_os = "linux")'.dependencies]
 
 [dev-dependencies]
+
+[[example]]
+name = "host"
+
+[[example]]
+name = "phone"

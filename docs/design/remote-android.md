@@ -40,6 +40,10 @@ A pure Kotlin/JVM library with no Android dependency. It holds the whole protoco
   - Ctrl+Shift+C shows "Ctrl ⇧C" (hint "Copy in Terminal").
   - 更多 on Windows: Win+D, Win+E, Win+L, Alt+F4, Ctrl+Shift+Esc, Win+Shift+S. On Linux: Super+D, Super+L, Alt+F4.
   - The key picker's PC chords use F5 for Reload, Alt+D for Address and Ctrl+PageUp/PageDown for the previous and next tab.
+- **Displays** (1.0.15+, additive): the host sends `ToPhone.Displays` when it can show more than one, and `ScreenView.display` says which
+  one a stream shows. The phone pins one with `ToMac.ShowDisplay(id)` or `RemoteScreenRequest.display`, and goes back to following the pointer
+  with `null`. The switcher works as on iOS: it shows only with 2 or more displays, a tap cycles left to right, a hold opens a to-scale map
+  of the arrangement with "Follow pointer", and nothing covers the picture.
 - **Faces:** a face is `sf:<SF Symbol>` or `mark:<name>`, as on iOS; the app maps each to a Material Symbol.
   - Marks: `apps selectAll tabClose tabNew tabNext tabPrevious`.
   - Symbols used by the standard decks and catalogues: `arrow.clockwise arrow.left arrow.left.square arrow.left.to.line arrow.right
@@ -79,6 +83,8 @@ enum class RemoteSystemMove(raw: String) { MISSION_CONTROL, APP_EXPOSE, SPACE_LE
 enum class RemoteDictationPhase(raw: String) { IDLE, LISTENING, TRANSCRIBING, POLISHING, UNAVAILABLE }
 data class RemoteFront(val bundle: String, val name: String)
 data class RemoteCandidate(val host: String, val port: Int)
+data class RemoteDisplay(val id: String, val name: String, val x: Double, val y: Double, val width: Double, val height: Double, val main: Boolean)
+    // points, desktop coordinates: top-left origin, y down
 data class RemoteSessionInfo(val macName: String, val udpPort: Int, val udpSession: Long, val canControl: Boolean, val version: String,
     val candidates: List<RemoteCandidate> = emptyList(), val displayAspect: Double = 1.6, val relay: String? = null,
     val platform: String? = "mac") { val host: RemoteHost }
@@ -87,13 +93,15 @@ sealed class ToMac {
     DragBegin · DictationKey(down) · Blurt(command) · System(move) · Activate(bundle) · Hud(text)
     Hello(device: String, micOnPhone: Boolean, nonce: ByteArray? = null) · SetMicOnPhone(on) · ReleaseAll · KeyStored
     Screen(request: RemoteScreenRequest?) · ScreenCrop(crop) · PointerTo(x: Float, y: Float) · Candidates(candidates: List<RemoteCandidate>)
+    ShowDisplay(display: String?) /* null = follow the pointer */
     RequestKeyframe · ScreenReport(report) · ScreenPace(idle) · Unpair · Replaces(deviceID) · OfferRelay(address) · ScreenStats(text)
     ScreenSnapshot(name, jpeg: ByteArray) · Ping(t: Double)
 }
 sealed class ToPhone {
     Session(info) · CanControl(on) · Front(front) · Dictation(phase) · Live(committed, pending) · Level(level: Float) · Typed(text)
     Notice(text) · Pong(t: Double) · UdpOK · Removed · Relay(address: String?) · Replaced · PairingWaits · Listen(on) · NewKey(key: ByteArray)
-    Clock(phone: Double, mac: Double) · ScreenFailed(text) · ScreenView(width: Double, height: Double, codec: String? = null)
+    Clock(phone: Double, mac: Double) · ScreenFailed(text) · ScreenView(width: Double, height: Double, codec: String? = null, display: String? = null)
+    Displays(displays: List<RemoteDisplay>)
     CursorShape(png: ByteArray, hotX: Double, hotY: Double, width: Double, height: Double)
 }
 enum class RemoteFrameKind(raw: Int) { CONTROL, AUDIO, POINTER, VIDEO, PROBE, CURSOR; companion { fun from(raw: Int): RemoteFrameKind? } }
@@ -107,7 +115,7 @@ data class RemoteCrop(val x: Float, val y: Float, val w: Float, val h: Float) { 
     companion { val WHOLE: RemoteCrop; fun centered(zoom: Float): RemoteCrop } }
 object RemoteVideoCodec { const val HEVC = "hevc"; const val H264 = "h264"; val DECODABLE: List<String> }
 data class RemoteScreenRequest(val target: String, val crop: RemoteCrop = WHOLE, val width: Int, val height: Int, val bitrate: Int,
-    val fps: Int = 60, val codecs: List<String>? = RemoteVideoCodec.DECODABLE)
+    val fps: Int = 60, val codecs: List<String>? = RemoteVideoCodec.DECODABLE, val display: String? = null /* null = follow the pointer */)
 data class RemoteScreenReport(val frames: Int, val lost: Int, val rtt: Double?, val received: Int)
 class RemoteVideoPacket(val frame: Long, val index: Int, val count: Int, val keyframe: Boolean, val captured: Double, val payload: ByteArray) {
     fun encoded(): ByteArray

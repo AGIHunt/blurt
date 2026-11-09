@@ -75,6 +75,34 @@ data class RemoteFront(val bundle: String, val name: String) {
     }
 }
 
+/**
+ * One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as the arrangement in the
+ * computer's display settings), so the phone can draw the arrangement to scale.
+ */
+data class RemoteDisplay(
+    /** stable while the display stays connected */
+    val id: String,
+    val name: String,
+    val x: Double,
+    val y: Double,
+    val width: Double,
+    val height: Double,
+    /** the menu bar's / primary display */
+    val main: Boolean,
+) {
+    fun toJson(): JsonObject = J.obj("id" to J.str(id), "name" to J.str(name), "x" to J.double(x), "y" to J.double(y), "width" to J.double(width),
+        "height" to J.double(height), "main" to J.bool(main))
+
+    companion object {
+        fun fromJson(e: JsonElement?): RemoteDisplay? {
+            val o = e as? JsonObject ?: return null
+            return RemoteDisplay(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.double(o, "x") ?: return null,
+                J.double(o, "y") ?: return null, J.double(o, "width") ?: return null, J.double(o, "height") ?: return null,
+                J.bool(o, "main") ?: return null)
+        }
+    }
+}
+
 data class RemoteCandidate(val host: String, /** u16 */ val port: Int) {
     fun toJson(): JsonObject = J.obj("host" to J.str(host), "port" to J.int(port))
 
@@ -163,6 +191,8 @@ sealed class ToMac {
     data class ScreenCrop(val crop: RemoteCrop) : ToMac()
     /** the pointer to this place on the screen being shown, 0…1 */
     data class PointerTo(val x: Float, val y: Float) : ToMac()
+    /** show this display (a RemoteDisplay id) from now on, the pointer in its middle; null: follow the pointer, the default. 1.0.15+ */
+    data class ShowDisplay(val display: String?) : ToMac()
     /** the addresses this phone can be tried at, for a direct path */
     data class Candidates(val candidates: List<RemoteCandidate>) : ToMac()
     data object RequestKeyframe : ToMac()
@@ -204,6 +234,7 @@ sealed class ToMac {
         is Screen -> J.case("screen", "_0" to request?.toJson())
         is ScreenCrop -> J.case("screenCrop", "_0" to crop.toJson())
         is PointerTo -> J.case("pointerTo", "x" to J.float(x), "y" to J.float(y))
+        is ShowDisplay -> J.case("showDisplay", "_0" to J.str(display))
         is Candidates -> J.case("candidates", "_0" to J.list(candidates) { it.toJson() })
         RequestKeyframe -> J.case("requestKeyframe")
         is ScreenReport -> J.case("screenReport", "_0" to report.toJson())
@@ -245,6 +276,7 @@ sealed class ToMac {
                 "screen" -> Screen(if (J.has(o, "_0")) RemoteScreenRequest.fromJson(o["_0"]) ?: return null else null)
                 "screenCrop" -> ScreenCrop(RemoteCrop.fromJson(o["_0"]) ?: return null)
                 "pointerTo" -> PointerTo(J.float(o, "x") ?: return null, J.float(o, "y") ?: return null)
+                "showDisplay" -> ShowDisplay(if (J.has(o, "_0")) J.str(o, "_0") ?: return null else null)
                 "candidates" -> Candidates(J.list(o, "_0") { RemoteCandidate.fromJson(it) } ?: return null)
                 "requestKeyframe" -> RequestKeyframe
                 "screenReport" -> ScreenReport(RemoteScreenReport.fromJson(o["_0"]) ?: return null)
@@ -294,8 +326,10 @@ sealed class ToPhone {
     /** the two clocks at one moment, so a frame's age can be read on the phone */
     data class Clock(val phone: Double, val mac: Double) : ToPhone()
     data class ScreenFailed(val text: String) : ToPhone()
-    /** the source's size in points, and the codec its frames are in ("hevc" when null) */
-    data class ScreenView(val width: Double, val height: Double, val codec: String? = null) : ToPhone()
+    /** the source's size in points, the codec its frames are in ("hevc" when null), and which RemoteDisplay it is (null from older hosts) */
+    data class ScreenView(val width: Double, val height: Double, val codec: String? = null, val display: String? = null) : ToPhone()
+    /** every display the computer has, whenever that changes (and once a session is up); only from hosts that can show more than one. 1.0.15+ */
+    data class Displays(val displays: List<RemoteDisplay>) : ToPhone()
     class CursorShape(val png: ByteArray, val hotX: Double, val hotY: Double, val width: Double, val height: Double) : ToPhone() {
         override fun equals(other: Any?): Boolean = other is CursorShape && other.png.contentEquals(png) && other.hotX == hotX && other.hotY == hotY &&
             other.width == width && other.height == height
@@ -323,7 +357,8 @@ sealed class ToPhone {
         is NewKey -> J.case("newKey", "_0" to J.data(key))
         is Clock -> J.case("clock", "phone" to J.double(phone), "mac" to J.double(mac))
         is ScreenFailed -> J.case("screenFailed", "_0" to J.str(text))
-        is ScreenView -> J.case("screenView", "width" to J.double(width), "height" to J.double(height), "codec" to J.str(codec))
+        is ScreenView -> J.case("screenView", "width" to J.double(width), "height" to J.double(height), "codec" to J.str(codec), "display" to J.str(display))
+        is Displays -> J.case("displays", "_0" to J.list(displays) { it.toJson() })
         is CursorShape -> J.case("cursorShape", "png" to J.data(png), "hotX" to J.double(hotX), "hotY" to J.double(hotY), "width" to J.double(width),
             "height" to J.double(height))
     }
@@ -355,7 +390,8 @@ sealed class ToPhone {
                 "newKey" -> NewKey(J.data(o, "_0") ?: return null)
                 "clock" -> Clock(J.double(o, "phone") ?: return null, J.double(o, "mac") ?: return null)
                 "screenFailed" -> ScreenFailed(J.str(o, "_0") ?: return null)
-                "screenView" -> ScreenView(J.double(o, "width") ?: return null, J.double(o, "height") ?: return null, J.str(o, "codec"))
+                "screenView" -> ScreenView(J.double(o, "width") ?: return null, J.double(o, "height") ?: return null, J.str(o, "codec"), J.str(o, "display"))
+                "displays" -> Displays(J.list(o, "_0") { RemoteDisplay.fromJson(it) } ?: return null)
                 "cursorShape" -> CursorShape(J.data(o, "png") ?: return null, J.double(o, "hotX") ?: return null, J.double(o, "hotY") ?: return null,
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)
                 else -> null

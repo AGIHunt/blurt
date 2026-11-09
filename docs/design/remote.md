@@ -366,3 +366,150 @@ Peer-to-peer means anyone in radio range can reach the handshake (no further), a
 - Bare letters typed as keys while the Mac's input method is on (digits are fine) go into its composition.
 - Tap then drag clicks once first (the click can't wait for what comes next without delaying every tap).
 - App Store: needs the bundle id registered, screenshots, and a price decision (reviews say: no subscription, no ads).
+
+## iPad and iPhone Duo
+
+2026-11-09. Status: the iPad is tested on the iPad Pro 13" and 11" (M4) simulators. The iPhone Duo is tested as a layout at its sizes and
+folds (unit tests, and renders of the real main screen), not yet on its own simulator. Xcode 27.1 and later need macOS 26.6, and this Mac
+runs 26.5.
+
+**The layout depends on the room, not the device.** `PadLayout` takes six inputs: the view's size, the safe area, the fold and the cameras
+as UIKit reports them (`UIView.reservedRegions`, iOS 27.1), the shape of the computer's screen, and the hand. It reads no device names, no
+`userInterfaceIdiom`, and no orientation (Apple's Duo guidance says the same). An iPad window dragged to any size, Split View, Slide Over,
+the Duo opening and a phone turning all go through the same arithmetic, and the tests run it at every size. There are three kinds:
+
+| Room | Kind | Where it happens |
+|---|---|---|
+| at least 616 pt across and 520 down | big | an iPad full screen, Split View ½ and ⅔ on a 13", Stage Manager, the Duo open either way up |
+| narrower, taller than wide | portrait | a phone, Split View ⅓ and an 11"'s ½, Slide Over, the Duo closed |
+| shorter than 520, wider than tall | landscape | a phone on its side, a short window, the Duo closed and turned |
+
+The big layout needs 616 pt: two halves wide enough for the dock's keys to stay key-shaped (no taller than 1.25 times their width), plus
+a trackpad of at least 140 pt between them. In a narrower window, a portrait layout keeps the phone's block of keys, at most 456 pt wide.
+The keys stay phone-sized and never stretch.
+
+### The big stage
+
+```
+┌──────────────────── stage: picture, or trackpad ────────────────────┐
+│                                                                      │
+└──────────────┐                                       ┌──────────────┘
+ ⚙ ⌖ ◐ ⌨ [⌘⇥]  │   trackpad between the thumbs          │ [↕] 常用 字母 符号 更多
+ [ ][ ][ ]     │                                       │     [ ][ ][ ]
+ …four rows…   │                                       │  …four rows…
+ [⌃][⌥][⌘][⇧][⇥]                                       [esc][⌫][↩][␣][🎤]
+```
+
+- **A computer's screen is wider than these displays.** It's 16:10, against an iPad's 4:3 and the Duo's 1.42. A picture as wide as the
+  display leaves a band under it, and the keys go there, so they cost the picture nothing. That's why the stage is on top and the keys
+  below. A phone on its side is the opposite case (2.2:1): the free room is at the ends, so its keys go beside the picture.
+- **Two halves, one per thumb.** They sit in the lower corners, where a two-handed grip puts the thumbs. A thumb sweeps about 236 pt from
+  the edge it holds, and that is a half's width. Each page splits three and three (the letters five and five), and the dock five and
+  five. The modifiers and ⇥ go under one thumb; esc, ⌫, ↩, space and the talk key go under the other. So one thumb holds ⌘ while the other
+  presses C. The talk key is in the corner. Left-Handed mirrors the halves.
+- **The top row of each half.** One half starts with the rarely needed controls at the edge (settings, find the pointer, the screen, the
+  system keyboard), with ⌘Tab nearest the middle so its slide can run over the trackpad. The other half has the arrow key nearest the
+  middle, then the tabs. The arrow key gets room every way: never at an edge, never in the bottom row.
+- **A trackpad between the thumbs.** On anything this big, the stage is out of the thumbs' reach. With no picture, the stage and this pad
+  are one glass with one outline, a T that reaches down to the thumbs. With the picture showing they're two things: a screen and a trackpad.
+  A pinch on the trackpad zooms the view about its middle, and the pointer moves the view.
+- **The keys go away only where that helps.** Sometimes the whole deck fits in the band a whole 16:10 picture leaves (an iPad upright, the
+  Duo turned tall). Then the keys stay out and there's no switch. Elsewhere (an iPad on its side, the Duo open), they start out for the
+  trackpad and put themselves away when the picture shows, down to two rows: the top row and the dock. A tab brings them back on its page,
+  and tapping the page that's showing puts them away again. The dock never moves.
+- **The output follows the stage** (`PadLayout.outputPixels`). The computer is asked for as many pixels as the stage has, at the size a
+  zoomed picture fills it. A Split View window costs less, and opening the Duo asks for more. It's asked again only when that size changes
+  by more than 8 %.
+
+Measured at these sizes (points; "picture" is a whole 16:10 screen):
+
+| Room | Stage, keys away / out | Picture, keys away / out | Keys |
+|---|---|---|---|
+| iPad Pro 13" landscape, 1376×1032 | 1356×893 / 1356×685 | 1356×847 / 1096×685 | page 75×48, dock 43×48 |
+| iPad Pro 13" portrait, 1032×1376 | 1012×1029, keys always out | 1012×632 | the same |
+| iPad Pro 11" landscape, 1210×834 | 1190×695 / 1190×487 | 1112×695 / 779×487 | the same |
+| iPad 13" Split View ½, 683×1032 | 663×685, keys always out | 663×414 | the same |
+| iPad 13" Split View ⅓, 438×1032 (portrait kind) | 422×687 | 422×263 | page 66×48 |
+| Duo open, 890×626 | 870×487 / 870×279 | 779×487 / 446×279 | page 75×48, dock 43×48 |
+| Duo open, turned tall, 626×890 | 606×543, keys always out | 606×378 | page 72×48, trackpad 140 wide |
+| Duo closed, 466×678 (portrait kind) | 398×333 | 398×248 | page 62×48 |
+| iPhone 17 Pro portrait, for comparison | 386×475 | 386×241 | page 60×48 |
+
+### The fold
+
+The fold is read with `.includeInactive`. Fully open, it's still reported (an inactive line down the middle), so the keys are already
+clear of it, and folding moves nothing but the stage. Apple's guidance says the same: "keep your layout from jumping when the region
+becomes active." Nothing small goes on the fold: no key, no small target, and never the one-finger scroll strip. The strip moves to the
+other edge, or stops short of a fold that runs across. The words, chips and messages on the stage keep to the thumb's side. The trackpads
+may cross the fold, because fingers cross a crease without trouble.
+
+- **Open flat**: the big stage, with the gap between the halves where the fold runs.
+- **Partly folded like a laptop** (the fold runs across: `reservedRegions(kind: .division)` is active and wider than tall): the picture
+  takes the upper half, to be viewed from a distance. The lower half lies on the table and holds the keys and the trackpad. Fingers type
+  there, so the pages' keys grow into the room (72×72 at the Duo's size, still key-shaped) instead of leaving a gap under the fold.
+- **Partly folded like a book** (the fold runs down the middle): the picture goes on one page. The other page, by the holding hand, is a
+  phone's remote: pad, top row, pages and dock.
+- **Tent and stand** get no layout of their own. If the system gives the app half the display, that's a size like any other.
+- No posture is guessed from the accelerometer, only read from UIKit. `UIHingeInteraction` is used only to ask for a new layout when the
+  hinge moves.
+
+The fold and the cameras come through `Pad/Surroundings.swift`. It compiles only against UIKit 9127.0.85 or later (the iOS 27.1 SDK) and
+runs only on iOS 27.1 or later. Built with Xcode 26, it returns nothing and the layout goes by size alone. Debug builds and tests can
+pretend there's a fold (`Pretend.surround`).
+
+**Opening the Duo mid-session**: the scene is resized. The connection belongs to the app, not the view, so nothing reconnects.
+- Touches in flight end cleanly (`letGo`): a drag lets go, a scroll ends, a pointer's button comes up.
+- Latched modifiers stay held.
+- The zoomed view keeps its middle (`ViewPort.reshape`).
+- The keys go back to their starting state only when the layout changes kind (closed portrait to open big), not at every step of a window
+  being dragged.
+- The stream asks for the new output size 1.5 s later, and the last picture stays up until the new one arrives.
+
+On the outer display the camera sits in a corner, not in the middle of an end. With the phone on its side, the controls stack below the
+camera instead of around it.
+
+### Input on an iPad
+
+- **A keyboard** (Magic Keyboard, Smart Keyboard, Bluetooth). Its keys are the computer's (`Pad/HardwareKeys.swift`).
+  - Keys go by position (the HID usage), so the computer's own keyboard layout applies.
+  - Modifiers are held exactly as long as they're held here, so ⌘-click on the pad and ⌘ held through Tab Tab Tab both work. Two physical
+    keys can be one modifier on the computer (⌘ and Control are both Ctrl on Windows): it goes down with the first key and up with the last.
+  - Other keys are pressed, and repeat while held, on the iPad side, so a lost "up" can't leave a key stuck down. As on the screen, nothing
+    destructive repeats: esc, Return, ⌃C.
+  - On Windows and Linux ⌘ is Ctrl by default, so ⌘C copies as a Mac user's fingers expect. Settings → "⌘ on This Keyboard" makes it the
+    Windows or Super key instead. Control is Ctrl, and Option is Alt.
+  - Tab, the arrows and esc are claimed ahead of iPadOS's focus movement and dismiss (`wantsPriorityOverSystemBehavior`, with every
+    combination of modifiers).
+  - While the system keyboard's text field is typing, the keys belong to it.
+- **What iPadOS keeps**: ⌘Tab, ⌘Space, ⌘H, and the Globe key and its shortcuts never reach an app. Holding ⌘ may still show iPadOS's own
+  shortcut list. For those, use the on-screen ⌘Tab key or the computer's own keys.
+- **A mouse or trackpad**: with the picture showing, the iPad's pointer over the picture is the computer's pointer, at the same spot
+  (absolute, at most 60 updates a second). Clicks, right-clicks (the secondary button) and drags are its buttons. With no picture, it moves
+  the computer's pointer relatively, at 1.5 times its own speed and without the phone's curve, since the iPad has already accelerated it.
+  Two fingers on a trackpad, or a wheel, scroll through the same scroll phases as the glass (`UIPanGestureRecognizer`,
+  `allowedScrollTypesMask = .all`, no touches), and a flick coasts on the computer. The iPad's own pointer is hidden over both pads
+  (`UIPointerStyle.hidden()`), because the computer's pointer is the one drawn.
+- **Apple Pencil**: with the picture showing and Touch Mode on, the Pencil is the mouse button where it lands. Down presses, a stroke
+  drags, up lets go: a tap is a click and a stroke selects. With hover (iPad Pro, M2 and later), the computer's pointer follows the tip
+  before it touches. With no picture, the Pencil works like a finger on the trackpad.
+- **An external display or Stage Manager**: nothing reads `UIScreen.main` for layout. The window's own size and scale decide. A window's
+  controls along the top stay clear (`edgeInsets(for: .safeArea(cornerAdaptation: .vertical))`).
+
+### Develop
+
+In debug builds, `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys as if connected, and `=screen` also puts a made-up desktop where
+the picture goes. With `TEST_RUNNER_BLURT_RENDER_DIR` set, `RenderTests` draws the real main screen to PNGs at every room above: iPad sizes
+and multitasking widths, and the Duo open, closed, turned, folded like a laptop and folded like a book. A magenta band marks the fold.
+
+### Open
+
+- The Duo's numbers above come from Apple's pixel counts at 3× (466×678 closed, 890×626 open, a 24 pt fold band when partly folded). They
+  haven't been read from its simulator yet. Also unknown:
+  - whether the closed display's side controls take a band of safe area, or only the camera's corner;
+  - whether the scene resigns active while the phone opens. If it does, latched modifiers are let go, as when leaving the app.
+- The simulator here couldn't be turned on its side. Simulator's Rotate turned the window but not the screen, for every app. iPad landscape
+  and multitasking are judged from the renders, not from screenshots of the running app.
+- Not tried with a real keyboard, mouse, trackpad or Pencil on an iPad. The simulator doesn't pass through hover, pointer buttons or HID
+  usages faithfully.
+- With no picture showing, the iPad's pointer stops at the pad's edge, and so does the computer's pointer. Pointer lock
+  (`prefersPointerLocked` with GCMouse's raw movement) would fix that, but the mouse could then no longer reach the keys.

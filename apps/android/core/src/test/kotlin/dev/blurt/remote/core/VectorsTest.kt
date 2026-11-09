@@ -60,7 +60,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(35, list.size)
+        assertEquals(38, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -73,7 +73,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(23, list.size)
+        assertEquals(25, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -112,6 +112,11 @@ class VectorsTest {
         assertEquals(ToMac.Screen(RemoteScreenRequest("display", crop, 1600, 1000, 4_000_000, 30, listOf("h264"))), mac("screen"))
         assertEquals(ToMac.Screen(RemoteScreenRequest("display", width = 1280, height = 800, bitrate = 1_000_000, fps = 15, codecs = null)), mac("screen_old_phone"))
         assertEquals(ToMac.Screen(null), mac("screen_off"))
+        assertEquals(ToMac.Screen(RemoteScreenRequest("display", RemoteCrop.WHOLE, 1600, 900, 4_000_000, 30, listOf("h264"), "69733382")),
+            mac("screen_pinned_display"))
+        assertNull((mac("screen") as ToMac.Screen).request!!.display, "no display: follow the pointer")
+        assertEquals(ToMac.ShowDisplay("69733382"), mac("show_display"))
+        assertEquals(ToMac.ShowDisplay(null), mac("show_display_follow"))
         assertEquals(ToMac.ScreenCrop(crop), mac("screen_crop"))
         assertEquals(ToMac.PointerTo(0.5f, 0.75f), mac("pointer_to"))
         assertEquals(ToMac.Candidates(listOf(RemoteCandidate("203.0.113.5", 50123), RemoteCandidate("2001:db8::1", 50123))), mac("candidates"))
@@ -154,6 +159,9 @@ class VectorsTest {
         assertEquals(ToPhone.ScreenFailed("Screen Recording is off"), phone("screen_failed"))
         assertEquals(ToPhone.ScreenView(1920.0, 1080.0, "h264"), phone("screen_view"))
         assertEquals(ToPhone.ScreenView(1512.0, 982.0, null), phone("screen_view_old_mac"))
+        assertEquals(ToPhone.ScreenView(2560.0, 1440.0, "hevc", "69733382"), phone("screen_view_display"))
+        assertEquals(ToPhone.Displays(listOf(RemoteDisplay("1", "Built-in Retina Display", 0.0, 0.0, 1512.0, 982.0, true),
+            RemoteDisplay("69733382", "DELL U2723QE", 1512.0, -458.0, 2560.0, 1440.0, false))), phone("displays"))
         assertEquals(ToPhone.CursorShape(byteArrayOf(0x89.toByte(), 0x50), 1.0, 2.0, 16.0, 24.0), phone("cursor_shape"))
     }
 

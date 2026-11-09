@@ -50,6 +50,8 @@ public enum ToMac: Codable, Sendable {
     case screenCrop(RemoteCrop)
     /// the pointer to this place on the screen being shown, 0…1: the view moved away from it
     case pointerTo(x: Float, y: Float)
+    /// show this display from now on, and put the pointer in its middle (nil: follow the pointer, the default). 1.0.15+
+    case showDisplay(String?)
     /// the addresses this phone can be tried at, for a direct path
     case candidates([RemoteCandidate])
     case requestKeyframe
@@ -134,11 +136,27 @@ public enum ToPhone: Codable, Sendable {
     case clock(phone: Double, mac: Double)
     case screenFailed(String)
     /// what's being shown: the source's size in points, and the codec its frames are in ("hevc" when nil, as from Macs before 1.0.15)
-    case screenView(width: Double, height: Double, codec: String? = nil)
+    case screenView(width: Double, height: Double, codec: String? = nil, display: String? = nil)
+    /// every display the computer has, whenever that changes (and once a session is up). Only sent by hosts that can show more than one. 1.0.15+
+    case displays([RemoteDisplay])
     case cursorShape(png: Data, hotX: Double, hotY: Double, width: Double, height: Double)
 }
 
 /// A frame's first byte says what follows.
+/// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as the
+/// arrangement in the computer's display settings), so the phone can draw the arrangement and know which way is which.
+public struct RemoteDisplay: Codable, Hashable, Sendable {
+    /// stable while the display stays connected (CGDirectDisplayID / monitor device name / portal stream id)
+    public var id: String
+    public var name: String
+    public var x: Double, y: Double, width: Double, height: Double
+    /// the menu bar's / primary display
+    public var main: Bool
+    public init(id: String, name: String, x: Double, y: Double, width: Double, height: Double, main: Bool) {
+        self.id = id; self.name = name; self.x = x; self.y = y; self.width = width; self.height = height; self.main = main
+    }
+}
+
 /// The computer on the other end. Key names and RemoteModifiers mean the same on every host; each host maps them to its own keys:
 /// command is ⌘ on a Mac and the Windows / Super key elsewhere, control is Ctrl, option is Alt (docs/design/remote-protocol.md §Hosts).
 public enum RemoteHost: String, Codable, CaseIterable, Sendable {

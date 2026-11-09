@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "⌘ on This Keyboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个键盘上的 ⌘"
+          }
+        }
+      }
+    },
+    "Ctrl: ⌘C copies and ⌘V pastes, as on a Mac. Control is Ctrl too, Option is Alt." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ctrl：⌘C 拷贝、⌘V 粘贴，和在 Mac 上一样。Control 也是 Ctrl，Option 是 Alt。"
+          }
+        }
+      }
+    },
     "%@ didn’t allow this iPhone." : {
       "localizations" : {
         "zh-Hans" : {
@@ -41,6 +61,36 @@
         }
       }
     },
+    "%@: hold" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@：按住"
+          }
+        }
+      }
+    },
+    "%@: hold and slide" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@：按住滑动"
+          }
+        }
+      }
+    },
+    "%@: tap" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@：轻点"
+          }
+        }
+      }
+    },
     "A still screen uses no data. On a poor network the picture steps down by itself, and text sharpens as soon as it stops moving." : {
       "localizations" : {
         "zh-Hans" : {
@@ -61,6 +111,16 @@
         }
       }
     },
+    "Activities" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动概览"
+          }
+        }
+      }
+    },
     "Add" : {
       "localizations" : {
         "zh-Hans" : {
@@ -71,22 +131,22 @@
         }
       }
     },
+    "Add Computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加电脑"
+          }
+        }
+      }
+    },
     "Add Key" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加按键"
-          }
-        }
-      }
-    },
-    "Add Mac" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加 Mac"
           }
         }
       }
@@ -131,12 +191,12 @@
         }
       }
     },
-    "Allow this iPhone in Blurt’s Settings on your Mac. Check that it shows %@." : {
+    "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 Mac 上 Blurt 的设置中允许这台 iPhone，并确认显示的数字为 %@。"
+            "value" : "请在电脑上 Blurt 的设置中允许这台 iPhone，并确认显示的数字为 %@。"
           }
         }
       }
@@ -451,6 +511,16 @@
         }
       }
     },
+    "Close Window" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭窗口"
+          }
+        }
+      }
+    },
     "Command" : {
       "localizations" : {
         "zh-Hans" : {
@@ -487,6 +557,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Composer"
+          }
+        }
+      }
+    },
+    "Computer Screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑屏幕"
+          }
+        }
+      }
+    },
+    "Computers" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑"
           }
         }
       }
@@ -571,22 +661,32 @@
         }
       }
     },
-    "Couldn’t reach %@. Put this iPhone on the same network, or set a relay on that Mac first." : {
+    "Copy in Terminal" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上 %@。请让 iPhone 和它在同一网络，或先在那台 Mac 上设置中转。"
+            "value" : "终端里复制"
           }
         }
       }
     },
-    "Couldn’t reach %@. Scan a fresh code on that Mac." : {
+    "Couldn’t reach %@. Put this iPhone on the same network, or set a relay on that computer first." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上 %@。请在那台 Mac 上重新扫码。"
+            "value" : "连不上 %@。请让 iPhone 和它在同一网络，或先在那台电脑上设置中转。"
+          }
+        }
+      }
+    },
+    "Couldn’t reach %@. Scan a fresh code on that computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上 %@。请在那台电脑上重新扫码。"
           }
         }
       }
@@ -647,6 +747,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除单词"
+          }
+        }
+      }
+    },
+    "Desktop" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示桌面"
           }
         }
       }
@@ -737,6 +847,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑按键"
+          }
+        }
+      }
+    },
+    "Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件资源管理器"
           }
         }
       }
@@ -971,22 +1091,22 @@
         }
       }
     },
+    "Lock" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "锁屏"
+          }
+        }
+      }
+    },
     "Mac Screen" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mac 屏幕"
-          }
-        }
-      }
-    },
-    "Macs" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mac"
           }
         }
       }
@@ -1131,6 +1251,16 @@
         }
       }
     },
+    "Next tab, Ctrl+PgDn in a terminal" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一标签（终端里用 Ctrl+PgDn）"
+          }
+        }
+      }
+    },
     "Next tab, ⌘⇧] in a terminal" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1211,6 +1341,36 @@
         }
       }
     },
+    "Off: Blurt listens through your computer’s microphone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭后使用电脑的麦克风。"
+          }
+        }
+      }
+    },
+    "On %@, allow Blurt to control the computer when it asks (Remote Desktop)." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@ 上弹出询问时，允许 Blurt 控制电脑（远程桌面）。"
+          }
+        }
+      }
+    },
+    "On %@, allow Blurt to share the screen when it asks." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@ 上弹出询问时，允许 Blurt 共享屏幕。"
+          }
+        }
+      }
+    },
     "On the Key" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1227,6 +1387,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Mac 画面上，轻点、滚动和拖移作用于手指所在位置。关闭后作用于光标所在位置，与触控板相同。"
+          }
+        }
+      }
+    },
+    "On the computer’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在电脑画面上，轻点、滚动和拖移作用于手指所在位置。关闭后作用于光标所在位置，与触控板相同。"
           }
         }
       }
@@ -1261,12 +1431,12 @@
         }
       }
     },
-    "On your Mac, open Blurt’s Settings and choose iPhone." : {
+    "On your computer, open Blurt’s Settings and choose iPhone (Phone on Windows and Linux)." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 上打开 Blurt 设置，选择 iPhone。"
+            "value" : "在电脑上打开 Blurt 设置，选择 iPhone（Windows 和 Linux 上选“手机”）。"
           }
         }
       }
@@ -1351,12 +1521,12 @@
         }
       }
     },
-    "Pair with Mac" : {
+    "Pair with a Computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "与 Mac 配对"
+            "value" : "与电脑配对"
           }
         }
       }
@@ -1431,12 +1601,12 @@
         }
       }
     },
-    "Pressed alone, e.g. ⇧ to switch input language" : {
+    "Pressed alone, e.g. %@ to switch input language" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "单独按下，如用 ⇧ 切换中英文"
+            "value" : "单独按下，如用 %@ 切换中英文"
           }
         }
       }
@@ -1537,6 +1707,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除 %@？"
+          }
+        }
+      }
+    },
+    "Remove This Computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除这台电脑"
           }
         }
       }
@@ -1711,6 +1891,16 @@
         }
       }
     },
+    "Set in Blurt’s Settings on the computer. All your computers can share one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在电脑上 Blurt 的设置里修改。你的所有电脑可以共用一个。"
+          }
+        }
+      }
+    },
     "Settings" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1747,6 +1937,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示屏幕"
+          }
+        }
+      }
+    },
+    "Showing the screen is off in Blurt’s Settings on %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Blurt 设置已关闭屏幕显示。"
           }
         }
       }
@@ -1791,6 +1991,16 @@
         }
       }
     },
+    "Snip" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统截图"
+          }
+        }
+      }
+    },
     "Space" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1807,6 +2017,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spotlight"
+          }
+        }
+      }
+    },
+    "Start" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始菜单"
           }
         }
       }
@@ -1861,12 +2081,12 @@
         }
       }
     },
-    "Switch Mac" : {
+    "Switch Computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切换 Mac"
+            "value" : "切换电脑"
           }
         }
       }
@@ -1951,12 +2171,12 @@
         }
       }
     },
-    "Tap a Mac to switch to it. On the main screen, hold the settings button to switch without coming here." : {
+    "Tap a computer to switch to it. On the main screen, hold the settings button to switch without coming here." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "点一台 Mac 即可切换。在主界面长按设置按钮，不用进这里也能切换。"
+            "value" : "点一台电脑即可切换。在主界面长按设置按钮，不用进这里也能切换。"
           }
         }
       }
@@ -1977,6 +2197,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "轻点后拖动"
+          }
+        }
+      }
+    },
+    "Task Manager" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务管理器"
+          }
+        }
+      }
+    },
+    "Task View" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务视图"
           }
         }
       }
@@ -2051,22 +2291,12 @@
         }
       }
     },
-    "This Mac no longer knows this iPhone." : {
+    "The window in front on %@ runs as administrator. Blurt can’t type into it." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此 Mac 已移除这台 iPhone。"
-          }
-        }
-      }
-    },
-    "This Mac will receive what you type and say here. Only pair with your own Mac." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Mac 将收到你在这里输入和说的内容。请只与自己的 Mac 配对。"
+            "value" : "%@ 最前面的窗口以管理员身份运行，Blurt 无法操作它。"
           }
         }
       }
@@ -2081,12 +2311,32 @@
         }
       }
     },
-    "This iPhone is already paired with this Mac. This replaces that pairing." : {
+    "This computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这台 iPhone 已和这台 Mac 配对，继续会替换原来的配对。"
+            "value" : "这台电脑"
+          }
+        }
+      }
+    },
+    "This computer will receive what you type and say here. Only pair with your own computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台电脑将收到你在这里输入和说的内容。请只与自己的电脑配对。"
+          }
+        }
+      }
+    },
+    "This iPhone is already paired with this computer. This replaces that pairing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPhone 已和这台电脑配对，继续会替换原来的配对。"
           }
         }
       }
@@ -2181,12 +2431,12 @@
         }
       }
     },
-    "Try Another Mac" : {
+    "Try Another Computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择其他 Mac"
+            "value" : "选择其他电脑"
           }
         }
       }
@@ -2197,6 +2447,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在设置中开启，或使用 Mac 的麦克风听写。"
+          }
+        }
+      }
+    },
+    "Turn it on in Settings, or dictate through your computer’s microphone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在设置中开启，或使用电脑的麦克风听写。"
           }
         }
       }
@@ -2227,6 +2487,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "撤销"
+          }
+        }
+      }
+    },
+    "Use Computer’s Microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用电脑麦克风"
           }
         }
       }
@@ -2321,6 +2591,16 @@
         }
       }
     },
+    "Without a relay this computer is reachable on its own network. Set one in Blurt’s Settings on the computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有中转时，只能在这台电脑所在的网络下连接。可在电脑上 Blurt 的设置里填写。"
+          }
+        }
+      }
+    },
     "Word Left" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2337,6 +2617,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下一单词"
+          }
+        }
+      }
+    },
+    "Workspace Left" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左侧工作区"
+          }
+        }
+      }
+    },
+    "Workspace Right" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右侧工作区"
           }
         }
       }
@@ -2401,32 +2701,12 @@
         }
       }
     },
-    "⇧ ⌘ ⌥ ⌃: hold" : {
+    "the computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⇧ ⌘ ⌥ ⌃：按住"
-          }
-        }
-      }
-    },
-    "⇧ ⌘ ⌥ ⌃: tap" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⇧ ⌘ ⌥ ⌃：轻点"
-          }
-        }
-      }
-    },
-    "⌘Tab, ⌃Tab, ⌘`: hold and slide" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "⌘Tab、⌃Tab、⌘`：按住滑动"
+            "value" : "电脑"
           }
         }
       }

@@ -194,7 +194,162 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
   dEntry('d-7', 30, 'Notion', L('three things for the launch one the press kit two the demo video three the faq', '发布要准备三件事 一是新闻稿 二是演示视频 三是常见问题'), L('Three things for the launch:\n1. The press kit\n2. The demo video\n3. The FAQ', '发布要准备三件事：\n1. 新闻稿\n2. 演示视频\n3. 常见问题'), { style: 'structured' }),
 ];
 
+// Settings → Phone (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
+// out sooner); a few seconds later a phone uses it over the relay and asks with six digits (?phone_scan=0: nobody
+// scans); Allow pairs it and it connects over the relay, then finds a direct path. ?phone= paired | asking | nocontrol |
+// problem | fromphone | relayfail starts there instead of with no phone.
+type MockRemote = {
+  listening: boolean;
+  pairing: null | { url: string; qrSvg: string; expiresAt: number };
+  asking: null | { device: string; digits: string; viaRelay: boolean };
+  devices: { id: string; name: string; lastSeen: number | null }[];
+  connected: null | { id: string; name: string; route: 'local' | 'direct' | 'relay'; screen: boolean };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  screenAllowed: boolean;
+  canControl: boolean;
+  problem: string | null;
+};
+const phoneStart = param('phone') ?? '';
+const paired = phoneStart !== '';
+const remote: MockRemote = {
+  listening: paired,
+  pairing: null,
+  asking: phoneStart === 'asking' ? { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: '482913', viaRelay: true } : null,
+  devices: paired
+    ? [
+        { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), lastSeen: Date.now() - 4 * 60_000 },
+        { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000 },
+      ]
+    : [],
+  connected: paired ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: 'relay', screen: true } : null,
+  relay: paired
+    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true }
+    : { address: null, fromPhone: false, reachable: null },
+  screenAllowed: true,
+  canControl: phoneStart !== 'nocontrol',
+  problem: phoneStart === 'problem' ? L('Blurt can’t listen on this network: port 41833 is taken by another app.', '口喷鸡无法在这个网络上监听：端口 41833 已被其他应用占用。') : null,
+};
+const remoteNow = () => JSON.parse(JSON.stringify(remote)) as MockRemote;
+const remoteChanged = () => emit('remote://status', remoteNow());
+let remoteTimers: ReturnType<typeof setTimeout>[] = [];
+const remoteLater = (ms: number, f: () => void) => remoteTimers.push(setTimeout(() => (f(), remoteChanged()), ms));
+
+/** A stand-in QR code (finder squares, timing lines, the rest from the link's hash): looks like the host's, scans as nothing. */
+function mockQr(seed: string): string {
+  const n = 29;
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  const rnd = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909)) >>> 0) / 2 ** 32;
+  const on: boolean[][] = Array.from({ length: n }, () => Array(n).fill(false));
+  const reserved = (x: number, y: number) => (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8) || x === 6 || y === 6;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!reserved(x, y)) on[y][x] = rnd() < 0.5;
+  for (let i = 8; i < n - 8; i++) on[6][i] = on[i][6] = i % 2 === 0;
+  const finder = (ox: number, oy: number) => {
+    for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) on[oy + y][ox + x] = x === 0 || y === 0 || x === 6 || y === 6 || (x >= 2 && x <= 4 && y >= 2 && y <= 4);
+  };
+  finder(0, 0);
+  finder(n - 7, 0);
+  finder(0, n - 7);
+  for (let y = n - 9; y < n - 4; y++) for (let x = n - 9; x < n - 4; x++) on[y][x] = x === n - 9 || y === n - 9 || x === n - 5 || y === n - 5 || (x === n - 7 && y === n - 7);
+  let d = '';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (on[y][x]) d += `M${x} ${y}h1v1h-1z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><path fill="#000" d="${d}"/></svg>`;
+}
+
+function mockPairingCode() {
+  const url = `blurtremote://pair?v=1&host=${encodeURIComponent('maya-thinkpad')}&k=${Math.random().toString(36).slice(2, 12)}`;
+  remote.pairing = { url, qrSvg: mockQr(url), expiresAt: Date.now() + Number(param('phone_code') ?? 120) * 1000 };
+  remote.listening = true;
+  remoteTimers.forEach(clearTimeout);
+  remoteTimers = [];
+  if (param('phone_scan') === '0') return;
+  // a phone scans it: the code is spent, the phone waits for a yes
+  remoteLater(5000, () => {
+    if (!remote.pairing || remote.pairing.expiresAt < Date.now()) return;
+    remote.pairing = null;
+    remote.asking = { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: String(100000 + Math.floor(Math.random() * 900000)), viaRelay: !!remote.relay.address };
+    // nobody answers in two minutes: that's a no
+    remoteLater(120_000, () => (remote.asking = null));
+  });
+}
+
+function mockRemote(cmd: string, a: Record<string, any>): unknown {
+  switch (cmd) {
+    case 'remote_status':
+      return remoteNow();
+    case 'remote_show_pairing':
+      if (a.on) mockPairingCode();
+      else {
+        remote.pairing = null;
+        remote.listening = remote.devices.length > 0;
+        if (!remote.asking) (remoteTimers.forEach(clearTimeout), (remoteTimers = []));
+      }
+      break;
+    case 'remote_answer_pairing': {
+      const ask = remote.asking;
+      if (!ask || (a.digits !== undefined && a.digits !== ask.digits)) break; // another phone's question by now
+      remoteTimers.forEach(clearTimeout);
+      remoteTimers = [];
+      remote.asking = null;
+      if (!a.yes) {
+        // turned away: a fresh code while Add Phone… is open
+        mockPairingCode();
+        break;
+      }
+      const id = `ph-${Date.now()}`;
+      remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now() }];
+      remote.listening = true;
+      remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false };
+      if (ask.viaRelay) remoteLater(4000, () => remote.connected?.id === id && (remote.connected.route = 'direct'));
+      break;
+    }
+    case 'remote_remove_device':
+      remote.devices = remote.devices.filter((d) => d.id !== a.id);
+      if (remote.connected?.id === a.id) remote.connected = null;
+      remote.listening = remote.devices.length > 0 || !!remote.pairing;
+      break;
+    case 'remote_set_relay': {
+      const t = String(a.address ?? '').trim();
+      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null };
+      else if (!/^wss?:\/\/[^\s/?#]+(\/[^\s?#]*)?$/.test(t)) throw new Error('not a relay address');
+      else {
+        remote.relay = { address: t, fromPhone: false, reachable: null };
+        remoteLater(900, () => remote.relay.address === t && (remote.relay.reachable = !/nothing|bad|invalid/.test(t)));
+      }
+      break;
+    }
+    case 'remote_check_relay':
+      return new Promise((ok) => setTimeout(() => ok(!/nothing|bad|invalid/.test(String(a.address))), 900));
+    case 'remote_set_screen_allowed':
+      remote.screenAllowed = !!a.on;
+      if (!a.on && remote.connected) remote.connected.screen = false;
+      break;
+    case 'remote_relay_instructions':
+      return MOCK_RELAY_PROMPT;
+  }
+  remoteChanged();
+  return remoteNow();
+}
+
+const MOCK_RELAY_PROMPT = `Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
+
+Blurt for phones turns an iPhone or Android phone into a trackpad and keyboard for a computer. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+
+The code and the full steps are here; read README.md first:
+https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
+
+Ask me which of these I have, then do that one:
+A. A domain on Cloudflare: deploy the Worker on a subdomain such as relay.example.com. The free plan is enough for one person.
+B. A server with a public IP: run server.js as a service (Node 12 or later, one dependency). With a domain, serve it over HTTPS on port 443 with a publicly trusted certificate. Without one, open a port and use ws://.
+
+If I'm in mainland China, prefer a server there: the round trip is far shorter. A domain served from a mainland server needs an ICP filing.
+
+Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
+
+When it's up, run \`node test.mjs <address>\` from that folder and check it passes. Then tell me the one address, like wss://relay.example.com, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.`;
+
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
+  if (cmd.startsWith('remote_')) return (await mockRemote(cmd, args)) as T;
   const r = (v: unknown) => v as T;
   switch (cmd) {
     case 'app_status':
