@@ -233,11 +233,7 @@ impl Dup {
     }
 
     fn next(&mut self, timeout: Duration, signal: &Signal) -> Option<Frame> {
-        // a command waiting goes first
-        if signal.wait(Duration::ZERO) {
-            signal.notify();
-            return None;
-        }
+        // commands wait at most one short AcquireNextFrame (below)
         self.release();
         if self.dup.is_none() {
             // lost (a mode change, the secure desktop): try again now and then
