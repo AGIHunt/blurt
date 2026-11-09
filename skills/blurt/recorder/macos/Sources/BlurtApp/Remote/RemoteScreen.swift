@@ -75,6 +75,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     /// the direct path's pieces are still going out
     private var pacedUntil = 0.0
     private static let refinesPerStill = 8
+    /// NACK, LTR refresh, parity (RemoteScreenRepair.swift, docs/design/remote-realtime.md)
+    private let repair = ScreenRepair()
+    private var timing = ScreenTiming()
     private static let settled = 1500
     var onInfo: ((ToPhone) -> Void)?
     /// capture ended by itself
@@ -109,7 +112,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         c.width = Int(src.width * k) / 2 * 2
         c.height = Int(src.height * k) / 2 * 2
         c.scalesToFit = true
-        c.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(1, r.fps)))
+        // at 60 frames a second or more, capture at 120 whatever the phone's panel: a change is picked up within 8 ms of the Mac drawing it
+        // instead of 17. What's sent stays at the phone's rate (frameGap; a frame captured early waits for its turn)
+        c.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(r.fps >= 60 ? 120 : max(1, r.fps)))
         c.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         c.queueDepth = 5    // one is kept as the last image
         c.showsCursor = false
@@ -126,6 +131,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         r.bitrate = min(max(r.bitrate, 100_000), 50_000_000)
         q.sync {
             self.asked = r
+            self.repair.negotiate(r.features)
             self.pinned = RemoteDisplayList.id(r.display)
             self.failedHandler = failed
         }
@@ -349,8 +355,12 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             self.crop = c
             config.sourceRect = self.rect(c)
             self.cropsUnderWay += 1
+            let asked = CACurrentMediaTime()
             s.updateConfiguration(config) { [weak self] error in
-                self?.q.async { self?.cropDone(c, failed: error != nil) }
+                self?.q.async {
+                    self?.timing.held((CACurrentMediaTime() - asked) * 1000)
+                    self?.cropDone(c, failed: error != nil)
+                }
             }
         }
     }
@@ -382,7 +392,8 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func tellView() {
-        onInfo?(.screenView(width: source.width, height: source.height, codec: RemoteVideoCodec.hevc, display: shownDisplay == 0 ? nil : String(shownDisplay)))
+        onInfo?(.screenView(width: source.width, height: source.height, codec: RemoteVideoCodec.hevc, display: shownDisplay == 0 ? nil : String(shownDisplay),
+                            features: repair.features.isEmpty ? nil : repair.features.sorted()))
     }
 
     private func startTicker(fps: Int) {
@@ -448,6 +459,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             self.busySkips = 0
             self.reportBytes = 0
             self.reportSince = now
+            self.repair.adapt(rtt: r.rtt)
             guard changed else { return }
             if let s = self.session { Self.setRate(s, self.rate.bitrate, fps: self.rate.fps) }
             emit(["event": "remote_screen_rate", "bitrate": self.rate.bitrate, "fps": self.rate.fps, "lost": r.lost, "sent": sent])
@@ -521,6 +533,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_HEVC_Main_AutoLevel)
         Self.setRate(s, bitrate, fps: fps)
         VTSessionSetProperty(s, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 600 as CFNumber)
+        repair.configure(s)
         VTCompressionSessionPrepareToEncodeFrames(s)
         session = s
         wantKey = true
@@ -549,8 +562,46 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         lastImageCrop = frameCrop
         // before the frame gets a number: a gap in the numbers costs a keyframe
         if channel.streamBusy || holdingBack() { busySkips += 1; skipped += 1; return }
-        if now - lastEncodedAt < frameGap - 0.003 || now < pacedUntil { skipped += 1; return }
+        if !turn(now) || now < pacedUntil {
+            // too soon: it waits for its turn rather than being dropped, unless a newer one comes first
+            skipped += 1
+            early = (image, pts)
+            let due = max(now + (Self.early - turns) * frameGap, pacedUntil) - now
+            if !earlyQueued {
+                earlyQueued = true
+                q.asyncAfter(deadline: .now() + max(0.001, due)) { [weak self] in self?.sendEarly() }
+            }
+            return
+        }
+        early = nil
         encode(image, pts: pts, captured: CMTimeGetSeconds(pts), crop: lastImageCrop)
+    }
+
+    private var early: (image: CVImageBuffer, pts: CMTime)?
+    private var earlyQueued = false
+    /// Frames may go at the phone's rate on average, not at fixed intervals: captured at 120, a 60 Hz scroll's frames come 8 and 25 ms
+    /// apart, and a fixed gap dropped one in seven or made them wait. One frame's credit a frame time, at most 1.5 saved; a frame may go
+    /// up to half a frame early, which the next one pays for.
+    private var turns = 1.0, turnsAt = 0.0
+    private static let early = 0.45
+
+    private func turn(_ now: Double) -> Bool {
+        turns = min(1.5, turns + (now - turnsAt) / frameGap)
+        turnsAt = now
+        return turns >= Self.early
+    }
+
+    private func sendEarly() {
+        earlyQueued = false
+        guard running, let e = early, cropsUnderWay == 0, !channel.streamBusy else { return }
+        let now = CACurrentMediaTime()
+        guard turn(now), now >= pacedUntil else {
+            earlyQueued = true
+            q.asyncAfter(deadline: .now() + 0.002) { [weak self] in self?.sendEarly() }
+            return
+        }
+        early = nil
+        encode(e.image, pts: e.pts, captured: CMTimeGetSeconds(e.pts), crop: lastImageCrop)
     }
 
     /// Every byte the same. Stops at the first difference, and a screen's worth takes well under a millisecond when there is none.
@@ -575,19 +626,38 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let session else { return }
         let t0 = CACurrentMediaTime()
         lastEncodedAt = t0
-        var props: CFDictionary?
-        if wantKey {
-            wantKey = false
-            props = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
-        }
+        _ = turn(t0)
+        turns = max(-1, turns - 1)
+        let (props, refresh) = repair.options(key: wantKey)
+        wantKey = false
         VTCompressionSessionEncodeFrame(session, imageBuffer: image, presentationTimeStamp: pts, duration: .invalid, frameProperties: props,
                                         infoFlagsOut: nil) { [weak self] st, _, sample in
             guard st == noErr, let sample, let self else { return }
-            self.q.async { self.send(sample, captured: captured, crop: crop, encodeStart: t0) }
+            let done = CACurrentMediaTime()
+            self.q.async { self.send(sample, captured: captured, crop: crop, encodeStart: t0, encoded: done, refresh: refresh) }
         }
     }
 
-    private func send(_ b: CMSampleBuffer, captured: Double, crop: RemoteCrop, encodeStart: Double) {
+    /// What the phone said about the picture: pieces sent again at once, or a refresh made now (on a still screen nothing else would make one).
+    func feedback(_ d: Data) {
+        q.async {
+            guard self.running else { return }
+            switch self.repair.feedback(d, rate: self.rate.bitrate, now: CACurrentMediaTime()) {
+            case let .resend(pieces)?:
+                pieces.forEach { self.channel.sendDatagram(.video, $0) }
+            case .refresh?:
+                self.refines = 0
+                if self.cropsUnderWay == 0, let i = self.lastImage, CACurrentMediaTime() - self.lastFrameAt > 0.05 {
+                    self.encode(i, pts: self.nextPTS(), captured: CACurrentMediaTime(), crop: self.lastImageCrop)
+                }
+            case .keyframe?:
+                self.keyframe()
+            case nil: break
+            }
+        }
+    }
+
+    private func send(_ b: CMSampleBuffer, captured: Double, crop: RemoteCrop, encodeStart: Double, encoded doneAt: Double = 0, refresh: Bool = false) {
         guard running, let block = CMSampleBufferGetDataBuffer(b) else { return }
         var key = true
         if let a = CMSampleBufferGetSampleAttachmentsArray(b, createIfNecessary: false) as? [[CFString: Any]], a.first?[kCMSampleAttachmentKey_NotSync] as? Bool == true { key = false }
@@ -604,7 +674,11 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             wasWhole = whole
             sentTotal = receivedTotal
         }
-        let pieces = RemoteVideoPacket.split(body, frame: Self.frameID, keyframe: key, captured: captured, payload: whole ? max(body.count, 1) : RemoteVideoPacket.payloadSize)
+        let token = ScreenRepair.token(b)
+        var pieces = RemoteVideoPacket.split(body, frame: Self.frameID, keyframe: key, refresh: refresh && !key, ackRequested: token != nil && repair.ltr,
+                                             captured: captured, payload: whole ? max(body.count, 1) : RemoteVideoPacket.payloadSize)
+        let encodedPieces = pieces.map { $0.encoded() }
+        pieces += repair.sent(Self.frameID, token: token, pieces: pieces, encoded: encodedPieces, datagrams: !whole, now: CACurrentMediaTime())
         if relayed, !whole, pieces.count > Self.burst {
             // a keyframe all at once is what a thin link's queue drops, and one lost piece costs the whole frame: spread out over twice the rate
             let gap = Double(Self.burst * RemoteVideoPacket.payloadSize) * 8 / Double(rate.bitrate * 2)
@@ -617,8 +691,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
             }
         } else {
-            for p in pieces { channel.sendDatagram(.video, p.encoded()) }
+            for (i, p) in pieces.enumerated() { channel.sendDatagram(.video, i < encodedPieces.count ? encodedPieces[i] : p.encoded()) }
         }
+        timing.add(captured: captured, encodeStart: encodeStart, encoded: doneAt > 0 ? doneAt : CACurrentMediaTime(), sent: CACurrentMediaTime())
         lastFrameBytes = body.count
         if switchBegan > 0 {
             emit(["event": "remote_display_switch", "state": "first_frame", "why": switchWhy, "ms": ((CACurrentMediaTime() - switchBegan) * 10000).rounded() / 10,
@@ -638,8 +713,11 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         let now = CACurrentMediaTime()
         if now - statsSince >= 2 {
             let s = now - statsSince
-            emit(["event": "remote_screen_mac", "fps": Int(Double(encoded) / s), "kbps": Int(Double(bytes) * 8 / s / 1000),
-                  "encode_ms": encoded > 0 ? (encodeMs / Double(encoded) * 10).rounded() / 10 : 0, "keyframes": keyframes, "idle_frames": skipped])
+            var line: [String: Any] = ["event": "remote_screen_mac", "fps": Int(Double(encoded) / s), "kbps": Int(Double(bytes) * 8 / s / 1000),
+                                       "encode_ms": encoded > 0 ? (encodeMs / Double(encoded) * 10).rounded() / 10 : 0, "keyframes": keyframes, "idle_frames": skipped]
+            line.merge(timing.take()) { a, _ in a }
+            line.merge(repair.take()) { a, _ in a }
+            emit(line)
             encoded = 0; bytes = 0; encodeMs = 0; keyframes = 0; skipped = 0; statsSince = now
         }
     }

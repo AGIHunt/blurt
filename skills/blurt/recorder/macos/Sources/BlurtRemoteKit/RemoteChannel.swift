@@ -31,6 +31,8 @@ public final class RemoteChannel {
     public var onVideo: ((Data) -> Void)?
     public var onProbe: ((Data) -> Void)?
     public var onCursor: ((Data) -> Void)?
+    /// the phone's word on the picture: pieces missing, frames decoded, a frame lost (RemoteVideoFeedback)
+    public var onVideoFeedback: ((Data) -> Void)?
     /// `failure`: the handshake's reason, when that is what ended it
     public var onClose: ((_ failure: RemoteHandshakeError?) -> Void)?
 
@@ -206,6 +208,7 @@ public final class RemoteChannel {
         case .video: onVideo?(Data(body))
         case .probe: onProbe?(Data(body))
         case .cursor: onCursor?(Data(body))
+        case .videoFeedback: onVideoFeedback?(Data(body))
         }
     }
 

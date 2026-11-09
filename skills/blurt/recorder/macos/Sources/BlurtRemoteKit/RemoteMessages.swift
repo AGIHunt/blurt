@@ -136,7 +136,8 @@ public enum ToPhone: Codable, Sendable {
     case clock(phone: Double, mac: Double)
     case screenFailed(String)
     /// what's being shown: the source's size in points, and the codec its frames are in ("hevc" when nil, as from Macs before 1.0.15)
-    case screenView(width: Double, height: Double, codec: String? = nil, display: String? = nil)
+    /// `features`: the repairs this host uses for this stream, of those the phone offered in its request (RemoteVideoFeature); nil = none. 1.0.15+
+    case screenView(width: Double, height: Double, codec: String? = nil, display: String? = nil, features: [String]? = nil)
     /// every display the computer has, whenever that changes (and once a session is up). Only sent by hosts that can show more than one. 1.0.15+
     case displays([RemoteDisplay])
     case cursorShape(png: Data, hotX: Double, hotY: Double, width: Double, height: Double)
@@ -170,6 +171,7 @@ public enum RemoteFrameKind: UInt8, Sendable {
     case video = 3      // RemoteVideoPacket, datagrams only
     case probe = 4      // 8 bytes the other side sends straight back, datagrams only
     case cursor = 5     // x, y as Float32 little-endian, 0…1 of the source; outside it, the pointer is elsewhere
+    case videoFeedback = 6  // RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+
 }
 
 /// The pointer and scroll, one packet per display frame at most.

@@ -46,6 +46,8 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen_old_phone", .screen(RemoteScreenRequest(target: "display", width: 1280, height: 800, bitrate: 1_000_000, fps: 15, codecs: nil))),
             ("screen_off", .screen(nil)),
             ("screen_pinned_display", .screen(RemoteScreenRequest(target: "display", width: 1600, height: 900, bitrate: 4_000_000, fps: 30, codecs: ["h264"], display: "69733382"))),
+            ("screen_repairs", .screen(RemoteScreenRequest(target: "display", width: 2622, height: 1206, bitrate: 12_000_000, fps: 120, codecs: ["hevc", "h264"],
+                                                           features: ["nack", "ltr", "fec"]))),
             ("show_display", .showDisplay("69733382")),
             ("show_display_follow", .showDisplay(nil)),
             ("screen_crop", .screenCrop(crop)),
@@ -91,6 +93,7 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen_view", .screenView(width: 1920, height: 1080, codec: "h264")),
             ("screen_view_old_mac", .screenView(width: 1512, height: 982)),
             ("screen_view_display", .screenView(width: 2560, height: 1440, codec: "hevc", display: "69733382")),
+            ("screen_view_repairs", .screenView(width: 1512, height: 982, codec: "hevc", display: "1", features: ["nack", "ltr"])),
             ("displays", .displays([RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1512, height: 982, main: true),
                                     RemoteDisplay(id: "69733382", name: "DELL U2723QE", x: 1512, y: -458, width: 2560, height: 1440, main: false)])),
             ("cursor_shape", .cursorShape(png: Data([0x89, 0x50]), hotX: 1, hotY: 2, width: 16, height: 24)),
@@ -117,6 +120,17 @@ final class RemoteVectorsTests: XCTestCase {
         out["video"] = [
             "payload": ["crop": try json(crop), "parameterSets": ["4001", "420102"], "picture": "000000012601", "hex": hex(payload)],
             "packets": ["frame": 42, "keyframe": true, "captured": 1234.5, "pieceSize": 16, "hex": pieces.map { hex($0.encoded()) }],
+        ]
+        // the repairs (docs/design/remote-realtime.md): flags beyond the keyframe bit, parity pieces, the phone's feedback
+        let small = Data((0..<40).map { UInt8($0) })
+        let refresh = RemoteVideoPacket.split(small, frame: 43, keyframe: false, refresh: true, ackRequested: true, captured: 1234.75, payload: 16)
+        let feedback: [(String, RemoteVideoFeedback)] = [("nack", .nack([.init(frame: 43, pieces: [1, 2]), .init(frame: 44, pieces: [])])),
+                                                          ("ack", .ack(newest: 43, earlier: 5)), ("lost", .lost(after: 42))]
+        out["videoRepair"] = [
+            "refresh": ["frame": 43, "keyframe": false, "refresh": true, "ackRequested": true, "captured": 1234.75, "pieceSize": 16,
+                        "data": hex(small), "hex": refresh.map { hex($0.encoded()) }],
+            "parity": ["group": 2, "hex": RemoteVideoFEC.parity(for: refresh, group: 2).map { hex($0.encoded()) }],
+            "feedback": feedback.map { ["name": $0.0, "hex": hex($0.1.encoded())] },
         ]
         var cursor = Data()
         for v: Float in [0.5, 0.25] { withUnsafeBytes(of: v.bitPattern.littleEndian) { cursor.append(contentsOf: $0) } }
@@ -192,7 +206,7 @@ final class RemoteVectorsTests: XCTestCase {
         guard case let .session(i) = try JSONDecoder().decode(ToPhone.self, from: s) else { return XCTFail() }
         XCTAssertEqual(i.host, .mac)
         let v = Data(#"{"screenView":{"width":1,"height":2}}"#.utf8)
-        guard case let .screenView(_, _, codec, display) = try JSONDecoder().decode(ToPhone.self, from: v) else { return XCTFail() }
+        guard case let .screenView(_, _, codec, display, _) = try JSONDecoder().decode(ToPhone.self, from: v) else { return XCTFail() }
         XCTAssertNil(codec)
         XCTAssertNil(display)
     }

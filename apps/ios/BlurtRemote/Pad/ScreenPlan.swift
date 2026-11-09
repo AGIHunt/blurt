@@ -34,7 +34,9 @@ struct ScreenPlan: Equatable {
     var bitrate: Int
     var fps: Int
 
-    init(_ q: ScreenQuality, route: Link.Route, cellular: Bool, lowData: Bool, native: CGSize) {
+    /// `panel`: the display's top rate. At home the picture comes at up to that (120 on ProMotion): a frame waits half as long for its turn, and
+    /// scrolling moves as the phone's own does. The bitrate ceiling stays, so it costs no more data, only motion's share of it.
+    init(_ q: ScreenQuality, route: Link.Route, cellular: Bool, lowData: Bool, native: CGSize, panel: Int = 60) {
         let long = Int(max(native.width, native.height)), short = Int(min(native.width, native.height))
         func size(_ w: Int, _ h: Int) -> (Int, Int) { (min(long, w), min(short, h)) }
         var tier = q
@@ -49,7 +51,7 @@ struct ScreenPlan: Equatable {
         case .sharp where route == .local:
             (width, height) = (long, short)
             bitrate = 12_000_000
-            fps = 60
+            fps = min(120, max(60, panel))
         case .sharp:
             (width, height) = (long, short)
             bitrate = 8_000_000

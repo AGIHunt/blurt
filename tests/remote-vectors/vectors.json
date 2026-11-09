@@ -367,6 +367,35 @@
     },
     {
       "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 12000000,
+            "codecs" : [
+              "hevc",
+              "h264"
+            ],
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "features" : [
+              "nack",
+              "ltr",
+              "fec"
+            ],
+            "fps" : 120,
+            "height" : 1206,
+            "target" : "display",
+            "width" : 2622
+          }
+        }
+      },
+      "name" : "screen_repairs"
+    },
+    {
+      "json" : {
         "showDisplay" : {
           "_0" : "69733382"
         }
@@ -734,6 +763,21 @@
     },
     {
       "json" : {
+        "screenView" : {
+          "codec" : "hevc",
+          "display" : "1",
+          "features" : [
+            "nack",
+            "ltr"
+          ],
+          "height" : 982,
+          "width" : 1512
+        }
+      },
+      "name" : "screen_view_repairs"
+    },
+    {
+      "json" : {
         "displays" : {
           "_0" : [
             {
@@ -797,6 +841,42 @@
         "420102"
       ],
       "picture" : "000000012601"
+    }
+  },
+  "videoRepair" : {
+    "feedback" : [
+      {
+        "hex" : "010000002b0002000100020000002cffff",
+        "name" : "nack"
+      },
+      {
+        "hex" : "020000002b00000005",
+        "name" : "ack"
+      },
+      {
+        "hex" : "030000002a",
+        "name" : "lost"
+      }
+    ],
+    "parity" : {
+      "group" : 2,
+      "hex" : [
+        "0000002b000300030640934b0000000000020018202020202020202008090a0b0c0d0e0f"
+      ]
+    },
+    "refresh" : {
+      "ackRequested" : true,
+      "captured" : 1234.75,
+      "data" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627",
+      "frame" : 43,
+      "hex" : [
+        "0000002b000000030640934b0000000000000102030405060708090a0b0c0d0e0f",
+        "0000002b000100030640934b0000000000101112131415161718191a1b1c1d1e1f",
+        "0000002b000200030640934b00000000002021222324252627"
+      ],
+      "keyframe" : false,
+      "pieceSize" : 16,
+      "refresh" : true
     }
   }
 }

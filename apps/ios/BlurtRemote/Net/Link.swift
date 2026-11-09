@@ -572,6 +572,7 @@ final class Link: ObservableObject {
         case let .pong(t):
             lastPong = Date()
             rtt = CACurrentMediaTime() - t
+            Self.rttLock.lock(); Self.rttShared = rtt ?? 0.01; Self.rttLock.unlock()
         case .udpOK:
             channel?.udpConfirmed()
             #if DEBUG
@@ -585,9 +586,9 @@ final class Link: ObservableObject {
         case let .screenFailed(why):
             ScreenStream.shared.stop()
             screenError = why
-        case let .screenView(w, h, codec, display):
+        case let .screenView(w, h, codec, display, features):
             shownDisplay = display
-            ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec, display: display)
+            ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec, display: display, features: features)
         case let .displays(list):
             displays = list
             if let p = pinnedDisplay, !list.contains(where: { $0.id == p }) { pinnedDisplay = nil }     // unplugged: the computer follows again
@@ -688,6 +689,10 @@ final class Link: ObservableObject {
 
     func audio(_ d: Data) { channel?.sendAudio(d) }
     func datagram(_ k: RemoteFrameKind, _ d: Data) { channel?.sendDatagram(k, d) }
+    /// the last round trip, from any thread (the picture's receiver waits a few of these for a piece sent again)
+    static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }
+    static let rttLock = NSLock()
+    nonisolated(unsafe) static var rttShared = 0.01
     var ready: Bool { channel != nil && state == .connected }
 }
 
