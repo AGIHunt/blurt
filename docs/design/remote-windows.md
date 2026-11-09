@@ -144,6 +144,27 @@ gives a frame only on a change; the first now comes from GDI). Not seen working 
 frames went before UDP was confirmed, and it asks for no keyframe), and following the pointer onto the second display (no new
 `screenView` after 1,200 pt of moves to the right). The iPhone app in the simulator wasn't paired with it (see the report).
 
+Several displays, again (2026-11-09; the host as above, `examples/phone.rs --cross` on the VM itself against 127.0.0.1, so no
+firewall rule): follow, pin and unpin work on real Windows, with the backend and the server as they were. What stood in the way was
+the test phone. It pressed Ctrl+C first thing, and on the VM the focused window is the console the host runs in: the host was
+gone 30 ms after the screen was asked for (no crash in the event log; the phone just saw the connection close). And it could miss
+the display list: the list could go out before `session` (the session's watch looks at the displays every 2 s, and `session` is
+sent from a task of its own), `phone::pair` drops what comes before `session`, and an unchanged list isn't sent again. Now
+`--cross` presses no key, starts at the left edge and crosses 2,400 pt at a time, and the server sends the list only after
+`session`, as the Mac does (always so over the relay, where `session` waits on STUN). One run, 16 s, seen at the phone:
+
+| Step | `screenView` |
+|---|---|
+| start, pointer at the left edge | DISPLAY1 800×600 at 0.44 s |
+| 2,400 pt right (24 relative moves through SendInput) at 3.23 s | DISPLAY2 1280×800 at 3.45 s (stop + start: WGC on the other monitor) |
+| pinned DISPLAY1 at 6.49 s | DISPLAY1 at 6.70 s |
+| 2,400 pt right, pinned, at 8.86 s | none |
+| following again at 12.01 s (the pointer on DISPLAY2) | DISPLAY2 at 12.38 s |
+
+Each part decodes (ffmpeg, no errors) at its display's size and shows that display (the console on DISPLAY1, the desktop and
+taskbar on DISPLAY2). Both monitors are at 100 % here: a second display at another scale is untried on Windows (geometry.rs's
+tests cover the arithmetic).
+
 ```
 cargo run --release --example win_smoke                  # the monitor under the pointer, hardware encoder
 cargo run --release --example win_smoke -- --software    # Microsoft's software H.264

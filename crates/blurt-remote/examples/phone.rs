@@ -36,8 +36,17 @@ async fn main() {
     if !phone.host.ip().is_unspecified() {
         phone.open_udp(info.udp_port, info.udp_session).await.unwrap();
     }
-    phone.send(&ToMac::Key { chord: Chord::new(8, "C"), down: None }).await;
+    // Ctrl+C into the focused window: not with --cross, whose run on a Windows console would stop the host it's testing
+    if !args.iter().any(|a| a == "--cross") {
+        phone.send(&ToMac::Key { chord: Chord::new(8, "C"), down: None }).await;
+    }
     phone.pointer(PointerPacket::Move { dx: 10.0, dy: 5.0 }).await;
+    let cross = args.iter().any(|a| a == "--cross");
+    if cross {
+        // to the left edge first, so the picture starts on the leftmost display wherever the last run left the pointer
+        across(&phone, -100.0).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     phone
         .send(&ToMac::Screen(Some(ScreenRequest {
             target: "display".into(),
@@ -58,7 +67,6 @@ async fn main() {
     let mut last_report = Instant::now();
     let mut zoomed = false;
     let (mut last_key_ask, mut key_asks): (Option<Instant>, u32) = (None, 0);
-    let cross = args.iter().any(|a| a == "--cross");
     let mut stage = 0;
     let mut displays: Vec<String> = vec![];
     while t0.elapsed().as_secs_f64() < seconds {
@@ -75,19 +83,23 @@ async fn main() {
         }
         let el = t0.elapsed().as_secs_f64();
         if cross {
-            // several displays: the pointer across to the next one (the picture follows), then pinned to the first, then following
-            if stage == 0 && el > seconds * 0.3 {
+            // several displays: the pointer across to the next one (the picture follows); pinned to the first (the picture goes
+            // there) and the pointer across again (it stays); following again (to where the pointer is)
+            if stage == 0 && el > seconds * 0.2 {
                 stage = 1;
-                for _ in 0..12 {
-                    phone.pointer(PointerPacket::Move { dx: 100.0, dy: 0.0 }).await;
-                }
-            } else if stage == 1 && el > seconds * 0.6 {
+                println!("{el:.2}s across");
+                across(&phone, 100.0).await;
+            } else if stage == 1 && el > seconds * 0.4 {
                 stage = 2;
-                println!("pin {:?}", displays.first());
+                println!("{el:.2}s pin {:?}", displays.first());
                 phone.send(&ToMac::ShowDisplay(displays.first().cloned())).await;
-            } else if stage == 2 && el > seconds * 0.8 {
+            } else if stage == 2 && el > seconds * 0.55 {
                 stage = 3;
-                println!("follow");
+                println!("{el:.2}s across, pinned");
+                across(&phone, 100.0).await;
+            } else if stage == 3 && el > seconds * 0.75 {
+                stage = 4;
+                println!("{el:.2}s follow");
                 phone.send(&ToMac::ShowDisplay(None)).await;
             }
         } else if !zoomed && el > seconds / 2.0 {
@@ -142,4 +154,11 @@ async fn main() {
     phone.send(&ToMac::Screen(None)).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     println!("frames {frames} keyframes {keys} pieces {pieces} bytes {bytes} dropped {} keyframes asked {key_asks} cursor {cursors} → {out}", a.dropped);
+}
+
+/// 2,400 pt sideways (past a 1080p display), in 24 moves.
+async fn across(phone: &Phone, dx: f32) {
+    for _ in 0..24 {
+        phone.pointer(PointerPacket::Move { dx, dy: 0.0 }).await;
+    }
 }
