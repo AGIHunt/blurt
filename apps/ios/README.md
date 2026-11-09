@@ -1,6 +1,8 @@
 # Blurt for iPhone
 
-The iPhone as a trackpad, keys and microphone for Blurt on your Mac. Design and decisions: [docs/design/remote.md](../../docs/design/remote.md).
+The iPhone as a trackpad, keys and microphone for Blurt on your computer: a Mac, or a Windows or Linux PC. The keys follow the computer: ⌘C on
+a Mac, Ctrl+C on Windows and Linux. Design and decisions: [docs/design/remote.md](../../docs/design/remote.md); the wire and each computer's
+default keys: [docs/design/remote-protocol.md](../../docs/design/remote-protocol.md).
 
 ## Build it yourself
 
@@ -24,7 +26,8 @@ It isn't on the App Store yet. You can build it onto your own iPhone with a Mac:
 With a free Apple account the app stops opening after 7 days: connect the iPhone and press ⌘R again. A paid Apple
 Developer account keeps it for a year.
 
-Then pair: Blurt on the Mac → Settings → iPhone → Add iPhone… shows a QR code. Scan it in the app, or with the Camera.
+Then pair: Blurt on the Mac → Settings → iPhone → Add iPhone…, or on Windows and Linux Blurt → Settings → Phone, shows a QR code. Scan it in
+the app, or with the Camera.
 
 ## Develop
 
@@ -36,4 +39,6 @@ Tests: `xcodebuild test -scheme BlurtRemote -destination 'platform=iOS Simulator
 Testing against a Mac without touching your own: build Blurt with `BLURT_TEST_HOOKS=1` (`record.py build`; release builds ignore
 the test variables) and run it with `BLURT_TEST_COMMANDS=1 BLURT_TEST_REMOTE=1`. It prints a pairing link
 (`remote_pairing`) and every input event (`remote_input`) instead of posting them; open the link with `xcrun simctl openurl`.
-`BLURT_TEST_REMOTE_POST=1` posts them for real. On the phone side, `SIMCTL_CHILD_BLURT_REMOTE_TEST_WAV=clip.wav` stands in for the mic.
+`BLURT_TEST_REMOTE_POST=1` posts them for real. On the phone side, `SIMCTL_CHILD_BLURT_REMOTE_TEST_WAV=clip.wav` stands in for the mic, and
+`SIMCTL_CHILD_BLURT_REMOTE_TEST_HOST=windows` (or `linux`, `mac`) shows that kind of computer as connected, with no connection, among three of
+mixed kinds: for looking at its keys and words (debug builds only; nothing is saved).

@@ -76,6 +76,7 @@ struct KeySlot: Codable, Hashable, Identifiable {
         if let c = keycap(on: h) { return h.label(c.mods) }
         guard let n = keyName(on: h) else { return nil }
         if glyph == nil, h == .windows, case .sticky(.command) = action { return n }     // the drawn Win key, named under it
+        if h != .mac, glyph == n { return nil }      // Home on the key is Home on a PC: once is enough
         return glyph == nil ? nil : n
     }
 

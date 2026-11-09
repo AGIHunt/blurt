@@ -102,6 +102,7 @@ final class KeyCell: UIView {
         let w = bounds.width, h = bounds.height
         // the face and its small line sit together in the middle, however tall the key
         captionFits()
+        modifierWordsFit()
         let hasCaption = !(caption.text ?? "").isEmpty
         let top = hasCaption ? (h - 36) / 2 : (h - 22) / 2
         glyph.frame = CGRect(x: 1, y: top, width: w - 2, height: 22)
@@ -171,6 +172,19 @@ final class KeyCell: UIView {
         guard RemoteHost.shown != .mac, let t = caption.text, bounds.width > 0,
               (t as NSString).size(withAttributes: [.font: regular]).width > bounds.width - 4 else { return caption.font = regular }
         caption.font = .systemFont(ofSize: 10, weight: .regular, width: .condensed)
+    }
+
+    /// Ctrl, Super, Alt, Shift side by side: one size for all four, the size the longest fits, so none reads smaller than the others.
+    private func modifierWordsFit() {
+        let h = RemoteHost.shown
+        guard h != .mac, bounds.width > 0, slot?.glyph == nil, case .sticky? = slot?.action, glyph.text != nil else { return }
+        // narrower letters before smaller ones: at arm's length the height is what reads
+        func fit(_ width: UIFont.Width) -> UIFont {
+            let widest = h.modifierOrder.map { (h.name($0) as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 16, weight: .regular, width: width)]).width }.max() ?? 1
+            return .systemFont(ofSize: min(16, floor(16 * (bounds.width - max(7, bounds.width * 0.12)) / widest)), weight: .regular, width: width)
+        }
+        let plain = fit(.standard)
+        glyph.font = plain.pointSize >= 14 ? plain : fit(.condensed)
     }
 
 

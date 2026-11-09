@@ -1,4 +1,4 @@
-// Icons SF Symbols doesn't have. Each is what the key looks like on the computer (Alt+Tab is the same row of apps): ⌘Tab's row of apps with one picked out, a tab bar with the tab
+// Icons SF Symbols doesn't have. Each is what the key looks like on the computer: the row of apps with one picked out (⌘Tab, Alt+Tab), a tab bar with the tab
 // you'd land on filled in, selected text. Template images, so they take a key's colours like any symbol.
 import SwiftUI
 import UIKit
