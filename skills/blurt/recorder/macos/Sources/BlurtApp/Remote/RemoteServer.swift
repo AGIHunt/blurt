@@ -2,7 +2,7 @@
 // they send into pointer moves, keys and dictation.
 //
 //  • listens only once a phone is paired (or a QR code is showing). No paired phone, no open port.
-//  • pairing (Settings → iPhone): a QR code with a fresh key, good for one connection within two minutes, renewed while the
+//  • pairing (Settings → Phone): a QR code with a fresh key, good for one connection within two minutes, renewed while the
 //    page shows it. Used over the relay, where a photo of it would otherwise do from anywhere, someone at the Mac has to allow it. The connection that uses it spends it, is sent a new key over the sealed session, and becomes a paired
 //    device once the phone says it has kept that key. So a photo of the code, or a screen recording, is worth nothing later.
 //  • found through Bonjour (`_blurt-remote._tcp`, including peer-to-peer Wi-Fi, so two devices with no shared network still
@@ -474,12 +474,12 @@ final class RemoteServer {
     private var relayAt: String?
     /// the code that let a phone in over the relay: its connection carries that session until it ends
     private var spentCode: String?
-    /// Set up by the owner (Settings → iPhone, tools/remote-relay). No address, no relay: Blurt doesn't run one.
+    /// Set up by the owner (Settings → Phone, tools/remote-relay). No address, no relay: Blurt doesn't run one.
     /// Never set here, as against cleared by the owner: only then may a phone offer the one it knows.
     static var relayUnset: Bool { Config.shared["record.remote.relay_url"] == nil }
     static var relayAddress: String? { (Config.shared["record.remote.relay_url"] as? String).flatMap(RemoteRelay.address) }
     static var relayOn: Bool { relayAddress != nil }
-    /// Settings → iPhone: a paired phone may ask for the screen
+    /// Settings → Phone: a paired phone may ask for the screen
     static var screenAllowed: Bool { Config.shared["record.remote.screen"] as? Bool ?? true }
 
     func relayChanged() {

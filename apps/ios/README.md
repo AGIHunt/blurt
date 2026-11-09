@@ -26,7 +26,7 @@ It isn't on the App Store yet. You can build it onto your own iPhone with a Mac:
 With a free Apple account the app stops opening after 7 days: connect the iPhone and press ⌘R again. A paid Apple
 Developer account keeps it for a year.
 
-Then pair: Blurt on the Mac → Settings → iPhone → Add iPhone…, or on Windows and Linux Blurt → Settings → Phone, shows a QR code. Scan it in
+Then pair: Blurt on the computer (Mac, Windows or Linux) → Settings → Phone → Add Phone… shows a QR code. Scan it in
 the app, or with the Camera.
 
 ## Develop

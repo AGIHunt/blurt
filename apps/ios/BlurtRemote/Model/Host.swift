@@ -37,7 +37,7 @@ enum Words {
     }
 
     /// Before any computer: where its code is. Blurt calls the pane iPhone on a Mac, Phone on Windows and Linux.
-    static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Settings and choose iPhone (Phone on Windows and Linux).") }
+    static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Settings and choose Phone.") }
 
     /// The cycle keys, as the settings' list of gestures names them.
     static func cycleKeys(_ h: RemoteHost) -> String {

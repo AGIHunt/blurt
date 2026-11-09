@@ -95,7 +95,7 @@ public struct RemoteSessionInfo: Codable, Hashable, Sendable {
     public var candidates: [RemoteCandidate]
     /// the main display, width ÷ height: the pad takes this shape while the screen shows
     public var displayAspect: Double
-    /// the relay the Mac's owner set up (Settings → iPhone): the phone only tries one if there's an address here
+    /// the relay the Mac's owner set up (Settings → Phone): the phone only tries one if there's an address here
     public var relay: String?
     /// what the computer is: "mac", "windows" or "linux" (nil from a Mac before 1.0.15). The phone's keys follow it: ⌘ on a Mac, Ctrl and
     /// the Windows key elsewhere (docs/design/remote-protocol.md §Hosts). `macName` stays the field's name on the wire, whatever the computer.

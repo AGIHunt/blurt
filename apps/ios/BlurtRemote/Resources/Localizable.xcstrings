@@ -1431,12 +1431,12 @@
         }
       }
     },
-    "On your computer, open Blurt’s Settings and choose iPhone (Phone on Windows and Linux)." : {
+    "On your computer, open Blurt’s Settings and choose Phone." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上打开 Blurt 设置，选择 iPhone（Windows 和 Linux 上选“手机”）。"
+            "value" : "在电脑上打开 Blurt 设置，选择“手机”。"
           }
         }
       }

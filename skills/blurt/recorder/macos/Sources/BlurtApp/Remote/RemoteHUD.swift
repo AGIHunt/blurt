@@ -1,7 +1,7 @@
 // What the phone just did, on the Mac's screen: the user is looking here, not at the phone (docs/design/remote.md §Feedback).
 // A small dark bezel near the bottom of the screen with the pointer: the keys pressed, for 0.7 s, and the modifiers held
 // (sticky ⌘) for as long as they are. Plus "find my pointer", a ring that closes in on it. It never takes the focus or a
-// click. Settings → iPhone turns the bezel off (record.remote.hud).
+// click. Settings → Phone turns the bezel off (record.remote.hud).
 import AppKit
 import BlurtCore
 import BlurtRemoteKit

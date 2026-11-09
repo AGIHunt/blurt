@@ -37,7 +37,7 @@
 **手机遥控（口喷鸡手机版）。** 坐得离大屏远一点时，手机就是电脑的触控板、键盘和麦克风，还能看电脑的屏幕。电脑可以是 Mac、Windows
 或 Linux，手机可以是 iPhone、iPad（包括 iPhone Duo）、安卓手机或平板。说话键就是口喷鸡的听写键；按键跟着所连的电脑走（Mac 上是 ⌘，
 其他电脑是 Ctrl 和 Win）。多块显示器时画面跟着指针走，也可以固定看某一块。不在家时经你自己搭的中继连接，路上的数据全程端到端加密。
-配对入口：Mac 在「设置 → iPhone」，Windows 和 Linux 在「设置 → 手机」。手机 App 还没上架，需要自己编译
+配对入口：任何电脑都在「设置 → 手机」。手机 App 还没上架，需要自己编译
 （[iPhone 和 iPad](apps/ios/README.md#build-it-yourself)、[安卓](apps/android/README.md#build-it-yourself)）。
 
 截图、语音备注和录屏都会放进当前项目（在口喷鸡里打开的文件夹）。没有当前项目时，录屏放进「未归类」，截图作为卡片

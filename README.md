@@ -46,7 +46,7 @@ microphone, and can show its screen. It works with a Mac, Windows or Linux compu
 iPhone Duo) or Android phone or tablet. The talk key is Blurt's dictation key, and the keys follow the computer you're
 driving (⌘ on a Mac, Ctrl and Win elsewhere). With several displays the picture follows the pointer, or stays on the one
 you pick. Away from home it goes through a relay you run yourself; everything on the way is end-to-end encrypted. Pair
-in Settings → iPhone on a Mac, Settings → Phone on Windows and Linux. The phone apps aren't in the stores yet: build them
+in Settings → Phone on any computer. The phone apps aren't in the stores yet: build them
 yourself ([iPhone and iPad](apps/ios/README.md#build-it-yourself), [Android](apps/android/README.md#build-it-yourself)).
 
 Snaps, voice notes and recordings go into the current project (a folder you open in Blurt). Without one, recordings

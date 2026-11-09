@@ -7,7 +7,7 @@ latency and data: [remote-realtime.md](remote-realtime.md). What follows was dec
 section says otherwise.
 
 The app is called Blurt on the iPhone too (it was Blurt Remote while in development; the code keeps `BlurtRemote`). Until it
-is on the App Store, people build it themselves: [apps/ios/README.md](../../apps/ios/README.md). Settings → iPhone links there.
+is on the App Store, people build it themselves: [apps/ios/README.md](../../apps/ios/README.md). Settings → Phone links there (renamed from iPhone on 2026-11-09, since Android phones pair with a Mac too).
 
 2026-11-07. Status: used on an iPhone 16 at home. The screen features and everything away from home are tested on the simulator only.
 
@@ -178,8 +178,8 @@ Control and audio use TCP; pointer and scroll use UDP once a probe gets through,
 | Hold ⌘⇥, one slide to the screen edge, hold 2 s | ⌘ held, Tab ×30, ⌘ released, nothing else pressed |
 | ⌃↑ posted plain / with the keyboard's fn + numpad flags | nothing / Mission Control opens (arrows need those flags for macOS's shortcuts) |
 
-On a Mac with no phone paired, nothing runs: no listener or Bonjour ad until Add iPhone… shows the code (opening
-Settings → iPhone alone doesn't, so it never brings up macOS's Local Network prompt), and the session watch timer only runs
+On a Mac with no phone paired, nothing runs: no listener or Bonjour ad until Add Phone… shows the code (opening
+Settings → Phone alone doesn't, so it never brings up macOS's Local Network prompt), and the session watch timer only runs
 while a phone is connected.
 
 If a session goes quiet for 2 s, the Mac lets go of everything held, including the dictation key. A background phone sends
@@ -352,7 +352,7 @@ Three routes, tried together, best one kept:
 
 - **Relay:** Blurt doesn't run one: it's an open-source project, and a shared relay would be a cost and a service to keep up (founder, 2026-11-07).
   Each owner runs their own, a Cloudflare Worker with one hibernating Durable Object per paired phone or one Node process on a server
-  (tools/remote-relay, same protocol), and pastes its address into Settings → iPhone → Relay Address. Copy Instructions there gives a prompt
+  (tools/remote-relay, same protocol), and pastes its address into Settings → Phone → Relay Address. Copy Instructions there gives a prompt
   for Claude Code or Codex that does the setup. The address is in the pairing code and reaches the phone again inside each sealed session, so the phone has nothing to configure.
   `ws://` works too: what passes is sealed either way, and it needs no domain. The room is an HMAC of the pair's key. The relay has no key.
 - **Several Macs, one relay:** a phone keeps a list of Macs, each with its own key and so its own room: one address serves them all. Pair each Mac once
