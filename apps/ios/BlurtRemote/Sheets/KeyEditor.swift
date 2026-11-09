@@ -61,7 +61,7 @@ struct KeyEditor: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Restore Default Keys", role: .destructive) { update { $0 = .standard } }
+                    Button("Restore Default Keys", role: .destructive) { update { $0 = .standard(for: .shown) } }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("More")
             }
@@ -304,8 +304,9 @@ struct KeyPicker: View {
     @State private var query = ""
 
     private var groups: [(group: String, slots: [KeySlot])] {
-        guard !query.isEmpty else { return Deck.catalogue }
-        return Deck.catalogue.compactMap { g in
+        let all = Deck.catalogue(for: .shown)
+        guard !query.isEmpty else { return all }
+        return all.compactMap { g in
             let hits = g.slots.filter { $0.title.localizedCaseInsensitiveContains(query) || ($0.detail ?? "").localizedCaseInsensitiveContains(query) }
             return hits.isEmpty ? nil : (g.group, hits)
         }
@@ -342,7 +343,8 @@ struct KeyPicker: View {
 /// A shortcut, built by tapping: modifiers, then the key.
 private struct ChordMaker: View {
     let onPick: (KeySlot) -> Void
-    @State private var mods: RemoteModifiers = [.command]
+    /// a Mac's shortcuts start from ⌘, a PC's from Ctrl
+    @State private var mods: RemoteModifiers = RemoteHost.shown == .mac ? [.command] : [.control]
     @State private var key = ""
     @State private var name = ""
     @State private var cycle = false
@@ -350,12 +352,12 @@ private struct ChordMaker: View {
     var body: some View {
         Form {
             Section {
-                Text(RemoteChord(mods, key).label).font(.largeTitle).frame(maxWidth: .infinity, minHeight: 52)
+                Text(RemoteHost.shown.label(RemoteChord(mods, key))).font(.largeTitle).lineLimit(1).minimumScaleFactor(0.5).frame(maxWidth: .infinity, minHeight: 52)
             }
             Section("Modifiers") {
                 HStack {
-                    ForEach(RemoteModifiers.ordered, id: \.1) { m, g in
-                        Button(g) { mods.formSymmetricDifference(m) }
+                    ForEach(RemoteHost.shown.modifierOrder, id: \.rawValue) { m in
+                        Button(RemoteHost.shown.name(m)) { mods.formSymmetricDifference(m) }
                             .buttonStyle(.bordered).tint(mods.contains(m) ? .white : .gray)
                             .frame(maxWidth: .infinity)
                     }
@@ -364,7 +366,7 @@ private struct ChordMaker: View {
             Section("Key") {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 6) {
                     ForEach(RemoteKey.all, id: \.name) { k in
-                        Button(k.glyph) { key = k.name }
+                        Button(RemoteHost.shown.keyName(k.name)) { key = k.name }
                             .buttonStyle(.bordered).tint(key == k.name ? .white : .gray).font(.footnote).lineLimit(1).minimumScaleFactor(0.5)
                     }
                 }
