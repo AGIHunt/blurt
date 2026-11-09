@@ -83,6 +83,9 @@ mod win {
 
         let mut b = WinBackend::new();
         println!("platform {}  display aspect {:.4}  now {:.3}", b.platform(), b.display_aspect(), b.now());
+        for d in b.displays() {
+            println!("display {:?} {:?} at {:.0},{:.0} pt, {:.0}×{:.0} pt{}", d.name, d.id, d.x, d.y, d.width, d.height, if d.main { ", main" } else { "" });
+        }
         b.win_screen().options =
             Options { source: if synthetic { Source::Synthetic { width: sw, height: sh } } else { Source::Monitor }, software };
 
