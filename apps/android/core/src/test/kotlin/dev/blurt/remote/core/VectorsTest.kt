@@ -60,7 +60,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(38, list.size)
+        assertEquals(39, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -73,7 +73,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(25, list.size)
+        assertEquals(26, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -115,6 +115,9 @@ class VectorsTest {
         assertEquals(ToMac.Screen(RemoteScreenRequest("display", RemoteCrop.WHOLE, 1600, 900, 4_000_000, 30, listOf("h264"), "69733382")),
             mac("screen_pinned_display"))
         assertNull((mac("screen") as ToMac.Screen).request!!.display, "no display: follow the pointer")
+        assertEquals(ToMac.Screen(RemoteScreenRequest("display", RemoteCrop.WHOLE, 2622, 1206, 12_000_000, 120, listOf("hevc", "h264"),
+            features = listOf("nack", "ltr", "fec"))), mac("screen_repairs"))
+        assertNull((mac("screen") as ToMac.Screen).request!!.features, "a phone before 1.0.15 offers none")
         assertEquals(ToMac.ShowDisplay("69733382"), mac("show_display"))
         assertEquals(ToMac.ShowDisplay(null), mac("show_display_follow"))
         assertEquals(ToMac.ScreenCrop(crop), mac("screen_crop"))
@@ -160,6 +163,8 @@ class VectorsTest {
         assertEquals(ToPhone.ScreenView(1920.0, 1080.0, "h264"), phone("screen_view"))
         assertEquals(ToPhone.ScreenView(1512.0, 982.0, null), phone("screen_view_old_mac"))
         assertEquals(ToPhone.ScreenView(2560.0, 1440.0, "hevc", "69733382"), phone("screen_view_display"))
+        assertEquals(ToPhone.ScreenView(1512.0, 982.0, "hevc", "1", listOf("nack", "ltr")), phone("screen_view_repairs"))
+        assertNull((phone("screen_view") as ToPhone.ScreenView).features, "a host before 1.0.15 uses none")
         assertEquals(ToPhone.Displays(listOf(RemoteDisplay("1", "Built-in Retina Display", 0.0, 0.0, 1512.0, 982.0, true),
             RemoteDisplay("69733382", "DELL U2723QE", 1512.0, -458.0, 2560.0, 1440.0, false))), phone("displays"))
         assertEquals(ToPhone.CursorShape(byteArrayOf(0x89.toByte(), 0x50), 1.0, 2.0, 16.0, 24.0), phone("cursor_shape"))
@@ -207,6 +212,54 @@ class VectorsTest {
         assertEquals(42L, got[0].id)
         assertEquals(1234.5, got[0].captured)
         assertTrue(got[0].keyframe)
+    }
+
+    @Test
+    fun videoRepairByteForByte() {
+        val r = v["videoRepair"]!!.jsonObject
+        val refresh = r["refresh"]!!.jsonObject
+        val data = unhex(refresh["data"]!!.jsonPrimitive.content)
+        val pieces = RemoteVideoPacket.split(data, refresh["frame"]!!.jsonPrimitive.int.toLong(), refresh["keyframe"]!!.jsonPrimitive.boolean,
+            refresh["captured"]!!.jsonPrimitive.double, refresh["pieceSize"]!!.jsonPrimitive.int,
+            refresh = refresh["refresh"]!!.jsonPrimitive.boolean, ackRequested = refresh["ackRequested"]!!.jsonPrimitive.boolean)
+        assertEquals(refresh["hex"]!!.jsonArray.map { it.jsonPrimitive.content }, pieces.map { hex(it.encoded()) })
+        for (h in refresh["hex"]!!.jsonArray) {
+            val p = RemoteVideoPacket.decode(unhex(h.jsonPrimitive.content))!!
+            assertTrue(p.refresh && p.ackRequested && !p.keyframe && !p.isParity)
+            assertEquals(h.jsonPrimitive.content, hex(p.encoded()))
+        }
+
+        val parity = r["parity"]!!.jsonObject
+        val made = RemoteVideoFEC.parity(pieces, parity["group"]!!.jsonPrimitive.int)
+        assertEquals(parity["hex"]!!.jsonArray.map { it.jsonPrimitive.content }, made.map { hex(it.encoded()) })
+        for (h in parity["hex"]!!.jsonArray) {
+            val p = RemoteVideoPacket.decode(unhex(h.jsonPrimitive.content))!!
+            assertTrue(p.isParity)
+            assertEquals(h.jsonPrimitive.content, hex(p.encoded()))
+        }
+        // a piece lost, rebuilt from the vector's parity piece
+        val rx = RemoteVideoReceiver(nack = false, ltr = false)
+        val key = RemoteVideoPacket.split(byteArrayOf(1, 2, 3), 42, true, 0.0)
+        assertEquals(1, rx.add(key[0], 0.0).size)
+        val wire = (refresh["hex"]!!.jsonArray.drop(1) + parity["hex"]!!.jsonArray).map { RemoteVideoPacket.decode(unhex(it.jsonPrimitive.content))!! }
+        val got = wire.flatMap { rx.add(it, 0.01) }.filterIsInstance<RemoteVideoReceiver.Output.Frame>()
+        assertEquals(1, got.size, "piece 0 rebuilt from parity")
+        assertContentEquals(data, got[0].frame.data)
+
+        for (f in r["feedback"]!!.jsonArray) {
+            val h = f.jsonObject["hex"]!!.jsonPrimitive.content
+            val name = f.jsonObject["name"]!!.jsonPrimitive.content
+            val m = RemoteVideoFeedback.decode(unhex(h)) ?: fail("feedback $name didn't decode")
+            assertEquals(h, hex(m.encoded()), "feedback $name")
+            val expected = when (name) {
+                "nack" -> RemoteVideoFeedback.Nack(listOf(RemoteVideoFeedback.Missing(43, listOf(1, 2)), RemoteVideoFeedback.Missing(44, emptyList())))
+                "ack" -> RemoteVideoFeedback.Ack(43, 5)
+                "lost" -> RemoteVideoFeedback.Lost(42)
+                else -> fail("unknown feedback $name")
+            }
+            assertEquals(expected, m)
+        }
+        assertEquals(6, RemoteFrameKind.VIDEO_FEEDBACK.raw)
     }
 
     @Test
