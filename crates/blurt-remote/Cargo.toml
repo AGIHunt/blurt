@@ -22,5 +22,18 @@ serde_json = "1"
 
 # Linux backend (src/platform/linux): portal ScreenCast + RemoteDesktop, PipeWire, GStreamer
 [target.'cfg(target_os = "linux")'.dependencies]
+# the same ashpd as the desktop app (apps/desktop/src-tauri), so both share one portal connection and its host app registration
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "remote_desktop", "screencast", "inhibit"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# the monitor stream itself (cursor and damage metadata, which GStreamer's pipewiresrc doesn't expose)
+pipewire = "0.10"
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
+# the cursor's bitmap → PNG for the phone
+png = "0.18"
+# text that can't be typed goes through the clipboard, as the desktop app's dictation does (XWayland's: insert_linux.rs)
+arboard = { version = "3", default-features = false }
 
 [dev-dependencies]
