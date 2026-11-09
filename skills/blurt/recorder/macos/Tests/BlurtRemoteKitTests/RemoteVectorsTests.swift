@@ -126,11 +126,16 @@ final class RemoteVectorsTests: XCTestCase {
         let keys = RemoteCrypto.sessionKeys(secret: secret, paired: paired, transcript: t)
         let phone = RemoteSealer(send: keys.toMac, receive: keys.toPhone, transcript: t)
         let mac = RemoteSealer(send: keys.toPhone, receive: keys.toMac, transcript: t)
-        let hello = try JSONEncoder().encode(PhoneHello(v: 1, id: id, eph: phoneEph, c: RemoteCrypto.commitment(nonce)))
-        let reply = try JSONEncoder().encode(MacHello(v: 1, eph: macEph, proof: RemoteCrypto.proof(paired: paired, transcript: t), error: nil))
-        let first = Data([RemoteFrameKind.control.rawValue]) + (try JSONEncoder().encode(ToMac.hello(device: "Pixel", micOnPhone: true, nonce: nonce)))
+        // bytes that get sealed must be the same on every run: sorted keys (another implementation seals the `plain` given here, it
+        // doesn't re-encode the JSON itself)
+        let sorted = JSONEncoder()
+        sorted.outputFormatting = [.sortedKeys]
+        let hello = try sorted.encode(PhoneHello(v: 1, id: id, eph: phoneEph, c: RemoteCrypto.commitment(nonce)))
+        let reply = try sorted.encode(MacHello(v: 1, eph: macEph, proof: RemoteCrypto.proof(paired: paired, transcript: t), error: nil))
+        let first = Data([RemoteFrameKind.control.rawValue]) + (try sorted.encode(ToMac.hello(device: "Pixel", micOnPhone: true, nonce: nonce)))
         let f0 = try phone.seal(first), f1 = try phone.seal(Data([RemoteFrameKind.audio.rawValue, 1, 0, 2, 0]))
-        let back0 = try mac.seal(Data([RemoteFrameKind.control.rawValue]) + (try JSONEncoder().encode(ToPhone.udpOK)))
+        let backPlain = Data([RemoteFrameKind.control.rawValue]) + (try sorted.encode(ToPhone.udpOK))
+        let back0 = try mac.seal(backPlain)
         let udp1 = try phone.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + RemotePointerPacket.scrollStop.encoded(), session: 7)
         let udp2 = try phone.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + RemotePointerPacket.move(dx: 1, dy: 1).encoded(), session: 7)
         let sharedRaw = secret.withUnsafeBytes { Data($0) }
@@ -144,7 +149,7 @@ final class RemoteVectorsTests: XCTestCase {
             "check": phone.check(nonce),
             "tcpPhoneToMac": [["plain": hex(first), "sealed": hex(f0), "framed": hex(RemoteFrameReader.framed(f0))],
                               ["plain": "0101000200", "sealed": hex(f1)]],
-            "tcpMacToPhone": [["plain": hex(Data([0]) + (try JSONEncoder().encode(ToPhone.udpOK))), "sealed": hex(back0)]],
+            "tcpMacToPhone": [["plain": hex(backPlain), "sealed": hex(back0)]],
             "udpPhoneToMac": [["session": 7, "counter": 1, "plain": "0203", "sealed": hex(udp1)],
                               ["session": 7, "counter": 2, "plain": hex(Data([2]) + RemotePointerPacket.move(dx: 1, dy: 1).encoded()), "sealed": hex(udp2)]],
         ]
