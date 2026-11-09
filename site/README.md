@@ -1,11 +1,35 @@
 # blurt.work
 
-The project homepage: static files, no build step. `index.html` is Chinese, `en/index.html` English; both share
-`style.css` and `main.js`. The two pages have the same sections in the same order; change copy in both.
+The project homepage: static files, nothing to build on the server. `index.html` is Chinese, `en/index.html` English;
+both share `style.css` and `main.js`. The two pages have the same sections in the same order.
+
+## Changing the site
+
+Both pages are written by one generator, `blurt-media/site/src/build_pages9.py` (the founder's media folder, outside
+this repo, with its own git repo; its `LOCKED_COPY` block holds the title, lede, buttons and every section headline,
+which change only with the founder). **Never hand-edit `index.html` or `en/index.html`**: the next build wipes the
+edit.
+
+1. Edit `build_pages9.py`: copy, structure, `V`. Each line has both languages in one call, `t("中文", "English")`;
+   change both. `style.css`, `main.js`, `peep.js` and `llms.txt` are edited here directly; the generator inlines
+   `main.js` and `peep.js`, so rebuild after changing either.
+2. Write the pages into this checkout (on a branch, the worktree's own `site/`), from the repo root:
+   ```bash
+   python3 ~/workspace/blurt-media/site/src/build_pages9.py --site "$PWD/site" --stars keep
+   ```
+   `--stars keep` keeps the GitHub star count already baked into each page; leave it out to fetch today's count
+   (`gh api`), or pass a number (`--stars 412`). `--out DIR` writes the two pages under `DIR/` instead.
+3. Check the diff: `git diff site/index.html site/en/index.html` shows only what you meant to change.
+4. When `style.css`, a font or anything in `assets/` changed, bump `V` in the generator (the `?v=` below) and
+   rebuild.
+5. Run `site/check.sh`: it builds into a temporary folder and fails, printing the diff, if the pages differ from the
+   generator's output. Commit the generator in blurt-media and the pages here together. Without blurt-media
+   (open-source contributors) it skips with a note; then change both pages by hand and say so in the pull request.
 
 ```bash
+site/check.sh                                       # the pages are exactly the generator's output
 python3 -m http.server 4173 --directory site      # preview at http://localhost:4173 (no Range: steps won't seek)
-npx wrangler pages deploy site --project-name blurt --branch main      # publish (Cloudflare Pages)
+npx wrangler pages deploy site --project-name blurt --branch main      # publish (Cloudflare Pages), from main
 ```
 
 The production domain is `blurt.work`, bound to the existing Pages project `blurt`
@@ -35,8 +59,7 @@ first scene's wallpaper is fetched at high priority, the others lazily; wallpape
 og cards). The serif is `font-display: block` (the title appears once, in its own face), and the nav's star count
 is baked in at build time (main.js refreshes it), so the header never changes width.
 
-The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
-same change in the other.
+The pages are generated; see *Changing the site* above.
 
 ## Type
 
@@ -70,8 +93,8 @@ on hover; no other gradient on the page. Text set straight on the wallpaper uses
   film, install.
 - **Blurt on the phone** (`#phone`, `.rp`): not a scene. A wallpaper band (not sticky) with the headline and lede, then
   an iPad (on a Mac, with the picture) and an iPhone (on a Windows PC, its keys) in CSS bezels; under it, six facts on
-  paper (phones and computers, keys, displays, away from home, pairing, the apps). Hand-written into both pages, not
-  yet in `build_pages9.py`.
+  paper (phones and computers, keys, displays, away from home, pairing, the apps). Its headline and lede are
+  `h_phone` and `lede_phone` in `LOCKED_COPY`.
 - **Desk units**: inside `.lay`, 1em = 1% of the desk width (container query units), so a scene scales as one picture.
   On phones `.view` is a camera over the same coordinates (`--cx`, `--cy` per scene and step) and the copy sits on a
   paper sheet at the bottom; desktop coordinates in `style.css` are shared by both.
