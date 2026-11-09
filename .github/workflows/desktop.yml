@@ -6,6 +6,8 @@ name: desktop
 #                   deb + rpm + AppImage, size report (deb ≤ 20 MB), and the e2e under
 #                   xvfb through tauri-driver (WebKitWebDriver): open a fixture project, search, open an item, edit it →
 #                   its Markdown file updated
+#   both:           crates/blurt-remote (Blurt Remote's host: protocol, server, this OS's backend): clippy + tests, the
+#                   golden vectors in tests/remote-vectors among them. Swift and Kotlin check the same vectors: remote.yml
 # Nothing is signed or published: installers and reports are workflow artifacts.
 on:
   push:
@@ -18,6 +20,8 @@ on:
       - "web/package.json"
       - "web/pnpm-workspace.yaml"
       - "crates/blurt-capture/**"
+      - "crates/blurt-remote/**"
+      - "tests/remote-vectors/**"
       - "skills/blurt/scripts/**"
       - "tests/fixtures/**"
       - "docs/contracts/**"
@@ -31,6 +35,8 @@ on:
       - "web/package.json"
       - "web/pnpm-workspace.yaml"
       - "crates/blurt-capture/**"
+      - "crates/blurt-remote/**"
+      - "tests/remote-vectors/**"
       - "skills/blurt/scripts/**"
       - "tests/fixtures/**"
       - "docs/contracts/**"
@@ -86,15 +92,22 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: |
+            apps/desktop/src-tauri
+            crates/blurt-remote
 
-      - name: Linux packages (Tauri build deps, WebKitWebDriver, xvfb)
+      # Blurt Remote's Linux backend links GStreamer and libpipewire; pipewire-sys / libspa-sys run bindgen (clang +
+      # libclang). The plugins are for its encoder test (videotestsrc → x264enc → h264parse → avdec_h264), which
+      # skips without them.
+      - name: Linux packages (Tauri build deps, WebKitWebDriver, xvfb; GStreamer + PipeWire)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
-            patchelf file rpm webkit2gtk-driver xvfb dbus-x11 git libasound2-dev
+            patchelf file rpm webkit2gtk-driver xvfb dbus-x11 git libasound2-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpipewire-0.3-dev clang libclang-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 
       - name: Install JS dependencies
         run: |
@@ -111,6 +124,12 @@ jobs:
           pnpm -C web --filter @blurt/overlays build
           pnpm -C web --filter @blurt/desktop build
           test -f web/apps/desktop/dist/overlays/island.html
+
+      - name: Blurt Remote host (crates/blurt-remote) lint + tests, the golden vectors among them
+        working-directory: crates/blurt-remote
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo test -- --test-threads 1
 
       - name: Rust lint + tests (index v2, jobs fold, l10n parity, flow)
         working-directory: apps/desktop/src-tauri
