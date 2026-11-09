@@ -57,6 +57,7 @@ import { MovePopover } from './components/MovePopover';
 import { NewItemSheet, prefillFromText, type Prefill } from './components/NewItemSheet';
 import { Palette, type PaletteEntry } from './components/Palette';
 import { ProjectSettingsSheet } from './components/ProjectSettingsSheet';
+import { PhoneAsk } from './settings/PhonePane';
 import { ReviewPane } from './components/ReviewPane';
 import { SelectionView, type PlanAction } from './components/SelectionView';
 import { goSettingsPane, SettingsView } from './components/SettingsView';
@@ -1393,6 +1394,7 @@ export default function App() {
           onSettings={(pane) => (setWelcome(null), setScreen({ kind: 'settings' }), goSettingsPane(pane))} />
         {toast && <div className="shell-toast" role="status">{toast.msg}</div>}
         <AgentSetupAsk />
+        <PhoneAsk />
       </div>
     );
 
@@ -1666,6 +1668,7 @@ export default function App() {
       {settingsFor && <ProjectSettingsSheet project={settingsFor} onClose={() => setSettingsFor(null)} onSave={(patch) => saveProject(settingsFor.id, patch)} />}
       {keysOpen && <Shortcuts onClose={() => setKeysOpen(false)} />}
       <AgentSetupAsk />
+      <PhoneAsk />
       {palette && (
         <Palette
           entries={paletteEntries()}

@@ -1,0 +1,298 @@
+⌃	-	Control
+⌥	-	Option
+⌘	-	Command
+⇧	-	Shift
+sf:arrow.right.to.line	-	补全
+esc	-	停止
+sf:delete.left	-	删除
+sf:return	-	发送
+sf:space	-	空格
+sf:doc.on.doc	⌘C	复制
+sf:clipboard	⌘V	粘贴
+sf:scissors	⌘X	剪切
+sf:arrow.uturn.backward	⌘Z	撤销
+sf:arrow.uturn.forward	⇧⌘Z	重做
+mark:selectAll	⌘A	全选
+mark:apps	⌘⇥	切换 App
+sf:macwindow.on.rectangle	⌘`	切换窗口
+sf:chevron.left	⌘[	后退
+sf:chevron.right	⌘]	前进
+mark:tabPrevious	⌃⇧⇥	上一标签页
+mark:tabNext	⌃⇥	下一标签页
+sf:doc.text.magnifyingglass	⌘F	查找
+⌘K	-	内联编辑
+sf:magnifyingglass	⌘␣	Spotlight
+⌃C	-	中断
+mark:tabNew	⌘T	新标签页
+mark:tabClose	⌘W	关闭标签页
+sf:camera.viewfinder	截图	截图
+sf:record.circle	录屏	录屏
+sf:waveform	语音便签	语音便签
+sf:text.viewfinder	截图取字	截图取字
+sf:character.bubble	翻译	翻译
+sf:rectangle.stack	卡片	卡片
+1	-	1
+2	-	2
+3	-	3
+4	-	4
+5	-	5
+6	-	6
+7	-	7
+8	-	8
+9	-	9
+0	-	0
+Q	-	Q
+W	-	W
+E	-	E
+R	-	R
+T	-	T
+Y	-	Y
+U	-	U
+I	-	I
+O	-	O
+P	-	P
+A	-	A
+S	-	S
+D	-	D
+F	-	F
+G	-	G
+H	-	H
+J	-	J
+K	-	K
+L	-	L
+;	-	;
+Z	-	Z
+X	-	X
+C	-	C
+V	-	V
+B	-	B
+N	-	N
+M	-	M
+,	-	,
+.	-	.
+/	-	/
+!	-	
+@	-	
+#	-	
+$	-	
+%	-	
+^	-	
+&	-	
+*	-	
+(	-	
+)	-	
+-	-	
+_	-	
+=	-	
++	-	
+[	-	
+]	-	
+{	-	
+}	-	
+\	-	
+|	-	
+:	-	
+'	-	
+"	-	
+<	-	
+>	-	
+?	-	
+`	-	
+~	-	
+F1	-	F1
+F2	-	F2
+F3	-	F3
+F4	-	F4
+F5	-	F5
+F6	-	F6
+F7	-	F7
+F8	-	F8
+F9	-	F9
+F10	-	F10
+F11	-	F11
+F12	-	F12
+Home	↖	↖
+End	↘	↘
+PgUp	⇞	⇞
+PgDn	⇟	⇟
+sf:delete.right	⌦	向后删除
+sf:rectangle.3.group	所有窗口	所有窗口
+sf:rectangle.grid.2x2	App 窗口	App 窗口
+sf:arrow.left.square	左侧桌面	左侧桌面
+sf:arrow.right.square	右侧桌面	右侧桌面
+常用	-	常用
+sf:doc.on.doc	⌘C	复制
+sf:clipboard	⌘V	粘贴
+sf:scissors	⌘X	剪切
+sf:arrow.uturn.backward	⌘Z	撤销
+sf:arrow.uturn.forward	⇧⌘Z	重做
+mark:selectAll	⌘A	全选
+mark:apps	⌘⇥	切换 App
+sf:macwindow.on.rectangle	⌘`	切换窗口
+sf:chevron.left	⌘[	后退
+sf:chevron.right	⌘]	前进
+mark:tabPrevious	⌃⇧⇥	上一标签页
+mark:tabNext	⌃⇥	下一标签页
+sf:doc.text.magnifyingglass	⌘F	查找
+⌘K	-	内联编辑
+sf:magnifyingglass	⌘␣	Spotlight
+⌃C	-	中断
+mark:tabNew	⌘T	新标签页
+mark:tabClose	⌘W	关闭标签页
+更多	-	更多
+sf:arrow.clockwise	⌘R	刷新
+sf:arrow.uturn.backward.square	⇧⌘T	恢复标签页
+sf:square.and.arrow.down	⌘S	保存
+sf:link	⌘L	地址栏
+sf:chevron.left.square	⇧⌘[	上一标签页
+sf:chevron.right.square	⇧⌘]	下一标签页
+sf:delete.left	⌥⌫	删除单词
+sf:delete.left.fill	⌘⌫	删除到行首
+sf:checkmark.circle	⌘↩︎	接受
+sf:arrow.left.to.line	⇧⇥	反向 Tab
+sf:doc.badge.gearshape	⌘P	打开文件
+sf:command.square	⇧⌘P	命令面板
+sf:sidebar.left	⌘B	侧栏
+sf:rectangle.bottomthird.inset.filled	⌘J	终端面板
+sf:text.justify.left	⌃O	详细记录
+sf:clock.arrow.circlepath	⌃R	历史
+sf:eraser	⌃L	清屏
+sf:text.badge.checkmark	⌥L	重排
+sf:globe	⌃␣	切换输入法
+sf:scope	找到光标	找到光标
+Vibe Cod	-	Vibe Cod
+sf:square.2.layers.3d	⌃B	转入后台
+sf:return.left	⌃J	换行
+esc esc	esc esc	回退
+1	-	选项 1
+2	-	选项 2
+3	-	选项 3
+sf:xmark.circle	⇧⌘⌫	拒绝
+sf:text.bubble	⌘I	Composer
+sf:terminal	⌃`	终端
+切换	-	切换
+sf:rectangle.stack	⌃⇥	下一标签（终端里用 ⌘⇧]）
+⌘1	-	1
+⌘2	-	2
+⌘3	-	3
+⌘4	-	4
+sf:rectangle.3.group	所有窗口	所有窗口
+sf:rectangle.grid.2x2	App 窗口	App 窗口
+sf:arrow.left.square	左侧桌面	左侧桌面
+sf:arrow.right.square	右侧桌面	右侧桌面
+编辑	-	编辑
+sf:return	-	发送
+sf:return.left	⇧↩︎	换行
+␣	-	空格
+sf:arrow.up.and.down.and.arrow.left.and.right	-	方向键
+↑	-	↑
+↓	-	↓
+←	-	←
+→	-	→
+sf:arrow.left.to.line	⌘←	行首
+sf:arrow.right.to.line	⌘→	行尾
+sf:arrow.left	⌥←	上一单词
+sf:arrow.right	⌥→	下一单词
+修饰键	-	修饰键
+⌘	-	Command
+⇧	-	Shift
+⌥	-	Option
+⌃	-	Control
+⇧⌘	-	Command Shift
+浏览器	-	浏览器
+sf:plus.magnifyingglass	⌘=	放大
+sf:minus.magnifyingglass	⌘-	缩小
+Blurt	-	Blurt
+sf:camera.viewfinder	截图	截图
+sf:record.circle	录屏	录屏
+sf:waveform	语音便签	语音便签
+sf:text.viewfinder	截图取字	截图取字
+sf:character.bubble	翻译	翻译
+sf:rectangle.stack	卡片	卡片
+字母	-	字母
+1	-	1
+2	-	2
+3	-	3
+4	-	4
+5	-	5
+6	-	6
+7	-	7
+8	-	8
+9	-	9
+0	-	0
+Q	-	Q
+W	-	W
+E	-	E
+R	-	R
+T	-	T
+Y	-	Y
+U	-	U
+I	-	I
+O	-	O
+P	-	P
+A	-	A
+S	-	S
+D	-	D
+F	-	F
+G	-	G
+H	-	H
+J	-	J
+K	-	K
+L	-	L
+;	-	;
+Z	-	Z
+X	-	X
+C	-	C
+V	-	V
+B	-	B
+N	-	N
+M	-	M
+,	-	,
+.	-	.
+/	-	/
+符号	-	符号
+!	-	
+@	-	
+#	-	
+$	-	
+%	-	
+^	-	
+&	-	
+*	-	
+(	-	
+)	-	
+-	-	
+_	-	
+=	-	
++	-	
+[	-	
+]	-	
+{	-	
+}	-	
+\	-	
+|	-	
+:	-	
+'	-	
+"	-	
+<	-	
+>	-	
+?	-	
+`	-	
+~	-	
+F1	-	F1
+F2	-	F2
+F3	-	F3
+F4	-	F4
+F5	-	F5
+F6	-	F6
+F7	-	F7
+F8	-	F8
+F9	-	F9
+F10	-	F10
+F11	-	F11
+F12	-	F12
+Home	↖	↖
+End	↘	↘
+PgUp	⇞	⇞
+PgDn	⇟	⇟
+sf:delete.right	⌦	向后删除

@@ -482,7 +482,41 @@ export const api = {
   agentSetupState: () => invoke<AgentSetupState>('agent_setup_state'),
   agentSetupStop: () => invoke<AgentSetupState>('agent_setup_stop'),
   agentSetupDismiss: () => invoke<AgentSetupState>('agent_setup_dismiss'),
+  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Phone.
+  // Every change also comes as 'remote://status' (onRemoteStatus).
+  remoteStatus: () => invoke<RemoteStatus>('remote_status'),
+  /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
+  remoteShowPairing: (on: boolean) => invoke<RemoteStatus>('remote_show_pairing', { on }),
+  /** the yes or no for the phone in `asking` */
+  remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
+  remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),
+  /** "" clears it; rejects with the reason when it doesn't parse */
+  remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),
+  remoteCheckRelay: (address: string) => invoke<boolean>('remote_check_relay', { address }),
+  remoteSetScreenAllowed: (on: boolean) => invoke<RemoteStatus>('remote_set_screen_allowed', { on }),
+  /** the prompt for Claude Code or Codex that sets up a relay */
+  remoteRelayInstructions: () => invoke<string>('remote_relay_instructions'),
 };
+
+/** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
+export interface RemoteStatus {
+  listening: boolean;
+  /** the code on screen; qrSvg is a complete <svg> the host draws */
+  pairing: null | { url: string; qrSvg: string; expiresAt: number };
+  /** a new phone waits for a yes; the yes is for the phone showing the same digits */
+  asking: null | { device: string; digits: string; viaRelay: boolean };
+  devices: { id: string; name: string; lastSeen: number | null }[];
+  connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  screenAllowed: boolean;
+  /** false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows */
+  canControl: boolean;
+  /** a sentence for the user, localised */
+  problem: string | null;
+}
+export type RemoteRoute = 'local' | 'direct' | 'relay';
+
+export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
 
 export interface VoiceprintStatus {
   enrolled: boolean;

@@ -44,7 +44,7 @@ final class PadViewController: UIViewController {
     private let field = TypeField(frame: .zero, textContainer: nil)
     private let modRow = ModifierRow()
 
-    private var deck = Deck.load()
+    private var deck = Deck.load(for: Link.shared.host)
     /// a finger is down anywhere: PadWindow says so
     var touching = false {
         didSet {
@@ -126,7 +126,7 @@ final class PadViewController: UIViewController {
         }
         arrowCell.slot = KeySlot(.arrows, hint: String(localized: "Arrows"))
         view.addSubview(arrowCell)
-        appsCell.slot = KeySlot(.chord(RemoteChord(.command, "Tab"), cycle: true), glyph: "mark:apps", caption: "", hint: String(localized: "Apps"))
+        appsCell.slot = Deck.appsKey(for: Link.shared.host)
         appsCell.onCycle = { [weak self] on in self?.cycling(on, by: self?.appsCell) }
         view.addSubview(appsCell)
         view.addSubview(talk)
@@ -236,6 +236,15 @@ final class PadViewController: UIViewController {
         Publishers.CombineLatest(l.$macs, l.$current).receive(on: RunLoop.main).sink { [weak self] macs, current in
             self?.macMenu(macs, current)
         }.store(in: &bag)
+        // another kind of computer: its own keys, named its way
+        l.$host.removeDuplicates().dropFirst().receive(on: RunLoop.main).sink { [weak self] h in
+            guard let self else { return }
+            self.deck = Deck.load(for: h)
+            self.appsCell.slot = Deck.appsKey(for: h)
+            self.showDeck()
+            self.allCells.forEach { $0.refresh() }
+            self.modRow.refresh()
+        }.store(in: &bag)
         // the picture was of the Mac just left
         l.$current.map { $0?.deviceID }.removeDuplicates().dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.setShowing(false) }.store(in: &bag)
         Publishers.CombineLatest(l.$waitingForMac, l.$pairFailed).receive(on: RunLoop.main).sink { [weak self] _, _ in
@@ -282,26 +291,27 @@ final class PadViewController: UIViewController {
         var text: String?, button: String?
         switch l.state {
         case .unpaired:
-            text = String(localized: "On your Mac, open Blurt’s Settings and choose iPhone.")
+            text = Words.whereTheCodeIs
             button = String(localized: "Scan Code")
         case .forgotten:
-            text = String(localized: "\(l.current?.title ?? "This Mac") no longer knows this iPhone.")
+            text = String(localized: "\(l.current?.title ?? String(localized: "This computer")) no longer knows this iPhone.")
             button = String(localized: "Scan Code")
         case .unreachable:
-            let n = l.current?.title ?? "Mac"
+            let n = l.current?.title ?? String(localized: "the computer")
             text = l.current?.relayAddress == nil ? String(localized: "Can’t reach \(n). Check that Blurt is running and both are on the same network.")
                 : String(localized: "Can’t reach \(n). Check that it’s awake and Blurt is running.")
-            if l.macs.count > 1 { button = String(localized: "Try Another Mac") }
+            if l.macs.count > 1 { button = String(localized: "Try Another Computer") }
         case .connecting: break
         case .replaced:
             text = String(localized: "Another iPhone is connected. Touch to take over.")
         case .connected:
-            if !l.canControl { text = String(localized: "On your Mac, allow Accessibility for Blurt.") }
-            if l.screenError == "permission" { text = String(localized: "On your Mac, allow Screen Recording for Blurt.") }
-            if l.screenError == "off" { text = String(localized: "Showing the screen is off in Blurt’s Settings on your Mac.") }
+            let n = l.current?.title ?? ""
+            if !l.canControl { text = Words.cantControl(l.host, n) }
+            if l.screenError == "permission" { text = Words.noScreenPermission(l.host, n) }
+            if l.screenError == "off" { text = Words.screenOff(l.host, n) }
         }
         if l.waitingForMac {
-            text = String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your Mac. Check that it shows %@."), l.pairCheck ?? "")
+            text = String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@."), l.pairCheck ?? "")
             button = nil
         }
         if let f = l.pairFailed { text = f }
@@ -327,8 +337,8 @@ final class PadViewController: UIViewController {
 
     private func confirmPairing(_ p: RemotePairing) {
         let a = UIAlertController(title: String(localized: "Pair with \(p.macName)?"),
-                                  message: Link.shared.macs.contains { $0.id == p.macID } ? String(localized: "This iPhone is already paired with this Mac. This replaces that pairing.")
-                                      : String(localized: "This Mac will receive what you type and say here. Only pair with your own Mac."), preferredStyle: .alert)
+                                  message: Link.shared.macs.contains { $0.id == p.macID } ? String(localized: "This iPhone is already paired with this computer. This replaces that pairing.")
+                                      : String(localized: "This computer will receive what you type and say here. Only pair with your own computer."), preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in Link.shared.offered = nil })
         a.addAction(UIAlertAction(title: String(localized: "Pair"), style: .default) { _ in
             Link.shared.offered = nil
@@ -389,8 +399,8 @@ final class PadViewController: UIViewController {
 
     private func micDenied() {
         let a = UIAlertController(title: String(localized: "Microphone Access Is Off"),
-                                  message: String(localized: "Turn it on in Settings, or dictate through your Mac’s microphone."), preferredStyle: .alert)
-        a.addAction(UIAlertAction(title: String(localized: "Use Mac Microphone"), style: .default) { _ in
+                                  message: Words.micDenied(Link.shared.host), preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: Words.useComputerMic(Link.shared.host), style: .default) { _ in
             Prefs.shared.micOnPhone = false
             Link.shared.send(.setMicOnPhone(false))
         })
@@ -574,7 +584,7 @@ final class PadViewController: UIViewController {
     /// Hold the settings button: with more than one Mac, the fastest way to the other.
     private func macMenu(_ macs: [PairedMac], _ current: PairedMac?) {
         guard macs.count > 1 else { settingsButton.menu = nil; return }
-        settingsButton.menu = UIMenu(title: String(localized: "Switch Mac"), children: macs.map { m in
+        settingsButton.menu = UIMenu(title: String(localized: "Switch Computer"), children: macs.map { m in
             UIAction(title: m.title, state: m.id == current?.id ? .on : .off) { _ in
                 guard m.id != Link.shared.current?.id else { return }
                 Link.shared.choose(m)
@@ -592,7 +602,7 @@ final class PadViewController: UIViewController {
 
     private func setDeck(_ d: Deck) {
         deck = d
-        d.save()
+        d.save(for: Link.shared.host)
         showDeck()
         view.setNeedsLayout()
     }

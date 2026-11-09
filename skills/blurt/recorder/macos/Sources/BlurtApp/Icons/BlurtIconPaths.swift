@@ -70,6 +70,7 @@ enum BlurtIcon: String, CaseIterable {
     case pause = "pause"
     case pauseFill = "pause-fill"
     case pencil = "pencil"
+    case phone = "phone"
     case pin = "pin"
     case pinOff = "pin-off"
     case play = "play"
@@ -149,7 +150,7 @@ extension BlurtIcon {
     /// "brand" (our own glyph everywhere) or "generic" (an SF Symbol on macOS when one exists).
     var group: String {
         switch self {
-        case .accessibility, .alignLeft, .archive, .arrowLeft, .bell, .camera, .captions, .characterBubble, .characterCursor, .characterCursorZh, .check, .chevronDown, .chevronLeft, .chevronRight, .chevronUp, .cloud, .code, .copy, .cpu, .download, .drive, .externalLink, .eye, .film, .filter, .filterFill, .flag, .folder, .folderMissing, .folderPlus, .gitBranch, .gitCommit, .gitPullRequest, .globe, .hand, .helpCircle, .history, .home, .inbox, .info, .keyboard, .languages, .lines, .list, .listBox, .merge, .minusCircle, .moon, .more, .move, .pause, .pauseFill, .pencil, .pin, .pinOff, .play, .playFill, .plus, .power, .progress, .quote, .record, .recordFill, .refresh, .restart, .reveal, .scope, .screen, .search, .send, .settings, .sidebar, .sidebarRight, .sliders, .stop, .stopFill, .sun, .sync, .terminal, .textCursor, .textPlus, .textViewfinder, .trash, .tray2, .unassigned, .undo, .video, .wand, .warning, .window, .x: return "generic"
+        case .accessibility, .alignLeft, .archive, .arrowLeft, .bell, .camera, .captions, .characterBubble, .characterCursor, .characterCursorZh, .check, .chevronDown, .chevronLeft, .chevronRight, .chevronUp, .cloud, .code, .copy, .cpu, .download, .drive, .externalLink, .eye, .film, .filter, .filterFill, .flag, .folder, .folderMissing, .folderPlus, .gitBranch, .gitCommit, .gitPullRequest, .globe, .hand, .helpCircle, .history, .home, .inbox, .info, .keyboard, .languages, .lines, .list, .listBox, .merge, .minusCircle, .moon, .more, .move, .pause, .pauseFill, .pencil, .phone, .pin, .pinOff, .play, .playFill, .plus, .power, .progress, .quote, .record, .recordFill, .refresh, .restart, .reveal, .scope, .screen, .search, .send, .settings, .sidebar, .sidebarRight, .sliders, .stop, .stopFill, .sun, .sync, .terminal, .textCursor, .textPlus, .textViewfinder, .trash, .tray2, .unassigned, .undo, .video, .wand, .warning, .window, .x: return "generic"
         default: return "brand"
         }
     }
@@ -215,6 +216,7 @@ extension BlurtIcon {
         case .accessibility: return ["accessibility"]
         case .power: return ["power"]
         case .screen: return ["display"]
+        case .phone: return ["iphone"]
         case .cloud: return ["cloud"]
         case .textCursor: return ["character.cursor.ibeam", "character.textbox"]
         case .textViewfinder: return ["text.viewfinder"]
@@ -317,6 +319,7 @@ extension BlurtIcon {
         case .pause: return "Pause"
         case .pauseFill: return "Pause (filled)"
         case .pencil: return "Edit"
+        case .phone: return "Phone"
         case .pin: return "Pin"
         case .pinOff: return "Unpin"
         case .play: return "Play"
@@ -428,6 +431,7 @@ extension BlurtIcon {
         case .pause: return "<path d=\"M7.7 5L8.8 5C9.463 5 10 5.537 10 6.2L10 17.8C10 18.463 9.463 19 8.8 19L7.7 19C7.037 19 6.5 18.463 6.5 17.8L6.5 6.2C6.5 5.537 7.037 5 7.7 5Z\"/><path d=\"M15.2 5L16.3 5C16.963 5 17.5 5.537 17.5 6.2L17.5 17.8C17.5 18.463 16.963 19 16.3 19L15.2 19C14.537 19 14 18.463 14 17.8L14 6.2C14 5.537 14.537 5 15.2 5Z\"/>"
         case .pauseFill: return "<path d=\"M7.4 4.5L8.8 4.5C9.573 4.5 10.2 5.127 10.2 5.9L10.2 18.1C10.2 18.873 9.573 19.5 8.8 19.5L7.4 19.5C6.627 19.5 6 18.873 6 18.1L6 5.9C6 5.127 6.627 4.5 7.4 4.5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M15.2 4.5L16.6 4.5C17.373 4.5 18 5.127 18 5.9L18 18.1C18 18.873 17.373 19.5 16.6 19.5L15.2 19.5C14.427 19.5 13.8 18.873 13.8 18.1L13.8 5.9C13.8 5.127 14.427 4.5 15.2 4.5Z\" fill=\"currentColor\" stroke=\"none\"/>"
         case .pencil: return "<path d=\"M16.4 4C17.366 3.034 18.934 3.034 19.9 4C20.866 4.966 20.866 6.534 19.9 7.5L8 19.4L3.4 20.6L4.6 16Z\"/><path d=\"M14.4 6L17.9 9.5\"/>"
+        case .phone: return "<path d=\"M9 2.75L15 2.75C16.519 2.75 17.75 3.981 17.75 5.5L17.75 18.5C17.75 20.019 16.519 21.25 15 21.25L9 21.25C7.481 21.25 6.25 20.019 6.25 18.5L6.25 5.5C6.25 3.981 7.481 2.75 9 2.75Z\"/><path d=\"M10.75 18L13.25 18\"/>"
         case .pin: return "<path d=\"M9 3.5L15 3.5L14.1 9.1L17.25 12.25C17.418 12.421 17.468 12.677 17.376 12.899C17.285 13.12 17.07 13.267 16.83 13.27L7.17 13.27C6.93 13.267 6.715 13.12 6.624 12.899C6.532 12.677 6.582 12.421 6.75 12.25L9.9 9.1Z\"/><path d=\"M12 13.3L12 20.5\"/>"
         case .pinOff: return "<path d=\"M9 3.5L15 3.5L14.1 9.1L17.25 12.25C17.418 12.421 17.468 12.677 17.376 12.899C17.285 13.12 17.07 13.267 16.83 13.27L7.17 13.27C6.93 13.267 6.715 13.12 6.624 12.899C6.532 12.677 6.582 12.421 6.75 12.25L9.9 9.1Z\"/><path d=\"M12 13.3L12 20.5M3.5 3.5L20.5 20.5\"/>"
         case .play: return "<path d=\"M7.5 5.2L7.5 18.8C7.497 19.087 7.649 19.354 7.897 19.498C8.145 19.643 8.451 19.644 8.7 19.5L19.7 12.7C19.955 12.559 20.113 12.291 20.113 12C20.113 11.709 19.955 11.441 19.7 11.3L8.7 4.5C8.451 4.356 8.145 4.357 7.897 4.502C7.649 4.646 7.497 4.913 7.5 5.2Z\"/>"
@@ -1225,6 +1229,17 @@ extension BlurtIcon {
                 },
                 BlurtIconLayer(.stroke) { p in
                     p.m(14.4, 6); p.l(17.9, 9.5)
+                },
+            ]
+        case .phone:
+            return [
+                BlurtIconLayer(.stroke) { p in
+                    p.m(9, 2.75); p.l(15, 2.75); p.c(16.519, 2.75, 17.75, 3.981, 17.75, 5.5); p.l(17.75, 18.5);
+                    p.c(17.75, 20.019, 16.519, 21.25, 15, 21.25); p.l(9, 21.25); p.c(7.481, 21.25, 6.25, 20.019, 6.25, 18.5);
+                    p.l(6.25, 5.5); p.c(6.25, 3.981, 7.481, 2.75, 9, 2.75); p.z()
+                },
+                BlurtIconLayer(.stroke) { p in
+                    p.m(10.75, 18); p.l(13.25, 18)
                 },
             ]
         case .pin:

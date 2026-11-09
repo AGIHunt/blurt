@@ -93,8 +93,9 @@ final class ModifierRow: UIInputView {
             row.addArrangedSubview(b)
             buttons.append((b, mods))
         }
-        for (m, g) in RemoteModifiers.ordered {
-            add(g, mods: m) { Sticky.shared.tap(m, at: CACurrentMediaTime()); Haptics.grab() }
+        // in the order and with the names of the computer in hand, set in refresh: ⌃⌥⇧⌘ on a Mac, Ctrl Win Alt Shift on Windows
+        for i in 0..<4 {
+            add("", mods: []) { let m = RemoteHost.shown.modifierOrder[i]; Sticky.shared.tap(m, at: CACurrentMediaTime()); Haptics.grab() }
         }
         add("esc") { Link.shared.send(.key(RemoteChord([], "Escape"), down: nil)); Haptics.tick() }
         add("⇥") { Link.shared.send(.key(RemoteChord([], "Tab"), down: nil)); Haptics.tick() }
@@ -107,10 +108,13 @@ final class ModifierRow: UIInputView {
     required init?(coder: NSCoder) { fatalError() }
 
     func refresh() {
-        for (b, m) in buttons {
-            guard let m else { continue }
+        let h = RemoteHost.shown
+        for (i, (b, m)) in buttons.enumerated() {
+            guard m != nil else { continue }
+            let m = h.modifierOrder[i]
             let on = Sticky.shared.held.isSuperset(of: m)
             var c = b.configuration
+            c?.title = h.name(m)
             c?.baseBackgroundColor = on ? Theme.slabLatched : Theme.slabPressed
             c?.baseForegroundColor = on ? .black : Theme.mark
             b.configuration = c
