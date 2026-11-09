@@ -1518,3 +1518,168 @@
 .st-privacy-lead .st-link {
   display: inline;
 }
+
+/* ------------------------------------------------------------ Settings → Phone (PhonePane.tsx) */
+/* the notice: its title in the row's ink, what to do under it */
+.st-phone-notice {
+  align-items: flex-start;
+  padding: 10px 12px;
+}
+.st-phone-notice > svg {
+  margin-top: 1px;
+}
+.st-phone-notice-title {
+  display: block;
+  font-weight: 600;
+}
+.st-phone-notice-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+/* a connected phone: a small dot in the ok colour before how it's connected */
+.st-phone-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+.st-phone-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+/* the code to scan: dark on a white plate whatever the theme, sharp pixels; the words beside it */
+.st-row.st-phone-pair {
+  align-items: flex-start;
+  gap: 20px;
+  padding: 14px 0;
+}
+.st-phone-qr {
+  flex: none;
+  width: 168px;
+  height: 168px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+  display: grid;
+  place-items: center;
+}
+.st-phone-qr img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+.st-phone-qr.expired img {
+  opacity: 0.12;
+}
+.st-phone-pair-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 168px;
+}
+.st-phone-pair-title {
+  font-weight: 600;
+  margin-top: 2px;
+}
+.st-phone-pair-text .st-detail {
+  margin-top: 0;
+}
+.st-phone-left {
+  font-variant-numeric: tabular-nums;
+}
+.st-phone-pair-actions {
+  margin-top: auto;
+  padding-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-phone-noapp {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.app .st-phone-noapp .st-link {
+  font-size: 12px;
+}
+/* a phone asking: one tinted block, the digits large so they can be read against the phone's */
+.st-phone-ask {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  background: var(--brand-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-ink) 22%, transparent);
+}
+.st-phone-ask-icon {
+  flex: none;
+  color: var(--brand-ink);
+  margin-top: 1px;
+}
+.st-phone-ask-body {
+  flex: 1;
+  min-width: 0;
+}
+.st-phone-ask-title {
+  font-weight: 600;
+}
+.st-phone-ask-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.st-phone-digits,
+.phone-ask-digits {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.st-phone-digits {
+  font-size: 26px;
+  line-height: 1;
+}
+.app input.st-field.st-phone-relay {
+  width: 240px;
+}
+/* the window's own question (PhoneAsk): the agent-setup sheet with the phone's glyph and the digits centred */
+.phone-ask-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--brand-ink);
+  background: var(--brand-tint);
+}
+.sheet.phone-ask-sheet .agent-ask-head h3 {
+  padding: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+.phone-ask-digits {
+  font-size: 34px;
+  text-align: center;
+  padding: 20px 24px 4px;
+}
+.sheet.phone-ask-sheet p {
+  padding-top: 4px;
+  text-align: center;
+}

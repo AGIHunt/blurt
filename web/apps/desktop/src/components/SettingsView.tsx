@@ -1,6 +1,6 @@
 // Settings (the Mac's Settings window: Settings/SettingsWindow.swift, SettingsSearch.swift and the panes): a sidebar
 // with the search field on top and the panes in three groups — Preferences: General, Dictation, Copy Text from Screen,
-// Models, Shortcuts · Work: Projects, Agents · This PC: Privacy, Storage —, and the page: the pane, or the search
+// Models, Shortcuts, Phone · Work: Projects, Agents · This PC: Privacy, Storage —, and the page: the pane, or the search
 // results while there is a query. Ctrl+F focuses the search (the Mac's ⌘F), Esc clears it, ↓ / ↑ walk the results,
 // Enter opens one. The last pane is remembered (app.settings_pane). On Windows the page lives in the main window (as
 // Windows 11 apps keep their settings) instead of a window of its own; the tray's Settings… opens it.
@@ -22,6 +22,7 @@ import '../settings/settings.css';
 import { AgentsPane } from './AgentsSettings';
 import { DictationPane, ModelsPane, ScreenTextPane } from './DictationSettings';
 import { StoragePane } from './StorageSettings';
+import { PhonePane } from '../settings/PhonePane';
 
 const REPO = 'https://github.com/AGIHunt/blurt';
 const guideURL = () => `${REPO}/blob/main/docs/guide.md#${lang() === 'zh-Hans' ? encodeURIComponent('中文') : 'english'}`;
@@ -220,6 +221,8 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
         <ModelsPane status={status} onToast={onToast} />
       ) : cur === 'shortcuts' ? (
         <ShortcutsPane s={s} status={status} reload={reload} goDictation={() => go('dictation', 'dictation.key')} />
+      ) : cur === 'phone' ? (
+        <PhonePane status={status} />
       ) : cur === 'projects' ? (
         <ProjectsPane onToast={onToast} />
       ) : cur === 'agents' ? (
