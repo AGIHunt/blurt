@@ -67,8 +67,8 @@ export function ListHeading({ title, counts, sortLabel, sortTip, filters, filter
   return (
     <div className="mw-heading" ref={row}>
       <div className="mw-h-text">
-        <h1 className={`mw-h-title ${/^[「『“（]/.test(title) ? 'hang' : ''}`} data-tip={title} data-tip-trunc="">{title}</h1>
-        {counts && <span className="mw-h-counts" aria-hidden="true">{counts}</span>}
+        <h1 className={`mw-h-title ${/^[「『“（]/.test(title) ? 'hang' : ''}`} data-tip={title} data-tip-trunc="" data-testid="list-title">{title}</h1>
+        {counts && <span className="mw-h-counts" aria-hidden="true" data-testid="counts">{counts}</span>}
       </div>
       <div className="mw-h-ctl">
         {showControls && (

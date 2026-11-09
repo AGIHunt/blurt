@@ -154,7 +154,7 @@ function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel: () => 
   return (
     <div className="st-row st-phone-pair" data-setting="phone.add" data-testid="phone-pairing">
       <div className={`st-phone-qr ${expired ? 'expired' : ''}`}>
-        {src ? <img src={src} alt={S('phone.scan')} draggable={false} /> : <span className="st-spin" aria-hidden />}
+        {src ? <img src={src} alt={S('phone.scan')} draggable={false} data-testid="phone-qr" /> : <span className="st-spin" aria-hidden />}
       </div>
       <div className="st-phone-pair-text">
         <div className="st-phone-pair-title">{S('phone.scan')}</div>
@@ -165,7 +165,7 @@ function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel: () => 
         {r.problem && <div className="st-detail warn"><Icon name="warning" size={12} />{r.problem}</div>}
         <div className="st-phone-pair-actions">
           {expired && <button className="primary" onClick={onRenew} data-testid="phone-renew">{S('phone.scan.new')}</button>}
-          <button onClick={onCancel}>{S('phone.cancel')}</button>
+          <button onClick={onCancel} data-testid="phone-cancel">{S('phone.cancel')}</button>
           <span className="grow" />
           <span className="st-phone-noapp">
             <span>{S('phone.no_app')}</span>

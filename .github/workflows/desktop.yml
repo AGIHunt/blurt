@@ -5,7 +5,7 @@ name: desktop
 #   ubuntu-24.04:   unit tests; tests/flow.rs (projects.py add → migrate → index v2 → review doc → user-ops → .md);
 #                   deb + rpm + AppImage, size report (deb ≤ 20 MB), and the e2e under
 #                   xvfb through tauri-driver (WebKitWebDriver): open a fixture project, search, open an item, edit it →
-#                   its Markdown file updated
+#                   its Markdown file updated; Settings → Phone → Add Phone… shows the host's pairing QR code
 #   both:           crates/blurt-remote (Blurt Remote's host: protocol, server, this OS's backend): clippy + tests, the
 #                   golden vectors in tests/remote-vectors among them. Swift and Kotlin check the same vectors: remote.yml
 # Nothing is signed or published: installers and reports are workflow artifacts.
@@ -177,7 +177,7 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo install tauri-driver --locked
 
-      - name: e2e — fixture project, search, open, edit → item .md
+      - name: e2e — fixture project, search, open, edit → item .md; Settings → Phone pairing code
         if: runner.os == 'Linux'
         env:
           BLURT_APP: ${{ github.workspace }}/apps/desktop/src-tauri/target/release/blurt
