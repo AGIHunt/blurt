@@ -48,7 +48,7 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 **When `style.css`, a font or an asset changes, bump `?v=`** (`V` in the generator: both pages' `<link>`, font and
 image preloads, `<video>`/`poster`, og images; by hand: the `url()`s in `style.css`). `_headers` lets browsers keep
 `style.css`, `fonts/` and `assets/` for a year without asking (immutable), so a file changed under the same `?v=`
-never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-3`.
+never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-4`.
 
 **The first paint.** `peep.js` and `main.js` are inlined at the end of each page (the generator reads them from this
 folder), and the `<head>` script sets `motion` before anything renders. The scripts then run before the first paint
@@ -75,7 +75,7 @@ Tokens on `:root` from `assets/color/tokens.json` (docs/design/system.md), dark 
 chart. Buttons (download, copy, the film's play button) use the button gradient (`gradient.button` in tokens.json,
 white text), lifted off the wallpaper by a white halo, a thin dark rim and a deep tinted shadow, with a sheen
 on hover; no other gradient on the page. Text set straight on the wallpaper uses
-`--over` / `--over-2`. The hand-off scene and the privacy band are night (`#12171A`) in both modes.
+`--over` / `--over-2`. The privacy band is night (`#12171A`) in both modes.
 
 ## The page: your Mac, the notch, and the day passing
 
@@ -89,7 +89,7 @@ on hover; no other gradient on the page. Text set straight on the wallpaper uses
   The HTML ships with every step on, so no-JS, reduced motion and the font subsetter all see each scene's end state
   with every caption listed. Order: hero over the dictation desktop (the hero scrolls away while the desktop holds),
   speed (a time axis with a moving now-line), the five-app matrix, lists (Shift / ⌥L), snap → card under the notch →
-  dragged into Claude, record → 52 items → OR-21, hand-off (night) → the team bundle, Blurt on the phone, privacy, the
+  dragged into Claude, record → 52 items → OR-21, hand-off (Blurt's list, ⌘↩ copies an instruction, your own agent works on it in its terminal, To verify, Mark as Done) → the team bundle, Blurt on the phone, privacy, the
   film, install.
 - **Blurt on the phone** (`#phone`, `.rp`): not a scene. A wallpaper band (not sticky) with the headline and lede, then
   an iPad (on a Mac, with the picture) and an iPhone (on a Windows PC, its keys) in CSS bezels; under it, six facts on
