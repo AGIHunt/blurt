@@ -326,7 +326,8 @@ impl Worker {
                 }
             }
         }
-        if c.codecs.is_empty() || c.codecs.iter().any(|s| s == "h264") {
+        // a phone that sent no list predates codecs and decodes HEVC only (remote-protocol.md §Video codecs)
+        if c.codecs.iter().any(|s| s == "h264") {
             let size = geometry::output_size(c.width, c.height, src.0, src.1, Some(SOFTWARE_LONGEST));
             match Encoder::software(size.0, size.1, fps, bitrate) {
                 Ok(e) => return Ok((Enc::Cpu(e), size)),
