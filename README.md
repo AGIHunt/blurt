@@ -9,7 +9,7 @@ The fastest way to work with your agents, by text, voice, screenshot or screen r
 
 ---
 
-Blurt is a menu-bar app for the Mac; Windows and Linux are coming soon. It works next to the agents you already use, such as Claude Code, Codex, Cursor,
+Blurt is a menu-bar app for the Mac, with [test builds for Windows and Linux](https://github.com/AGIHunt/blurt/releases). It works next to the agents you already use, such as Claude Code, Codex, Cursor,
 Claude and ChatGPT, and handles the part before they start: getting what you mean into the agent's input box. It has
 no agent of its own and doesn't replace yours.
 
@@ -20,8 +20,8 @@ with a double tap instead and it's sent too (Return). It works the moment Blurt 
 recognition (macOS 26) and nothing to download. Open-source local models are an optional upgrade: more accurate, they
 learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
 fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
-talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back; tap `⌘`
-to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
+talk. Double-tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back;
+double-tap `⌘` to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
 while you talk works too.
 
 **Snap (`⌥A`) and Voice Note (`⌥V`).** Drag over part of the screen and say what's wrong; the note opens right
@@ -54,11 +54,12 @@ go to Unassigned and snaps stay as cards until you pick a project. Every shortcu
 
 ## Install
 
-You need macOS 13 or later. Dictation and the recommended speech models need Apple silicon.
+You need macOS 13 or later. The local models need Apple silicon; an Intel Mac dictates with macOS 26's own speech
+recognition or a cloud key. Windows and Linux: see the [FAQ](#faq).
 
 **[Download Blurt for Mac](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)** (signed and
-notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app. The app brings
-everything it runs, so there is nothing else to install.
+notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app. There is nothing
+else to install: the app fetches the Python runtime its tools use (about 150 MB) by itself the first time.
 
 Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
 
@@ -80,11 +81,11 @@ builds Blurt into <code>~/Applications</code>; it needs the Xcode Command Line T
 <a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
-key than `Fn`). Then press `Fn` in any text field: dictation already works with macOS's own recognizer. Two optional
-upgrades: one AI-service key (fixes misheard names and punctuation, and powers translation and the cloud second
-reading of copied text), and the local models (1–6 GB depending on your Mac's memory, downloaded only when you click
-Download). Screen Recording is asked for the
-first time you snap or record.
+key than `Fn`). Then press `Fn` in any text field: on macOS 26 dictation already works with macOS's own recognizer,
+while your Mac's own local model downloads in the background, once (1.6–5.9 GB depending on the Mac). On macOS 13–15
+you download a model first or add a cloud key. One optional upgrade: an AI-service key (fixes misheard names and
+punctuation, translates with the cloud model, and gives copied text a cloud second reading). Screen Recording is asked
+for the first time you snap or record.
 
 ## How it works with your agents
 
@@ -124,7 +125,7 @@ competing vendor, and are not directly comparable.
 | End of speech → text | 0.29–0.54 s after 3–60 s of speech | about 3.0 s [9] | about 1.5 s [9] | not published | "about 450ms" (vendor) [8] |
 | English accuracy | WER 1.9 % (speech model alone) | WER about 7.9 % [9] | WER about 3.9 % [9] | depends on the model; not published | OpenASR average WER 6.24 (vendor) [10] |
 | Chinese accuracy | CER 1.3 % (speech model alone) | not published | not published | not published | not published |
-| Platforms | macOS; Windows and Linux coming soon | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
+| Platforms | macOS; Windows and Linux test builds | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
 | Offline | Dictation needs no network once the models are downloaded (not yet tested with the network off) | No | No | Yes, with local models | No |
 | Snap and voice-note cards for agents | Yes | No | No | No | No |
 | Screen recording → items with screenshots and code pointers | Yes | No | No | No | No |
@@ -151,7 +152,7 @@ V2EX and Product Hunt. Counts and quotes are in [facts.md §3](docs/positioning/
 
 | Complaint | What Blurt does |
 |---|---|
-| It rewrites what I said | The default style only removes fillers and adds punctuation. If polish drops or adds words, the raw transcript is typed instead. Lists happen only when you press `⇧`. |
+| It rewrites what I said | The default style only removes fillers and adds punctuation. If polish drops or adds words, the raw transcript is typed instead. Lists happen only when you double-tap `⇧`. |
 | Words get lost or cut off | The words show while you talk. Every dictation stays in Dictation History for 30 days. The microphone opens on the key press, so the first words aren't cut. |
 | Word limits and subscriptions | Free, no word limit, no account. |
 | Names and mixed languages come out wrong | Words, a list of names and terms the speech model listens for, learned from your fixes (as hints, never as replacements), plus the text around the cursor. |
@@ -173,14 +174,15 @@ languages.
   keeps out of git.
 - When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
   anything else you give it.
-- No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
+- No account. Network use is limited to downloads of models and the Python runtime, update checks, a cloud speech key if you add one (Groq, OpenAI
   or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
   to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
-  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, and Send Feedback: when you click it on the
+  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, your phone's connection away from home (through your own relay, end-to-end
+  encrypted), and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
   and deleted within 14 days.
-  *Settings → Privacy → Never use cloud speech recognition* keeps speech on your Mac even when a key is set.
+  *Settings → Privacy → Speech recognition: On Your Mac Only* keeps speech on your Mac even when a key is set.
 
 ## FAQ
 
@@ -206,24 +208,28 @@ review. A real 5-minute, 12-item session was ready in 51 s.
 
 | Use | Model | Download |
 |---|---|---|
-| Speech (dictation, voice notes, recordings), 16 GB and up | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
-| Speech, optional: a little better at English, 2.5× the size | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
-| Polish, 16 GB and up | Gemma 4 E2B, 4-bit | 3.4 GB |
-| Polish, 8 GB | Gemma 3 1B, 4-bit | 0.7 GB |
+| Speech on Macs with 16 GB and up | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
+| Speech on 8 GB Macs and base M1 / M2, for Chinese, English and Japanese speakers | Fun-ASR-Nano | 1.6 GB |
+| Speech there for other languages | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Polish, 16 GB and up (8 GB Macs don't polish locally) | Gemma 4 E2B, 4-bit | 3.4 GB |
 | Voice notes on CPU-only machines; Japanese, Korean, Cantonese | SenseVoice Small | 228 MB |
 | Recordings in other languages | Whisper large-v3-turbo, MLX | 1.5 GB |
 
-One speech model serves every job for Chinese and English. In use, the models take about 2.8 GB of memory (4.2 GB
-with the 1.7B; measured on an M1 Max). Idle models unload after 10 minutes, and sooner when
-macOS runs short of memory.
+In use, the 1.7B and Gemma take about 3.1 and 2.3 GB of memory. Idle models unload after 10 minutes, and sooner when
+macOS runs short of memory. On macOS 26, macOS's own recognizer dictates until your Mac's model is downloaded.
 
 **Which languages?** Dictation was tested in Chinese, English and mixed Chinese–English. Recordings: SenseVoice covers
 Chinese, English, Japanese, Korean and Cantonese; Whisper covers 99 languages. Items come back in the language you
 spoke. The app is in English and Simplified Chinese.
 
-**Does it run on Windows and Linux?** Not yet: Blurt is a Mac app today, and Windows and Linux versions are coming.
-If you want to try early, the skill's recording scripts (recording, local transcription, the review page, exports)
-already run there, Linux with an X11 desktop: on Windows `winget install astral-sh.uv` and
+**Does it run on Windows and Linux?** Yes, as test builds on [GitHub Releases](https://github.com/AGIHunt/blurt/releases): Windows 10 (1903 or later)
+and 11, and Linux (Ubuntu 24.04 or later, Debian 13 or later; tested on Ubuntu with GNOME on Wayland). They dictate
+(Right Alt on Windows; on Linux a shortcut you pick the first time), take voice notes and record, with speech
+recognized locally on the CPU (about 1 GB to download). Windows also has snaps and Copy Text from Screen; on Linux
+they aren't done yet. Polish needs a cloud key, the notch is a small capsule, and you update by downloading the next
+build. The Windows installer isn't signed yet: SmartScreen asks first (More info → Run anyway).
+Without the app, the skill's recording scripts (recording, local transcription, the review page, exports) also run
+there, Linux with an X11 desktop: on Windows `winget install astral-sh.uv` and
 `winget install Gyan.FFmpeg`; on Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk` plus
 [uv](https://docs.astral.sh/uv/). `doctor.py` tells you what's missing.
 
