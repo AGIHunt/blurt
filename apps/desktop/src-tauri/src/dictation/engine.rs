@@ -95,7 +95,37 @@ enum Msg {
     ModelFailed,
     /// Alt+Shift+L: reformat the last take (hotkeys.rs → lib.rs `dispatch`)
     Reformat,
+    /// Blurt on the phone (remote.rs): its talk key and its dictation commands
+    Remote(Remote),
 }
+
+// ---- Blurt on the phone (remote.rs; the Mac's Dictation.remoteKey / remoteToggleStyle / remoteSend) ----
+
+/// What the phone asks of dictation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Remote {
+    /// the talk key: this computer's dictation key, through the same trigger. `phone_mic`: a take it starts listens through
+    /// the phone (mic.rs `Mic::phone`)
+    Key { down: bool, phone_mic: bool },
+    Cancel,
+    Structured,
+    Translate,
+    /// a double tap's send: a take listening is dropped quietly, then Return
+    Send,
+    /// the phone left: a take listening through it stops (what was said is typed)
+    Gone,
+}
+
+pub fn remote_key(down: bool, phone_mic: bool) {
+    remote_command(Remote::Key { down, phone_mic });
+}
+
+pub fn remote_command(r: Remote) {
+    if let Some(tx) = INBOX.get() {
+        let _ = tx.send(Msg::Remote(r));
+    }
+}
+// ---- end Blurt on the phone
 
 /// The speech model came in: the newest take that failed for want of it gets Retry (the Mac's `modelArrived`).
 pub fn model_arrived() {
@@ -422,6 +452,10 @@ struct Engine {
     last_take_in: HashMap<String, Instant>,
     /// Alt+Shift+L came while this take was on its way: it runs once that take is in (and goes with it otherwise)
     reformat_after: Option<String>,
+    /// Blurt on the phone: the press in hand came from it, its take listens through it, the mic open is the phone's
+    remote_press: bool,
+    remote_mic: bool,
+    mic_is_phone: bool,
 }
 
 fn cfg() -> Value {
@@ -726,6 +760,9 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
         no_model_take: None,
         last_take_in: HashMap::new(),
         reformat_after: None,
+        remote_press: false,
+        remote_mic: false,
+        mic_is_phone: false,
     };
     {
         let runner = app.state::<AppState>().runner();
@@ -875,6 +912,7 @@ impl Engine {
                 Ok(Msg::ModelFailed) => say(&self.app, "dictation.toast.model_failed", json!({}), keys::MODEL, 8000,
                     Some(("dictation.download".to_string(), "dictation.toast.retry")), false),
                 Ok(Msg::Reformat) => self.reformat_last(),
+                Ok(Msg::Remote(r)) => self.remote(r),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
@@ -1127,7 +1165,10 @@ impl Engine {
             return true;
         }
         let (ftx, frx) = channel::<Vec<f32>>();
-        match Mic::open_named(ftx, self.prefs.mic.as_deref()) {
+        // Blurt on the phone: a press from it that wants its microphone hears through the phone (none connected: this mic)
+        let phone = if self.remote_press && self.remote_mic { Mic::phone(ftx.clone()) } else { None };
+        self.mic_is_phone = phone.is_some();
+        match phone.map(Ok).unwrap_or_else(|| Mic::open_named(ftx, self.prefs.mic.as_deref())) {
             Ok(m) => {
                 self.mic_name = m.device.clone();
                 self.mic = Some(m);
@@ -1150,7 +1191,56 @@ impl Engine {
 
     fn close_mic(&mut self) {
         self.mic = None; // dropping the stream ends it (and the forwarder with it)
+        self.mic_is_phone = false;
         self.pre.clear();
+    }
+
+    /// Blurt on the phone (remote.rs): the talk key goes through the trigger as this computer's own key would; the commands
+    /// are the island's and the trigger's own moves.
+    fn remote(&mut self, r: Remote) {
+        match r {
+            Remote::Key { down, phone_mic } => {
+                if !self.prefs.enabled {
+                    return;
+                }
+                if down {
+                    self.remote_press = true;
+                    self.remote_mic = phone_mic;
+                }
+                let codes = self.trigger.key.codes();
+                let code = codes[codes.len() - 1];
+                self.key_down = down;
+                let out = self.trigger.handle(Event::Key { code, down, time: keys_win::now() });
+                self.apply(out);
+                self.missed();
+                if !down {
+                    self.remote_press = false;
+                }
+            }
+            Remote::Cancel => {
+                if self.take.is_some() || !self.flight.is_empty() || line().lock().unwrap().busy() {
+                    self.trigger.reset(false, false);
+                    self.cancel(false);
+                }
+            }
+            Remote::Structured if self.take.is_some() => self.apply(vec![Output::Style]),
+            Remote::Translate if self.take.is_some() => self.apply(vec![Output::Translate]),
+            Remote::Structured | Remote::Translate => {}
+            Remote::Send => {
+                if self.take.is_some() {
+                    self.trigger.reset(false, false);
+                    self.cancel(true);
+                }
+                self.send();
+            }
+            Remote::Gone => {
+                self.remote_press = false;
+                if self.mic_is_phone && self.take.is_some() {
+                    self.trigger.reset(false, false);
+                    self.stop();
+                }
+            }
+        }
     }
 
     fn arm(&mut self) {
@@ -1347,6 +1437,7 @@ impl Engine {
         if self.level_at.elapsed() > Duration::from_millis(60) {
             self.level_at = Instant::now();
             island::send(&self.app, json!({"op": "level", "rms": lvl * 0.12}));
+            crate::remote::level(lvl); // Blurt on the phone: its talk bar's meter
         }
     }
 
@@ -1633,6 +1724,7 @@ impl Engine {
         }
         if listening {
             let live = t.live();
+            crate::remote::live(&live); // Blurt on the phone: the words so far
             island::send(&self.app, json!({"op": "live", "text": live}));
         }
         self.finish_ready();
@@ -2620,6 +2712,7 @@ fn deliver(app: &AppHandle, d: Done) -> Delivered {
     // takes it: the line that keeps the text says so instead)
     if !no_field {
         island::send(app, json!({"op": "live", "text": text, "typed": true}));
+        crate::remote::typed(&text); // Blurt on the phone: what the take typed
     }
     let result: &str = match decision {
         Decision::Paste { confirmed: c } => {

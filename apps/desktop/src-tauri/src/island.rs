@@ -284,6 +284,7 @@ pub fn refresh(app: &AppHandle) {
         send(app, state(app));
     }
     update_tray(app);
+    crate::remote::dictation_changed(); // Blurt on the phone: dictation's phase, when it changed
 }
 
 pub fn refresh_cards(app: &AppHandle) {
