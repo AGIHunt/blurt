@@ -440,6 +440,10 @@ fn main() {
             emit(json!({"event": "relay", "error": e}));
         }
     }
+    // the real backend's screen: allowed, as Settings → Phone's switch would
+    if args.iter().any(|a| a == "--real") {
+        h.set_screen_allowed(true);
+    }
     h.show_pairing(true);
     emit(json!({"event": "host", "dir": dir, "platform": h.platform(), "screen": screen}));
     // stdin: yes / no (the question), pair (a fresh code), quit
