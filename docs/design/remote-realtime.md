@@ -61,8 +61,7 @@ only late), show the newest frame the moment it arrives (done), and mark the vid
 
 ScreenCaptureKit doesn't say which frame took a new crop, so frames wait out each change (remote.md §Screen). Measured: each change holds
 frames 23–27 ms (p50; up to 209 ms), and panning at 2× (the view moving 7 times a second, `pan2`) drops the frames shown from 59 to 44–46 a
-second (36–41 before the changes below), with gaps up to 68 ms. Real, and the fix is known (§Not built), but it only bites while the view moves, and the old picture moves
-with the fingers meanwhile.
+second (36–41 before the changes below), with gaps up to 68 ms, and a crop asked for showed on the phone 36 ms later (p50). Built: §5.
 
 ### Frame rate
 
@@ -72,8 +71,8 @@ against the app's own 60 Hz drawing and 7 frames in 60 fell between captures (53
 
 ## What was built
 
-All four are offered by the phone in its screen request and used only if the host names them back in `screenView` (remote-protocol.md
-§Repairs), so a phone or host before 1.0.15 goes on exactly as before. Code: `BlurtRemoteKit/RemoteVideoRepair.swift` (wire, receiver,
+The first three are offered by the phone in its screen request and used only if the host names them back in `screenView` (remote-protocol.md
+§Repairs), so a phone or host before 1.0.15 goes on exactly as before; 4–6 change nothing on the wire. Code: `BlurtRemoteKit/RemoteVideoRepair.swift` (wire, receiver,
 history, parity: pure, with tests), `BlurtApp/Remote/RemoteScreenRepair.swift` (the Mac's half), `ScreenStream.swift` (the phone's).
 
 ### 1. NACK: missing pieces sent again (`nack`)
@@ -122,6 +121,61 @@ line (NACK only below 20 ms round trip). Over the relay's stream there's no loss
 - The phone runs a display link asking for the panel's top rate while frames come, which is how an app tells ProMotion it wants 120 Hz
   (`CADisableMinimumFrameDurationOnPhone` was already set), and lets it go after a second without one. It also measures when each frame
   reaches the glass.
+
+### 5. Crops on the GPU, not in ScreenCaptureKit (2026-11-09, second round)
+
+Zoomed in, ScreenCaptureKit now sends the whole display at its own pixels, and each frame is cropped and scaled to the output size here
+(`RemoteScreenCrop.swift`: VTPixelTransferSession, the source's clean aperture, `kVTScalingMode_CropSourceToCleanAperture`, into a pooled
+NV12 buffer). A new crop applies to the next frame captured, and at once to the last one, so on a still screen too the new part shows
+without waiting. Every frame is labelled with the crop it was cut with, so the phone places it exactly. The whole view stays as it was:
+ScreenCaptureKit scales to the output size, no GPU pass. Between the two the stream changes size, and frames say which they are by their size
+(at the output size: whole; at the display's: cut here), so even that change holds nothing. A frame captured at 120 for a 60 Hz phone is
+cropped only if it's really sent.
+
+Measured (`testwin2 scroll`, the view moving 7 times a second; "crop shown" is from the phone asking for a crop to a frame with that crop on
+its layer; the integration build before, this one after, same session):
+
+| | Before (ScreenCaptureKit's `sourceRect`) | After (cropped on the GPU) |
+|---|---|---|
+| Frames shown a second, panning at 2× / 3× | 44 / 50 | 59 / 59 |
+| Longest gap between pictures, panning 2× / 3× | 69 / 126 ms | 37 / 29 ms |
+| Crop shown, panning 2×, ms p50 / p95 / max | 36 / 45 / 62 | 20 / 30 / 32 |
+| Crop shown, panning a still screen | 40 / 47 / 48 | 20 / 25 / 31 |
+| Panning 2× with 1 % of pieces lost: frames a second, crop shown p50 | 44, 37 ms | 59, 18 ms |
+| Frames held per crop change | 24 ms p50, up to 264 | none |
+| GPU crop and scale, per frame sent | — | 1.4 ms p50, 2.0 p95 (3024×1890 → 1866×1166) |
+| Composed → sent on the Mac, p50: zoomed still / panning | 7.1 / 6.8–9.1 ms | 8.6 / 11.5–11.9 ms |
+| The app's CPU (one core = 100 %): whole view / zoomed | — | 13.1–13.8 % / 13.4–16.2 % |
+
+- The cost is a GPU pass per frame sent: 1.4 ms here, 2.0–2.3 ms from a 3456×2234, 5120×2880 or 7680×4320 source to the phone's 2622 px
+  (`scratchpad vt/crop3.swift`), about 80–130 ms of GPU work a second at 59 frames. Core Image did the same crop in 1.1 ms, but VideoToolbox's
+  is synchronous and keeps the colour attachments, so it stays. Power itself isn't measured: `powermetrics` needs root here; the app's CPU
+  moves by 0–3 points (one core), within run-to-run noise.
+- While panning, frames leave the Mac 3–5 ms later at p50: the frame cut for each new crop takes a turn in the phone's frame rate, and the
+  next capture waits for its credit. Waiting instead for the next capture to carry the crop (when frames keep coming) was tried: crop shown got
+  6 ms worse (26 against 20 p50) with a 186 ms outlier, so the immediate frame stays.
+
+### 6. Marking the picture and the pointer for Wi-Fi (2026-11-09, second round)
+
+What WMM does: four queues (access categories) on every Wi-Fi radio, each with its own contention parameters. Voice (VO): the shortest
+waits, bursts of at most 1.5 ms; video (VI): short waits, bursts up to 3 ms with aggregation; best effort (BE) and background (BK) wait longer
+and back off further. A device picks the queue for what it sends from the packet's priority; an access point picks it for what it sends to a
+phone from the packet's DSCP (RFC 8325: EF 46 → VO, AF41 34 → VI; many access points simply use DSCP ÷ 8). Large frames belong in VI: VO's short
+bursts would cost a scrolling frame its aggregation.
+
+| Flow | Before | After | How it was checked |
+|---|---|---|---|
+| Phone → Mac (pointer, probes, repairs' feedback) | VO (`.interactiveVoice`, already) | VO | `nettop -J tc_class`: VO |
+| Mac → phone (picture, pointer's place, probe echoes) | BE (the UDP listener had no service class) | VI (`.interactiveVideo` on the listener; the flows it accepts inherit it) | `nettop`: BE in the integration build, VI in this one |
+| DSCP in the IP header, either way | 0 | 0 | `IP_RECVTOS` on a receiving socket (`scratchpad vt/tos.swift`; tcpdump needs root here) |
+
+The DSCP stays 0, and Network.framework can't change that: every service class (and `SO_NET_SERVICE_TYPE` on a plain socket) arrived with
+TOS 0, while `IP_TOS` on a plain socket arrived intact (0xa0, 0x88). macOS writes DSCP for a service class only on a network marked
+QoS-capable (`sysctl net.qos.policy.wifi_enabled: 0`, `capable_enabled: 0`; Cisco Fast Lane networks set it by profile). So the marks
+choose the queue on the **sending device's own radio**: the phone's pointer goes ahead of its other traffic, and a Mac on Wi-Fi sends the
+picture ahead of a download. The **access point's** queue to the phone, where most Wi-Fi delay is, still sees DSCP 0 from a Mac. Writing
+DSCP needs a plain socket with `IP_TOS` for the Mac's sending path, in place of the NWListener flow (§Not built). Not measurable on loopback;
+on the real network, a busy download running while scrolling is the test.
 
 ### Measured, before and after (same tests, `BLURT_SCREEN_REPAIR=0` on the phone for before)
 
@@ -231,8 +285,22 @@ platform can take the parts one at a time: NACK needs nothing from the encoder o
    batches on the direct path).
 6. **No periodic keyframes** when nack or ltr is in use: GOP infinite (Media Foundation `CODECAPI_AVEncMPVGOPSize` 0 / as large as the
    encoder takes, which it already asks for).
-7. Capture at up to 120 when the request's fps ≥ 60 (DXGI duplication / PipeWire deliver at the display's rate anyway); a frame captured
-   before `1/fps − 3 ms` since the last waits for its turn rather than being dropped.
+7. Capture at up to 120 when the request's fps ≥ 60 (DXGI duplication / PipeWire deliver at the display's rate anyway); frames go at the
+   request's fps on average (a frame time earns a frame's credit, at most 1.5 kept; a frame may go with 0.45), and one that comes too early
+   waits for its turn rather than being dropped.
+8. **Crops** (Windows and Linux already crop on the GPU: the D3D11 video processor's source rectangle, the PipeWire/VA-API scaler). What to
+   match: a crop applies to the next frame captured, never holds frames; a crop on a still screen (no new capture coming) re-crops the last
+   captured frame at once and sends it; every frame's payload carries the crop it was really cut with. Target, as measured on the Mac: a crop
+   shown on the phone 20 ms (p50) after the phone asks, 59 frames a second while panning. Keep the last captured frame at the display's own
+   size while zoomed, not only the last output.
+9. **Marking.** Video, the pointer's place and probe echoes (host → phone): DSCP AF41 (0x88 in the TOS byte; 34 → VI by RFC 8325 and by
+   DSCP ÷ 8). Linux: `setsockopt(IP_TOS, 0x88)` and `IPV6_TCLASS` 0x88 on the session's UDP socket, plus `SO_PRIORITY` 5 so the host's own
+   Wi-Fi uses VI even where its driver ignores DSCP (values 0–6 need no capability). Windows: `setsockopt(IP_TOS)` is ignored; use qWAVE:
+   `QOSCreateHandle`, then `QOSAddSocketToFlow(handle, socket, destination, QOSTrafficTypeAudioVideo, QOS_NON_ADAPTIVE_FLOW, &flow)` per
+   phone address (UDP needs the destination) — Microsoft's table gives AudioVideo DSCP 40 and 802.1p 5, both VI; `QOSSetFlow` with
+   `QOSSetOutgoingDSCPValue` (34) needs administrator rights, so the default AudioVideo value it is. Check with Wireshark on the host (the
+   IP header's DS field) and `nettop`-like per-flow views where there are any. Some networks drop or bleach marked packets: if a marked path
+   delivers nothing while an unmarked probe does, send unmarked.
 
 Encoders, what each can do for `ltr`:
 
@@ -265,20 +333,21 @@ Encoders, what each can do for `ltr`:
    while frames come) and put it in `screen.fps`, as ScreenPlan does.
 6. Test with a made-up network like iOS's `TestWeather` (debug builds): drop pieces at 1 % in bursts of 2, hold everything 80 ms every 2 s.
    Pass: no keyframes asked at 1 % loss, frames shown within 5 % of frames sent, no frame given up during a stall.
+7. **Marking** (phone → host: pointer, probes, feedback): DSCP EF, `DatagramSocket.setTrafficClass(0xB8)` (or `IP_TOS` 0xB8 on the native
+   socket). Android's Wi-Fi driver picks VO from it. Apple phones use `.interactiveVoice`, which picks VO on the phone's radio but writes no
+   DSCP (§6); Android writing EF is stricter and fine.
 
 ## Not built
 
 In the order they'd pay off:
 
-1. **Crops without waiting.** Capture the whole display at its own pixels and crop and scale each frame on the GPU (VTPixelTransferSession with
-   the source's clean aperture and `kVTScalingMode_CropSourceToCleanAperture`, or Core Image), instead of ScreenCaptureKit's `sourceRect`.
-   Every frame's crop is then known exactly and a change costs nothing. Today each change holds frames 24 ms (p50; 209 ms max) and panning at
-   2× shows 44–46 frames a second where a still view shows 59, with gaps to 68 ms. Costs a full-size capture and a GPU pass (about 1 ms, not
-   measured). Lives in RemoteScreen's capture, which the several-displays work just reshaped: next round.
-2. **Mark the picture for Wi-Fi.** The phone's packets already go as `.interactiveVoice`; the Mac's UDP listener is best effort, so its video
-   waits behind a download on the same access point. `.interactiveVideo` on the Mac's flows (WMM AC_VI) asks the access point to send it
-   first. Can't be measured on loopback, and some networks mishandle marked packets (Chrome ships DSCP off by default): try on the founder's
-   network, with a large download running, before turning it on.
+1. **DSCP from the Mac.** §6: the service class picks the Mac's own Wi-Fi queue but writes no DSCP, so the access point still queues the
+   picture as best effort on its way to the phone. A plain UDP socket with `IP_TOS` = AF41 (0x88) for the picture and EF (0xB8) for the
+   pointer's place would carry it. It means sending from a BSD socket on the session's port instead of the NWListener flow; a second socket
+   on the same port must never take the phone's packets from the first. Some networks mishandle marked packets (Chrome ships DSCP off by
+   default): try on the founder's network with a download running before turning it on.
+2. **Crops: the frame for a new crop takes a turn.** While panning a scrolling screen, frames leave 3–5 ms later (§5). A crop could replace
+   the frame waiting for its turn instead of adding one; small, not tried.
 3. **The encoder's 6 ms.** The largest part of a clean path. H.264, or a stage a little smaller than the phone's pixels while scrolling, may
    halve it; neither measured.
 4. **Sharpening a still picture faster.** The resends after the picture stops (remote.md §What it costs) could cap their QP

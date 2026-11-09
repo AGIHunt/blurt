@@ -11,6 +11,7 @@ import BlurtCore
 import BlurtRemoteKit
 import CoreMedia
 import Foundation
+import QuartzCore
 import VideoToolbox
 
 final class ScreenRepair {
@@ -175,6 +176,9 @@ struct ScreenTiming {
     private var holds: [Double] = []
 
     mutating func held(_ ms: Double) { if holds.count < 500 { holds.append(ms) } }
+    /// the GPU's crop and scale of a zoomed frame
+    private var crops: [Double] = []
+    mutating func cropped(_ ms: Double) { if crops.count < 2000 { crops.append(ms) } }
 
     mutating func add(captured: Double, encodeStart: Double, encoded: Double, sent: Double) {
         guard capture.count < 2000 else { return }
@@ -183,8 +187,19 @@ struct ScreenTiming {
         total.append((sent - captured) * 1000)
     }
 
+    /// the whole app's CPU time since the last line, for what the picture costs the Mac
+    private var cpuAt = (wall: 0.0, cpu: 0.0)
+    private static func cpu() -> Double {
+        var u = rusage()
+        getrusage(RUSAGE_SELF, &u)
+        return Double(u.ru_utime.tv_sec + u.ru_stime.tv_sec) + Double(u.ru_utime.tv_usec + u.ru_stime.tv_usec) / 1e6
+    }
+
     mutating func take() -> [String: Any] {
-        defer { capture = []; encode = []; total = []; holds = [] }
+        let wall = CACurrentMediaTime(), cpu = Self.cpu()
+        let pct = cpuAt.wall > 0 ? ((cpu - cpuAt.cpu) / max(0.001, wall - cpuAt.wall) * 1000).rounded() / 10 : -1
+        cpuAt = (wall, cpu)
+        defer { capture = []; encode = []; total = []; holds = []; crops = [] }
         func p(_ a: [Double], _ q: Double) -> Double {
             guard !a.isEmpty else { return -1 }
             let s = a.sorted()
@@ -192,6 +207,6 @@ struct ScreenTiming {
         }
         return ["capture_p50": p(capture, 0.5), "capture_p95": p(capture, 0.95), "encode_p50": p(encode, 0.5), "encode_p95": p(encode, 0.95),
                 "mac_p50": p(total, 0.5), "mac_p95": p(total, 0.95), "mac_max": p(total, 1), "crops": holds.count, "crop_hold_p50": p(holds, 0.5),
-                "crop_hold_max": p(holds, 1)]
+                "crop_hold_max": p(holds, 1), "gpu_crops": crops.count, "gpu_crop_p50": p(crops, 0.5), "gpu_crop_p95": p(crops, 0.95), "cpu_pct": pct]
     }
 }

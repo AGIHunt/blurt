@@ -224,7 +224,7 @@ connections didn't change that. Text stayed sharp while scrolling at every zoom,
   works like a photo: the point between the fingers stays under them, it stretches a little past the whole screen and springs back. The Mac is
   asked for that part of the screen up to about 7 times a second, at the same output size, so the text gets sharper the closer you look. Every
   frame says which part it shows (`RemoteCrop`, in the payload), and goes onto a plain layer in one commit with where that part belongs, so a new
-  crop changes only the sharpness. A sample-buffer layer can't do that: it shows frames on its own clock, and each crop change twitched the picture. ScreenCaptureKit doesn't say which frame took a new crop, so frames wait out each change and the latest goes when it's done.
+  crop changes only the sharpness. A sample-buffer layer can't do that: it shows frames on its own clock, and each crop change twitched the picture. Zoomed in, the Mac captures the whole display and cuts the part in view out of each frame on the GPU, so a new crop shows on the next frame (20 ms from the phone asking, p50) and nothing waits; ScreenCaptureKit's own crop held frames 24 ms at each change (remote-realtime.md §5).
 - **Two fingers scroll the Mac, zoomed in or not**, both ways, as on its own trackpad, and what's under the fingers scrolls: the pointer goes there
   first, so the session list and the conversation beside it in Claude Code each scroll on their own (founder, 2026-11-08). An earlier version made
   two fingers move the zoomed picture, as in Photos, and the article under them didn't scroll. The picture moves with the pointer instead: one
