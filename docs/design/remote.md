@@ -224,7 +224,7 @@ connections didn't change that. Text stayed sharp while scrolling at every zoom,
   works like a photo: the point between the fingers stays under them, it stretches a little past the whole screen and springs back. The Mac is
   asked for that part of the screen up to about 7 times a second, at the same output size, so the text gets sharper the closer you look. Every
   frame says which part it shows (`RemoteCrop`, in the payload), and goes onto a plain layer in one commit with where that part belongs, so a new
-  crop changes only the sharpness. A sample-buffer layer can't do that: it shows frames on its own clock, and each crop change twitched the picture. ScreenCaptureKit doesn't say which frame took a new crop, so frames wait out each change and the latest goes when it's done.
+  crop changes only the sharpness. A sample-buffer layer can't do that: it shows frames on its own clock, and each crop change twitched the picture. Zoomed in, the Mac captures the whole display and cuts the part in view out of each frame on the GPU, so a new crop shows on the next frame (20 ms from the phone asking, p50) and nothing waits; ScreenCaptureKit's own crop held frames 24 ms at each change (remote-realtime.md §5).
 - **Two fingers scroll the Mac, zoomed in or not**, both ways, as on its own trackpad, and what's under the fingers scrolls: the pointer goes there
   first, so the session list and the conversation beside it in Claude Code each scroll on their own (founder, 2026-11-08). An earlier version made
   two fingers move the zoomed picture, as in Photos, and the article under them didn't scroll. The picture moves with the pointer instead: one
@@ -429,9 +429,24 @@ Peer-to-peer means anyone in radio range can reach the handshake (no further), a
 
 ## iPad and iPhone Duo
 
-2026-11-09. Status: the iPad is tested on the iPad Pro 13" and 11" (M4) simulators. The iPhone Duo is tested as a layout at its sizes and
-folds (unit tests, and renders of the real main screen), not yet on its own simulator. Xcode 27.1 and later need macOS 26.6, and this Mac
-runs 26.5.
+2026-11-09. Status: the iPad is tested on the iPad Pro 13" and 11" (M4) simulators. The iPhone Duo runs closed on its own simulator (Xcode
+27.2, iOS 27.2), in portrait and turned both ways, and its open display, its folds and opening mid-session are tested as layouts at its sizes
+(unit tests, and renders of the real main screen). The simulator couldn't be opened here: no `simctl` command moves the hinge, and Device
+Hub, which has the hinge slider, needs macOS 26.6 (this Mac runs 26.5).
+
+What UIKit reports on the Duo closed (a debug build logs it as `BLURT_ROOM`):
+
+| | Size | Safe area | Reserved regions |
+|---|---|---|---|
+| Closed, portrait | 466×678 @3× | right 84, bottom 34 | occlusion: the lens 37×37 at (400, 29), and the region kept clear around it, 84×82 in the top right corner |
+| Closed, turned left / right | 678×466 | right 84 / left 84, bottom 34 | the same corner: bottom right / top left |
+| Open (the panel) | 669×951 natural, 951×669 held open | not read | not read |
+
+The hinge reports `closed`, angle 0. The 84 pt band is where iOS puts its bars on this display (Apple: toolbars and the status bar move to
+the side). With the status bar hidden nothing is drawn there, so only the camera's corner is avoided: the keys get the whole width (450 pt
+instead of 374) and the stage starts below the corner. The picture is 398×249, larger than on an iPhone 17 Pro (386×241). The open panel is
+portrait in its own coordinates, but the phone open is wider than tall (164.6×117.8 mm), so held open the UI is 951×669 with the fold
+running down the middle; turned, 669×951 with the fold across. That's how the tests take it.
 
 **The layout depends on the room, not the device.** `PadLayout` takes six inputs: the view's size, the safe area, the fold and the cameras
 as UIKit reports them (`UIView.reservedRegions`, iOS 27.1), the shape of the computer's screen, and the hand. It reads no device names, no
@@ -490,9 +505,10 @@ Measured at these sizes (points; "picture" is a whole 16:10 screen):
 | iPad Pro 11" landscape, 1210×834 | 1190×695 / 1190×487 | 1112×695 / 779×487 | the same |
 | iPad 13" Split View ½, 683×1032 | 663×685, keys always out | 663×414 | the same |
 | iPad 13" Split View ⅓, 438×1032 (portrait kind) | 422×687 | 422×263 | page 66×48 |
-| Duo open, 890×626 | 870×487 / 870×279 | 779×487 / 446×279 | page 75×48, dock 43×48 |
-| Duo open, turned tall, 626×890 | 606×543, keys always out | 606×378 | page 72×48, trackpad 140 wide |
-| Duo closed, 466×678 (portrait kind) | 398×333 | 398×248 | page 62×48 |
+| Duo open, 951×669 | 931×530 / 931×322 | 848×530 / 515×322 | page 75×48, dock 43×48 |
+| Duo open, turned tall, 669×951 | 649×604, keys always out | 649×406 | page 75×48, trackpad 161 wide |
+| Duo closed, 466×678 (portrait kind, measured) | 450×249 | 398×249 | page 71×48 |
+| Duo closed, turned, 678×466 (landscape kind, measured) | 514×454 keys away | 514×321 | thumb column 56 wide |
 | iPhone 17 Pro portrait, for comparison | 386×475 | 386×241 | page 60×48 |
 
 ### The fold
@@ -506,7 +522,7 @@ may cross the fold, because fingers cross a crease without trouble.
 - **Open flat**: the big stage, with the gap between the halves where the fold runs.
 - **Partly folded like a laptop** (the fold runs across: `reservedRegions(kind: .division)` is active and wider than tall): the picture
   takes the upper half, to be viewed from a distance. The lower half lies on the table and holds the keys and the trackpad. Fingers type
-  there, so the pages' keys grow into the room (72×72 at the Duo's size, still key-shaped) instead of leaving a gap under the fold.
+  there, so the pages' keys grow into the room (75×72 at the Duo's size, still key-shaped) instead of leaving a gap under the fold.
 - **Partly folded like a book** (the fold runs down the middle): the picture goes on one page. The other page, by the holding hand, is a
   phone's remote: pad, top row, pages and dock.
 - **Tent and stand** get no layout of their own. If the system gives the app half the display, that's a size like any other.
@@ -525,8 +541,9 @@ pretend there's a fold (`Pretend.surround`).
   being dragged.
 - The stream asks for the new output size 1.5 s later, and the last picture stays up until the new one arrives.
 
-On the outer display the camera sits in a corner, not in the middle of an end. With the phone on its side, the controls stack below the
-camera instead of around it.
+On the outer display the camera sits in a corner, not in the middle of an end. With the phone on its side, the controls stack clear of the
+camera (below it, or above it turned the other way) instead of around it; UIKit reports the lens and the region kept clear around it, and
+the layout keeps out of both.
 
 ### Input on an iPad
 
@@ -563,10 +580,11 @@ and multitasking widths, and the Duo open, closed, turned, folded like a laptop 
 
 ### Open
 
-- The Duo's numbers above come from Apple's pixel counts at 3× (466×678 closed, 890×626 open, a 24 pt fold band when partly folded). They
-  haven't been read from its simulator yet. Also unknown:
-  - whether the closed display's side controls take a band of safe area, or only the camera's corner;
+- The Duo open hasn't been run: no `simctl` command moves the hinge, and Device Hub (Xcode 27.2's, with the hinge slider) won't launch on
+  macOS 26.5. Unknown until it is:
+  - the open display's safe area and the fold's band when partly folded (the tests take 24 pt);
   - whether the scene resigns active while the phone opens. If it does, latched modifiers are let go, as when leaving the app.
+  To check: open it in Device Hub with the debug build running and read the `BLURT_ROOM` and `BLURT_HINGE` lines in its log.
 - The simulator here couldn't be turned on its side. Simulator's Rotate turned the window but not the screen, for every app. iPad landscape
   and multitasking are judged from the renders, not from screenshots of the running app.
 - Not tried with a real keyboard, mouse, trackpad or Pencil on an iPad. The simulator doesn't pass through hover, pointer buttons or HID

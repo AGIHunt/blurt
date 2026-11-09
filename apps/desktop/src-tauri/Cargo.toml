@@ -63,6 +63,8 @@ windows = { version = "0.62", features = [
   # island.rs card_drag_win.rs: a card dragged into another app (OLE: the shell's data object, the drag image)
   "Win32_UI_Shell_Common", "Win32_System_SystemServices", "Win32_Graphics_Imaging", "Win32_System_Com_StructuredStorage",
   "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Foundation_Collections", "Globalization",
+  # remote.rs (remote_firewall.rs): whether Windows Defender Firewall lets phones in (INetFwPolicy2, no admin needed)
+  "Win32_NetworkManagement_WindowsFirewall",
 ] }
 cpal = "0.16"
 # #[implement(IDropSource)] (card_drag_win.rs) expands to windows_core paths

@@ -496,6 +496,9 @@ export const api = {
   remoteSetScreenAllowed: (on: boolean) => invoke<RemoteStatus>('remote_set_screen_allowed', { on }),
   /** the prompt for Claude Code or Codex that sets up a relay */
   remoteRelayInstructions: () => invoke<string>('remote_relay_instructions'),
+  /** Windows Firewall keeps phones out (`firewall: 'blocked'`): its rule, through Windows' own administrator prompt; answers
+   *  once that's done or declined (declined: still 'blocked', no error) */
+  remoteAllowFirewall: () => invoke<RemoteStatus>('remote_allow_firewall'),
 };
 
 /** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
@@ -513,7 +516,10 @@ export interface RemoteStatus {
   canControl: boolean;
   /** a sentence for the user, localised */
   problem: string | null;
+  /** Windows Firewall: 'blocked' keeps phones out on this network (remoteAllowFirewall); always 'ok' off Windows */
+  firewall: RemoteFirewall;
 }
+export type RemoteFirewall = 'ok' | 'blocked' | 'unknown';
 export type RemoteRoute = 'local' | 'direct' | 'relay';
 
 export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);

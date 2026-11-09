@@ -293,6 +293,10 @@ final class RemoteServer {
             let udpParams = NWParameters.udp
             udpParams.includePeerToPeer = RemoteChannel.peerToPeer
             udpParams.allowLocalEndpointReuse = true
+            // the picture and the pointer's place: the Mac's own Wi-Fi sends them in the video access category, ahead of a download
+            // (docs/design/remote-realtime.md §Marking). Voice is for small packets; a frame's burst in it would lose aggregation. macOS
+            // writes no DSCP for it unless the network is QoS-capable (measured: TOS 0), so the access point's side is unchanged
+            udpParams.serviceClass = .interactiveVideo
             let u = try NWListener(using: udpParams, on: .any)
             u.newConnectionHandler = { [weak self] c in self?.udpConnection(c) }
             u.stateUpdateHandler = { [weak self] s in

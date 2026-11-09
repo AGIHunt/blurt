@@ -841,5 +841,8 @@
   "phone.control.linux": "还没有允许远程控制",
   "phone.control.linux.detail": "允许之前，手机无法移动光标或按键。系统询问是否允许口喷鸡使用远程桌面时，选择允许。只需允许一次。",
   "phone.control.win": "无法控制前台窗口",
-  "phone.control.win.detail": "它以管理员身份运行。只有口喷鸡也以管理员身份运行时，Windows 才允许手机控制它。"
+  "phone.control.win.detail": "它以管理员身份运行。只有口喷鸡也以管理员身份运行时，Windows 才允许手机控制它。",
+  "phone.firewall": "Windows 防火墙挡住了这个网络上的手机。",
+  "phone.firewall.detail": "Windows 会请管理员确认。",
+  "phone.firewall.allow": "允许…"
 }

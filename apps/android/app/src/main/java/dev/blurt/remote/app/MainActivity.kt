@@ -97,6 +97,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
                 sheetView.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
             }
         }
+        dev.blurt.remote.app.pad.TestWeather.from(intent)
         handle(intent)
     }
 
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        dev.blurt.remote.app.pad.TestWeather.from(intent)
         handle(intent)
     }
 

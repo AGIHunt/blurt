@@ -79,7 +79,8 @@ class ProtocolTest {
         assertEquals(8L, f.id)
         assertTrue(!a.waitingForKey)
         assertNull(RemoteVideoPacket.decode(ByteArray(16)))
-        assertNull(RemoteVideoPacket.decode(RemoteVideoPacket(1, 2, 2, false, 0.0, ByteArray(0)).encoded()), "index past count")
+        assertTrue(RemoteVideoPacket.decode(RemoteVideoPacket(1, 2, 2, false, 0.0, ByteArray(0)).encoded())!!.isParity, "index past count: parity")
+        assertNull(RemoteVideoPacket.decode(RemoteVideoPacket(1, 2 + RemoteVideoFEC.MAX_PARITY, 2, false, 0.0, ByteArray(0)).encoded()), "past any parity")
         assertNull(RemoteVideoPayload.unpack(ByteArray(16)))
         assertNull(RemoteVideoPayload.unpack(ByteArray(16) + byteArrayOf(1, 0, 5)), "a parameter set longer than what's there")
     }

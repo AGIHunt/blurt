@@ -184,7 +184,7 @@ fn bitmap_png(format: spa::param::video::VideoFormat, w: u32, h: u32, stride: us
     let mut rgba = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h as usize {
         let row = data.get(y * stride..y * stride + w as usize * 4)?;
-        for px in row.chunks_exact(4) {
+        for px in row.as_chunks::<4>().0 {
             rgba.extend_from_slice(&[px[order[0]], px[order[1]], px[order[2]], if opaque { 255 } else { px[order[3]] }]);
         }
     }

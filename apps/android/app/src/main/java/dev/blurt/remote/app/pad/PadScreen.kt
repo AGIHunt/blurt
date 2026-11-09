@@ -226,6 +226,16 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
                 requestLayout()
             }
         }
+        // a measured run (debug builds, TestWeather): once connected, the picture on, measured, and a report in the log
+        if (dev.blurt.remote.app.BuildConfig.DEBUG) scope.launch {
+            l.state.collect { st ->
+                val seconds = TestWeather.screenTest
+                if (st != Link.State.CONNECTED || seconds <= 0) return@collect
+                TestWeather.screenTest = 0
+                setShowing(true)
+                Remote.screen.measure(seconds, "run")
+            }
+        }
         scope.launch { l.live.collect { (f, p) -> words(f, p) } }
         scope.launch { l.level.collect { talk.level(it) } }
         scope.launch { Remote.prefs.changed.collect { applyPrefs() } }

@@ -8,7 +8,9 @@
 //!  • a new phone asking: the main window comes forward with the six digits, and a notification says so;
 //!  • the phone's talk key is the dictation key (the same trigger: tap, hold, double tap), and its microphone takes the place of
 //!    this computer's when the phone asks for that; the take's phase, level, words and what was typed go back to the phone;
-//!  • Blurt's commands from the phone do what the hotkeys do.
+//!  • Blurt's commands from the phone do what the hotkeys do;
+//!  • Windows Defender Firewall: whether it lets phones in on this network (`firewall`), and the one-click fix
+//!    (`remote_allow_firewall`, remote_firewall.rs).
 //!
 //! Nothing listens until Settings shows a code or a phone is paired. Test builds (debug, BLURT_TEST_COMMANDS=1) keep keys in a
 //! file and may answer the pairing question by themselves (BLURT_TEST_PAIR_ANSWER=yes|no), as the Mac's test hooks do.
@@ -25,6 +27,10 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 static HOST: OnceLock<Host> = OnceLock::new();
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
+#[path = "remote_firewall.rs"]
+mod firewall;
 
 fn host() -> Option<&'static Host> {
     HOST.get()
@@ -43,12 +49,15 @@ pub fn start(app: &AppHandle) {
     if HOST.get().is_some() || std::env::var_os("BLURT_NO_REMOTE").is_some() {
         return;
     }
+    let _ = APP.set(app.clone());
     let dir = crate::paths::blurt_home().join("remote");
     let keys: Box<dyn KeyStore> = if testing() || cfg!(not(any(windows, target_os = "linux"))) {
         Box::new(blurt_remote::store::FileKeyStore::new(dir.join("test-keys.json")))
     } else {
         Box::new(OsKeys)
     };
+    #[cfg(target_os = "linux")]
+    linux_setup(app);
     let backend: Box<dyn Backend> = blurt_remote::platform::backend();
     let test_answer = if testing() {
         match std::env::var("BLURT_TEST_PAIR_ANSWER").as_deref() {
@@ -74,6 +83,57 @@ pub fn start(app: &AppHandle) {
     let _ = HOST.set(h);
 }
 
+/// Linux, before the backend exists (remote-linux.md §For the app): the portal's restore token next to the app's own
+/// (`$BLURT_HOME/portal`), GNOME's dialog over Blurt's window, and long or non-ASCII text from the phone put in the way
+/// dictation does (Ctrl+Shift+V into a terminal). Called from `setup`, on the main thread.
+#[cfg(target_os = "linux")]
+fn linux_setup(app: &AppHandle) {
+    use blurt_remote::platform::linux;
+    linux::set_state_dir(crate::paths::blurt_home().join("portal"));
+    // the main window exists now; the island (always on top, which GNOME's dialog should open over, as for dictation's
+    // access) is made on a thread of its own a moment later, so it replaces the main window once it's there
+    linux::set_dialog_parent(crate::mainwin::x11_id_of(app, "main"));
+    let a = app.clone();
+    std::thread::spawn(move || {
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if let Some(x) = crate::mainwin::x11_id_off_main(&a, "blurt-overlay-island") {
+                linux::set_dialog_parent(Some(x));
+                return;
+            }
+        }
+    });
+    linux::set_paste(linux_paste);
+}
+
+/// The phone's text through dictation's paste: the clipboard, Ctrl+V (Ctrl+Shift+V into a terminal) on dictation's own
+/// Remote Desktop session, and the user's clipboard back unless they copied something since. false (nothing done): no
+/// access to that session yet, and the crate pastes its own way, through the phone's session.
+#[cfg(target_os = "linux")]
+fn linux_paste(text: &str) -> bool {
+    use crate::dictation::insert_linux as ins;
+    if !ins::has_access() {
+        return false;
+    }
+    let saved = ins::save();
+    if !ins::set_text(text) {
+        return false;
+    }
+    let seq = ins::sequence();
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    if !ins::paste_keys() {
+        ins::restore(&saved);
+        return false;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        if ins::sequence() == seq {
+            ins::restore(&saved);
+        }
+    });
+    true
+}
+
 /// Quitting: let go of everything held, close the session, stop listening.
 pub fn stop() {
     if let Some(h) = host() {
@@ -95,6 +155,8 @@ pub struct RemoteStatus {
     screen_allowed: bool,
     can_control: bool,
     problem: Option<String>,
+    /// "ok", "blocked" (Windows Defender Firewall keeps phones out on this network: `remote_allow_firewall`) or "unknown"
+    firewall: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -195,7 +257,50 @@ fn to_ui(s: &Status) -> RemoteStatus {
         screen_allowed: s.screen_allowed,
         can_control: s.can_control,
         problem: s.problem.as_ref().map(problem),
+        firewall: firewall::state(),
     }
+}
+
+/// Settings hears the status again (a firewall check changed its answer).
+fn emit_now() {
+    if let Some(a) = APP.get() {
+        let _ = a.emit("remote://status", now_status());
+    }
+}
+
+/// The firewall checked again, off the caller's thread; Settings hears if the answer changed.
+fn firewall_recheck() {
+    if !cfg!(windows) {
+        return;
+    }
+    std::thread::spawn(|| {
+        if firewall::recheck() {
+            emit_now();
+        }
+    });
+}
+
+/// While the host listens (Windows): checked when it starts, then again whenever the network's profile changes (Public ↔
+/// Private, another network), polled every 10 s — one cheap COM call.
+fn firewall_watch() {
+    static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !cfg!(windows) || RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| {
+        let mut last = None;
+        while host().is_some_and(|h| h.status().listening) {
+            let now = firewall::current_profiles();
+            if last.is_none() || now != last {
+                last = now;
+                if firewall::recheck() {
+                    emit_now();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        }
+        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
 }
 
 fn now_status() -> RemoteStatus {
@@ -214,7 +319,20 @@ pub fn remote_show_pairing(on: bool) -> RemoteStatus {
     if let Some(h) = host() {
         h.show_pairing(on);
     }
+    if on {
+        firewall_recheck();
+    }
     now_status()
+}
+
+/// Windows Defender Firewall keeps phones out: the doc's netsh lines, elevated through Windows' own UAC prompt, on the owner's
+/// click only. Waits for it, checks again, and answers; a declined prompt leaves `firewall` "blocked", with no error.
+#[tauri::command]
+pub async fn remote_allow_firewall() -> RemoteStatus {
+    let _ = tauri::async_runtime::spawn_blocking(firewall::allow).await;
+    let s = now_status();
+    emit_now();
+    s
 }
 
 /// The owner's answer. `digits`: the six digits they were shown; the answer counts only for the phone showing those.
@@ -295,6 +413,9 @@ struct Desktop {
 
 impl App for Desktop {
     fn status(&self, s: &Status) {
+        if s.listening {
+            firewall_watch(); // Windows: is the firewall letting phones in?
+        }
         let _ = self.app.emit("remote://status", to_ui(s));
     }
 
@@ -677,12 +798,13 @@ mod tests {
             ..Default::default()
         };
         let v = serde_json::to_value(super::to_ui(&s)).unwrap();
-        for k in ["listening", "pairing", "asking", "devices", "connected", "relay", "screenAllowed", "canControl", "problem"] {
+        for k in ["listening", "pairing", "asking", "devices", "connected", "relay", "screenAllowed", "canControl", "problem", "firewall"] {
             assert!(v.get(k).is_some(), "{k}");
         }
         let svg = v["pairing"]["qrSvg"].as_str().unwrap();
         assert!(svg.starts_with("<svg") && svg.trim_end().ends_with("</svg>"), "{svg:.80}");
         assert_eq!(v["pairing"]["expiresAt"], 1_700_000_000_000i64);
+        assert_eq!(v["firewall"], if cfg!(windows) { "unknown" } else { "ok" });
         for k in ["address", "fromPhone", "reachable"] {
             assert!(v["relay"].get(k).is_some(), "relay.{k}");
         }

@@ -5,6 +5,7 @@ package dev.blurt.remote.core
 
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -326,8 +327,11 @@ sealed class ToPhone {
     /** the two clocks at one moment, so a frame's age can be read on the phone */
     data class Clock(val phone: Double, val mac: Double) : ToPhone()
     data class ScreenFailed(val text: String) : ToPhone()
-    /** the source's size in points, the codec its frames are in ("hevc" when null), and which RemoteDisplay it is (null from older hosts) */
-    data class ScreenView(val width: Double, val height: Double, val codec: String? = null, val display: String? = null) : ToPhone()
+    /** the source's size in points, the codec its frames are in ("hevc" when null), and which RemoteDisplay it is (null from older hosts).
+     *  `features`: the repairs the host uses for this stream, of those the phone offered (RemoteVideoFeature); null = none. 1.0.15+ */
+    data class ScreenView(
+        val width: Double, val height: Double, val codec: String? = null, val display: String? = null, val features: List<String>? = null,
+    ) : ToPhone()
     /** every display the computer has, whenever that changes (and once a session is up); only from hosts that can show more than one. 1.0.15+ */
     data class Displays(val displays: List<RemoteDisplay>) : ToPhone()
     class CursorShape(val png: ByteArray, val hotX: Double, val hotY: Double, val width: Double, val height: Double) : ToPhone() {
@@ -357,7 +361,8 @@ sealed class ToPhone {
         is NewKey -> J.case("newKey", "_0" to J.data(key))
         is Clock -> J.case("clock", "phone" to J.double(phone), "mac" to J.double(mac))
         is ScreenFailed -> J.case("screenFailed", "_0" to J.str(text))
-        is ScreenView -> J.case("screenView", "width" to J.double(width), "height" to J.double(height), "codec" to J.str(codec), "display" to J.str(display))
+        is ScreenView -> J.case("screenView", "width" to J.double(width), "height" to J.double(height), "codec" to J.str(codec), "display" to J.str(display),
+            "features" to J.list(features) { JsonPrimitive(it) })
         is Displays -> J.case("displays", "_0" to J.list(displays) { it.toJson() })
         is CursorShape -> J.case("cursorShape", "png" to J.data(png), "hotX" to J.double(hotX), "hotY" to J.double(hotY), "width" to J.double(width),
             "height" to J.double(height))
@@ -390,7 +395,8 @@ sealed class ToPhone {
                 "newKey" -> NewKey(J.data(o, "_0") ?: return null)
                 "clock" -> Clock(J.double(o, "phone") ?: return null, J.double(o, "mac") ?: return null)
                 "screenFailed" -> ScreenFailed(J.str(o, "_0") ?: return null)
-                "screenView" -> ScreenView(J.double(o, "width") ?: return null, J.double(o, "height") ?: return null, J.str(o, "codec"), J.str(o, "display"))
+                "screenView" -> ScreenView(J.double(o, "width") ?: return null, J.double(o, "height") ?: return null, J.str(o, "codec"), J.str(o, "display"),
+                    if (J.has(o, "features")) J.list(o, "features") { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return null else null)
                 "displays" -> Displays(J.list(o, "_0") { RemoteDisplay.fromJson(it) } ?: return null)
                 "cursorShape" -> CursorShape(J.data(o, "png") ?: return null, J.double(o, "hotX") ?: return null, J.double(o, "hotY") ?: return null,
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)
@@ -413,7 +419,9 @@ enum class RemoteFrameKind(val raw: Int) {
     /** 8 bytes the other side sends straight back, datagrams only */
     PROBE(4),
     /** RemoteCursor: x, y as f32 LE, 0…1 of the source; outside it, the pointer is elsewhere */
-    CURSOR(5);
+    CURSOR(5),
+    /** RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+ */
+    VIDEO_FEEDBACK(6);
 
     companion object { fun from(raw: Int): RemoteFrameKind? = entries.firstOrNull { it.raw == raw } }
 }

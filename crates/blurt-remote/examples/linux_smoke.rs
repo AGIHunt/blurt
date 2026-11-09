@@ -95,7 +95,7 @@ fn main() {
         let s = start.elapsed().as_secs_f64();
         let share = seconds as f64 / 5.0;
         // whole, then a new crop every 150 ms (about 7 a second, as the phone asks while pinching), then 2× zoom
-        if s > 1.0 * share && s < 3.0 * share && tick % 3 == 0 {
+        if s > 1.0 * share && s < 3.0 * share && tick.is_multiple_of(3) {
             b.screen().unwrap().set_crop(crops[(tick / 3) as usize % crops.len()]);
         } else if s >= 3.0 * share && s < 3.0 * share + 0.06 {
             b.screen().unwrap().set_crop(Crop { x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
@@ -105,7 +105,7 @@ fn main() {
             println!("  rate → {} kbit/s, {} fps", config.bitrate / 4000, config.fps / 2);
         }
         // a 60-point square, a side every half second
-        if moving && tick % 2 == 0 {
+        if moving && tick.is_multiple_of(2) {
             let (dx, dy) = [(6.0, 0.0), (0.0, 6.0), (-6.0, 0.0), (0.0, -6.0)][(side / 10) % 4];
             b.input().move_by(dx, dy);
             side += 1;

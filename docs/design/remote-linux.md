@@ -108,10 +108,71 @@ decoded on the phone side).
 
 ## For the app
 
-The app calls `blurt_remote::platform::backend()` (remote.rs). On Linux, before that, it should call:
-`platform::linux::set_state_dir(blurt_home/portal)` (the token next to the app's own), `set_dialog_parent(island xid)` (so
-GNOME's dialog opens in front, as for paste), and `set_paste(|t| insert…)` (the dictation insert, which knows terminals). The
-`.deb` needs `gstreamer1.0-plugins-base/-good/-ugly` (x264), `gstreamer1.0-plugins-bad` (VA), and `libpipewire-0.3-0`.
+The app calls `blurt_remote::platform::backend()` (remote.rs). On Linux, before that, `linux_setup` (remote.rs) calls:
+
+- `set_state_dir($BLURT_HOME/portal)`: the restore token next to the app's own (`screencast.token`, `remote-desktop.token`).
+- `set_dialog_parent`: the main window's X11 id at once (setup runs on the main thread), then the island's once it exists
+  (it is made on a thread of its own a moment later; polled for up to 10 s). The island is always on top, so GNOME's dialog
+  opens in front, as for dictation's access.
+- `set_paste(linux_paste)`: dictation's own clipboard + Ctrl+V (Ctrl+Shift+V into a terminal, by AT-SPI's role or the app's
+  name) on dictation's Remote Desktop session, and the user's clipboard back 0.8 s later unless they copied something since.
+  When dictation has no access yet (no token: `insert_linux::has_access`), it returns false and the crate pastes its own way
+  through the phone's session, so it never opens a second dialog.
+
+Not run on a Linux desktop yet: the desktop app with this wiring type-checks and lints in Docker (Ubuntu 24.04, as CI), and
+nothing more.
+
+### Which Linux: Ubuntu 24.04 or later, Debian 13 or later
+
+The Linux packages are built on Ubuntu 24.04 (desktop.yml), so they need **Ubuntu 24.04 or later, Debian 13 or later**
+(glibc 2.39; Fedora 40 or later for the rpm). 22.04 can't build them: the `libspa` / `pipewire` crates (0.10) want PipeWire
+1.0 headers, and 22.04 has 0.3.48 (`spa_meta_first`, `spa_meta_region_is_valid` and `spa_video_info_raw.flags` are missing;
+checked in Docker). The Linux port targets 26.04 (issue #34), so the floor costs nothing that was promised. tauri.conf.json
+makes it explicit: the deb depends on `libc6 (>= 2.39)` and the rpm on `libc.so.6(GLIBC_2.39)(64bit)`. The rpm is written
+by name only, since Tauri's bundler passes each entry to `rpm::Dependency::any` and `glibc >= 2.39` would become a package
+name. The AppImage has the same floor (glibc from the build machine), but nothing checks it.
+
+### Packages (tauri.conf.json)
+
+What the backend loads at run time, and where each piece is (checked with `apt-file` / `dnf repoquery`, 2026-11-09):
+
+| Needs | Ubuntu 24.04 (noble) | Ubuntu 26.04 | Fedora 42 |
+|---|---|---|---|
+| appsrc/appsink, videoconvertscale | gstreamer1.0-plugins-base | same | gstreamer1-plugins-base |
+| h264parse / h265parse (videoparsersbad) | gstreamer1.0-plugins-bad | same | gstreamer1-plugins-bad-free |
+| x264enc | gstreamer1.0-plugins-ugly | same | not in Fedora (RPM Fusion's gstreamer1-plugins-ugly) |
+| openh264enc (the fallback) | gstreamer1.0-plugins-bad | same | gstreamer1-plugin-openh264 (its libopenh264 from the fedora-cisco-openh264 repo, on by default in Workstation) |
+| vah264enc / vah265enc (VA) | gstreamer1.0-plugins-bad | **gstreamer1.0-plugins-extra** (split out) | gstreamer1-plugins-bad-free, but Fedora's Mesa has no H.264/HEVC encode (RPM Fusion's mesa-freeworld) |
+| libpipewire-0.3.so.0 | libpipewire-0.3-0t64, which provides `libpipewire-0.3-0` | same | pipewire-libs |
+
+- **deb** depends: `libc6 (>= 2.39)`, `gstreamer1.0-plugins-base`, `-good`, `-ugly`, `-bad`, and `libpipewire-0.3-0`. That
+  last one is the t64 package's virtual name on 24.04 / 26.04 and Debian 13; apt accepts it unversioned. It recommends
+  `gstreamer1.0-plugins-extra`, which has VA on 26.04. 24.04 doesn't have it: apt skips it there, and -bad has VA.
+- **rpm** depends: `libc.so.6(GLIBC_2.39)(64bit)`, `gstreamer1-plugins-base`, `-good`, `gstreamer1-plugins-bad-free`,
+  `pipewire-libs`. It recommends `gstreamer1-plugin-openh264` and `gstreamer1-plugins-ugly`. Those are weak, so a machine
+  without the Cisco repo or RPM Fusion still installs; dnf skips what it can't find. On stock Fedora the phone's screen is
+  openh264, since x264 and VA encode come from RPM Fusion. The names are Fedora's; openSUSE's differ (`gstreamer-plugins-*`,
+  `libpipewire-0_3-0`).
+- A GPU's VA driver (mesa-va-drivers, intel-media-va-driver) isn't a dependency. Ubuntu's desktop installs Mesa's, and x264
+  is the fallback without one.
+
+### AppImage
+
+`bundleMediaFramework` is false, so no GStreamer plugins are inside. But linuxdeploy copies every library the binary links
+unless it's on its exclude list. WebKitGTK and this backend both link `libgstreamer-1.0`, `libgstbase`, `libgstapp`,
+`libgstvideo` and `libpipewire-0.3`, so the AppImage carries the CI machine's copies (Ubuntu 24.04: GStreamer 1.24, PipeWire
+1.0.5). On 26.04, GStreamer then loads the system's 1.28 plugins into a 1.24 core, and any built against newer symbols fail
+to load: x264enc, VA or h264parse may show as "not installed". libpipewire 1.0.5 likewise loads the system's 1.6 SPA
+plugins. Not checked on a machine yet. What it would need, in order of preference:
+
+1. Leave GStreamer and PipeWire out of the AppImage, so the system's are used. That means linuxdeploy's
+   `--exclude-library 'libgst*' --exclude-library 'libpipewire-0.3*'`, passed through the bundler's environment if Tauri
+   allows it. Every desktop with WebKitGTK's media and PipeWire has these libraries, and GStreamer's ABI is stable going
+   forward (WebKit built against 1.24 runs on 1.28). The AppImage then needs what the deb lists from the system.
+2. Or `bundleMediaFramework: true`: GStreamer and its plugins from the build machine go inside (older encoders, a larger
+   image, x264's GPL in the bundle), and PipeWire still comes from the system.
+
+Until then the AppImage's phone screen is untested and probably limited; the deb is the supported way.
 
 ## Open
 

@@ -92,6 +92,7 @@
     "linux": {
       "deb": {
         "depends": [
+          "libc6 (>= 2.39)",
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
           "libayatana-appindicator3-1",
@@ -101,7 +102,14 @@
           "gstreamer1.0-tools",
           "gstreamer1.0-pipewire",
           "gstreamer1.0-plugins-base",
-          "pipewire-bin"
+          "pipewire-bin",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-ugly",
+          "gstreamer1.0-plugins-bad",
+          "libpipewire-0.3-0"
+        ],
+        "recommends": [
+          "gstreamer1.0-plugins-extra"
         ],
         "files": {
           "/usr/share/applications/dev.blurt.desktop.desktop": "linux/dev.blurt.desktop.desktop"
@@ -109,8 +117,17 @@
       },
       "rpm": {
         "depends": [
+          "libc.so.6(GLIBC_2.39)(64bit)",
           "webkit2gtk4.1",
-          "gtk3"
+          "gtk3",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free",
+          "pipewire-libs"
+        ],
+        "recommends": [
+          "gstreamer1-plugin-openh264",
+          "gstreamer1-plugins-ugly"
         ]
       },
       "appimage": {

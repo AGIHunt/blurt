@@ -33,10 +33,33 @@ enum Surroundings {
     static func watchHinge(_ v: UIView, layout: @escaping () -> Void) {
         #if canImport(UIKit, _version: 9127.0.85)
         if #available(iOS 27.1, *) {
-            v.addInteraction(UIHingeInteraction { _, _ in layout() })
+            v.addInteraction(UIHingeInteraction { _, u in
+                #if DEBUG
+                NSLog("%@", "BLURT_HINGE status=\(u.hinge.map { "\($0.status.rawValue)" } ?? "none") angle=\(u.hinge.map { "\($0.angle)" } ?? "-")")
+                #endif
+                layout()
+            })
         }
         #endif
     }
+
+    #if DEBUG
+    /// Everything UIKit says about the room, for the log: where the Duo's numbers in the tests come from.
+    static func describe(_ v: UIView) -> String {
+        let scene = v.window?.windowScene
+        var s = "size=\(v.bounds.size) safe=\(v.safeAreaInsets) scale=\(v.traitCollection.displayScale) sizeClass=\(v.traitCollection.horizontalSizeClass.rawValue)/\(v.traitCollection.verticalSizeClass.rawValue) orientation=\(scene?.effectiveGeometry.interfaceOrientation.rawValue ?? -1) screen=\(scene?.screen.bounds.size ?? .zero) active=\(scene?.activationState.rawValue ?? -1)"
+        #if canImport(UIKit, _version: 9127.0.85)
+        if #available(iOS 27.1, *) {
+            for k in [UIView.ReservedRegion.Kind.division, .occlusion] {
+                for r in v.reservedRegions(kind: k, options: .includeInactive) {
+                    s += " \(k == .division ? "division" : "occlusion")=\(r.frame) margins=\(r.margins) active=\(r.isActive)"
+                }
+            }
+        }
+        #endif
+        return s
+    }
+    #endif
 }
 
 extension PadLayout {

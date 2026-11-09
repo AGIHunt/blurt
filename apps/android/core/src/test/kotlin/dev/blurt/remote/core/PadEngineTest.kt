@@ -364,6 +364,15 @@ class ScreenPlanTest {
         assertTrue(plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true, lowData = true).bitrate < plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true).bitrate, "and the user said so")
     }
 
+    @Test fun atHomeFramesComeAtThePanelsRate() {
+        val pro = ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 120)
+        assertEquals(120, pro.fps, "a 120 Hz panel")
+        assertEquals(12_000_000, pro.bitrate, "no more data for it")
+        assertEquals(90, ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 90).fps)
+        assertEquals(30, ScreenPlan(ScreenQuality.AUTO, LinkRoute.RELAY, false, false, native, panel = 120).fps, "away, motion is what gives")
+        assertEquals(120, ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 240).fps)
+    }
+
     @Test fun theTableInRemoteMd() {
         assertEquals(ScreenPlan(1800, 1100, 4_000_000, 30), plan(ScreenQuality.AUTO, LinkRoute.DIRECT), "Wi-Fi elsewhere")
         assertEquals(ScreenPlan(1440, 900, 2_000_000, 24), plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true), "mobile data")
