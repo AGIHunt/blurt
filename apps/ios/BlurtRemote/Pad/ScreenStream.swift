@@ -1,4 +1,4 @@
-// The Mac's screen on the phone (docs/design/remote.md §Screen): pieces to frames, frames through the hardware decoder, onto a
+// The computer's screen on the phone (docs/design/remote.md §Screen): pieces to frames, frames through the hardware decoder (HEVC or H.264), onto a
 // display layer behind the pad. Its age on arrival is measured against the Mac's clock. Off unless asked for: while off nothing
 // is sent, received or decoded.
 import AVFoundation
@@ -22,8 +22,8 @@ final class ScreenStream {
     private let backdrop = CALayer()
     private let q = DispatchQueue(label: "blurt.remote.screen", qos: .userInteractive)
     private var assembler = RemoteVideoAssembler()
-    private var session: VTDecompressionSession?
-    private var format: CMVideoFormatDescription?
+    /// HEVC from a Mac, H.264 from most Windows and Linux computers
+    private let decoder = ScreenDecoder()
     private var lastKeyRequest = 0.0
     private var lastPixels: CVPixelBuffer?
     private var debugPackets = 0, debugAt = 0.0
@@ -169,7 +169,9 @@ final class ScreenStream {
 
     // MARK: the view and the pointer
 
-    func source(_ s: CGSize) {
+    /// What the computer is showing, and in which codec. Another codec than the frames so far: nothing decoded so far helps, start from a keyframe.
+    func source(_ s: CGSize, codec: String?) {
+        q.async { if self.decoder.told(codec) { self.reset() } }
         DispatchQueue.main.async {
             if s != self.source {       // another display: the last sight of this one says nothing about it
                 self.lastWhole = nil
@@ -425,9 +427,7 @@ final class ScreenStream {
     private func reset() {
         assembler = RemoteVideoAssembler()
         reportDropped = 0
-        if let s = session { VTDecompressionSessionInvalidate(s) }
-        session = nil
-        format = nil
+        decoder.reset()
     }
 
     func packet(_ d: Data) {
@@ -441,7 +441,7 @@ final class ScreenStream {
             let t = CACurrentMediaTime()
             if t - self.debugAt > 2 {
                 self.debugAt = t
-                self.tell(.screenStats("{\"stage\":\"debug\",\"packets\":\(self.debugPackets),\"frames\":\(self.frames),\"waiting\":\(self.assembler.waitingForKey),\"dropped\":\(self.assembler.dropped),\"keyreq\":\(self.keyRequests),\"session\":\(self.session != nil),\"pcount\":\(p.count),\"pframe\":\(p.frame),\"pointer\":[\(self.pointer.x),\(self.pointer.y)]}"))
+                self.tell(.screenStats("{\"stage\":\"debug\",\"packets\":\(self.debugPackets),\"frames\":\(self.frames),\"waiting\":\(self.assembler.waitingForKey),\"dropped\":\(self.assembler.dropped),\"keyreq\":\(self.keyRequests),\"session\":\(self.decoder.ready),\"pcount\":\(p.count),\"pframe\":\(p.frame),\"pointer\":[\(self.pointer.x),\(self.pointer.y)]}"))
             }
             #endif
             if let f = self.assembler.add(p) { self.decode(f) }
@@ -496,20 +496,8 @@ final class ScreenStream {
     }
 
     private func decode(_ f: RemoteVideoAssembler.Frame) {
-        guard let u = RemoteVideoPayload.unpack(f.data) else { return }
-        if !u.parameterSets.isEmpty { prepare(u.parameterSets) }
-        guard let session, let format else { return }
-        var block: CMBlockBuffer?
-        let n = u.picture.count
-        guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: n, blockAllocator: nil, customBlockSource: nil,
-                                                 offsetToData: 0, dataLength: n, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block) == noErr, let block else { return }
-        _ = u.picture.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: n) }
-        var sample: CMSampleBuffer?
-        var size = n
-        guard CMSampleBufferCreateReady(allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: 1, sampleTimingEntryCount: 0,
-                                        sampleTimingArray: nil, sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample) == noErr, let sample else { return }
         let t0 = CACurrentMediaTime()
-        VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [], infoFlagsOut: nil) { [weak self] st, _, image, _, _ in
+        decoder.decode(f) { [weak self] st, image, crop in
             guard let self else { return }
             guard st == noErr, let image else {
                 // nothing after this can be decoded: start again from a keyframe
@@ -524,28 +512,8 @@ final class ScreenStream {
             self.frames += 1
             self.q.async { self.reportFrames += 1 }
             self.lastPixels = image
-            self.show(image, crop: u.crop)
+            self.show(image, crop: crop)
         }
-    }
-
-    private func prepare(_ sets: [Data]) {
-        let copies = sets.map { [UInt8]($0) }
-        var fd: CMFormatDescription?
-        let st: OSStatus = copies.withUnsafePointers { ptrs, sizes in
-            CMVideoFormatDescriptionCreateFromHEVCParameterSets(allocator: nil, parameterSetCount: ptrs.count, parameterSetPointers: ptrs, parameterSetSizes: sizes,
-                                                                nalUnitHeaderLength: 4, extensions: nil, formatDescriptionOut: &fd)
-        }
-        guard st == noErr, let fd else { return }
-        if let f = format, CMFormatDescriptionEqual(f, otherFormatDescription: fd), session != nil { return }
-        if let s = session { VTDecompressionSessionInvalidate(s) }
-        format = fd
-        var s: VTDecompressionSession?
-        let attrs = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA, kCVPixelBufferIOSurfacePropertiesKey: [String: Any](),
-                     kCVPixelBufferMetalCompatibilityKey: true] as [CFString: Any]
-        VTDecompressionSessionCreate(allocator: nil, formatDescription: fd, decoderSpecification: nil, imageBufferAttributes: attrs as CFDictionary,
-                                     outputCallback: nil, decompressionSessionOut: &s)
-        if let s { VTSessionSetProperty(s, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue) }
-        session = s
     }
 
     private func show(_ image: CVImageBuffer, crop: RemoteCrop) {
@@ -678,6 +646,78 @@ enum ScreenTest {
             }
         }
         step(0)
+    }
+}
+
+/// Whole frames in, pictures out, through the hardware decoder. A keyframe's parameter sets make the decoder (HEVC: VPS, SPS, PPS; H.264: SPS,
+/// PPS), and say which codec they are, so a frame that comes before the word on which codec it is still decodes.
+final class ScreenDecoder {
+    /// what the computer said it sends (screenView.codec)
+    private(set) var codec = RemoteVideoCodec.hevc
+    private var session: VTDecompressionSession?
+    private var format: CMVideoFormatDescription?
+    var ready: Bool { session != nil && format != nil }
+
+    func reset() {
+        if let s = session { VTDecompressionSessionInvalidate(s) }
+        session = nil
+        format = nil
+    }
+
+    /// The codec the computer says comes next (nil: HEVC, as from Macs before 1.0.15). True when it's another one than before: the decoder
+    /// has gone, and the frames on their way can't be decoded until a keyframe.
+    @discardableResult func told(_ c: String?) -> Bool {
+        let c = c ?? RemoteVideoCodec.hevc
+        guard c != codec else { return false }
+        codec = c
+        reset()
+        return true
+    }
+
+    /// One whole frame. `out` gets the picture and the part of the screen it shows, from VideoToolbox's thread; a status other than noErr
+    /// means nothing after it decodes until a keyframe. False: nothing to decode it with yet (no keyframe so far).
+    @discardableResult func decode(_ f: RemoteVideoAssembler.Frame, out: @escaping (OSStatus, CVImageBuffer?, RemoteCrop) -> Void) -> Bool {
+        guard let u = RemoteVideoPayload.unpack(f.data) else { return false }
+        if !u.parameterSets.isEmpty { prepare(u.parameterSets) }
+        guard let session, let format else { return false }
+        var block: CMBlockBuffer?
+        let n = u.picture.count
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: n, blockAllocator: nil, customBlockSource: nil,
+                                                 offsetToData: 0, dataLength: n, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block) == noErr, let block else { return false }
+        _ = u.picture.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: n) }
+        var sample: CMSampleBuffer?
+        var size = n
+        guard CMSampleBufferCreateReady(allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: 1, sampleTimingEntryCount: 0,
+                                        sampleTimingArray: nil, sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample) == noErr, let sample else { return false }
+        let crop = u.crop
+        let st = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [], infoFlagsOut: nil) { st, _, image, _, _ in out(st, image, crop) }
+        return st == noErr
+    }
+
+    private func prepare(_ sets: [Data]) {
+        // the sets know what they are; the computer's word is for sets that don't say
+        let kind = RemoteVideoCodec.of(parameterSets: sets) ?? codec
+        codec = kind
+        let copies = sets.map { [UInt8]($0) }
+        var fd: CMFormatDescription?
+        let st: OSStatus = copies.withUnsafePointers { ptrs, sizes in
+            kind == RemoteVideoCodec.h264
+                ? CMVideoFormatDescriptionCreateFromH264ParameterSets(allocator: nil, parameterSetCount: ptrs.count, parameterSetPointers: ptrs, parameterSetSizes: sizes,
+                                                                      nalUnitHeaderLength: 4, formatDescriptionOut: &fd)
+                : CMVideoFormatDescriptionCreateFromHEVCParameterSets(allocator: nil, parameterSetCount: ptrs.count, parameterSetPointers: ptrs, parameterSetSizes: sizes,
+                                                                      nalUnitHeaderLength: 4, extensions: nil, formatDescriptionOut: &fd)
+        }
+        guard st == noErr, let fd else { return }
+        if let f = format, CMFormatDescriptionEqual(f, otherFormatDescription: fd), session != nil { return }
+        if let s = session { VTDecompressionSessionInvalidate(s) }
+        format = fd
+        var s: VTDecompressionSession?
+        let attrs = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA, kCVPixelBufferIOSurfacePropertiesKey: [String: Any](),
+                     kCVPixelBufferMetalCompatibilityKey: true] as [CFString: Any]
+        VTDecompressionSessionCreate(allocator: nil, formatDescription: fd, decoderSpecification: nil, imageBufferAttributes: attrs as CFDictionary,
+                                     outputCallback: nil, decompressionSessionOut: &s)
+        if let s { VTSessionSetProperty(s, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue) }
+        session = s
     }
 }
 

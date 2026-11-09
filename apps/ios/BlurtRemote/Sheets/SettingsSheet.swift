@@ -1,3 +1,4 @@
+import BlurtRemoteKit
 import GameController
 import SwiftUI
 
@@ -15,9 +16,9 @@ struct SettingsSheet: View {
             Form {
                 Section {
                     ForEach(l.macs) { m in macRow(m) }
-                    Button("Add Mac") { pairing = true }
-                } header: { Text("Macs") } footer: {
-                    if l.macs.count > 1 { Text("Tap a Mac to switch to it. On the main screen, hold the settings button to switch without coming here.") }
+                    Button("Add Computer") { pairing = true }
+                } header: { Text("Computers") } footer: {
+                    if l.macs.count > 1 { Text("Tap a computer to switch to it. On the main screen, hold the settings button to switch without coming here.") }
                 }
                 Section {
                     Picker("Quality", selection: $p.quality) {
@@ -35,20 +36,23 @@ struct SettingsSheet: View {
                         LabeledContent("Now", value: "\(rate(use.kbps)) · \(use.fps) fps")
                         LabeledContent("Used Since Opening", value: size(use.total))
                     }
-                } header: { Text("Mac Screen") } footer: {
+                } header: { Text(l.host == .mac ? "Mac Screen" : "Computer Screen") } footer: {
                     Text("A still screen uses no data. On a poor network the picture steps down by itself, and text sharpens as soon as it stops moving.")
                 }
                 Section {
                     Toggle("Touch Mode", isOn: $p.tapWhereTouched)
-                } footer: { Text("On the Mac’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad.") }
+                } footer: {
+                    Text(l.host == .mac ? "On the Mac’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad."
+                        : "On the computer’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad.")
+                }
                 Section("Keys") {
-                    NavigationLink("Edit Keys") { KeyEditor(deck: Deck.load(), onChange: onDeck) }
+                    NavigationLink("Edit Keys") { KeyEditor(deck: Deck.load(for: l.host), onChange: onDeck) }
                 }
                 if l.host != .mac, GCKeyboard.coalesced != nil {
                     Section {
                         Picker("⌘ on This Keyboard", selection: $p.hardwareCommand) {
-                            Text("Ctrl").tag(CommandKeyRole.control)
-                            Text(l.host == .linux ? "Super" : "Windows Key").tag(CommandKeyRole.system)
+                            Text(l.host.name(.control)).tag(CommandKeyRole.control)
+                            Text(l.host.name(.command)).tag(CommandKeyRole.system)
                         }
                     } footer: { Text("Ctrl: ⌘C copies and ⌘V pastes, as on a Mac. Control is Ctrl too, Option is Alt.") }
                 }
@@ -67,7 +71,9 @@ struct SettingsSheet: View {
                 Section {
                     Toggle("Use iPhone Microphone", isOn: $p.micOnPhone)
                         .onChange(of: p.micOnPhone) { _, _ in Link.shared.send(.setMicOnPhone(MicStream.shared.usable)) }
-                } header: { Text("Dictation") } footer: { Text("Off: Blurt listens through your Mac’s microphone.") }
+                } header: { Text("Dictation") } footer: {
+                    Text(l.host == .mac ? "Off: Blurt listens through your Mac’s microphone." : "Off: Blurt listens through your computer’s microphone.")
+                }
                 Section {
                     Toggle("Left-Handed", isOn: $p.lefty)
                 } footer: { Text("Moves the talk key and the arrow key to the other side in portrait. In landscape, turn the phone round.") }
@@ -83,11 +89,11 @@ struct SettingsSheet: View {
                     row("Pinch", "Zoom")
                     row("Pinch, with the screen showing", "Zoom the picture")
                     row("Pointer, zoomed in", "The picture follows it")
-                    row("⌘Tab, ⌃Tab, ⌘`: hold and slide", "Step through, both ways")
+                    row("\(Words.cycleKeys(l.host)): hold and slide", "Step through, both ways")
                     row("Arrow key: tap an edge", "That arrow, hold to repeat")
                     row("Arrow key: drag", "Arrows, faster further out")
-                    row("⇧ ⌘ ⌥ ⌃: tap", "Held for the next key, tap twice to lock")
-                    row("⇧ ⌘ ⌥ ⌃: hold", "Pressed alone, e.g. ⇧ to switch input language")
+                    row("\(Words.modifiers(l.host)): tap", "Held for the next key, tap twice to lock")
+                    row("\(Words.modifiers(l.host)): hold", "Pressed alone, e.g. \(l.host.name(.shift)) to switch input language")
                     row("Three fingers left, right", "Change desktop")
                     row("Three fingers up, down", "All windows, app windows")
                     row("Talk: tap", "Start, stop")
@@ -116,7 +122,8 @@ struct SettingsSheet: View {
                     Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.tint).opacity(m.id == l.current?.id ? 1 : 0)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(m.title).foregroundStyle(.primary)
-                        Text(state(of: m)).font(.footnote).foregroundStyle(.secondary)
+                        // with computers of more than one kind, each says which it is
+                        Text(kinds ? "\(m.host.kindName) · \(String(localized: state(of: m)))" : String(localized: state(of: m))).font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                 }
@@ -129,7 +136,9 @@ struct SettingsSheet: View {
         }
     }
 
-    private func state(of m: PairedMac) -> LocalizedStringKey {
+    private var kinds: Bool { Set(l.macs.map(\.host)).count > 1 }
+
+    private func state(of m: PairedMac) -> String.LocalizationValue {
         if m.id == l.current?.id {
             switch l.state {
             case .connected: return l.route == .local ? "Connected" : l.route == .direct ? "Connected, direct" : "Connected through your relay"
@@ -159,7 +168,7 @@ struct SettingsSheet: View {
     }
 }
 
-/// One Mac: what to call it, how it's reached, and how to drop it.
+/// One computer: what to call it, how it's reached, and how to drop it.
 private struct MacDetail: View {
     let mac: PairedMac
     @ObservedObject private var l = Link.shared
@@ -182,10 +191,14 @@ private struct MacDetail: View {
             Section {
                 LabeledContent("Relay", value: mac.relayAddress ?? String(localized: "None"))
             } footer: {
-                Text(mac.relayAddress == nil ? "Without a relay this Mac is reachable on its own network. Set one in Blurt’s Settings on the Mac." : "Set in Blurt’s Settings on the Mac. All your Macs can share one.")
+                if mac.host == .mac {
+                    Text(mac.relayAddress == nil ? "Without a relay this Mac is reachable on its own network. Set one in Blurt’s Settings on the Mac." : "Set in Blurt’s Settings on the Mac. All your Macs can share one.")
+                } else {
+                    Text(mac.relayAddress == nil ? "Without a relay this computer is reachable on its own network. Set one in Blurt’s Settings on the computer." : "Set in Blurt’s Settings on the computer. All your computers can share one.")
+                }
             }
             Section {
-                Button("Remove This Mac", role: .destructive) { removing = true }
+                Button(mac.host == .mac ? "Remove This Mac" : "Remove This Computer", role: .destructive) { removing = true }
             }
         }
         .navigationTitle(mac.title)

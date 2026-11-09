@@ -109,7 +109,7 @@ Tauri commands, in `apps/desktop/src-tauri/src/remote.rs`; the React pane in `we
 |---|---|
 | `remote_status` | → `RemoteStatus` |
 | `remote_show_pairing` | `{ on: bool }` → `RemoteStatus` (on: listen, advertise, make a code good for 2 minutes and one phone) |
-| `remote_answer_pairing` | `{ yes: bool }` → `RemoteStatus` |
+| `remote_answer_pairing` | `{ yes: bool, digits: string }` → `RemoteStatus` (ignored unless `digits` are the current `asking` digits) |
 | `remote_remove_device` | `{ id: string }` → `RemoteStatus` |
 | `remote_set_relay` | `{ address: string }` → `RemoteStatus` (empty clears; error text if it doesn't parse) |
 | `remote_check_relay` | `{ address: string }` → `bool` |
