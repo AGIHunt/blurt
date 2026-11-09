@@ -970,6 +970,7 @@ pub fn run() {
             remote::remote_check_relay,
             remote::remote_set_screen_allowed,
             remote::remote_relay_instructions,
+            remote::remote_allow_firewall,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Blurt");
