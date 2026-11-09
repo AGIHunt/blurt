@@ -42,6 +42,7 @@ the test variables) and run it with `BLURT_TEST_COMMANDS=1 BLURT_TEST_REMOTE=1`.
 `BLURT_TEST_REMOTE_POST=1` posts them for real. On the phone side, `SIMCTL_CHILD_BLURT_REMOTE_TEST_WAV=clip.wav` stands in for the mic, and
 `SIMCTL_CHILD_BLURT_REMOTE_TEST_HOST=windows` (or `linux`, `mac`) shows that kind of computer as connected, with no connection, among three of
 mixed kinds: for looking at its keys and words (debug builds only; nothing is saved).
+`SIMCTL_CHILD_BLURT_REMOTE_TEST_PAIR='<blurtremote://pair?…>' xcrun simctl launch <udid> dev.blurt.remote` pairs with that link at launch as if it had been confirmed (debug builds only).
 
 `SIMCTL_CHILD_BLURT_REMOTE_PAIR=<link>` pairs with that code at launch, as the in-app scanner would (no tap needed), and
 `SIMCTL_CHILD_BLURT_DISPLAY_TEST=1` then walks the display switcher on its own, logging each step on the computer (docs/design/remote.md

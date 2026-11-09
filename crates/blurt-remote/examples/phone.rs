@@ -57,6 +57,7 @@ async fn main() {
     let t0 = Instant::now();
     let mut last_report = Instant::now();
     let mut zoomed = false;
+    let (mut last_key_ask, mut key_asks): (Option<Instant>, u32) = (None, 0);
     let cross = args.iter().any(|a| a == "--cross");
     let mut stage = 0;
     let mut displays: Vec<String> = vec![];
@@ -65,6 +66,12 @@ async fn main() {
             last_report = Instant::now();
             phone.send(&ToMac::ScreenReport(ScreenReport { frames, lost: a.dropped as i64, rtt: Some(0.01), received: bytes as i64 })).await;
             phone.send(&ToMac::Ping(t0.elapsed().as_secs_f64())).await;
+        }
+        // as the iOS app does: while a frame was lost (or none has come yet), ask for a keyframe, at most 4 times a second
+        if (a.waiting_for_key || frames == 0) && last_key_ask.is_none_or(|t: Instant| t.elapsed() >= Duration::from_millis(250)) {
+            last_key_ask = Some(Instant::now());
+            key_asks += 1;
+            phone.send(&ToMac::RequestKeyframe).await;
         }
         let el = t0.elapsed().as_secs_f64();
         if cross {
@@ -134,5 +141,5 @@ async fn main() {
     }
     phone.send(&ToMac::Screen(None)).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
-    println!("frames {frames} keyframes {keys} pieces {pieces} bytes {bytes} dropped {} cursor {cursors} → {out}", a.dropped);
+    println!("frames {frames} keyframes {keys} pieces {pieces} bytes {bytes} dropped {} keyframes asked {key_asks} cursor {cursors} → {out}", a.dropped);
 }
