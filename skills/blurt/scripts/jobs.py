@@ -1,8 +1,8 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Everything that is happening — a recording, a screenshot batch, voice input, processing, an agent
-session — is a job (contract K4). One JSON file per job, written only by its owner; everyone else appends events.
+"""Everything that is happening — a recording, a screenshot batch, voice input, processing — is a job (contract
+K4). One JSON file per job, written only by its owner; everyone else appends events.
 
   jobs.py new --type T [--project P] [--session S] [--parent J] [--title T] [--owner O]   → {"ok","id","path"}
   jobs.py step J STEP --state pending|running|done|failed|skipped [--progress X]
@@ -11,13 +11,14 @@ session — is a job (contract K4). One JSON file per job, written only by its o
   jobs.py get J                                     → {"ok","job": <effective state>}
   jobs.py list [--active] [--type T] [--project P] [--limit 50]   → {"ok","jobs":[…]} (newest first)
   jobs.py watch [--interval 0.5]                    one line of effective state per changed job, until killed
-  jobs.py gc                                        → {"ok","removed":[ids]} (never an agent job an unfinished
-                                                    item points at, whose worktree waits to be finished, or whose
-                                                    window still runs; an old one's dead window is closed with it)
+  jobs.py gc                                        → {"ok","removed":[ids]}
+
+Jobs of type "agent" (the in-app agent sessions of v0.9–v1.0, since removed) may still be on disk: list and watch
+skip them, get still reads one, and gc removes them.
 
 Files, in $BLURT_HOME/jobs/: <id>.json (the job; owner only, atomic replace, under <id>.lock when several owner
 processes may write it), <id>.events.jsonl (everyone else: one O_APPEND line each, < 4 KB), <id>.log (raw output),
-and a session's <id>.claude-settings.json / <id>.diff / <id>.prompt.md.
+and a run's <id>.prompt.md.
 
 Effective state = the JSON plus every event after "events_offset", in order: a step replaces the step with its id,
 "status" sets agent.status / status_at / status_source, "state" and "progress" replace, "items" are unioned, and a
@@ -41,15 +42,16 @@ from pathlib import Path
 
 # "route" (v0.8: projects.py sorting the inbox into projects) is still read — old job files, the Windows / Linux app
 # until it follows — but nothing here makes one: nothing moves items on its own now
-TYPES = ("record", "snap", "voice", "process", "route", "agent")
+TYPES = ("record", "snap", "voice", "process", "route")
+LEGACY_TYPES = ("agent",)  # the removed agent sessions: never made, listed or watched; gc deletes them
 STATES = ("queued", "running", "done", "failed", "cancelled")
 STEP_STATES = ("pending", "running", "done", "failed", "skipped")
 STEPS = {"record": ["capture", "finalize"], "snap": ["capture"], "voice": ["listen", "transcribe", "file"],
-         "process": ["prepare", "transcribe", "write", "frames"], "route": ["route"],
-         "agent": ["launch", "work", "finish"]}
-ERROR_CODES = ("auth", "quota", "network", "model", "skill", "tmux", "git", "conflict", "io", "agent_exit", "unknown")
+         "process": ["prepare", "transcribe", "write", "frames"], "route": ["route"]}
+ERROR_CODES = ("auth", "quota", "network", "model", "skill", "git", "conflict", "io", "agent_exit", "unknown")
 FINAL = ("done", "failed", "cancelled")
-ATTACHED = (".json", ".events.jsonl", ".log", ".lock", ".claude-settings.json", ".diff", ".prompt.md")
+ATTACHED = (".json", ".events.jsonl", ".log", ".lock", ".prompt.md",
+            ".claude-settings.json", ".diff")  # the last two: an old agent session's
 MAX_LINE = 4000
 KEEP_DAYS, KEEP_LAST = 14, 300
 _B32 = "0123456789abcdefghjkmnpqrstvwxyz"
@@ -142,13 +144,13 @@ def file_lock(p: Path, timeout: float = 10.0):
 
 
 def lock(job_id: str, timeout: float = 10.0):
-    """The owner lock: sessions.py's subcommands (dispatch, monitor, finish, stop…) all write the same job."""
+    """The owner lock, for when several of the owner's processes write the same job."""
     return file_lock(path(job_id, ".lock"), timeout)
 
 
 def create(type: str, *, project: str | None = None, session: str | None = None, parent: str | None = None,
            title: str | None = None, owner: str = "app", items: list[str] | None = None, captures: list[int] | None = None,
-           state: str = "running", agent: dict | None = None, job_id: str | None = None) -> dict:
+           state: str = "running", job_id: str | None = None) -> dict:
     if type not in TYPES:
         raise JobError("bad_type", f"type must be one of {', '.join(TYPES)}")
     t = time.time()
@@ -160,8 +162,6 @@ def create(type: str, *, project: str | None = None, session: str | None = None,
            "steps": [{"id": s, "state": "pending", "progress": None, "started": None, "ended": None} for s in STEPS[type]],
            "progress": None, "created": ts, "started": ts if state == "running" else None, "ended": None, "updated": ts,
            "events_offset": 0, "error": None}
-    if type == "agent":
-        job["agent"] = agent or {}
     p = path(job_id)
     if p.exists():
         raise JobError("exists", f"job {job_id} exists")
@@ -319,15 +319,18 @@ def finish(job: dict, state: str, error: dict | None = None) -> None:
         job["error"] = error
 
 
-def all_jobs() -> list[dict]:
+def all_jobs(legacy: bool = False) -> list[dict]:
+    """Every job, newest first; legacy = also the old agent-session jobs (LEGACY_TYPES), for gc."""
     out = []
     for p in jobs_dir().glob("j-*.json"):
         if p.name.count(".") != 1:  # <id>.json only, not <id>.claude-settings.json
             continue
         try:
-            out.append(effective(json.loads(p.read_text(encoding="utf-8"))))
-        except (OSError, ValueError, KeyError):
+            j = effective(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, ValueError, KeyError, TypeError):
             continue
+        if legacy or j.get("type") not in LEGACY_TYPES:
+            out.append(j)
     out.sort(key=lambda j: (j.get("created") or "", j["id"]), reverse=True)
     return out
 
@@ -338,77 +341,21 @@ def list_jobs(active: bool = False, type: str | None = None, project: str | None
     return rows[:limit] if limit else rows
 
 
-def referenced_jobs() -> set[str] | None:
-    """Job ids that unfinished items still point at (work.job of an item handed off, in progress or to verify), from
-    index.db; None when the index can't be read."""
-    try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import index
-        con = index.connect(readonly=True)
-        try:
-            rows = con.execute("SELECT DISTINCT work_job FROM items WHERE work_job IS NOT NULL"
-                               " AND state IN ('handed_off', 'in_progress', 'to_verify')").fetchall()
-        finally:
-            con.close()
-    except Exception:  # noqa: BLE001 — no index yet / another schema: keep every agent job
-        return None
-    return {r[0] for r in rows}
-
-
-def _keeps_work(j: dict) -> bool:
-    """An agent's worktree that still exists and was never merged, turned into a PR or discarded: the job is the
-    only way back to it (Review changes), so it stays."""
-    a = j.get("agent") or {}
-    wt = a.get("worktree")
-    wt = wt.get("path") if isinstance(wt, dict) else wt  # sessions.py stores {path, branch, base, …}
-    if not wt or not isinstance(wt, str) or a.get("finish"):
-        return False
-    try:
-        return Path(wt).is_dir()
-    except OSError:
-        return False
-
-
-def gc(live_windows: set[str] | None = None, now: float | None = None, referenced: set[str] | None = None,
-       dead_windows: dict[str, str] | None = None, kill_window=None) -> list[str]:
-    """Remove jobs that ended more than 14 days ago and aren't among the newest 300. Never an agent job whose tmux
-    window is still alive (live_windows = job ids with a running window; None = ask sessions.py), whose worktree waits
-    to be finished, or that an unfinished item still points at (referenced; None = ask index.db). An agent job whose
-    window is only a dead one kept for its scrollback (remain-on-exit, up to 50k lines in Blurt's tmux server) no
-    longer pins it: past those 14 days the window is closed (dead_windows = job id → window id) and the job goes.
-    Hand-off notes stay."""
-    if live_windows is None:
-        try:
-            sys.path.insert(0, str(Path(__file__).resolve().parent))
-            import sessions
-            wins = sessions.panes()
-            live_windows = {j for j, w in wins.items() if not w.get("dead")}
-            dead_windows = {j: w["window"] for j, w in wins.items() if w.get("dead")}
-            kill_window = kill_window or (lambda wid: sessions.tmux("kill-window", "-t", wid, check=False))
-        except Exception:  # noqa: BLE001 — no tmux / not importable: keep every agent job
-            live_windows = None
-    dead_windows = dead_windows or {}
-    if referenced is None:
-        referenced = referenced_jobs()
+def gc(now: float | None = None) -> list[str]:
+    """Remove jobs that ended more than 14 days ago and aren't among the newest 300, and every old agent-session job
+    (LEGACY_TYPES), whatever its state: nothing runs them any more. An item that still names one forgets it at the
+    next `items.py migrate --all` (repair_work) and keeps its state. Hand-off notes stay."""
     now = time.time() if now is None else now
-    jobs = all_jobs()
-    keep = {j["id"] for j in jobs[:KEEP_LAST]}
+    jobs = all_jobs(legacy=True)
+    keep = {j["id"] for j in [j for j in jobs if j.get("type") not in LEGACY_TYPES][:KEEP_LAST]}
     removed = []
     for j in jobs:
-        if j["id"] in keep or j.get("state") not in FINAL:
-            continue
-        ended = parse_iso(j.get("ended")) or parse_iso(j.get("updated"))
-        if ended is None or now - ended < KEEP_DAYS * 86400:
-            continue
-        if j.get("type") == "agent":
-            if (live_windows is None or j["id"] in live_windows or referenced is None
-                    or j["id"] in referenced or _keeps_work(j)):
+        if j.get("type") not in LEGACY_TYPES:
+            if j["id"] in keep or j.get("state") not in FINAL:
                 continue
-            if j["id"] in dead_windows:
-                if kill_window is None:
-                    continue  # can't close it from here: keep the job with its window
-                with contextlib.suppress(Exception):
-                    kill_window(dead_windows[j["id"]])
+            ended = parse_iso(j.get("ended")) or parse_iso(j.get("updated"))
+            if ended is None or now - ended < KEEP_DAYS * 86400:
+                continue
         for suffix in ATTACHED:
             with contextlib.suppress(OSError):
                 path(j["id"], suffix).unlink()
@@ -418,12 +365,15 @@ def gc(live_windows: set[str] | None = None, now: float | None = None, reference
 
 def watch(interval: float = 0.5) -> None:
     seen: dict[str, tuple] = {}
+    skip: set[str] = set()  # old agent-session jobs: never printed
     while True:
         for p in jobs_dir().glob("j-*.json"):
             if p.name.count(".") != 1:
                 continue
             jid = p.stem
             ev = path(jid, ".events.jsonl")
+            if jid in skip:
+                continue
             try:
                 sig = (p.stat().st_mtime_ns, ev.stat().st_mtime_ns if ev.exists() else 0)
             except OSError:
@@ -431,9 +381,13 @@ def watch(interval: float = 0.5) -> None:
             if seen.get(jid) != sig:
                 seen[jid] = sig
                 try:
-                    print(json.dumps(get(jid), ensure_ascii=False), flush=True)
+                    j = get(jid)
                 except JobError:
-                    pass
+                    continue
+                if j.get("type") in LEGACY_TYPES:
+                    skip.add(jid)
+                    continue
+                print(json.dumps(j, ensure_ascii=False), flush=True)
         time.sleep(interval)
 
 

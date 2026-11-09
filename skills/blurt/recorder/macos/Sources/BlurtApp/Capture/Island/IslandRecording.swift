@@ -1,7 +1,6 @@
 // The island while recording (it replaced the HUD): snaps fly into it, its snap button is ⌥A (area, note, card; the
-// take goes on), it counts
-// the items live.py spots (<session>/live/drafts.jsonl) and shows the live caption line under itself
-// (live/transcript.jsonl). Nothing pops up while recording (K4) — only the counts change.
+// take goes on), it counts the take's snaps and shows the live caption line under itself (live/transcript.jsonl).
+// Nothing pops up while recording (K4) — only the count changes.
 import AppKit
 import BlurtCore
 
@@ -66,8 +65,6 @@ extension Island {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.recordingChanged() }
         recordingChanged()
     }
-
-    var spottedCount: Int { watch?.drafts.order.count ?? 0 }
 
     /// The island's snap button: exactly ⌥A while recording (AppDelegate.hotkey(.snap)) — the snap flow (drag an area,
     /// its note, its card) into the take, and the recording keeps going. (It used to take a still of the whole
@@ -148,9 +145,8 @@ extension Island {
     }
 }
 
-/// Follows a recording's live/ sidecar: the drafts live.py spots and the latest caption line.
+/// Follows a recording's live/ sidecar: the latest caption line (live.py's transcript).
 final class RecordingWatch {
-    let drafts: DraftsWatcher
     private let transcript: JSONLTail
     private let caption = CaptionPanel()
     private var timer: Timer?
@@ -158,7 +154,6 @@ final class RecordingWatch {
     private var pending: String?
 
     init(session: URL) {
-        drafts = DraftsWatcher(session: session)
         transcript = JSONLTail(session.appendingPathComponent("live/transcript.jsonl"))
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.poll() }
         RunLoop.main.add(t, forMode: .common)
@@ -166,9 +161,6 @@ final class RecordingWatch {
     }
 
     private func poll() {
-        let before = drafts.order.count
-        drafts.poll()
-        if drafts.order.count != before { island.refresh() }
         if let l = transcript.poll().last, let text = l["text"] as? String { pending = text }
         // a sentence that closes while paused is shown on resume rather than dropped
         guard liveCaptionOn, let text = pending, let r = island.rec, !r.isPaused else { return }

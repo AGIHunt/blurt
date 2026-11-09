@@ -660,7 +660,7 @@ struct OnboardingView: View {
         return VStack(alignment: .leading, spacing: 0) {
             OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.key.title"), detail: detail) {
                 HStack(spacing: 8) {
-                    // the user's own agent sets it up (agent-setup.md §4); hidden while none can run a session
+                    // the user's own agent sets it up (agent-setup.md §4): the instruction to copy into it
                     AgentSetupButton(look: .onboarding)
                     Button(T(connected != nil ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
                 }

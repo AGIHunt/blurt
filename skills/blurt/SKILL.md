@@ -52,11 +52,18 @@ export). Start a recording right away only when the user asked for one ("开始�
 **With the Blurt app installed** (`/Applications/Blurt.app` or `~/Applications/Blurt.app`, macOS): start the
 recording in the app, so it records with the app's own Screen Recording permission — `record.py start` runs the
 recorder under the app hosting you (Terminal, iTerm, Codex…), which then needs that permission too and a restart.
-`pgrep -xq blurt-recorder || { open -a Blurt; sleep 3; }` then `open blurt://record`: the notch asks once (one click),
-the user picks the area and talks, ⌥R or *Finish* stops, and the app organizes the recording into items in its
-project (Settings → Agents picks the agent). Tell the user that in two lines; afterwards `index.py search` / the MCP
-tools find the items. Use `record.py start` (below) when there is no app, on Windows/Linux, or when the user wants
-the recording processed here in this chat.
+Run `record.py app` **in the background** (see *Waiting* below): it starts Blurt if needed and opens
+`blurt://record`. The notch asks once (one click), the user picks the area and talks, ⌥R or *Finish* stops, and the
+app organizes the recording into items in its project (Settings → Agents picks the agent). Tell the user that in two
+lines. The command prints one JSON line per change and ends with the outcome:
+- `organized` (`session`, `items`: how many) → `items.py list <session>`, tell the user what came out in a few lines,
+  then offer §6 / §7. The items are in Blurt's main window; to go through them here, start `review.py <session>` (§3).
+- `saved` (Save Video Only, or the app doesn't organize recordings) or `organize_failed` (`error`: say it in one line)
+  → do §2–§5 here on that `session`. `failed` → the take broke; its `partial` video (if any) can still go through §2.
+- `cancelled` / `not_started` (exit 2) → acknowledge and stop. `waiting` (after `--timeout`) → run its `again`.
+The user started a take themself (⌥R) and asks you to pick it up → `record.py app --no-open`.
+Use `record.py start` (below) when there is no app, on Windows/Linux, or when the user wants the recording processed
+here in this chat.
 
 **From the chat:** if the thing to look at is a local dev server/app in this repo, check it is running. Start
 `record.py start` **in the background** (`--last-region` to reuse the last area) and tell the user in a few lines
@@ -113,9 +120,7 @@ when several people's recordings are combined.
 Recordings made with Blurt are usually transcribed *while* they record (`live/`): then it returns at once with
 `"live": true` — same text as a whole-file run; `--force` redoes it (e.g. with a `--prompt` glossary). A shots
 session (`meta.json` `"mode": "shots"`): `transcribe.py run <session>` turns each voice note into `"said"` in
-`shots.jsonl`. `live/drafts.jsonl` (if present; later lines per `id` win, `drop` removes) is a small model's rough
-outline made during the recording: a starting point for §3, not authoritative — check every item against the
-transcript.
+`shots.jsonl`.
 Recorded with system audio (`record.py start --system-audio`, or the app's Settings → General toggle — calls, product demos),
 the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lines are the user. Speaker bleed can
 repeat a system line on the mic.
@@ -129,10 +134,8 @@ French into fake English), means the language needs another backend: set it up (
 ## 3. Understand → items (text first), open the review page
 
 The user is waiting: write the items as text, open the page, add frames while they read (§4). Read the whole
-transcript. `live/drafts.jsonl` (items drafted during the recording; last line per `id` wins, `op: drop`
-= gone) is your outline if it exists: check each draft against the transcript, merge / split / drop freely. Look at
-frames now only when the words alone can't tell what an item is about. Decide **per item** what it is — the
-recording decides, not a mode switch:
+transcript. Look at frames now only when the words alone can't tell what an item is about. Decide **per item** what
+it is — the recording decides, not a mode switch:
 
 | kind | when | lens |
 |---|---|---|
@@ -260,13 +263,13 @@ prototype / spec of the top one?".
 
 ## 7. Work on items (and say so)
 
-When the user asks you to handle items — "fix these", a Blurt session that started you, a hand-off note
-(`~/.blurt/handoff/H-….md`, see `reference/sessions.md`) — for each item:
+When the user asks you to handle items — "fix these", or a hand-off note they pasted (`~/.blurt/handoff/H-….md`,
+written by `handoff.py create`) — for each item:
 1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <uid|id>` and open the frame files
    (absolute paths). Look at the frames; they are the evidence.
 2. `items.py state <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
    shows it in progress.
-3. Do it, smallest change that does it. Commit only when the hand-off note says so (a worktree session); never push.
+3. Do it, smallest change that does it. Don't commit unless the user asks; never push.
 4. `items.py state <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
    (`--commit SHA` / `--pr URL` if there is one; MCP: `mark_fixed(uid, state="fixed", note=…)`); can't or shouldn't →
    `--claim wontfix --note "<why>"`. That is your claim: the item waits in the user's inbox as *to verify* — only
@@ -276,10 +279,8 @@ wontfix and discarded. You only ever move items to `in_progress` / `to_verify` (
 claim back). `--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The older forms
 `items.py work …` and `items.py fix <session> <id> --state fixing|fixed|wontfix` still work. Never set `state` or
 `work` with `patch`, and never edit item files yourself.
-A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Started
-from Claude desktop with the items in the prompt itself, your reports (steps 2 and 4) are the only progress the user
-sees — make both. Don't run `sessions.py continue-desktop` unless the user asked; without the blurt MCP installed for
-Claude it refuses (`desktop_no_mcp`), and `--without-mcp` is only for when the user agreed to mark the items by hand.
+A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Your
+reports (steps 2 and 4) are the only progress the user sees in Blurt — make both.
 
 ## 8. Across recordings: index and MCP
 
@@ -296,9 +297,6 @@ The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_serv
 `bundle_items` (= `export_local.py bundle`: the hand-off .zip and a paragraph to post with it, §6). The
 plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
 shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
-
-Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off notes and the jobs the app shows:
-`reference/sessions.md`.
 
 ## 9. Set up models
 

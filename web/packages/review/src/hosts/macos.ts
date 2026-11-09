@@ -22,7 +22,7 @@ export interface HostInfo {
   scope?: Scope;
   /** v2: the session dir (same as scope {session}) */
   session?: string;
-  /** the native banner above the page has the item's Open Session (BlurtHost.sessionBanner) */
+  /** the native banner above the page says who has the item (BlurtHost.sessionBanner) */
   sessionBanner?: boolean;
   /** review.py asked for this batch and waits for its confirmation (BlurtHost.agentWaiting) */
   agentWaiting?: boolean;
@@ -33,7 +33,7 @@ type W = Window & {
   blurtHostInfo?: HostInfo;
 };
 
-export const OPTIONAL = ["reveal", "quickLook", "openCode", "dispatch", "handoff", "openSession", "reviewChanges", "registerDragRects", "download"] as const;
+export const OPTIONAL = ["reveal", "quickLook", "openCode", "handoff", "registerDragRects", "download"] as const;
 
 /** the scope from blurtHostInfo, else the page URL (?project= / ?session=) */
 export function scopeFrom(win: Window, info: HostInfo = {}): Scope | undefined {
@@ -126,10 +126,7 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000, toastTi
   if (has.has("reveal")) host.reveal = (path) => notify("reveal", { path });
   if (has.has("quickLook")) host.quickLook = (path) => notify("quickLook", { path });
   if (has.has("openCode")) host.openCode = (ref) => notify("openCode", { ref });
-  if (has.has("dispatch")) host.dispatch = (uids) => notify("dispatch", { uids });
   if (has.has("handoff")) host.handoff = (uids, what) => call<HandoffResult>("handoff", { uids, what });
-  if (has.has("openSession")) host.openSession = (job) => notify("openSession", { job });  // WebHostController reads {job}
-  if (has.has("reviewChanges")) host.reviewChanges = (job) => notify("reviewChanges", { job });
   if (info.sessionBanner) host.sessionBanner = true;
   if (info.agentWaiting) host.agentWaiting = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });

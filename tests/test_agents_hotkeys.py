@@ -55,14 +55,6 @@ class Order(unittest.TestCase):
         self.assertEqual(d["run"], ["exec", "{prompt}"])
         self.assertEqual(d["status"]["args"], ["login", "status"])
 
-    def test_live_drafts_follow_the_same_order(self):
-        import live
-        with mock.patch.object(live.shutil, "which", side_effect=lambda n: f"/bin/{n}"):
-            self.assertEqual([a for a, _ in live.Drafter._agents({"agents": ["codex", "kimi", "claude"]})], ["codex", "claude"])
-            self.assertEqual([a for a, _ in live.Drafter._agents({"agents": ["codex"], "live_drafts_agent": "claude"})],
-                             ["claude", "codex"])
-            self.assertEqual([a for a, _ in live.Drafter._agents({})], ["claude", "codex"])
-
 
 class Login(unittest.TestCase):
     def setUp(self):

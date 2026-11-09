@@ -500,10 +500,10 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
   const [sum, setSum] = useCloud();
   const [adding, setAdding] = useState(false);
   const [agentSheet, setAgentSheet] = useState(false);
-  // the agents that can run a setup session here: installed, with an interactive session (AgentSetupAgents)
-  const [setupAgents, setSetupAgents] = useState<{ id: string; name: string }[]>([]);
+  // Set Up with Agent… shows once an agent is installed here: the user pastes its instruction into that agent
+  const [hasAgent, setHasAgent] = useState(false);
   useEffect(() => {
-    api.detect({ login: false }).then((d) => setSetupAgents(d.agents.filter((a) => a.installed && (a.session ?? a.interactive === 'terminal')).map((a) => ({ id: a.id, name: a.name }))), () => {});
+    api.detect({ login: false }).then((d) => setHasAgent(d.agents.some((a) => a.installed)), () => {});
   }, []);
   const { models, err, dl, failed, failedId, load, download } = useDictationModels();
   const rec = models?.models.find((m) => m.id === models.recommended);
@@ -606,10 +606,10 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
         ))}
         {(left.length > 0 || !sum?.services.length) ? (
           <Line icon="plus" title={S('models.services.add.title')} detail={!sum?.services.length ? S('models.services.empty') : undefined}>
-            {win && setupAgents.length > 0 && <button onClick={() => setAgentSheet(true)}>{S('models.agent.button')}</button>}
+            {win && hasAgent && <button onClick={() => setAgentSheet(true)}>{S('models.agent.button')}</button>}
             <button className={sum?.services.length ? '' : 'primary'} onClick={() => setAdding(true)}>{S('models.services.add')}</button>
           </Line>
-        ) : win && setupAgents.length > 0 && (
+        ) : win && hasAgent && (
           // every curated service is in, so the Add row is gone: Set Up with Agent… keeps a row of its own
           <Line icon="terminal" title={S('models.agent.sheet.title')} flash="speech_agent_setup_start">
             <button onClick={() => setAgentSheet(true)}>{S('models.agent.button')}</button>
@@ -660,7 +660,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
         </Group>
       )}
       {adding && <AddCloudSheet onClose={() => setAdding(false)} onDone={(s) => (setSum(s), setAdding(false))} presets={left.length ? left : PRESETS.filter((p) => !p.pair || volcOffered())} />}
-      {agentSheet && <AgentSetupSheet agents={setupAgents} onClose={() => setAgentSheet(false)} onToast={onToast} />}
+      {agentSheet && <AgentSetupSheet onClose={() => setAgentSheet(false)} onToast={onToast} />}
     </Page>
   );
 }
@@ -766,32 +766,16 @@ function useInstruction() {
   return text;
 }
 
-/** "Set Up Models with an Agent": the instruction to copy (the main way), or Open in Terminal — an agent Blurt starts
- *  in its own terminal on that instruction (control.rs `agent_setup_start`). */
-function AgentSetupSheet({ agents, onClose, onToast }: { agents: { id: string; name: string }[]; onClose: () => void; onToast: (m: string) => void }) {
+/** "Set Up Models with an Agent": the instruction to copy into the user's own agent; its calls to Blurt's control
+ *  endpoint ask the user to Allow first (control.rs). */
+function AgentSetupSheet({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
   const instruction = useInstruction();
   const [copied, setCopied] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [openIn, setOpenIn] = useState<MenuAt | null>(null);
   useEffect(() => {
-    // Esc closes the open menu first (it handles its own), then the sheet
     const k = (e: KeyboardEvent) => e.key === 'Escape' && !e.defaultPrevented && onClose();
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
-  const start = async (id: string) => {
-    setStarting(true);
-    setError(null);
-    try {
-      const st = await api.agentSetupStart(id);
-      onClose();
-      if (st.job) showJob(st.job);
-    } catch (e) {
-      setError(String(e));
-      setStarting(false);
-    }
-  };
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet st-sheet" role="dialog" aria-label={S('models.agent.sheet.title')} data-testid="agent-setup-sheet">
@@ -800,20 +784,7 @@ function AgentSetupSheet({ agents, onClose, onToast }: { agents: { id: string; n
           <p className="st-foot">{S('models.agent.sheet.detail')}</p>
           <div className="st-well st-instruction" tabIndex={0}>{instruction}</div>
           <p className="st-foot">{S('models.agent.note')}</p>
-          {error && <p className="st-foot st-warn">{error}</p>}
           <div className="st-ctl" style={{ marginTop: 12 }}>
-            {agents.length > 0 && (
-              // Open in Terminal ▾: the app's themed menu of the agents that can run it (never the WebView's <select>,
-              // drawn light in a dark window)
-              <>
-                <button style={{ marginRight: 'auto' }} disabled={starting} aria-haspopup="menu" aria-expanded={!!openIn}
-                  onClick={(e) => setOpenIn(openIn ? null : { x: 0, y: 0, anchor: e.currentTarget, align: 'start', minWidth: e.currentTarget.offsetWidth })}>
-                  {S('models.agent.sheet.open')} <Icon name="chevron-down" size={11} />
-                </button>
-                {openIn && <Menu at={openIn} label={S('models.agent.sheet.open')} onClose={() => setOpenIn(null)}
-                  entries={agents.map((a) => ({ label: a.name, run: () => start(a.id) }))} />}
-              </>
-            )}
             <button onClick={onClose}>{S(copied ? 'models.sheet.done' : 'models.cancel')}</button>
             <button className="primary" disabled={!instruction} onClick={() => api.copyText(instruction).then(() => setCopied(true), (e) => onToast(String(e)))}>
               <Icon name={copied ? 'check' : 'copy'} size={13} /> {S(copied ? 'models.agent.sheet.copied' : 'models.agent.sheet.copy')}
@@ -825,12 +796,7 @@ function AgentSetupSheet({ agents, onClose, onToast }: { agents: { id: string; n
   );
 }
 
-/** The session's terminal (the main window's sessions view, as the tray's nav does). */
-function showJob(job: string) {
-  import('@tauri-apps/api/event').then(({ emit }) => emit('nav', { job })).catch(() => {});
-}
-
-/** The live list (the Mac's AgentSetupProgressView): who is setting up, Show Terminal / Stop (Done once it is over),
+/** The live list (the Mac's AgentSetupProgressView): who is setting up, Stop (Done once it is over),
  *  then one line per thing done. `onChange`: a step finished — the pane reads its rows again. */
 function AgentSetupProgress({ onChange }: { onChange: () => void }) {
   const [st, setSt] = useState<AgentSetupState | null>(null);
@@ -851,7 +817,6 @@ function AgentSetupProgress({ onChange }: { onChange: () => void }) {
   return (
     <>
       <Line icon="terminal" title={title} flash="speech_agent_setup">
-        {st.active && st.job && <button onClick={() => showJob(st.job!)}>{S('models.agent.show')}</button>}
         {st.active ? <button onClick={() => api.agentSetupStop().then(setSt)}>{S('models.agent.stop')}</button>
           : <button onClick={() => api.agentSetupDismiss().then(setSt)}>{S('models.sheet.done')}</button>}
       </Line>

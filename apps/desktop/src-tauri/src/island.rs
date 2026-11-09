@@ -1,6 +1,6 @@
 //! The island on Windows / Linux (contract K7): a top-centre floating pill — the same component as the macOS notch
-//! island, with lighter motion. It shows the current project, recording / voice / sorting state, the jobs under way,
-//! agent sessions that need you and the review count, and holds the unfiled captures as cards under it.
+//! island, with lighter motion. It shows the current project, recording / voice / sorting state, the jobs under way
+//! and the review count, and holds the unfiled captures as cards under it.
 //!
 //! The window and its click-through live in `blurt_capture::overlay::island`; this module feeds it (`state` and
 //! `cards` ops) and acts on what the user does there. It also applies K4's reminder rules: never open anything by
@@ -27,7 +27,7 @@ use crate::capture::{self, Control};
 mod card_drag_win;
 use crate::jobs::{self, Notice};
 use crate::projects::{self, Registry};
-use crate::{hotkeys, l10n, paths, sessions, settings, AppState};
+use crate::{agents, hotkeys, l10n, paths, settings, AppState};
 
 #[derive(Default)]
 pub struct Hub {
@@ -242,11 +242,6 @@ pub fn state(app: &AppHandle) -> Value {
         .take(3)
         .map(|j| json!({"id": j["id"], "type": j["type"], "title": j["title"], "step": current_step(j), "progress": j["progress"]}))
         .collect();
-    let sessions_view: Vec<Value> = active
-        .iter()
-        .filter(|j| j["type"] == "agent" && matches!(j.pointer("/agent/status").and_then(Value::as_str), Some("waiting_input" | "turn_done" | "error")))
-        .map(|j| json!({"job": j["id"], "agent": j.pointer("/agent/id"), "status": j.pointer("/agent/status"), "items": jobs::window_items(j)}))
-        .collect();
     let now = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
     json!({"op": "state", "state": {
         "project": reg.current_project().map(short),
@@ -255,7 +250,7 @@ pub fn state(app: &AppHandle) -> Value {
         "toReview": summary["inbox"].as_i64().unwrap_or(0), // K3 "needs you": new + to verify
         // the 3-2-1 isn't recording yet (the Mac's island takes the take once it rolls: recording.md §3.7)
         "recording": if cap["recording"] == true && cap["countdown"] != true {
-            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "spotted": cap["spotted"], "pen": cap["pen"], "at": now})
+            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "pen": cap["pen"], "at": now})
         } else { Value::Null },
         // how it ends (held, at a pause, by the key / Done) for the island's hint; whatever else the voice note says
         // about itself (Structured, its cap) rides along
@@ -267,7 +262,6 @@ pub fn state(app: &AppHandle) -> Value {
         "dictation": dictation_state(),
         "hatching": active.iter().filter(|j| j["type"] == "process").count(),
         "jobs": jobs_view,
-        "sessions": sessions_view,
         "hotkeys": hotkey_labels(app),
         // Settings → General → Cards, as the island needs them (the shutter on a recording's snaps, a drag's caption)
         "cardPrefs": {"snapSound": record_flag("snap_sound", false), "drag": card_drag_mode()},
@@ -368,22 +362,9 @@ pub fn notices(app: &AppHandle, list: Vec<Notice>) {
                     continue; // K4: nothing while recording
                 }
                 send(app, json!({"op": "toast", "kind": "failed", "code": code, "job": job, "type": kind}));
-                // an agent session's failure is SessionNotifier's (Notice::Agent, status error)
-                if !in_front(app) && kind != "agent" {
+                if !in_front(app) {
                     let title = l10n::tf("notify.failed", &[("title", l10n::t(&format!("job.type.{kind}")))]);
                     system_notify(app, "failed", &title, &l10n::t(&format!("error.{}", if code == "auth" { "no_agent" } else { "unknown" })));
-                }
-            }
-            Notice::Agent { job, status, .. } => {
-                send(app, json!({"op": "attention", "job": job, "status": status}));
-                // SessionNotifier (sessions.rs): "Needs your input · project" / "SF-9 · title", the same kind within 10 s
-                // merged into one; never a sound
-                if !recording && !in_front(app) && on("agent") {
-                    if let Some(j) = jobs::load(&job) {
-                        let (title, body, line) = sessions::notify_text(&j, &status);
-                        let (title, body) = sessions::merge_recent(&status, title, body, line);
-                        sessions::show_notification(app, &title, &body, &job);
-                    }
                 }
             }
         }
@@ -426,7 +407,7 @@ fn file_cards(app: &AppHandle, batches: Vec<(PathBuf, Vec<u64>)>, project: Optio
     let app = app.clone();
     std::thread::spawn(move || {
         for (session, ns) in batches {
-            if let Err(code) = sessions::process(&app, &session, Some(ns), project.clone(), by, None) {
+            if let Err(code) = agents::process(&app, &session, Some(ns), project.clone(), by, None) {
                 send(&app, json!({"op": "toast", "kind": "error", "code": code}));
                 break;
             }
@@ -573,7 +554,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
                     }
                 }
                 for (s, ns) in by_session {
-                    if let Err(code) = sessions::process(&app, &s, Some(ns), project.clone(), None, None) {
+                    if let Err(code) = agents::process(&app, &s, Some(ns), project.clone(), None, None) {
                         send(&app, json!({"op": "toast", "kind": "error", "code": code}));
                         break;
                     }
@@ -664,7 +645,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             crate::show_main(app);
             let _ = app.emit("nav", json!({"view": "inbox"}));
         }
-        "open.session" => {
+        "open.job" => {
             crate::show_main(app);
             let _ = app.emit("nav", json!({"job": v["job"]}));
         }
@@ -683,7 +664,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             let project = j["project"].as_str().map(str::to_owned);
             let app = app.clone();
             std::thread::spawn(move || {
-                let _ = sessions::process(&app, &session, captures, project, None, None);
+                let _ = agents::process(&app, &session, captures, project, None, None);
                 refresh(&app);
             });
         }

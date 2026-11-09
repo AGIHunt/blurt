@@ -37,7 +37,6 @@
 "capture.cards.none" = "No cards";
 "capture.card.tip_hint" = "Click to copy · Drag into any app";
 "capture.card.tip_keys" = "← → Choose · ↩ Copy · ⌫ Delete · esc Close";
-"capture.cards.more_caption" = "Show all";
 "capture.cards.overview_heading" = "Cards";
 "capture.cards.overview_hint" = "Click to copy · Double-click to edit the note · Drag into any app";
 "capture.cards.overview_keys" = "← → Choose · ↩ Copy · ⌫ Delete · esc Close";

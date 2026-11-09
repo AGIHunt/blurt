@@ -1,8 +1,8 @@
 /* tauri host (C6 / C8, protocol v3): invoke('items_doc' | 'items_poll' | 'items_ops' | 'handoff_create' | 'reveal', …)
    with the scope. Uses the IPC global Tauri 2 always injects (__TAURI_INTERNALS__), so the canvas needs no
    @tauri-apps/api import. Files load through the asset protocol (convertFileSrc), which the shell scopes to the
-   registered stores, session dirs and $BLURT_HOME/handoff. dispatch / openSession are shell navigation: the desktop
-   app adds them to this host (web/apps/desktop/src/host.ts). */
+   registered stores, session dirs and $BLURT_HOME/handoff. Hand off is `handoff_create` (handoff.py --to external
+   --mark; the shell copies the instruction or the full text). */
 import { isAbs, type BlurtHost, type HandoffResult, type LoadResult, type OpsResult, type PollResult, type Scope, type UserOp } from "../host";
 
 interface Internals {

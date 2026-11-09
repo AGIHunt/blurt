@@ -36,9 +36,9 @@ const projectEdits: Record<string, Record<string, unknown>> = {};
 const removedProjects = new Set<string>();
 const projects = () => projectList().filter((p) => !removedProjects.has(p.id)).map((p) => ({ ...p, ...projectEdits[p.id] }));
 const projectList = () => [
-  { id: 'p1', name: 'storefront', key: 'SF', slug: 'storefront', path: `${H}/code/storefront`, store: `${H}/code/storefront/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-22T09:40:00+02:00', ...counts('p1') },
-  { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-21T17:10:00+02:00', ...counts('p2') },
-  { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, worktree: false, last_used: '2026-10-20T11:00:00+02:00', ...counts('p3') },
+  { id: 'p1', name: 'storefront', key: 'SF', slug: 'storefront', path: `${H}/code/storefront`, store: `${H}/code/storefront/.blurt`, kind: 'repo', exists: true, last_used: '2026-10-22T09:40:00+02:00', ...counts('p1') },
+  { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, last_used: '2026-10-21T17:10:00+02:00', ...counts('p2') },
+  { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, last_used: '2026-10-20T11:00:00+02:00', ...counts('p3') },
 ];
 const inbox = () => ({ id: 'inbox', name: L('Unassigned', '未归类'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, ...counts('inbox') });
 
@@ -53,14 +53,14 @@ const items: MItem[] = [
   { uid: 'u01', id: 'SF-12', project: 'p1', kind: 'issue', title: L('Checkout button does nothing on Safari', 'Safari 上结算按钮点了没反应'), quote: L('I click checkout and nothing happens — no spinner, nothing.', '我点结算，什么都没发生，也没有加载。'), state: 'new', severity: 'high', session: S1, age: 0.4, actual: L('No request is sent; the console shows a TypeError in cart.ts', '没有发请求，控制台在 cart.ts 报 TypeError'), expected: L('Goes to the payment step', '进入付款步骤'), steps: [L('Add any product to the cart', '把任意商品加入购物车'), L('Open the cart in Safari 18', '在 Safari 18 打开购物车'), L('Click Checkout', '点结算')], code_refs: ['web/src/cart/cart.ts:118'] },
   { uid: 'u02', id: 'SF-13', project: 'p1', kind: 'issue', title: L('Price filter resets after going back', '返回后价格筛选被重置'), state: 'new', severity: 'medium', session: S1, age: 0.5 },
   { uid: 'u03', id: 'SF-14', project: 'p1', kind: 'idea', title: L('Show delivery date on the product card', '商品卡片上显示预计送达日期'), state: 'new', session: S1, age: 0.6, why: L('People ask support “when will it arrive?” more than anything else', '客服被问最多的就是「什么时候到」') },
-  { uid: 'u04', id: 'SF-9', project: 'p1', kind: 'issue', title: L('Avatar upload returns 500', '头像上传返回 500'), state: 'in_progress', work_to: 'session', work_agent: 'claude', severity: 'high', age: 2 },
+  { uid: 'u04', id: 'SF-9', project: 'p1', kind: 'issue', title: L('Avatar upload returns 500', '头像上传返回 500'), state: 'in_progress', work_to: 'external', severity: 'high', age: 2 },
   { uid: 'u05', id: 'SF-10', project: 'p1', kind: 'task', title: L('Translate the checkout emails into German', '把结算邮件翻译成德语'), state: 'handed_off', work_to: 'external', age: 5 },
   { uid: 'u06', id: 'SF-7', project: 'p1', kind: 'issue', title: L('Search results flicker while typing', '输入时搜索结果闪烁'), state: 'to_verify', work_agent: 'codex', severity: 'medium', age: 20 },
   { uid: 'u07', id: 'SF-5', project: 'p1', kind: 'note', title: L('Competitors all show stock levels', '竞品都显示库存数量'), state: 'todo', age: 48 },
   { uid: 'u08', id: 'SF-3', project: 'p1', kind: 'issue', title: L('Footer links overlap on small phones', '小屏手机上页脚链接重叠'), state: 'done', severity: 'low', age: 90 },
   { uid: 'u09', id: 'SF-2', project: 'p1', kind: 'idea', title: L('Dark mode for the storefront', '商店的深色模式'), state: 'wontfix', age: 120 },
   { uid: 'u10', id: 'MA-4', project: 'p2', kind: 'issue', title: L('Onboarding skips the notifications step', '新手引导跳过了通知那一步'), state: 'new', severity: 'medium', age: 7 },
-  { uid: 'u11', id: 'MA-3', project: 'p2', kind: 'task', title: L('Ship the iPad layout', '上线 iPad 布局'), state: 'in_progress', work_to: 'session', work_agent: 'codex', age: 26 },
+  { uid: 'u11', id: 'MA-3', project: 'p2', kind: 'task', title: L('Ship the iPad layout', '上线 iPad 布局'), state: 'in_progress', work_to: 'external', age: 26 },
   { uid: 'u12', id: 'LN-2', project: 'p3', kind: 'note', title: L('Keynote: open with the 5-minute demo', '发布会：用 5 分钟演示开场'), state: 'todo', age: 70 },
   { uid: 'u13', id: 'IN-1', project: 'inbox', kind: 'idea', title: L('A weekly digest of what got fixed', '每周发一份修好了什么的周报'), state: 'new', session: S2, age: 0.2, suggested: 'p3' },
   { uid: 'u15', id: 'SF-6', project: 'p1', kind: 'idea', title: L('Confetti when an order goes through', '下单成功时撒彩带'), state: 'discarded', restore_to: 'new', age: 30 },
@@ -106,27 +106,6 @@ function doc(scope: { session?: string; project?: string }) {
   };
 }
 
-const sessions = () => [
-  { job: 'j-20261022-094100-k2m4', project: 'p1', agent: 'claude', items: ['u04'], window: 'SF-9', status: 'waiting_input', status_at: '2026-10-22T09:52:00+02:00', worktree: `${H}/code/.storefront-worktrees/SF-9`, branch: 'blurt/sf-9-avatar-upload', cwd: `${H}/code/.storefront-worktrees/SF-9`, started: new Date((now - 1500) * 1000).toISOString(), ended: null, exit: null },
-  { job: 'j-20261021-161000-a7q2', project: 'p2', agent: 'codex', items: ['u11'], window: 'MA-3', status: 'running', status_at: null, worktree: null, branch: null, cwd: `${H}/code/mobile-app`, started: new Date((now - 7200) * 1000).toISOString(), ended: null, exit: null },
-];
-
-const TERM = [
-  '\x1b[38;5;209m╭─────────────────────────────────────────────────────────╮\x1b[0m\r\n',
-  '\x1b[38;5;209m│\x1b[0m \x1b[1m\u273b Claude Code\x1b[0m                                            \x1b[38;5;209m│\x1b[0m\r\n',
-  '\x1b[38;5;209m│\x1b[0m   cwd: ~/code/.storefront-worktrees/SF-9                \x1b[38;5;209m│\x1b[0m\r\n',
-  '\x1b[38;5;209m╰─────────────────────────────────────────────────────────╯\x1b[0m\r\n\r\n',
-  '\x1b[2m> Read /home/maya/.blurt/handoff/H-0031.md and handle the item in it.\x1b[0m\r\n\r\n',
-  '\x1b[1m\u25cf\x1b[0m Reading the hand-off sheet and the avatar upload handler.\r\n\r\n',
-  '\x1b[32m\u25cf\x1b[0m \x1b[1mRead\x1b[0m(api/avatar.py)\r\n  \u23bf  Read 142 lines\r\n\r\n',
-  '\x1b[1m\u25cf\x1b[0m The multipart boundary is parsed before the size check, so a 6 MB PNG\r\n  overflows the 5 MB buffer and raises. I\'ll stream it instead.\r\n\r\n',
-  '\x1b[33m\u25cf\x1b[0m \x1b[1mEdit\x1b[0m(api/avatar.py)\r\n',
-  '\x1b[48;5;236m Do you want to make this edit to avatar.py?                \x1b[0m\r\n',
-  '\x1b[48;5;236m \u276f 1. Yes                                                  \x1b[0m\r\n',
-  '\x1b[48;5;236m   2. Yes, and don\'t ask again this session                \x1b[0m\r\n',
-  '\x1b[48;5;236m   3. No, and tell Claude what to do differently (esc)      \x1b[0m\r\n',
-];
-
 const hotkeyRows = () =>
   ['record', 'snap', 'text', 'translate', 'voice', 'pause', 'pen', 'stop', 'reformat', 'project', 'cards', 'menu'].map((a) => {
     const k = ({ record: 'R', snap: 'A', text: 'C', translate: 'T', voice: 'V', project: 'O', cards: 'H', menu: 'B', pause: 'P', pen: 'D', stop: 'S', reformat: 'L' } as Record<string, string>)[a];
@@ -159,7 +138,6 @@ function setState(it: MItem, to: State | null | undefined) {
 }
 
 let current = 'p1';
-let ptySeq = 0;
 
 // dictation's model download and the Welcome, in memory
 // ?models=0: no speech model on this PC yet (Settings' no-model notices)
@@ -216,52 +194,12 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
   dEntry('d-7', 30, 'Notion', L('three things for the launch one the press kit two the demo video three the faq', '发布要准备三件事 一是新闻稿 二是演示视频 三是常见问题'), L('Three things for the launch:\n1. The press kit\n2. The demo video\n3. The FAQ', '发布要准备三件事：\n1. 新闻稿\n2. 演示视频\n3. 常见问题'), { style: 'structured' }),
 ];
 
-// The sessions pane's agent jobs (`sessions_rows`): one in each state the Mac draws — waiting for an answer (app
-// runner, a worktree), working, ended with changes to review, couldn't start, merged with its item to verify.
-// ?sessions=0: none. Restart / Take Back / Remove / End work in memory.
-const iso = (secsAgo: number) => new Date((now - secsAgo) * 1000).toISOString();
-const sesGone = new Set<string>();
-const sesDesktop = new Set<string>();
-// Claude desktop installed (?desktop=0: not)
-const desktopApps = () => ({ claude: { name: 'Claude', available: param('desktop') !== '0', continue: true } });
-const sesEnded = new Set<string>();
-function sessionJobs() {
-  if (param('sessions') === '0') return [];
-  const base = (id: string, o: Record<string, any>, agent: Record<string, any>) => ({
-    id, type: 'agent', state: 'running', project: 'p1', session: null, title: null, items: [], steps: [], progress: null,
-    created: iso(1500), started: iso(1500), ended: null, updated: iso(60), error: null, labels: [], folder_gone: false,
-    log: `${H}/.blurt/jobs/${id}.log`, handoff_path: `${H}/.blurt/handoff/H-0031.md`, owned: true, output: true, ...o,
-    agent: { id: 'claude', mode: 'together', runner: 'app', status: 'running', cwd: `${H}/code/storefront`, started: true, ...agent },
-  });
-  const wt = (b: string) => ({ path: `${H}/code/.storefront-worktrees/${b}`, branch: `blurt/${b.toLowerCase()}`, base: 'main' });
-  const all = [
-    base('j-20261022-094100-k2m4', { items: ['u04'], labels: [{ id: 'SF-9', title: L('Avatar upload returns 500', '头像上传返回 500') }] },
-      { status: 'waiting_input', agent_session_id: 'fake-claude-1', status_message: L('Claude needs your permission to use Edit', 'Claude 需要你允许它使用 Edit'), worktree: { ...wt('SF-9'), branch: 'blurt/sf-9-avatar-upload' }, tmux: { name: 'SF-9' } }),
-    base('j-20261021-161000-a7q2', { project: 'p2', items: ['u11'], created: iso(7200), started: iso(7200), labels: [{ id: 'MA-3', title: L('Ship the iPad layout', '上线 iPad 布局') }] },
-      { id: 'codex', status: 'running', cwd: `${H}/code/mobile-app`, tmux: { name: 'MA-3' } }),
-    base('j-20261022-081500-r7c1', { state: 'done', items: ['u01', 'u02'], created: iso(5400), started: iso(5400), ended: iso(3000), owned: false,
-      labels: [{ id: 'SF-12', title: L('Checkout button does nothing on Safari', 'Safari 上结算按钮点了没反应') }, { id: 'SF-13', title: L('Price filter resets after going back', '返回后价格筛选被重置') }] },
-      { status: 'exited', worktree: { ...wt('SF-12'), branch: 'blurt/sf-12-checkout-safari' }, changes: { ahead: 2, dirty: 1 }, tmux: { name: 'SF-12,SF-13' } }),
-    base('j-20261022-075000-t3d8', { state: 'failed', items: ['u03'], created: iso(9000), started: iso(9000), ended: iso(8990), owned: false, output: false,
-      error: { code: 'auth', message: 'codex exited with 1', reason: L('Codex isn’t signed in.', 'Codex 没有登录。') },
-      labels: [{ id: 'SF-14', title: L('Show delivery date on the product card', '商品卡片上显示预计送达日期') }] },
-      { id: 'codex', status: 'error', exit: 1, started: false, last_output: ['Codex 0.61.0', '', 'Error: Not logged in.', 'Run `codex login` to sign in, then try again.'], tmux: { name: 'SF-14' } }),
-    base('j-20261021-142000-m9q5', { state: 'done', items: ['u06'], created: iso(80000), started: iso(80000), ended: iso(70000), owned: false, output: false,
-      labels: [{ id: 'SF-7', title: L('Search results flicker while typing', '输入时搜索结果闪烁') }] },
-      { id: 'codex', status: 'exited', worktree: wt('SF-7'), finish: { action: 'merge', result: {} }, tmux: { name: 'SF-7' } }),
-  ];
-  return all
-    .filter((j) => !sesGone.has(j.id))
-    .map((j) => (sesDesktop.has(j.id) ? { ...j, owned: false, agent: { ...j.agent, runner: 'desktop', status: 'running', continued: { from: 'app' }, desktop: { mcp: param('mcp') !== '0' } } } : j))
-    .map((j) => (sesEnded.has(j.id) ? { ...j, state: 'cancelled', ended: iso(5), owned: false, agent: { ...j.agent, status: 'exited' } } : j));
-}
-
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   const r = (v: unknown) => v as T;
   switch (cmd) {
     case 'app_status':
       return r({ version: '0.7.0', os: param('platform') === 'win' ? 'windows' : 'linux', platform: param('platform') === 'win' ? 'win' : 'gnome', wayland: false, lang: param('lang') ?? navigator.language, blurt_home: `${H}/.blurt`, inbox_store: `${H}/Blurt/inbox`,
-        handoff_dir: `${H}/.blurt/handoff`, index_ready: true, scripts: `${H}/.claude/skills/blurt/scripts`, uv: '/usr/bin/uv', tmux: true, capture: { recording: false, paused: false, session: null, voice: null }, hotkey_mode: 'plugin',
+        handoff_dir: `${H}/.blurt/handoff`, index_ready: true, scripts: `${H}/.claude/skills/blurt/scripts`, uv: '/usr/bin/uv', capture: { recording: false, paused: false, session: null, voice: null }, hotkey_mode: 'plugin',
         start_view: param('view') });
     case 'cards_waiting':
       return r(Number(param('cards') ?? 0));
@@ -283,7 +221,6 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     case 'jobs_list':
       return r([
         { id: 'j-20261022-101800-p9x2', type: 'process', state: 'running', project: null, session: S2, title: L('Two screenshots and a voice note', '两张截图和一条语音'), items: [], steps: [{ id: 'prepare', state: 'done' }, { id: 'transcribe', state: 'done' }, { id: 'write', state: 'running', progress: 0.6 }, { id: 'frames', state: 'pending' }, { id: 'route', state: 'pending' }], progress: 0.6, created: '', started: '', ended: null, error: null },
-        { id: sessions()[0].job, type: 'agent', state: 'running', project: 'p1', session: null, title: null, items: ['u04'], steps: [], progress: null, created: '', started: '', ended: null, error: null, agent: { id: 'claude', mode: 'together', runner: 'tmux', status: 'waiting_input', cwd: '' } },
       ]);
     case 'index_query': {
       const q = args.q ?? {};
@@ -384,61 +321,14 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ id: 'H-0032', path: `${H}/.blurt/handoff/H-0032.md`, text: 'Please handle SF-12 — details and screenshots are in …' });
     case 'agents_detect':
       return r({ order: ['claude', 'codex', 'kimi'], pick: 'claude', agents: [
-        { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'ready', why: '', fix: '', installed: true, version: '2.3.1', login: 'ok', headless: true, interactive: 'terminal', session: true },
-        { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal', session: true },
-        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal', session: true },
+        { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'ready', why: '', fix: '', installed: true, version: '2.3.1', login: 'ok', headless: true, interactive: 'terminal' },
+        { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal' },
+        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal' },
       ] });
     case 'agents_models':
       return r(args.agent === 'codex'
         ? { ok: true, id: 'codex', models: [{ id: 'gpt-6-astra', name: 'GPT-6-Astra', description: '', cheap: false }, { id: 'gpt-6-luna', name: 'GPT-6-Luna', description: 'Fast and affordable', cheap: true }], cheapest: 'gpt-6-luna', cli_default: 'gpt-6-astra', efforts: ['low', 'medium', 'high'] }
         : { ok: true, id: args.agent, models: [{ id: 'haiku', name: 'Haiku', description: '', cheap: true }, { id: 'sonnet', name: 'Sonnet', description: '', cheap: false }], cheapest: 'haiku', cli_default: null, efforts: [] });
-    case 'sessions_dispatch':
-      if (args.opts?.dryRun && args.opts.runner === 'desktop')
-        return r({ ok: true, jobs: [{ id: 'dry', project: 'p1', window: null, cwd: '', items: args.opts.items, worktree: 'x', branch: 'blurt/sf-12-checkout' }], warnings: [], mcp: param('mcp') !== '0' });
-      if (args.opts?.dryRun)
-        return r({ ok: true, jobs: [], warnings: args.opts.worktree === 'off' ? [{ code: 'concurrent_edit', jobs: ['j-20261021-161000-a7q2'] }] : [] });
-      return r({ ok: true, jobs: [{ id: sessions()[0].job, project: 'p1', window: '@3', cwd: '', items: args.opts.items }], warnings: [] });
-    case 'sessions_list':
-      return r({ ok: true, sessions: sessions(), owned: [] });
-    case 'sessions_rows':
-      return r({ jobs: sessionJobs(), panes: {}, terminals: [], preferred_terminal: null, font_size: null, desktop: desktopApps() });
-    case 'sessions_desktop_apps':
-      return r(desktopApps());
-    case 'sessions_go_desktop':
-      return r(undefined);
-    case 'sessions_desktop_check':
-      return r({ ok: true, available: true, reason: null, version: '2.1.290 (Claude Code)', mcp: param('mcp') !== '0' });
-    case 'sessions_continue_desktop':
-      await new Promise((ok) => setTimeout(ok, 800));
-      sesDesktop.add(args.job);
-      emit('jobs://changed', {});
-      return r({ ok: true });
-    case 'sessions_memory':
-      if (args.forget) sesGone.add(args.job);
-      return r(undefined);
-    case 'sessions_restart':
-    case 'sessions_take_back':
-      await new Promise((ok) => setTimeout(ok, 600));
-      sesGone.add(args.job);
-      emit('jobs://changed', {});
-      return r(cmd === 'sessions_restart' ? { ok: true, jobs: [{ id: 'j-20261022-094100-k2m4', project: 'p1', window: null, cwd: '', items: [] }], warnings: [] } : { ok: true, taken_back: ['u03'] });
-    case 'sessions_stop':
-      sesEnded.add(args.job);
-      emit('jobs://changed', {});
-      return r({ ok: true });
-    case 'sessions_finish':
-      if (args.action !== 'diff') {
-        await new Promise((ok) => setTimeout(ok, 700));
-        return r({ ok: true, ...(args.action === 'pr' ? { pr: 'https://github.com/maya/storefront/pull/42' } : {}) });
-      }
-      return r({ ok: true, base: 'main', branch: 'blurt/sf-12-checkout-safari', stat: [{ path: 'web/src/cart/cart.ts', added: 24, deleted: 9 }, { path: 'web/src/cart/cart.test.ts', added: 31, deleted: 0 }, { path: 'web/src/filters/price.ts', added: 6, deleted: 2 }], patch: `${H}/.blurt/jobs/review.patch`, uncommitted: 1, ahead: 2, alive: false, reviewed: 'abc123' });
-    case 'pty_open': {
-      if (sessionJobs().find((j) => j.id === args.job)?.state !== 'running')
-        return r({ ptyId: null, replay: btoa(String.fromCharCode(...new TextEncoder().encode(TERM.join('')))), owned: true, ended: true });
-      const id = ++ptySeq;
-      setTimeout(() => TERM.forEach((l, i) => setTimeout(() => emit('pty://data', { ptyId: id, data: btoa(String.fromCharCode(...new TextEncoder().encode(l))) }), i * 40)), 50);
-      return r({ ptyId: id, replay: null, owned: false });
-    }
     case 'settings_get':
       return r({ config: JSON.parse(JSON.stringify(mockCfg)), hotkeys: hotkeyRows(), hotkey_mode: 'plugin', wayland: false, config_path: `${H}/.blurt/config.json`,
         export_targets: [{ id: 'markdown', name: 'Markdown', configured: true }, { id: 'csv', name: 'CSV', configured: true }, { id: 'github', name: 'GitHub Issues', configured: true, needs: 'gh auth login' }, { id: 'feishu', name: 'Feishu / Lark Bitable', configured: false }] });
@@ -615,13 +505,11 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ guide: 'C:\\Users\\you\\.claude\\skills\\blurt\\reference\\setup-models.md', setup: 'C:\\Users\\you\\.claude\\skills\\blurt\\scripts\\setup.py' });
     case 'agent_setup_state':
       return r(param('setup') === '1'
-        ? { active: true, agent: 'Claude Code', job: 'j-setup', steps: [{ kind: 'connect', subject: 'deepseek', state: 'done', name: 'DeepSeek' }, { kind: 'use', subject: 'polish', state: 'done', name: 'DeepSeek V4.1 Flash' }, { kind: 'download', subject: 'fun-asr-nano-onnx', state: 'running', name: 'Fun-ASR Nano' }] }
-        : { active: false, agent: null, job: null, steps: [] });
-    case 'agent_setup_start':
-      return r({ job: 'j-setup' });
+        ? { active: true, agent: 'Claude Code', steps: [{ kind: 'connect', subject: 'deepseek', state: 'done', name: 'DeepSeek' }, { kind: 'use', subject: 'polish', state: 'done', name: 'DeepSeek V4.1 Flash' }, { kind: 'download', subject: 'fun-asr-nano-onnx', state: 'running', name: 'Fun-ASR Nano' }] }
+        : { active: false, agent: null, steps: [] });
     case 'agent_setup_stop':
     case 'agent_setup_dismiss':
-      return r({ active: false, agent: null, job: null, steps: [] });
+      return r({ active: false, agent: null, steps: [] });
     case 'save_to_downloads':
       return r(String(args.path ?? '').split(/[\\/]/).pop() ?? '');
     case 'feedback_send':

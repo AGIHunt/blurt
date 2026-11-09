@@ -29,9 +29,8 @@ CLI never writes a key to a file, never takes one as an argument and never print
 Every command prints one JSON line: {"ok": true, …} or {"ok": false, "code", "error"} (exit 1). The app must be running
 for every command but status and recommend: "code": "app_not_running" says so ("open -a Blurt"); "code": "sandboxed"
 means the agent's sandbox blocked the socket (run setup.py outside it, with the user's approval). Changes need the
-user's consent in Blurt: a session started from Settings → Models → Set Up with Agent… carries it
-($BLURT_SETUP_TOKEN); otherwise Blurt asks the user (Allow / Don't Allow) the first time, and "code": "denied" means
-they said no.
+user's consent in Blurt: Blurt asks the user (Allow / Don't Allow) the first time, and "code": "denied" means they
+said no. ($BLURT_SETUP_TOKEN, when set, is passed along as the request's token.)
 """
 from __future__ import annotations
 
@@ -176,7 +175,7 @@ def call(req: dict, timeout: float = 30) -> dict:
 
 
 def request(op: str, timeout: float = 30, **fields) -> dict:
-    """call() with the session's token (when Blurt started this agent) and no None fields; never raises."""
+    """call() with $BLURT_SETUP_TOKEN as the token when it is set, and no None fields; never raises."""
     req = {"op": op, **{k: v for k, v in fields.items() if v is not None}}
     tok = os.environ.get("BLURT_SETUP_TOKEN")
     if tok:

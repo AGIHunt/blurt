@@ -1,4 +1,4 @@
-// The readers for a recording's live/*.jsonl (drafts, transcript) the island follows while recording.
+// The reader for a recording's live/transcript.jsonl, which the island follows while recording.
 import Foundation
 
 /// Tolerant: a missing file, a partial last line, a file rewritten from scratch.
@@ -27,33 +27,4 @@ final class JSONLTail {
         carry = buf
         return out
     }
-}
-
-/// Follows `<session>/live/drafts.jsonl` (≈1 s polls) and keeps the current set of drafts; reports adds / drops.
-final class DraftsWatcher {
-    private let tail: JSONLTail
-    private(set) var current: [String: [String: Any]] = [:]
-    private(set) var order: [String] = []
-    var onAdd: ((String, String?) -> Void)?
-    var onDrop: ((String) -> Void)?
-
-    init(session: URL) { tail = JSONLTail(session.appendingPathComponent("live/drafts.jsonl")) }
-
-    func poll() {
-        for o in tail.poll() {
-            guard let id = (o["id"] as? String) ?? (o["id"] as? NSNumber)?.stringValue else { continue }
-            let op = o["op"] as? String ?? "add"
-            if op == "drop" {
-                if current.removeValue(forKey: id) != nil { order.removeAll { $0 == id }; onDrop?(id) }
-            } else if current[id] == nil {
-                current[id] = o
-                order.append(id)
-                onAdd?(id, o["kind"] as? String)
-            } else {
-                current[id] = (current[id] ?? [:]).merging(o) { $1 }
-            }
-        }
-    }
-
-    var kinds: [String] { order.compactMap { current[$0] }.map { $0["kind"] as? String ?? "note" } }
 }

@@ -18,6 +18,9 @@ Engines (auto-selected; override with --engine or ~/.blurt/config.json → recor
                                         run in the background; exits when the user stops (prints DONE …)
   record.py stop | pause | resume | restart | discard | snap   control the active recording from the chat (snap =
                                         a full-resolution still of the area now → shots/)
+  record.py app [--no-open | --session DIR] [--timeout S]
+                                        (macOS) record in the Blurt app (blurt://record) and wait until the app has
+                                        organized the take; one JSON line per change, the last one is the outcome
   record.py inbox                       recordings in the inbox and every project (projects.json) + processed?
   record.py install-app                 double-clickable recorder: ~/Applications/Blurt.app / Start-menu "Blurt"
   record.py status                      active recording, if any
@@ -384,7 +387,7 @@ def live_enabled(cfg: dict | None = None) -> bool:
 
 
 def start_live(session: Path) -> subprocess.Popen | None:
-    """Run live.py for this take in the background (transcript + drafts while recording). Never fails the recording."""
+    """Run live.py for this take in the background (the transcript, while recording). Never fails the recording."""
     if not live_enabled():
         return None
     live = session / "live"
@@ -638,7 +641,8 @@ INFO_PLIST = SWIFT_DIR / "Info.plist"
 
 
 def swift_sources() -> list[Path]:
-    """Everything the build depends on: Package.swift, Info.plist, Sources/**, Vendor/** (SwiftTerm; not .build/)."""
+    """Everything the build depends on: Package.swift, Info.plist, Sources/** and Vendor/** when there is one (not
+    .build/)."""
     files = [SWIFT_DIR / "Package.swift", INFO_PLIST]
     for d in ("Sources", "Vendor"):
         files += sorted(p for p in (SWIFT_DIR / d).rglob("*") if p.is_file() and not p.name.startswith("."))
@@ -1719,6 +1723,134 @@ def cmd_inbox(_a) -> None:
     print(json.dumps({"roots": [str(r) for r in recording_roots()], "recordings": rows}, ensure_ascii=False, indent=2))
 
 
+# ---------------------------------------------------------------- record.py app: a take in the Blurt app, waited on
+# The app makes a take's folder (<store>/sessions/YYYYmmdd-HHMMSS) when the user starts it, writes meta.json when it
+# ends (a failed take that kept something: "state": "failed"; Save Video Only: "video_only"), removes the folder when
+# it was cancelled, and organizes it in a `process` job whose `session` is that folder (record.process "off" = never).
+
+TAKE_DIR = re.compile(r"\d{8}-\d{6}")
+APP_FINAL = {"organized": 0, "saved": 0, "failed": 1, "organize_failed": 1, "cancelled": 2, "not_started": 2}
+ORGANIZE_GRACE = 90    # s after a take ends for its process job to show up (its snaps' notes are transcribed first)
+START_GRACE = 600      # s for the user to start a take after blurt://record (one click, then the area)
+
+
+def blurt_app() -> Path | None:
+    for p in (Path("/Applications/Blurt.app"), Path.home() / "Applications" / "Blurt.app"):
+        if p.exists():
+            return p
+    return None
+
+
+def app_takes(since: float) -> list[Path]:
+    """Video takes started at or after `since` (their folders are named by the start second), oldest first."""
+    found = []
+    for r in recording_roots():
+        for d in r.iterdir():
+            if not (d.is_dir() and TAKE_DIR.fullmatch(d.name)):
+                continue
+            try:
+                t = time.mktime(time.strptime(d.name, "%Y%m%d-%H%M%S"))
+            except ValueError:
+                continue
+            if t >= int(since):
+                found.append((t, d))
+    return [d for _, d in sorted(found)]
+
+
+def take_job(session: Path) -> dict | None:
+    """The newest process job for this take, folded (jobs.py)."""
+    import jobs  # noqa: PLC0415
+    want = os.path.realpath(session)
+    mine = [j for j in jobs.all_jobs() if j.get("type") == "process" and j.get("session")
+            and os.path.realpath(j["session"]) == want]
+    return max(mine, key=lambda j: j.get("created") or "") if mine else None
+
+
+def take_state(session: Path, ended: float | None, now: float) -> dict:
+    """Where an app take is: recording → ended → organizing → organized (or saved / failed / cancelled).
+    `ended`: when its meta.json was first seen (the grace for its process job to appear)."""
+    out: dict = {"session": str(session)}
+    if not session.exists():
+        return {**out, "state": "cancelled"}
+    meta = load_json(session / "meta.json", None)
+    if not isinstance(meta, dict):
+        return {**out, "state": "recording"}
+    out["duration"] = meta.get("duration")
+    job = take_job(session)
+    if job is None:
+        if meta.get("video_only"):
+            return {**out, "state": "saved", "why": "video_only"}
+        if meta.get("state") == "failed":
+            return {**out, "state": "failed", "error": meta.get("error") or None, "partial": bool(meta.get("partial"))}
+        if ended is not None and now - ended > ORGANIZE_GRACE:
+            return {**out, "state": "saved", "why": "not_organized"}   # record.process "off", or nothing started it
+        return {**out, "state": "ended"}
+    out["job"] = job["id"]
+    if job.get("state") not in ("done", "failed", "cancelled"):
+        step = next((s["id"] for s in job.get("steps") or [] if s.get("state") == "running"), None)
+        return {**out, "state": "organizing", "step": step}
+    if job["state"] == "done":
+        return {**out, "state": "organized", "items": len(job.get("items") or [])}
+    return {**out, "state": "organize_failed", "error": job.get("error")}
+
+
+def _app_running() -> bool:
+    return subprocess.run(["pgrep", "-xq", "blurt-recorder"], check=False).returncode == 0
+
+
+def cmd_app(a) -> None:
+    """Record in the Blurt app and wait for the result: the app records with its own Screen Recording permission and
+    organizes the take with the user's agent (Settings → Agents); this waits for that and says where the items are."""
+    def say(obj: dict) -> None:
+        print(json.dumps(obj, ensure_ascii=False), flush=True)
+
+    session = Path(a.session).expanduser() if a.session else None
+    since = time.time() - (120 if a.no_open else 1)   # --no-open: a take the user started in the last 2 minutes too
+    if session is None and not a.no_open:
+        if not IS_MAC:
+            die("record.py app needs the macOS Blurt app; use record.py start here")
+        app = blurt_app()
+        if app is None:
+            die("no Blurt.app in /Applications or ~/Applications; record.py build installs it, or use record.py start")
+        if not _app_running():
+            subprocess.run(["open", "-a", str(app)], check=False)
+            for _ in range(30):
+                if _app_running():
+                    break
+                time.sleep(0.5)
+            time.sleep(3)   # the app takes blurt:// links once it is resident
+        since = time.time() - 1
+        subprocess.run(["open", "blurt://record"], check=False)
+        say({"state": "asked", "note": "the notch asks once; the user picks the area and talks, ⌥R or Finish stops"})
+    deadline = time.time() + a.timeout if a.timeout else None
+    ended: float | None = None
+    last = None
+    while True:
+        now = time.time()
+        if session is None:
+            takes = app_takes(since)
+            if takes:
+                session = takes[-1] if a.no_open else takes[0]
+            elif now - since > START_GRACE:
+                say({"state": "not_started"})
+                sys.exit(APP_FINAL["not_started"])
+        if session is not None:
+            st = take_state(session, ended, now)
+            if st["state"] != "recording" and ended is None and st["state"] != "cancelled":
+                ended = now
+                st = take_state(session, ended, now)
+            if st != last:
+                say(st)
+                last = st
+            if st["state"] in APP_FINAL:
+                sys.exit(APP_FINAL[st["state"]])
+        if deadline and now > deadline:
+            say({"state": "waiting", "session": str(session) if session else None,
+                 "again": f"record.py app --session {session}" if session else "record.py app --no-open"})
+            sys.exit(3)
+        time.sleep(a.interval)
+
+
 def cmd_install_app(_a) -> None:
     """(Re)install the standalone recorder: ~/Applications/Blurt.app (macOS) / Start-menu "Blurt" (Windows).
     Normally not needed — it's installed automatically the first time the recorder is built / used."""
@@ -1833,6 +1965,11 @@ def main() -> None:
                         "paused, resumed, snap, stopped, discarded, error); everything else goes to stderr")
     for c in ("stop", "pause", "resume", "restart", "marker", "snap", "discard", "status", "devices", "build", "inbox", "install-app"):
         sub.add_parser(c)
+    ap = sub.add_parser("app", help="(macOS) record in the Blurt app and wait until it has organized the take")
+    ap.add_argument("--no-open", action="store_true", help="don't open blurt://record: wait for a take the user starts")
+    ap.add_argument("--session", help="wait on this take's folder again (after a `waiting` line)")
+    ap.add_argument("--timeout", type=float, default=0, help="stop waiting after S seconds (exit 3); 0 = until it ends")
+    ap.add_argument("--interval", type=float, default=2, help=argparse.SUPPRESS)
     t = sub.add_parser("test")
     t.add_argument("--seconds", type=float, default=3)
     t.add_argument("--screen", type=int)
@@ -1844,7 +1981,7 @@ def main() -> None:
     if a.cmd in ("stop", "pause", "resume", "restart", "marker", "snap", "discard"):
         return send(a.cmd)
     {"start": cmd_start, "status": cmd_status, "devices": cmd_devices, "build": cmd_build, "test": cmd_test,
-     "inbox": cmd_inbox, "install-app": cmd_install_app}[a.cmd](a)
+     "inbox": cmd_inbox, "install-app": cmd_install_app, "app": cmd_app}[a.cmd](a)
 
 
 if __name__ == "__main__":

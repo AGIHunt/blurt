@@ -1,11 +1,9 @@
 name: desktop
 
 # The Windows/Linux Tauri app (apps/desktop + web/apps/desktop + web/apps/overlays), v0.7 (docs/design/next-round.md).
-#   windows-latest: unit tests (the ConPTY path of the embedded terminal compiles and runs), NSIS + MSI installers,
-#                   size report (NSIS ≤ 25 MB)
-#   ubuntu-22.04:   unit tests; tests/flow.rs (projects.py add → migrate → index v2 → review doc → user-ops → .md) and
-#                   tests/session.rs (sessions.py dispatch into tmux → attach-cmd → our pty → keystrokes → job status:
-#                   the round trip xterm.js makes); deb + rpm + AppImage, size report (deb ≤ 20 MB), and the e2e under
+#   windows-latest: unit tests, NSIS + MSI installers, size report (NSIS ≤ 25 MB)
+#   ubuntu-22.04:   unit tests; tests/flow.rs (projects.py add → migrate → index v2 → review doc → user-ops → .md);
+#                   deb + rpm + AppImage, size report (deb ≤ 20 MB), and the e2e under
 #                   xvfb through tauri-driver (WebKitWebDriver): open a fixture project, search, open an item, edit it →
 #                   its Markdown file updated
 # Nothing is signed or published: installers and reports are workflow artifacts.
@@ -96,7 +94,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
-            patchelf file rpm webkit2gtk-driver xvfb dbus-x11 tmux git libasound2-dev
+            patchelf file rpm webkit2gtk-driver xvfb dbus-x11 git libasound2-dev
 
       - name: Install JS dependencies
         run: |
@@ -114,7 +112,7 @@ jobs:
           pnpm -C web --filter @blurt/desktop build
           test -f web/apps/desktop/dist/overlays/island.html
 
-      - name: Rust lint + tests (index v2, jobs fold, l10n parity, pty, flow, tmux session)
+      - name: Rust lint + tests (index v2, jobs fold, l10n parity, flow)
         working-directory: apps/desktop/src-tauri
         run: |
           cargo clippy --all-targets

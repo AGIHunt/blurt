@@ -223,7 +223,7 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
       ) : cur === 'projects' ? (
         <ProjectsPane onToast={onToast} />
       ) : cur === 'agents' ? (
-        <AgentsPane cfg={cfg} save={save} status={status} onToast={onToast} />
+        <AgentsPane cfg={cfg} save={save} onToast={onToast} />
       ) : cur === 'privacy' ? (
         <PrivacyPane go={go} />
       ) : (
@@ -391,7 +391,6 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
   }, [checkUpdates, check]);
 
   const language = cfg.lang === 'zh' ? 'zh-Hans' : ['en', 'zh-Hans'].includes(cfg.lang) ? cfg.lang : 'auto';
-  const notify = (k: 'done' | 'agent') => cfg.notify?.[k] !== false;
   const rec = cfg.record ?? {};
   const voice = rec.voice ?? {};
   const liveText = rec.live_text !== false;
@@ -414,9 +413,7 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
               onLang(v);
             }} />
         </Row>
-        {(['done', 'agent'] as const).map((k) => (
-          <Toggle key={k} id={`general.notify_${k}`} on={notify(k)} set={(v) => save({ notify: { ...(cfg.notify ?? {}), [k]: v } })} />
-        ))}
+        <Toggle id="general.notify_done" on={cfg.notify?.done !== false} set={(v) => save({ notify: { ...(cfg.notify ?? {}), done: v } })} />
       </Group>
 
       {/* record.process / countdown / system_audio, as the Mac writes them (capture reads them at the next recording) */}

@@ -1,5 +1,5 @@
 """agents.py WP2 commands (contract C5): detect, command, install (--dry-run and real, into temp dirs only),
-repo-level order, and the K5 session commands. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
+repo-level order. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
 
   uv run --with pytest pytest tests/test_agents.py -q
 """
@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -95,7 +94,7 @@ def test_every_agent_has_the_c5_fields():
     assert ids[:3] == ["claude", "codex", "kimi"] and ids[-1] == "zcode"
     for a in reg["agents"]:
         assert {"id", "name", "bins", "verified"} <= set(a), a["id"]
-        assert agents.interactive_kind(a), a["id"]
+        assert "interactive" not in a, a["id"]  # Blurt starts no interactive agent: the user hands items to their own
         if agents.is_headless(a):
             assert "{prompt}" in a["run"] and a.get("events", {}).get("format"), a["id"]
             assert a.get("skill_dir") and a.get("mcp"), a["id"]
@@ -116,12 +115,8 @@ def test_detect_matches_fake_clis(env):
     assert rows["opencode"]["installed"] is False and rows["opencode"]["login"] == "n/a"
     assert out["pick"] == "codex"
     for r in out["agents"]:  # app-ux's check() keys stay, WP2 adds the rest
-        assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless",
-                "interactive", "session"} <= set(r)
-    # the hand-off panel offers the agents that run as a session (what sessions.py doctor says; the Windows app has
-    # no doctor call: it read a field detect never had and offered no agent at all)
-    assert rows["claude"]["session"] is True and rows["codex"]["session"] is True
-    assert rows["zcode"]["session"] is False
+        assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless"} <= set(r)
+        assert "interactive" not in r and "session" not in r
     fast = cli("detect", "--no-login", "--no-version", "--ids", "codex,claude")
     assert [r["id"] for r in fast["agents"]] == ["codex", "claude"] and fast["agents"][0]["version"] is None
 
@@ -172,7 +167,7 @@ def test_command_headless(env, tmp_path):
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
         "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
     assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
-    # unattended on recording-derived text: never full access; a plain run (routing, drafts) writes only its cwd
+    # unattended on recording-derived text: never full access; a plain run (routing) writes only its cwd
     a = out["argv"]
     assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
     assert "--add-dir" not in a
@@ -257,19 +252,17 @@ def test_grok(env, tmp_path):
     assert agents._toml_top(gh / "config.toml", "model") == "x"
 
 
-def test_command_interactive(env, tmp_path):
-    u = cli("command", "claude", "interactive", "--prompt", "修 登录 & bug", "--repo", tmp_path)
-    q = parse_qs(urlparse(u["url"]).query)
-    assert u["url"].startswith("claude-cli://open?") and q["q"] == ["修 登录 & bug"] and q["cwd"] == [str(tmp_path.resolve())]
-    long = cli("command", "claude", "interactive", "--prompt", "x" * 6000, "--repo", tmp_path)
-    assert long["prompt_file"] and Path(long["prompt_file"]).read_text() == "x" * 6000
-    assert len(parse_qs(urlparse(long["url"]).query)["q"][0]) < 5000
-    t = cli("command", "codex", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert t["terminal"] and t["argv"][1:] == ["hello"]
-    k = cli("command", "kimi", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert k["terminal"] and k["argv"][1:] == [] and k["clipboard"] == "hello"
-    z = cli("command", "zcode", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert z["clipboard"] == "hello" and z["argv"] is None
+def test_command_is_headless_only(env, tmp_path):
+    r = subprocess.run([sys.executable, str(SCRIPTS / "agents.py"), "command", "claude", "interactive", "--prompt", "p",
+                        "--repo", str(tmp_path)], capture_output=True, text=True, env=os.environ.copy())
+    assert r.returncode != 0 and "invalid choice" in r.stderr
+    with pytest.raises(ValueError):
+        agents.command("claude", "interactive", "p", tmp_path)
+    with pytest.raises(ValueError):
+        agents.command("zcode", "headless", "p", tmp_path)  # connect only
+    h = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path)
+    assert h["mode"] == "headless" and h["argv"][1:3] == ["-p", "p"]
+    assert not {"url", "terminal", "clipboard", "open_app", "prompt_file"} & set(h)
 
 
 def test_install_dry_run_and_real(env, tmp_path):
@@ -324,7 +317,7 @@ def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, 
     uv.write_text("#!/bin/sh\n")
     uv.chmod(0o755)
     d = agents.definitions({})[agent]
-    assert not agents.is_headless(d) and agents.interactive_kind(d)
+    assert not agents.is_headless(d)
     path = env["home"] / mcp_json
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"mcpServers": {"other": {"url": "https://example.com/mcp", "disabled": True}}}))
@@ -350,70 +343,6 @@ def test_install_never_overwrites_another_skill(env, tmp_path):
     out = cli("install", "codex", "--skill")
     assert out["changes"][0]["action"] == "conflict" and out["applied"] is False
     assert link.resolve() == other.resolve()
-
-
-def test_session_command(env, tmp_path):
-    """K5: interactive sessions get per-session hooks; the blurt MCP server only when it isn't installed."""
-    import tomllib
-    st = tmp_path / "j-1.claude-settings.json"
-    c = agents.session_command("claude", "Read H-0001.md", tmp_path, job="j-1", settings=st, mcp=False)
-    assert c["argv"][0].endswith("/claude") and c["argv"][1:] == ["--settings", str(st), "--", "Read H-0001.md"]
-    assert c["hooks"] == "claude" and c["paste"] is None
-    hooks = json.loads(st.read_text())["hooks"]
-    assert list(hooks) == list(agents.CLAUDE_HOOKS) and hooks["PostToolUse"][0]["matcher"] == "*"
-    cmd = hooks["Stop"][0]["hooks"][0]
-    assert cmd["type"] == "command" and cmd["timeout"] == 5
-    assert cmd["command"].endswith(f"'{agents.SESSIONS_PY}' hook --job j-1 --agent claude")
-    # the hand-off note lives in $BLURT_HOME/handoff, outside the session's folder: reading it must not stop on
-    # "Read outside the working directories?" (Windows dogfood WW45)
-    import handoff
-    assert json.loads(st.read_text())["permissions"]["additionalDirectories"] == [str(handoff.handoff_dir())]
-    # not installed (the fake's `mcp get blurt` fails) → --mcp-config with the whole server
-    c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
-    i = c["argv"].index("--mcp-config")
-    assert json.loads(c["argv"][i + 1])["mcpServers"]["blurt"]["args"][-1] == str(agents.MCP_SERVER)
-    assert c["argv"][-2:] == ["--", "p"]  # --mcp-config takes several values: the prompt must not become one
-    x = agents.session_command("codex", "p", tmp_path, job="j-2", mcp=True)
-    sets = [x["argv"][i + 1] for i, a in enumerate(x["argv"]) if a == "-c"]
-    for v in sets:
-        tomllib.loads(v)  # every -c value is valid TOML
-    notify = tomllib.loads(sets[0])["notify"]
-    assert notify[1:] == [str(agents.SESSIONS_PY), "hook", "--job", "j-2", "--agent", "codex"]
-    hk = {k: v for v in sets if v.startswith("hooks.") for k, v in tomllib.loads(v)["hooks"].items()}
-    assert list(hk) == list(agents.CODEX_HOOKS)
-    # the same command for every session (Codex asks the user to trust each distinct hook once): job from $BLURT_JOB
-    assert {h["hooks"][0]["command"] for g in hk.values() for h in g} == {agents.hook_command("codex", None)}
-    assert any(v.startswith("mcp_servers.blurt.command") for v in sets) and x["argv"][-1] == "p"
-    plain = agents.session_command("codex", "p", tmp_path, job="j-3", mcp=False)["argv"]
-    # notify + 6 hooks + no update check at startup (its update screen drained input while the terminal attached)
-    assert x["patterns"] and plain.count("-c") == 8 and plain[-3:] == ["-c", "check_for_update_on_startup=false", "p"]
-    k = agents.session_command("kimi", "long prompt", tmp_path, job="j-4", mcp=False)
-    assert k["argv"][1:] == [] and k["paste"] == "long prompt" and k["hooks"] is None
-    for bad in ("zcode", "opencode", "nope"):  # no session / not installed / unknown
-        with pytest.raises(ValueError):
-            agents.session_command(bad, "p", tmp_path, job="j-5")
-
-
-def test_hook_python_is_not_a_cache_venv():
-    assert Path(agents.hook_python()).exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="the sh shim is macOS / Linux")
-def test_codex_hook_command_never_changes_with_the_interpreter(env, tmp_path):
-    """dogfood-2 W41: the hook command embedded whichever python ran sessions.py, so every interpreter upgrade (or
-    a moved skill) brought Codex's "Hooks need review" screen back. Now it names only $BLURT_HOME/bin/blurt-hook,
-    which is rewritten to exec today's interpreter and script."""
-    a = agents.hook_command("codex", None, "/opt/old/python3.12")
-    b = agents.hook_command("codex", None, "/opt/new/python3.14")
-    shim = env["bh"] / "bin" / "blurt-hook"
-    assert a == b == f"'{shim}' --agent codex" and "python" not in a
-    body = shim.read_text()
-    assert "/opt/new/python3.14" in body and str(agents.SESSIONS_PY) in body and os.access(shim, os.X_OK)
-    # it runs: the hook subcommand with the agent's arguments (a bad job id answers, never hangs)
-    agents.hook_command("codex", None, sys.executable)
-    r = subprocess.run([str(shim), "--agent", "codex"], input="{}", capture_output=True, text=True, timeout=30,
-                       env={**os.environ, "BLURT_JOB": ""})
-    assert r.returncode in (0, 1, 2)
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("codex"), reason="codex's own macOS seatbelt")

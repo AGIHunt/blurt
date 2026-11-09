@@ -51,8 +51,7 @@ follows the keys you are holding), rest the pointer to straighten a rough
 shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. (`⌥M`, which saved a still of the recorded area, was
 removed in 1.0.7: `⌥A` no longer pauses the recording, and what you say already marks the moment.) Dictation is off while recording (the notch says so). The notch shows the state: pause bars and the
 time in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it
-off), and how many snaps you took. Open it for the words: *6 snaps · 4 items spotted* (the items Blurt has heard so
-far), then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
+off), and how many snaps you took. Open it for the words: *6 snaps*, then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
 windows, the cards, the note, the pen's ink and the notch — so a recording can show Blurt's own problems; only the
 countdown and the red frame are never in it. *Settings → General → Don’t record the notch* leaves the notch out of
 your recordings (snaps always show it).
@@ -332,14 +331,12 @@ Editing, the Mac way:
 
 ### 5. Hand off to an agent
 
-Select one or more items and choose how they get done:
+Blurt doesn't run coding agents in a window of its own. You hand items to the agent you already use (Claude Code,
+Codex, Cursor…), wherever you run it. Select one or more items and choose:
 
-- **Hand Off to Agent** (`⌘↩`) — runs Claude Code or Codex in a terminal inside Blurt, in the project folder. Several
-  items can go to one conversation (*Together*) or one each (*In parallel*, each in its own git worktree so they
-  don't edit the same files). The session keeps running if you close the window; Blurt tells you when it needs an
-  answer or has finished a turn.
-- **Copy instruction** — a one-line instruction pointing at a note with everything the agent needs (screenshots
-  included). Paste it into the agent you already use. **Copy full text** copies the note itself.
+- **Copy instruction** — a one-line instruction pointing at a note with everything the agent needs
+  (screenshots included). Paste it into your agent. The items move to *Handed off*. **Copy full text** copies the note
+  itself.
 - **Export Hand-off Bundle…** — for a person rather than an agent: one `.zip` with a summary (counts by kind and
   state, then each item with its state, what you said, the steps, suspected code and screenshots), a file per item,
   and the screenshots and clips. It uses relative paths only, so it opens on a teammate's computer. Pick where to
@@ -354,61 +351,9 @@ To send items somewhere — a Slack channel, a Feishu group, Linear, GitHub, Not
 with the tools it already has; Blurt has no connectors of its own. *Settings → Agents → Ask your agent* has a few
 more examples.
 
-Agents that have the Blurt MCP installed (Blurt offers it when you set it up) report back on their own: you'll see the item move to
-*In progress*, then *To verify*. If a session ends without the agent reporting back (it quit, crashed, or the Mac
-restarted), the item stays *In progress* and says *Session ended without the agent reporting back*: **Open Session** to see what
-it did, then **Restart Session**, **Mark as Done** or **Take Back**. **Open Session** is also in the Item menu and the
-item's context menu.
-
-When a session ends, its terminal shows how it ended rather than the dead window: *Codex couldn't start* with the
-agent's last words (an expired login, an error), *Ready to review* when its branch has changes, or *Ended · no
-changes*. **Restart Session** runs the same items with the same agent again (once — the button is off while it
-starts); **Take Back** returns them to *To do*; **Show Output** shows what the agent left on screen. The item's
-banner keeps two buttons and puts the rest under **⋯**. An agent that says nothing for a minute after it starts
-reads *No response*: look at its window, or restart it. An agent that isn't signed in can't be picked in the
-hand-off panel — it says what to run, and offers the other agent; agents handing work off from the command line get
-the same answer.
-
-The panel always works on the items' own project (its default agent, the model you last picked for it), whatever
-project is current. What can't be handed off says why before the panel opens, with the way out: a discarded item
-(**Restore**), one waiting to be verified or done (**Reopen**), one a session is still working on (**Open Session**).
-An item whose last session ended without reporting can simply be handed off again: it is taken back from that session
-first. **Take Back** on a session that is over and changed nothing also removes its worktree, its `blurt/…` branch and
-its window — nothing is left next to your repo; when it did change something, the worktree stays for **Review
-Changes…**. Taking back one item of a session (`R`, the state menu) leaves its other items with it; the clean-up
-happens once none is left. Codex asks once to trust Blurt's hooks ("Trust all and continue"); the hook command no longer changes when
-Python or Blurt updates, so it doesn't ask again. While an agent waits at one of these first questions (trusting the
-folder, trusting the hooks), a line under the session's header says what it asks and what to answer. If you quit at
-the trust question instead, the session says it stopped there and nothing was started; **Restart Session** asks again.
-An agent too old for Blurt's terminal (Codex before 0.164) is caught before it starts: the Hand Off panel shows the
-installed version and the command that updates it, with **Check Again**. Codex's footer shows *Running without the
-shared background server* on every hand-off: Blurt passes its hooks with `-c`, which only Codex's embedded mode
-accepts. It is harmless.
-
-The conversation's first line is its title, such as *AW-12 · Login button does nothing (Blurt hand-off)*, so you can
-find it in the agent's own list of conversations; Codex also gets it as the thread's name.
-
-**Claude desktop.** If the Claude desktop app is installed, the hand-off panel asks where Claude Code runs: **Run in
-Blurt's terminal** (recommended) or **Run in Claude desktop**. Blurt remembers the choice for each agent (also in
-Settings → Agents). With the desktop app, Blurt still makes the worktree, then opens a new Claude conversation with
-the items filled in: confirm the folder and press Send there. Blurt doesn't see that conversation live, so the item
-reads *In the Claude desktop app · the agent reports progress*, with **Go to Claude**; the items move when the agent reports
-them through the Blurt MCP. If the MCP isn't installed for Claude, the panel offers **Install…**, or you mark the items
-yourself: the item then says *no progress comes back here: mark it done when it is*, with **Mark as Done** next to
-**Go to Claude**, and the session list reads *In Claude desktop · waiting for you to mark it*. **Review Changes…** and **Merge** work on the worktree as usual. A Claude session already running in Blurt's
-terminal can move there with **Continue in Claude Desktop…** in its **⋯** menu (Claude Code 2.1.285 or later, signed
-in with a Claude subscription); the agent stops here and live status stops with it. If the Blurt MCP isn't installed
-for Claude, the confirmation says so and offers **Install…** first, since the desktop app can't report progress
-without it. If the desktop app doesn't take the conversation, **Restart Session** starts a new session on the same
-items in Blurt's terminal.
-
-**Review Changes…** shows what changed on the session's branch. **Merge** (`⌘↩`) brings it into your project folder;
-when the agent left its work uncommitted (Codex can't commit inside a worktree), the button reads **Commit and
-Merge** and Blurt commits it first, as "HS-5 Create done.txt (Blurt hand-off)". A branch with no changes can only be
-discarded, never pushed. **Discard** puts the items back in *To do*. `Esc` closes the sheet at any point. While the
-agent is still open in its window (a finished turn waits there), the button reads **End Session and Review**: it ends
-the agent and shows the changes again, including any it made on the way out, and you merge from there. Merge lands
-only what the sheet showed: if the branch changed after you opened it, Blurt asks you to review it again.
+Agents that have the Blurt MCP installed (Settings → Agents → Connect) report back on their own: you'll see the item
+move to *In progress*, then *To verify*. Without it the note gives the agent an `items.py` command that does the same.
+If the agent never reports, the item stays *Handed off*: **Mark as Done** or **Take Back** when you know how it went.
 
 Organizing a recording stops when you quit Blurt (Blurt asks first; Return keeps it going), and a recording is never
 organized twice at the same time. Running work is listed above the list under *Running*. If organizing fails, it stays
@@ -540,12 +485,12 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   model you set up before stays as it was; its row suggests the measured one with *Switch*. Blurt checks
   blurt.work for an updated list once a day. A Model Studio key also recognizes speech.
 - **Set up with your agent.** If you use a coding agent (Claude Code, Codex, Gemini CLI, Kimi…), *Set Up with
-  Agent…* next to *Add Service…* (and on the setup assistant's cloud row) starts it in Blurt's terminal. It reads your
-  Mac, asks whether your voice and text may leave the Mac and which languages you speak, proposes a setup, opens each
+  Agent…* next to *Add Service…* (and on the setup assistant's cloud row) gives you an instruction to paste into it
+  (or just ask it to "set up Blurt's models"). It reads your Mac, asks whether your voice and text may leave the Mac and which languages you speak, proposes a setup, opens each
   provider's API key page and, once you have signed in and created the key, hands it to Blurt, picks a model per job
   and runs a test dictation. You do the sign-in, verification and payment; the key passes through the agent and is
-  stored in your Keychain. The page lists each step as it happens, with *Stop*. An agent you started yourself can do
-  the same (ask it to "set up Blurt's models"); Blurt asks you first (*Allow* / *Don’t Allow*).
+  stored in your Keychain. Before its first change Blurt asks you (*Allow* / *Don’t Allow*). The page lists each step as it
+  happens, with *Stop*.
 - **Each app remembers.** Turn on Structured (⇧) or Translate (⌘) in an app and it stays on there until you switch it
   back; after an hour away the notch reminds you as the next take starts. *Settings → Dictation → Remember Structured
   and Translate for each app* turns this off; the apps are listed there with Reset. The apps where dictation is translated are
@@ -822,7 +767,7 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
 
 录屏时：`⌥P` 暂停；`⌥A`（或刘海上的截图按钮）和平时的截图一样——框选区域，说或打备注（录屏在收音的同时，备注也能听到你说话），在图上画，然后挂成一张卡片——录屏不会暂停，截图的过程也录在视频里。这张截图属于这段录屏：图、备注、去处和类型都存进录屏里，整理时会按你的备注生成一个事项（选了类型就是这个类型）（卡片菜单里写着「随这段录屏一起整理」，点完成后卡片会收起）。按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆，按键不分先后（按住哪几个键就画哪种形状），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。（1.0.7 起去掉了 `⌥M` 标记：`⌥A` 截图已经不会暂停录屏，你说的话本身就标出了那一刻。）录屏时不能听写，刘海上会说明。
-刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张 · 已识别 4 个事项」（到目前为止听出来的事项），下面一行是去处——「点完成后整理到 Atlas Web」。
+刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张」，下面一行是去处——「点完成后整理到 Atlas Web」。
 口喷鸡自己也会像别的 App 一样被录进去——它的窗口、卡片、备注框、画笔笔迹和刘海——所以可以用录屏来反馈口喷鸡自己的问题；只有倒计时和红色边框永远不会录进去。不想录到刘海，就打开「设置 → 通用 → 录屏时不录刘海」（截图总会带上刘海）。
 
 点完成后，刘海会说「正在整理到 Atlas Web」；口喷鸡在这台 Mac 上整理过几段录屏之后，还会说通常要多久（「通常约 4 分钟」；在那之前不瞎猜），旁边的「更改」可以换项目。鼠标移到刘海上能看到进度和剩余时间。整理好后，刘海会说「已整理到 Atlas Web · 5 条新的」，点「打开」。只想留下视频、不整理（比如要把视频发给别人）：在刘海的 ··· 菜单（或菜单栏菜单）里选「只保存视频」代替「完成」，视频会保存并在访达中显示。口喷鸡不会自己删它（「自动删除视频」只处理已经整理过的录屏）。App 里暂时没有「之后再整理」的按钮；需要的话，让你的 agent 里的 blurt 技能处理这段录屏。
@@ -936,11 +881,11 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 
 ### 5. 交给 Agent
 
+口喷鸡不在自己的窗口里运行编程 Agent。事项交给你平时用的 Agent（Claude Code、Codex、Cursor……），在哪儿用都行。
 选中一条或几条，选一种交法：
 
-- **交给 Agent**（`⌘↩`）：在口喷鸡内置的终端里、在项目文件夹中运行 Claude Code 或 Codex。几条可以放进一个对话（**一起处理**），
-  也可以每条一个（**并行**，各自在独立的 git worktree 里，互不改到同一个文件）。关掉窗口会话也继续跑；需要你回答、或者一轮做完了，口喷鸡会提醒你。
-- **复制指令**：一句话的指令，指向一份交接说明，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接说明本身。
+- **复制指令**：一句话的指令，指向一份交接说明，Agent 需要的东西（包括截图）都在里面。粘贴给你的 Agent 就行，
+  事项会变成「已交给 Agent」。「**复制全文**」复制的是交接说明本身。
 - **导出交接包…**：给人看，而不是给 Agent：一个 `.zip`，里面有概要（按种类、按状态的条数，然后每一条的状态、你的原话、复现步骤、
   疑似代码位置和截图）、每条一个文件，以及截图和录屏片段。里面只用相对路径，同事的电脑上也能打开。选好保存位置即可，文件名是
   项目、日期和条数。打包时刘海会显示进度，完成后告诉你存在哪里，并带「**在访达中显示**」。事项的状态不会变。你这台 Mac 上的路径
@@ -951,45 +896,10 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 它会打包（`bundle_items` 工具），再用它自己已有的工具发出去；口喷鸡本身不接任何第三方服务。「设置 → Agent → 可以这样跟 Agent 说」
 里还有几个例子。
 
-装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到事项变成「进行中」，再变成「待验证」。
-如果会话结束了 Agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），事项会留在「进行中」，上方写着「会话已结束，Agent 没有回报结果」：
-点「**打开会话**」看看它做了什么，再「**重新开始会话**」「**标为完成**」或「**收回**」。「事项」菜单和右键菜单里也有「打开会话」。
+装了口喷鸡 MCP 的 Agent（设置 → Agent → 连接）会自己回报：你会看到事项变成「进行中」，再变成「待验证」。没装的话，
+交接说明里给了 Agent 一条 `items.py` 命令，效果一样。Agent 一直没回报，事项就停在「已交给 Agent」：知道结果后「**标为完成**」或「**收回**」。
 
-会话结束后，终端那里说的是它怎么结束的，而不是一个死掉的窗口：「Codex 启动失败」并附上 Agent 最后说的话（登录失效、报错），
-分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些事项再跑一遍
-（只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。事项上方的提示条
-最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
-没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
-
-面板用的总是这些事项自己的项目（它的默认 Agent、上次给它选的模型），和当前项目是哪个无关。交不了的事项在面板打开之前就说明原因，
-并给出出路：已丢弃的（「**恢复**」）、待验证或已完成的（「**重新打开**」）、还有会话在做的（「**打开会话**」）。上一个会话没回报就结束了的事项，
-可以直接再交：会先从那个会话收回。对已经结束、什么都没改的会话按「**收回**」，它的 worktree、`blurt/…` 分支和窗口也会一起清掉，
-不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。只收回会话里的一条（`R`、状态菜单）时，其他事项还跟着它，
-等一条都不剩了才清理。Codex 会请你信任一次口喷鸡的 hooks（选「Trust all and continue」）；
-hooks 的命令不会再因为 Python 或口喷鸡更新而变，所以不会再问。Agent 停在这类第一次的询问（信任文件夹、信任 hooks）时，
-会话标题下面会有一行字说明它在问什么、该怎么答。如果你在信任询问那一步直接退出，会话会说它停在了那里、什么都没开始；
-「**重新开始会话**」会再问一次。在口喷鸡终端里用不了的旧版本 Agent（0.164 之前的 Codex）在开始前就会被拦下：
-「交给 Agent」面板会显示装的版本和更新命令，并给出「**重新检查**」。Codex 每次交接时底部都会显示
-*Running without the shared background server*：口喷鸡用 `-c` 传入 hooks，只有 Codex 的内嵌模式接受这种方式，不影响使用。
-
-对话的第一行是它的标题，比如「AW-12 · 登录按钮点了没反应（口喷鸡交接）」，在 Agent 自己的对话列表里一眼就能找到；Codex 还会把它设为线程名。
-
-**Claude 桌面端。** 装了 Claude 桌面端时，「交给 Agent」面板会问 Claude Code 在哪运行：「**在口喷鸡终端运行**」（推荐）或
-「**在 Claude 桌面端运行**」。选择按 Agent 记住（设置 → Agent 里也能改）。选桌面端时，口喷鸡照样建好 worktree，然后在 Claude
-里开一个新对话、填好这些事项：在 Claude 里确认文件夹并点发送。口喷鸡看不到那个对话的实时状态，事项上方写着「在 Claude 桌面端进行 ·
-进度由 Agent 回报」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，事项才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
-不装就自己标记事项：这时事项上写着「这里收不到进度，做完后回来标为完成」，「**标为完成**」就在「**前往 Claude**」旁边，会话列表里写「在 Claude 桌面端 · 等你标记」。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
-「**在 Claude 桌面端继续…**」移过去（需要 Claude Code 2.1.285 或更高、用 Claude 订阅登录）；Agent 会在这里停下，实时状态也随之停止。
-Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度，并先给「**安装…**」。桌面端没接过对话时，「**重新开始会话**」会在口喷鸡终端里
-为这些事项开一个新会话。
-
-「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
-里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。
-没有改动的分支只能丢弃，不会被推送。「**丢弃**」会把事项放回「要做」。随时按 `Esc` 关掉这个面板。Agent 还开在它的窗口里时
-（一轮做完了在那儿等着），按钮是「**结束会话并查看**」：先结束 Agent，再重新显示改动（包括它结束前刚写的），然后再从这里合并。
-合并只会并入面板上显示的内容：打开面板后分支又有了改动，口喷鸡会请你重新查看。
-
-整理录屏时退出口喷鸡会停止整理（退出前会先问你，按回车就是不退出），同一段录屏也不会同时整理两次。正在跑的整理和会话列在列表上方的
+整理录屏时退出口喷鸡会停止整理（退出前会先问你，按回车就是不退出），同一段录屏也不会同时整理两次。正在跑的整理列在列表上方的
 「**正在运行**」里。整理失败的会留在那里，带着「**重试**」和「**忽略**」，直到你选一个；它会用一句话说明是哪个 Agent、出了什么问题
 （没登录、额度用完、连不上网）和该怎么办，标红的也是真正出问题的那一步（Agent 根本没法工作时是「准备」）。「**重试**」会重新检查 Agent，
 所以登录后直接点就行。排在前面的 Agent 用不了时，由下一个来整理：每次换都会在刘海里说，整理记录里也留着（「由 Codex 整理（Claude Code 没登录）」）。
@@ -1040,7 +950,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **提示音。** 麦克风真正开始收音时小鸡叫一声（可以说了），结束时啄两下；按 Esc 取消是轻轻啄一下。按了没声音，就是没开始。语音备注也一样；录屏时不出声。「设置 → 听写」里开始和结束各有一个开关。
 - **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 按 ⌘ 翻译成」：「自动」（默认）是你的语言 ↔ 另一种，列表里会写出这一对（比如「自动：简体中文 ↔ English」；系统是英文、第二语言是日语时是「自动：English ↔ 日本語」）：说你自己的语言就译成另一种，说别的语言就译成你的语言；也可以选 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский，说的已经是这种语言时按原话输入。⌥T 截图翻译有它自己的设置（读和写的方向通常相反）。用哪个模型翻译看「设置 → 模型」的「翻译」一行：加了 DeepSeek 或阿里云百炼的 Key 就用 DeepSeek V4.1 Flash（更好，约 1 秒），没有就用本机润色模型。
 - **云服务。** 「设置 → 模型 → 云服务」：添加 DeepSeek（推荐，一条听写约 ¥0.001）或阿里云百炼的 API Key，不用选模型。Key 存在钥匙串里；「测试」会显示「正常 · 320 毫秒」或原因。在「各项任务用哪个模型」里，润色、翻译、截图取字各自列出这台 Mac 和口喷鸡为这件事实测过的云端模型（DeepSeek V4.1 Flash；截图取字用 Qwen3.6 Flash），下面写明文字发给谁。其他模型（Kimi、GLM、Gemini、Claude、OpenRouter、自己的服务）在这件事菜单里的「高级 → 自定义模型…」：服务、Key 和模型 ID，标着「未经口喷鸡测试」；「保存」前先拿这件事试一次（一句话，截图取字是一张带字的小图），没通过就什么都不存。以前设好的模型照旧能用，那一行会推荐实测过的模型，点「切换」就换。口喷鸡每天到 blurt.work 查一次有没有更新的列表。百炼的 Key 也能做语音识别。
-- **通过 Agent 设置。** 如果你在用编程 Agent（Claude Code、Codex、Gemini CLI、Kimi 等），「添加云服务…」旁边的「通过 Agent 设置…」（设置助手的云服务一行也有）会在口喷鸡的终端里启动它。它会读取本机信息，问你语音和文字能否上传、主要说哪些语言，给出方案，打开各服务获取 API Key 的页面；你登录并创建 Key 后，它把 Key 交给口喷鸡、为每项任务选好模型，并试一次听写。登录、实名认证和付款由你完成；Key 会经过 Agent，保存在钥匙串中。页面上会逐项列出进度，可随时「停止」。你自己启动的 Agent 也可以这样做（让它「设置口喷鸡的模型」），口喷鸡会先问你「允许」或「不允许」。
+- **通过 Agent 设置。** 如果你在用编程 Agent（Claude Code、Codex、Gemini CLI、Kimi 等），「添加云服务…」旁边的「通过 Agent 设置…」（设置助手的云服务一行也有）会给你一句指令，粘贴给它就行（或者直接让它「设置口喷鸡的模型」）。它会读取本机信息，问你语音和文字能否上传、主要说哪些语言，给出方案，打开各服务获取 API Key 的页面；你登录并创建 Key 后，它把 Key 交给口喷鸡、为每项任务选好模型，并试一次听写。登录、实名认证和付款由你完成；Key 会经过 Agent，保存在钥匙串中。它第一次改设置前，口喷鸡会先问你「允许」或「不允许」。页面上会逐项列出进度，可随时「停止」。
 - **每个 App 记住你的选择。** 在某个 App 里打开结构化（⇧）或翻译（⌘）后，在这个 App 里一直保持，直到你再切回；隔一小时再用，开始时刘海会提示一句。在「设置 → 听写 → 在每个 App 里记住结构化和翻译」里可以关掉，用过的 App 也列在那里，可以重置。自动翻译的 App 列在「这些 App 里听写自动翻译」下面：在某个 App 里按 ⌘ 开启翻译，以后在那里一直翻译；再按 ⌘ 关掉，就从列表里移除；也可以在那里移除。关掉「记住」时，刘海可能会建议在你常翻译的 App 里一直翻译，接受后会说一句并带「撤销」。
 - **没听到？** 刘海上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单独按一下），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。

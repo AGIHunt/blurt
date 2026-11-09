@@ -180,7 +180,6 @@
 - [ ] No resting island on Linux (and Windows, separately)
 - [ ] Not measured: VS Code / Chromium with accessibility on, fractional scaling under XWayland, real mic / AltGr
       layouts, KDE Plasma
-- [ ] tests/session.rs doesn't compile (on main too): fix or drop
 
 ## Windows: Copy Text from Screen and Translate (2026-11-02, apps/desktop/src-tauri/src/screen_text)
 - [x] Alt+Shift+C / Alt+Shift+T (hotkeys `text` / `translate`): the picker in "Copy Text" / "Translate" mode, the
@@ -252,9 +251,7 @@
 - [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux — §Linux: Ubuntu 26.04
 - [ ] More exporters as scripts where CLIs are awkward (Linear, Jira, Notion)
 - [ ] Hosted ASR API (paid, with free trial minutes) — later
-- [ ] Windows / Linux (Tauri) counterparts of the Mac's session fixes (2026-10): an item whose session ended without
-      a report stays in progress — say "Session ended without reporting back" with Open Session / Mark as Done (Take
-      Back + Mark as Done when the job is gone), one Open Session per item, failed session actions toasted; an organizing
+- [ ] Windows / Linux (Tauri) counterparts of the Mac's organizing fixes (2026-10): an organizing
       run there (agents.json `run` is now least-privilege, `{writable}` = `--add-dir` per folder, Linux codex: landlock). Also:
       run it with cwd = the session folder (never the project), put `agents.py command`'s `env` (UV_CACHE_DIR,
       BLURT_NO_INDEX) in its environment, name `uv run <scripts>/<name>.py` with its `scripts` path in the prompt
@@ -284,34 +281,10 @@
       / Lark (`apps/desktop/src-tauri/src/settings.rs` `export_targets`, `web/apps/desktop/src/mock.ts`,
       `settings.tab.export` / `settings.export.*` in `web/apps/desktop/src/locales/*.json`): drop the Export tab, open
       Agents for an old `blurt://settings/export`, show each agent's skill + MCP state and the three "Ask your agent"
-      requests (`agents.ask.*` in the Mac's Terminal.strings) with Copy. Main window: "Export Hand-off Bundle…" on the
+      requests (`agents.ask.*` in the Mac's Agents.strings) with Copy. Main window: "Export Hand-off Bundle…" on the
       selection (Item menu, context menu, the Hand Off menu, Ctrl+K) → a native save dialog suggesting
       `<project>-<date>-<n items>.zip` (export_local.py `bundle_name`) → `export_local.py bundle --items … -o <file>`,
       then a toast with "Show in folder". No item changes state.
-- [ ] Hand-off sessions (Mac v0.9 dogfood, docs/design/system.md §3.3 "A session's ended card"): show an ended
-      session's card, not the dead terminal (`SessionOutcome`: couldn't start / ready to review only with changes /
-      ended · no changes), with the agent's `agent.last_output` and `job.error`, Restart Session (`sessions.py restart`),
-      Take Back and Show Output; the item banner by `SessionBannerPlan` (neutral once ended, never Mark as Done as the
-      primary); the review sheet's Commit and Merge, no PR / merge of an empty branch, Esc everywhere, ⌘/Ctrl+Enter to
-      merge; the hand-off panel refuses a logged-out agent inline and offers the other one. The Rust job fold: a
-      finish event's `detail.error` becomes `error` (jobs.py / BlurtCore JobFold do). Review follow-ups: Restart /
-      Take Back off while one runs (`sessions.py restart` already refuses a second one: code `finished`); the banner
-      shows two buttons and a ⋯ menu (`SessionBannerPlan.more`), its Review Changes… opens the sheet; the watchdog's
-      *No response* (`status_source: "watchdog"`) with Restart; the panel passes `--force` only after its own login
-      check; one state wording everywhere (`AgentSessionRow.stateText`).
-- [ ] Hand-offs beyond Blurt's terminal (Mac v0.9-next, next-round.md K5 "交接标题、Claude 桌面端"): the scripts do the
-      title line and the Codex thread name on every platform already. The app side: the hand-off panel's *Run in
-      Blurt's terminal (recommended) / Run in Claude desktop* (only when the Claude desktop app is installed: on
-      Windows its install folder / protocol handler for `claude:`, on Linux whether `xdg-mime query default
-      x-scheme-handler/claude` answers), remembered per agent in `sessions.target`, and the same row in Settings →
-      Agents; `sessions.py dispatch --runner desktop` and open each row's `url` (only the `claude:` scheme, BlurtCore
-      `DesktopLink`) — never under the test channel; the one line "confirm the folder and press Send"; the no-MCP
-      callout with Install…; the banner *In Claude desktop · progress comes from the agent* + Go to Claude
-      (`SessionBannerPlan` with `desktop:`); the session pane's desktop card instead of a terminal; *Continue in Claude
-      Desktop…* only when `sessions.py desktop-check` says available (`DesktopContinue.offered`), asking first —
-      with its `mcp: false` the question says items need marking by hand and offers Install…, and Continue passes
-      `--without-mcp`; a desktop session's still status mark (no spinner, not in the running count) and the card's
-      no-MCP wording (`agent.desktop.mcp`). `claude --desktop` itself: check on Windows that it opens the desktop app as on the Mac.
 - [ ] Organising runs: start the agent in its own process group / job object (Mac: BlurtCore `ProcessGroup`), record
       `agent_pgid` and its leader's start time (`agent_pgid_start`), stop it on quit (ask first — not on logout /
       shutdown) and stop a leftover one at launch only while it is still that group (`ProcessGroup.isOurs`; a reused
@@ -437,19 +410,11 @@
     picture exists and offered only on a display still there (`LastArea`); a snap without a note is "Snap · 19:03"
     (no session counter); "Add to Blurt" says where it went and says "Nothing to add" when nothing is selected.
 - [ ] Work fixes after dogfood pass 2 (Mac, branch fxwork) — the Tauri app's counterparts:
-  - Hand-off checked before the panel opens (BlurtCore `HandOffCheck`): discarded → Restore, to verify / done →
-    Reopen, still with a live session → Open Session, unreadable → Open in Editor; the panel takes the items' own
-    project (default agent, remembered model), keeps Start off after a failed dry run, shows every warning in one
-    tinted box and never a raw code (`error.bad_transition`, `error.auth.fix`, `warning.taken_back` …).
   - An unreadable item file: the detail's "can't be read" state with Open in Editor / Show in Folder, its state
     actions refused with that reason; the launch scan's `unreadable` said once, a failed scan said with Try Again.
   - Organising: Retry re-checks agents that weren't ready; `job.error.reason` shown before the code's sentence, never
     `message`; the failed step from `OrganizeSteps`; `organizer` ("Organized by Codex (Claude Code …)") on the job
     and a notch line for every switch (mid-run too); the no-agent reason lists the user's order with each fix.
-  - Take Back through `sessions.py take-back` (cleans a no-change ended session's worktree, branch and window).
-  - Desktop hand-off without the blurt MCP: banner "no progress comes back here" + Mark as Done; row "waiting for you".
-  - Codex hooks: the `blurt-hook` shim is sh only — Windows needs a `.cmd` / PowerShell shim so the hook command stays
-    byte-stable there too (agents.py `hook_command` keeps the old interpreter path on `os.name == "nt"`).
   - Shortcuts panel on Ctrl+/ (not Ctrl+Shift+/); jobs strip "Running"; quit alert with Cancel as the default.
 - [ ] Shell v0.9 pass-2 fixes (Mac, branch fxshell) — the Tauri app's (Windows / Linux) counterparts:
   - Offline / blocked-network first run as one state (BlurtCore `SpeechSetup`): the setup flow's models step shows one

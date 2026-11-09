@@ -4,14 +4,13 @@
 // (places, projects, + Open Folder…, the Settings gear), the list (its heading with the order, the filter, + New and
 // the search field; the running jobs; the grouped rows) and the detail (the item in the review component, several
 // items' summary, a job, or nothing). Every write goes through the CLIs; each undoable one is on the window's undo
-// stack (Ctrl+Z, the toast's Undo). Settings and an agent session's terminal take the list and detail columns when
-// opened; the Dictation page takes both, as on the Mac.
+// stack (Ctrl+Z, the toast's Undo). Settings takes the list and detail columns when opened; the Dictation page takes
+// both, as on the Mac.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '@blurt/icons';
 import { applyPlatform, applyTheme, menuCase, targetOf, type Action, type State } from '@blurt/ui';
 import { KindIcon, StatusRing } from '@blurt/ui/react';
-import { emit } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api, inTauri, invoke, listen, type AppStatus, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
 import { codeUrl, hostFor, type HostCallbacks } from './host';
@@ -31,7 +30,6 @@ import {
   grouping as groupingOf,
   handOffBlock,
   isProject,
-  jobFor,
   LIVE_STATES,
   NO_FILTER,
   needsYouParts,
@@ -47,7 +45,6 @@ import {
   type SortKey,
   type UndoStep,
 } from './places';
-import { DispatchSheet } from './components/DispatchSheet';
 import { EmptyState } from './components/EmptyState';
 import { Tooltip } from './components/Tooltip';
 import { FilterGlyph, MissingFolderGlyph, PinGlyph, ProgressGlyph, ProjectGlyph, ScopeGlyph, SidebarGlyph, UnassignedGlyph } from './components/glyphs';
@@ -62,7 +59,6 @@ import { Palette, type PaletteEntry } from './components/Palette';
 import { ProjectSettingsSheet } from './components/ProjectSettingsSheet';
 import { ReviewPane } from './components/ReviewPane';
 import { SelectionView, type PlanAction } from './components/SelectionView';
-import { agentName, SessionsView } from './components/SessionsView';
 import { goSettingsPane, SettingsView } from './components/SettingsView';
 import { DictationView } from './components/DictationView';
 import { Shortcuts } from './components/Shortcuts';
@@ -95,7 +91,7 @@ const loadSaved = (): Saved => {
   }
 };
 
-type Screen = { kind: 'main' } | { kind: 'settings' } | { kind: 'sessions'; job: string | null };
+type Screen = { kind: 'main' } | { kind: 'settings' };
 type Detail = { kind: 'session'; dir: string; project: string | null } | { kind: 'job'; id: string } | null;
 interface Toast {
   msg: string;
@@ -112,7 +108,6 @@ function startPlace(sv: string | null | undefined): { place?: Place; screen?: Sc
   if (!sv) return {};
   if (sv.startsWith('review:')) return { session: sv.slice(7) };
   if (sv.startsWith('project:')) return { place: sv as Place };
-  if (sv.startsWith('sessions')) return { screen: { kind: 'sessions', job: sv.split(':')[1] ?? null } };
   if (sv === 'settings') return { screen: { kind: 'settings' } };
   if (['inbox', 'all', 'dictation', 'progress', 'unassigned'].includes(sv)) return { place: sv as Place };
   if (sv === 'items') return { place: 'all' };
@@ -150,10 +145,7 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set(saved.selected ?? []));
   const [focus, setFocus] = useState<string | null>(saved.selected?.[0] ?? null);
   const [detail, setDetail] = useState<Detail>(null);
-  /** the session whose Review Changes sheet opens with it (the item banner's Review Changes…) */
-  const [finishJob, setFinishJob] = useState<string | null>(null);
   const [extra, setExtra] = useState<ItemRow | null>(null);
-  const [dispatch, setDispatch] = useState<string[] | null>(null);
   const [palette, setPalette] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   /** New Item's sheet: true, or what a paste or a drop brought (NewItemSheet.Prefill) */
@@ -188,7 +180,6 @@ export default function App() {
   const [editor, setEditor] = useState('vscode');
   // the user's own global keys (Settings → Shortcuts), for the toolbar's tips: none when a key is off
   const [hotkeys, setHotkeys] = useState<HotkeyRow[]>([]);
-  const [appCfg, setAppCfg] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
   const hotkeyOf = (action: string) => {
     const r = hotkeys.find((h) => h.action === action);
     return r && r.spec && r.result !== 'off' ? r.label : '';
@@ -231,9 +222,7 @@ export default function App() {
   const live = useRef<{
     go: (p: Place) => void;
     reveal: (uid: string) => void;
-    handOff: (uids: string[]) => void;
-    openSession: (job: string) => void;
-    reviewChanges: (job: string) => void;
+    openJob: (job: string) => void;
     focusList: () => void;
     pageStep: (label: string) => void;
     windowUndo: (redo: boolean) => void;
@@ -269,7 +258,6 @@ export default function App() {
     api.settings().then((s) => {
       if (typeof s.config?.app?.editor === 'string') setEditor(s.config.app.editor);
       setHotkeys(s.hotkeys ?? []);
-      setAppCfg(s.config ?? {});
     }, () => {});
     api.dragOutAvailable().then(setNativeDrag, () => {});
     api.cardsWaiting().then(setCardsWaiting, () => {});
@@ -289,8 +277,7 @@ export default function App() {
         if (p.view === 'inbox' || p.view === 'dictation') live.current.go(p.view);
         else if (p.view === 'settings') setScreen({ kind: 'settings' }); // the tray's Settings… (the pane: SettingsView)
         else if (p.view === 'welcome') api.onboarding().then((o) => setWelcome({ onb: o, firstRun: o.needed }), () => {}); // blurt://onboarding
-        else if (p.job) live.current.openSession(p.job);
-        else if (p.job === null) setScreen({ kind: 'sessions', job: null });
+        else if (p.job) live.current.openJob(p.job);
         else if (p.project) live.current.go(p.project === 'inbox' ? 'unassigned' : `project:${p.project}`);
         else if (p.session) {
           setScreen({ kind: 'main' });
@@ -485,12 +472,12 @@ export default function App() {
     if (undo.current[undo.current.length - 1]?.name === name) doUndo();
   };
 
-  /** A state action on the items it is valid for (the others are left alone). Hand off opens the dispatch sheet. */
+  /** A state action on the items it is valid for (the others are left alone). Hand off copies the hand-off note. */
   const apply = async (action: Action, items: ItemRow[], redoing = false): Promise<void> => {
     const ok = validFor(action, items);
     if (!ok.length) return;
     if (action === 'hand_off') {
-      handOff(ok.map((i) => i.uid));
+      void handOff(ok.map((i) => i.uid));
       return;
     }
     // shown at once (the row takes its new state); the index agrees a moment later, or puts the truth back
@@ -620,35 +607,26 @@ export default function App() {
   }
 
   // ---------------------------------------------------------------- hand-off
-  const liveJob = (uid: string) => jobFor(jobs, uid)?.id ?? null;
   const blockText = (b: HandOffBlock): string => {
     switch (b.why) {
-      case 'discarded': return t('main.dispatch.discarded');
-      case 'finished': return t('main.dispatch.reopen_first', { a: t(`state.${b.state}`) });
-      case 'with_session': return t('main.dispatch.with_session', { a: b.item });
-      case 'mixed_projects': return t('main.dispatch.one_project');
-      case 'needs_project': return t('main.dispatch.needs_project');
+      case 'discarded': return t('main.handoff.discarded');
+      case 'finished': return t('main.handoff.reopen_first', { a: t(`state.${b.state}`) });
     }
   };
-  /** Start an agent session: the dispatch sheet. Items that can't go say why at once, with the way out. */
-  function handOff(uids: string[]): void {
+  /** Hand off to the user's own agent (K6): the hand-off note is written, the items are marked handed off, and the
+      instruction (or, `full`, the whole text) is on the clipboard to paste into Claude Code, Codex or any agent.
+      Items that can't go say why at once, with the way out. */
+  async function handOff(uids: string[], full = false): Promise<void> {
     const all = itemsOf(uids);
     if (!all.length) return;
-    const b = handOffBlock(all, liveJob);
+    const b = handOffBlock(all);
     if (b) {
       const way: Toast['action'] =
-        b.why === 'needs_project' ? { label: t('main.dispatch.move_first'), run: () => pickProject(all.map((i) => i.uid)) }
-          : b.why === 'discarded' ? { label: menuCase(t('action.restore')), run: () => apply('restore', all) }
-            : b.why === 'finished' ? { label: menuCase(t('action.reopen')), run: () => apply('reopen', all) }
-              : b.why === 'with_session' ? { label: t('main.dispatch.open_session'), run: () => openSession(b.job) }
-                : undefined;
-      return showToast(b.why === 'needs_project' ? (all.length === 1 ? t('main.dispatch.needs_project_single', { a: all[0].item_id }) : plural('main.dispatch.needs_project_n', all.length)) : blockText(b), { action: way, mark: 'warn' });
+        b.why === 'discarded' ? { label: menuCase(t('action.restore')), run: () => apply('restore', all) }
+          : { label: menuCase(t('action.reopen')), run: () => apply('reopen', all) };
+      return showToast(blockText(b), { action: way, mark: 'warn' });
     }
-    setDispatch(all.filter((i) => i.state !== 'discarded').map((i) => i.uid));
-  }
-  const copyHandoff = async (uids: string[], full: boolean) => {
-    const its = itemsOf(uids).filter((i) => i.state !== 'discarded');
-    if (!its.length) return;
+    const its = all.filter((i) => i.state !== 'discarded');
     try {
       const r = await api.handoff(its.map((i) => i.uid), full);
       if (r?.text) await api.copyText(r.text).catch(() => {});
@@ -657,7 +635,7 @@ export default function App() {
     } catch (e) {
       showToast(`${t('main.handoff.failed')} — ${errText(e)}`);
     }
-  };
+  }
   const copyLines = (lines: string[], what: string) => api.copyText(lines.join('\n')).then(() => showToast(what), fail);
   const pathOf = (r: ItemRow) => r.primary_frame || r.path;
   const revealItems = (its: ItemRow[]) => its[0] && api.reveal(pathOf(its[0])).catch(fail);
@@ -773,11 +751,6 @@ export default function App() {
       if (r.pick === 'other' || r.pick === 'empty') showToast(t('main.missing.not_this', { a: p.name }));
       else if (r.pick === 'same') refresh();
     }, fail);
-  /** Settings, on a pane (SettingsView follows the same "nav" the tray and blurt://settings/<pane> send). */
-  const openSettings = (pane?: string) => {
-    setScreen({ kind: 'settings' });
-    if (pane && inTauri) void emit('nav', { view: 'settings', pane }).catch(() => {});
-  };
 
   // ---------------------------------------------------------------- capture
   const record = () => api.captureStart().catch((e) => String(e) !== 'cancelled' && fail(e));
@@ -823,19 +796,16 @@ export default function App() {
     ]);
   };
   const copyMenu = (items: ItemRow[]): MenuEntry[] => [
-    { label: t('main.cmd.copy_instruction'), keys: 'Ctrl+Shift+C', disabled: !items.some((i) => i.state !== 'discarded'), run: () => copyHandoff(items.map((i) => i.uid), false) },
-    { label: t('main.cmd.copy_full'), disabled: !items.some((i) => i.state !== 'discarded'), run: () => copyHandoff(items.map((i) => i.uid), true) },
+    { label: t('main.cmd.copy_full'), disabled: !!handOffBlock(items), run: () => void handOff(items.map((i) => i.uid), true) },
     { label: t('main.menu.copy_link'), run: () => copyLines(items.map((i) => `blurt://item/${i.uid}`), t('mw.copied.link')) },
     { label: t('action.copy_path'), keys: 'Ctrl+Alt+C', run: () => copyLines(items.map(pathOf), t('mw.copied.path')) },
   ];
-  /** Hand off, then the agent session it started when there is one to open (the context menu's first group). */
+  /** Hand Off (the context menu's first group): the instruction for the user's own agent, copied. */
   const handOffEntries = (items: ItemRow[]): MenuEntry[] => {
-    const b = handOffBlock(items, liveJob);
-    const job = items.length === 1 ? jobFor(jobs, items[0].uid) : null;
-    return tidy([
-      { label: items.length > 1 ? plural('main.menu.start_session_n', items.length) : t('main.menu.start_session'), icon: <StatusRing state="handed_off" size={13} />, keys: mac ? '⌘↩' : 'Ctrl+Enter', disabled: !!b, tip: b ? blockText(b) : undefined, run: () => handOff(items.map((i) => i.uid)) },
-      job && { label: t('main.menu.open_session'), icon: <Icon name="terminal" size={14} />, run: () => openSession(job.id) },
-    ]);
+    const b = handOffBlock(items);
+    return [
+      { label: items.length > 1 ? plural('main.menu.hand_off_n', items.length) : t('main.menu.hand_off'), icon: <StatusRing state="handed_off" size={13} />, keys: mac ? '⌘↩' : 'Ctrl+Enter', disabled: !!b, tip: b ? blockText(b) : t('main.palette.hint.copy_instruction'), run: () => void handOff(items.map((i) => i.uid)) },
+    ];
   };
   /** The item actions between the state rows and Discard: change it, take it out of Blurt, look at its files. */
   const itemActions = (items: ItemRow[], inSelection = false): MenuEntry[] => {
@@ -863,7 +833,7 @@ export default function App() {
     const states = actionsFor(items, true);
     const one = items.length === 1 ? items[0] : null;
     const aside: Action[] = ['wontfix', 'discard'];
-    const entry = (a: Action): MenuItem => (a === 'hand_off' ? { ...(stateEntry(a, items) as MenuItem), label: t('main.menu.start_session'), run: () => handOff(items.map((i) => i.uid)) } : (stateEntry(a, items) as MenuItem));
+    const entry = (a: Action): MenuItem => (a === 'hand_off' ? { ...(stateEntry(a, items) as MenuItem), label: t('main.menu.hand_off'), run: () => void handOff(items.map((i) => i.uid)) } : (stateEntry(a, items) as MenuItem));
     return tidy([
       one && { label: stateText(one), icon: <StatusRing state={one.state} size={14} />, checked: true, current: true },
       one && { kind: 'separator' },
@@ -971,21 +941,13 @@ export default function App() {
   ]);
 
   // ---------------------------------------------------------------- the selection summary (selectionPlan)
-  /** The agent a hand-off of these items would start (the Mac's handOffAgentName): the one used last, the project's
-      default, the global default — named, so the button says "Hand Off to Claude Code…". */
-  const handOffAgent = (items: ItemRow[]) => {
-    const ps = new Set(items.map((i) => i.project_id));
-    const proj = ps.size === 1 ? projectRow([...ps][0])?.default_agent : null;
-    const id = [appCfg.sessions?.agent, proj, appCfg.record?.default_agent].find((x) => typeof x === 'string' && x);
-    return id ? agentName(id) : '';
-  };
   const plan = (() => {
     const items = selectedRows;
     if (items.length < 2) return null;
-    const b = handOffBlock(items, liveJob);
+    const b = handOffBlock(items);
     const n = items.length;
     const acts: PlanAction[] = [
-      { id: 'hand_off', title: handOffAgent(items) ? t('main.selection.hand_off_to', { a: handOffAgent(items) }) : t('main.selection.hand_off'), tip: b ? blockText(b) : plural('main.selection.hand_off.tip', n), enabled: !b },
+      { id: 'hand_off', title: t('main.selection.hand_off'), tip: b ? blockText(b) : plural('main.selection.hand_off.tip', n), enabled: !b },
       { id: 'move', title: t('main.selection.move'), tip: plural('main.selection.move.tip', n), enabled: true },
     ];
     const states = actionsFor(items, false);
@@ -996,8 +958,8 @@ export default function App() {
       const key = actionKey(st, mac);
       acts.push({ id: st, title: menuCase(t(`action.${st}`)) + (valid < n ? ` (${i18n().formatNumber(valid)})` : ''), tip: t(`action.${st}.hint`) + (key ? ` (${key})` : ''), enabled: true });
     }
-    const primary = !b ? 'hand_off' : b.why === 'needs_project' || b.why === 'mixed_projects' ? 'move' : way;
-    const blocked = !b ? null : b.why === 'mixed_projects' ? t('main.selection.blocked.mixed') : b.why === 'needs_project' ? t('main.selection.blocked.needs_project') : b.why === 'finished' ? t('main.selection.blocked.finished') : blockText(b);
+    const primary = !b ? 'hand_off' : way;
+    const blocked = !b ? null : b.why === 'finished' ? t('main.selection.blocked.finished') : blockText(b);
     if (primary) acts.sort((x, y) => Number(y.id === primary) - Number(x.id === primary));
     // the Mac's selectionMoreMenu: the state verbs not on a button, the item's actions, and Discard last on its own
     // (one row from Mark as Done it was easy to hit)
@@ -1131,11 +1093,9 @@ export default function App() {
     openFolders,
     go,
     reveal,
-    handOff,
-    openSession,
-    reviewChanges: (job) => {
-      setFinishJob(job);
-      openSession(job);
+    openJob: (id) => {
+      const j = jobs.find((x) => x.id === id);
+      if (j) openJob(j);
     },
     focusList,
     pageStep: (label) => {
@@ -1148,11 +1108,8 @@ export default function App() {
     },
   };
   const hostCb: HostCallbacks = useMemo(() => ({
-    onDispatch: (uids: string[]) => live.current.handOff(uids),
-    onOpenSession: (job: string) => live.current.openSession(job),
     onHandoff: (_r: unknown, what: 'instruction' | 'full') => showToast(t(what === 'full' ? 'main.handoff.copied_full' : 'main.handoff.copied'), { mark: 'ok' }),
     onError: (e: unknown) => showToast(errText(e)),
-    onReviewChanges: (job: string) => live.current.reviewChanges(job),
     onFocusList: () => live.current.focusList(),
     onToast: (x: { msg: string; undo: boolean; label?: string }) =>
       new Promise<string>((done) => {
@@ -1184,7 +1141,8 @@ export default function App() {
     const p = projectRow(current1.project_id);
     if (docItem === current1.uid)
       return { ...hostFor({ project: current1.project_id, item: current1.uid }, p?.kind === 'inbox' ? null : p?.path ?? null, hostCb, editor), sessionBanner: true };
-    // item mode: the banner above the page has the item's Open Session (the Mac's blurtHostInfo.sessionBanner)
+    // item mode: the banner above the page says who has the item (the Mac's blurtHostInfo.sessionBanner): the page's
+    // work card doesn't repeat it
     return { ...hostFor({ project: current1.project_id }, p?.kind === 'inbox' ? null : p?.path ?? null, hostCb, editor), sessionBanner: true };
   }, [current1?.project_id, docItem === current1?.uid, projects, editor]);
   const reviewHost = useMemo(() => {
@@ -1194,7 +1152,7 @@ export default function App() {
   }, [detail, editor]);
   const shownJob = detail?.kind === 'job' ? jobs.find((j) => j.id === detail.id) ?? null : null;
   /** the line above the item on show (the Mac's ItemBanner) */
-  const banner = current1 ? bannerPlan(current1, jobs, { agent: agentName, why: (j) => j.error?.message || t('session.error'), t }) : null;
+  const banner = current1 ? bannerPlan(current1, jobs) : null;
   const bannerText = (() => {
     if (!banner) return '';
     if (banner.kind === 'organizing') {
@@ -1207,51 +1165,26 @@ export default function App() {
   function bannerAction(a: string) {
     if (!current1 || !banner) return;
     const job = banner.job;
-    if (a === 'session' && job) return openSession(job);
-    if (a === 'review' && job) {
-      setFinishJob(job);
-      return openSession(job);
-    }
-    if (a === 'restart' && job) {
-      void api.restartSession(job).then((r) => {
-        refresh();
-        const n = r.jobs[0]?.id;
-        if (n) openSession(n);
-      }, (e) => showToast(errText(e)));
-      return;
-    }
     if (a === 'progress' && job) {
       const j = jobs.find((x) => x.id === job);
       return j ? openJob(j) : undefined;
     }
-    if (a === 'done' || a === 'wontfix' || a === 'take_back') void apply(a as Action, [current1]);
+    if (a === 'done' || a === 'wontfix') void apply(a as Action, [current1]);
   }
   const jobTitle = (j: Job) => {
     // an organizing job with a name of its own is that name ("AI fill-in"), not "Organizing · AI fill-in": two names
     // glued by a dot read as one jargon phrase
     if (j.type === 'process' && j.title) return j.title;
-    const what = j.type === 'agent' && j.agent ? agentName(j.agent.id) : t(`job.type.${j.type}`);
+    const what = t(`job.type.${j.type}`);
     return j.title ? `${what} · ${j.title}` : what;
   };
-  /** An agent session in the main window, as the Mac's TerminalModule.reveal(job:): In Progress (or the place on show
-      when it lists the running jobs) with the session's terminal in the detail. */
-  function openSession(job: string) {
-    if (screen.kind !== 'main' || !['inbox', 'progress', 'unassigned'].includes(place) && !isProject(place)) go('progress');
-    setScreen({ kind: 'main' });
-    setSelected(new Set());
-    setFocus(null);
-    setDetail({ kind: 'job', id: job });
-  }
   /** A job row chosen from the keyboard: shown in the detail, the list keeps the keyboard. */
   function selectJob(j: Job) {
     setSelected(new Set());
     setFocus(null);
     setDetail({ kind: 'job', id: j.id });
-    // an agent session's terminal takes the focus as it attaches: the keyboard stays on the list (Tab goes to it)
-    for (const ms of [0, 150, 500]) setTimeout(focusList, ms);
   }
   function openJob(j: Job) {
-    if (j.type === 'agent') return openSession(j.id);
     setScreen({ kind: 'main' });
     setSelected(new Set());
     setFocus(null);
@@ -1261,7 +1194,7 @@ export default function App() {
   const platform = status?.platform ?? 'win';
 
   // ---------------------------------------------------------------- keyboard (handleKeyEquivalent + ItemTableView.keyDown)
-  const overlay = palette || !!dispatch || keysOpen || newItem || !!settingsFor || !!movePop || menu.isOpen;
+  const overlay = palette || keysOpen || newItem || !!settingsFor || !!movePop || menu.isOpen;
   const onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented || isImeKey(e) || welcome) return;
     const ctrl = e.ctrlKey || e.metaKey;
@@ -1302,8 +1235,8 @@ export default function App() {
     }
     if (overlay || field || inDetail || renaming || (menu.isOpen && stateMenu) || screen.kind !== 'main' || place === 'dictation') return;
     const sel = selectedRows;
-    if (ctrl && e.key === 'Enter') return stop(() => sel.length && handOff(sel.map((i) => i.uid)));
-    if (ctrl && e.shiftKey && key === 'c') return stop(() => copyHandoff(sel.map((i) => i.uid), false));
+    // Hand Off: Ctrl+Enter, and Ctrl+Shift+C (Copy Instruction's key before it was the one hand-off)
+    if ((ctrl && e.key === 'Enter') || (ctrl && e.shiftKey && key === 'c')) return stop(() => sel.length && void handOff(sel.map((i) => i.uid)));
     if (ctrl && e.altKey && key === 'c') return stop(() => copyLines(sel.map(pathOf), t('mw.copied.path')));
     if (ctrl && !e.shiftKey && !e.altKey && key === 'c' && sel.length && !window.getSelection()?.toString()) return stop(() => copyLines(sel.map(pathOf), t('mw.copied.path')));
     if (ctrl && key === 'a') return stop(() => setSelected(new Set(order)));
@@ -1392,9 +1325,8 @@ export default function App() {
     const ic = (n: string) => <Icon name={n as never} size={15} />;
     if (items.length) {
       out.push(
-        { id: 'hand_off', title: t('main.menu.start_session'), icon: <StatusRing state="handed_off" size={14} />, keys: 'Ctrl+Enter', hint: t('main.toolbar.handoff.tip'), section: 'selected', pinned: true, run: () => handOff(items.map((i) => i.uid)) },
-        { id: 'copy_instruction', title: t('main.cmd.copy_instruction'), icon: ic('copy'), keys: 'Ctrl+Shift+C', hint: t('main.palette.hint.copy_instruction'), section: 'selected', pinned: true, run: () => copyHandoff(items.map((i) => i.uid), false) },
-        { id: 'copy_full', title: t('main.cmd.copy_full'), icon: ic('align-left'), hint: t('main.palette.hint.copy_full'), section: 'selected', run: () => copyHandoff(items.map((i) => i.uid), true) },
+        { id: 'hand_off', title: t('main.menu.hand_off'), icon: <StatusRing state="handed_off" size={14} />, keys: 'Ctrl+Enter', hint: t('main.palette.hint.copy_instruction'), section: 'selected', pinned: true, run: () => void handOff(items.map((i) => i.uid)) },
+        { id: 'copy_full', title: t('main.cmd.copy_full'), icon: ic('align-left'), hint: t('main.palette.hint.copy_full'), section: 'selected', run: () => void handOff(items.map((i) => i.uid), true) },
         ...actionsFor(items, false).map((a): PaletteEntry => ({ id: `state:${a}`, title: menuCase(t(`action.${a}`)), icon: <StatusRing state={stateTarget(a, items)} size={14} />, keys: actionKey(a, mac), hint: t(`action.${a}.hint`), section: 'selected', pinned: true, run: () => apply(a, items) })),
         { id: 'move_pick', title: t('main.palette.move_pick'), icon: ic('move'), keys: 'M', hint: plural('main.selection.move.tip', items.length), section: 'selected', pinned: true, run: () => setTimeout(() => pickProject(items.map((i) => i.uid))) },
         { id: 'export', title: t('main.menu.export_bundle'), icon: ic('archive'), section: 'selected', run: () => exportBundle(items) },
@@ -1415,12 +1347,11 @@ export default function App() {
       { id: 'go:dictation', title: t('dictation.history.menu'), icon: ic('character-cursor'), keys: 'Ctrl+Alt+D', section: 'go', pinned: true, run: () => go('dictation') },
       { id: 'new_item', title: t('main.new_item.menu'), icon: ic('plus'), keys: 'Ctrl+N', run: () => setNewItem(true) },
       { id: 'open_folder', title: t('project.open_folder'), icon: ic('folder-plus'), keys: 'Ctrl+O', run: openFolder },
-      { id: 'sessions', title: t('nav.sessions'), icon: ic('terminal'), run: () => setScreen({ kind: 'sessions', job: null }) },
       ...(kindsOn ? [{ id: 'clear_filters', title: t('main.empty.clear_filters'), icon: <FilterGlyph size={15} />, run: () => setFilter(NO_FILTER) }] : []),
       { id: 'rescan', title: t('menu.rescan'), icon: ic('refresh'), run: () => api.rescan().catch(fail) },
       { id: 'shortcuts', title: t('menu.shortcuts'), icon: ic('keyboard'), keys: '?', run: () => setKeysOpen(true) },
       ...KINDS.map((k): PaletteEntry => ({ id: `only:${k}`, title: t('main.palette.only_kind', { a: t(`kind.${k}`) }), icon: <KindIcon kind={k} size={15} />, run: () => setFilter({ ...filter, kinds: [k] }) })),
-      ...jobs.filter((j) => j.state === 'running' || j.state === 'queued').map((j): PaletteEntry => ({ id: `job:${j.id}`, title: jobTitle(j), icon: ic(j.type === 'agent' ? 'terminal' : 'spark'), run: () => openJob(j) })),
+      ...jobs.filter((j) => j.state === 'running' || j.state === 'queued').map((j): PaletteEntry => ({ id: `job:${j.id}`, title: jobTitle(j), icon: ic('spark'), run: () => openJob(j) })),
       { id: 'settings', title: t('mw.settings_menu'), icon: ic('settings'), keys: 'Ctrl+,', run: () => setScreen({ kind: 'settings' }) },
     );
     for (const p of registered) {
@@ -1514,7 +1445,7 @@ export default function App() {
         {!sideOff && (
           <>
             <Sidebar
-              place={mainScreen ? place : screen.kind === 'sessions' ? 'progress' : ('' as Place)}
+              place={mainScreen ? place : ('' as Place)}
               dragging={dragging}
               fresh={freshProject}
               onGo={go}
@@ -1542,11 +1473,6 @@ export default function App() {
           <section className="pad st-host">
             <SettingsView status={status} onToast={(m) => showToast(m)} onBack={() => setScreen({ kind: 'main' })} onWelcome={() => api.onboarding().then((o) => setWelcome({ onb: o, firstRun: false }), fail)} onLang={(l) => (l === 'auto' ? api.status().then((s) => relang(s.lang)) : relang(l))} />
           </section>
-        </main>
-      )}
-      {screen.kind === 'sessions' && (
-        <main className="mw-wide content">
-          <SessionsView job={screen.job} onPick={(job) => setScreen({ kind: 'sessions', job })} projects={projects?.projects ?? []} onToast={(m) => showToast(m)} onShowItem={(uid) => reveal(uid)} onOpenSettings={openSettings} />
         </main>
       )}
       {dictationPage && (
@@ -1618,7 +1544,7 @@ export default function App() {
           )}
           {shownProject && !shownProject.exists && rows.length > 0 && <MissingFolderBanner onLocate={() => locate(shownProject)} />}
           {place === 'inbox' && <CapturesBanner count={cardsWaiting} onChoose={() => void api.revealCards().catch(() => {})} />}
-          <JobsSection jobs={placeJobs} selected={detail?.kind === 'job' ? detail.id : null} agentName={agentName} projectName={projectName} showProject={!isProject(place) && place !== 'unassigned'} onSelect={openJob} />
+          <JobsSection jobs={placeJobs} selected={detail?.kind === 'job' ? detail.id : null} projectName={projectName} showProject={!isProject(place) && place !== 'unassigned'} onSelect={openJob} />
           <SuggestionsBanner groups={sugGroups} onMoveAll={(p, u) => moveItems(u, p)} />
           {filterText && !emptyWorld && <FilterBar text={filterText} canClear={rows.length > 0} onOpen={openFilterMenu} onClear={() => setFilter(NO_FILTER)} />}
           {empty ?? (
@@ -1629,7 +1555,6 @@ export default function App() {
               selected={selected}
               focus={focus}
               searching={searching}
-              jobs={jobs}
               projectName={projectName}
               canSuggest={(id) => registered.some((p) => p.id === id)}
               suggestRows={place === 'unassigned' && !searching}
@@ -1669,8 +1594,6 @@ export default function App() {
         <aside className="mw-detail" data-testid="detail" aria-label={t('main.detail.label')}>
           {detail?.kind === 'session' && reviewHost ? (
             <ReviewPane host={reviewHost} hostKey={detail.dir} opts={{ mode: 'review', platform, theme: 'auto', lang }} rev={tick} onHandle={onPage} />
-          ) : detail?.kind === 'job' && (!shownJob || shownJob.type === 'agent') ? (
-            <SessionsView embedded job={detail.id} openFinish={finishJob === detail.id} onFinishShown={() => setFinishJob(null)} onPick={(job) => job && setDetail({ kind: 'job', id: job })} projects={projects?.projects ?? []} onToast={(m) => showToast(m)} onShowItem={(uid) => reveal(uid)} onOpenSettings={openSettings} />
           ) : shownJob ? (
             <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} />
           ) : plan ? (
@@ -1679,7 +1602,7 @@ export default function App() {
               actions={plan.acts}
               primary={plan.primary}
               blocked={plan.blocked}
-              onAction={(id, el) => (id === 'hand_off' ? handOff(selectedRows.map((i) => i.uid)) : id === 'move' ? pickProject(undefined, el) : apply(id as Action, selectedRows))}
+              onAction={(id, el) => (id === 'hand_off' ? void handOff(selectedRows.map((i) => i.uid)) : id === 'move' ? pickProject(undefined, el) : apply(id as Action, selectedRows))}
               onMore={(el) => menu.open(plan.more, { x: 0, y: 0, anchor: el }, t('main.selection.more'))}
               onRemove={(uid) =>
                 setSelected((s) => {
@@ -1724,23 +1647,6 @@ export default function App() {
       {menu.node}
       <Tooltip />
       {movePop && <MovePopover projects={registered} here={movePop.here} subject={movePop.subject} anchor={movePop.anchor} onClose={() => setMovePop(null)} onPick={(p) => moveItems(movePop.uids, p)} onOpenFolder={openFolder} />}
-      {dispatch && (
-        <DispatchSheet
-          uids={dispatch}
-          project={(() => {
-            const ids = new Set(itemsOf(dispatch).map((i) => i.project_id));
-            return ids.size === 1 ? projectRow([...ids][0]) : null;
-          })()}
-          onClose={() => setDispatch(null)}
-          onStarted={(job) => {
-            refresh();
-            openSession(job);
-          }}
-          onToast={(m) => showToast(m)}
-          onOpenSession={openSession}
-          onOpenSettings={openSettings}
-        />
-      )}
       {newItem && (() => {
         const target = isProject(place) ? place.slice(8) : place === 'inbox' || place === 'unassigned' ? 'inbox' : current ?? 'inbox';
         return (

@@ -13,7 +13,6 @@
 //   spotlight-index              index now → {"count"}                    spotlight-search TEXT → {"found": [uid…]}
 //   spotlight-clear              remove our domain's entries
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
-//   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
 //   peck TITLE | peckframes DIR [dark] | mascotcheck | perms
 //   menuglyph DIR                the menu-bar Peep: every state's template frames (1x / 2x) and the real
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
@@ -161,7 +160,7 @@ enum SelfTests {
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
             // sheet: the sheet showing over a window (Settings' Only my voice, …)
-            let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" || arg == "dispatch" ? MainActor.assumeIsolated { DispatchPanel.windowNumber }
+            let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber
                         : arg == "sheet" ? NSApp.windows.first { $0.isSheet && $0.isVisible }?.windowNumber
                         : SettingsController.shared.windowNumber
             out(["window": n ?? -1])
@@ -267,10 +266,6 @@ enum SelfTests {
                      "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, "\(Hotkeys.shared.state($0))") }),
                      "asking": m.asking ?? NSNull()])
             }
-        case "fix":
-            let uids = (arg.split(separator: " ").first ?? "").split(separator: ",").map(String.init)
-            if !uids.isEmpty { MainActor.assumeIsolated { DispatchPanel.show(items: uids) } }
-            out(["uids": uids])
         case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: T("main.misc.by_codex"), uid: "test")
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
@@ -420,7 +415,7 @@ enum SelfTests {
         case "mainjob":                 // mainjob ID: the job's detail
             MainWindowController.shared.selectJob(arg)
             out(["job": arg, "found": JobStore.shared.job(arg) != nil])
-        case "maindispatch":            // ⌘↩ on the selection (the concurrent-edit reminder may come up)
+        case "maindispatch":            // ⌘↩ on the selection: Hand Off (the instruction for your own agent is copied)
             MainWindowController.shared.handOffSelection()
         case "alertbutton":             // alertbutton N: answer the reminder sheet
             if let a = MainWindowController.shared.openAlert, let n = Int(arg), n < a.buttons.count { a.buttons[n].performClick(nil) }

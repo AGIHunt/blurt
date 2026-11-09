@@ -1,6 +1,5 @@
 """v0.7 token diet: captures with a note become items without an agent (captures.py), the processing model and
-the token count of an unattended run (agents.py processing / parse_usage / command --processing), and the
-dispatch panel's model (sessions.py dispatch --model → the agent's model flag)."""
+the token count of an unattended run (agents.py processing / parse_usage / command --processing)."""
 from __future__ import annotations
 
 import json
@@ -320,19 +319,3 @@ class Processing(TmpCase):
         off = len("old run\ntokens used\n99\n".encode())
         self.assertEqual(ok("agents.py", "usage", "codex", f, "--offset", off, env=self.e.env())["usage"], {"tokens": 19006})
 
-    def test_session_command_model(self):
-        stub = self.tmp / "bin"
-        stub.mkdir()
-        for b in ("codex", "claude", "kimi"):
-            (stub / b).write_text("#!/bin/sh\nexit 0\n")
-            (stub / b).chmod(0o755)
-        env = {"PATH": str(stub)}
-        c = agents.session_command("codex", "do it", self.tmp, job="j-1", mcp=False, model="luna", cfg=self.cfg(), env=env)
-        self.assertEqual(c["argv"][-5:], ["-m", "luna", "-c", "check_for_update_on_startup=false", "do it"])
-        c = agents.session_command("claude", "do it", self.tmp, job="j-1", mcp=False, model="sonnet", cfg=self.cfg(),
-                                   env=env, settings=self.tmp / "s.json")
-        self.assertEqual(c["argv"][-4:], ["--model", "sonnet", "--", "do it"])
-        c = agents.session_command("codex", "do it", self.tmp, job="j-1", mcp=False, model="default", cfg=self.cfg(), env=env)
-        self.assertNotIn("-m", c["argv"])
-        with self.assertRaisesRegex(ValueError, "can't be given a model"):
-            agents.session_command("kimi", "x", self.tmp, job="j-1", mcp=False, model="m", cfg=self.cfg(), env=env)

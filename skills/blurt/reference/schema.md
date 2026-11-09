@@ -55,7 +55,7 @@ uid: 01JB7ZK3Q4M8W2E5R6T9Y0ABCD
 kind: issue
 title: "登录按钮点击后无响应"
 state: to_verify
-work: {"to": "session", "agent": "claude", "job": "j-…", "handoff": "H-0012", "claim": "fixed", "note": "…", "commit": "a1c3e5f", "pr": null, "at": "2026-10-22T10:20:41+08:00", "by": "agent"}
+work: {"to": "external", "agent": "claude", "job": "j-…", "handoff": "H-0012", "claim": "fixed", "note": "…", "commit": "a1c3e5f", "pr": null, "at": "2026-10-22T10:20:41+08:00", "by": "agent"}
 project: 3f2a9c1b7e44
 project_by: capture
 created: "2026-10-22T10:15:00+08:00"
@@ -86,7 +86,7 @@ frames: [{"path": "assets/01JB…/1.png", "t": 14.2, "caption": "登录按钮是
   |---|---|---|
   | `new` | captured, the user hasn't looked yet | items.py, when you write it |
   | `todo` | the user kept it | the user |
-  | `handed_off` | given to an agent (a Blurt session, or an instruction copied to their own agent) | the app / the user |
+  | `handed_off` | given to an agent (a hand-off note copied to their own agent) | the app / the user |
   | `in_progress` | an agent is on it | you (`mark_fixed` fixing), the app |
   | `to_verify` | an agent says it's finished (`work.claim`: fixed or wontfix) | you (`mark_fixed` fixed / wontfix), the app |
   | `done` | the user confirmed it | the user only |
@@ -96,8 +96,8 @@ frames: [{"path": "assets/01JB…/1.png", "t": 14.2, "caption": "登录按钮是
   The user's inbox ("needs you") is `new` + `to_verify`. Files from before (a `status: draft|confirmed|deleted` plus
   `work.state`, or a v0.6 `fix`) read as the same states and are rewritten with `state` on their next write. A merged
   item is `discarded` with `merged_into` (the uid it went into); the target lists it in `merged_from`.
-- **work** holds the details of the last hand-off: to (session | external), agent, job, handoff, claim, note,
-  commit, pr, at, by. Earlier ones, with the state they belonged to, are in `work_history`.
+- **work** holds the details of the last hand-off: to (external; `session` on items handed to the in-app agent
+  sessions older versions had), agent, job, handoff, claim, note, commit, pr, at, by. Earlier ones, with the state they belonged to, are in `work_history`.
 - `_user`: fields the user edited (→ epoch); `items.py` won't overwrite them unless you pass `--force`.
 - `project_by`: `capture` (filed when captured), `user` (the user moved it), `migrate`; `ai` only on items an
   earlier version sorted. An organizing run's suggestion for an Unassigned item is `suggested_project`

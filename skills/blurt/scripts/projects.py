@@ -12,8 +12,9 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
   projects.py remove ID                    unregister only — never deletes .blurt → {"ok","removed":{entry,index,current}}
   projects.py restore --json REMOVED       undo of remove: that entry back at its place → {"ok","project"}
   projects.py order ID …                   the user's order (the app's sidebar): these first → {"ok","order"}
-  projects.py set ID --json '{patch}'      name description default_agent worktree worktree_root modules key
-                                           pinned → {"ok","project"}   (key: only while the project has no items)
+  projects.py set ID --json '{patch}'      name description modules key pinned → {"ok","project"}
+                                           (key: only while the project has no items; default_agent / worktree /
+                                           worktree_root, the removed agent sessions' settings, are ignored)
   projects.py use ID|inbox                 the current project, set by the user: captures go there; inbox = none
                                            (captures go to Unassigned; "none" and "auto" — v0.8's word — mean the
                                            same) → {"ok","current": id|null}
@@ -58,7 +59,8 @@ import store as st  # noqa: E402
 SCHEMA = 1
 KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,4}")
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
-SETTABLE = {"name", "description", "default_agent", "worktree", "worktree_root", "modules", "key", "pinned"}
+SETTABLE = {"name", "description", "modules", "key", "pinned"}
+IGNORED = {"default_agent", "worktree", "worktree_root"}  # settings of the removed agent sessions: an older app may still send them
 # the current project when the user picked none: captures go to Unassigned. "auto" is v0.8's word for it (the AI
 # sorted captures into projects then; nothing does now), "inbox" / "none" what callers say.
 NO_PROJECT = {None, "", "auto", "inbox", "none"}
@@ -192,8 +194,7 @@ def _new_entry(path: Path, reg: dict, name: str | None = None, key: str | None =
     return {"id": pid, "path": str(path), "name": name,
             "key": key or default_key(path.name or name, {p.get("key") for p in others}),
             "slug": default_slug(path.name or name, pid, {p.get("slug") for p in others}),
-            "description": description or "", "default_agent": None, "worktree": True, "worktree_root": None,
-            "modules": [], "opened": now, "last_used": now, "pinned": False}
+            "description": description or "", "modules": [], "opened": now, "last_used": now, "pinned": False}
 
 
 def check_key(key: str, taken) -> None:
@@ -378,8 +379,8 @@ def cmd_add(path: str, name=None, key=None, description=None) -> dict:
 
 def cmd_remove(pid: str) -> dict:
     """Unregister. The answer carries the registry entry as it was (and where, and whether it was current): `restore`
-    puts exactly that back — the app's Undo after Remove from Blurt loses nothing (name, key, description, agent,
-    worktree, modules, its place in the list)."""
+    puts exactly that back — the app's Undo after Remove from Blurt loses nothing (name, key, description,
+    modules, its place in the list)."""
     with editing() as reg:
         k = next((n for n, p in enumerate(reg["projects"]) if p.get("id") == pid), None)
         if k is None:
@@ -424,6 +425,7 @@ def cmd_order(ids: list[str]) -> dict:
 def cmd_set(pid: str, patch: dict) -> dict:
     if not isinstance(patch, dict):
         raise ProjectError("--json must be an object", "bad_args")
+    patch = {k: v for k, v in patch.items() if k not in IGNORED}
     bad = sorted(set(patch) - SETTABLE)
     if bad:
         raise ProjectError(f"can't set {', '.join(bad)} (settable: {', '.join(sorted(SETTABLE))})", "bad_field")

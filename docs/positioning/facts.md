@@ -70,10 +70,9 @@ items your agent can work on.
 - You review each item with the keyboard (`A` keep, `X` discard, `J/K` next and previous), then export to
   Markdown/CSV or a hand-off bundle (`.zip`), have your agent file them wherever your team works (GitHub, Linear,
   Feishu/Lark, Slack…) with its own tools, or let the agent fix them. (`README.md`, `skills/blurt/reference/export-other.md`)
-- **Hand Off to Agent** (`⌘↩`) starts Claude Code or Codex inside Blurt, in the project folder, optionally one git
-  worktree per item. **Copy instruction** gives your own agent one line that points at a hand-off note with the
-  items, what you said, steps, suspected code and screenshots. Agents report back through Blurt's MCP; "fixed" from an
-  agent always means *to verify*. (`docs/guide.md` §5, `skills/blurt/reference/sessions.md`)
+- **Copy instruction** gives your own agent one line that points at a hand-off note with the items, what you said,
+  steps, suspected code and screenshots. Blurt doesn't run agents in a window of its own. Agents report back through
+  Blurt's MCP; "fixed" from an agent always means *to verify*. (`docs/guide.md` §5, `skills/blurt/SKILL.md` §7)
 - Teammates without the code can record with the app and send the video; the developer's agent processes it with the
   code at hand. (`README.md` §Solo or team)
 
@@ -192,15 +191,16 @@ Each moment comes with the number or file that backs it.
    A teammate's 5-minute walkthrough became 52 items, each with the quote and timestamp (the earlier site's hero,
    commit `926168db`; time to review not measured for that session). Recordings made with the app are transcribed
    while they record, which is why review is ready soon after Finish (`skills/blurt/SKILL.md` §2).
-8. **Items handed to an agent and back.** `⌘↩` on an item starts Codex in a worktree; when the agent calls
-   `mark_fixed`, the item shows *To verify* within 0.5 s. (`promo/cases/v0.9-dogfood/work/timeline.md`)
+8. **Items handed to an agent and back.** Copy an item's instruction into Codex; when the agent calls `mark_fixed`,
+   the item shows *To verify* within 0.5 s. (`promo/cases/v0.9-dogfood/work/timeline.md`, measured with the in-app
+   sessions since removed: film it again this way)
 9. **A teammate's recording, your agent.** A designer records with the app and sends the video on Slack; you tell your
    agent "process this video". The hand-off note holds local file paths, so for now the video is what you share.
 10. **Pull the network cable.** Dictation keeps working (models are local). Check this on camera before you claim it:
     it hasn't been tested with the network off.
 
 Before filming, check these issues found in the October dogfood runs (`promo/cases/v0.9-dogfood/*/timeline.md`;
-some may be fixed since): Codex in a worktree asked for approval before committing; in English mid-sentence inserts
+some may be fixed since): in English mid-sentence inserts
 the capital letter was kept ("I think The new layout is fine").
 
 ---

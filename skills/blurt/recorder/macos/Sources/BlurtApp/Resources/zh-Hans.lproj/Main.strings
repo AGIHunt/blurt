@@ -47,7 +47,6 @@
 "app.migrate.keep" = "继续放进 %@";
 "app.name" = "口喷鸡";
 
-
 "app.record.failed" = "录屏未保存";
 "app.record.failed.disk_full" = "磁盘已满，录屏未保存。请释放空间后重新录制。";
 "app.record.failed.permission" = "口喷鸡没有屏幕录制权限。请在「系统设置」中为口喷鸡打开「屏幕录制」。";
@@ -90,7 +89,6 @@
 "main.banner.agent" = "Agent";
 "main.banner.ended" = "会话已结束，Agent 未报告结果";
 "main.banner.external" = "已复制给你的 Agent。完成后请在这里标为完成。";
-"main.banner.open_session" = "打开会话";
 "main.banner.organizing" = "正在整理 · %@";
 "main.banner.show_progress" = "查看进度";
 "main.banner.with_agent" = "已交给 %@ · %@";
@@ -123,12 +121,7 @@
 "main.skipped.found.many" = "%d 个文件无法加入列表，详情见日志。";
 "main.scan.failed" = "无法刷新列表。";
 
-"main.dispatch.needs_project" = "先把这些事项移到一个项目里";
-"main.dispatch.one_project" = "请选择同一项目中的事项";
 "main.dispatch.discarded" = "已丢弃的事项不能交给 Agent。";
-"main.dispatch.reopen_first" = "该事项已是「%@」，请先重新打开再交给 Agent。";
-"main.dispatch.with_session" = "%@ 已在一个会话中。";
-"main.dispatch.open_session" = "打开会话";
 
 "main.empty.all_filed" = "全部已归类";
 "main.empty.all_filed.detail" = "未归类的事项会显示在这里。";
@@ -223,7 +216,6 @@
 "main.job.error.network" = "网络连接已断开。";
 "main.job.error.quota" = "Agent 的额度已用完。";
 "main.job.error.quota.named" = "%@ 的额度已用完。";
-"main.job.error.tmux" = "未安装 tmux，可用 Homebrew 安装（brew install tmux）。";
 "main.job.hint.no_agent" = "没有可用的 Agent。请在设置的「Agent」中安装或登录。";
 "main.job.capture" = "一次采集";
 "main.job.no_agent" = "没有可用的 Agent：%@。";
@@ -238,8 +230,6 @@
 "main.job.error.unknown" = "整理未完成就停止了。请重试；如果问题持续，详情见日志。";
 "main.job.error.unknown.named" = "%@ 未完成整理就停止了。请重试；如果问题持续，详情见日志。";
 "main.job.hint.interrupted" = "口喷鸡在整理完成前退出了。请重试。";
-"main.job.no_terminal" = "终端不可用";
-"main.job.no_terminal.detail" = "可在你的终端 App 中打开此会话。";
 "main.job.show_log" = "查看日志";
 "main.job.skipped" = "跳过";
 "main.job.step_state.done" = "完成";
@@ -307,8 +297,7 @@
 "main.menu.quick_look" = "快速查看";
 "main.menu.rename" = "改标题";
 "main.menu.review_batch" = "审核整个批次";
-"main.menu.start_session" = "交给 Agent";
-"main.menu.open_session" = "打开会话";
+"main.menu.start_session" = "交给你的 Agent";
 
 "main.misc.by_codex" = "由 Codex 修复";
 "main.misc.drag_finder_terminal" = "拖到访达或终端";
@@ -338,8 +327,6 @@
 "main.place.session" = "批次";
 
 /* 「Agent」是中文界面的固定用词（设置里的「Agent」、交给 Agent），不翻译；见 tests/test_ui_copy.py */
-"main.project.agent" = "Agent";
-"main.project.agent.default" = "默认";
 "main.project.description" = "描述";
 "main.project.description.note" = "整理未归类的截图和录屏时，会参考此描述归入该项目。";
 "main.project.description.placeholder" = "例如：官网和注册流程";
@@ -360,13 +347,8 @@
 "main.project.settings" = "项目设置…";
 "main.project.use" = "设为当前项目";
 "main.project.use.tip" = "新的录屏、截图和语音备注存入当前项目";
-"main.project.worktree" = "每次交给 Agent 都用单独的分支";
-"main.project.worktree.no_git" = "不是 git 仓库，Agent 会直接改文件夹里的文件。";
-"main.project.worktree.note" = "改动保存在单独的 git worktree 中，由你合并、创建 PR 或丢弃。";
-"main.project.agent.default_named" = "默认（%@）";
 "main.project.description.keys" = "↩ 换行，⌘↩ 保存。";
 "main.project.key.taken" = "IN 已用于未归类。";
-"main.project.section.handoff" = "交给 Agent";
 "main.project.section.project" = "项目";
 "main.project.settings.subtitle" = "项目设置";
 
@@ -398,13 +380,13 @@
 "main.state.ax" = "状态：%@。点按可更改。";
 "main.toast.download_failed" = "无法存储到「下载」文件夹。";
 "main.toast.downloaded" = "已存到「下载」：%@";
-"main.toast.session_gone" = "这个会话已结束，记录已清理。";
+"main.toast.session_gone" = "找不到这个任务，记录已清理。";
 "main.speech.recommended" = "推荐的语音识别模型 · %@";
 "main.speech.recommended.action" = "查看";
 
 "main.toolbar.handoff" = "交给 Agent";
 "main.toolbar.handoff.own" = "给你自己的 Agent";
-"main.toolbar.handoff.tip" = "在口喷鸡里交给 Agent，或复制指令给你自己的 Agent";
+"main.toolbar.handoff.tip" = "复制指令，让你自己的 Agent 处理这些事项";
 "main.toolbar.move" = "移动";
 "main.toolbar.move.tip" = "把选中的事项移到某个项目";
 "main.toolbar.record.tip" = "录屏，同时录下你的讲解 %@";
@@ -472,7 +454,6 @@
 "menu.window" = "窗口";
 
 "menu.zoom" = "缩放";
-
 
 "notify.done.generic" = "整理完成";
 "notify.done.recording" = "录屏已整理";
@@ -572,15 +553,9 @@
 "app.url.ask_snap" = "一个链接想截图";
 "app.url.snap" = "截图";
 
-/* Sessions that end without the work (v0.9 dogfood) */
-"main.dispatch.move_first" = "移到项目…";
+/* 没整理完就结束的任务（v0.9 dogfood） */
 "main.job.dismiss" = "忽略";
 "main.job.hint.stopped_at_quit" = "退出口喷鸡时停止了整理。点「重试」重新整理。";
-"main.banner.failed_start" = "%1$@ 启动失败：%2$@";
-"main.banner.failed" = "%1$@ 出错停止：%2$@";
-"main.banner.review" = "查看改动…";
-"main.banner.restart" = "重新开始会话";
-"main.banner.ended_review" = "会话已结束，可以查看改动";
 "app.quit.organizing.title" = "口喷鸡还在整理「%@」。";
 "app.quit.organizing.title_at" = "口喷鸡还在整理%@ 的内容。";
 "app.quit.organizing.title_n" = "口喷鸡还在整理 %ld 批内容。";
@@ -588,12 +563,6 @@
 "app.quit.organizing.quit" = "仍然退出";
 
 // dogfood v0.9 review
-"main.banner.no_response" = "1 分钟无响应";
-"main.banner.more" = "更多";
-// Agent 的桌面端（Claude）
-"main.banner.desktop" = "在 %@ 桌面端进行 · 进度由 Agent 回报";
-"main.banner.desktop.no_mcp" = "在 %@ 桌面端进行 · 此处不显示进度，完成后请标为完成";
-"main.banner.go_desktop" = "前往 %@";
 "app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写未设置";
 "app.toast.welcome_not_set_up.action" = "设置…";
 "app.config.show" = "显示文件";
@@ -673,16 +642,12 @@
 "main.palette.hint.copy_full" = "把整个事项复制为文本";
 
 /* several items selected (SelectionView) */
-"main.selection.hand_off" = "交给 Agent…";
-"main.selection.hand_off_to" = "交给 %@…";
+"main.selection.hand_off" = "交给 Agent";
 "main.selection.move" = "移到项目…";
 "main.selection.more" = "更多操作";
 "main.selection.remove" = "不选这一条";
 "main.selection.list" = "选中的事项";
 "main.cmd.copy_instruction.tip" = "复制一段列出这些事项的指令，粘贴给你自己的 Agent";
-"main.selection.blocked.mixed" = "只能把同一项目的事项交给 Agent，请先移到同一项目";
-"main.selection.blocked.needs_project" = "交给 Agent 前，请先把事项移到项目中";
-"main.selection.blocked.finished" = "只有新的和要做的事项能交给 Agent";
 "main.job.stop" = "停止";
 "main.job.stop.tip" = "停止整理（⌘.）";
 "main.job.more" = "更多";
@@ -749,15 +714,13 @@
 
 "main.dictation.multi.more" = "还有 %ld 条";
 
-"main.job.error.stopped_trust" = "%@ 在「信任这个文件夹？」这一步退出了，尚未开始处理。";
-
 /* 正在运行的分组标题 */
 "main.jobs.title" = "正在运行";
 "main.jobs.title.failed" = "失败";
 
 /* 会话没回报就结束了的事项 */
 "main.row.session_ended" = "会话已结束";
-"main.row.session_ended.help" = "Agent 会话已结束，但未报告完成。打开此事项可重新开始或收回。";
+"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent 会话，会话已结束，但没有报告完成。可以标记完成或收回。";
 
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";

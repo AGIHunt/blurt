@@ -56,9 +56,8 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
   可能有关的代码。（`README.zh-CN.md`）
 - 用键盘一条条过（`A` 要做、`X` 丢弃、`J/K` 下一条/上一条），然后导出成 Markdown/CSV 或交接包（`.zip`），让 Agent 用它自己的工具
   建到团队在用的地方（GitHub、Linear、飞书、Slack……），或者让 Agent 去改。（`README.zh-CN.md`、`skills/blurt/reference/export-other.md`）
-- 「交给 Agent」（`⌘↩`）在口喷鸡里、在项目文件夹中启动 Claude Code 或 Codex，可以每个事项一个 git worktree。「复制指令」给你自己的
-  Agent 一行指令，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」
-  一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/reference/sessions.md`）
+- 「复制指令」给你自己的 Agent 一行指令，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。口喷鸡不在自己的窗口里运行
+  Agent。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/SKILL.md` §7）
 - 没有代码的同事也能用 App 录屏，把视频发过来，开发这边的 Agent 结合代码处理。（`README.zh-CN.md`）
 
 ---
@@ -167,14 +166,13 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 7. **录屏整理成事项。** 一段 5 分钟、12 条的录屏，点「完成」后 51 秒就能开始审；一段 14 分钟的录屏，本地转写 12 秒，整理出 23 条，
    Agent 的 token 约 2.6 美元。（`README.md` FAQ）一位同事 5 分钟的走查录屏整理出 52 个事项，每个带原话和时间点（旧官网首屏，
    commit `926168db`；这一段没有测处理时间）。用 App 录的屏会边录边转写，所以点「完成」后很快就能审（`skills/blurt/SKILL.md` §2）。
-8. **事项交给 Agent，再收回来。** 在一个事项上按 `⌘↩`，Codex 在 worktree 里开工；Agent 调用 `mark_fixed` 后，0.5 秒内事项显示「待验证」。
-   （`promo/cases/v0.9-dogfood/work/timeline.md`）
+8. **事项交给 Agent，再收回来。** 把一个事项的指令复制给 Codex；Agent 调用 `mark_fixed` 后，0.5 秒内事项显示「待验证」。
+   （`promo/cases/v0.9-dogfood/work/timeline.md`，当时用的是已经删掉的应用内会话，要按现在的方式重拍）
 9. **同事录的屏，你的 Agent 来处理。** 设计师用 App 录好，通过 Slack 或飞书把视频发过来；你对 Agent 说「处理这个视频」。交接说明里
    是本机文件路径，所以目前要分享的是视频本身。
 10. **拔掉网线。** 听写照常工作（模型在本地）。上镜前先实测一遍：断网状态还没测过。
 
-拍摄前先确认 10 月内部试用中发现的这些问题（`promo/cases/v0.9-dogfood/*/timeline.md`，有些可能已经修了）：Codex 在 worktree 里
-提交前要手动批准；英文句子中间插入时，首字母大写没去掉（"I think The new layout is fine"）。
+拍摄前先确认 10 月内部试用中发现的这些问题（`promo/cases/v0.9-dogfood/*/timeline.md`，有些可能已经修了）：英文句子中间插入时，首字母大写没去掉（"I think The new layout is fine"）。
 
 ---
 

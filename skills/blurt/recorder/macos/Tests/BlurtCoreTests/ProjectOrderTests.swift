@@ -7,7 +7,7 @@ import XCTest
 final class ProjectOrderTests: XCTestCase {
     func p(_ id: String, pinned: Bool = false, used: TimeInterval = 0) -> Project {
         Project(id: id, name: id, key: id.uppercased(), slug: id, description: "", path: URL(fileURLWithPath: "/tmp/\(id)"),
-                store: URL(fileURLWithPath: "/tmp/\(id)/.blurt"), isInbox: false, isGitRepo: false, worktree: false, defaultAgent: nil,
+                store: URL(fileURLWithPath: "/tmp/\(id)/.blurt"), isInbox: false, isGitRepo: false,
                 modules: [], lastUsed: Date(timeIntervalSince1970: used), pinned: pinned)
     }
 

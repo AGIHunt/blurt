@@ -1,11 +1,9 @@
-// Project settings (K2), a sheet on the main window: name, key (the item id prefix), description (what the AI reads
-// when it sorts captures into projects), the default agent, and whether hand-offs get their own git worktree.
-// Saved with projects.py set; the registry is never written here.
+// Project settings (K2), a sheet on the main window: name, key (the item id prefix) and description (what the AI reads
+// when it sorts captures into projects). Saved with projects.py set; the registry is never written here.
 //
-// The look is SettingsKit's row grammar in AppKit (§3.4): the project's name as the title, then two short sections —
-// Project (name, key, description) and Hand-off (agent, separate branch) — each a 13 pt semibold heading, rows over a
-// hairline (label on the left, value on the right) and at most one 12 pt footnote. One rhythm: 12 pt between rows,
-// 20 pt between sections; every value's text starts on one left edge (`M.valueText`). The folder sits in the footer,
+// The look is SettingsKit's row grammar in AppKit (§3.4): the project's name as the title, then one short section —
+// Project (name, key, description) — a 13 pt semibold heading, rows over a hairline (label on the left, value on the
+// right) and at most one 12 pt footnote. One rhythm: 12 pt between rows, 20 pt between sections; every value's text starts on one left edge (`M.valueText`). The folder sits in the footer,
 // opposite Cancel / Save, and shows itself in Finder; Save stays the native default (↩, §3.3).
 import AppKit
 import BlurtCore
@@ -20,8 +18,6 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate, NSTextViewDeleg
     private let keyCaption = NSTextField(wrappingLabelWithString: "")
     private let desc = DescriptionTextView()
     private let descBox = FieldBox()
-    private let agent = NSPopUpButton()
-    private let worktree = NSSwitch()
     /// a dialog's default stays native (§3.3), like every other sheet's: ↩ (⌘↩ from the description)
     private let save = SheetDefaultButton()
     /// projects.py set refuses a new key once the store has items (their ids carry it): the key is read-only then.
@@ -128,31 +124,6 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate, NSTextViewDeleg
             formRow(T("main.project.description"), descBox, baselineOffset: FieldBox.ring + desc.firstBaseline, outset: FieldBox.ring),
         ], footnote: T("main.project.description.note"))
 
-        // Hand-off: agent, separate branch
-        let resolved = (Config.shared["record.default_agent"] as? String).flatMap(AgentHub.shared.def) ?? AgentHub.shared.order().first
-        agent.addItem(withTitle: resolved.map { T("main.project.agent.default_named", $0.name) } ?? T("main.project.agent.default"))
-        agent.lastItem?.representedObject = nil
-        agent.menu?.addItem(.separator())
-        for d in AgentHub.shared.defs {
-            agent.addItem(withTitle: d.name)
-            agent.lastItem?.representedObject = d.id
-            if d.id == p.defaultAgent { agent.select(agent.lastItem) }
-        }
-        agent.setAccessibilityLabel(T("main.project.agent"))
-        agent.setContentHuggingPriority(.required, for: .horizontal)
-
-        worktree.state = p.isGitRepo && p.worktree ? .on : .off
-        worktree.isEnabled = p.isGitRepo
-        worktree.controlSize = .small
-        worktree.setAccessibilityLabel(T("main.project.worktree"))
-        let wtDetail = p.isGitRepo ? T("main.project.worktree.note") : T("main.project.worktree.no_git")
-        worktree.setAccessibilityHelp(wtDetail)
-
-        let handoffSection = section(T("main.project.section.handoff"), rows: [
-            settingRow(T("main.project.agent"), detail: nil, control: agent),
-            settingRow(T("main.project.worktree"), detail: wtDetail, control: worktree, enabled: p.isGitRepo),
-        ], footnote: nil)
-
         // footer: the folder (shows itself in Finder), then Cancel and Save
         let folder = NSButton(title: p.path.lastPathComponent, target: self, action: #selector(revealTapped))
         folder.isBordered = false
@@ -183,10 +154,10 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate, NSTextViewDeleg
         cancel.widthAnchor.constraint(greaterThanOrEqualToConstant: 76).isActive = true
         save.widthAnchor.constraint(equalTo: cancel.widthAnchor).isActive = true
 
-        let stack = vstack([header, projectSection, handoffSection, footer], spacing: M.sectionGap)
+        let stack = vstack([header, projectSection, footer], spacing: M.sectionGap)
         stack.setCustomSpacing(16, after: header)
         stack.edgeInsets = NSEdgeInsets(top: 18, left: M.side, bottom: 18, right: M.side)
-        for v in [header, projectSection, handoffSection, footer] {
+        for v in [header, projectSection, footer] {
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -2 * M.side).isActive = true
         }
         stack.widthAnchor.constraint(equalToConstant: M.width).isActive = true
@@ -272,38 +243,6 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate, NSTextViewDeleg
         return row
     }
 
-    /// A setting row (SettingsKit's SettingRow): the title and its one-line description on the left, the control on
-    /// the right; the description 2 pt under the title.
-    private func settingRow(_ title: String, detail: String?, control: NSView, enabled: Bool = true) -> NSView {
-        let row = NSView()
-        let t = NSTextField(labelWithString: title)
-        t.font = .systemFont(ofSize: 13)
-        t.textColor = enabled ? .labelColor : .secondaryLabelColor
-        var left: [NSView] = [t]
-        if let d = detail {
-            let c = caption(d)
-            if !enabled { c.textColor = .tertiaryLabelColor }
-            left.append(c)
-        }
-        let text = vstack(left, spacing: 2)
-        for v in [text, control] { v.translatesAutoresizingMaskIntoConstraints = false; row.addSubview(v) }
-        let minHeight: CGFloat = 22
-        NSLayoutConstraint.activate([
-            text.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            text.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -16),
-            text.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: M.rowPad),
-            text.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            control.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            row.heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight + 2 * M.rowPad),
-            row.heightAnchor.constraint(greaterThanOrEqualTo: text.heightAnchor, constant: 2 * M.rowPad),
-        ])
-        let fit = row.heightAnchor.constraint(equalToConstant: 0)
-        fit.priority = .defaultLow
-        fit.isActive = true
-        return row
-    }
-
     // MARK: editing
 
     func controlTextDidChange(_ obj: Notification) { validate() }
@@ -373,9 +312,6 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate, NSTextViewDeleg
         if n != project.name { patch["name"] = n }
         if !keyLocked, key.stringValue != project.key { patch["key"] = key.stringValue }
         if desc.string != project.description { patch["description"] = desc.string }
-        let a = agent.selectedItem?.representedObject as? String
-        if a != project.defaultAgent { patch["default_agent"] = a ?? NSNull() }
-        if project.isGitRepo, (worktree.state == .on) != project.worktree { patch["worktree"] = worktree.state == .on }
         panel.sheetParent?.endSheet(panel)
         if !patch.isEmpty { onSave(patch) }
     }

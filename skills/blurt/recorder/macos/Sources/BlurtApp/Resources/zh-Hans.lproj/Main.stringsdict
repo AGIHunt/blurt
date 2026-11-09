@@ -2,20 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>app.badge.waiting</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>other</key>
-			<string>%ld 个会话等你回答</string>
-		</dict>
-	</dict>
 	<key>app.menu.new</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -153,7 +139,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 个交给 Agent</string>
+			<string>把这 %ld 个交给你的 Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>
@@ -353,7 +339,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>在口喷鸡里开一个 Agent 会话，处理这 %ld 个（⌘↩）</string>
+			<string>复制一段指令，把这 %ld 个交给你自己的 Agent（⌘↩）</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>

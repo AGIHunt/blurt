@@ -5,7 +5,7 @@
   • every key the Swift code looks up by name (T("…"), TP("…"), Loc.t / Loc.plural) is in its table, and every
     key-like literal anywhere in the code (a key held in a variable first) is in a table;
   • the .strings files parse the way Foundation reads them, and every plural has an "other" form;
-  • the shared words of K10 (kind.*, state.*, action.*, session.*, project.*, handoff.*) are all in Common.
+  • the shared words of K10 (kind.*, state.*, action.*, project.*, handoff.*) are all in Common.
 
   uv run --with pytest pytest tests/test_l10n.py -q
 """
@@ -26,11 +26,10 @@ STATES = ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wont
 ACTIONS = ["keep", "hand_off", "done", "send_back", "take_back", "reopen", "restore", "wontfix", "discard"]
 COMMON = ["kind.issue", "kind.idea", "kind.note", "kind.task", *[f"state.{s}" for s in STATES], "state.menu",
           "state.handed_off.session", "state.handed_off.external", *[f"action.{a}" for a in ACTIONS],
-          *[f"action.{a}.hint" for a in ACTIONS], "action.done.hint_verify", "session.running",
-          "session.waiting_input", "session.turn_done", "session.exited", "session.error", "project.inbox",
+          *[f"action.{a}.hint" for a in ACTIONS], "action.done.hint_verify", "project.inbox",
           "project.open_folder", "handoff.copy_instruction", "handoff.copy_full"]  # v0.9: no "auto" project, no auto-sort
-JOB_TYPES = ["record", "snap", "voice", "process", "route", "agent"]
-JOB_STEPS = ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route", "launch", "work", "finish"]
+JOB_TYPES = ["record", "snap", "voice", "process", "route"]  # no "agent": the in-app agent sessions are gone
+JOB_STEPS = ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route"]
 
 
 CALL = re.compile(r"\b(?:(TP?)|Loc\.(?:t|plural|string|has))\(")
@@ -209,8 +208,6 @@ class Tables(unittest.TestCase):
             "Hotkeys.swift": {'"capture.keys.reserved\\(pick)"': ["capture.keys.reserved", "capture.keys.reserved_pick"],
                               '"capture.keys.reserved_menu\\(pick)"': ["capture.keys.reserved_menu",
                                                                        "capture.keys.reserved_menu_pick"]},
-            "SessionNotifier.swift": {'"notify.many.\\(kind)"': [f"notify.many.{s}" for s in
-                                                                 ("running", "waiting_input", "turn_done", "exited", "error")]},
             "ItemCells.swift": {'"kind.\\(k)"': common, '"state.\\(s)"': common},
             "StatusRing.swift": {'"state.\\(state)"': common},
             "StateMenu.swift": {'"action.\\(action).hint"': common, '"action.\\(action)"': common},

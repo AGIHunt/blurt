@@ -1,21 +1,20 @@
-// K4 jobs: everything that is happening (a recording, a snap batch, voice, processing, routing, an agent session) is a
-// job in $BLURT_HOME/jobs/:
+// K4 jobs: everything that is happening (a recording, a snap batch, voice, processing, routing) is a job in
+// $BLURT_HOME/jobs/:
 //   <id>.json           the job, written only by its owner (atomic replace; under <id>.lock when several processes own it)
 //   <id>.events.jsonl   progress anyone else reports: one appended line each (hooks, items.py, agents)
 // Every reader computes the same *effective state*: the json, then the events from `events_offset` on, in order —
-// steps merge by id, `status` → agent.status / status_at / status_source, `state` and `progress` overwrite, `items`
-// are unioned. Python (jobs.py) and Rust (Tauri) implement the same fold, so the state is current even while the
-// owner isn't running.
+// steps merge by id, `state` and `progress` overwrite, `items` are unioned. Python (jobs.py) and Rust (Tauri) implement
+// the same fold, so the state is current even while the owner isn't running. Agent-session jobs ("type": "agent")
+// left by older versions are not read: JobFold.job skips any type it doesn't know.
 //
 //   JobStore.shared.start()            FSEvents on jobs/ (100 ms debounce) → jobs (newest first), onChange(changed)
 //   JobWriter(type: .record, …)        a job the app owns (record / snap / voice / process)
 import Foundation
 import CoreServices
 
-public enum JobType: String { case record, snap, voice, process, route, agent }
+public enum JobType: String { case record, snap, voice, process, route }
 public enum JobState: String { case queued, running, done, failed, cancelled }
 public enum StepState: String { case pending, running, done, failed, skipped }
-public enum AgentSessionStatus: String { case running, waitingInput = "waiting_input", turnDone = "turn_done", exited, error }
 
 public struct JobStep {
     public let id: String
@@ -41,57 +40,8 @@ public struct JobError {
 public let jobSteps: [JobType: [String]] = [
     .record: ["capture", "finalize"], .snap: ["capture"], .voice: ["listen", "transcribe", "file"],
     // no routing step any more: an organizing run only suggests projects (route jobs are v0.8 files, still read)
-    .process: ["prepare", "transcribe", "write", "frames"], .route: ["route"], .agent: ["launch", "work", "finish"],
+    .process: ["prepare", "transcribe", "write", "frames"], .route: ["route"],
 ]
-
-/// The `agent` object of an agent job (K5).
-public struct AgentInfo {
-    public let agent, mode, runner: String
-    public let tmuxSession, tmuxWindow, windowName, branch, handoff: String?
-    public let cwd: URL
-    public let worktree: URL?
-    public let status: AgentSessionStatus
-    public let statusAt: Date?
-    public let exit: Int32?
-    // beyond the G0 signature
-    public let tmuxSocket: String?
-    public let statusSource: String?
-    /// The last hook's message (a permission prompt's question…), from the event that set the status.
-    public let statusMessage: String?
-    public let baseBranch: String?
-    /// The finish action taken (merge | pr | discard | keep), once there is one.
-    public let finishAction: String?
-    public let finishResult: [String: Any]?
-    /// What its window showed last when the agent exited or got stuck (sessions.py agent.last_output).
-    public let lastOutput: [String]
-    /// What a worktree session left once it ended: commits on its branch and uncommitted paths. nil = not known
-    /// (still running, or a job from an older build).
-    public let changes: (ahead: Int, dirty: Int)?
-    /// The agent was seen up and working (its items moved to in progress); false = it never got going.
-    public let started: Bool
-    public let model: String?
-    /// The hand-off's title ("AW-12 · … (Blurt hand-off)"): the prompt's first line, the Codex thread's name.
-    public var title: String? = nil
-    /// The agent's own conversation id (its hooks' session id): what Continue in Claude Desktop resumes.
-    public var agentSessionID: String? = nil
-    /// Moved here from another runner ("tmux": Continue in Claude Desktop).
-    public var continuedFrom: String? = nil
-    /// A desktop job: is the blurt MCP installed for that app (agent.desktop.mcp)? false = nothing reports from there,
-    /// the user marks its items by hand. nil = not known.
-    public var desktopMCP: Bool? = nil
-
-    /// It runs in the agent's desktop app: no terminal and no live status; only the agent's own reports move its items.
-    public var isDesktop: Bool { runner == "desktop" }
-    /// The desktop job's card says to mark its items by hand (the blurt MCP isn't installed there).
-    public var desktopNeedsMarking: Bool { isDesktop && desktopMCP == false }
-
-    /// sessions.py's watchdog gave up on it: no hook and nothing new in its window for a minute since it started
-    /// (a screen nothing recognises). It reads "No response" and offers Restart Session beside Open Session.
-    public var stalled: Bool { statusSource == "watchdog" }
-
-    /// A worktree session ended with something to merge, turn into a PR or discard (unknown counts as something).
-    public var hasChanges: Bool { worktree != nil && (changes.map { $0.ahead + $0.dirty > 0 } ?? true) }
-}
 
 public struct Job: Identifiable {
     public let id: String
@@ -107,14 +57,9 @@ public struct Job: Identifiable {
     public let created: Date
     public let started, ended: Date?
     public let error: JobError?
-    public let agent: AgentInfo?
     public let updated: Date?
 
     public var isActive: Bool { state == .queued || state == .running }
-    /// An agent session going on in the agent's desktop app: nothing runs here (no spinner, not counted as running).
-    public var inDesktop: Bool { isActive && agent?.isDesktop == true }
-    /// The sessions running here, for the list's "2 running": desktop ones go on elsewhere.
-    public static func runningHere(_ jobs: [Job]) -> Int { jobs.filter { $0.isActive && !$0.inDesktop }.count }
     /// The user put this failure away: it no longer waits in the jobs section.
     public var dismissed: Bool { raw["dismissed"] as? Bool ?? false }
     /// The step in progress, else the next one to run.
@@ -135,6 +80,25 @@ public struct Job: Identifiable {
     public var usage: (tokens: Int?, agent: String?, model: String?, effort: String?)? {
         guard let u = raw["usage"] as? [String: Any] else { return nil }
         return ((u["tokens"] as? NSNumber)?.intValue, u["agent"] as? String, u["model"] as? String, u["effort"] as? String)
+    }
+}
+
+/// The jobs section's failures (K4): organising or routing that failed in the last week stays listed — a recording
+/// whose organising failed has no items to reach it from — until it is dismissed, retried (a newer job for the same
+/// recording) or old.
+public enum JobFailures {
+    public static let keep: TimeInterval = 7 * 24 * 3600
+
+    public static func waiting(_ jobs: [Job], now: Date = Date()) -> [Job] {
+        jobs.filter { j in
+            guard j.state == .failed, j.type == .process || j.type == .route, !j.dismissed,
+                  now.timeIntervalSince(j.ended ?? j.created) < keep else { return false }
+            // a later run for the same recording (or the same items) replaced it
+            return !jobs.contains { o in
+                o.id != j.id && o.type == j.type && o.created > j.created
+                    && (j.session.map { o.session?.path == $0.path } ?? (!j.items.isEmpty && Set(o.items) == Set(j.items)))
+            }
+        }
     }
 }
 
@@ -199,16 +163,6 @@ public enum JobFold {
             }
             job["steps"] = steps
         }
-        if let status = ev["status"] as? String {
-            var a = job["agent"] as? [String: Any] ?? [:]
-            a["status"] = status
-            a["status_at"] = ev["t"] ?? NSNull()
-            a["status_source"] = ev["source"] ?? NSNull()
-            // not part of the shared fold: the message shown in a "needs your input" notification
-            a["status_message"] = (ev["detail"] as? [String: Any])?["message"] ?? NSNull()
-            if let code = (ev["detail"] as? [String: Any])?["exit"] { a["exit"] = code }
-            job["agent"] = a
-        }
         if let s = ev["state"] { job["state"] = s }
         // a failure someone else reported (`jobs.py finish --error-code`): its reason, unless the owner wrote one
         if let e = (ev["detail"] as? [String: Any])?["error"] as? [String: Any], e["code"] is String,
@@ -256,33 +210,10 @@ public enum JobFold {
         }
         let err = (o["error"] as? [String: Any]).map {
             JobError(code: $0["code"] as? String ?? "unknown", message: $0["message"] as? String ?? "", hintKey: $0["hint_key"] as? String,
-                     // reason_i18n (sessions.py): the sentence in both languages, so it follows the app's, not
-                     // the language the script guessed when it failed
+                     // reason_i18n: the sentence in both languages, so it follows the app's, not the language the
+                     // script guessed when it failed
                      reason: (($0["reason_i18n"] as? [String: String]).flatMap(Loc.pick) ?? $0["reason"] as? String)
                         .flatMap { $0.isEmpty ? nil : $0 })
-        }
-        var agent: AgentInfo?
-        if let a = o["agent"] as? [String: Any] {
-            let tmux = a["tmux"] as? [String: Any]
-            let wt = a["worktree"] as? [String: Any]
-            let fin = a["finish"] as? [String: Any]
-            agent = AgentInfo(
-                agent: a["id"] as? String ?? "", mode: a["mode"] as? String ?? "together", runner: a["runner"] as? String ?? "tmux",
-                tmuxSession: tmux?["session"] as? String, tmuxWindow: tmux?["window"] as? String, windowName: tmux?["name"] as? String,
-                branch: wt?["branch"] as? String, handoff: a["handoff"] as? String,
-                cwd: URL(fileURLWithPath: a["cwd"] as? String ?? NSHomeDirectory()),
-                worktree: (wt?["path"] as? String).map { URL(fileURLWithPath: $0) },
-                status: AgentSessionStatus(rawValue: a["status"] as? String ?? "") ?? .running,
-                statusAt: date(a["status_at"]), exit: (a["exit"] as? NSNumber).map { $0.int32Value },
-                tmuxSocket: tmux?["socket"] as? String, statusSource: a["status_source"] as? String,
-                statusMessage: a["status_message"] as? String, baseBranch: wt?["base"] as? String,
-                finishAction: fin?["action"] as? String, finishResult: fin?["result"] as? [String: Any],
-                lastOutput: a["last_output"] as? [String] ?? [],
-                changes: (a["changes"] as? [String: Any]).map { (($0["ahead"] as? NSNumber)?.intValue ?? 0, ($0["dirty"] as? NSNumber)?.intValue ?? 0) },
-                started: a["started"] as? Bool ?? false, model: a["model"] as? String,
-                title: a["title"] as? String, agentSessionID: a["agent_session_id"] as? String,
-                continuedFrom: (a["continued"] as? [String: Any])?["from"] as? String,
-                desktopMCP: (a["desktop"] as? [String: Any])?["mcp"] as? Bool)
         }
         return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued,
                    project: o["project"] as? String, session: (o["session"] as? String).map { URL(fileURLWithPath: $0) },
@@ -290,7 +221,7 @@ public enum JobFold {
                    items: o["items"] as? [String] ?? [], captures: (o["captures"] as? [NSNumber] ?? []).map(\.intValue),
                    steps: steps, progress: o["progress"] as? Double,
                    created: date(o["created"]) ?? .distantPast, started: date(o["started"]), ended: date(o["ended"]),
-                   error: err, agent: agent, updated: date(o["updated"]), raw: o)
+                   error: err, updated: date(o["updated"]), raw: o)
     }
 }
 

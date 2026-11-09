@@ -2,7 +2,7 @@
 <h1 align="center">口喷鸡 Blurt</h1>
 <p align="center"><b>Agent 时代的输入法</b><br>
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>
-<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a> · <a href="#交流群">飞书交流群</a></p>
+<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a> · <a href="#交流群">微信交流群</a></p>
 
 <p align="center"><a href="https://blurt.work/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
 <p align="center"><sub>两分钟介绍视频，请打开声音 · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">下载 Mac 版</a></sub></p>
@@ -74,8 +74,7 @@ AGIHunt/blurt</code>，再运行 <code>/plugin install blurt@blurt</code>。然�
 | **听写和卡片** | 文字和图片进入任何聊天框或终端，所以适用于所有 Agent。 |
 | **Skill** | `blurt` skill 让你的 Agent 能录屏、转写、写事项、打开审核页和导出。 |
 | **MCP** | `blurt` MCP 提供 `search_items`、`get_item`（带截图）、`get_transcript`、`update_item`、`mark_fixed`、`bundle_items` 等工具。在「设置 → Agent」里点「连接…」，会先列出要改的地方，再把 skill 和 MCP 装进这个 Agent。 |
-| **交给 Agent**（`⌘↩`） | 在口喷鸡的终端里、在项目文件夹中运行 Claude Code 或 Codex，可以每个事项用一个单独的 git worktree。Claude Code 也可以在 Claude 桌面端运行。 |
-| **复制指令** | 给其他任何 Agent 的一行指令，指向一份交接说明，里面有全部详情和截图。 |
+| **复制指令** | 粘贴给你在用的 Agent 的一行指令，指向一份交接说明，里面有全部详情和截图。口喷鸡不在自己的窗口里运行 Agent。 |
 | **交接包** | 一个 `.zip`，包含概要、每个事项和它的截图，给人看，而不是给 Agent。 |
 
 Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待验证」。Agent 说「修好了」，在你标为完成之前一律只算「待验证」。
@@ -206,10 +205,9 @@ Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待
 
 ## 交流群
 
-使用问题、反馈和新版本消息都在「口喷鸡 Blurt 用户群」（飞书外部群）。没有企业账号也能加入：用飞书 App 扫码，
-或[打开邀请链接](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55ame8f2-6482-400c-84b2-06de3ea29cb2&qr_code=true)。
+使用问题、反馈和新版本消息都在微信群「口喷鸡狂喷群」，用微信扫码加入。
 
-<p align="center"><img src="assets/community/feishu-group-qr.png" width="200" alt="扫码加入口喷鸡 Blurt 用户群"></p>
+<p align="center"><img src="assets/community/wechat-group-qr.png" width="200" alt="扫码加入微信群「口喷鸡狂喷群」"></p>
 
 Bug 和功能建议也可以提 [GitHub Issue](https://github.com/AGIHunt/blurt/issues)。
 

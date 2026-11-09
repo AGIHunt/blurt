@@ -16,7 +16,6 @@ The pieces:
 | The app's control endpoint | `BlurtCore/ControlSocket.swift`, `App/AgentSetupServer.swift` |
 | Pure rules (requests, grants, `use`, the live list) | `BlurtCore/AgentSetup.swift` (`AgentSetupTests`) |
 | UI: Set Up with Agent…, the live list | `Settings/AgentSetupViews.swift`, `CloudServicesPane.swift`, `Onboarding.swift` |
-| The session Blurt starts | `sessions.py setup-session` (`AgentSessions.setupSession`) |
 | MCP tools | `mcp_server.py` `setup_*` (they import setup.py) |
 
 ## 1. The endpoint and its security
@@ -29,12 +28,7 @@ address holds (103 bytes; deep test folders), both sides use `/tmp/blurt-<uid>/<
   can't be closed; the socket file is chmod 0600 right after bind. Every accepted connection is checked with
   `getpeereid`: a peer of another uid is closed before a byte is read.
 - **Reads vs changes.** `hello` and `status` answer any process of this user. `connect`, `test`, `use`, `download` and
-  `verify` need a grant (`AgentSetupGrant`):
-  - a **session token** — 32 random bytes Blurt issues when the user clicks *Start* in *Set Up with Agent…*; it reaches
-    the agent only through its environment (`BLURT_SETUP_TOKEN`, handed to `sessions.py setup-session` on stdin, never
-    on Blurt's command lines, never in a job file), lives as long as the session (at most 2 h), and is compared in
-    constant time; *Stop* or the session's end revokes it;
-  - or the user's **Allow**: a request without a live grant makes Blurt ask (an alert naming the agent it finds among
+  `verify` need a grant (`AgentSetupGrant`): the user's **Allow**. A request without a live grant makes Blurt ask (an alert naming the agent it finds among
     the requesting process's ancestors — `AgentSetupPeer` against agents.json's `bins`; else "an app on your Mac").
     Allow opens changes for 30 minutes; Don't Allow (or no answer in 3 minutes, when the alert closes itself) answers
     `denied`. Return doesn't press Allow (the user may be typing in the agent's terminal when it comes up); Esc is
@@ -51,8 +45,7 @@ address holds (103 bytes; deep test folders), both sides use `/tmp/blurt-<uid>/<
   `use --custom` takes a model id on an already connected service only — a new address is a Custom Model the user adds
   in Settings.
 - **What a same-user process can still do.** Anything of this user can talk to the socket; the grant is a consent step,
-  not a sandbox (a token in an environment is readable to this user's processes; tmux's `-e` puts it on tmux's command
-  line for an instant). That is the same trust boundary as the user's Keychain prompt and config.json.
+  not a sandbox. That is the same trust boundary as the user's Keychain prompt and config.json.
 
 Protocol: one JSON object per line in, one per line out, then the connection closes; at most 64 KB a request
 (`too_long`), a line that isn't a JSON object is `bad_request`. Each connection is answered on its own queue.
@@ -101,25 +94,15 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 ## 4. In the app
 
 - **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and beside *Add…* on onboarding's
-  cloud row, on every Mac (v1.0.10). The sheet's main way is an instruction to copy into any agent on the Mac
-  (`AgentSetupInstruction`: the guide and setup.py by absolute path, sessions.py SETUP_PROMPT's words) — Cursor,
-  WorkBuddy, a session already open, with nothing to detect or launch; that agent has no token, so its first change
-  makes Blurt ask Allow, and the page lists its steps as for a session. Its second way, *Open in Terminal*, is the
-  session below, offered only when an agent with an interactive session is installed (agents.py detect + sessions.py
-  doctor, as the hand-off panel reads them). Disabled while a session it started runs. When every curated service is in (the
-  Add row is gone), it keeps a row of its own ("Set Up Models with an Agent"). The line about the key is in the sheet
-  only (the Add row keeps one detail line).
-- **The sheet** (460 pt): title, one line on what happens and what the user does, the Agent pop-up (installed agents;
-  the last one used for sessions first), the same line about the key, Cancel / Start. Start issues the token, runs
-  `sessions.py setup-session --agent ID --lang …` (token on stdin; refused like a hand-off when the agent is
-  logged out or too old: the sheet shows the fix): a job in project `blurt-setup` (Sessions shows it
-  as "Model Setup"), cwd `$BLURT_HOME/setup` (0700), no items, no worktree, the agent's own interactive command with
-  the prompt (title + "follow reference/setup-models.md, run `uv run …/setup.py`, ask before changing, help find or
-  create each key, never write a key back"; Codex also gets `approval_policy="on-request"`, §7) in tmux on Blurt's
-  socket (window `model-setup`), else in the app's own terminal; then Blurt shows that terminal.
+  cloud row, on every Mac (v1.0.10). The sheet gives an instruction to copy into any agent on the Mac
+  (`AgentSetupInstruction`: the guide and setup.py by absolute path) — Claude Code, Codex, Cursor, WorkBuddy, a
+  conversation already open. Blurt detects and launches nothing. That agent has no token, so its first change makes
+  Blurt ask Allow. When every curated service is in (the Add row is gone), the button keeps a row of its own ("Set Up
+  Models with an Agent"). The line about the key is in the sheet only (the Add row keeps one detail line).
+- Until 2026-11 the sheet could also start the agent in Blurt's own terminal (*Open in Terminal*, `sessions.py
+  setup-session`, with a session token). That went with the in-app agent sessions.
 - **The live list** (`AgentSetupProgress`): under the services in Settings, and under the cloud row in onboarding. A
-  heading ("Setting up with Claude Code"; "Agent setup ended" after), Show Terminal and Stop (Stop: `sessions.py stop`,
-  every grant revoked), Done once it's over. One row per thing as the endpoint does it: "Connecting DeepSeek…" →
+  heading ("Setting up with Claude Code"; "Agent setup ended" after), Stop (every grant revoked), Done once it's over. One row per thing as the endpoint does it: "Connecting DeepSeek…" →
   "DeepSeek connected" / "DeepSeek: connection failed" (an older key may still be there), "Dictation polish: DeepSeek
   V4.1 Flash", "Dictation: Qwen3-ASR 1.7B + cloud polish", "Downloading Qwen3-ASR 1.7B…" → "… downloaded", "Testing
   dictation…" → "Dictation test passed". A later report about the same thing replaces its row; a new attempt at
@@ -149,7 +132,8 @@ conversation.
 ## 7. Dogfood (2026-10-31)
 
 An isolated test build (`dev.blurt.recorder.layouttest`, scratch BLURT_HOME, keys in memory), screens in zh + en
-(`~/blurt-shots-2026-10-31b/agent-setup/`, layoutcheck clean), and real sessions started from the button.
+(`~/blurt-shots-2026-10-31b/agent-setup/`, layoutcheck clean), and real sessions started from the button (the
+*Open in Terminal* way, since removed; what it found about each agent's sandbox still holds when the user runs it).
 
 - **Claude Code**: the CLI on the test Mac wasn't logged in; the session sat at "Not logged in · Please run /login".
   setup-session now refuses a logged-out (or too old) agent first, as dispatch does. A logged-in Claude Code run is

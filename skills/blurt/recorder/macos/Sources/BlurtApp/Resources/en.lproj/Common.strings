@@ -19,7 +19,6 @@
 "state.handed_off" = "Handed off";
 "state.handed_off.session" = "Handed off to %@";
 "state.handed_off.external" = "Copied to your agent";
-"state.handed_off.desktop" = "Handed off to the %@ desktop app";
 "state.in_progress" = "In progress";
 "state.to_verify" = "To verify";
 "state.done" = "Done";
@@ -32,7 +31,7 @@
 "action.keep" = "Accept";
 "action.keep.hint" = "Moves it out of the inbox as To do";
 "action.hand_off" = "Hand off to agent…";
-"action.hand_off.hint" = "Run it in Blurt, or copy the instruction";
+"action.hand_off.hint" = "Copy an instruction to paste into Claude Code, Codex or any agent";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";
 "action.done.hint_verify" = "Confirms it’s fixed";
@@ -49,12 +48,6 @@
 "action.restore" = "Restore";
 "action.restore.hint" = "Put it back where it was";
 
-/* Agent session status */
-"session.running" = "Working";
-"session.waiting_input" = "Waiting for input";
-"session.turn_done" = "Waiting for you";
-"session.exited" = "Exited";
-"session.error" = "Error";
 
 /* Projects */
 "project.inbox" = "Unassigned";
@@ -72,7 +65,6 @@
 "job.type.voice" = "Voice note";
 "job.type.process" = "Organizing";
 "job.type.route" = "Sorting into projects";
-"job.type.agent" = "Agent session";
 
 /* Job steps */
 "job.step.capture" = "Capturing";

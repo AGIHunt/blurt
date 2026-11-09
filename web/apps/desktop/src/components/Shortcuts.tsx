@@ -31,8 +31,7 @@ export function shortcutSections(): [string, Row[]][] {
       { label: t('main.keys.kind'), keys: [['1', '–', '4']] },
     ]],
     [t('main.keys.section.item'), [
-      { label: plain(t('action.hand_off')), keys: [['Ctrl+Enter']] },
-      { label: t('main.keys.copy_instruction'), keys: [['Ctrl+Shift+C']] },
+      { label: plain(t('action.hand_off')), keys: [['Ctrl+Enter'], ['Ctrl+Shift+C']] },
       { label: plain(t('main.menu.rename')), keys: [['E']] },
       { label: t('main.keys.move'), keys: [['M']] },
       { label: t('mw.open_picture'), keys: [[t('main.keys.space')]] },

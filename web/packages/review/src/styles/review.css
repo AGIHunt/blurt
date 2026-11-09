@@ -2743,20 +2743,10 @@ html.mode-item[data-host="macos"] body,
   border-top: 1px solid var(--line);
 }
 
-/* a narrow detail (an 880 px window): the header's buttons give up their words before the breadcrumb is cut — Copy to
-   its icon, Hand Off to Agent to "Hand Off" */
-.hl-short {
-  display: none;
-}
+/* a narrow detail (an 880 px window): the header's Copy gives up its word before the breadcrumb is cut */
 @container insp (max-width: 520px) {
   .idrow .hl-word {
     display: none;
-  }
-  .idrow .hl-long {
-    display: none;
-  }
-  .idrow .hl-short {
-    display: inline;
   }
 }
 /* a CJK title breaks into even lines (no two characters alone on the second) */

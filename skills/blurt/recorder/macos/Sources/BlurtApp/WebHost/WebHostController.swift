@@ -1,10 +1,10 @@
 // The detail column. Reviewing happens here — there is no separate review window and nothing opens by itself:
 //   an item     the shared review component (web/packages/review → review.html) in a WKWebView, mode=item, with a
-//               native banner above it when the item is with an agent (its session live, ended without reporting
-//               back, or gone — WorkSession) or is being organised (a suggested project is the page's and the row's). The banner holds the
-//               item's one Open Session button (blurtHostInfo.sessionBanner: the page leaves its own out then);
+//               native banner above it when the item is with your agent (handed off: Mark as Done / Won't Do) or is
+//               being organised (a suggested project is the page's and the row's) — blurtHostInfo.sessionBanner: the
+//               page leaves its own hand-off status out then;
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
-//   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
+//   a job       its step timeline (JobDetailView);
 //   several     what is selected and what to do with all of it (SelectionView: the kinds, the places, the rows;
 //               Hand Off as the one primary, Move and a state action, the rest in ⋯ — MainWindowController.selectionPlan).
 //   nothing     a quiet placeholder (blank while no items exist at all: the list's first-run state speaks).
@@ -25,8 +25,8 @@
 //                 toasts have one place (and one timing: ≥ 5 s, held while pointed at); "undo" when its Undo is clicked
 //   undo          registerUndo {label} (a page step on the window's NSUndoManager; ⌘Z calls blurtReview.undo() /
 //                 redo() back), windowUndo {redo} (⌘Z on the page outside a field), undone {uid}, focusList (Esc)
-//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
-//                 pages: jobId), reviewChanges {job} (the session and its review sheet), registerDragRects {rects},
+//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids} (older pages' Hand Off: the
+//                 same as handoff {uids, what: "instruction"}), registerDragRects {rects},
 //                 download {path|rel}, confirmed {scope} (a batch confirmed:
 //                 review.py, if it asked for this batch, hears it — ReviewHandoff)
 import AppKit
@@ -37,7 +37,6 @@ protocol WebHostActions: AnyObject {
     func reveal(file: URL)
     func quickLook(files: [URL])
     func openCode(_ ref: String, item: ItemRow?)
-    func dispatch(uids: [String])
     func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void)
     func applyState(_ action: String, uids: [String])
     func move(uids: [String], to project: String)
@@ -154,7 +153,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "reviewChanges",
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff",
          "fileUrl", "toast", "registerUndo", "focusList"]
     }
 
@@ -364,22 +363,6 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         guard let it = currentItem else { return }
         switch a {
         case "done", "wontfix": actions?.applyState(a, uids: [it.uid])
-        case "session": if let j = it.workJob { actions?.revealJob(j) }
-        case "desktop":
-            if let j = it.workJob, let a = JobStore.shared.job(j)?.agent { DesktopApp.goTo(a.agent) }
-        case "review":
-            // what the ellipsis promises: the session, and its review sheet over the window
-            guard let j = it.workJob else { return }
-            actions?.revealJob(j)
-            FinishPanel.show(job: j, over: view.window)
-        case "restart":
-            guard let j = it.workJob else { return }
-            SessionRecovery.restart(j) { [weak self] r in
-                switch r {
-                case .success(let new): if let n = new { self?.actions?.revealJob(n) }
-                case .failure(let e): appDelegate?.toast(sessionsErrorText(e))
-                }
-            }
         case "take_back": actions?.applyState("take_back", uids: [it.uid])
         case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
         default: break
@@ -457,23 +440,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             if let r = p["ref"] as? String { actions?.openCode(r, item: currentItem) }
             reply(nil, nil)
         case "dispatch":
-            let ids = p["uids"] as? [String] ?? []
-            actions?.dispatch(uids: ids)
+            // an older page's Hand Off: the instruction for your own agent, on the clipboard
+            actions?.handOff(uids: p["uids"] as? [String] ?? [], what: "instruction") { _ in }
             reply(nil, nil)
         case "handoff":
             actions?.handOff(uids: p["uids"] as? [String] ?? [], what: p["what"] as? String ?? "instruction") { r in
                 reply(r, r == nil ? "handoff failed" : nil)
             }
-        case "openSession":
-            if let j = ReviewHostParams.job(p) { actions?.revealJob(j) }
-            reply(nil, nil)
-        case "reviewChanges":
-            // the verify card's ⋯ Review Changes…: the session, and its review sheet over the window (as the banner's)
-            if let j = ReviewHostParams.job(p) {
-                actions?.revealJob(j)
-                if JobStore.shared.job(j)?.agent?.worktree != nil { FinishPanel.show(job: j, over: view.window) }
-            }
-            reply(nil, nil)
         case "registerDragRects":
             let rects = (p["rects"] as? [[String: Any]] ?? []).compactMap { r -> DragRect? in
                 guard let ref = (r["path"] ?? r["rel"]) as? String, let f = SchemeHandler.locate(ref, session: session) else { return nil }
@@ -615,19 +588,10 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 }
 
 /// The line above an item that tells you what it is waiting for, with the things you can do about it (K3 actions;
-/// the detail's state pill has the rest, and its work panel asks about an item waiting to be verified). The buttons
-/// and tone come from SessionBannerPlan (BlurtCore): brand while the agent works, attn when it needs you, neutral
-/// once the session is over — the first button is the primary.
-/// Two buttons at most, the rest in a ⋯ menu (SessionBannerPlan.more), so the line keeps its words at a detail's width:
-///   with an agent  "Handed off to Claude Code · Needs your input"                  [Open Session]
-///   desktop app    "In Claude desktop · progress comes from the agent"             [Go to Claude] ⋯
-///   no response    "Handed off to Codex · No response for a minute…"             [Open Session] [Restart Session] ⋯
-///   failed         "Codex couldn’t start: Error: timed out …"                      [Restart Session] [Take Back] ⋯
-///   with changes   "Handed off to Codex · Session ended, ready to review"          [Review Changes…] [Take Back] ⋯
-///   session ended  "Handed off to Claude Code · Session ended without reporting back"
-///                                                                     [Open Session] [Restart Session] ⋯
-///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
-///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
+/// the detail's state pill has the rest, and its work panel asks about an item waiting to be verified). Two buttons at
+/// most, the last one the primary:
+///   handed out     "Copied for your agent. Mark it done here when it’s finished."   [Won't Do] [Mark as Done]
+///   older session  "Handed off to Claude Code · Session ended without reporting back" [Take Back] [Mark as Done]
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
     private let icon = NSImageView()
@@ -703,51 +667,17 @@ final class ItemBanner: NSView {
         guard let it = it, !it.discarded else { return hide() }
         let agent = it.workAgent.flatMap { AgentHub.shared.def($0)?.name } ?? it.workAgent
         let active = it.state == "handed_off" || it.state == "in_progress"
-        let inSession = active && (it.workTo == "session" || it.workJob != nil)
-        switch active ? (inSession ? "session" : "external") : it.state {
+        // handed to an agent session of an older version (sessions in Blurt are gone): nothing left to open
+        let legacy = active && (it.workTo == "session" || it.workJob != nil)
+        switch active ? (legacy ? "legacy" : "external") : it.state {
         case "to_verify":
             return hide()       // the detail's own work panel asks (Mark as done / Send back), next to the state pill
-        case "session":
+        case "legacy":
+            tint = .labelColor
             icon.image = Look.ring(it.state, size: 16)
-            let who = agent ?? T("main.banner.agent")
-            let work = WorkSession.of(state: it.state, to: it.workTo ?? "session", job: it.workJob, lookup: JobStore.shared.job) ?? .gone
-            let job = it.workJob.flatMap { JobStore.shared.job($0) }
-            let outcome = job.map(SessionOutcome.of)
-            let stalled = job?.agent?.stalled ?? false
-            let desktop = job?.agent?.isDesktop ?? false
-            let app = job?.agent.map { DesktopApp.name($0.agent) } ?? ""
-            let reports = !(job?.agent?.desktopNeedsMarking ?? false)
-            let plan = SessionBannerPlan.plan(work, outcome: outcome, stalled: stalled, desktop: desktop,
-                                              worktree: job?.agent?.worktree != nil, reports: reports)
-            switch plan.tone {
-            case .brand: tint = BrandColor.ink
-            case .attn: tint = BrandColor.attn
-            case .neutral: tint = .labelColor
-            }
-            switch (work, outcome) {
-            case (.live, _) where desktop:
-                // nothing here is live: only the agent's reports move the item — and without the blurt MCP, nothing
-                // does: say so instead of promising progress
-                text.stringValue = T(reports ? "main.banner.desktop" : "main.banner.desktop.no_mcp", app)
-            case (.live, _) where stalled:
-                text.stringValue = T("main.banner.with_agent", who, T("main.banner.no_response"))
-            case (.live(let st), _):
-                text.stringValue = T("main.banner.with_agent", who, T("session.\(st.rawValue)"))
-            case (.ended, .failed(let atStart)?):
-                // it couldn't work: say why in its own words (job.error), then start again or take the items back
-                let why = job.flatMap { JobLook.errorText($0) } ?? T("session.error")
-                text.stringValue = T(atStart ? "main.banner.failed_start" : "main.banner.failed", who, why)
-                icon.image = Look.symbol("exclamationmark.circle", "", size: 14)
-                icon.contentTintColor = BrandColor.err
-            case (.ended, .review?):
-                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended_review"))
-            default:
-                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
-            }
-            for (k, a) in plan.actions.enumerated() {
-                button(a == "desktop" ? T("main.banner.go_desktop", app) : Self.title(a), a, primary: k == 0)
-            }
-            if !plan.more.isEmpty { moreButton(plan.more) }
+            text.stringValue = T("main.banner.with_agent", agent ?? T("main.banner.agent"), T("main.banner.ended"))
+            button(StateMenu.title("take_back"), "take_back")
+            button(StateMenu.title("done"), "done", primary: true)
         case "external":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
@@ -786,50 +716,8 @@ final class ItemBanner: NSView {
 
     @objc func tap(_ b: NSButton) {
         guard let a = b.identifier?.rawValue else { return }
-        if a == "restart" || a == "take_back" { b.isEnabled = false }   // once: the next set() brings it back
+        if a == "take_back" { b.isEnabled = false }   // once: the next set() brings it back
         onAction?(a)
-    }
-
-    /// The ⋯ menu with the plan's other actions.
-    private func moreButton(_ actions: [String]) {
-        let menu = NSMenu()
-        for a in actions {
-            let i = NSMenuItem(title: Self.title(a), action: #selector(menuTap(_:)), keyEquivalent: "")
-            i.target = self
-            i.representedObject = a
-            menu.addItem(i)
-        }
-        let b = NSButton(image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: T("main.banner.more"))!,
-                         target: self, action: #selector(showMore(_:)))
-        b.bezelStyle = .rounded
-        b.controlSize = .small
-        b.isBordered = false
-        b.toolTip = T("main.banner.more")
-        b.menu = menu
-        b.identifier = .init("more")
-        buttons.addArrangedSubview(b)
-    }
-
-    @objc private func showMore(_ b: NSButton) {
-        b.menu?.popUp(positioning: nil, at: NSPoint(x: 0, y: b.bounds.maxY + 4), in: b)
-    }
-
-    @objc private func menuTap(_ i: NSMenuItem) { (i.representedObject as? String).map { onAction?($0) } }
-
-    /// The banner's actions, inline and in its menu (self-tests).
-    var actionIDs: [String] {
-        buttons.arrangedSubviews.compactMap { ($0 as? NSButton)?.identifier?.rawValue }.filter { $0 != "more" }
-            + (buttons.arrangedSubviews.compactMap { ($0 as? NSButton)?.menu }.first?.items.compactMap { $0.representedObject as? String } ?? [])
-    }
-
-    /// A banner action's button title (SessionBannerPlan ids).
-    static func title(_ action: String) -> String {
-        switch action {
-        case "session": return T("main.banner.open_session")
-        case "review": return T("main.banner.review")
-        case "restart": return T("main.banner.restart")
-        default: return StateMenu.title(action)        // done, take_back, wontfix
-        }
     }
 }
 

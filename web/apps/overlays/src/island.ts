@@ -5,10 +5,10 @@
 //  • collapsed: only what is live (Island.updateEars) — recording (dot + time | snaps or the level), a voice note
 //    (Peep listening + wave | how it ends, then the clock), dictation (Peep talking + level | style marks + clock; Peep
 //    thinking + dots while it works), the cards waiting (their glyph + count), Peep thinking while captures are
-//    organised, an agent that waits on you (a dot), "+n" as captures land in the inbox, a done moment ("✓ Copied").
+//    organised, "+n" as captures land in the inbox, a done moment ("✓ Copied").
 //    Nothing at all at rest: the inbox's backlog is the tray's and the open island's Inbox row.
-//  • open (hover 180 ms, or a hotkey): IslandContent — home (Peep, the project, record / snap / voice; jobs, sessions
-//    that need you, the cards waiting with Organize, the Inbox row, or the keys), the recording controls, the voice
+//  • open (hover 180 ms, or a hotkey): IslandContent — home (Peep, the project, record / snap / voice; jobs, the
+//    cards waiting with Organize, the Inbox row, or the keys), the recording controls, the voice
 //    note, the project switcher and the drop drawer. Toasts: one layout (mark, headline · detail, a quiet button).
 //  • the cards hang only while you look (HangingCards): newest first, at most five, centred under the island
 //    (cards.ts = BlurtCore CardRow); they come down when the pointer rests on the island, after a capture, or from the
@@ -26,7 +26,8 @@ import {
   DeferredClick,
   LIFT,
   LIFT_SCALE,
-  TILE,
+  FADE,
+  MAX_HUNG,
   UNDO_MS,
   VOICE,
   cardRow,
@@ -34,6 +35,7 @@ import {
   rowBounds,
   rowCentre,
   stepAside,
+  visibleIn,
   type RowLayout,
   CardsPanelRules,
   PANEL_MIN_W,
@@ -133,7 +135,7 @@ const NEWS_MS = 4500; // Island.newsSeconds
 const MOMENT_MS = 2200;
 const VOICE_HINT_S = 3; // Island.voiceHintSeconds
 const DOUBLE_CLICK_MS = 500; // Windows' default double-click time
-const MAX_CARDS_KEPT = 64;
+const MAX_CARDS_KEPT = MAX_HUNG;
 
 const ic = (name: IconName, size = 16, cls = '') => iconSvg(name, { size, className: cls ? `ic ${cls}` : 'ic' });
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -150,7 +152,6 @@ function dictClock(): string {
 /** in its last half minute the clock counts down: its minus is drawn by .time.neg::before, kerned onto the digits
  *  (Segoe UI's U+2212 carries wide side bearings — "− 0:28" read as two things; the Mac sets it tight) */
 const dictCountdown = () => dictElapsed() >= DICT_COUNTDOWN;
-const AGENTS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', kimi: 'Kimi Code', opencode: 'OpenCode' };
 const tipKey = (label: string, key?: string) => (key ? t('island.tip_key', { label, key }) : label);
 
 // glyphs the line family doesn't have as such, at its stroke (IslandGlyph): record (a ring and a dot), Unassigned
@@ -169,7 +170,7 @@ const missingGlyph = (size = 15) =>
 const placeGlyph = (p: ProjectRef) => (p.exists === false ? `<span class="dim">${missingGlyph()}</span>` : folderGlyph(p));
 
 // ------------------------------------------------------------------ state
-let S: IslandState = { project: null, projects: [], toReview: 0, recording: null, voice: null, hatching: 0, jobs: [], sessions: [], hotkeys: {} };
+let S: IslandState = { project: null, projects: [], toReview: 0, recording: null, voice: null, hatching: 0, jobs: [], hotkeys: {} };
 let stateAt = performance.now();
 let level = 0;
 // Peep's beak follows the voice while you dictate (the level as the wave bars read it: ~0.1 rms is a loud word)
@@ -192,7 +193,6 @@ document.addEventListener('mousemove', (e) => {
 let filter = '';
 let selIx = 0;
 let showAll = false;
-let attention = 0; // performance.now() of the last "needs you"
 let bump = 0;
 let moment: null | { text: string; until: number; lead?: 'keyboard' } = null; // "✓ Copied" in the ears; ⌨ ✓ Sent
 let news: null | { n: number; until: number } = null; // "+n" as captures land in the inbox
@@ -211,7 +211,6 @@ const hanging = () => live.filter((l) => l.phase === 'hang' || l.phase === 'fly'
 // the count says what has landed: a card still flying in adds its 1 when it reaches its place (Mac C43: the number
 // ticks as the card arrives, never ahead of it)
 const cardCount = () => live.filter((l) => l.phase === 'hang').length;
-const needsYou = () => S.sessions.filter((s) => s.status === 'waiting_input');
 
 // ------------------------------------------------------------------ toasts (BlurtCore ToastQueue, the island's rules)
 interface Toast {
@@ -350,7 +349,6 @@ function visible(): boolean {
     drawer ||
     hovering ||
     hanging().length || // a first card still flying in: the island it lands in is there
-    needsYou().length ||
     moment ||
     performance.now() < helloUntil ||
     news ||
@@ -361,9 +359,6 @@ function visible(): boolean {
 }
 
 // ------------------------------------------------------------------ the ears (collapsed: Island.updateEars)
-function attnDot() {
-  return `<i class="attn${performance.now() - attention < 1200 ? ' pulse' : ''}" aria-hidden="true"></i>`;
-}
 const waveHtml = (n: number, cls = '') => `<span class="wave${cls ? ' ' + cls : ''}" data-wave>${'<i></i>'.repeat(n)}</span>`;
 const cardsEar = () =>
   `<button class="earbtn" data-a="cards.reveal" title="${esc(plural('island.cards_waiting', cardCount()))}">${ic('cards', 15, 'cards-ic')}<span class="num">${num(cardCount())}</span></button>`;
@@ -457,12 +452,11 @@ function ears(): { l: string; r: string } {
     // transcribing, polishing: Peep thinks (its eye looks round), three dots
     return { l: mascotHtml('thinking', { size: 24 }), r: `<span class="dots" aria-label="${esc(t(`island.dictation.${d.phase}`))}"><i></i><i></i><i></i></span>` };
   }
-  // the right ear's one thing: a run that just ended, Peep thinking with the count, an agent waiting, the inbox's news
+  // the right ear's one thing: a run that just ended, Peep thinking with the count, the inbox's news
   let lr: { l: string; r: string } | null = null;
   if (performance.now() < helloUntil) lr = { l: '', r: `<span class="hello">${mascotHtml('hello', { size: 24 })}<span>${esc(t('island.hello'))}</span></span>` };
   else if (sorted) lr = { l: mascotHtml(sorted.ok ? 'done' : 'error', { size: 24 }), r: sorted.n ? `<span class="num">+${num(sorted.n)}</span>` : '' };
   else if (S.hatching) lr = { l: mascotHtml('thinking', { size: 24 }), r: `<span class="num">${num(S.hatching)}</span>` };
-  else if (needsYou().length) lr = { l: '', r: attnDot() };
   else if (news) lr = { l: ic('inbox', 15), r: `<span class="num">+${num(news.n)}</span>` };
   if (cardCount()) {
     // the cards' count is one thing (their stack and the number together); the left ear when nothing else is there
@@ -551,14 +545,6 @@ function jobRow(j: JobRow) {
     <span class="prog"><i style="width:${(p * 100).toFixed(0)}%"></i></span></span></button>`;
 }
 
-function sessionRow(s: IslandState['sessions'][number]) {
-  const ids = s.items.join(', ');
-  const sub = [t(`session.${s.status}`), AGENTS[s.agent] ?? s.agent].join(' · ');
-  return `<button class="row sess" data-a="open.session" data-job="${esc(s.job)}">
-    <span class="lead"><i class="sdot s-${esc(s.status)}"></i></span>
-    <span class="txt"><span class="title">${esc(ids || t('job.type.agent'))}</span><span class="sub">${esc(sub)}</span></span></button>`;
-}
-
 function hkHint(key: string | undefined, label: string) {
   return key ? t('island.hint', { key, label }) : null;
 }
@@ -571,7 +557,6 @@ function homeBody() {
     ${toolBtn('voice', ic('mic', 15), t('island.voice'), S.hotkeys.voice)}</div>`;
   const rows: string[] = [];
   for (const j of S.jobs.slice(0, 3)) rows.push(jobRow(j));
-  for (const s of S.sessions) rows.push(sessionRow(s));
   const n = cardCount();
   if (n) {
     // the cards waiting, and the view's one filled button: with a current project they are organized into it; with
@@ -618,9 +603,7 @@ function recBody() {
   // where it goes once finished: Finish's tooltip (the ··· menu's Goes to… changes it)
   const where = t('island.rec.goes_after', { project: S.project?.name ?? t('island.unassigned') });
   const fin = `<button class="finish${r.paused ? ' quiet-fin' : ''}" data-a="stop" data-tip="${esc(where)}">${ic('stop', 13)}<span>${esc(t('island.rec.finish'))}</span></button>`;
-  // what live.py spotted so far ("4 items spotted": TakeLine) — the snaps' count is the ear's, not said twice
-  const lines = r.spotted ? `<div class="said">${esc(plural('island.rec.spotted', r.spotted))}</div>` : '';
-  return `<div class="rec-body"><div class="controls">${pause}${snap}<span class="grow"></span>${more}${fin}</div>${lines}${penLine()}</div>`;
+  return `<div class="rec-body"><div class="controls">${pause}${snap}<span class="grow"></span>${more}${fin}</div>${penLine()}</div>`;
 }
 
 /** The pen's quiet key line under the controls (the Mac's KeyLine): on — "Pen on · [Esc] Pen off"; off — its key and
@@ -1201,9 +1184,8 @@ island.addEventListener('click', (e) => {
       if (tt?.action?.a === 'card.restore' || tt?.action?.a === 'card.putback') revealCards(true);
       return dismissToast();
     }
-    case 'open.session':
     case 'open.job':
-      void host.emit(EV.action, { action: 'open.session', job: a.dataset.job });
+      void host.emit(EV.action, { action: 'open.job', job: a.dataset.job });
       break;
     case 'voice.structured':
       void host.emit(EV.action, { action: 'voice.structured' });
@@ -1211,7 +1193,7 @@ island.addEventListener('click', (e) => {
     default:
       void host.emit(EV.action, { action });
   }
-  if (['open.inbox', 'open.session', 'open.job', 'record', 'snap', 'voice', 'project.open'].includes(action)) {
+  if (['open.inbox', 'open.job', 'record', 'snap', 'voice', 'project.open'].includes(action)) {
     toastNow = null;
     open = false;
     closeSwitcher();
@@ -1258,7 +1240,7 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
     case 'failed': {
       sorted = { ok: false, n: 0, until: performance.now() + 2400 };
       const what = op.type ? t(`job.type.${op.type}`) : t('job.type.process');
-      return postToast({ text: t('island.toast.didnt_finish', { what }), peep: 'error', passive: true, action: op.job ? { a: 'open.session', label: 'island.toast.show', extra: { job: op.job } } : undefined });
+      return postToast({ text: t('island.toast.didnt_finish', { what }), peep: 'error', passive: true, action: op.job ? { a: 'open.job', label: 'island.toast.show', extra: { job: op.job } } : undefined });
     }
     case 'taken': {
       // what went in (the Mac's DragReceipt): the picture, the picture and its note, the .md too, the note copied
@@ -1538,6 +1520,8 @@ const live: Live[] = [];
 let hovered: Live | null = null;
 let dragging: Live | null = null;
 let row: RowLayout = cardRow([], 0, [0, 0]);
+/** how far a row longer than its window is scrolled (RowLayout.scroll; 0: the newest at the left) */
+let scrollX = 0;
 const keyOf = (c: Card) => `${c.session ?? ''}#${c.n}`;
 const isVoice = (c: Card) => c.kind === 'voice' || !c.src;
 const clicks = new DeferredClick<string>();
@@ -1777,6 +1761,7 @@ function addCard(card: Card, pull: boolean, from?: CssRect | null) {
   restartLoop();
   const l = makeCard(card, 'fly');
   live.push(l);
+  scrollX = 0; // the newest, where it is caught: at the window's left
   if (from && !reduceMotion()) {
     // it flies from where it was taken (the snapped area) to its place on the row
     l.fromX = from.x + from.w / 2;
@@ -1824,17 +1809,28 @@ function remove(l: Live) {
   render();
 }
 
-// the "+N" tile at the row's end: as tall as a card, narrower — a quiet way to every card (a second sheet under it)
-const tile = document.createElement('button');
-tile.className = 'tile';
-tile.hidden = true;
-tile.addEventListener('pointerenter', onCardsEnter);
-tile.addEventListener('pointerleave', onCardsLeave);
-tile.addEventListener('click', () => openPanel('hanging', false));
-tile.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  showIslandMenu(e.clientX, e.clientY);
-});
+// a row longer than its window scrolls sideways in it: the wheel or the touchpad's swipe over the row, rigidly (the
+// cards move with the fingers)
+deck.addEventListener(
+  'wheel',
+  (e) => {
+    const v = row.viewport;
+    const top = islandBottom();
+    if (!v || downK.value < 0.5 || dragging || e.clientX < v[0] || e.clientX > v[1] || e.clientY < top || e.clientY > top + BELOW + 100) return;
+    e.preventDefault();
+    const d = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    scrollRow(scrollX + d * (e.deltaMode === 1 ? 16 : 1));
+  },
+  { passive: false },
+);
+function scrollRow(to: number) {
+  const before = scrollX;
+  scrollX = Math.min(Math.max(0, to), row.maxScroll);
+  const d = before - scrollX;
+  if (Math.abs(d) < 0.01) return;
+  for (const l of hanging()) l.x.value += d;
+  layoutCards();
+}
 // a row wider than the island hangs from the island's lip: a 3 px band of its black flush under it, centred on it,
 // as wide as the outermost clasps plus 8 (CardRow.lip) — never threads fanning from nowhere
 const lip = document.createElement('div');
@@ -1845,7 +1841,7 @@ stage.append(lip);
 const hint = document.createElement('div');
 hint.className = 'first-hint';
 hint.hidden = true;
-deck.append(tile, hint);
+deck.append(hint);
 
 let hintShown = (() => {
   try {
@@ -1867,8 +1863,9 @@ function showFirstHint() {
   setTimeout(() => (layoutCards(), render()), 6050);
 }
 
-/** The row (BlurtCore CardRow): newest first, centred under the island, never off the window's edge. `snapX`: put the
- *  cards at their slots at once (the window changed size, or they are new). */
+/** The row (BlurtCore CardRow): newest first, centred under the island, never off the window's edge; a row longer than
+ *  its window scrolls in it, its edges fading where more cards wait. `snapX`: put the cards at their slots at once
+ *  (the window changed size, or they are new). */
 function layoutCards(snapX = false) {
   // oldest first, by when each was taken (the row puts the newest leftmost): the order the cards came in is not that
   // order when a refresh lists one before its fly-in lands; one still flying with no time yet is the newest
@@ -1881,12 +1878,14 @@ function layoutCards(snapX = false) {
     cards.map((l) => l.w),
     rowCentre(stage.clientWidth || innerWidth, screen.width),
     rowBounds(W),
+    { scroll: scrollX },
   );
+  scrollX = row.scroll;
   const shownSet = new Set(row.shown.map((i) => cards[i]));
   cards.forEach((l) => (l.el.style.display = shownSet.has(l) ? '' : 'none'));
   const order = row.shown.map((i) => cards[i]); // left to right
   const lifted = hovered && order.includes(hovered) ? order.indexOf(hovered) : null;
-  const aside = stepAside(order.length + (row.more ? 1 : 0), lifted);
+  const aside = stepAside(order.length, lifted);
   order.forEach((l, j) => {
     l.x.target = row.centres[j] + aside[j];
     if (l.fresh || snapX || reduceMotion()) {
@@ -1896,17 +1895,29 @@ function layoutCards(snapX = false) {
     }
     l.lift.target = j === lifted ? -LIFT : 0;
   });
-  tile.hidden = !row.more;
-  if (row.more) {
-    tile.innerHTML = `<span class="tn">+${num(row.more)}</span><span class="tc">${esc(t('island.cards.more_caption'))}</span>`;
-    tile.setAttribute('aria-label', plural('island.cards.more_ax', cards.length));
-    tile.dataset.x = String(row.tileX! + aside[aside.length - 1] - TILE.w / 2);
-  }
+  rowMask();
   downK.target = cards.length && cardsDown() ? 1 : 0;
   if (reduceMotion()) downK.snap();
   kick();
   paintNow();
 }
+
+/** The fade at the row's window edges where more cards wait beyond them (none while it fits, or a card is dragged). */
+let maskNow = '';
+function rowMask() {
+  const v = row.viewport;
+  let m = '';
+  if (v && !dragging) {
+    const l = scrollX > 0.5 ? FADE : 0;
+    const r = scrollX < row.maxScroll - 0.5 ? FADE : 0;
+    m = `linear-gradient(to right, transparent ${v[0]}px, #000 ${v[0] + l}px, #000 ${v[1] - r}px, transparent ${v[1]}px)`;
+  }
+  if (m === maskNow) return;
+  maskNow = m;
+  deck.style.maskImage = m;
+}
+/** Some of the card shows in the row's window (it can be pointed at, and the lip reaches it). */
+const inView = (l: Live) => visibleIn(l.x.value - l.w / 2, l.x.value + l.w / 2, row) > 0.15;
 
 // --- drag a card: onto a project in the island, or out into any app (CardDrag; Island.dragMoved)
 function islandZone(margin: number) {
@@ -2245,7 +2256,8 @@ function step(now: number) {
   // the lip, while some clasp is not under the island's bottom edge (its rounded corners kept clear)
   const ir = island.getBoundingClientRect();
   const cx = ir.left + ir.width / 2;
-  const clasps = down > 0.5 ? [...row.centres, ...(row.tileX !== null ? [row.tileX] : [])] : [];
+  const v = row.viewport;
+  const clasps = down > 0.5 ? (v ? [v[0] + 8, v[1] - 8] : row.centres) : [];
   const edge = [ir.left + 15, ir.right - 15];
   const lipped = clasps.some((x) => x < edge[0] - 1 || x > edge[1] + 1);
   lip.hidden = !lipped;
@@ -2254,11 +2266,11 @@ function step(now: number) {
     lip.style.transform = `translate(${(cx - half).toFixed(1)}px, ${(ir.bottom - 1).toFixed(1)}px)`;
     lip.style.width = `${(2 * half).toFixed(1)}px`;
   }
-  // the tile and the first-card hint ride with the row
-  const rowY = base - (1 - down) * (BELOW + 94);
-  tile.style.transform = `translate(${tile.dataset.x ?? 0}px, ${rowY.toFixed(1)}px)`;
-  tile.style.opacity = String(Math.max(0, Math.min(1, down * 1.6)));
-  tile.classList.toggle('up', down < 0.02);
+  rowMask();
+  if (down < 0.02 && scrollX && !dragging) {
+    scrollX = 0; // next time they come down: the newest first
+    layoutCards(true);
+  }
   // the selection: a ring on each card, "✓ 2 selected · Copied" under the row; it ends as the cards go up
   if (selection.size && down < 0.02) clearSelection();
   // a plain click's copy: "✓ Copied" under that card, 1.2 s (the same chip)
@@ -2348,6 +2360,14 @@ function reportHits(force = false) {
     const b = el.getBoundingClientRect();
     if (b.width && b.height) rects.push({ x: Math.floor(b.left), y: Math.floor(b.top), w: Math.ceil(b.width), h: Math.ceil(b.height) });
   };
+  // a card face, only the part of it in the row's window
+  const clipAdd = (el: Element) => {
+    const b = el.getBoundingClientRect();
+    const v = row.viewport;
+    const l = v ? Math.max(b.left, v[0]) : b.left;
+    const r = v ? Math.min(b.right, v[1]) : b.right;
+    if (r - l > 0 && b.height) rects.push({ x: Math.floor(l), y: Math.floor(b.top), w: Math.ceil(r - l), h: Math.ceil(b.height) });
+  };
   if (dragging) rects.push({ x: 0, y: 0, w: innerWidth, h: innerHeight });
   else {
     if (island.classList.contains('shown')) add(island);
@@ -2355,8 +2375,13 @@ function reportHits(force = false) {
     // with nothing to show (else an empty island could never be found)
     add(hot);
     if (downK.value > 0.5) {
-      for (const l of live) if ((l.phase === 'hang' || l.phase === 'fly') && l.el.style.display !== 'none') add(l.face);
-      if (!tile.hidden) add(tile);
+      for (const l of live) if ((l.phase === 'hang' || l.phase === 'fly') && l.el.style.display !== 'none' && inView(l)) clipAdd(l.face);
+      // a row that scrolls takes the pointer across its band, gaps included, so a swipe over it reaches it
+      const v = row.viewport;
+      if (v) {
+        const top = islandBottom() + BELOW;
+        rects.push({ x: Math.floor(v[0]), y: Math.floor(top), w: Math.ceil(v[1] - v[0]), h: Math.max(84, ...hanging().map((l) => l.h)) });
+      }
     }
     if (!menuEl.hidden) for (const m of [menuEl, ...menuEl.querySelectorAll('.mi.has-sub:hover > .sub')]) add(m);
     if (!panelEl.hidden) add(panelEl);
@@ -2376,8 +2401,8 @@ menuEl.addEventListener('pointerover', () => reportHits());
 
 // ------------------------------------------------------------------ the Cards panel (CardsOverview) and its preview
 // "Cards" with two segments — Current N (the cards at the top of the screen) and History N (the ones dragged out or
-// pasted into another app in the last 7 days). Show Cards (the hotkey, the tray), the open island's cards row and the
-// "+N" tile open it; it sits under the strip the cards hang in, takes the keyboard (given back on close) and closes
+// pasted into another app in the last 7 days). Show Cards (the hotkey, the tray), and the open island's cards row
+// open it; it sits under the strip the cards hang in, takes the keyboard (given back on close) and closes
 // when another app is clicked (the window loses the keyboard: the Mac's light panel). Keys: CardsPanelRules.
 type HCard = Card & { wall?: number | null; taken?: number };
 let history: HCard[] = [];
@@ -2966,10 +2991,6 @@ function apply(op: IslandOp) {
       peekUntil = performance.now() + 3000;
       setTimeout(render, 3050);
       break;
-    case 'attention':
-      if (op.status === 'waiting_input') attention = performance.now();
-      setTimeout(render, 1300);
-      break;
     case 'status':
       if (op.line.ev === 'level') level = op.line.rms;
       if (op.line.ev === 'snap' && S.cardPrefs?.snapSound) shutter();
@@ -3053,7 +3074,7 @@ setTimeout(() => {
   toReview: S.toReview,
   project: S.project?.name ?? null,
   cards: live.filter((l) => l.phase === 'hang' || l.phase === 'fly').map((l) => ({ n: l.card.n, kind: l.card.kind, text: l.card.text })),
-  row: { centres: row.centres, span: row.span, more: row.more, down: downK.value },
+  row: { centres: row.centres, span: row.span, scroll: row.scroll, maxScroll: row.maxScroll, down: downK.value },
   pill: pill.innerText,
   toast: toastNow ? { text: toastNow.text, action: toastNow.action?.label ?? null } : null,
 });
@@ -3088,7 +3109,6 @@ await ready(host, 'island', (push) => {
     voice: null,
     hatching: demo === '1' ? 1 : 0,
     jobs: demo === '1' ? [{ id: 'j1', type: 'process', title: zh ? '价格页走查' : 'Pricing page walkthrough', step: 'write', progress: 0.62 }] : [],
-    sessions: demo === '1' ? [{ job: 'j2', agent: 'claude', status: 'waiting_input', items: ['BA-12', 'BA-13'] }] : [],
     hotkeys: { record: 'Alt+Shift+R', snap: 'Alt+Shift+A', voice: 'Alt+Shift+V', project: 'Alt+Shift+O', pen: 'Alt+Shift+D' },
     expanded: ['1', 'rec', 'voice', 'auto', 'discard', 'quiet', 'pen'].includes(demo),
   };
@@ -3138,7 +3158,8 @@ await ready(host, 'island', (push) => {
   }
   if (['auto', 'drop', 'cards', 'menu', 'ears', 'many', '1'].includes(demo)) {
     const voice: Card = { n: 2, src: '', kind: 'voice', text: zh ? '搜索框放到顶部' : 'Move search to the top', session: '/demo/inbox/sessions/20261022-101500-shots' };
-    const cards = demo === 'many' ? [1, 3, 4, 5, 6, 7, 8, 9].map((n) => shot(n, n * 40, n === 9 ? (zh ? '保存按钮太浅' : 'Save button too faint') : null)) : [shot(1, 210, zh ? '保存按钮太浅' : 'Save button too faint', 320, 120), voice];
+    const manyN = Number(params.get('n')) || 8; // ?n=40: a row long enough to scroll
+    const cards = demo === 'many' ? Array.from({ length: manyN }, (_, i) => i + 2).map((n) => shot(n, (n * 40) % 360, n === manyN + 1 ? (zh ? '保存按钮太浅' : 'Save button too faint') : null)) : [shot(1, 210, zh ? '保存按钮太浅' : 'Save button too faint', 320, 120), voice];
     push(EV.island, { op: 'cards', cards });
     if (demo !== 'many') setTimeout(() => push(EV.island, { op: 'card', card: shot(3, 140, null), pull: false }), params.has('still') ? 0 : 500);
     if (demo !== 'ears' && demo !== '1') setTimeout(() => revealCards(true), 10);

@@ -678,34 +678,34 @@ Swift、Rust、live.py 不各自拼命令。
                                          // 输入来自屏幕和语音，所以权限最小。cwd 是会话文件夹（AI 补全：$BLURT_HOME/tmp/<job>），
                                          // 不是项目；prompt 写明项目代码的路径，只读。codex 只能写 cwd 和 {writable}（每个一条
                                          // --add-dir：收件箱、各项目现存的 .blurt、它自己的 uv 缓存 $BLURT_HOME/sandbox/uv-cache；
-                                         // env UV_CACHE_DIR + BLURT_NO_INDEX），$BLURT_HOME（config.json、任务和它们的 hook 设置、
+                                         // env UV_CACHE_DIR + BLURT_NO_INDEX），$BLURT_HOME（config.json、任务、
                                          // index.db）和共用的 uv 缓存都不可写——沙箱里写下的东西不会在沙箱外被执行；网络开着给 uv
                                          // 解析依赖。claude / gemini 只能改 cwd 里的文件（acceptEdits / auto_edit），命令只放行整理
                                          // 要用的几个脚本，按绝对路径钉死（"Bash(uv run {scripts}/items.py:*)"，{scripts} = skill 的
                                          // scripts 目录，prompt 里写同一路径），别的命令、别的脚本都不行。kimi / opencode 用各自默认
-                                         // （参数未验证）。用户自己发起的交给 Agent 走 interactive.session，权限不变。
+                                         // （参数未验证）。
                                          // 没选项目的内容：提示词里附上候选项目（projects.py candidates），整理只写
                                          // suggested_project，不移动、不多调模型（v0.9，K2）；索引和任务的条目由 App 在
                                          // 结束后补（沙箱里写不了）。用哪个模型分两种：录屏（CLI 自己的模型、低思考强度）和
                                          // 卡片（最省的模型），agents.json processing.{recording,cards}，用户在设置 → Agent 改
                                          // （config record.agent_processing.<id>.<kind>）。
-    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
+    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, // "drafts" 标记已随录制中草稿删除（2026-11-09）
     // WP2 加的字段
     "version": ["--version"],
     "events": { "args": ["--json"], "format": "codex-jsonl" },   // 追加在 run 后面，得到可解析的进度流
-    "interactive": { "terminal": ["{prompt}"] },   // 或 {"url": "claude-cli://open?cwd={repo_q}&q={prompt_q}", "max_prompt": 5000}
-                                                   // 或 {"terminal": [], "paste_prompt": true}（kimi）或 {"copy_prompt": true}（zcode）
     "skill_dir": "~/.agents/skills",
     "mcp": { "args": ["mcp", "add", "blurt", "--", "uv", "run", "--script", "{mcp_server}"],
              "check": ["mcp", "get", "blurt"], "verified": "run" } },
          // 或 {"json": {"path": "${KIMI_CODE_HOME:-~/.kimi-code}/mcp.json", "key": ["mcpServers", "blurt"], "value": {…}}}
   { "id": "zcode", "name": "ZCode", "bins": [], "app": { "macos": "/Applications/ZCode.app" },
-    "headless": false, "interactive": { "copy_prompt": true }, … }
+    "headless": false, … }                 // 只能「连接」（skill + MCP），从不无人值守地跑
 ], "failures": [ … ] }                     // app-ux：skill | model | auth | quota | network，classify() 用
 ```
 
-路径支持 `~` 和 `${VAR:-default}`；占位符：`{prompt}`、`{repo}`、`{repo_q}` / `{prompt_q}`（URL 编码）、`{mcp_server}`（mcp_server.py
-的绝对路径）、`--var k=v` 给的任意 `{k}`。
+路径支持 `~` 和 `${VAR:-default}`；占位符：`{prompt}`、`{repo}`、`{mcp_server}`（mcp_server.py 的绝对路径）、`--var k=v` 给的任意 `{k}`。
+
+（2026-11）`interactive` 字段删了：Blurt 不再在自己的终端里启动 Agent，也没有交给 Agent 的会话。用户把事项交给自己的 Agent
+（复制交接单，`handoff.py`），Agent 用 blurt MCP 或 `items.py state` 报告进度。
 
 **顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
 没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。`"headless": false` 的条目（zcode）永远不进 order（默认顺序和 `record.agents` 都一样，Python `agent_order()` 和 Swift `AgentHub.order()` 同一规则）。
@@ -725,12 +725,11 @@ agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang zh
      "agents": [{id, name, path, state, why, fix,                     // 与 status 的行完全相同
                  installed: bool, version: str|null,
                  login: "ok"|"logged_out"|"unknown"|"n/a",          // ready→ok，configured/unknown→unknown，not_installed→n/a
-                 headless: bool, interactive: "url"|"terminal"|"copy"|null}]}
-     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供「复制提示词」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
-agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
-  → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
-     "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
-     "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
+                 headless: bool}]}
+     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供设置 → Agent 的「连接」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
+agents.py command ID headless (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
+  → {"id", "mode", "argv": [abs bin, …], "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
+     "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null, "retry_exit": null|n}
      headless：argv = bin + run + headless_mcp.args（--no-mcp 不加）+ events.args（--no-events 不加）；prompt 永远是单独一个
      argv 元素，不经过 shell。
      **headless_mcp**（codex，实测）：`codex exec` 的审批策略是 never，没批准过的 MCP 调用一律失败（"MCP tool call requires
@@ -742,8 +741,6 @@ agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --re
      claude 的 `run` 在 `--allowedTools` 里加了 `mcp__blurt`（-p 模式下没放行的工具会被拒；未实跑 ⚠）。
      **应用要用 `command` 的 argv**：Agents.swift 现在直接拿 `run` 拼命令，拿不到 headless_mcp，要么改成调 `agents.py command`，
      要么照同样规则把 headless_mcp.args（替换 `{mcp_server_json}`）追加上。
-     interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
-     或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
      --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
 agents.py install ID [--skill] [--mcp] [--dry-run]     （两个都不给 = 都做）
   → {"changes": [{"action": "symlink", "path", "target"} | {"action": "exists", "path"|"argv"} |
@@ -896,11 +893,10 @@ Sources/BlurtCore/      (library; everything the app uses from it is public — 
                       func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect
                       func detectAll(login:) async throws -> AgentDetect        // every registry id, configured order first
                       var order: [String]?                                      // record.agents
-                      func command(_ id:, mode: "headless"|"interactive", prompt:, repo:, vars:, events:) async throws -> AgentCommand
+                      func command(_ id:, mode: "headless", prompt:, repo:, vars:, events:) async throws -> AgentCommand
                       func install(_ id:, skill:, mcp:, dryRun: Bool) async throws -> InstallPlan   // full login env, never scrubbed
                       func fixPrompt(_ uids: [String], repo: URL? = nil) async throws -> FixPrompt
-                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun       // headless; parses the event stream
-                      func interactive(_ id:, prompt:, repo:) async throws -> AgentCommand }        // the app opens url / Terminal / clipboard
+                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun }     // headless; parses the event stream
                     public final class AgentRun { id, agent, items, repo, lines, costUSD, exitStatus; onLine, onProgress, onExit; cancel() }
 Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged; one module)
    Capture/    Recorder, Picker, HUD, HUDLive, InkView, Snap, Perch, Rope, NoteBubble, Eggs, LiveAudio   (the existing capture code)

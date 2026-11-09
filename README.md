@@ -2,7 +2,7 @@
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
-<a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a> · <a href="#community">Feishu group</a></p>
+<a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a> · <a href="#community">WeChat group</a></p>
 
 <p align="center"><a href="https://blurt.work/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
 <p align="center"><sub>Watch the 2-minute film, sound on · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">Download for Mac</a></sub></p>
@@ -87,8 +87,7 @@ Blurt gets your words, pictures and recordings into an agent. The agent does the
 | **Dictation and cards** | Text and pictures go into any chat box or terminal, so they work with every agent. |
 | **Skill** | The `blurt` skill lets your agent record, transcribe, write items, open the review page and export. |
 | **MCP server** | `blurt` gives agents `search_items`, `get_item` (with screenshots), `get_transcript`, `update_item`, `mark_fixed` and `bundle_items`. *Settings → Agents → Connect…* installs the skill and the MCP server into an agent, after showing what it changes. |
-| **Hand off to agent** (`⌘↩`) | Runs Claude Code or Codex in Blurt's terminal, in the project folder, optionally with one git worktree per item. Claude Code can also run in the Claude desktop app. |
-| **Copy instruction** | One line for any other agent, pointing to a hand-off note with every detail and screenshot. |
+| **Copy instruction** | One line to paste into the agent you use, pointing to a hand-off note with every detail and screenshot. Blurt doesn't run agents in a window of its own. |
 | **Hand-off bundle** | One `.zip` with a summary, every item and its screenshots, for a person rather than an agent. |
 
 Agents report back through the MCP server: an item moves to *In progress*, then *To verify*. "Fixed" from an agent
@@ -238,10 +237,9 @@ action, another app or macOS. The same setting works in `~/.blurt/config.json`, 
 
 ## Community
 
-Questions, feedback and new releases go to the Blurt users' group on Feishu. Anyone can join, including with a free
-personal Feishu account: scan the code with the Feishu app, or [open the invite link](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55ame8f2-6482-400c-84b2-06de3ea29cb2&qr_code=true).
+Questions, feedback and new releases go to the Blurt users' group on WeChat. Scan the code with WeChat to join.
 
-<p align="center"><img src="assets/community/feishu-group-qr.png" width="200" alt="QR code to join the Blurt users' Feishu group"></p>
+<p align="center"><img src="assets/community/wechat-group-qr.png" width="200" alt="QR code to join the Blurt users' WeChat group"></p>
 
 Bugs and feature requests are also welcome as [GitHub issues](https://github.com/AGIHunt/blurt/issues).
 

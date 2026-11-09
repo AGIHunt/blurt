@@ -1,33 +1,18 @@
 // What a take says about itself while it runs and after it ends (BA-64, BA-61; 2026-10-31).
 //
-//  • TakeLine: the open recording island's quiet line. The founder couldn't tell what "已识别 4 条" was or where the
-//    shots went: now it names both in plain words ("截图 6 张 · 已识别 4 个事项" / "6 snaps · 4 items spotted"), each
-//    snap is a card of its own (⌥A runs the normal snap flow while recording), and a second line says where the items
-//    will be: "点完成后整理进 Atlas Web" / "Organized into Atlas Web when you finish".
+//  • TakeLine: the open recording island's quiet line: the snaps taken so far ("截图 6 张" / "6 snaps"; each snap is
+//    a card of its own, ⌥A runs the normal snap flow while recording), and a second line says where the items will
+//    be: "点完成后整理进 Atlas Web" / "Organized into Atlas Web when you finish". (Until 2026-11 it also counted the
+//    items a small model drafted while recording; those drafts are gone.)
 //  • OrganizeEstimate: how long organizing a recording usually takes *on this Mac*, from the recordings it has already
 //    organized (the process jobs in $BLURT_HOME/jobs: their start and end, the video's length in meta.json) — nothing
 //    is assumed. Fewer than 3 such runs: no estimate, the island just says it is organizing and where.
 import Foundation
 
 public enum TakeLine {
-    public enum Part: Equatable {
-        case snaps(Int), items(Int)
-    }
-
-    /// The counts worth saying, in this order: the snaps taken (⌥A, the island's button), the items live.py spotted
-    /// so far. Zero ones are left out.
-    public static func parts(snaps: Int, items: Int) -> [Part] {
-        [snaps > 0 ? .snaps(snaps) : nil, items > 0 ? .items(items) : nil].compactMap { $0 }
-    }
-
-    /// The counts as a line ("6 snaps · 4 items spotted").
-    public static func text(snaps: Int, items: Int) -> String {
-        parts(snaps: snaps, items: items).map { p -> String in
-            switch p {
-            case .snaps(let n): return Loc.plural("capture.rec.snaps", table: "Capture", count: n)
-            case .items(let n): return Loc.plural("capture.rec.spotted", table: "Capture", count: n)
-            }
-        }.joined(separator: " · ")
+    /// The snaps taken so far (⌥A, the island's button) as a line ("6 snaps"); none: "".
+    public static func text(snaps: Int) -> String {
+        snaps > 0 ? Loc.plural("capture.rec.snaps", table: "Capture", count: snaps) : ""
     }
 
     /// Where it all goes: "Organized into Atlas Web when you finish" — said once there is something to organize; when

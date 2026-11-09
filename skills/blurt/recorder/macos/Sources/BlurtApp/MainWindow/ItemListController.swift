@@ -1376,12 +1376,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
-    /// Still with an agent session that is over and never said it was done (In Progress' stuck work), not one the
-    /// user already finished (merged, taken back…).
+    /// Still with an agent session of an older version (sessions in Blurt are gone): nothing will report it done, so
+    /// the row says so (In Progress' stuck work) until the user marks it done or takes it back.
     static func sessionEnded(_ it: ItemRow) -> Bool {
-        guard ["handed_off", "in_progress"].contains(it.state), it.workTo == "session" || it.workJob != nil,
-              let j = it.workJob.flatMap({ JobStore.shared.job($0) }), let a = j.agent else { return false }
-        return !j.isActive && a.finishAction == nil && !a.isDesktop
+        ["handed_off", "in_progress"].contains(it.state) && (it.workTo == "session" || it.workJob != nil)
     }
 
     var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }

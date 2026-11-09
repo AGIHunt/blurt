@@ -4,7 +4,7 @@
 // tests/fixtures/lifecycle.json (Tests/BlurtCoreTests/LifecycleTests.swift).
 //
 // The app never writes a state itself: an action goes to `items.py state UID… --action A --by user`. hand_off is the
-// exception — it opens the dispatch panel or copies an instruction, and those flows write the state.
+// exception — it copies an instruction for the user's own agent, and handoff.py --mark writes the state.
 import Foundation
 
 public enum Lifecycle {

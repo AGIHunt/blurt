@@ -1,12 +1,13 @@
 //! Blurt for Windows and Linux (Tauri 2) — the v0.7 model (docs/design/next-round.md "v0.7 契约"): projects are
-//! folders, items are Markdown in each project's store, everything under way is a job, agents run in tmux windows
-//! (or in the app's own ConPTY on Windows) shown in an embedded terminal, and a top-centre island holds capture.
+//! folders, items are Markdown in each project's store, everything under way is a job, work goes to the user's own
+//! agent as a copied hand-off note, captures are sorted by an agent run headless, and a top-centre island holds capture.
 //!
 //! Rust side: read-only index.db (rusqlite), the skill's Python CLIs through uv for every write (`items.py`,
-//! `projects.py`, `sessions.py`, `handoff.py`, `jobs.py`), jobs folded from their files, ptys, tray, global
+//! `projects.py`, `handoff.py`, `agents.py`, `jobs.py`), jobs folded from their files, tray, global
 //! shortcuts, file watching, single instance, `blurt://` deep links, updater. The UI is web/apps/desktop (React) and
 //! web/apps/overlays (the island, picker and note bubble).
 
+pub mod agents;
 pub mod capture;
 pub mod control;
 pub mod dictation;
@@ -22,10 +23,8 @@ pub mod l10n;
 pub mod onboarding;
 pub mod paths;
 pub mod projects;
-pub mod pty;
 pub mod screen_text;
 pub mod scripts;
-pub mod sessions;
 pub mod settings;
 pub mod setup;
 pub mod tray;
@@ -226,7 +225,6 @@ fn platform() -> &'static str {
 #[tauri::command]
 fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
     let r = state.runner();
-    let tmux = !cfg!(windows) && scripts::agent_environment().get("PATH").is_some_and(|p| std::env::split_paths(p).any(|d| d.join("tmux").is_file()));
     json!({
         "version": app.package_info().version.to_string(),
         "os": std::env::consts::OS,
@@ -239,10 +237,9 @@ fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
         "index_ready": state.index().ready(),
         "scripts": r.scripts.as_deref().map(scripts::s),
         "uv": r.uv.as_deref().map(scripts::s),
-        "tmux": tmux,
         "capture": state.capture.state(),
         "hotkey_mode": app.state::<hotkeys::Hotkeys>().mode.lock().unwrap().clone(),
-        // test hook (smoke screenshots): open on this view — inbox | items | project:<id> | sessions | settings | …
+        // test hook (smoke screenshots): open on this view — inbox | items | project:<id> | settings | …
         "start_view": std::env::var("BLURT_START_VIEW").ok(),
     })
 }
@@ -424,137 +421,25 @@ fn save_temp_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> R<String
 
 #[tauri::command(async)]
 fn jobs_list(active: Option<bool>) -> Vec<Value> {
-    sessions::with_labels(jobs::list(active.unwrap_or(false), 100))
+    jobs::list(active.unwrap_or(false), 100)
 }
 
 #[tauri::command(async)]
 fn agents_models(state: tauri::State<'_, AppState>, agent: String) -> R<Value> {
-    sessions::models(&state.runner(), &agent)
+    agents::models(&state.runner(), &agent)
 }
 
-/// `login` false: no sign-in probes (fast); `ids`: only these agents (the hand-off panel probes its choice first).
+/// `login` false: no sign-in probes (fast); `ids`: only these agents.
 #[tauri::command(async)]
 fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Option<Vec<String>>) -> R<Value> {
-    sessions::detect_with(&state.runner(), login.unwrap_or(true), ids.as_deref())
-}
-
-#[tauri::command(async)]
-fn sessions_dispatch(app: AppHandle, state: tauri::State<'_, AppState>, opts: sessions::DispatchOpts) -> R<Value> {
-    let r = sessions::dispatch(&app, &state.runner(), &opts)?;
-    items::bump();
-    Ok(r)
-}
-
-#[tauri::command(async)]
-fn sessions_list(app: AppHandle, state: tauri::State<'_, AppState>, all: Option<bool>) -> R<Value> {
-    let mut r = sessions::list(&state.runner(), all.unwrap_or(false))?;
-    r["owned"] = json!(pty::owned_jobs(&app)); // app-runner sessions end when Blurt quits (the UI says so)
-    Ok(r)
-}
-
-#[tauri::command(async)]
-fn sessions_finish(state: tauri::State<'_, AppState>, job: String, action: String, expect: Option<String>) -> R<Value> {
-    let r = sessions::finish(&state.runner(), &job, &action, expect.as_deref())?;
-    items::bump();
-    Ok(r)
-}
-
-#[tauri::command(async)]
-fn sessions_stop(app: AppHandle, state: tauri::State<'_, AppState>, job: String, kill: Option<bool>) -> R<Value> {
-    sessions::stop(&app, &state.runner(), &job, kill.unwrap_or(false))
-}
-
-/// Restart Session: the same items, agent and model in a fresh session (SessionRecovery).
-#[tauri::command(async)]
-fn sessions_restart(app: AppHandle, state: tauri::State<'_, AppState>, job: String) -> R<Value> {
-    let r = sessions::restart(&app, &state.runner(), &job)?;
-    items::bump();
-    Ok(r)
-}
-
-/// Take Back: the session's items back to To Do.
-#[tauri::command(async)]
-fn sessions_take_back(state: tauri::State<'_, AppState>, job: String) -> R<Value> {
-    let r = sessions::take_back(&state.runner(), &job)?;
-    items::bump();
-    Ok(r)
-}
-
-/// The sessions pane's rows (agent jobs as SessionsModel lists them) and its memory.
-#[tauri::command(async)]
-fn sessions_rows(app: AppHandle) -> Value {
-    sessions::rows(&app)
-}
-
-/// The agents' desktop apps (Claude) and whether each is installed here.
-#[tauri::command(async)]
-fn sessions_desktop_apps(state: tauri::State<'_, AppState>) -> Value {
-    sessions::desktop_apps(&state.runner())
-}
-
-/// Go to Claude: the agent's desktop app comes forward.
-#[tauri::command(async)]
-fn sessions_go_desktop(app: AppHandle, state: tauri::State<'_, AppState>, agent: String) -> R<()> {
-    sessions::go_desktop(&app, &state.runner(), &agent)
-}
-
-/// May a running session of this agent continue in its desktop app (`sessions.py desktop-check`).
-#[tauri::command(async)]
-fn sessions_desktop_check(state: tauri::State<'_, AppState>, agent: String) -> R<Value> {
-    sessions::desktop_check(&state.runner(), &agent)
-}
-
-/// Continue in Claude Desktop: the session moves to the agent's desktop app.
-#[tauri::command(async)]
-fn sessions_continue_desktop(app: AppHandle, state: tauri::State<'_, AppState>, job: String, without_mcp: Option<bool>) -> R<Value> {
-    sessions::continue_desktop(&app, &state.runner(), &job, without_mcp.unwrap_or(false))
-}
-
-/// The pane shows this session now (ui/terminal.json), or (`forget`) Remove Session.
-#[tauri::command(async)]
-fn sessions_memory(pane: Option<String>, job: String, forget: Option<bool>) -> R<()> {
-    if forget.unwrap_or(false) {
-        sessions::forget(&job)
-    } else {
-        sessions::remember(pane.as_deref().unwrap_or("window"), &job)
-    }
-}
-
-#[tauri::command(async)]
-fn sessions_open_external(state: tauri::State<'_, AppState>, job: String, terminal: Option<String>) -> R<Value> {
-    sessions::open_external(&state.runner(), &job, terminal.as_deref())
-}
-
-#[tauri::command(async)]
-fn sessions_send(state: tauri::State<'_, AppState>, job: String, text: String, enter: Option<bool>) -> R<Value> {
-    sessions::send(&state.runner(), &job, &text, enter.unwrap_or(true))
-}
-
-#[tauri::command(async)]
-fn pty_open(app: AppHandle, state: tauri::State<'_, AppState>, job: String, cols: Option<u16>, rows: Option<u16>) -> R<Value> {
-    pty::open(&app, &state.runner(), &job, cols.unwrap_or(100), rows.unwrap_or(30))
-}
-
-#[tauri::command]
-fn pty_write(app: AppHandle, pty_id: u32, data: String) -> R<()> {
-    pty::write(&app, pty_id, &data)
-}
-
-#[tauri::command]
-fn pty_resize(app: AppHandle, pty_id: u32, cols: u16, rows: u16) -> R<()> {
-    pty::resize(&app, pty_id, cols, rows)
-}
-
-#[tauri::command]
-fn pty_close(app: AppHandle, pty_id: u32) {
-    pty::close(&app, pty_id);
+    agents::detect_with(&state.runner(), login.unwrap_or(true), ids.as_deref())
 }
 
 /// K6: hand these items to the user's own agent — the sheet is written, the items are marked handed off, and the
 /// instruction (or the full text) is on the clipboard. → {id, path, text}
 #[tauri::command(async)]
 fn handoff_create(app: AppHandle, state: tauri::State<'_, AppState>, uids: Vec<String>, full: Option<bool>) -> R<Value> {
-    let r = sessions::handoff(&state.runner(), &uids, full.unwrap_or(false))?;
+    let r = agents::handoff(&state.runner(), &uids, full.unwrap_or(false))?;
     if let Some(t) = r["text"].as_str() {
         app.clipboard().write_text(t.to_string()).map_err(|e| e.to_string())?;
     }
@@ -571,7 +456,7 @@ fn process_captures(app: AppHandle, session: String, captures: Option<Vec<u64>>,
         return Ok(String::new());
     }
     let by = project.as_ref().map(|_| "user");
-    let r = sessions::process(&app, std::path::Path::new(&session), captures, project, by, None);
+    let r = agents::process(&app, std::path::Path::new(&session), captures, project, by, None);
     island::refresh_cards(&app);
     r
 }
@@ -651,12 +536,30 @@ fn open_external(app: AppHandle, url: String) -> R<()> {
 
 #[tauri::command]
 fn open_path(app: AppHandle, path: String) -> R<()> {
-    // Windows: a file no app is registered for (a session's .diff) opens in Notepad, not the "Open with" chooser
+    // Windows: a file no app is registered for opens in Notepad, not the "Open with" chooser
     #[cfg(windows)]
-    if !sessions::has_handler(&path) {
+    if !has_handler(&path) {
         return std::process::Command::new("notepad.exe").arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string());
     }
     app.opener().open_path(&path, None::<&str>).map_err(|e| e.to_string())
+}
+
+/// Windows: does an app open this kind of file? Opening one no app is registered for shows the "Open with" chooser
+/// (dogfood WW51): open_path opens it in Notepad instead. Folders always open (Explorer).
+#[cfg(windows)]
+fn has_handler(path: &str) -> bool {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::UI::Shell::{AssocQueryStringW, ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_EXECUTABLE};
+    let p = std::path::Path::new(path);
+    if p.is_dir() {
+        return true;
+    }
+    let Some(ext) = p.extension().and_then(|e| e.to_str()) else { return false };
+    let ext = HSTRING::from(format!(".{ext}"));
+    let mut len = 0u32;
+    // only the length is asked for: S_FALSE with it when an app is registered, an error when none is
+    let hr = unsafe { AssocQueryStringW(ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_EXECUTABLE, &ext, PCWSTR::null(), None, &mut len) };
+    hr.is_ok() && len > 0
 }
 
 /// The detail's ⤓ (the review page's host.download, the Mac's WebHostController.download): a copy of a frame or
@@ -868,9 +771,7 @@ pub fn run() {
         })
         .manage(hotkeys::Hotkeys::default())
         .manage(watcher::WatchState::default())
-        .manage(pty::Ptys::default())
         .manage(island::Hub::default())
-        .manage(sessions::Monitor::default())
         .setup(|app| {
             let handle = app.handle().clone();
             hotkeys::mark_main_thread(); // hotkeys::apply runs here, whoever calls it
@@ -919,7 +820,6 @@ pub fn run() {
             if std::env::var_os("BLURT_NO_SCAN").is_none() {
                 watcher::initial_scan(&handle);
             }
-            sessions::start_monitor(&handle);
             island::init(&handle);
             onboarding::init(&handle); // before setup: it hears setup's uv events
             if std::env::var_os("BLURT_NO_SETUP").is_none() {
@@ -1013,24 +913,6 @@ pub fn run() {
             jobs_list,
             agents_detect,
             agents_models,
-            sessions_dispatch,
-            sessions_list,
-            sessions_finish,
-            sessions_stop,
-            sessions_open_external,
-            sessions_send,
-            sessions_restart,
-            sessions_take_back,
-            sessions_rows,
-            sessions_memory,
-            sessions_desktop_apps,
-            sessions_go_desktop,
-            sessions_desktop_check,
-            sessions_continue_desktop,
-            pty_open,
-            pty_write,
-            pty_resize,
-            pty_close,
             handoff_create,
             process_captures,
             voice_start,
@@ -1074,7 +956,6 @@ pub fn run() {
             housekeeping::feedback_send,
             control::agent_setup_instruction,
             control::agent_setup_state,
-            control::agent_setup_start,
             control::agent_setup_stop,
             control::agent_setup_dismiss,
             control::agent_setup_answer,
@@ -1086,10 +967,8 @@ pub fn run() {
             if app.state::<AppState>().capture.recording() {
                 capture::stop_and_wait(app, Duration::from_secs(10)); // never lose a take on quit
             }
-            pty::kill_all(app);
-            sessions::end_organising(); // an organising agent ends with the app, its job marked stopped
+            agents::end_organising(); // an organising agent ends with the app, its job marked stopped
             control::stop();
-            sessions::stop_monitor(app);
         }
     });
 }

@@ -9,14 +9,13 @@ described (contract C5): the apps and live.py run what this returns instead of b
   agents.py classify FILE          a failed run's log (agent.log) → {"class": "auth|quota|network|model|skill|null", …}
   agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang L]
                                    → {"order": [...], "pick": id|null, "agents": [{id, name, path, state, why, fix,
-                                      installed, version, login, headless, interactive}]}
-  agents.py command ID headless|interactive --prompt TEXT|--prompt-file F --repo DIR [--var k=v …] [--no-events]
+                                      installed, version, login, headless}]}
+  agents.py command ID headless --prompt TEXT|--prompt-file F --repo DIR [--var k=v …] [--no-events]
                    [--no-mcp] [--processing [recording|cards]]
-                                   → {"id","mode","argv","cwd","env","url","events","terminal","clipboard","open_app",
-                                      "retry_exit","prompt_file"}; --processing (an unattended organising run): the
-                                      processing model + effort for that kind of run (recording: organizing a
-                                      recording; cards, the default: snaps, voice notes, AI fill-in and other small
-                                      runs) and the usage flags → also "processing", "usage";
+                                   → {"id","mode","argv","cwd","env","events","retry_exit"}; --processing (an
+                                      unattended organising run): the processing model + effort for that kind of run
+                                      (recording: organizing a recording; cards, the default: snaps, voice notes, AI
+                                      fill-in and other small runs) and the usage flags → also "processing", "usage";
                                       "scripts" = the folder the run may call (`uv run <scripts>/<name>.py`: name it
                                       so in the prompt), env = what a sandboxed run needs (sandbox_env)
   agents.py models ID              → {"ok","id","models":[{id,name,description,cheap}],"cheapest","cli_default",
@@ -24,17 +23,14 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                       "cards":{model,effort}}}   (no network, no tokens)
   agents.py usage ID FILE [--offset N]   tokens a run reported in its output (from byte N) → {"ok","usage"|null}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
-  agents.py prompt work --items REF … [--mode session|external] [--worktree on|off] [--branch B] [--handoff H]
-                   [--lang en|zh]   → {"ok","prompt","title","handoff","path","items"}: a short prompt pointing at
-                                      the items' hand-off note (K6; written unless --handoff names one), its first
-                                      line the title ("AW-12 · <title> (Blurt hand-off)" — work_title)
+  agents.py prompt work --items REF … [--handoff H] [--lang en|zh]
+                                   → {"ok","prompt","title","handoff","path","items"}: a short prompt for the user's
+                                      own agent, pointing at the items' hand-off note (K6; written unless --handoff
+                                      names one), its first line the title ("AW-12 · <title> (Blurt hand-off)" —
+                                      work_title)
 
-The desktop app as a hand-off target (interactive.desktop): desktop_prompt / desktop_url build its claude:// link,
-desktop_continue_check says whether a running terminal session may move there. set_thread_name names a Codex
-thread through `codex app-server` (interactive.session.thread_name).
-
-sessions.py builds interactive sessions with session_command() (K5): the agent's interactive.session, its per-session
-hooks (Claude: a --settings file; Codex: -c notify and hooks.*) and the blurt MCP server when it isn't installed.
+Blurt runs agents only headless and unattended (organising, AI sort, AI fill-in). Working on items happens in the
+user's own agent, from a hand-off note (handoff.py) and the blurt MCP server.
 
 The registry is agents.json next to this file (also bundled into Blurt.app, which implements the same rules in
 Agents.swift). Config ($BLURT_HOME/config.json → record): agents = ["claude", "codex", …] (order; agents not listed are
@@ -58,7 +54,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import blurt_home, global_config, parse_config_text  # noqa: E402
+from _common import global_config, parse_config_text  # noqa: E402
 
 REGISTRY = Path(__file__).with_name("agents.json")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -275,7 +271,7 @@ def writable_dirs() -> list[str]:
     """What an unattended organizing run may write besides its cwd (the session folder) — "{writable}" in run: one
     `--add-dir` each, for codex's workspace-write sandbox: the inbox store and every project's .blurt store that
     exists (ingest files an item straight into the project the agent is sure of; set-frames / patch follow it) and
-    its own uv cache. Never $BLURT_HOME (config.json and its agent_defs, the jobs' hook settings, the index) nor the
+    its own uv cache. Never $BLURT_HOME (config.json and its agent_defs, the jobs, the index) nor the
     shared uv cache: a write there would run outside the sandbox later. Mirrors UnattendedRun.writableDirs (Swift)."""
     import projects  # noqa: PLC0415 — projects imports agents
     import store as st  # noqa: PLC0415
@@ -342,11 +338,6 @@ def app_path(defn: dict) -> str | None:
     return str(expand(p)) if p and expand(p).exists() else None
 
 
-def interactive_kind(defn: dict) -> str | None:
-    it = defn.get("interactive") or {}
-    return "url" if it.get("url") else "terminal" if "terminal" in it else "copy" if it.get("copy_prompt") else None
-
-
 def is_headless(defn: dict) -> bool:
     return bool(defn.get("run")) and defn.get("headless", True) is not False
 
@@ -378,7 +369,7 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
     order = agent_order(cfg)
     env = clean_env(env)
     rows = []
-    # app-only agents (headless: false) follow the order, so a UI can still offer "copy the prompt" for them
+    # connect-only agents (headless: false) follow the order: Settings → Agents lists them for Connect
     for i in ids or order + [k for k in defs if k not in order and not is_headless(defs[k])]:
         d = defs.get(i)
         if not d:
@@ -395,8 +386,6 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["version"] = version_of(d, r["path"], env) if version and r["installed"] and find_bin(d, env) else None
         r["login"] = LOGIN.get(r["state"], "unknown")
         r["headless"] = is_headless(d)
-        r["interactive"] = interactive_kind(d)
-        r["session"] = session_spec(d) is not None  # runs as an in-app / tmux session (what sessions.py doctor says)
         rows.append(r)
     # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
     by_id = {r["id"]: r for r in rows}
@@ -408,24 +397,15 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
     return {"order": order, "pick": pick, "agents": rows}
 
 
-def _prompt_file(prompt: str, agent: str) -> Path:
-    home = Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
-    d = home / "prompts"
-    d.mkdir(parents=True, exist_ok=True)
-    import time
-    f = d / f"{time.strftime('%Y%m%d-%H%M%S')}-{agent}-{os.getpid()}.md"
-    f.write_text(prompt, encoding="utf-8")
-    return f
-
-
 def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | None = None, events: bool = True,
             cfg: dict | None = None, env: dict | None = None, mcp: bool = True, processing_run: bool | str = False) -> dict:
-    """What to execute for `agent`. headless: argv (absolute bin when found) run in cwd with env added; interactive:
-    a url to open, or argv to run in the user's terminal, and/or text to put on the clipboard. processing_run: an
+    """What to execute for `agent`, unattended: argv (absolute bin when found) run in cwd with env added. mode is
+    always "headless" (Blurt starts no interactive agent: the user hands items to their own). processing_run: an
     unattended organising run — the processing model / effort (processing(); "recording" or "cards", True = cards)
     and the flags that make the CLI report its token usage (out["processing"], out["usage"]: parse its output with
     parse_usage)."""
-    from urllib.parse import quote
+    if mode != "headless":
+        raise ValueError("mode must be headless")
     cfg = cfg if cfg is not None else config(repo)
     defs = definitions(cfg)
     d = defs.get(agent)
@@ -437,58 +417,33 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
     if vars.get("run_id"):
         env_add["BLURT_RUN_ID"] = str(vars["run_id"])
     bin_ = find_bin(d, clean_env(env)) or (d.get("bins") or [None])[0]
-    out = {"id": agent, "mode": mode, "argv": None, "cwd": repo, "env": env_add, "url": None, "events": None,
-           "terminal": False, "clipboard": None, "open_app": None, "retry_exit": d.get("retry_exit"), "prompt_file": None}
-    if mode == "headless":
-        if not is_headless(d) or not bin_:
-            raise ValueError(f"{agent} has no headless mode")
-        # {scripts}: claude / gemini may run only `uv run <scripts>/<name>.py` — the caller's prompt names that path
-        vals = {**vars, "prompt": prompt, "repo": repo, "scripts": str(SCRIPTS)}
-        out["scripts"] = str(SCRIPTS)
-        if "{writable}" in d["run"]:  # sandboxed: only an organizing run writes the item stores; the rest only cwd
-            vals["writable"] = writable_dirs() if processing_run else []
-            env_add.update(sandbox_env())
-        argv = [bin_, *_fill(d["run"], vals)]
-        hm = d.get("headless_mcp") or {}
-        if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run
-            argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER))})
-        if processing_run:
-            p = processing(agent, cfg, env, kind=processing_run if processing_run in KINDS else "cards")
-            argv += p["args"]
-            out["processing"] = {"model": p["model"], "effort": p["effort"]}
-        ev = d.get("events") or {}
-        if events and ev.get("args"):
-            argv += _fill(ev["args"], vals)
-            out["events"] = ev.get("format")
-        elif processing_run and (d.get("usage") or {}).get("args"):
-            argv += _fill(d["usage"]["args"], vals)
-        if processing_run:
-            out["usage"] = (d.get("usage") or {}).get("format") or ("pattern" if (d.get("usage") or {}).get("pattern") else None)
-        out["argv"] = argv
-        return out
-    if mode != "interactive":
-        raise ValueError("mode must be headless or interactive")
-    it = d.get("interactive") or {}
-    if it.get("url"):
-        q = prompt
-        if it.get("max_prompt") and len(prompt) > it["max_prompt"]:
-            f = _prompt_file(prompt, agent)
-            out["prompt_file"] = str(f)
-            q = f"Read {f} and do what it says."
-        vals = {**vars, "repo": repo, "repo_q": quote(repo, safe=""), "prompt_q": quote(q, safe=""), "prompt": q}
-        out["url"] = _fill([it["url"]], vals)[0]
-    elif "terminal" in it:
-        if not bin_:
-            raise ValueError(f"{agent} is not installed")
-        out["argv"] = [bin_, *_fill(it["terminal"], {**vars, "prompt": prompt, "repo": repo})]
-        out["terminal"] = True
-        if it.get("paste_prompt"):
-            out["clipboard"] = prompt
-    elif it.get("copy_prompt"):
-        out["clipboard"] = prompt
-        out["open_app"] = app_path(d) or (d.get("app") or {}).get("macos")
-    else:
-        raise ValueError(f"{agent} has no interactive mode")
+    out = {"id": agent, "mode": mode, "argv": None, "cwd": repo, "env": env_add, "events": None,
+           "retry_exit": d.get("retry_exit")}
+    if not is_headless(d) or not bin_:
+        raise ValueError(f"{agent} has no headless mode")
+    # {scripts}: claude / gemini may run only `uv run <scripts>/<name>.py` — the caller's prompt names that path
+    vals = {**vars, "prompt": prompt, "repo": repo, "scripts": str(SCRIPTS)}
+    out["scripts"] = str(SCRIPTS)
+    if "{writable}" in d["run"]:  # sandboxed: only an organizing run writes the item stores; the rest only cwd
+        vals["writable"] = writable_dirs() if processing_run else []
+        env_add.update(sandbox_env())
+    argv = [bin_, *_fill(d["run"], vals)]
+    hm = d.get("headless_mcp") or {}
+    if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run
+        argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER))})
+    if processing_run:
+        p = processing(agent, cfg, env, kind=processing_run if processing_run in KINDS else "cards")
+        argv += p["args"]
+        out["processing"] = {"model": p["model"], "effort": p["effort"]}
+    ev = d.get("events") or {}
+    if events and ev.get("args"):
+        argv += _fill(ev["args"], vals)
+        out["events"] = ev.get("format")
+    elif processing_run and (d.get("usage") or {}).get("args"):
+        argv += _fill(d["usage"]["args"], vals)
+    if processing_run:
+        out["usage"] = (d.get("usage") or {}).get("format") or ("pattern" if (d.get("usage") or {}).get("pattern") else None)
+    out["argv"] = argv
     return out
 
 
@@ -758,189 +713,11 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     return {"changes": changes, "applied": (not dry_run) and ok}
 
 
-# ------------------------------------------------------------------ K5: interactive sessions (sessions.py dispatch)
-SESSIONS_PY = SCRIPTS / "sessions.py"
-CLAUDE_HOOKS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd")
-CODEX_HOOKS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd")
-
-
-def session_spec(defn: dict) -> dict | None:
-    """interactive.session of an agent: how it runs as an interactive session in a tmux window / the app's pty."""
-    sp = (defn.get("interactive") or {}).get("session")
-    return sp if isinstance(sp, dict) else None
-
-
-def waiting_hints(defn: dict) -> list[tuple[str, str | None]]:
-    """interactive.waiting_patterns as (regex, hint): an entry is a regex, or {"pattern", "hint"} where hint names a
-    question the app explains in one line ("trust": the agent's folder-trust question; "hooks": Codex's hook review).
-    A session that quits at a "trust" question never started (sessions.py: agent.stopped_at)."""
-    out: list[tuple[str, str | None]] = []
-    for p in (defn.get("interactive") or {}).get("waiting_patterns") or []:
-        if isinstance(p, str):
-            out.append((p, None))
-        elif isinstance(p, dict) and isinstance(p.get("pattern"), str):
-            out.append((p["pattern"], p.get("hint") if isinstance(p.get("hint"), str) else None))
-    return out
-
-
-def waiting_patterns(defn: dict) -> list[str]:
-    return [p for p, _ in waiting_hints(defn)]
-
-
-def error_patterns(defn: dict) -> list[str]:
-    """interactive.error_patterns: what an interactive agent draws when it can't work at all (Claude Code's "Not
-    logged in · Please run /login") while it stays open — read from the terminal until its hooks report."""
-    return [p for p in (defn.get("interactive") or {}).get("error_patterns") or [] if isinstance(p, str)]
-
-
-def _q(s: str) -> str:
-    """Quote a path for the shell an agent runs its hook commands with."""
-    if os.name == "nt":
-        return '"' + s.replace('"', '\\"') + '"'
-    return "'" + s.replace("'", "'\\''") + "'"
-
-
-def hook_python() -> str:
-    """The interpreter hooks run with: this one, minus any venv (`uv run --script` puts scripts in a cache env that
-    can disappear; hooks only need the standard library)."""
-    base = getattr(sys, "_base_executable", None)
-    return base if base and os.path.exists(base) else sys.executable
-
-
-def hook_shim(python: str | None = None) -> Path:
-    """$BLURT_HOME/bin/blurt-hook: a two-line sh script that runs `sessions.py hook` with today's interpreter and
-    skill folder, rewritten whenever those change. Codex keys the user's trust on the hook command's text, so that
-    text must never change: it names only this file (a uv / Homebrew python upgrade or a moved skill used to bring
-    back the "Hooks need review" screen on every session)."""
-    path = blurt_home() / "bin" / "blurt-hook"
-    text = ("#!/bin/sh\n# Blurt's agent hooks (agents.py writes this on every hand-off; the hook command never changes)\n"
-            f'exec {_q(python or hook_python())} {_q(str(SESSIONS_PY))} hook "$@"\n')
-    try:
-        same = path.read_text(encoding="utf-8") == text
-    except OSError:
-        same = False
-    if not same:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f".blurt-hook.{os.getpid()}.tmp")
-        tmp.write_text(text, encoding="utf-8")
-        tmp.chmod(0o755)
-        os.replace(tmp, path)
-    return path
-
-
-def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
-    """The shell command an agent's hooks run. job None = take it from $BLURT_JOB, through the fixed shim (Codex:
-    its hooks need the user's trust once per distinct command, so the command must not change from one session — or
-    one interpreter, or one Blurt update — to the next)."""
-    if job is None and os.name != "nt":  # Windows: no sh shim yet (TODO.md)
-        return f"{_q(str(hook_shim(python)))} --agent {agent}"
-    cmd = f"{_q(python or hook_python())} {_q(str(SESSIONS_PY))} hook"
-    if job:
-        cmd += f" --job {job}"
-    return cmd + f" --agent {agent}"
-
-
-def claude_settings(job: str, python: str | None = None) -> dict:
-    """The --settings file of one Claude Code session (--settings adds to the user's settings): the hooks, and the
-    hand-off notes' folder as an extra working directory, so reading the note the prompt names doesn't stop the
-    session on "Read outside the working directories?" (the note lives in $BLURT_HOME/handoff, the session in the
-    project or its worktree)."""
-    import handoff
-    h = {"type": "command", "command": hook_command("claude", job, python), "timeout": 5}
-    return {"hooks": {ev: [{"matcher": "*", "hooks": [h]}] if ev == "PostToolUse" else [{"hooks": [h]}]
-                      for ev in CLAUDE_HOOKS},
-            "permissions": {"additionalDirectories": [str(handoff.handoff_dir())]}}
-
-
-def _toml_str(s: str) -> str:
-    return json.dumps(s, ensure_ascii=False)
-
-
-def codex_hook_args(job: str, python: str | None = None, hooks: bool = True) -> list[str]:
-    """-c overrides for one Codex session: notify (turn finished; carries the job id) and, when `hooks`, the
-    lifecycle hooks (job from $BLURT_JOB, so the command stays the same and the user trusts it once)."""
-    py = python or hook_python()
-    notify = [py, str(SESSIONS_PY), "hook", "--job", job, "--agent", "codex"]
-    out = ["-c", "notify=[" + ", ".join(_toml_str(x) for x in notify) + "]"]
-    if hooks:
-        cmd = _toml_str(hook_command("codex", None, py))
-        for ev in CODEX_HOOKS:  # Codex clamps a SessionEnd hook's timeout to 3 s (and warns): ask for 3 there
-            t = 3 if ev == "SessionEnd" else 5
-            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout={t}}}]}}]"]
-    return out
-
-
-def mcp_installed(defn: dict, env: dict | None = None) -> bool | None:
-    """Is the blurt MCP server registered with this agent? None = can't tell (no check command)."""
-    m = defn.get("mcp") or {}
-    bin_ = find_bin(defn, clean_env(env))
-    if not m.get("check") or not bin_:
-        return None
-    code, _ = _run([bin_, *m["check"]], clean_env(env), timeout=20)
-    return code == 0
-
-
-def session_command(agent: str, prompt: str, cwd: str | Path, *, job: str, settings: Path | None = None,
-                    python: str | None = None, mcp: bool | None = None, cfg: dict | None = None,
-                    env: dict | None = None, model: str | None = None) -> dict:
-    """argv for an interactive session of `agent` (K5). settings = where the Claude --settings file goes (written
-    here); mcp None = add the blurt MCP server only when the user hasn't installed it; model = the model the user
-    picked in the dispatch panel (None / "default" = the CLI's own setting).
-    → {"argv", "paste": prompt to paste once it's up | None, "hooks": "claude"|"codex"|None, "patterns": [...]}"""
-    defs = definitions(cfg if cfg is not None else config(cwd))
-    d = defs.get(agent)
-    if not d:
-        raise ValueError(f"unknown agent {agent!r} (known: {', '.join(defs)})")
-    sp = session_spec(d)
-    if sp is None:
-        raise ValueError(f"{agent} has no interactive session")
-    bin_ = find_bin(d, clean_env(env))
-    if not bin_:
-        raise ValueError(f"{agent} is not installed")
-    paste = sp.get("prompt") == "paste"
-    argv = [bin_]
-    hooks = sp.get("hooks")
-    if hooks == "claude":
-        if settings is None:
-            raise ValueError("a Claude session needs its settings file path")
-        settings.write_text(json.dumps(claude_settings(job, python), ensure_ascii=False, indent=1) + "\n",
-                            encoding="utf-8")
-        argv += ["--settings", str(settings)]
-    elif hooks == "codex":
-        argv += codex_hook_args(job, python, hooks=sp.get("lifecycle_hooks", True) is not False)
-    want_mcp = (mcp_installed(d, env) is False) if mcp is None else mcp
-    if want_mcp and sp.get("mcp"):
-        mv = {"mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER)),
-              "mcp_config_json": json.dumps({"mcpServers": {"blurt": {
-                  "type": "stdio", "command": "uv", "args": ["run", "-q", "--script", str(MCP_SERVER)]}}})}
-        margs = (d.get("headless_mcp") or {}).get("args", []) if sp["mcp"] == "headless_mcp" else sp["mcp"]
-        argv += _fill(margs, mv)
-    if model and model != "default":
-        if not (d.get("model_args") or {}).get("model"):
-            raise ValueError(f"{agent} can't be given a model")
-        argv += model_args(d, model)
-    argv += _fill(sp.get("argv", []), {"prompt": prompt, "repo": str(cwd)})
-    return {"argv": argv, "paste": prompt if paste else None, "hooks": hooks, "patterns": waiting_patterns(d)}
-
-
 WORK_PROMPT = {
     "en": "{title}\n\nRead {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
           "mark_fixed with its uid (or, without the MCP, run the items.py command the note gives).",
     "zh": "{title}\n\n读 {note}，处理里面的事项。{rule}每做完一个，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
           "items.py 命令）。",
-}
-# The desktop app's prompt carries the note itself: the app starts in the worktree and would have to ask before it
-# reads a file outside it. Progress comes only from the agent there (no hooks), so it says when it starts an item too.
-# The commit rule is in the note itself (inlined below), and so is the fallback without the MCP: only the note's own
-# mark_fixed line is left out (DESKTOP_PROMPT says it, with the start call too). Every char counts: the whole prompt
-# rides in the claude:// link, and Chinese text percent-encodes to about nine chars a glyph.
-DESKTOP_PROMPT = {
-    "en": "{title}\n\nHandle the items below (the same note is saved at {note}). When you start an item, call the blurt "
-          "MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state \"fixed\" "
-          "(or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
-    "zh": "{title}\n\n处理下面的事项（同一份交接单也存在 {note}）。开始做某一个时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
-          "state 填 \"fixing\"；做完后再调用 mark_fixed，state 填 \"fixed\"（或 \"wontfix\"），附一句说明。口喷鸡只能通过这些报告"
-          "告诉用户进度。\n\n{body}",
 }
 TITLE = {"en": {"one": "{id} · {title} (Blurt hand-off)", "id_only": "{id} (Blurt hand-off)",
                 "many": "{n} items · {project} (Blurt hand-off)", "bare": "{n} items (Blurt hand-off)"},
@@ -954,8 +731,8 @@ def _one_line(s) -> str:
 
 
 def work_title(items: list[dict], project: str | None, lang: str = "en") -> str:
-    """The first line of a hand-off prompt, and the name its Codex thread gets: "AW-12 · Login button does nothing
-    (Blurt hand-off)"; several items: "3 items · Atlas Web (Blurt hand-off)". One line of at most TITLE_MAX chars:
+    """The first line of a hand-off prompt (what the agent's conversation list shows): "AW-12 · Login button does
+    nothing (Blurt hand-off)"; several items: "3 items · Atlas Web (Blurt hand-off)". One line of at most TITLE_MAX chars:
     a long item title is cut, never the id or the suffix."""
     t = TITLE["zh" if (lang or "").startswith("zh") else "en"]
     if len(items) == 1:
@@ -984,19 +761,14 @@ def _project_name(items: list[dict]) -> str | None:
     return (p or {}).get("name")
 
 
-def prompt_work(refs: list[str], mode: str = "session", worktree: bool = False, handoff_id: str | None = None,
-                lang: str | None = None, branch: str | None = None, items: list[dict] | None = None,
-                sandboxed: bool = False, project_name: str | None = None) -> dict:
-    """The short prompt that starts an agent on some items: a title line first (work_title: what the agent's own
-    session list shows), then a pointer at their hand-off note (K6), written here unless handoff_id names one
-    already. sandboxed = the agent can't commit in a worktree (interactive.session `sandboxed`): it leaves its
-    changes for Blurt to commit (handoff.rule_text). project_name None = looked up from the items' project."""
+def prompt_work(refs: list[str], handoff_id: str | None = None, lang: str | None = None,
+                items: list[dict] | None = None, project_name: str | None = None) -> dict:
+    """The short prompt that starts the user's own agent on some items: a title line first (work_title: what the
+    agent's conversation list shows), then a pointer at their hand-off note (K6), written here unless handoff_id names
+    one already. project_name None = looked up from the items' project."""
     import handoff
     lang = handoff.ui_lang(lang)
-    if handoff_id:
-        h = handoff.describe(handoff_id)
-    else:
-        h = handoff.create(refs, lang, to=mode, branch=branch, worktree=worktree, items=items, sandboxed=sandboxed)
+    h = handoff.describe(handoff_id) if handoff_id else handoff.create(refs, lang, items=items)
     its = list(items) if items is not None else []
     if not its:
         for u in h["items"]:
@@ -1005,195 +777,10 @@ def prompt_work(refs: list[str], mode: str = "session", worktree: bool = False, 
             except handoff.CliError:
                 its.append({"uid": u})
     title = work_title(its, project_name if project_name is not None else _project_name(its), lang)
-    t = handoff.T[lang]
-    rule = handoff.rule_text(t, mode, worktree, branch, sandboxed)
+    rule = handoff.T[lang]["rule_external"]
     return {"prompt": WORK_PROMPT[lang].format(title=title, note=h["path"], rule=rule), "title": title,
             "handoff": h["id"], "path": h["path"], "items": h["items"], "full": h.get("full") or "", "rule": rule,
             "lang": lang}
-
-
-# ------------------------------------------------------------------ the agent's desktop app (interactive.desktop)
-def desktop_spec(defn: dict) -> dict | None:
-    d = (defn.get("interactive") or {}).get("desktop")
-    return d if isinstance(d, dict) and d.get("url") else None
-
-
-def desktop_url(spec: dict, folder: str, prompt: str) -> str:
-    """claude://code/new?folder=…&q=…: the app opens a new conversation in `folder` with the prompt filled in (the
-    user confirms the folder and presses Send). Both values fully percent-encoded."""
-    from urllib.parse import quote
-    return spec["url"].replace("{folder_q}", quote(str(folder), safe="")).replace("{prompt_q}", quote(prompt, safe=""))
-
-
-def desktop_prompt(work: dict, spec: dict, folder: str) -> dict:
-    """The prompt and URL for the desktop app (`work` = prompt_work's answer): the note inline while the URL stays
-    within spec max_url (about 14k chars), else the short prompt pointing at the note. → {"prompt", "url", "inline"}"""
-    import handoff
-    lang = work.get("lang") or "en"
-    body = (work.get("full") or "").strip()
-    own = (handoff.T.get(lang) or handoff.T["en"])["mcp"]  # the note's own mark_fixed line: said above, with more
-    body = "\n".join(ln for ln in body.split("\n") if ln.strip() != own)
-    limit = int(spec.get("max_url") or 14000)
-    if body:
-        full = DESKTOP_PROMPT[lang].format(title=work["title"], note=work["path"], body=body)
-        url = desktop_url(spec, folder, full)
-        if len(url) <= limit:
-            return {"prompt": full, "url": url, "inline": True}
-    return {"prompt": work["prompt"], "url": desktop_url(spec, folder, work["prompt"]), "inline": False}
-
-
-def version_tuple(v: str | None) -> tuple[int, ...] | None:
-    """"2.1.285 (Claude Code)" → (2, 1, 285); None when there is no dotted number."""
-    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", v or "")
-    return tuple(int(x) for x in m.groups() if x is not None) if m else None
-
-
-def subscription_login(text: str, auth: dict) -> bool | None:
-    """Does the auth probe's JSON say logged in with a subscription (not an API key)? None = nothing readable."""
-    if "{" not in (text or ""):
-        return None
-    try:
-        obj, _ = json.JSONDecoder().raw_decode(text[text.index("{"):])
-    except ValueError:
-        return None
-    if not isinstance(obj, dict):
-        return None
-    if obj.get(auth.get("json_key") or "loggedIn") is not True:
-        return False
-    if any(str(obj.get(k) or "").strip().lower() not in ("", "none", "null")
-           for k in auth.get("subscription_keys", [])):
-        return True
-    return str(obj.get("authMethod") or "").strip().lower() in {str(m).lower() for m in auth.get("auth_methods", [])}
-
-
-def desktop_continue_check(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict:
-    """Can a running terminal session of `agent` move to its desktop app (claude --desktop --resume <id>)? Only from
-    interactive.desktop.continue.min_version, and when its status probe says logged in with a subscription. Probes
-    only (--version, auth status): never logs in, upgrades or starts anything.
-    "mcp": is the blurt MCP installed for the agent (mcp_installed; asked only when available)? A terminal session may
-    have had it through --mcp-config, which the desktop app doesn't get: without it nothing reports progress there.
-    → {"available": bool, "reason": None | "unsupported" | "not_installed" | "version" | "login", "version", "mcp"}"""
-    d = definitions(cfg if cfg is not None else config()).get(agent) or {}
-    cont = (desktop_spec(d) or {}).get("continue")
-    if not isinstance(cont, dict) or not cont.get("argv"):
-        return {"available": False, "reason": "unsupported", "version": None, "mcp": None}
-    env = clean_env(env)
-    bin_ = find_bin(d, env)
-    if not bin_:
-        return {"available": False, "reason": "not_installed", "version": None, "mcp": None}
-    v = version_of(d, bin_, env)
-    have, need = version_tuple(v), version_tuple(cont.get("min_version"))
-    if need and (have is None or have < need):
-        return {"available": False, "reason": "version", "version": v, "mcp": None}
-    args = (d.get("status") or {}).get("args")
-    ok = False
-    if args:
-        code, out = _run([bin_, *args], env, timeout=15)
-        ok = code == 0 and subscription_login(out, cont.get("auth") or {}) is True
-    if not ok:
-        return {"available": False, "reason": "login", "version": v, "mcp": None}
-    return {"available": True, "reason": None, "version": v, "mcp": mcp_installed(d, env)}
-
-
-# ------------------------------------------------------------------ thread names (interactive.session.thread_name)
-class RpcError(Exception):
-    pass
-
-
-def rpc_exchange(argv: list[str], calls: list[tuple[str, dict | None]], env: dict, timeout: float = 20,
-                 client: dict | None = None) -> list:
-    """JSON-RPC over stdio, one JSON object per line in Codex app-server's dialect (no "jsonrpc" field): initialize →
-    initialized → each (method, params) in turn, waiting for its answer. → the results, in order. The server's own
-    notifications and requests are skipped. RpcError on an error answer, a timeout, or the server ending first; the
-    server is always stopped (stdin closed, then terminated)."""
-    import queue
-    import threading
-    try:
-        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                env=env, text=True, encoding="utf-8", errors="replace", bufsize=1)
-    except OSError as e:
-        raise RpcError(f"can't start {argv[0]}: {e}") from None
-    lines: queue.Queue = queue.Queue()
-
-    def pump():
-        for ln in proc.stdout:  # type: ignore[union-attr]
-            lines.put(ln)
-        lines.put(None)
-    threading.Thread(target=pump, daemon=True).start()
-    import time as _time
-    deadline = _time.monotonic() + timeout
-
-    def send(obj: dict) -> None:
-        try:
-            proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")  # type: ignore[union-attr]
-            proc.stdin.flush()  # type: ignore[union-attr]
-        except (OSError, ValueError) as e:
-            raise RpcError(f"the server stopped reading: {e}") from None
-
-    def answer(want: int):
-        while True:
-            left = deadline - _time.monotonic()
-            if left <= 0:
-                raise RpcError("timed out")
-            try:
-                ln = lines.get(timeout=left)
-            except queue.Empty:
-                raise RpcError("timed out") from None
-            if ln is None:
-                raise RpcError("the server exited")
-            try:
-                msg = json.loads(ln)
-            except ValueError:
-                continue
-            if not isinstance(msg, dict) or "method" in msg or msg.get("id") != want:
-                continue
-            if msg.get("error") is not None:
-                e = msg["error"]
-                raise RpcError(str(e.get("message") if isinstance(e, dict) else e)[:300])
-            return msg.get("result")
-    try:
-        send({"method": "initialize", "id": 0,
-              "params": {"clientInfo": client or {"name": "blurt", "title": "Blurt", "version": "1"}}})
-        answer(0)
-        send({"method": "initialized"})
-        out = []
-        for i, (method, params) in enumerate(calls, 1):
-            send({"method": method, "id": i, "params": params or {}})
-            out.append(answer(i))
-        return out
-    finally:
-        try:
-            proc.stdin.close()  # type: ignore[union-attr]
-        except OSError:
-            pass
-        try:
-            proc.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-
-
-def set_thread_name(agent: str, thread_id: str, name: str, cfg: dict | None = None, env: dict | None = None,
-                    timeout: float = 20) -> dict:
-    """Name an agent's thread officially (interactive.session.thread_name — Codex: `codex app-server`,
-    thread/name/set {threadId, name}), with the CODEX_HOME of `env`: the session's own. → {"ok", "error"?}; never
-    raises."""
-    d = definitions(cfg if cfg is not None else config()).get(agent) or {}
-    spec = (session_spec(d) or {}).get("thread_name")
-    if not isinstance(spec, dict) or not spec.get("argv") or not spec.get("method"):
-        return {"ok": False, "error": "unsupported"}
-    env = clean_env(env)
-    bin_ = find_bin(d, env)
-    if not bin_:
-        return {"ok": False, "error": "not installed"}
-    try:
-        rpc_exchange([bin_, *spec["argv"]], [(spec["method"], {"threadId": thread_id, "name": name})], env, timeout)
-    except RpcError as e:
-        return {"ok": False, "error": str(e)}
-    return {"ok": True}
 
 
 def _emit(obj) -> None:
@@ -1227,7 +814,7 @@ def main():
     s.add_argument("--lang", default=lang)
     s = sub.add_parser("command")
     s.add_argument("id")
-    s.add_argument("mode", choices=["headless", "interactive"])
+    s.add_argument("mode", choices=["headless"])
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--prompt")
     g.add_argument("--prompt-file")
@@ -1251,9 +838,7 @@ def main():
     s = sub.add_parser("prompt")
     s.add_argument("kind", choices=["work"])
     s.add_argument("--items", nargs="+", required=True, metavar="REF")
-    s.add_argument("--mode", choices=["session", "external"], default="session")
-    s.add_argument("--worktree", choices=["on", "off"], default="off")
-    s.add_argument("--branch")
+    s.add_argument("--mode", choices=["external"], default="external", help="(the only one; accepted for old callers)")
     s.add_argument("--handoff", help="an existing hand-off note (H-0012) instead of writing one")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
     a = p.parse_args()
@@ -1289,7 +874,7 @@ def main():
             _emit(install(a.id, skill=a.skill or both, mcp=a.mcp or both, dry_run=a.dry_run))
             return
         if a.cmd == "prompt":
-            pw = prompt_work(a.items, a.mode, a.worktree == "on", a.handoff, a.lang, a.branch)
+            pw = prompt_work(a.items, a.handoff, a.lang)
             _emit({"ok": True, **{k: pw[k] for k in ("prompt", "title", "handoff", "path", "items")}})
             return
     except ValueError as e:

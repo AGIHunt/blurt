@@ -8,8 +8,8 @@
 //
 // Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
 // (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
-// handoff.py, sessions.py (AppEnvironment.dispatch, P3); Export Hand-off Bundle… (Item menu, context menu, the Hand Off
-// ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet ("Packing…" on the island, the action
+// handoff.py; Hand Off (⌘↩) copies the hand-off instruction for your own agent; Export Hand-off Bundle… (Item menu,
+// context menu, ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet ("Packing…" on the island, the action
 // off, until it is done). The index follows (items.py updates it in-process, FSEvents
 // + `index.py update` catch everything else) and the model reloads when index.db's data_version moves. The writes run
 // one after another (writes: SerialWork), and each undoable one is on the window's NSUndoManager from the moment it is
@@ -515,39 +515,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         detail.showSelection(items, plan: selectionPlan(items))
     }
 
-    /// The agent the hand-off panel will start with, when it is already decided (the last one used, the project's,
-    /// the global default) — the primary names it; nil: "Hand Off…" and the panel picks.
-    func handOffAgentName(_ items: [ItemRow]) -> String? {
-        let projects = Set(items.map(\.projectID))
-        let project = projects.count == 1 ? projects.first.flatMap { ProjectStore.shared.project(id: $0) }?.defaultAgent : nil
-        let ids = [Config.shared["sessions.agent"] as? String, project, Config.shared["record.default_agent"] as? String]
-        return ids.compactMap { $0 }.lazy.compactMap { AgentHub.shared.def($0)?.name }.first
-    }
-
-    /// What the selection summary offers. Inline: Hand Off…, Move to Project… and the one state action that moves the
-    /// batch on (Keep for new items, Mark as Done for those in work, Reopen / Restore for closed ones); everything else
-    /// in ⋯ — the same entries the state menu and the Item menu have. The primary is the one that can go: Hand Off when
-    /// HandOffCheck lets it, else the way out of what blocks it (Move to Project… for Unassigned or mixed projects,
-    /// Reopen, Restore), with the reason on one line under the buttons.
+    /// What the selection summary offers. Inline: Hand Off (copy the instruction for your own agent), Move to
+    /// Project… and the one state action that moves the batch on (Keep for new items, Mark as Done for those in work,
+    /// Reopen / Restore for closed ones); everything else in ⋯ — the same entries the state menu and the Item menu
+    /// have. Hand Off is the primary when it can go; otherwise the way out of what blocks it (Restore), with the reason
+    /// on one line under the buttons.
     func selectionPlan(_ items: [ItemRow]) -> SelectionPlan {
         var p = SelectionPlan()
         let writable = Scripts.canWrite && items.contains { !$0.readOnly }
-        let block = dispatchBlock(items)
+        let why = handOffBlocker(items)
         let n = items.count
-        let agent = handOffAgentName(items)
         let handOff = SelectionPlan.Action(
-            id: "hand_off", title: agent.map { T("main.selection.hand_off_to", $0) } ?? T("main.selection.hand_off"),
-            tip: block.map(Self.blockText) ?? TP("main.selection.hand_off.tip", n),
-            enabled: block == nil && writable && AppEnvironment.dispatch != nil)
+            id: "hand_off", title: T("main.selection.hand_off"),
+            tip: why ?? TP("main.selection.hand_off.tip", n),
+            enabled: why == nil && writable)
         let move = SelectionPlan.Action(id: "move", title: T("main.selection.move"), tip: TP("main.selection.move.tip", n),
                                         enabled: writable)
         let states = writable ? StateMenu.actions(for: items, canHandOff: false) : []
-        var way: String?
-        switch block {
-        case .finished?: way = states.contains("reopen") ? "reopen" : nil
-        case .discarded?: way = states.contains("restore") ? "restore" : nil
-        default: break
-        }
+        let way = why != nil && states.contains("restore") && items.allSatisfy(\.discarded) ? "restore" : nil
         let state = way ?? states.first { $0 != "discard" }
         p.actions = [handOff, move]
         if let a = state {
@@ -557,20 +542,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let key = k.isEmpty ? "" : " (\(mods.contains(.command) ? "⌘" : "")\(k == "\u{8}" ? "⌫" : k.uppercased()))"
             p.actions.append(.init(id: a, title: title, tip: StateMenu.hint(a, items) + key))
         }
-        switch block {
-        case nil: p.primary = handOff.enabled ? "hand_off" : nil
-        case .needsProject?, .mixedProjects?: p.primary = writable ? "move" : nil
-        default: p.primary = way
-        }
-        if let b = block, writable {
-            // under the buttons the line says why Hand Off is off and what the primary does about it
-            switch b {
-            case .mixedProjects: p.blocked = T("main.selection.blocked.mixed")
-            case .needsProject: p.blocked = T("main.selection.blocked.needs_project")
-            case .finished: p.blocked = T("main.selection.blocked.finished")     // about the batch, not "this item"
-            default: p.blocked = Self.blockText(b)
-            }
-        }
+        p.primary = handOff.enabled ? "hand_off" : way
+        if let w = why, writable { p.blocked = w }       // under the buttons: why Hand Off is off
         // the primary leads the row
         if let pr = p.primary, let i = p.actions.firstIndex(where: { $0.id == pr }) { p.actions.insert(p.actions.remove(at: i), at: 0) }
         p.more = selectionMoreMenu(items, inline: Set(p.actions.map(\.id)), states: states)
@@ -660,10 +633,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
     }
 
+    /// ⌘↩, Hand Off: the instruction for your own agent on the clipboard (handoff.py --to external --mark).
     func handOffSelection() {
-        let uids = list.selectedItems.map(\.uid)
-        guard !uids.isEmpty else { NSSound.beep(); return }
-        dispatch(uids: uids)
+        let items = list.selectedItems
+        guard !items.isEmpty else { NSSound.beep(); return }
+        if let why = handOffBlocker(items) {
+            NSSound.beep()
+            // the way out: open the file that can't be read, or Restore what was discarded
+            let f = items.first(where: \.unreadable)?.fileURL
+            let way: (String, () -> Void)? = f.map { u in (T("main.unreadable.open"), { NSWorkspace.shared.open(u) }) }
+                ?? (StateMenu.valid("restore", items).isEmpty ? nil : (StateMenu.title("restore"), { [weak self] in self?.apply("restore", to: items) }))
+            emit(["event": "handoff_blocked", "why": why])
+            if let island = AppEnvironment.island {
+                island.toast(why, actionTitle: way?.0, action: way?.1)
+            } else {
+                appDelegate?.toast(why)
+            }
+            return
+        }
+        handOff(uids: items.map(\.uid), what: "instruction") { _ in }
     }
 
     func renameSelection() {
@@ -678,12 +666,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: state (K3)
 
-    /// An action on the items it is valid for (the others are left alone). Hand off opens the dispatch panel; the rest
-    /// go to items.py state.
+    /// An action on the items it is valid for (the others are left alone). Hand off copies the instruction for your
+    /// own agent; the rest go to items.py state.
     func apply(_ action: String, to items: [ItemRow]) {
         let ok = StateMenu.valid(action, items)
         guard !ok.isEmpty else { NSSound.beep(); return }
-        if action == "hand_off" { return dispatch(uids: ok.map(\.uid)) }
+        if action == "hand_off" { return handOff(uids: ok.map(\.uid), what: "instruction") { _ in } }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
         // shown at once (the row takes its new state, or leaves a place that no longer lists it); the index agrees a
         // moment later, or puts it back if the write failed
@@ -709,8 +697,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             switch await Scripts.awaiting({ Scripts.state(items.map(\.uid), action: action, done: $0) }) {
             case .success:
                 self.wrote(items)
-                // taken back from a session that is over: it leaves no worktree, branch or window behind
-                if action == "take_back" { SessionRecovery.cleanUp(jobs: items.compactMap(\.workJob)) }
                 guard !redoing else { return }
                 // where it went, and the way back — the row may just have left the list (like the review page's toast)
                 let to = StateMenu.target(action, items)
@@ -1164,62 +1150,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         MissingFolder.use(id, via: "main_window")
     }
 
-    // MARK: handing off (K5 in Blurt, K6 to your own agent)
+    // MARK: handing off (K6: to your own agent)
 
-    /// Why these items can't go to a session in Blurt, decided here before the panel opens (HandOffCheck: the rules
-    /// sessions.py enforces) — the menus show it as the item's tooltip, ⌘Return as a toast with the way out. The panel
-    /// never opens on something it would refuse.
-    func dispatchBlock(_ items: [ItemRow]) -> HandOffBlock? {
-        let check = items.filter { !$0.legacy }.map {
-            HandOffCheck.Item(itemID: $0.itemID, state: $0.state, projectID: $0.projectID, job: $0.workJob, unreadable: $0.unreadable)
-        }
-        return HandOffCheck.block(check) { JobStore.shared.job($0)?.isActive == true }
-    }
-
-    func dispatchBlocker(_ items: [ItemRow]) -> String? { dispatchBlock(items).map(Self.blockText) }
-
-    static func blockText(_ b: HandOffBlock) -> String {
-        switch b {
-        case .unreadable: return T("main.unreadable.fix_first")
-        case .discarded: return T("main.dispatch.discarded")
-        case .finished(let s): return T("main.dispatch.reopen_first", Look.stateName(s))
-        case .withSession(let id, _): return T("main.dispatch.with_session", id)
-        case .mixedProjects: return T("main.dispatch.one_project")
-        case .needsProject: return T("main.dispatch.needs_project")
-        }
-    }
-
-    /// Start an agent session in Blurt: the dispatch panel (agent, mode, worktree, the concurrent-edit reminder —
-    /// inline, Terminal/DispatchPanel). Items that can't go say why at once, with the way out (Move to Project…,
-    /// Restore, Reopen, Open Its Session).
-    func dispatch(uids: [String]) {
-        let all = model.items(uids: uids)
-        guard !all.isEmpty else { NSSound.beep(); return }
-        if let b = dispatchBlock(all) {
-            NSSound.beep()
-            let why = Self.blockText(b)
-            let way: (String, () -> Void)?
-            switch b {
-            case .needsProject: way = (T("main.dispatch.move_first"), { [weak self] in self?.showMoveMenu() })
-            case .discarded: way = (StateMenu.title("restore"), { [weak self] in self?.apply("restore", to: all) })
-            case .finished: way = (StateMenu.title("reopen"), { [weak self] in self?.apply("reopen", to: all) })
-            case .withSession(_, let job): way = (T("main.dispatch.open_session"), { TerminalModule.reveal(job: job) })
-            case .unreadable:
-                let f = all.first(where: \.unreadable)?.fileURL
-                way = f.map { u in (T("main.unreadable.open"), { NSWorkspace.shared.open(u) }) }
-            case .mixedProjects: way = nil
-            }
-            emit(["event": "dispatch_blocked", "why": "\(b)"])
-            if let island = AppEnvironment.island {
-                island.toast(why, actionTitle: way?.0, action: way?.1)
-            } else {
-                appDelegate?.toast(why)
-            }
-            return
-        }
-        let items = all.filter { !$0.discarded && !$0.readOnly }
-        guard !items.isEmpty, let d = AppEnvironment.dispatch else { NSSound.beep(); return }
-        d(items.map(\.uid))
+    /// Why these items can't be handed off — a file that doesn't parse, or everything selected discarded; nil = they
+    /// can go. The menus show it as the item's tooltip, ⌘Return as a toast.
+    func handOffBlocker(_ items: [ItemRow]) -> String? {
+        let check = items.filter { !$0.legacy }
+        if check.contains(where: \.unreadable) { return T("main.unreadable.fix_first") }
+        if !check.isEmpty, check.allSatisfy(\.discarded) { return T("main.dispatch.discarded") }
+        return nil
     }
 
     /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
@@ -1346,16 +1285,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return m
     }
 
-    /// The first group of the context menu and the menu bar's Item menu: Hand Off to Agent, and the agent session it
-    /// started when there is one to open. `items` nil: the menu bar.
+    /// The first group of the context menu and the menu bar's Item menu: Hand Off to Your Agent (copies the
+    /// instruction). `items` nil: the menu bar.
     func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
-        let one = items.map { $0.count == 1 } ?? true
         let hand = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), key: "\r")
         hand.image = Look.target("handed_off")      // the state it leads to, as the ring's menu draws it
-        if items == nil || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
-            _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
-        }
     }
 
     /// The item actions between the state rows and Discard — one builder for the context menu and the menu bar's Item
@@ -1512,13 +1447,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     @objc func mHandOff() { handOffSelection() }
-    /// The one selected item's agent session, when there is one to open (the banner's Open Session, from the menus).
-    func sessionJob(_ it: ItemRow) -> String? {
-        guard let j = it.workJob, WorkSession.of(state: it.state, to: it.workTo, job: j, lookup: JobStore.shared.job)?.canOpen == true
-        else { return nil }
-        return j
-    }
-    @objc func mOpenSession() { list.selectedItems.first.flatMap(sessionJob).map(revealJob) }
     @objc func mMove(_ i: NSMenuItem) { (i.representedObject as? String).map { move(uids: list.selectedItems.map(\.uid), to: $0) } }
     @objc func mSetKind(_ i: NSMenuItem) { (i.representedObject as? String).map(setKind) }
     @objc func mRename() { renameSelection() }
@@ -1579,7 +1507,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch item.action {
         case #selector(mHandOff):
             // disabled with the reason as its tooltip, never an alert after the click (micro 23)
-            let why = dispatchBlocker(items)
+            let why = handOffBlocker(items)
             item.toolTip = why
             return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.readOnly }
         case #selector(mCopyInstruction), #selector(mCopyFull):
@@ -1600,8 +1528,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mMove(_:)):
             guard let p = item.representedObject as? String else { return false }
             return Scripts.canWrite && items.contains { $0.projectID != p && !$0.readOnly }
-        case #selector(mOpenSession):
-            return items.count == 1 && sessionJob(items[0]) != nil
         case #selector(mRename):
             // one title at a time: with several rows selected Rename is off and E beeps
             return Scripts.canWrite && items.count == 1 && !items[0].readOnly
@@ -1678,21 +1604,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             if shownJob == job.id { shownJob = nil; list.jobs.selected = nil; listSelectionChanged() }
         case "items":
             if let first = job.items.first { reveal(uid: first) }
-        // a failure is said, never dropped (the Sessions pane says the same for the same calls)
-        case "external":
-            Task { @MainActor in
-                do { try await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
-                catch { appDelegate?.toast(sessionsErrorText(error)) }
-            }
         case let a where a.hasPrefix("item:"):          // an item the job wrote, from its detail
             reveal(uid: String(a.dropFirst(5)))
-        case "stop" where job.type != .agent:            // an organising run: Stop in its detail (⌘.)
+        case "stop":                                     // an organising run: Stop in its detail (⌘.)
             JobStop.stop(job)
-        case "stop":
-            Task { @MainActor in
-                do { try await AgentSessions.shared.stop(job: job.id, kill: false) }
-                catch { appDelegate?.toast(sessionsErrorText(error)) }
-            }
         default: break
         }
     }

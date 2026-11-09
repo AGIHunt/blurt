@@ -87,8 +87,6 @@ export interface ProjectRow {
   kind: 'repo' | 'folder' | 'inbox';
   exists: boolean;
   description?: string;
-  default_agent?: string | null;
-  worktree?: boolean;
   pinned?: boolean;
   last_used?: string;
   /** K3 counts over items that aren't discarded: open = new … in progress; inbox = new + to verify */
@@ -151,7 +149,7 @@ export interface JobStep {
 /** K4 job, effective state. */
 export interface Job {
   id: string;
-  type: 'record' | 'snap' | 'voice' | 'process' | 'route' | 'agent';
+  type: 'record' | 'snap' | 'voice' | 'process' | 'route';
   state: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   project: string | null;
   session: string | null;
@@ -163,119 +161,6 @@ export interface Job {
   started: string | null;
   ended: string | null;
   error: { code: string; message: string } | null;
-  /** an agent session's items as its hand-off note names them (jobs_list) */
-  labels?: { id: string; title: string }[];
-  agent?: {
-    id: string;
-    mode: string;
-    runner: 'tmux' | 'app';
-    status: AgentStatus;
-    tmux?: { name: string } | null;
-    cwd: string;
-    worktree?: { path: string; branch: string; base: string } | null;
-    exit?: number | null;
-  };
-}
-
-export type AgentStatus = 'running' | 'waiting_input' | 'turn_done' | 'exited' | 'error';
-
-/** `sessions.py list` row (K5). */
-export interface AgentSession {
-  job: string;
-  project: string;
-  agent: string;
-  items: string[];
-  window: string | null;
-  status: AgentStatus;
-  status_at: string | null;
-  worktree: string | null;
-  branch: string | null;
-  cwd: string;
-  started: string | null;
-  ended: string | null;
-  exit: number | null;
-  attached?: boolean;
-}
-
-/** An agent job as the sessions pane reads it (`sessions_rows`): the K4 job, its whole `agent` object, and what the
-    page can't read itself — the hand-off sheet's item labels, a worktree folder that's gone, the log, the app runner. */
-export interface SessionJob extends Omit<Job, 'agent'> {
-  updated?: string | null;
-  agent: {
-    id: string;
-    mode?: string;
-    runner?: 'tmux' | 'app' | 'desktop' | string;
-    status: AgentStatus;
-    status_at?: string | null;
-    status_source?: string | null;
-    status_message?: string | null;
-    tmux?: { name?: string | null; session?: string; window?: string } | null;
-    cwd?: string;
-    worktree?: { path: string; branch: string; base?: string } | null;
-    exit?: number | null;
-    handoff?: string | null;
-    finish?: { action: string; result?: Record<string, any> | null } | null;
-    last_output?: string[];
-    changes?: { ahead?: number; dirty?: number } | null;
-    started?: boolean;
-    model?: string | null;
-    stopped_at?: string | null;
-    waiting_hint?: string | null;
-    continued?: { from?: string } | null;
-    desktop?: { mcp?: boolean } | null;
-    agent_session_id?: string | null;
-  };
-  error: (Job['error'] & { fix?: string; reason?: string; reason_i18n?: Record<string, string> }) | null;
-  labels: { id: string; title: string }[];
-  folder_gone: boolean;
-  log: string | null;
-  handoff_path: string | null;
-  owned: boolean;
-  output: boolean;
-}
-
-export interface DesktopApp {
-  name: string;
-  available: boolean;
-  /** a running session can continue there (claude --desktop --resume) */
-  continue: boolean;
-}
-
-export interface SessionRows {
-  jobs: SessionJob[];
-  panes: Record<string, string> | null;
-  terminals: { id: string; name: string }[];
-  preferred_terminal: string | null;
-  font_size: number | null;
-  desktop?: Record<string, DesktopApp>;
-}
-
-export interface DispatchWarning {
-  code: 'concurrent_edit' | 'no_git' | 'no_tmux' | 'draft_confirmed' | string;
-  jobs?: string[];
-  items?: string[];
-}
-
-export interface DispatchResult {
-  ok: boolean;
-  jobs: { id: string; project: string; window: string | null; worktree?: string; branch?: string; cwd: string; items: string[]; url?: string }[];
-  warnings: DispatchWarning[];
-  /** a desktop dry run: is the blurt MCP installed for the agent (false = items need marking by hand) */
-  mcp?: boolean | null;
-}
-
-export interface DispatchOpts {
-  /** the panel just probed the agent's sign-in: sessions.py needn't check again */
-  force?: boolean;
-  /** "desktop": the agent's desktop app (Claude) — its claude:// link opens there */
-  runner?: 'desktop';
-  items: string[];
-  agent?: string;
-  mode?: 'together' | 'parallel';
-  worktree?: 'on' | 'off' | 'auto';
-  dryRun?: boolean;
-  /** the agent's model (agentModels); undefined = the CLI's own setting */
-  model?: string;
 }
 
 /** `agents.py models ID` */
@@ -299,7 +184,6 @@ export interface AppStatus {
   index_ready: boolean;
   scripts: string | null;
   uv: string | null;
-  tmux: boolean;
   capture: { recording: boolean; paused: boolean; session: string | null; voice: unknown };
   hotkey_mode: string;
   start_view?: string | null;
@@ -317,7 +201,6 @@ export interface AgentInfo {
   login: 'ok' | 'logged_out' | 'unknown' | 'n/a';
   headless: boolean;
   interactive: string | null;
-  session?: boolean;
 }
 
 export interface Detect {
@@ -493,41 +376,17 @@ export const api = {
   openFolder: () => invoke<void>('projects_open_folder', { makeCurrent: false }),
   /** Locate… a project whose folder is gone: only its own folder is taken (pick "same") */
   locateProject: (id: string, title: string, near: string) => invoke<{ pick: 'same' | 'other' | 'empty' | 'cancel' }>('projects_locate', { id, title, near }),
-  /** the user's K3 action on items (keep, done, send back, discard, …); hand off goes through dispatch / handoff */
+  /** the user's K3 action on items (keep, done, send back, discard, …); hand off goes through handoff */
   state: (uids: string[], action: Action, note?: string) => invoke('items_state', { uids, action, note }),
   move: (uids: string[], project: string) => invoke('items_move', { uids, project }),
-  jobs: (active = false) => invoke<Job[]>('jobs_list', { active }),
+  /** the K4 jobs; agent-session jobs an older Blurt left in the jobs folder are not shown */
+  jobs: (active = false) => invoke<(Job | { type: 'agent' })[]>('jobs_list', { active }).then((js) => js.filter((j): j is Job => j.type !== 'agent')),
   /** `login` false: no sign-in probes (fast); `ids`: only these agents */
   detect: (o: { login?: boolean; ids?: string[] } = {}) => invoke<Detect>('agents_detect', o),
   models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),
-  dispatch: (opts: DispatchOpts) => invoke<DispatchResult>('sessions_dispatch', { opts }),
-  sessions: (all = false) => invoke<{ sessions: AgentSession[]; owned?: string[] }>('sessions_list', { all }),
-  /** `expect` (merge / pr): the diff's `reviewed` token — a worktree that changed since is refused (code changed) */
-  finish: (job: string, action: 'diff' | 'merge' | 'pr' | 'discard' | 'keep', expect?: string | null) =>
-    invoke<Record<string, any>>('sessions_finish', { job, action, expect: expect ?? null }),
-  stopSession: (job: string, kill = false) => invoke('sessions_stop', { job, kill }),
-  openExternal: (job: string, terminal?: string | null) => invoke('sessions_open_external', { job, terminal: terminal ?? null }),
-  /** ptyId null with ended: what an app-runner session that ended left on screen (Show Output, read only) */
-  ptyOpen: (job: string, cols: number, rows: number) =>
-    invoke<{ ptyId: number | null; replay: string | null; owned: boolean; ended?: boolean }>('pty_open', { job, cols, rows }),
-  /** the sessions pane's agent jobs (SessionsModel) and its memory (ui/terminal.json) */
-  sessionRows: () => invoke<SessionRows>('sessions_rows'),
-  /** the pane shows this session now; `forget`: Remove Session */
-  sessionMemory: (job: string, pane: string | null, forget = false) => invoke<void>('sessions_memory', { job, pane, forget }),
-  restartSession: (job: string) => invoke<DispatchResult>('sessions_restart', { job }),
-  takeBack: (job: string) => invoke<{ taken_back: string[]; has_changes?: unknown }>('sessions_take_back', { job }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   /** a copy in the user's Downloads (the detail's ⤓); answers the file's name there */
   saveToDownloads: (path: string) => invoke<string>('save_to_downloads', { path }),
-  /** the agents' desktop apps (Claude) and whether each is installed here */
-  desktopApps: () => invoke<Record<string, DesktopApp>>('sessions_desktop_apps'),
-  /** Go to Claude */
-  goDesktop: (agent: string) => invoke<void>('sessions_go_desktop', { agent }),
-  desktopCheck: (agent: string) => invoke<{ available: boolean; reason: string | null; version: string | null; mcp: boolean | null }>('sessions_desktop_check', { agent }),
-  continueDesktop: (job: string, withoutMcp = false) => invoke<Record<string, any>>('sessions_continue_desktop', { job, withoutMcp }),
-  ptyWrite: (ptyId: number, data: string) => invoke<void>('pty_write', { ptyId, data }),
-  ptyResize: (ptyId: number, cols: number, rows: number) => invoke<void>('pty_resize', { ptyId, cols, rows }),
-  ptyClose: (ptyId: number) => invoke<void>('pty_close', { ptyId }),
   handoff: (uids: string[], full: boolean) => invoke<{ id: string; path: string; text: string }>('handoff_create', { uids, full }),
   settings: () => invoke<Settings>('settings_get'),
   setSettings: (patch: Record<string, unknown>) => invoke<Record<string, any>>('settings_set', { patch }),
@@ -621,7 +480,6 @@ export const api = {
   // Set Up with Agent… (control.rs): the instruction, and the live list of what the agent did ('agent-setup://changed')
   agentSetupInstruction: () => invoke<{ guide: string; setup: string }>('agent_setup_instruction'),
   agentSetupState: () => invoke<AgentSetupState>('agent_setup_state'),
-  agentSetupStart: (agent: string) => invoke<AgentSetupState>('agent_setup_start', { agent }),
   agentSetupStop: () => invoke<AgentSetupState>('agent_setup_stop'),
   agentSetupDismiss: () => invoke<AgentSetupState>('agent_setup_dismiss'),
 };
@@ -651,7 +509,6 @@ export interface AgentSetupStep {
 export interface AgentSetupState {
   active: boolean;
   agent: string | null;
-  job: string | null;
   steps: AgentSetupStep[];
 }
 

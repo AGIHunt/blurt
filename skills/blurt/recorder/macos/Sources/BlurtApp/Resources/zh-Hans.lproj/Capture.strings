@@ -37,7 +37,6 @@
 "capture.cards.none" = "没有卡片";
 "capture.card.tip_hint" = "点按复制 · 拖进任意 App";
 "capture.card.tip_keys" = "← → 选择 · ↩ 复制 · ⌫ 删除 · esc 关闭";
-"capture.cards.more_caption" = "查看全部";
 "capture.cards.overview_heading" = "卡片";
 "capture.cards.overview_hint" = "点按复制 · 双击编辑备注 · 拖进任意 App";
 "capture.cards.overview_keys" = "← → 选择 · ↩ 复制 · ⌫ 删除 · esc 关闭";

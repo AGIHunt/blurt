@@ -126,7 +126,6 @@ struct CloudServicesSection: View {
     /// open Add Service (the dictation reminder; the job rows' Add Service…)
     static let addRequest = Notification.Name("BlurtCloudServiceAdd")
     @ObservedObject var ui = CloudModelsUI.shared
-    @ObservedObject private var agents = AgentSetupAgents.shared
     @State private var adding = ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_SHEET"] == "add"
     @State private var editing: CloudService?
 
@@ -138,7 +137,7 @@ struct CloudServicesSection: View {
             let taken = Set(setup.services.map(\.preset))
             if CloudServiceSheetModel.curated.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
                 addLine(empty: setup.services.isEmpty)
-            } else if !agents.list.isEmpty {
+            } else {
                 // every curated service is in, so the Add row is gone: Set Up with Agent… keeps a row of its own
                 // (it went with the Add row — dogfood 2026-10-31)
                 agentLine
@@ -159,7 +158,6 @@ struct CloudServicesSection: View {
         }
         .onAppear {
             CloudStore.refreshStale()
-            agents.loadIfNeeded()       // the agent row needs the list before any button of it appears
             if let id = ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_SHEET"], let s = setup.service(id) { editing = s }
         }
     }

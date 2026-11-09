@@ -379,12 +379,11 @@ function WorkPanel({ i }: { i: Item }) {
   const agent = rec.agent && rec.agent !== "human" ? agentName(s, rec.agent) : null;
   const who = rec.by === "user" ? s.t("work.by_you") : agent ? s.t("work.by", { who: agent }) : "";
   const when = rec.at ? s.ago(rec.at) : "";
-  // one Open Session per item: while it is with the agent a host banner may have it (the Mac app), else it is here
+  // while it is with the agent a host banner may say so (the app windows)
   const banner = s.host.sessionBanner && (st === "handed_off" || st === "in_progress");
-  const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" && !banner ? rec.job : null;
   const verify = st === "to_verify";
   const meta = who || when || rec.commit || rec.pr;
-  if (!meta && !verify && !rec.note && !session) return null;
+  if (!meta && !verify && !rec.note) return null;
   // the host's banner already says who has it and when: a card with only that line would repeat it
   if (banner && !verify && !rec.note && !rec.commit && !rec.pr) return null;
   const evidence = (
@@ -398,11 +397,6 @@ function WorkPanel({ i }: { i: Item }) {
         <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
           {s.t("work.pr")}
         </a>
-      ) : null}
-      {session ? (
-        <button className="linkbtn" id="workSession" onClick={() => s.openSession(session)}>
-          {s.t("work.open_session")}
-        </button>
       ) : null}
     </>
   );
@@ -428,10 +422,7 @@ function WorkPanel({ i }: { i: Item }) {
   const headline = named
     ? s.t(wont ? "work.verify.wontfix" : "work.verify.fixed", { agent: named })
     : s.t(wont ? "work.verify.wontfix.generic" : "work.verify.fixed.generic");
-  const more: [string, string][] = [
-    ...(session && s.host.reviewChanges ? [["review", s.t("work.review_changes")] as [string, string]] : []),
-    [wont ? "done" : "wontfix", s.label(wont ? "action.done" : "action.wontfix")],
-  ];
+  const more: [string, string][] = [[wont ? "done" : "wontfix", s.label(wont ? "action.done" : "action.wontfix")]];
   const sendBack = () => {
     const note = (back ?? "").trim();
     setBack(null);
@@ -444,7 +435,7 @@ function WorkPanel({ i }: { i: Item }) {
       <StatusRing state="to_verify" size={16} className="work-ic" />
       <div className="work-b">
         <p className="work-claim">{headline}</p>
-        {(timeLine || rec.commit || rec.pr || session) && (
+        {(timeLine || rec.commit || rec.pr) && (
           <div className="work-m">
             {timeLine && <span>{timeLine}</span>}
             {evidence}
@@ -462,7 +453,7 @@ function WorkPanel({ i }: { i: Item }) {
             {s.label(wont ? "action.wontfix" : "action.done")}
           </button>
           <MoreMenu id="workMore" label={s.t("work.more")} options={more}
-            onPick={(v) => (v === "review" ? session && s.host.reviewChanges?.(session) : s.act([i], v as "done" | "wontfix"))} />
+            onPick={(v) => s.act([i], v as "done" | "wontfix")} />
         </div>
       ) : (
         <div className="work-back">
@@ -500,13 +491,12 @@ function WorkPanel({ i }: { i: Item }) {
   );
 }
 
-/** K6: hand the item to an agent — inside Blurt (dispatch, the one primary), or copy it for your own agent: one Copy
-    button (the instruction) with a menu beside it for the other forms (the full hand-off note). The key is in the
-    tooltip, never a keycap inside the button. */
+/** K6: hand the item to the user's own agent — one Copy button (the instruction, as Hand Off and its key do) with a
+    menu beside it for the other form (the full hand-off note). The key is in the tooltip, never a keycap inside the
+    button. */
 function HandoffPanel({ i }: { i: Item }) {
   const s = useStore();
-  const h = s.host;
-  if (!h.dispatch && !s.canHandoff) return null;
+  if (!s.canHandoff) return null;
   const st = s.stateOf(i);
   // a closed item keeps the header's place (the title doesn't jump between items): Copy, and the one way back —
   // Reopen, or Restore for a discarded one — where Hand Off sits on an open item
@@ -518,7 +508,9 @@ function HandoffPanel({ i }: { i: Item }) {
     <div className="handoff" id="handoffRow" role="group" aria-label={s.t("handoff.title")}>
       {s.canHandoff && st !== "discarded" && (
         <div className="split">
-          <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} aria-label={s.label("media.copy")} onClick={() => void s.handoff([i], "instruction")}>
+          <button className="btn sm" id="copyInstruction" title={s.mode === "item" && !back ? `${s.t("handoff.copy_instruction.hint")} (${key})` : s.t("handoff.copy_instruction.hint")}
+            aria-keyshortcuts={s.mode === "item" && !back ? (isMacLike() ? "Meta+Enter" : "Control+Enter") : undefined}
+            aria-label={s.label("media.copy")} onClick={() => void s.handoff([i], "instruction")}>
             <Icon name="copy" size={14} /> <span className="hl-word">{s.label("media.copy")}</span>
           </button>
           <label className="btn sm split-more" title={s.t("handoff.copy_more")}>
@@ -542,22 +534,13 @@ function HandoffPanel({ i }: { i: Item }) {
           </label>
         </div>
       )}
-      {/* an item in no project is there to be filed: an agent works in a project's folder, so the one primary is
-          Move to Project… until it has one (hand-off stays in the menus and ⌘⏎, which say why it can't go yet) */}
+      {/* an item in no project is there to be filed: Move to Project… is its one primary */}
       {back && (
         <button className="btn sm" id="reopenBtn" title={`${s.t(`action.${back}.hint`)} (R)`} onClick={() => s.act([i], back)}>
           <Icon name="undo" size={14} /> {s.label(`action.${back}`)}
         </button>
       )}
       {unfiled && !back && <MovePicker items={[i]} id="fileBtn" primary />}
-      {h.dispatch && !unfiled && !back && (
-        <button className="btn sm primary" id="dispatchBtn"
-          title={s.mode === "item" ? `${s.t("handoff.dispatch.hint")} (${key})` : s.t("handoff.dispatch.hint")}
-          aria-keyshortcuts={s.mode === "item" ? (isMacLike() ? "Meta+Enter" : "Control+Enter") : undefined}
-          onClick={() => s.dispatch([i])}>
-          <Icon name="send" size={14} /> <span className="hl-long">{s.t("handoff.dispatch")}</span><span className="hl-short">{s.t("handoff.dispatch.short")}</span>
-        </button>
-      )}
     </div>
   );
 }

@@ -500,7 +500,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         App.terminating = true
         guard resident else { return }
         stopOrganisers()
-        Housekeeping.atQuit()
         MainActor.assumeIsolated { ModelDownloads.shared.atQuit() }   // the setup ends now; the next launch carries on
         Hotkeys.shared.unpublish()
         let f = blurtHome.appendingPathComponent("app.json")
@@ -850,7 +849,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             title = badge.count > 0
                 ? NSAttributedString(string: Loc.number(badge.count), attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                    .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
+                    .foregroundColor: NSColor.labelColor])
                 : NSAttributedString(string: "")
             tip = badge.tooltip
             ax = badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name")
@@ -1019,7 +1018,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if AppEnvironment.mainWindow != nil {
             for j in JobStore.shared.active.prefix(5) {
                 let i = add("\(JobLook.title(j)) · \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
-                i.image = App.menuSymbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j))
+                i.image = App.menuSymbol(JobLook.symbol(j))
             }
         }
         menu.addItem(.separator())

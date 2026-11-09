@@ -137,7 +137,7 @@ extension App {
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count (⌥H opens the Cards panel)
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
-            if arg == "older" || arg == "all" { hanging.openOverview() }   // = a click on the "+N" tile
+            if arg == "older" || arg == "all" { hanging.openOverview() }   // = the open island's cards row
             if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
             hanging.testCommand(arg)                                // row | focus | key K | click N [2] | overview …
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])

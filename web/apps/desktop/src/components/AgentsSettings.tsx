@@ -9,15 +9,13 @@
 //   Organizing  one shared model (the agent's default / the cheapest) and effort for recordings and for snaps and
 //               voice notes (record.agent_processing["*"] and each agent that follows it); an agent set differently
 //               keeps its own, named in the footnote, changed in its Details sheet ("Default (Haiku)").
-//   Sessions    whether they outlive Blurt (tmux; Windows has none, so they end with it), the current project's
-//               default agent, and once, which agents can run in sessions.
 //   other apps  installed agent apps Blurt can't run (Cursor, WorkBuddy): Connect… adds blurt to them.
 //   Ask         the closing footnote with Examples… (three requests, copyable).
 // Connect (agents.py install) always shows its dry run first; nothing is written before the user says Connect.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@blurt/icons';
-import { api, type AgentInfo, type AgentModels, type AgentRegistry, type InstallChange, type InstallPlan, type ProjectList, type DesktopApp } from '../api';
+import { api, type AgentInfo, type AgentModels, type AgentRegistry, type InstallChange, type InstallPlan } from '../api';
 import { i18n } from '../i18n';
 import { Group, InfoTip, Page, Popup, S, Switch, TextLink, lang } from '../settings/kit';
 
@@ -308,21 +306,13 @@ type Model = ReturnType<typeof useAgents>;
 
 // ------------------------------------------------------------------ the pane
 
-export function AgentsPane({ cfg, save, status, onToast }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void>; status: { os: string; tmux: boolean }; onToast: (m: string) => void }) {
+export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void>; onToast: (m: string) => void }) {
   const m = useAgents(cfg, save, onToast);
   const [details, setDetails] = useState<string | null>(null);
   const [fixFor, setFixFor] = useState<string | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; alignEnd?: boolean } | null>(null);
   const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null);
-  const [projects, setProjects] = useState<ProjectList | null>(null);
-  // the agents with a desktop app (Claude): where their hand-offs start (config sessions.target, the hand-off sheet's
-  // "Runs in" remembers the same key)
-  const [desktop, setDesktop] = useState<Record<string, DesktopApp>>({});
-  useEffect(() => {
-    api.projects().then(setProjects, () => {});
-    api.desktopApps().then(setDesktop, () => {});
-  }, []);
   const checked = m.signInChecked && !m.rows.some((r) => r.state === 'checking');
   const listed = m.headless.filter((a) => a.installed || a.state === 'checking');
   const missing = m.rows.filter((a) => !a.installed && a.state !== 'checking');
@@ -431,9 +421,6 @@ export function AgentsPane({ cfg, save, status, onToast }: { cfg: Record<string,
   };
 
   const organizeFooter = [S('agents.organize.footer'), m.ownSettings.length ? S('agents.organize.own', i18n().formatList(m.ownSettings.map((a) => a.name))) : ''].filter(Boolean).join(' ');
-  const sessionNames = m.rows.filter((a) => a.installed && a.session).map((a) => a.name);
-  const current = projects?.projects.find((p) => p.id === projects.current);
-  const tmux = status.os !== 'windows' && status.tmux;
   const menuAgent = menu ? m.rows.find((r) => r.id === menu.id) : null;
 
   return (
@@ -466,66 +453,6 @@ export function AgentsPane({ cfg, save, status, onToast }: { cfg: Record<string,
                 <Popup label={S(`agents.processing.${k}`)} value={cur.model} choices={[['default', S('agents.processing.default')], ['cheapest', S('agents.processing.cheapest')]]} onChange={(v) => m.setShared(k, v)} />
                 <Popup label={S('agents.effort')} value={cur.effort} dividers={[1]} choices={[['default', S('agents.effort.default')], ...m.sharedEfforts.map((e) => [e, S(`agents.effort.${e}`)] as [string, string])]}
                   onChange={(v) => m.setShared(k, undefined, v)} />
-              </div>
-            </div>
-          );
-        })}
-      </Group>
-
-      <Group id="agents.sessions" footer={sessionNames.length ? S('agents.sessions.footer', i18n().formatList(sessionNames)) : undefined}>
-        {status.os === 'windows' ? (
-          <div className="st-row" data-setting="agents.keep_sessions">
-            <div className="st-text">
-              <div className="st-row-title"><span>{S('agents.keep_sessions')}</span><InfoTip text={S('win.agents.keep_sessions.why')} /></div>
-              <div className="st-detail">{S('win.agents.keep_sessions.windows')}</div>
-            </div>
-          </div>
-        ) : (
-        <div className="st-row" data-setting="agents.keep_sessions">
-          <div className="st-text">
-            <div className="st-row-title"><span>{S('agents.keep_sessions')}</span>{tmux && <InfoTip text={S('agents.keep_sessions.ok', '')} />}</div>
-            {!tmux && <div className="st-detail warn">{S(status.os === 'windows' ? 'win.agents.keep_sessions.windows' : 'agents.keep_sessions.missing')}</div>}
-          </div>
-          <div className="st-ctl">
-            {!tmux && status.os !== 'windows' && <code className="st-cmd">sudo apt install tmux</code>}
-            <span title={S(tmux ? 'agents.keep_sessions.fixed' : status.os === 'windows' ? 'win.agents.keep_sessions.windows' : 'agents.keep_sessions.missing')}>
-              <Switch on={tmux} set={() => {}} disabled label={S('agents.keep_sessions')} />
-            </span>
-          </div>
-        </div>
-        )}
-        {current && (
-          <div className="st-row" data-setting="agents.project_agent">
-            <div className="st-text">{S('agents.project_agent', current.name)}</div>
-            <div className="st-ctl">
-              <Popup label={S('agents.project_agent', current.name)} value={current.default_agent ?? ''} dividers={[1]}
-                choices={[['', S('agents.project_agent.default')], ...m.rows.filter((a) => a.installed && a.session).map((a) => [a.id, a.name] as [string, string])]}
-                onChange={(v) => api.setProject(current.id, { default_agent: v || null }).then(() => api.projects().then(setProjects), (e) => onToast(String(e)))} />
-            </div>
-          </div>
-        )}
-        {m.rows.filter((a) => a.installed && a.session && desktop[a.id]).map((a) => {
-          const d = desktop[a.id];
-          const target = d.available && cfg.sessions?.target?.[a.id] === 'desktop' ? 'desktop' : 'terminal';
-          const setTarget = (v: string) => {
-            const tg = { ...(cfg.sessions?.target ?? {}) };
-            if (v === 'desktop') tg[a.id] = 'desktop';
-            else delete tg[a.id];
-            return save({ sessions: { ...(cfg.sessions ?? {}), target: tg } });
-          };
-          return (
-            <div key={a.id} className="st-row" data-setting="agents.handoff">
-              <div className="st-text">
-                <div className="st-row-title"><span>{S('agents.handoff_target', a.name)}</span><InfoTip text={d.available ? S('agents.handoff_target.hint') : S('agents.handoff_target.no_app', d.name)} /></div>
-              </div>
-              <div className="st-ctl">
-                {d.available ? (
-                  <Popup label={S('agents.handoff_target', a.name)} value={target}
-                    choices={[['terminal', S('agents.handoff.terminal')], ['desktop', S('agents.handoff.desktop', d.name)]]}
-                    hints={[S('agents.handoff.recommended'), undefined]} onChange={setTarget} />
-                ) : (
-                  <span className="st-value">{S('agents.handoff.terminal')}</span>
-                )}
               </div>
             </div>
           );
@@ -715,7 +642,7 @@ function DetailSheet({ m, id, close, onSignIn }: { m: Model; id: string; close: 
   if (!a) return null;
   const ms = m.models[a.id];
   const name = (x: string | null | undefined) => ms?.models.find((y) => y.id === x)?.name;
-  const facts = [a.version ? S('agents.details.version', shortVersion(a.version)) : null, a.session ? S('agents.details.sessions_ok') : null].filter(Boolean).join(' · ');
+  const facts = a.version ? S('agents.details.version', shortVersion(a.version)) : '';
   const modelChoices = (k: Kind): [string, string][] => {
     const shared = m.sharedSetting(k).model;
     const named = shared === 'cheapest' ? name(ms?.cheapest) : name(ms?.cli_default);

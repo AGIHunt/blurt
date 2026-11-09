@@ -1,45 +1,47 @@
 // src/cards.ts: the Mac's BlurtCore CardRow / CardShape rules (CardRowTests.swift, IslandLayoutTests.swift) and the
 // Windows placement of the row under the island at any display scale.
 import { describe, expect, it } from 'vitest';
-import { CardReveal, DeferredClick, cardRow, cardShape, fills, rowBounds, rowCentre, stepAside, threadX, MAX_WIDTH, MAX_SHOWN } from '../src/cards';
+import { CardReveal, DeferredClick, cardRow, cardShape, fills, rowBounds, rowCentre, stepAside, threadX, visibleIn, MAX_WIDTH, MAX_HUNG } from '../src/cards';
 
 const shot = 112;
 const voice = 168;
-const layout = (widths: number[], centre = 720, screen = 1440) => cardRow(widths, centre, [12, screen - 12], { tile: shot });
+const layout = (widths: number[], centre = 720, screen = 1440, scroll = 0) => cardRow(widths, centre, [12, screen - 12], { scroll });
 
 describe('the hanging row (CardRow)', () => {
   it('newest first, left to right, centred under the island', () => {
     const l = layout([shot, shot, shot]);
     expect(l.shown).toEqual([2, 1, 0]);
-    expect(l.more).toBe(0);
-    expect(l.tileX).toBeNull();
+    expect(l.viewport).toBeNull();
+    expect(l.maxScroll).toBe(0);
     expect(l.centres).toEqual([...l.centres].sort((a, b) => a - b));
     expect((l.span[0] + l.span[1]) / 2).toBeCloseTo(720, 2);
   });
-  it('many cards: the newest five and a count', () => {
+  it('many cards: every one hangs and the row scrolls in a window', () => {
     const l = layout(Array(16).fill(shot));
-    expect(l.shown).toEqual([15, 14, 13, 12, 11]);
-    expect(l.more).toBe(11);
-    expect(l.tileX!).toBeGreaterThan(l.centres[l.centres.length - 1]);
-    expect(l.span[1] - l.span[0]).toBeLessThanOrEqual(MAX_WIDTH);
+    expect(l.shown).toEqual([...Array(16).keys()].reverse());
+    const v = l.viewport!;
+    expect(v[1] - v[0]).toBe(MAX_WIDTH);
+    expect((v[0] + v[1]) / 2).toBeCloseTo(720, 2);
+    expect(l.centres[0] - shot / 2).toBeCloseTo(v[0], 2);
+    expect(l.maxScroll).toBeCloseTo(16 * shot + 15 * 12 - MAX_WIDTH, 2);
+    const end = layout(Array(16).fill(shot), 720, 1440, 1e6);
+    expect(end.scroll).toBe(end.maxScroll);
+    expect(end.centres[15] + shot / 2).toBeCloseTo(v[1], 2);
+    expect(layout(Array(16).fill(shot), 720, 1440, -40).scroll).toBe(0);
+    expect(visibleIn(l.centres[0] - shot / 2, l.centres[0] + shot / 2, l)).toBe(1);
+    expect(visibleIn(l.centres[12] - shot / 2, l.centres[12] + shot / 2, l)).toBe(0);
   });
-  it('voice cards are wider, so fewer hang', () => {
-    const l = layout(Array(8).fill(voice));
-    expect(l.shown.length).toBeLessThan(MAX_SHOWN);
-    expect(l.span[1] - l.span[0]).toBeLessThanOrEqual(MAX_WIDTH);
-    expect(l.shown.length + l.more).toBe(8);
+  it('at most MAX_HUNG hang, the newest', () => {
+    const l = layout(Array(MAX_HUNG + 20).fill(shot));
+    expect(l.shown.length).toBe(MAX_HUNG);
+    expect(l.shown[0]).toBe(MAX_HUNG + 19);
   });
   it('never off the screen', () => {
     expect(layout(Array(9).fill(shot), 40, 1280).span[0]).toBeGreaterThanOrEqual(12);
     const narrow = layout(Array(6).fill(voice), 300, 600);
     expect(narrow.span[1]).toBeLessThanOrEqual(588);
-    expect(narrow.shown.length).toBeGreaterThanOrEqual(1);
-  });
-  it('no "+1" tile for a card that would fit', () => {
-    // five snaps of 150 are 798 wide: all of them hang, not four and a "+1" the size of the card it hid
-    const l = layout(Array(5).fill(150));
-    expect(l.more).toBe(0);
-    expect(l.shown.length).toBe(5);
+    expect(narrow.viewport).toEqual([12, 588]);
+    expect(narrow.shown.length).toBe(6);
   });
   it('empty', () => expect(layout([]).shown).toEqual([]));
 });

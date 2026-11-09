@@ -200,7 +200,7 @@ pub fn enrich(app: &tauri::AppHandle, uids: &[String], project: Option<&str>) ->
         job.finish("failed", Some((code, msg)));
         Err::<String, String>(format!("{msg} [{code}]"))
     };
-    let agent = match crate::sessions::detect(&runner).ok().and_then(|d| d["pick"].as_str().map(str::to_owned)) {
+    let agent = match crate::agents::detect(&runner).ok().and_then(|d| d["pick"].as_str().map(str::to_owned)) {
         Some(a) => a,
         None => return fail(&job, "auth", "no coding agent is installed and signed in"),
     };
@@ -257,7 +257,7 @@ pub fn enrich(app: &tauri::AppHandle, uids: &[String], project: Option<&str>) ->
             let tail = std::fs::read_to_string(crate::paths::jobs_dir().join(format!("{}.log", job.id))).unwrap_or_default();
             let tail: String = tail.chars().rev().take(4000).collect::<Vec<_>>().into_iter().rev().collect();
             let msg = format!("{} exited with {}", argv[0], code.map_or("a signal".to_string(), |c| c.to_string()));
-            job.finish("failed", Some((crate::sessions::error_code(&tail), &msg)));
+            job.finish("failed", Some((crate::agents::error_code(&tail), &msg)));
         }
         crate::watcher::update(&app2, &files);
     });

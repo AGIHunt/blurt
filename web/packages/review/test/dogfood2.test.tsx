@@ -45,19 +45,21 @@ describe("the item detail", () => {
     s.dispose();
   });
 
-  it("names agents from the doc, a desktop hand-off by its app, and never shows an id", async () => {
+  it("names agents from the doc, says a copied hand-off is with your agent, and never shows an id", async () => {
     const doc: ReviewDoc = {
       schema: 3,
-      agents: { claude: { name: "Claude Code", desktop: "Claude" }, opencode: { name: "OpenCode", desktop: null } },
+      agents: { claude: { name: "Claude Code" }, opencode: { name: "OpenCode" } },
       items: [
-        { id: "A-1", uid: "a1", kind: "issue", title: "x", state: "handed_off", work: { to: "session", agent: "opencode", job: "j-1" } },
-        { id: "A-2", uid: "a2", kind: "issue", title: "y", state: "handed_off", work: { to: "session", agent: "claude", job: "j-2" }, _work_runner: "desktop" },
+        { id: "A-1", uid: "a1", kind: "issue", title: "x", state: "handed_off", work: { to: "external", agent: null } },
+        // an item an old in-app session took: no session status, just its state
+        { id: "A-2", uid: "a2", kind: "issue", title: "y", state: "handed_off", work: { to: "session", agent: "claude", job: "j-2" } },
       ],
     };
     const s = new ReviewStore(host(doc), { lang: "zh" });
     await s.load();
-    expect(stateText(s, s.data.items[0])).toBe("已交给 OpenCode");
-    expect(stateText(s, s.data.items[1])).toBe("已交给 Claude 桌面端");
+    expect(stateText(s, s.data.items[0])).toBe("已复制给你的 Agent");
+    expect(stateText(s, s.data.items[1])).toBe("已交给 Agent");
+    expect(agentName(s, "opencode")).toBe("OpenCode");
     expect(agentName(s, "zcode")).toBe("Agent");
     expect(agentName(s, null)).toBe("Agent");
     s.dispose();
