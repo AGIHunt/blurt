@@ -40,6 +40,10 @@
     <string name="pair_unreachable_local">连不上 %1$s。请让手机和它在同一网络，或先在那台电脑上设置中转。</string>
     <string name="pair_unreachable_relay">连不上 %1$s。请在那台电脑上重新扫码。</string>
 
+    <string name="displays">显示器</string>
+    <string name="displays_hint">点一台显示器即可显示它。轻点按钮会切到右边的下一台。</string>
+    <string name="follow_pointer">跟随光标</string>
+
     <string name="pair_title">与电脑配对</string>
     <string name="pair_with_q">与 %1$s 配对？</string>
     <string name="pair_warning">此电脑将收到你在这里输入和说的内容。请只与自己的电脑配对。</string>

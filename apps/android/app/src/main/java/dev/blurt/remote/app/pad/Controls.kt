@@ -187,3 +187,70 @@ class ModifierRow(c: Context, private val onClose: () -> Unit) : LinearLayout(c)
         for ((k, m) in mods) k.lit = (held and m) == m
     }
 }
+
+
+/** Which of the computer's displays the picture is of: a screen with its number, numbered left to right as the displays are arranged.
+ *  A tap steps to the next one to the right; a hold opens the map. Only there when the computer has more than one. */
+class DisplayButton(c: Context) : View(c) {
+    var number = 0
+        set(v) { field = v; invalidate() }
+    var slab = false
+        set(v) { field = v; invalidate() }
+    var onTap: (() -> Unit)? = null
+    var onHold: (() -> Unit)? = null
+    private var down = false
+    private var held = false
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val r = RectF()
+    private val hold = Runnable { if (down) { held = true; Haptics.grab(); onHold?.invoke() } }
+
+    init {
+        isClickable = true
+        contentDescription = c.getString(dev.blurt.remote.app.R.string.displays)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        if (slab || down) {
+            p.style = Paint.Style.FILL
+            p.color = if (down) Theme.slabPressed else Theme.slab
+            r.set(0f, 0f, width.toFloat(), height.toFloat())
+            canvas.drawRoundRect(r, Theme.KEY_RADIUS.dp, Theme.KEY_RADIUS.dp, p)
+        }
+        val cx = width / 2f
+        val cy = height / 2f - 1.dp
+        // the screen and its stand, the weight of the symbols beside it
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.5f.dp
+        p.color = if (slab) Theme.mark else Theme.caption
+        r.set(cx - 10.dp, cy - 7.5f.dp, cx + 10.dp, cy + 6.5f.dp)
+        canvas.drawRoundRect(r, 2.5f.dp, 2.5f.dp, p)
+        canvas.drawLine(cx - 4.dp, cy + 10.dp, cx + 4.dp, cy + 10.dp, p)
+        p.style = Paint.Style.FILL
+        p.typeface = Fonts.medium
+        p.textSize = 10.dp
+        val fm = p.fontMetrics
+        canvas.drawText(if (number > 0) "$number" else "·", cx, cy - 0.5f.dp - (fm.ascent + fm.descent) / 2, p)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { down = true; held = false; invalidate(); postDelayed(hold, 450) }
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(hold)
+                if (down && !held) performClick()
+                down = false
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> { removeCallbacks(hold); down = false; invalidate() }
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        Haptics.tick()
+        onTap?.invoke()
+        return true
+    }
+}

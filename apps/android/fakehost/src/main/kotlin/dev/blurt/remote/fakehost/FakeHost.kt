@@ -7,6 +7,7 @@
 //   --address <ip>                 the address in the pairing link (default 10.0.2.2, the Mac as the emulator sees it)
 //   --state <file>                 paired phones, kept across runs (default build/fakehost.json)
 //   --ask                          a new phone waits for "y" on stdin; without it the answer is yes after 2 s
+//   --two-displays                 say it has a second display, above and to the right of the first (the picture is the same)
 package dev.blurt.remote.fakehost
 
 import dev.blurt.remote.core.MacHandshake
@@ -45,6 +46,11 @@ private var picture: String? = null
 private var address = "10.0.2.2"
 private var stateFile = File("build/fakehost.json")
 private var ask = false
+private var twoDisplays = false
+private val DISPLAYS = listOf(
+    dev.blurt.remote.core.RemoteDisplay("1", "Built-in Retina Display", 0.0, 0.0, 1512.0, 944.0, true),
+    dev.blurt.remote.core.RemoteDisplay("2", "Studio Display", 1512.0, -458.0, 2560.0, 1440.0, false),
+)
 private const val TCP_PORT = 47811
 private const val UDP_PORT = 47812
 
@@ -70,6 +76,7 @@ fun main(args: Array<String>) {
             "--address" -> address = args[++i]
             "--state" -> stateFile = File(args[++i])
             "--ask" -> ask = true
+            "--two-displays" -> twoDisplays = true
         }
         i++
     }
@@ -139,6 +146,7 @@ private class Session(val socket: Socket) {
     var py = 472.0
     @Volatile var crop = RemoteCrop.WHOLE
     @Volatile var listening = false
+    @Volatile var display = "1"
 
     fun run() {
         log("connection from ${socket.remoteSocketAddress}")
@@ -271,6 +279,10 @@ private class Session(val socket: Socket) {
                 stream(r.codecs ?: listOf(RemoteVideoCodec.HEVC), r.fps)
             }
             is ToMac.ScreenCrop -> crop = m.crop
+            is ToMac.ShowDisplay -> {
+                display = m.display ?: "1"
+                if (streaming != null) send(ToPhone.ScreenView(1512.0, 944.0, lastCodec, if (twoDisplays) display else null))
+            }
             is ToMac.PointerTo -> { px = m.x * 1512.0; py = m.y * 944.0; cursor() }
             is ToMac.DictationKey -> {
                 send(ToPhone.Dictation(if (m.down) RemoteDictationPhase.LISTENING else RemoteDictationPhase.IDLE))
@@ -307,9 +319,12 @@ private class Session(val socket: Socket) {
         send(ToPhone.Session(RemoteSessionInfo(name, UDP_PORT, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, platform = platform)))
         send(ToPhone.Front(RemoteFront(if (platform == "mac") "com.apple.Terminal" else "WindowsTerminal.exe", "Terminal")))
         send(ToPhone.Dictation(RemoteDictationPhase.IDLE))
+        if (twoDisplays) send(ToPhone.Displays(DISPLAYS))
     }
 
     // MARK: the picture
+
+    var lastCodec = RemoteVideoCodec.HEVC
 
     fun stopStream() {
         streaming?.destroy()
@@ -320,7 +335,8 @@ private class Session(val socket: Socket) {
         val png = picture ?: return log("no --picture: nothing to show")
         val hevc = codecs.firstOrNull() == RemoteVideoCodec.HEVC
         val codec = if (hevc) RemoteVideoCodec.HEVC else RemoteVideoCodec.H264
-        send(ToPhone.ScreenView(1512.0, 944.0, codec))
+        lastCodec = codec
+        send(ToPhone.ScreenView(1512.0, 944.0, codec, if (twoDisplays) display else null))
         val rate = minOf(fps, 30)
         val enc = if (hevc) listOf("-c:v", "libx265", "-x265-params", "keyint=30:bframes=0:repeat-headers=1:aud=1:log-level=error", "-tune", "zerolatency", "-preset", "ultrafast")
             else listOf("-c:v", "libx264", "-x264-params", "keyint=30:bframes=0:repeat-headers=1:aud=1", "-tune", "zerolatency", "-preset", "ultrafast")

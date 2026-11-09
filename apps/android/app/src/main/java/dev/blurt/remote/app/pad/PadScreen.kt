@@ -61,6 +61,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         fun switchMac()
         fun askMic()
         fun keepAwake(on: Boolean)
+        fun displays()
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -87,6 +88,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private val screenButton = IconButton(c, "desktop_windows", c.getString(R.string.show_screen))
     private val findButton = IconButton(c, "my_location", c.getString(R.string.find_pointer))
     private val drawerButton = IconButton(c, "apps", c.getString(R.string.keys))
+    private val displayButton = DisplayButton(c)
     private val header = TextView(c)
     private val liveText = TextView(c)
     private val message = TextView(c)
@@ -157,6 +159,9 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         addView(talk)
         talk.onAsk = { sheets.askMic() }
         for (b in listOf(drawerButton, screenButton, keyboardButton, settingsButton, findButton)) addView(b)
+        addView(displayButton)
+        displayButton.onTap = { Remote.link.nextDisplay() }
+        displayButton.onHold = { sheets.displays() }
         drawerButton.onTap = { toggleDrawer() }
         screenButton.onTap = { toggleScreen() }
         keyboardButton.onTap = { toggleKeyboard() }
@@ -225,6 +230,12 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         scope.launch { l.level.collect { talk.level(it) } }
         scope.launch { Remote.prefs.changed.collect { applyPrefs() } }
         scope.launch { l.displayAspect.collect { requestLayout() } }
+        scope.launch {
+            combine(l.displays, l.shownDisplay) { _, shown -> shown }.collect { shown ->
+                displayButton.number = l.displaysInOrder.indexOfFirst { it.id == shown } + 1
+                requestLayout()
+            }
+        }
     }
 
     private fun words(f: String, p: String) {
@@ -451,7 +462,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val w = width / d
         val h = height / d
         val typing = imeHeight > 0
-        val l = PadLayout(w, h, safe.left / d, safe.top / d, safe.right / d, safe.bottom / d, Remote.prefs.lefty, drawerOpen, fold)
+        val l = PadLayout(w, h, safe.left / d, safe.top / d, safe.right / d, safe.bottom / d, Remote.prefs.lefty, drawerOpen, fold,
+            displays = showing && Remote.link.displays.value.size >= 2)
         layout = l
         var padFrame = l.pad
         if (typing) {
@@ -496,6 +508,9 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             show(b, !typing)
             b.slab = railed
         }
+        show(displayButton, !typing && !l.displayButton.isEmpty)
+        if (!l.displayButton.isEmpty) place(displayButton, l.displayButton)
+        displayButton.slab = railed
         place(strip, l.strip)
         show(strip, !typing && keysOut)
         // over the bottom of the pad, not over keys that are still in use while talking

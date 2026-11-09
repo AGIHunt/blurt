@@ -98,6 +98,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
     val screenError = MutableStateFlow<String?>(null)
     /** the computer this session is with: its keys */
     val host = MutableStateFlow(RemoteHost.MAC)
+    /** its displays, from hosts that can show more than one; and which one the picture is of (null: not known) */
+    val displays = MutableStateFlow<List<dev.blurt.remote.core.RemoteDisplay>>(emptyList())
+    val shownDisplay = MutableStateFlow<String?>(null)
 
     /** a link from outside (the camera app, a web page): asks before pairing */
     val offered = MutableStateFlow<RemotePairing?>(null)
@@ -239,6 +242,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         live.value = "" to ""
         front.value = null
         screenError.value = null
+        displays.value = emptyList()
+        shownDisplay.value = null
         refused = false
         firstAttempt = null
         lastRelayTry = 0
@@ -524,7 +529,11 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 Remote.screen.stop()
                 screenError.value = m.text
             }
-            is ToPhone.ScreenView -> Remote.screen.source(m.width, m.height, m.codec)
+            is ToPhone.ScreenView -> {
+                shownDisplay.value = m.display
+                Remote.screen.source(m.width, m.height, m.codec)
+            }
+            is ToPhone.Displays -> displays.value = m.displays
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
@@ -583,6 +592,23 @@ class Link(private val c: Context, private val vault: KeyVault) {
     // MARK: sending
 
     fun send(m: ToMac) { channel?.send(m) }
+
+    /** The computer's displays left to right, as its display settings arrange them. */
+    val displaysInOrder: List<dev.blurt.remote.core.RemoteDisplay> get() = displays.value.sortedWith(compareBy({ it.x }, { it.y }))
+
+    /** The next display to the right, round to the first: the switcher's tap. */
+    fun nextDisplay() {
+        val list = displaysInOrder
+        if (list.size < 2) return
+        val at = list.indexOfFirst { it.id == shownDisplay.value }
+        showDisplay(list[(at + 1).mod(list.size)].id)
+    }
+
+    /** null: follow the pointer from display to display */
+    fun showDisplay(id: String?) {
+        send(ToMac.ShowDisplay(id))
+        if (id != null) shownDisplay.value = id
+    }
 
     /** `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be */
     fun pointer(p: RemotePointerPacket, inOrder: Boolean = false) {

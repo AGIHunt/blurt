@@ -43,6 +43,10 @@
     <string name="pair_unreachable_local">Couldn’t reach %1$s. Put this phone on the same network, or set a relay on that computer first.</string>
     <string name="pair_unreachable_relay">Couldn’t reach %1$s. Scan a fresh code on that computer.</string>
 
+    <string name="displays">Displays</string>
+    <string name="displays_hint">Tap a display to show it. Tapping the button steps to the next one on the right.</string>
+    <string name="follow_pointer">Follow Pointer</string>
+
     <!-- pairing -->
     <string name="pair_title">Pair with Computer</string>
     <string name="pair_with_q">Pair with %1$s?</string>

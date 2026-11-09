@@ -169,6 +169,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun pairing() = sheets.show(Sheet.Pair)
     override fun editor() = sheets.show(Sheet.Editor)
     override fun switchMac() = sheets.show(Sheet.Switch)
+    override fun displays() = sheets.show(Sheet.Displays)
     override fun askMic() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return
         askMic.launch(Manifest.permission.RECORD_AUDIO)

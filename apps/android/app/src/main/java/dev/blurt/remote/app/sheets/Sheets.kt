@@ -49,6 +49,7 @@ sealed class Sheet {
     data object Editor : Sheet()
     data object Switch : Sheet()
     data object MicDenied : Sheet()
+    data object Displays : Sheet()
 }
 
 class Sheets {
@@ -113,6 +114,7 @@ fun SheetHost(sheets: Sheets, screen: PadScreen) {
             }
             if (s is Sheet.Switch) SwitchDialog(onClose = { sheets.close() }, onAdd = { sheets.show(Sheet.Pair) })
             if (s is Sheet.MicDenied) MicDeniedDialog(onClose = { sheets.close() })
+            if (s is Sheet.Displays) DisplayMap(onClose = { sheets.close() })
             offered?.let { p -> ConfirmPairing(p) }
         }
     }

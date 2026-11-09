@@ -38,6 +38,8 @@ class PadLayout(
     drawerOpen: Boolean,
     /** a fold that separates the screen, in dp, and how it lies */
     fold: Fold? = null,
+    /** the computer has more than one display and its picture is showing: the switcher gets a place */
+    private val displays: Boolean = false,
 ) {
     data class Fold(val bounds: Frame, val vertical: Boolean, val halfOpened: Boolean)
 
@@ -61,6 +63,8 @@ class PadLayout(
     var settingsButton = Frame(); private set
     var screenButton = Frame(); private set
     var findButton = Frame(); private set
+    /** which of the computer's displays the picture is of; empty when there's only one */
+    var displayButton = Frame(); private set
     /** landscape: the cutout's end */
     var rail: Frame? = null; private set
     /** landscape: puts the keys away and brings them back */
@@ -175,8 +179,9 @@ class PadLayout(
         keyboardButton = Frame(rowEnd - iconW, block.top, rowEnd, block.top + t - 2)
         screenButton = Frame(rowEnd - iconW * 2, block.top, rowEnd - iconW, block.top + t - 2)
         findButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
+        displayButton = if (displays) Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2) else Frame()
         val stripX = if (lefty) arrowKey.right else settingsButton.right
-        strip = Frame(stripX, block.top, findButton.left, block.top + t - 2)
+        strip = Frame(stripX, block.top, if (displays) displayButton.left else findButton.left, block.top + t - 2)
         list = Frame(block.left, block.top + t, block.right, block.top + t + listH)
         // the dock: ten even parts, the last the talk key
         val dockY = block.bottom - h
@@ -214,6 +219,7 @@ class PadLayout(
         findButton = fromRail(ctrlIn, ctrlW, clear + btn + gap, btn)
         screenButton = fromRail(ctrlIn, ctrlW, h - clear - btn * 2 - gap, btn)
         keyboardButton = fromRail(ctrlIn, ctrlW, h - clear - btn, btn)
+        displayButton = if (displays) fromRail(ctrlIn, ctrlW, (h - btn) / 2, btn) else Frame()
         rail = fromRail(0f, ctrlEnd, 0f, h)
 
         // the thumb's end: clear of the round corners, the talk key where the thumb rests, a little taller than the keys above it
