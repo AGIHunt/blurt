@@ -179,6 +179,25 @@ class RemoteVideoRepairTest {
         assertTrue(at < 0.097 + r.patience + 0.05, "$at")
     }
 
+    @Test fun aPhoneThatStaysBusyStillGivesUp() {
+        // every tick 20 ms after the last (a slow phone's busy decoder thread): each one looks like a hitch, but a piece that never
+        // comes is still given up within a second of real time, so the picture doesn't freeze with nothing asked
+        val r = RemoteVideoReceiver(nack = true, ltr = true)
+        r.rtt = 0.002
+        r.feed(frame(1, key = true), 0.0)
+        r.feed(frame(2).filter { it.index != 1 }, 0.016)
+        var t = 0.02
+        var n = 3L
+        var lost: Double? = null
+        while (t < 2.0 && lost == null) {
+            r.feed(frame(n), t); n++
+            if (feedback(r.tick(t)).contains(RemoteVideoFeedback.Lost(1))) lost = t
+            t += 0.02
+        }
+        val at = lost ?: fail("given up though every tick was late")
+        assertTrue(at <= 0.02 + 1.0 + 0.02 + 1e-9, "$at")
+    }
+
     @Test fun afterAStallThePieceAskedForGetsItsRetry() {
         // the end of frame 2 is lost, asked for, and then nothing comes for 80 ms (Wi-Fi's stall, or the sender stopped): when the next
         // frame's first piece arrives the frame has been late longer than the patience, but only in the stall

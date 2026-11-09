@@ -224,6 +224,8 @@ public struct RemoteVideoReceiver {
     private var lateSince: Double?
     /// how long it has been late while pieces were arriving and the phone was running: what the patience is measured against
     private var lateFor = 0.0
+    /// when frame `next` was first seen to be late, never moved by the phone's own hitches: a phone that stays busy still gives up
+    private var lateAt = 0.0
     /// when any piece last arrived. Nothing at all for a while is a stall (a radio dozing, a busy channel), not a loss: everything held up
     /// arrives together afterwards, so nothing is given up and nothing asked for twice meanwhile
     private var heardAt = -1.0
@@ -235,6 +237,8 @@ public struct RemoteVideoReceiver {
     private static let longest = 0.35
     /// ticks further apart than this: the phone was busy (a frame at 60 Hz without one)
     private static let away = 0.015
+    /// late this long in real time is given up on regardless, the phone busy or not
+    private static let stuck = 1.0
     private var acks: [UInt32] = [], ackedAt = -1.0
     public private(set) var dropped = 0, repaired = 0, nacked = 0, refreshes = 0
 
@@ -334,7 +338,8 @@ public struct RemoteVideoReceiver {
     /// Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on.
     /// The patience counts only while pieces arrive and the phone is running. In a stall nothing can be asked again, and when it ends
     /// the piece asked for gets its retry before the frame is given up. A tick long after the last one gives nothing up: the phone was
-    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read.
+    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read. A frame late for a second of real
+    /// time is given up regardless, so a phone that stays busy doesn't freeze the picture with nothing asked.
     public mutating func tick(now: Double) -> [Output] {
         var out: [Output] = []
         let sinceTick = tickedAt.map { now - $0 } ?? 0
@@ -353,10 +358,12 @@ public struct RemoteVideoReceiver {
                     since = s
                 } else {
                     lateFor = 0
+                    lateAt = now
                     lateSince = now
                     since = now
                 }
-                if !away, (lateFor >= patience && !stalled) || now - since >= Self.longest {
+                let stuck = now - lateAt >= Self.stuck
+                if stuck || (!away && ((lateFor >= patience && !stalled) || now - since >= Self.longest)) {
                     broken = true
                     brokenAt = now
                     askedAt = -1

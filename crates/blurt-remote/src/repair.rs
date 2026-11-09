@@ -320,6 +320,8 @@ pub struct Receiver {
     late_since: Option<f64>,
     /// how long it has been late while pieces were arriving and the phone was running: what the patience is measured against
     late_for: f64,
+    /// when frame `next` was first seen to be late, never moved by the phone's own hitches: a phone that stays busy still gives up
+    late_at: f64,
     /// when any piece last arrived: nothing at all for a while is a stall, not a loss
     heard_at: f64,
     /// when `tick` last ran: one much later than the last means the phone itself wasn't running (a hitch), not that the network lost
@@ -338,6 +340,8 @@ const QUIET: f64 = 0.02;
 const LONGEST: f64 = 0.35;
 /// ticks further apart than this: the phone was busy (a frame at 60 Hz without one)
 const AWAY: f64 = 0.015;
+/// late this long in real time is given up on regardless, the phone busy or not
+const STUCK: f64 = 1.0;
 
 impl Receiver {
     pub fn new(nack: bool, ltr: bool, now: f64) -> Receiver {
@@ -355,6 +359,7 @@ impl Receiver {
             asked_at: -1.0,
             late_since: None,
             late_for: 0.0,
+            late_at: 0.0,
             heard_at: -1.0,
             ticked_at: None,
             acks: vec![],
@@ -529,7 +534,8 @@ impl Receiver {
     /// Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on.
     /// The patience counts only while pieces arrive and the phone is running. In a stall nothing can be asked again, and when it ends
     /// the piece asked for gets its retry before the frame is given up. A tick long after the last one gives nothing up: the phone was
-    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read.
+    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read. A frame late for a second of real
+    /// time is given up regardless, so a phone that stays busy doesn't freeze the picture with nothing asked.
     pub fn tick(&mut self, now: f64) -> Vec<Output> {
         let mut out = vec![];
         let since_tick = self.ticked_at.map_or(0.0, |t| now - t);
@@ -555,10 +561,12 @@ impl Receiver {
                     }
                     None => {
                         self.late_for = 0.0;
+                        self.late_at = now;
                         *self.late_since.insert(now)
                     }
                 };
-                if !away && ((self.late_for >= self.patience() && !stalled) || now - since >= LONGEST) {
+                let stuck = now - self.late_at >= STUCK;
+                if stuck || (!away && ((self.late_for >= self.patience() && !stalled) || now - since >= LONGEST)) {
                     self.broken = true;
                     self.broken_at = now;
                     self.asked_at = -1.0;
@@ -1092,6 +1100,27 @@ mod tests {
         assert_eq!(feedback(&out), [Feedback::Nack(vec![Missing { frame: 2, pieces: vec![1, 2] }])], "asked again at once");
         assert_eq!(frames(&feed(&mut r, f2[1..].to_vec(), 0.134)), [2]);
         assert_eq!(r.dropped, 0);
+    }
+
+    #[test]
+    fn a_phone_that_stays_busy_still_gives_up() {
+        // every tick 20 ms after the last (a slow phone's busy decoder thread): each one looks like a hitch, but a piece that never
+        // comes is still given up within a second of real time, so the picture doesn't freeze with nothing asked
+        let mut r = Receiver::new(true, true, 0.0);
+        r.rtt = 0.002;
+        feed(&mut r, key(1), 0.0);
+        feed(&mut r, plain(2).into_iter().filter(|p| p.index != 1), 0.016);
+        let (mut t, mut n, mut lost) = (0.02f64, 3u32, None);
+        while t < 2.0 && lost.is_none() {
+            feed(&mut r, plain(n), t);
+            n += 1;
+            if feedback(&r.tick(t)).contains(&Feedback::Lost { after: 1 }) {
+                lost = Some(t);
+            }
+            t += 0.02;
+        }
+        let lost = lost.expect("given up though every tick was late");
+        assert!(lost <= 0.02 + STUCK + 0.02 + 1e-9, "{lost}");
     }
 
     #[test]

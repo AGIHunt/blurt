@@ -168,6 +168,24 @@ final class RemoteVideoRepairTests: XCTestCase {
         XCTAssertLessThan(lost, 0.097 + r.patience + 0.05)
     }
 
+    func testAPhoneThatStaysBusyStillGivesUp() {
+        // every tick 20 ms after the last (a slow phone's busy main queue): each one looks like a hitch, but a piece that never comes is
+        // still given up within a second of real time, so the picture doesn't freeze with nothing asked
+        var r = RemoteVideoReceiver(nack: true, ltr: true)
+        r.rtt = 0.002
+        _ = frame(1, key: true).flatMap { r.add($0, now: 0) }
+        _ = frame(2).filter { $0.index != 1 }.flatMap { r.add($0, now: 0.016) }
+        var t = 0.02, n: UInt32 = 3
+        var lost: Double?
+        while t < 2, lost == nil {
+            _ = frame(n).flatMap { r.add($0, now: t) }; n += 1
+            if feedback(r.tick(now: t)).contains(.lost(after: 1)) { lost = t }
+            t += 0.02
+        }
+        guard let lost else { return XCTFail("given up though every tick was late") }
+        XCTAssertLessThanOrEqual(lost, 0.02 + 1.0 + 0.02 + 1e-9)
+    }
+
     func testAfterAStallThePieceAskedForGetsItsRetry() {
         // the end of frame 2 is lost, asked for, and then nothing comes for 80 ms (Wi-Fi's stall, or the sender stopped): when the next
         // frame's first piece arrives the frame has been late longer than the patience, but only in the stall
