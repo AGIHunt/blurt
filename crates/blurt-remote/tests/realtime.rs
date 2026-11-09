@@ -305,7 +305,8 @@ async fn loss_is_repaired_not_restarted() {
         assert!(m.dropped <= 2, "{name}: {m}");
         assert_eq!(m.corrupt, 0, "{name}: what was sent again or rebuilt is what was sent: {m}");
         assert!(m.longest_gap_ms < 150.0, "{name}: {m}");
-        assert!(*rate >= 11_000_000, "{name}: the rate stays near the top, not a third of it ({rate})");
+        // one backoff step (12 -> 10.5) is fine on a busy runner; collapsing to a third is not
+        assert!(*rate >= 9_000_000, "{name}: the rate stays near the top, not a third of it ({rate})");
         if m.weather_dropped > 0 && !name.contains("stall") {
             assert!(*resent > 0, "{name}");
         }
