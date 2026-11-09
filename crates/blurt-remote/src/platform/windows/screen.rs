@@ -24,8 +24,8 @@ use ::windows::Win32::Graphics::Direct3D11::{
 };
 use ::windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1, IDXGIOutput1};
 use ::windows::Win32::Graphics::Gdi::HMONITOR;
-use ::windows::Win32::Media::MediaFoundation::{MFShutdown, MFStartup, MFSTARTUP_FULL, MF_VERSION};
-use ::windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+use ::windows::Win32::Media::MediaFoundation::{MFStartup, MFSTARTUP_FULL, MF_VERSION};
+use ::windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 
 use super::annexb::{self, Codec};
 use super::capture::{Capture, Signal, Synthetic};
@@ -254,6 +254,30 @@ fn adapter_for(monitor: HMONITOR) -> Option<(IDXGIAdapter, Option<IDXGIOutput1>)
     None
 }
 
+/// Microsoft's Basic Display / Basic Render adapter (PCI vendor 0x1414): no video encoder, no video processor worth the name.
+const MICROSOFT_VENDOR: u32 = 0x1414;
+
+fn vendor(a: &IDXGIAdapter) -> u32 {
+    unsafe { a.GetDesc() }.map_or(0, |d| d.VendorId)
+}
+
+/// The first GPU that isn't Microsoft's basic adapter: where a monitor's own adapter has no encoder (a VM's virtual display beside
+/// its real GPU, a remote session's indirect display), capture on that GPU instead; WGC copies across adapters.
+fn hardware_adapter() -> Option<IDXGIAdapter> {
+    unsafe {
+        let f: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+        let mut i = 0;
+        while let Ok(a) = f.EnumAdapters1(i) {
+            let a: IDXGIAdapter = a.cast().ok()?;
+            if vendor(&a) != MICROSOFT_VENDOR {
+                return Some(a);
+            }
+            i += 1;
+        }
+    }
+    None
+}
+
 fn create_device(adapter: Option<&IDXGIAdapter>) -> Result<ID3D11Device, String> {
     let mut device = None;
     let flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
@@ -288,8 +312,8 @@ impl Enc {
 impl Worker {
     fn run(self, ready: Sender<Result<ScreenInfo, String>>) {
         let _dpi = monitors::Dpi::physical();
-        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok();
-        let mf = unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) }.is_ok();
+        keep_com_and_mf();
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         let mut ready = Some(ready);
         if let Err(e) = self.stream(&mut ready) {
             if let Some(r) = ready.take() {
@@ -297,12 +321,6 @@ impl Worker {
             } else {
                 log(&format!("stopped: {e}"));
             }
-        }
-        if mf {
-            let _ = unsafe { MFShutdown() };
-        }
-        if com {
-            unsafe { CoUninitialize() };
         }
     }
 
@@ -322,7 +340,10 @@ impl Worker {
                 };
                 match Encoder::hardware(device, codec, size.0, size.1, fps, bitrate) {
                     Ok(e) => return Ok((Enc::Gpu(e), size)),
-                    Err(e) => errors.push(e),
+                    Err(e) => {
+                        log(&format!("hardware {w} at {}×{}: {e}", size.0, size.1));
+                        errors.push(e)
+                    }
                 }
             }
         }
@@ -352,7 +373,19 @@ impl Worker {
                 (Monitor { rect: r, scale: 1.0, primary: true, handle: 0 }, None, None)
             }
         };
+        // the monitor's own GPU (Desktop Duplication needs it, and a laptop's iGPU has its own encoder), unless it is Microsoft's
+        // basic adapter: then a real GPU's
+        let adapter = match adapter {
+            Some(a) if vendor(&a) != MICROSOFT_VENDOR => Some(a),
+            other => hardware_adapter().or(other),
+        };
         let device = create_device(adapter.as_ref()).or_else(|_| create_device(None))?;
+        if let Some(a) = &adapter {
+            if let Ok(d) = unsafe { a.GetDesc() } {
+                let n = d.Description.iter().take_while(|c| **c != 0).count();
+                log(&format!("adapter: {} (vendor {:#06x})", String::from_utf16_lossy(&d.Description[..n]), d.VendorId));
+            }
+        }
         let mut capture = match self.options.source {
             Source::Monitor => Capture::monitor(&device, HMONITOR(monitor.handle as *mut _), output.as_ref(), self.signal.clone()).map_err(|e| {
                 log(&format!("capture: {e}"));
@@ -407,7 +440,39 @@ impl Worker {
         let t0 = Instant::now();
         let mut last_time = -1i64;
         let mut fails = 0;
+        let started_at = Instant::now();
+        let mut have_picture = false;
+        let mut last_log = Instant::now();
         loop {
+            if last_log.elapsed() > Duration::from_secs(5) {
+                last_log = Instant::now();
+                let g = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                let s = &g.0;
+                log(&format!(
+                    "{} frames ({} keyframes, {} KB), {} captured, {} skipped, encode {:.1} ms, convert {:.1} ms, in {:.1} s",
+                    s.frames,
+                    s.keyframes,
+                    s.bytes / 1024,
+                    s.captured,
+                    s.skipped,
+                    s.encode_ms_avg(),
+                    s.convert_ms_avg(),
+                    g.1.elapsed().as_secs_f64()
+                ));
+            }
+            // nothing from the capture yet (a still screen gives no frame): the picture as it is now, once
+            if !have_picture && matches!(self.options.source, Source::Monitor) && started_at.elapsed() > Duration::from_millis(150) {
+                have_picture = true;
+                let m = (*self.shown.lock().unwrap_or_else(|e| e.into_inner())).unwrap_or(monitor);
+                if m.rect.width() as u32 == conv.in_w && m.rect.height() as u32 == conv.in_h {
+                    if let Some(px) = super::capture::gdi_snapshot(&m.rect) {
+                        conv.hold_pixels(&px);
+                        captured_at = monitors::now();
+                        pacer.picture(true);
+                        log("first picture from GDI (the screen is still)");
+                    }
+                }
+            }
             // commands first
             while let Ok(c) = self.rx.try_recv() {
                 match c {
@@ -514,6 +579,7 @@ impl Worker {
                     }
                 }
                 conv.hold(&f.texture);
+                have_picture = true;
                 captured_at = f.time;
                 dirty_known = f.dirty.is_some();
                 let (rect, _) = geometry::crop_rect(crop, conv.in_w, conv.in_h);
@@ -565,11 +631,23 @@ fn log(s: &str) {
     }
 }
 
+/// COM's multithreaded apartment and Media Foundation, for the life of the process. When the last MTA thread ended (this worker,
+/// with the server's threads never in COM), COM unloaded GraphicsCapture.dll while WGC still had a callback on its way: an access
+/// violation in `GraphicsCapture.dll_unloaded` after every stop (Server 2025). CoIncrementMTAUsage keeps the apartment up.
+fn keep_com_and_mf() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        let _ = ::windows::Win32::System::Com::CoIncrementMTAUsage();
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    });
+}
+
 /// The hardware encoders Media Foundation lists for NV12 → H.264 and → HEVC, by name (examples/win_smoke.rs, diagnostics).
 pub fn hardware_encoders() -> Vec<(&'static str, String)> {
+    keep_com_and_mf();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
     }
     let mut out = Vec::new();
     for codec in [Codec::H264, Codec::Hevc] {
