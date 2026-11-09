@@ -710,6 +710,10 @@ final class ScreenStream {
         if crop != shown {
             shown = crop
             place()
+            if let t = cropAskedAt.removeValue(forKey: crop) {
+                let ms = (CACurrentMediaTime() - t) * 1000
+                q.async { self.cropLatency.append(ms) }
+            }
         }
         CATransaction.commit()
         let now = CACurrentMediaTime()
@@ -724,6 +728,14 @@ final class ScreenStream {
     }
 
     private var lastCommit = 0.0
+    /// measured runs: when each crop was asked for (main thread), to time how long until a frame showing it is up (kept on q)
+    private var cropAskedAt: [RemoteCrop: Double] = [:]
+    private var cropLatency: [Double] = []
+
+    func testCrop(_ c: RemoteCrop) {
+        cropAskedAt[c] = CACurrentMediaTime()
+        Link.shared.send(.screenCrop(c))
+    }
     private var linkFresh = false
 
     /// While frames come: the panel at its own rate (ProMotion runs at 120 Hz only when asked to), and the time each frame reaches the glass.
@@ -784,7 +796,7 @@ final class ScreenStream {
     func beginStage() {
         q.async {
             self.ages = []; self.decodeMs = []; self.probes = []
-            self.agesFirst = []; self.agesWhole = []; self.agesShown = []; self.agesGlass = []; self.vsyncWait = []; self.gaps = []; self.panel = []
+            self.agesFirst = []; self.agesWhole = []; self.agesShown = []; self.agesGlass = []; self.vsyncWait = []; self.gaps = []; self.panel = []; self.cropLatency = []
             self.firstNacked = self.receiver.nacked; self.firstRepaired = self.receiver.repaired; self.firstRefreshes = self.receiver.refreshes
             self.frames = 0; self.bytes = 0; self.keyRequests = 0
             self.stageStart = CACurrentMediaTime()
@@ -812,6 +824,10 @@ final class ScreenStream {
                 d[k + "_p50"] = Self.pct(a, 0.5); d[k + "_p95"] = Self.pct(a, 0.95); d[k + "_max"] = Self.pct(a, 1)
             }
             d["panel_ms"] = Self.pct(self.panel, 0.5)
+            if !self.cropLatency.isEmpty {
+                d["crop_shown_p50"] = Self.pct(self.cropLatency, 0.5); d["crop_shown_p95"] = Self.pct(self.cropLatency, 0.95)
+                d["crop_shown_max"] = Self.pct(self.cropLatency, 1); d["crop_shown_n"] = self.cropLatency.count
+            }
             d["gap_p50"] = Self.pct(self.gaps, 0.5); d["gap_p95"] = Self.pct(self.gaps, 0.95); d["gap_p99"] = Self.pct(self.gaps, 0.99); d["gap_max"] = Self.pct(self.gaps, 1)
             // time spent waiting more than two frames for the next picture, per second
             let frozen: Double = self.gaps.filter { $0 > 40 }.reduce(0.0) { $0 + $1 - 17 }
@@ -881,7 +897,7 @@ enum ScreenTest {
                     k += 1
                     var c = RemoteCrop.centered(zoom: zoom)
                     c.x = c.x * Float(1 + sin(Double(k) / 4)) ; c.y = c.y * Float(1 + cos(Double(k) / 5))
-                    Link.shared.send(.screenCrop(c.valid))
+                    ScreenStream.shared.testCrop(c.valid)
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {       // past the start-up

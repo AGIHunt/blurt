@@ -100,6 +100,14 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private var switchBegan = 0.0
     private var switchWhy = ""
     private var encoderSize = (w: 0, h: 0)
+    /// Zoomed in, the display comes at its own pixels and each frame is cropped here on the GPU (RemoteScreenCrop.swift); the whole view
+    /// comes at the output size, scaled by ScreenCaptureKit. Frames say which by their size, so a change needs no waiting.
+    private var nativeSize = (w: 0, h: 0)
+    private var native = false
+    private let cropper = ScreenCropper()
+    /// the last frame as captured, to crop again when only the view moves; and the crop it was last sent with
+    private var lastRaw: CVImageBuffer?
+    private var lastRawCrop = RemoteCrop.whole
 
     /// Where the pointer is on the desktop. Tests that post nothing move a pretend one (RemoteInput.pretendPointer), so following it
     /// from display to display is tried without touching the real one.
@@ -156,6 +164,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
                 let c = Self.configure(src, scale: scale, r)
                 let w = c.width, h = c.height
+                let nativeSize = (w: Int(src.width * scale) / 2 * 2, h: Int(src.height * scale) / 2 * 2)
                 relayed = channel.isRelay
                 if q.sync(execute: { stopped }) { return }      // turned off while this was starting
                 q.sync {
@@ -164,9 +173,17 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
                     self.scDisplays = content.displays
                     self.displays = RemoteDisplayList.all()
                     self.crop = (self.requestedCrop ?? r.crop).valid
-                    self.frameCrop = self.crop
+                    self.frameCrop = .whole
                     self.config = c
-                    c.sourceRect = self.rect(self.crop)
+                    // always the whole of it: a part is cropped here (setCrop)
+                    c.sourceRect = CGRect(origin: .zero, size: src.size)
+                    self.nativeSize = nativeSize
+                    self.native = false
+                    if self.crop != .whole, (nativeSize.w, nativeSize.h) != (w, h) {
+                        self.native = true
+                        c.width = nativeSize.w
+                        c.height = nativeSize.h
+                    }
                 }
                 let s = SCStream(filter: filter, configuration: c, delegate: self)
                 try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: q)
@@ -293,6 +310,10 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         let old = encoderSize
         config = to.config
+        let k = RemoteDisplayList.scale(to.id)
+        nativeSize = (Int(to.src.width * k) / 2 * 2, Int(to.src.height * k) / 2 * 2)
+        native = false
+        lastRaw = nil
         source = to.src
         shownDisplay = to.id
         crop = .whole
@@ -346,6 +367,8 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         CGRect(x: CGFloat(c.x) * source.width, y: CGFloat(c.y) * source.height, width: CGFloat(c.w) * source.width, height: CGFloat(c.h) * source.height)
     }
 
+    /// The part of the screen the phone looks at. Applied here to the next frame, and at once to the last one: nothing waits. Only between
+    /// the whole view and a zoomed one does the stream change size, and frames say which they are by that size.
     func setCrop(_ c: RemoteCrop) {
         q.async {
             let c = c.valid
@@ -353,16 +376,39 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             // a crop of the display being left: the phone starts the next one whole
             guard !self.switching, c != self.crop else { return }
             self.crop = c
-            config.sourceRect = self.rect(c)
-            self.cropsUnderWay += 1
-            let asked = CACurrentMediaTime()
-            s.updateConfiguration(config) { [weak self] error in
-                self?.q.async {
-                    self?.timing.held((CACurrentMediaTime() - asked) * 1000)
-                    self?.cropDone(c, failed: error != nil)
+            let zoomed = c != .whole
+            if zoomed != self.native, (self.nativeSize.w, self.nativeSize.h) != (self.encoderSize.w, self.encoderSize.h) {
+                self.native = zoomed
+                config.width = zoomed ? self.nativeSize.w : self.encoderSize.w
+                config.height = zoomed ? self.nativeSize.h : self.encoderSize.h
+                config.sourceRect = CGRect(origin: .zero, size: self.source.size)
+                let asked = CACurrentMediaTime()
+                s.updateConfiguration(config) { [weak self] error in
+                    self?.q.async {
+                        self?.timing.held((CACurrentMediaTime() - asked) * 1000)
+                        if let error { emit(["event": "remote_screen", "state": "resize_failed", "why": "\(error)"]) }
+                    }
                 }
             }
+            self.cropAgain()
         }
+    }
+
+    /// The view moved: the last frame, cropped anew, now. On a still screen nothing else would show the new part.
+    private func cropAgain() {
+        let now = CACurrentMediaTime()
+        guard let raw = lastRaw, CVPixelBufferGetWidth(raw) == nativeSize.w, CVPixelBufferGetHeight(raw) == nativeSize.h, crop != lastRawCrop,
+              let out = cropped(raw, crop) else { return }
+        lastRawCrop = crop
+        take(out, pts: nextPTS(), captured: now, crop: crop, cut: false)
+    }
+
+    /// One frame of the display at its own pixels, cropped and scaled to the output on the GPU.
+    private func cropped(_ raw: CVImageBuffer, _ c: RemoteCrop) -> CVImageBuffer? {
+        let t0 = CACurrentMediaTime()
+        let out = cropper.crop(raw, c, width: encoderSize.w, height: encoderSize.h)
+        timing.cropped((CACurrentMediaTime() - t0) * 1000)
+        return out
     }
 
     private func cropDone(_ c: RemoteCrop, failed: Bool) {
@@ -541,31 +587,50 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer b: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, running, let session, b.isValid, let image = CMSampleBufferGetImageBuffer(b) else { return }
+        guard type == .screen, running, session != nil, b.isValid, let image = CMSampleBufferGetImageBuffer(b) else { return }
+        let size = (w: CVPixelBufferGetWidth(image), h: CVPixelBufferGetHeight(image))
+        let whole = size == encoderSize, full = size == nativeSize
         // the display before a switch, at its own size: nothing the encoder can take
-        guard cropsUnderWay > 0 || (CVPixelBufferGetWidth(image) == encoderSize.w && CVPixelBufferGetHeight(image) == encoderSize.h) else { skipped += 1; return }
+        guard cropsUnderWay > 0 || whole || full else { skipped += 1; return }
         // a frame with nothing new: skipped by SCK, which is why a still screen costs nothing
         if let a = CMSampleBufferGetSampleAttachmentsArray(b, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
            let raw = a.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete { skipped += 1; return }
         let pts = CMSampleBufferGetPresentationTimeStamp(b)
         // ScreenCaptureKit doesn't always say so: a window that isn't changing still comes as complete frames, at full rate
-        if let l = lastImage, Self.same(l, image) { skipped += 1; return }
-        let now = CACurrentMediaTime()
-        lastImage = image
+        if let l = lastRaw, Self.same(l, image), lastRawCrop == (full ? crop : .whole) { skipped += 1; return }
+        lastRaw = image
         lastPTS = pts
-        lastFrameAt = now
-        refines = 0
         if cropsUnderWay > 0 {
+            lastImage = image
+            lastFrameAt = CACurrentMediaTime()
             heldImage = (image, pts)
             return
         }
-        lastImageCrop = frameCrop
+        // at the output size it is the whole view (ScreenCaptureKit scaled it); at the display's own size, the part in view is cut out here.
+        // Both the same size: the display has no more pixels than the phone asked for, and is cropped here whenever the view isn't whole
+        let label: RemoteCrop = full && (crop != .whole || !whole) ? crop : .whole
+        lastRawCrop = label
+        take(image, pts: pts, captured: CMTimeGetSeconds(pts), crop: label, cut: !(label == .whole && whole))
+    }
+
+    /// A picture for the encoder, and which part of the screen it shows: sent now, held for its turn, or skipped. `cut`: still the
+    /// display's own pixels, cropped on the GPU only when it's really sent (captured at 120 for a 60 Hz phone, half never are).
+    private func take(_ image: CVImageBuffer, pts: CMTime, captured: Double, crop label: RemoteCrop, cut: Bool) {
+        let now = CACurrentMediaTime()
+        lastFrameAt = now
+        refines = 0
         // before the frame gets a number: a gap in the numbers costs a keyframe
-        if channel.streamBusy || holdingBack() { busySkips += 1; skipped += 1; return }
+        if channel.streamBusy || holdingBack() {
+            busySkips += 1
+            skipped += 1
+            // what a resend later sharpens is this one
+            if let out = cut ? cropped(image, label) : image { lastImage = out; lastImageCrop = label }
+            return
+        }
         if !turn(now) || now < pacedUntil {
             // too soon: it waits for its turn rather than being dropped, unless a newer one comes first
             skipped += 1
-            early = (image, pts)
+            early = (image, pts, captured, label, cut)
             let due = max(now + (Self.early - turns) * frameGap, pacedUntil) - now
             if !earlyQueued {
                 earlyQueued = true
@@ -574,10 +639,17 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             return
         }
         early = nil
-        encode(image, pts: pts, captured: CMTimeGetSeconds(pts), crop: lastImageCrop)
+        sendFrame(image, cut: cut, pts: pts, captured: captured, crop: label)
     }
 
-    private var early: (image: CVImageBuffer, pts: CMTime)?
+    private func sendFrame(_ image: CVImageBuffer, cut: Bool, pts: CMTime, captured: Double, crop label: RemoteCrop) {
+        guard let out = cut ? cropped(image, label) : image else { return }
+        lastImage = out
+        lastImageCrop = label
+        encode(out, pts: pts, captured: captured, crop: label)
+    }
+
+    private var early: (image: CVImageBuffer, pts: CMTime, captured: Double, crop: RemoteCrop, cut: Bool)?
     private var earlyQueued = false
     /// Frames may go at the phone's rate on average, not at fixed intervals: captured at 120, a 60 Hz scroll's frames come 8 and 25 ms
     /// apart, and a fixed gap dropped one in seven or made them wait. One frame's credit a frame time, at most 1.5 saved; a frame may go
@@ -601,7 +673,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             return
         }
         early = nil
-        encode(e.image, pts: e.pts, captured: CMTimeGetSeconds(e.pts), crop: lastImageCrop)
+        sendFrame(e.image, cut: e.cut, pts: e.pts, captured: e.captured, crop: e.crop)
     }
 
     /// Every byte the same. Stops at the first difference, and a screen's worth takes well under a millisecond when there is none.
@@ -759,6 +831,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             stopped = true
             lastImage = nil
             heldImage = nil
+            lastRaw = nil
+            early = nil
+            cropper.reset()
             ticker?.cancel()
             ticker = nil
             if let s = session { VTCompressionSessionInvalidate(s) }
