@@ -5,6 +5,7 @@ use blurt_remote::crypto::{self, PhoneHandshake, SealIn, SealOut};
 use blurt_remote::packets::{self, FrameReader, PointerPacket, VideoPacket};
 use blurt_remote::pairing::Pairing;
 use blurt_remote::relay;
+use blurt_remote::repair::{self, Feedback, Missing};
 use blurt_remote::wire::{Crop, ToMac, ToPhone};
 use serde_json::Value;
 
@@ -34,7 +35,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 38);
+    assert_eq!(list.len(), 39);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -48,7 +49,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 25);
+    assert_eq!(list.len(), 26);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -182,6 +183,59 @@ fn the_handshake_byte_for_byte() {
         assert_eq!(hex(&sealed), f["sealed"].as_str().unwrap(), "counter {}", f["counter"]);
         assert_eq!(crypto::session_of_packet(&sealed), Some(7));
         assert_eq!(udp_in.open_packet(&sealed), Some(plain));
+    }
+}
+
+#[test]
+fn video_repair() {
+    let v = vectors();
+    let r = &v["videoRepair"]["refresh"];
+    let data = unhex(r["data"].as_str().unwrap());
+    let pieces = VideoPacket::split_flagged(
+        &data,
+        r["frame"].as_u64().unwrap() as u32,
+        r["keyframe"].as_bool().unwrap(),
+        r["refresh"].as_bool().unwrap(),
+        r["ackRequested"].as_bool().unwrap(),
+        r["captured"].as_f64().unwrap(),
+        r["pieceSize"].as_u64().unwrap() as usize,
+    );
+    let want: Vec<&str> = r["hex"].as_array().unwrap().iter().map(|h| h.as_str().unwrap()).collect();
+    assert_eq!(pieces.iter().map(|p| hex(&p.encode())).collect::<Vec<_>>(), want);
+    for h in &want {
+        let p = VideoPacket::decode(&unhex(h)).unwrap();
+        assert!(p.refresh && p.ack_requested && !p.keyframe);
+    }
+    let par = &v["videoRepair"]["parity"];
+    let made = repair::parity(&pieces, par["group"].as_u64().unwrap() as usize);
+    let want: Vec<&str> = par["hex"].as_array().unwrap().iter().map(|h| h.as_str().unwrap()).collect();
+    assert_eq!(made.iter().map(|p| hex(&p.encode())).collect::<Vec<_>>(), want);
+    // and the parity piece rebuilds the piece it covers: drop piece 2, keep the parity piece
+    let mut rx = repair::Receiver::new(false, true, 0.0);
+    rx.add(VideoPacket::decode(&unhex(v["video"]["packets"]["hex"][0].as_str().unwrap())).unwrap(), 0.0); // nothing: not a keyframe of this stream
+    let mut out = vec![];
+    for p in pieces.iter().take(2).chain(made.iter()) {
+        let mut q = VideoPacket::decode(&p.encode()).unwrap();
+        q.keyframe = true; // the receiver starts from a keyframe
+        out.extend(rx.add(q, 0.0));
+    }
+    match out.first() {
+        Some(repair::Output::Frame(f)) => assert_eq!(f.data, data),
+        other => panic!("not rebuilt: {other:?}"),
+    }
+
+    let fb = &v["videoRepair"]["feedback"];
+    let expect = [
+        ("nack", Feedback::Nack(vec![Missing { frame: 43, pieces: vec![1, 2] }, Missing { frame: 44, pieces: vec![] }])),
+        ("ack", Feedback::Ack { newest: 43, earlier: 5 }),
+        ("lost", Feedback::Lost { after: 42 }),
+    ];
+    for e in fb.as_array().unwrap() {
+        let name = e["name"].as_str().unwrap();
+        let bytes = unhex(e["hex"].as_str().unwrap());
+        let f = Feedback::decode(&bytes).unwrap_or_else(|| panic!("{name}"));
+        assert_eq!(hex(&f.encode()), e["hex"].as_str().unwrap(), "{name}");
+        assert_eq!(Some(&f), expect.iter().find(|x| x.0 == name).map(|x| &x.1), "{name}");
     }
 }
 

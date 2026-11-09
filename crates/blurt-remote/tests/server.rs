@@ -199,6 +199,7 @@ async fn pairing_a_session_keys_and_the_pointer() {
         fps: 30,
         codecs: Some(vec!["h264".into()]),
         display: None,
+        features: None,
     })))
     .await;
     let why = phone.wait(Duration::from_secs(3), |m| if let ToPhone::ScreenFailed(w) = m { Some(w.clone()) } else { None }).await;

@@ -4,6 +4,9 @@
 //!   cargo run --example host -- [--screen-test] [--answer yes|no|ask] [--relay ws://127.0.0.1:8787] [--dir <folder>] [--port N]
 //!   cargo run --example host -- --real    this OS's own backend (platform::backend(): Windows' capture, encoder, SendInput)
 //!
+//! --intra-refresh N: (with --screen-test) libx264 refreshes the picture column by column every N frames instead of keyframes, and
+//! the host offers "ltr": a frame the phone gave up is answered by flagging the next frame a refresh, and the picture heals as the
+//! wave passes (an experiment: how a phone's decoder takes a refresh that isn't from an acknowledged reference; remote-realtime.md).
 //! --screen-test: a synthetic screen, ffmpeg's testsrc2 → libx264 (ultrafast, zerolatency, no B-frames) → H.264 frames as
 //! length-prefixed NAL units with SPS/PPS on keyframes; the crop, size and rate are honoured by restarting ffmpeg (roughly).
 //! --answer: the pairing question's answer, 3 s after it's asked (the test flag; default yes). `ask`: type yes / no on stdin.
@@ -137,6 +140,10 @@ struct Ffmpeg {
     child: Option<Child>,
     gen: Arc<AtomicU64>,
     last_restart: Option<Instant>,
+    /// --intra-refresh N
+    intra: Option<u32>,
+    /// the next frame out is flagged a refresh
+    recover: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Ffmpeg {
@@ -167,7 +174,10 @@ impl Ffmpeg {
             .args(["-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i"])
             .arg(format!("{pattern}=size={}x{}:rate={}", sw as u32, sh as u32, cfg.fps.max(1)))
             .args(["-vf", &crop, "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0"])
-            .args(["-x264-params", "keyint=600:scenecut=0:aud=1:repeat-headers=1:slices=1"])
+            .args(["-x264-params", &match self.intra {
+                Some(n) => format!("keyint={n}:intra-refresh=1:scenecut=0:aud=1:repeat-headers=1:slices=1"),
+                None => "keyint=600:scenecut=0:aud=1:repeat-headers=1:slices=1".into(),
+            }])
             .args(["-b:v", &format!("{kbps}k"), "-maxrate", &format!("{kbps}k"), "-bufsize", &format!("{}k", kbps / 2)])
             .args(["-f", "h264", "-"])
             .stdin(Stdio::null())
@@ -184,11 +194,13 @@ impl Ffmpeg {
         let out = child.stdout.take().unwrap();
         let gen = self.gen.clone();
         let crop = cfg.crop;
+        let recover = self.recover.clone();
         std::thread::spawn(move || read_annexb(out, move |f| {
             if gen.load(SeqCst) != g {
                 return false;
             }
-            sink(EncodedFrame { crop, captured: now(), ..f });
+            let refresh = recover.swap(false, SeqCst) && !f.keyframe;
+            sink(EncodedFrame { crop, captured: now(), refresh, ..f });
             true
         }));
         self.child = Some(child);
@@ -223,7 +235,7 @@ fn read_annexb(mut r: impl Read, mut each: impl FnMut(EncodedFrame) -> bool) {
         if picture.is_empty() {
             return true;
         }
-        each(EncodedFrame { picture, keyframe: key, parameter_sets: if key { sets } else { vec![] }, crop: Crop::WHOLE, captured: 0.0 })
+        each(EncodedFrame { picture, keyframe: key, parameter_sets: if key { sets } else { vec![] }, crop: Crop::WHOLE, captured: 0.0, ..Default::default() })
     };
     loop {
         let n = match r.read(&mut chunk) {
@@ -299,6 +311,13 @@ impl Screen for Ffmpeg {
         }
     }
     fn refresh(&mut self) {}
+    fn supports_recovery(&self) -> bool {
+        self.intra.is_some()
+    }
+    fn recovery_frame(&mut self) {
+        // the wave is always going: the next frame starts the phone decoding again, healed within N frames
+        self.recover.store(true, SeqCst);
+    }
     fn stop(&mut self) {
         self.gen.fetch_add(1, SeqCst);
         if let Some(mut c) = self.child.take() {
@@ -416,7 +435,16 @@ fn main() {
     let backend = LogBackend {
         desk: desk.clone(),
         input: LogInput { x: 960.0, y: 540.0, desk: desk.clone() },
-        screen: screen.then(|| Ffmpeg { desk: desk.clone(), config: None, sink: None, child: None, gen: Arc::new(AtomicU64::new(0)), last_restart: None }),
+        screen: screen.then(|| Ffmpeg {
+            desk: desk.clone(),
+            config: None,
+            sink: None,
+            child: None,
+            gen: Arc::new(AtomicU64::new(0)),
+            last_restart: None,
+            intra: arg("--intra-refresh").and_then(|n| n.parse().ok()),
+            recover: Arc::default(),
+        }),
     };
     let h = Host::start(
         HostConfig {

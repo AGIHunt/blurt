@@ -13,6 +13,9 @@
 //!  • several displays (displays.rs): the one the pointer is on, followed with some hysteresis, or the one the phone pinned. A move
 //!    to another is `Screen::set_display` when the backend can and the shapes match, else the stream starts again there; either way
 //!    a new screenView (with the display's id) and a keyframe.
+//!  • repairs (repair.rs, docs/design/remote-realtime.md), what the phone offered of what this host does, named in screenView: the
+//!    last second of pieces kept and sent again when the phone names them (nack); a frame lost for good answered with the backend's
+//!    recovery frame (ltr, only when its encoder makes one); parity pieces when the round trip is long and pieces go missing (fec).
 //!
 //! The sink runs on the backend's thread and never touches the backend (its `stop` may be waiting for that thread); the ticker does.
 
@@ -26,6 +29,7 @@ use crate::host::{DisplayInfo, EncodedFrame, FrameSink, ScreenConfig};
 use crate::input::{Cmd, Shared};
 use crate::packets::{cursor, pack_payload, Kind, VideoPacket};
 use crate::rate::Rate;
+use crate::repair::{Answer, HostRepair};
 use crate::wire::{Crop, ScreenReport, ScreenRequest, ToPhone};
 
 /// Across streams, so a late piece of the last one can't pass for a frame of this one.
@@ -90,7 +94,10 @@ struct St {
     bytes: usize,
     keyframes: u32,
     skipped: u32,
+    refreshes: u32,
     stats_since: f64,
+    // NACK, recovery frames, parity
+    repair: HostRepair,
 }
 
 impl St {
@@ -125,6 +132,8 @@ struct View {
     codec: Mutex<String>,
     switching: AtomicBool,
     rt: tokio::runtime::Handle,
+    /// the repairs the phone offered (ScreenRequest.features)
+    offered: Option<Vec<String>>,
 }
 
 /// Where the pointer is on the desktop: the backend's word for it, else worked out from the display shown.
@@ -196,7 +205,9 @@ impl ScreenSession {
             bytes: 0,
             keyframes: 0,
             skipped: 0,
+            refreshes: 0,
             stats_since: 0.0,
+            repair: HostRepair::default(),
         }));
         let (bitrate, fps) = {
             let s = st.lock().unwrap();
@@ -210,6 +221,8 @@ impl ScreenSession {
             codecs: r.codecs.clone().unwrap_or_else(|| vec!["hevc".into()]),
             crop: r.crop.to_host(),
             display: display.clone(),
+            capture_fps: ScreenConfig::capture_for(fps),
+            repairs: HostRepair::repairs_offered(r.features.as_deref()),
         };
         let sink: FrameSink = {
             let (st, chan, rt, log) = (st.clone(), chan.clone(), rt.clone(), log.clone());
@@ -220,11 +233,21 @@ impl ScreenSession {
             let Some(screen) = b.screen() else {
                 return Err(NO_SCREEN.into());
             };
-            screen.start(&config, sink.clone())?
+            let info = screen.start(&config, sink.clone())?;
+            // what the phone offered, of what this host does: nack and fec always, ltr when this encoder makes recovery frames
+            st.lock().unwrap().repair = HostRepair::negotiate(r.features.as_deref(), screen.supports_recovery());
+            info
         };
-        chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec.clone()), display: display.clone() });
+        let features = st.lock().unwrap().repair.names();
+        chan.send(&ToPhone::ScreenView {
+            width: info.width,
+            height: info.height,
+            codec: Some(info.codec.clone()),
+            display: display.clone(),
+            features: features.clone(),
+        });
         log(serde_json::json!({"event": "remote_screen", "state": "on", "width": width, "height": height, "bitrate": bitrate,
-                               "fps": fps, "codec": info.codec, "relay": relayed, "display": display}));
+                               "fps": fps, "codec": info.codec, "relay": relayed, "display": display, "features": features}));
         let view = Arc::new(View {
             follow: Mutex::new(Follow::new(pinned, display)),
             displays: all,
@@ -234,6 +257,7 @@ impl ScreenSession {
             codec: Mutex::new(info.codec),
             switching: AtomicBool::new(false),
             rt: rt.clone(),
+            offered: r.features.clone(),
         });
         let s = ScreenSession { st, chan, backend, input, stopped: Arc::new(AtomicBool::new(false)), log, view };
         s.ticker(&rt, if relayed { 15 } else { 60 });
@@ -351,6 +375,10 @@ impl ScreenSession {
                 && s.sent_total.saturating_sub(received) > 64_000usize.max(s.rate.bitrate as usize / 8 * 3 / 4);
             let busy = s.busy_skips;
             let changed = s.rate.update(frames, lost, busy, backed_up, rtt, sent, delivered);
+            if let Some((group, loss)) = s.repair.adapt(rtt) {
+                (self.log)(serde_json::json!({"event": "remote_screen_repair", "fec_group": group, "loss": (loss * 1000.0).round() / 1000.0,
+                                             "rtt": rtt.unwrap_or(-1.0)}));
+            }
             s.busy_skips = 0;
             s.report_bytes = 0;
             s.report_since = now;
@@ -401,11 +429,57 @@ impl ScreenSession {
         }
     }
 
+    /// The phone's word on the picture (Kind::VideoFeedback): pieces sent again at once, references the encoder may use now, or a
+    /// recovery frame (a keyframe without ltr).
+    pub fn feedback(&self, d: &[u8]) {
+        let answer = {
+            let mut s = self.st.lock().unwrap();
+            if !s.running {
+                return;
+            }
+            let (now, rate) = (s.now(), s.rate.bitrate);
+            s.repair.feedback(d, rate, now)
+        };
+        match answer {
+            Some(Answer::Resend(pieces)) => {
+                for p in &pieces {
+                    self.chan.send_datagram(Kind::Video, p);
+                }
+            }
+            Some(Answer::Acknowledged(refs)) => {
+                if let Some(sc) = self.backend.lock().unwrap().screen() {
+                    sc.acknowledged(&refs);
+                }
+            }
+            Some(Answer::Recover) => {
+                self.st.lock().unwrap().refines = 0;
+                if let Some(sc) = self.backend.lock().unwrap().screen() {
+                    sc.recovery_frame();
+                }
+            }
+            Some(Answer::Keyframe) => self.keyframe(),
+            None => {}
+        }
+    }
+
+    /// The repairs this stream uses (screenView.features), for tests and the log.
+    pub fn features(&self) -> Option<Vec<String>> {
+        self.st.lock().unwrap().repair.names()
+    }
+
     pub fn stop(&self) {
         if self.stopped.swap(true, SeqCst) {
             return;
         }
-        self.st.lock().unwrap().running = false;
+        {
+            let mut s = self.st.lock().unwrap();
+            s.running = false;
+            // what the last stats line didn't cover
+            let now = s.now();
+            if s.encoded > 0 {
+                stats(&mut s, now, &self.log);
+            }
+        }
         if let Some(sc) = self.backend.lock().unwrap().screen() {
             sc.stop();
         }
@@ -477,7 +551,13 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
         s.sent_total = s.received_total;
     }
     let size = if whole { body.len().max(1) } else { VideoPacket::PAYLOAD };
-    let pieces = VideoPacket::split(&body, id, f.keyframe, f.captured, size);
+    let (ltr, refresh) = (s.repair.ltr, f.refresh && !f.keyframe);
+    let mut pieces =
+        VideoPacket::split_flagged(&body, id, f.keyframe, refresh && ltr, ltr && f.reference.is_some(), f.captured, size);
+    // kept for sending again (before sealing: the same bytes go again), and parity right behind the frame's own pieces
+    let encoded: Vec<Vec<u8>> = pieces.iter().map(VideoPacket::encode).collect();
+    let parity = s.repair.sent(id, f.reference, &pieces, &encoded, !whole, now);
+    pieces.extend(parity);
     if s.relayed && !whole && pieces.len() > BURST {
         // a keyframe all at once is what a thin link's queue drops, and one lost piece costs the whole frame: spread out over
         // twice the rate
@@ -518,11 +598,26 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
         s.last_key_at = now;
         s.key_through = s.sent_total;
         s.keyframes += 1;
+    } else if refresh {
+        s.refreshes += 1;
     }
     if now - s.stats_since >= 2.0 {
-        let secs = now - s.stats_since;
-        log(serde_json::json!({"event": "remote_screen_host", "fps": (s.encoded as f64 / secs) as u32,
-            "kbps": (s.bytes as f64 * 8.0 / secs / 1000.0) as u64, "keyframes": s.keyframes, "skipped": s.skipped}));
+        stats(&mut s, now, log);
+    }
+}
+
+/// The stats line: frames, bits, keyframes and the repairs since the last one.
+fn stats(s: &mut St, now: f64, log: &Arc<dyn Fn(serde_json::Value) + Send + Sync>) {
+    {
+        let secs = (now - s.stats_since).max(0.001);
+        let mut line = serde_json::json!({"event": "remote_screen_host", "fps": (s.encoded as f64 / secs) as u32,
+            "kbps": (s.bytes as f64 * 8.0 / secs / 1000.0) as u64, "keyframes": s.keyframes, "skipped": s.skipped,
+            "refreshes": s.refreshes});
+        if let (Some(o), serde_json::Value::Object(r)) = (line.as_object_mut(), s.repair.take()) {
+            o.extend(r);
+        }
+        log(line);
+        s.refreshes = 0;
         s.encoded = 0;
         s.bytes = 0;
         s.keyframes = 0;
@@ -596,13 +691,17 @@ impl Parts {
                 crate::host::ScreenInfo { width: d.width, height: d.height, codec: self.view.codec.lock().unwrap().clone() }
             } else {
                 sc.stop();
-                sc.start(&config, self.view.sink.clone())?
+                let info = sc.start(&config, self.view.sink.clone())?;
+                // another encoder: its references and what it can do are its own
+                self.st.lock().unwrap().repair = HostRepair::negotiate(self.view.offered.as_deref(), sc.supports_recovery());
+                info
             }
         };
+        let features = self.st.lock().unwrap().repair.names();
         *self.view.config.lock().unwrap() = config;
         *self.view.codec.lock().unwrap() = info.codec.clone();
         self.view.follow.lock().unwrap().shown = Some(d.id.clone());
-        self.chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec), display: Some(d.id.clone()) });
+        self.chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec), display: Some(d.id.clone()), features });
         if center {
             let _ = self.input.send(Cmd::MoveTo(0.5, 0.5));
         }
@@ -733,6 +832,7 @@ mod tests {
             fps: 1000,
             codecs: None,
             display: None,
+            features: None,
         });
         assert_eq!((r.width, r.height, r.bitrate, r.fps), (8192, 64, 100_000, 120));
         assert_eq!(r.crop.x, 0.5);

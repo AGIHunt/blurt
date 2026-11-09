@@ -15,6 +15,7 @@
 //!     rate.rs         the picture's rate control
 //!     input.rs        clicks, drags, scroll phases and the coast, held keys: what the backend is told to press
 //!     screen.rs       the stream: packets, pacing, back-pressure, refresh, cursor
+//!     repair.rs       the picture's repairs: pieces sent again (nack), recovery frames (ltr), parity (fec), the phone's receiver
 //!     store.rs        paired devices, the host's settings, keys (through the app's secret store)
 //!     mic.rs          the phone's microphone as dictation's source
 //!     server.rs       listeners, pairing, sessions, the relay: the Host the app starts
@@ -23,6 +24,7 @@ pub mod host;
 pub mod platform;
 
 pub mod channel;
+pub mod credit;
 pub mod crypto;
 pub mod displays;
 pub mod input;
@@ -32,6 +34,7 @@ pub mod pairing;
 pub mod phone;
 pub mod rate;
 pub mod relay;
+pub mod repair;
 pub mod screen;
 pub mod server;
 pub mod store;

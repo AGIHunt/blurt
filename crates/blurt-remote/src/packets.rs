@@ -18,6 +18,8 @@ pub enum Kind {
     Probe = 4,
     /// x, y as f32 LE, 0…1 of the source
     Cursor = 5,
+    /// the phone's word on the picture: pieces missing, frames decoded, a frame lost (repair.rs `Feedback`; datagrams)
+    VideoFeedback = 6,
 }
 
 impl Kind {
@@ -29,6 +31,7 @@ impl Kind {
             3 => Kind::Video,
             4 => Kind::Probe,
             5 => Kind::Cursor,
+            6 => Kind::VideoFeedback,
             _ => return None,
         })
     }
@@ -167,13 +170,19 @@ pub fn cursor(x: f32, y: f32) -> [u8; 8] {
     d
 }
 
-/// One piece of an encoded frame: a 17-byte header, then up to `PAYLOAD` bytes.
-#[derive(Clone, Debug, PartialEq)]
+/// One piece of an encoded frame: a 17-byte header, then up to `PAYLOAD` bytes. Byte 8 is flags: bit 0 keyframe, bit 1 refresh,
+/// bit 2 acknowledge (the last two only to a phone that asked for "ltr"). An index at `count` or beyond is a parity piece (repair.rs).
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct VideoPacket {
     pub frame: u32,
+    /// 0..count: a piece of the frame; count..count + MAX_PARITY: a parity piece ("fec" only)
     pub index: u16,
     pub count: u16,
     pub keyframe: bool,
+    /// decodable from frames the phone acknowledged (or the start of an intra refresh), after a loss
+    pub refresh: bool,
+    /// the phone says when it has decoded this one: the encoder may refer back to it
+    pub ack_requested: bool,
     /// when the host composed it, on the host's clock
     pub captured: f64,
     pub payload: Vec<u8>,
@@ -182,13 +191,23 @@ pub struct VideoPacket {
 impl VideoPacket {
     pub const HEADER: usize = 17;
     pub const PAYLOAD: usize = 1180;
+    /// parity pieces a frame may carry: an index at count + MAX_PARITY or beyond is nothing
+    pub const MAX_PARITY: u16 = 64;
+
+    pub fn flags(&self) -> u8 {
+        self.keyframe as u8 | (self.refresh as u8) << 1 | (self.ack_requested as u8) << 2
+    }
+
+    pub fn is_parity(&self) -> bool {
+        self.index >= self.count
+    }
 
     pub fn encode(&self) -> Vec<u8> {
         let mut d = Vec::with_capacity(Self::HEADER + self.payload.len());
         d.extend_from_slice(&self.frame.to_be_bytes());
         d.extend_from_slice(&self.index.to_be_bytes());
         d.extend_from_slice(&self.count.to_be_bytes());
-        d.push(self.keyframe as u8);
+        d.push(self.flags());
         d.extend_from_slice(&self.captured.to_bits().to_be_bytes());
         d.extend_from_slice(&self.payload);
         d
@@ -202,11 +221,13 @@ impl VideoPacket {
             frame: u32::from_be_bytes(d[0..4].try_into().ok()?),
             index: u16::from_be_bytes(d[4..6].try_into().ok()?),
             count: u16::from_be_bytes(d[6..8].try_into().ok()?),
-            keyframe: d[8] == 1,
+            keyframe: d[8] & 1 != 0,
+            refresh: d[8] & 2 != 0,
+            ack_requested: d[8] & 4 != 0,
             captured: f64::from_bits(u64::from_be_bytes(d[9..17].try_into().ok()?)),
             payload: d[17..].to_vec(),
         };
-        (p.count > 0 && p.index < p.count).then_some(p)
+        (p.count > 0 && (p.index as u32) < p.count as u32 + Self::MAX_PARITY as u32).then_some(p)
     }
 
     /// One encoded frame, in pieces of `size`.
@@ -221,8 +242,19 @@ impl VideoPacket {
                 keyframe,
                 captured,
                 payload: data[(i * size).min(data.len())..((i + 1) * size).min(data.len())].to_vec(),
+                ..Default::default()
             })
             .collect()
+    }
+
+    /// The same, with the repair flags on every piece.
+    pub fn split_flagged(data: &[u8], frame: u32, keyframe: bool, refresh: bool, ack_requested: bool, captured: f64, size: usize) -> Vec<VideoPacket> {
+        let mut v = Self::split(data, frame, keyframe, captured, size);
+        for p in &mut v {
+            p.refresh = refresh;
+            p.ack_requested = ack_requested;
+        }
+        v
     }
 }
 
@@ -296,6 +328,9 @@ impl VideoAssembler {
     }
 
     pub fn add(&mut self, p: VideoPacket) -> Option<AssembledFrame> {
+        if p.is_parity() {
+            return None; // only repair::Receiver uses them
+        }
         if !self.started {
             self.started = true;
             self.waiting_for_key = true;

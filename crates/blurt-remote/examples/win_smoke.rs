@@ -5,6 +5,9 @@
 //!   cargo run --release --example win_smoke -- --synthetic        no desktop needed (a service, SSH = session 0): text-like
 //!                                                                 rows scrolling at 1920×1080, through the same converter + encoder
 //!   options: --hevc (ask for HEVC first, writes .h265), --size 1920x1080 (synthetic), --out <file>, --no-input
+//!   --recovery: a recovery frame after a loss (docs/design/remote-realtime.md §2): every reference acknowledged as it comes, then
+//!                 frames dropped for 70 ms and Screen::recovery_frame asked for. Writes <out>.full (everything) and <out>.lossy (what
+//!                 a phone would decode: the drop left out, up to the recovery frame); decoded, their last frames must be the same.
 //!
 //! Stages: whole screen, 2× zoom, 3× zoom moving 7 times a second, a thinner pipe (2 Mbps, 30 fps), then still (should send nothing),
 //! refreshes, a keyframe on request. It prints fps / encode ms / kbps per stage, the crop latency, the age of frames, and writes
@@ -69,6 +72,79 @@ mod win {
         }
     }
 
+    /// --recovery: what a phone that lost frames decodes after the recovery frame, against what it would have without the loss.
+    fn recovery(b: &mut WinBackend, config: ScreenConfig, out: &str) {
+        #[derive(Default)]
+        struct R {
+            full: Vec<u8>,
+            lossy: Vec<u8>,
+            /// 0 normal, 1 dropping, 2 waiting for the recovery frame
+            state: u8,
+            refs: Vec<u64>,
+            log: Vec<String>,
+            n: usize,
+        }
+        let r = Arc::new(Mutex::new(R::default()));
+        let sink = {
+            let r = r.clone();
+            Arc::new(move |f: EncodedFrame| {
+                let mut r = r.lock().unwrap();
+                r.n += 1;
+                let bytes = annexb::to_annexb(if f.keyframe { &f.parameter_sets } else { &[] }, &f.picture);
+                r.full.extend_from_slice(&bytes);
+                if let Some(x) = f.reference {
+                    r.refs.push(x);
+                }
+                if r.state == 2 && (f.refresh || f.keyframe) {
+                    r.state = 0;
+                    let line = format!("frame {}: {} {} KB ends the loss", r.n, if f.keyframe { "keyframe" } else { "recovery frame" }, bytes.len() / 1024);
+                    r.log.push(line);
+                }
+                if r.state == 0 {
+                    r.lossy.extend_from_slice(&bytes);
+                } else {
+                    let line = format!("frame {} lost ({} KB{})", r.n, bytes.len() / 1024, if f.reference.is_some() { ", a reference" } else { "" });
+                    r.log.push(line);
+                }
+                if f.keyframe && r.n > 1 {
+                    let line = format!("frame {}: keyframe {} KB", r.n, bytes.len() / 1024);
+                    r.log.push(line);
+                }
+            })
+        };
+        if let Err(e) = b.win_screen().start(&config, sink) {
+            println!("screen failed: {e}");
+            std::process::exit(1);
+        }
+        println!("recovery frames: {}", b.win_screen().supports_recovery());
+        let ack = |b: &mut WinBackend| {
+            let refs = std::mem::take(&mut r.lock().unwrap().refs);
+            if !refs.is_empty() {
+                b.win_screen().acknowledged(&refs);
+            }
+        };
+        for round in 0..3 {
+            run(1.5, false, |_| {});
+            ack(b);
+            std::thread::sleep(Duration::from_millis(30));
+            ack(b);
+            r.lock().unwrap().state = 1;
+            std::thread::sleep(Duration::from_millis(70));
+            r.lock().unwrap().state = 2;
+            b.win_screen().recovery_frame();
+            println!("round {round}: recovery asked");
+        }
+        run(1.0, false, |_| {});
+        b.win_screen().stop();
+        let r = r.lock().unwrap();
+        for l in &r.log {
+            println!("  {l}");
+        }
+        std::fs::write(format!("{out}.full"), &r.full).expect("write");
+        std::fs::write(format!("{out}.lossy"), &r.lossy).expect("write");
+        println!("wrote {out}.full ({} KB) and {out}.lossy ({} KB), {} frames", r.full.len() / 1024, r.lossy.len() / 1024, r.n);
+    }
+
     pub fn main() {
         let synthetic = flag("--synthetic");
         let software = flag("--software");
@@ -120,7 +196,15 @@ mod win {
             codecs: if hevc { vec!["hevc".into(), "h264".into()] } else { vec!["h264".into()] },
             crop: Crop::WHOLE,
             display: None,
+            capture_fps: 120,
+            repairs: flag("--recovery"),
         };
+        if flag("--recovery") {
+            drop(sink);
+            let out = arg("--out").unwrap_or_else(|| format!("win_recovery{}.{}", if software { "_sw" } else { "" }, if hevc { "h265" } else { "h264" }));
+            recovery(&mut b, config, &out);
+            return;
+        }
         let info = match b.win_screen().start(&config, sink) {
             Ok(i) => i,
             Err(e) => {

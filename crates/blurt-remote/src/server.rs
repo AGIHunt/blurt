@@ -1101,6 +1101,18 @@ impl Core {
                 }
             }
             Kind::Probe => chan.send_datagram(Kind::Probe, body),
+            // pieces missing, frames decoded, a frame lost: the picture repairs itself (repair.rs)
+            Kind::VideoFeedback => {
+                if chan.greeted.load(SeqCst) {
+                    let sc = {
+                        let s = self.st.lock().unwrap();
+                        self.screen(&s, chan.sid)
+                    };
+                    if let Some(sc) = sc {
+                        sc.feedback(body);
+                    }
+                }
+            }
             Kind::Video | Kind::Cursor => {}
         }
     }
@@ -1859,9 +1871,26 @@ fn bind_udp() -> std::io::Result<UdpSocket> {
     // a keyframe is a hundred datagrams at once: room for them (macOS starts at 9 KB)
     let _ = s.set_send_buffer_size(4 << 20);
     let _ = s.set_recv_buffer_size(1 << 20);
+    mark_for_wifi(&s);
     s.bind(&SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0).into())?;
     s.set_nonblocking(true)?;
     UdpSocket::from_std(s.into())
+}
+
+/// The picture, the pointer's place and probe echoes go in Wi-Fi's video queue (docs/design/remote-realtime.md §6, §Host 9): DSCP
+/// AF41 (0x88 in the TOS byte; 34 → VI by RFC 8325 and by DSCP ÷ 8) on IPv4 and IPv6, and on Linux SO_PRIORITY 5, so the host's
+/// own radio uses VI where its driver ignores DSCP (0–6 need no capability). Windows ignores IP_TOS (qWAVE would be needed).
+fn mark_for_wifi(s: &socket2::Socket) {
+    #[cfg(not(windows))]
+    {
+        let _ = s.set_tos_v4(0x88);
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let _ = s.set_tclass_v6(0x88);
+        #[cfg(target_os = "linux")]
+        let _ = s.set_priority(5);
+    }
+    #[cfg(windows)]
+    let _ = s;
 }
 
 /// DNS-SD: instance name = the computer's name, TXT id = this host's id.

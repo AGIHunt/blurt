@@ -30,6 +30,8 @@ fn main() {
         codecs: codecs.clone(),
         crop: Crop::WHOLE,
         display: None,
+        capture_fps: ScreenConfig::capture_for(num("--fps", 60)),
+        repairs: false,
     };
     println!("encoder for {codecs:?}: {:?}", linux::pick_encoder(&codecs));
 
