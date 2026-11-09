@@ -116,6 +116,7 @@ mod win {
             fps: 60,
             codecs: if hevc { vec!["hevc".into(), "h264".into()] } else { vec!["h264".into()] },
             crop: Crop::WHOLE,
+            display: None,
         };
         let info = match b.win_screen().start(&config, sink) {
             Ok(i) => i,

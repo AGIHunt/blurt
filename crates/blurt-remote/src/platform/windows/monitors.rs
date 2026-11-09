@@ -2,7 +2,7 @@
 //! pointer, and the clock frames and the server share.
 
 use ::windows::Win32::Foundation::{LPARAM, POINT, RECT, TRUE};
-use ::windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO};
+use ::windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW};
 use ::windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use ::windows::Win32::UI::HiDpi::{
     GetDpiForMonitor, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -56,6 +56,45 @@ pub fn all() -> Vec<Monitor> {
         let _ = EnumDisplayMonitors(None, None, Some(each), LPARAM(&mut out as *mut _ as isize));
     }
     out
+}
+
+// ---- several displays (the core's DisplayInfo): device names as ids, frames in points ----
+
+/// A monitor's device name (\\.\DISPLAY2): stable while it stays connected.
+fn device_name(handle: isize) -> Option<String> {
+    let mut ex = MONITORINFOEXW::default();
+    ex.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    unsafe { GetMonitorInfoW(HMONITOR(handle as *mut _), &mut ex.monitorInfo as *mut MONITORINFO) }.as_bool().then(|| {
+        let n = ex.szDevice.iter().position(|c| *c == 0).unwrap_or(ex.szDevice.len());
+        String::from_utf16_lossy(&ex.szDevice[..n])
+    })
+}
+
+/// Every monitor with its device name.
+pub fn named() -> Vec<(Monitor, String)> {
+    let _dpi = Dpi::physical();
+    all().into_iter().filter_map(|m| device_name(m.handle).map(|n| (m, n))).collect()
+}
+
+/// The monitor with this device name, if it's still there.
+pub fn by_device(name: &str) -> Option<Monitor> {
+    named().into_iter().find(|(_, n)| n == name).map(|(m, _)| m)
+}
+
+/// A monitor's frame in points: its physical rectangle ÷ its own scale (mixed DPI can leave gaps or overlaps between them; a
+/// point is only ever asked which one it's on).
+pub fn frame_points(m: &Monitor) -> (f64, f64, f64, f64) {
+    let s = if m.scale > 0.0 { m.scale } else { 1.0 };
+    (m.rect.left as f64 / s, m.rect.top as f64 / s, m.rect.width() as f64 / s, m.rect.height() as f64 / s)
+}
+
+/// The pointer in the same points as `frame_points`, by the monitor it's on.
+pub fn cursor_points() -> Option<(f64, f64)> {
+    let (x, y) = cursor()?;
+    let all = all();
+    let m = super::geometry::monitor_at(&all, x, y)?;
+    let s = if m.scale > 0.0 { m.scale } else { 1.0 };
+    Some((m.rect.left as f64 / s + (x - m.rect.left as f64) / s, m.rect.top as f64 / s + (y - m.rect.top as f64) / s))
 }
 
 /// The pointer in physical pixels.
