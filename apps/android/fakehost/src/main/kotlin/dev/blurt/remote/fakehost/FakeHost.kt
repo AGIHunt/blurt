@@ -357,7 +357,8 @@ private class Session(val socket: Socket) {
                 au = mutableListOf()
                 if (pic.isEmpty()) return
                 val picture = pic.fold(ByteArray(0)) { a, n -> a + len(n.size) + n }
-                val payload = RemoteVideoPayload.pack(crop, if (key) sets else emptyList(), picture)
+                // one encoder, one picture: it can't send the part asked for, so it says it's the whole screen, which is true
+                val payload = RemoteVideoPayload.pack(RemoteCrop.WHOLE, if (key) sets else emptyList(), picture)
                 frame += 1
                 for (piece in RemoteVideoPacket.split(payload, frame, key, now())) datagram(RemoteFrameKind.VIDEO, piece.encoded())
             }
