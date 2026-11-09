@@ -40,7 +40,7 @@ class RecorderE2E(unittest.TestCase):
         home, sess = tmp / "home", tmp / "session"
         home.mkdir()
         (home / "models").symlink_to(MODELS)
-        (home / "config.json").write_text(json.dumps({"record": {"install_app": False, "live_drafts": False},
+        (home / "config.json").write_text(json.dumps({"record": {"install_app": False},
                                                       "asr": {"backend": "sensevoice"}}))
         aiff, wav = tmp / "say.aiff", tmp / "mic.wav"
         subprocess.run(["say", "-v", "Tingting", "-o", str(aiff), "保存按钮的颜色太浅了，几乎看不清。"], check=True)

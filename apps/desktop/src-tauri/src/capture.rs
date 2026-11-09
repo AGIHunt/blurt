@@ -200,8 +200,6 @@ impl Capture {
             // the 3-2-1 before a take: the take exists (Finish / Discard cancel it) but nothing is recorded yet
             "countdown": take.as_ref().is_some_and(|t| t.countdown),
             "pen": take.as_ref().is_some_and(|t| t.pen),
-            // how many items live.py has spotted so far ("6 snaps · 4 items spotted")
-            "spotted": take.as_ref().map_or(0, |t| spotted(&t.session)),
         })
     }
 
@@ -504,31 +502,13 @@ fn rec_chrome(app: &AppHandle, e: &StatusEvent) {
     }
 }
 
-/// Items live.py has spotted in this take so far (live/drafts.jsonl: adds less drops; the Mac's DraftsWatcher).
-fn spotted(session: &Path) -> usize {
-    let raw = std::fs::read_to_string(session.join("live").join("drafts.jsonl")).unwrap_or_default();
-    let mut ids = std::collections::BTreeSet::new();
-    for l in raw.lines() {
-        let Ok(v) = serde_json::from_str::<Value>(l) else { continue };
-        let id = v["id"].as_str().map(str::to_owned).or_else(|| v["id"].as_u64().map(|n| n.to_string()));
-        let Some(id) = id else { continue };
-        if v["op"] == "drop" {
-            ids.remove(&id);
-        } else {
-            ids.insert(id);
-        }
-    }
-    ids.len()
-}
-
 /// While the take runs (the Mac's RecordingWatch, once a second): the newest line of live/transcript.jsonl goes under
-/// the island as the live caption (record.live_caption, default on) — a line closed while paused waits for the resume;
-/// a new item spotted refreshes the island's count.
+/// the island as the live caption (record.live_caption, default on) — a line closed while paused waits for the resume.
 fn watch_live(app: &AppHandle, session: &Path) {
     let (app, session) = (app.clone(), session.to_path_buf());
     std::thread::spawn(move || {
         let file = session.join("live").join("transcript.jsonl");
-        let (mut offset, mut pending, mut last, mut seen) = (0usize, None::<String>, String::new(), 0usize);
+        let (mut offset, mut pending, mut last) = (0usize, None::<String>, String::new());
         loop {
             std::thread::sleep(Duration::from_secs(1));
             let (paused, same) = match app.state::<AppState>().capture.take.lock().unwrap().as_ref() {
@@ -548,11 +528,6 @@ fn watch_live(app: &AppHandle, session: &Path) {
                 if let Some(t) = chunk.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter_map(|v| v["text"].as_str().map(str::to_owned)).next_back() {
                     pending = Some(t);
                 }
-            }
-            let n = spotted(&session);
-            if n != seen {
-                seen = n;
-                island::refresh(&app);
             }
             let on = settings::read_config().pointer("/record/live_caption").and_then(Value::as_bool).unwrap_or(true);
             if !on || paused {

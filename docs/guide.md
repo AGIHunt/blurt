@@ -51,8 +51,7 @@ follows the keys you are holding), rest the pointer to straighten a rough
 shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. (`⌥M`, which saved a still of the recorded area, was
 removed in 1.0.7: `⌥A` no longer pauses the recording, and what you say already marks the moment.) Dictation is off while recording (the notch says so). The notch shows the state: pause bars and the
 time in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it
-off), and how many snaps you took. Open it for the words: *6 snaps · 4 items spotted* (the items Blurt has heard so
-far), then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
+off), and how many snaps you took. Open it for the words: *6 snaps*, then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
 windows, the cards, the note, the pen's ink and the notch — so a recording can show Blurt's own problems; only the
 countdown and the red frame are never in it. *Settings → General → Don’t record the notch* leaves the notch out of
 your recordings (snaps always show it).
@@ -768,7 +767,7 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
 
 录屏时：`⌥P` 暂停；`⌥A`（或刘海上的截图按钮）和平时的截图一样——框选区域，说或打备注（录屏在收音的同时，备注也能听到你说话），在图上画，然后挂成一张卡片——录屏不会暂停，截图的过程也录在视频里。这张截图属于这段录屏：图、备注、去处和类型都存进录屏里，整理时会按你的备注生成一个事项（选了类型就是这个类型）（卡片菜单里写着「随这段录屏一起整理」，点完成后卡片会收起）。按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆，按键不分先后（按住哪几个键就画哪种形状），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。（1.0.7 起去掉了 `⌥M` 标记：`⌥A` 截图已经不会暂停录屏，你说的话本身就标出了那一刻。）录屏时不能听写，刘海上会说明。
-刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张 · 已识别 4 个事项」（到目前为止听出来的事项），下面一行是去处——「点完成后整理到 Atlas Web」。
+刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张」，下面一行是去处——「点完成后整理到 Atlas Web」。
 口喷鸡自己也会像别的 App 一样被录进去——它的窗口、卡片、备注框、画笔笔迹和刘海——所以可以用录屏来反馈口喷鸡自己的问题；只有倒计时和红色边框永远不会录进去。不想录到刘海，就打开「设置 → 通用 → 录屏时不录刘海」（截图总会带上刘海）。
 
 点完成后，刘海会说「正在整理到 Atlas Web」；口喷鸡在这台 Mac 上整理过几段录屏之后，还会说通常要多久（「通常约 4 分钟」；在那之前不瞎猜），旁边的「更改」可以换项目。鼠标移到刘海上能看到进度和剩余时间。整理好后，刘海会说「已整理到 Atlas Web · 5 条新的」，点「打开」。只想留下视频、不整理（比如要把视频发给别人）：在刘海的 ··· 菜单（或菜单栏菜单）里选「只保存视频」代替「完成」，视频会保存并在访达中显示。口喷鸡不会自己删它（「自动删除视频」只处理已经整理过的录屏）。App 里暂时没有「之后再整理」的按钮；需要的话，让你的 agent 里的 blurt 技能处理这段录屏。

@@ -20,8 +20,8 @@
 //               snaps — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
-//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps ·
-//               4 items spotted") and, under it, where it goes ("Organized into Atlas Web when you finish": BA-64)
+//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps")
+//               and, under it, where it goes ("Organized into Atlas Web when you finish": BA-64)
 //   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): Peep
 //               listening (eye wide, swelling with the voice), the live waveform and Done (with the key held there is no Done:
 //               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
@@ -543,7 +543,7 @@ final class IslandContent: NSView {
     private weak var voiceText: NSTextField?
     /// the voice note's Structured chip (tests: its frame)
     private(set) weak var structuredChip: IslandButton?
-    private weak var spotted: NSTextField?
+    private weak var takeLine: NSTextField?
     private weak var pauseBtn: IslandButton?
     /// the recording row's ··· (its menu: the pen, Discard or Start Over…)
     private(set) weak var moreBtn: IslandButton?
@@ -790,7 +790,7 @@ final class IslandContent: NSView {
     /// becomes Resume in the same place and size — the play glyph in `attn` on its tint, the lead — and Finish quiets
     /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
     /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
-    /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen,
+    /// pen hint for the first three takes, the snaps taken). The rare things are in the ··· menu: the pen,
     /// where the take goes (Change…), Discard or Start Over… (the question below).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
@@ -822,7 +822,7 @@ final class IslandContent: NSView {
         level = nil
         var bottom = y + 30
 
-        // the quiet line: the pen's state or its keys (first takes only), then what live.py spotted
+        // the quiet line: the pen's state or its keys (first takes only), then the snaps taken
         penShown = rec.penSticky || rec.inkOn
         let lineY = bottom + 10
         var any = false
@@ -847,15 +847,14 @@ final class IslandContent: NSView {
             any = true
         }
         if any { bottom = lineY + 24 }
-        // BA-64: what the take holds so far, in plain words ("6 snaps · 4 items spotted" — each snap is also a card on
-        // the thread), then where it all goes once it is finished ("Organized into Atlas Web when you finish")
-        let said = spottedText(rec)
+        // BA-64: what the take holds so far, in plain words ("6 snaps" — each snap is also a card on the thread), then where it all goes once it is finished ("Organized into Atlas Web when you finish")
+        let said = takeText(rec)
         if !said.isEmpty {
             let room = w - 2 * inset + 4
             let y2 = any ? bottom + 2 : lineY
             let sp = label(said, size: 11.5, color: ink2)
             place(sp, x: inset - 2, y: y2 + (20 - sp.frame.height) / 2, w: min(sp.frame.width + 8, room))
-            spotted = sp
+            takeLine = sp
             bottom = y2 + 20
             if let goes = whereText(rec) {
                 let wl = label(goes, size: 11.5, color: ink3)
@@ -864,21 +863,21 @@ final class IslandContent: NSView {
                 bottom += 18
             }
         } else {
-            spotted = nil
+            takeLine = nil
         }
         return bottom + inset
     }
 
-    /// What the take holds so far ("6 snaps · 4 items spotted"; BlurtCore TakeLine).
-    private func spottedText(_ rec: Recorder) -> String {
-        TakeLine.text(snaps: rec.snaps?.count ?? 0, items: island?.spottedCount ?? 0)
+    /// What the take holds so far ("6 snaps"; BlurtCore TakeLine).
+    private func takeText(_ rec: Recorder) -> String {
+        TakeLine.text(snaps: rec.snaps?.count ?? 0)
     }
 
     /// Where the take's items will be: "Organized into Atlas Web when you finish" (nothing when takes are only saved).
     private func whereText(_ rec: Recorder) -> String? {
         let app = NSApp.delegate as? App
         return TakeLine.whereTo(project: app?.takeProject?.name ?? Loc.t("project.inbox"), organizes: app?.autoProcess ?? true,
-                                anything: !spottedText(rec).isEmpty)
+                                anything: !takeText(rec).isEmpty)
     }
 
     /// The ··· menu: the rare things, each with its key as the menu's own right-aligned key equivalent. Dark, as the
@@ -1478,10 +1477,10 @@ final class IslandContent: NSView {
             time?.stringValue = Island.clock(rec.elapsed())
             level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
             // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
-            let said = spottedText(rec)
-            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (spotted == nil) != said.isEmpty {
+            let said = takeText(rec)
+            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (takeLine == nil) != said.isEmpty {
                 rebuild()
-            } else if let sp = spotted, sp.stringValue != said {
+            } else if let sp = takeLine, sp.stringValue != said {
                 sp.stringValue = said
                 sp.frame.size.width = min(ceil(sp.intrinsicContentSize.width) + 8, bounds.width - 2 * IslandLayout.earInset + 4)
             }

@@ -603,9 +603,7 @@ function recBody() {
   // where it goes once finished: Finish's tooltip (the ··· menu's Goes to… changes it)
   const where = t('island.rec.goes_after', { project: S.project?.name ?? t('island.unassigned') });
   const fin = `<button class="finish${r.paused ? ' quiet-fin' : ''}" data-a="stop" data-tip="${esc(where)}">${ic('stop', 13)}<span>${esc(t('island.rec.finish'))}</span></button>`;
-  // what live.py spotted so far ("4 items spotted": TakeLine) — the snaps' count is the ear's, not said twice
-  const lines = r.spotted ? `<div class="said">${esc(plural('island.rec.spotted', r.spotted))}</div>` : '';
-  return `<div class="rec-body"><div class="controls">${pause}${snap}<span class="grow"></span>${more}${fin}</div>${lines}${penLine()}</div>`;
+  return `<div class="rec-body"><div class="controls">${pause}${snap}<span class="grow"></span>${more}${fin}</div>${penLine()}</div>`;
 }
 
 /** The pen's quiet key line under the controls (the Mac's KeyLine): on — "Pen on · [Esc] Pen off"; off — its key and

@@ -250,7 +250,7 @@ pub fn state(app: &AppHandle) -> Value {
         "toReview": summary["inbox"].as_i64().unwrap_or(0), // K3 "needs you": new + to verify
         // the 3-2-1 isn't recording yet (the Mac's island takes the take once it rolls: recording.md §3.7)
         "recording": if cap["recording"] == true && cap["countdown"] != true {
-            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "spotted": cap["spotted"], "pen": cap["pen"], "at": now})
+            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "pen": cap["pen"], "at": now})
         } else { Value::Null },
         // how it ends (held, at a pause, by the key / Done) for the island's hint; whatever else the voice note says
         // about itself (Structured, its cap) rides along

@@ -755,7 +755,6 @@ button.row:hover::before,
 .finish.quiet-fin .ic {
   color: var(--rec);
 }
-.rec-body .said,
 .rec-body .where {
   margin-top: 10px;
   color: var(--fg2);
@@ -1819,7 +1818,6 @@ button.row:hover::before,
   background: var(--brand-gradient-v);
 }
 /* the take's quiet lines in secondary white (60 %), never fainter */
-.rec-body .said,
 .rec-body .penline {
   color: var(--fg2);
 }

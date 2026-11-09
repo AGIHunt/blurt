@@ -91,7 +91,7 @@
 
 | # | Mac | Windows 之前 | 处理 | 结果 |
 |---|-----|-------------|------|------|
-| 7.1 | 录制中 live.py 边录边转写（`live/transcript.jsonl`），边识别事项（`drafts.jsonl`，岛上「识别到 N 项」） | `record.py` 会起 live.py，但只用 PATH 里的 `uv`——App 装的 `~/.blurt/bin/uv` 不在 PATH，Windows 上从没跑起来 | 对齐：`record.py` 找 uv 和别处一样（PATH → `$UV` → `~/.blurt/bin/uv(.exe)`）。「识别到 N 项」归岛那位（这边在 state 里给 `spotted`） || 已做（*Windows 未验证*） |
+| 7.1 | 录制中 live.py 边录边转写（`live/transcript.jsonl`），（边识别事项的草稿 2026-11-09 已删） | `record.py` 会起 live.py，但只用 PATH 里的 `uv`——App 装的 `~/.blurt/bin/uv` 不在 PATH，Windows 上从没跑起来 | 对齐：`record.py` 找 uv 和别处一样（PATH → `$UV` → `~/.blurt/bin/uv(.exe)`）。「识别到 N 项」归岛那位（这边在 state 里给 `spotted`） || 已做（*Windows 未验证*） |
 | 7.2 | 字幕条：岛下面一行最近说的话（`record.live_caption`，默认开），最新的字在右（截头），出现 0.2 s 淡入、5 s 后 0.6 s 淡出；暂停时说完的一句等继续再显示；「录屏时不录刘海」打开时和岛一起不进视频 | 无 | 对齐：`capture.rs` 每秒读 `live/transcript.jsonl` 的新行，发岛 `{"op":"caption","text":…}`；画在岛的窗口里、岛的正下方（`island.ts` 小加一段，样式照 `CaptionPanel`）。岛窗口本来就 content-protected，所以字幕永远不进视频（Mac 默认是进的）——保留不同：Windows 的岛和字幕在一个窗口，没法单独让字幕进视频 || 已做（*Windows 未验证*） |
 | 7.3 | 菜单「实时字幕」勾选 = 切换 `record.live_caption` | 无 | 对齐（托盘） || 已做（*Windows 未验证*） |
 
@@ -124,7 +124,7 @@
   只保存 / 失败几种说法；录制中的截图走 `snap::run_in_take`。新文件 `capture/chrome.rs`（倒计时和录制框窗口）、
   `capture/sysaudio.rs`（WASAPI loopback）。
 - `apps/desktop/src-tauri/src/island.rs`：`restart` 改调 `Capture::restart`，加 `videoonly`、`rec.*` 动作；倒计时期间不是录屏状态；
-  state 带 `spotted`。`tray.rs`：录屏时的「只保存视频」「重新录屏」「实时字幕」。
+  state 曾带 `spotted`（2026-11-09 随草稿一起删了）。`tray.rs`：录屏时的「只保存视频」「重新录屏」「实时字幕」。
 - `web/apps/overlays`：新页面 `rec.html` + `src/rec.ts` / `rec.css` / `recgeom.ts`（测试 `tests/rec.test.ts`）；`island.ts` 的
   「···」加「只保存视频」、`caption` op 和字幕条（`island.css` 末尾 `.caption`）；`host.ts` 的 `caption` / `rec_done` op 类型。
 - 第二轮（同一天）：`assets/sounds/build.py` 加 `rec-tick.wav` / `rec-done.wav`（`tests/test_sounds.py`）；`capture/organize.rs`
@@ -137,8 +137,7 @@
 
 ## 11. 交给别人的
 
-- 岛那位：`{"op": "rec_done", "length": "0:42"}`（完成那一刻的 ✓ + 时长，Mac 的 RecordingDone）还没画；state.recording.spotted
-  （「6 张截图 · 识别到 4 项」）还没显示。
+- 岛那位：`{"op": "rec_done", "length": "0:42"}`（完成那一刻的 ✓ + 时长，Mac 的 RecordingDone）还没画。
 - 设置那位：设置 → 通用 → 录屏这几行现在都有后端了：`record.process`（`auto` / `off`）、`record.countdown`（0 / 3 / 5）、
   `record.system_audio`（Windows）、`record.live_caption`。
 - 设置那位：快捷键 → 录屏时 那一节加「画笔」（`pen`，默认 Alt+Shift+D，`hotkeys.rs ACTIONS` 已加回）。

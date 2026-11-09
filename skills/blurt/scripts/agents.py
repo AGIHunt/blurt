@@ -29,7 +29,7 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                       names one), its first line the title ("AW-12 · <title> (Blurt hand-off)" —
                                       work_title)
 
-Blurt runs agents only headless and unattended (organising, AI fill-in, drafts). Working on items happens in the
+Blurt runs agents only headless and unattended (organising, AI sort, AI fill-in). Working on items happens in the
 user's own agent, from a hand-off note (handoff.py) and the blurt MCP server.
 
 The registry is agents.json next to this file (also bundled into Blurt.app, which implements the same rules in

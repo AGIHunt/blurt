@@ -1,5 +1,5 @@
-// LiveAudio — the mic as <session>/live/audio.pcm (16 kHz mono s16le) for scripts/live.py, which transcribes and
-// drafts items while the recording runs (docs/design/snap-and-live.md §4, file contracts).
+// LiveAudio — the mic as <session>/live/audio.pcm (16 kHz mono s16le) for scripts/live.py, which transcribes it
+// while the recording runs (docs/design/snap-and-live.md §4, file contracts).
 //
 // Only unpaused audio is written, and every buffer is placed by its pause-adjusted timestamp (gaps → silence,
 // overlaps trimmed), so byte offset / 32000 == video time. Flushed about every 100 ms. When the take ends `stop` is

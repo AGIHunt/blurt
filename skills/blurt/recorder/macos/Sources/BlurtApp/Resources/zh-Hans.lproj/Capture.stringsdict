@@ -80,12 +80,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张截图</string></dict>
   </dict>
-  <key>capture.rec.spotted</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已识别 %d 个事项</string></dict>
-  </dict>
   <key>capture.smart_paste.done_n</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

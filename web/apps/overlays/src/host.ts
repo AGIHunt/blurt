@@ -81,8 +81,7 @@ export interface IslandState {
   project: ProjectRef | null;
   projects: ProjectRef[];
   toReview: number;
-  /** `spotted`: items live.py has drafted so far ("6 snaps · 4 items spotted") */
-  recording: { elapsed: number | null; paused: boolean; shots: number; spotted?: number; pen?: boolean; at: number } | null;
+  recording: { elapsed: number | null; paused: boolean; shots: number; pen?: boolean; at: number } | null;
   /** `structured`: the note's Structured chip (shown only when the app says); `limit`: its cap in seconds (the time
    *  left in its last minute) */
   voice: { elapsed: number; at: number; hold?: boolean; ends?: 'hold' | 'pause' | 'key'; structured?: boolean; limit?: number } | null;

@@ -167,7 +167,7 @@ def test_command_headless(env, tmp_path):
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
         "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
     assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
-    # unattended on recording-derived text: never full access; a plain run (routing, drafts) writes only its cwd
+    # unattended on recording-derived text: never full access; a plain run (routing) writes only its cwd
     a = out["argv"]
     assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
     assert "--add-dir" not in a

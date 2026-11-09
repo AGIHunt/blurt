@@ -689,7 +689,7 @@ Swift、Rust、live.py 不各自拼命令。
                                          // 结束后补（沙箱里写不了）。用哪个模型分两种：录屏（CLI 自己的模型、低思考强度）和
                                          // 卡片（最省的模型），agents.json processing.{recording,cards}，用户在设置 → Agent 改
                                          // （config record.agent_processing.<id>.<kind>）。
-    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
+    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, // "drafts" 标记已随录制中草稿删除（2026-11-09）
     // WP2 加的字段
     "version": ["--version"],
     "events": { "args": ["--json"], "format": "codex-jsonl" },   // 追加在 run 后面，得到可解析的进度流

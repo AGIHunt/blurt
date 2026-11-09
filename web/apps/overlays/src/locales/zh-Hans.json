@@ -370,8 +370,6 @@
   "dictation.style.copied": "已按{style}复制 · 输入框中的文字未更改",
   "dictation.style.undone": "已还原为{style}",
   "dictation.toast.learned": "记住了「{term}」",
-  "island.rec.spotted_one": "已识别 {n} 个事项",
-  "island.rec.spotted_other": "已识别 {n} 个事项",
   "rec.url.ask_record": "一个链接想开始录屏",
   "rec.url.ask_snap": "一个链接想截图",
   "rec.url.record": "开始录屏",
