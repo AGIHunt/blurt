@@ -136,7 +136,8 @@ private fun Card(content: @Composable () -> Unit) {
 @Composable
 private fun ConfirmPairing(p: dev.blurt.remote.core.RemotePairing) {
     val l = Remote.link
-    val again = l.macs.value.any { it.id == p.macID }
+    val macs by l.macs.collectAsState()
+    val again = macs.any { it.id == p.macID }
     AlertDialog(
         onDismissRequest = { l.offered.value = null },
         title = { Text(stringResource(R.string.pair_with_q, p.macName)) },

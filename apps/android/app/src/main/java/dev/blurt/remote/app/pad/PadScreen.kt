@@ -444,8 +444,10 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec))
     }
 
+    /** Where a view goes. Never whether it shows (`show` decides that): a view hidden here and shown there would ask for another layout
+     *  on every pass. */
     private fun place(v: View, r: Frame?) {
-        if (r == null || r.isEmpty) { v.visibility = GONE; return }
+        if (r == null || r.isEmpty) { v.layout(0, 0, 0, 0); return }
         val d = resources.displayMetrics.density
         val l = (r.left * d).toInt()
         val t = (r.top * d).toInt()
@@ -475,7 +477,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         place(pad, padFrame)
         show(pad2, !typing && l.pad2 != null)
         if (!typing) place(pad2, l.pad2)
-        show(talk, !typing)
+        show(talk, !typing && !l.talk.isEmpty)
         place(talk, l.talk)
         val railed = l.rail != null
         val keysOut = !typing && (!railed || drawerOpen)
@@ -561,7 +563,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         show(action, !action.text.isNullOrEmpty())
 
         exclusions = l.exclusions.map { r -> Rect((r.left * d).toInt(), (r.top * d).toInt(), (r.right * d).toInt(), (r.bottom * d).toInt()) }
-        systemGestureExclusionRects = exclusions
+        if (android.os.Build.VERSION.SDK_INT >= 29) systemGestureExclusionRects = exclusions
     }
 
     private var exclusions: List<Rect> = emptyList()

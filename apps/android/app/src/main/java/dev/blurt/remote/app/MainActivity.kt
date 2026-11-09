@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (Build.VERSION.SDK_INT >= 30) window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-        else window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        else if (Build.VERSION.SDK_INT >= 28) window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         immersive()
 
         val root = FrameLayout(this)
@@ -158,6 +158,8 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
 
     // MARK: a keyboard on a tablet goes to the computer
 
+    // Activity's own dispatchKeyEvent; lint takes it for androidx.core's restricted override of the same name
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
         if (sheets.current.value == null && HardwareKeys.handle(e)) return true
         return super.dispatchKeyEvent(e)

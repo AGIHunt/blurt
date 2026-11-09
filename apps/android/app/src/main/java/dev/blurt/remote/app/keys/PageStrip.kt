@@ -1,4 +1,6 @@
-// The list's sections by name (port of Keys/PageStrip.swift): one tap jumps there, and the mark follows as the list scrolls.
+// The list's sections by name (port of Keys/PageStrip.swift): one tap jumps there, and the mark follows as the list scrolls. Where the names
+// can't all be read (half a foldable, with the display switcher in the row), it shows the page you're on and a dot for each, and a tap goes to
+// the next page.
 package dev.blurt.remote.app.keys
 
 import android.annotation.SuppressLint
@@ -32,13 +34,41 @@ class PageStrip(c: Context) : View(c) {
         invalidate()
     }
 
+    /** One size for every tab: the largest at which the longest name still fits; 0 when even the smallest readable size doesn't. */
+    private fun fit(): Float {
+        if (names.isEmpty() || width <= 0) return 0f
+        val w = width.toFloat() / names.size
+        p.typeface = Fonts.medium
+        var size = 13.dp
+        while (size >= 10.dp) {
+            p.textSize = size
+            if (names.all { p.measureText(it) <= w - 4.dp }) return size
+            size *= 0.95f
+        }
+        return 0f
+    }
+
+    private val compact get() = fit() == 0f
+
     override fun onDraw(canvas: Canvas) {
         if (names.isEmpty()) return
+        val size = fit()
+        if (size == 0f) {
+            // the page you're on, and a dot for each page under it
+            p.typeface = Fonts.medium
+            p.color = Theme.mark
+            p.textSize = 13.dp
+            val fm = p.fontMetrics
+            canvas.drawText(names[current], width / 2f, height / 2f - 4.dp - (fm.ascent + fm.descent) / 2, p)
+            val step = 7.dp
+            val x0 = width / 2f - step * (names.size - 1) / 2
+            for (i in names.indices) {
+                p.color = if (i == current) Theme.mark else Theme.faint
+                canvas.drawCircle(x0 + i * step, height / 2f + 11.dp, 2.dp, p)
+            }
+            return
+        }
         val w = width.toFloat() / names.size
-        // one size for every tab: the largest at which the longest name still fits, so no tab reads smaller than its neighbours
-        var size = 13.dp
-        p.typeface = Fonts.medium
-        while (size > 9.dp && names.any { p.textSize = size; p.measureText(it) > w - 4.dp }) size *= 0.95f
         p.textSize = size
         for ((i, n) in names.withIndex()) {
             val on = i == current
@@ -52,7 +82,7 @@ class PageStrip(c: Context) : View(c) {
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (e.actionMasked == MotionEvent.ACTION_UP && names.isNotEmpty() && width > 0) {
-            onSelect?.invoke((e.x / (width.toFloat() / names.size)).toInt().coerceIn(0, names.size - 1))
+            onSelect?.invoke(if (compact) (current + 1) % names.size else (e.x / (width.toFloat() / names.size)).toInt().coerceIn(0, names.size - 1))
         }
         return true
     }

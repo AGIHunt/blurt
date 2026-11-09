@@ -79,7 +79,8 @@ class PadLayout(
     init {
         val big = w >= 600 && h >= 480
         mode = when {
-            fold != null && fold.halfOpened && !fold.vertical -> Mode.STACK
+            // a fold that separates the screen decides, at any angle: across it, the picture above; down the middle, side by side
+            fold != null && !fold.vertical -> Mode.STACK
             fold != null && fold.vertical -> Mode.SPLIT
             big && w >= h * 1.15f -> Mode.SPLIT
             big -> Mode.STACK

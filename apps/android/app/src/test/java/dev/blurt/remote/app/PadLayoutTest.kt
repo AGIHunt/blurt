@@ -92,6 +92,19 @@ class PadLayoutTest {
         }
     }
 
+    @Test fun aFlatFoldStillDecides() {
+        // a fold that separates the screen while flat (or read as flat) lays out as it does half open
+        val across = PadLayout.Fold(Frame(0f, 336.4f, 841f, 336.8f), vertical = false, halfOpened = false)
+        val t = PadLayout(841f, 673f, 0f, 0f, 0f, 0f, lefty = false, drawerOpen = true, fold = across)
+        assertEquals(PadLayout.Mode.STACK, t.mode)
+        check(t, 841f, 673f)
+        for (r in keys(t) + listOf(t.list)) assertTrue("below the fold: $r", r.top >= 336.8f)
+        val down = PadLayout.Fold(Frame(336.4f, 0f, 336.8f, 841f), vertical = true, halfOpened = false)
+        val b = PadLayout(673f, 841f, 0f, 0f, 0f, 0f, lefty = false, drawerOpen = true, fold = down)
+        assertEquals(PadLayout.Mode.SPLIT, b.mode)
+        check(b, 673f, 841f)
+    }
+
     @Test fun smallWindowsStillFit() {
         for ((w, h) in listOf(412f to 400f, 360f to 640f, 500f to 300f, 600f to 500f, 320f to 560f)) check(PadLayout(w, h, 0f, 0f, 0f, 0f, false, true), w, h)
     }
