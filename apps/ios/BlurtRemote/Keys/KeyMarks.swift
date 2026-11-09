@@ -1,4 +1,4 @@
-// Icons SF Symbols doesn't have. Each is what the key looks like on the Mac: ⌘Tab's row of apps with one picked out, a tab bar with the tab
+// Icons SF Symbols doesn't have. Each is what the key looks like on the computer (Alt+Tab is the same row of apps): ⌘Tab's row of apps with one picked out, a tab bar with the tab
 // you'd land on filled in, selected text. Template images, so they take a key's colours like any symbol.
 import SwiftUI
 import UIKit
@@ -12,6 +12,7 @@ enum KeyMarks {
         case "tabNew": tabNew
         case "tabClose": tabClose
         case "selectAll": selectAll
+        case "win": win
         default: nil
         }
     }
@@ -73,6 +74,17 @@ enum KeyMarks {
         window(c)
         c.move(to: CGPoint(x: 9.9, y: 9.6)); c.addLine(to: CGPoint(x: 14.1, y: 13.8))
         c.move(to: CGPoint(x: 14.1, y: 9.6)); c.addLine(to: CGPoint(x: 9.9, y: 13.8))
+        c.strokePath()
+    }
+
+    /// The Windows key, as ⊞ writes it: a square of four panes, drawn in the same line as the window marks. Not the logo: no colour, no slant,
+    /// no gaps between filled panes.
+    private static let win = draw(18, 18) { c in
+        c.setStrokeColor(UIColor.black.cgColor)
+        c.setLineWidth(1.5)
+        c.addPath(UIBezierPath(roundedRect: CGRect(x: 1.75, y: 1.75, width: 14.5, height: 14.5), cornerRadius: 3).cgPath)
+        c.move(to: CGPoint(x: 9, y: 2)); c.addLine(to: CGPoint(x: 9, y: 16))
+        c.move(to: CGPoint(x: 2, y: 9)); c.addLine(to: CGPoint(x: 16, y: 9))
         c.strokePath()
     }
 
