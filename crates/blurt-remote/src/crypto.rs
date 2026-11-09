@@ -143,6 +143,7 @@ pub struct SealOut {
     sent_udp: u64,
 }
 
+#[derive(Clone)]
 /// The receiving half. `open` is the stream's (in order); `open_packet` the datagrams' (a 64-wide window).
 pub struct SealIn {
     aead: ChaCha20Poly1305,

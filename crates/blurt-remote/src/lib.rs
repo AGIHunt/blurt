@@ -22,15 +22,20 @@
 pub mod host;
 pub mod platform;
 
+pub mod channel;
 pub mod crypto;
-// pub mod input;
-// pub mod mic;
+pub mod input;
+pub mod mic;
 pub mod packets;
 pub mod pairing;
+pub mod phone;
 pub mod rate;
 pub mod relay;
-// pub mod screen;
-// pub mod server;
-// pub mod store;
+pub mod screen;
+pub mod server;
+pub mod store;
 pub mod wire;
 
+
+pub use server::{App, Host, HostConfig, Status};
+pub use store::KeyStore;
