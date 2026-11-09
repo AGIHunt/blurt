@@ -47,21 +47,43 @@ async fn main() {
             bitrate: 2_000_000,
             fps: 30,
             codecs: Some(vec!["hevc".into(), "h264".into()]),
+            display: None,
         })))
         .await;
     let mut a = VideoAssembler::new();
     let mut file = std::fs::File::create(&out).unwrap();
+    let mut segment = 0;
     let (mut frames, mut keys, mut bytes, mut cursors, mut pieces) = (0i64, 0, 0usize, 0, 0);
     let t0 = Instant::now();
     let mut last_report = Instant::now();
     let mut zoomed = false;
+    let cross = args.iter().any(|a| a == "--cross");
+    let mut stage = 0;
+    let mut displays: Vec<String> = vec![];
     while t0.elapsed().as_secs_f64() < seconds {
         if last_report.elapsed() > Duration::from_secs(1) {
             last_report = Instant::now();
             phone.send(&ToMac::ScreenReport(ScreenReport { frames, lost: a.dropped as i64, rtt: Some(0.01), received: bytes as i64 })).await;
             phone.send(&ToMac::Ping(t0.elapsed().as_secs_f64())).await;
         }
-        if !zoomed && t0.elapsed().as_secs_f64() > seconds / 2.0 {
+        let el = t0.elapsed().as_secs_f64();
+        if cross {
+            // several displays: the pointer across to the next one (the picture follows), then pinned to the first, then following
+            if stage == 0 && el > seconds * 0.3 {
+                stage = 1;
+                for _ in 0..12 {
+                    phone.pointer(PointerPacket::Move { dx: 100.0, dy: 0.0 }).await;
+                }
+            } else if stage == 1 && el > seconds * 0.6 {
+                stage = 2;
+                println!("pin {:?}", displays.first());
+                phone.send(&ToMac::ShowDisplay(displays.first().cloned())).await;
+            } else if stage == 2 && el > seconds * 0.8 {
+                stage = 3;
+                println!("follow");
+                phone.send(&ToMac::ShowDisplay(None)).await;
+            }
+        } else if !zoomed && el > seconds / 2.0 {
             zoomed = true;
             phone.send(&ToMac::ScreenCrop(Crop { x: 0.25, y: 0.25, w: 0.5, h: 0.5 })).await;
         }
@@ -90,7 +112,18 @@ async fn main() {
                 }
             }
             Some(Event::Cursor(..)) => cursors += 1,
-            Some(Event::Control(ToPhone::ScreenView { width, height, codec })) => println!("screen {width}×{height} {codec:?}"),
+            Some(Event::Control(ToPhone::ScreenView { width, height, codec, display })) => {
+                println!("{:.2}s screen {width}×{height} {codec:?} {display:?}", t0.elapsed().as_secs_f64());
+                // each new picture (another display) in a file of its own: <out>.1, .2 …
+                segment += 1;
+                if segment > 1 {
+                    file = std::fs::File::create(format!("{out}.{}", segment - 1)).unwrap();
+                }
+            }
+            Some(Event::Control(ToPhone::Displays(l))) => {
+                displays = l.iter().map(|d| d.id.clone()).collect();
+                println!("displays {:?}", l.iter().map(|d| format!("{} {}×{} at {},{}{}", d.id, d.width, d.height, d.x, d.y, if d.main { " main" } else { "" })).collect::<Vec<_>>());
+            }
             Some(Event::Control(ToPhone::ScreenFailed(w))) => {
                 println!("screen failed: {w}");
                 break;

@@ -34,7 +34,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 35);
+    assert_eq!(list.len(), 38);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -48,7 +48,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 23);
+    assert_eq!(list.len(), 25);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
