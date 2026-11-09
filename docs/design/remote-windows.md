@@ -91,23 +91,63 @@ Annex B → 4-byte length-prefixed NAL units, VPS / SPS / PPS apart on keyframes
 
 ### What's verified
 
-On the Mac, 51 unit tests: every wire key name against the table, scan codes checked by hand, no two keys alike; modifier order,
-sticky / held / release_all, the mask; Annex B splitting with 3- and 4-byte start codes and emulation bytes. Real H.264 High and
-HEVC Main streams from brew's ffmpeg (`testdata/make-streams.sh`, 60 frames, keyframe every 30) go to the wire's form and back,
-and ffprobe decodes the round trip. Also tested: crop → pixel rect and the tag it carries, output size, absolute coordinates landing
-on the pixel over mixed-DPI desks with negative origins, relative moves across monitors, wheel accumulation and direction, double-click
-plans, frame pacing, cursor bitmaps. `cargo check` and `cargo clippy --all-targets --target x86_64-pc-windows-msvc` are clean.
+On the Mac: 51 unit tests (key table against every wire name, modifier bookkeeping and the mask, Annex B with 3- and 4-byte start
+codes, crop → pixel rect and its tag, output size, absolute coordinates over mixed-DPI desks with negative origins, relative moves,
+wheel, double-click plans, pacing, cursor bitmaps). Real H.264 High and HEVC Main streams from brew's ffmpeg
+(`testdata/make-streams.sh`) go to the wire's form and back, and ffmpeg decodes the round trip cleanly. (Since the session server
+arrived, `cargo check --target x86_64-pc-windows-msvc` from a Mac needs a C compiler for that target: `ring`, through rustls, builds C.)
 
-On Windows (blurt-win, GCP g2-standard-4, NVIDIA L4, Windows Server 2025): see §Measured.
+On Windows (blurt-win: GCP g2-standard-4, NVIDIA L4 with Google's GRID driver 596.86, Windows Server 2025 build 26100, an 800×600
+console display on Microsoft's basic adapter plus a second 1280×800 one): `cargo build --release --examples`, `cargo test --release`
+(the whole crate: 96 tests, the backend's 51 among them, pass) and `cargo clippy --release --all-targets` are clean natively.
 
-### Measured
+### Measured (2026-11-09, blurt-win)
 
-Not yet: SSH to the test VM didn't come up (see the report). `examples/win_smoke.rs` writes the numbers:
+`examples/win_smoke.rs` at 12 Mbps / 60 fps asked, then 2 Mbps / 30 fps. "Encode" is from the frame going to the encoder to its
+output; "convert" is the video processor's crop + scale + NV12 plus the read-back compare where it runs.
+
+| Run | Encoder | Output | Whole: fps / encode / convert | 3× moving 7/s: crop shown after | 2 Mbps / 30 fps stage |
+|---|---|---|---|---|---|
+| synthetic, session 0 | NVIDIA H.264 MFT (L4) | 1920×1080 | 56.7 / 4.4 ms / 2.2 ms | p50 17.5 ms, max 24.8 ms (12/12) | 31.9 fps, 1.66 Mbps |
+| synthetic, session 0 | NVIDIA HEVC MFT (L4) | 1920×1080 | 57.0 / 3.3 ms / 2.2 ms | p50 14.2 ms, max 16.1 ms (12/12) | 31.4 fps, 1.93 Mbps |
+| synthetic, session 0 | Microsoft H.264 (software) | 1280×720 | 56.4 / 4.8 ms / 2.5 ms | p50 18.0 ms, max 26.0 ms (12/12) | 31.8 fps, 2.69 Mbps |
+| real monitor (WGC), console | Microsoft H.264 (software)* | 800×600 | 30.4 (the console prints at 30 Hz) / 3.3 ms / 1.2 ms | p50 7.5 ms, max 11.7 ms (12/12) | 19.8 fps, 1.39 Mbps |
+
+\* In the interactive console session the NVIDIA MFTs (H.264 and HEVC) fail `ActivateObject` with E_UNEXPECTED ("Catastrophic
+failure") at any size, while the same MFTs work in session 0 (SSH) and from the same build. This VM's display is driven by
+Microsoft's basic adapter, and the GRID driver is unlicensed: the likely cause. The backend then falls back to the software encoder
+on its own, as it should. **A real desktop GPU driving its own monitor (NVENC, Quick Sync, AMF) is untested.**
+
+- Streams: ffprobe reads H.264 High / HEVC Main, no B-frames, BT.709 limited range (the hardware encoder; Microsoft's software one
+  writes no colour description), and ffmpeg decodes every file without an error. The real-monitor picture shows the console with no
+  pointer in it and no yellow capture border (`IsBorderRequired = false` honoured on Server 2025).
+- A still screen: 1.3–2 fps right after it stops (the last changes and the cursor's frames), then nothing; 15 of every 16 WGC
+  frames on a still desktop with the pointer moving are skipped by their dirty regions. `refresh()` ×3: 18 KB, 49 KB, then 0.5 KB
+  resends; `keyframe()`: one IDR within 300 ms.
+- Rate: whole-screen stages stay under the asked rate (7.6 Mbps of 12 on scrolling text); a crop that jumps 7 times a second over
+  scrolling text overshoots to about 16 Mbps of 12 with either encoder (each jump is a new picture): the one-second buffer lets it.
+  A shorter buffer (0.5 s) is the knob if the network can't take it; untried.
+- Age from capture to the encoded frame: p50 6 ms, p95 10 ms at 1080p whole (hardware); 14 ms when the read-back compare runs too.
+- Input on the real desktop: 4 pt × 10 relative moves on a side of a square: 40 px, 39 px, 41 px, 39 px (a pixel off now and then:
+  Windows' own rounding of absolute coordinates; fractions are kept here, so it doesn't add up). `can_control` true, the cursor's
+  shape 32×32 pt PNG with its hot spot.
+- `displays()`: in the console `\\.\DISPLAY1` 800×600 at 0,0 (main) and `\\.\DISPLAY2` 1280×800 at 800,0; in session 0 one
+  "WinDisc" 1024×768.
+
+End to end, the real host (`cargo run --release --example host -- --real`, in the console session through `schtasks /it`) and the
+Rust phone (`examples/phone.rs`) on a Mac in another country, over the internet: pairing with the test yes, session with
+`platform: "windows"`, both displays listed, UDP confirmed, cursor datagrams arriving, the screen on (WGC → software H.264 on
+DISPLAY1), a key pressed (Ctrl+C reached the focused window). Found that way and fixed: an access violation in
+`GraphicsCapture.dll_unloaded` after every stop (the worker's apartment was COM's last one, so the DLL went with a WGC callback on
+its way; the MTA is now kept for the process, and FrameArrived removed before closing), and no first picture on a still screen (WGC
+gives a frame only on a change; the first now comes from GDI). Not seen working there: video reaching the Rust phone (the first two
+frames went before UDP was confirmed, and it asks for no keyframe), and following the pointer onto the second display (no new
+`screenView` after 1,200 pt of moves to the right). The iPhone app in the simulator wasn't paired with it (see the report).
 
 ```
 cargo run --release --example win_smoke                  # the monitor under the pointer, hardware encoder
 cargo run --release --example win_smoke -- --software    # Microsoft's software H.264
-cargo run --release --example win_smoke -- --synthetic   # no desktop: text-like rows scrolling at 1920×1080
+cargo run --release --example win_smoke -- --synthetic   # no desktop (a service, SSH = session 0): text-like rows at 1920×1080
 ```
 
 ## Firewall and network
@@ -118,7 +158,11 @@ after the owner clicks Add Phone, as on the Mac.
 What Windows Defender Firewall does with this, for Blurt's **per-user** NSIS install (`installMode: currentUser`, no admin rights,
 the exe under `%LOCALAPPDATA%\Blurt`):
 
-- The first time the exe listens on a non-loopback address, Windows shows "Windows Defender Firewall has blocked some features of
+- **Measured on Windows Server 2025** (firewall on for every profile, the network Public, no rule for the exe): the host listened
+  and **nothing was shown**: no prompt, and connections from outside never arrived, until a rule was added
+  (`netsh advfirewall firewall add rule … program=<host.exe> dir=in action=allow profile=any`). Server doesn't notify by default; the
+  client editions below were not tried here.
+- The first time the exe listens on a non-loopback address, Windows 10 / 11 shows "Windows Defender Firewall has blocked some features of
   this app" with Private checked and Public unchecked. Allowing it needs an administrator. A standard user gets a UAC credential
   prompt, an admin gets a UAC yes. That creates inbound allow rules for this exe path, TCP and UDP.
 - **Cancel, or no admin at hand:** Windows silently creates inbound *block* rules for the exe (TCP and UDP) for that profile. The
@@ -130,6 +174,16 @@ the exe under `%LOCALAPPDATA%\Blurt`):
   so its replies come back through the stateful firewall without an inbound rule.
 - Discovery: the system's own mDNS rule ("mDNS (UDP-In)") is on for Private networks; an in-app responder on 5353 would need its own
   rule as above.
+
+So a prompt can't be relied on: the app (or an installer) has to add the rule itself. What it should add, exactly: one inbound
+allow rule for Blurt's exe, TCP and UDP (no port: the UDP port is any free one), Private and Public profiles, removed on uninstall:
+
+```
+netsh advfirewall firewall delete rule name=all program="%LOCALAPPDATA%\Blurt\blurt.exe" dir=in
+netsh advfirewall firewall add rule name="Blurt (phone)" dir=in action=allow program="%LOCALAPPDATA%\Blurt\blurt.exe" enable=yes profile=private,public
+```
+
+(the first line clears a block rule a cancelled prompt left). Both need an administrator once, through one UAC prompt.
 
 What the app should do (proposed, not done; the installer isn't changed here):
 

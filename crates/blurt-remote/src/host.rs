@@ -185,6 +185,12 @@ pub type FrameSink = Arc<dyn Fn(EncodedFrame) + Send + Sync>;
 
 /// The display under the pointer, captured, cropped, scaled and encoded. One stream at a time.
 pub trait Screen: Send {
+    /// What `start` would wait on that the user has to answer (Wayland: the portal's dialog, the first time), as a blocking
+    /// call the server makes *without* holding the backend, so keys and the pointer keep working meanwhile. Err: as `start`'s.
+    /// None (the default): nothing to wait for.
+    fn prepare(&mut self) -> Option<Box<dyn FnOnce() -> Result<(), String> + Send>> {
+        None
+    }
     /// Start, or restart with a new size. Frames go to `sink` from the backend's own thread. A still display sends nothing new
     /// (the server asks for a resend with `refresh` to sharpen the last picture). Err: a sentence for the user, already in plain
     /// words (ToPhone.screenFailed), such as the portal dialog being refused.

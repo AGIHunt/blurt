@@ -140,6 +140,13 @@ impl Converter {
         unsafe { self.context.CopyResource(&self.held, texture) };
     }
 
+    /// Hold a picture given as pixels (BGRA, `in_w`×`in_h`, top-down): the first one, from GDI.
+    pub fn hold_pixels(&self, bgra: &[u8]) {
+        if bgra.len() >= (self.in_w * self.in_h * 4) as usize {
+            unsafe { self.context.UpdateSubresource(&self.held, 0, None, bgra.as_ptr() as *const _, self.in_w * 4, 0) };
+        }
+    }
+
     /// The held picture's `crop` (source pixels) at the output size, as NV12: the next texture of the ring.
     pub fn render(&mut self, crop: &Rect) -> Result<ID3D11Texture2D, String> {
         let (tex, view) = &self.outputs[self.next];

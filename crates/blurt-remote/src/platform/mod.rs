@@ -6,7 +6,8 @@ pub mod windows;
 #[cfg(windows)]
 pub use self::windows::backend;
 
-#[cfg(target_os = "linux")]
+// built everywhere for its pure helpers' tests; the backend itself only on Linux
+#[cfg(any(target_os = "linux", test))]
 pub mod linux;
 #[cfg(target_os = "linux")]
 pub use self::linux::backend;

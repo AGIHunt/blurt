@@ -145,6 +145,11 @@ impl ScreenSession {
         all: Arc<Mutex<Vec<DisplayInfo>>>,
     ) -> Result<ScreenSession, String> {
         let r = clamp(r);
+        // a dialog the user answers (Wayland's portal) is waited on without the backend's lock: input goes on meanwhile
+        let wait = backend.lock().unwrap().screen().and_then(|s| s.prepare());
+        if let Some(wait) = wait {
+            wait()?;
+        }
         let relayed = chan.relay;
         let rate = Rate::new(r.bitrate, r.fps, relayed);
         // the display: the one pinned, else the one under the pointer; its shape is the picture's
