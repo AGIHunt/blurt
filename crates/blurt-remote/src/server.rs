@@ -182,6 +182,9 @@ struct Sess {
     screen_gen: u64,
     /// the display the phone pinned (showDisplay), for the next stream too; None: follow the pointer
     pinned: Option<String>,
+    /// ToPhone.session has gone: the displays only after it, as from the Mac (a relayed session's waits on STUN, while the watch
+    /// looks at the displays every 2 s)
+    told: bool,
 }
 
 struct RelayConn {
@@ -901,6 +904,7 @@ impl Core {
                 transcript,
                 commitment,
                 held_released: false,
+                told: false,
                 punches: 0,
                 screen: None,
                 screen_gen: 0,
@@ -1004,7 +1008,7 @@ impl Core {
         });
     }
 
-    /// Several displays: what the backend has now. A change goes to the phone (once a session has greeted), and to the screen
+    /// Several displays: what the backend has now. A change goes to the phone (once it has its session), and to the screen
     /// session (the display shown may have gone).
     fn poll_displays(&self, g: u64) {
         let list = self.backend.lock().unwrap().displays();
@@ -1013,7 +1017,7 @@ impl Core {
             return;
         }
         let Some(x) = s.current.and_then(|sid| s.sessions.get(&sid)) else { return };
-        if !x.chan.greeted.load(SeqCst) || s.displays_sent.as_ref() == Some(&list) {
+        if !x.chan.greeted.load(SeqCst) || !x.told || s.displays_sent.as_ref() == Some(&list) {
             return;
         }
         let changed = s.displays_sent.is_some();
@@ -1471,7 +1475,13 @@ impl Core {
                 info.candidates = list;
             }
             chan.send(&ToPhone::Session(info));
-            let g = me.st.lock().unwrap().watch_gen;
+            let g = {
+                let mut s = me.st.lock().unwrap();
+                if let Some(x) = s.sessions.get_mut(&chan.sid) {
+                    x.told = true;
+                }
+                s.watch_gen
+            };
             me.poll_displays(g); // several displays: the list right after the session, not 2 s later
             let me2 = me.clone();
             me.post(move |a| {
