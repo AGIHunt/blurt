@@ -497,6 +497,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 replacing?.let { send(ToMac.Replaces(it)); replacing = null }
                 // one relay serves all of them: a computer with none takes the one the others use
                 if (i.relay == null) _macs.value.mapNotNull { it.relayAddress }.firstOrNull()?.let { send(ToMac.OfferRelay(it)) }
+                if (talkHeld) send(ToMac.DictationKey(true))
                 Remote.screen.resume()
                 if (channel?.isRelay == true) lookForDirect(i) else channel?.openUDP(i.udpPort, i.udpSession)
                 // the computer let go of everything when the last session ended
@@ -600,6 +601,15 @@ class Link(private val c: Context, private val vault: KeyVault) {
     // MARK: sending
 
     fun send(m: ToMac) { channel?.send(m) }
+
+    /** The talk key held while the session isn't up (this phone taking the computer back, or just coming back to the app): it
+     *  starts dictation once the session opens, if it's still held. A press already let go of stays dropped, like any key. */
+    @Volatile private var talkHeld = false
+    fun dictationKey(down: Boolean) {
+        talkHeld = down
+        if (_state.value != State.CONNECTED) return
+        send(ToMac.DictationKey(down))
+    }
 
     /** The computer's displays left to right, as its display settings arrange them. */
     val displaysInOrder: List<dev.blurt.remote.core.RemoteDisplay> get() = displays.value.sortedWith(compareBy({ it.x }, { it.y }))

@@ -109,7 +109,7 @@ final class TalkBar: UIView {
             @unknown default: return
             }
         }
-        Link.shared.send(.dictationKey(down: true))
+        Link.shared.dictationKey(down: true)
     }
 
     /// The mic is off for this app, and that isn't something to fail at silently while looking at another screen.
@@ -125,7 +125,7 @@ final class TalkBar: UIView {
         down = false
         backgroundColor = Theme.talkRest
         Haptics.release()
-        Link.shared.send(.dictationKey(down: false))
+        Link.shared.dictationKey(down: false)
         MicStream.shared.released()
     }
 

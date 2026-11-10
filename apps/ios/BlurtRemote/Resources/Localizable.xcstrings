@@ -211,22 +211,22 @@
         }
       }
     },
-    "Another iPhone is connected. Touch to take over." : {
+    "Another phone is connected. Touch to take over." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另一台 iPhone 已连接。轻点以接管。"
+            "value" : "另一台设备已连接。轻点以接管。"
           }
         }
       }
     },
-    "Another iPhone is using it" : {
+    "Another phone is using it" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另一台 iPhone 正在使用"
+            "value" : "另一台设备正在使用"
           }
         }
       }

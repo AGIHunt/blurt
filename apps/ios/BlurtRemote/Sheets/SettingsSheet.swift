@@ -145,7 +145,7 @@ struct SettingsSheet: View {
             case .connecting: return "Connecting…"
             case .unreachable: return "Can’t reach it"
             case .forgotten: return "Needs pairing again"
-            case .replaced: return "Another iPhone is using it"
+            case .replaced: return "Another phone is using it"
             case .unpaired: return "Not connected"
             }
         }

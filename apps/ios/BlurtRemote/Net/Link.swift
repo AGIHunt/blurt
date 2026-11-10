@@ -538,6 +538,7 @@ final class Link: ObservableObject {
             }
             // one relay serves all of them: a Mac with none takes the one the others use
             if i.relay == nil, let a = macs.compactMap(\.relayAddress).first { send(.offerRelay(a)) }
+            if talkHeld { send(.dictationKey(down: true)) }
             ScreenStream.shared.resume()
             if channel?.isRelay == true {
                 if ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" { lookForDirect(i) }
@@ -660,6 +661,15 @@ final class Link: ObservableObject {
     // MARK: sending
 
     func send(_ m: ToMac) { channel?.send(m) }
+
+    /// The talk key held while the session isn't up (this phone taking the computer back, or just coming back to the app): it
+    /// starts dictation once the session opens, if it's still held. A press already let go of stays dropped, like any key.
+    private var talkHeld = false
+    func dictationKey(down: Bool) {
+        talkHeld = down
+        guard state == .connected else { return }
+        send(.dictationKey(down: down))
+    }
     /// `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be
     func pointer(_ p: RemotePointerPacket, inOrder: Bool = false) {
         // over the relay every message counts: 30 a second is plenty, and it's already no place for a fine stroke
