@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "blurt-desktop"
-version = "1.0.15"
+version = "1.0.16"
 dependencies = [
  "arboard",
  "ashpd",
