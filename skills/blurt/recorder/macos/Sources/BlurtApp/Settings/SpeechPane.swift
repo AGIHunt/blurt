@@ -182,6 +182,12 @@ final class SpeechModel: ObservableObject {
     @Published var models: [ASRModel] = []
     @Published var loading = false
     @Published var error: String?
+    /// why the models couldn't be read (nil: they could): the error line's action follows it
+    @Published var failure: SpeechSetup.ReadFailure?
+    /// the end of what the failed read printed, for Copy Error
+    var errorDetail = ""
+    @Published var copied = false
+    @Published var installingUV = false
     @Published var benching: Set<String> = []
     @Published var bench: [String: BenchResult] = [:]                                      // model id → last run
     @Published var language = "auto"
@@ -197,6 +203,27 @@ final class SpeechModel: ObservableObject {
         mirror = ModelBundle.mirror
         // downloads are the app's one manager's (App/ModelDownloads.swift): its progress shows in these rows
         sub = ModelDownloads.shared.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // uv arrived (here, the setup assistant or the launch's quiet install): the models can be read now
+        uvObserver = NotificationCenter.default.addObserver(forName: UVSetup.finished, object: nil, queue: .main) { [weak self] n in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.installingUV = false
+                if n.object != nil || self.failure == .noUV { Task { await self.load() } }
+            }
+        }
+    }
+    private var uvObserver: NSObjectProtocol?
+
+    /// Install uv from the error line: UVSetup's quiet install (nothing when a usable one is there); its
+    /// notification reloads. A uv already there answers without one, so look again shortly.
+    func installUV() {
+        installingUV = true
+        UVSetup.ensure(via: "settings")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self = self, self.installingUV, !UVSetup.installing else { return }
+            self.installingUV = false
+            Task { await self.load() }
+        }
     }
 
     /// A model's download as its bar shows it: the running one's "N of M", "Queued" while it waits; nil otherwise.
@@ -221,7 +248,7 @@ final class SpeechModel: ObservableObject {
         defer { loading = false }
         do {
             let r = try await SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
-            guard r.ok, let s = r.decode(ASRState.self) else { error = S("speech.error.read"); return }
+            guard r.ok, let s = r.decode(ASRState.self) else { failed(stderr: r.stderr.isEmpty ? r.errorText : r.stderr); return }
             // a finished download: the suggestion folds away and the jobs show their new model
             let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || state == nil
             withAnimation(calm ? nil : .easeInOut(duration: 0.25)) {
@@ -229,7 +256,38 @@ final class SpeechModel: ObservableObject {
                 models = s.models.filter { $0.role == "asr" }  // not the VAD every local model uses
             }
             error = nil
-        } catch { self.error = S("speech.error.read") }
+            failure = nil
+        } catch ScriptError.timeout {
+            failed(stderr: "", timedOut: true)
+        } catch { failed(stderr: "\(error)") }
+    }
+
+    /// The models couldn't be read: the line says why, and offers what can help — Install uv, Try Again (offline, a
+    /// network error, a timeout), or for a package that can't be built its name and Copy Error (trying again would
+    /// fail the same way).
+    private func failed(stderr: String, timedOut: Bool = false) {
+        let f = SpeechSetup.readFailure(uv: ScriptRunner.shared.uvPath != nil, timedOut: timedOut,
+                                        online: NetworkWatch.shared.isOnline, stderr: stderr)
+        failure = f
+        errorDetail = SpeechSetup.errorTail(stderr)
+        copied = false
+        switch f {
+        case .noUV: error = S("speech.error.no_uv")
+        case .offline: error = S("speech.error.offline")
+        case .network: error = S("speech.error.network")
+        case .timeout: error = S("speech.error.timeout")
+        case .broken(let p?, let tool?): error = S("speech.error.build_missing", p, tool)
+        case .broken(let p?, nil): error = S("speech.error.build", p)
+        case .broken(nil, _): error = S("speech.error.read")
+        }
+        emit(["event": "speech_read_failed", "failure": "\(f)", "detail": String(errorDetail.suffix(2000))])
+    }
+
+    /// Copy Error: the end of what the failed read printed, for an issue report.
+    func copyError() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(error.map { "\($0)\n\n\(errorDetail)" } ?? errorDetail, forType: .string)
+        copied = true
     }
 
     /// Re-pick for this Mac (auto) and reload.
@@ -482,8 +540,21 @@ struct SpeechPane: View {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
-                    Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 12) {
+                        Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if m.installingUV || m.loading {
+                            BrandSpinnerView(size: 10)
+                        } else if m.failure == .noUV {
+                            Button(S("speech.install_uv")) { m.installUV() }.help(UVSetup.installCommand)
+                        } else if m.failure?.retries == true {
+                            Button(S("speech.rec.retry")) { Task { await m.load() } }
+                        } else if !m.errorDetail.isEmpty {
+                            // the same failure every time: no Try Again, the error for a report
+                            Button(S(m.copied ? "speech.error.copied" : "speech.error.copy")) { m.copyError() }
+                        }
+                    }
                 }
             }
             recommendation
@@ -807,11 +878,13 @@ struct SpeechPane: View {
             }
             if s.hardware.gpu.kind == "apple" {
                 // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
+                // typed apart: inline, the compiler gives up type-checking the call
+                let memory: [(Int, String)] = stride(from: 10, through: 50, by: 5).map { (pct: Int) -> (Int, String) in
+                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
+                }
                 SettingRow("speech.memory") {
                     ChoicePopup(label: S("speech.limits.memory"),
-                                choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
-                                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
-                                },
+                                choices: memory,
                                 selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
                                                    set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }

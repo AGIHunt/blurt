@@ -1475,7 +1475,9 @@ final class IslandContent: NSView {
         openHint?.hover = i.pointerInside
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
-            level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
+            // five bars lit up to the mic level (typed apart: inline, the compiler gives up type-checking it)
+            let v: Float = rec.isPaused ? 0 : rec.micLevel
+            level?.values = (0..<5).map { (k: Int) -> Float in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 }
             // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
             let said = takeText(rec)
             if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (takeLine == nil) != said.isEmpty {

@@ -92,6 +92,55 @@ public enum SpeechSetup {
         timedOut ? .timeout : cause(online: online) == .offline ? .offline : .error
     }
 
+    /// Why Settings → Models couldn't read the speech models, and so what its line offers: Try Again only where trying
+    /// again can help (offline, a network error, a timeout); a package that can't be built fails the same way every
+    /// time, so the line names it and offers Copy Error instead (BLU-1, #47).
+    public enum ReadFailure: Equatable {
+        /// no uv: Install uv
+        case noUV
+        /// the Mac is offline: connect, then Try Again
+        case offline
+        /// online, but fetching the tools failed (a proxy, a dropped connection): Try Again
+        case network
+        /// it ran out of time (a cold uv sync): Try Again
+        case timeout
+        /// a package couldn't be built (`package`, and the tool it needed when the build said so), or another error:
+        /// the reason and Copy Error, no Try Again
+        case broken(package: String?, missing: String?)
+
+        public var retries: Bool {
+            switch self {
+            case .offline, .network, .timeout: return true
+            case .noUV, .broken: return false
+            }
+        }
+    }
+
+    /// `stderr`: what uv and the script printed (uv: "Failed to build `sherpa-onnx==1.13.8`", the build backend:
+    /// "No such file or directory: 'cmake'"). `online`: NetworkWatch's last answer (nil: none yet).
+    public static func readFailure(uv: Bool, timedOut: Bool, online: Bool?, stderr: String) -> ReadFailure {
+        guard uv else { return .noUV }
+        if timedOut { return .timeout }
+        if online == false { return .offline }
+        let package = first(#"Failed to build `([^`=<>~! ]+)"#, in: stderr)
+        if package == nil, ["Failed to fetch", "error sending request", "dns error", "Connection reset", "timed out"]
+            .contains(where: { stderr.localizedCaseInsensitiveContains($0) }) { return .network }
+        return .broken(package: package, missing: package == nil ? nil : first(#"No such file or directory: '([^'/]+)'"#, in: stderr))
+    }
+
+    /// The end of what a failed read printed, for Copy Error (an issue report wants the last lines, not the build log).
+    public static func errorTail(_ text: String, lines: Int = 40) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false).suffix(lines).joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func first(_ pattern: String, in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[r])
+    }
+
     /// The dictation key refuses before listening ("isn't set up yet · Set Up…"): the tools can't run. Not on a
     /// timeout — the take goes ahead as it always did.
     public static func refusesDictation(_ f: ListFailure?) -> Bool { f == .offline || f == .error }

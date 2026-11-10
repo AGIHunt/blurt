@@ -1087,7 +1087,7 @@
  "st.speech.download.queued": "Queued",
  "st.speech.download.stop": "Stop",
  "st.speech.download.unpacking": "Unpacking…",
- "st.speech.error.read": "Couldn’t read the speech models. Check that uv is installed (in Settings, under General).",
+ "st.speech.error.read": "Couldn’t read the speech models.",
  "st.speech.language.system": "Windows speech recognition handles one language at a time: currently {1}, including English words in a sentence. If you speak only English, choose English.",
  "st.speech.language.system.one": "Windows speech recognition handles one language at a time: currently {1}. If you speak another language, choose it here.",
  "st.speech.languages.add": "Add",

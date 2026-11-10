@@ -67,6 +67,7 @@
     "resources": {
       "../../../skills/blurt/scripts/*.py": "scripts/",
       "../../../skills/blurt/scripts/*.json": "scripts/",
+      "../../../skills/blurt/scripts/.python-version": "scripts/.python-version",
       "../../../skills/blurt/scripts/review.html": "scripts/review.html",
       "../../../skills/blurt/models/*": "models/",
       "sounds/*.wav": "sounds/"

@@ -24,7 +24,7 @@ enum UVSetup {
         return r.status == 0 ? p : nil
     }
 
-    /// uv there, or installed now in the background. `via`: launch | onboarding | button.
+    /// uv there, or installed now in the background. `via`: launch | onboarding | button | settings.
     static func ensure(via: String) {
         if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { return }
         DispatchQueue.global(qos: .utility).async {
