@@ -169,7 +169,7 @@ async fn pairing_a_session_keys_and_the_pointer() {
     assert_eq!(input.wait("held 0").await, ["held 8", "key C 0 None", "held 0"]);
 
     // the pointer over the stream, then over UDP once the host says it got a packet
-    phone.pointer(PointerPacket::Move { dx: 3.0, dy: -2.0 }).await;
+    phone.pointer(PointerPacket::Move { dx: 3.0, dy: -2.0, seq: None }).await;
     input.wait("move 3 -2").await;
     phone.open_udp(info.udp_port, info.udp_session).await.unwrap();
     phone.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::UdpOk).then_some(())).await.expect("udpOK");

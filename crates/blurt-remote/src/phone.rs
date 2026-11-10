@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::crypto::{PhoneHandshake, SealOut};
-use crate::packets::{FrameReader, Kind, PointerPacket, VideoPacket, MAX_FRAME};
+use crate::packets::{cursor_from, FrameReader, Kind, PointerPacket, VideoPacket, MAX_FRAME};
 use crate::repair::{Feedback, Output, Receiver};
 use crate::wire::{ScreenReport, ScreenRequest, ToMac, ToPhone};
 
@@ -21,7 +21,8 @@ pub enum Event {
     Control(ToPhone),
     /// a video piece (datagram or relay stream)
     Video(Vec<u8>),
-    Cursor(f32, f32),
+    /// the pointer's place, and the newest of this phone's numbered pointer instructions it includes (12 bytes; None: the 8-byte one)
+    Cursor(f32, f32, Option<u32>),
     Probe(Vec<u8>),
     Closed,
 }
@@ -51,10 +52,10 @@ fn deliver(tx: &mpsc::UnboundedSender<Event>, plain: &[u8]) {
             None => return,
         },
         Kind::Video => Event::Video(body.to_vec()),
-        Kind::Cursor if body.len() >= 8 => Event::Cursor(
-            f32::from_le_bytes(body[0..4].try_into().unwrap()),
-            f32::from_le_bytes(body[4..8].try_into().unwrap()),
-        ),
+        Kind::Cursor => match cursor_from(body) {
+            Some((x, y, seq)) => Event::Cursor(x, y, seq),
+            None => return,
+        },
         Kind::Probe => Event::Probe(body.to_vec()),
         _ => return,
     });

@@ -199,6 +199,9 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
         guard !t.isEmpty else { return }
         onTouch?()
         light(t.first, on: true)
+        // zoomed in, with the glass as the screen, the picture is a photo under one finger; a touch anywhere stops it coasting
+        engine.panView = isStage && showing && engine.touchMode && !ScreenStream.shared.port.isWhole
+        engine.viewCoasting = ScreenStream.shared.stopCoast() && isStage
         apply(engine.began(pads(t, new: true), at: CACurrentMediaTime()))
         startTicks()
     }
@@ -280,6 +283,8 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
             case .viewEnd:
                 ScreenStream.shared.gestureEnded()
                 onViewEnd?()
+            case let .viewCoast(vx, vy):
+                if isStage { ScreenStream.shared.coastView(vx: vx, vy: vy) }
             case let .pointAt(p):
                 offPicture = !ScreenStream.shared.placePointer(at: p)
                 placed = true

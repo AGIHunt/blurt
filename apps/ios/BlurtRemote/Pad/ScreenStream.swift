@@ -33,6 +33,13 @@ final class ScreenStream {
     private var lastPixels: CVPixelBuffer?
     private var debugPackets = 0, debugAt = 0.0
     private(set) var on = false
+    #if DEBUG
+    /// a made-up picture stands in for the computer's (Pretend.screen): the view moves as if it were on, and says when it has
+    var standsIn = false
+    var onPlaced: (() -> Void)?
+    #else
+    private let standsIn = false
+    #endif
     private var request: RemoteScreenRequest?
     private var planned: ScreenPlan?
     private var planWait: DispatchWorkItem?
@@ -68,6 +75,8 @@ final class ScreenStream {
     private var pointerKnown = false
     /// where the Mac last said it was
     private var macPointer: CGPoint?
+    /// the newest of this phone's pointer instructions that place includes; nil from a computer that doesn't say
+    private var macSeq: UInt32?
     private var settling = false
     private var dragWaiting: CGPoint?
     private var lastDragSent = 0.0
@@ -152,7 +161,7 @@ final class ScreenStream {
     private var plan: ScreenPlan {
         let l = Link.shared
         return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: stagePixels ?? UIScreen.main.nativeBounds.size,
-                          panel: UIScreen.main.maximumFramesPerSecond)
+                          panel: UIScreen.main.maximumFramesPerSecond, scale: UIScreen.main.scale)
     }
 
     /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).
@@ -242,7 +251,9 @@ final class ScreenStream {
         let started = CACurrentMediaTime()
         awaiting = (s.height > 0 ? s.width / s.height : 0, started)
         pointerKnown = false
+        macPointer = nil       // where it was on the display left
         cursorLayer.isHidden = true
+        stopMoving()
         resetView()
         tell(.screenCrop(.whole))       // a crop still on its way was for the display left
         // the new display's first frame should be here long before this
@@ -286,6 +297,83 @@ final class ScreenStream {
         askForView(now: true)
     }
 
+    // MARK: the view moving by itself: coasting on after a flick, and along with a drag held at its edge
+
+    private var mover: CADisplayLink?
+    private var moverAt = 0.0
+    /// points a second, on the stage
+    private var coast = CGVector.zero
+    /// the finger of a drag, on the stage
+    private var dragAt: CGPoint?
+    /// how near the stage's edge a dragging finger takes the view along, and how fast at the very edge (points a second)
+    private static let edgeBand: CGFloat = 36, edgeSpeed: CGFloat = 700
+
+    /// The finger that was moving the zoomed picture left it at this speed: it coasts on and slows, as a photo does.
+    func coastView(vx: CGFloat, vy: CGFloat) {
+        guard on || standsIn, !port.isWhole, bounds.width > 0 else { return }
+        coast = CGVector(dx: vx, dy: vy)
+        startMover()
+    }
+
+    /// A touch landed. True if the picture was coasting: the touch stopped it.
+    @discardableResult
+    func stopCoast() -> Bool {
+        guard coast != .zero else { return false }
+        coast = .zero
+        askForView(now: true)
+        return true
+    }
+
+    private func stopMoving() {
+        coast = .zero
+        dragAt = nil
+        mover?.invalidate()
+        mover = nil
+    }
+
+    private func startMover() {
+        guard mover == nil else { return }
+        moverAt = CACurrentMediaTime()
+        let l = CADisplayLink(target: self, selector: #selector(moverTick))
+        l.add(to: .main, forMode: .common)
+        mover = l
+    }
+
+    @objc private func moverTick() {
+        let now = CACurrentMediaTime(), dt = CGFloat(min(0.05, now - moverAt))
+        moverAt = now
+        guard on || standsIn, bounds.width > 0, !port.isWhole else { return stopMoving() }
+        let middle = CGPoint(x: 0.5, y: 0.5)
+        if coast != .zero {
+            let before = port.rect
+            port.change(scale: 1, move: CGPoint(x: coast.dx * dt / bounds.width, y: coast.dy * dt / bounds.height), anchor: middle)
+            // the rate a scroll view slows at
+            let k = CGFloat(pow(0.998, Double(dt) * 1000))
+            coast = CGVector(dx: coast.dx * k, dy: coast.dy * k)
+            let stopped = port.rect == before || hypot(coast.dx, coast.dy) < 20      // against the screen's edge, or slow enough
+            if stopped { coast = .zero }
+            place()
+            askForView(now: stopped)
+        }
+        if let f = dragAt {
+            // 0 inside, to ±1 at the very edge
+            func push(_ v: CGFloat, _ size: CGFloat) -> CGFloat {
+                v < Self.edgeBand ? -(Self.edgeBand - max(0, v)) / Self.edgeBand : v > size - Self.edgeBand ? (min(size, v) - (size - Self.edgeBand)) / Self.edgeBand : 0
+            }
+            let px = push(f.x, bounds.width), py = push(f.y, bounds.height)
+            if px != 0 || py != 0 {
+                let before = port.rect
+                port.change(scale: 1, move: CGPoint(x: -px * Self.edgeSpeed * dt / bounds.width, y: -py * Self.edgeSpeed * dt / bounds.height), anchor: middle)
+                if port.rect != before {
+                    place()
+                    askForView()
+                    dragPointer(to: f)      // what's under the finger now
+                }
+            }
+        }
+        if coast == .zero, dragAt == nil { stopMoving() }
+    }
+
     /// The view back to the whole screen and nothing left of the last one.
     func resetView() {
         port = ViewPort()
@@ -296,15 +384,41 @@ final class ScreenStream {
         place()
     }
 
-    /// At most a few times a second while it moves: each change costs the encoder a little, and there's a picture to look at meanwhile.
+    /// where the view was at the last ask, and when: how fast it's moving
+    private var viewAskedMid = CGPoint.zero, viewAskedAt = 0.0
+    private var aheadQueued = false
+
+    /// Up to 30 times a second while the view moves (10 over the relay): the computer cuts the part out of the frame it has, so an
+    /// ask costs it a frame of the stream's own rate and no more, and one finger now moves the picture, so the part coming into view
+    /// should be sharp as it comes (it was 7 and 3 a second when asks went through ScreenCaptureKit and held frames). While it moves,
+    /// the ask is for where the view will be when that frame is here (`ViewPort.crop(ahead:)`): a twentieth of a second and the round
+    /// trip on. `now`: the fingers lifted or the coasting stopped; exactly what's in view.
     private func askForView(now: Bool = false) {
-        let c = port.crop
-        guard on, c != sentCrop else { return }
-        let gap = Link.shared.route == .relay ? 0.33 : 0.15
-        let wait = gap - (CACurrentMediaTime() - lastCropSent)
+        guard on else { return }
+        let t = CACurrentMediaTime()
+        let gap = Link.shared.route == .relay ? 0.1 : 1.0 / 30
+        let wait = gap - (t - lastCropSent)
         if now || wait <= 0 {
+            let mid = CGPoint(x: port.rect.midX, y: port.rect.midY), dt = t - viewAskedAt
+            var ahead = CGPoint.zero
+            if !now, dt > 0.005, dt < 0.25 {
+                let lead = min(0.25, 0.05 + (Link.shared.rtt ?? 0))
+                ahead = CGPoint(x: (mid.x - viewAskedMid.x) / dt * lead, y: (mid.y - viewAskedMid.y) / dt * lead)
+            }
+            viewAskedMid = mid
+            viewAskedAt = t
+            let c = port.crop(ahead: ahead)
+            // the view may stop under a finger that stays down: then nothing asks again, and the part asked for is ahead of it
+            if ahead != .zero, !aheadQueued {
+                aheadQueued = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.aheadQueued = false
+                    self.askForView()
+                }
+            }
+            guard c != sentCrop else { return }
             sentCrop = c
-            lastCropSent = CACurrentMediaTime()
+            lastCropSent = t
             tell(.screenCrop(c))
         } else if !cropQueued {
             cropQueued = true
@@ -346,6 +460,9 @@ final class ScreenStream {
         backdrop.isHidden = port.isWhole && shown == .whole
         CATransaction.commit()
         placeCursor()
+        #if DEBUG
+        onPlaced?()
+        #endif
     }
 
     /// The view has moved off the pointer and the finger is about to use it: it comes into view, where the eyes are.
@@ -357,19 +474,21 @@ final class ScreenStream {
     }
 
     func cursor(_ d: Data) {
-        guard d.count == 8 else { return }
-        let x = d.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }, y = d.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Float.self) }
+        guard let c = RemoteCursor(d) else { return }
         DispatchQueue.main.async {
-            guard x.isFinite, y.isFinite else { return }
-            self.macPointer = CGPoint(x: CGFloat(x), y: CGFloat(y))
+            self.macPointer = CGPoint(x: CGFloat(c.x), y: CGFloat(c.y))
+            self.macSeq = c.seq
             self.settle()
         }
     }
 
-    /// The phone's own guess leads while the finger moves, and the Mac has the last word when it stops. The word may well have come while the
-    /// finger was still moving, and nothing more comes after it: it's kept, not dropped, or the two drift apart stroke by stroke.
+    /// The phone's own guess leads while the finger moves, and the Mac has the last word once that word includes every move sent
+    /// (RemoteCursor.wait): a word from before the last moves would jump the pointer back, then forward again when the next one came.
+    /// The word may well have come while the finger was still moving, and nothing more comes after it: it's kept, not dropped, or the
+    /// two drift apart stroke by stroke.
     private func settle() {
-        let wait = max(0.12, (Link.shared.rtt ?? 0) * 1.5) - (CACurrentMediaTime() - lastPredicted)
+        let l = Link.shared
+        let wait = RemoteCursor.wait(host: macSeq, sent: l.pointerSeq, quiet: CACurrentMediaTime() - lastPredicted, rtt: l.rtt ?? 0, lossless: l.route == .relay)
         if wait <= 0 {
             guard let m = macPointer else { return }
             pointer = m
@@ -401,31 +520,43 @@ final class ScreenStream {
 
     /// With the button down: it follows the finger, and stops at the picture's edge. Over the relay no more often than the pointer goes.
     func dragPointer(to p: CGPoint) {
-        guard on, bounds.width > 0 else { return }
+        guard on || standsIn, bounds.width > 0 else { return }
+        // zoomed in, a drag held at the stage's edge takes the view along: what's dragged can go further than what's in view
+        if !port.isWhole {
+            dragAt = p
+            startMover()
+        }
         let v = port.visible, r = port.rect
         let at = CGPoint(x: min(v.maxX, max(v.minX, r.minX + p.x / bounds.width * r.width)), y: min(v.maxY, max(v.minY, r.minY + p.y / bounds.height * r.height)))
         pointer = at
         lastPredicted = CACurrentMediaTime()
         placeCursor()
-        guard Link.shared.route == .relay else { return Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y))) }
+        let seq = Link.shared.nextPointerSeq()
+        guard Link.shared.route == .relay else { return Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y), seq: seq)) }
         let due = CACurrentMediaTime() - lastDragSent >= 1.0 / 30
         dragWaiting = at
-        if due { finishDrag() }
+        if due { sendDrag() }
     }
 
-    /// What's left of a drag goes before the button comes up.
+    /// What's left of a drag goes before the button comes up, and the view stops going along with it.
     func finishDrag() {
+        dragAt = nil
+        sendDrag()
+    }
+
+    /// Where the drag has got to, to the computer. The finger may still be down: the relay's pacing calls this too.
+    private func sendDrag() {
         guard let at = dragWaiting else { return }
         dragWaiting = nil
         lastDragSent = CACurrentMediaTime()
-        Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y)))
+        Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y), seq: Link.shared.pointerSeq))
     }
 
     private func move(to at: CGPoint) {
         pointer = at
         pointerKnown = true
         lastPredicted = CACurrentMediaTime()
-        Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y)))     // on this thread: a click sent next must land after it
+        Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y), seq: Link.shared.nextPointerSeq()))     // on this thread: a click sent next must land after it
         placeCursor()
     }
 
@@ -529,6 +660,9 @@ final class ScreenStream {
                 self.resetView()
                 self.cursorLayer.isHidden = true
                 self.pointerKnown = false
+                self.macPointer = nil
+                self.macSeq = nil
+                self.stopMoving()
                 self.display = nil
                 self.awaiting = nil
                 self.leaving.isHidden = true

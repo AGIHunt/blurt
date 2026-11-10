@@ -37,6 +37,7 @@ pub mod relay;
 pub mod repair;
 pub mod screen;
 pub mod server;
+pub mod sharpen;
 pub mod store;
 pub mod wire;
 

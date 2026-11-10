@@ -108,6 +108,26 @@ display and lights up while it's on, like a modifier: a crossed-out eye over a l
 too. Where it goes matters more than how it looks: in a bottom row, down runs out of phone. So it's in the top row in portrait, and in the thumb's column in
 landscape, with room every way. (Two rows of separate arrows came before this, and took too much room.)
 
+Three changes, 2026-11-11, from the founder driving Claude Code in a terminal on an iPad, where ↑/↓ pick options and walk history and ←/→
+move in the line:
+- **A drag keeps to its way.** Each 24 pt step used to re-anchor only the axis it stepped on, so a thumb sliding right in its natural arc
+  piled up sideways drift until it fired a Down, which in a shell swaps the line being typed for history. Now, once a drag has taken a
+  step, steps come only along that axis, and the other axis follows the finger at each step, so drift never adds up. It turns only on a
+  clear turn: 36 pt across since the last step, and more across than along. Then it starts again from that step like a new drag (steps
+  every 24 pt, a repeat past 72 pt along the way it goes), so a turn after a far slide doesn't jump straight into a fast repeat. Lifting
+  ends it. (`ArrowStroke` in `Keys/KeyCell.swift` and `keys/KeyCell.kt`, tested without a view.)
+- **A tap in the very middle is nobody's.** The four zones meet at the centre, so a tap there picked an arrow by a fraction of a point. A
+  touch landing within 12 % of the width and 12 % of the height of the middle sends nothing and makes no haptic as a tap or a hold, and
+  doesn't arm ⇧ for a following drag; if it moves it's a drag like any other.
+- **On big screens the key is 88 pt square**, so each edge is 44 pt deep. On a phone it's 82×52 pt in portrait: ↑ and ↓, the two used most
+  in a terminal, were the smallest targets at 25 pt each. A phone has no height to spare, so it stays 82×50 (portrait) and 56×74
+  (landscape). On an iPad and the Duo open the top row is 90 pt instead of 52: the arrow key square at the inner side of its half, the tabs
+  beside it, and across from it ⌘Tab the same size, with settings, find the pointer, the screen and the system keyboard two by two at the
+  edge. It costs 38 pt of height: nothing where a 16:10 picture leaves a free band (a 13" iPad either way, an 11" upright), and the picture's
+  height elsewhere with the keys put away (an 11" iPad on its side and the Duo open: the picture about 7 % smaller, 695 → 657 pt tall and 848 → 787 pt wide). Partly folded like a
+  laptop, where the keys must fit under the fold, the row stays 52 pt. On Android's big panel the row is 90 dp too: the arrow key square by
+  the thumb, the controls along the upper half beside it and the tabs under them (left-handed, settings first at the edge, as on a phone).
+
 **A key shows an icon and the name of the key, not what it's for** (founder, 2026-11-07): the same shortcut does different things in different apps,
 and an icon says more in the room there is. What it's for lives in the key list and for VoiceOver. Any key can show text or an emoji instead; the
 longer the text, the smaller it reads.
@@ -237,21 +257,40 @@ connections didn't change that. Text stayed sharp while scrolling at every zoom,
 - **The phone owns the view; a pinch zooms it there and nothing on the Mac** (founder, 2026-11-07: with the screen off it stays ⌘+ / ⌘−). The first
   version scaled the picture about its centre and then the Mac cropped around the pointer, so the view jumped when the fingers lifted. Now it
   works like a photo: the point between the fingers stays under them, it stretches a little past the whole screen and springs back. The Mac is
-  asked for that part of the screen up to about 7 times a second, at the same output size, so the text gets sharper the closer you look. Every
+  asked for that part of the screen up to 30 times a second while the view moves (10 over the relay; it was 7 and 3 until 2026-11-11, from when each ask went through ScreenCaptureKit and held frames), and for where the view will be when that frame arrives rather than where it is (`ViewPort.crop(ahead:)`: its speed over a twentieth of a second plus the round trip, no more than a quarter of what's in view), so with one finger moving the picture the edge coming into view is sharp as it comes instead of a strip of the last whole picture; at the same output size, so the text gets sharper the closer you look. Every
   frame says which part it shows (`RemoteCrop`, in the payload), and goes onto a plain layer in one commit with where that part belongs, so a new
   crop changes only the sharpness. A sample-buffer layer can't do that: it shows frames on its own clock, and each crop change twitched the picture. Zoomed in, the Mac captures the whole display and cuts the part in view out of each frame on the GPU, so a new crop shows on the next frame (20 ms from the phone asking, p50) and nothing waits; ScreenCaptureKit's own crop held frames 24 ms at each change (remote-realtime.md §5).
 - **Two fingers scroll the Mac, zoomed in or not**, both ways, as on its own trackpad, and what's under the fingers scrolls: the pointer goes there
   first, so the session list and the conversation beside it in Claude Code each scroll on their own (founder, 2026-11-08). An earlier version made
-  two fingers move the zoomed picture, as in Photos, and the article under them didn't scroll. The picture moves with the pointer instead: one
-  finger is the pointer, which pushes the view when it nears an edge, and a pinch moves it as it zooms. Two fingers moving together are never quite
+  two fingers move the zoomed picture, as in Photos, and the article under them didn't scroll. Away from the picture (the pad between the
+  thumbs, Touch Mode off) the picture moves with the pointer: one finger is the pointer, which pushes the view when it nears an edge, and a
+  pinch moves it as it zooms. Two fingers moving together are never quite
   the same distance apart: a scroll stays a scroll until they come 36 pt apart or together, then it's a pinch and nothing jumps. A last sight of
   the whole screen sits under the video, so a move past what's been sent shows that until the sharp part comes. If the view has moved off the
   pointer, the next touch brings the pointer to the middle of the view: what you touch is what you're looking at. The pointer slows with the square
   root of the zoom. The arrow key is keys, not a scroll: it moves a cursor or a selection.
 - **The pointer isn't in the video.** Its position goes on its own, 60 times a second and twice a second regardless (they can be lost), and the
-  phone draws it, moving it ahead on its own strokes, so it's never a frame late. The Mac has the last word 120 ms after a stroke, or 1.5 round
-  trips. An earlier version dropped what arrived during a stroke, and nothing arrives after one, so the two drifted apart stroke by stroke and
-  clicks missed (founder, 2026-11-07). Its shape goes when it changes.
+  phone draws it, moving it ahead on its own strokes, so it's never a frame late. The Mac has the last word once that word includes every
+  move the phone has sent (2026-11-11): the phone numbers its pointer instructions and the Mac says with each place how far it has got
+  (remote-protocol.md §The pointer's numbers). Before that the Mac's last place counted 120 ms after a stroke, or 1.5 round trips, whether or
+  not it was from before the last moves; whenever a place came later than that (Wi-Fi's jitter, and nearly always over the relay, where
+  places go 15 a second behind the picture in one stream) the pointer jumped back and then forward again, and zoomed in the next stroke
+  then really put the computer's pointer in the middle of the view (founder on an iPad, 2026-11-10: "光标挪过去，它又跳回来"). A move lost
+  on the way never gets its number, so after max(0.5 s, 4 round trips) the Mac's place counts anyway (3 s in the relay's stream, where
+  nothing is lost). An earlier version dropped what arrived during a stroke, and nothing arrives after one, so the two drifted apart stroke
+  by stroke and clicks missed (founder, 2026-11-07). Its shape goes when it changes.
+- **Zoomed in, one finger on the picture moves the picture** (founder on an iPad, 2026-11-10: pushing the pointer to an edge to see another
+  part isn't how a hand expects a picture to move, and on glass the pointer rarely needs moving). In Touch Mode a tap already lands under the
+  finger, so sliding a finger to move the pointer was the redundant gesture there: what's too small to hit is what the zoom is for, and the
+  pointer by itself has the pad between the thumbs, a mouse or the Pencil. So the zoomed picture is a photo: one finger moves it, a flick
+  sends it coasting (a scroll view's own slowing, 0.998 a millisecond) until the screen's edge or a touch, which stops it without clicking
+  and may move it on. A hold is the computer's press only for a finger that hasn't moved yet (the mouse button going down, then the drag
+  that selects: the founder uses it constantly, 2026-11-11): a finger that has begun to move the picture goes on moving it however long it
+  rests on the way, and nothing is ever pressed. A second finger joining zooms it; one finger left after a pinch goes on moving it. Hold then drag is still the
+  computer's drag, and held within 36 pt of the stage's edge it takes the view along (up to 700 pt a second), so a selection can run past
+  what's in view. Two fingers still scroll the computer, pinch still zooms, three fingers are still the desktops. Not zoomed in there is
+  nothing to move, and one finger is the pointer as before. Reading another part of the screen no longer drags the computer's pointer over
+  it, with the hovers that sets off. `PadEngine` (`panView`, `.panning`, `.viewCoast`), `ScreenStream.coastView`.
 - **The glass is the screen.** With the picture showing, a tap clicks what's under the finger, two fingers right-click there, a hold brings the pointer
   to the finger, and hold then drag follows it, so the pointer's position stops mattering for anything big enough to hit. Moving a finger is
   still the trackpad, for what isn't. A touch off the picture does nothing. Settings → Touch Mode (触控模式) turns it off: taps and scrolls then act
@@ -259,12 +298,16 @@ connections didn't change that. Text stayed sharp while scrolling at every zoom,
 
 ### What it costs (2026-11-08)
 
-One choice in Settings → Mac Screen, not a frame rate, a resolution and a bitrate to work out. It sets a ceiling (ScreenPlan):
+One choice in Settings → Mac Screen, not a frame rate, a resolution and a bitrate to work out. It sets a ceiling (ScreenPlan). Away on Wi-Fi,
+Auto used to ask every device for 1800 across; on an iPad that is the picture stretched half as wide again, and text soft however long it stood
+(founder on an iPad 13" over the relay, 2026-11-10). A screen 1000 pt or more the long way now gets two pixels a point, which is all an iPad has,
+and the rate goes with the pixels, 4 Mbps at 1800 up to 8. A phone stays at 1800: that is two pixels a point there already. Mobile data and a
+choice of Balanced or Data Saver are as they were.
 
 | | Width | Most Mbps | fps | Most MB a minute |
 |---|---|---|---|---|
 | Auto, same network | the phone's | 12 | the panel's: 60, 120 on ProMotion | 90 |
-| Auto, Wi-Fi elsewhere | 1800 | 4 | 30 | 30 |
+| Auto, Wi-Fi elsewhere | 1800; on a big screen two pixels a point (an iPad 13": 2752) | 4; 8 at 2752 | 30 | 30; 60 |
 | Auto, mobile data | 1440 | 2 | 24 | 15 |
 | Auto, Low Data Mode, or Data Saver | 1280 | 1 | 15 | 8 |
 | Sharp, away / Balanced | the phone's / 1800 | 8 / 4 | 30 | 60 / 30 |
@@ -272,7 +315,9 @@ One choice in Settings → Mac Screen, not a frame rate, a resolution and a bitr
 Under the ceiling (RemoteRate): the phone reports every second what arrived, every five while nothing does. Away it starts at half and climbs while
 the picture uses what it has. A growing round trip, a full socket, too much on the way, or 5 % of frames lost over five seconds (one lost frame on
 Wi-Fi says nothing) bring it down at once, to a little under what's getting through, then it waits to see the effect. It doesn't climb back past 90 %
-of where trouble began for 30 s. Each frame gets at least 30 kbit: with less to spend there are fewer frames, because text matters more than motion.
+of where trouble began for 30 s. A rate that fell used to stay where it fell for as long as the screen was read, since it climbs only on a rate
+in use; now a still picture's resends go half as fast again while there is room above the rate, and if all of that arrives calmly the rate
+goes to nine tenths of how fast they went (2026-11-11, [remote-realtime.md §8](remote-realtime.md)). Each frame gets at least 30 kbit: with less to spend there are fewer frames, because text matters more than motion.
 Over the relay's stream the Mac stops sending once more than 1.5 s of picture is on its way, because keys go the same way and mustn't wait behind it,
 and doesn't answer a keyframe request while one is in that stream. If the phone gets nothing for 6 s, those bytes went down a dead path: it starts
 over from a keyframe. On a direct path keyframes go in paced batches at twice the rate, since one lost piece costs the whole frame. After 45 s
@@ -285,8 +330,12 @@ What an hour costs, from the measured rates of each kind of screen (remote-realt
 mobile data, 90 MB on Data Saver. An hour of nothing but scrolling is the ceiling above.
 
 A window that isn't changing still arrives from ScreenCaptureKit as complete frames at full rate, and used to cost 0.1–0.5 Mbps. Frames are now
-compared byte for byte and skipped. When the picture stops the last frame goes again at real-time timestamps, until a resend comes out under 1.5 KB
-(usually two or three, the largest 11–16 KB on the thin pipe); then nothing is sent.
+compared byte for byte and skipped. When the picture stops the last frame goes again at real-time timestamps, each time with the encoder held
+to a finer quantiser, down to the one where text is the source's equal (QP 22), each resend waiting for the one before to get through; then
+nothing is sent (2026-11-11, [remote-realtime.md §7](remote-realtime.md): four resends and 0.7 s at 4 Mbps, six and 2 s at 2 Mbps). Until then
+it went again at most eight times, or until a resend came out under 1.5 KB, which a sparse test window reached in two or three and a screen
+full of text never did: under a few Mbps the eight ran out with the text still soft, until something moved and bought eight more (founder
+on an iPad, 2026-11-10: "滚动一下就清晰了").
 
 Measured on the made-up terminal window scrolling at 30 Hz, the worst case for a screen:
 
@@ -498,7 +547,8 @@ The keys stay phone-sized and never stretch.
   presses C. The talk key is in the corner. Left-Handed mirrors the halves.
 - **The top row of each half.** One half starts with the rarely needed controls at the edge (settings, find the pointer, the screen, the
   system keyboard), with ⌘Tab nearest the middle so its slide can run over the trackpad. The other half has the arrow key nearest the
-  middle, then the tabs. The arrow key gets room every way: never at an edge, never in the bottom row.
+  middle, then the tabs. The arrow key gets room every way: never at an edge, never in the bottom row. The row is 90 pt tall so the arrow
+  key is 88 pt square, 44 pt to each edge, with ⌘Tab as big across from it and the four controls two by two (2026-11-11, see "The arrow key").
 - **A trackpad between the thumbs.** On anything this big, the stage is out of the thumbs' reach. With no picture, the stage and this pad
   are one glass with one outline, a T that reaches down to the thumbs. With the picture showing they're two things: a screen and a trackpad.
   A pinch on the trackpad zooms the view about its middle, and the pointer moves the view.

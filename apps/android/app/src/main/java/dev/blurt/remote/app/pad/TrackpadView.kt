@@ -128,6 +128,9 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 if (isPalm(e, i)) { palms += id; return true }
                 known += id
                 light(e, i)
+                // zoomed in, with the glass as the screen, the picture is a photo under one finger; a touch anywhere stops it coasting
+                engine.panView = isStage && showing && engine.touchMode && !Remote.screen.port.isWhole
+                engine.viewCoasting = Remote.screen.stopCoast() && isStage
                 apply(engine.began(listOf(touch(e, i)), time(e)))
                 startTicks()
             }
@@ -199,6 +202,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                     if (stage) screen.gestureEnded()
                     onViewEnd?.invoke()
                 }
+                is PadOutput.ViewCoast -> if (stage) screen.coastView(o.vx, o.vy)
                 is PadOutput.PointAt -> {
                     offPicture = !(stage && screen.placePointer(o.point))
                     placed = true

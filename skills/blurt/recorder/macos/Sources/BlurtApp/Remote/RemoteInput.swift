@@ -163,10 +163,49 @@ final class RemoteInput {
     }
 
     private func pretend(_ p: CGPoint) {
+        put(p)
         guard testing else { return }
         pretendLock.lock()
         pretendAt = p
         pretendLock.unlock()
+    }
+
+    // What the phone is told about the pointer (RemoteScreen's ticker, another queue).
+    private let toldLock = NSLock()
+    private var putAt: (point: CGPoint, at: Double)?
+    private var phoneSeq: UInt32?
+
+    private func put(_ p: CGPoint) {
+        toldLock.lock()
+        putAt = (p, CACurrentMediaTime())
+        toldLock.unlock()
+    }
+
+    /// The phone's pointer instruction with this number is made (RemotePointerPacket.move, ToMac.pointerTo). Later ones count, and one
+    /// far behind is a phone that started over.
+    func made(_ seq: UInt32?) {
+        guard let seq else { return }
+        toldLock.lock()
+        if let l = phoneSeq, RemoteCursor.covers(l, seq), l &- seq < 1 << 16 {} else { phoneSeq = seq }
+        toldLock.unlock()
+    }
+
+    /// A new session: no numbers until this phone sends one.
+    func forgetPhone() {
+        toldLock.lock()
+        phoneSeq = nil
+        toldLock.unlock()
+    }
+
+    /// Where the pointer is, for the phone, and the newest instruction of the phone's that place includes. The system takes a moment to
+    /// report a pointer just placed: until then it's where we put it, or a place said to include a move would be the one before it.
+    func forPhone() -> (point: CGPoint, seq: UInt32?) {
+        toldLock.lock()
+        let put = putAt, seq = phoneSeq
+        toldLock.unlock()
+        if let pretend = pretendPointer { return (pretend, seq) }
+        if let put, CACurrentMediaTime() - put.at < 0.15 { return (put.point, seq) }
+        return (CGEvent(source: nil)?.location ?? .zero, seq)
     }
 
     private func current() -> CGPoint { pretendPointer ?? CGEvent(source: nil)?.location ?? .zero }

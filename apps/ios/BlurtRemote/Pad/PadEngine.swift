@@ -5,12 +5,14 @@
 //                leaves the button down for `dragGrace`, so a long drag can take a new stroke
 //   `touchMode`  with the Mac's screen showing, the glass is the screen: a tap or a press lands under the finger and a drag follows it.
 //                Moving a finger is still the pointer, for what's too small to hit
+//   `panView`    and zoomed in, the picture is a photo: one finger moves it, and a flick sends it coasting. What's too small to hit
+//                is what the zoom is for; the pointer by itself is the pad between the thumbs, a mouse, the Pencil
 //   hold still   `holdTime` (the phone taps back), then move = drag, the same press-and-drag as any mouse; or lift = right click
 //   the edge     one finger along the side by the thumb = scroll, for when there's only the one thumb
 //   two fingers  move = scroll what's under the pointer, as on the Mac's trackpad, both ways; tap = right click; pinch = zoom the app
 //                on the Mac. With the screen showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers.
 //                Two fingers moving together never stay exactly the same distance apart: a scroll stays a scroll until they clearly pinch.
-//                The zoomed view follows the pointer, so it never needs moving by hand
+//                Away from the picture (the pad between the thumbs, Touch Mode off) the zoomed view follows the pointer
 //   three        swipe left/right = change desktop, up = all windows, down = this app's windows
 //
 // A touch that stops a coasting scroll is only that: no click. A thumb resting still never clicks (`tapTime`).
@@ -40,6 +42,8 @@ enum PadOutput: Equatable {
     /// and follows the finger, with the button down
     case dragTo(CGPoint)
     case viewEnd
+    /// the finger moving the picture left it at this speed (points a second): it coasts on
+    case viewCoast(CGFloat, CGFloat)
 }
 
 enum PadHaptic { case tap, grab, release, step }
@@ -71,6 +75,7 @@ final class PadEngine {
         case pinch(spread: CGFloat)
         // fingers on the view; spread 0 with one of them lifted. Not zooming: only moving, until they've come apart from `from`
         case view(spread: CGFloat, center: CGPoint, from: CGFloat, zooming: Bool)
+        case panning(last: CGPoint)                             // one finger on the zoomed picture, moving it
         case three(start: CGPoint)
         case spent                                              // a gesture finished; wait for all fingers to lift
     }
@@ -89,6 +94,10 @@ final class PadEngine {
     var curve = RemotePointerCurve()
     var pinchZoomsView = false
     var touchMode = false
+    /// the picture is zoomed in under the finger: one finger moves it (set as the touch lands)
+    var panView = false
+    /// and it was coasting when this touch landed: the touch stops it, and may move it on, but is no click
+    var viewCoasting = false
     /// where one finger scrolls, across the pad; nil = nowhere
     var scrollEdge: ClosedRange<CGFloat>?
     /// and down it: a strip along the side stops short of a fold that runs across (nil = the whole height)
@@ -121,7 +130,10 @@ final class PadEngine {
         case 1:
             guard case .idle = state else { break }
             let p = centroid
-            if let g = dragLetGo, now - g < Self.dragGrace {
+            if viewCoasting, panView {
+                samples = []
+                state = .panning(last: p)
+            } else if let g = dragLetGo, now - g < Self.dragGrace {
                 dragLetGo = nil
                 state = .dragging(last: p)
             } else if let l = lastTap, now - l.at < Self.doubleWindow, dist(l.point, p) < Self.doubleReach {
@@ -139,6 +151,9 @@ final class PadEngine {
                 state = .scrolling(last: centroid, two: two)
             case let .view(_, _, _, zooming):
                 state = .view(spread: spread, center: centroid, from: spread, zooming: zooming)
+            case .panning:
+                // a second finger on the picture being moved: both move it, and zoom it once they come apart
+                state = .view(spread: spread, center: centroid, from: spread, zooming: false)
             default: break
             }
         default:
@@ -149,7 +164,7 @@ final class PadEngine {
                 // the first two fingers moved a little before the third landed: it was three all along
                 out += [.scroll(0, 0, .ended)]
                 state = .three(start: centroid)
-            case .view:
+            case .view, .panning:
                 out.append(.viewEnd)
                 state = .three(start: centroid)
             default: state = .three(start: centroid)
@@ -169,11 +184,20 @@ final class PadEngine {
                     samples = []
                     out.append(.scroll(0, 0, .began))
                     state = .scrolling(last: p, two: false)
+                } else if panView {
+                    samples = []
+                    state = .panning(last: p)
                 } else {
                     lastMoveAt = now
                     state = .moving(last: p)
                 }
             }
+        case let .panning(last):
+            let dx = p.x - last.x, dy = p.y - last.y
+            samples.append((now, dx, dy))
+            samples.removeAll { now - $0.t > 0.09 }
+            out.append(.view(scale: 1, dx: dx, dy: dy, at: p))
+            state = .panning(last: p)
         case let .moving(last):
             out += pointer(from: last, to: p, now)
             state = .moving(last: p)
@@ -270,7 +294,14 @@ final class PadEngine {
                 scrollSpread = 0
                 state = .scrolling(last: centroid, two: two)
             case .dragging: state = .dragging(last: centroid)
-            case let .view(_, _, _, zooming): state = .view(spread: 0, center: centroid, from: 1, zooming: zooming)
+            case let .view(_, _, _, zooming):
+                // one finger left on the picture goes on moving it, as on a photo
+                if panView, touches.count == 1 {
+                    samples = []
+                    state = .panning(last: centroid)
+                } else {
+                    state = .view(spread: 0, center: centroid, from: 1, zooming: zooming)
+                }
             default: break
             }
             return out
@@ -307,6 +338,9 @@ final class PadEngine {
             }
         case .view:
             out.append(.viewEnd)
+        case .panning:
+            out.append(.viewEnd)
+            if let v = releaseVelocity() { out.append(.viewCoast(v.dx, v.dy)) }
         default: break
         }
         state = .idle
@@ -348,7 +382,7 @@ final class PadEngine {
         switch state {
         case .dragging: out.append(.button(.left, down: false))
         case .scrolling: out.append(.scroll(0, 0, .ended))
-        case .view: out.append(.viewEnd)
+        case .view, .panning: out.append(.viewEnd)
         default: break
         }
         if dragLetGo != nil { out.append(.button(.left, down: false)); dragLetGo = nil }

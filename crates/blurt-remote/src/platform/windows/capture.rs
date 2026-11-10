@@ -81,6 +81,7 @@ pub enum Capture {
     Wgc(Wgc),
     Dup(Dup),
     Synthetic(Synthetic),
+    Page(Page),
 }
 
 impl Capture {
@@ -101,6 +102,7 @@ impl Capture {
             Capture::Wgc(_) => "wgc",
             Capture::Dup(_) => "dxgi-duplication",
             Capture::Synthetic(_) => "synthetic",
+            Capture::Page(_) => "page",
         }
     }
 
@@ -110,6 +112,7 @@ impl Capture {
             Capture::Wgc(w) => w.next(timeout, signal),
             Capture::Dup(d) => d.next(timeout, signal),
             Capture::Synthetic(s) => s.next(timeout, signal),
+            Capture::Page(p) => p.next(timeout, signal),
         }
     }
 }
@@ -305,6 +308,87 @@ impl Dup {
 impl Drop for Dup {
     fn drop(&mut self) {
         self.release();
+    }
+}
+
+// MARK: a page the caller scrolls
+
+/// A tall picture (BGRA, `width` × `rows`) shown `height` rows at a time from `offset`, which the caller moves: a frame each time it
+/// has moved (at most the capture rate), none while it stays, as a real screen that scrolls and stops. For measuring what a still
+/// picture comes to (examples/win_sharpen.rs) with no desktop.
+pub struct PageSource {
+    pub width: u32,
+    pub height: u32,
+    pub rows: u32,
+    pub bgra: Vec<u8>,
+    pub offset: std::sync::atomic::AtomicU32,
+}
+
+impl std::fmt::Debug for PageSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PageSource({}×{} of {} rows)", self.width, self.height, self.rows)
+    }
+}
+
+impl PartialEq for PageSource {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+impl Eq for PageSource {}
+
+pub struct Page {
+    context: ID3D11DeviceContext,
+    texture: ID3D11Texture2D,
+    page: &'static PageSource,
+    shown: Option<u32>,
+    fps: u32,
+    last: Option<std::time::Instant>,
+}
+
+impl Page {
+    pub fn new(device: &ID3D11Device, page: &'static PageSource, fps: u32) -> Result<Page, String> {
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: page.width,
+            Height: page.height,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+            ..Default::default()
+        };
+        let mut t = None;
+        unsafe { device.CreateTexture2D(&desc, None, Some(&mut t)) }.map_err(|e| e.to_string())?;
+        let context = unsafe { device.GetImmediateContext() }.map_err(|e| e.to_string())?;
+        Ok(Page { context, texture: t.ok_or("no texture")?, page, shown: None, fps: fps.max(1), last: None })
+    }
+
+    fn next(&mut self, timeout: Duration, signal: &Signal) -> Option<Frame> {
+        let gap = Duration::from_secs_f64(1.0 / self.fps as f64);
+        if let Some(l) = self.last {
+            let left = gap.saturating_sub(l.elapsed());
+            if !left.is_zero() {
+                signal.wait(left.min(timeout));
+                if l.elapsed() < gap {
+                    return None;
+                }
+            }
+        }
+        let p = self.page;
+        let offset = p.offset.load(std::sync::atomic::Ordering::SeqCst).min(p.rows.saturating_sub(p.height));
+        if self.shown == Some(offset) {
+            signal.wait(timeout.min(gap));
+            return None;
+        }
+        self.shown = Some(offset);
+        self.last = Some(std::time::Instant::now());
+        let start = (offset * p.width * 4) as usize;
+        unsafe {
+            self.context.UpdateSubresource(&self.texture, 0, None, p.bgra[start..].as_ptr() as *const _, p.width * 4, 0);
+        }
+        Some(Frame { texture: self.texture.clone(), width: p.width, height: p.height, dirty: None, time: super::monitors::now(), _wgc: None })
     }
 }
 

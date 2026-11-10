@@ -29,7 +29,7 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::channel::{Chan, Out};
 use crate::crypto::{self, same};
 use crate::host::{Backend, DisplayInfo};
-use crate::input::{self, Cmd, Shared};
+use crate::input::{self, Cmd, Shared, Told};
 use crate::mic::MicFeed;
 use crate::packets::{FrameReader, Kind, PointerPacket, MAX_FRAME};
 use crate::pairing::{Pairing, SERVICE_TYPE};
@@ -232,6 +232,8 @@ struct Core {
     keys: Box<dyn KeyStore>,
     backend: Shared,
     input: std::sync::mpsc::Sender<Cmd>,
+    /// how far the host has got with the phone's numbered pointer instructions: the input thread writes, the screen's ticker reads
+    told: Arc<Told>,
     app: std::sync::mpsc::Sender<Job>,
     mic: Arc<MicFeed>,
     cfg: HostConfig,
@@ -257,7 +259,8 @@ impl Host {
             .expect("the remote host's runtime");
         let platform = backend.platform();
         let backend: Shared = Arc::new(Mutex::new(backend));
-        let input = input::spawn(backend.clone());
+        let told = Arc::new(Told::default());
+        let input = input::spawn(backend.clone(), told.clone());
         let (atx, arx) = std::sync::mpsc::channel::<Job>();
         std::thread::Builder::new()
             .name("blurt-remote-app".into())
@@ -301,6 +304,7 @@ impl Host {
             keys,
             backend,
             input,
+            told,
             app: atx,
             mic: Arc::new(MicFeed::new()),
             cfg,
@@ -955,6 +959,7 @@ impl Core {
             }
         }
         s.current = Some(sid);
+        self.told.forget(sid); // another phone, or this one started again: its numbers start over
         let relay = s.sessions.get(&sid).is_some_and(|x| x.chan.relay);
         self.log(json!({"event": "remote_session", "state": "open", "relay": relay}));
         self.watch(s);
@@ -1097,6 +1102,10 @@ impl Core {
                     if chan.greeted.load(SeqCst) {
                         chan.heard();
                         let _ = self.input.send(Cmd::Pointer(p));
+                        // its number, behind it in the queue: made once the move is, and the cursor's place says so (input.rs `Told`)
+                        if let PointerPacket::Move { seq: Some(n), .. } = p {
+                            let _ = self.input.send(Cmd::Made(chan.sid, n));
+                        }
                     }
                 }
             }
@@ -1187,7 +1196,7 @@ impl Core {
                         let me = me.clone();
                         Arc::new(move |v| me.log(v))
                     };
-                    let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log, me.displays.clone());
+                    let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log, me.displays.clone(), me.told.clone());
                     let mut s = me.st.lock().unwrap();
                     let still = s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.screen_gen == g);
                     match started {
@@ -1227,9 +1236,13 @@ impl Core {
                     sc.keyframe();
                 }
             }
-            ToMac::PointerTo { x, y } => {
+            ToMac::PointerTo { x, y, seq } => {
                 if let Some(sc) = self.screen(s, sid) {
                     sc.pointer_to(x, y);
+                }
+                // its number counts even with no picture to place it on: the phone waits for it
+                if let Some(n) = seq {
+                    let _ = self.input.send(Cmd::Made(sid, n));
                 }
             }
             ToMac::ShowDisplay(d) => {

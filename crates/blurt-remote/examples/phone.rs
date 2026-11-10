@@ -52,7 +52,7 @@ async fn main() {
     if !args.iter().any(|a| a == "--cross") {
         phone.send(&ToMac::Key { chord: Chord::new(8, "C"), down: None }).await;
     }
-    phone.pointer(PointerPacket::Move { dx: 10.0, dy: 5.0 }).await;
+    phone.pointer(PointerPacket::Move { dx: 10.0, dy: 5.0, seq: None }).await;
     let cross = args.iter().any(|a| a == "--cross");
     if cross {
         // to the left edge first, so the picture starts on the leftmost display wherever the last run left the pointer
@@ -203,6 +203,6 @@ async fn measure(phone: &mut Phone, arg: &dyn Fn(&str) -> Option<String>) {
 /// 2,400 pt sideways (past a 1080p display), in 24 moves.
 async fn across(phone: &Phone, dx: f32) {
     for _ in 0..24 {
-        phone.pointer(PointerPacket::Move { dx, dy: 0.0 }).await;
+        phone.pointer(PointerPacket::Move { dx, dy: 0.0, seq: None }).await;
     }
 }

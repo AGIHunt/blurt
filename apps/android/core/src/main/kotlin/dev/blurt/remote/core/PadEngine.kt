@@ -5,11 +5,14 @@
 //                for `DRAG_GRACE`, so a long drag can take a new stroke
 //   `touchMode`  with the host's screen showing, the glass is the screen: a tap or a press lands under the finger and a drag follows it.
 //                Moving a finger is still the pointer, for what's too small to hit
+//   `panView`    and zoomed in, the picture is a photo: one finger moves it, and a flick sends it coasting. What's too small to hit
+//                is what the zoom is for; the pointer by itself is the pad between the thumbs, a mouse
 //   hold still   `HOLD_TIME` (the phone taps back), then move = drag; or lift = right click
 //   the edge     one finger along the side by the thumb = scroll
 //   two fingers  move = scroll what's under the pointer, both ways; tap = right click; pinch = zoom the app on the host. With the screen
 //                showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers. A scroll stays a scroll until
-//                the fingers clearly pinch
+//                the fingers clearly pinch. Away from the picture (the pad between the thumbs, Touch Mode off) the zoomed view follows
+//                the pointer
 //   three        swipe left/right = change desktop, up = all windows, down = this app's windows
 //
 // A touch that stops a coasting scroll is only that: no click. A thumb resting still never clicks (`TAP_TIME`).
@@ -39,6 +42,8 @@ sealed class PadOutput {
     /** and follows the finger, with the button down */
     data class DragTo(val point: PadPoint) : PadOutput()
     data object ViewEnd : PadOutput()
+    /** the finger moving the picture left it at this speed (points a second): it coasts on */
+    data class ViewCoast(val vx: Double, val vy: Double) : PadOutput()
 }
 
 class PadEngine {
@@ -74,6 +79,8 @@ class PadEngine {
         data class Pinch(val spread: Double) : State()
         /** fingers on the view; spread 0 with one of them lifted. Not zooming: only moving, until they've come apart from `from` */
         data class View(val spread: Double, val center: PadPoint, val from: Double, val zooming: Boolean) : State()
+        /** one finger on the zoomed picture, moving it */
+        data class Panning(val last: PadPoint) : State()
         data class Three(val start: PadPoint) : State()
         /** a gesture finished; wait for all fingers to lift */
         data object Spent : State()
@@ -95,6 +102,10 @@ class PadEngine {
     var curve = RemotePointerCurve()
     var pinchZoomsView = false
     var touchMode = false
+    /** the picture is zoomed in under the finger: one finger moves it (set as the touch lands) */
+    var panView = false
+    /** and it was coasting when this touch landed: the touch stops it, and may move it on, but is no click */
+    var viewCoasting = false
     /** where one finger scrolls, across the pad (x); null = nowhere */
     var scrollEdge: ClosedFloatingPointRange<Double>? = null
     var scrollGain = 2.4
@@ -134,7 +145,10 @@ class PadEngine {
                     val p = centroid
                     val g = dragLetGo
                     val l = lastTap
-                    if (g != null && now - g < DRAG_GRACE) {
+                    if (viewCoasting && panView) {
+                        samples = mutableListOf()
+                        state = State.Panning(p)
+                    } else if (g != null && now - g < DRAG_GRACE) {
                         dragLetGo = null
                         state = State.Dragging(p)
                     } else if (l != null && now - l.first < DOUBLE_WINDOW && dist(l.second, p) < DOUBLE_REACH) {
@@ -149,6 +163,8 @@ class PadEngine {
                 is State.Dragging -> state = State.Dragging(centroid)   // a second finger joining a drag changes nothing
                 is State.Scrolling -> state = State.Scrolling(centroid, s.two)
                 is State.View -> state = State.View(spread, centroid, spread, s.zooming)
+                // a second finger on the picture being moved: both move it, and zoom it once they come apart
+                is State.Panning -> state = State.View(spread, centroid, spread, false)
                 else -> {}
             }
             else -> when (state) {
@@ -159,7 +175,7 @@ class PadEngine {
                     out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.ENDED)
                     state = State.Three(centroid)
                 }
-                is State.View -> {
+                is State.View, is State.Panning -> {
                     out += PadOutput.ViewEnd
                     state = State.Three(centroid)
                 }
@@ -180,10 +196,21 @@ class PadEngine {
                     samples = mutableListOf()
                     out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.BEGAN)
                     state = State.Scrolling(p, false)
+                } else if (panView) {
+                    samples = mutableListOf()
+                    state = State.Panning(p)
                 } else {
                     lastMoveAt = now
                     state = State.Moving(p)
                 }
+            }
+            is State.Panning -> {
+                val dx = p.x - s.last.x
+                val dy = p.y - s.last.y
+                samples += Sample(now, dx, dy)
+                samples.removeAll { now - it.t > 0.09 }
+                out += PadOutput.View(1.0, dx, dy, p)
+                state = State.Panning(p)
             }
             is State.Moving -> {
                 out += pointer(s.last, p, now)
@@ -291,7 +318,15 @@ class PadEngine {
                     state = State.Scrolling(centroid, s.two)
                 }
                 is State.Dragging -> state = State.Dragging(centroid)
-                is State.View -> state = State.View(0.0, centroid, 1.0, s.zooming)
+                is State.View -> {
+                    // one finger left on the picture goes on moving it, as on a photo
+                    if (panView && touches.size == 1) {
+                        samples = mutableListOf()
+                        state = State.Panning(centroid)
+                    } else {
+                        state = State.View(0.0, centroid, 1.0, s.zooming)
+                    }
+                }
                 else -> {}
             }
             return out
@@ -324,6 +359,10 @@ class PadEngine {
                 out += listOf(PadOutput.Click(RemoteMouseButton.RIGHT), PadOutput.Haptic(PadHaptic.TAP))
             }
             is State.View -> out += PadOutput.ViewEnd
+            is State.Panning -> {
+                out += PadOutput.ViewEnd
+                releaseVelocity()?.let { v -> out += PadOutput.ViewCoast(v.first, v.second) }
+            }
             else -> {}
         }
         state = State.Idle
@@ -366,7 +405,7 @@ class PadEngine {
         when (state) {
             is State.Dragging -> out += PadOutput.Button(RemoteMouseButton.LEFT, false)
             is State.Scrolling -> out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.ENDED)
-            is State.View -> out += PadOutput.ViewEnd
+            is State.View, is State.Panning -> out += PadOutput.ViewEnd
             else -> {}
         }
         if (dragLetGo != null) {

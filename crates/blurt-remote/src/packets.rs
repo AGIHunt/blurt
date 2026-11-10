@@ -16,7 +16,7 @@ pub enum Kind {
     Video = 3,
     /// 8 bytes the other side sends straight back
     Probe = 4,
-    /// x, y as f32 LE, 0…1 of the source
+    /// x, y as f32 LE, 0…1 of the source; then, to a phone that numbers its pointer instructions, how far the host has got (`cursor`)
     Cursor = 5,
     /// the phone's word on the picture: pieces missing, frames decoded, a frame lost (repair.rs `Feedback`; datagrams)
     VideoFeedback = 6,
@@ -105,8 +105,11 @@ pub enum ScrollPhase {
 /// The pointer and scroll, one packet per display frame at most.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerPacket {
-    /// points on the host, after the phone's acceleration
-    Move { dx: f32, dy: f32 },
+    /// points on the host, after the phone's acceleration. `seq`: the phone's count of its pointer instructions so far (moves and
+    /// `ToMac::PointerTo` share it, from 1, wrapping), four more bytes after the two values; phones before 1.0.17 send none. A host
+    /// that has seen one says how far it has got with every cursor place (`cursor`), so the phone knows which of its moves that
+    /// place includes.
+    Move { dx: f32, dy: f32, seq: Option<u32> },
     Scroll { dx: f32, dy: f32, phase: ScrollPhase },
     /// the fingers left with this speed (points/s): the host coasts on from there
     Fling { vx: f32, vy: f32 },
@@ -115,13 +118,16 @@ pub enum PointerPacket {
 
 impl PointerPacket {
     pub fn encode(&self) -> Vec<u8> {
-        let mut d = Vec::with_capacity(10);
+        let mut d = Vec::with_capacity(13);
         let f = |d: &mut Vec<u8>, v: f32| d.extend_from_slice(&v.to_le_bytes());
         match *self {
-            PointerPacket::Move { dx, dy } => {
+            PointerPacket::Move { dx, dy, seq } => {
                 d.push(0);
                 f(&mut d, dx);
                 f(&mut d, dy);
+                if let Some(n) = seq {
+                    d.extend_from_slice(&n.to_le_bytes());
+                }
             }
             PointerPacket::Scroll { dx, dy, phase } => {
                 d.push(1);
@@ -145,7 +151,8 @@ impl PointerPacket {
             (v.is_finite() && v.abs() < 100_000.0).then_some(v)
         };
         Some(match *b.first()? {
-            0 => PointerPacket::Move { dx: f(1)?, dy: f(5)? },
+            // 9 bytes from a phone that doesn't number its moves, 13 from one that does
+            0 => PointerPacket::Move { dx: f(1)?, dy: f(5)?, seq: b.get(9..13).map(|n| u32::from_le_bytes(n.try_into().unwrap())) },
             1 => {
                 let phase = match *b.get(1)? {
                     1 => ScrollPhase::Began,
@@ -162,12 +169,33 @@ impl PointerPacket {
     }
 }
 
-/// The cursor's place: x, y as f32 LE, 0…1 of the source.
-pub fn cursor(x: f32, y: f32) -> [u8; 8] {
-    let mut d = [0u8; 8];
-    d[..4].copy_from_slice(&x.to_le_bytes());
-    d[4..].copy_from_slice(&y.to_le_bytes());
+/// The cursor's place (RemoteCursor): x, y as f32 LE, 0…1 of the source. To a phone that numbers its pointer instructions, four more
+/// bytes: the newest of them this place includes (u32 LE). A place whose number is behind the phone's own count doesn't include its
+/// last moves yet, so the phone keeps showing its own guess instead of jumping back to it. Phones before 1.0.17 take 8 bytes only
+/// (anything else is dropped) and are never sent 12: they send no numbers.
+pub fn cursor(x: f32, y: f32, seq: Option<u32>) -> Vec<u8> {
+    let mut d = Vec::with_capacity(12);
+    d.extend_from_slice(&x.to_le_bytes());
+    d.extend_from_slice(&y.to_le_bytes());
+    if let Some(n) = seq {
+        d.extend_from_slice(&n.to_le_bytes());
+    }
     d
+}
+
+/// A cursor's place read back, as the phone does: 8 bytes, or 12 with the number.
+pub fn cursor_from(b: &[u8]) -> Option<(f32, f32, Option<u32>)> {
+    if b.len() != 8 && b.len() != 12 {
+        return None;
+    }
+    let u = |at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+    let (x, y) = (f32::from_bits(u(0)), f32::from_bits(u(4)));
+    (x.is_finite() && y.is_finite()).then(|| (x, y, (b.len() == 12).then(|| u(8))))
+}
+
+/// `a` is `b` or later, counting round: everything up to `b` is made.
+pub fn covers(a: u32, b: u32) -> bool {
+    a.wrapping_sub(b) as i32 >= 0
 }
 
 /// One piece of an encoded frame: a 17-byte header, then up to `PAYLOAD` bytes. Byte 8 is flags: bit 0 keyframe, bit 1 refresh,
@@ -435,5 +463,40 @@ mod tests {
         bad.extend_from_slice(&1f32.to_le_bytes());
         assert_eq!(PointerPacket::decode(&bad), None);
         assert_eq!(PointerPacket::decode(&[1, 7, 0, 0, 0, 0, 0, 0, 0, 0]), None, "no such phase");
+    }
+
+    #[test]
+    fn a_move_with_and_without_its_number() {
+        let numbered = PointerPacket::Move { dx: 1.5, dy: -2.25, seq: Some(258) };
+        let b = numbered.encode();
+        assert_eq!(b.len(), 13);
+        assert_eq!(b[9..], [2, 1, 0, 0], "little-endian, after the two values");
+        assert_eq!(PointerPacket::decode(&b), Some(numbered));
+        // an older phone's nine bytes still move the pointer
+        let plain = PointerPacket::Move { dx: 1.5, dy: -2.25, seq: None };
+        assert_eq!(plain.encode(), b[..9]);
+        assert_eq!(PointerPacket::decode(&b[..9]), Some(plain));
+        assert_eq!(PointerPacket::decode(&b[..11]), Some(plain), "half a number is none");
+        assert_eq!(PointerPacket::decode(&PointerPacket::Move { dx: 0.0, dy: 0.0, seq: Some(u32::MAX) }.encode()), Some(PointerPacket::Move { dx: 0.0, dy: 0.0, seq: Some(u32::MAX) }));
+    }
+
+    #[test]
+    fn the_cursor_is_8_bytes_or_12_with_a_number() {
+        let plain = cursor(0.5, 0.25, None);
+        assert_eq!(plain.len(), 8, "what phones before 1.0.17 take");
+        assert_eq!(cursor_from(&plain), Some((0.5, 0.25, None)));
+        let numbered = cursor(0.5, 0.25, Some(7));
+        assert_eq!(numbered.len(), 12);
+        assert_eq!(numbered[..8], plain[..]);
+        assert_eq!(cursor_from(&numbered), Some((0.5, 0.25, Some(7))));
+        assert_eq!(cursor_from(&numbered[..10]), None);
+        assert_eq!(cursor_from(&cursor(f32::NAN, 0.0, None)), None);
+    }
+
+    #[test]
+    fn numbers_count_round() {
+        assert!(covers(5, 5) && covers(6, 5) && !covers(5, 6));
+        assert!(covers(2, u32::MAX), "past the wrap");
+        assert!(!covers(u32::MAX, 2));
     }
 }

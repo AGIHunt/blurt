@@ -1,7 +1,11 @@
 //! How much to send, from what the network lets through (RemoteRate in RemoteVideo.swift; docs/design/remote.md §What it costs).
 //! The phone's request is the ceiling. Away from home it starts at half and climbs. Down fast when frames pile up on the way or
 //! are lost in numbers, to a little under what's really getting through; one lost frame on Wi-Fi says nothing. Back up slowly,
-//! and only while the picture uses what it has. Each frame gets at least 30 kbit: with little to spend there are fewer frames.
+//! and only while the picture uses what it has: so a rate that fell stayed where it fell for as long as the screen was read. A
+//! still picture's resends (sharpen.rs) are the one thing sent then, so they find out: while there is room above the rate they go
+//! half as fast again (`probe`, the encoder's rate with them), and if all of that arrives with no sign of trouble the rate goes to
+//! nine tenths of the rate they really went at (`Probe`). If it doesn't, nothing is cut for a question, and none is asked again
+//! for a while. Each frame gets at least 30 kbit: with little to spend there are fewer frames.
 
 #[derive(Clone, Debug)]
 pub struct Rate {
@@ -15,6 +19,30 @@ pub struct Rate {
     trouble_at: i64,
     since_trouble: i64,
     recent: Vec<(i64, i64)>,
+    /// reports since resends that went faster than the rate met trouble: none go faster again until `PATIENCE`
+    since_probe: i64,
+}
+
+/// How fast a still picture's resends really went while they went faster than the rate (`Rate::probe`): their bytes over the time
+/// each was given to get through. Short of the pace when resends were small or the encoder dropped some, never more than it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Probe {
+    bytes: usize,
+    time: f64,
+}
+
+impl Probe {
+    /// A resend of this size went, and the next waits this long for it.
+    pub fn sent(&mut self, bytes: usize, wait: f64) {
+        self.bytes += bytes;
+        self.time += wait;
+    }
+
+    /// Bits a second, once there is enough to say (0.3 s of it); None before. Taking it starts over.
+    pub fn take(&mut self) -> Option<i64> {
+        let p = std::mem::take(self);
+        (p.time >= 0.3).then(|| (p.bytes as f64 * 8.0 / p.time) as i64)
+    }
 }
 
 const WINDOW: usize = 5;
@@ -35,6 +63,7 @@ impl Rate {
             trouble_at: i64::MAX,
             since_trouble: 0,
             recent: vec![],
+            since_probe: PATIENCE + 1,
         }
     }
 
@@ -46,10 +75,33 @@ impl Rate {
         cap.min((bitrate / BITS_PER_FRAME).max(10))
     }
 
-    /// One report's worth. `busy`: frames skipped because the way out was full. `backed_up`: more on its way than should be.
-    /// `sent`, `delivered`: bits a second out of here and into the phone. True if anything changed.
+    /// As far up as it may go: the phone's ceiling, or a little under where trouble last began.
+    fn ceiling(&self) -> i64 {
+        self.cap.min(if self.trouble_at == i64::MAX { self.cap } else { self.trouble_at * 9 / 10 })
+    }
+
+    /// The rate a still picture's resends go at: the bitrate, or half as much again while there is room above it nothing has tried.
+    pub fn probe(&self) -> i64 {
+        if self.bitrate < self.ceiling() && self.since_probe > PATIENCE {
+            self.ceiling().min(self.bitrate * 3 / 2)
+        } else {
+            self.bitrate
+        }
+    }
+
+    /// One report's worth, with no resends having gone faster than the rate.
     #[allow(clippy::too_many_arguments)]
     pub fn update(&mut self, frames: i64, lost: i64, busy: i64, backed_up: bool, rtt: Option<f64>, sent: i64, delivered: i64) -> bool {
+        self.update_probed(frames, lost, busy, backed_up, rtt, sent, delivered, None)
+    }
+
+    /// One report's worth. `busy`: frames skipped because the way out was full. `backed_up`: more on its way than should be.
+    /// `sent`, `delivered`: bits a second out of here and into the phone. `probed`: since the last report a still picture's resends
+    /// went faster than the rate, at this many bits a second while they went (`Probe`). True if anything changed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_probed(
+        &mut self, frames: i64, lost: i64, busy: i64, backed_up: bool, rtt: Option<f64>, sent: i64, delivered: i64, probed: Option<i64>,
+    ) -> bool {
         let before = (self.bitrate, self.fps);
         if let Some(r) = rtt.filter(|r| *r > 0.0) {
             self.best_rtt = self.best_rtt.min(r);
@@ -69,13 +121,20 @@ impl Rate {
         if self.wait > 0 {
             self.wait -= 1;
         }
+        if self.since_probe <= PATIENCE {
+            self.since_probe += 1;
+        }
         if busy >= 3 || backed_up || lossy || queued {
             self.calm = 0;
             if lossy {
                 self.recent.clear(); // each loss is answered once
             }
-            // already under what's arriving: what's queued is draining
-            if self.wait == 0 && (delivered == 0 || self.bitrate * 100 > delivered * 85) {
+            if probed.is_some() {
+                // more than the rate was sent to see if it would arrive, and this is the answer: the rate stays, and nothing asks
+                // again soon
+                self.since_probe = 0;
+            } else if self.wait == 0 && (delivered == 0 || self.bitrate * 100 > delivered * 85) {
+                // (already under what's arriving: what's queued is draining)
                 self.trouble_at = self.bitrate;
                 self.since_trouble = 0;
                 let mut next = self.bitrate * 7 / 10;
@@ -87,8 +146,12 @@ impl Rate {
             }
         } else {
             self.calm += 1;
-            let ceiling = self.cap.min(if self.trouble_at == i64::MAX { self.cap } else { self.trouble_at * 9 / 10 });
-            if self.calm >= 3 && self.bitrate < ceiling && sent * 10 >= self.bitrate * 6 {
+            let ceiling = self.ceiling();
+            if let Some(p) = probed.filter(|p| p * 9 / 10 > self.bitrate && self.bitrate < ceiling && delivered * 10 >= sent * 9) {
+                // faster than the rate, all of it arrived, nothing queued: the network carries that much
+                self.calm = 0;
+                self.bitrate = ceiling.min(p * 9 / 10);
+            } else if self.calm >= 3 && self.bitrate < ceiling && sent * 10 >= self.bitrate * 6 {
                 self.calm = 0;
                 self.bitrate = ceiling.min(self.bitrate * 5 / 4);
             }
@@ -101,7 +164,7 @@ impl Rate {
 /// Ported from RemoteRateTests.swift.
 #[cfg(test)]
 mod tests {
-    use super::Rate;
+    use super::{Probe, Rate};
 
     #[test]
     fn at_home_it_starts_at_the_top() {
@@ -182,5 +245,84 @@ mod tests {
         }
         assert_eq!(r.bitrate, 200_000);
         assert_eq!(r.fps, 10);
+    }
+
+    #[test]
+    fn a_still_pictures_resends_find_the_room_above_a_rate_that_fell() {
+        let mut r = Rate::new(8_000_000, 30, true);
+        assert_eq!((r.bitrate, r.probe()), (4_000_000, 6_000_000), "away it starts at half: the first still picture asks for more");
+        assert!(r.update_probed(6, 0, 0, false, Some(0.05), 2_900_000, 2_800_000, Some(5_800_000)));
+        assert_eq!(r.bitrate, 5_220_000, "nine tenths of how fast they went");
+        // resends that went no faster than the rate say nothing new; nor does what didn't all arrive
+        let mut slow = Rate::new(8_000_000, 30, true);
+        assert!(!slow.update_probed(6, 0, 0, false, Some(0.05), 2_000_000, 2_000_000, Some(4_200_000)));
+        let mut short = Rate::new(8_000_000, 30, true);
+        assert!(!short.update_probed(6, 0, 0, false, Some(0.05), 2_900_000, 2_000_000, Some(5_800_000)));
+        // never past the phone's ceiling
+        let mut near = Rate::new(5_000_000, 30, true);
+        for p in [3_750_000, 5_000_000, 9_000_000] {
+            near.update_probed(6, 0, 0, false, Some(0.05), 3_000_000, 3_000_000, Some(p));
+        }
+        assert_eq!((near.bitrate, near.probe()), (5_000_000, 5_000_000), "at the ceiling there is nothing to ask");
+    }
+
+    #[test]
+    fn a_question_answered_no_costs_nothing_and_isnt_asked_again_soon() {
+        let mut r = Rate::new(8_000_000, 30, true);
+        r.update(6, 0, 0, false, Some(0.05), 0, 0);
+        assert!(!r.update_probed(6, 0, 0, false, Some(0.4), 3_000_000, 2_100_000, Some(5_800_000)), "no cut for asking");
+        assert_eq!((r.bitrate, r.probe()), (4_000_000, 4_000_000), "and the next still picture goes at the rate");
+        let mut plain = Rate::new(8_000_000, 30, true);
+        plain.update(6, 0, 0, false, Some(0.05), 0, 0);
+        assert!(plain.update(6, 0, 0, false, Some(0.4), 4_000_000, 4_000_000), "trouble without a question is still trouble");
+        for _ in 0..31 {
+            r.update(0, 0, 0, false, Some(0.05), 0, 0);
+        }
+        assert_eq!(r.probe(), 6_000_000, "after a while it may ask again");
+    }
+
+    #[test]
+    fn resends_say_how_fast_they_really_went() {
+        let mut p = Probe::default();
+        assert_eq!(p.take(), None);
+        p.sent(50_000, 0.1);
+        assert_eq!(p.take(), None, "a tenth of a second says nothing");
+        for _ in 0..4 {
+            p.sent(75_000, 0.1);
+        }
+        assert_eq!(p.take(), Some(6_000_000));
+        assert_eq!(p.take(), None, "taken");
+    }
+
+    #[test]
+    fn over_an_hour_of_reading_the_rate_settles_just_under_what_the_network_carries() {
+        let carries = 3_000_000;
+        let mut r = Rate::new(8_000_000, 30, true);
+        r.update(6, 0, 0, false, Some(0.05), 0, 0);
+        for _ in 0..12 {
+            let b = r.bitrate;
+            r.update(6, 0, 5, false, Some(0.05), b, 400_000);
+        }
+        let fell = r.bitrate;
+        assert!(fell < 600_000);
+        let (mut lowest, mut back) = (fell, 0);
+        for still in 1..=180 {
+            for _ in 0..2 {
+                let pace = r.probe();
+                let went = pace * 9 / 10;
+                let probed = (pace > r.bitrate).then_some(went);
+                r.update_probed(5, 0, 0, false, Some(if went > carries { 0.5 } else { 0.05 }), went, went.min(carries), probed);
+                lowest = lowest.min(r.bitrate);
+            }
+            for _ in 0..4 {
+                r.update(0, 0, 0, false, Some(0.05), 0, 0);
+            }
+            if back == 0 && r.bitrate > carries * 7 / 10 {
+                back = still;
+            }
+        }
+        assert_eq!(lowest, fell, "asking never costs");
+        assert!(r.bitrate > carries * 7 / 10 && r.bitrate <= carries * 11 / 10, "{}", r.bitrate);
+        assert!(back > 0 && back < 30, "back within some minutes of reading, not never: {back}");
     }
 }

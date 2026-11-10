@@ -75,10 +75,17 @@ struct ViewPort: Equatable {
     }
 
     /// What to ask the Mac for: the screen's shape, around what's in view. The stage may be another shape, so it can be a little more than that.
-    var crop: RemoteCrop {
+    var crop: RemoteCrop { crop(ahead: .zero) }
+
+    /// The same while the view is moving: around where it will be when the frame asked for now is on the glass, `ahead` of here in
+    /// screen units, so the edge the picture is moving towards comes sharp instead of from the last sight of the whole screen. No
+    /// further ahead than a quarter of what's in view: past that it's a guess, and the other edge would pay for it.
+    func crop(ahead d: CGPoint) -> RemoteCrop {
         guard !isWhole else { return .whole }
         let v = visible, side = min(1, max(v.width, v.height))
         guard side < 1 else { return .whole }
-        return RemoteCrop(x: Float(min(1 - side, max(0, v.midX - side / 2))), y: Float(min(1 - side, max(0, v.midY - side / 2))), w: Float(side), h: Float(side))
+        let most = side / 4
+        let x = v.midX + max(-most, min(most, d.x)), y = v.midY + max(-most, min(most, d.y))
+        return RemoteCrop(x: Float(min(1 - side, max(0, x - side / 2))), y: Float(min(1 - side, max(0, y - side / 2))), w: Float(side), h: Float(side))
     }
 }

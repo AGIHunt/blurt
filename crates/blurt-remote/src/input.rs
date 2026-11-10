@@ -10,13 +10,15 @@
 //!    phone, where Wi-Fi gaps would show as hitches; its steps are `ScrollPhase::Momentum`, and one Momentum (0, 0) ends it.
 //!  • sequences run here in one go (Esc Esc's timing can't depend on Wi-Fi): at most 32 steps and 3 s of waits (the server
 //!    checks), each wait at most 2 s.
+//!  • the phone numbers its pointer instructions, and is told how far the host has got with them (`Told`): the number goes out
+//!    with the cursor's place (screen.rs), once that place is sure to include the move.
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::host::{Backend, Button, Input, ScrollPhase as Phase, SystemMove};
-use crate::packets::{PointerPacket, ScrollPhase};
+use crate::packets::{covers, PointerPacket, ScrollPhase};
 use crate::wire::{Chord, MouseButton, Step};
 
 /// The backend, shared by the input thread, the screen and the server (one call at a time).
@@ -53,6 +55,75 @@ pub fn label(c: &Chord, windows: bool) -> String {
         parts.push(key);
     }
     parts.join("+")
+}
+
+/// How long the OS may take to report a pointer just moved (RemoteInput.swift allows the Mac the same).
+pub const REPORT_LAG: Duration = Duration::from_millis(150);
+
+/// How far the host has got with the phone's pointer instructions (`PointerPacket::Move`, `ToMac::PointerTo`: the phone numbers
+/// them, one count for both), for the cursor's place: screen.rs sends the number with it, and the phone takes a place whose number
+/// covers everything it sent as the last word on where the pointer is. The input thread says when one is made (`Cmd::Made`); the
+/// screen's ticker asks which number the place it is about to send includes. RemoteInput.swift: `made`, `forgetPhone`, `forPhone`.
+///
+///  • a place sent with a number must already include that move, or the phone's pointer jumps back to where it was. The place is the
+///    OS's word (GetCursorPos on Windows, the screen stream's cursor metadata on Wayland), and that takes a moment to follow a move.
+///    The Mac sends where it put the pointer itself for 150 ms instead; here a relative move ends where the backend or the
+///    compositor puts it, which this layer doesn't know. So a number counts only once it is `REPORT_LAG` old: until then the phone
+///    gets the number before it (or none) and keeps its own guess, as it does while a move is still on its way.
+///  • the numbers are one session's: a new session forgets them, so a phone that sends none (before 1.0.17) keeps getting the
+///    8-byte place it can read, and what still arrives from the phone it replaced doesn't count.
+#[derive(Default)]
+pub struct Told(Mutex<Numbers>);
+
+#[derive(Default)]
+struct Numbers {
+    /// the session whose numbers count
+    session: Option<u64>,
+    /// the newest one the OS's word on the pointer includes by now
+    settled: Option<u32>,
+    /// a newer one and when it was made: the OS may not have caught up with it yet
+    fresh: Option<(u32, Instant)>,
+}
+
+impl Told {
+    /// A new session: no numbers until this phone sends one.
+    pub fn forget(&self, session: u64) {
+        *self.0.lock().unwrap() = Numbers { session: Some(session), settled: None, fresh: None };
+    }
+
+    /// The phone's instruction with this number is made. Later ones count; one that came late (datagrams) changes nothing; one far
+    /// behind is a phone that started over.
+    pub fn made(&self, session: u64, seq: u32, at: Instant) {
+        let mut s = self.0.lock().unwrap();
+        if s.session != Some(session) {
+            return;
+        }
+        match s.fresh.map(|f| f.0).or(s.settled) {
+            Some(newest) if covers(newest, seq) => {
+                if newest.wrapping_sub(seq) < 1 << 16 {
+                    return;
+                }
+                s.settled = None;
+            }
+            _ => {
+                // the one before it, if the OS has had its time with it; else it's passed over
+                if let Some((n, _)) = s.fresh.filter(|f| at.saturating_duration_since(f.1) >= REPORT_LAG) {
+                    s.settled = Some(n);
+                }
+            }
+        }
+        s.fresh = Some((seq, at));
+    }
+
+    /// The newest of the phone's instructions that a place read from the OS at `now` includes. None: it has sent no numbers (or none
+    /// old enough yet), and its cursor is the 8 bytes every phone reads.
+    pub fn number(&self, now: Instant) -> Option<u32> {
+        let s = self.0.lock().unwrap();
+        match s.fresh {
+            Some((n, at)) if now.saturating_duration_since(at) >= REPORT_LAG => Some(n),
+            _ => s.settled,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -253,7 +324,8 @@ impl Hands {
 
     pub fn pointer(&mut self, i: &mut dyn Input, p: PointerPacket, now: f64) {
         match p {
-            PointerPacket::Move { dx, dy } => self.move_by(i, dx as f64, dy as f64),
+            // its number, if it has one, is the server's to follow with (`Cmd::Made`)
+            PointerPacket::Move { dx, dy, .. } => self.move_by(i, dx as f64, dy as f64),
             PointerPacket::Scroll { dx, dy, phase } => self.scroll(i, dx as f64, dy as f64, phase),
             PointerPacket::Fling { vx, vy } => self.fling(i, vx as f64, vy as f64, now),
             PointerPacket::Stop => self.stop_coast(i),
@@ -272,22 +344,25 @@ pub enum Cmd {
     DragBegin,
     Pointer(PointerPacket),
     MoveTo(f64, f64),
+    /// The session's pointer instruction with this number, sent right behind the move it numbers: made (`Told`). Also for a
+    /// `pointerTo` there was no picture to place on: the phone waits for its number all the same.
+    Made(u64, u32),
     System(SystemMove),
     ReleaseAll,
 }
 
 /// The input thread: one at a time, never the server's own tasks, so a slow backend call or a sequence's wait holds up nothing
 /// else. The backend is locked per call, and not during a wait.
-pub fn spawn(backend: Shared) -> Sender<Cmd> {
+pub fn spawn(backend: Shared, told: Arc<Told>) -> Sender<Cmd> {
     let (tx, rx) = std::sync::mpsc::channel::<Cmd>();
     std::thread::Builder::new()
         .name("blurt-remote-input".into())
-        .spawn(move || run(backend, rx))
+        .spawn(move || run(backend, told, rx))
         .expect("a thread");
     tx
 }
 
-fn run(backend: Shared, rx: Receiver<Cmd>) {
+fn run(backend: Shared, told: Arc<Told>, rx: Receiver<Cmd>) {
     let mut h = Hands::new();
     let now = |b: &Shared| b.lock().unwrap().now();
     loop {
@@ -319,6 +394,11 @@ fn run(backend: Shared, rx: Receiver<Cmd>) {
             }
             continue;
         }
+        if let Cmd::Made(session, seq) = cmd {
+            // in the queue behind its move, so that is done by now
+            told.made(session, seq, Instant::now());
+            continue;
+        }
         let t = now(&backend);
         let mut b = backend.lock().unwrap();
         let i = b.input();
@@ -333,7 +413,7 @@ fn run(backend: Shared, rx: Receiver<Cmd>) {
             Cmd::MoveTo(x, y) => h.move_to(i, x, y),
             Cmd::System(m) => i.system(m),
             Cmd::ReleaseAll => h.release_all(i),
-            Cmd::Run(_) => {}
+            Cmd::Run(_) | Cmd::Made(..) => {}
         }
     }
 }
@@ -476,6 +556,58 @@ pub(crate) mod tests {
         h.fling(&mut l, 0.0, 1200.0, 0.0);
         h.pointer(&mut l, PointerPacket::Stop, 0.01);
         assert_eq!(take(&mut l), ["scroll 0 0 Momentum"]);
+    }
+
+    #[test]
+    fn a_number_counts_once_the_os_has_had_time_to_report_the_move() {
+        let (t, ms) = (Told::default(), Duration::from_millis);
+        let t0 = Instant::now();
+        t.made(1, 5, t0);
+        assert_eq!(t.number(t0), None, "no session yet: nobody's numbers count");
+        t.forget(1);
+        assert_eq!(t.number(t0), None, "a phone that sends none gets none");
+        t.made(1, 5, t0);
+        assert_eq!(t.number(t0 + ms(100)), None, "the place may still be the one before the move");
+        assert_eq!(t.number(t0 + REPORT_LAG), Some(5));
+        // a stroke: each move takes the last one's place before it's old enough, and the last one counts once the finger rests
+        for n in 6..=20u32 {
+            t.made(1, n, t0 + ms(200) + ms(8) * (n - 6));
+        }
+        let end = t0 + ms(200) + ms(8) * 14;
+        assert_eq!(t.number(end + ms(100)), Some(5), "never a number ahead of the place");
+        assert_eq!(t.number(end + REPORT_LAG), Some(20));
+        // one that arrives late changes nothing, and neither does the same one again
+        t.made(1, 18, end + ms(300));
+        t.made(1, 20, end + ms(300));
+        assert_eq!(t.number(end + ms(301)), Some(20));
+        // a slow stroke: the number follows, the lag behind
+        t.made(1, 21, end + ms(400));
+        t.made(1, 22, end + ms(600));
+        assert_eq!(t.number(end + ms(601)), Some(21));
+        assert_eq!(t.number(end + ms(750)), Some(22));
+    }
+
+    #[test]
+    fn numbers_wrap_start_over_and_belong_to_one_session() {
+        let (t, ms) = (Told::default(), Duration::from_millis);
+        let t0 = Instant::now();
+        t.forget(1);
+        t.made(1, u32::MAX, t0);
+        t.made(1, 2, t0 + ms(200));
+        assert_eq!(t.number(t0 + ms(200)), Some(u32::MAX));
+        assert_eq!(t.number(t0 + ms(350)), Some(2), "past the wrap is later");
+        // far behind: the phone counts from 1 again, and the old count says nothing about its moves
+        t.made(1, 70_000, t0 + ms(400));
+        t.made(1, 1, t0 + ms(600));
+        assert_eq!(t.number(t0 + ms(601)), None);
+        assert_eq!(t.number(t0 + ms(750)), Some(1));
+        // the phone this one replaced is still sending: not its numbers
+        t.forget(2);
+        assert_eq!(t.number(t0 + ms(900)), None, "a new session forgets");
+        t.made(1, 9, t0 + ms(900));
+        assert_eq!(t.number(t0 + ms(1100)), None);
+        t.made(2, 1, t0 + ms(1100));
+        assert_eq!(t.number(t0 + ms(1250)), Some(1));
     }
 
     #[test]

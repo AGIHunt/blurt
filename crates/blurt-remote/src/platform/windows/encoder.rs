@@ -13,6 +13,9 @@
 //!   (frames dropped, the rest decoded and compared with the stream without the drop): NVIDIA's H.264 MFT and Microsoft's software
 //!   H.264 MFT recover bit-exact; NVIDIA's HEVC MFT takes the controls but its "recovery" frame still predicts from the short-term
 //!   picture before it (the lost one), so HEVC gets no LTR. BLURT_REMOTE_LTR=0 turns it off, =hevc tries it on HEVC too.
+//! * A still picture made sharp (sharpen.rs): none of these encoders honours a quantiser ceiling (`CODECAPI_AVEncVideoMaxQP` is
+//!   accepted and ignored), so a step of the ladder is that one resend's rate raised instead (`boost`), where that was measured to
+//!   work: NVIDIA's HEVC MFT. Elsewhere `caps_quantiser` is false and the server sends eight plain resends.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,6 +30,12 @@ use ::windows::Win32::System::Variant::VARIANT;
 
 use super::annexb::Codec;
 use super::ltr::{self, Ltr, Plan};
+use crate::sharpen::NO_CEILING;
+
+/// The rate a step's resend gets doubles every this many steps of the quantiser below 40 (`Encoder::boost_for`). Measured on NVIDIA
+/// HEVC (remote-windows.md §2026-11-11): 6 (what a quantiser 6 finer costs) ends the ladder at 39 dB of 55; 3 at 45–50 dB, the
+/// largest resend about 1.2 × 0.4 s of the rate at 2 Mbps; 2 at 48–53 dB but resends of 0.5 s and 5 s to finish at 700 kbps.
+const BOOST_PER_DOUBLING: f64 = 3.0;
 
 /// One encoded access unit (Annex B) and the tag its input carried.
 pub struct Output<T> {
@@ -68,6 +77,9 @@ pub struct Encoder<T> {
     /// long-term references, where the encoder took LTRBufferControl
     ltr: Option<Ltr>,
     ltr_taken: bool,
+    /// the step the rate is raised for (`NO_CEILING`: none, the rate `set_rate` gave), and whether this encoder answers to it
+    cap: u8,
+    caps: bool,
     _manager: Option<IMFDXGIDeviceManager>,
 }
 
@@ -210,6 +222,8 @@ impl<T> Encoder<T> {
                 header: Vec::new(),
                 ltr: None,
                 ltr_taken: false,
+                cap: NO_CEILING,
+                caps: false,
                 _manager: manager,
             };
             // some encoders take these only before the media types, some only after: both
@@ -219,6 +233,7 @@ impl<T> Encoder<T> {
             if enc.ltr_taken {
                 enc.ltr = Some(Ltr::new(GENERATION.fetch_add(1, Ordering::SeqCst)));
             }
+            enc.caps = enc.boosts();
             let info = enc.mft.GetOutputStreamInfo(0).map_err(|x| e("stream info", x))?;
             enc.provides_samples = info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32 != 0;
             enc.out_size = info.cbSize.max(w * h * 3 / 2).max(1 << 16);
@@ -304,6 +319,51 @@ impl<T> Encoder<T> {
         self.api.as_ref().is_some_and(|a| unsafe { a.IsSupported(what) }.is_ok())
     }
 
+    /// Whether `sharpen` makes this encoder spend what a finer quantiser takes (`Screen::caps_quantiser`).
+    pub fn caps_quantiser(&self) -> bool {
+        self.caps
+    }
+
+    /// Where raising one resend's rate makes it sharper. Measured on blurt-win-sharpen (docs/design/remote-windows.md §2026-11-11):
+    /// NVIDIA's HEVC MFT, yes; NVIDIA's H.264 MFT and Microsoft's software H.264 MFT, no (their resends stay ~1 KB whatever the
+    /// rate). None of the three honours `CODECAPI_AVEncVideoMaxQP` (accepted, ignored: CBR or VBR, set before streaming or during
+    /// it, min = max, `CODECAPI_AVEncVideoEncodeQP`, `MFSampleExtension_VideoEncodeQP`), so it isn't used. Other MFTs (Quick Sync,
+    /// AMF): untested, so no. BLURT_REMOTE_SHARPEN=1 / 0 forces it on / off (measuring).
+    fn boosts(&self) -> bool {
+        match std::env::var("BLURT_REMOTE_SHARPEN").as_deref() {
+            Ok("1") => true,
+            Ok("0") => false,
+            _ => self.hardware && self.codec == Codec::Hevc && self.name.contains("NVIDIA"),
+        }
+    }
+
+    /// How many times the rate one resend gets, for a step down to `max_qp`: ×2 at the ladder's first step (40), doubling every
+    /// `BOOST_PER_DOUBLING` below it (×128 at 22). The encoder's rate control still decides; `Sharpen` paces what comes out.
+    pub fn boost_for(max_qp: u8) -> f64 {
+        if max_qp >= NO_CEILING {
+            return 1.0;
+        }
+        2f64.powf(1.0 + (40.0 - max_qp as f64) / BOOST_PER_DOUBLING).clamp(1.0, 256.0)
+    }
+
+    /// The rate for the frames from now on: raised for a step of the ladder, or back to what `set_rate` last gave (`NO_CEILING`).
+    /// Set only when it changes: once a step, and once when the picture moves again.
+    fn boost(&mut self, max_qp: u8) {
+        let max_qp = max_qp.min(NO_CEILING);
+        if !self.caps || max_qp == self.cap {
+            return;
+        }
+        self.cap = max_qp;
+        if max_qp == NO_CEILING {
+            self.apply_rate();
+            return;
+        }
+        let mean = (self.mean() as f64 * Self::boost_for(max_qp)).min(u32::MAX as f64 / 4.0) as u32;
+        self.set(&CODECAPI_AVEncCommonMeanBitRate, VARIANT::from(mean));
+        self.set(&CODECAPI_AVEncCommonBufferSize, VARIANT::from(mean));
+        self.set(&CODECAPI_AVEncCommonMaxBitRate, VARIANT::from(mean.saturating_mul(2)));
+    }
+
     /// Recovery frames from long-term references (else a recovery is a keyframe).
     pub fn has_ltr(&self) -> bool {
         self.ltr.is_some()
@@ -342,9 +402,13 @@ impl<T> Encoder<T> {
 
     /// The rate control spends the media type's frame rate's share a frame: when frames come slower (`fps` below it), the mean is
     /// scaled up so each frame still gets bitrate ÷ fps, as VideoToolbox does by timestamps.
-    fn apply_rate(&mut self) {
+    fn mean(&self) -> u32 {
         let k = (self.type_fps as f64 / self.fps.max(1) as f64).clamp(1.0, 8.0);
-        let mean = ((self.bitrate as f64 * k) as u64).min(u32::MAX as u64 / 2) as u32;
+        ((self.bitrate as f64 * k) as u64).min(u32::MAX as u64 / 2) as u32
+    }
+
+    fn apply_rate(&mut self) {
+        let mean = self.mean();
         self.set(&CODECAPI_AVEncCommonMeanBitRate, VARIANT::from(mean));
         // a one-second buffer, the Mac's DataRateLimits window: a keyframe can be large, a second can't go far over
         self.set(&CODECAPI_AVEncCommonBufferSize, VARIANT::from(mean));
@@ -355,6 +419,8 @@ impl<T> Encoder<T> {
         self.bitrate = bitrate.max(50_000);
         self.fps = fps.clamp(1, 120);
         self.apply_rate();
+        // a step's raised rate is gone with it: the next one raises it from this rate
+        self.cap = NO_CEILING;
     }
 
     /// The next input becomes a keyframe.
@@ -372,15 +438,16 @@ impl<T> Encoder<T> {
         }
     }
 
-    /// Encode an NV12 texture (hardware). `time`: 100-ns units, increasing. `recover`: a recovery frame (or a keyframe).
-    pub fn encode_texture(&mut self, nv12: &ID3D11Texture2D, time: i64, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    /// Encode an NV12 texture (hardware). `time`: 100-ns units, increasing. `recover`: a recovery frame (or a keyframe). `max_qp`:
+    /// the coarsest quantiser this frame may use (a still picture being sharpened), `NO_CEILING` for the rate control's own.
+    pub fn encode_texture(&mut self, nv12: &ID3D11Texture2D, time: i64, keyframe: bool, recover: bool, max_qp: u8, tag: T) -> Result<Vec<Output<T>>, String> {
         let buffer = unsafe { MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, nv12, 0, false) }.map_err(|e| format!("surface buffer: {e}"))?;
         let s = self.sample(&buffer, time).map_err(|e| e.to_string())?;
-        self.encode(s, keyframe, recover, tag)
+        self.encode(s, keyframe, recover, max_qp, tag)
     }
 
     /// Encode NV12 in memory, rows packed (software).
-    pub fn encode_memory(&mut self, nv12: &[u8], time: i64, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    pub fn encode_memory(&mut self, nv12: &[u8], time: i64, keyframe: bool, recover: bool, max_qp: u8, tag: T) -> Result<Vec<Output<T>>, String> {
         let s = unsafe {
             let b = MFCreateMemoryBuffer(nv12.len() as u32).map_err(|e| e.to_string())?;
             let mut p = std::ptr::null_mut();
@@ -390,15 +457,18 @@ impl<T> Encoder<T> {
             b.SetCurrentLength(nv12.len() as u32).map_err(|e| e.to_string())?;
             self.sample(&b, time).map_err(|e| e.to_string())?
         };
-        self.encode(s, keyframe, recover, tag)
+        self.encode(s, keyframe, recover, max_qp, tag)
     }
 
-    fn encode(&mut self, sample: IMFSample, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    fn encode(&mut self, sample: IMFSample, keyframe: bool, recover: bool, max_qp: u8, tag: T) -> Result<Vec<Output<T>>, String> {
         let mut outs = Vec::new();
         let plan = match &mut self.ltr {
             Some(l) => l.plan(keyframe, recover),
             None => Plan { keyframe: keyframe || recover, use_slots: 0, mark: None },
         };
+        // a keyframe or a recovery frame is never sharpened
+        let max_qp = if plan.keyframe || plan.use_slots != 0 { NO_CEILING } else { max_qp };
+        self.boost(max_qp);
         if plan.keyframe {
             self.force_key();
             let _ = unsafe { sample.SetUINT32(&MFSampleExtension_VideoEncodePictureType, 1) };

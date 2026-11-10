@@ -5,8 +5,9 @@
 //   a cycle key (⌘Tab) presses at once and keeps the modifier down: slide to step through, a detent every 22 pt, left to go
 //   back; at the edge of the screen it keeps stepping, so twenty apps are as reachable as three. Lifting lets go. A quick tap
 //   is the quick ⌘Tab: back to the last app. The other keys are out of play meanwhile: the thumb passes over them.
-//   the arrow key is four keys in one, each edge marked with its arrow: tap towards an edge for that arrow, hold to repeat. Or drag, one
-//   step per 24 pt; past 72 pt, or at the screen's edge, it repeats, faster with distance. Tap and then drag does the same with ⇧.
+//   the arrow key is four keys in one, each edge marked with its arrow: tap towards an edge for that arrow, hold to repeat; a tap in the
+//   very middle is nobody's. Or drag, one step per 24 pt, keeping to the way it set off until it clearly turns; past 72 pt, or at the
+//   screen's edge, it repeats, faster with distance. Tap and then drag does the same with ⇧. (The arithmetic: ArrowStroke, below.)
 //   a repeating key (⌫, an arrow) fires at once and repeats while held. Nothing destructive repeats: never Esc, ⌃C or Return.
 //   a modifier (⇧ ⌘ ⌥ ⌃) tapped holds for the next key; held a moment, it's pressed on its own instead, the way a lone ⇧ switches
 //   a Chinese or Japanese input method between its own letters and English.
@@ -60,7 +61,7 @@ final class KeyCell: UIView {
     private var edgeDirection = 0
 
     // arrows
-    private var arrowAnchor = CGPoint.zero
+    private var stroke = ArrowStroke(at: .zero)
     private var arrowShift = false
     private var lastArrowEnd: Double = 0
     private var arrowRepeated = false
@@ -108,7 +109,9 @@ final class KeyCell: UIView {
         glyph.frame = CGRect(x: 1, y: top, width: w - 2, height: 22)
         icon.frame = glyph.frame
         caption.frame = CGRect(x: 1, y: top + 23, width: w - 2, height: 13)
-        let mid = CGPoint(x: w / 2, y: h / 2), inX = min(13, w * 0.2), inY = min(11, h * 0.22)
+        // a key with room both ways (a big screen's) has its marks further in, where each edge's zone is
+        let roomy = w >= 80 && h >= 80
+        let mid = CGPoint(x: w / 2, y: h / 2), inX = roomy ? w * 0.2 : min(13, w * 0.2), inY = roomy ? h * 0.2 : min(11, h * 0.22)
         arrowMarks[0].center = CGPoint(x: mid.x, y: inY)
         arrowMarks[1].center = CGPoint(x: mid.x, y: h - inY)
         arrowMarks[2].center = CGPoint(x: inX, y: mid.y)
@@ -263,20 +266,15 @@ final class KeyCell: UIView {
             fire(c)
             startRepeat(c, after: 0.35, every: 0.08)
         case .arrows:
-            arrowAnchor = p
-            arrowShift = CACurrentMediaTime() - lastArrowEnd < 0.3
+            stroke = ArrowStroke(at: p)
+            arrowShift = ArrowStroke.shifted(now: CACurrentMediaTime(), lastTap: lastArrowEnd)
             arrowRepeated = false
+            // the very middle: nothing until it moves
+            guard let key = ArrowStroke.tapKey(p, in: bounds.size) else { return }
             Haptics.step()
-            startRepeat(arrowChord(p), after: 0.35, every: 0.08)
+            startRepeat(RemoteChord([], key), after: 0.35, every: 0.08)
         default: break
         }
-    }
-
-    /// The arrow towards the edge of the key under the thumb.
-    private func arrowChord(_ p: CGPoint) -> RemoteChord {
-        let x = (p.x - bounds.midX) / max(bounds.width, 1), y = (p.y - bounds.midY) / max(bounds.height, 1)
-        let key = abs(x) > abs(y) ? (x > 0 ? "Right" : "Left") : (y > 0 ? "Down" : "Up")
-        return RemoteChord([], key)
     }
 
     private enum Resolved {
@@ -359,11 +357,14 @@ final class KeyCell: UIView {
             return
         }
         if case .arrows = s.action {
-            if !moved, !arrowRepeated {
-                Link.shared.send(.key(arrowChord(start), down: nil))
+            var tapped = false
+            if !moved, !arrowRepeated, let key = ArrowStroke.tapKey(start, in: bounds.size) {
+                Link.shared.send(.key(RemoteChord([], key), down: nil))
                 done()
+                tapped = true
             }
-            lastArrowEnd = moved || arrowRepeated ? 0 : CACurrentMediaTime()
+            // only a tap that sent an arrow makes the next drag a ⇧ one
+            lastArrowEnd = tapped ? CACurrentMediaTime() : 0
             return
         }
         guard armed, !cancelled else { return }
@@ -497,29 +498,23 @@ final class KeyCell: UIView {
     }
 
     private func arrows(_ p: CGPoint) {
-        let dx = p.x - arrowAnchor.x, dy = p.y - arrowAnchor.y
-        let horizontal = abs(dx) > abs(dy)
-        let d = horizontal ? dx : dy
-        let key = horizontal ? (dx > 0 ? "Right" : "Left") : (dy > 0 ? "Down" : "Up")
-        var far = hypot(p.x - start.x, p.y - start.y)
-        // the thumb has run out of screen, sliding towards that edge: it repeats as if it had gone on
-        let slid = p.x - start.x
-        if horizontal, abs(slid) >= 24, let win = window {
+        // the thumb has run out of screen: at that edge, sliding towards it, it repeats as if it had gone on
+        var edge = 0
+        if let win = window {
             let x = convert(p, to: win).x, band = Self.edge * 0.6
-            if slid < 0 && x < band || slid > 0 && x > win.bounds.width - band { far = max(far, 90) }
+            edge = x < band ? -1 : x > win.bounds.width - band ? 1 : 0
         }
-        if far > 72 {
-            let rate = max(0.03, 0.11 - Double(far - 72) * 0.001)
-            if repeatKey?.key != key || abs(repeatRate - rate) > 0.01 {
+        switch stroke.move(to: p, screenEdge: edge) {
+        case let .repeating(key, every):
+            if repeatKey?.key != key || abs(repeatRate - every) > 0.01 {
                 stopRepeat()
-                startRepeat(RemoteChord(arrowShift ? .shift : [], key), after: 0, every: rate)
+                startRepeat(RemoteChord(arrowShift ? .shift : [], key), after: 0, every: every)
             }
-            return
-        }
-        stopRepeat()
-        if abs(d) >= 24 {
+        case let .step(key):
+            stopRepeat()
             step(key)
-            if horizontal { arrowAnchor.x += dx > 0 ? 24 : -24 } else { arrowAnchor.y += dy > 0 ? 24 : -24 }
+        case .none:
+            stopRepeat()
         }
     }
 
@@ -539,5 +534,81 @@ final class KeyCell: UIView {
         repeater?.invalidate()
         repeater = nil
         repeatKey = nil
+    }
+}
+
+/// The arrow key's arithmetic, apart from the view, so it can be tested: which arrow a touch taps, and what a drag sends.
+///
+/// A drag keeps to its way: once it has taken a step, steps come only along that axis, and the other one follows the finger at each
+/// step, so a thumb's arc never adds up to an arrow of its own (sliding right, it fired a Down, which in a shell swaps the line for
+/// history). It changes axis only on a clear turn: 36 pt across since the last step, and more across than along. Then it starts again
+/// from that step, as a new drag would: steps every 24 pt, a repeat past 72.
+struct ArrowStroke: Equatable {
+    static let step: CGFloat = 24
+    /// past this along the way it goes (or at the screen's edge) the arrow repeats, faster with distance
+    static let far: CGFloat = 72
+    static let turn: CGFloat = 36
+    /// a touch this near the middle both ways (a fraction of the key's width and height) taps nothing
+    static let middle: CGFloat = 0.12
+    /// a drag begun this soon after a tap adds ⇧
+    static let shiftWithin = 0.3
+
+    enum Move: Equatable { case none, step(String), repeating(String, every: Double) }
+
+    /// The arrow towards the edge of the key under the thumb; nil in the very middle, where the four zones meet.
+    static func tapKey(_ p: CGPoint, in size: CGSize) -> String? {
+        let x = (p.x - size.width / 2) / max(size.width, 1), y = (p.y - size.height / 2) / max(size.height, 1)
+        if abs(x) < middle && abs(y) < middle { return nil }
+        return key(abs(x) > abs(y), abs(x) > abs(y) ? x : y)
+    }
+
+    static func shifted(now: Double, lastTap: Double) -> Bool { now - lastTap < shiftWithin }
+
+    private static func key(_ horizontal: Bool, _ d: CGFloat) -> String {
+        horizontal ? (d > 0 ? "Right" : "Left") : (d > 0 ? "Down" : "Up")
+    }
+
+    /// the axis it keeps to, once it has stepped: true across, false up and down
+    private(set) var horizontal: Bool?
+    /// where this run began: the touch, or the step a turn came from
+    private var origin: CGPoint
+    /// the next step comes 24 pt from here
+    private var anchor: CGPoint
+    /// the finger at the last step
+    private var last: CGPoint
+
+    init(at p: CGPoint) { origin = p; anchor = p; last = p }
+
+    /// `screenEdge`: the finger is at the screen's left (-1) or right (1) edge.
+    mutating func move(to p: CGPoint, screenEdge: Int = 0) -> Move {
+        if let h = horizontal {
+            let along = h ? p.x - last.x : p.y - last.y, across = h ? p.y - last.y : p.x - last.x
+            if abs(across) >= Self.turn, abs(across) > abs(along) {
+                horizontal = !h
+                origin = last
+                anchor = last
+            }
+        }
+        let dx = p.x - anchor.x, dy = p.y - anchor.y
+        let h = horizontal ?? (abs(dx) > abs(dy))
+        let d = h ? dx : dy
+        let run = h ? p.x - origin.x : p.y - origin.y
+        var far = horizontal == nil ? hypot(p.x - origin.x, p.y - origin.y) : abs(run)
+        if h, screenEdge != 0, abs(run) >= Self.step, (run > 0) == (screenEdge > 0) { far = max(far, 90) }
+        if far > Self.far {
+            horizontal = h
+            return .repeating(Self.key(h, d != 0 ? d : run), every: max(0.03, 0.11 - Double(far - Self.far) * 0.001))
+        }
+        guard abs(d) >= Self.step else { return .none }
+        horizontal = h
+        if h {
+            anchor.x += d > 0 ? Self.step : -Self.step
+            anchor.y = p.y
+        } else {
+            anchor.y += d > 0 ? Self.step : -Self.step
+            anchor.x = p.x
+        }
+        last = p
+        return .step(Self.key(h, d))
     }
 }

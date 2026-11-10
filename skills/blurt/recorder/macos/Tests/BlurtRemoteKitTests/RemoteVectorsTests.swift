@@ -52,6 +52,7 @@ final class RemoteVectorsTests: XCTestCase {
             ("show_display_follow", .showDisplay(nil)),
             ("screen_crop", .screenCrop(crop)),
             ("pointer_to", .pointerTo(x: 0.5, y: 0.75)),
+            ("pointer_to_seq", .pointerTo(x: 0.5, y: 0.75, seq: 7)),
             ("candidates", .candidates([RemoteCandidate(host: "203.0.113.5", port: 50123), RemoteCandidate(host: "2001:db8::1", port: 50123)])),
             ("request_keyframe", .requestKeyframe),
             ("screen_report", .screenReport(RemoteScreenReport(frames: 30, lost: 1, rtt: 0.25, received: 123_456))),
@@ -111,6 +112,8 @@ final class RemoteVectorsTests: XCTestCase {
         let pointers: [(String, RemotePointerPacket)] = [
             ("move", .move(dx: 1.5, dy: -2.25)), ("scroll", .scroll(dx: 0, dy: 10, phase: .changed)),
             ("scroll_began", .scroll(dx: -3, dy: 0.5, phase: .began)), ("fling", .scrollFling(vx: 100, vy: -50)), ("stop", .scrollStop),
+            // numbered (1.0.17+): four more bytes, which a host before that reads past
+            ("move_seq", .move(dx: 1.5, dy: -2.25, seq: 258)),
         ]
         out["pointer"] = pointers.map { ["name": $0.0, "hex": hex($0.1.encoded())] }
 
@@ -135,6 +138,8 @@ final class RemoteVectorsTests: XCTestCase {
         var cursor = Data()
         for v: Float in [0.5, 0.25] { withUnsafeBytes(of: v.bitPattern.littleEndian) { cursor.append(contentsOf: $0) } }
         out["cursor"] = ["x": 0.5, "y": 0.25, "hex": hex(cursor)]
+        // to a phone that numbers its pointer instructions: the newest one this place includes
+        out["cursorSeq"] = ["x": 0.5, "y": 0.25, "seq": 258, "hex": hex(RemoteCursor(x: 0.5, y: 0.25, seq: 258).encoded())]
 
         // The handshake with fixed keys, and the first frames each way.
         let paired = bytes(1), phonePriv = bytes(2), macPriv = bytes(5), nonce = bytes(9), id = "device-id-1"

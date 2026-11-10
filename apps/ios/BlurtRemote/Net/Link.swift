@@ -91,6 +91,13 @@ final class Link: ObservableObject {
     private static let relayOnly = ProcessInfo.processInfo.environment["BLURT_RELAY_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
     private var pingCount = 0
     private var pendingMove: (Float, Float)?
+    /// this phone's pointer instructions so far, moves and placements alike: the computer says how far it has got with each word on
+    /// where its pointer is (RemoteCursor), so the pointer drawn here never jumps back to a place from before the last moves
+    private(set) var pointerSeq: UInt32 = 0
+    func nextPointerSeq() -> UInt32 {
+        pointerSeq &+= 1
+        return pointerSeq
+    }
     private var pendingScroll: (Float, Float)?
     private var flusher: Timer?
     let queue = DispatchQueue(label: "blurt.remote.link", qos: .userInteractive)
@@ -519,6 +526,7 @@ final class Link: ObservableObject {
         case let .session(i):
             canControl = i.canControl
             state = .connected
+            pointerSeq = 0      // a new session: the computer has forgotten the last one's numbers too
             // its name, and what it is: a computer being paired isn't in the list yet, but its keys show already
             if var c = current, c.name != i.macName || c.platform != i.platform {
                 c.name = i.macName
@@ -672,10 +680,12 @@ final class Link: ObservableObject {
     }
     /// `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be
     func pointer(_ p: RemotePointerPacket, inOrder: Bool = false) {
+        var p = p
+        if case let .move(x, y, _) = p { p = .move(dx: x, dy: y, seq: nextPointerSeq()) }
         // over the relay every message counts: 30 a second is plenty, and it's already no place for a fine stroke
         guard route == .relay else { return channel?.sendPointer(p, inOrder: inOrder) ?? () }
         switch p {
-        case let .move(x, y):
+        case let .move(x, y, _):
             pendingMove = ((pendingMove?.0 ?? 0) + x, (pendingMove?.1 ?? 0) + y)
         case let .scroll(x, y, .changed):
             pendingScroll = ((pendingScroll?.0 ?? 0) + x, (pendingScroll?.1 ?? 0) + y)
@@ -691,7 +701,7 @@ final class Link: ObservableObject {
     private func flush() {
         flusher?.invalidate()
         flusher = nil
-        if let m = pendingMove { channel?.sendPointer(.move(dx: m.0, dy: m.1)) }
+        if let m = pendingMove { channel?.sendPointer(.move(dx: m.0, dy: m.1, seq: pointerSeq)) }
         if let s = pendingScroll { channel?.sendPointer(.scroll(dx: s.0, dy: s.1, phase: .changed)) }
         pendingMove = nil
         pendingScroll = nil
