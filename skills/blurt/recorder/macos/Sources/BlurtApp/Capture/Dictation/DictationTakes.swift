@@ -63,6 +63,8 @@ final class DictationTake {
     var failure: String?
     /// the mic's levels while it listened: "nothing heard" names a silent mic by them (NothingHeard)
     var levels: [Float] = []
+    /// the mic it listened with (Dictation.micName as it stopped): a phone's, or one of this Mac's
+    var mic: String?
     /// what ⇧ / ⌘ switched while it listened: remembered for its app once the text is in (DictationRemembering)
     var switches: DictationSwitches?
 
@@ -151,7 +153,7 @@ extension Dictation {
             }
             LiveTranscript.shared.end(session: take.liveSession)
             leave(take)
-            toastNothing(levels: take.levels)       // the mic it listened with, and Change Mic…
+            toastNothing(levels: take.levels, mic: .some(take.mic))       // the mic it listened with, and Change Mic…
             emit(["event": "dictation_text", "id": take.id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
             return
         }

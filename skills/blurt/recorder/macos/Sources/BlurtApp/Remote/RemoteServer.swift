@@ -78,6 +78,8 @@ final class RemoteServer {
     }
     /// `session` for the main thread (dictation's levels and words, the front app, Blurt's commands): it changes on `queue`
     private var current: Session? { sessionLock.lock(); defer { sessionLock.unlock() }; return mirrored }
+    /// the connected phone's name, as it gave it ("iPad")
+    var phoneName: String? { current.map { $0.name.isEmpty ? nil : $0.name } ?? nil }
     private let sessionLock = NSLock()
     private var mirrored: Session?
     /// connections still in their handshake (a channel must outlive `tcpConnection`)
