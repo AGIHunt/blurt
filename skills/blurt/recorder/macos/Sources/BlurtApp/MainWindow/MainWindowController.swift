@@ -882,6 +882,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func showShortcuts() { ShortcutsSheet.show(on: window) }
 
+    /// The toolbar's gear: the window's own way into Settings (before, only the menu bar and ⌘,).
+    @objc func openSettings() { AppEnvironment.settings?.show(pane: nil) }
+
     // MARK: projects
 
     @objc func openFolder() { pickFolder(then: nil) }
@@ -1650,6 +1653,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: toolbar
 
     static let recordID = NSToolbarItem.Identifier("record"), snapID = NSToolbarItem.Identifier("snap")
+    static let settingsID = NSToolbarItem.Identifier("settings")
     static let titleID = NSToolbarItem.Identifier("title")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(dictation: false) }
@@ -1659,8 +1663,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// off act on the selection, so they live with it (the detail, the Item and context menus, M / ⌘↩, ⌘K) — not twice
     /// on screen. The Dictation page has its own: its title (its history's search is on its list).
     static func toolbarItems(dictation: Bool) -> [NSToolbarItem.Identifier] {
+        // the dictation page has 「听写设置…」 of its own (DictationPage), so the gear is the items window's only
         dictation ? [.toggleSidebar, .sidebarTrackingSeparator, titleID]
-                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID]
+                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID, settingsID]
     }
 
     /// Swap the toolbar's items for the page's (the sidebar button stays as it is).
@@ -1691,6 +1696,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return button(T("main.action.record"), "record.circle", #selector(record), tip: T("main.toolbar.record.tip", hk(.toggleRecord)))
         case Self.snapID:
             return button(T("main.action.snap"), "camera.viewfinder", #selector(snap), tip: T("main.toolbar.snap.tip", hk(.snap)))
+        case Self.settingsID:
+            return button(T("menu.settings"), "gearshape", #selector(openSettings), tip: T("menu.settings") + " ⌘,")
         case Self.titleID:
             let i = NSToolbarItem(itemIdentifier: id)
             i.view = titleView
