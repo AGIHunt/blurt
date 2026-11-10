@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(address("wss://relay.example.com#a"), None);
         assert_eq!(address("   "), None);
         assert_eq!(address("wss://"), None);
-        assert_eq!(room_url("relay.agihunt.info", "R", "mac").as_deref(), Some("wss://relay.agihunt.info/v1/R/mac"));
+        assert_eq!(room_url("relay.example.com", "R", "mac").as_deref(), Some("wss://relay.example.com/v1/R/mac"));
     }
 
     #[test]
