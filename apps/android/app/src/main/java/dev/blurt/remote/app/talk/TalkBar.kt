@@ -146,7 +146,7 @@ class TalkBar(c: Context) : View(c) {
                 return
             }
         }
-        Remote.link.send(ToMac.DictationKey(true))
+        Remote.link.dictationKey(true)
     }
 
     private fun up() {
@@ -154,7 +154,7 @@ class TalkBar(c: Context) : View(c) {
         down = false
         invalidate()
         Haptics.release()
-        Remote.link.send(ToMac.DictationKey(false))
+        Remote.link.dictationKey(false)
         Remote.mic.released()
     }
 

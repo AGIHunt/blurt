@@ -26,7 +26,7 @@
     <string name="status_unreachable_local">无法连接 %1$s。请检查 Blurt 是否在运行，以及两台设备是否在同一网络。</string>
     <string name="status_unreachable_relay">连不上 %1$s。请确认电脑没有休眠，Blurt 正在运行。</string>
     <string name="try_another">选择其他电脑</string>
-    <string name="status_replaced">另一台手机已连接。轻点以接管。</string>
+    <string name="status_replaced">另一台设备已连接。轻点以接管。</string>
     <string name="status_accessibility">请在 Mac 上为 Blurt 开启辅助功能。</string>
     <string name="status_control">电脑上的 Blurt 还不能按键。请打开它的设置 → 手机。</string>
     <string name="status_screen_permission">请在 Mac 上为 Blurt 开启屏幕录制。</string>
@@ -83,7 +83,7 @@
     <string name="s_connecting">正在连接…</string>
     <string name="s_unreachable">连不上</string>
     <string name="s_forgotten">需要重新配对</string>
-    <string name="s_replaced">另一台手机正在使用</string>
+    <string name="s_replaced">另一台设备正在使用</string>
     <string name="s_not_connected">未连接</string>
     <string name="s_on_network">在当前网络</string>
     <string name="s_uses_relay">使用你的中转</string>

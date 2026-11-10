@@ -395,7 +395,7 @@ final class PadViewController: UIViewController {
             if l.macs.count > 1 { button = String(localized: "Try Another Computer") }
         case .connecting: break
         case .replaced:
-            text = String(localized: "Another iPhone is connected. Touch to take over.")
+            text = String(localized: "Another phone is connected. Touch to take over.")
         case .connected:
             let n = l.current?.title ?? ""
             if !l.canControl { text = Words.cantControl(l.host, n) }
