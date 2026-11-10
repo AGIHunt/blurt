@@ -561,6 +561,18 @@ public final class DictationHistory {
     /// The reason of a take that Blurt quit (or crashed) on before it was typed: a failed take, with Retry.
     public static let interruptedReason = "asr_failed:interrupted"
 
+    /// The reason of a take cancelled (Esc, the menu) while it listened, after something was said: its recording
+    /// stays, with Retry — an Esc meant for the app in front no longer costs what was said (#54).
+    public static let cancelledReason = "asr_failed:cancelled"
+
+    /// Esc while a take listens: whether its recording stays in the history for Retry. Only when something was said,
+    /// and only while the history keeps recordings — a cancel is the user throwing the take away, so "Don't keep"
+    /// (retention 0) and Keep Recordings off keep nothing. The double tap's own cancel (`quietly`: it sends right after)
+    /// keeps nothing either.
+    public static func keepsCancelled(heardSpeech: Bool, quietly: Bool, keepAudio: Bool, retentionDays: Int) -> Bool {
+        heardSpeech && !quietly && keepAudio && retentionDays > 0
+    }
+
     /// A take's own recording (dictation/audio/<id>.wav — not its pieces) with no entry: Blurt quit, crashed or was
     /// relaunched between the key-down and the paste. Within the retention it becomes an entry that says so, with its
     /// recording and Retry, instead of being deleted as an orphan a launch later. Never a take still running

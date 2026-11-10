@@ -1304,9 +1304,10 @@ final class Dictation {
         finish(ended: false)
     }
 
-    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept) — or, when none
-    /// listens, throws away the takes still on their way (never pasted, a queued Return dropped). A paste already
-    /// under way (the 0.6 s of ⌘V) can't be taken back.
+    /// Esc, a double tap's second tap, the menu: ends a take that is listening — or, when none listens, throws away
+    /// the takes still on their way (never pasted, a queued Return dropped). A paste already under way (the 0.6 s of
+    /// ⌘V) can't be taken back. A listening take that heard speech keeps its recording in the history, with Retry,
+    /// while the history keeps recordings (`DictationHistory.keepsCancelled`); otherwise nothing is kept.
     /// `quietly`: the double tap's own cancel (it sends right after); otherwise the island says "Cancelled".
     func cancel(quietly: Bool = false) {
         guard listening else {
@@ -1316,7 +1317,17 @@ final class Dictation {
             return
         }
         trigger.reset(active: false)
-        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
+        var kept = false
+        if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
+                                           retentionDays: Dictation.retentionDays), let v = voice, let url = wav {
+            let duration = v.elapsed
+            v.stop(keep: true)
+            voice = nil         // discard() below ends the rest: the stream, the live text — not this recording
+            appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
+                                reason: DictationHistory.cancelledReason, wav: url)
+            kept = true
+        }
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept])
         discard(quietly: true)
         if !quietly { DictationSound.cancel.play() }
         if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }

@@ -1540,14 +1540,24 @@ impl Engine {
         }
     }
 
-    /// Esc, a double tap's second tap: ends a take that is listening (nothing kept) — or, when none listens, stops
-    /// the takes still on their way (never typed, a queued Return dropped), with Undo. `quiet`: the double tap's own
-    /// cancel (it sends right after), or a shortcut that joined push-to-talk in its first second.
+    /// Esc, a double tap's second tap: ends a take that is listening — or, when none listens, stops the takes still
+    /// on their way (never typed, a queued Return dropped), with Undo. A listening take that heard speech keeps its
+    /// recording in the history, with Retry, while the history keeps recordings (the Mac's
+    /// `DictationHistory.keepsCancelled`, #54); otherwise nothing is kept. `quiet`: the double tap's own cancel (it
+    /// sends right after), or a shortcut that joined push-to-talk in its first second.
     fn cancel(&mut self, quiet: bool) {
-        if let Some(t) = self.take.take() {
+        if let Some(mut t) = self.take.take() {
             let esc = self.last_key == vk::ESCAPE;
             let quiet = quiet
                 || DictationTrigger::joined_early(esc, true, t.started.elapsed().as_secs_f64(), t.pieces.len());
+            // keep_audio is already off under "Don't keep" (retention 0: prefs.rs)
+            if !quiet && t.spoke && self.prefs.keep_audio {
+                t.duration = t.audio.len() as f64 / SR as f64;
+                let _ = std::fs::create_dir_all(audio_dir());
+                if mic::write_wav(&t.wav(), &t.audio).is_ok() {
+                    failed_history(&t, "cancelled");
+                }
+            }
             drop_take(t.n);
             self.close_mic();
             self.listening_ended();
