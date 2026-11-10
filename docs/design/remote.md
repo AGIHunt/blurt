@@ -371,16 +371,15 @@ and a Mac paired again replaces its old entry on both ends. Tap a Mac in Setting
   a phone is connected, so a sleeping Mac is out of reach.
 
 Measured from this Mac through a US VPN, Cloudflare's IAD: relay round trip about 630 ms. From a Chinese network Cloudflare's free plan usually
-lands on the US west coast or Hong Kong, so a server in China is much nearer. The founder's own relay is `relay.agihunt.info`, on the
-agihunt.info server in Beijing (`blurt-relay.service`, certificate by acme.sh, `/etc/cron.d/blurt-relay-cert`): 10 ms from home on a direct route.
-A VPN that sends the relay's domain abroad undoes that: such a domain needs a direct rule.
+lands on the US west coast or Hong Kong, so a server in China is much nearer: a relay on a server in mainland China measured 10 ms from
+home on a direct route. A VPN that sends the relay's domain abroad undoes that: such a domain needs a direct rule.
 
 Quota, from Cloudflare's Durable Objects pricing page: 100,000 requests a day on the free plan, incoming WebSocket messages count 20:1, outgoing
 are free, reset at 00:00 UTC. A screen session on the relay is about 70 incoming messages a second (15 video frames, 30 pointer, 30 cursor), so
 3.5 requests a second: about 8 hours a day, shared by every user. Direct and local traffic doesn't count.
 
-A server has no such quota, only its bandwidth: the picture over a relay is up to 2–4 Mbps per person and follows what the link carries. The Beijing server's outbound is a flat 3.4
-Mbps, enough for its owner and no one else.
+A server has no such quota, only its bandwidth: the picture over a relay is up to 2–4 Mbps per person and follows what the link carries. A small server's
+outbound (a flat 3–4 Mbps is common in China) is enough for its owner and no one else.
 
 ## Security
 
