@@ -331,6 +331,8 @@ final class DictationStream {
     }
 
     var segments: Int { lock.lock(); defer { lock.unlock() }; return pieces.count }
+    /// The segmenter heard speech in some piece of this take (a looser test than NoteEndpointer's: VoiceKeep).
+    var heardSpeech: Bool { segmenter.pieceHasSpeech }
 
     /// Esc while it is still polishing ("Still polishing… Esc types it as spoken"): what was heard goes in as it is, as
     /// soon as the transcripts are in — the polish under way (or a model still loading) is not waited for, and its
