@@ -1006,6 +1006,8 @@ final class Dictation {
     }
     /// the press in hand came from the phone: a take it starts listens through the phone
     private var remotePress = false
+    /// the take in hand listens through this phone's microphone (its name; "" unknown): "nothing heard" names it, not the Mac's
+    private var phoneMic: String?
     var remotePhase: RemoteDictationPhase {
         // the permissions `needsSetup` is about are for hearing the Mac's own key: a press from the phone needs none of them
         if !Dictation.enabled { return .unavailable }
@@ -1051,6 +1053,7 @@ final class Dictation {
         let env = ProcessInfo.processInfo.environment
         v.inject = testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]
         if remotePress, RemoteMicFeed.shared.pressed { v.phoneFeed = RemoteMicFeed.shared }
+        phoneMic = v.phoneFeed == nil ? nil : (RemoteServer.shared.phoneName ?? "")
         // tests: the wav is the world's sound since the key went down — what the "mic" missed while starting is lost
         if DictationInsert.testMode, env["BLURT_TEST_MIC_CLOCK"] == "keydown" { v.injectClock = armedAt }
         v.builtInMic = Dictation.useBuiltInMic
@@ -1169,7 +1172,7 @@ final class Dictation {
         micLive = true
         let ms = Int((CACurrentMediaTime() - armedAt) * 1000)
         emit(["event": "dictation_mic_live", "id": entryID, "from_key_ms": ms, "from_open_ms": Int((v.firstAudioAfter ?? 0) * 1000),
-              "precaptured": precaptured, "builtin_mic": v.builtInMic])
+              "precaptured": precaptured, "builtin_mic": v.builtInMic, "phone_mic": v.phoneFeed != nil])
         if listening {
             island.dictationChanged()
             DictationSound.start.play()
@@ -1429,10 +1432,10 @@ final class Dictation {
 
     /// "Didn't catch anything (AirPods) · Change Mic…" / "No sound from AirPods" (BlurtCore NothingHeard): the mic it
     /// listened with, and the way to another — Settings → Dictation's microphone.
-    func toastNothing(levels: [Float]? = nil) {
+    func toastNothing(levels: [Float]? = nil, mic: String?? = nil) {
         let levels = levels ?? self.levels
         let why = NothingHeard.why(levels: levels)
-        let name = micName
+        let name = mic ?? micName
         emit(["event": "dictation_nothing", "why": why.rawValue, "mic": name ?? NSNull(),
               "peak": Double(levels.max() ?? 0)])
         // about the last take (Dictation.toastKey): the next take's start drops it
@@ -1442,9 +1445,10 @@ final class Dictation {
         }
     }
 
-    /// The microphone dictation listens with: the Mac's own (when it uses it) or the default input; a test build's
-    /// stand-in wav by its file name. nil = not known.
+    /// The microphone dictation listens with: the phone's (the take listens through it), the Mac's own (when it uses
+    /// it) or the default input; a test build's stand-in wav by its file name. nil = not known.
     var micName: String? {
+        if let p = phoneMic { return p.isEmpty ? nil : p }
         if DictationInsert.testMode {
             let env = ProcessInfo.processInfo.environment
             return (testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]).map { URL(fileURLWithPath: $0).lastPathComponent }
@@ -1485,6 +1489,7 @@ final class Dictation {
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
+        take.mic = micName
         take.switches = switches
         take.translate = translateJob(style: styleDecision?.style ?? .light)
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,

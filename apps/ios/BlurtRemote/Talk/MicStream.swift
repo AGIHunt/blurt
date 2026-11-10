@@ -62,7 +62,10 @@ final class MicStream {
         #endif
         do {
             let s = AVAudioSession.sharedInstance()
-            try s.setCategory(.record, mode: .measurement, options: [.allowBluetooth])
+            // .default, not .measurement: measurement turns the input gain down to the device's raw level, which on an
+            // iPad Pro (11-inch, 3rd generation) is about 30 dB lower than on an iPhone — speech stayed under the Mac's
+            // silence floor and every take was "nothing heard"
+            try s.setCategory(.record, mode: .default, options: [.allowBluetooth])
             try s.setPreferredIOBufferDuration(0.02)
             try s.setActive(true, options: [])
             let input = engine.inputNode
