@@ -67,8 +67,14 @@ public struct RemoteScreenReport: Codable, Hashable, Sendable {
 /// How much to send, from what the network lets through. The phone's request is the ceiling, set by what it's on and what the user chose.
 /// Away from home it starts at half and climbs. Down fast when frames pile up on the way or are lost in numbers; then to a little under what's
 /// really getting through, and no further while the queue drains. One lost frame on Wi-Fi says nothing: it's counted over a few seconds. Back up
-/// slowly, and only while the picture actually uses what it has: a still screen proves nothing about the network. Each frame must be worth
-/// sending: with little to spend there are fewer of them, because on a screen text that can be read matters more than motion.
+/// slowly, and only while the picture actually uses what it has: a still screen proves nothing about the network. So a rate that fell
+/// would stay where it fell for as long as the screen was read, and the next scroll began soft and slow however good the network had
+/// become. A still picture's resends (RemoteSharpen) are the one thing sent then, so they find out: while there is room above the rate
+/// they go half as fast again (`probe`, the encoder's rate with them), and if all of that arrives with no sign of trouble, the network
+/// carries it, and the rate goes to nine tenths of the rate they really went at. If it doesn't, that is the answer too: nothing is cut
+/// for a question, and none is asked again for a while.
+/// Each frame must be worth sending: with little to spend there are fewer of them, because on a screen text that can be read matters
+/// more than motion.
 public struct RemoteRate: Equatable, Sendable {
     public let cap: Int
     public let fpsCap: Int
@@ -82,6 +88,8 @@ public struct RemoteRate: Equatable, Sendable {
     private var troubleAt = Int.max, sinceTrouble = 0
     /// the last few reports: frames, lost
     private var recent: [(Int, Int)] = []
+    /// reports since resends that went faster than the rate met trouble: none go faster again until `patience`
+    private var sinceProbe = RemoteRate.patience + 1
 
     private static let window = 5
     /// reports before trying past where trouble began
@@ -98,11 +106,19 @@ public struct RemoteRate: Equatable, Sendable {
 
     public var floor: Int { min(cap, 200_000) }
 
+    /// as far up as it may go: the phone's ceiling, or a little under where trouble last began
+    private var ceiling: Int { min(cap, troubleAt == Int.max ? cap : troubleAt * 9 / 10) }
+
+    /// The rate a still picture's resends go at: the bitrate, or half as much again while there is room above it that nothing has tried.
+    public var probe: Int { bitrate < ceiling && sinceProbe > Self.patience ? min(ceiling, bitrate * 3 / 2) : bitrate }
+
     private static func frames(_ bitrate: Int, cap: Int) -> Int { min(cap, max(10, bitrate / bitsPerFrame)) }
 
     /// One report's worth. `busy`: frames skipped because the way out was full. `backedUp`: more on its way than should be. `sent`, `delivered`:
-    /// bits a second out of here and into the phone. True if anything changed.
-    public mutating func update(frames: Int, lost: Int, busy: Int, backedUp: Bool = false, rtt: Double?, sent: Int, delivered: Int = 0) -> Bool {
+    /// bits a second out of here and into the phone. `probed`: since the last report a still picture's resends went faster than the rate,
+    /// at this many bits a second while they went (RemoteProbe). True if anything changed.
+    public mutating func update(frames: Int, lost: Int, busy: Int, backedUp: Bool = false, rtt: Double?, sent: Int, delivered: Int = 0,
+                                probed: Int? = nil) -> Bool {
         let before = (bitrate, fps)
         if let rtt, rtt > 0 { bestRTT = min(bestRTT, rtt) }
         recent.append((frames, lost))
@@ -113,11 +129,15 @@ public struct RemoteRate: Equatable, Sendable {
         sinceTrouble += 1
         if sinceTrouble > Self.patience { troubleAt = Int.max }
         if wait > 0 { wait -= 1 }
+        if sinceProbe <= Self.patience { sinceProbe += 1 }
         if busy >= 3 || backedUp || lossy || queued {
             calm = 0
             if lossy { recent = [] }        // each loss is answered once
-            // already under what's arriving: what's queued is draining
-            if wait == 0, delivered == 0 || bitrate * 100 > delivered * 85 {
+            if probed != nil {
+                // more than the rate was sent to see if it would arrive, and this is the answer: the rate stays, and nothing asks again soon
+                sinceProbe = 0
+            } else if wait == 0, delivered == 0 || bitrate * 100 > delivered * 85 {
+                // (already under what's arriving: what's queued is draining)
                 troubleAt = bitrate
                 sinceTrouble = 0
                 var next = bitrate * 7 / 10
@@ -127,14 +147,100 @@ public struct RemoteRate: Equatable, Sendable {
             }
         } else {
             calm += 1
-            let ceiling = min(cap, troubleAt == Int.max ? cap : troubleAt * 9 / 10)
-            if calm >= 3, bitrate < ceiling, sent * 10 >= bitrate * 6 {
+            if let probed, probed * 9 / 10 > bitrate, bitrate < ceiling, delivered * 10 >= sent * 9 {
+                // faster than the rate, all of it arrived, nothing queued: the network carries that much
+                calm = 0
+                bitrate = min(ceiling, probed * 9 / 10)
+            } else if calm >= 3, bitrate < ceiling, sent * 10 >= bitrate * 6 {
                 calm = 0
                 bitrate = min(ceiling, bitrate * 5 / 4)
             }
         }
         fps = Self.frames(bitrate, cap: fpsCap)
         return before != (bitrate, fps)
+    }
+}
+
+/// How fast a still picture's resends really went while they went faster than the rate (RemoteRate.probe): their bytes over the time
+/// each was given to get through. Short of the pace when resends were small or the encoder dropped some, and never more than it, so
+/// what it says the network carried, the network carried.
+public struct RemoteProbe: Equatable, Sendable {
+    private var bytes = 0, time = 0.0
+    public init() {}
+
+    /// A resend of this size went, and the next waits this long for it.
+    public mutating func sent(bytes b: Int, wait: Double) {
+        bytes += b
+        time += wait
+    }
+
+    /// Bits a second, once there is enough to say (0.3 s of it); nil before. Taking it starts over.
+    public mutating func take() -> Int? {
+        defer { self = RemoteProbe() }
+        return time >= 0.3 ? Int(Double(bytes) * 8 / time) : nil
+    }
+}
+
+/// A still picture, made sharp. While the screen moves the encoder spends what the rate allows and text comes out soft; when it stops, the
+/// same frame goes again with the encoder's quantiser held under a ceiling that comes down step by step to `sharp`, where text reads as it
+/// does on the screen itself. Sending it again a fixed number of times (eight, before 1.0.17) left dense text soft on anything under a few
+/// Mbps: each resend got one frame's share of the rate, and the count ran out first (docs/design/remote-realtime.md §Sharpening).
+/// A step is sized by what the last one cost, so no resend is much more than 0.4 s of the rate, and each waits until the one before has had
+/// time to get through: the picture never takes more than the rate, and a key pressed meanwhile isn't far behind it in the relay's stream.
+public struct RemoteSharpen: Equatable, Sendable {
+    /// the quantiser at which a screen of 13 pt text is the source's equal by eye (HEVC and H.264 count alike)
+    public static let sharp = 22
+    static let first = 40
+    /// tries for one picture, the ones the rate control dropped included (at 700 kbps: 8 that went and 22 dropped, measured)
+    static let most = 80
+
+    public private(set) var done = false
+    private var cap = first, step = 4, tries = 0, due = 0.0
+
+    public init() {}
+
+    /// The picture changed, or what the phone has of it did (a keyframe, a refresh): from the top.
+    public mutating func again() { self = RemoteSharpen() }
+
+    /// A frame of the screen itself went, this large. A real screen is seldom quite still: a caret blinks, a spinner turns, a clock
+    /// ticks, and each is a frame of a few hundred bytes that leaves the text around it as it was. Those change nothing here. If
+    /// they did (they did, for a day), a blinking caret started the steps over twice a second: never sharp, and tens of KB each
+    /// time on a screen that should cost nothing. A frame of half the rate's share or more (3 KB at least) is the picture really
+    /// changing, soft again where it changed: from the top. True if it was.
+    @discardableResult
+    public mutating func moved(bytes: Int, bitrate: Int, fps: Int) -> Bool {
+        guard bytes >= max(3_000, bitrate / 8 / max(fps, 1) / 2) else { return false }
+        again()
+        return true
+    }
+
+    /// The quantiser ceiling for a resend now; nil: not yet, or done. `capped` false: this encoder takes no ceiling, so it's eight plain
+    /// resends as before (51: no ceiling).
+    public mutating func next(now: Double, capped: Bool = true) -> Int? {
+        guard !done, now >= due else { return nil }
+        tries += 1
+        guard tries <= Self.most else { done = true; return nil }
+        due = now + 0.2     // until it's back from the encoder; one the rate control dropped goes again then
+        guard capped else {
+            if tries >= 8 { done = true }
+            return 51
+        }
+        return cap
+    }
+
+    /// The resend made under `cap` went, this large. `bitrate`: what a step may cost is measured against it. `pace`: the rate the resends
+    /// go at, bits a second: the bitrate, or more while they also find out what the network carries (RemoteRate.probe).
+    /// Returns how long the next one waits for this one to get through (0 for a resend that isn't this picture's).
+    @discardableResult
+    public mutating func sent(cap sentCap: Int, bytes: Int, bitrate: Int, pace: Int? = nil, now: Double) -> Double {
+        guard !done, tries > 0, sentCap == cap else { return 0 }
+        let wait = max(0.1, Double(bytes) * 8 / Double(max(pace ?? bitrate, 1)))
+        if cap <= Self.sharp { done = true; return wait }
+        let budget = bitrate / 20       // 0.4 s of the rate, in bytes
+        if bytes > budget { step = max(1, step / 2) } else if bytes < budget / 3 { step = min(8, step + 2) }
+        cap = max(Self.sharp, cap - step)
+        due = now + wait
+        return wait
     }
 }
 

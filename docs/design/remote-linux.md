@@ -94,6 +94,80 @@ with the test phone (`examples/phone.rs`) on a Mac, over the internet.
 Screenshots: `promo/cases/remote-linux/` (the dialog, the streamed terminal, typed and pasted text, the overview, frames
 decoded on the phone side).
 
+## A still picture made sharp (2026-11-11)
+
+The Mac sharpens a still picture in steps, each resend under a quantiser ceiling that comes down 40 → 22 (sharpen.rs,
+remote-realtime.md §7). No GStreamer encoder here takes a ceiling cleanly, so on Linux a step is made by its bitrate instead:
+for that one resend the element's `bitrate` is raised to what the step needs, then put back to what `set_rate` last asked for
+(encode.rs `push_capped`, `boosts`, `boost_seconds`; a pad probe on the encoder's input sets it as the frame arrives, so it is
+exactly that frame's). Keyframes and moving frames are never raised. `caps_quantiser` is true for **x264enc and nvcudah264enc**;
+every other element gets the eight plain resends, as before.
+
+Rig: GCP g2-standard-4 (NVIDIA L4, driver 580.178 server-open), Ubuntu 24.04, GStreamer 1.24.2. `examples/linux_sharpen_probe.rs`:
+the backend's own `Encoder`, fed a 1800×1124 screen of 13 px code (English and Chinese, five colours, dark background) scrolled 23 px
+a frame for 1.5 s, then still. The moving frames go at the rate the server would ask for away from home (rate.rs `frames`: 23 fps at
+700 kbps, 30 at 2 and 4 Mbps). The resends are driven by the real `Sharpen`, with the server's 1.5× `set_rate` around them and paced
+at that. Luma PSNR of the decoded frame (avdec) against the source. **The best this page can be** after 4:2:0 and the conversion,
+encoded at 100 Mbps: **38.8 dB**.
+
+### Why not a ceiling, and why the plain resends were so soft
+
+- x264enc, openh264enc: `qp-max` isn't changeable while playing. Set anyway, the resends are byte for byte the plain ones.
+  x265enc has no such property.
+- nvh264enc, nvh265enc (1.24's nvbaseenc: `qp-max`), nvcudah264enc (`max-qp-i/-p`): changeable while playing, but every change makes
+  the next frame an IDR (105–440 KB each at 2 Mbps; 18 per ladder). nvcudah264enc also stopped changing the frame after the third.
+- The plain resends get almost nothing: the encoders are told 60 fps whatever the real rate (§Design), so a resend gets 1/fps of the
+  rate (x264 at 2 Mbps: 3–10 KB, where the Mac's take 40–50 KB). So a resend is owed the time since the last frame (0.1–0.25 s of
+  the rate), and more the finer the step: twice as much for every 6 QP under 46, × a gain for each element, up to its most.
+- Tuned by measurement at 2 Mbps. x264's ABR answers a raised rate slowly: asked for 0.36 s of the rate it made 0.1–0.2 s, and its
+  `qp-step` (4, x264's default) let the quantiser fall only 4 a frame. The ladder ended at 27.6 dB, then 29.6 dB with `qp-step` 24,
+  then 36.5 dB with the gain at 4 (most 1.2 s). So x264 now runs with `qp-step` 24 (the moving frames' size didn't change).
+  NVENC's CBR spends the whole buffer the still time refilled on the first raised frame: gain 1 made a 434 KB first resend, so its
+  gain is 0.5 (most 0.18 s).
+
+### Measured
+
+| Element | Rate | At stop | 8 plain resends (before) | Ladder (now): dB, KB, s, steps, dropped | Largest resend | Ladder bytes ÷ time |
+|---|---|---|---|---|---|---|
+| x264enc | 700 kbps | 20.4 dB | 22.2 dB, 26 KB | 35.2 dB, 354 KB, 2.7 s, 7, 0 | 87 KB (1.0 s of the rate) | 1.50× |
+| | 2 Mbps | 20.7 dB | 24.7 dB, 60 KB | 36.6 dB, 412 KB, 1.4 s, 5, 0 | 145 KB (0.58 s) | 1.21× |
+| | 4 Mbps | 30.4 dB | 33.2 dB, 115 KB | 38.8 dB, 1,114 KB, 1.9 s, 7, 0 | 284 KB (0.57 s) | 1.15× |
+| nvcudah264enc | 700 kbps | 23.8 dB | 25.2 dB, 22 KB | 33.0 dB, 216 KB, 2.4 s, 6, 0 | 134 KB (1.5 s) | 1.04× |
+| | 2 Mbps | 28.7 dB | 30.5 dB, 54 KB | 37.3 dB, 432 KB, 1.9 s, 6, 0 | 269 KB (1.1 s) | 0.91× |
+| | 4 Mbps | 32.8 dB | 34.8 dB, 114 KB | 38.2 dB, 537 KB, 1.6 s, 6, 0 | 336 KB (0.67 s) | 0.69× |
+
+- Against the page's best (38.8 dB) the ladder ends 0.0–3.6 dB short at 2–4 Mbps, and 3.6–5.8 dB short at 700 kbps. The Mac,
+  against its own best (41.6): 0.2 dB short at 2 Mbps, 2.1 at 700 kbps. By eye at 2 Mbps x264 the ladder's last frame reads as the
+  source does; after the eight plain resends the Chinese is smeared and the Latin soft
+  (`promo/cases/remote-sharpen/linux/x264-2mbps-*.png`).
+- The raised rate came off. No keyframe in or after any ladder. The first moving frames after a still picture are larger than the
+  scroll's mean after plain resends too (its first change); over the next 0.5 s they average 0.95–1.3× what they do after plain
+  resends (1.7× once, nvcudah264enc at 700 kbps).
+- `set_rate` (0.02–0.05 ms) applied during the ladder and restored after, on both elements, with no keyframe.
+- Odd: NVENC's first resend is the largest (the refilled CBR buffer, whatever it's asked for), 0.7–1.5 s of the rate in one frame.
+  x264's are 0.6–1.0 s. Both are over the 0.4 s that `Sharpen` steers by: it halves the next step, and the total still keeps to
+  ≤ 1.5× the rate.
+
+### `set_rate` and keyframes (`Screen::rate_change_is_cheap`)
+
+x265enc, openh264enc and 1.24's nvh264enc / nvh265enc answer any change of `bitrate` with a keyframe (at 2 Mbps: 125, 168, 113,
+103 KB). For them `rate_change_is_cheap` is false, so the server doesn't raise their rate for its 1.5× probe. x264enc and
+nvcudah264enc take a change in 0.02–0.07 ms with no keyframe. **Open:** a real change of rate (the network's) still costs those
+four elements a keyframe each time, as it did before today. A same-value `set_rate` is skipped.
+
+### Not measured
+
+- **VA-API, which most Intel and AMD Ubuntu machines use** (`vah264enc` / `vah265enc`, picked before NVENC and x264). They still get
+  eight plain resends until someone measures them on real hardware. Google Cloud has no VA device. To measure on such a machine:
+  `BLURT_REMOTE_BOOST=1 cargo run --release --example linux_sharpen_probe -- vah264enc 2000000 1800 ladder` (and `plain` for
+  before), looking for an end close to the page's best (run `… vah264enc 100000000 1800 plain`), no `KEYFRAME` in the steps,
+  `keys_after=0`. Then give the element its gain in `boosts`.
+- QSV; nvcudah265enc (the L4 has it, not run); HEVC on any element with the ladder; the 12 Mbps / 2752 px case; the server's idle 5 fps.
+
+**A keyframe asked for lands on its own picture.** The encoder test failed 4 runs in 6 on this 4-vCPU machine, with and without
+these changes: the force-key-unit event went upstream from the encoder's output and caught the picture before the one asked for.
+It now goes downstream through appsrc, in order with the pictures: 6 in 6 passed.
+
 ## Testing
 
 - Any OS: `cargo test` runs the pure parts: key table against RemoteKeys.swift, modifier order, text plan, crop / scroll /

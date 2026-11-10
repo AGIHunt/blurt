@@ -195,7 +195,9 @@ pub enum ToMac {
     KeyStored,
     Screen(Option<ScreenRequest>),
     ScreenCrop(Crop),
-    PointerTo { x: f32, y: f32 },
+    /// the pointer to this place on the screen being shown, 0…1: the view moved away from it. `seq`: its number among this phone's
+    /// pointer instructions (`PointerPacket::Move`), echoed with the cursor's place once made. 1.0.17+
+    PointerTo { x: f32, y: f32, seq: Option<u32> },
     /// show this display from now on, and put the pointer in its middle (None: follow the pointer, the default)
     ShowDisplay(Option<String>),
     Candidates(Vec<Candidate>),
@@ -578,7 +580,13 @@ impl ToMac {
             ToMac::KeyStored => case("keyStored", vec![]),
             ToMac::Screen(r) => case("screen", r.iter().map(|r| ("_0", request_json(r))).collect()),
             ToMac::ScreenCrop(c) => one("screenCrop", crop_json(c)),
-            ToMac::PointerTo { x, y } => case("pointerTo", vec![("x", f32v(*x)), ("y", f32v(*y))]),
+            ToMac::PointerTo { x, y, seq } => {
+                let mut f = vec![("x", f32v(*x)), ("y", f32v(*y))];
+                if let Some(n) = seq {
+                    f.push(("seq", json!(n)));
+                }
+                case("pointerTo", f)
+            }
             ToMac::ShowDisplay(d) => case("showDisplay", d.iter().map(|d| ("_0", json!(d))).collect()),
             ToMac::Candidates(l) => one("candidates", Value::Array(l.iter().map(candidate_json).collect())),
             ToMac::RequestKeyframe => case("requestKeyframe", vec![]),
@@ -627,7 +635,11 @@ impl ToMac {
             "keyStored" => ToMac::KeyStored,
             "screen" => ToMac::Screen(opt(f, "_0", request_from)?),
             "screenCrop" => ToMac::ScreenCrop(crop_from(x0()?)?),
-            "pointerTo" => ToMac::PointerTo { x: f32of(req(f, "x")?)?, y: f32of(req(f, "y")?)? },
+            "pointerTo" => ToMac::PointerTo {
+                x: f32of(req(f, "x")?)?,
+                y: f32of(req(f, "y")?)?,
+                seq: opt(f, "seq", |v| u32::try_from(int(v)?).ok())?,
+            },
             "showDisplay" => ToMac::ShowDisplay(opt(f, "_0", string)?),
             "candidates" => ToMac::Candidates(list(x0()?, candidate_from)?),
             "requestKeyframe" => ToMac::RequestKeyframe,

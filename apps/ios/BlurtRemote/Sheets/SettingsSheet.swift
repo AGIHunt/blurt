@@ -88,6 +88,7 @@ struct SettingsSheet: View {
                     row("Two fingers, in Touch Mode", "Scroll under your fingers")
                     row("Pinch", "Zoom")
                     row("Pinch, with the screen showing", "Zoom the picture")
+                    row("One finger, zoomed in, in Touch Mode", "Move the picture")
                     row("Pointer, zoomed in", "The picture follows it")
                     row("\(Words.cycleKeys(l.host)): hold and slide", "Step through, both ways")
                     row("Arrow key: tap an edge", "That arrow, hold to repeat")

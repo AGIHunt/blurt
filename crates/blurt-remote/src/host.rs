@@ -236,10 +236,35 @@ pub trait Screen: Send {
     /// A new part of the display at the same output size. Frames say which crop they show; a change may take a frame or two.
     fn set_crop(&mut self, crop: Crop);
     fn set_rate(&mut self, bitrate: u32, fps: u32);
+    /// Whether `set_rate` to another bitrate costs this stream's encoder nothing: no keyframe, no reset. Asked after `start`. True
+    /// (the default) lets the server raise the encoder's rate while a still picture's resends go faster than the bitrate to find
+    /// out what the network carries, and lower it again after: up to twice per still picture (rate.rs `probe`). False: an encoder
+    /// that answers a change of rate with a keyframe (measured 2026-11-11: GStreamer 1.24's nvh264enc, nvh265enc, x265enc,
+    /// openh264enc) is told a new rate only when the network's changes, as before.
+    fn rate_change_is_cheap(&self) -> bool {
+        true
+    }
     /// Next frame is a keyframe, even if nothing changed on screen.
     fn keyframe(&mut self);
     /// Encode the last captured picture again (the screen stopped changing): the encoder sharpens it.
     fn refresh(&mut self);
+    /// Whether `sharpen` makes this stream's encoder spend what a finer quantiser takes. Asked after `start`. False (the default):
+    /// `sharpen` is `refresh`, and the server sends a still picture again eight times as before (sharpen.rs).
+    fn caps_quantiser(&self) -> bool {
+        false
+    }
+    /// Encode the last captured picture again as sharp as quantising no block more coarsely than `max_qp` would make it (0–51,
+    /// HEVC and H.264 alike): one step of making a still picture sharp (sharpen.rs; docs/design/remote-realtime.md §7). An encoder
+    /// that takes a ceiling is given it. One that takes none but answers to its rate (Media Foundation's, measured 2026-11-11:
+    /// they accept a ceiling and ignore it) is given that one frame the rate the step needs instead, and what matters is measured:
+    /// that the ladder driven by sharpen.rs ends with text sharp, in about the bytes the rate allows. Either way the step is that
+    /// one frame's: every other frame, keyframes and recovery frames included, is the rate control's own again, at the rate last
+    /// set by `set_rate`. Like `refresh`, the frame comes through the sink even though nothing changed on screen; one the rate
+    /// control drops is simply asked for again.
+    fn sharpen(&mut self, max_qp: u8) {
+        let _ = max_qp;
+        self.refresh()
+    }
     fn stop(&mut self);
     /// Whether this stream's encoder makes recovery frames (`recovery_frame` other than a keyframe). Asked after `start`; true lets
     /// the server offer the phone "ltr" (docs/design/remote-realtime.md §2). False (the default): a frame lost for good costs a

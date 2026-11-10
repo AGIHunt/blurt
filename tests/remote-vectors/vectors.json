@@ -5,6 +5,12 @@
     "x" : 0.5,
     "y" : 0.25
   },
+  "cursorSeq" : {
+    "hex" : "0000003f0000803e02010000",
+    "seq" : 258,
+    "x" : 0.5,
+    "y" : 0.25
+  },
   "handshake" : {
     "check" : "684117",
     "commitment" : "8312c4cf7c9d25d077839a4c6a184bb2b57b000dae13fc0f5251563b434a8770",
@@ -88,6 +94,10 @@
     {
       "hex" : "03",
       "name" : "stop"
+    },
+    {
+      "hex" : "000000c03f000010c002010000",
+      "name" : "move_seq"
     }
   ],
   "relayRoom" : {
@@ -431,6 +441,16 @@
         }
       },
       "name" : "pointer_to"
+    },
+    {
+      "json" : {
+        "pointerTo" : {
+          "seq" : 7,
+          "x" : 0.5,
+          "y" : 0.75
+        }
+      },
+      "name" : "pointer_to_seq"
     },
     {
       "json" : {

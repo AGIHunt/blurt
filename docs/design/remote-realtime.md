@@ -179,6 +179,119 @@ picture ahead of a download. The **access point's** queue to the phone, where mo
 DSCP needs a plain socket with `IP_TOS` for the Mac's sending path, in place of the NWListener flow (§Not built). Not measurable on loopback;
 on the real network, a busy download running while scrolling is the test.
 
+### 7. A still picture made sharp in steps (2026-11-11)
+
+The founder on an iPad (2026-11-10): text is sometimes soft, and scrolling a little makes it sharp. Not the network: our own budget.
+When the picture stopped the Mac sent the same frame again at most eight times, 0.2 s apart, and took a resend under 1.5 KB to mean
+"as good as it gets". Each resend gets what the rate control allows one frame, and on a screen full of text no resend ever comes out
+that small, so the count decided, and under a few Mbps it ran out first. Then nothing more was sent until something moved, which
+bought eight more: the scroll that made it sharp. And the rate doesn't climb on a still screen (RemoteRate: it proves nothing about the
+network), so after one dip it stayed where it fell while the reading went on.
+
+Measured with the encoder alone, set up as `RemoteScreen.makeEncoder` (HEVC, low-latency rate control, M-series): a dark window full of
+13 pt code, English and Chinese, in five colours, scrolled for 1.5 s at the rate, then still. PSNR of the luma against the source, after
+decoding; the ceiling here is about 41.6 dB at 1800 wide and 44.3 at 2752 (what 4:2:0 and the conversion leave). By eye the eight resends
+at 2 Mbps leave strokes of 帧 and 码 smeared, at 700 kbps the whole line; at QP 22 the picture is the source's equal.
+
+| Rate, width | When it stops | Eight resends (before) | In steps to QP 22 (now) |
+|---|---|---|---|
+| 700 kbps, 1800 | 15.7 dB (frames dropped) | 33.6 dB, 131 KB, 1.6 s, then nothing | 39.5 dB, 407 KB, 6.0 s |
+| 2 Mbps, 1800 | 33.7 dB | 39.3 dB, 444 KB, 1.6 s, then nothing | 41.4 dB, 502 KB, 2.1 s |
+| 4 Mbps, 1800 | 37.7 dB | 42.2 dB, 726 KB, 1.6 s | 41.6 dB, 350 KB, 0.7 s |
+| 12 Mbps, 2752 | 39.8 dB | 44.2 dB, 1,178 KB, 1.6 s | 43.6 dB, 605 KB, 0.7 s |
+
+What was tried on the way (same picture, 2 Mbps):
+
+- **More plain resends**: 12 reach 39.7 dB for 630 KB and are still 40–50 KB each. The rate control lowers its quantiser a little per
+  frame and never says it has finished.
+- **A ceiling alone, held** (`MaxAllowedFrameQP` 22 again and again): the encoder goes on spending a frame's share below the ceiling for
+  no gain (41.4 → 41.5 dB over twelve more resends, 50 KB each). So the ladder ends on the first frame made at the last step; nothing is
+  measured to decide it.
+- **The quantiser fixed** (min = max): the second frame at the same value still costs 60 KB, so "a small resend means done" doesn't hold
+  for this encoder either, and at 12 Mbps it ends lower (41.8 dB) than the rate control's own choice.
+- **One big step** (straight to 22): the fewest bytes (about 230 KB to 39.5 dB), but one frame of 180–300 KB, which is 0.7–3 s of a thin
+  link in one piece; in the relay's stream keys wait behind it, and the rate control then drops what follows.
+
+Built (`RemoteSharpen`, BlurtRemoteKit; `RemoteScreen.refine`): the ceiling starts at 40 and comes down to 22. A step is 4 at first, 2 more
+after a resend that cost under a third of 0.4 s of the rate, half after one that cost more than 0.4 s of it. The next resend waits until
+the last has had time to get through (its bytes at the rate, at least 0.1 s), so the picture never takes more than the rate. A resend the
+rate control drops goes again 0.2 s later (at 700 kbps: 22 dropped beside the 8 that went). Any moving frame, keyframe or refresh takes the
+ceiling off and starts the ladder over. An encoder that takes no ceiling gets the eight plain resends as before.
+
+A real screen is seldom quite still, which the encoder-alone runs above couldn't show and the first live session did (a test host on
+this Mac's own desktop, the Rust test phone, 2026-11-11): a caret blinks, a spinner turns, and each is a frame of a few hundred bytes,
+28 a second here. Every frame of the screen's own started the ladder over, as it had always reset the eight resends, so with a spinner
+it never began, and under a blinking caret it would have begun again twice a second, never reaching sharp and sending its first steps
+each time. Now only a frame of half the rate's share or more (3 KB at least) is the picture really changing (`RemoteSharpen.moved`);
+smaller ones leave the steps where they are, and on the Mac the steps wait for 0.2 s without such a frame rather than without any
+frame, so text gets sharp beside a spinner too. Live at 2 Mbps: a keyframe of 77 KB, the ladder in the second after it (257 KB in
+all), then the desktop's own small frames and nothing else. The Rust host has the same rule for starting over but still waits for a
+screen with nothing moving before it resends: its backends tell a resend from the screen's own frame by there being no other. The resends count as
+sent, so a rate that dipped can climb a step on them (RemoteRate asks that 60 % of the rate be in use).
+
+The Rust host has the same ladder (`sharpen.rs`, `Screen::sharpen` and `caps_quantiser`), but none of its encoders takes a ceiling
+(measured on an NVIDIA L4, 2026-11-11): Media Foundation's (NVIDIA HEVC and H.264, Microsoft's software H.264) accept one and ignore
+it, byte for byte; x264enc, x265enc and openh264enc can't change one while running; GStreamer 1.24's NVENC elements answer every
+change with a keyframe. What does work there is the rate: for the one resend the encoder is given the rate that step needs, and put
+back at once. So `sharpen(max_qp)` means "as sharp as that ceiling would make it", by whichever means the encoder answers to, and
+the ladder, its pacing and its end are the same everywhere.
+
+| Host encoder | Eight resends (before), 2 Mbps | The ladder (now), 2 Mbps | Best this page can be |
+|---|---|---|---|
+| Windows, NVIDIA HEVC | 31.3 dB | 45.4 dB, 304 KB, 0.6 s | 55.1 dB |
+| Linux, x264enc | 24.7 dB | 36.6 dB, 412 KB, 1.4 s | 38.8 dB |
+| Linux, nvcudah264enc | 30.5 dB | 37.3 dB, 432 KB, 1.9 s | 38.8 dB |
+
+(Each host's own PSNR measure; they don't compare with each other or with the Mac's. 700 kbps and 4 Mbps, the tuning and the method:
+[remote-windows.md](remote-windows.md), [remote-linux.md](remote-linux.md). Crops to look at: `promo/cases/remote-sharpen/`.) On
+Linux the resends had been starved besides: the encoders are told 60 frames a second, so each resend got a sixtieth of a second of
+the rate, and dense text on x264 never left 20–25 dB under 4 Mbps.
+
+Still eight plain resends, because nothing could be measured or nothing answered: on Windows NVIDIA H.264 and the software H.264
+encoder (a raised rate does nothing; see below), Quick Sync and AMF (no such machine); on Linux VA-API (`vah264enc`, `vah265enc`:
+what most Intel and AMD machines use, and Google Cloud has none), x265enc, openh264enc and 1.24's nvh264enc / nvh265enc.
+
+Found on the way and not fixed:
+
+- **Windows H.264 never gets sharp on a screen of text**, NVIDIA's or the software encoder: moving frames are about three times the
+  rate's share at 30 or 60 frames a second, and once still the picture stays at 21–24 dB whatever is resent. Machines with no HEVC
+  hardware encoder. Its own investigation.
+- **Linux: a change of rate costs a keyframe** on x265enc, openh264enc and 1.24's nvh264enc / nvh265enc (103–168 KB at 2 Mbps), on
+  every step the rate control takes, as before today. `Screen::rate_change_is_cheap` keeps §8's faster resends off them.
+- **The first resend can be large** where the encoder spends a buffer that refilled while the screen was still: up to 1.5 s of the
+  rate in one frame on nvcudah264enc at 700 kbps, 1.0 s on x264enc, 1.9 times the 0.4 s budget on Windows HEVC. Over the relay's
+  one stream a key waits behind it.
+- **x264enc now runs with `qp-step` 24** (its default 4 let the quantiser fall only 4 a frame, and the ladder ended at 27.6 dB).
+  Moving frames measured the same size; what it does to a real desktop's moving picture hasn't been looked at.
+
+### 8. A rate that fell finds its way back while the screen is read (2026-11-11)
+
+The rate comes down at once on trouble and goes up a quarter at a time, only after three calm reports and only while 60 % of it is in
+use: a still screen proves nothing about the network. Reading is mostly still screens. So after one dip (a neighbour's download, a train
+tunnel) the rate sat where it fell for as long as the reading went on, the next scroll began soft and slow however good the network had
+become again, and over the relay, where it starts at half the ceiling, it could sit at half all evening.
+
+The only thing sent on a still screen is §7's resends, so they ask. While there is room above the rate (`RemoteRate.probe`) they go
+at 1.5 times the rate, and the phone's next report answers:
+
+- all of it arrived (nine tenths of what was sent in that report's time) and nothing shows trouble: the network carries it. The rate
+  goes to nine tenths of how fast the resends really went (`RemoteProbe`: their bytes over the time each was given; less than the pace
+  when resends were small or dropped, never more), no further than the ceiling.
+- trouble in that report: the network has no more than it had. Nothing is cut, since the trouble was the question's own doing, and
+  no resend goes faster than the rate again for 30 reports. Trouble without a question is cut as before.
+
+The encoder has to be told. Paced at 1.5 times the rate with the encoder left at the rate, the resends still left at 1.0–1.1 times
+it: the rate control drops and shrinks them (measured as in §7: 700 kbps → 690, 2 Mbps → 2.0, 4 Mbps → 4.3 Mbps). With the
+encoder's own rate at the pace while the ladder runs, 2 Mbps → 2.73 Mbps (1.37 times; nine resends, none dropped), and at 4 Mbps
+four resends of 386 KB in all, whose turns add up to about 0.55 s (1.4 times by `RemoteProbe`'s count; the ladder is over in 0.7 s, so
+a whole second's average would say less). At 700 kbps it is still 1.05 times, 11 dropped: a step there costs
+more than the rate control will pass at once, so the lowest rates climb the old way instead, which the ladder also feeds, being several
+seconds of a rate in use. `RemoteScreen.encode` sets the rate to the pace for a sharpening resend and back for any other frame.
+
+Not measured on a network: only the arithmetic, as a run of reports (`testOverAnHourOfReadingTheRateSettlesJustUnderWhatTheNetworkCarries`:
+a network that carries 3 Mbps, a rate at the floor, a still picture every 20 s; back over 2.1 Mbps within 30 pictures, never lower for
+asking). The cost when the answer is no: over the relay's one stream, up to half a second of picture ahead of a key, once per 30 reports.
+
 ### Measured, before and after (same tests, `BLURT_SCREEN_REPAIR=0` on the phone for before)
 
 Scrolling at 60 Hz (`testwin2 scroll`), Auto at home, 12 s a stage, two stages (whole and 2×) each unless one number is given. "Longest
@@ -216,7 +329,9 @@ gap" is the longest time between two new pictures on the phone; the usual gap at
 
 Measured per kind of screen (12–15 s each, after start-up), with the repairs on; the same with them off on a clean network (local: scrolling
 12.2 and 12.2, agent output 3.0 and 3.0 Mbps). "Agent output" is `testwin2 agent`: a line every 66 ms for 2 s, the terminal scrolling with
-it, then 3 s still, over and over. Still is still: 2–3 resends after it stops, then nothing (remote.md §What it costs).
+it, then 3 s still, over and over. Still is still: 2–3 resends after it stops, then nothing (remote.md §What it costs; since 2026-11-11
+the resends go in steps until the picture is sharp, §7, so on a screen full of text a stop costs 350–600 KB where these runs' sparse
+window cost a few KB: the table below is from before that and wasn't measured again).
 
 | Auto tier (ceiling) | Scrolling | Agent output | Still | A typical hour | An hour of nothing but scrolling |
 |---|---|---|---|---|---|
@@ -536,8 +651,10 @@ In the order they'd pay off:
    the frame waiting for its turn instead of adding one; small, not tried.
 3. **The encoder's 6 ms.** The largest part of a clean path. H.264, or a stage a little smaller than the phone's pixels while scrolling, may
    halve it; neither measured.
-4. **Sharpening a still picture faster.** The resends after the picture stops (remote.md §What it costs) could cap their QP
-   (`kVTCompressionPropertyKey_MaxAllowedFrameQP`) so one resend does what three do now. Measure bytes against sharpness first.
+4. **Sharpening a still picture where it isn't yet** (§7): VA-API on Linux and Quick Sync / AMF on Windows need a real machine and
+   the probes (`examples/linux_sharpen_probe.rs`, `examples/win_sharpen.rs`); Windows H.264 needs its own look. Also unmeasured: the
+   ladder in a live session over the relay (only encoders alone were measured), and relaxing the Mac's `DataRateLimits` while
+   sharpening so a thin link's resends aren't dropped and tried again.
 5. **Region-aware quality** (more bits where the screen changed or the pointer is): needs an encoder that takes a QP map: NVENC's emphasis
    map, Media Foundation's delta-QP map (Windows 11 26100+), VA-API ROI. VideoToolbox has none public. Windows/Linux only.
 6. **AV1** for Windows and Linux hosts with RTX 40+, Arc or RDNA3, to phones that decode it (iPhone 15 Pro and later, recent Android

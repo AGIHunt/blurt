@@ -583,6 +583,7 @@ final class RemoteServer {
             old.channel.queue.asyncAfter(deadline: .now() + 0.2) { old.channel.close() }
         }
         session = s
+        RemoteInput.shared.forgetPhone()      // another phone, or this one started again: its numbers start over
         emit(["event": "remote_session", "state": "open", "relay": s.channel.isRelay])
     }
 
@@ -702,8 +703,13 @@ final class RemoteServer {
             queue.async { self.adoptRelay(a) }
         case let .showDisplay(id):
             queue.async { self.showDisplay(id, s) }
-        case let .pointerTo(x, y):
-            if let p = s.screen?.pointerTo(x: x, y: y) { input.queue.async { input.place(p) } }
+        case let .pointerTo(x, y, seq):
+            // its number counts even with no picture to place it on: the phone waits for it
+            let p = s.screen?.pointerTo(x: x, y: y)
+            input.queue.async {
+                if let p { input.place(p) }
+                input.made(seq)
+            }
         case let .candidates(list):
             guard s.punches < 3 else { return }
             s.punches += 1
@@ -922,7 +928,7 @@ final class RemoteServer {
         let input = RemoteInput.shared
         input.queue.async {
             switch p {
-            case let .move(x, y): input.move(dx: CGFloat(x), dy: CGFloat(y))
+            case let .move(x, y, seq): input.move(dx: CGFloat(x), dy: CGFloat(y)); input.made(seq)
             case let .scroll(x, y, phase): input.scroll(dx: CGFloat(x), dy: CGFloat(y), phase: phase)
             case let .scrollFling(x, y): input.fling(vx: CGFloat(x), vy: CGFloat(y))
             case .scrollStop: input.stopCoast()

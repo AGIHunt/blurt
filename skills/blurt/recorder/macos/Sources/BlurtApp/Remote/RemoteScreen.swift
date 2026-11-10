@@ -3,9 +3,10 @@
 //
 //  • the pointer isn't in the video. Its position goes separately, 60 times a second, and the phone draws it, so it's never a frame
 //    late; its shape goes when it changes.
-//  • it spends only what the network carries (RemoteRate), and when the picture stops moving it sends the same frame a few more times: the
-//    encoder spends what it saved on sharpening it. So text is crisp while it's read, at a rate a phone's data plan can stand, and a still
-//    screen then costs nothing at all.
+//  • it spends only what the network carries (RemoteRate), and when the picture stops moving it sends the same frame again with the
+//    encoder held to a finer and finer quantiser, down to one where text is as sharp as the screen's (RemoteSharpen), each resend waiting
+//    for the last to get through. So text is crisp while it's read, at a rate a phone's data plan can stand, and a still screen then
+//    costs nothing at all.
 //  • the phone owns the view. It moves the picture it already has at once, and asks for that part of the screen when it can; the output
 //    stays the same size, so the closer the view, the sharper. Each frame says which part it shows, so the phone can place it exactly
 //    and the picture never jumps. Nothing on the Mac changes.
@@ -46,6 +47,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private var config: SCStreamConfiguration?
     private var ticker: DispatchSourceTimer?
     private var lastCursor = CGPoint(x: -1, y: -1)
+    private var lastCursorSeq: UInt32?
     private var lastShape: Int?
     private var tick = 0
     private var relayed = false
@@ -55,17 +57,25 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastImageCrop = RemoteCrop.whole
     private var lastPTS = CMTime.zero
     private var lastFrameAt = 0.0
+    /// when the picture last really changed (RemoteSharpen.moved): sharpening waits for it to have settled, not for a screen with
+    /// nothing at all moving on it, which a real one seldom is
+    private var lastBusyAt = 0.0
     private var lastEncodedAt = 0.0
     private var rate = RemoteRate(bitrate: 12_000_000, fps: 60)
     /// frames skipped because the socket was full, and bytes sent, since the phone's last report
     private var busySkips = 0, reportBytes = 0, reportSince = CACurrentMediaTime()
+    /// a still picture's resends that went faster than the rate since the phone's last report, to find out what the network carries
+    private var probe = RemoteProbe()
+    /// the rate the encoder is set to: the bitrate, or the faster pace of those resends while they go
+    private var encoderRate = 0
     /// bytes of picture sent, and the phone's last word on what it has. In a TCP stream the gap is what's queued somewhere on the way
     private var sentTotal = 0, receivedTotal = 0, lastReportAt = 0.0
-    /// times the still frame has been sent again
-    private var refines = 0
+    /// the still frame sent again, step by step, until it's sharp
+    private var sharpen = RemoteSharpen()
+    /// the encoder's quantiser ceiling as last set (51: none), and whether this encoder takes one
+    private var encoderCap = 51, capWorks = true
     private var idlePace = false
-    /// the last frame's size: when a resend comes out this small, there's nothing left to sharpen
-    private var lastFrameBytes = 0, lastKeyAt = 0.0, lastKeyAnswered = 0.0
+    private var lastKeyAt = 0.0, lastKeyAnswered = 0.0
     /// `sentTotal` at the end of the last keyframe: until the phone has that much it's still arriving
     private var keyThrough = 0
     /// the last frame went in the relay's stream
@@ -74,11 +84,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private var heldSince = 0.0
     /// the direct path's pieces are still going out
     private var pacedUntil = 0.0
-    private static let refinesPerStill = 8
     /// NACK, LTR refresh, parity (RemoteScreenRepair.swift, docs/design/remote-realtime.md)
     private let repair = ScreenRepair()
     private var timing = ScreenTiming()
-    private static let settled = 1500
     var onInfo: ((ToPhone) -> Void)?
     /// capture ended by itself
     var onStopped: (() -> Void)?
@@ -214,10 +222,11 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    /// Relative to the display shown: outside it, the phone knows the pointer is elsewhere.
-    private func pointer() -> CGPoint {
-        let p = Self.pointerNow()
-        return CGPoint(x: p.x - source.minX, y: p.y - source.minY)
+    /// Relative to the display shown: outside it, the phone knows the pointer is elsewhere. With the newest of the phone's own pointer
+    /// instructions this place includes, once it numbers them.
+    private func pointer() -> (CGPoint, UInt32?) {
+        let (p, seq) = RemoteInput.shared.forPhone()
+        return (CGPoint(x: p.x - source.minX, y: p.y - source.minY), seq)
     }
 
     // MARK: several displays
@@ -320,7 +329,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         frameCrop = .whole
         requestedCrop = nil
         lastImage = nil
-        refines = 0
+        sharpen.again()
         follow.reset()
         makeEncoder(to.config.width, to.config.height, rate.bitrate, fps: rate.fps)
         // a frame held while the change was under way may still be the old display's; when both are the same shape, nothing tells them apart
@@ -452,29 +461,28 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private func tickNow(_ fps: Int) {
         guard running, source.width > 0 else { return }
-        let p = pointer()
+        let (p, seq) = pointer()
         tick += 1
         // and now and then regardless: these can be lost, and the phone draws the pointer from them
-        // in the relay's stream nothing is lost, so now and then is rarely
-        if p != lastCursor || tick % max(1, inOneStream ? fps * 5 : fps / 2) == 0 {
+        // in the relay's stream nothing is lost, so now and then is rarely. A move that didn't move it (against the edge) is still said
+        // to be made: the phone is waiting for its number
+        if p != lastCursor || seq != lastCursorSeq || tick % max(1, inOneStream ? fps * 5 : fps / 2) == 0 {
             lastCursor = p
-            var v: [Float] = [Float(p.x / source.width), Float(p.y / source.height)]
-            channel.sendDatagram(.cursor, Data(bytes: &v, count: 8))
+            lastCursorSeq = seq
+            channel.sendDatagram(.cursor, RemoteCursor(x: Float(p.x / source.width), y: Float(p.y / source.height), seq: seq).encoded())
         }
         if tick % max(1, fps / 4) == 0 { checkShape() }
         followPointer()
         refine()
     }
 
-    /// The picture has stopped: the same frame again, for the encoder to sharpen. Also what gets the last frame out if pacing skipped it.
+    /// The picture has stopped: the same frame again, a step sharper each time (RemoteSharpen). Also what gets the last frame out if
+    /// pacing skipped it.
     private func refine() {
-        guard refines < Self.refinesPerStill, cropsUnderWay == 0, !channel.streamBusy, !holdingBack(), let i = lastImage else { return }
+        guard !sharpen.done, cropsUnderWay == 0, !channel.streamBusy, !holdingBack(), let i = lastImage else { return }
         let now = CACurrentMediaTime()
-        guard now - lastFrameAt > 0.2, now - lastEncodedAt > 0.2, now >= pacedUntil else { return }
-        // after the first, a resend this small means the picture is as good as it gets
-        if refines > 0, lastFrameBytes < Self.settled { refines = Self.refinesPerStill; return }
-        refines += 1
-        encode(i, pts: nextPTS(), captured: now, crop: lastImageCrop)
+        guard now - lastBusyAt > 0.2, now >= pacedUntil, let cap = sharpen.next(now: now, capped: capWorks) else { return }
+        encode(i, pts: nextPTS(), captured: now, crop: lastImageCrop, cap: cap, sharpening: true)
     }
 
     /// The encoder's rate control goes by these: real time, or a resend looks like part of the burst before it.
@@ -501,13 +509,14 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             self.lastReportAt = now
             // a keyframe is a lump, not a queue
             let backedUp = self.inOneStream && now - self.lastKeyAt > 2 && self.sentTotal - r.received > max(64_000, self.rate.bitrate / 8 * 3 / 4)
-            let changed = self.rate.update(frames: r.frames, lost: r.lost, busy: self.busySkips, backedUp: backedUp, rtt: r.rtt, sent: sent, delivered: delivered)
+            let changed = self.rate.update(frames: r.frames, lost: r.lost, busy: self.busySkips, backedUp: backedUp, rtt: r.rtt, sent: sent, delivered: delivered,
+                                           probed: self.probe.take())
             self.busySkips = 0
             self.reportBytes = 0
             self.reportSince = now
             self.repair.adapt(rtt: r.rtt)
             guard changed else { return }
-            if let s = self.session { Self.setRate(s, self.rate.bitrate, fps: self.rate.fps) }
+            if let s = self.session { Self.setRate(s, self.rate.bitrate, fps: self.rate.fps); self.encoderRate = self.rate.bitrate }
             emit(["event": "remote_screen_rate", "bitrate": self.rate.bitrate, "fps": self.rate.fps, "lost": r.lost, "sent": sent])
         }
     }
@@ -583,6 +592,10 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         VTCompressionSessionPrepareToEncodeFrames(s)
         session = s
         wantKey = true
+        encoderCap = 51
+        encoderRate = bitrate
+        capWorks = true
+        sharpen.again()
         emit(["event": "remote_screen", "state": "encoder", "low_latency": lowLatency])
     }
 
@@ -618,11 +631,13 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     private func take(_ image: CVImageBuffer, pts: CMTime, captured: Double, crop label: RemoteCrop, cut: Bool) {
         let now = CACurrentMediaTime()
         lastFrameAt = now
-        refines = 0
         // before the frame gets a number: a gap in the numbers costs a keyframe
         if channel.streamBusy || holdingBack() {
             busySkips += 1
             skipped += 1
+            // not sent, so how much it changed isn't known: the phone's picture is behind, and a resend brings it this one
+            sharpen.again()
+            lastBusyAt = now
             // what a resend later sharpens is this one
             if let out = cut ? cropped(image, label) : image { lastImage = out; lastImageCrop = label }
             return
@@ -694,19 +709,47 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         return true
     }
 
-    private func encode(_ image: CVImageBuffer, pts: CMTime, captured: Double, crop: RemoteCrop) {
+    /// `cap`: the coarsest quantiser this frame may use, for a resend that sharpens; every other frame is the rate control's own (51).
+    private func encode(_ image: CVImageBuffer, pts: CMTime, captured: Double, crop: RemoteCrop, cap: Int = 51, sharpening: Bool = false) {
         guard let session else { return }
         let t0 = CACurrentMediaTime()
         lastEncodedAt = t0
         _ = turn(t0)
         turns = max(-1, turns - 1)
+        // a resend that also asks what the network carries goes at that pace, and the encoder's rate control would hold it to the
+        // bitrate otherwise (measured: 1.0–1.1 times it, whatever the pacing); any other frame is at the bitrate again
+        let want = sharpening ? rate.probe : rate.bitrate
+        if want != encoderRate {
+            Self.setRate(session, want, fps: rate.fps)
+            encoderRate = want
+        }
+        if cap != encoderCap, capWorks {
+            // only when it changes: twice per still picture and once per step, never per moving frame
+            if VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxAllowedFrameQP, value: cap as CFNumber) == noErr {
+                encoderCap = cap
+            } else {
+                capWorks = false
+                emit(["event": "remote_screen", "state": "no_qp_cap"])
+            }
+        }
         let (props, refresh) = repair.options(key: wantKey)
         wantKey = false
         VTCompressionSessionEncodeFrame(session, imageBuffer: image, presentationTimeStamp: pts, duration: .invalid, frameProperties: props,
                                         infoFlagsOut: nil) { [weak self] st, _, sample in
-            guard st == noErr, let sample, let self else { return }
+            guard st == noErr, let sample, let self else { return }     // no sample: the rate control dropped it, and a resend goes again
             let done = CACurrentMediaTime()
-            self.q.async { self.send(sample, captured: captured, crop: crop, encodeStart: t0, encoded: done, refresh: refresh) }
+            self.q.async {
+                let bytes = self.send(sample, captured: captured, crop: crop, encodeStart: t0, encoded: done, refresh: refresh)
+                if !sharpening {
+                    // the screen's own frame: a small one (a caret, a spinner) leaves the steps where they are
+                    if self.sharpen.moved(bytes: bytes, bitrate: self.rate.bitrate, fps: self.rate.fps) { self.lastBusyAt = CACurrentMediaTime() }
+                    return
+                }
+                guard bytes > 0 else { return }
+                let pace = self.rate.probe
+                let wait = self.sharpen.sent(cap: cap, bytes: bytes, bitrate: self.rate.bitrate, pace: pace, now: CACurrentMediaTime())
+                if pace > self.rate.bitrate, wait > 0 { self.probe.sent(bytes: bytes, wait: wait) }
+            }
         }
     }
 
@@ -718,7 +761,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             case let .resend(pieces)?:
                 pieces.forEach { self.channel.sendDatagram(.video, $0) }
             case .refresh?:
-                self.refines = 0
+                self.sharpen.again()
                 if self.cropsUnderWay == 0, let i = self.lastImage, CACurrentMediaTime() - self.lastFrameAt > 0.05 {
                     self.encode(i, pts: self.nextPTS(), captured: CACurrentMediaTime(), crop: self.lastImageCrop)
                 }
@@ -729,14 +772,16 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func send(_ b: CMSampleBuffer, captured: Double, crop: RemoteCrop, encodeStart: Double, encoded doneAt: Double = 0, refresh: Bool = false) {
-        guard running, let block = CMSampleBufferGetDataBuffer(b) else { return }
+    /// The bytes of picture that went.
+    @discardableResult
+    private func send(_ b: CMSampleBuffer, captured: Double, crop: RemoteCrop, encodeStart: Double, encoded doneAt: Double = 0, refresh: Bool = false) -> Int {
+        guard running, let block = CMSampleBufferGetDataBuffer(b) else { return 0 }
         var key = true
         if let a = CMSampleBufferGetSampleAttachmentsArray(b, createIfNecessary: false) as? [[CFString: Any]], a.first?[kCMSampleAttachmentKey_NotSync] as? Bool == true { key = false }
         if key, let f = CMSampleBufferGetFormatDescription(b) { parameterSets = Self.sets(f) }
         var len = 0
         var ptr: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &len, dataPointerOut: &ptr) == noErr, let ptr else { return }
+        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &len, dataPointerOut: &ptr) == noErr, let ptr else { return 0 }
         let picture = Data(bytes: ptr, count: len)
         Self.frameID &+= 1
         let body = RemoteVideoPayload.pack(crop: crop, parameterSets: key ? parameterSets : [], picture: picture)
@@ -766,7 +811,6 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             for (i, p) in pieces.enumerated() { channel.sendDatagram(.video, i < encodedPieces.count ? encodedPieces[i] : p.encoded()) }
         }
         timing.add(captured: captured, encodeStart: encodeStart, encoded: doneAt > 0 ? doneAt : CACurrentMediaTime(), sent: CACurrentMediaTime())
-        lastFrameBytes = body.count
         if switchBegan > 0 {
             emit(["event": "remote_display_switch", "state": "first_frame", "why": switchWhy, "ms": ((CACurrentMediaTime() - switchBegan) * 10000).rounded() / 10,
                   "keyframe": key, "bytes": body.count])
@@ -792,6 +836,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             emit(line)
             encoded = 0; bytes = 0; encodeMs = 0; keyframes = 0; skipped = 0; statsSince = now
         }
+        return body.count
     }
 
     private static let burst = 16
@@ -819,7 +864,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             guard now >= self.pacedUntil, now - self.lastKeyAnswered > 0.7 else { return }
             self.lastKeyAnswered = now
             self.wantKey = true
-            self.refines = 0
+            self.sharpen.again()
             guard self.running, self.cropsUnderWay == 0, let i = self.lastImage, now - self.lastFrameAt > 0.1 else { return }
             self.encode(i, pts: self.nextPTS(), captured: now, crop: self.lastImageCrop)
         }

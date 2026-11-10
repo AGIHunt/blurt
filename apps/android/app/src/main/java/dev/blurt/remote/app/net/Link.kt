@@ -127,6 +127,15 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var lastLocalTry = 0L
     private var pingCount = 0
     private var pendingMove: Pair<Float, Float>? = null
+    /** this phone's pointer instructions so far, moves and placements alike (u32, counting round): the computer says how far it has got
+     *  with each word on where its pointer is (RemoteCursor), so the pointer drawn here never jumps back to a place from before the
+     *  last moves */
+    var pointerSeq = 0L
+        private set
+    fun nextPointerSeq(): Long {
+        pointerSeq = (pointerSeq + 1) and 0xFFFF_FFFFL
+        return pointerSeq
+    }
     private var pendingScroll: Pair<Float, Float>? = null
     private var flushing = false
     private var lastInfo: RemoteSessionInfo? = null
@@ -482,6 +491,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
                     cameBack = 0
                 }
                 _state.value = State.CONNECTED
+                pointerSeq = 0      // a new session: the computer has forgotten the last one's numbers too
                 val cur = _current.value
                 val n = _macs.value.indexOfFirst { it.id == cur?.id }
                 if (cur != null && (cur.name != i.macName || cur.platform != (i.platform ?: "mac"))) {
@@ -540,7 +550,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             }
             is ToPhone.ScreenView -> {
                 shownDisplay.value = m.display
-                Remote.screen.source(m.width, m.height, m.codec, m.features)
+                Remote.screen.source(m.width, m.height, m.codec, m.display, m.features)
             }
             is ToPhone.Displays -> displays.value = m.displays
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
@@ -629,7 +639,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
     }
 
     /** `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be */
-    fun pointer(p: RemotePointerPacket, inOrder: Boolean = false) {
+    fun pointer(p0: RemotePointerPacket, inOrder: Boolean = false) {
+        val p = if (p0 is RemotePointerPacket.Move) p0.copy(seq = nextPointerSeq()) else p0
         val ch = channel ?: return
         // over the relay every message counts: 30 a second is plenty, and it's already no place for a fine stroke
         if (route.value != LinkRoute.RELAY) return ch.sendPointer(p, inOrder)
@@ -648,7 +659,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private fun flush() {
         flushing = false
         val ch = channel
-        pendingMove?.let { ch?.sendPointer(RemotePointerPacket.Move(it.first, it.second)) }
+        pendingMove?.let { ch?.sendPointer(RemotePointerPacket.Move(it.first, it.second, pointerSeq)) }
         pendingScroll?.let { ch?.sendPointer(RemotePointerPacket.Scroll(it.first, it.second, RemoteScrollPhase.CHANGED)) }
         pendingMove = null
         pendingScroll = null

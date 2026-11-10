@@ -95,6 +95,9 @@ struct PadLayout {
     static let gap: CGFloat = 5
     /// tall enough for the arrow key's four edges
     static let stripHeight: CGFloat = 52
+    /// big: the top row is taller, so the arrow key is 88 pt square and each of its four edges 44 pt deep. On a phone ↑ and ↓ get 25 pt
+    /// each, and in a terminal they're the arrows used most
+    static let bigStripHeight: CGFloat = 90
     /// every page of keys has this many
     static let visibleRows = 4
     /// a little over the system keyboard's; the width comes from six across
@@ -379,7 +382,7 @@ private struct Parts {
         }
 
         var p = Parts()
-        let h = PadLayout.keyHeight, t = PadLayout.stripHeight, drop: CGFloat = 6
+        let h = PadLayout.keyHeight, drop: CGFloat = 6
         let rows = CGFloat(PadLayout.visibleRows)
 
         // the halves: a thumb's reach each, never over a fold that runs down the middle
@@ -393,6 +396,8 @@ private struct Parts {
         let laptop = s.laptop && fold != nil
         let below = laptop ? inner.maxY - fold!.maxY - 4 : inner.height
         let pageKeyW = keys(half, Deck.columns / 2)
+        // the tall top row, unless the keys wouldn't fit under a laptop-like fold with it: then the phone's
+        let t = !laptop || below >= PadLayout.bigStripHeight + rows * h + (rows - 1) * gap + drop + h ? PadLayout.bigStripHeight : PadLayout.stripHeight
         var rowH = h
         if laptop {
             let spare = below - (t + rows * h + (rows - 1) * gap + drop + h)
@@ -422,17 +427,36 @@ private struct Parts {
 
         // the top row. The non-dominant thumb's half: what's rarely needed, from the edge in, and ⌘Tab nearest the middle, so a slide
         // has the trackpad to run over. The dominant thumb's: the arrow key nearest the middle, room every way, then the tabs
-        let topH = t - 2, n: CGFloat = 5
-        let item = floor((half - 4 * (n - 1)) / n)
-        func slot(_ i: Int) -> CGRect { CGRect(x: leftHalf.minX + CGFloat(i) * (item + 4), y: deck.minY, width: item, height: topH) }
-        p.settingsButton = x(slot(0))
-        p.findButton = x(slot(1))
-        p.screenButton = x(slot(2))
-        p.keyboardButton = x(slot(3))
-        p.appsKey = x(CGRect(x: slot(4).minX, y: deck.minY, width: leftHalf.maxX - slot(4).minX, height: topH))
-        let arrowW: CGFloat = 82
-        p.arrowKey = x(CGRect(x: rightHalf.minX, y: deck.minY, width: arrowW, height: topH))
-        p.strip = x(CGRect(x: rightHalf.minX + arrowW + 4, y: deck.minY, width: half - arrowW - 4, height: topH))
+        let topH = t - 2
+        if t > PadLayout.stripHeight {
+            // tall: the arrow key square, each edge 44 pt deep, and ⌘Tab the same size across from it. The four controls two by two at
+            // the edge, the tabs beside the arrow key
+            let side = topH, rest = half - side - 4
+            let cell = CGSize(width: floor((rest - 4) / 2), height: floor((topH - 4) / 2))
+            func control(_ col: Int, _ row: Int) -> CGRect {
+                CGRect(x: leftHalf.minX + CGFloat(col) * (rest - cell.width), y: deck.minY + CGFloat(row) * (topH - cell.height),
+                       width: cell.width, height: cell.height)
+            }
+            p.settingsButton = x(control(0, 0))
+            p.findButton = x(control(1, 0))
+            p.screenButton = x(control(0, 1))
+            p.keyboardButton = x(control(1, 1))
+            p.appsKey = x(CGRect(x: leftHalf.maxX - side, y: deck.minY, width: side, height: topH))
+            p.arrowKey = x(CGRect(x: rightHalf.minX, y: deck.minY, width: side, height: topH))
+            p.strip = x(CGRect(x: rightHalf.minX + side + 4, y: deck.minY, width: rest, height: topH))
+        } else {
+            let n: CGFloat = 5
+            let item = floor((half - 4 * (n - 1)) / n)
+            func slot(_ i: Int) -> CGRect { CGRect(x: leftHalf.minX + CGFloat(i) * (item + 4), y: deck.minY, width: item, height: topH) }
+            p.settingsButton = x(slot(0))
+            p.findButton = x(slot(1))
+            p.screenButton = x(slot(2))
+            p.keyboardButton = x(slot(3))
+            p.appsKey = x(CGRect(x: slot(4).minX, y: deck.minY, width: leftHalf.maxX - slot(4).minX, height: topH))
+            let arrowW: CGFloat = 82
+            p.arrowKey = x(CGRect(x: rightHalf.minX, y: deck.minY, width: arrowW, height: topH))
+            p.strip = x(CGRect(x: rightHalf.minX + arrowW + 4, y: deck.minY, width: half - arrowW - 4, height: topH))
+        }
 
         // the pages: one list across the deck, each row split around the middle
         p.list = CGRect(x: deck.minX, y: deck.minY + t, width: deck.width, height: listH)

@@ -95,6 +95,67 @@ class ProtocolTest {
         assertNull(RemotePointerPacket.decode(byteArrayOf(1, 9, 0, 0, 0, 0, 0, 0, 0, 0)), "no such phase")
     }
 
+    // the pointer's numbers (1.0.17)
+
+    @Test
+    fun aNumberedMoveIsReadByAHostThatKnowsNoNumbers() {
+        val numbered = RemotePointerPacket.Move(1.5f, -2.25f, 258).encoded()
+        assertEquals(13, numbered.size)
+        assertEquals(RemotePointerPacket.Move(1.5f, -2.25f, 258), RemotePointerPacket.decode(numbered))
+        // what a host before 1.0.17 reads: the first nine bytes
+        assertEquals(RemotePointerPacket.Move(1.5f, -2.25f), RemotePointerPacket.decode(numbered.copyOf(9)))
+        assertContentEquals(numbered.copyOf(9), RemotePointerPacket.Move(1.5f, -2.25f).encoded())
+        assertEquals(0xFFFF_FFFFL, (RemotePointerPacket.decode(RemotePointerPacket.Move(0f, 0f, 0xFFFF_FFFFL).encoded()) as RemotePointerPacket.Move).seq,
+            "the top of a u32 comes back as it went")
+        val to = ToMac.PointerTo(0.5f, 0.75f).encode()
+        assertTrue(!to.decodeToString().contains("seq"))
+        assertNull((ToMac.decode(to) as ToMac.PointerTo).seq)
+        val toN = ToMac.decode(ToMac.PointerTo(0.5f, 0.75f, 7).encode()) as ToMac.PointerTo
+        assertEquals(listOf(0.5f, 0.75f), listOf(toN.x, toN.y))
+        assertEquals(7L, toN.seq)
+        assertNull(ToMac.decode("""{"pointerTo":{"x":0.5,"y":0.75,"seq":-1}}""".toByteArray()), "not a u32")
+    }
+
+    @Test
+    fun theCursorSaysHowFarTheHostHasGot() {
+        val plain = RemoteCursor(0.5f, 0.25f).encoded()
+        assertEquals(8, plain.size)
+        assertEquals(RemoteCursor(0.5f, 0.25f), RemoteCursor.decode(plain))
+        val numbered = RemoteCursor(0.5f, 0.25f, 258).encoded()
+        assertEquals(12, numbered.size)
+        assertEquals(258L, RemoteCursor.decode(numbered)?.seq)
+        assertNull(RemoteCursor.decode(numbered.copyOf(10)))
+        assertNull(RemoteCursor.decode(numbered + byteArrayOf(0)), "8 or 12, nothing else")
+        assertNull(RemoteCursor.decode(RemoteCursor(Float.NaN, 0f).encoded()))
+        val max = 0xFFFF_FFFFL
+        assertTrue(RemoteCursor.covers(5, 5))
+        assertTrue(RemoteCursor.covers(6, 5))
+        assertTrue(!RemoteCursor.covers(4, 5))
+        assertTrue(RemoteCursor.covers(2, max - 1), "counting round")
+        assertTrue(!RemoteCursor.covers(max - 1, 2))
+    }
+
+    @Test
+    fun theHostsWordWaitsUntilItIncludesEveryMoveSent() {
+        // a word that includes everything sent counts at once, however lately the finger moved
+        assertEquals(0.0, RemoteCursor.wait(host = 9, sent = 9, quiet = 0.0, rtt = 0.05, lossless = false))
+        assertEquals(0.0, RemoteCursor.wait(host = 10, sent = 9, quiet = 0.0, rtt = 2.0, lossless = true))
+        assertEquals(0.0, RemoteCursor.wait(host = 1, sent = 0xFFFF_FFFFL, quiet = 0.0, rtt = 0.05, lossless = false), "counting round")
+        // one that's behind is the pointer before the last moves: it waits, in case a move was lost on the way
+        assertEquals(0.5, RemoteCursor.wait(host = 8, sent = 9, quiet = 0.0, rtt = 0.05, lossless = false), 1e-9)
+        assertEquals(0.3, RemoteCursor.wait(host = 8, sent = 9, quiet = 0.2, rtt = 0.05, lossless = false), 1e-9)
+        assertEquals(1.2, RemoteCursor.wait(host = 8, sent = 9, quiet = 0.0, rtt = 0.3, lossless = false), 1e-9, "four round trips on a slow path")
+        assertTrue(RemoteCursor.wait(host = 8, sent = 9, quiet = 0.6, rtt = 0.05, lossless = false) <= 0, "long enough: it counts anyway")
+        // the relay's stream loses nothing, but much can queue
+        assertEquals(3.0, RemoteCursor.wait(host = 8, sent = 9, quiet = 0.0, rtt = 0.05, lossless = true), 1e-9)
+        assertEquals(1.0, RemoteCursor.wait(host = 8, sent = 9, quiet = 2.0, rtt = 0.8, lossless = true), 1e-9)
+        // a host that sends no numbers (before 1.0.17): as it was
+        assertEquals(0.12, RemoteCursor.wait(host = null, sent = 9, quiet = 0.0, rtt = 0.0, lossless = false), 1e-9)
+        assertEquals(0.02, RemoteCursor.wait(host = null, sent = 9, quiet = 0.1, rtt = 0.05, lossless = false), 1e-9)
+        assertEquals(0.3, RemoteCursor.wait(host = null, sent = 9, quiet = 0.0, rtt = 0.2, lossless = true), 1e-9)
+        assertTrue(RemoteCursor.wait(host = null, sent = 0, quiet = 0.2, rtt = 0.05, lossless = false) <= 0)
+    }
+
     @Test
     fun relayAddresses() {
         assertEquals("wss://relay.example.com", RemoteRelay.address("  relay.example.com/ \n"))

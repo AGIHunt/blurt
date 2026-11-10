@@ -29,7 +29,8 @@ use ::windows::Win32::Media::MediaFoundation::{MFStartup, MFSTARTUP_FULL, MF_VER
 use ::windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 
 use super::annexb::{self, Codec};
-use super::capture::{Capture, Signal, Synthetic};
+pub use super::capture::PageSource;
+use super::capture::{Capture, Page, Signal, Synthetic};
 use super::convert::Converter;
 use super::encoder::Encoder;
 use super::geometry::{self, Monitor, Rect};
@@ -37,6 +38,7 @@ use super::imp::Shown;
 use super::monitors;
 use super::pacing::{Next, Pacer};
 use crate::host::{Crop, EncodedFrame, FrameSink, Screen, ScreenConfig, ScreenInfo};
+use crate::sharpen::NO_CEILING;
 
 /// The software encoder's longest side: Microsoft's H.264 MFT on a CPU keeps 30 fps at about this size.
 const SOFTWARE_LONGEST: u32 = 1280;
@@ -48,6 +50,8 @@ pub enum Source {
     Monitor,
     /// text-like rows scrolling, this size, no desktop needed (measuring the encoder from a service or an SSH session)
     Synthetic { width: u32, height: u32 },
+    /// a page the caller scrolls and stops (examples/win_sharpen.rs)
+    Page(&'static PageSource),
 }
 
 /// How to start, beyond what the phone asked for.
@@ -105,6 +109,8 @@ enum Cmd {
     Rate(u32, u32),
     Keyframe,
     Refresh,
+    /// the last picture again, no block coarser than this quantiser (sharpen.rs)
+    Sharpen(u8),
     /// a recovery frame (a keyframe where the encoder has no long-term references)
     Recover,
     Acked(Vec<u64>),
@@ -117,6 +123,8 @@ struct Running {
     thread: Option<JoinHandle<()>>,
     /// the stream's encoder makes recovery frames
     ltr: Arc<AtomicBool>,
+    /// the stream's encoder takes a quantiser ceiling
+    capped: Arc<AtomicBool>,
 }
 
 pub struct WinScreen {
@@ -161,8 +169,10 @@ impl Screen for WinScreen {
         let (ready_tx, ready_rx) = channel();
         let signal = Signal::default();
         let ltr = Arc::new(AtomicBool::new(false));
+        let capped = Arc::new(AtomicBool::new(false));
         let worker = Worker {
             ltr: ltr.clone(),
+            capped: capped.clone(),
             config: config.clone(),
             options: self.options,
             sink,
@@ -175,7 +185,7 @@ impl Screen for WinScreen {
             .name("blurt-remote-screen".into())
             .spawn(move || worker.run(ready_tx))
             .map_err(|e| e.to_string())?;
-        self.running = Some(Running { tx, signal, thread: Some(thread), ltr });
+        self.running = Some(Running { tx, signal, thread: Some(thread), ltr, capped });
         match ready_rx.recv_timeout(Duration::from_secs(10)) {
             Ok(Ok(info)) => Ok(info),
             Ok(Err(e)) => {
@@ -203,6 +213,14 @@ impl Screen for WinScreen {
 
     fn refresh(&mut self) {
         self.send(Cmd::Refresh);
+    }
+
+    fn caps_quantiser(&self) -> bool {
+        self.running.as_ref().is_some_and(|r| r.capped.load(Ordering::SeqCst))
+    }
+
+    fn sharpen(&mut self, max_qp: u8) {
+        self.send(Cmd::Sharpen(max_qp));
     }
 
     fn supports_recovery(&self) -> bool {
@@ -237,6 +255,7 @@ impl Drop for WinScreen {
 
 struct Worker {
     ltr: Arc<AtomicBool>,
+    capped: Arc<AtomicBool>,
     config: ScreenConfig,
     options: Options,
     sink: FrameSink,
@@ -393,6 +412,10 @@ impl Worker {
                 let r = Rect { left: 0, top: 0, right: width as i32, bottom: height as i32 };
                 (Monitor { rect: r, scale: 1.0, primary: true, handle: 0 }, None, None)
             }
+            Source::Page(p) => {
+                let r = Rect { left: 0, top: 0, right: p.width as i32, bottom: p.height as i32 };
+                (Monitor { rect: r, scale: 1.0, primary: true, handle: 0 }, None, None)
+            }
         };
         // the monitor's own GPU (Desktop Duplication needs it, and a laptop's iGPU has its own encoder), unless it is Microsoft's
         // basic adapter: then a real GPU's
@@ -413,12 +436,14 @@ impl Worker {
                 "Windows wouldn't let Blurt capture the screen.".to_string()
             })?,
             Source::Synthetic { width, height } => Capture::Synthetic(Synthetic::new(&device, width, height, self.config.capture_fps.max(self.config.fps))?),
+            Source::Page(p) => Capture::Page(Page::new(&device, p, self.config.capture_fps.max(self.config.fps))?),
         };
         let src = (monitor.rect.width().max(2) as u32, monitor.rect.height().max(2) as u32);
         let (mut enc, out) = self.open_encoder(&device, src)?;
         let mut conv = Converter::new(&device, src.0, src.1, out.0, out.1, self.config.fps)?;
         let codec = enc.get().codec;
         self.ltr.store(enc.get().has_ltr(), Ordering::SeqCst);
+        self.capped.store(enc.get().caps_quantiser(), Ordering::SeqCst);
         {
             let mut g = self.stats.lock().unwrap_or_else(|e| e.into_inner());
             g.0 = Stats {
@@ -435,7 +460,7 @@ impl Worker {
         let (pw, ph) = monitor.points();
         let (enc_name, hardware) = (enc.get().name.clone(), enc.get().hardware);
         log(&format!(
-            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}{}), {} kbps {} fps",
+            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}{}{}), {} kbps {} fps",
             capture.kind(),
             src.0,
             src.1,
@@ -445,6 +470,7 @@ impl Worker {
             enc_name,
             if hardware { "hardware" } else { "software" },
             if enc.get().has_ltr() { ", LTR recovery frames" } else { "" },
+            if enc.get().caps_quantiser() { ", quantiser ceiling" } else { "" },
             self.config.bitrate / 1000,
             self.config.fps
         ));
@@ -456,6 +482,8 @@ impl Worker {
         let mut pacer = Pacer::new(self.config.fps);
         let mut want_key = true;
         let mut want_recover = false;
+        // the ceiling the next resend is held to; any other frame goes without one
+        let mut want_cap = NO_CEILING;
         let mut sets: Vec<Vec<u8>> = annexb::parameter_sets(codec, &enc.get().header);
         let mut last_out: Vec<u8> = Vec::new();
         let mut this_out: Vec<u8> = Vec::new();
@@ -509,17 +537,28 @@ impl Worker {
                         }
                     }
                     Cmd::Rate(b, f) => {
+                        let t = Instant::now();
                         enc.get().set_rate(b.clamp(100_000, 50_000_000), f);
                         pacer.set_fps(f);
+                        log(&format!("rate {} kbps {f} fps, set in {:.0} µs", b / 1000, t.elapsed().as_secs_f64() * 1e6));
                     }
                     Cmd::Keyframe => {
                         want_key = true;
+                        want_cap = NO_CEILING;
                         pacer.keyframe();
                     }
-                    Cmd::Refresh => pacer.refresh(),
+                    Cmd::Refresh => {
+                        want_cap = NO_CEILING;
+                        pacer.refresh();
+                    }
+                    Cmd::Sharpen(cap) => {
+                        want_cap = cap;
+                        pacer.refresh();
+                    }
                     // the next frame, from the picture held if nothing new is coming
                     Cmd::Recover => {
                         want_recover = true;
+                        want_cap = NO_CEILING;
                         pacer.refresh();
                     }
                     Cmd::Acked(r) => enc.get().acknowledged(&r),
@@ -559,14 +598,20 @@ impl Worker {
                     }
                     let key = want_key || due.keyframe;
                     let recover = want_recover && !key;
+                    // only a resend of the same picture is held under the ceiling: a new picture or crop is a moving frame
+                    let cap = if due.forced && !due.changed && !key && !recover { want_cap } else { NO_CEILING };
+                    want_cap = NO_CEILING;
                     // 100-ns real time, increasing: a resend must not look like part of the burst before it
                     let time = ((t0.elapsed().as_secs_f64() * 1e7) as i64).max(last_time + 1);
                     last_time = time;
                     let tag = Tag { crop: shown_crop, captured: if due.forced && !due.changed { now } else { captured_at }, started };
                     let r = match &mut enc {
-                        Enc::Gpu(e) => e.encode_texture(&nv12, time, key, recover, tag),
-                        Enc::Cpu(e) => e.encode_memory(&last_out, time, key, recover, tag),
+                        Enc::Gpu(e) => e.encode_texture(&nv12, time, key, recover, cap, tag),
+                        Enc::Cpu(e) => e.encode_memory(&last_out, time, key, recover, cap, tag),
                     };
+                    if !enc.get().caps_quantiser() {
+                        self.capped.store(false, Ordering::SeqCst);
+                    }
                     match r {
                         Ok(outs) => {
                             fails = 0;

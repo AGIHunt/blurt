@@ -4,8 +4,9 @@
 //   a cycle key (⌘Tab, Alt+Tab) presses at once and keeps the modifier down: slide to step through, a detent every 22 dp, left to go back;
 //   at the edge of the screen it keeps stepping, so twenty apps are as reachable as three. Lifting lets go. A quick tap is the quick ⌘Tab:
 //   back to the last app. The other keys are out of play meanwhile: the thumb passes over them.
-//   the arrow key is four keys in one, each edge marked with its arrow: tap towards an edge for that arrow, hold to repeat. Or drag, one step
-//   per 24 dp; past 72 dp, or at the screen's edge, it repeats, faster with distance. Tap and then drag does the same with ⇧.
+//   the arrow key is four keys in one, each edge marked with its arrow: tap towards an edge for that arrow, hold to repeat; a tap in the very
+//   middle is nobody's. Or drag, one step per 24 dp, keeping to the way it set off until it clearly turns; past 72 dp, or at the screen's
+//   edge, it repeats, faster with distance. Tap and then drag does the same with ⇧. (The arithmetic: ArrowStroke, below.)
 //   a repeating key (⌫, an arrow) fires at once and repeats while held. Nothing destructive repeats: never Esc, ⌃C or Return.
 //   a modifier tapped holds for the next key; held a moment, it's pressed on its own instead, the way a lone ⇧ switches a Chinese or
 //   Japanese input method between its own letters and English.
@@ -71,8 +72,7 @@ class KeyCell(c: Context) : View(c) {
     private var edgeDirection = 0
 
     // arrows
-    private var anchorX = 0f
-    private var anchorY = 0f
+    private var stroke = ArrowStroke(0f, 0f)
     private var arrowShift = false
     private var lastArrowEnd = 0.0
     private var arrowRepeated = false
@@ -148,8 +148,10 @@ class KeyCell(c: Context) : View(c) {
             // four marked edges
             val mid = w / 2
             val midY = h / 2
-            val inX = minOf(13.dp, w * 0.2f)
-            val inY = minOf(11.dp, h * 0.22f)
+            // a key with room both ways (a big screen's) has its marks further in, where each edge's zone is
+            val roomy = w >= 80.dp && h >= 80.dp
+            val inX = if (roomy) w * 0.2f else minOf(13.dp, w * 0.2f)
+            val inY = if (roomy) h * 0.2f else minOf(11.dp, h * 0.22f)
             text.typeface = Fonts.symbols(context)
             text.textSize = 16.dp
             text.color = markColor
@@ -271,24 +273,17 @@ class KeyCell(c: Context) : View(c) {
                 onCycle?.invoke(true)
             }
             Resolved.Arrows -> {
-                anchorX = x
-                anchorY = y
-                arrowShift = now() - lastArrowEnd < 0.3
+                stroke = ArrowStroke(x / 1.dp, y / 1.dp)
+                arrowShift = ArrowStroke.shifted(now(), lastArrowEnd)
                 arrowRepeated = false
                 parent?.requestDisallowInterceptTouchEvent(true)
+                // the very middle: nothing until it moves
+                val key = ArrowStroke.tapKey(x, y, width.toFloat(), height.toFloat()) ?: return
                 Haptics.step()
-                startRepeat(arrowChord(x, y), 0.35, 0.08)
+                startRepeat(RemoteChord(0, key), 0.35, 0.08)
             }
             else -> {}
         }
-    }
-
-    /** The arrow towards the edge of the key under the thumb. */
-    private fun arrowChord(px: Float, py: Float): RemoteChord {
-        val x = (px - width / 2f) / max(width, 1)
-        val y = (py - height / 2f) / max(height, 1)
-        val key = if (abs(x) > abs(y)) (if (x > 0) "Right" else "Left") else (if (y > 0) "Down" else "Up")
-        return RemoteChord(0, key)
     }
 
     private sealed class Resolved {
@@ -361,11 +356,13 @@ class KeyCell(c: Context) : View(c) {
             return
         }
         if (s.action is KeyAction.Arrows) {
-            if (!moved && !arrowRepeated) {
-                Remote.link.send(ToMac.Key(arrowChord(startX, startY), null))
+            val key = if (!moved && !arrowRepeated) ArrowStroke.tapKey(startX, startY, width.toFloat(), height.toFloat()) else null
+            if (key != null) {
+                Remote.link.send(ToMac.Key(RemoteChord(0, key), null))
                 Remote.sticky.used()
             }
-            lastArrowEnd = if (moved || arrowRepeated) 0.0 else now()
+            // only a tap that sent an arrow makes the next drag a ⇧ one
+            lastArrowEnd = if (key != null) now() else 0.0
             armed = false
             return
         }
@@ -486,32 +483,18 @@ class KeyCell(c: Context) : View(c) {
     }
 
     private fun arrows(e: MotionEvent) {
-        val dx = e.x - anchorX
-        val dy = e.y - anchorY
-        val horizontal = abs(dx) > abs(dy)
-        val d = if (horizontal) dx else dy
-        val key = if (horizontal) (if (dx > 0) "Right" else "Left") else (if (dy > 0) "Down" else "Up")
-        var far = hypot(e.x - startX, e.y - startY) / 1.dp
-        // the thumb has run out of screen, sliding towards that edge: it repeats as if it had gone on
-        val slid = (e.x - startX) / 1.dp
-        if (horizontal && abs(slid) >= 24) {
-            val band = EDGE * 0.6f
-            val x = inWindow(e.x) / 1.dp
-            val w = rootView.width / 1.dp
-            if (slid < 0 && x < band || slid > 0 && x > w - band) far = max(far, 90f)
-        }
-        if (far > 72) {
-            val rate = max(0.03, 0.11 - (far - 72) * 0.001)
-            if (repeatKey?.key != key || abs(repeatRate - rate) > 0.01) {
+        // the thumb has run out of screen: at that edge, sliding towards it, it repeats as if it had gone on
+        val band = EDGE * 0.6f
+        val x = inWindow(e.x) / 1.dp
+        val w = rootView.width / 1.dp
+        val edge = if (x < band) -1 else if (x > w - band) 1 else 0
+        when (val m = stroke.move(e.x / 1.dp, e.y / 1.dp, edge)) {
+            is ArrowStroke.Move.Repeating -> if (repeatKey?.key != m.key || abs(repeatRate - m.every) > 0.01) {
                 stopRepeat()
-                startRepeat(RemoteChord(if (arrowShift) RemoteModifiers.SHIFT else 0, key), 0.0, rate)
+                startRepeat(RemoteChord(if (arrowShift) RemoteModifiers.SHIFT else 0, m.key), 0.0, m.every)
             }
-            return
-        }
-        stopRepeat()
-        if (abs(d) >= 24.dp) {
-            step(key)
-            if (horizontal) anchorX += if (dx > 0) 24.dp else -24.dp else anchorY += if (dy > 0) 24.dp else -24.dp
+            is ArrowStroke.Move.Step -> { stopRepeat(); step(m.key) }
+            ArrowStroke.Move.None -> stopRepeat()
         }
     }
 
@@ -550,5 +533,91 @@ class KeyCell(c: Context) : View(c) {
             "com.github.wez.wezterm", "co.zeit.hyper", "WindowsTerminal.exe", "wezterm-gui.exe", "alacritty.exe", "org.gnome.Terminal",
             "org.gnome.Ptyxis", "org.gnome.Console", "kitty", "Alacritty", "org.wezfurlong.wezterm", "org.kde.konsole", "com.mitchellh.ghostty.desktop",
         )
+    }
+}
+
+/**
+ * The arrow key's arithmetic, apart from the view, so it can be tested (port of ArrowStroke in KeyCell.swift; dp in, arrows out).
+ *
+ * A drag keeps to its way: once it has taken a step, steps come only along that axis, and the other one follows the finger at each step, so
+ * a thumb's arc never adds up to an arrow of its own (sliding right, it fired a Down, which in a shell swaps the line for history). It
+ * changes axis only on a clear turn: 36 dp across since the last step, and more across than along. Then it starts again from that step, as
+ * a new drag would: steps every 24 dp, a repeat past 72.
+ */
+class ArrowStroke(x: Float, y: Float) {
+    sealed class Move {
+        data object None : Move()
+        data class Step(val key: String) : Move()
+        data class Repeating(val key: String, val every: Double) : Move()
+    }
+
+    /** the axis it keeps to, once it has stepped: true across, false up and down */
+    var horizontal: Boolean? = null; private set
+    /** where this run began: the touch, or the step a turn came from */
+    private var originX = x
+    private var originY = y
+    /** the next step comes 24 dp from here */
+    private var anchorX = x
+    private var anchorY = y
+    /** the finger at the last step */
+    private var lastX = x
+    private var lastY = y
+
+    /** `screenEdge`: the finger is at the screen's left (-1) or right (1) edge. */
+    fun move(x: Float, y: Float, screenEdge: Int = 0): Move {
+        horizontal?.let { h ->
+            val along = if (h) x - lastX else y - lastY
+            val across = if (h) y - lastY else x - lastX
+            if (abs(across) >= TURN && abs(across) > abs(along)) {
+                horizontal = !h
+                originX = lastX; originY = lastY
+                anchorX = lastX; anchorY = lastY
+            }
+        }
+        val dx = x - anchorX
+        val dy = y - anchorY
+        val h = horizontal ?: (abs(dx) > abs(dy))
+        val d = if (h) dx else dy
+        val run = if (h) x - originX else y - originY
+        var far = if (horizontal == null) hypot(x - originX, y - originY) else abs(run)
+        if (h && screenEdge != 0 && abs(run) >= STEP && (run > 0) == (screenEdge > 0)) far = max(far, 90f)
+        if (far > FAR) {
+            horizontal = h
+            return Move.Repeating(key(h, if (d != 0f) d else run), max(0.03, 0.11 - (far - FAR) * 0.001))
+        }
+        if (abs(d) < STEP) return Move.None
+        horizontal = h
+        if (h) {
+            anchorX += if (d > 0) STEP else -STEP
+            anchorY = y
+        } else {
+            anchorY += if (d > 0) STEP else -STEP
+            anchorX = x
+        }
+        lastX = x; lastY = y
+        return Move.Step(key(h, d))
+    }
+
+    companion object {
+        const val STEP = 24f
+        /** past this along the way it goes (or at the screen's edge) the arrow repeats, faster with distance */
+        const val FAR = 72f
+        const val TURN = 36f
+        /** a touch this near the middle both ways (a fraction of the key's width and height) taps nothing */
+        const val MIDDLE = 0.12f
+        /** a drag begun this soon after a tap adds ⇧ */
+        const val SHIFT_WITHIN = 0.3
+
+        private fun key(horizontal: Boolean, d: Float) = if (horizontal) (if (d > 0) "Right" else "Left") else (if (d > 0) "Down" else "Up")
+
+        /** The arrow towards the edge of the key under the thumb; null in the very middle, where the four zones meet. Any one unit. */
+        fun tapKey(px: Float, py: Float, w: Float, h: Float): String? {
+            val x = (px - w / 2) / max(w, 1f)
+            val y = (py - h / 2) / max(h, 1f)
+            if (abs(x) < MIDDLE && abs(y) < MIDDLE) return null
+            return key(abs(x) > abs(y), if (abs(x) > abs(y)) x else y)
+        }
+
+        fun shifted(now: Double, lastTap: Double) = now - lastTap < SHIFT_WITHIN
     }
 }

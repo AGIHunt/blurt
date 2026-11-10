@@ -14,6 +14,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -60,7 +61,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(39, list.size)
+        assertEquals(40, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -122,6 +123,7 @@ class VectorsTest {
         assertEquals(ToMac.ShowDisplay(null), mac("show_display_follow"))
         assertEquals(ToMac.ScreenCrop(crop), mac("screen_crop"))
         assertEquals(ToMac.PointerTo(0.5f, 0.75f), mac("pointer_to"))
+        assertEquals(ToMac.PointerTo(0.5f, 0.75f, 7), mac("pointer_to_seq"))
         assertEquals(ToMac.Candidates(listOf(RemoteCandidate("203.0.113.5", 50123), RemoteCandidate("2001:db8::1", 50123))), mac("candidates"))
         assertEquals(ToMac.RequestKeyframe, mac("request_keyframe"))
         assertEquals(ToMac.ScreenReport(RemoteScreenReport(30, 1, 0.25, 123_456)), mac("screen_report"))
@@ -178,6 +180,8 @@ class VectorsTest {
             "scroll_began" to RemotePointerPacket.Scroll(-3f, 0.5f, RemoteScrollPhase.BEGAN),
             "fling" to RemotePointerPacket.ScrollFling(100f, -50f),
             "stop" to RemotePointerPacket.ScrollStop,
+            // numbered (1.0.17+): four more bytes, which a host before that reads past
+            "move_seq" to RemotePointerPacket.Move(1.5f, -2.25f, 258),
         )
         val list = v["pointer"]!!.jsonArray
         assertEquals(expected.size, list.size)
@@ -267,8 +271,14 @@ class VectorsTest {
         val c = v["cursor"]!!.jsonObject
         val x = c["x"]!!.jsonPrimitive.double.toFloat()
         val y = c["y"]!!.jsonPrimitive.double.toFloat()
-        assertEquals(c["hex"]!!.jsonPrimitive.content, hex(RemoteCursor.encode(x, y)))
-        assertEquals(x to y, RemoteCursor.decode(unhex(c["hex"]!!.jsonPrimitive.content)))
+        assertEquals(c["hex"]!!.jsonPrimitive.content, hex(RemoteCursor(x, y).encoded()))
+        assertEquals(RemoteCursor(x, y), RemoteCursor.decode(unhex(c["hex"]!!.jsonPrimitive.content)))
+        // to a phone that numbers its pointer instructions: the newest one this place includes
+        val n = v["cursorSeq"]!!.jsonObject
+        val numbered = RemoteCursor(n["x"]!!.jsonPrimitive.double.toFloat(), n["y"]!!.jsonPrimitive.double.toFloat(), n["seq"]!!.jsonPrimitive.long)
+        assertEquals(258L, numbered.seq)
+        assertEquals(n["hex"]!!.jsonPrimitive.content, hex(numbered.encoded()))
+        assertEquals(numbered, RemoteCursor.decode(unhex(n["hex"]!!.jsonPrimitive.content)))
     }
 
     @Test

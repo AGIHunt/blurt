@@ -138,7 +138,8 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
                     R.string.g_tap to R.string.g_click, R.string.g_tap_drag to R.string.g_drag, R.string.g_hold_lift to R.string.g_right_click,
                     R.string.g_hold_drag to R.string.g_select_area, R.string.g_tap_touch to R.string.g_click_there, R.string.g_edge to R.string.g_scroll,
                     R.string.g_two to R.string.g_two_does, R.string.g_two_touch to R.string.g_scroll_under, R.string.g_pinch to R.string.g_zoom,
-                    R.string.g_pinch_screen to R.string.g_zoom_picture, R.string.g_pointer_zoomed to R.string.g_follows,
+                    R.string.g_pinch_screen to R.string.g_zoom_picture, R.string.g_one_zoomed to R.string.g_move_picture,
+                    R.string.g_pointer_zoomed to R.string.g_follows,
                 )) GestureRow(stringResource(a), stringResource(b))
                 GestureRow(stringResource(R.string.g_cycle, cyc), stringResource(R.string.g_step_both))
                 GestureRow(stringResource(R.string.g_arrow_tap), stringResource(R.string.g_arrow_tap_does))

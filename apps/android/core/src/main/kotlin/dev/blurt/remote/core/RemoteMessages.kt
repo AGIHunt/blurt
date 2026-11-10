@@ -190,8 +190,9 @@ sealed class ToMac {
     data class Screen(val request: RemoteScreenRequest?) : ToMac()
     /** the part of the screen to send */
     data class ScreenCrop(val crop: RemoteCrop) : ToMac()
-    /** the pointer to this place on the screen being shown, 0…1 */
-    data class PointerTo(val x: Float, val y: Float) : ToMac()
+    /** the pointer to this place on the screen being shown, 0…1. `seq`: its number among this phone's pointer instructions
+     *  (RemotePointerPacket.Move), u32, echoed in the cursor's place once made. 1.0.17+ */
+    data class PointerTo(val x: Float, val y: Float, val seq: Long? = null) : ToMac()
     /** show this display (a RemoteDisplay id) from now on, the pointer in its middle; null: follow the pointer, the default. 1.0.15+ */
     data class ShowDisplay(val display: String?) : ToMac()
     /** the addresses this phone can be tried at, for a direct path */
@@ -234,7 +235,7 @@ sealed class ToMac {
         KeyStored -> J.case("keyStored")
         is Screen -> J.case("screen", "_0" to request?.toJson())
         is ScreenCrop -> J.case("screenCrop", "_0" to crop.toJson())
-        is PointerTo -> J.case("pointerTo", "x" to J.float(x), "y" to J.float(y))
+        is PointerTo -> J.case("pointerTo", "x" to J.float(x), "y" to J.float(y), "seq" to J.int(seq))
         is ShowDisplay -> J.case("showDisplay", "_0" to J.str(display))
         is Candidates -> J.case("candidates", "_0" to J.list(candidates) { it.toJson() })
         RequestKeyframe -> J.case("requestKeyframe")
@@ -276,7 +277,8 @@ sealed class ToMac {
                 "keyStored" -> KeyStored
                 "screen" -> Screen(if (J.has(o, "_0")) RemoteScreenRequest.fromJson(o["_0"]) ?: return null else null)
                 "screenCrop" -> ScreenCrop(RemoteCrop.fromJson(o["_0"]) ?: return null)
-                "pointerTo" -> PointerTo(J.float(o, "x") ?: return null, J.float(o, "y") ?: return null)
+                "pointerTo" -> PointerTo(J.float(o, "x") ?: return null, J.float(o, "y") ?: return null,
+                    if (J.has(o, "seq")) J.uint32(o, "seq") ?: return null else null)
                 "showDisplay" -> ShowDisplay(if (J.has(o, "_0")) J.str(o, "_0") ?: return null else null)
                 "candidates" -> Candidates(J.list(o, "_0") { RemoteCandidate.fromJson(it) } ?: return null)
                 "requestKeyframe" -> RequestKeyframe
@@ -434,17 +436,23 @@ enum class RemoteScrollPhase(val raw: Int) {
 
 /** The pointer and scroll, one packet per display frame at most: a type byte, then f32 LE values. */
 sealed class RemotePointerPacket {
-    /** points on the host, after the phone's acceleration */
-    data class Move(val dx: Float, val dy: Float) : RemotePointerPacket()
+    /** points on the host, after the phone's acceleration. `seq`: this phone's count of pointer instructions so far (moves and
+     *  `ToMac.PointerTo` share it, from 1, wrapping), u32 LE, four more bytes after the two values; hosts before 1.0.17 read past them.
+     *  A host that has seen one says how far it has got with every cursor place (RemoteCursor), so the phone knows which of its moves
+     *  that place includes. */
+    data class Move(val dx: Float, val dy: Float, val seq: Long? = null) : RemotePointerPacket()
     data class Scroll(val dx: Float, val dy: Float, val phase: RemoteScrollPhase) : RemotePointerPacket()
     /** the fingers left with this speed (points/s): the host coasts on from there */
     data class ScrollFling(val vx: Float, val vy: Float) : RemotePointerPacket()
     data object ScrollStop : RemotePointerPacket()
 
     fun encoded(): ByteArray {
-        val b = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
+        val b = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
         when (this) {
-            is Move -> b.put(0).putFloat(dx).putFloat(dy)
+            is Move -> {
+                b.put(0).putFloat(dx).putFloat(dy)
+                if (seq != null) b.putInt(seq.toInt())
+            }
             is Scroll -> b.put(1).put(phase.raw.toByte()).putFloat(dx).putFloat(dy)
             is ScrollFling -> b.put(2).putFloat(vx).putFloat(vy)
             ScrollStop -> b.put(3)
@@ -461,7 +469,8 @@ sealed class RemotePointerPacket {
             }
             val t = d.firstOrNull()?.toInt() ?: return null
             return when (t) {
-                0 -> Move(f(1) ?: return null, f(5) ?: return null)
+                0 -> Move(f(1) ?: return null, f(5) ?: return null,
+                    if (d.size >= 13) ByteBuffer.wrap(d, 9, 4).order(ByteOrder.LITTLE_ENDIAN).getInt().toLong() and 0xFFFF_FFFFL else null)
                 1 -> {
                     if (d.size < 2) return null
                     val p = RemoteScrollPhase.from(d[1].toInt() and 0xFF) ?: return null
@@ -475,15 +484,45 @@ sealed class RemotePointerPacket {
     }
 }
 
-/** Kind 5: where the pointer is, x and y as f32 LE, 0…1 of the source being shown. */
-object RemoteCursor {
-    fun encode(x: Float, y: Float): ByteArray = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putFloat(x).putFloat(y).array()
+/**
+ * Where the host's pointer is (frame kind 5): x, y as f32 LE, 0…1 of the display shown. To a phone that numbers its pointer instructions,
+ * four more bytes: the newest of them the host has made (u32 LE). A place whose number is behind the phone's own count doesn't include
+ * its last moves yet, so the phone keeps showing its own guess instead of jumping back to it. Phones before 1.0.17 take 8 bytes only,
+ * and are never sent 12: they send no numbers.
+ */
+data class RemoteCursor(val x: Float, val y: Float, /** u32 */ val seq: Long? = null) {
+    fun encoded(): ByteArray {
+        val b = ByteBuffer.allocate(if (seq != null) 12 else 8).order(ByteOrder.LITTLE_ENDIAN).putFloat(x).putFloat(y)
+        if (seq != null) b.putInt(seq.toInt())
+        return b.array()
+    }
 
-    fun decode(d: ByteArray): Pair<Float, Float>? {
-        if (d.size < 8) return null
-        val b = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN)
-        val x = b.getFloat(0)
-        val y = b.getFloat(4)
-        return if (x.isFinite() && y.isFinite()) x to y else null
+    companion object {
+        /** null: not 8 or 12 bytes, or not a place. */
+        fun decode(d: ByteArray): RemoteCursor? {
+            if (d.size != 8 && d.size != 12) return null
+            val b = ByteBuffer.wrap(d).order(ByteOrder.LITTLE_ENDIAN)
+            val x = b.getFloat(0)
+            val y = b.getFloat(4)
+            if (!x.isFinite() || !y.isFinite()) return null
+            return RemoteCursor(x, y, if (d.size == 12) b.getInt(8).toLong() and 0xFFFF_FFFFL else null)
+        }
+
+        /** `a` is `b` or later, counting round (both u32): the host has made everything up to `b`. */
+        fun covers(a: Long, b: Long): Boolean = (a - b).toInt() >= 0
+
+        /**
+         * How long the phone still keeps its own guess of the pointer before the host's last word replaces it; 0 or less: now.
+         * `host`: the number that word came with. `sent`: the phone's own count. `quiet`: seconds since the phone last moved the pointer.
+         * A word that includes everything sent counts at once. One that doesn't is the pointer before the last moves: taking it would jump
+         * the pointer back and then forward again, so it waits for the one that does, however late the network makes it. Only a move lost
+         * on the way never gets its number: after `max(0.5, 4 × rtt)` the host's word counts anyway (`lossless`, the relay's stream, where
+         * nothing is lost but much can queue: 3 s). A host that sends no numbers (before 1.0.17): `max(0.12, 1.5 × rtt)`, as it was.
+         */
+        fun wait(host: Long?, sent: Long, quiet: Double, rtt: Double, lossless: Boolean): Double {
+            if (host == null) return maxOf(0.12, rtt * 1.5) - quiet
+            if (covers(host, sent)) return 0.0
+            return (if (lossless) 3.0 else maxOf(0.5, rtt * 4)) - quiet
+        }
     }
 }

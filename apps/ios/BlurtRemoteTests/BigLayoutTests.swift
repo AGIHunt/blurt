@@ -118,7 +118,8 @@ final class BigLayoutTests: XCTestCase {
                 XCTAssertLessThanOrEqual(l.keySize.height, PadLayout.wideKeyHeight, name)
                 if l.mode == .big, !l.halves.isEmpty {
                     for d in l.dock { XCTAssertLessThanOrEqual(d.height, d.width * PadLayout.wideKeyShape + 0.5, "\(name): key-shaped, ≤ 1.25× its width") }
-                    if !room.surround.laptop { XCTAssertLessThanOrEqual(l.drawer.height, 320, "\(name): a phone's keyboard, not a wall") }
+                    // (plus the taller top row that gives the arrow key 44 pt every way, 2026-11-11)
+                    if !room.surround.laptop { XCTAssertLessThanOrEqual(l.drawer.height, 320 + PadLayout.bigStripHeight - PadLayout.stripHeight, "\(name): a phone's keyboard, not a wall") }
                 }
                 if l.mode == .portrait { XCTAssertLessThanOrEqual(l.drawer.width, PadLayout.blockWidth, "\(name): phone-sized in a wide window") }
             }
@@ -193,7 +194,8 @@ final class BigLayoutTests: XCTestCase {
     func testThePictureIsLarge() {
         // the Duo open: keys away, a 16:10 screen nearly as wide as the display
         let open = PadLayout(size: Rooms.inner, safe: Duo.innerSafe, lefty: false, drawerOpen: false, surround: Rooms.fold(Rooms.inner, active: false))
-        XCTAssertGreaterThan(picture(open).width, Rooms.inner.width * 0.85)
+        // (0.85 before the arrow key's taller top row took 38 pt of the height, 2026-11-11)
+        XCTAssertGreaterThan(picture(open).width, Rooms.inner.width * 0.82)
         // an iPad on its side: under a whole picture there's room for the deck, free
         let ipad = PadLayout(size: CGSize(width: 1376, height: 1032), safe: UIEdgeInsets(top: 0, left: 0, bottom: 20, right: 0), lefty: false, drawerOpen: false)
         XCTAssertGreaterThan(picture(ipad).width, 1376 - 30)

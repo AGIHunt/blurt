@@ -85,13 +85,22 @@ class ViewPort {
     }
 
     /** What to ask the host for: the screen's shape, around what's in view. */
-    val crop: RemoteCrop
-        get() {
-            if (isWhole) return RemoteCrop.WHOLE
-            val v = visible
-            val side = min(1.0, max(v.width, v.height))
-            if (side >= 1) return RemoteCrop.WHOLE
-            return RemoteCrop(min(1 - side, max(0.0, v.midX - side / 2)).toFloat(), min(1 - side, max(0.0, v.midY - side / 2)).toFloat(),
-                side.toFloat(), side.toFloat())
-        }
+    val crop: RemoteCrop get() = crop(0.0, 0.0)
+
+    /**
+     * The same while the view is moving: around where it will be when the frame asked for now is on the glass, (`dx`, `dy`) ahead of
+     * here in screen units, so the edge the picture is moving towards comes sharp instead of from the last sight of the whole screen.
+     * No further ahead than a quarter of what's in view: past that it's a guess, and the other edge would pay for it.
+     */
+    fun crop(dx: Double, dy: Double): RemoteCrop {
+        if (isWhole) return RemoteCrop.WHOLE
+        val v = visible
+        val side = min(1.0, max(v.width, v.height))
+        if (side >= 1) return RemoteCrop.WHOLE
+        val most = side / 4
+        val x = v.midX + dx.coerceIn(-most, most)
+        val y = v.midY + dy.coerceIn(-most, most)
+        return RemoteCrop(min(1 - side, max(0.0, x - side / 2)).toFloat(), min(1 - side, max(0.0, y - side / 2)).toFloat(),
+            side.toFloat(), side.toFloat())
+    }
 }

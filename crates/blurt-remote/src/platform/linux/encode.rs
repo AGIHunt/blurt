@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use gstreamer as gst;
+use gstreamer::glib;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 
@@ -49,6 +50,15 @@ pub type UnitSink = Arc<dyn Fn(Unit, Crop, f64, f64) + Send + Sync>;
 /// A frame in the encoder: its pts, the crop it shows, when it was captured, when it was pushed.
 type InFlight = (u64, Crop, f64, std::time::Instant);
 
+/// The element's bitrate, frame by frame (`push_capped`): what `set_rate` asked for, the frames on their way to the encoder
+/// that are to be made at another, and what the element has now. All in the element's unit.
+#[derive(Default)]
+struct Rates {
+    base: u32,
+    queue: VecDeque<(u64, u32)>,
+    applied: u32,
+}
+
 pub struct Encoder {
     pipeline: gst::Pipeline,
     src: gst_app::AppSrc,
@@ -60,6 +70,13 @@ pub struct Encoder {
     caps: Mutex<Option<(u32, u32, &'static str)>>,
     /// (pts, crop, captured, pushed at) for frames in flight, oldest first
     pending: Arc<Mutex<VecDeque<InFlight>>>,
+    rates: Arc<Mutex<Rates>>,
+    /// the real frame rate `set_rate` was last told
+    fps: Mutex<u32>,
+    /// a resend that sharpens is made at a raised bitrate (`boosts`)
+    boost: Option<(f64, f64)>,
+    /// a change of bitrate makes this element start over with a keyframe (`rekeys_on_rate`)
+    rekeys: bool,
     last_pts: Mutex<u64>,
     start: std::time::Instant,
 }
@@ -125,6 +142,9 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32, repairs: b
             set(e, "vbv-buf-capacity", &vbv.to_string());
             set(e, "key-int-max", key_int);
             set(e, "bframes", "0");
+            // a sharpening resend's raised rate can take the quantiser down more than 4 at once (x264's default; measured: with
+            // 4 the ladder ended at 29.6 dB, with 24 at 36.5, the moving frames' size unchanged)
+            set(e, "qp-step", "24");
             // said again: x264enc applies its own properties over the tune, and its defaults (frame threads, sync
             // lookahead) hold a frame back
             set(e, "sliced-threads", "true");
@@ -189,6 +209,42 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32, repairs: b
     }
 }
 
+/// The elements that sharpen a still picture by its bitrate (`Screen::sharpen`; docs/design/remote-linux.md §2026-11-11): a
+/// change of `bitrate` while playing costs them nothing and takes effect from the next frame. None takes a quantiser ceiling
+/// cleanly (measured on GStreamer 1.24: x264enc's and openh264enc's `qp-max` can't change while playing; NVENC's can, but each
+/// change makes the next frame an IDR). VA isn't measured: `BLURT_REMOTE_BOOST=1` tries any element.
+///
+/// Each element's (gain, most): how `boost_seconds` is scaled for it, tuned by measurement at 2 Mbps (§2026-11-11). x264's ABR
+/// answers a raised rate slowly (asked for 0.36 s of the rate, it made 0.1–0.2 s), so it's asked for four times as much; NVENC's
+/// CBR spends the whole buffer the still time filled on the first raised frame, so it's asked for half.
+fn boosts(element: &str) -> Option<(f64, f64)> {
+    match element {
+        "x264enc" => Some((4.0, 1.2)),
+        "nvcudah264enc" => Some((0.5, 0.18)),
+        _ if std::env::var_os("BLURT_REMOTE_BOOST").is_some_and(|v| v == "1") => Some((1.0, 0.36)),
+        _ => None,
+    }
+}
+
+/// The elements that answer any change of bitrate with a keyframe (measured, 103–168 KB at 2 Mbps): x265enc, openh264enc and
+/// GStreamer 1.24's nvh264enc / nvh265enc (nvbaseenc; the newer GstNvEncoder, nvcuda*enc, doesn't).
+fn rekeys_on_rate(element: &str, e: &gst::Element) -> bool {
+    matches!(element, "x265enc" | "openh264enc") || (matches!(element, "nvh264enc" | "nvh265enc") && e.find_property("max-qp-p").is_none())
+}
+
+/// How much of the bitrate a sharpening resend made under `max_qp` is given, in seconds of it. The encoder is told 60 fps
+/// (NOMINAL_FPS) and so gives a frame 1/fps of the rate; a resend comes 0.1–0.2 s after the last frame and is owed that much,
+/// then more the finer the step (twice as much every 6 below 46), × the element's gain, up to its most (`boosts`), aimed at a
+/// resend that costs about the 0.4 s of the rate sharpen.rs steers by.
+fn boost_seconds(max_qp: u8, since_last: f64, (gain, most): (f64, f64)) -> f64 {
+    (gain * since_last.clamp(0.1, 0.25) * 2f64.powf((46.0 - max_qp as f64) / 6.0)).min(most)
+}
+
+/// Whether `e` lets `prop` change while it plays.
+fn mutable_playing(e: &gst::Element, prop: &str) -> bool {
+    e.find_property(prop).is_some_and(|p| p.flags().contains(gst::PARAM_FLAG_MUTABLE_PLAYING) && p.flags().contains(glib::ParamFlags::WRITABLE))
+}
+
 impl Encoder {
     /// A pipeline for `element` (math::choose_encoder) at the output size, frames to `sink`: (unit, crop, captured, encode ms).
     /// `repairs`: the phone repairs the picture (no periodic keyframes).
@@ -244,6 +300,29 @@ impl Encoder {
                 })
                 .build(),
         );
+        // a frame's bitrate goes on as it reaches the encoder and the one `set_rate` asked for comes back with the next, so a
+        // raised one is exactly that frame's (appsrc → convert → encoder is one streaming thread, in order)
+        let base = bitrate_value(element, nominal_bitrate(bitrate, fps));
+        let rates = Arc::new(Mutex::new(Rates { base, queue: VecDeque::new(), applied: base }));
+        let boost = boosts(element).filter(|_| mutable_playing(&enc, "bitrate"));
+        if boost.is_some() {
+            let (r2, weak) = (rates.clone(), enc.downgrade());
+            enc.static_pad("sink").ok_or("no encoder input")?.add_probe(gst::PadProbeType::BUFFER, move |_, info| {
+                let (Some(pts), Some(e)) = (info.buffer().and_then(|b| b.pts()), weak.upgrade()) else { return gst::PadProbeReturn::Ok };
+                let pts = pts.nseconds();
+                let mut r = r2.lock().unwrap();
+                while r.queue.front().is_some_and(|f| f.0 < pts) {
+                    r.queue.pop_front();
+                }
+                let want = if r.queue.front().is_some_and(|f| f.0 == pts) { r.queue.pop_front().unwrap().1 } else { r.base };
+                if want != r.applied {
+                    e.set_property_from_str("bitrate", &want.to_string());
+                    r.applied = want;
+                }
+                gst::PadProbeReturn::Ok
+            });
+        }
+        let rekeys = rekeys_on_rate(element, &enc);
         pipeline.set_state(gst::State::Playing).map_err(|e| format!("{element} won't start: {e}"))?;
         Ok(Encoder {
             pipeline,
@@ -255,6 +334,10 @@ impl Encoder {
             height,
             caps: Mutex::new(None),
             pending,
+            rates,
+            fps: Mutex::new(fps.clamp(1, NOMINAL_FPS)),
+            boost,
+            rekeys,
             last_pts: Mutex::new(0),
             start: std::time::Instant::now(),
         })
@@ -262,6 +345,23 @@ impl Encoder {
 
     /// Encode one picture; `key`: as a keyframe (with its parameter sets).
     pub fn push(&self, p: &Picture, key: bool) -> Result<(), String> {
+        self.push_capped(p, key, None)
+    }
+
+    /// Whether `push_capped` sharpens a resend with this element (`boosts`).
+    pub fn caps_quantiser(&self) -> bool {
+        self.boost.is_some()
+    }
+
+    /// Whether `set_rate` to another bitrate costs nothing (no keyframe: `rekeys_on_rate`).
+    pub fn rate_change_is_cheap(&self) -> bool {
+        !self.rekeys
+    }
+
+    /// `push`, for a resend of the last picture as sharp as quantising no block more coarsely than `max_qp` would make it: that
+    /// one frame is given the bitrate the step needs (`boost_seconds`), where `caps_quantiser`; else as `push`. Every other
+    /// frame is made at the rate `set_rate` asked for.
+    pub fn push_capped(&self, p: &Picture, key: bool, max_qp: Option<u8>) -> Result<(), String> {
         {
             let mut c = self.caps.lock().unwrap();
             if *c != Some((p.width, p.height, p.format)) {
@@ -277,17 +377,18 @@ impl Encoder {
             }
         }
         if key {
-            let ev = gstreamer_video::UpstreamForceKeyUnitEvent::builder().all_headers(true).build();
-            if let Some(pad) = self.enc.static_pad("src") {
-                pad.send_event(ev);
-            }
+            // in the stream, right before this picture (appsrc queues it with the buffers): an upstream event at the encoder's
+            // output could land on a picture still on its way (measured: one frame early, 4 runs in 6 on 4 vCPUs)
+            let ev = gstreamer_video::DownstreamForceKeyUnitEvent::builder().all_headers(true).build();
+            self.src.send_event(ev);
         }
         // real time, strictly rising: the rate control reads a resend as time passing, not as part of a burst
-        let pts = {
+        let (pts, since_last) = {
             let mut last = self.last_pts.lock().unwrap();
             let now = self.start.elapsed().as_nanos() as u64;
+            let since = now.saturating_sub(*last) as f64 / 1e9;
             *last = now.max(*last + 1_000_000);
-            *last
+            (*last, since)
         };
         let mut buf = gst::Buffer::from_slice(Bytes(p.data.clone()));
         {
@@ -299,6 +400,14 @@ impl Encoder {
             let mut q = self.pending.lock().unwrap();
             q.push_back((pts, p.crop, p.captured, std::time::Instant::now()));
         }
+        if let (Some(q), Some(b), false) = (max_qp, self.boost, key) {
+            // a frame's share at the encoder's rate is base / NOMINAL_FPS; this one is to be `boost_seconds` of the real rate
+            let fps = *self.fps.lock().unwrap() as f64;
+            let mut r = self.rates.lock().unwrap();
+            let v = (r.base as f64 * fps * boost_seconds(q, since_last, b)).round().min(u32::MAX as f64) as u32;
+            let v = v.max(r.base);
+            r.queue.push_back((pts, v));
+        }
         self.src.push_buffer(buf).map(|_| ()).map_err(|e| format!("push: {e:?}"))
     }
 
@@ -307,11 +416,16 @@ impl Encoder {
         self.pending.lock().unwrap().len() >= 2
     }
 
-    /// A new rate for the running encoder (no restart): `fps` is what's actually sent.
+    /// A new rate for the running encoder (no restart): `fps` is what's actually sent. The same value again does nothing (on the
+    /// elements that `rekeys_on_rate` a change costs a keyframe); a change takes 0.02–0.07 ms.
     pub fn set_rate(&self, bitrate: u32, fps: u32) {
         let v = bitrate_value(&self.element, nominal_bitrate(bitrate, fps));
-        if self.enc.find_property("bitrate").is_some() {
+        *self.fps.lock().unwrap() = fps.clamp(1, NOMINAL_FPS);
+        let mut r = self.rates.lock().unwrap();
+        r.base = v;
+        if v != r.applied && self.enc.find_property("bitrate").is_some() {
             self.enc.set_property_from_str("bitrate", &v.to_string());
+            r.applied = v;
         }
     }
 

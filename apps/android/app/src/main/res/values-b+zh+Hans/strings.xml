@@ -122,6 +122,8 @@
     <string name="g_zoom">缩放</string>
     <string name="g_pinch_screen">显示屏幕时捏合</string>
     <string name="g_zoom_picture">缩放画面</string>
+    <string name="g_one_zoomed">触控模式下放大后单指拖动</string>
+    <string name="g_move_picture">移动画面</string>
     <string name="g_pointer_zoomed">放大时移动光标</string>
     <string name="g_follows">画面跟随光标</string>
     <string name="g_cycle">%1$s：按住滑动</string>

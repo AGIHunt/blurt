@@ -3,7 +3,8 @@
 //! holds back on the relay's stream, asks for a resend when the picture stops, and sends the pointer's place and shape.
 //!
 //!  • the pointer isn't in the video: its place goes 60 times a second when it moves and twice a second regardless (15 / every 5 s
-//!    on the relay's stream, where nothing is lost); its shape when it changes.
+//!    on the relay's stream, where nothing is lost); its shape when it changes. To a phone that numbers its pointer instructions the
+//!    place comes with the newest number it includes (input.rs `Told`), and goes when that changes too.
 //!  • the rate follows the phone's reports (`Rate`); idle (nobody touching the phone) it drops to 5 fps.
 //!  • over the relay's stream a frame goes whole, and nothing more goes once more than 1.5 s of picture is on its way: keys go the
 //!    same way and mustn't wait behind it. Nothing at all arriving for 6 s means those bytes went down a dead path: a keyframe.
@@ -26,17 +27,16 @@ use std::time::{Duration, Instant};
 use crate::channel::Chan;
 use crate::displays::{self, Follow};
 use crate::host::{DisplayInfo, EncodedFrame, FrameSink, ScreenConfig};
-use crate::input::{Cmd, Shared};
+use crate::input::{Cmd, Shared, Told};
 use crate::packets::{cursor, pack_payload, Kind, VideoPacket};
-use crate::rate::Rate;
+use crate::rate::{Probe, Rate};
 use crate::repair::{Answer, HostRepair};
+use crate::sharpen::Sharpen;
 use crate::wire::{Crop, ScreenReport, ScreenRequest, ToPhone};
 
 /// Across streams, so a late piece of the last one can't pass for a frame of this one.
 static FRAME_ID: AtomicU32 = AtomicU32::new(0);
 
-const REFINES_PER_STILL: u32 = 8;
-const SETTLED: usize = 1500;
 const BURST: usize = 16;
 
 /// The phone's request within reason: a number out of range mustn't trap anything.
@@ -83,11 +83,20 @@ struct St {
     // a still picture
     last_frame_at: f64,
     last_refresh_at: f64,
-    refresh_pending: bool,
-    refines: u32,
-    last_frame_bytes: usize,
-    // the pointer
-    last_cursor: Option<(f64, f64)>,
+    /// a resend asked of the encoder and not back yet, and the quantiser ceiling it was asked under
+    refresh_pending: Option<u8>,
+    /// the still picture sent again, step by step, until it's sharp
+    sharpen: Sharpen,
+    /// this stream's encoder takes a quantiser ceiling (`Screen::caps_quantiser`)
+    capped: bool,
+    /// and takes another rate for nothing (`Screen::rate_change_is_cheap`): resends may go faster than the bitrate
+    cheap_rate: bool,
+    /// a still picture's resends that went faster than the rate since the phone's last report (rate.rs)
+    probe: Probe,
+    /// the rate the encoder is set to: the bitrate, or the faster pace of those resends while they go
+    encoder_rate: i64,
+    // the pointer: its place as last sent, and the phone's number that went with it
+    last_cursor: Option<((f64, f64), Option<u32>)>,
     tick: u64,
     // measurements
     encoded: u32,
@@ -115,6 +124,7 @@ pub struct ScreenSession {
     chan: Arc<Chan>,
     backend: Shared,
     input: std::sync::mpsc::Sender<Cmd>,
+    told: Arc<Told>,
     stopped: Arc<AtomicBool>,
     log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
     view: Arc<View>,
@@ -144,6 +154,7 @@ fn pointer_desktop(i: &dyn crate::host::Input, shown: Option<&DisplayInfo>) -> O
 impl ScreenSession {
     /// Starts the backend's stream (blocking: a portal may ask first; run it off the server's tasks). Err: the sentence for
     /// ToPhone.screenFailed.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         r: &ScreenRequest,
         chan: Arc<Chan>,
@@ -152,6 +163,7 @@ impl ScreenSession {
         rt: tokio::runtime::Handle,
         log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
         all: Arc<Mutex<Vec<DisplayInfo>>>,
+        told: Arc<Told>,
     ) -> Result<ScreenSession, String> {
         let r = clamp(r);
         // a dialog the user answers (Wayland's portal) is waited on without the backend's lock: input goes on meanwhile
@@ -161,6 +173,7 @@ impl ScreenSession {
         }
         let relayed = chan.relay;
         let rate = Rate::new(r.bitrate, r.fps, relayed);
+        let encoder_rate = rate.bitrate;
         // the display: the one pinned, else the one under the pointer; its shape is the picture's
         let (aspect, display, pinned) = {
             let mut b = backend.lock().unwrap();
@@ -196,9 +209,12 @@ impl ScreenSession {
             key_through: 0,
             last_frame_at: 0.0,
             last_refresh_at: 0.0,
-            refresh_pending: false,
-            refines: REFINES_PER_STILL,
-            last_frame_bytes: 0,
+            refresh_pending: None,
+            sharpen: Sharpen::finished(),
+            capped: false,
+            cheap_rate: true,
+            probe: Probe::default(),
+            encoder_rate,
             last_cursor: None,
             tick: 0,
             encoded: 0,
@@ -235,7 +251,12 @@ impl ScreenSession {
             };
             let info = screen.start(&config, sink.clone())?;
             // what the phone offered, of what this host does: nack and fec always, ltr when this encoder makes recovery frames
-            st.lock().unwrap().repair = HostRepair::negotiate(r.features.as_deref(), screen.supports_recovery());
+            let (capped, cheap) = (screen.caps_quantiser(), screen.rate_change_is_cheap());
+            let mut s = st.lock().unwrap();
+            s.repair = HostRepair::negotiate(r.features.as_deref(), screen.supports_recovery());
+            s.capped = capped;
+            s.cheap_rate = cheap;
+            drop(s);
             info
         };
         let features = st.lock().unwrap().repair.names();
@@ -259,7 +280,7 @@ impl ScreenSession {
             rt: rt.clone(),
             offered: r.features.clone(),
         });
-        let s = ScreenSession { st, chan, backend, input, stopped: Arc::new(AtomicBool::new(false)), log, view };
+        let s = ScreenSession { st, chan, backend, input, told, stopped: Arc::new(AtomicBool::new(false)), log, view };
         s.ticker(&rt, if relayed { 15 } else { 60 });
         Ok(s)
     }
@@ -271,6 +292,7 @@ impl ScreenSession {
             chan: self.chan.clone(),
             backend: self.backend.clone(),
             input: self.input.clone(),
+            told: self.told.clone(),
             stopped: self.stopped.clone(),
             log: self.log.clone(),
             view: self.view.clone(),
@@ -374,7 +396,11 @@ impl ScreenSession {
                 && now - s.last_key_at > 2.0
                 && s.sent_total.saturating_sub(received) > 64_000usize.max(s.rate.bitrate as usize / 8 * 3 / 4);
             let busy = s.busy_skips;
-            let changed = s.rate.update(frames, lost, busy, backed_up, rtt, sent, delivered);
+            let probed = s.probe.take();
+            let changed = s.rate.update_probed(frames, lost, busy, backed_up, rtt, sent, delivered, probed);
+            if changed {
+                s.encoder_rate = s.rate.bitrate;
+            }
             if let Some((group, loss)) = s.repair.adapt(rtt) {
                 (self.log)(serde_json::json!({"event": "remote_screen_repair", "fec_group": group, "loss": (loss * 1000.0).round() / 1000.0,
                                              "rtt": rtt.unwrap_or(-1.0)}));
@@ -422,7 +448,7 @@ impl ScreenSession {
             }
             s.last_key_answered = now;
             s.last_key_asked = now;
-            s.refines = 0;
+            s.sharpen.again();
         }
         if let Some(sc) = self.backend.lock().unwrap().screen() {
             sc.keyframe();
@@ -452,7 +478,7 @@ impl ScreenSession {
                 }
             }
             Some(Answer::Recover) => {
-                self.st.lock().unwrap().refines = 0;
+                self.st.lock().unwrap().sharpen.again();
                 if let Some(sc) = self.backend.lock().unwrap().screen() {
                     sc.recovery_frame();
                 }
@@ -523,10 +549,12 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
         return;
     }
     let now = s.now();
-    if s.refresh_pending {
-        s.refresh_pending = false;
-    } else {
-        s.refines = 0;
+    // a resend's own frame says nothing new about the screen; anything else is the screen's own, and sharpening starts over
+    // if it is the picture really changing, not a caret or a spinner (sharpen.rs `moved`)
+    let sharpened = s.refresh_pending.take();
+    if sharpened.is_none() {
+        let (bitrate, fps) = (s.rate.bitrate, s.rate.fps);
+        s.sharpen.moved(f.picture.len(), bitrate, fps);
         s.last_frame_at = now;
     }
     if s.broken && !f.keyframe {
@@ -587,7 +615,13 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
             chan.send_datagram(Kind::Video, &p.encode());
         }
     }
-    s.last_frame_bytes = body.len();
+    if let Some(cap) = sharpened {
+        let (bitrate, pace) = (s.rate.bitrate, if s.cheap_rate { s.rate.probe() } else { s.rate.bitrate });
+        let wait = s.sharpen.sent(cap, body.len(), bitrate, pace, now);
+        if pace > bitrate && wait > 0.0 {
+            s.probe.sent(body.len(), wait);
+        }
+    }
     s.encoded += 1;
     s.bytes += body.len();
     s.report_bytes += body.len();
@@ -633,6 +667,7 @@ struct Parts {
     chan: Arc<Chan>,
     backend: Shared,
     input: std::sync::mpsc::Sender<Cmd>,
+    told: Arc<Told>,
     stopped: Arc<AtomicBool>,
     log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
     view: Arc<View>,
@@ -679,7 +714,7 @@ impl Parts {
             // before the new stream's first frame can come: nothing more of the old display, and the new one from its keyframe
             let mut s = self.st.lock().unwrap();
             s.broken = true;
-            s.refines = 0;
+            s.sharpen.again();
             s.last_cursor = None;
             s.sent_total = s.received_total;
         }
@@ -693,7 +728,11 @@ impl Parts {
                 sc.stop();
                 let info = sc.start(&config, self.view.sink.clone())?;
                 // another encoder: its references and what it can do are its own
-                self.st.lock().unwrap().repair = HostRepair::negotiate(self.view.offered.as_deref(), sc.supports_recovery());
+                let (capped, cheap) = (sc.caps_quantiser(), sc.rate_change_is_cheap());
+                let mut s = self.st.lock().unwrap();
+                s.repair = HostRepair::negotiate(self.view.offered.as_deref(), sc.supports_recovery());
+                s.capped = capped;
+                s.cheap_rate = cheap;
                 info
             }
         };
@@ -714,7 +753,10 @@ impl Parts {
 #[derive(Default)]
 struct Asks {
     keyframe: bool,
-    refresh: bool,
+    /// the still picture again, under this quantiser ceiling
+    sharpen: Option<u8>,
+    /// the encoder's rate: the faster pace of resends that also ask what the network carries, or the bitrate back after them
+    rate: Option<(u32, u32)>,
     shape: bool,
 }
 
@@ -736,38 +778,44 @@ fn tick(p: &Parts, hz: u64, last_shape: &mut Option<Vec<u8>>) -> Option<String> 
             s.last_key_asked = now;
             asks.keyframe = true;
         }
-        // the picture has stopped: the same frame again, for the encoder to sharpen
-        if !asks.keyframe
-            && s.refines < REFINES_PER_STILL
-            && !held
-            && !s.broken
-            && s.encoded_any()
-            && now - s.last_frame_at > 0.2
-            && now - s.last_refresh_at > 0.2
-            && now >= s.paced_until
-        {
-            if s.refines > 0 && s.last_frame_bytes < SETTLED {
-                s.refines = REFINES_PER_STILL; // a resend this small: as good as it gets
-            } else {
-                s.refines += 1;
+        // the picture has stopped: the same frame again, a step sharper each time (sharpen.rs)
+        if !asks.keyframe && !s.sharpen.done && !held && !s.broken && s.encoded_any() && now - s.last_frame_at > 0.2 && now >= s.paced_until {
+            let capped = s.capped;
+            if let Some(cap) = s.sharpen.next(now, capped) {
                 s.last_refresh_at = now;
-                s.refresh_pending = true;
-                asks.refresh = true;
+                s.refresh_pending = Some(cap);
+                asks.sharpen = Some(cap);
             }
+        }
+        // a resend that also asks what the network carries goes at that pace, and the encoder's rate control would hold it to the
+        // bitrate otherwise; once the picture moves again (or sharpening is done) the encoder is at the bitrate again
+        let want = if s.sharpen.under_way() && s.cheap_rate { s.rate.probe() } else { s.rate.bitrate };
+        if want != s.encoder_rate {
+            s.encoder_rate = want;
+            asks.rate = Some((want as u32, s.fps()));
         }
         let every = if in_one { hz * 5 } else { (hz / 2).max(1) };
         (every, s.tick.is_multiple_of((hz / 4).max(1)))
     };
     asks.shape = shape_now;
-    let (pointer, shape) = {
+    let (pointer, seq, shape) = {
         let mut b = backend.lock().unwrap();
         if let Some(sc) = b.screen() {
+            if let Some((bitrate, fps)) = asks.rate {
+                sc.set_rate(bitrate, fps);
+            }
             if asks.keyframe {
                 sc.keyframe();
-            } else if asks.refresh {
-                sc.refresh();
+            } else if let Some(cap) = asks.sharpen {
+                if cap < crate::sharpen::NO_CEILING {
+                    sc.sharpen(cap);
+                } else {
+                    sc.refresh();
+                }
             }
         }
+        // the phone's number first, the place after: the place read is never older than the moves the number says it includes
+        let seq = p.told.number(Instant::now());
         let i = b.input();
         // several displays: the pointer on the desktop, 0…1 of the one shown from that, and where it is going
         let all = p.view.displays.lock().unwrap();
@@ -783,14 +831,15 @@ fn tick(p: &Parts, hz: u64, last_shape: &mut Option<Vec<u8>>) -> Option<String> 
             _ => i.pointer(),
         };
         drop(all);
-        (n.map(|n| (n, to)), if asks.shape { i.cursor_shape() } else { None })
+        (n.map(|n| (n, to)), seq, if asks.shape { i.cursor_shape() } else { None })
     };
     let to = pointer.as_ref().and_then(|(_, to)| to.clone());
     let mut s = st.lock().unwrap();
     if let Some((p, _)) = pointer {
-        if s.last_cursor != Some(p) || s.tick.is_multiple_of(cursor_every) {
-            s.last_cursor = Some(p);
-            chan.send_datagram(Kind::Cursor, &cursor(p.0 as f32, p.1 as f32));
+        // a move that didn't move it (against the screen's edge) is still said to be made: the phone is waiting for its number
+        if s.last_cursor != Some((p, seq)) || s.tick.is_multiple_of(cursor_every) {
+            s.last_cursor = Some((p, seq));
+            chan.send_datagram(Kind::Cursor, &cursor(p.0 as f32, p.1 as f32, seq));
         }
     }
     drop(s);

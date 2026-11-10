@@ -35,7 +35,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 39);
+    assert_eq!(list.len(), 40);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -65,14 +65,35 @@ fn pointer_packets() {
         let p = PointerPacket::decode(&b).unwrap_or_else(|| panic!("{}", e["name"]));
         assert_eq!(hex(&p.encode()), e["hex"].as_str().unwrap());
     }
-    assert_eq!(PointerPacket::decode(&unhex("000000c03f000010c0")), Some(PointerPacket::Move { dx: 1.5, dy: -2.25 }));
+    assert_eq!(PointerPacket::decode(&unhex("000000c03f000010c0")), Some(PointerPacket::Move { dx: 1.5, dy: -2.25, seq: None }));
+    // numbered (1.0.17+): four more bytes, and the same move to a host that reads only nine
+    let numbered = vectors()["pointer"].as_array().unwrap().iter().find(|e| e["name"] == "move_seq").expect("move_seq")["hex"].as_str().unwrap().to_string();
+    assert_eq!(PointerPacket::decode(&unhex(&numbered)), Some(PointerPacket::Move { dx: 1.5, dy: -2.25, seq: Some(258) }));
+}
+
+#[test]
+fn pointer_to_with_its_number() {
+    let v = vectors();
+    let find = |name: &str| v["toMac"].as_array().unwrap().iter().find(|e| e["name"] == name).unwrap_or_else(|| panic!("{name}"))["json"].clone();
+    assert_eq!(ToMac::from_json(&find("pointer_to_seq")), Some(ToMac::PointerTo { x: 0.5, y: 0.75, seq: Some(7) }));
+    // without one, as phones before 1.0.17 send it: no key at all
+    let plain = find("pointer_to");
+    assert!(matches!(ToMac::from_json(&plain), Some(ToMac::PointerTo { seq: None, .. })));
+    assert!(plain["pointerTo"].get("seq").is_none());
+    assert_eq!(ToMac::from_json(&plain).unwrap().to_json(), plain);
 }
 
 #[test]
 fn cursor() {
     let v = vectors();
     let c = &v["cursor"];
-    assert_eq!(hex(&packets::cursor(c["x"].as_f64().unwrap() as f32, c["y"].as_f64().unwrap() as f32)), c["hex"].as_str().unwrap());
+    assert_eq!(hex(&packets::cursor(c["x"].as_f64().unwrap() as f32, c["y"].as_f64().unwrap() as f32, None)), c["hex"].as_str().unwrap());
+    // with the phone's number (1.0.17+): 12 bytes
+    let c = &v["cursorSeq"];
+    let (x, y, seq) = (c["x"].as_f64().unwrap() as f32, c["y"].as_f64().unwrap() as f32, c["seq"].as_u64().unwrap() as u32);
+    assert_eq!(hex(&packets::cursor(x, y, Some(seq))), c["hex"].as_str().unwrap());
+    assert_eq!(packets::cursor_from(&unhex(c["hex"].as_str().unwrap())), Some((x, y, Some(seq))));
+    assert_eq!(packets::cursor_from(&unhex(v["cursor"]["hex"].as_str().unwrap())), Some((x, y, None)));
 }
 
 #[test]

@@ -50,8 +50,8 @@ Any phone app talks to any host: the host says what it is (`platform`), the phon
 Control messages are JSON in Swift's synthesized `Codable` shape: an object with one key, the case name; labelled values by label, unlabelled ones
 as `_0`, `_1`; a case without values is `{"name":{}}`; optional values left out when nil. Readers ignore unknown keys and drop messages whose
 case they don't know (a newer peer). Every case with an example: `vectors.json` → `toMac`, `toPhone`. Pointer packets (kind 2, `RemotePointerPacket`),
-video pieces (kind 3, 17-byte header `RemoteVideoPacket` + payload `RemoteVideoPayload`) and the cursor (kind 5, two f32 LE) are binary: `pointer`,
-`video`, `cursor` in the vectors.
+video pieces (kind 3, 17-byte header `RemoteVideoPacket` + payload `RemoteVideoPayload`) and the cursor (kind 5, `RemoteCursor`: two f32 LE,
+then a u32 LE to a phone that numbers its moves) are binary: `pointer`, `video`, `cursor`, `cursorSeq` in the vectors.
 
 The session, as the host runs it (reference: `RemoteServer.swift` `opened`, `greet`, `handle`): first sealed frame from the phone opens it (its
 `hello` names the device and reveals the nonce) → a new device waits for the owner's yes (`pairingWaits`, then `newKey` → phone answers
@@ -135,6 +135,32 @@ Why and how it feels: [remote.md §Several displays](remote.md#several-displays)
 
 Hosts that can show only one display (a Wayland portal session that granted one monitor) send `displays` with that one and ignore
 `showDisplay`.
+
+## The pointer's numbers (new 2026-11-11, 1.0.17)
+
+The phone draws the computer's pointer itself, ahead on its own strokes, and takes the computer's word for where it is when the stroke
+is over. A word from before the last moves made the pointer jump back and then forward ([remote.md](remote.md) §The pointer isn't in the
+video), so each word now says which moves it includes. All additive, and nothing to negotiate:
+
+- **The phone counts its pointer instructions**, relative moves and `pointerTo` alike, one counter per session, from 1, wrapping (u32).
+  `RemotePointerPacket.move` carries the count as four more bytes after its two values (u32 LE; 13 bytes instead of 9), and
+  `ToMac.pointerTo` as `seq`. Hosts before 1.0.17 read the first 9 bytes and ignore unknown JSON keys. Over the relay, where moves are
+  added up and sent 30 times a second, every move still takes a number and the packet carries the newest.
+- **The host remembers the newest number it has made** (a later one replaces it; one more than 65,536 behind is a phone that started over),
+  and forgets it when a session opens. A `pointerTo` with no picture to place it on still counts.
+- **Once the phone has sent a number, every cursor place (kind 5) is 12 bytes**: x, y, then that newest number (u32 LE). A phone that
+  sends none gets 8 bytes as before; phones before 1.0.17 drop any other length. A place goes when the pointer moved **or the number
+  changed** (a move against the screen's edge moves nothing, and the phone is waiting for its number), and now and then regardless. The
+  place sent with a number must include that move: where the system reports a pointer just placed a moment late, the Mac host says
+  where it put it for 150 ms. The Rust host knows a relative move only as a step, not where it ended (`GetCursorPos` on Windows, the
+  PipeWire stream's cursor on Linux), so it holds the number back instead: a number is said once it is 150 ms old (`input::Told`), and
+  numbers are kept per session, since a replaced phone's channel lingers 200 ms. Neither figure is measured on Windows or Linux.
+- **The phone** (`RemoteCursor.wait`): a place whose number is the phone's own count or later (`(host − sent) as i32 ≥ 0`) counts at once.
+  One behind it waits: for the place that does include everything, or, since a move lost on the way never gets its number, until the
+  pointer has been still on the phone for max(0.5 s, 4 round trips); 3 s in the relay's stream, where nothing is lost but much can queue.
+  A place with no number (a host before 1.0.17) counts after max(0.12 s, 1.5 round trips), as it always did.
+
+Vectors: `pointer` → `move_seq`, `toMac` → `pointer_to_seq`, `cursorSeq`.
 
 ## Repairs: NACK, LTR refresh, parity (new 2026-11-09)
 

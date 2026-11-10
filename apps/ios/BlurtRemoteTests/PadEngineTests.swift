@@ -229,6 +229,111 @@ final class PadEngineTests: XCTestCase {
         XCTAssertEqual(f, 260 / 250, accuracy: 0.001)
     }
 
+    // MARK: zoomed in, the picture is a photo under one finger
+
+    private func zoomed() -> PadEngine {
+        let e = PadEngine()
+        e.pinchZoomsView = true
+        e.touchMode = true
+        e.panView = true
+        return e
+    }
+
+    func testZoomedInOneFingerMovesThePicture() {
+        let e = zoomed()
+        XCTAssertEqual(e.began([t(1, 100, 100)], at: 0), [])
+        XCTAssertEqual(e.moved([t(1, 110, 100)], at: 0.02), [], "past the slop: it's a move from here")
+        XCTAssertEqual(e.moved([t(1, 125, 104)], at: 0.04), [.view(scale: 1, dx: 15, dy: 4, at: CGPoint(x: 125, y: 104))])
+        XCTAssertEqual(e.moved([t(1, 125, 104)], at: 0.4), [.view(scale: 1, dx: 0, dy: 0, at: CGPoint(x: 125, y: 104))])
+        XCTAssertEqual(e.ended([1], at: 0.6), [.viewEnd], "let go at rest: it stays; no click, no pointer")
+    }
+
+    func testAPauseWhileMovingThePictureIsStillMovingIt() {
+        // a hold is the computer's press only when the finger hasn't moved yet (founder, 2026-11-11): stop a while mid-move and go
+        // on, and it is one move of the picture throughout, never a press and never a selection
+        let e = zoomed()
+        _ = e.began([t(1, 100, 100)], at: 0)
+        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.moved([t(1, 140, 100)], at: 0.05)
+        XCTAssertFalse(e.needsTicks)
+        XCTAssertEqual(e.tick(at: 0.6), [])
+        XCTAssertEqual(e.tick(at: 2), [], "resting mid-move: nothing is pressed")
+        XCTAssertEqual(e.moved([t(1, 160, 120)], at: 2.1), [.view(scale: 1, dx: 20, dy: 20, at: CGPoint(x: 160, y: 120))])
+        XCTAssertEqual(e.ended([1], at: 3), [.viewEnd])
+    }
+
+    func testAFlickSendsThePictureCoasting() {
+        let e = zoomed()
+        _ = e.began([t(1, 100, 100)], at: 0)
+        _ = e.moved([t(1, 110, 100)], at: 0.01)
+        _ = e.moved([t(1, 130, 100)], at: 0.02)
+        _ = e.moved([t(1, 150, 100)], at: 0.03)
+        let o = e.ended([1], at: 0.035)
+        guard o.count == 2, o[0] == .viewEnd, case let .viewCoast(vx, vy) = o[1] else { return XCTFail("\(o)") }
+        XCTAssertGreaterThan(vx, 1000)
+        XCTAssertEqual(vy, 0)
+    }
+
+    func testATouchThatStopsACoastIsNoClickAndMayMoveOn() {
+        let e = zoomed()
+        e.viewCoasting = true
+        XCTAssertEqual(e.began([t(1, 100, 100)], at: 0), [])
+        XCTAssertEqual(e.ended([1], at: 0.05), [.viewEnd], "a tap would have clicked")
+        e.viewCoasting = true
+        _ = e.began([t(1, 100, 100)], at: 1)
+        XCTAssertEqual(e.moved([t(1, 103, 100)], at: 1.01), [.view(scale: 1, dx: 3, dy: 0, at: CGPoint(x: 103, y: 100))], "no slop to cross: it has the picture")
+    }
+
+    func testZoomedInATapStillClicksThereAndAHoldStillDrags() {
+        let e = zoomed()
+        _ = e.began([t(1, 100, 100)], at: 0)
+        XCTAssertEqual(e.ended([1], at: 0.1), [.pointAt(CGPoint(x: 100, y: 100)), .click(.left), .haptic(.tap)])
+        _ = e.began([t(1, 200, 200)], at: 2)
+        XCTAssertEqual(e.tick(at: 2.45), [.pointAt(CGPoint(x: 200, y: 200)), .haptic(.grab)])
+        XCTAssertEqual(e.moved([t(1, 220, 200)], at: 2.5), [.button(.left, down: true)])
+        XCTAssertEqual(e.moved([t(1, 240, 200)], at: 2.55), [.dragTo(CGPoint(x: 240, y: 200))])
+    }
+
+    func testASecondFingerOnAMovingPictureZoomsItAndOneLeftMovesItOn() {
+        let e = zoomed()
+        _ = e.began([t(1, 100, 100)], at: 0)
+        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.moved([t(1, 120, 100)], at: 0.04)
+        XCTAssertEqual(e.began([t(2, 220, 100)], at: 0.1), [])
+        // together: still moving it
+        XCTAssertEqual(e.moved([t(1, 130, 100), t(2, 230, 100)], at: 0.12), [.view(scale: 1, dx: 10, dy: 0, at: CGPoint(x: 180, y: 100))])
+        // apart: closer
+        guard case let .view(scale, _, _, _)? = e.moved([t(1, 100, 100), t(2, 260, 100)], at: 0.14).first else { return XCTFail() }
+        XCTAssertEqual(scale, 1, "the moment it becomes a pinch it starts from here")
+        guard case let .view(closer, _, _, _)? = e.moved([t(1, 90, 100), t(2, 270, 100)], at: 0.16).first else { return XCTFail() }
+        XCTAssertGreaterThan(closer, 1)
+        XCTAssertEqual(e.ended([2], at: 0.2), [])
+        XCTAssertEqual(e.moved([t(1, 95, 110)], at: 0.22), [.view(scale: 1, dx: 5, dy: 10, at: CGPoint(x: 95, y: 110))])
+        XCTAssertEqual(e.ended([1], at: 0.5), [.viewEnd])
+    }
+
+    func testNotZoomedOneFingerIsStillThePointerAndTwoStillScroll() {
+        let e = PadEngine()
+        e.pinchZoomsView = true
+        e.touchMode = true
+        _ = e.began([t(1, 100, 100)], at: 0)
+        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        guard case .move? = e.moved([t(1, 120, 100)], at: 0.04).first else { return XCTFail() }
+        _ = e.ended([1], at: 0.3)
+        // zoomed in, two fingers are still the computer's scroll, under them
+        let z = zoomed()
+        _ = z.began([t(1, 100, 100), t(2, 160, 100)], at: 1)
+        XCTAssertEqual(z.moved([t(1, 100, 110), t(2, 160, 110)], at: 1.02), [.pointAt(CGPoint(x: 130, y: 100)), .scroll(0, 0, .began)])
+    }
+
+    func testThreeFingersEndAMoveOfThePicture() {
+        let e = zoomed()
+        _ = e.began([t(1, 100, 100)], at: 0)
+        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.began([t(2, 160, 100)], at: 0.03)
+        XCTAssertEqual(e.began([t(3, 220, 100)], at: 0.04), [.viewEnd])
+    }
+
     func testZoomedATwoFingerTapStillRightClicks() {
         let e = PadEngine()
         e.pinchZoomsView = true
@@ -599,6 +704,25 @@ final class ScreenPlanTests: XCTestCase {
         XCTAssertEqual(ScreenPlan(.auto, route: .local, cellular: false, lowData: false, native: native, panel: 240).fps, 120)
     }
 
+    func testAwayOnWiFiABigScreenGetsItsOwnPixels() {
+        // an iPad 13": 1800 across was the picture stretched half as wide again
+        let pad = CGSize(width: 2064, height: 2752)
+        let away = ScreenPlan(.auto, route: .relay, cellular: false, lowData: false, native: pad, scale: 2)
+        XCTAssertEqual([away.width, away.height, away.bitrate, away.fps], [2752, 1680, 8_000_000, 30])
+        // an iPad mini: fewer pixels, less to send
+        let mini = ScreenPlan(.auto, route: .direct, cellular: false, lowData: false, native: CGSize(width: 1488, height: 2266), scale: 2)
+        XCTAssertEqual([mini.width, mini.height], [2266, 1384])
+        XCTAssertEqual(mini.bitrate, Int(Double(2266 * 1384) / (1800 * 1100) * 4_000_000))
+        // a phone is already two pixels a point at 1800, whatever its panel has
+        let phone = ScreenPlan(.auto, route: .relay, cellular: false, lowData: false, native: native, scale: 3)
+        XCTAssertEqual([phone.width, phone.height, phone.bitrate], [1800, 1100, 4_000_000])
+        // data the user pays for, and a choice of less, stay as they were
+        XCTAssertEqual(ScreenPlan(.auto, route: .relay, cellular: true, lowData: false, native: pad, scale: 2).width, 1440)
+        XCTAssertEqual(ScreenPlan(.balanced, route: .relay, cellular: false, lowData: false, native: pad, scale: 2).width, 1800)
+        // a stage smaller than the screen (a window, Split View) asks for no more than it shows
+        XCTAssertEqual(ScreenPlan(.auto, route: .relay, cellular: false, lowData: false, native: CGSize(width: 1400, height: 900), scale: 2).width, 1400)
+    }
+
     func testAChoiceIsKept() {
         XCTAssertEqual(plan(.saver, .local).bitrate, 1_000_000, "even at home")
         XCTAssertEqual(plan(.sharp, .relay, cellular: true).width, 2868)
@@ -682,6 +806,24 @@ final class ViewPortTests: XCTestCase {
         XCTAssertFalse(p.follow(CGPoint(x: 0.5, y: 0.5)))
         XCTAssertTrue(p.follow(CGPoint(x: 0.76, y: 0.5)))
         XCTAssertEqual(p.rect.maxX, 0.82, accuracy: 0.001)
+    }
+
+    func testAMovingViewAsksForWhereItWillBe() {
+        var p = ViewPort()
+        p.change(scale: 4, move: .zero, anchor: CGPoint(x: 0.5, y: 0.5))
+        let here = p.crop
+        XCTAssertEqual(p.crop(ahead: .zero), here)
+        let on = p.crop(ahead: CGPoint(x: 0.03, y: 0))
+        XCTAssertEqual(Double(on.x - here.x), 0.03, accuracy: 0.0001)
+        XCTAssertEqual(on.y, here.y)
+        XCTAssertEqual(on.w, here.w, "the same size: only where")
+        // a guess past a quarter of what's in view is a guess: no further
+        XCTAssertEqual(Double(p.crop(ahead: CGPoint(x: 0.5, y: -0.5)).x - here.x), 0.25 / 4, accuracy: 0.0001)
+        XCTAssertEqual(Double(here.y - p.crop(ahead: CGPoint(x: 0.5, y: -0.5)).y), 0.25 / 4, accuracy: 0.0001)
+        // nor past the screen's edge
+        p.change(scale: 1, move: CGPoint(x: -4, y: 0), anchor: CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(Double(p.crop(ahead: CGPoint(x: 0.1, y: 0)).x), 0.75, accuracy: 0.0001)
+        XCTAssertEqual(ViewPort().crop(ahead: CGPoint(x: 0.1, y: 0)), .whole)
     }
 
     func testNoFurtherThanEight() {

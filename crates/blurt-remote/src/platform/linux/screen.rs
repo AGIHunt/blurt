@@ -5,7 +5,8 @@
 //!    and one may go with 0.45 of one; the latest waits for its turn, never a queue);
 //!  • a new crop: cut again from the mirror at once, so the phone's view sharpens even on a still screen;
 //!  • a cut identical to the last one (a change elsewhere, a pointer-only update): nothing;
-//!  • `refresh` / `keyframe`: the last cut again (as a keyframe if asked), for the encoder to sharpen or to start over.
+//!  • `refresh` / `keyframe`: the last cut again (as a keyframe if asked), for the encoder to sharpen or to start over;
+//!  • `sharpen`: the last cut again at the bitrate the step needs, where the encoder answers to it (encode.rs `boosts`).
 //! Every frame is labelled with the crop it was cut at, exactly: there is no capture-side crop that lands a frame or two late.
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -27,6 +28,8 @@ struct Feed {
     captured: f64,
     want_key: bool,
     refresh: bool,
+    /// the refresh is a step of sharpening: under this quantiser ceiling
+    sharpen: Option<u8>,
     fps: u32,
     bitrate: Option<u32>,
     stop: bool,
@@ -43,6 +46,9 @@ pub struct LinuxScreen {
     shared: Arc<Shared>,
     now: fn() -> f64,
     running: Option<Running>,
+    /// this stream's encoder sharpens a resend (encode.rs `boosts`); a change of its rate costs nothing (`rekeys_on_rate`)
+    capped: bool,
+    cheap_rate: bool,
 }
 
 /// How long `start` waits for the portal: the first time that's the user answering GNOME's dialog.
@@ -50,7 +56,7 @@ const DIALOG_WAIT: Duration = Duration::from_secs(90);
 
 impl LinuxScreen {
     pub fn new(portal: Arc<Portal>, shared: Arc<Shared>, now: fn() -> f64) -> Self {
-        LinuxScreen { portal, shared, now, running: None }
+        LinuxScreen { portal, shared, now, running: None, capped: false, cheap_rate: true }
     }
 
     fn poke(&self, f: impl FnOnce(&mut Feed)) {
@@ -134,6 +140,8 @@ impl Screen for LinuxScreen {
             sink(EncodedFrame { picture: u.picture, keyframe: u.keyframe, parameter_sets: u.parameter_sets, crop, captured, ..Default::default() });
         });
         let enc = Encoder::new(&element, Codec::from_name(codec), ow, oh, config.bitrate, config.fps, config.repairs, enc_sink)?;
+        self.capped = enc.caps_quantiser();
+        self.cheap_rate = enc.rate_change_is_cheap();
         if std::env::var_os("BLURT_REMOTE_DEBUG").is_some() {
             eprintln!("blurt-remote: screen {src_w}×{src_h} px ({}×{} pt) → {ow}×{oh} {codec} by {element}", stream.size.0, stream.size.1);
         }
@@ -181,10 +189,32 @@ impl Screen for LinuxScreen {
     }
 
     fn refresh(&mut self) {
-        self.poke(|f| f.refresh = true);
+        self.poke(|f| {
+            f.refresh = true;
+            f.sharpen = None;
+        });
+    }
+
+    fn caps_quantiser(&self) -> bool {
+        self.capped
+    }
+
+    fn rate_change_is_cheap(&self) -> bool {
+        self.cheap_rate
+    }
+
+    fn sharpen(&mut self, max_qp: u8) {
+        if !self.capped {
+            return self.refresh();
+        }
+        self.poke(|f| {
+            f.refresh = true;
+            f.sharpen = Some(max_qp);
+        });
     }
 
     fn stop(&mut self) {
+        self.capped = false;
         if let Some(mut r) = self.running.take() {
             {
                 let (m, cv) = &*r.feed;
@@ -233,7 +263,7 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
             enc.set_rate(b, f.fps);
         }
         let crop = f.crop.unwrap_or(Crop::WHOLE);
-        let (dirty, refresh, key) = (f.dirty, f.refresh, f.want_key);
+        let (dirty, refresh, key, cap) = (f.dirty, f.refresh, f.want_key, f.sharpen.take());
         let captured = if dirty { f.captured.max(0.0) } else { now() };
         if !(dirty || refresh || key) {
             continue;
@@ -243,12 +273,17 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
         f.want_key = false;
         drop(f);
         let mut picture = None;
+        // only the last picture again takes the ceiling: anything new, and every keyframe, is the rate control's own
+        let mut cap = cap;
         if dirty {
             let mm = shared.mirror.lock().unwrap();
             let r = math::crop_rect(crop, mm.width, mm.height);
             let same = last.as_ref().filter(|l| l.0 == r && l.2 == mm.format).map(|l| l.1.as_slice());
             match mm.cut(r, same) {
-                Some(Some(px)) => picture = Some((r, Arc::new(px), mm.format, rect_label(r, mm.width, mm.height))),
+                Some(Some(px)) => {
+                    cap = None;
+                    picture = Some((r, Arc::new(px), mm.format, rect_label(r, mm.width, mm.height)))
+                }
                 Some(None) => {}
                 None => {}
             }
@@ -267,7 +302,7 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
             continue;
         };
         let p = Picture { data: px.clone(), width: r.w, height: r.h, format: fmt, crop: label, captured: if dirty { captured } else { now() } };
-        if let Err(e) = enc.push(&p, key) {
+        if let Err(e) = enc.push_capped(&p, key, if key { None } else { cap }) {
             eprintln!("blurt-remote: encoder: {e}");
         }
         if let Some(e) = enc.error() {

@@ -259,4 +259,203 @@ final class RemoteKitTests: XCTestCase {
         wait(for: [got, audio, pointer, back], timeout: 5)
         phone.close(); mac?.close(); listener.cancel()
     }
+
+    // MARK: the pointer's numbers, and a still picture made sharp (1.0.17)
+
+    func testANumberedMoveIsReadByAHostThatKnowsNoNumbers() throws {
+        let numbered = RemotePointerPacket.move(dx: 1.5, dy: -2.25, seq: 258).encoded()
+        XCTAssertEqual(numbered.count, 13)
+        XCTAssertEqual(RemotePointerPacket(numbered), .move(dx: 1.5, dy: -2.25, seq: 258))
+        // what a host before 1.0.17 reads: the first nine bytes
+        XCTAssertEqual(RemotePointerPacket(numbered.prefix(9)), .move(dx: 1.5, dy: -2.25))
+        XCTAssertEqual(RemotePointerPacket.move(dx: 1.5, dy: -2.25).encoded(), numbered.prefix(9))
+        let to = try JSONEncoder().encode(ToMac.pointerTo(x: 0.5, y: 0.75))
+        XCTAssertFalse(String(decoding: to, as: UTF8.self).contains("seq"))
+        guard case let .pointerTo(_, _, none) = try JSONDecoder().decode(ToMac.self, from: to) else { return XCTFail() }
+        XCTAssertNil(none)
+        let toN = try JSONEncoder().encode(ToMac.pointerTo(x: 0.5, y: 0.75, seq: 7))
+        guard case let .pointerTo(x, y, seq) = try JSONDecoder().decode(ToMac.self, from: toN) else { return XCTFail() }
+        XCTAssertEqual([x, y], [0.5, 0.75])
+        XCTAssertEqual(seq, 7)
+    }
+
+    func testTheCursorSaysHowFarTheHostHasGot() {
+        let plain = RemoteCursor(x: 0.5, y: 0.25).encoded()
+        XCTAssertEqual(plain.count, 8)
+        XCTAssertEqual(RemoteCursor(plain), RemoteCursor(x: 0.5, y: 0.25))
+        let numbered = RemoteCursor(x: 0.5, y: 0.25, seq: 258).encoded()
+        XCTAssertEqual(numbered.count, 12)
+        XCTAssertEqual(RemoteCursor(numbered)?.seq, 258)
+        XCTAssertNil(RemoteCursor(numbered.prefix(10)))
+        XCTAssertTrue(RemoteCursor.covers(5, 5))
+        XCTAssertTrue(RemoteCursor.covers(6, 5))
+        XCTAssertFalse(RemoteCursor.covers(4, 5))
+        XCTAssertTrue(RemoteCursor.covers(2, .max - 1), "counting round")
+        XCTAssertFalse(RemoteCursor.covers(.max - 1, 2))
+    }
+
+    func testAStillPictureIsSharpenedInStepsThatFitTheRate() {
+        var s = RemoteSharpen()
+        var now = 0.0, caps: [Int] = [], total = 0
+        // a screen of text at 2 Mbps: a step costs more the further it goes (the sizes measured, roughly)
+        while !s.done, caps.count < 50 {
+            guard let cap = s.next(now: now) else { now += 0.05; continue }
+            caps.append(cap)
+            XCTAssertNil(s.next(now: now + 0.1), "one at a time")
+            let bytes = cap > 34 ? 45_000 : cap > 28 ? 90_000 : 130_000
+            total += bytes
+            s.sent(cap: cap, bytes: bytes, bitrate: 2_000_000, now: now)
+            XCTAssertNil(s.next(now: now + Double(bytes) * 8 / 2_000_000 - 0.01), "not before the last one is through")
+        }
+        XCTAssertEqual(caps.first, 40)
+        XCTAssertEqual(caps.last, RemoteSharpen.sharp, "it ends sharp, however many steps that takes")
+        XCTAssertEqual(caps, caps.sorted(by: >), "only ever finer")
+        XCTAssertLessThan(caps.count, 12)
+        XCTAssertLessThanOrEqual(Double(total) * 8 / 2_000_000, now + 1, "never more than the rate")
+        XCTAssertNil(s.next(now: now + 100))
+    }
+
+    func testSharpeningTakesBiggerStepsWhenTheyAreCheapAndSmallerWhenTheyAreNot() {
+        var cheap = RemoteSharpen(), dear = RemoteSharpen()
+        var a: [Int] = [], b: [Int] = [], now = 0.0
+        for _ in 0..<30 {
+            if let c = cheap.next(now: now) { a.append(c); cheap.sent(cap: c, bytes: 5_000, bitrate: 12_000_000, now: now) }
+            if let c = dear.next(now: now) { b.append(c); dear.sent(cap: c, bytes: 80_000, bitrate: 700_000, now: now) }
+            now += 1
+        }
+        XCTAssertEqual(a, [40, 34, 26, 22])
+        XCTAssertEqual(b.prefix(4), [40, 38, 37, 36])
+        XCTAssertEqual(b.last, 22)
+    }
+
+    func testADroppedResendGoesAgainAndAMovingPictureStartsOver() {
+        var s = RemoteSharpen()
+        XCTAssertEqual(s.next(now: 0), 40)
+        XCTAssertNil(s.next(now: 0.1))
+        XCTAssertEqual(s.next(now: 0.21), 40, "nothing came back: the same step again")
+        s.sent(cap: 40, bytes: 1_000, bitrate: 2_000_000, now: 0.22)
+        XCTAssertEqual(s.next(now: 0.4), 34)
+        s.again()
+        s.sent(cap: 34, bytes: 1_000, bitrate: 2_000_000, now: 0.41)      // a resend of the picture before: says nothing about this one
+        XCTAssertEqual(s.next(now: 0.5), 40)
+        // an encoder that takes no ceiling: eight plain resends, as before
+        var plain = RemoteSharpen()
+        var n = 0
+        for i in 0..<20 where plain.next(now: Double(i), capped: false) != nil { n += 1 }
+        XCTAssertEqual(n, 8)
+        XCTAssertTrue(plain.done)
+    }
+
+    func testABlinkingCaretDoesntStartTheStepsOver() {
+        var s = RemoteSharpen()
+        let cap = s.next(now: 0)!
+        s.sent(cap: cap, bytes: 20_000, bitrate: 2_000_000, now: 0)
+        XCTAssertFalse(s.moved(bytes: 600, bitrate: 2_000_000, fps: 30), "a caret, a spinner: a few hundred bytes")
+        XCTAssertEqual(s.next(now: 1), 34, "on from where it was")
+        XCTAssertTrue(s.moved(bytes: 9_000, bitrate: 2_000_000, fps: 30), "a scroll's frame: the picture really changed")
+        XCTAssertEqual(s.next(now: 2), 40, "from the top")
+        // a picture that is sharp stays so under a caret: nothing more is sent for it
+        var done = RemoteSharpen()
+        var now = 0.0
+        while !done.done { if let c = done.next(now: now) { done.sent(cap: c, bytes: 1_000, bitrate: 2_000_000, now: now) }; now += 1 }
+        XCTAssertFalse(done.moved(bytes: 1_200, bitrate: 2_000_000, fps: 30))
+        XCTAssertNil(done.next(now: now + 10))
+        // the share is the rate's: at 12 Mbps and 60 frames, 12.5 KB; never under 3 KB
+        var a = RemoteSharpen()
+        XCTAssertFalse(a.moved(bytes: 12_000, bitrate: 12_000_000, fps: 60))
+        XCTAssertTrue(a.moved(bytes: 13_000, bitrate: 12_000_000, fps: 60))
+        XCTAssertFalse(a.moved(bytes: 2_900, bitrate: 300_000, fps: 10))
+        XCTAssertTrue(a.moved(bytes: 3_000, bitrate: 300_000, fps: 10))
+    }
+
+    // MARK: a rate that fell finds its way back while the screen is still
+
+    func testAStillPicturesResendsFindTheRoomAboveARateThatFell() {
+        var r = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        XCTAssertEqual(r.bitrate, 4_000_000)
+        XCTAssertEqual(r.probe, 6_000_000, "away it starts at half: the first still picture asks for more")
+        // the resends went at 5.8 Mbps, all of it arrived, and nothing queued: the network carries that
+        XCTAssertTrue(r.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 2_900_000, delivered: 2_800_000, probed: 5_800_000))
+        XCTAssertEqual(r.bitrate, 5_220_000, "nine tenths of how fast they went")
+        // resends that went no faster than the rate say nothing new
+        var slow = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        XCTAssertFalse(slow.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 2_000_000, delivered: 2_000_000, probed: 4_200_000))
+        // nor does a report without them: three calm reports and a used rate, as before
+        XCTAssertFalse(slow.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 3_900_000, delivered: 3_900_000))
+        // and what didn't all arrive proves nothing
+        var short = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        XCTAssertFalse(short.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 2_900_000, delivered: 2_000_000, probed: 5_800_000))
+        // never past the phone's ceiling
+        var near = RemoteRate(bitrate: 5_000_000, fps: 30, away: true)
+        _ = near.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 3_000_000, delivered: 3_000_000, probed: 3_750_000)
+        _ = near.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 3_000_000, delivered: 3_000_000, probed: 5_000_000)
+        _ = near.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 3_000_000, delivered: 3_000_000, probed: 9_000_000)
+        XCTAssertEqual(near.bitrate, 5_000_000)
+        XCTAssertEqual(near.probe, 5_000_000, "at the ceiling there is nothing to ask")
+    }
+
+    func testAQuestionTheNetworkAnswersNoToCostsNothingAndIsntAskedAgainSoon() {
+        var r = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        _ = r.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0)     // the best round trip known
+        // the resends went at 6 Mbps and queued: the network has no more than it had
+        XCTAssertFalse(r.update(frames: 6, lost: 0, busy: 0, rtt: 0.4, sent: 3_000_000, delivered: 2_100_000, probed: 5_800_000), "no cut for asking")
+        XCTAssertEqual(r.bitrate, 4_000_000)
+        XCTAssertEqual(r.probe, 4_000_000, "and the next still picture goes at the rate")
+        // trouble without a question is still trouble
+        var plain = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        _ = plain.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0)
+        XCTAssertTrue(plain.update(frames: 6, lost: 0, busy: 0, rtt: 0.4, sent: 4_000_000, delivered: 4_000_000))
+        XCTAssertLessThan(plain.bitrate, 4_000_000)
+        // after a while it may ask again
+        for _ in 0..<31 { _ = r.update(frames: 0, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0) }
+        XCTAssertEqual(r.probe, 6_000_000)
+    }
+
+    func testResendsSayHowFastTheyReallyWent() {
+        var p = RemoteProbe()
+        XCTAssertNil(p.take(), "nothing went")
+        p.sent(bytes: 50_000, wait: 0.1)
+        XCTAssertNil(p.take(), "a tenth of a second says nothing")
+        // four resends of 75 KB at 6 Mbps: 0.1 s each
+        for _ in 0..<4 { p.sent(bytes: 75_000, wait: 0.1) }
+        XCTAssertEqual(p.take(), 6_000_000)
+        XCTAssertNil(p.take(), "taken")
+        // small ones wait their tenth of a second each: slower than the pace, and it says so
+        for _ in 0..<4 { p.sent(bytes: 20_000, wait: 0.1) }
+        XCTAssertEqual(p.take(), 1_600_000)
+        // the ladder hands it what it needs
+        var s = RemoteSharpen()
+        let cap = s.next(now: 0)!
+        XCTAssertEqual(s.sent(cap: cap, bytes: 150_000, bitrate: 4_000_000, pace: 6_000_000, now: 0), 0.2, accuracy: 0.0001)
+        XCTAssertEqual(s.sent(cap: 51, bytes: 150_000, bitrate: 4_000_000, pace: 6_000_000, now: 0), 0, "not this picture's")
+    }
+
+    func testOverAnHourOfReadingTheRateSettlesJustUnderWhatTheNetworkCarries() {
+        // a network that carries 3 Mbps, a phone that may have 8: a dip to the floor, then only still pictures, one every 20 s, each
+        // sharpened by two seconds of resends that really go at nine tenths of their pace. Before, the rate stayed where it fell
+        // until something scrolled.
+        let carries = 3_000_000
+        var r = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
+        _ = r.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0)
+        for _ in 0..<12 { _ = r.update(frames: 6, lost: 0, busy: 5, rtt: 0.05, sent: r.bitrate, delivered: 400_000) }
+        let fell = r.bitrate
+        XCTAssertLessThan(fell, 600_000)
+        var lowest = fell, stills = 0, back = 0
+        for _ in 0..<180 {
+            stills += 1
+            for _ in 0..<2 {       // the resends, a report a second
+                let pace = r.probe, went = pace * 9 / 10
+                let arrives = min(went, carries)
+                _ = r.update(frames: 5, lost: 0, busy: 0, rtt: went > carries ? 0.5 : 0.05, sent: went, delivered: arrives, probed: pace > r.bitrate ? went : nil)
+                lowest = min(lowest, r.bitrate)
+            }
+            for _ in 0..<4 { _ = r.update(frames: 0, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0) }      // still: a report every 5 s
+            if back == 0, r.bitrate > carries * 7 / 10 { back = stills }
+        }
+        XCTAssertEqual(lowest, fell, "asking never costs")
+        XCTAssertGreaterThan(r.bitrate, carries * 7 / 10)
+        // (the old rule may still step a quarter past it on a rate that's in use; real motion at that rate brings it down, as ever)
+        XCTAssertLessThanOrEqual(r.bitrate, carries * 11 / 10)
+        XCTAssertLessThan(back, 30, "and it is back within some minutes of reading, not never")
+    }
 }

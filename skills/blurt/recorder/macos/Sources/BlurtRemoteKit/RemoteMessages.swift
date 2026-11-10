@@ -48,8 +48,9 @@ public enum ToMac: Codable, Sendable {
     case screen(RemoteScreenRequest?)
     /// the part of the screen to send. It changes what's sent, not anything on the Mac.
     case screenCrop(RemoteCrop)
-    /// the pointer to this place on the screen being shown, 0…1: the view moved away from it
-    case pointerTo(x: Float, y: Float)
+    /// the pointer to this place on the screen being shown, 0…1: the view moved away from it. `seq`: its number among this phone's
+    /// pointer instructions (RemotePointerPacket.move), echoed in the cursor's place once made. 1.0.17+
+    case pointerTo(x: Float, y: Float, seq: UInt32? = nil)
     /// show this display from now on, and put the pointer in its middle (nil: follow the pointer, the default). 1.0.15+
     case showDisplay(String?)
     /// the addresses this phone can be tried at, for a direct path
@@ -170,24 +171,28 @@ public enum RemoteFrameKind: UInt8, Sendable {
     case pointer = 2    // RemotePointerPacket
     case video = 3      // RemoteVideoPacket, datagrams only
     case probe = 4      // 8 bytes the other side sends straight back, datagrams only
-    case cursor = 5     // x, y as Float32 little-endian, 0…1 of the source; outside it, the pointer is elsewhere
+    case cursor = 5     // RemoteCursor: x, y as Float32 little-endian, 0…1 of the source; outside it, the pointer is elsewhere
     case videoFeedback = 6  // RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+
 }
 
 /// The pointer and scroll, one packet per display frame at most.
 public enum RemotePointerPacket: Equatable, Sendable {
-    /// points on the Mac, after the phone's acceleration
-    case move(dx: Float, dy: Float)
+    /// points on the Mac, after the phone's acceleration. `seq`: this phone's count of pointer instructions so far (moves and
+    /// `ToMac.pointerTo` share it, from 1, wrapping), four more bytes after the two values; hosts before 1.0.17 read past them. A host that
+    /// has seen one says how far it has got with every cursor place (RemoteCursor), so the phone knows which of its moves that place includes.
+    case move(dx: Float, dy: Float, seq: UInt32? = nil)
     case scroll(dx: Float, dy: Float, phase: RemoteScrollPhase)
     /// the fingers left with this speed (points/s): the Mac coasts on from there
     case scrollFling(vx: Float, vy: Float)
     case scrollStop
 
     public func encoded() -> Data {
-        var d = Data(capacity: 10)
+        var d = Data(capacity: 13)
         func f(_ v: Float) { withUnsafeBytes(of: v.bitPattern.littleEndian) { d.append(contentsOf: $0) } }
         switch self {
-        case let .move(x, y): d.append(0); f(x); f(y)
+        case let .move(x, y, seq):
+            d.append(0); f(x); f(y)
+            if let seq { withUnsafeBytes(of: seq.littleEndian) { d.append(contentsOf: $0) } }
         case let .scroll(x, y, p): d.append(1); d.append(p.rawValue); f(x); f(y)
         case let .scrollFling(x, y): d.append(2); f(x); f(y)
         case .scrollStop: d.append(3)
@@ -207,7 +212,8 @@ public enum RemotePointerPacket: Equatable, Sendable {
         switch t {
         case 0:
             guard let x = f(1), let y = f(5) else { return nil }
-            self = .move(dx: x, dy: y)
+            let seq = b.count >= 13 ? UInt32(b[9]) | UInt32(b[10]) << 8 | UInt32(b[11]) << 16 | UInt32(b[12]) << 24 : nil
+            self = .move(dx: x, dy: y, seq: seq)
         case 1:
             guard b.count >= 2, let p = RemoteScrollPhase(rawValue: b[1]), let x = f(2), let y = f(6) else { return nil }
             self = .scroll(dx: x, dy: y, phase: p)
@@ -221,3 +227,45 @@ public enum RemotePointerPacket: Equatable, Sendable {
 }
 
 public enum RemoteScrollPhase: UInt8, Sendable { case began = 1, changed = 2, ended = 3 }
+
+/// Where the host's pointer is (frame kind 5): x, y as f32 LE, 0…1 of the display shown. To a phone that numbers its pointer instructions,
+/// four more bytes: the newest of them the host has made (u32 LE). A place whose number is behind the phone's own count doesn't include
+/// its last moves yet, so the phone keeps showing its own guess instead of jumping back to it. Phones before 1.0.17 take 8 bytes only,
+/// and are never sent 12: they send no numbers.
+public struct RemoteCursor: Equatable, Sendable {
+    public var x: Float
+    public var y: Float
+    public var seq: UInt32?
+    public init(x: Float, y: Float, seq: UInt32? = nil) { self.x = x; self.y = y; self.seq = seq }
+
+    public func encoded() -> Data {
+        var d = Data(capacity: 12)
+        for v in [x, y] { withUnsafeBytes(of: v.bitPattern.littleEndian) { d.append(contentsOf: $0) } }
+        if let seq { withUnsafeBytes(of: seq.littleEndian) { d.append(contentsOf: $0) } }
+        return d
+    }
+
+    public init?(_ d: Data) {
+        let b = [UInt8](d)
+        guard b.count == 8 || b.count == 12 else { return nil }
+        func u(_ at: Int) -> UInt32 { UInt32(b[at]) | UInt32(b[at + 1]) << 8 | UInt32(b[at + 2]) << 16 | UInt32(b[at + 3]) << 24 }
+        x = Float(bitPattern: u(0)); y = Float(bitPattern: u(4))
+        guard x.isFinite, y.isFinite else { return nil }
+        seq = b.count == 12 ? u(8) : nil
+    }
+
+    /// `a` is `b` or later, counting round: the host has made everything up to `b`.
+    public static func covers(_ a: UInt32, _ b: UInt32) -> Bool { Int32(bitPattern: a &- b) >= 0 }
+
+    /// How long the phone still keeps its own guess of the pointer before the host's last word replaces it; 0 or less: now.
+    /// `host`: the number that word came with. `sent`: the phone's own count. `quiet`: seconds since the phone last moved the pointer.
+    /// A word that includes everything sent counts at once. One that doesn't is the pointer before the last moves: taking it would jump
+    /// the pointer back and then forward again, so it waits for the one that does, however late the network makes it. Only a move lost on
+    /// the way never gets its number: after `max(0.5, 4 × rtt)` the host's word counts anyway (`lossless`, the relay's stream, where
+    /// nothing is lost but much can queue: 3 s). A host that sends no numbers (before 1.0.17): `max(0.12, 1.5 × rtt)`, as it was.
+    public static func wait(host: UInt32?, sent: UInt32, quiet: Double, rtt: Double, lossless: Bool) -> Double {
+        guard let host else { return max(0.12, rtt * 1.5) - quiet }
+        if covers(host, sent) { return 0 }
+        return (lossless ? 3 : max(0.5, rtt * 4)) - quiet
+    }
+}

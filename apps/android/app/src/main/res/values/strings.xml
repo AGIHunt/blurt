@@ -128,6 +128,8 @@
     <string name="g_zoom">Zoom</string>
     <string name="g_pinch_screen">Pinch, with the screen showing</string>
     <string name="g_zoom_picture">Zoom the picture</string>
+    <string name="g_one_zoomed">One finger, zoomed in, in Touch Mode</string>
+    <string name="g_move_picture">Move the picture</string>
     <string name="g_pointer_zoomed">Pointer, zoomed in</string>
     <string name="g_follows">The picture follows it</string>
     <string name="g_cycle">%1$s: hold and slide</string>

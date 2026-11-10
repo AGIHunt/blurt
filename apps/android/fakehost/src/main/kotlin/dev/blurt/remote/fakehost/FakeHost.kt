@@ -171,6 +171,8 @@ private class Session(val socket: Socket) {
     // the pointer on a 1512 × 944 screen
     var px = 756.0
     var py = 472.0
+    /** the newest of the phone's pointer instructions made (u32); null until it sends a number, and the cursor's place is 8 bytes */
+    var phoneSeq: Long? = null
     @Volatile var crop = RemoteCrop.WHOLE
     @Volatile var listening = false
     @Volatile var display = "1"
@@ -252,7 +254,8 @@ private class Session(val socket: Socket) {
             is RemotePointerPacket.Move -> {
                 px = (px + p.dx).coerceIn(0.0, 1512.0)
                 py = (py + p.dy).coerceIn(0.0, 944.0)
-                log("← pointer move ${"%.1f".format(p.dx)} ${"%.1f".format(p.dy)} → ${px.toInt()},${py.toInt()}")
+                log("← pointer move ${"%.1f".format(p.dx)} ${"%.1f".format(p.dy)} → ${px.toInt()},${py.toInt()}${p.seq?.let { " #$it" } ?: ""}")
+                made(p.seq)
                 cursor()
             }
             is RemotePointerPacket.Scroll -> log("← scroll ${"%.1f".format(p.dx)} ${"%.1f".format(p.dy)} ${p.phase}")
@@ -261,7 +264,14 @@ private class Session(val socket: Socket) {
         }
     }
 
-    fun cursor() = datagram(RemoteFrameKind.CURSOR, RemoteCursor.encode((px / 1512).toFloat(), (py / 944).toFloat()))
+    /** The phone's pointer instruction with this number is made. Later ones count, and one far behind is a phone that started over. */
+    fun made(seq: Long?) {
+        seq ?: return
+        val l = phoneSeq
+        if (l == null || !RemoteCursor.covers(l, seq) || ((l - seq) and 0xFFFF_FFFFL) >= (1L shl 16)) phoneSeq = seq
+    }
+
+    fun cursor() = datagram(RemoteFrameKind.CURSOR, RemoteCursor((px / 1512).toFloat(), (py / 944).toFloat(), phoneSeq).encoded())
 
     fun control(m: ToMac) {
         when (m) {
@@ -314,7 +324,7 @@ private class Session(val socket: Socket) {
                 display = m.display ?: "1"
                 if (streaming != null) send(ToPhone.ScreenView(1512.0, 944.0, lastCodec, if (twoDisplays) display else null, features()))
             }
-            is ToMac.PointerTo -> { px = m.x * 1512.0; py = m.y * 944.0; cursor() }
+            is ToMac.PointerTo -> { px = m.x * 1512.0; py = m.y * 944.0; made(m.seq); cursor() }
             is ToMac.DictationKey -> {
                 send(ToPhone.Dictation(if (m.down) RemoteDictationPhase.LISTENING else RemoteDictationPhase.IDLE))
                 listening = m.down

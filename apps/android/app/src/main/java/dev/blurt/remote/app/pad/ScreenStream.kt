@@ -25,6 +25,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
 import android.util.Log
+import android.view.Choreographer
 import android.view.Display
 import android.view.Surface
 import dev.blurt.remote.app.BuildConfig
@@ -49,6 +50,8 @@ import dev.blurt.remote.core.ToMac
 import dev.blurt.remote.core.ViewPort
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.nio.ByteBuffer
+import kotlin.math.hypot
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 class ScreenStream(private val c: Context) {
@@ -69,6 +72,8 @@ class ScreenStream(private val c: Context) {
     private var alignY = 0.5
     private var srcW = 0.0
     private var srcH = 0.0
+    /** which of the computer's displays the picture is of, once it has said */
+    private var display: String? = null
     /** the stream's codec: on `dec` */
     private var codec: String = RemoteVideoCodec.HEVC
     /** what's in view: fingers move it here, at once */
@@ -88,6 +93,8 @@ class ScreenStream(private val c: Context) {
     private var px = -1.0
     private var py = -1.0
     private var macPointer: Pair<Double, Double>? = null
+    /** the newest of this phone's pointer instructions that place includes; null from a computer that doesn't say */
+    private var macSeq: Long? = null
     private var settling = false
     private var dragWaiting: Pair<Double, Double>? = null
     private var lastDragSent = 0.0
@@ -149,7 +156,7 @@ class ScreenStream(private val c: Context) {
         val l = Remote.link
         val dm = c.resources.displayMetrics
         return ScreenPlan(Remote.prefs.quality, l.route.value, Remote.net.cellular, Remote.net.lowData,
-            PadSize(maxOf(dm.widthPixels, dm.heightPixels).toDouble(), minOf(dm.widthPixels, dm.heightPixels).toDouble()), panel)
+            PadSize(maxOf(dm.widthPixels, dm.heightPixels).toDouble(), minOf(dm.widthPixels, dm.heightPixels).toDouble()), panel, dm.density.toDouble())
     }
 
     /** The display's top refresh rate: 120 on a 120 Hz panel. Asked for at home (ScreenPlan) and while frames come (StageView.wantRate). */
@@ -220,12 +227,17 @@ class ScreenStream(private val c: Context) {
         stage?.clear()
         resetView()
         cursorView?.hide()
+        macPointer = null
+        macSeq = null
+        stopMoving()
+        display = null
     }
 
     // MARK: the view and the pointer
 
-    /** What the computer is showing, in which codec, and which repairs it does. Another codec than the frames so far: start from a keyframe. */
-    fun source(w: Double, h: Double, codec: String?, features: List<String>? = null) {
+    /** What the computer is showing, in which codec, which of its displays, and which repairs it does. Another codec than the frames so
+     *  far: start from a keyframe. */
+    fun source(w: Double, h: Double, codec: String?, display: String? = null, features: List<String>? = null) {
         dec.post {
             val c = codec ?: RemoteVideoCodec.HEVC
             if (c != this.codec) {
@@ -237,6 +249,12 @@ class ScreenStream(private val c: Context) {
             receiver.ltr = RemoteVideoFeature.LTR in repairs
         }
         main.post {
+            // another display: where the pointer was on the one left says nothing about this one, and neither does a view still moving
+            if (display != null && this.display != null && display != this.display) {
+                macPointer = null
+                stopMoving()
+            }
+            this.display = display
             srcW = w
             srcH = h
             if (h > 0) Remote.link.setAspect(w / h)     // the display in view, which may not be the main one
@@ -259,6 +277,102 @@ class ScreenStream(private val c: Context) {
         askForView(now = true)
     }
 
+    // MARK: the view moving by itself: coasting on after a flick, and along with a drag held at its edge
+
+    private var moving = false
+    private var moverAt = 0.0
+    /** dp a second, on the stage */
+    private var coastX = 0.0
+    private var coastY = 0.0
+    private val coasting: Boolean get() = coastX != 0.0 || coastY != 0.0
+    /** the finger of a drag, on the stage */
+    private var dragAt: PadPoint? = null
+
+    /** The finger that was moving the zoomed picture left it at this speed: it coasts on and slows, as a photo does. */
+    fun coastView(vx: Double, vy: Double) {
+        if (!on || port.isWhole || bw <= 0) return
+        coastX = vx
+        coastY = vy
+        startMover()
+    }
+
+    /** A touch landed. True if the picture was coasting: the touch stopped it. */
+    fun stopCoast(): Boolean {
+        if (!coasting) return false
+        coastX = 0.0
+        coastY = 0.0
+        askForView(now = true)
+        return true
+    }
+
+    private fun stopMoving() {
+        coastX = 0.0
+        coastY = 0.0
+        dragAt = null
+        if (!moving) return
+        moving = false
+        Choreographer.getInstance().removeFrameCallback(mover)
+    }
+
+    private fun startMover() {
+        if (moving) return
+        moving = true
+        moverAt = Net.now()
+        Choreographer.getInstance().postFrameCallback(mover)
+    }
+
+    /** Every frame of the panel while the view moves by itself (the main thread, as everything about the view is). */
+    private val mover = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!moving) return
+            moverTick()
+            if (moving) Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+
+    private fun moverTick() {
+        val now = Net.now()
+        val dt = minOf(0.05, now - moverAt)
+        moverAt = now
+        if (!on || bw <= 0 || port.isWhole) return stopMoving()
+        val middle = PadPoint(0.5, 0.5)
+        if (coasting) {
+            val before = port.rect
+            port.change(1.0, PadPoint(coastX * dt / bw, coastY * dt / bh), middle)
+            // the rate a scroll view slows at
+            val k = 0.998.pow(dt * 1000)
+            coastX *= k
+            coastY *= k
+            val stopped = port.rect == before || hypot(coastX, coastY) < 20      // against the screen's edge, or slow enough
+            if (stopped) {
+                coastX = 0.0
+                coastY = 0.0
+            }
+            place()
+            askForView(now = stopped)
+        }
+        dragAt?.let { f ->
+            // 0 inside, to ±1 at the very edge
+            fun push(v: Double, size: Double) = when {
+                v < EDGE_BAND -> -(EDGE_BAND - maxOf(0.0, v)) / EDGE_BAND
+                v > size - EDGE_BAND -> (minOf(size, v) - (size - EDGE_BAND)) / EDGE_BAND
+                else -> 0.0
+            }
+            val pushX = push(f.x, bw)
+            val pushY = push(f.y, bh)
+            if (pushX != 0.0 || pushY != 0.0) {
+                val before = port.rect
+                port.change(1.0, PadPoint(-pushX * EDGE_SPEED * dt / bw, -pushY * EDGE_SPEED * dt / bh), middle)
+                if (port.rect != before) {
+                    place()
+                    askForView()
+                    dragPointer(f)      // what's under the finger now
+                }
+            }
+        }
+        if (!coasting && dragAt == null) stopMoving()
+    }
+
     /** The view back to the whole screen and nothing left of the last one. */
     fun resetView() {
         port = ViewPort()
@@ -268,15 +382,45 @@ class ScreenStream(private val c: Context) {
         place()
     }
 
-    /** At most a few times a second while it moves: each change costs the encoder a little, and there's a picture to look at meanwhile. */
+    /** where the view was at the last ask, and when: how fast it's moving */
+    private var askedMidX = 0.0
+    private var askedMidY = 0.0
+    private var askedAt = 0.0
+    private var aheadQueued = false
+
+    /**
+     * Up to 30 times a second while the view moves (10 over the relay): the computer cuts the part out of the frame it has, so an ask
+     * costs it a frame of the stream's own rate and no more, and one finger now moves the picture, so the part coming into view should
+     * be sharp as it comes. While it moves, the ask is for where the view will be when that frame is here (`ViewPort.crop(dx, dy)`):
+     * a twentieth of a second and the round trip on. `now`: the fingers lifted or the coasting stopped; exactly what's in view.
+     */
     private fun askForView(now: Boolean = false) {
-        val crop = port.crop
-        if (!on || crop == sentCrop) return
-        val gap = if (Remote.link.route.value == LinkRoute.RELAY) 0.33 else 0.15
-        val wait = gap - (Net.now() - lastCropSent)
+        if (!on) return
+        val t = Net.now()
+        val gap = if (Remote.link.route.value == LinkRoute.RELAY) 0.1 else 1.0 / 30
+        val wait = gap - (t - lastCropSent)
         if (now || wait <= 0) {
+            val r = port.rect
+            val dt = t - askedAt
+            var ax = 0.0
+            var ay = 0.0
+            if (!now && dt > 0.005 && dt < 0.25) {
+                val lead = minOf(0.25, 0.05 + (Remote.link.rtt ?: 0.0))
+                ax = (r.midX - askedMidX) / dt * lead
+                ay = (r.midY - askedMidY) / dt * lead
+            }
+            askedMidX = r.midX
+            askedMidY = r.midY
+            askedAt = t
+            val crop = port.crop(ax, ay)
+            // the view may stop under a finger that stays down: then nothing asks again, and the part asked for is ahead of it
+            if ((ax != 0.0 || ay != 0.0) && !aheadQueued) {
+                aheadQueued = true
+                main.postDelayed({ aheadQueued = false; askForView() }, 300)
+            }
+            if (crop == sentCrop) return
             sentCrop = crop
-            lastCropSent = Net.now()
+            lastCropSent = t
             Remote.link.send(ToMac.ScreenCrop(crop))
         } else if (!cropQueued) {
             cropQueued = true
@@ -302,17 +446,20 @@ class ScreenStream(private val c: Context) {
     }
 
     fun cursor(d: ByteArray) {
-        val p = RemoteCursor.decode(d) ?: return
+        val c = RemoteCursor.decode(d) ?: return
         main.post {
-            macPointer = p.first.toDouble() to p.second.toDouble()
+            macPointer = c.x.toDouble() to c.y.toDouble()
+            macSeq = c.seq
             settle()
         }
     }
 
-    /** The phone's own guess leads while the finger moves, and the computer has the last word when it stops. A word that came while the
-     *  finger was still moving is kept, not dropped, or the two drift apart stroke by stroke. */
+    /** The phone's own guess leads while the finger moves, and the computer has the last word once that word includes every move sent
+     *  (RemoteCursor.wait): a word from before the last moves would jump the pointer back, then forward again when the next one came.
+     *  A word that came while the finger was still moving is kept, not dropped, or the two drift apart stroke by stroke. */
     private fun settle() {
-        val wait = maxOf(0.12, (Remote.link.rtt ?: 0.0) * 1.5) - (Net.now() - lastPredicted)
+        val l = Remote.link
+        val wait = RemoteCursor.wait(macSeq, l.pointerSeq, Net.now() - lastPredicted, l.rtt ?: 0.0, l.route.value == LinkRoute.RELAY)
         if (wait <= 0) {
             val m = macPointer ?: return
             px = m.first
@@ -344,6 +491,11 @@ class ScreenStream(private val c: Context) {
     /** With the button down it follows the finger, and stops at the picture's edge. Over the relay no more often than the pointer goes. */
     fun dragPointer(p: PadPoint) {
         if (!on || bw <= 0) return
+        // zoomed in, a drag held at the stage's edge takes the view along: what's dragged can go further than what's in view
+        if (!port.isWhole) {
+            dragAt = p
+            startMover()
+        }
         val v = port.visible
         val r = port.rect
         val x = (r.minX + p.x / bw * r.width).coerceIn(v.minX, v.maxX)
@@ -352,24 +504,31 @@ class ScreenStream(private val c: Context) {
         py = y
         lastPredicted = Net.now()
         placeCursor()
-        if (Remote.link.route.value != LinkRoute.RELAY) return Remote.link.send(ToMac.PointerTo(x.toFloat(), y.toFloat()))
+        val seq = Remote.link.nextPointerSeq()
+        if (Remote.link.route.value != LinkRoute.RELAY) return Remote.link.send(ToMac.PointerTo(x.toFloat(), y.toFloat(), seq))
         dragWaiting = x to y
-        if (Net.now() - lastDragSent >= 1.0 / 30) finishDrag()
+        if (Net.now() - lastDragSent >= 1.0 / 30) sendDrag()
     }
 
-    /** What's left of a drag goes before the button comes up. */
+    /** What's left of a drag goes before the button comes up, and the view stops going along with it. */
     fun finishDrag() {
+        dragAt = null
+        sendDrag()
+    }
+
+    /** Where the drag has got to, to the computer. The finger may still be down: the relay's pacing calls this too. */
+    private fun sendDrag() {
         val at = dragWaiting ?: return
         dragWaiting = null
         lastDragSent = Net.now()
-        Remote.link.send(ToMac.PointerTo(at.first.toFloat(), at.second.toFloat()))
+        Remote.link.send(ToMac.PointerTo(at.first.toFloat(), at.second.toFloat(), Remote.link.pointerSeq))
     }
 
     private fun move(x: Double, y: Double) {
         px = x
         py = y
         lastPredicted = Net.now()
-        Remote.link.send(ToMac.PointerTo(x.toFloat(), y.toFloat()))     // on this thread: a click sent next must land after it
+        Remote.link.send(ToMac.PointerTo(x.toFloat(), y.toFloat(), Remote.link.nextPointerSeq()))     // on this thread: a click sent next must land after it
         placeCursor()
     }
 
@@ -719,6 +878,9 @@ class ScreenStream(private val c: Context) {
 
     companion object {
         private const val TARGET = "display"
+        /** how near the stage's edge a dragging finger takes the view along (dp), and how fast at the very edge (dp a second) */
+        private const val EDGE_BAND = 36.0
+        private const val EDGE_SPEED = 700.0
         private val START = byteArrayOf(0, 0, 0, 1)
 
         /** NAL units with 4-byte big-endian lengths → the same units after start codes. */

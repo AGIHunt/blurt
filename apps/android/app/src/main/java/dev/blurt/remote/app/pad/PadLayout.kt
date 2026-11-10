@@ -116,7 +116,7 @@ class PadLayout(
                 // a panel wider than a phone keeps a phone's keys, at its thumb edge
                 val colW = min(panelW - SIDE * 2, PANEL_W - SIDE * 2)
                 val colX = if (lefty) panelX + SIDE else panelX + panelW - SIDE - colW
-                val block = column(colX, colW, h - bottom, maxHeight = h - bottom - top - MIN_PAD)
+                val block = column(colX, colW, h - bottom, maxHeight = h - bottom - top - MIN_PAD, big = true)
                 pad2 = Frame(colX, top, colX + colW, block.top - 2)
                 // the panel's column keeps its own margin; across a fold each half keeps both
                 pad = when {
@@ -134,12 +134,12 @@ class PadLayout(
                     stageBottom = fold.bounds.top
                     lowerTop = fold.bounds.bottom + 8
                 } else {
-                    lowerTop = h - bottom - BLOCK_H - 8
+                    lowerTop = h - bottom - BIG_BLOCK_H - 8
                     stageBottom = lowerTop - 8
                 }
                 val colW = min(w - SIDE * 2, PANEL_W - SIDE * 2)
                 val colX = if (lefty) SIDE else w - SIDE - colW
-                val block = column(colX, colW, h - bottom, maxHeight = h - bottom - lowerTop)
+                val block = column(colX, colW, h - bottom, maxHeight = h - bottom - lowerTop, big = true)
                 pad = Frame(SIDE, top, w - SIDE, stageBottom - (if (fold != null) 8f else 0f))
                 val room = w - SIDE * 3 - colW
                 if (room >= 200) pad2 = if (lefty) Frame(colX + colW + SIDE, block.top, w - SIDE, block.bottom) else Frame(SIDE, block.top, SIDE + room, block.bottom)
@@ -151,15 +151,17 @@ class PadLayout(
 
     /**
      * The phone's portrait block: the top row, four rows six across, the dock with the talk key. Anchored at its bottom (`bottomY`), in
-     * a column at `x` of `width`. Keys are 48 dp tall unless the room is less than that.
+     * a column at `x` of `width`. Keys are 48 dp tall unless the room is less than that. `big`: a big screen's panel, whose top row is
+     * taller where that costs the keys nothing, so the arrow key is 88 dp square and each edge 44 dp deep.
      */
-    private fun column(x: Float, width: Float, bottomY: Float, maxHeight: Float): Frame {
+    private fun column(x: Float, width: Float, bottomY: Float, maxHeight: Float, big: Boolean = false): Frame {
         val gap = GAP
         val cols = Deck.COLUMNS
         val w = (width - gap * (cols - 1)) / cols
         val rows = VISIBLE_ROWS.toFloat()
-        val t = STRIP_H
         val drop = 6f
+        val tall = big && maxHeight >= BIG_BLOCK_H
+        val t = if (tall) BIG_STRIP_H else STRIP_H
         // the keys shrink before the block outgrows its room; never below what a thumb can hit
         val h = min(KEY_H, max(34f, floor((maxHeight - t - drop - gap * rows) / (rows + 1))))
         val listH = rows * h + (rows - 1) * gap
@@ -168,21 +170,23 @@ class PadLayout(
         drawer = block
         keyW = w
         keyH = h
-        // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to the
-        // left has room
-        val iconW = if (width < 390) 32f else 36f
-        val arrowW = 82f
-        settingsButton = Frame(block.left, block.top, block.left + iconW, block.top + t - 2)
-        arrowKey = if (lefty) Frame(settingsButton.right + 4, block.top, settingsButton.right + 4 + arrowW, block.top + t - 2)
-            else Frame(block.right - arrowW, block.top, block.right, block.top + t - 2)
         appsKey = Frame()
-        val rowEnd = if (lefty) block.right else arrowKey.left - 4
-        keyboardButton = Frame(rowEnd - iconW, block.top, rowEnd, block.top + t - 2)
-        screenButton = Frame(rowEnd - iconW * 2, block.top, rowEnd - iconW, block.top + t - 2)
-        findButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
-        displayButton = if (displays) Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2) else Frame()
-        val stripX = if (lefty) arrowKey.right else settingsButton.right
-        strip = Frame(stripX, block.top, if (displays) displayButton.left else findButton.left, block.top + t - 2)
+        if (tall) topRowTall(block, t, width) else {
+            // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to the
+            // left has room
+            val iconW = if (width < 390) 32f else 36f
+            val arrowW = 82f
+            settingsButton = Frame(block.left, block.top, block.left + iconW, block.top + t - 2)
+            arrowKey = if (lefty) Frame(settingsButton.right + 4, block.top, settingsButton.right + 4 + arrowW, block.top + t - 2)
+                else Frame(block.right - arrowW, block.top, block.right, block.top + t - 2)
+            val rowEnd = if (lefty) block.right else arrowKey.left - 4
+            keyboardButton = Frame(rowEnd - iconW, block.top, rowEnd, block.top + t - 2)
+            screenButton = Frame(rowEnd - iconW * 2, block.top, rowEnd - iconW, block.top + t - 2)
+            findButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
+            displayButton = if (displays) Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2) else Frame()
+            val stripX = if (lefty) arrowKey.right else settingsButton.right
+            strip = Frame(stripX, block.top, if (displays) displayButton.left else findButton.left, block.top + t - 2)
+        }
         list = Frame(block.left, block.top + t, block.right, block.top + t + listH)
         // the dock: ten even parts, the last the talk key
         val dockY = block.bottom - h
@@ -195,6 +199,40 @@ class PadLayout(
         rail = null
         drawerButton = Frame()
         return block
+    }
+
+    /**
+     * A big screen's top row, 88 dp tall: the arrow key square by the thumb, and beside it the controls above the tabs, each half the row.
+     * Left-handed, settings comes first at the edge, so a slide to the left has room, as on a phone.
+     */
+    private fun topRowTall(block: Frame, t: Float, width: Float) {
+        val top = block.top
+        val rowH = t - 2
+        val side = rowH
+        val iconW = if (width < 390) 32f else 36f
+        val sub = (rowH - 4) / 2
+        val restLeft: Float
+        val restRight: Float
+        if (lefty) {
+            settingsButton = Frame(block.left, top, block.left + iconW, top + rowH)
+            arrowKey = Frame(settingsButton.right + 4, top, settingsButton.right + 4 + side, top + rowH)
+            restLeft = arrowKey.right + 4
+            restRight = block.right
+        } else {
+            arrowKey = Frame(block.right - side, top, block.right, top + rowH)
+            restLeft = block.left
+            restRight = arrowKey.left - 4
+        }
+        // the controls along the upper half, from the far end in; the tabs under them, as wide
+        val controls = mutableListOf<(Frame) -> Unit>()
+        if (!lefty) controls += { f: Frame -> settingsButton = f }
+        controls += { f: Frame -> findButton = f }
+        controls += { f: Frame -> screenButton = f }
+        controls += { f: Frame -> keyboardButton = f }
+        if (displays) controls += { f: Frame -> displayButton = f } else displayButton = Frame()
+        val cw = (restRight - restLeft) / controls.size
+        controls.forEachIndexed { i, set -> set(Frame(restLeft + i * cw, top, restLeft + (i + 1) * cw, top + sub)) }
+        strip = Frame(restLeft, top + rowH - sub, restRight, top + rowH)
     }
 
     private fun landscape(w: Float, h: Float, safeLeft: Float, safeRight: Float, drawerOpen: Boolean) {
@@ -301,10 +339,14 @@ class PadLayout(
         const val SIDE = 8f
         /** tall enough for the arrow key's four edges */
         const val STRIP_H = 52f
+        /** a big screen's: the arrow key 88 dp square, each edge 44 dp deep. On a phone ↑ and ↓ get 25 dp each, and in a terminal they're the
+         *  arrows used most */
+        const val BIG_STRIP_H = 90f
         const val VISIBLE_ROWS = 4
         /** a little over a phone keyboard's; the width comes from six across */
         const val KEY_H = 48f
         const val BLOCK_H = STRIP_H + VISIBLE_ROWS * KEY_H + (VISIBLE_ROWS - 1) * GAP + 6 + KEY_H
+        const val BIG_BLOCK_H = BLOCK_H - STRIP_H + BIG_STRIP_H
         /** landscape keys grow to fill the height, up to this, and no taller than this much of their width */
         const val WIDE_KEY_H = 72f
         const val WIDE_KEY_SHAPE = 1.25f

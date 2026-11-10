@@ -1161,6 +1161,16 @@
         }
       }
     },
+    "Move the picture" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动画面"
+          }
+        }
+      }
+    },
     "Moves the talk key and the arrow key to the other side in portrait. In landscape, turn the phone round." : {
       "localizations" : {
         "zh-Hans" : {
@@ -1447,6 +1457,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "单指沿边缘滑动"
+          }
+        }
+      }
+    },
+    "One finger, zoomed in, in Touch Mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "触控模式下放大后单指拖动"
           }
         }
       }

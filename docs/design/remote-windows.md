@@ -171,6 +171,61 @@ cargo run --release --example win_smoke -- --software    # Microsoft's software 
 cargo run --release --example win_smoke -- --synthetic   # no desktop (a service, SSH = session 0): text-like rows at 1920×1080
 ```
 
+### A still picture made sharp (2026-11-11, blurt-win-sharpen)
+
+What: the Mac sharpens a still picture with a ladder of quantiser ceilings, 40 down to 22 (remote-realtime.md §7, sharpen.rs). On
+Windows no encoder honours a ceiling, so a step is the same resend with **its rate raised** instead: `Screen::sharpen(max_qp)` sets
+`CODECAPI_AVEncCommonMeanBitRate` (and `BufferSize`, `MaxBitRate` with it) to the rate `set_rate` last gave × 2^(1 + (40 − max_qp) / 3)
+(×2 at 40, ×128 at 22) for that one resend, and the next frame of any other kind puts back exactly the `set_rate` rate (the server
+raises it to 1.5× while a ladder runs and back after, and `set_rate` clears a boost too). Keyframes, recovery frames, moving frames,
+plain refreshes and a resend a new picture overtook are never boosted. The encoder's own rate control still decides each frame;
+`Sharpen` sizes the steps and paces what comes out (encoder.rs `boost`, `boost_for`).
+
+`caps_quantiser()` is true only for **NVIDIA's HEVC MFT**, where it was measured to work. NVIDIA's H.264 MFT and Microsoft's
+software H.264 MFT stay false (eight plain resends): a raised rate changed nothing on them (resends ~1 KB / 19 KB at 2 Mbps). Other
+MFTs (Quick Sync, AMF): untested, false. `BLURT_REMOTE_SHARPEN=1` / `0` forces it on / off for measuring.
+
+Why not the ceiling: all three accept `SetValue(CODECAPI_AVEncVideoMaxQP)` and ignore it, the same bytes and PSNR as without it: per
+resend while streaming; 24 set before streaming under CBR, peak-constrained VBR, unconstrained VBR and low-delay VBR; min = max;
+`CODECAPI_AVEncVideoEncodeQP`; the sample attribute `MFSampleExtension_VideoEncodeQP`. An encoder saying yes proves nothing.
+
+How measured (`examples/win_sharpen.rs`, synthetic, no desktop, through the real backend: page → video processor → MFT, one run
+each): the Mac probe's picture (13 px code, English and Chinese, five colours, dark) as a tall PNG, scrolled 23 px a frame for 1.5 s
+at rate.rs's frame rate (23 fps at 700 kbps, 60 above), then still. The server's logic drives it: `Sharpen` every 1/60 s, its `sent`
+fed what came out, the encoder at 1.5× while the ladder runs. Luma PSNR of the decoded frame (ffmpeg) against the page in BT.709
+limited range, so the conversion isn't counted: **the ceiling for this page is 55.1 dB** (the still picture at 50 Mbps). The Mac's
+numbers include the conversion (ceiling 41.6), so compare gains, not values. NVIDIA HEVC, 1800×1124 (L4, GRID 596.86):
+
+| Rate | When it stops | Eight plain resends (before) | Ladder, rate raised (now) | Largest resend (0.4 s of the rate) | Ladder bytes ÷ time |
+|---|---|---|---|---|---|
+| 700 kbps | 25.5 dB | 27.5 dB, 29 KB, 1.6 s | 50.5 dB, 538 KB, 3.9 s, 13 steps, 0 dropped | 66 KB (35 KB) | 1.00 Mbps (1.4×) |
+| 2 Mbps | 30.0 dB | 31.3 dB, 29 KB, 1.6 s | 45.4 dB, 304 KB, 0.6 s, 5 steps, 0 dropped | 124 KB (100 KB) | 2.57 Mbps (1.3×) |
+| 4 Mbps | 35.9 dB | 38.2 dB, 62 KB, 1.5 s | 48.3 dB, 276 KB, 0.4 s, 4 steps, 0 dropped | 116 KB (200 KB) | 3.96 Mbps (1.0×) |
+
+"Ladder bytes ÷ time": all of the ladder's bytes over the time from the stop until the last one has gone at the pace (`Sharpen`'s
+wait), under the 1.5× the server allows while it probes. Moving frames after the ladder are ordinary (2 Mbps: 4.1 KB before, 3.4 KB
+after; 4 Mbps: 8.4 / 7.3) and no run had a keyframe after the first. At 700 kbps the largest resend is the first step (×2 at 40),
+the same whatever the mapping; it is 1.9× the 0.4 s budget.
+
+The mapping, tuned on these three rates (end of the ladder, largest resend): doubling every 6 steps (what a quantiser 6 finer costs)
+ends at 39.4 / 39.2 / 44.7 dB, 58 / 57 / 81 KB; every 3 (kept) at 50.5 / 45.3 / 48.3 dB, 66 / 118 / 116 KB; every 2 at 53.0 / 51.4 /
+48.2 dB but 132 KB resends at 2 Mbps (0.53 s of it) and 5.4 s to finish at 700 kbps. A cropped picture at 2 Mbps (at stop, after
+the eight plain resends, after the ladder, the source): `promo/cases/remote-sharpen/windows/`.
+
+- **`set_rate` while streaming** (the server calls it at 1.5× when a ladder starts and back when it ends): it sets only the mean,
+  buffer and peak rate on the running encoder: 6–19 µs in the worker on all three encoders, no keyframe, no reset, the next frames
+  ordinary P-frames.
+- **H.264 on this content doesn't hold the rate and never sharpens**, either encoder: moving frames are about 12.5 KB (NVIDIA) and
+  15 KB (software) whatever the rate, 6–7 Mbps at 60 fps against 2 or 4 asked (the quantiser presumably at 51 already; not read
+  from the stream), and once still the resends are ~1 KB and the picture stays at 23 dB (NVIDIA) for good. At 30 fps (the server's
+  ceiling away from home), 2 Mbps: 11.8 KB moving frames (NVIDIA) / 12.9 KB (software), 24.1 / 20.9 dB at the stop and after eight
+  resends: the same. Not fixed here.
+
+```
+cargo run --release --example win_sharpen -- --page page1800.png --bitrate 2000000 --codec hevc --mode ladder --probe --out run
+BLURT_REMOTE_SHARPEN=0 … --mode plain       # before: eight plain resends;  --fps 30: moving frames at 30 fps
+```
+
 ## Firewall and network
 
 The host listens on TCP (a fixed port, so the phone's saved address keeps working) and UDP (any free port), on all interfaces, only

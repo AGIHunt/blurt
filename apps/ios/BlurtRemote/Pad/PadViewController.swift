@@ -569,6 +569,21 @@ final class PadViewController: UIViewController {
         present(a, animated: true)
     }
 
+    #if DEBUG
+    /// The made-up desktop where ViewPort puts the picture: fitted near the keys when whole, and zoomed and moved as the real one is,
+    /// so pinching, moving and coasting can be tried with no computer.
+    private func placeStandIn() {
+        let v = ScreenStream.shared.port.rect, b = pad.bounds
+        guard v.width > 0, v.height > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if standIn.contents == nil { standIn.contents = Pretend.desktop(aspect: Link.shared.displayAspect).cgImage }
+        standIn.frame = CGRect(x: -v.minX / v.width * b.width, y: -v.minY / v.height * b.height, width: b.width / v.width, height: b.height / v.height)
+        standIn.isHidden = !showing
+        CATransaction.commit()
+    }
+    #endif
+
     // MARK: layout
 
     override func viewDidLayoutSubviews() {
@@ -663,15 +678,9 @@ final class PadViewController: UIViewController {
         ScreenStream.shared.layout(pad.bounds, alignY: l.stageAlignY)
         #if DEBUG
         if Pretend.screen {
-            // the whole picture, where ViewPort puts it: fitted, near the keys
-            let a = Link.shared.displayAspect, b = pad.bounds
-            let w = min(b.width, b.height * a), h = w / a
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            if standIn.contents == nil { standIn.contents = Pretend.desktop(aspect: a).cgImage }
-            standIn.frame = CGRect(x: (b.width - w) / 2, y: (b.height - h) * l.stageAlignY, width: w, height: h)
-            standIn.isHidden = !showing
-            CATransaction.commit()
+            ScreenStream.shared.standsIn = true
+            ScreenStream.shared.onPlaced = { [weak self] in self?.placeStandIn() }
+            placeStandIn()
         }
         #endif
         // the output follows the stage (not the keyboard's moment), asked again only when it changes by more than a little
