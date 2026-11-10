@@ -83,9 +83,11 @@ enum RemoteHUD {
         }
     }
 
-    /// A mint ring that closes in on the pointer.
+    /// A mint ring that closes in on the pointer. Asked again before the last one is gone, the last one goes: each ring closes itself, so
+    /// none is left on the screen whichever comes first.
     static func findCursor() {
         DispatchQueue.main.async {
+            findWindow?.orderOut(nil)
             let m = NSEvent.mouseLocation
             let size: CGFloat = 360
             let w = NSPanel(contentRect: NSRect(x: m.x - size / 2, y: m.y - size / 2, width: size, height: size),
@@ -114,7 +116,8 @@ enum RemoteHUD {
             r.add(a, forKey: "in")
             findWindow = w
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                if findWindow === w { w.orderOut(nil); findWindow = nil }
+                w.orderOut(nil)
+                if findWindow === w { findWindow = nil }
             }
         }
     }

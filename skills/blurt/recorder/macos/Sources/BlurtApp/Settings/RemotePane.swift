@@ -188,7 +188,7 @@ struct RemotePane: View {
         }
         .onAppear { m.start() }
         .onDisappear { m.stop() }
-        .alert(String(format: T("settings.remote.remove.title"), removing?.name ?? ""), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+        .alert(T("settings.remote.remove.title", removing?.name ?? ""), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button(T("settings.remote.cancel"), role: .cancel) {}
             Button(T("settings.remote.remove"), role: .destructive) { if let d = removing { RemoteServer.shared.remove(d.id) } }
         } message: { Text(T("settings.remote.remove.detail")) }
@@ -196,7 +196,7 @@ struct RemotePane: View {
 
     private func lastUsed(_ d: RemoteServer.Device) -> String {
         guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
-        return String(format: T("settings.remote.last_used"), RelativeDateTimeFormatter().localizedString(for: t, relativeTo: Date()))
+        return T("settings.remote.last_used", RelativeDateTimeFormatter().localizedString(for: t, relativeTo: Date()))
     }
 
     @ViewBuilder var phones: some View {
@@ -209,8 +209,8 @@ struct RemotePane: View {
         if let who = m.status.asking {
             let n = m.status.askingNumber
             // the four digits, large: the yes is for the phone showing the same ones. No default button: Return mustn't say yes
-            SettingRow("remote.device.\(who)", title: String(format: T("settings.remote.ask.title"), who),
-                       detail: String(format: T("settings.remote.ask.detail"), m.status.askingCheck ?? "")) {
+            SettingRow("remote.device.\(who)", title: T("settings.remote.ask.title", who),
+                       detail: T("settings.remote.ask.detail", m.status.askingCheck ?? "")) {
                 HStack {
                     Text(m.status.askingCheck ?? "").font(.system(size: 20, weight: .semibold, design: .monospaced)).padding(.trailing, 8)
                     Button(T("settings.remote.ask.no")) { RemoteServer.shared.answerPairing(false, number: n) }

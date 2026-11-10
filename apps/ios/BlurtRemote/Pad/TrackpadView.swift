@@ -15,6 +15,8 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
     var onViewEnd: (() -> Void)?
     /// the phone's sticky modifiers were used by a click: one-shot ones clear
     var onClick: (() -> Void)?
+    /// a finger came down on the pad itself (not a mouse's buttons)
+    var onTouch: (() -> Void)?
     /// false: the trackpad between the thumbs (big screens). It never puts the pointer under a touch, and a pinch zooms the stage's view
     var isStage = true
     /// for the thumb pad: the stage's middle, in the stage's coordinates, for a pinch to zoom about
@@ -195,6 +197,7 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
         if !buttons.isEmpty { buttonsBegan(Array(buttons), e) }
         let t = all.subtracting(buttons)
         guard !t.isEmpty else { return }
+        onTouch?()
         light(t.first, on: true)
         apply(engine.began(pads(t, new: true), at: CACurrentMediaTime()))
         startTicks()

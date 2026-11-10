@@ -6,7 +6,7 @@
 //    map comes up while sliding, over the keys and never over the picture, so the picture is in view the whole time.
 //  • hold: the map stays up after lifting. Tap a display to show it, or Follow Pointer to have the picture follow the pointer from
 //    display to display again (the default).
-//  • a display chosen stays chosen (a small pin on the button), until Follow Pointer or until it's unplugged.
+//  • a display chosen stays chosen, until Follow Pointer or until it's unplugged. The map says which; the button carries no badge for it.
 import BlurtRemoteKit
 import UIKit
 
@@ -30,7 +30,8 @@ final class ScreenButton: UIControl {
     private var showing = false
     private var railed = false
     private let glyph = UIImageView()
-    private let pin = UIImageView()
+    /// lit, in a row of icons: a key-shaped patch around the glyph, not the whole tall slot
+    private let lit = UIView()
 
     private var start = CGPoint.zero
     private var moved = false
@@ -53,11 +54,11 @@ final class ScreenButton: UIControl {
         layer.cornerCurve = .continuous
         glyph.contentMode = .center
         glyph.isUserInteractionEnabled = false
+        lit.isUserInteractionEnabled = false
+        lit.layer.cornerRadius = 9
+        lit.layer.cornerCurve = .continuous
+        addSubview(lit)
         addSubview(glyph)
-        pin.image = UIImage(systemName: "pin.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 7, weight: .bold))
-        pin.isUserInteractionEnabled = false
-        pin.isHidden = true
-        addSubview(pin)
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -80,17 +81,18 @@ final class ScreenButton: UIControl {
     }
 
     private func paint() {
-        // lit while it's on, as a modifier is: a crossed-out eye over a live picture reads as off
-        let ink: UIColor = showing ? .black : railed ? Theme.mark : Theme.caption
-        backgroundColor = showing ? Theme.slabLatched : railed ? Theme.slab : .clear
+        // lit while it's on: a crossed-out eye over a live picture reads as off. A grey lift, not a modifier's white: white made it the
+        // brightest thing on the screen, over the picture it's there to show
+        let ink: UIColor = showing || railed ? Theme.mark : Theme.caption
+        // on a rail it's a key and lights as one; among the top row's icons only the patch around the glyph does
+        backgroundColor = railed ? (showing ? Theme.slabPressed : Theme.slab) : .clear
+        lit.backgroundColor = showing && !railed ? Theme.slabPressed : .clear
         if several {
             glyph.image = Self.arrangement(displays, shown: showing ? shown : nil, ink: ink)
         } else {
             glyph.image = UIImage(systemName: "display", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular))?
                 .withTintColor(ink, renderingMode: .alwaysOriginal)
         }
-        pin.tintColor = ink
-        pin.isHidden = !(several && pinned != nil)
         accessibilityLabel = showing ? String(localized: "Hide Screen") : String(localized: "Show Screen")
         let name = displays.first { $0.id == shown }?.name
         accessibilityValue = several ? [name, pinned == nil ? String(localized: "Follow Pointer") : nil].compactMap { $0 }.joined(separator: ", ") : nil
@@ -104,8 +106,9 @@ final class ScreenButton: UIControl {
     override func layoutSubviews() {
         super.layoutSubviews()
         glyph.frame = bounds
-        pin.sizeToFit()
-        pin.center = CGPoint(x: bounds.midX + 15, y: bounds.midY - 13)
+        // a little wider than a narrow slot: the neighbours' glyphs sit well inside theirs
+        let w: CGFloat = several ? 44 : 40, h = min(bounds.height, 32)
+        lit.frame = CGRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h)
     }
 
     /// The displays as they stand, small, each on a foot so they read as screens: the one shown filled, the rest outlined.
