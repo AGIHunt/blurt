@@ -53,6 +53,9 @@ final class PadViewController: UIViewController {
     /// over the picture, the words need something behind them
     private let liveBack = UIView()
     private let message = UILabel()
+    /// the empty pad, the first times: what it is and where the picture is. Gone once the pad is touched, for good once the picture's been on
+    private let emptyHint = UILabel()
+    private var padTouched = false
     private let action = UIButton(type: .system)
     private let dim = UIView()
     private let field = TypeField(frame: .zero, textContainer: nil)
@@ -149,7 +152,7 @@ final class PadViewController: UIViewController {
         standIn.isHidden = true
         pad.layer.insertSublayer(standIn, at: 1)
         #endif
-        for v in [header, liveBack, liveText, message, action, edgeMark] as [UIView] { pad.addSubview(v) }
+        for v in [header, liveBack, liveText, message, emptyHint, action, edgeMark] as [UIView] { pad.addSubview(v) }
         liveBack.backgroundColor = UIColor(white: 0, alpha: 0.72)
         liveBack.layer.cornerRadius = 12
         liveBack.layer.cornerCurve = .continuous
@@ -180,6 +183,11 @@ final class PadViewController: UIViewController {
         message.font = .systemFont(ofSize: 15)
         message.textColor = Theme.caption
         message.isUserInteractionEnabled = false
+        emptyHint.textAlignment = .center
+        emptyHint.numberOfLines = 0
+        emptyHint.isUserInteractionEnabled = false
+        emptyHint.attributedText = Self.emptyHintText()
+        emptyHint.isHidden = true
         action.tintColor = Theme.mark
         action.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         action.addAction(UIAction { [weak self] _ in self?.primaryAction() }, for: .touchUpInside)
@@ -245,6 +253,11 @@ final class PadViewController: UIViewController {
                 }
             }
             p.onClick = { Sticky.shared.used() }
+        }
+        pad.onTouch = { [weak self] in
+            guard let self, !self.padTouched else { return }
+            self.padTouched = true
+            UIView.animate(withDuration: 0.3) { self.emptyHint.alpha = 0 } completion: { _ in self.status() }
         }
         Surroundings.watchHinge(view) { [weak self] in self?.view.setNeedsLayout() }
         talk.onMicDenied = { [weak self] in self?.micDenied() }
@@ -322,6 +335,12 @@ final class PadViewController: UIViewController {
         let l = Link.shared
         Publishers.CombineLatest3(l.$state, l.$current, l.$canControl).receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in DispatchQueue.main.async { self?.status() } }.store(in: &bag)
+        // the picture comes back if it was on when last left; never by itself the first time
+        l.$state.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] s in
+            guard let self, s == .connected, Prefs.shared.screenWanted, !self.showing,
+                  ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
+            DispatchQueue.main.async { self.setShowing(true) }
+        }.store(in: &bag)
         Publishers.CombineLatest(l.$macs, l.$current).receive(on: RunLoop.main).sink { [weak self] macs, current in
             self?.macMenu(macs, current)
         }.store(in: &bag)
@@ -343,7 +362,9 @@ final class PadViewController: UIViewController {
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
         l.$screenError.receive(on: RunLoop.main).sink { [weak self] e in
-            guard e != nil else { return }
+            guard let e else { return }
+            // the computer doesn't show its screen: don't ask again by itself next time
+            if e == "off" || e == "permission" { Prefs.shared.screenWanted = false }
             self?.setShowing(false)
             self?.status()
         }.store(in: &bag)
@@ -413,6 +434,7 @@ final class PadViewController: UIViewController {
         #endif
         message.text = text
         message.isHidden = text == nil
+        emptyHint.isHidden = !(ready && text == nil && !showing && !padTouched && !Prefs.shared.screenFound)
         action.setTitle(button, for: .normal)
         action.isHidden = button == nil
         let name = l.current?.title ?? ""
@@ -453,6 +475,13 @@ final class PadViewController: UIViewController {
         Haptics.tick()
         Link.shared.screenError = nil
         setShowing(!showing)
+        remember()
+    }
+
+    /// What the user chose, kept for next time.
+    private func remember() {
+        Prefs.shared.screenWanted = showing
+        if showing { Prefs.shared.screenFound = true }
     }
 
     /// From the screen button: another display, or following the pointer again. The picture comes on if it was off: choosing what to see is
@@ -461,6 +490,7 @@ final class PadViewController: UIViewController {
         Link.shared.screenError = nil
         Link.shared.showDisplay(c.id)
         if !showing { setShowing(true) }
+        remember()
     }
 
     /// The map of the displays: in the keys' place, the rows under the top row, never over the picture; on a big screen, the half the button
@@ -557,7 +587,7 @@ final class PadViewController: UIViewController {
             islandLeft = c.midX < size.width / 2
         }
         let l = PadLayout(size: size, safe: Self.safeInsets(view), lefty: Prefs.shared.lefty, islandLeft: islandLeft, drawerOpen: drawerOpen,
-                          surround: surround, aspect: Link.shared.displayAspect)
+                          surround: surround, aspect: Link.shared.displayAspect, showing: showing)
         layout = l
         let typing = keyboardHeight > 0
         var padFrame = l.pad
@@ -605,8 +635,11 @@ final class PadViewController: UIViewController {
         pad.engine.scrollEdgeY = typing ? nil : l.scrollEdgeY
         drawerButton.frame = l.drawerButton
         drawerButton.isHidden = !railed || typing
-        drawerButton.tintColor = drawerOpen ? .black : Theme.mark
-        drawerButton.backgroundColor = drawerOpen ? Theme.slabLatched : Theme.slab
+        // open is how it starts: a dark key like the rest, the grid filled while the keys are out. Lit white it outshone everything
+        drawerButton.tintColor = drawerOpen ? Theme.mark : Theme.caption
+        drawerButton.backgroundColor = Theme.slab
+        drawerButton.setImage(UIImage(systemName: drawerOpen ? "square.grid.3x3.fill" : "square.grid.3x3",
+                                      withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         screenButton.frame = l.screenButton
         screenButton.isHidden = typing
         screenButton.paint(showing: showing, railed: railed)
@@ -671,6 +704,9 @@ final class PadViewController: UIViewController {
         liveBack.isHidden = !hasWords
         let tall = sizeForMessage(inset.width)
         message.frame = CGRect(x: inset.minX + 8, y: hint.midY - tall / 2 - 20, width: inset.width - 16, height: tall)
+        let hintSize = emptyHint.sizeThatFits(CGSize(width: inset.width - 16, height: .greatestFiniteMagnitude))
+        emptyHint.frame = CGRect(x: hint.midX - hintSize.width / 2, y: hint.midY - hintSize.height / 2, width: hintSize.width, height: hintSize.height)
+        emptyHint.isHidden = emptyHint.isHidden || typing
         let actionW = min(inset.width, 280)
         action.frame = CGRect(x: hint.midX - actionW / 2, y: message.frame.maxY + 8, width: actionW, height: 44)
     }
@@ -686,6 +722,26 @@ final class PadViewController: UIViewController {
         if let p = Pretend.safe { s = p }
         #endif
         return s
+    }
+
+    /// Two quiet lines: what the pad does, and the screen button drawn as it looks in the keys.
+    private static func emptyHintText() -> NSAttributedString {
+        let font = UIFont.systemFont(ofSize: 15), color = Theme.faint
+        let p = NSMutableParagraphStyle()
+        p.alignment = .center
+        p.lineSpacing = 6
+        let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: p]
+        let t = NSMutableAttributedString(string: String(localized: "Slide here to move the pointer") + "\n", attributes: a)
+        let parts = String(localized: "Tap %@ to show the screen").components(separatedBy: "%@")
+        t.append(NSAttributedString(string: parts.first ?? "", attributes: a))
+        let icon = NSTextAttachment()
+        icon.image = UIImage(systemName: "display", withConfiguration: UIImage.SymbolConfiguration(font: font))?
+            .withTintColor(color, renderingMode: .alwaysOriginal)
+        let i = NSMutableAttributedString(attachment: icon)
+        i.addAttributes(a, range: NSRange(location: 0, length: i.length))
+        t.append(i)
+        t.append(NSAttributedString(string: parts.dropFirst().joined(), attributes: a))
+        return t
     }
 
     private func sizeForMessage(_ w: CGFloat) -> CGFloat {

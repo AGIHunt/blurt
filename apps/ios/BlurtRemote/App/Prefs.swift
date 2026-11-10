@@ -21,6 +21,10 @@ final class Prefs: ObservableObject {
     /// a keyboard on the iPad, with Windows or Linux: what its ⌘ key presses there
     @Published var hardwareCommand: CommandKeyRole { didSet { d.set(hardwareCommand.rawValue, forKey: "hardwareCommand") } }
     @Published var quality: ScreenQuality { didSet { d.set(quality.rawValue, forKey: "quality"); ScreenStream.shared.planChanged() } }
+    /// the picture was on when last left: it comes back on with the computer. Off, the phone never starts showing a screen by itself
+    var screenWanted: Bool { didSet { d.set(screenWanted, forKey: "screenWanted") } }
+    /// the picture has been turned on once: the empty pad no longer needs to say where it is
+    var screenFound: Bool { didSet { d.set(screenFound, forKey: "screenFound") } }
 
     private init() {
         pointerSpeed = d.object(forKey: "pointerSpeed") as? Double ?? 1
@@ -32,5 +36,7 @@ final class Prefs: ObservableObject {
         tapWhereTouched = d.object(forKey: "tapWhereTouched") as? Bool ?? true
         hardwareCommand = d.string(forKey: "hardwareCommand").flatMap(CommandKeyRole.init) ?? .control
         quality = d.string(forKey: "quality").flatMap(ScreenQuality.init) ?? .auto
+        screenWanted = d.bool(forKey: "screenWanted")
+        screenFound = d.bool(forKey: "screenFound")
     }
 }

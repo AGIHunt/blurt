@@ -57,6 +57,13 @@ PORTRAIT (402×874)            LANDSCAPE, keys open (956×440)           LANDSCA
   dock runs from the modifiers to what's used most, so esc, delete, return and space are by the thumb. Left-Handed mirrors the dock; settings stays
   first in the top row and the arrow key comes in past it, so a slide to the left has room (founder, 2026-11-08: at the edge it had none). At the
   screen's edge a slide keeps repeating anyway. The talk key was twice as wide; the founder found it wasteful and wanted the space bar always there.
+  With the picture showing, the stage only needs the picture's height, and the keys take some of what's left: up to 56 pt, never taller than
+  1.25 times their width, with the picture in the middle of the rest (1.0.14 testers: picture at the bottom left a big black band above it;
+  72 pt keys looked like a toy, so the founder chose 56 pt and a centred picture, 2026-11-10). The pad stays 8 pt clear of the arrow key's row.
+- A pad nobody has used yet says what it's for: "Slide here to move the pointer / Tap [display] to show the screen" (在这里滑动，移动指针 /
+  点 [display] 显示屏幕), in faint grey in the middle. The first touch takes it away, and it never comes back once the picture has been on
+  (1.0.14 testers: the top of the pad was empty on first open). The picture comes back by itself on connecting if it was on when the app was
+  last left; off, or no permission on the Mac, and it stays off.
 - Landscape: the black edges are used. The Dynamic Island's end holds what's rarely needed, around the island. The other end is the thumb's, and it
   never moves: the keys' switch, ⌘Tab, esc, the arrow key, return, space and the talk key, 8 pt taller than the keys above it (44–52 pt on a 17 Pro
   to a Pro Max, clear of the round corners). It was a tall bar, 70–110 pt, and the founder called it wasted (2026-11-08). That's what a person watching the picture needs. The rest
@@ -86,14 +93,16 @@ What earns a place on 常用, a row each so the rows can be learned (founder, 20
 
 Off the page: anything a tap on a modifier and a key already in view can do (⌥⌫, ⌘⌫, ⌘↩, ⇧⇥, and ⌥L with the letters); what a tap on the picture does
 (⌘L); and what's rarely needed on a phone (⌘S, ⌘P, ⇧⌘P, ⌘B, ⌘J). All Windows, App Windows and the desktop keys are on 更多, and three fingers do them anyway.
-Find Pointer is about the whole screen, not the Mac's keys: it's a control by the tabs. 更多 and 字母 hold what only a computer has: F1–F12, Home, End,
+Find Pointer is about the whole screen, not the Mac's keys: it's a control by the tabs. Its ring closes on the pointer and goes after 0.9 s; asked again sooner, the old ring
+goes at once (1.0.14 testers saw one left on the screen). The tabs share one font size, shrunk together when a language's names don't fit. 更多 and 字母 hold what only a computer has: F1–F12, Home, End,
 Page Up and Down, and forward delete. The space bar is in the dock.
 
 The **dock** stays put wherever the list is: ⌃ ⌥ ⌘ ⇧ ⇥ esc ⌫ ↩ space, and the talk key: what a phone's keyboard has no key for, and all four modifiers
 side by side, because their state has to stay in sight. Esc Esc has no key of its own: tapping Esc twice does it. A key shows an icon and the key's
 name, never what it's for; a few icons are drawn here (Keys/KeyMarks.swift) because they say it better: ⌘Tab is the Mac's row of apps with one
 picked out, ⌘T ⌘W ⌃Tab a window with a tab bar, so they read as one family, ⌘A selected text with a phone's handles. The screen button stays a
-display and lights up while it's on, like a modifier: a crossed-out eye over a live picture reads as off.
+display and lights up while it's on, like a modifier: a crossed-out eye over a live picture reads as off. Lit is a grey patch about the size of a
+ key (40×32 pt) behind a mint display, not the whole tall cell in white: white outshone everything on the screen (founder, 2026-11-10).
 
 **The arrow key** is one key with four marked edges: tap towards an edge for that arrow, hold to repeat, drag for a run of them, tap then drag for ⇧
 too. Where it goes matters more than how it looks: in a bottom row, down runs out of phone. So it's in the top row in portrait, and in the thumb's column in
@@ -306,7 +315,7 @@ started. The 左侧桌面/右侧桌面 keys and three fingers sideways are Space
 - **The map takes the keys' place, never the picture's.** In portrait and on a big screen it covers the rows of keys under the top row,
   exactly their size, so the picture stays in full view while choosing. With the keys put away (a phone on its side, an iPad with the
   keys away) there's nothing under the button, so it comes up beside it, only while choosing.
-- **A display chosen stays chosen** (a small pin on the button) until Follow Pointer, or until it's unplugged: then it's back to following.
+- **A display chosen stays chosen** until Follow Pointer (the map shows which; a pin on the button was dropped as ugly, founder 2026-11-10), or until it's unplugged: then it's back to following.
   Choosing moves the pointer to the middle of that display, where the eyes go next, and the Mac shows the display's name for a moment at
   the bottom of it. A switch by following shows nothing on the Mac: the person moved the pointer there and saw it go. With the chosen
   display pinned, the pointer may leave it: the picture stays, the pointer isn't drawn, and a tap on the picture brings it back there.

@@ -488,6 +488,29 @@ final class LayoutTests: XCTestCase {
         noOverlaps(m.dock + [m.talk, m.arrowKey, m.keyboardButton, m.screenButton, m.findButton, m.settingsButton, m.strip, m.list])
     }
 
+    /// The Mac's screen across a phone held upright: the keys get a little taller, not more of them, and the picture sits in the middle.
+    func testPortraitWithThePicture() {
+        let off = PadLayout(size: portrait, safe: tall, lefty: false, aspect: 1.6)
+        let on = PadLayout(size: portrait, safe: tall, lefty: false, aspect: 1.6, showing: true)
+        let picture = on.pad.width / 1.6
+        XCTAssertLessThan(on.pad.height, off.pad.height, "the keys take some of the room")
+        XCTAssertEqual(on.stageAlignY, 0.5, "the rest split above and below the picture")
+        XCTAssertEqual(off.stageAlignY, 1)
+        XCTAssertGreaterThanOrEqual(on.pad.height, picture - 1, "the whole picture still fits")
+        XCTAssertGreaterThan(on.keySize.height, off.keySize.height, "taller keys")
+        XCTAssertLessThanOrEqual(on.keySize.height, PadLayout.pictureKeyHeight, "a little taller, not toy-like")
+        XCTAssertLessThanOrEqual(on.keySize.height, on.keySize.width * PadLayout.wideKeyShape)
+        XCTAssertEqual(on.list.height, on.keySize.height * 4 + PadLayout.gap * 3, accuracy: 1, "still four rows")
+        XCTAssertEqual(on.dock[0].height, on.keySize.height, accuracy: 0.5)
+        XCTAssertLessThan(on.pad.maxY, on.drawer.minY + 1)
+        noOverlaps(on.dock + [on.talk, on.arrowKey, on.keyboardButton, on.screenButton, on.findButton, on.settingsButton, on.strip, on.list])
+        // a screen as tall as the phone's pad: nothing to give
+        let upright = PadLayout(size: portrait, safe: tall, lefty: false, aspect: 0.5, showing: true)
+        XCTAssertEqual(upright.keySize.height, off.keySize.height)
+        XCTAssertEqual(upright.pad, off.pad)
+        XCTAssertEqual(upright.stageAlignY, 0.5)
+    }
+
     func testLandscapeTheIslandsEndHoldsTheControlsAndTheOtherTheThumbsKeys() {
         for size in [max, wide] {
             for islandLeft in [true, false] {

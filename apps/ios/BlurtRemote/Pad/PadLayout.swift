@@ -102,6 +102,8 @@ struct PadLayout {
     /// landscape keys grow to fill the height, up to this, and no taller than this much of their width: a key twice as tall as wide looks odd
     static let wideKeyHeight: CGFloat = 72
     static let wideKeyShape: CGFloat = 1.25
+    /// portrait with the picture: keys grow a little into the room it leaves, no more (taller, they look empty and toy-like)
+    static let pictureKeyHeight: CGFloat = 56
     static let scrollEdgeWidth: CGFloat = 26
     /// the keys beside the picture
     static let wideKeysWidth: CGFloat = 340
@@ -125,9 +127,9 @@ struct PadLayout {
         return size.width > size.height ? .landscape : .portrait
     }
 
-    /// `islandLeft`: which end has the camera in landscape. `aspect`: the computer's screen, width ÷ height
+    /// `islandLeft`: which end has the camera in landscape. `aspect`: the computer's screen, width ÷ height. `showing`: the picture is on
     init(size: CGSize, safe: UIEdgeInsets, lefty: Bool, islandLeft: Bool = true, drawerOpen: Bool = true,
-         surround: PadSurround = .none, aspect: CGFloat = 1.6) {
+         surround: PadSurround = .none, aspect: CGFloat = 1.6, showing: Bool = false) {
         let mode = Self.mode(for: size)
         switch mode {
         case .landscape:
@@ -149,7 +151,7 @@ struct PadLayout {
             var frame = CGRect(x: max(8, known ? 0 : safe.left), y: max(safe.top - 6, 16), width: 0, height: 0)
             frame.size = CGSize(width: size.width - frame.minX - max(8, known ? 0 : safe.right), height: size.height - frame.minY - max(safe.bottom - 6, 12))
             for o in surround.occlusions where o.intersects(frame) && o.minY <= frame.minY + 1 { frame = frame.divided(atDistance: o.maxY + 4 - frame.minY, from: .minYEdge).remainder }
-            let p = Parts.portrait(in: frame, lefty: lefty)
+            let p = Parts.portrait(in: frame, lefty: lefty, picture: showing ? aspect : nil)
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
         case .big:
             let p = Parts.big(size: size, safe: safe, lefty: lefty, drawerOpen: drawerOpen, surround: surround, aspect: aspect)
@@ -203,6 +205,8 @@ private struct Parts {
     var drawerMatters = false, keysOut = true, stageAlignY: CGFloat = 1
 
     static let gap = PadLayout.gap
+    /// portrait: between the pad and the top row, whose arrow key is a raised box as tall as the row
+    static let padGap: CGFloat = 8
 
     mutating func shift(dy: CGFloat) {
         func m(_ r: inout CGRect) { r = r.offsetBy(dx: 0, dy: dy) }
@@ -217,16 +221,26 @@ private struct Parts {
     // MARK: portrait
 
     /// `frame`: the room, margins taken off. The block of keys at its bottom, the pad above.
-    static func portrait(in frame: CGRect, lefty: Bool) -> Parts {
+    /// `picture`: the computer's screen is showing, this wide for its height. Across a phone it's far shorter than the pad: the keys take
+    /// a little of the room, as taller keys rather than more of them, and the picture sits in the middle of what's left, so the black
+    /// is split above and below it instead of one band over it.
+    static func portrait(in frame: CGRect, lefty: Bool, picture: CGFloat? = nil) -> Parts {
         var p = Parts()
-        let width = min(frame.width, PadLayout.blockWidth), h = PadLayout.keyHeight
+        let width = min(frame.width, PadLayout.blockWidth)
         let rows = CGFloat(PadLayout.visibleRows)
-        let listH = rows * h + (rows - 1) * gap
         let t = PadLayout.stripHeight, drop: CGFloat = 6
-        let total = t + listH + drop + h
+        func total(_ h: CGFloat) -> CGFloat { t + rows * h + (rows - 1) * gap + drop + h }
+        var h = PadLayout.keyHeight
+        if let a = picture, a > 0 {
+            let spare = frame.height - total(h) - Self.padGap - frame.width / a
+            let most = min(PadLayout.pictureKeyHeight, keys(width) * PadLayout.wideKeyShape)
+            if spare > 0 { h = max(h, min(most, h + spare / (rows + 1))) }
+        }
+        let listH = rows * h + (rows - 1) * gap
+        let total = total(h)
         let block = CGRect(x: frame.midX - width / 2, y: frame.maxY - total, width: width, height: total)
         p.drawer = block
-        p.pad = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: block.minY - frame.minY - 2)
+        p.pad = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: block.minY - frame.minY - Self.padGap)
         p.keySize = CGSize(width: keys(width), height: h)
 
         // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to
@@ -249,7 +263,7 @@ private struct Parts {
         p.talk = spot(lefty ? 0 : n - 1)
         // left-handed it's a mirror, so the same keys are by the thumb
         p.dock = (0..<Deck.dockCount).map { spot(lefty ? Deck.dockCount - $0 : $0) }
-        p.stageAlignY = 1
+        p.stageAlignY = picture == nil ? 1 : 0.5
         return p
     }
 

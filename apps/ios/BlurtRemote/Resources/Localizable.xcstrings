@@ -2750,6 +2750,26 @@
           }
         }
       }
+    },
+    "Slide here to move the pointer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这里滑动，移动指针"
+          }
+        }
+      }
+    },
+    "Tap %@ to show the screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "点 %@ 显示屏幕"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

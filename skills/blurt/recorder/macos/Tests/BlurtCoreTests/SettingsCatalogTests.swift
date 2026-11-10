@@ -216,6 +216,24 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertTrue(SettingsCatalog.search("zzqx").isEmpty)
     }
 
+    /// T() fills its own placeholders. Wrapped in String(format:) it has already filled them with nothing, so the text shows "(null)" and the
+    /// arguments go nowhere: the pairing ask once said "Allow (null) to control this Mac?".
+    func testNoTextIsFormattedTwice() throws {
+        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources")
+        let pattern = try NSRegularExpression(pattern: #"String\(\s*format:\s*TP?\("#)
+        var seen = 0
+        for case let f as URL in FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)! where f.pathExtension == "swift" {
+            let code = try String(contentsOf: f, encoding: .utf8)
+            seen += 1
+            for m in pattern.matches(in: code, range: NSRange(code.startIndex..., in: code)) {
+                let line = code[..<Range(m.range, in: code)!.lowerBound].filter { $0 == "\n" }.count + 1
+                XCTFail("\(f.lastPathComponent):\(line): pass the arguments to T() instead")
+            }
+        }
+        XCTAssertGreaterThan(seen, 50, "no sources found: the scan looks in the wrong place")
+    }
+
     func testPlaceholdersReadAsAGapWithoutArguments() {
         XCTAssertEqual(SettingsCatalog.fillGaps("Double-tap %@ to send"), "Double-tap … to send")
         XCTAssertEqual(SettingsCatalog.fillGaps("%1$@, in %2$@"), "…, in …")
