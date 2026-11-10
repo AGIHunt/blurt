@@ -2,7 +2,10 @@
 // Blurt's iPhone relay for your own server: the same protocol as the Cloudflare Worker (src/index.js), in one Node process. A phone and
 // its Mac each open a WebSocket to the same room and bytes pass between them. It can't read them and it stores nothing.
 //
-//   HOST=127.0.0.1 PORT=8787 node server.js
+//   HOST=127.0.0.1 PORT=8787 RELAY_SECRET=<random> node server.js
+//
+// RELAY_SECRET (at least 16 of A-Z a-z 0-9 _ -) is a path only your devices know: the relay then answers wss://host/<secret>/v1/… and
+// nothing else, so a stranger who finds the host can't use it as a free pipe. Blurt's address is then wss://host/<secret>.
 //
 // Behind a web server for wss://, or on an open port for ws://. See README.md.
 "use strict";
@@ -11,7 +14,17 @@ const { WebSocketServer, WebSocket } = require("ws");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 8787);
-const PATH = /^\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone)$/;
+const crypto = require("crypto");
+const SECRET = process.env.RELAY_SECRET || "";
+if (SECRET && !/^[A-Za-z0-9_-]{16,}$/.test(SECRET)) { console.error("RELAY_SECRET: at least 16 of A-Z a-z 0-9 _ -"); process.exit(2); }
+const PATH = /^(?:\/([A-Za-z0-9_-]+))?\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone)$/;
+const same = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// [room, role] when the path is a room and carries the secret (or none is set and it has no prefix)
+function route(url) {
+  const m = PATH.exec(url);
+  if (!m || (SECRET ? !m[1] || !same(m[1], SECRET) : m[1] !== undefined)) return null;
+  return [m[2], m[3]];
+}
 const MAX_MESSAGE = 1 << 20;
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 256);
 const MAX_PER_ADDRESS = Number(process.env.MAX_PER_ADDRESS || 32);
@@ -30,23 +43,24 @@ const rooms = new Map();   // room → { mac, phone }
 const perAddress = new Map();
 
 const server = http.createServer((req, res) => {
-  res.writeHead(PATH.test(req.url) ? 426 : 404, { "Content-Type": "text/plain" });
-  res.end(PATH.test(req.url) ? "Expected a WebSocket\n" : "Not found\n");
+  const ok = route(req.url) !== null;
+  res.writeHead(ok ? 426 : 404, { "Content-Type": "text/plain" });
+  res.end(ok ? "Expected a WebSocket\n" : "Not found\n");
 });
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE, perMessageDeflate: false });
 
 server.on("upgrade", (req, socket, head) => {
-  const m = PATH.exec(req.url);
+  const m = route(req.url);
   const from = (TRUST_PROXY && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const held = perAddress.get(from) || 0;
-  if (!m || held >= MAX_PER_ADDRESS || (!rooms.has(m[1]) && rooms.size >= MAX_ROOMS)) return socket.destroy();
+  if (!m || held >= MAX_PER_ADDRESS || (!rooms.has(m[0]) && rooms.size >= MAX_ROOMS)) return socket.destroy();
   perAddress.set(from, held + 1);
   socket.once("close", () => {
     const n = perAddress.get(from) - 1;
     if (n > 0) perAddress.set(from, n); else perAddress.delete(from);
   });
   socket.setNoDelay(true);
-  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[1], m[2]));
+  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[0], m[1]));
 });
 
 function join(ws, id, role) {

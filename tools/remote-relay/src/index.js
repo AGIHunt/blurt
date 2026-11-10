@@ -12,12 +12,22 @@ const PHONE_LEFT = 4000;   // the Mac reconnects: the next phone starts a new se
 const MAC_GONE = 4001;     // the phone's "Mac isn't reachable"
 const REPLACED = 4002;     // a newer connection in the same role took over
 
+// equal strings, in time that doesn't depend on where they differ
+async function same(a, b) {
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))));
+  return crypto.subtle.timingSafeEqual(x, y);
+}
+
 export default {
   async fetch(req, env) {
-    const m = new URL(req.url).pathname.match(/^\/v1\/([^/]+)\/(mac|phone)$/);
-    if (!m || !ROOM.test(m[1])) return new Response("Not found", { status: 404 });
+    // RELAY_SECRET (a secret: `wrangler secret put RELAY_SECRET`) is a path only your devices know: wss://host/<secret>/v1/…
+    const m = new URL(req.url).pathname.match(/^(?:\/([^/]+))?\/v1\/([^/]+)\/(mac|phone)$/);
+    const secret = env.RELAY_SECRET || "";
+    if (!m || !ROOM.test(m[2]) || !(secret ? m[1] !== undefined && await same(m[1], secret) : m[1] === undefined)) {
+      return new Response("Not found", { status: 404 });
+    }
     if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
-    return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(new Request(`https://room/${m[2]}`, req));
+    return env.ROOM.get(env.ROOM.idFromName(m[2])).fetch(new Request(`https://room/${m[3]}`, req));
   },
 };
 

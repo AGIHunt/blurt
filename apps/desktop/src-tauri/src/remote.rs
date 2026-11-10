@@ -399,11 +399,13 @@ Ask me which of these I have, then do that one:
 A. A domain on Cloudflare: deploy the Worker on a subdomain such as relay.example.com. The free plan is enough for one person.
 B. A server with a public IP: run server.js as a service (Node 12 or later, one dependency). With a domain, serve it over HTTPS on port 443 with a publicly trusted certificate. Without one, open a port and use ws://.
 
+Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
+
 If I'm in mainland China, prefer a server there: the round trip is far shorter. A domain served from a mainland server needs an ICP filing.
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address, like wss://relay.example.com, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.";
+When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.";
 
 // ------------------------------------------------------------------ what the host asks of the app
 
