@@ -212,6 +212,7 @@
   "dictation_page.reason.error": "润色出错",
   "dictation_page.failed": "没能识别",
   "dictation_page.failed.no_model": "没能识别：没有语音模型",
+  "dictation_page.failed.cancelled": "已取消：录音已保留",
   "dictation_page.retry": "重试",
   "dictation_page.retry.tip": "按当前设置重新识别这段录音并润色",
   "dictation_page.retrying": "正在重试…",

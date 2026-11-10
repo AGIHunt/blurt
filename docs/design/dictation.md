@@ -958,8 +958,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently; nothing is
-  kept — the take was in front of the user). A paste already under way (⌘V until it has landed) can't be taken back.
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently). Once
+  something was said, its recording stays in the history as "已取消：录音已保留" with Retry
+  (`DictationHistory.cancelledReason`, #54): an Esc meant for the app in front no longer costs what was said. Only
+  while the history keeps recordings (`keepsCancelled`): "Don't keep" or Keep Recordings off keeps nothing, nor does a
+  take that heard nothing or the double tap's own cancel. A paste already under way (⌘V until it has landed) can't be
+  taken back.
   Another key or a click in push-to-talk's first second, before anything was cut, is a shortcut (Fn+← is Home): the
   take goes without "已取消" (`DictationTrigger.joinedEarly`).
 - **Check before send.** After the stop the live panel shows the text actually typed — polished, structured — for

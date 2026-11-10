@@ -216,6 +216,7 @@
   "dictation_page.reason.error": "polish failed",
   "dictation_page.failed": "Not recognized",
   "dictation_page.failed.no_model": "Not recognized: no speech model",
+  "dictation_page.failed.cancelled": "Cancelled: recording kept",
   "dictation_page.retry": "Retry",
   "dictation_page.retry.tip": "Recognize the recording again and polish it with the current settings",
   "dictation_page.retrying": "Retrying…",

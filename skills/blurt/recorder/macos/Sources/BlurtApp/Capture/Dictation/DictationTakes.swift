@@ -249,6 +249,19 @@ extension Dictation {
 
     // MARK: recognition failed
 
+    /// A history row with no text, only the take's recording, waiting for Retry: recognition failed, or the take was
+    /// cancelled while it listened (`DictationHistory.cancelledReason`). Retry finds the take in `failedTakes`, else
+    /// rebuilds it from this row (`historyTake`).
+    func appendAwaitingRetry(id: String, started: Date, front: NSRunningApplication?, bundle: String?, duration: Double,
+                             reason: String, wav: URL) {
+        let b = bundle ?? front?.bundleIdentifier
+        DictationHistory.shared.append(DictationEntry(id: id, time: started, app: AppNames.name(for: b, running: front), bundle: b,
+                                                      duration: duration, raw: "", polished: nil, text: "", model: nil,
+                                                      fellBack: false, reason: reason, insert: "none",
+                                                      audio: "audio/\(wav.lastPathComponent)"))
+        DictationHistoryWindow.shared.reloadIfOpen()
+    }
+
     /// The speech model couldn't recognise the take: its audio stays, a history row says so, the island says what
     /// failed — with Retry, or Download… when there is no model.
     private func recognitionFailed(_ take: DictationTake, _ f: DictationASRFailure) {
@@ -257,12 +270,8 @@ extension Dictation {
             emit(["event": "dictation_send", "result": "skipped", "why": "asr_failed", "after": "paste"])
         }
         LiveTranscript.shared.end(session: take.liveSession)
-        let e = DictationEntry(id: take.id, time: take.started, app: AppNames.name(for: take.bundle ?? take.front?.bundleIdentifier, running: take.front),
-                               bundle: take.bundle ?? take.front?.bundleIdentifier, duration: take.duration, raw: "",
-                               polished: nil, text: "", model: nil, fellBack: false, reason: "asr_failed:\(f.code)",
-                               insert: "none", audio: "audio/\(take.wav.lastPathComponent)")
-        DictationHistory.shared.append(e)
-        DictationHistoryWindow.shared.reloadIfOpen()
+        appendAwaitingRetry(id: take.id, started: take.started, front: take.front, bundle: take.bundle, duration: take.duration,
+                            reason: "asr_failed:\(f.code)", wav: take.wav)
         take.failure = f.code
         failedTakes[take.id] = take
         // only the last few stay in memory (an older one is retried from the history)

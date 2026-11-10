@@ -36,7 +36,12 @@ const reasonText = (r: string | null | undefined) => {
   const k = `dictation_page.reason.${r ?? 'error'}`;
   return i18n().has(k) ? t(k) : t('dictation_page.reason.error');
 };
-const failedText = (e: DictationEntry) => (e.reason === 'asr_failed:model_missing' ? t('dictation_page.failed.no_model') : t('dictation_page.failed'));
+const failedText = (e: DictationEntry) =>
+  e.reason === 'asr_failed:model_missing'
+    ? t('dictation_page.failed.no_model')
+    : e.reason === 'asr_failed:cancelled'
+      ? t('dictation_page.failed.cancelled')
+      : t('dictation_page.failed');
 const appLabel = (e: DictationEntry) => D.appName(e) ?? t('dictation_page.unknown_app');
 
 function dayTitle(day: string): string {
