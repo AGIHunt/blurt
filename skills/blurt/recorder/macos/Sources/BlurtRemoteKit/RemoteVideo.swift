@@ -202,6 +202,18 @@ public struct RemoteSharpen: Equatable, Sendable {
     /// The picture changed, or what the phone has of it did (a keyframe, a refresh): from the top.
     public mutating func again() { self = RemoteSharpen() }
 
+    /// A frame of the screen itself went, this large. A real screen is seldom quite still: a caret blinks, a spinner turns, a clock
+    /// ticks, and each is a frame of a few hundred bytes that leaves the text around it as it was. Those change nothing here. If
+    /// they did (they did, for a day), a blinking caret started the steps over twice a second: never sharp, and tens of KB each
+    /// time on a screen that should cost nothing. A frame of half the rate's share or more (3 KB at least) is the picture really
+    /// changing, soft again where it changed: from the top. True if it was.
+    @discardableResult
+    public mutating func moved(bytes: Int, bitrate: Int, fps: Int) -> Bool {
+        guard bytes >= max(3_000, bitrate / 8 / max(fps, 1) / 2) else { return false }
+        again()
+        return true
+    }
+
     /// The quantiser ceiling for a resend now; nil: not yet, or done. `capped` false: this encoder takes no ceiling, so it's eight plain
     /// resends as before (51: no ceiling).
     public mutating func next(now: Double, capped: Bool = true) -> Int? {

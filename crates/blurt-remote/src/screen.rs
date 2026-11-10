@@ -549,10 +549,12 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
         return;
     }
     let now = s.now();
-    // a resend's own frame says nothing new about the screen; anything else is the picture moving, and sharpening starts over
+    // a resend's own frame says nothing new about the screen; anything else is the screen's own, and sharpening starts over
+    // if it is the picture really changing, not a caret or a spinner (sharpen.rs `moved`)
     let sharpened = s.refresh_pending.take();
     if sharpened.is_none() {
-        s.sharpen.again();
+        let (bitrate, fps) = (s.rate.bitrate, s.rate.fps);
+        s.sharpen.moved(f.picture.len(), bitrate, fps);
         s.last_frame_at = now;
     }
     if s.broken && !f.keyframe {

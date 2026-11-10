@@ -216,7 +216,17 @@ Built (`RemoteSharpen`, BlurtRemoteKit; `RemoteScreen.refine`): the ceiling star
 after a resend that cost under a third of 0.4 s of the rate, half after one that cost more than 0.4 s of it. The next resend waits until
 the last has had time to get through (its bytes at the rate, at least 0.1 s), so the picture never takes more than the rate. A resend the
 rate control drops goes again 0.2 s later (at 700 kbps: 22 dropped beside the 8 that went). Any moving frame, keyframe or refresh takes the
-ceiling off and starts the ladder over. An encoder that takes no ceiling gets the eight plain resends as before. The resends count as
+ceiling off and starts the ladder over. An encoder that takes no ceiling gets the eight plain resends as before.
+
+A real screen is seldom quite still, which the encoder-alone runs above couldn't show and the first live session did (a test host on
+this Mac's own desktop, the Rust test phone, 2026-11-11): a caret blinks, a spinner turns, and each is a frame of a few hundred bytes,
+28 a second here. Every frame of the screen's own started the ladder over, as it had always reset the eight resends, so with a spinner
+it never began, and under a blinking caret it would have begun again twice a second, never reaching sharp and sending its first steps
+each time. Now only a frame of half the rate's share or more (3 KB at least) is the picture really changing (`RemoteSharpen.moved`);
+smaller ones leave the steps where they are, and on the Mac the steps wait for 0.2 s without such a frame rather than without any
+frame, so text gets sharp beside a spinner too. Live at 2 Mbps: a keyframe of 77 KB, the ladder in the second after it (257 KB in
+all), then the desktop's own small frames and nothing else. The Rust host has the same rule for starting over but still waits for a
+screen with nothing moving before it resends: its backends tell a resend from the screen's own frame by there being no other. The resends count as
 sent, so a rate that dipped can climb a step on them (RemoteRate asks that 60 % of the rate be in use).
 
 The Rust host has the same ladder (`sharpen.rs`, `Screen::sharpen` and `caps_quantiser`), but none of its encoders takes a ceiling

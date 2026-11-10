@@ -44,6 +44,19 @@ impl Sharpen {
         *self = Sharpen::default();
     }
 
+    /// A frame of the screen itself went, this large. A real screen is seldom quite still: a caret blinks, a spinner turns, and
+    /// each is a frame of a few hundred bytes that leaves the text around it as it was. Those change nothing here (if they did, a
+    /// blinking caret would start the steps over twice a second: never sharp, and tens of KB each time on a screen that should
+    /// cost nothing). A frame of half the rate's share or more (3 KB at least) is the picture really changing: from the top.
+    /// True if it was.
+    pub fn moved(&mut self, bytes: usize, bitrate: i64, fps: i64) -> bool {
+        if (bytes as i64) < 3_000.max(bitrate / 8 / fps.max(1) / 2) {
+            return false;
+        }
+        self.again();
+        true
+    }
+
     /// The quantiser ceiling for a resend now; None: not yet, or done. `capped` false: this encoder takes no ceiling, so it's
     /// eight plain resends as before (`NO_CEILING`).
     pub fn next(&mut self, now: f64, capped: bool) -> Option<u8> {
@@ -154,6 +167,27 @@ mod tests {
         assert_eq!(n, 8);
         assert!(plain.done);
         assert!(Sharpen::finished().done);
+    }
+
+    #[test]
+    fn a_blinking_caret_doesnt_start_the_steps_over() {
+        let mut s = Sharpen::default();
+        let cap = s.next(0.0, true).unwrap();
+        s.sent(cap, 20_000, 2_000_000, 2_000_000, 0.0);
+        assert!(!s.moved(600, 2_000_000, 30), "a caret, a spinner: a few hundred bytes");
+        assert!(s.under_way());
+        assert_eq!(s.next(1.0, true), Some(34), "on from where it was");
+        assert!(s.moved(9_000, 2_000_000, 30), "a scroll's frame: the picture really changed");
+        assert_eq!(s.next(2.0, true), Some(40), "from the top");
+        // done stays done under a caret
+        let mut d = Sharpen::finished();
+        assert!(!d.moved(1_200, 2_000_000, 30));
+        assert!(d.done);
+        // the share is the rate's: at 12 Mbps and 60 frames, 12.5 KB; never under 3 KB
+        assert!(!Sharpen::default().moved(12_000, 12_000_000, 60));
+        assert!(Sharpen::default().moved(13_000, 12_000_000, 60));
+        assert!(!Sharpen::default().moved(2_900, 300_000, 10));
+        assert!(Sharpen::default().moved(3_000, 300_000, 10));
     }
 
     #[test]

@@ -346,6 +346,28 @@ final class RemoteKitTests: XCTestCase {
         XCTAssertTrue(plain.done)
     }
 
+    func testABlinkingCaretDoesntStartTheStepsOver() {
+        var s = RemoteSharpen()
+        let cap = s.next(now: 0)!
+        s.sent(cap: cap, bytes: 20_000, bitrate: 2_000_000, now: 0)
+        XCTAssertFalse(s.moved(bytes: 600, bitrate: 2_000_000, fps: 30), "a caret, a spinner: a few hundred bytes")
+        XCTAssertEqual(s.next(now: 1), 34, "on from where it was")
+        XCTAssertTrue(s.moved(bytes: 9_000, bitrate: 2_000_000, fps: 30), "a scroll's frame: the picture really changed")
+        XCTAssertEqual(s.next(now: 2), 40, "from the top")
+        // a picture that is sharp stays so under a caret: nothing more is sent for it
+        var done = RemoteSharpen()
+        var now = 0.0
+        while !done.done { if let c = done.next(now: now) { done.sent(cap: c, bytes: 1_000, bitrate: 2_000_000, now: now) }; now += 1 }
+        XCTAssertFalse(done.moved(bytes: 1_200, bitrate: 2_000_000, fps: 30))
+        XCTAssertNil(done.next(now: now + 10))
+        // the share is the rate's: at 12 Mbps and 60 frames, 12.5 KB; never under 3 KB
+        var a = RemoteSharpen()
+        XCTAssertFalse(a.moved(bytes: 12_000, bitrate: 12_000_000, fps: 60))
+        XCTAssertTrue(a.moved(bytes: 13_000, bitrate: 12_000_000, fps: 60))
+        XCTAssertFalse(a.moved(bytes: 2_900, bitrate: 300_000, fps: 10))
+        XCTAssertTrue(a.moved(bytes: 3_000, bitrate: 300_000, fps: 10))
+    }
+
     // MARK: a rate that fell finds its way back while the screen is still
 
     func testAStillPicturesResendsFindTheRoomAboveARateThatFell() {
