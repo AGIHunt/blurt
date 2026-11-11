@@ -10,12 +10,7 @@ use windows::Win32::Graphics::Gdi::{
     SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, SRCCOPY,
 };
 
-/// A grabbed area: BGRA, top-down rows.
-pub struct Grab {
-    pub w: u32,
-    pub h: u32,
-    pub bgra: Vec<u8>,
-}
+pub use super::grab::{write_bmp, Grab};
 
 pub fn grab(x: i32, y: i32, w: u32, h: u32) -> Result<Grab, String> {
     unsafe {
@@ -174,31 +169,4 @@ fn crop(g: &Grab, max: u32) -> Vec<u8> {
         out.extend_from_slice(&g.bgra[s..s + w * 4]);
     }
     out
-}
-
-/// 24-bit BMP (bottom-up), what screen_ocr.py reads: no image crate needed.
-pub fn write_bmp(path: &std::path::Path, g: &Grab) -> std::io::Result<()> {
-    use std::io::Write;
-    let row = (g.w as usize * 3 + 3) & !3;
-    let size = 54 + row * g.h as usize;
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    f.write_all(b"BM")?;
-    f.write_all(&(size as u32).to_le_bytes())?;
-    f.write_all(&0u32.to_le_bytes())?;
-    f.write_all(&54u32.to_le_bytes())?;
-    f.write_all(&40u32.to_le_bytes())?;
-    f.write_all(&(g.w as i32).to_le_bytes())?;
-    f.write_all(&(g.h as i32).to_le_bytes())?;
-    f.write_all(&1u16.to_le_bytes())?;
-    f.write_all(&24u16.to_le_bytes())?;
-    f.write_all(&[0u8; 24])?;
-    let pad = vec![0u8; row - g.w as usize * 3];
-    for y in (0..g.h as usize).rev() {
-        for x in 0..g.w as usize {
-            let i = (y * g.w as usize + x) * 4;
-            f.write_all(&g.bgra[i..i + 3])?;
-        }
-        f.write_all(&pad)?;
-    }
-    f.flush()
 }

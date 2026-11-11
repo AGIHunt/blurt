@@ -305,6 +305,11 @@ struct CloudSpeechSheet: View {
     private var keyPage: URL? {
         openAI ? setup.service.keyPage : URL(string: "https://bailian.console.aliyun.com/")
     }
+    /// a Model Studio model typed under Custom… (not one of the picker's)
+    private var customDashScope: Bool {
+        let m = dsModel.trimmingCharacters(in: .whitespaces)
+        return !openAI && !m.isEmpty && !CloudModels.choices(.speech, provider: "dashscope").contains { $0.id == m }
+    }
     private var canSave: Bool { !openAI || setup.complete || (key.isEmpty && !stored) }
 
     var body: some View {
@@ -421,9 +426,10 @@ struct CloudSpeechSheet: View {
     func save() {
         // a key with characters no key has (what ⌥C types, "ç", after the founder's key): not kept, said here
         guard let k = CloudSpeechCheck.clean(key) else { checked = .failed("speech.cloud.check.bad_key"); return }
-        // a service Blurt didn't test (OpenAI, Groq, another address): saved only once its clip comes back
-        // (Settings → Models' Custom Model rule, docs/design/first-minute-speech.md §10.5)
-        if openAI && (!k.isEmpty || stored) {
+        // a service or model Blurt didn't test (OpenAI, Groq, another address; a Model Studio id typed under Custom…):
+        // saved only once its clip comes back (Settings → Models' Custom Model rule, docs/design/first-minute-speech.md
+        // §10.5) — a model the service won't take this way says so here, not at the first dictation
+        if (openAI || customDashScope) && (!k.isEmpty || stored) {
             testing = true
             CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
                 testing = false

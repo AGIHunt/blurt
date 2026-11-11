@@ -209,6 +209,7 @@
 "speech.cloud.check.network" = "Can’t connect. Check your network and the base URL.";
 "speech.cloud.check.quota" = "Too many requests or no quota left. Try again later.";
 "speech.cloud.check.privacy" = "Cloud recognition is turned off in Privacy";
+"speech.cloud.check.model" = "Model Studio returned no text for this model. The name may be wrong, or the model only works with live streaming or a file link. Check the name or pick one from the list.";
 "speech.cloud.check.other" = "The service returned an error. Check the base URL and the model name.";
 
 /* Dictation’s choices compared (Settings → Models: the lead line and Compare…; DictationCompare.swift). Numbers come

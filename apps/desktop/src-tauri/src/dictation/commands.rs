@@ -108,7 +108,33 @@ pub fn dictation_models(state: tauri::State<'_, AppState>) -> R<Value> {
         .map_err(String::from)?;
     remember_models(&v);
     v["downloading"] = json!(DOWNLOADING.lock().unwrap().clone());
+    v["dashscope_model"] = json!(cloud::dashscope_speech_model());
     Ok(v)
+}
+
+/// Which Model Studio speech model its recogniser (qwen3-asr-flash) uses — None: Qwen3-ASR Flash — and dictation on
+/// it; the Mac's CloudSpeech.saveDashScope. The speech server holds the model it started with: it restarts.
+#[tauri::command]
+pub fn dictation_dashscope_model(model: Option<String>) -> R<()> {
+    let m = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty() && m != "qwen3-asr-flash");
+    settings::update(|cfg| {
+        if cfg.get("asr").and_then(Value::as_object).is_none() {
+            cfg["asr"] = json!({});
+        }
+        if cfg["asr"].get("cloud").and_then(Value::as_object).is_none() {
+            cfg["asr"]["cloud"] = json!({});
+        }
+        let all = cfg["asr"]["cloud"].as_object_mut().expect("an object");
+        match &m {
+            Some(m) => {
+                all.insert("qwen3-asr-flash".into(), json!({"model": m}));
+            }
+            None => {
+                all.remove("qwen3-asr-flash");
+            }
+        }
+    })?;
+    dictation_use(Some("qwen3-asr-flash".into()))
 }
 
 /// Start downloading a speech model; progress arrives as `model-download` events {id, done_mb, total_mb, state}.

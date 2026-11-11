@@ -531,6 +531,7 @@
 "dictation.toast.asr_slow" = "语音模型无响应，录音已保留";
 "dictation.toast.asr_cloud_key" = "云端识别 Key 无效，录音已保留";
 "dictation.toast.asr_cloud_key.action" = "设置…";
+"dictation.toast.asr_cloud_model" = "百炼无法用这个模型识别，录音已保留";
 "dictation.toast.asr_cloud_offline" = "无法连接云端识别服务，录音已保留";
 "dictation.toast.asr_cloud_quota" = "云端识别额度已用完或请求过于频繁，录音已保留";
 "dictation.toast.slow.asr" = "还在识别… %@ 取消";
@@ -716,6 +717,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "准确度较低，不推荐";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "常返回空结果，不推荐";
 "dictation.cloud.model.note.speech.qwen3_asr" = "准确，约 0.7 秒";
+"dictation.cloud.model.note.speech.qwen_audio_31" = "最准，约 1.1 秒";
 "dictation.cloud.model.note.speech.seedasr" = "准确，约 0.5 秒";
 "dictation.cloud.key" = "API Key";
 "dictation.cloud.key.placeholder" = "粘贴 API Key";

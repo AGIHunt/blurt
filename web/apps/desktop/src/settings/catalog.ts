@@ -155,6 +155,7 @@ export const ENTRIES: Entry[] = (() => {
     row('dictation.keep_audio', 'dictation.data', 'dictation.history.keep_audio', { detail: 'dictation.history.keep_audio.detail' }),
     row('dictation.models', 'dictation.data', 'dictation.models.section', { detail: 'dictation.models.detail' }),
     // Copy Text from Screen
+    row('screentext.allow', 'screentext.copy', 'screentext.allow', { detail: 'screentext.allow.detail' }),
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
     row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
@@ -218,9 +219,18 @@ let args: (key: Key) => Record<string, string> | undefined = () => undefined;
 export const setArguments = (f: typeof args) => (args = f);
 
 /** A key's text in a language (the settings catalog's "st." key, else the main window's own); undefined when missing. */
+/** The desktop the app runs on: on Linux a string's `.linux` variant wins (the system keyring, not Windows' Credential
+ *  Manager; GNOME's settings, not Windows'). Set once from app_status (SettingsView). */
+let desk = 'win';
+export function setDesk(p: string) {
+  desk = p;
+}
+export const onLinux = () => desk === 'gnome';
+
 export function textIn(key: Key | undefined, lang: Lang): string | undefined {
   if (!key) return undefined;
-  const s = cat(lang)[`st.${key}`] ?? (cat(lang) as Catalog)[key];
+  const c = cat(lang) as Catalog;
+  const s = (onLinux() ? c[`st.${key}.linux`] : undefined) ?? c[`st.${key}`] ?? c[key];
   const a = args(key);
   return s?.replace(/\{(\w+)\}/g, (_, n: string) => a?.[n] ?? '…');
 }

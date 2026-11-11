@@ -247,11 +247,63 @@ AT-SPI), `dictation/secret_linux.rs` (Secret Service), `capture/portal_linux.rs`
 
 ## Not done or not measured yet
 
-- Snaps and Copy Text through the Screenshot portal (the still for the picker; `screen_text` is still Windows-only).
+- **Snaps through the Screenshot portal (2026-11-11, run on a 26.04.1 GNOME 50.1 VM):**
+  - **The picture is taken before the picker opens.** Every area picker on Linux first takes a picture of the whole
+    desktop through the portal. That is `snap::monitor_still` → `grab_linux::picker_still`, the hook Windows and the
+    Mac already use for the loupe. It has to come first because GNOME can't leave Blurt's overlays out of a
+    screenshot, so a picture taken after the pick would contain the frozen picker or the snap's stage.
+  - **The area is cut from that picture.** A snap's area (`grab_linux::cut`) goes to `tk_recorder.py shot --image`,
+    which numbers it and writes its line. Copy Text's area (`grab_linux::grab`) comes from the same picture, so it
+    needs no second portal call.
+  - **When GNOME refuses,** a snap falls back to x11grab, and Copy Text says "needs screenshot access" without asking
+    a second time.
+  - **The picker and the stage now cover GNOME's work area** (`overlay::cover`). GNOME keeps undecorated X11 windows
+    below the top bar and right of the dock, so the stage, asked for at (0, 0), landed at (67, 32). Its frozen
+    picture was drawn that far from where it was taken.
+  - **On the VM:**
+    - The first Shift+Alt+A brought up "Allow Blurt to Take Screenshots?".
+    - A snap of gedit, a native Wayland window, has gedit's pixels. With x11grab it came out black.
+    - The stage shows the picture exactly where it was taken, at 100% and at 125% (fractional scaling with
+      `xwayland-native-scaling`).
+    - At 125% the saved picture is the dragged area in physical pixels (552×83). The region stored is in X pixels,
+      1.6× those.
+    - The picture before the picker took 0.8–1.1 s in the debug build: portal plus PNG decoding.
+  - **Left as is:**
+    - If GNOME's question goes unanswered for 2 minutes, Blurt stops waiting and opens the picker without a picture.
+      GNOME's dialog stays up until answered.
+    - In the debug build the stage's page took about 2 s to draw over the frozen picker.
+- **Copy Text from Screen (2026-11-11, built and run on a 26.04.1 GNOME 50.1 VM):** `screen_text/grab_linux.rs` takes
+  the whole desktop through the Screenshot portal (non-interactive, parented to the island), removes the portal's PNG
+  (none left in ~/Pictures/Screenshots), and cuts the picked area out (scaled by the picture's size over the monitors'
+  box: `grab::crop`, unit-tested with a 2x picture and a monitor left of 0); RapidOCR (`screen_ocr.py`) reads it, with
+  no fall-back reader (the first use installs it: ~40 s); the rest of the flow (rules, paste, translation card) is
+  shared with Windows. On the VM the first ⌥C brought GNOME's "Allow Blurt to Take Screenshots?" up over the picked
+  area; after Allow the three gedit lines came back and were on the clipboard (not typed: Remote Desktop access wasn't
+  given yet); a later ⌥C took ~3 s from letting go to the text, the reader cold. If GNOME refuses to ask (the design
+  VM did while Blurt wasn't focused), the island says "Copy Text needs screenshot access · Allow…", which opens
+  Settings → Copy Text from Screen → Screenshot access (`screen_text_allow`, the main window as the parent). Seen on
+  the run: the reader (PP-OCRv4, 2×) on gedit's monospace dropped the final 。, read CSV as csv and "Claude Code" as
+  "Claude e Code" — the reader's, as on Windows, not the grab's. Fixed the same day: the reader is PP-OCRv6 tiny at 1×
+  (windows-models.md §Copy Text's reader), which reads those lines right but for "claude". Checked again on 11-11 with the new reader:
+  - **100%:** gedit's three lines came back right except "claude".
+  - **125% fractional scaling:** the area was cut right and all three lines were exact.
+  - **Translation card:** tested against a stand-in OpenAI-compatible service on the VM, since no real key goes on a
+    test machine. "Translation copied" showed, the card appeared under the island, and Esc with the pointer on the
+    card closed it.
+- **Settings on the VM:** the Dictation pane shows GNOME's key ("Menu", the portal's label read again when Settings
+  opens or the shortcuts change — app_status was read once at launch, before the user answered GNOME's dialog), and
+  the portal's "Press <Shift><Alt>c" reads "Shift+Alt+C" everywhere (`hotkeys::pretty_trigger`). GNOME's own list of
+  Blurt's shortcuts named Copy Text, Translate, Reformat and Cards "Pen" (`describe`'s fall-back): named now.
+- **Settings (2026-11-11):** the Dictation pane and the Models page's dictation / polish / translate rows now show on
+  Linux — they went by `platform === 'win'`; now by `app_status.features` (`dictation`: `cfg(dict)`, `screen_text`:
+  Windows). With the portal key (`dictation_keys: "portal"`) the key row shows GNOME's shortcut (`dictation_key`, the
+  label the portal bound) and where to change it, and the Esc / Shift / Ctrl rows are hidden (the portal gives no other
+  keys). Key storage reads "the system keyring" (strings' `.linux` variants). Checked in the browser mock only; the
+  Linux-only branch of `app_status` (`evdev_available`) was not compiled here.
 - Evdev mode end to end in the app (measured standalone; the app was tested in portal mode), the right-Alt opt-in step
   in Settings, Esc during a take in portal mode.
 - Onboarding: the Remote Desktop / Screenshot steps in the Welcome (today: "Allow typing" on the first take).
-- Shortcut labels show the portal's raw text ("Press <Shift><Alt>a"); the Welcome shows "Not set" in portal mode;
+- The Welcome shows "Not set" in portal mode (shortcut labels themselves read "Shift+Alt+A" since 2026-11-11);
   GNOME's "Add Keyboard Shortcuts" dialog opens behind the Welcome (parent it to the main window).
 - The island's toast button by mouse under XWayland: hovering the toast can open the island before the click lands
   (seen with the test rig's pointer; "Allow typing" is also asked by itself, so dictation doesn't depend on it).

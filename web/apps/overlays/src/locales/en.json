@@ -426,5 +426,7 @@
   "launch.migrate.unassigned": "Unassigned",
   "island.cards.none_detail": "No cards · {key} to snap",
   "island.rec.pen_box": "Box",
-  "island.rec.pen_ellipse": "Ellipse"
+  "island.rec.pen_ellipse": "Ellipse",
+  "capture.text.allow": "Copy Text needs screenshot access first",
+  "capture.text.allow_action": "Allow…"
 }

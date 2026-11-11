@@ -40,6 +40,17 @@ pub fn measured_default(preset: &str, job: &str) -> Option<&'static str> {
     }
 }
 
+/// Model Studio's speech model for its recogniser (`asr.cloud["qwen3-asr-flash"].model`, the Mac's CloudSpeech
+/// storage; None = Qwen3-ASR Flash, the default): one of the measured speech models (curated.json `speech`).
+pub fn dashscope_speech_model() -> Option<String> {
+    settings::read_config()
+        .pointer("/asr/cloud/qwen3-asr-flash/model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+}
+
 pub fn setup() -> Value {
     settings::read_config()
         .pointer("/record/cloud")
@@ -115,6 +126,9 @@ pub fn speech_env() -> Vec<(&'static str, String)> {
                 out.push(("DASHSCOPE_API_KEY", k));
                 if let Some(b) = base {
                     out.push(("DASHSCOPE_BASE_URL", b));
+                }
+                if let Some(m) = dashscope_speech_model() {
+                    out.push(("DASHSCOPE_ASR_MODEL", m));
                 }
             }
             // Volcengine Speech: one stored item "<App ID>:<Access Token>" (the Mac's VolcengineSpeech.credential);

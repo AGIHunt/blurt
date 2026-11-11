@@ -7,14 +7,14 @@
 // What each pane has and what it leaves out on Windows: docs/design/windows-parity/settings.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
-import { api, listen, type AppStatus, type HotkeyResult, type HotkeyRow, type LoginItem, type MicState, type ProjectList, type Settings } from '../api';
+import { api, builds, listen, type AppStatus, type HotkeyResult, type HotkeyRow, type LoginItem, type MicState, type ProjectList, type Settings } from '../api';
 import { i18n, t } from '../i18n';
 import { comboFromEvent, comboLabel } from '../util';
 import {
   ACTIONS, ENTRIES, GROUPS, MOVED, PANES, pane, paneOf, paneReason, reason, results, SECTIONS, setArguments, SHORTCUT_SECTIONS, shortcutTitle,
   SUGGESTIONS, textIn, type Entry, type Key, type PaneId, type ResultGroup,
 } from '../settings/catalog';
-import { Group, Line, Page, Popup, requestFlash, Row, S, TextLink, Toggle, lang } from '../settings/kit';
+import { Group, Line, Page, Popup, requestFlash, Row, S, TextLink, Toggle, lang, setPlatform } from '../settings/kit';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { ProjectGlyph } from './glyphs';
 import { OkMark } from './Welcome';
@@ -53,7 +53,12 @@ function resolveLink(link: string | undefined | null, last: string | undefined):
   return [l && pane(l) ? (l as PaneId) : 'general', null];
 }
 
-export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void }) {
+export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void }) {
+  // read again when Settings opens and whenever the shortcuts change: GNOME binds the dictation key (the portal's
+  // dialog) after the app started, and app_status says which key it bound
+  const [status, setStatus] = useState(given);
+  useEffect(() => setStatus(given), [given]);
+  setPlatform(status.platform);        // the strings' .linux variants (kit S)
   const [s, setS] = useState<Settings | null>(null);
   const [cur, setCur] = useState<PaneId>('general');
   const [query, setQuery] = useState('');
@@ -63,7 +68,11 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
   const reload = useCallback(() => api.settings().then(setS, (e) => onToast(String(e))), [onToast]);
   useEffect(() => {
     reload();
-    return listen<HotkeyRow[]>('hotkeys://changed', (rows) => setS((x) => (x ? { ...x, hotkeys: rows } : x)));
+    api.status().then(setStatus, () => {});
+    return listen<HotkeyRow[]>('hotkeys://changed', (rows) => {
+      setS((x) => (x ? { ...x, hotkeys: rows } : x));
+      api.status().then(setStatus, () => {});
+    });
   }, [reload]);
 
   // the pane to open: a nav (tray, link), else the last one
@@ -123,18 +132,24 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
     });
   }, [hk]);
 
-  /** what this build shows: Linux has no dictation, no Copy Text from Screen and no login item here */
+  /** what this build shows (app_status `features`): dictation on Windows and Linux, Copy Text from Screen and the
+   *  Windows screenshot cards on Windows; with GNOME's portal key, no Esc / Shift / Ctrl taps inside a take */
   const win = status.platform === 'win';
+  const { dictation, screenText, portalKey } = builds(status);
+  const portal = portalKey !== null;
   const shown = useCallback(
     (e: Entry) => {
       const p = paneOf(e.id);
-      if (!win && (p === 'dictation' || p === 'screentext' || e.section === 'general.cards' || e.id === 'shortcuts.dictation_key' || e.id === 'shortcuts.text' || e.id === 'shortcuts.translate')) return false;
-      if (!win && (e.id === 'speech.dictation' || e.id === 'speech.polish' || e.id === 'speech.translate')) return false;
+      if (!dictation && (p === 'dictation' || e.id === 'shortcuts.dictation_key' || e.id === 'speech.dictation' || e.id === 'speech.polish' || e.id === 'speech.translate')) return false;
+      if (!screenText && (p === 'screentext' || e.id === 'shortcuts.text' || e.id === 'shortcuts.translate' || e.id === 'speech.vision')) return false;
+      if (!win && e.section === 'general.cards') return false;
+      if (portal && (e.id === 'dictation.cancel_key' || e.id === 'dictation.modifier_tap')) return false;
+      if (status.platform !== 'gnome' && e.id === 'screentext.allow') return false;
       return true;
     },
-    [win],
+    [win, dictation, screenText, portal, status.platform],
   );
-  const panes = PANES.filter((p) => win || (p.id !== 'dictation' && p.id !== 'screentext'));
+  const panes = PANES.filter((p) => (dictation || p.id !== 'dictation') && (screenText || p.id !== 'screentext'));
   const groups = useMemo(() => (query.trim() ? results(query, lang(), shown) : []), [query, shown]);
   const counts = useMemo(() => new Map(groups.map((g) => [g.pane, g.paneHit ? ENTRIES.filter((e) => paneOf(e.id) === g.pane && shown(e) && !ACTIONS.has(e.id)).length : g.hits.length])), [groups, shown]);
   const searching = !!query.trim();
@@ -210,13 +225,13 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
       </nav>
       {searching ? (
         <SearchResults query={query} groups={groups} stops={stops} sel={sel} setSel={setSel} open={open} clear={() => setQuery('')} setQuery={setQuery} hotkeys={s.hotkeys}
-          counts={counts} dictKey={S(`dictation.key.${s.config.record?.dictation?.key === 'either_option' ? 'either_option' : 'right_option'}`)} />
+          counts={counts} dictKey={portal ? portalKey || S('dictation.key.portal.unset') : S(`dictation.key.${s.config.record?.dictation?.key === 'either_option' ? 'either_option' : 'right_option'}`)} />
       ) : cur === 'general' ? (
         <GeneralPane status={status} cfg={cfg} save={save} onToast={onToast} onLang={onLang} onWelcome={onWelcome} checkUpdates={checkUpdates} />
       ) : cur === 'dictation' ? (
-        <DictationPane cfg={cfg} save={save} goModels={() => go('speech', 'speech.dictation')} goTranslate={() => go('speech', 'speech.translate')} keyOf={hk} />
+        <DictationPane cfg={cfg} save={save} goModels={() => go('speech', 'speech.dictation')} goTranslate={() => go('speech', 'speech.translate')} keyOf={hk} portalKey={portalKey} />
       ) : cur === 'screentext' ? (
-        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} />
+        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} linux={status.platform === 'gnome'} />
       ) : cur === 'speech' ? (
         <ModelsPane status={status} onToast={onToast} />
       ) : cur === 'shortcuts' ? (
@@ -630,18 +645,19 @@ function ShortcutsPane({ s, status, reload, goDictation }: { s: Settings; status
   const d = s.config.record?.dictation ?? {};
   const dkey = d.key === 'either_option' ? 'either_option' : 'right_option';
   const win = status.platform === 'win';
+  const { dictation, screenText, portalKey } = builds(status);
   return (
     <Page id="shortcuts" lead={<span>{S('capture.keys.field_help')}</span>}>
       {s.wayland && s.hotkey_mode === 'portal' && <p className="st-lead">{S('win.keys.portal_note')}</p>}
       {SHORTCUT_SECTIONS.map((sec) => {
-        const actions = sec.actions.filter((a) => rows.has(a) && (win || (a !== 'text' && a !== 'translate')));
-        if (sec.section === 'shortcuts.dictation' && !win) return null;
+        const actions = sec.actions.filter((a) => rows.has(a) && (screenText || (a !== 'text' && a !== 'translate')));
+        if (sec.section === 'shortcuts.dictation' && !dictation) return null;
         if (!actions.length && sec.section !== 'shortcuts.dictation') return null;
         return (
           <Group key={sec.section} id={sec.section}>
             {sec.section === 'shortcuts.dictation' && (
               <Row id="shortcuts.dictation_key" detail={<TextLink ink onClick={goDictation}>{S('win.keys.dictation')}</TextLink>}>
-                <span className="st-key static"><KeyCaps label={S(`dictation.key.${dkey}`)} /></span>
+                <span className="st-key static"><KeyCaps label={portalKey !== null ? portalKey || S('dictation.key.portal.unset') : S(`dictation.key.${dkey}`)} /></span>
               </Row>
             )}
             {actions.map((a) => {

@@ -6,13 +6,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '@blurt/icons';
 import { i18n, t } from '../i18n';
-import { entry, pane, SECTIONS, textIn, type Key, type Lang, type PaneId } from './catalog';
+import { entry, onLinux, pane, SECTIONS, setDesk, textIn, type Key, type Lang, type PaneId } from './catalog';
 import { Menu, type MenuAt, type MenuEntry } from '../components/Menu';
 
 /** A settings string (the Mac's key under "st."), its placeholders {1} {2} … filled in order. */
+/** The desktop the app runs on (catalog `setDesk`): on Linux a string's `.linux` variant wins. */
+export const setPlatform = setDesk;
 export function S(key: Key, ...args: (string | number)[]): string {
   const p: Record<string, string> = {};
   args.forEach((a, i) => (p[String(i + 1)] = typeof a === 'number' ? i18n().formatNumber(a) : a));
+  if (onLinux() && i18n().has(`st.${key}.linux`)) return t(`st.${key}.linux` as Key, p);
   return i18n().has(`st.${key}`) ? t(`st.${key}`, p) : t(key, p);
 }
 export const lang = () => i18n().lang as Lang;

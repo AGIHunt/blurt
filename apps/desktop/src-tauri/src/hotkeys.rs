@@ -321,6 +321,41 @@ pub struct Hotkeys {
 }
 
 static MAIN: OnceLock<std::thread::ThreadId> = OnceLock::new();
+/// The dictation key the GlobalShortcuts portal bound ("Menu", "Ctrl+Alt+Space"…) — Linux without `/dev/input`; None
+/// elsewhere, or before the portal answered. Settings shows it in place of the right-Alt choice.
+pub static DICTATE_LABEL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// GNOME's trigger description ("Press <Shift><Alt>c", "<Control><Alt>space", "Menu") as the app writes keys
+/// ("Shift+Alt+C", "Ctrl+Alt+Space", "Menu"). Anything it doesn't recognise stays as GNOME said it.
+pub fn pretty_trigger(s: &str) -> String {
+    let t = s.trim();
+    let t = t.strip_prefix("Press ").unwrap_or(t).trim();
+    let mut parts: Vec<String> = vec![];
+    let mut rest = t;
+    while let Some(r) = rest.strip_prefix('<') {
+        let Some(end) = r.find('>') else { return s.trim().to_string() };
+        parts.push(match r[..end].to_ascii_lowercase().as_str() {
+            "shift" => "Shift".into(),
+            "alt" | "mod1" => "Alt".into(),
+            "control" | "ctrl" | "primary" => "Ctrl".into(),
+            "super" | "meta" | "mod4" => "Super".into(),
+            other => other.to_string(),
+        });
+        rest = &r[end + 1..];
+    }
+    let key = rest.trim();
+    if key.is_empty() {
+        return s.trim().to_string();
+    }
+    let mut cs = key.chars();
+    let first = cs.next().unwrap();
+    parts.push(if key.chars().count() == 1 { key.to_uppercase() } else { first.to_uppercase().collect::<String>() + cs.as_str() });
+    parts.join("+")
+}
+
+pub fn dictate_label() -> Option<String> {
+    DICTATE_LABEL.lock().unwrap().clone()
+}
 
 /// Called once from setup (which runs on the main thread).
 pub fn mark_main_thread() {
@@ -596,7 +631,13 @@ pub mod portal {
             "voice" => "Voice note",
             "project" => "Switch project",
             "dictate" => "Dictate (hold to talk, or tap to start and stop)",
-            _ => "Pen",
+            "text" => "Copy text from the screen",
+            "translate" => "Translate text on the screen",
+            "reformat" => "Reformat the last dictation",
+            "cards" => "Show cards",
+            "pen" => "Pen",
+            // an action added later without a name here: its id, never another action's name
+            a => Box::leak(a.to_string().into_boxed_str()),
         }
     }
 
@@ -638,13 +679,14 @@ pub mod portal {
                 let labels: HashMap<String, String> =
                     bound.shortcuts().iter().map(|s| (s.id().to_string(), s.trigger_description().to_string())).collect();
                 *app.state::<Hotkeys>().mode.lock().unwrap() = "portal".into();
+                *DICTATE_LABEL.lock().unwrap() = labels.get("dictate").map(|l| pretty_trigger(l));
                 {
                     let h = app.state::<Hotkeys>();
                     let mut st = h.status.lock().unwrap();
                     for (a, l) in &labels {
                         if let Some(r) = st.get_mut(a) {
                             r["result"] = json!("portal");
-                            r["label"] = json!(l);
+                            r["label"] = json!(pretty_trigger(l));
                         }
                     }
                 }
@@ -727,6 +769,15 @@ mod tests {
         assert_eq!(spec("off"), None);
         assert_eq!(spec("alt+R+T"), None);
         assert_eq!(spec("alt+F21"), None);
+    }
+
+    #[test]
+    fn gnome_triggers_read_as_keys() {
+        assert_eq!(super::pretty_trigger("Press <Shift><Alt>c"), "Shift+Alt+C");
+        assert_eq!(super::pretty_trigger("<Control><Alt>space"), "Ctrl+Alt+Space");
+        assert_eq!(super::pretty_trigger("Menu"), "Menu");
+        assert_eq!(super::pretty_trigger("Press <Primary>t"), "Ctrl+T");
+        assert_eq!(super::pretty_trigger("<odd"), "<odd");
     }
 
     #[test]

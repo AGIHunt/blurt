@@ -486,6 +486,36 @@ shipped prompt 2.42 % (whole-take replays of the eval's Flash output with the ev
 the Lab 2.62–2.72 % (macOS's pieces as the second transcript, the Lab's app context). Latency after key-up (eval §5,
 M5 Max, Beijing): Flash 0.52 s on ~5 s takes, 1.47 s on ~60 s ones, plus ~0.8–1.1 s of cloud polish.
 
+**Model Studio's other speech models (2026-11-11).** A user picked 千问音频 3.1 (`qwen-audio-3.1-asr-flash`) under
+Custom… and saw "can't connect". Model Studio serves only Qwen3-ASR Flash on its OpenAI-compatible chat/completions;
+the 3.1 model answers there `404 model_not_supported` and works on Model Studio's own API
+(`/api/v1/services/aigc/multimodal-generation/generation`: `input.messages` with an `input_audio` data URI and an
+optional `input_text` context turn, `parameters.format` / `sample_rate` / `language_hints` / `vocabulary`, the text in
+`output.text`). Probed live with a spoken clip: qwen-audio 3.0 / 3.1 ASR Flash and `fun-asr-flash-2026-06-15` work on
+the own API; `…-realtime` answer 500 on the compatible API and no text on the own one; `…-filetrans`, Paraformer and
+Fun-ASR answer 404 / `url error` (a public file URL only). So the protocol is learnt from the answers, not from the id
+(`DashScope._ask`): the compatible API first, a 4xx or 5xx there asked once on the own API, which then serves that model
+(3.1 is known and goes there directly); no text from either is a `model` failure ("the name may be wrong, or the model
+only streams or reads a file link"). A 4xx is `bad_response`, no longer `network`. Settings tests a model typed under
+Custom… before saving it. Windows offers the measured Model Studio speech models in dictation's pop-up (curated.json
+`speech`, the Mac's `asr.cloud["qwen3-asr-flash"].model`).
+
+The founder's 95 takes, whole take at 1×, words + field text, through the shipped `DashScope` backend, same day
+(raw: `~/blurt-eval-2026-10-31/raw/founder-2026-11-11-dashscope.jsonl`; Flash measured 2.00 / 2.02 / 2.15 % across
+three runs, so ±0.15 points is noise):
+
+| Recogniser | Error | 34 Lab cases | Names / terms | Blurt (of 9) | Short take, median / p90 |
+|---|---:|---:|---:|---:|---|
+| qwen-audio-3.1-asr-flash, hot words at 50 (shipped) | **1.60 %** | 2.44 % | **88 %** | 8 | 1.14 / 1.89 s |
+| … hot words at 4 / 5 | 1.89 / 1.87 % | 2.48 / 2.52 % | 81 / 83 % | 1 | |
+| … no words, no field | 1.80 % | 2.44 % | 81 % | 1 | |
+| qwen3-asr-flash, words + field (the default) | 2.15 % | 3.07 % | 82 % | 7 | 0.80 / 1.17 s |
+
+3.1 writes numbers as digits (K2, 0.6 where Flash wrote "K 二"), never typed the field text or the word list (neither net
+fired), keeps 呃 / 嗯 a little more often and leaves out the space between Chinese and Latin words more often (not
+scored). Hot words at 50 changed "Option M" to a listed "OpenAI" in one long take. Qwen3-ASR Flash stays the default
+(faster by ~0.3 s on short takes); 3.1 is listed as the most accurate.
+
 ### Cloud recognition streamed while you talk: Volcengine Seed-ASR 2.0 (2026-10-31)
 
 The afternoon of the eval (dictation-eval-2026-10-31.md §2.1, §5, §6.3 B′) found one cloud recogniser with a

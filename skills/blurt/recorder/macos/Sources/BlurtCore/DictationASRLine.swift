@@ -27,6 +27,9 @@ extension DictationASRFailure {
         case cloudOffline
         /// "The cloud speech service refused: too many requests or no quota left · Retry"
         case cloudQuota
+        /// "Blurt can't use this cloud speech model · Settings…" (a Model Studio model that only streams or reads a file
+        /// by URL: transcribe.py dashscope_protocol): Retry would only fail again
+        case cloudModel
 
         /// Dictation.strings key
         public var key: String {
@@ -36,14 +39,16 @@ extension DictationASRFailure {
             case .cloudKey: return "dictation.toast.asr_cloud_key"
             case .cloudOffline: return "dictation.toast.asr_cloud_offline"
             case .cloudQuota: return "dictation.toast.asr_cloud_quota"
+            case .cloudModel: return "dictation.toast.asr_cloud_model"
             }
         }
         /// Retry can help (else the button opens Settings)
-        public var retryHelps: Bool { self != .cloudKey }
+        public var retryHelps: Bool { self != .cloudKey && self != .cloudModel }
     }
 
     /// The line for this failure. transcribe.py's codes: auth (401/403, or a key with characters a key can't have),
-    /// quota (429), network (unreachable, timed out), bad_response, privacy (local-only recognition is on), …
+    /// quota (429), network (unreachable, timed out, 5xx), bad_response (the service refused the request: 4xx), model
+    /// (a model Blurt can't call), privacy (local-only recognition is on), …
     public var line: Line {
         switch self {
         case .noModel: return .failed           // the island offers the download instead (noSpeechModel)
@@ -53,6 +58,7 @@ extension DictationASRFailure {
             case "auth": return .cloudKey
             case "network": return .cloudOffline
             case "quota": return .cloudQuota
+            case "model": return .cloudModel
             default: return .failed
             }
         }
@@ -61,7 +67,7 @@ extension DictationASRFailure {
     /// The speech server's answer is final: the CLI would say the same (no model here, a key the service refused or
     /// that can't be sent, local-only recognition on). Not worth a second, cold run while the user waits.
     public static func definite(_ code: String?) -> Bool {
-        ["model_missing", "auth", "privacy"].contains(code ?? "")
+        ["model_missing", "auth", "privacy", "model"].contains(code ?? "")
     }
 }
 
@@ -98,6 +104,7 @@ public enum CloudSpeechCheck {
         case "privacy": return "speech.cloud.check.privacy"
         case "no_key": return "speech.cloud.check.no_key"
         case "bad_key": return "speech.cloud.check.bad_key"
+        case "model": return "speech.cloud.check.model"
         default: return "speech.cloud.check.other"
         }
     }

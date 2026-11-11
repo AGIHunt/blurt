@@ -121,7 +121,7 @@ pub fn dispatch(app: &AppHandle, action: &str) {
             dictation::engine::reformat_last();
             Ok(())
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         "text" | "translate" => {
             screen_text::start(app, action == "translate");
             Ok(())
@@ -223,6 +223,38 @@ fn platform() -> &'static str {
     }
 }
 
+fn dictation_keys() -> &'static str {
+    #[cfg(all(dict, target_os = "linux"))]
+    return if dictation::keys::evdev_available() { "evdev" } else { "portal" };
+    #[allow(unreachable_code)]
+    "hook"
+}
+
+/// Linux: GNOME's screenshot question for Copy Text from Screen, asked with Blurt's window in front (Settings' Allow…;
+/// screen_text/grab_linux.rs). Elsewhere nothing to ask.
+#[tauri::command(async)]
+fn screen_text_allow(app: AppHandle) -> Value {
+    #[cfg(target_os = "linux")]
+    return match screen_text::grab_linux::allow(&app) {
+        Ok(()) => json!({"ok": true}),
+        Err(e) => json!({"ok": false, "code": if e == "denied" { "denied" } else { "failed" }, "error": e}),
+    };
+    #[allow(unreachable_code)]
+    {
+        let _ = app;
+        json!({"ok": true})
+    }
+}
+
+/// Copy Text from Screen may take its pictures (Linux: allowed in GNOME's question, as far as Blurt knows).
+#[tauri::command]
+fn screen_text_allowed() -> bool {
+    #[cfg(target_os = "linux")]
+    return screen_text::grab_linux::allowed();
+    #[allow(unreachable_code)]
+    true
+}
+
 #[tauri::command]
 fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
     let r = state.runner();
@@ -240,6 +272,14 @@ fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
         "uv": r.uv.as_deref().map(scripts::s),
         "capture": state.capture.state(),
         "hotkey_mode": app.state::<hotkeys::Hotkeys>().mode.lock().unwrap().clone(),
+        // what this build has (Settings shows a pane or a row only for what is built): dictation and voice notes on
+        // Windows and Linux (`cfg(dict)`), Copy Text from Screen on both (Linux: the Screenshot portal)
+        "features": {"dictation": cfg!(dict), "screen_text": cfg!(any(windows, target_os = "linux"))},
+        // the dictation key the GlobalShortcuts portal bound (Linux without /dev/input), else null
+        "dictation_key": hotkeys::dictate_label(),
+        // where the dictation key comes from: "hook" (Windows: right / either Alt), "evdev" (Linux, the input group:
+        // the same choice), "portal" (Linux otherwise: one shortcut, set in GNOME's dialog)
+        "dictation_keys": dictation_keys(),
         // test hook (smoke screenshots): open on this view — inbox | items | project:<id> | settings | …
         "start_view": std::env::var("BLURT_START_VIEW").ok(),
     })
@@ -800,6 +840,8 @@ pub fn run() {
                 }
             }
             hotkeys::apply(&handle, Some(false));
+            #[cfg(target_os = "linux")]
+            screen_text::grab_linux::init(&handle);
             #[cfg(any(windows, target_os = "linux"))]
             if cfg!(debug_assertions) || std::env::var_os("APPIMAGE").is_some() {
                 let _ = app.deep_link().register_all();
@@ -864,6 +906,9 @@ pub fn run() {
             dictation::commands::model_download,
             dictation::commands::model_download_cancel,
             dictation::commands::dictation_use,
+            dictation::commands::dictation_dashscope_model,
+            screen_text_allow,
+            screen_text_allowed,
             dictation::commands::dictation_key_forward,
             dictation::commands::dictation_words,
             dictation::commands::dictation_words_edit,

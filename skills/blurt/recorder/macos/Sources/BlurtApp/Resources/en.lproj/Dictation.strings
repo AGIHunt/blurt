@@ -531,6 +531,7 @@
 "dictation.toast.asr_slow" = "The speech model didn’t respond — the recording is kept";
 "dictation.toast.asr_cloud_key" = "The cloud speech key isn’t valid — the recording is kept";
 "dictation.toast.asr_cloud_key.action" = "Settings…";
+"dictation.toast.asr_cloud_model" = "Model Studio can’t transcribe with this model — the recording is kept";
 "dictation.toast.asr_cloud_offline" = "Couldn’t connect to the cloud speech service — the recording is kept";
 "dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota — the recording is kept";
 "dictation.toast.slow.asr" = "Still recognizing… %@ to cancel";
@@ -716,6 +717,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "Less accurate; not recommended";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "Often returns nothing; not recommended";
 "dictation.cloud.model.note.speech.qwen3_asr" = "Accurate, about 0.7 s";
+"dictation.cloud.model.note.speech.qwen_audio_31" = "Most accurate, about 1.1 s";
 "dictation.cloud.model.note.speech.seedasr" = "Accurate, about 0.5 s";
 "dictation.cloud.key" = "API key";
 "dictation.cloud.key.placeholder" = "Paste an API key";

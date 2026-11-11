@@ -2007,6 +2007,32 @@ class OpenAICompat:
         return [(0.0, len(x) / SR, (data.get("text") or "").strip(), lang)]
 
 
+# Model Studio (阿里云百炼) speech models take one of two HTTP APIs, and Blurt learns which from the service's answers,
+# not from the id (measured 2026-11-11 with a spoken clip: docs/design/dictation.md §Cloud recognition). Qwen3-ASR Flash
+# takes the OpenAI-compatible chat/completions; qwen-audio 3.x ASR Flash and Fun-ASR Flash answer 404
+# model_not_supported or 400 there and work on Model Studio's own API. A model that only streams (…-realtime) or reads a
+# file from a URL (…-filetrans, Paraformer, Fun-ASR) gives text on neither: a `model` failure, with both answers.
+# The words as hot words: weight 1–5, or 50 — a "super" hot word, at most 50 of them. On the founder's 95 takes
+# (2026-11-11, qwen-audio-3.1-asr-flash, words + field) 4 or 5 changed almost nothing (Blurt 1 of 9 right, 1.89 %); 50
+# got Blurt 8 of 9 and 1.60 % (Qwen3-ASR Flash the same day: 2.15 %). The words past the 50th go at 5.
+DASHSCOPE_HOTWORD_WEIGHT = 50
+DASHSCOPE_SUPER_WORDS = 50
+# models known to take only the own API — measured, so the first request of a server doesn't go to the compatible API
+# for its 404 (2.5–31 s that day); any other model the server learns once (_ask)
+_DASHSCOPE_OWN_API: set[str] = {"qwen-audio-3.1-asr-flash"}
+
+
+def dashscope_native_url(base: str) -> str:
+    """The OpenAI-compatible base (…/compatible-mode/v1, the one Settings keeps) → the same host's own API."""
+    b = base.rstrip("/")
+    if b.endswith("/compatible-mode/v1"):
+        b = b[: -len("/compatible-mode/v1")]
+    else:
+        u = urllib.parse.urlsplit(b)
+        b = f"{u.scheme}://{u.netloc}"
+    return b + "/api/v1/services/aigc/multimodal-generation/generation"
+
+
 class DashScope:
     # A dictation goes here whole at key-up (docs/design/dictation.md §Cloud recognition): one request up to 50 s (the
     # eval's whole-take requests, dictation-eval-2026-10-31.md §2.1), a longer take cut at its pauses into ≤ 50 s parts
@@ -2052,12 +2078,12 @@ class DashScope:
         request only when a net fires (`last`: echo / context_dump, the answer's `tag`; NoteEngine empties it per note,
         not per part: a long take's parts run side by side)."""
         field = getattr(self, "field", "")
-        text = self._request(x, self.context_text())
+        text = self._ask(x)
         if self.terms and not self.args.prompt and dictation_vocab.context_dump(text, self.terms):
-            text = self._request(x, self.context_text(words=False))
+            text = self._ask(x, words=False)
             self.last["context_dump"] = True
         if field and echoes_prior(text, field, len(x) / SR):
-            redo = self._request(x, self.context_text(field=False))
+            redo = self._ask(x, field=False)
             # nothing heard without the field, and the answer was the field itself (≥ 80 % of it one run of the field):
             # there was no speech to write — a short piece of breath came back as the whole field (6 of the founder's
             # takes in the old piece path, re-measured 2026-10-31)
@@ -2066,6 +2092,50 @@ class DashScope:
                 text = redo
                 self.last["echo"] = True
         return [(0.0, len(x) / SR, text)]
+
+    def _ask(self, x, words: bool = True, field: bool = True) -> str:
+        """The compatible API first; a refusal there (4xx) or a broken answer (5xx: the realtime models answer 500) is
+        asked once more on the own API, which then serves this model from here on. Neither giving text: `model`."""
+        model = getattr(self, "model", "")
+        if model in _DASHSCOPE_OWN_API:
+            return self._request_native(x, words, field)
+        try:
+            return self._request(x, self.context_text(words, field))
+        except Fail as first:
+            if first.code not in ("bad_response", "network") or not model:
+                raise                               # a key or quota answer is the same on both APIs
+            try:
+                text = self._request_native(x, words, field)
+            except Fail as second:
+                if second.code == "bad_response":
+                    raise Fail(f"Model Studio gave no text for a recording from {model}: compatible API: {first}; "
+                               f"own API: {second}", "model")
+                raise first if first.code == "network" else second
+            _DASHSCOPE_OWN_API.add(model)
+            return text
+
+    def _request_native(self, x, words: bool, field: bool) -> str:
+        """Model Studio's own HTTP API (qwen-audio-…-asr-flash takes no other). The words go as its
+        hot words (`vocabulary`: DASHSCOPE_HOTWORD_WEIGHT) instead of context text; a typed prompt and the field's text go as one
+        context turn, which the service keeps to 400 characters (the field's end kept: it is next to the cursor)."""
+        audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
+        turn = "\n".join(t for t in (self.args.prompt or "", getattr(self, "field", "") if field else "") if t)[-400:]
+        messages = [{"role": "user", "content": [{"type": "input_text", "text": turn}]}] if turn else []
+        messages.append({"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]})
+        params: dict = {"format": "wav", "sample_rate": str(SR)}
+        if self.args.language:
+            params["language_hints"] = [self.args.language]
+        if words and self.terms and not self.args.prompt:
+            params["vocabulary"] = {t: DASHSCOPE_HOTWORD_WEIGHT if i < DASHSCOPE_SUPER_WORDS else 5
+                                    for i, t in enumerate(self.terms[:2000])}
+        data = _post(dashscope_native_url(self.base), json.dumps({"model": self.model, "input": {"messages": messages},
+                                                                   "parameters": params}).encode(),
+                     {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
+                     retries=self.retries, timeout=self.timeout)
+        text = (data.get("output") or {}).get("text") if isinstance(data, dict) else None
+        if text is None:
+            raise Fail(f"ASR API answered without a transcript: {json.dumps(data)[:300]}", "bad_response")
+        return text.strip()
 
     def _request(self, x, context: str) -> str:
         audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
@@ -2464,7 +2534,10 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float
             if e.code in (429, 500, 502, 503) and attempt < retries - 1:
                 time.sleep(2 ** attempt * 2)
                 continue
-            raise Fail(f"ASR API error {e.code}: {msg}", "auth" if e.code in (401, 403) else "quota" if e.code == 429 else "network")
+            # 4xx: the service answered and refused the request (a model it doesn't serve this way, a wrong address):
+            # not a connection problem (2026-11-11: qwen-audio-3.1-asr-flash on chat/completions read "can't connect")
+            raise Fail(f"ASR API error {e.code}: {msg}", "auth" if e.code in (401, 403) else "quota" if e.code == 429
+                       else "network" if e.code >= 500 or e.code == 408 else "bad_response")
         except UnicodeEncodeError:
             # a header (the key) with a character HTTP can't carry: api_key catches it first; this is the safety net
             raise Fail("the API key has characters a key can't have: paste the key again", "auth")
@@ -4218,6 +4291,11 @@ def dictation_models(hw: dict | None = None) -> dict:
             # the dictation goes to a cloud service: the app shows live text from macOS's recogniser and doesn't hear it
             # again (each pass is billed)
             "selected_cloud": bool(sel and not sel.get("local", True)),
+            # a PC the CPU rules give the fast, less accurate model (SenseVoice: < 8 GB or ≤ 2 cores): the app offers
+            # cloud recognition there first (windows-models.md §Cloud recognition on a weak PC) — never switches to it
+            "weak": not apple and rec == SV,
+            # cloud recognition may be offered at all (privacy.local_asr off)
+            "cloud_allowed": not local_only(),
             "ready": not missing, "missing": missing, "vad": vad, "models": rows, "plan": plan}
 
 

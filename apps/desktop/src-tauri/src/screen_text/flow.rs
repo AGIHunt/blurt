@@ -1,8 +1,10 @@
-//! Copy Text from Screen (Alt+Shift+C) and its translation (Alt+Shift+T) on Windows — the Mac's ScreenTextCopy,
+//! Copy Text from Screen (Alt+Shift+C) and its translation (Alt+Shift+T) on Windows and Linux — the Mac's ScreenTextCopy,
 //! ScreenTextCard and ScreenTextRefine (⌥C / ⌥T; docs/design/screen-text.md, windows-parity/snap-and-note.md §6):
 //!
 //!  • a crosshair and one drag (the picker's text mode: no dim, no toolbar); the area is read on this PC (RapidOCR
-//!    through screen_ocr.py's warm server, Windows' OCR while it isn't there; rules.rs lays the lines out);
+//!    through screen_ocr.py's warm server, Windows' OCR while it isn't there; rules.rs lays the lines out). On Linux
+//!    the picture comes from GNOME's Screenshot portal (grab_linux); the first time, GNOME has to ask, and only does so
+//!    with Blurt in front — the island says so and opens Settings, where the question is asked;
 //!  • the text (or its translation) goes on the clipboard, and is Ctrl+V'd into the app in front when dictation's paste
 //!    rules say so (paste_policy::screen_text: a text field, or one UI Automation can't read; never a password field,
 //!    Blurt itself, or a focus that is clearly no field); the island's one line says what became of it, true to what
@@ -21,6 +23,8 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use super::grab::{write_bmp, write_png, Grab};
+#[cfg(windows)]
 use super::ocr_win;
 use crate::dictation::paste_policy::{self, screen_text::Outcome, Situation};
 use crate::dictation::{cloud, insert as ins, server};
@@ -46,7 +50,7 @@ fn mark_of(msg: &str) -> Option<&'static str> {
     match k {
         "translating" => None,
         "none" => Some("peep"),
-        k if k == "failed" || k.starts_with("translate_") => Some("warning"),
+        k if k == "failed" || k == "allow" || k.starts_with("translate_") => Some("warning"),
         _ => Some("check"),
     }
 }
@@ -54,12 +58,14 @@ fn mark_of(msg: &str) -> Option<&'static str> {
 const OCR: &str = "screen-ocr";
 
 /// The picture read by screen_ocr.py's warm server: one word per line (its whole text and box), in the grab's pixels.
-fn rapid(g: &ocr_win::Grab) -> Option<Vec<super::rules::Line>> {
-    if !server::wait_ready(OCR, Duration::from_secs(25)) {
+fn rapid(g: &Grab) -> Option<Vec<super::rules::Line>> {
+    // Linux has no other reader to fall back on: the first use may still be installing it (RapidOCR and its models, ~150 MB)
+    let wait = if cfg!(windows) { 25 } else { 120 };
+    if !server::wait_ready(OCR, Duration::from_secs(wait)) {
         return None;
     }
     let path = std::env::temp_dir().join(format!("blurt-screen-{}.bmp", std::process::id()));
-    ocr_win::write_bmp(&path, g).ok()?;
+    write_bmp(&path, g).ok()?;
     let v = server::call(
         OCR,
         &json!({"cmd": "ocr", "image": path.to_string_lossy()}),
@@ -112,9 +118,22 @@ pub fn start(app: &AppHandle, translate: bool) {
         island::send(&app, json!({"op": "working", "on": true}));
         // the picker's window is gone; give the screen a frame to repaint without it
         std::thread::sleep(Duration::from_millis(60));
+        #[cfg(windows)]
         let grab = match ocr_win::grab(r.x, r.y, r.w, r.h) {
             Ok(g) => g,
             Err(e) => {
+                eprintln!("screen text: {e}");
+                return line(&app, "capture.text.failed", json!({}), 4000, None);
+            }
+        };
+        #[cfg(target_os = "linux")]
+        let grab = match super::grab_linux::grab(&app, r.x, r.y, r.w, r.h) {
+            Ok(g) => g,
+            // GNOME asks first, and only with Blurt in front: Settings asks (its Allow…)
+            Err(super::grab_linux::Failure::Permission) => {
+                return line(&app, "capture.text.allow", json!({}), 10_000, Some(("text.allow", "capture.text.allow_action")));
+            }
+            Err(super::grab_linux::Failure::Other(e)) => {
                 eprintln!("screen text: {e}");
                 return line(&app, "capture.text.failed", json!({}), 4000, None);
             }
@@ -128,6 +147,7 @@ pub fn start(app: &AppHandle, translate: bool) {
                 }
                 super::compose_lines(lines, &grab)
             }
+            #[cfg(windows)]
             None => match ocr_win::read(&grab) {
                 Ok(lines) => {
                     if debug {
@@ -140,6 +160,11 @@ pub fn start(app: &AppHandle, translate: bool) {
                     return line(&app, "capture.text.failed", json!({}), 4000, None);
                 }
             },
+            #[cfg(not(windows))]
+            None => {
+                eprintln!("screen text: the reader (screen_ocr.py) didn't answer");
+                return line(&app, "capture.text.failed", json!({}), 4000, None);
+            }
         };
         if debug {
             eprintln!("screen text: {text:?}");
@@ -164,7 +189,7 @@ pub fn retry(app: &AppHandle) {
 
 // ------------------------------------------------------------------ copy (and the second reading)
 
-fn copy(app: &AppHandle, draft: &str, grab: &ocr_win::Grab) {
+fn copy(app: &AppHandle, draft: &str, grab: &Grab) {
     let o = deliver(draft, true);
     let key = paste_policy::screen_text::line_key(o, false);
     line(app, key, json!({}), if o == Outcome::Unconfirmed { 5000 } else { 2000 }, None);
@@ -233,18 +258,6 @@ fn landed_lines(before: &str, now: &str, text: &str) -> bool {
     let nl = |s: &str| s.replace("\r\n", "\n").replace('\r', "\n");
     let (b, n, t) = (nl(before), nl(now), nl(text));
     t.contains('\n') && n != b && n.contains(t.trim_end())
-}
-
-fn write_png(path: &std::path::Path, g: &ocr_win::Grab) -> Result<(), String> {
-    let mut rgba = Vec::with_capacity(g.bgra.len());
-    for p in g.bgra.chunks_exact(4) {
-        rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
-    }
-    let f = std::fs::File::create(path).map_err(|e| e.to_string())?;
-    let mut e = png::Encoder::new(std::io::BufWriter::new(f), g.w, g.h);
-    e.set_color(png::ColorType::Rgba);
-    e.set_depth(png::BitDepth::Eight);
-    e.write_header().and_then(|mut w| w.write_image_data(&rgba)).map_err(|e| e.to_string())
 }
 
 // ------------------------------------------------------------------ translate

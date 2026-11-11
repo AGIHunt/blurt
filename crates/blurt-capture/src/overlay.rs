@@ -326,6 +326,18 @@ fn css_of(r: &Region, origin: (i32, i32), scale: f64) -> [f64; 4] {
     [f((r.x - origin.0) as f64 / scale), f((r.y - origin.1) as f64 / scale), f(r.w as f64 / scale), f(r.h as f64 / scale)]
 }
 
+/// Where a monitor-wide overlay (the picker, a snap's stage) goes. GNOME keeps a normal X11 window inside the work
+/// area: one asked for at the monitor's origin lands below the top bar and right of the dock (67, 32 on 26.04), and
+/// its page, drawing from the monitor's origin, put the snap's frozen picture and the loupe that far off. So on Linux
+/// these overlays cover the work area, and their coordinates start there; elsewhere the whole monitor.
+fn cover(monitor: Region, work: Region) -> Region {
+    if cfg!(target_os = "linux") && !work.is_empty() {
+        work
+    } else {
+        monitor
+    }
+}
+
 /// [`pick_region`]; `hold`: a snap — the picker's window stays up, frozen (only the dim), and is handed back, so the
 /// screen never flickers before the note's stage covers it ([`snap_note`]); the caller destroys it.
 pub fn pick_region_with<R: Runtime>(
@@ -336,7 +348,10 @@ pub fn pick_region_with<R: Runtime>(
     hold: bool,
 ) -> tauri::Result<Option<(Region, Option<WebviewWindow<R>>)>> {
     let Some(mon) = monitor_at_cursor(app) else { return Ok(None) };
-    let (mr, scale) = (monitor_region(&mon), mon.scale_factor());
+    let wa = mon.work_area();
+    let work = Region::new(wa.position.x, wa.position.y, wa.size.width, wa.size.height);
+    // the window's place, and the origin of the page's coordinates (see `cover`)
+    let (mr, scale) = (cover(monitor_region(&mon), work), mon.scale_factor());
     let mut params = BTreeMap::new();
     let p = match purpose {
         Purpose::Record => "record",
@@ -348,8 +363,6 @@ pub fn pick_region_with<R: Runtime>(
     if let Some(l) = last.and_then(|l| l.intersect(&mr)) {
         params.insert("last", css_of(&l, (mr.x, mr.y), scale).map(|v| format!("{v:.0}")).join(","));
     }
-    let wa = mon.work_area();
-    let work = Region::new(wa.position.x, wa.position.y, wa.size.width, wa.size.height);
     params.insert("work", css_of(&work, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
     if let Some(h) = HOOKS.get() {
         if !matches!(purpose, Purpose::Text | Purpose::Translate) {
@@ -661,14 +674,16 @@ pub fn snap_note<R: Runtime>(
     mut params: BTreeMap<&'static str, String>,
 ) -> tauri::Result<WebviewWindow<R>> {
     let mon = monitor_containing(app, &sel);
-    let (mr, scale) = mon.as_ref().map(|m| (monitor_region(m), m.scale_factor())).unwrap_or((sel, 1.0));
+    let (mon_r, scale) = mon.as_ref().map(|m| (monitor_region(m), m.scale_factor())).unwrap_or((sel, 1.0));
     let work = mon
         .as_ref()
         .map(|m| {
             let a = m.work_area();
             Region::new(a.position.x, a.position.y, a.size.width, a.size.height)
         })
-        .unwrap_or(mr);
+        .unwrap_or(mon_r);
+    // the stage lies where the picker did (`cover`): its frozen picture is drawn where it was taken
+    let mr = cover(mon_r, work);
     params.insert("mode", "snap".into());
     params.insert("sel", css_of(&sel, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
     params.insert("work", css_of(&work, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
