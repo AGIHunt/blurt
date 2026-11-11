@@ -74,6 +74,19 @@ makes any provider other than `openai` "configured" (usable, can't verify the ke
   up to date by every later Connect. A junction to this skill counts as installed; to anything else, a conflict.
   Connect reports it as `symlink` with `kind: junction | copy`.
 - MCP: uv by its full path (above).
+- npm shims: `unshim()` swaps a `.cmd` shim for the native program it runs (`"%dp0%\…\claude.exe" %*`). A
+  JavaScript CLI's shim (Codex's) also names a `"%dp0%\node.exe"`, which it uses when Node's global folder holds
+  node.exe (portable Node, nvm-windows); that node.exe was taken for codex, so every probe and `mcp add` ran Node.
+  Only a `.exe` the shim hands `%*` to counts now.
+
+Checked 2026-11-11 on a GCP Windows Server 2022 VM (deleted after): portable Node 22.12 + Codex 0.165.0 from npm, uv
+only in `$BLURT_HOME\bin` (not on PATH), the SSH user an admin. `tests/test_agents_windows.py` passes (junction,
+copy fallback, a junction to another folder = conflict); `codex login status` prints "Not logged in" with or without
+a DeepSeek `model_provider`, and `agents.py detect` gives `logged_out` without it and `configured` with it; a
+bare-`uv` entry from `codex mcp add` is rewritten by Connect to `C:\…\bh\bin\uv.exe`, the second Connect reports
+both parts "exists", `dir` shows `<JUNCTION> blurt`, and the registered command answers an MCP `initialize`. Not
+checked there: a non-admin user without Developer Mode (the junction is used either way), Claude Code's or other
+agents' Connect, and a real organising run.
 
 ## Starting a recording: path × agent
 

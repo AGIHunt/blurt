@@ -509,3 +509,15 @@ def test_codex_sandbox_keeps_blurt_home_read_only(tmp_path, monkeypatch):
                        cwd=session, capture_output=True, text=True, timeout=60)
     got = dict(line.split("=") for line in p.stdout.split() if "=" in line)
     assert got == {"session": "w", "inbox": "w", "store": "w", "uv": "w", "config": "r", "hooks": "r", "home": "r", "code": "r"}, p.stderr
+
+
+def test_shim_target_is_the_native_program_not_node():
+    """npm .cmd shims (texts from a Windows VM, npm 10 / Node 22): Claude Code's runs its claude.exe; Codex's runs
+    codex.js with the node.exe next to it when there is one (portable Node, nvm-windows). That node.exe is not codex."""
+    head = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"
+    claude = head + '"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n'
+    codex = head + ('\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n'
+                    '  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & '
+                    '"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n')
+    assert agents.shim_target(claude) == "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"
+    assert agents.shim_target(codex) is None

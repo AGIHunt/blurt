@@ -350,7 +350,15 @@ def find_bin(defn: dict, env: dict | None = None) -> str | None:
     return unshim(p) if p else None
 
 
-_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"', re.I)
+# the program the shim hands its arguments to ("…\\claude.exe" %*) — not the node.exe a JavaScript CLI's shim runs
+# when one sits next to it (portable Node, nvm-windows: `"%_prog%" "…\\codex.js" %*`)
+_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"[ \t]*%\*', re.I)
+
+
+def shim_target(text: str) -> str | None:
+    """The native program an npm `.cmd` shim runs (relative to the shim's folder), None for a JavaScript CLI's."""
+    m = _SHIM_TARGET.search(text)
+    return m.group(1) if m else None
 
 
 def unshim(path: str) -> str:
@@ -360,12 +368,12 @@ def unshim(path: str) -> str:
     if os.name != "nt" or not path.lower().endswith((".cmd", ".bat")):
         return path
     try:
-        m = _SHIM_TARGET.search(Path(path).read_text(encoding="utf-8", errors="replace"))
+        target = shim_target(Path(path).read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return path
-    if not m:
+    if not target:
         return path
-    exe = Path(path).parent / m.group(1)
+    exe = Path(path).parent / target
     return str(exe) if exe.is_file() else path
 
 
