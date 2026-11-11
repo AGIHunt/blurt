@@ -259,8 +259,9 @@ AT-SPI), `dictation/secret_linux.rs` (Secret Service), `capture/portal_linux.rs`
   given yet); a later ⌥C took ~3 s from letting go to the text, the reader cold. If GNOME refuses to ask (the design
   VM did while Blurt wasn't focused), the island says "Copy Text needs screenshot access · Allow…", which opens
   Settings → Copy Text from Screen → Screenshot access (`screen_text_allow`, the main window as the parent). Seen on
-  the run: RapidOCR at 1x on gedit's monospace dropped the final 。, read CSV as csv and "Claude Code" as
-  "Claude e Code" — the reader's, as on Windows, not the grab's. Not checked: fractional scaling, the translation card
+  the run: the reader (PP-OCRv4, 2×) on gedit's monospace dropped the final 。, read CSV as csv and "Claude Code" as
+  "Claude e Code" — the reader's, as on Windows, not the grab's. Fixed the same day: the reader is PP-OCRv6 tiny at 1×
+  (windows-models.md §Copy Text's reader), which reads those lines right but for "claude". Not checked: fractional scaling, the translation card
   (needs a cloud model), its Esc under XWayland.
 - **Settings on the VM:** the Dictation pane shows GNOME's key ("Menu", the portal's label read again when Settings
   opens or the shortcuts change — app_status was read once at launch, before the user answered GNOME's dialog), and

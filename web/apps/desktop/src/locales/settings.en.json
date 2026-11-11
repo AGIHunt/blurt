@@ -1312,7 +1312,7 @@
  "st.win.models.dict_none": "No speech model for dictation yet. Download one above.",
  "st.win.models.failed_row": "Didn’t finish · check the connection",
  "st.screentext.precise": "Accurate recognition",
- "st.screentext.precise.detail": "Reads the screenshot with a cloud model when one is set; otherwise Windows’ own text recognition, instantly, on this PC.",
+ "st.screentext.precise.detail": "Reads the screenshot with a cloud model when one is set; otherwise it’s read on this PC (about 120 MB downloads the first time; Windows’ own text recognition reads until then).",
  "st.win.models.one_at_a_time": "One download at a time",
  "st.dictation.key.portal.detail": "Set by GNOME. Change it in Settings › Apps › Blurt.",
  "st.dictation.key.portal.unset": "Not set",
@@ -1334,5 +1334,5 @@
  "st.screentext.allow.on": "Allowed",
  "st.screentext.allow.denied": "Not allowed. Click Allow… to ask again.",
  "st.screentext.allow.failed": "Couldn’t ask for screenshot access. Check that xdg-desktop-portal-gnome is installed.",
- "st.screentext.precise.detail.linux": "With a cloud model set, it reads the screenshot; otherwise text is read on this computer (about 15 MB downloads the first time)."
+ "st.screentext.precise.detail.linux": "With a cloud model set, it reads the screenshot; otherwise text is read on this computer (about 150 MB downloads the first time)."
 }

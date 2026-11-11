@@ -1312,7 +1312,7 @@
  "st.win.models.dict_none": "还没有能听写的语音模型，请在上面下载。",
  "st.win.models.failed_row": "没下载完 · 请检查网络",
  "st.screentext.precise": "精确识别",
- "st.screentext.precise.detail": "设置了云端模型时用它读截图；否则在本机用 Windows 自带的文字识别，即时完成。",
+ "st.screentext.precise.detail": "设置了云端模型时用它读截图；否则在本机识别（第一次使用时下载约 120 MB，下载完成前先用 Windows 自带的文字识别）。",
  "st.win.models.one_at_a_time": "一次下载一个",
  "st.dictation.key.portal.detail": "由 GNOME 管理，在「设置 › 应用 › Blurt」里更改。",
  "st.dictation.key.portal.unset": "未设置",
@@ -1334,5 +1334,5 @@
  "st.screentext.allow.on": "已允许",
  "st.screentext.allow.denied": "没有允许。可以再点一次「允许…」。",
  "st.screentext.allow.failed": "没能请求截图权限。请确认系统装有 xdg-desktop-portal-gnome。",
- "st.screentext.precise.detail.linux": "设置了云端模型时用它读截图；否则在本机识别，第一次使用时会下载约 15 MB 的识别模型。"
+ "st.screentext.precise.detail.linux": "设置了云端模型时用它读截图；否则在本机识别，第一次使用时会下载约 150 MB 的识别程序和模型。"
 }

@@ -59,7 +59,7 @@ const OCR: &str = "screen-ocr";
 
 /// The picture read by screen_ocr.py's warm server: one word per line (its whole text and box), in the grab's pixels.
 fn rapid(g: &Grab) -> Option<Vec<super::rules::Line>> {
-    // Linux has no other reader to fall back on: the first use may still be installing it (RapidOCR, ~15 MB)
+    // Linux has no other reader to fall back on: the first use may still be installing it (RapidOCR and its models, ~150 MB)
     let wait = if cfg!(windows) { 25 } else { 120 };
     if !server::wait_ready(OCR, Duration::from_secs(wait)) {
         return None;
