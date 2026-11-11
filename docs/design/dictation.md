@@ -67,6 +67,18 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   (§Start of speech). (v1.0.4) Esc also has a Carbon hotkey for as long as a take listens (`.dictationEsc`): where the
   event tap doesn't see it — secure event input on, another tool holding the key — the hotkey still cancels. A press
   both see counts once (`Dictation.escTwin`, 0.4 s); `dictation_secure_input` logs when secure input was on.
+  **While a take is under way Esc is Blurt's: the app in front sees neither the press nor the release** (in Claude Code
+  an Esc that gets through stops the running turn as well). That is while it listens and while takes are on their way
+  (`DictationEscHold.isBlurts`); the press cancels them, and the next Esc, with nothing left under way, goes to the app.
+  The Fn filter drops it (`DictationEscFilter`): it works whatever is held with it, Fn in push-to-talk included. Without
+  the filter the hotkey keeps it, with its own registration for ⌥Esc when an ⌥ is the dictation key
+  (`.dictationEscOption`: a hotkey matches its exact modifiers). The hotkey goes back only once the press is over
+  (`DictationEscHold`): it used to go the moment the take ended, which is the moment the listener hears Esc. Measured with
+  an unused key: from the filter's hand-off the press and the release reached the app 20 times of 20, from the
+  listen-only tap the release did; held, neither. A take on its way gives Esc up at once to another of Blurt's Esc keys
+  (`escHolders`: the picker, the pen, a voice note, a card, the overview), opened after it and what Esc is then meant
+  for; it would be refused otherwise. Left alone: ⌘ or ⇧ held with Esc (no hotkey for those without the filter), a
+  voice note's Esc, and ⌃Esc / ⇧Esc as the cancel key leaves plain Esc to the app at all times.
 - **⇧ twice is the style toggle** (§Styles): ⇧ double-tapped while dictating (the second press within 350 ms) says
   `.style`, in push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still
   cancels, as any shortcut does); one ⇧ is nothing. A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over
@@ -985,8 +997,8 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   at a time, whichever finishes first. The trigger is told `pending`: a tap within the window is still the double
   tap's second one (Return after the paste); a third tap right after a send is a bounce and starts nothing.
 - **Esc cancels a take on its way** (and the menu's Cancel): never pasted, its Return dropped, the island says
-  "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
-  the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
+  "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc is kept from the app in
+  front (§Trigger), and an Esc that was meant for it (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
   the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently). Once
   something was said, its recording stays in the history as "已取消：录音已保留" with Retry

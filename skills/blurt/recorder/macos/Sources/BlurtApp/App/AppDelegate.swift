@@ -95,7 +95,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .overviewEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .overviewEsc, .dictationEsc, .dictationEscOption, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }

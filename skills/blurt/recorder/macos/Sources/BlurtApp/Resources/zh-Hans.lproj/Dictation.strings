@@ -763,4 +763,4 @@
 "dictation.translate.toast.on.into" = "翻译成%@ · 再按 ⌘ 关闭";
 "dictation.settings.cancel_key" = "取消听写";
 "dictation.settings.cancel_key.default" = "%@（默认）";
-"dictation.settings.cancel_key.detail" = "在 Claude Code 等终端中，Esc 会中断正在运行的任务。改为 ⌃Esc 或 ⇧Esc 后，单独按 Esc 不会取消听写。";
+"dictation.settings.cancel_key.detail" = "听写进行中，Esc 只取消听写，不传给前台应用。改为 ⌃Esc 或 ⇧Esc 后，单独按 Esc 总是传给前台应用，不取消听写。";
