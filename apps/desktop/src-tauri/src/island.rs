@@ -95,6 +95,15 @@ fn launch_nudge(app: &AppHandle) {
 #[cfg(not(dict))]
 fn launch_nudge(_: &AppHandle) {}
 
+/// Settings → General → "Show the island when idle" (`app.island_idle`, the Mac's key). Off by default here, unlike the
+/// Mac: the top of a Windows or GNOME screen is the apps' own (a maximized browser's tabs), not a menu bar, so a
+/// resting pill there gets clicked by mistake. Off: what stands at rest (the cards' count, Peep thinking over an
+/// organize) stays hidden and the top edge brings nothing out; the live things (a recording, dictation, a voice note,
+/// a done moment, a toast) still show. The cards stay a click away in the tray's Show Cards and the main window.
+pub fn shows_at_rest() -> bool {
+    settings::read_config().pointer("/app/island_idle").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// A `record.*` switch of Settings → General → Cards (the Mac's keys, same defaults).
 fn record_flag(key: &str, default: bool) -> bool {
     settings::read_config().pointer(&format!("/record/{key}")).and_then(Value::as_bool).unwrap_or(default)
@@ -265,6 +274,7 @@ pub fn state(app: &AppHandle) -> Value {
         "hotkeys": hotkey_labels(app),
         // Settings → General → Cards, as the island needs them (the shutter on a recording's snaps, a drag's caption)
         "cardPrefs": {"snapSound": record_flag("snap_sound", false), "drag": card_drag_mode()},
+        "idle": shows_at_rest(),
         "lang": l10n::lang(),
     }})
 }
@@ -280,7 +290,8 @@ fn dictation_state() -> Value {
 }
 
 pub fn refresh(app: &AppHandle) {
-    if island(app).is_some() {
+    if let Some(i) = island(app) {
+        i.set_peek(shows_at_rest());
         send(app, state(app));
     }
     update_tray(app);

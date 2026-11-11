@@ -116,6 +116,8 @@ export const ENTRIES: Entry[] = (() => {
     row('general.language', 'general.app', 'settings.general.language'),
     // Windows' own notifications (Blurt posts them while it isn't in front; the Mac says it in the island instead)
     row('general.notify_done', 'general.app', 'settings.notify.done', { more: 'win.general.notify.hint' }),
+    // the Mac's "Show the notch when idle" (app.island_idle); off by default here (island.rs shows_at_rest)
+    row('general.island_idle', 'general.app', 'settings.general.island_idle', { detail: 'settings.general.island_idle.detail' }),
     row('general.after_recording', 'general.recording', 'settings.general.after_recording'),
     row('general.countdown', 'general.recording', 'app.menu.countdown'),
     row('general.system_audio', 'general.recording', 'settings.general.system_audio'),

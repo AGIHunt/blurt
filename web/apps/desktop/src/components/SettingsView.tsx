@@ -417,6 +417,7 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
             }} />
         </Row>
         <Toggle id="general.notify_done" on={cfg.notify?.done !== false} set={(v) => save({ notify: { ...(cfg.notify ?? {}), done: v } })} />
+        <Toggle id="general.island_idle" on={cfg.app?.island_idle === true} set={(v) => save({ app: { ...(cfg.app ?? {}), island_idle: v ? true : null } })} />
       </Group>
 
       {/* record.process / countdown / system_audio, as the Mac writes them (capture reads them at the next recording) */}
