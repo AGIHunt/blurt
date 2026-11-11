@@ -321,9 +321,26 @@ fn shoot(app: &AppHandle, session: &Path, project: Option<&str>, region: Region)
     if let Some(p) = project {
         args.extend(["--project".into(), p.to_string()]);
     }
+    // Linux: the picker's picture, cut to the area (x11grab would see only XWayland windows; a portal picture taken now
+    // would hold the frozen picker); without one (GNOME refused), x11grab as before
+    #[cfg(target_os = "linux")]
+    let image = crate::screen_text::grab_linux::cut(region).and_then(|g| {
+        let p = crate::paths::blurt_home().join("run").join(format!("snap-{}.png", std::process::id()));
+        let _ = std::fs::create_dir_all(p.parent()?);
+        crate::screen_text::grab::write_png(&p, &g).ok().map(|_| p)
+    });
+    #[cfg(not(target_os = "linux"))]
+    let image: Option<PathBuf> = None;
+    if let Some(p) = &image {
+        args.extend(["--image".into(), scripts::s(p)]);
+    }
     let job = JobWriter::new("snap", project, Some(session), None, None, &["capture"]);
     job.step("capture", "running", None);
-    match runner.run("tk_recorder.py", &args, None, Duration::from_secs(30)) {
+    let ran = runner.run("tk_recorder.py", &args, None, Duration::from_secs(30));
+    if let Some(p) = &image {
+        let _ = std::fs::remove_file(p);
+    }
+    match ran {
         Ok(r) => {
             let n = r["n"].as_u64().unwrap_or(0);
             job.set_captures(&[n]);
@@ -884,8 +901,19 @@ pub fn visible_windows() -> Option<Vec<Region>> {
 /// name each time (the page's cache), the one before removed.
 #[cfg(windows)]
 pub fn monitor_still(r: Region) -> Option<PathBuf> {
+    keep_still(&crate::screen_text::ocr_win::grab(r.x, r.y, r.w, r.h).ok()?, r)
+}
+
+/// Linux: the whole desktop through GNOME's Screenshot portal, kept for the pick (screen_text::grab_linux: the snap and
+/// Copy Text are cut out of it, since GNOME can't leave the picker out of a later picture).
+#[cfg(target_os = "linux")]
+pub fn monitor_still(r: Region) -> Option<PathBuf> {
+    keep_still(&crate::screen_text::grab_linux::picker_still(r)?, r)
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+fn keep_still(g: &crate::screen_text::grab::Grab, r: Region) -> Option<PathBuf> {
     static N: AtomicU64 = AtomicU64::new(0);
-    let g = crate::screen_text::ocr_win::grab(r.x, r.y, r.w, r.h).ok()?;
     let dir = crate::paths::blurt_home().join("run");
     let _ = std::fs::create_dir_all(&dir);
     let k = N.fetch_add(1, SeqCst);
@@ -900,7 +928,7 @@ pub fn monitor_still(r: Region) -> Option<PathBuf> {
         }
     }
     let p = dir.join(format!("loupe-{}-{k}.bmp", std::process::id()));
-    crate::screen_text::ocr_win::write_bmp(&p, &g).ok()?;
+    crate::screen_text::grab::write_bmp(&p, g).ok()?;
     if let Some(old) = STILL.lock().unwrap().replace((p.clone(), r)) {
         let _ = std::fs::remove_file(old.0);
     }
@@ -910,7 +938,7 @@ pub fn monitor_still(r: Region) -> Option<PathBuf> {
 /// The last picker's still (its file, the monitor it shows in desktop px): the note's stage paints the frozen picture
 /// from it the moment it opens, before the snap's own PNG is on disk (the Mac crops LoupeStills the same way).
 static STILL: Mutex<Option<(PathBuf, Region)>> = Mutex::new(None);
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn monitor_still(_r: Region) -> Option<PathBuf> {
     None
 }

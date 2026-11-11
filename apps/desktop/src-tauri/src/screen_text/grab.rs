@@ -35,6 +35,19 @@ pub fn write_bmp(path: &std::path::Path, g: &Grab) -> std::io::Result<()> {
     f.flush()
 }
 
+/// The grab as an 8-bit RGBA PNG (a snap's shots/NNN.png, Copy Text's debug picture).
+pub fn write_png(path: &std::path::Path, g: &Grab) -> Result<(), String> {
+    let mut rgba = Vec::with_capacity(g.bgra.len());
+    for p in g.bgra.chunks_exact(4) {
+        rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
+    }
+    let f = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    let mut e = png::Encoder::new(std::io::BufWriter::new(f), g.w, g.h);
+    e.set_color(png::ColorType::Rgba);
+    e.set_depth(png::BitDepth::Eight);
+    e.write_header().and_then(|mut w| w.write_image_data(&rgba)).map_err(|e| e.to_string())
+}
+
 /// A PNG (the Screenshot portal's file) as BGRA: any colour type and depth the png crate reads, expanded to 8 bits.
 pub fn decode_png(path: &std::path::Path) -> Result<Grab, String> {
     let f = std::fs::File::open(path).map_err(|e| e.to_string())?;

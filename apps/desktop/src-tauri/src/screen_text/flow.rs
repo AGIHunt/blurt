@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use super::grab::{write_bmp, Grab};
+use super::grab::{write_bmp, write_png, Grab};
 #[cfg(windows)]
 use super::ocr_win;
 use crate::dictation::paste_policy::{self, screen_text::Outcome, Situation};
@@ -258,18 +258,6 @@ fn landed_lines(before: &str, now: &str, text: &str) -> bool {
     let nl = |s: &str| s.replace("\r\n", "\n").replace('\r', "\n");
     let (b, n, t) = (nl(before), nl(now), nl(text));
     t.contains('\n') && n != b && n.contains(t.trim_end())
-}
-
-fn write_png(path: &std::path::Path, g: &Grab) -> Result<(), String> {
-    let mut rgba = Vec::with_capacity(g.bgra.len());
-    for p in g.bgra.chunks_exact(4) {
-        rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
-    }
-    let f = std::fs::File::create(path).map_err(|e| e.to_string())?;
-    let mut e = png::Encoder::new(std::io::BufWriter::new(f), g.w, g.h);
-    e.set_color(png::ColorType::Rgba);
-    e.set_depth(png::BitDepth::Eight);
-    e.write_header().and_then(|mut w| w.write_image_data(&rgba)).map_err(|e| e.to_string())
 }
 
 // ------------------------------------------------------------------ translate

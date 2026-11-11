@@ -6,10 +6,18 @@
 //! design VM (11-05) GNOME refused to ask while Blurt wasn't the focused app — so a grab refused for any reason comes
 //! back as `Failure::Permission`, and Settings → Copy Text from Screen asks again (`allow`, with Blurt's window in front). Allowed is remembered by GNOME's permission store; Blurt
 //! keeps `~/.blurt/portal/screenshot.allowed` only to say so in Settings.
+//!
+//! Every area picker takes its picture before it opens (`picker_still`, the hook snap.rs gives the picker — as the Mac's
+//! LoupeStills and Windows' monitor still): GNOME can't leave Blurt's overlays out of a screenshot, so a picture taken
+//! after the pick would hold the frozen picker or the snap's stage. The area picked is then cut out of that picture
+//! (`grab` for Copy Text, `cut` for a snap); a picker whose picture was refused makes Copy Text say so without asking
+//! GNOME a second time.
 
-use std::time::Duration;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use ashpd::desktop::screenshot::Screenshot;
+use blurt_capture::Region;
 use tauri::AppHandle;
 
 use super::grab::{crop, decode_png, Grab};
@@ -19,6 +27,63 @@ pub enum Failure {
     /// GNOME wants to ask first (not asked yet, or Blurt wasn't in front) or the user said no
     Permission,
     Other(String),
+}
+
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// At setup: the picker's still hook has no handle of its own.
+pub fn init(app: &AppHandle) {
+    let _ = APP.set(app.clone());
+}
+
+type Desk = (i32, i32, u32, u32);
+
+enum Still {
+    Taken(Grab, Desk),
+    Refused,
+    Failed,
+}
+
+/// The picture the open picker was shown over, and when it was taken; one pick uses it (`take`).
+static STILL: Mutex<Option<(Instant, Still)>> = Mutex::new(None);
+/// A picker left open longer than this (the user walked away) takes no stale picture: the area is shot again.
+const STILL_FOR: Duration = Duration::from_secs(120);
+
+fn take() -> Option<Still> {
+    STILL.lock().unwrap().take().filter(|(t, _)| t.elapsed() < STILL_FOR).map(|(_, s)| s)
+}
+
+/// Before a picker opens: the whole desktop through the portal, kept for the pick; the monitor `mon` (desktop px) out of
+/// it for the picker's loupe. None while GNOME refuses (or the portal fails): the picker opens without a loupe.
+pub fn picker_still(mon: Region) -> Option<Grab> {
+    let app = APP.get()?;
+    let t0 = Instant::now();
+    let parent = crate::mainwin::x11_id_off_main(app, "blurt-overlay-island").or_else(|| crate::mainwin::x11_id_off_main(app, "main"));
+    let (still, out) = match shoot(parent) {
+        Ok(shot) => {
+            let desk = desktop(app).unwrap_or((0, 0, shot.w, shot.h));
+            let m = crop(&shot, desk, (mon.x, mon.y, mon.w, mon.h));
+            (Still::Taken(shot, desk), m)
+        }
+        Err(Failure::Permission) => (Still::Refused, None),
+        Err(Failure::Other(e)) => {
+            eprintln!("screen still: {e}");
+            (Still::Failed, None)
+        }
+    };
+    if std::env::var_os("BLURT_DEBUG_KEYS").is_some() {
+        eprintln!("screen still: {} ms", t0.elapsed().as_millis());
+    }
+    *STILL.lock().unwrap() = Some((Instant::now(), still));
+    out
+}
+
+/// A snap's area (desktop px) out of its picker's picture; None: no picture (the caller takes it another way).
+pub fn cut(r: Region) -> Option<Grab> {
+    match take()? {
+        Still::Taken(shot, desk) => crop(&shot, desk, (r.x, r.y, r.w, r.h)),
+        _ => None,
+    }
 }
 
 fn flag() -> std::path::PathBuf {
@@ -77,8 +142,17 @@ fn desktop(app: &AppHandle) -> Option<(i32, i32, u32, u32)> {
     (x1 > x0 && y1 > y0).then(|| (x0, y0, (x1 - x0) as u32, (y1 - y0) as u32))
 }
 
-/// The picked area (desktop px). The portal's dialog, when GNOME asks, opens over the island.
+/// The picked area (desktop px), out of the picker's picture when it has one. Otherwise shot now; the portal's dialog,
+/// when GNOME asks, opens over the island.
 pub fn grab(app: &AppHandle, x: i32, y: i32, w: u32, h: u32) -> Result<Grab, Failure> {
+    match take() {
+        Some(Still::Taken(shot, desk)) => {
+            return crop(&shot, desk, (x, y, w, h)).ok_or_else(|| Failure::Other("the area is off the screen".into()));
+        }
+        // refused a moment ago, before the picker: not asked a second time
+        Some(Still::Refused) => return Err(Failure::Permission),
+        Some(Still::Failed) | None => {}
+    }
     let parent = crate::mainwin::x11_id_off_main(app, "blurt-overlay-island").or_else(|| crate::mainwin::x11_id_off_main(app, "main"));
     let shot = shoot(parent)?;
     let desk = desktop(app).unwrap_or((0, 0, shot.w, shot.h));

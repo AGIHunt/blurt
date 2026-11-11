@@ -840,6 +840,8 @@ pub fn run() {
                 }
             }
             hotkeys::apply(&handle, Some(false));
+            #[cfg(target_os = "linux")]
+            screen_text::grab_linux::init(&handle);
             #[cfg(any(windows, target_os = "linux"))]
             if cfg!(debug_assertions) || std::env::var_os("APPIMAGE").is_some() {
                 let _ = app.deep_link().register_all();
