@@ -104,6 +104,10 @@ jobs:
       - name: Linux packages (Tauri build deps, WebKitWebDriver, xvfb; GStreamer + PipeWire)
         if: runner.os == 'Linux'
         run: |
+          # the runner's Azure mirror can crawl (~100 kB/s) and lag a security update (libsoup3 404, 2026-11-11):
+          # a CDN mirror first, Ubuntu's own archive behind it, and retries
+          printf 'https://mirrors.edge.kernel.org/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee /etc/apt/apt-mirrors.txt
+          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \

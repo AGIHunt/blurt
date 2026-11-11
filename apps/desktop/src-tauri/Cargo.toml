@@ -1,6 +1,6 @@
 [package]
 name = "blurt-desktop"
-version = "1.0.17"
+version = "1.0.18"
 description = "Blurt for Windows and Linux: what you say, snap and record becomes work, filed into projects and handed to agents"
 authors = ["Blurt"]
 license = "MIT"

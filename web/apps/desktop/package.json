@@ -1,7 +1,7 @@
 {
   "name": "@blurt/desktop",
   "private": true,
-  "version": "1.0.17",
+  "version": "1.0.18",
   "type": "module",
   "description": "Blurt main window for the Windows/Linux Tauri app (apps/desktop/src-tauri). Opens in a plain browser with mock data for UI work.",
   "scripts": {
