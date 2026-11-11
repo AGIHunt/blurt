@@ -343,12 +343,14 @@ function visible(): boolean {
     S.dictation ||
     (recDone && performance.now() < recDone.until) ||
     liveText ||
-    S.hatching ||
+    (S.hatching > 0 && !quietAtRest()) ||
     toastNow ||
     open ||
     drawer ||
     hovering ||
-    hanging().length || // a first card still flying in: the island it lands in is there
+    // a first card still flying in: the island it lands in is there (the landed ones only while the island may rest)
+    live.some((l) => l.phase === 'fly') ||
+    (hanging().length > 0 && !quietAtRest()) ||
     moment ||
     performance.now() < helloUntil ||
     news ||
@@ -359,6 +361,9 @@ function visible(): boolean {
 }
 
 // ------------------------------------------------------------------ the ears (collapsed: Island.updateEars)
+/** "Show the island when idle" is off (app.island_idle; the Mac's Island.showsAtRest) and nothing has brought it out:
+ *  what only stands — the cards' count, Peep thinking over an organize — stays out of the ears. What is live still shows. */
+const quietAtRest = () => S.idle === false && !open && !drawer && !hovering && performance.now() >= peekUntil;
 const waveHtml = (n: number, cls = '') => `<span class="wave${cls ? ' ' + cls : ''}" data-wave>${'<i></i>'.repeat(n)}</span>`;
 const cardsEar = () =>
   `<button class="earbtn" data-a="cards.reveal" title="${esc(plural('island.cards_waiting', cardCount()))}">${ic('cards', 15, 'cards-ic')}<span class="num">${num(cardCount())}</span></button>`;
@@ -443,7 +448,7 @@ function ears(): { l: string; r: string } {
     return { l: mascotHtml('done', { size: 24 }), r: `<span class="moment">${kb}${ic('check', 12, 'ok')}<span class="word">${esc(word)}${sub}</span></span>` };
   }
   // Copy Text / Translate reading: Peep thinks, three dots (the cards' count stays on the right)
-  if (readingUntil) return { l: mascotHtml('thinking', { size: 24 }), r: `<span class="dots"><i></i><i></i><i></i></span>${cardCount() ? cardsEar() : ''}` };
+  if (readingUntil) return { l: mascotHtml('thinking', { size: 24 }), r: `<span class="dots"><i></i><i></i><i></i></span>${cardCount() && !quietAtRest() ? cardsEar() : ''}` };
   if (S.dictation) {
     const d = S.dictation;
     if (d.phase === 'listening') {
@@ -456,9 +461,9 @@ function ears(): { l: string; r: string } {
   let lr: { l: string; r: string } | null = null;
   if (performance.now() < helloUntil) lr = { l: '', r: `<span class="hello">${mascotHtml('hello', { size: 24 })}<span>${esc(t('island.hello'))}</span></span>` };
   else if (sorted) lr = { l: mascotHtml(sorted.ok ? 'done' : 'error', { size: 24 }), r: sorted.n ? `<span class="num">+${num(sorted.n)}</span>` : '' };
-  else if (S.hatching) lr = { l: mascotHtml('thinking', { size: 24 }), r: `<span class="num">${num(S.hatching)}</span>` };
+  else if (S.hatching && !quietAtRest()) lr = { l: mascotHtml('thinking', { size: 24 }), r: `<span class="num">${num(S.hatching)}</span>` };
   else if (news) lr = { l: ic('inbox', 15), r: `<span class="num">+${num(news.n)}</span>` };
-  if (cardCount()) {
+  if (cardCount() && !quietAtRest()) {
     // the cards' count is one thing (their stack and the number together); the left ear when nothing else is there
     if (!lr) return { l: cardsEar(), r: '' };
     // Peep thinking and its count, its hop and "+n", the inbox's news: one thing, on the left
@@ -2371,9 +2376,11 @@ function reportHits(force = false) {
   if (dragging) rects.push({ x: 0, y: 0, w: innerWidth, h: innerHeight });
   else {
     if (island.classList.contains('shown')) add(island);
-    // the strip at the top centre always takes the pointer: pushed against the top edge it opens the island, even
-    // with nothing to show (else an empty island could never be found)
-    add(hot);
+    // the strip at the top centre takes the pointer: pushed against the top edge it opens the island, even with
+    // nothing to show (else an empty island could never be found). Not while the island stays hidden at rest
+    // (app.island_idle off): there the top edge is the apps' own — a maximized browser's tabs took these clicks. The
+    // cards are then the tray's Show Cards, the cards key and the main window's notice.
+    if (S.idle !== false) add(hot);
     if (downK.value > 0.5) {
       for (const l of live) if ((l.phase === 'hang' || l.phase === 'fly') && l.el.style.display !== 'none' && inView(l)) clipAdd(l.face);
       // a row that scrolls takes the pointer across its band, gaps included, so a swipe over it reaches it

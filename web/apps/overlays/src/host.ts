@@ -94,6 +94,8 @@ export interface IslandState {
   lang?: string;
   /** Settings → General → Cards: the shutter on a snap; what a dragged card carries (paste | caption | picture) */
   cardPrefs?: { snapSound?: boolean; drag?: 'paste' | 'caption' | 'picture' };
+  /** Settings → General → "Show the island when idle" (app.island_idle); false: nothing stands at rest */
+  idle?: boolean;
   /** tests / demo: start expanded */
   expanded?: boolean;
 }

@@ -432,6 +432,8 @@ pub struct Island<R: Runtime> {
     at: Arc<Mutex<(Region, f64)>>,
     /// kept at a place of its own (Linux, out of a recorded area): not re-placed with the screen
     pinned: Arc<AtomicBool>,
+    /// the top-middle hot zone brings the island out (set_peek)
+    peek: Arc<AtomicBool>,
 }
 
 fn island_rect(m: Option<&Monitor>) -> (Region, f64) {
@@ -480,8 +482,9 @@ pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Res
     });
     let at = Arc::new(Mutex::new((at, scale)));
     let pinned = Arc::new(AtomicBool::new(false));
-    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone(), Follow { idle, pinned: pinned.clone() });
-    Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at, pinned }))
+    let peek = Arc::new(AtomicBool::new(true));
+    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone(), Follow { idle, pinned: pinned.clone(), peek: peek.clone() });
+    Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at, pinned, peek }))
 }
 
 /// The island's input region: its drawn rects (CSS px = GDK's logical px), the rest of the window passes clicks on.
@@ -504,6 +507,7 @@ fn input_shape<R: Runtime>(w: &WebviewWindow<R>, rects: &[CssRect]) {
 struct Follow {
     idle: Arc<AtomicBool>,
     pinned: Arc<AtomicBool>,
+    peek: Arc<AtomicBool>,
 }
 
 /// Where the island window should be now: on its screen as that screen is now (a resolution, scaling or work-area
@@ -573,7 +577,7 @@ fn spawn_hit_tester<R: Runtime>(
                 let _ = app.emit_to(Kind::Island.label(), ev::ISLAND, json!({"op": "hover", "x": cx, "y": cy, "out": !over}));
             }
             let mid = region.w as f64 / s / 2.0;
-            let in_peek = (cx - mid).abs() < PEEK.0 / 2.0 && (0.0..PEEK.1).contains(&cy);
+            let in_peek = follow.peek.load(Ordering::SeqCst) && (cx - mid).abs() < PEEK.0 / 2.0 && (0.0..PEEK.1).contains(&cy);
             match (in_peek, peek_since) {
                 (true, None) => peek_since = Some(Instant::now()),
                 (true, Some(t)) if t.elapsed() >= PEEK.2 => {
@@ -642,6 +646,12 @@ impl<R: Runtime> Island<R> {
         *self.at.lock().unwrap() = (at, scale);
         let _ = self.window.set_position(PhysicalPosition::new(at.x, at.y));
         let _ = self.window.set_size(PhysicalSize::new(at.w, at.h));
+    }
+
+    /// Whether a pointer resting at the top edge's middle brings the island out. Off when the island stays hidden at
+    /// rest: there the top edge is the apps' own (a browser's tabs), not a menu bar as on the Mac.
+    pub fn set_peek(&self, on: bool) {
+        self.peek.store(on, Ordering::SeqCst);
     }
 
     /// The island's area on the desktop (physical px).

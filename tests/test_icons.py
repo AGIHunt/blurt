@@ -378,15 +378,15 @@ def _sf(icon: str) -> list[str]:
 
 # the SF Symbols that are one metaphor with another name ("terminal" and "apple.terminal" are both a prompt in a window)
 SAME = {"terminal": "apple.terminal"}
-# Mac-only panes: the iPhone remote (docs/design/remote.md) pairs with the Mac app only
-MAC_ONLY = {"remote"}
+# one pane under two ids: the Mac's Remote is Windows / Linux's Phone (Blurt Remote reaches every host since v1.0.15)
+WIN_ID = {"remote": "phone"}
 
 
 def test_windows_settings_panes_use_the_macs_metaphors():
     """Each Settings pane on Windows / Linux shows the glyph drawn for the SF Symbol the Mac's sidebar shows
     (SettingsCatalog.panes; SettingsWindow overrides Agents with a terminal) — docs/design/windows-parity/icons.md."""
     cat = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/SettingsCatalog.swift").read_text()
-    mac = {k: v for k, v in re.findall(r'pane\("(\w+)", "[^"]+", "\w+", "([\w.]+)"', cat) if k not in MAC_ONLY}
+    mac = {WIN_ID.get(k, k): v for k, v in re.findall(r'pane\("(\w+)", "[^"]+", "\w+", "([\w.]+)"', cat)}
     win_src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Settings/SettingsWindow.swift").read_text()
     if 'self == .agents ? "terminal"' in win_src:
         mac["agents"] = "terminal"

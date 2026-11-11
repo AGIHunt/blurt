@@ -531,6 +531,9 @@ fn settings_set(app: AppHandle, patch: Value) -> R<Value> {
     if patch.pointer("/record/hotkeys").is_some() {
         hotkeys::apply(&app, None);
     }
+    if patch.pointer("/app/island_idle").is_some() {
+        island::refresh(&app); // the resting pill goes or comes back at once
+    }
     if patch.get("lang").is_some() {
         retitle(&app);
         island::refresh(&app);

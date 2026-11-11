@@ -172,6 +172,15 @@ On Linux (and, to decide separately, Windows) the island shows only while someth
 recording, a voice note, cards just captured. Then it goes away. What it shows at rest (project, jobs, sessions that
 need you, the review count) lives in the tray menu and the main window.
 
+**Windows too, and a switch (2026-11-11).** A Windows user kept clicking the cards' count ("□ 2") and the top edge's
+6 px hot strip while reaching for a maximized browser's tabs. Windows and Linux now share one setting, General →
+"Show the island at the top when idle" (`app.island_idle`, the Mac's key; island.rs `shows_at_rest`), off by default
+there (the Mac keeps it on: its top is the menu bar). Off: the cards' count and Peep thinking over an organize stay
+out of the ears; the top strip takes no clicks and the pointer at the top edge brings nothing out (overlay.rs
+`set_peek`, island.ts `quietAtRest`). Live things still show: recording, dictation, a voice note, a card flying in,
+a done moment, a toast. Hanging cards: the tray's Show cards, the cards key and the main window's notice. On: as
+before.
+
 **Decision.** `GDK_BACKEND=x11` for the whole app on GNOME Wayland, set before GTK starts (lib.rs, next to the
 DMA-BUF workaround). The island appears only for activity now, but that pill and the cards still need a fixed
 position and keep-above, which only XWayland gives. Portals, AT-SPI and PipeWire don't care which backend the window uses. Risk to check: XWayland
