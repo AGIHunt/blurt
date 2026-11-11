@@ -270,7 +270,19 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
      `BLURT_CUE_TAKES` / `BLURT_CUE_CLIP`): found in 279, all at 0.20 s but a handful; turned down in 218, the median
      window 41 dB quieter; ≈ 3 ms a take (release). In the app (test dictation, a real take as the mic): the window
      −28 → −76 dB, the speech after it unchanged (−23 dB). `note_voice_cue` logs `found`, `at_ms`, `match`,
-     `before_db`, `after_db`, `muted`. Windows / Linux play the same peep (`dictation/engine.rs` `sound`): not done yet.
+     `before_db`, `after_db`, `muted`.
+     Windows / Linux (2026-11-12; `dictation/cue_eraser.rs`, the same algorithm and thresholds, ported): `sound` says
+     whether the peep started (PlaySoundW's answer; Linux: the pw-play / paplay spawn), and the take's first frame arms
+     its eraser. The clip is `sounds/start.wav` (48 kHz), brought to the mic's 16 kHz by windowed-sinc resampling. The
+     engine's `frame` feeds the island and the phone's meter from the raw frame at once; the stream, the recording, the
+     segmenter and its pieces get the held samples (`heard_samples`). A stop flushes what is still held through the
+     same path; a cancel only into the recording. stderr logs `dictation: start cue found at … ms, match …, … → … dB,
+     muted …` (or `not in the take`). The Rust tests mirror the Swift ones, plus the bundled clip found in a synthetic
+     take. On the same Mac takes (`cue_eraser::tests::real_takes`, `BLURT_CUE_TAKES`): found in 280, turned down in
+     215, the median window 41 dB quieter, the cue at 0.20 s, which matches the Swift port. It costs ≈ 18 ms a take
+     (release, `opt-level = "s"`), once, on the engine thread, while the frames queue. Not yet measured on a Windows
+     or Linux machine's own speakers: PlaySoundW's and pw-play's latency should fall well inside the 0.6 s search
+     window, but that is untested.
 - Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
   (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
 

@@ -43,6 +43,7 @@ use tauri::{AppHandle, Manager};
 
 use super::apps;
 use super::context::Context;
+use super::cue_eraser::{self, CueEraser};
 use super::flow::{
     self, nothing_heard, toast_keys as keys, AsrFailure, Clash, ClashMoment, CopiedGuard, DeliveredLine, KeptText,
     Runaway, RunawayNotice, SendRule, SendVerdict, TakeDeadline, Tip,
@@ -288,6 +289,8 @@ struct Take {
     runaway: Runaway,
     context: Option<Context>,
     duration: f64,
+    /// takes the start's peep back out of what the mic records (cue_eraser.rs): armed when `sound("start")` played
+    cue: Option<CueEraser>,
 }
 
 impl Take {
@@ -575,34 +578,68 @@ fn reformat_key() -> Option<String> {
         .map(|c| c.label())
 }
 
-fn sound(app: &AppHandle, name: &str, on: bool) {
+/// What the start cue's eraser did, once a take (the Mac's `note_voice_cue`).
+fn log_cue(c: &CueEraser) {
+    match c.result() {
+        Some(r) => eprintln!(
+            "dictation: start cue found at {} ms, match {:.2}, {:.0} → {:.0} dB, muted {}",
+            r.offset * 1000 / SR,
+            r.matched,
+            r.before_db,
+            r.after_db,
+            r.muted
+        ),
+        None => eprintln!("dictation: start cue not in the take"),
+    }
+}
+
+/// A bundled clip (`sounds/<name>.wav`): the installed resource, else the source tree's (a dev build).
+fn sound_path(app: &AppHandle, name: &str) -> Option<PathBuf> {
+    let p = app.path().resource_dir().ok()?.join("sounds").join(format!("{name}.wav"));
+    if p.is_file() {
+        return Some(p);
+    }
+    Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sounds").join(format!("{name}.wav")))
+}
+
+/// The start's peep as the mic's samples are (16 kHz mono), for CueEraser; None when the clip can't be read.
+fn start_clip(app: &AppHandle) -> Option<&'static [f32]> {
+    static CLIP: OnceLock<Option<Vec<f32>>> = OnceLock::new();
+    CLIP.get_or_init(|| {
+        let bytes = std::fs::read(sound_path(app, "start")?).ok()?;
+        cue_eraser::clip_from_wav(&bytes, mic::SR)
+    })
+    .as_deref()
+}
+
+/// Plays a cue when its switch is on and nothing is being recorded. True when it was started (the start's: the take
+/// then takes it back out of what the mic records).
+fn sound(app: &AppHandle, name: &str, on: bool) -> bool {
     if !on || app.state::<AppState>().capture.recording() {
-        return;
+        return false;
     }
-    let Ok(res) = app.path().resource_dir() else {
-        return;
+    let Some(p) = sound_path(app, name) else {
+        return false;
     };
-    let mut p = res.join("sounds").join(format!("{name}.wav"));
-    if !p.is_file() {
-        p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("sounds")
-            .join(format!("{name}.wav"));
-    }
-    #[cfg(target_os = "linux")]
-    {
-        // PipeWire's player (pipewire-bin, on every Ubuntu desktop), else PulseAudio's; never waited for
-        let p2 = p.clone();
-        std::thread::spawn(move || {
-            for player in ["pw-play", "paplay"] {
-                if let Ok(mut c) = std::process::Command::new(player).arg(&p2).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
-                    let _ = c.wait();
-                    return;
-                }
+    play(p)
+}
+
+/// Linux: PipeWire's player (pipewire-bin, on every Ubuntu desktop), else PulseAudio's; never waited for.
+#[cfg(target_os = "linux")]
+fn play(p: PathBuf) -> bool {
+    std::thread::spawn(move || {
+        for player in ["pw-play", "paplay"] {
+            if let Ok(mut c) = std::process::Command::new(player).arg(&p).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+                let _ = c.wait();
+                return;
             }
-        });
-    }
-    #[cfg(windows)]
-    {
+        }
+    });
+    true
+}
+
+#[cfg(windows)]
+fn play(p: PathBuf) -> bool {
     use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
     let w: Vec<u16> = p
         .to_string_lossy()
@@ -610,12 +647,12 @@ fn sound(app: &AppHandle, name: &str, on: bool) {
         .chain(std::iter::once(0))
         .collect();
     unsafe {
-        let _ = PlaySoundW(
+        PlaySoundW(
             windows::core::PCWSTR(w.as_ptr()),
             None,
             SND_ASYNC | SND_FILENAME | SND_NODEFAULT,
-        );
-    }
+        )
+        .as_bool()
     }
 }
 
@@ -1342,6 +1379,7 @@ impl Engine {
             runaway: Runaway::new(),
             context: None,
             duration: 0.0,
+            cue: start_clip(&self.app).map(|c| CueEraser::new(c.to_vec(), SR as f64)),
         });
         // Esc is Blurt's while the take listens
         keys_win::ESC_DICTATION.store(true, SeqCst);
@@ -1371,7 +1409,6 @@ impl Engine {
     fn frame(&mut self, f: Vec<f32>) {
         let lvl = mic::level(&f);
         let push_to_talk = self.trigger.push_to_talk();
-        let rehear = self.prefs.rehear;
         let Some(t) = &mut self.take else {
             // armed: keep the last half second
             self.pre.extend(f);
@@ -1381,15 +1418,67 @@ impl Engine {
             return;
         };
         t.peak = t.peak.max(lvl);
-        if let Some(s) = &t.stream {
-            let _ = s.send(StreamMsg::Pcm(f.clone()));
-        }
-        if t.frames == 0 {
-            sound(&self.app, "start", self.prefs.start_sound);
+        // on speakers the mic records the peep: what it hears next waits for it to be found and taken out
+        if t.frames == 0 && sound(&self.app, "start", self.prefs.start_sound) {
+            if let Some(c) = &mut t.cue {
+                c.arm();
+            }
         }
         t.frames += 1;
-        t.audio.extend_from_slice(&f);
-        let cuts = t.seg.feed(&f);
+        // while the peep may still be coming in, the samples are held (≈ 0.85 s, once a take) and come out without
+        // it; the island's level below is the raw frame's, at once
+        let f = match &mut t.cue {
+            Some(c) => {
+                let held = c.is_holding();
+                let f = c.process(f);
+                if held && !c.is_holding() {
+                    log_cue(c);
+                }
+                f
+            }
+            None => f,
+        };
+        self.heard_samples(&f);
+        let Some(t) = &mut self.take else { return };
+        // the runaway take: talking now is the last speech under half a second ago
+        let elapsed = t.started.elapsed().as_secs_f64();
+        let notice = t.runaway.feed(elapsed, t.seg.quiet_seconds() < 0.5, !push_to_talk);
+        match notice {
+            Some(RunawayNotice::StillListening) => say(
+                &self.app,
+                "dictation.toast.still_listening",
+                json!({"key": key_label(self.trigger.key), "cancel": self.prefs.cancel_key.label()}),
+                keys::LISTENING,
+                4000,
+                None,
+                true,
+            ),
+            Some(RunawayNotice::EndsSoon) => {
+                say(&self.app, "dictation.toast.ends_soon", json!({}), keys::LISTENING, 3000, None, true);
+                self.show();
+            }
+            None => {}
+        }
+        if self.level_at.elapsed() > Duration::from_millis(60) {
+            self.level_at = Instant::now();
+            island::send(&self.app, json!({"op": "level", "rms": lvl * 0.12}));
+            crate::remote::level(lvl); // Blurt on the phone: its talk bar's meter
+        }
+    }
+
+    /// The take's samples (the mic's, the start's peep taken out): to the stream, the recording, the segmenter and its
+    /// pieces. Nothing while the cue eraser holds them.
+    fn heard_samples(&mut self, f: &[f32]) {
+        let rehear = self.prefs.rehear;
+        let Some(t) = &mut self.take else { return };
+        if f.is_empty() {
+            return;
+        }
+        if let Some(s) = &t.stream {
+            let _ = s.send(StreamMsg::Pcm(f.to_vec()));
+        }
+        t.audio.extend_from_slice(f);
+        let cuts = t.seg.feed(f);
         t.spoke |= t.seg.piece_has_speech();
         let mut jobs: Vec<(Slot, usize, usize, usize)> = vec![];
         // a cloud model hears the whole take at key-up: no pieces (the segmenter still tells speech from quiet)
@@ -1411,33 +1500,24 @@ impl Engine {
                 }
             }
         }
-        // the runaway take: talking now is the last speech under half a second ago
-        let elapsed = t.started.elapsed().as_secs_f64();
-        let notice = t.runaway.feed(elapsed, t.seg.quiet_seconds() < 0.5, !push_to_talk);
         let n = t.n;
         for (slot, s, e, first) in jobs {
             self.queue_job(n, slot, s, e, first);
         }
-        match notice {
-            Some(RunawayNotice::StillListening) => say(
-                &self.app,
-                "dictation.toast.still_listening",
-                json!({"key": key_label(self.trigger.key), "cancel": self.prefs.cancel_key.label()}),
-                keys::LISTENING,
-                4000,
-                None,
-                true,
-            ),
-            Some(RunawayNotice::EndsSoon) => {
-                say(&self.app, "dictation.toast.ends_soon", json!({}), keys::LISTENING, 3000, None, true);
-                self.show();
-            }
-            None => {}
-        }
-        if self.level_at.elapsed() > Duration::from_millis(60) {
-            self.level_at = Instant::now();
-            island::send(&self.app, json!({"op": "level", "rms": lvl * 0.12}));
-            crate::remote::level(lvl); // Blurt on the phone: its talk bar's meter
+    }
+
+    /// The take ends while the cue eraser still holds samples (a take shorter than ≈ 0.85 s): they go out now, the
+    /// peep taken out if it is in them. `pieces`: to the segmenter and the speech worker too (a stop), else only into
+    /// the recording (a cancel keeps it for the history).
+    fn flush_cue(&mut self, pieces: bool) {
+        let Some(t) = &mut self.take else { return };
+        let Some(c) = t.cue.as_mut().filter(|c| c.is_holding()) else { return };
+        let rest = c.flush();
+        log_cue(c);
+        if pieces {
+            self.heard_samples(&rest);
+        } else {
+            t.audio.extend_from_slice(&rest);
         }
     }
 
@@ -1472,6 +1552,7 @@ impl Engine {
     }
 
     fn stop(&mut self) {
+        self.flush_cue(true);
         let Some(mut t) = self.take.take() else {
             return;
         };
@@ -1546,6 +1627,7 @@ impl Engine {
     /// `DictationHistory.keepsCancelled`, #54); otherwise nothing is kept. `quiet`: the double tap's own cancel (it
     /// sends right after), or a shortcut that joined push-to-talk in its first second.
     fn cancel(&mut self, quiet: bool) {
+        self.flush_cue(false);
         if let Some(mut t) = self.take.take() {
             let esc = self.last_key == vk::ESCAPE;
             let quiet = quiet
@@ -1906,6 +1988,7 @@ impl Engine {
             runaway: Runaway::new(),
             context: None,
             duration: m.duration,
+            cue: None,
         };
         let _ = self.asr.send(Job { n, slot: Slot::Whole, wav, prior: String::new(), before: AsrCtx::default(), temp: false });
         self.flight.push_back(t);
