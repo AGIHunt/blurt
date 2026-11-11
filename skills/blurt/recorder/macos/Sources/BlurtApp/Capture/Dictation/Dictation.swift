@@ -1689,7 +1689,8 @@ final class Dictation {
     /// The warm polish server's structuring pass (Structured): the whole take, its self-corrections resolved and what
     /// was enumerated laid out — or nil (no server: Light's text is typed). Blocking: off the main thread.
     static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]],
-                          cloud: [String: Any]? = nil, localFallback: Bool = true) -> [String: Any]? {
+                          cloud: [String: Any]? = nil, localFallback: Bool = true, light: Bool = false,
+                          context: [String: Any]? = nil, variant: String? = nil) -> [String: Any]? {
         if DictationStitch.nothingToPolish(text) {
             return ["ok": true, "raw": text, "text": text, "fell_back": false, "reason": "short", "list": false, "ms": 0]
         }
@@ -1699,6 +1700,9 @@ final class Dictation {
         var req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
         if let c = cloud { req["cloud"] = c }
         if !localFallback { req["local_fallback"] = false }
+        if light { req["light"] = true }      // the take's end skipped Light: this call does its job too
+        if let c = context { req["context"] = c }
+        if let v = variant { req["variant"] = v }
         let extra = cloud == nil ? 0 : timeout + DictationCloud.requestBudget(chars: text.count)
         guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra), r["ok"] as? Bool == true else { return nil }
         return r

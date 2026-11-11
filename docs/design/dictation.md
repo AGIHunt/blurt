@@ -1447,6 +1447,21 @@ polish above — stays the default everywhere and never restructures. Which styl
   measured, not kept: feeding the last piece to the structuring pass as heard (skipping its Light window) saved
   ~120 ms after key-up but resolved fewer corrections (25 vs 28 of 34 on one round) — the model had to tidy and
   structure at once.
+- **With cloud polish: one call at key-up** (2026-11-12; `DictationStream.lightInStructure`, `polish.py`
+  `structure_light_system`, cloud mode `structure_light`). In the cloud the two serial calls cost a second, not 120 ms:
+  on the founder's Structured takes in Claude (DeepSeek Flash), key-up waited for the last window's Light (~1 s) and
+  then the structuring call (~0.8 s), median 2.3 s from key-up to text, long takes 5–6 s. Now, in explicit Structured
+  with a cloud model, windows polished after key-up skip their Light call and the structuring call does Light's job
+  too (the cloud Light prompt's rules, then the structuring prompt's; the speaker's words, the app, the field and the
+  recent dictations go with it). Windows closed while talking still get Light then (out of sight). If the one call
+  fails, the skipped Light runs on the text as before; the local fall-back runs Light then structure. Auto is
+  unchanged (it may make no structure at all). Measured: 53 of the founder's Structured takes, same recognizer text,
+  key-up time median 1.83 → 0.93 s, p90 4.29 → 2.36 s (through the real path with the guard: 0.91 s, no fall-backs);
+  two blind Opus judges preferred one call 30 times, two calls 28, 48 ties. On the fixtures: self-corrections resolved
+  7 / 8 against 8 / 8 (`polish_eval.jsonl` structured cases; missed en-03), ordinary words kept 55 / 55 against
+  47 / 55 (`dictation_false_corrections.jsonl`: the two-call path turned 8 real "cloud" into Claude). In the app (test
+  build, a 36 s take): window 0 Light while talking, window 1 skipped, structuring with Light 835 ms, text 0.86 s
+  after key-up.
 - **At the cursor**: a list skips `DictationFit`'s trimming and starts on a line of its own when the text before the
   cursor doesn't end in a line break; a structured paragraph is fitted like Light.
 - **⇧ during the take / Fn+⇧ / the island** (§Trigger): `Dictation.toggleStyle` flips Structured ↔ the take's own
