@@ -114,9 +114,8 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
     home = home or Path.home()
     env = os.environ if env is None else env
 
-    def at(f: str) -> Path:  # ${VAR:-default} first (grok: ${GROK_HOME:-~/.grok}), then ~/ against `home`
-        f = _subst(f, env)
-        return home / f[2:] if f.startswith("~/") else Path(os.path.expanduser(f))
+    def at(f: str) -> Path:
+        return _at(f, env, home)
     cj = st.get("creds_json")
     if isinstance(cj, dict) and cj.get("path"):
         f = at(cj["path"])
@@ -126,6 +125,8 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
                 return "logged_out"  # e.g. kimi: provider listed, tokens empty → `kimi -p` fails "no credential configured"
         except (OSError, ValueError):
             pass
+    if other_provider(defn, env, home):  # codex on another provider (cc-switch & co.): its ChatGPT login doesn't apply
+        return "configured"
     if any(s in low for s in st.get("logged_out", [])):
         return "logged_out"
     if code == 0 and any(s in low for s in st.get("ok_if", [])):
@@ -139,6 +140,29 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
     if st.get("otherwise") == "logged_out" and (code is not None or "args" not in st):
         return "logged_out"
     return "unknown"
+
+
+def _at(f: str, env: dict, home: Path) -> Path:
+    """A status path: ${VAR:-default} first (grok: ${GROK_HOME:-~/.grok}), then ~/ against `home`."""
+    f = _subst(f, env)
+    return home / f[2:] if f.startswith("~/") else Path(os.path.expanduser(f))
+
+
+def other_provider(defn: dict, env: dict | None = None, home: Path | None = None) -> str | None:
+    """The model provider the agent's TOML config selects when it isn't the CLI's own (status.provider_toml), else None.
+    Codex: top-level `model_provider = "<id>"` with `[model_providers.<id>]` (what cc-switch and similar tools write),
+    or the same key in the `[profiles.<name>]` that a top-level `profile = "<name>"` selects (that one wins). Such a
+    user has no ChatGPT login and needs none."""
+    pt = (defn.get("status") or {}).get("provider_toml")
+    if not (isinstance(pt, dict) and pt.get("path") and pt.get("key")):
+        return None
+    f = _at(pt["path"], os.environ if env is None else env, home or Path.home())
+    val = None
+    if pt.get("profile") and pt.get("profiles"):
+        name = _toml_get(f, [pt["profile"]])
+        val = _toml_get(f, [pt["profiles"], name, pt["key"]]) if name else None
+    val = val or _toml_get(f, [pt["key"]])
+    return val if val and val not in (pt.get("except") or []) else None
 
 
 def usable(state: str) -> bool:
@@ -307,13 +331,34 @@ def _fill_obj(o, vals: dict):
     return o
 
 
+def uv_path(env: dict | None = None) -> str:
+    """uv's absolute path ({uv} in agents.json): every agent starts the blurt MCP server itself, and not with our PATH —
+    desktop apps (Cursor, WorkBuddy) without the login shell's, and on Windows / Linux the apps install uv into
+    $BLURT_HOME/bin, which is on nobody's PATH but theirs. PATH first, then that copy, else a bare "uv"."""
+    env = os.environ if env is None else env
+    found = shutil.which("uv", path=env.get("PATH"))
+    if found:
+        return found
+    from _common import blurt_home  # noqa: PLC0415
+    p = blurt_home() / "bin" / ("uv.exe" if os.name == "nt" else "uv")
+    return str(p) if p.is_file() else "uv"
+
+
 def find_bin(defn: dict, env: dict | None = None) -> str | None:
     env = os.environ if env is None else env
     p = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
     return unshim(p) if p else None
 
 
-_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"', re.I)
+# the program the shim hands its arguments to ("…\\claude.exe" %*) — not the node.exe a JavaScript CLI's shim runs
+# when one sits next to it (portable Node, nvm-windows: `"%_prog%" "…\\codex.js" %*`)
+_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"[ \t]*%\*', re.I)
+
+
+def shim_target(text: str) -> str | None:
+    """The native program an npm `.cmd` shim runs (relative to the shim's folder), None for a JavaScript CLI's."""
+    m = _SHIM_TARGET.search(text)
+    return m.group(1) if m else None
 
 
 def unshim(path: str) -> str:
@@ -323,12 +368,12 @@ def unshim(path: str) -> str:
     if os.name != "nt" or not path.lower().endswith((".cmd", ".bat")):
         return path
     try:
-        m = _SHIM_TARGET.search(Path(path).read_text(encoding="utf-8", errors="replace"))
+        target = shim_target(Path(path).read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return path
-    if not m:
+    if not target:
         return path
-    exe = Path(path).parent / m.group(1)
+    exe = Path(path).parent / target
     return str(exe) if exe.is_file() else path
 
 
@@ -430,7 +475,9 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
     argv = [bin_, *_fill(d["run"], vals)]
     hm = d.get("headless_mcp") or {}
     if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run
-        argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER))})
+        uv = uv_path(clean_env(env))  # *_json: a TOML string for codex's -c (a Windows path's backslashes escaped)
+        argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER)),
+                                   "uv": uv, "uv_json": json.dumps(uv)})
     if processing_run:
         p = processing(agent, cfg, env, kind=processing_run if processing_run in KINDS else "cards")
         argv += p["args"]
@@ -473,6 +520,22 @@ def _toml_top(path: Path, key: str) -> str | None:
     return None
 
 
+def _toml_get(path: Path, keys: list[str]) -> str | None:
+    """A string setting of a TOML file by its key path (["profiles", "work", "model_provider"]): tomllib when there
+    is one (Python 3.11+: quoted keys, literal strings), else _toml_top."""
+    try:
+        import tomllib  # noqa: PLC0415
+    except ImportError:
+        return _toml_top(path, ".".join(keys))
+    try:
+        node = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # missing, unreadable, not TOML (TOMLDecodeError is a ValueError)
+        return None
+    for k in keys:
+        node = node.get(k) if isinstance(node, dict) else None
+    return node if isinstance(node, str) else None
+
+
 def models(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict:
     """The models an agent's CLI offers, best first: a fixed list in agents.json (Claude Code's aliases) or the CLI's
     own model cache (Codex, Grok: models_cache.json, the models it shows in its picker). cli_default = the model the CLI uses
@@ -489,7 +552,9 @@ def models(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict
             if isinstance(m, dict) and m.get("id"):
                 rows.append({"id": m["id"], "name": m.get("name") or m["id"], "description": m.get("description") or "",
                              "cheap": bool(m.get("cheap"))})
-    elif spec.get("cache"):
+    elif spec.get("cache") and not other_provider(d, env):
+        # the cache lists the CLI's own provider's models (codex: OpenAI's); on another provider the processing run
+        # keeps the config's model instead of a "cheapest" one that provider doesn't have
         try:
             raw = json.loads(expand(spec["cache"], env).read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -620,6 +685,61 @@ def _run(argv: list[str], env: dict, timeout: int = 60) -> tuple[int | None, str
         return None, str(e)
 
 
+COPY_MARK = ".blurt-skill-copy"  # in a skill folder install() copied (Windows, no junction): the folder it copies
+
+
+def _link_dir(target: Path, source: Path, copy: bool = False) -> str:
+    """Make target show source's folder → "symlink" | "junction" | "copy". Windows: a directory junction — a symlink
+    needs Developer Mode or admin (WinError 1314), a junction no privilege — else (a file system without junctions)
+    a copy marked with COPY_MARK, refreshed by the next install."""
+    if not copy and os.name != "nt":
+        target.symlink_to(source, target_is_directory=True)
+        return "symlink"
+    if not copy:
+        try:
+            import _winapi  # noqa: PLC0415 — Windows only
+            _winapi.CreateJunction(str(source), str(target))
+            return "junction"
+        except OSError:
+            pass
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__", ".venv", COPY_MARK))
+    (target / COPY_MARK).write_text(str(source.resolve()), encoding="utf-8")
+    return "copy"
+
+
+def _our_copy(target: Path) -> bool:
+    try:
+        return (not target.is_symlink() and target.is_dir()
+                and (target / COPY_MARK).read_text(encoding="utf-8").strip() == str(SKILL_ROOT.resolve()))
+    except OSError:
+        return False
+
+
+def _names_all(text: str, want: list[str]) -> bool:
+    """Whether a CLI's description of a registered MCP server names every value in `want` (its command, our server
+    path): one of the string values when the output is JSON (codex mcp get --json; a Windows path's backslashes
+    escaped there), else in the text (claude mcp get)."""
+    if not want:
+        return True
+    leaves: list[str] = []
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text[text.index("{"):])
+
+        def walk(o):
+            if isinstance(o, str):
+                leaves.append(o)
+            elif isinstance(o, dict):
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+        walk(obj)
+    except ValueError:  # no "{" or not JSON: the text itself
+        return all(w in text for w in want)
+    return all(w in leaves for w in want)
+
+
 def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = False, env: dict | None = None,
             cfg: dict | None = None) -> dict:
     """Link the skill into the agent's skill dir and register the blurt MCP server with it. Never overwrites a
@@ -629,27 +749,37 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     if not d:
         raise ValueError(f"unknown agent {agent!r}")
     env = dict(os.environ if env is None else env)  # CODEX_HOME & co. decide which config gets written
-    # {uv} = uv's absolute path: desktop apps (Cursor, WorkBuddy) start MCP servers without the login shell's PATH
-    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT),
-            "uv": shutil.which("uv", path=env.get("PATH")) or "uv"}
+    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT), "uv": uv_path(env)}
     changes, ok = [], True
     if skill:
         if not d.get("skill_dir"):
             changes.append({"action": "manual", "what": "skill", "how": (d.get("fix") or {}).get("en", "")})
         else:
             target = expand(d["skill_dir"], env) / "blurt"
-            if target.is_symlink() or target.exists():
+            if os.path.lexists(target):  # a dangling link / junction too: never replaced
                 same = target.resolve() == SKILL_ROOT.resolve()
-                changes.append({"action": "exists" if same else "conflict", "path": str(target),
-                                "points_to": str(target.resolve())})
+                ch = {"action": "exists" if same else "conflict", "path": str(target), "points_to": str(target.resolve())}
+                if not same and _our_copy(target):  # the copy fallback: brought up to date, still ours
+                    same = True
+                    ch.update(action="exists", points_to=str(SKILL_ROOT), kind="copy")
+                    if not dry_run:
+                        try:
+                            shutil.rmtree(target)
+                            _link_dir(target, SKILL_ROOT, copy=True)
+                            ch["refreshed"] = True
+                        except OSError as e:
+                            ch.update(action="error", error=str(e))
+                            same = False
+                changes.append(ch)
                 ok = ok and same
             else:
-                ch = {"action": "symlink", "path": str(target), "target": str(SKILL_ROOT)}
+                # "symlink" whatever it ends up as (the apps key on it); kind says which: on Windows a junction
+                ch = {"action": "symlink", "path": str(target), "target": str(SKILL_ROOT),
+                      "kind": "junction" if os.name == "nt" else "symlink"}
                 if not dry_run:
                     try:
                         target.parent.mkdir(parents=True, exist_ok=True)
-                        target.symlink_to(SKILL_ROOT, target_is_directory=True)
-                        ch["ok"] = True
+                        ch.update(kind=_link_dir(target, SKILL_ROOT), ok=True)
                     except OSError as e:
                         ch.update(ok=False, error=str(e))
                         ok = False
@@ -659,18 +789,25 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
         bin_ = find_bin(d, env)
         if m.get("args"):
             argv = [bin_ or d["bins"][0], *_fill(m["args"], vals)]
-            exists = False
+            exists = stale = False
             if m.get("check") and bin_:
-                code, _ = _run([bin_, *m["check"]], env, timeout=20)
-                exists = code == 0
+                code, text = _run([bin_, *m["check"]], env, timeout=20)
+                # registered, and with the command we'd write: an older entry (a bare `uv` that Windows can't start,
+                # a moved skill) is written again
+                exists = code == 0 and _names_all(text, _fill(m.get("current") or [], vals))
+                stale = code == 0 and not exists
             if exists:
                 changes.append({"action": "exists", "argv": [bin_, *m["check"]]})
             else:
                 ch = {"action": "run", "argv": argv}
+                if stale:
+                    ch["replaces"] = "stale"
                 if not bin_:
                     ch.update(ok=False, error=f"{agent} is not installed")
                     ok = False
                 elif not dry_run:
+                    if stale and m.get("remove"):  # a CLI that won't add over an existing entry (claude)
+                        _run([bin_, *m["remove"]], env)
                     code, text = _run(argv, env)
                     ch.update(ok=code == 0, exit=code, output=text[-2000:])
                     ok = ok and code == 0
@@ -709,7 +846,7 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
                     ok = False
         else:
             changes.append({"action": "manual", "what": "mcp", "how": (d.get("fix") or {}).get("en", ""),
-                            "command": ["uv", "run", "--script", str(MCP_SERVER)]})
+                            "command": [vals["uv"], "run", "--script", str(MCP_SERVER)]})
     return {"changes": changes, "applied": (not dry_run) and ok}
 
 

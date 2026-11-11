@@ -46,8 +46,47 @@ Findings that changed the docs:
 "run" = connected for real in a scratch HOME with the real CLI (`agents.py install <id>`, twice: the second run
 reports everything as already there). "docs" = paths from the agent's documentation. WorkBuddy's paths come from
 its app bundle (`~/.workbuddy/skills/<name>/SKILL.md`, `~/.workbuddy/mcp.json` with `mcpServers`, a file watcher on
-it); whether it follows a symlinked skill folder is not verified. Desktop apps start MCP servers without the login
-shell's PATH, so their entry gets uv's absolute path (`{uv}` in agents.json).
+it); whether it follows a symlinked skill folder is not verified.
+
+Every MCP entry names uv by its absolute path (`{uv}` in agents.json; `agents.py uv_path`: PATH, else
+`$BLURT_HOME/bin/uv`). The agent starts the server itself: desktop apps (Cursor, WorkBuddy) without the login shell's
+PATH, and on Windows / Linux the app installs uv into `$BLURT_HOME/bin` (setup.rs `install_uv`), which is on the app's
+PATH only — a Windows user's Codex could not start a `uv` entry. Connect checks what is registered (`codex mcp get
+blurt --json`, `claude mcp get blurt`) and writes an entry again when it doesn't name this uv and this
+`mcp_server.py` (codex `mcp add` overwrites; claude needs `mcp remove` first); JSON configs are compared as before.
+Checked 2026-11-11 with Codex 0.165.0 and Claude Code on this Mac, scratch homes: a bare-`uv` entry is rewritten,
+the second Connect reports "exists". The headless codex run passes the same path (`{uv_json}`, a TOML string, so a
+Windows path's backslashes survive `-c`).
+
+### Codex on another model provider
+
+A user who points Codex at another provider in `$CODEX_HOME/config.toml` (`model_provider = "<id>"` with
+`[model_providers.<id>]`, as cc-switch and similar tools write it; or in the `[profiles.<name>]` a top-level
+`profile` selects) has no ChatGPT login: `codex login status` prints "Not logged in" and exits 1 (Codex 0.165.0,
+checked). Blurt used to show "not logged in · run codex login" and skip Codex. agents.json `status.provider_toml` now
+makes any provider other than `openai` "configured" (usable, can't verify the key), and hides Codex's
+`models_cache.json` (OpenAI's list) so a cards run keeps the config's model instead of OpenAI's cheap one.
+
+### Windows
+
+- Skill folder: a directory junction, not a symlink. `symlink_to` needs Developer Mode or admin (WinError 1314);
+  `_winapi.CreateJunction` needs neither. Where no junction can be made, a copy marked `.blurt-skill-copy`, brought
+  up to date by every later Connect. A junction to this skill counts as installed; to anything else, a conflict.
+  Connect reports it as `symlink` with `kind: junction | copy`.
+- MCP: uv by its full path (above).
+- npm shims: `unshim()` swaps a `.cmd` shim for the native program it runs (`"%dp0%\…\claude.exe" %*`). A
+  JavaScript CLI's shim (Codex's) also names a `"%dp0%\node.exe"`, which it uses when Node's global folder holds
+  node.exe (portable Node, nvm-windows); that node.exe was taken for codex, so every probe and `mcp add` ran Node.
+  Only a `.exe` the shim hands `%*` to counts now.
+
+Checked 2026-11-11 on a GCP Windows Server 2022 VM (deleted after): portable Node 22.12 + Codex 0.165.0 from npm, uv
+only in `$BLURT_HOME\bin` (not on PATH), the SSH user an admin. `tests/test_agents_windows.py` passes (junction,
+copy fallback, a junction to another folder = conflict); `codex login status` prints "Not logged in" with or without
+a DeepSeek `model_provider`, and `agents.py detect` gives `logged_out` without it and `configured` with it; a
+bare-`uv` entry from `codex mcp add` is rewritten by Connect to `C:\…\bh\bin\uv.exe`, the second Connect reports
+both parts "exists", `dir` shows `<JUNCTION> blurt`, and the registered command answers an MCP `initialize`. Not
+checked there: a non-admin user without Developer Mode (the junction is used either way), Claude Code's or other
+agents' Connect, and a real organising run.
 
 ## Starting a recording: path × agent
 

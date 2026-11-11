@@ -28,16 +28,29 @@ FAKE = {
 case "$1" in
   --version) echo "2.1.259 (Claude Code)";;
   auth) echo '{"loggedIn": false, "authMethod": "none"}'; exit 1;;
-  mcp) if [ "$2" = get ]; then [ -f "$HOME/.claude-mcp-blurt" ] && exit 0 || exit 1; fi
-       shift 2; echo "$@" > "$HOME/.claude-mcp-blurt"; echo "Added stdio MCP server blurt";;
+  mcp) f="$HOME/.claude-mcp-blurt"
+       case "$2" in
+         get) [ -f "$f" ] && cat "$f" && exit 0 || exit 1;;
+         remove) rm -f "$f"; exit 0;;
+       esac
+       # like the real one: no add over an existing entry
+       if [ -f "$f" ]; then echo "MCP server blurt already exists in user config" >&2; exit 1; fi
+       shift 2; echo "$@" > "$f"; echo "Added stdio MCP server blurt";;
 esac""",
     # codex: logged in; `mcp add` writes into $CODEX_HOME (the regression: CODEX_HOME must reach it)
     "codex": """
 case "$1" in
   --version) echo "codex-cli 0.157.0";;
-  login) echo "Logged in using ChatGPT" >&2;;
-  mcp) if [ "$2" = get ]; then grep -q blurt "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null && exit 0 || exit 1; fi
-       mkdir -p "${CODEX_HOME:-$HOME/.codex}"; shift 2; echo "[mcp_servers.blurt] $*" >> "${CODEX_HOME:-$HOME/.codex}/config.toml"
+  login) if [ -f "$HOME/.codex-logged-out" ]; then echo "Not logged in"; exit 1; fi; echo "Logged in using ChatGPT" >&2;;
+  mcp) d="${CODEX_HOME:-$HOME/.codex}"
+       if [ "$2" = get ]; then  # --json like the real one: {"transport": {"command", "args"}} from the last add
+         [ -f "$d/blurt.json" ] || { echo "Error: No MCP server named 'blurt' found." >&2; exit 1; }
+         cat "$d/blurt.json"; exit 0
+       fi
+       mkdir -p "$d"; shift 4; cmd="$1"; shift  # mcp add blurt -- CMD ARGS… (overwrites, like the real one)
+       echo "[mcp_servers.blurt] $cmd $*" >> "$d/config.toml"
+       a=""; for x in "$@"; do a="$a${a:+, }\\"$x\\""; done
+       printf '{"name": "blurt", "transport": {"type": "stdio", "command": "%s", "args": [%s]}}\n' "$cmd" "$a" > "$d/blurt.json"
        echo "Added global MCP server 'blurt'.";;
 esac""",
     "kimi": """
@@ -156,7 +169,7 @@ def test_command_headless(env, tmp_path):
     # the blurt MCP server rides along, fully defined (-c on an unregistered server breaks codex) and pre-approved
     sets = [out["argv"][i + 1] for i, a in enumerate(out["argv"]) if a == "-c"]
     assert 'mcp_servers.blurt.default_tools_approval_mode="approve"' in sets
-    assert 'mcp_servers.blurt.command="uv"' in sets and any(str(agents.MCP_SERVER) in x for x in sets)
+    assert f"mcp_servers.blurt.command={json.dumps(agents.uv_path())}" in sets and any(str(agents.MCP_SERVER) in x for x in sets)
     assert any(x.startswith("mcp_servers.blurt.env_vars=") and "BLURT_HOME" in x and "BLURT_RUN_ID" in x for x in sets)
     import tomllib
     for x in sets:  # each -c value is valid TOML
@@ -306,12 +319,12 @@ def test_install_kimi_json_merge(env):
     assert cli("install", "kimi", "--mcp")["changes"][0]["action"] == "exists"
 
 
-@pytest.mark.parametrize("agent, skill_dir, mcp_json, abs_uv", [
-    ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json", True),    # a desktop app: uv by its full path
-    ("cursor", ".agents/skills", ".cursor/mcp.json", True),
-    ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json", False),   # a CLI, started from the shell
+@pytest.mark.parametrize("agent, skill_dir, mcp_json", [
+    ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json"),
+    ("cursor", ".agents/skills", ".cursor/mcp.json"),
+    ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json"),
 ])
-def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, abs_uv):
+def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json):
     """CodeBuddy Code, WorkBuddy and Cursor: connect only (skill + MCP), never run unattended."""
     uv = env["tmp"] / "bin" / "uv"
     uv.write_text("#!/bin/sh\n")
@@ -329,7 +342,7 @@ def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, 
     assert (env["home"] / skill_dir / "blurt").resolve() == agents.SKILL_ROOT.resolve()
     data = json.loads(path.read_text())
     assert data["mcpServers"]["other"] == {"url": "https://example.com/mcp", "disabled": True}
-    assert data["mcpServers"]["blurt"] == {"command": str(uv) if abs_uv else "uv",
+    assert data["mcpServers"]["blurt"] == {"command": str(uv),  # uv by its full path: the agent starts the server
                                            "args": ["run", "--script", str(agents.MCP_SERVER)]}
     assert {c["action"] for c in cli("install", agent)["changes"]} == {"exists"}
 
@@ -343,6 +356,130 @@ def test_install_never_overwrites_another_skill(env, tmp_path):
     out = cli("install", "codex", "--skill")
     assert out["changes"][0]["action"] == "conflict" and out["applied"] is False
     assert link.resolve() == other.resolve()
+
+
+def _fake_uv(env) -> Path:
+    uv = env["tmp"] / "bin" / "uv"
+    uv.write_text("#!/bin/sh\n")
+    uv.chmod(0o755)
+    return uv
+
+
+def test_codex_on_another_model_provider_is_configured(env):
+    """Codex pointed at a third-party provider in $CODEX_HOME/config.toml (cc-switch & co.) has no ChatGPT login:
+    `codex login status` says "Not logged in", but it runs. It is usable ("configured"), not "log in first"."""
+    (env["home"] / ".codex-logged-out").write_text("")
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    cfg = codex_home / "config.toml"
+    state = lambda: {r["id"]: r for r in cli("detect", "--ids", "codex")["agents"]}["codex"]  # noqa: E731
+    assert state()["state"] == "logged_out" and "codex login" in state()["fix"]   # no config: the login is it
+    cfg.write_text('model_provider = "deepseek"\nmodel = "deepseek-chat"\n\n'
+                   '[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\n'
+                   'env_key = "DEEPSEEK_API_KEY"\n')
+    r = state()
+    assert r["state"] == "configured" and r["fix"] == "" and cli("detect", "--ids", "codex")["pick"] == "codex"
+    cfg.write_text('model_provider = "openai"\n')                                 # OpenAI's own: the login counts
+    assert state()["state"] == "logged_out"
+    # a profile's own model_provider wins over the top-level one (codex's rule)
+    cfg.write_text('profile = "work"\nmodel_provider = "openai"\n\n[profiles.work]\nmodel_provider = "kimi"\n')
+    assert state()["state"] == "configured"
+    cfg.write_text('profile = "home"\nmodel_provider = "kimi"\n\n[profiles.home]\nmodel_provider = "openai"\n')
+    assert state()["state"] == "logged_out"
+    cfg.write_text("model_provider = 'litellm'\n")                                # a TOML literal string
+    assert state()["state"] == "configured"
+    cfg.write_text('model_provider = "x\n')                                       # not TOML: nothing to go on
+    assert state()["state"] == "logged_out"
+    # only under $CODEX_HOME, never the user's ~/.codex when CODEX_HOME points elsewhere
+    codex = next(d for d in agents.registry()["agents"] if d["id"] == "codex")
+    cfg.write_text('model_provider = "deepseek"\n')
+    assert agents.other_provider(codex, {"CODEX_HOME": str(codex_home)}, env["home"]) == "deepseek"
+    assert agents.other_provider(codex, {}, env["home"]) is None
+
+
+def test_codex_on_another_provider_keeps_its_own_model(env, tmp_path):
+    """models_cache.json lists OpenAI's models: on another provider a cards run must not pass OpenAI's cheap one."""
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    (codex_home / "models_cache.json").write_text(json.dumps({"models": [
+        {"slug": "gpt-big", "priority": 1, "description": "Frontier"},
+        {"slug": "gpt-mini", "priority": 2, "description": "Smaller, cheaper, fast"}]}))
+    (codex_home / "config.toml").write_text('model = "gpt-big"\n')
+    assert cli("models", "codex")["cheapest"] == "gpt-mini"
+    (codex_home / "config.toml").write_text('model_provider = "deepseek"\nmodel = "deepseek-chat"\n')
+    m = cli("models", "codex")
+    assert m["models"] == [] and m["cheapest"] is None and m["cli_default"] == "deepseek-chat"
+    p = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--processing", "cards")["argv"]
+    assert "-m" not in p
+
+
+def test_every_mcp_entry_starts_uv_by_its_full_path(env, tmp_path):
+    """Every agent starts the blurt MCP server itself, often without our PATH (Windows / Linux: the app's uv is in
+    $BLURT_HOME/bin, on no one else's PATH): no entry may say a bare `uv`."""
+    for d in agents.registry()["agents"]:
+        m = d.get("mcp") or {}
+        text = json.dumps(m.get("args") or (m.get("json") or {}).get("value") or [])
+        assert '"uv"' not in text, d["id"]
+        assert '"uv"' not in json.dumps(d.get("headless_mcp") or {}) and '\\"uv\\"' not in json.dumps(d.get("headless_mcp") or {})
+    # no uv on PATH: the app's own copy in $BLURT_HOME/bin
+    assert agents.uv_path({"PATH": "/nonexistent"}) == "uv"
+    (env["bh"] / "bin").mkdir()
+    own = env["bh"] / "bin" / "uv"
+    own.write_text("#!/bin/sh\n")
+    own.chmod(0o755)
+    assert agents.uv_path({"PATH": "/nonexistent"}) == str(own)
+    run = next(c for c in cli("install", "codex", "--mcp", "--dry-run")["changes"] if c["action"] == "run")
+    assert run["argv"][run["argv"].index("--") + 1] == str(own)
+    a = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path)["argv"]
+    assert f"mcp_servers.blurt.command={json.dumps(str(own))}" in a
+    # a Windows path in codex's -c: valid TOML, backslashes kept
+    import tomllib
+    win = "C:\\Users\\Ann Lee\\.blurt\\bin\\uv.exe"
+    hm = next(d for d in agents.registry()["agents"] if d["id"] == "codex")["headless_mcp"]["args"]
+    filled = agents._fill(hm, {"uv_json": json.dumps(win), "mcp_server_json": json.dumps("C:\\s\\mcp_server.py")})
+    assert tomllib.loads(filled[1])["mcp_servers"]["blurt"]["command"] == win
+
+
+def test_install_rewrites_a_stale_mcp_entry(env):
+    """An entry registered before (a bare `uv`, which Windows can't start) is written again with uv's full path;
+    one that already says what we'd write is left alone. Codex `mcp add` overwrites; claude needs `mcp remove` first."""
+    uv = _fake_uv(env)
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    (codex_home / "blurt.json").write_text(json.dumps(
+        {"name": "blurt", "transport": {"command": "uv", "args": ["run", "--script", str(agents.MCP_SERVER)]}}))
+    dry = cli("install", "codex", "--mcp", "--dry-run")["changes"]
+    assert [c["action"] for c in dry] == ["run"] and dry[0]["replaces"] == "stale"
+    out = cli("install", "codex", "--mcp")
+    assert out["applied"] and json.loads((codex_home / "blurt.json").read_text())["transport"]["command"] == str(uv)
+    assert [c["action"] for c in cli("install", "codex", "--mcp")["changes"]] == ["exists"]
+    (env["home"] / ".claude-mcp-blurt").write_text(f"--scope user blurt -- uv run --script {agents.MCP_SERVER}\n")
+    out = cli("install", "claude", "--mcp")
+    assert out["applied"] and out["changes"][0]["replaces"] == "stale"
+    assert str(uv) in (env["home"] / ".claude-mcp-blurt").read_text()
+    assert [c["action"] for c in cli("install", "claude", "--mcp")["changes"]] == ["exists"]
+    assert agents._names_all('{"transport": {"command": "C:\\\\b\\\\uv.exe", "args": ["run"]}}', ["C:\\b\\uv.exe"])
+    assert not agents._names_all('{"transport": {"command": "uv"}}', ["/x/uv"])
+    assert agents._names_all("Command: /x/uv\nArgs: run --script /s/m.py", ["/x/uv", "/s/m.py"])
+
+
+def test_install_skill_copy_fallback(env, tmp_path, monkeypatch):
+    """Where neither a symlink nor a junction can be made (Windows without one): a marked copy, which the next install
+    brings up to date and reports as there — never a copy of something else."""
+    target = tmp_path / "skills" / "blurt"
+    target.parent.mkdir()
+    assert agents._link_dir(target, agents.SKILL_ROOT, copy=True) == "copy"
+    assert (target / "SKILL.md").read_bytes() == (agents.SKILL_ROOT / "SKILL.md").read_bytes()
+    assert not list(target.rglob("__pycache__")) and agents._our_copy(target)
+    (target / "SKILL.md").write_text("old")
+    cfg = {"record": {"agent_defs": {"t": {"skill_dir": str(target.parent)}}}}
+    dry = agents.install("t", mcp=False, dry_run=True, cfg=cfg)["changes"][0]
+    assert dry["action"] == "exists" and dry["kind"] == "copy" and (target / "SKILL.md").read_text() == "old"
+    ch = agents.install("t", mcp=False, cfg=cfg)
+    assert ch["applied"] and ch["changes"][0]["refreshed"] is True
+    assert (target / "SKILL.md").read_bytes() == (agents.SKILL_ROOT / "SKILL.md").read_bytes()
+    (target / agents.COPY_MARK).write_text("/somewhere/else")                     # a copy of another skill: not ours
+    assert agents.install("t", mcp=False, cfg=cfg)["changes"][0]["action"] == "conflict"
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("codex"), reason="codex's own macOS seatbelt")
@@ -372,3 +509,15 @@ def test_codex_sandbox_keeps_blurt_home_read_only(tmp_path, monkeypatch):
                        cwd=session, capture_output=True, text=True, timeout=60)
     got = dict(line.split("=") for line in p.stdout.split() if "=" in line)
     assert got == {"session": "w", "inbox": "w", "store": "w", "uv": "w", "config": "r", "hooks": "r", "home": "r", "code": "r"}, p.stderr
+
+
+def test_shim_target_is_the_native_program_not_node():
+    """npm .cmd shims (texts from a Windows VM, npm 10 / Node 22): Claude Code's runs its claude.exe; Codex's runs
+    codex.js with the node.exe next to it when there is one (portable Node, nvm-windows). That node.exe is not codex."""
+    head = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"
+    claude = head + '"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n'
+    codex = head + ('\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n'
+                    '  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & '
+                    '"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n')
+    assert agents.shim_target(claude) == "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"
+    assert agents.shim_target(codex) is None
