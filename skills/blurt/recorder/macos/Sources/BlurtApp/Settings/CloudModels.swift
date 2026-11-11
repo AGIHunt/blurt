@@ -1,6 +1,7 @@
 // Cloud speech's model choices (CloudSpeechSheet; docs/design/first-minute-speech.md §2.4): a default, the service's
-// current ids, and Custom… for any other; each id carries what was measured on it, or says it wasn't. Aliyun's speech
-// models other than qwen3-asr-flash need its native API, which transcribe.py doesn't speak, so they aren't offered.
+// current ids, and Custom… for any other; each id carries what was measured on it, or says it wasn't. Model Studio:
+// qwen3-asr-flash goes through its OpenAI-compatible API, the qwen-audio 3.1 ASR Flash model (2026-11) through its own
+// HTTP API (transcribe.py dashscope_protocol); its models that only stream or read a file by URL can't be used.
 // The text jobs' models (polish, translate, Copy Text from Screen) come from each service's live list instead
 // (Settings → Models: CloudStore, BlurtCore CloudModelList). Storage: CloudSpeech's per-service model; "" always means
 // the default, so a better default reaches everyone who didn't pick one.
@@ -25,7 +26,8 @@ enum CloudModels {
     static func choices(_ job: CloudPickerJob, provider: String) -> [CloudModelChoice] {
         func c(_ id: String, _ note: String? = nil, name: String? = nil) -> CloudModelChoice { CloudModelChoice(id: id, note: note, name: name) }
         switch provider {
-        case "dashscope": return [c("qwen3-asr-flash", "speech.qwen3_asr", name: "Qwen3-ASR Flash")]
+        case "dashscope": return [c("qwen3-asr-flash", "speech.qwen3_asr", name: "Qwen3-ASR Flash"),
+                                  c("qwen-audio-3.1-asr-flash", "speech.qwen_audio_31", name: "Qwen Audio 3.1 ASR")]
         case "openai": return [c("whisper-1"), c("gpt-transcribe")]
         case "groq": return [c("whisper-large-v3-turbo"), c("whisper-large-v3")]
         default: return []          // the user's own service: Custom… only

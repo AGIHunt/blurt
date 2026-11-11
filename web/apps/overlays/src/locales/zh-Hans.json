@@ -426,5 +426,7 @@
   "snap.file_to": "归到",
   "island.cards.none_detail": "没有卡片 · {key} 截图",
   "island.rec.pen_box": "方框",
-  "island.rec.pen_ellipse": "椭圆"
+  "island.rec.pen_ellipse": "椭圆",
+  "capture.text.allow": "截图取字需要先在设置里允许截图",
+  "capture.text.allow_action": "去允许…"
 }

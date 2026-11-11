@@ -209,6 +209,7 @@
 "speech.cloud.check.network" = "无法连接服务，请检查网络和接口地址";
 "speech.cloud.check.quota" = "请求过多或额度已用完，请稍后再试";
 "speech.cloud.check.privacy" = "云端识别已在「隐私」中关闭";
+"speech.cloud.check.model" = "百炼没有用这个模型返回识别结果：模型名可能有误，或它只支持实时流式或文件链接调用。请检查模型名，或从列表里选择";
 "speech.cloud.check.other" = "服务返回错误，请检查接口地址和模型名称";
 
 /* 听写方案对比（设置 → 模型：页首一行和「对比…」；DictationCompare.swift）。数字来自 BlurtCore DictationChoices

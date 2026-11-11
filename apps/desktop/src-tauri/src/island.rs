@@ -498,8 +498,13 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         // "Snap discarded · Undo" (Esc in a snap's note)
         "snap.undo" => capture::snap_undo(app),
         // a failed translation's Try Again (Copy Text from Screen)
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         "text.retry" => crate::screen_text::flow::retry(app),
+        // Linux: GNOME asks about screenshots only with Blurt in front — Settings → Copy Text from Screen asks
+        "text.allow" => {
+            crate::show_main(app);
+            let _ = app.emit("nav", json!({"view": "settings", "pane": "screentext/screentext.allow"}));
+        }
         "voice" => capture::voice_start(app, false),
         "voice.stop" => capture::voice_stop(app, false),
         "voice.cancel" => capture::voice_stop(app, true),

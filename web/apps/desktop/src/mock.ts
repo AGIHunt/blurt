@@ -142,11 +142,17 @@ let current = 'p1';
 // dictation's model download and the Welcome, in memory
 // ?models=0: no speech model on this PC yet (Settings' no-model notices)
 const modelsIn = new Set(param('models') === '0' ? [] : ['sensevoice-small']);
+/** dictation's choice in the browser mock: dictation_use / dictation_dashscope_model */
+const mockDict: { use: string | null; ds: string | null } = { use: null, ds: null };
+/** Linux: GNOME's screenshot permission (?shots=1: given before) */
+const mockShots = { allowed: param('shots') === '1' };
 let mdl: { id: string; done: number } | null = null;
 // ?cloud=1: DeepSeek connected, polish and translate on it (the API id "deepseek-flash": Settings names it)
+/** services connected in this mock session (cloud_connect) */
+const mockServices: { id: string; preset: string; has_key: boolean }[] = param('dashscope') === '1' ? [{ id: 'dashscope', preset: 'dashscope', has_key: true }] : [];
 const cloudSum = () => (param('cloud') === '1'
-  ? { services: [{ id: 'deepseek', preset: 'deepseek', has_key: true }], routes: { polish: { service: 'deepseek', model: 'deepseek-flash' }, translate: null, vision: null } }
-  : { services: [], routes: { polish: null, translate: null, vision: null } });
+  ? { services: [{ id: 'deepseek', preset: 'deepseek', has_key: true }, ...mockServices], routes: { polish: { service: 'deepseek', model: 'deepseek-flash' }, translate: null, vision: null } }
+  : { services: [...mockServices], routes: { polish: null, translate: null, vision: null } });
 function mockDownload(id: string) {
   const total = id === 'sensevoice-small' ? 228 : 950;
   mdl = { id, done: 0 };
@@ -368,7 +374,10 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
   switch (cmd) {
     case 'app_status':
       return r({ version: '0.7.0', os: param('platform') === 'win' ? 'windows' : 'linux', platform: param('platform') === 'win' ? 'win' : 'gnome', wayland: false, lang: param('lang') ?? navigator.language, blurt_home: `${H}/.blurt`, inbox_store: `${H}/Blurt/inbox`,
-        handoff_dir: `${H}/.blurt/handoff`, index_ready: true, scripts: `${H}/.claude/skills/blurt/scripts`, uv: '/usr/bin/uv', capture: { recording: false, paused: false, session: null, voice: null }, hotkey_mode: 'plugin',
+        handoff_dir: `${H}/.blurt/handoff`, index_ready: true, scripts: `${H}/.claude/skills/blurt/scripts`, uv: '/usr/bin/uv', capture: { recording: false, paused: false, session: null, voice: null }, hotkey_mode: param('platform') === 'win' ? 'plugin' : 'portal',
+        // Linux: dictation and Copy Text built; ?keys=evdev for the input-group mode, else the portal's Menu key
+        features: { dictation: true, screen_text: true },
+        dictation_keys: param('platform') === 'win' ? 'hook' : param('keys') === 'evdev' ? 'evdev' : 'portal', dictation_key: param('platform') === 'win' ? null : 'Menu',
         start_view: param('view') });
     case 'cards_waiting':
       return r(Number(param('cards') ?? 0));
@@ -515,7 +524,32 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ models: [{ id: 'sensevoice-small', name: 'SenseVoice Small', backend: 'sherpa-onnx', installed: true, size_mb: 228, languages: ['zh', 'en', 'ja', 'ko', 'yue'] }, { id: 'whisper-large-v3-turbo-ct2', name: 'Whisper large-v3 turbo', backend: 'faster-whisper', installed: false, size_mb: 1620, languages: 'multi' }] });
     case 'dictation_models':
       if (param('uv') === 'failed' && !onb.uvRetried) throw new Error('uv not found');
-      return r({ recommended: 'fun-asr-nano-onnx', selected: ['fun-asr-nano-onnx', 'sensevoice-small'].find((m) => modelsIn.has(m)) ?? 'fun-asr-nano-onnx', ready: modelsIn.has('fun-asr-nano-onnx'), downloading: mdl?.id ?? null, models: [{ id: 'fun-asr-nano-onnx', name: 'Fun-ASR-Nano (CPU)', size_mb: 950, installed: modelsIn.has('fun-asr-nano-onnx'), recommended: true }, { id: 'sensevoice-small', name: 'SenseVoice Small', size_mb: 228, installed: modelsIn.has('sensevoice-small'), recommended: false }] });
+    {
+      // ?dashscope=1 (or connected here): Model Studio's recogniser is a dictation choice (dictation_dashscope_model);
+      // ?weak=1: a PC the CPU rules give SenseVoice (dictation_models `weak`); ?localasr=1: cloud recognition not allowed
+      const weak = param('weak') === '1';
+      const ds = mockServices.some((s) => s.preset === 'dashscope');
+      const rec = weak ? 'sensevoice-small' : 'fun-asr-nano-onnx';
+      const sel = mockDict.use ?? [rec, 'fun-asr-nano-onnx', 'sensevoice-small'].find((m) => modelsIn.has(m)) ?? rec;
+      return r({ recommended: rec, selected: sel, selected_cloud: sel === 'qwen3-asr-flash', weak, cloud_allowed: param('localasr') !== '1',
+        ready: modelsIn.has(rec) || sel === 'qwen3-asr-flash', downloading: mdl?.id ?? null, dashscope_model: mockDict.ds,
+        models: [{ id: 'fun-asr-nano-onnx', name: 'Fun-ASR-Nano (CPU)', size_mb: 950, installed: modelsIn.has('fun-asr-nano-onnx'), recommended: rec === 'fun-asr-nano-onnx' }, { id: 'sensevoice-small', name: 'SenseVoice Small', size_mb: 228, installed: modelsIn.has('sensevoice-small'), recommended: rec === 'sensevoice-small' },
+          ...(ds ? [{ id: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash', size_mb: 0, installed: true, recommended: false }] : [])] });
+    }
+    case 'dictation_use':
+      mockDict.use = args.id ?? null;
+      return r(undefined);
+    case 'screen_text_allowed':
+      return r(mockShots.allowed);
+    case 'screen_text_allow':
+      // ?shots=deny: the user says no in GNOME's dialog
+      await new Promise((ok) => setTimeout(ok, 800));
+      mockShots.allowed = param('shots') !== 'deny';
+      return r(mockShots.allowed ? { ok: true } : { ok: false, code: 'denied' });
+    case 'dictation_dashscope_model':
+      mockDict.use = 'qwen3-asr-flash';
+      mockDict.ds = args.model ?? null;
+      return r(undefined);
     case 'model_download':
       if (mdl) throw new Error('a download is already running');
       mockDownload(args.id);
@@ -604,7 +638,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     case 'cloud_curated':
       return r({ jobs: { polish: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
         translate: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
-        vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }] } });
+        vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
+        speech: [{ service: 'dashscope', model: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash' }, { service: 'dashscope', model: 'qwen-audio-3.1-asr-flash', name: 'Qwen Audio 3.1 ASR' }] } });
     case 'cloud_job_set':
       return r(cloudSum());
     case 'asr_auto_apply':
@@ -663,6 +698,11 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     }
     case 'voiceprint_stop':
       return r(undefined);
+    case 'cloud_connect':
+      await new Promise((ok) => setTimeout(ok, 600));
+      if (String(args.key).length < 8) return r({ ok: false, code: 'auth' });
+      if (!mockServices.some((s) => s.preset === args.preset)) mockServices.push({ id: args.preset, preset: args.preset, has_key: true });
+      return r({ ok: true, summary: cloudSum() });
     case 'cloud_connect_speech':
       await new Promise((ok) => setTimeout(ok, 600));
       return r(String(args.token).length < 8 ? { ok: false, code: 'auth' } : { ok: true, ms: 480, summary: { services: [{ id: 'volcengine-speech', preset: 'volcengine-speech', has_key: true }], routes: {} } });

@@ -247,11 +247,35 @@ AT-SPI), `dictation/secret_linux.rs` (Secret Service), `capture/portal_linux.rs`
 
 ## Not done or not measured yet
 
-- Snaps and Copy Text through the Screenshot portal (the still for the picker; `screen_text` is still Windows-only).
+- Snaps through the Screenshot portal: `tk_recorder.py shot` still uses `x11grab`, which under Wayland sees only
+  XWayland windows (native windows come out black); the picker has no frozen still (`monitor_still`: None).
+- **Copy Text from Screen (2026-11-11, built and run on a 26.04.1 GNOME 50.1 VM):** `screen_text/grab_linux.rs` takes
+  the whole desktop through the Screenshot portal (non-interactive, parented to the island), removes the portal's PNG
+  (none left in ~/Pictures/Screenshots), and cuts the picked area out (scaled by the picture's size over the monitors'
+  box: `grab::crop`, unit-tested with a 2x picture and a monitor left of 0); RapidOCR (`screen_ocr.py`) reads it, with
+  no fall-back reader (the first use installs it: ~40 s); the rest of the flow (rules, paste, translation card) is
+  shared with Windows. On the VM the first ⌥C brought GNOME's "Allow Blurt to Take Screenshots?" up over the picked
+  area; after Allow the three gedit lines came back and were on the clipboard (not typed: Remote Desktop access wasn't
+  given yet); a later ⌥C took ~3 s from letting go to the text, the reader cold. If GNOME refuses to ask (the design
+  VM did while Blurt wasn't focused), the island says "Copy Text needs screenshot access · Allow…", which opens
+  Settings → Copy Text from Screen → Screenshot access (`screen_text_allow`, the main window as the parent). Seen on
+  the run: RapidOCR at 1x on gedit's monospace dropped the final 。, read CSV as csv and "Claude Code" as
+  "Claude e Code" — the reader's, as on Windows, not the grab's. Not checked: fractional scaling, the translation card
+  (needs a cloud model), its Esc under XWayland.
+- **Settings on the VM:** the Dictation pane shows GNOME's key ("Menu", the portal's label read again when Settings
+  opens or the shortcuts change — app_status was read once at launch, before the user answered GNOME's dialog), and
+  the portal's "Press <Shift><Alt>c" reads "Shift+Alt+C" everywhere (`hotkeys::pretty_trigger`). GNOME's own list of
+  Blurt's shortcuts named Copy Text, Translate, Reformat and Cards "Pen" (`describe`'s fall-back): named now.
+- **Settings (2026-11-11):** the Dictation pane and the Models page's dictation / polish / translate rows now show on
+  Linux — they went by `platform === 'win'`; now by `app_status.features` (`dictation`: `cfg(dict)`, `screen_text`:
+  Windows). With the portal key (`dictation_keys: "portal"`) the key row shows GNOME's shortcut (`dictation_key`, the
+  label the portal bound) and where to change it, and the Esc / Shift / Ctrl rows are hidden (the portal gives no other
+  keys). Key storage reads "the system keyring" (strings' `.linux` variants). Checked in the browser mock only; the
+  Linux-only branch of `app_status` (`evdev_available`) was not compiled here.
 - Evdev mode end to end in the app (measured standalone; the app was tested in portal mode), the right-Alt opt-in step
   in Settings, Esc during a take in portal mode.
 - Onboarding: the Remote Desktop / Screenshot steps in the Welcome (today: "Allow typing" on the first take).
-- Shortcut labels show the portal's raw text ("Press <Shift><Alt>a"); the Welcome shows "Not set" in portal mode;
+- The Welcome shows "Not set" in portal mode (shortcut labels themselves read "Shift+Alt+A" since 2026-11-11);
   GNOME's "Add Keyboard Shortcuts" dialog opens behind the Welcome (parent it to the main window).
 - The island's toast button by mouse under XWayland: hovering the toast can open the island before the click lands
   (seen with the test rig's pointer; "Allow typing" is also asked by itself, so dictation doesn't depend on it).

@@ -89,6 +89,41 @@ SenseVoice (dictation.md §Defaults by Mac). It is the best CPU model for Chines
 | any other language | Qwen3-ASR 0.6B int8 (940 MB) | as above |
 | < 8 GB or ≤ 2 cores | SenseVoice | as above |
 
+## Cloud recognition on a weak PC (2026-11-11)
+
+The CPU defaults above are fine on a mid-range PC, but a weak one (< 8 GB or ≤ 2 cores) gets SenseVoice: fast, 5.2 %
+on the founder's takes. Cloud recognition needs no download and is more accurate: Qwen3-ASR Flash 2.15 %, Qwen Audio
+3.1 ASR 1.60 % (dictation.md §Cloud recognition, same takes). It was only reachable by first adding a Model Studio key
+for polish and then finding it in dictation's pop-up; Auto never picks it.
+
+What changed (never switched on by itself — the recording leaves the PC):
+- **Welcome, model step (Windows):** a "Cloud recognition (optional)" row beside the download. On a weak PC
+  (`dictation_models` `weak`: the CPU rules gave SenseVoice) its line says why it is offered; elsewhere it offers to
+  skip the 950 MB download. "Use Cloud Recognition…" opens the key sheet with only the services that recognise speech
+  (Model Studio; Volcengine where it is offered) and a line that the recording goes there; once connected, dictation
+  uses that service's measured default. The download then stops being the step's main button, the step's subtitle says
+  the recordings go to the chosen service, and "Use This PC" switches back.
+- **Settings → Models → Dictation (Windows, Linux):** every measured cloud recogniser whose service has no key is listed
+  as "· Add Key", as the text jobs are; it is offered even with no local model (the pop-up was disabled then).
+- Not offered when Privacy keeps recognition on this computer (`cloud_allowed`).
+- Linux's Welcome has no dictation steps yet (linux-port.md §Not done), so there it is Settings only.
+
+## An NVIDIA GPU for dictation (not decided, not built)
+
+`probe()` finds an NVIDIA GPU (`_nvidia_gpu`, VRAM) and the voice-note / recording tiers use it (faster-whisper,
+Whisper large-v3-turbo on CUDA), but dictation's recogniser ignores it: `cpu_recognizer` looks at RAM and cores only.
+The candidate is the recogniser the Mac uses on fast machines, Qwen3-ASR 1.7B (2.50 % on the founder's takes with
+30 s windows and field context, against 3.5–3.7 % for the CPU models), or Fun-ASR-Nano on onnxruntime-gpu.
+
+What would decide it, on a consumer card (an RTX 3060 / 4060, 8 GB) and an L4 (the GCP g2 rig):
+- the founder's 95 takes through the app's path (windows, words, field text) — error and names, against the CPU
+  models and cloud recognition;
+- key-up latency for 5 s and 60 s takes, warm and after the card idled; VRAM held next to a game or a browser;
+- what has to be installed: the CUDA runtime wheels are ~2–3 GB, several times the model, and driver versions vary.
+
+Ship a GPU recogniser only if it is clearly better than the CPU default (≤ 2.6 %) at ≤ 0.5 s after key-up and the
+install stays reasonable; otherwise cloud recognition (above) is the better upgrade for people who want accuracy.
+
 ## Downloads from mainland China
 
 - From the Hangzhou VM, GitHub release downloads failed.

@@ -845,5 +845,12 @@
   "phone.control.win.detail": "它以管理员身份运行。只有口喷鸡也以管理员身份运行时，Windows 才允许手机控制它。",
   "phone.firewall": "Windows 防火墙挡住了这个网络上的手机。",
   "phone.firewall.detail": "Windows 会请管理员确认。",
-  "phone.firewall.allow": "允许…"
+  "phone.firewall.allow": "允许…",
+  "welcome.cloudrec.title": "云端识别（可选）",
+  "welcome.cloudrec.detail": "不想下载 {size} 的本机模型，可以改用云端识别：更准，不用下载。录音会发到你选的服务。",
+  "welcome.cloudrec.detail_weak": "这台电脑内存或处理器核心较少，本机用的是更快但不太准的模型。云端识别更准，也不用下载；录音会发到你选的服务。",
+  "welcome.cloudrec.on": "听写正在用 {name} 在云端识别。",
+  "welcome.cloudrec.use": "使用云端识别…",
+  "welcome.cloudrec.local": "改回本机",
+  "welcome.models.detail_cloud": "听写的录音会发到你选的云端服务识别。"
 }

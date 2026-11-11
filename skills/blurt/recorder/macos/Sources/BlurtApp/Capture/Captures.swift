@@ -509,7 +509,7 @@ final class Snapper {
         }
         let line = DictationASRFailure.failed(why ?? "").line
         switch line {
-        case .cloudKey:
+        case .cloudKey, .cloudModel:
             var t = Island.Toast(text: Loc.t(line.key, table: "Dictation"),
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
                 AppEnvironment.settings?.show(pane: "speech/speech.cloud")

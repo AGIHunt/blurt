@@ -187,6 +187,23 @@ export interface AppStatus {
   capture: { recording: boolean; paused: boolean; session: string | null; voice: unknown };
   hotkey_mode: string;
   start_view?: string | null;
+  /** what this build has: dictation (Windows, Linux), Copy Text from Screen (Windows) */
+  features?: { dictation: boolean; screen_text: boolean };
+  /** the dictation key the GNOME portal bound ("Menu"), when the keyboard can't be read directly */
+  dictation_key?: string | null;
+  /** hook (Windows) · evdev (Linux, the input group) · portal (Linux, one GNOME shortcut) */
+  dictation_keys?: 'hook' | 'evdev' | 'portal';
+}
+
+/** What Settings shows for this build: older backends had no `features`, and only Windows had dictation then. */
+export function builds(s: AppStatus) {
+  const win = s.platform === 'win';
+  return {
+    dictation: s.features?.dictation ?? win,
+    screenText: s.features?.screen_text ?? win,
+    /** the dictation key is one GNOME shortcut: no right / either Alt choice, no Esc or Shift / Ctrl taps in a take */
+    portalKey: s.dictation_keys === 'portal' ? s.dictation_key ?? '' : null,
+  };
 }
 
 export interface AgentInfo {
@@ -252,6 +269,14 @@ export interface DictationModels {
   ready: boolean;
   models: DictationModel[];
   downloading?: string | null;
+  /** Model Studio's speech model under qwen3-asr-flash (asr.cloud["qwen3-asr-flash"].model); null: Qwen3-ASR Flash */
+  dashscope_model?: string | null;
+  /** dictation goes to a cloud service now */
+  selected_cloud?: boolean;
+  /** a PC the CPU rules give the fast, less accurate model: cloud recognition is offered first */
+  weak?: boolean;
+  /** cloud recognition may be offered (Privacy: recognition not kept on this computer) */
+  cloud_allowed?: boolean;
 }
 export interface ModelDownload {
   id: string;
@@ -401,6 +426,11 @@ export const api = {
   dictationModels: () => invoke<DictationModels>('dictation_models'),
   modelDownload: (id: string) => invoke<void>('model_download', { id }),
   dictationUse: (id: string | null) => invoke<void>('dictation_use', { id }),
+  /** Linux: GNOME's screenshot question for Copy Text from Screen, asked with Blurt in front */
+  screenTextAllow: () => invoke<{ ok: boolean; code?: string; error?: string }>('screen_text_allow'),
+  screenTextAllowed: () => invoke<boolean>('screen_text_allowed'),
+  /** dictation on Model Studio with this measured speech model (null: Qwen3-ASR Flash) */
+  dictationDashscopeModel: (model: string | null) => invoke<void>('dictation_dashscope_model', { model }),
   /** the dictation key pressed in Blurt's own window: the key hook doesn't hear those (engine.rs `forward_key`) */
   dictationKey: (code: string, down: boolean) => invoke<void>('dictation_key_forward', { code, down }),
   dictationHistory: () => invoke<DictationHistory>('dictation_history'),

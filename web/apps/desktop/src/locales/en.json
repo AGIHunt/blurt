@@ -866,5 +866,12 @@
   "phone.control.win.detail": "It runs as administrator. Windows lets your phone control it only when Blurt also runs as administrator.",
   "phone.firewall": "Windows Firewall is blocking phones on this network.",
   "phone.firewall.detail": "Windows will ask for an administrator’s permission.",
-  "phone.firewall.allow": "Allow…"
+  "phone.firewall.allow": "Allow…",
+  "welcome.cloudrec.title": "Cloud recognition (optional)",
+  "welcome.cloudrec.detail": "Skip the {size} download and recognize speech in the cloud. It’s more accurate; recordings go to the service you choose.",
+  "welcome.cloudrec.detail_weak": "This PC has little memory or few cores, so it uses a faster but less accurate model. Cloud recognition is more accurate and needs no download; recordings go to the service you choose.",
+  "welcome.cloudrec.on": "Dictation is recognized in the cloud with {name}.",
+  "welcome.cloudrec.use": "Use Cloud Recognition…",
+  "welcome.cloudrec.local": "Use This PC",
+  "welcome.models.detail_cloud": "Dictation recordings go to the cloud service you chose to be recognized."
 }

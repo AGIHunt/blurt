@@ -1,14 +1,18 @@
 //! Copy Text from Screen on Windows / Linux (the Mac's ScreenText + ScreenTextCopy; docs/design/screen-text.md):
-//! `rules` is the Mac's geometry, ported; `ocr_win` reads the screen; `flow` is the key's whole path.
+//! `rules` is the Mac's geometry, ported; `grab` the picture of the area (`ocr_win`: GDI and Windows' own OCR;
+//! `grab_linux`: GNOME's Screenshot portal); `flow` is the key's whole path.
 
+pub mod grab;
 pub mod rules;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub mod flow;
+#[cfg(target_os = "linux")]
+pub mod grab_linux;
 #[cfg(windows)]
 pub mod ocr_win;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub use flow::start;
 
 /// A line read whole (RapidOCR: its text and box) as the rules' words: split at its spaces, each word's box its share
@@ -120,8 +124,7 @@ mod tests {
     }
 }
 
-#[cfg(windows)]
-pub fn compose_lines(ls: Vec<rules::Line>, grab: &ocr_win::Grab) -> String {
+pub fn compose_lines(ls: Vec<rules::Line>, grab: &grab::Grab) -> String {
     match rules::Gray::from_bgra8(
         grab.w as usize,
         grab.h as usize,

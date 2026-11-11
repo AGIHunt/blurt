@@ -18,7 +18,7 @@ import { Icon, Mascot, type IconName } from '@blurt/icons';
 import { api, listen, type CloudSummary, type HotkeyRow, type LoginItem, type MicState, type Onboarding } from '../api';
 import { i18n, t } from '../i18n';
 import { Popup } from '../settings/kit';
-import { AddCloudModel } from './DictationSettings';
+import { AddCloudModel, AddSpeechCloud, dictateInCloud, speechOffers, useCurated } from './DictationSettings';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 
 export type StepId = 'welcome' | 'dictation' | 'models' | 'try';
@@ -113,6 +113,9 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
   const [mic, setMic] = useState<MicState | null>(null);
   const [cloud, setCloud] = useState<CloudSummary | null>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
+  // cloud recognition (windows-models.md §Cloud recognition on a weak PC): the sheet for a speech service, open
+  const [speechOpen, setSpeechOpen] = useState(false);
+  const curated = useCurated();
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [openAtLogin, setOpenAtLogin] = useState(true);
   const [waited, setWaited] = useState(false);
@@ -308,7 +311,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
         // only what was checked: the key heard, the microphone allowed (not that speech was heard)
         return [t('welcome.dictation.title'), t(heard ? (mic?.device && mic.access !== 'denied' ? 'welcome.dictation.detail_done' : 'welcome.dictation.detail_key') : 'welcome.dictation.detail')];
       case 'models':
-        return [t('welcome.models'), t('welcome.models.detail')];
+        return [t('welcome.models'), t(models?.selected_cloud ? 'welcome.models.detail_cloud' : 'welcome.models.detail')];
       default:
         return win ? [t('welcome.try'), t('welcome.try.subtitle')] : [t('welcome.finish'), t('welcome.finish.detail')];
     }
@@ -385,12 +388,24 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
     if (ms === 'installed') return <State tone="good" text={t('welcome.models.ready_short')} />;
     if (ms === 'waiting') return <State tone="busy" text={t('welcome.models.starting')} />;
     if (ms === 'failed') return <button onClick={() => download(rec.id)}>{t('welcome.models.retry')}</button>;
-    if (ms === 'offer') return <button className="primary" onClick={() => download(rec.id)}>{t('welcome.models.download', { size: mb(rec.size_mb) })}</button>;
+    // dictation runs in the cloud now: the download stays offered, no longer the step's main button
+    if (ms === 'offer') return <button className={models?.selected_cloud ? '' : 'primary'} onClick={() => download(rec.id)}>{t('welcome.models.download', { size: mb(rec.size_mb) })}</button>;
     // dictation works on another model already: the recommended one is the upgrade, its own button
     if (models?.ready) return <button onClick={() => download(rec.id)}>{t('welcome.models.download', { size: mb(rec.size_mb) })}</button>;
     return null;
   };
   const cloudOn = cloud?.services.find((s) => s.has_key);
+  // cloud recognition: offered beside the download (no download, more accurate; the recording goes to the service),
+  // first on a weak PC; chosen only here or in Settings — never switched on by itself
+  const offers = models?.cloud_allowed === false ? [] : speechOffers(curated);
+  const speechOn = offers.find((o) => cloud?.services.some((s) => s.has_key && s.preset === o.service));
+  const cloudRecName = models?.selected_cloud ? models.models.find((m) => m.id === models.selected)?.name : null;
+  const useCloudRec = async () => {
+    if (speechOn) {
+      await dictateInCloud(speechOn.service, speechOn.model).catch(() => {});
+      load();
+    } else setSpeechOpen(true);
+  };
 
   const models_ = (
     <div className="wl-rows">
@@ -414,7 +429,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
           {modelTrail()}
         </Row>
       )}
-      {rec && (dl || ms === 'failed' || ms === 'offer') && (
+      {rec && !models?.selected_cloud && (dl || ms === 'failed' || ms === 'offer') && (
         <div className="wl-status" data-testid="welcome-model-status">
           {dl ? (
             <>
@@ -428,6 +443,24 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
           )}
         </div>
       )}
+      {win && models && offers.length > 0 && (
+        <Row icon="waveform" title={t('welcome.cloudrec.title')} testid="welcome-cloudrec"
+          detail={cloudRecName ? t('welcome.cloudrec.on', { name: cloudRecName })
+            : models.weak ? t('welcome.cloudrec.detail_weak')
+            : t('welcome.cloudrec.detail', { size: mb(rec?.size_mb ?? 0) })}>
+          {cloudRecName
+            ? <button onClick={() => api.dictationUse(null).then(load, () => {})}>{t('welcome.cloudrec.local')}</button>
+            : <button onClick={useCloudRec}>{t('welcome.cloudrec.use')}</button>}
+        </Row>
+      )}
+      {speechOpen && <AddSpeechCloud onClose={() => setSpeechOpen(false)}
+        onDone={async (s, service) => {
+          setCloud(s);
+          setSpeechOpen(false);
+          const o = offers.find((x) => x.service === service);
+          if (o) await dictateInCloud(o.service, o.model).catch(() => {});
+          load();
+        }} />}
       <Row icon="cloud" first={!rec} title={t('welcome.cloud.title')}
         detail={cloudOn ? `${t('welcome.cloud.detail')} ${t('welcome.cloud.on', { name: t(`cloud.preset.${cloudOn.preset}`) })}` : t('welcome.cloud.detail')}
         testid="welcome-cloud">
