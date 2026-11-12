@@ -227,6 +227,15 @@ final class PermissionGuide: ObservableObject {
     /// The pane again (the user closed System Settings, or it went behind).
     func reopenPane() { if let k = current { SystemAccess.openPane(k) } }
 
+    /// A checked System Settings row can belong to an older build even when preflight says no. Let the user
+    /// reach the re-add instructions from the ordinary missing-permission step too; no permission is changed here.
+    func readdScreen() {
+        guard running, current == .screen, !stepDone else { return }
+        reauthorize = true
+        satisfiedNow = satisfiedSet
+        go(.screen)
+    }
+
     /// Screen Recording: relaunch, and carry on with the rest of the walk afterwards.
     func restartForScreen() {
         let rest = Array(steps.drop { $0 != current }.dropFirst())
@@ -302,17 +311,15 @@ final class PermissionGuide: ObservableObject {
         guard let r = Config.shared["app.permission_resume"] as? [String: Any] else { return }
         Config.shared.set("app.permission_resume", nil)
         guard let at = r["at"] as? Double, Date().timeIntervalSince1970 - at < 600 else { return }
-        let kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
+        var kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
         let flow = PermissionFlowKind(rawValue: r["flow"] as? String ?? "") ?? .all
         let src = Source(rawValue: r["source"] as? String ?? "") ?? .privacy
         emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue), "source": src.rawValue])
-        if kinds.isEmpty {
-            // Screen Recording was the walk's last step: the done line, back where the walk started
-            self.flow = flow
-            self.source = src
-            return finish(already: true)
-        }
-        start(flow, only: kinds, source: src)
+        // `kinds` only held the steps after Screen Recording. Recheck Screen Recording itself as well: an empty
+        // remainder isn't proof that the restart fixed it. Keep the screen-only scope on success, and offer the
+        // re-add instructions if macOS still refuses this build (including preflight=false with a checked row).
+        if !kinds.contains(.screen) { kinds.append(.screen) }
+        start(flow, only: kinds, source: src, reauthorize: !SystemAccess.granted(.screen))
     }
 
     // MARK: words
