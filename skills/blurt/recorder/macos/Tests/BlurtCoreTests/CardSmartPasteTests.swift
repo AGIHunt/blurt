@@ -128,6 +128,68 @@ final class CardSmartPasteTests: XCTestCase {
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.running = true }), .pass("running"))
     }
 
+    // MARK: ⌘V of a copy in a terminal: a line per card, the picture's path then its note
+
+    func testACopyWithAPictureIsArmedForTerminals() {
+        let cards = [CardPasteboard.Card(image: a, note: "first\nsecond line"), CardPasteboard.Card(image: b, note: "next")]
+        let lines = CardPasteSequence.terminalText(cards)
+        XCTAssertEqual(lines, "/s/out/001/截图-101010.png first second line\n/s/out/002/截图-101020.png next", "in the copy's order")
+        let arm = SmartPasteArm(changeCount: 3, steps: CardPasteSequence.steps(cards), terminal: lines, now: 0)
+        XCTAssertEqual(arm.classes, [.chat, .terminal])
+        XCTAssertEqual(arm.rearmed(changeCount: 4, now: 10).terminal, lines, "written back after a paste: still armed for terminals")
+        // a lone picture: nothing to sequence in a chat app, but a terminal gets its path
+        let lone = [CardPasteboard.Card(image: a, note: nil)]
+        let t = CardPasteSequence.terminalText(lone)
+        XCTAssertEqual(t, "/s/out/001/截图-101010.png")
+        XCTAssertEqual(CardPasteSequence.arm(enabled: true, steps: CardPasteSequence.steps(lone), accessibility: true, terminal: t), .arm)
+        XCTAssertEqual(CardPasteSequence.arm(enabled: true, steps: CardPasteSequence.steps(lone), accessibility: false, terminal: t),
+                       .skip("no_accessibility"), "nothing to tell: a terminal then pastes as it always did")
+        XCTAssertEqual(SmartPasteArm(changeCount: 1, steps: CardPasteSequence.steps(lone), terminal: t, now: 0).classes, [.terminal])
+        // words only: the copy's own text is fine in a terminal
+        let words = [CardPasteboard.Card(image: nil, note: "only words")]
+        XCTAssertNil(CardPasteSequence.terminalText(words))
+        XCTAssertEqual(CardPasteSequence.arm(enabled: true, steps: CardPasteSequence.steps(words), accessibility: true,
+                                             terminal: CardPasteSequence.terminalText(words)), .skip("one_thing"))
+        XCTAssertEqual(CardPasteSequence.arm(enabled: false, steps: [], accessibility: true, terminal: t), .skip("off"))
+    }
+
+    func testCommandVInATerminalPastesTheLines() {
+        let lines = "/s/out/001/截图-101010.png n"
+        func term(_ change: (inout SmartPastePolicy.Input) -> Void = { _ in }) -> SmartPastePolicy.Input {
+            input {
+                $0.arm?.terminal = lines
+                $0.frontBundle = "com.apple.Terminal"
+                change(&$0)
+            }
+        }
+        for id in ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty"] {
+            XCTAssertEqual(SmartPastePolicy.decide(term { $0.frontBundle = id }), .terminalLines, id)
+        }
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.arm?.steps = [.image(self.a)] }), .terminalLines, "a lone picture too")
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.arm?.terminal = nil }), .pass("terminal"), "no lines: the terminal's own paste")
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.accessibility = false }), .pass("no_accessibility"))
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.secureInput = true }), .pass("secure_input"))
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.running = true }), .pass("running"))
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.changeCount = 6 }), .pass("clipboard_changed"))
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.frontIsBlurt = true }), .pass("blurt"))
+        // the same armed copy still runs the sequence in a chat app, and leaves rich apps and the Finder alone
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.frontBundle = "com.google.Chrome" }), .sequence)
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.frontBundle = "com.apple.Notes" }), .pass("rich_app"))
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.frontBundle = "com.apple.finder" }), .pass("finder"))
+        // a lone picture in a chat app: one thing, the paste as it is
+        XCTAssertEqual(SmartPastePolicy.decide(term { $0.arm?.steps = [.image(self.a)]; $0.frontBundle = "com.google.Chrome" }), .pass("one_thing"))
+    }
+
+    func testTheTapKeepsOnlyTheKeysTheCopyTakesOver() {
+        XCTAssertTrue(SmartPastePolicy.intercepts(frontBundle: "com.apple.Terminal", classes: [.terminal]))
+        XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: "com.apple.Terminal", classes: [.chat]))
+        XCTAssertTrue(SmartPastePolicy.intercepts(frontBundle: "com.google.Chrome", classes: [.chat, .terminal]))
+        XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: "com.google.Chrome", classes: [.terminal]), "a lone picture: Chrome pastes it itself")
+        XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: "com.apple.Notes", classes: [.chat, .terminal]))
+        XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: "com.apple.finder", classes: [.chat, .terminal]))
+        XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: nil, classes: [.chat, .terminal]))
+    }
+
     // MARK: the sequence, step by step
 
     func testRunsEachStepThenGivesTheClipboardBack() {

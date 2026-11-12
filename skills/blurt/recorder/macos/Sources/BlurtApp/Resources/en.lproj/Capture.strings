@@ -203,7 +203,7 @@
 "capture.taken_out" = "Dragged out";
 "capture.taken_out_note" = "Dragged out · Note copied — ⌘V to paste";
 "capture.taken_out_text" = "Dragged out · picture and note";
-"capture.taken_out_paths" = "Dragged out · picture and note paths";
+"capture.taken_out_paths" = "Dragged out · picture path and note";
 "capture.taken_out_files" = "Dragged out · picture and note file";
 "capture.taken_out_files_note" = "Dragged out with the note file · Note copied — ⌘V to paste";
 "capture.taken_out_picture" = "Dragged out · picture";

@@ -20,7 +20,37 @@ IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
 IS_LINUX = sys.platform.startswith("linux")
 
-BLURT_HOME = Path(os.environ.get("BLURT_HOME", Path.home() / ".blurt"))
+
+def chosen_location() -> dict:
+    """The data folder chosen in the Windows / Linux app (Settings → Storage → Data location; the app's location.rs):
+    {"home", "workspace"} in %APPDATA%\\Blurt\\location.json or ~/.config/Blurt/location.json, {} when there is none.
+    The app passes BLURT_HOME / BLURT_WORKSPACE to what it runs; this is for scripts an agent runs on its own."""
+    if IS_MAC:
+        return {}
+    f = os.environ.get("BLURT_LOCATION_FILE")
+    if not f:
+        base = os.environ.get("APPDATA") if IS_WIN else (os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config"))
+        if not base:
+            return {}
+        f = os.path.join(base, "Blurt", "location.json")
+    try:
+        d = json.loads(Path(f).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: d[k] for k in ("home", "workspace") if isinstance(d, dict) and isinstance(d.get(k), str)
+            and os.path.isabs(d[k])}
+
+
+def blurt_home() -> Path:
+    return Path(os.environ.get("BLURT_HOME") or chosen_location().get("home") or Path.home() / ".blurt")
+
+
+def blurt_workspace() -> Path:
+    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
+    return Path(os.environ.get("BLURT_WORKSPACE") or chosen_location().get("workspace") or Path.home() / "Blurt")
+
+
+BLURT_HOME = blurt_home()
 MODELS_DIR = BLURT_HOME / "models"
 GLOBAL_CONFIG = BLURT_HOME / "config.json"
 STATE_FILE = BLURT_HOME / "recording.json"
@@ -470,15 +500,6 @@ def serve_exit_reason(loaded: bool, model_idle: float, server_idle: float, uses:
     if not loaded and server_idle >= adaptive_idle(exit_after, uses, tier, cap=EXIT_CAP):
         return "unused"
     return None
-
-
-def blurt_home() -> Path:
-    return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
-
-
-def blurt_workspace() -> Path:
-    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
-    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
 
 
 def real(p: Path | str) -> Path:

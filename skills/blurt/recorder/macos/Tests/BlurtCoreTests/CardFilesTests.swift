@@ -91,28 +91,38 @@ final class CardFilesTests: XCTestCase {
         let note = "ls\n\u{1B}[201~rm -rf ~\r"
         XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card(note))[0].text, "ls · [201~rm -rf ~",
                        "the one-line form: the app that reads it may not be the one it lands in")
-        for c in [DropClass.chat, .finder, .terminal] {
+        for c in [DropClass.chat, .finder] {
             XCTAssertTrue(CardPasteboard.drag(for: c, card: card(note), attachNote: true).allSatisfy { $0.text == nil && !$0.rich }, "\(c)")
         }
+        // a terminal's line: the path, then the note on the same line — no newline, no escape, no bell
+        let t = CardPasteboard.drag(for: .terminal, card: card(note), attachNote: true)
+        XCTAssertEqual(t.compactMap(\.text), ["/s/out/003/截图-144012.png ls [201~rm -rf ~"])
+        XCTAssertFalse(t.contains { $0.rich || $0.file != nil })
     }
 
     func testDragWithoutANote() {
         for c in DropClass.allCases {
             let first = CardPasteboard.drag(for: c, card: card(nil, md: nil))
             XCTAssertEqual(first.count, 1, "\(c)")
-            XCTAssertEqual(first[0].file, img)
+            if c == .terminal {
+                XCTAssertEqual(first[0], CardPasteboard.Item(text: img.path, tag: true), "a terminal: the path as text")
+            } else {
+                XCTAssertEqual(first[0].file, img)
+            }
             XCTAssertTrue(first[0].tag)
             XCTAssertEqual(CardPasteboard.drag(for: c, card: card(" \n ", md: nil)), first, "\(c)")
         }
     }
 
-    /// No .md (it couldn't be written): the second item is inert everywhere — and a terminal still gets only the
-    /// picture's path.
+    /// No .md (it couldn't be written): the second item is inert everywhere — and a terminal doesn't need it: the
+    /// note travels on the path's line.
     func testDragWhenTheNoteFileCouldNotBeWritten() {
         XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card("words", md: nil)),
                        [CardPasteboard.Item(file: img, image: img, rich: true, text: "words", tag: true), CardPasteboard.Item(tag: true)])
         XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: card("words", md: nil)),
-                       [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(tag: true)], "a terminal never gets the note as text")
+                       [CardPasteboard.Item(text: img.path + " words", tag: true), CardPasteboard.Item(tag: true)])
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: card("words", md: nil)), CardPasteboard.drag(for: .terminal, card: card("words")),
+                       "the .md never goes to a terminal")
     }
 
     /// A voice card is text that happened to be spoken: its words, no audio file, no .md — whatever the app.

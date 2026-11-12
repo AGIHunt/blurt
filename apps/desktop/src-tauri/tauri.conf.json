@@ -146,9 +146,9 @@
     },
     "updater": {
       "endpoints": [
-        "https://blurt.work/updates/desktop/{{target}}-{{arch}}.json"
+        "https://dl.blurt.work/desktop/latest.json"
       ],
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5M0U2Rjg0Q0FGQUQyNjYKUldSbTB2cktoRzgrdWVncnlhSWhya1djZEt4K1BkWmJVeWlXekxYZzZ2UlAvTHlNS0daL1RQKy8K",
       "windows": {
         "installMode": "passive"
       }

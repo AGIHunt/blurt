@@ -130,13 +130,29 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertEqual(CardPasteboard.drag(for: .chat, card: CardPasteboard.Card(image: img, note: note), attachNote: true), [picture, inert])
     }
 
-    /// A terminal types the paths it gets: both files (Claude Code / Codex read the .md), and no text or rich text
-    /// anywhere — the note never reaches a shell. The option doesn't matter there.
-    func testATerminalGetsOnlyPaths() {
+    /// A terminal (Claude Code / Codex in it) gets one line of text: the picture's path, then its note — paired, so
+    /// several cards never get their notes mixed up. No file URL (the terminal would type its own copy of the path), no
+    /// .md, no picture bytes, no rich text; never a newline. The option doesn't matter there.
+    func testATerminalGetsThePathThenTheNoteAsOneLine() {
         for attach in [false, true] {
             let items = CardPasteboard.drag(for: .terminal, card: card, attachNote: attach)
-            XCTAssertEqual(items, [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(file: md)])
-            XCTAssertTrue(items.allSatisfy { $0.text == nil && $0.image == nil && !$0.rich })
+            XCTAssertEqual(items, [CardPasteboard.Item(text: "/s/out/003/截图-144012.png see the header the logo overlaps", tag: true), inert])
+            XCTAssertTrue(items.allSatisfy { $0.file == nil && $0.image == nil && !$0.rich })
+            XCTAssertFalse(items[0].text!.contains { $0.isNewline })
+        }
+        // a path that needs quoting
+        let spaced = URL(fileURLWithPath: "/Users/Ana Li/.blurt/sessions/s 1/out/003/Screenshot-144012.png")
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: spaced, note: "the logo"))[0].text,
+                       "'/Users/Ana Li/.blurt/sessions/s 1/out/003/Screenshot-144012.png' the logo")
+        // no note: the path alone, one item
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: img, note: nil, noteFile: md)),
+                       [CardPasteboard.Item(text: "/s/out/003/截图-144012.png", tag: true)])
+        // a voice card: its words, as a text drop everywhere (the " · " one line)
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: nil, note: note)),
+                       [CardPasteboard.Item(text: "see the header · the logo overlaps", tag: true)])
+        // over a terminal the landing is the terminal's layout, whatever its composer kind
+        for k in ComposerKind.allCases {
+            XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .terminal, kind: k), card: card), CardPasteboard.drag(for: .terminal, card: card))
         }
     }
 
@@ -174,7 +190,7 @@ final class CardDropTargetTests: XCTestCase {
     /// The note goes on the clipboard only where it didn't go in.
     func testTheSafetyNetOnlyWhereItHelps() {
         XCTAssertFalse(DragReceipt.copiesNote(.both), "picture and note went in")
-        XCTAssertFalse(DragReceipt.copiesNote(.paths), "both paths went in; ⌘V would paste at a prompt")
+        XCTAssertFalse(DragReceipt.copiesNote(.paths), "path and note went in; ⌘V would paste at a prompt")
         XCTAssertFalse(DragReceipt.copiesNote(.files), "the Finder got the note's file")
         XCTAssertTrue(DragReceipt.copiesNote(.pictureOnly))
         XCTAssertTrue(DragReceipt.copiesNote(.unsure), "not sure what it got")

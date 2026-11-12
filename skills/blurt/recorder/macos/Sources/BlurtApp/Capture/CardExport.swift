@@ -9,9 +9,10 @@
 //   <batch>/out/<NNN>/截图-153012.png       the picture (inked if marked) with the note in its PNG Description — and,
 //                                            with record.drag_caption on, the note burned in as a strip under it (a
 //                                            copy: the capture itself stays clean)
-//   <batch>/out/<NNN>/截图-153012-备注.md   the note, and nothing else (v0.8.2): what a terminal gets next to the
-//                                            picture's path, and — record.drag_note_file, off — a chat app or the
-//                                            Finder too
+//   <batch>/out/<NNN>/截图-153012-备注.md   the note, and nothing else (v0.8.2): what a chat app or the Finder gets
+//                                            next to the picture with record.drag_note_file (off). A terminal gets
+//                                            the picture's path and the note as one line of text instead (BlurtCore
+//                                            CardTransfer.terminalLine) — the picture's path here is what it names
 // Written again on every drag / copy (the note may have been edited); they live as long as the capture does — taken
 // captures keep them for their 7 days (an app that took the file may read it late) and they go to the Trash with it.
 //
@@ -33,7 +34,7 @@ enum CardExport {
     /// clipboard (on by default).
     static var copyNoteAfterDrag: Bool { recordConfig()["drag_copy_note"] as? Bool ?? true }
     /// record.drag_note_file: a card dragged into a chat app or the Finder also carries its note as a .md file (off by
-    /// default; a terminal always gets the .md's path).
+    /// default; a terminal gets the picture's path and the note as one line of text, never the .md).
     static var attachNoteFile: Bool { recordConfig()["drag_note_file"] as? Bool ?? false }
 
     /// The picture and the note's .md for `s` (a shot), freshly written; a voice card has none (it is its words).

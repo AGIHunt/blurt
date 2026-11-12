@@ -197,7 +197,7 @@ fn copy(app: &AppHandle, draft: &str, grab: &Grab) {
     let refine_on = crate::settings::read_config()
         .pointer("/record/screen_text/refine")
         .is_some_and(|v| v == &json!("on") || v == &json!(true));
-    let Some(c) = refine_on.then(|| cloud::payload("screen_text")).flatten() else { return };
+    let Some(c) = refine_on.then(|| cloud::payload("vision")).flatten() else { return };
     let seq = ins::sequence();
     let png = std::env::temp_dir().join(format!("blurt-screen-{}-{}.png", std::process::id(), seq));
     if write_png(&png, grab).is_err() {

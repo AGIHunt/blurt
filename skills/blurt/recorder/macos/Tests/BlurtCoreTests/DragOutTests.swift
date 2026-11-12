@@ -15,8 +15,8 @@ final class DragOutTests: XCTestCase {
     // MARK: a list row's drag (CardPasteboard.itemDrag)
 
     /// With a picture, a row travels like a card: the picture alone into a chat app (the text is pasted after it),
-    /// the rich item into a rich app and WeChat / QQ, both paths into a terminal — and the Finder gets its two files
-    /// (no text on the clipboard behind a drop into a folder).
+    /// the rich item into a rich app and WeChat / QQ, its path and text as one line into a terminal — and the Finder
+    /// gets its two files (no text on the clipboard behind a drop into a folder).
     func testARowWithAPictureTravelsLikeACard() {
         let card = CardPasteboard.Card(image: img, note: text, noteFile: md)
         for l in landings() {
@@ -29,7 +29,9 @@ final class DragOutTests: XCTestCase {
         XCTAssertEqual(DragReceipt.outcome(delivered: .finder, notePasted: false, noteFile: true), .files)
         XCTAssertEqual(CardPasteboard.itemDrag(into: DragLanding(cls: .chat, kind: .qt), card: card)[0].rich, true,
                        "WeChat puts the picture in its composer from the rich item")
-        XCTAssertEqual(CardPasteboard.itemDrag(into: DragLanding(cls: .terminal), card: card).map(\.file), [img, md])
+        XCTAssertEqual(CardPasteboard.itemDrag(into: DragLanding(cls: .terminal), card: card),
+                       [CardPasteboard.Item(text: "/w/inbox/frames/f-0001.png The header overlaps Steps open the page", tag: true),
+                        CardPasteboard.Item(tag: true)])
     }
 
     /// Without a picture (a voice or typed item): chat and rich apps get its text — rich text with its line breaks, the

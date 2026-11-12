@@ -143,7 +143,8 @@ Windows 的岛 = Mac 在**没有刘海的屏幕**上画的那个胶囊（`Island
 | 把 macOS 截图添加为卡片（`collect_system_shots`，关） | 同一个键：每 1.5 s 看一次系统截图文件夹（`图片\Screenshots`：Win+Shift+S 截图工具、Win+PrtScn 都存在这里；Linux 的 GNOME 也是），开关打开之后新出现的 png / jpg（大小稳定了才拿）复制进截图批次，和截图一样：有当前项目就归进去，没有就挂成卡片；录屏时不收；原文件不动 | 已做（`island.rs collect_system_shots`、`capture.rs import_system_shot`，有测试） |
 | 截图快门声（`snap_sound`，关） | 页面自己合成一声快门（两片噪声，不带声音文件）；录屏中的截图由状态行触发；框选截图要截图那边在帧落盘时调 `island::shutter(&app)` | 部分：录屏中已接；框选截图待截图那位接一行 |
 | 把卡片拖进 App：先图后备注 / 图下印备注 / 只图片（`smart_paste` 开、`drag_caption` 关、`drag_copy_note` 开） | 印备注：岛把图片和备注画成一张新 PNG（原图不动），拖的是这张；先图后备注：Windows 不能在落点自动粘贴，所以备注放进剪贴板，提示「已拖走 · 备注已复制，Ctrl+V 粘贴」（就是 Mac 粘不进去时的兜底）；只图片：只拖图，不动剪贴板 | 已做（系统拖放本身待 VM 验证） |
-| 附上备注 Markdown（`drag_note_file`，关） | 拖出时多带一个 `Screenshot-153012-note.md`（中文界面 `截图-153012-备注.md`，放在临时目录） | 已做 |
+| 附上备注 Markdown（`drag_note_file`，关） | 拖出时多带一个 `Screenshot-153012-note.md`（中文界面 `截图-153012-备注.md`）。和印备注的那张图一样写在会话旁边的 `<会话>/out/<NNN>/`（`card_drop::out_dir`，Mac 的 CardExport 同一个位置），不再放 %TEMP%：终端里的 Agent 可能过很久才读；卡片在历史里满 7 天后，housekeeping 连这个文件夹一起扔进回收站 | 已做 |
+| 拖进终端：一行「图片路径 + 备注」（Mac 同一规则：每张图带着自己的备注，Claude Code / Codex 从路径读图） | 落点是 Windows Terminal 或 mintty（Git Bash）：只给 CF_UNICODETEXT 一行 `"C:\…\shots\003.png" 备注`（换行变空格、去掉控制字符，不带回车），没有 CF_HDROP，备注不进剪贴板，岛上「已拖走 · 图片路径和备注」。数据对象在知道落点之前就要交给 `DoDragDrop`，所以 `card_drag_win.rs CardData` 包住系统的文件数据对象，每次被问（EnumFormatEtc / QueryGetData / GetData）时看指针下的窗口（WindowFromPoint → GA_ROOT → 进程 exe、窗口类，和 OLE 自己找落点用的是同一个窗口），在终端上就只答那一行文字（拖动图像的格式照常转给系统对象），别处原样转发——和 Mac 的 CardDrag 按指针下的 App 回答一样。老式控制台（ConsoleWindowClass，只收 WM_DROPFILES）和只收文件的终端（Alacritty、WezTerm、Hyper、Tabby、Warp…，还没见过它们收文字）照旧拿文件、备注进剪贴板：只给文字的话它们会拒收，卡片弹回 | 已做；交叉 `cargo check` / `clippy --target x86_64-pc-windows-msvc` 通过，**未在 Windows 验证**（Windows Terminal、mintty 收文字拖放，资源管理器 / Edge 经过包装后照常收文件） |
 
 ## 11. 第五轮（11-02 Windows 试用）
 

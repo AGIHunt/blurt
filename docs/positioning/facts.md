@@ -54,7 +54,7 @@ you drag or paste it into any app.
   circle the spot. `⌥⇧V` voice note: talk for up to 10 minutes. (`docs/guide.md` §1)
 - Drag a card into Claude, ChatGPT, Slack, Notion, Feishu/Lark or WeChat: the picture goes in as an attachment, then
   Blurt pastes the note into the same message box. Drop it into Terminal, iTerm2, Ghostty or Warp: Claude Code or Codex
-  gets the paths of the picture and of a Markdown file with the note. (`docs/guide.md` §3)
+  gets one line, the picture's path and then the note, so each picture keeps its own words. (`docs/guide.md` §3)
 - Click a card to copy it, then `⌘V`. `⌘`-click several cards to copy them as one. `⌥⇧H` brings the cards down for the
   keyboard. (`docs/guide.md` §3)
 - Cards you dragged out stay findable for 7 days. A deleted card can be brought back with Undo for 5 seconds.
@@ -184,8 +184,8 @@ Each moment comes with the number or file that backs it.
    「我知道你就是从老家回来的。」. (dogfood D23)
 5. **A snap card dragged into Claude.** `⌥⇧A`, circle the broken button, say one sentence, drag the card into the
    Claude desktop app: the picture goes in, then the note in the same message box.
-6. **The same card dropped into a terminal.** Claude Code gets the picture path and a Markdown note, and nothing runs
-   in the shell.
+6. **The same card dropped into a terminal.** Claude Code gets the picture's path with the note on the same line, and
+   nothing runs in the shell.
 7. **A recording turned into items.** A 5-minute, 12-item session was ready for review 51 s after Finish; a 14-minute
    recording was transcribed locally in 12 s and became 23 items for about $2.6 of agent tokens. (`README.md` FAQ)
    A teammate's 5-minute walkthrough became 52 items, each with the quote and timestamp (the earlier site's hero,

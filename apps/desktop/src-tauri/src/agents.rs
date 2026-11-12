@@ -23,7 +23,8 @@ pub fn detect(runner: &Runner) -> Result<Value, String> {
 pub fn detect_with(runner: &Runner, login: bool, ids: Option<&[String]>) -> Result<Value, String> {
     let mut args = vec!["detect".to_string()];
     if !login {
-        args.push("--no-login".into());
+        // the quick look is only "on PATH or not": no CLI is started (a node CLI on Windows takes seconds each)
+        args.extend(["--no-login".into(), "--no-version".into()]);
     }
     if let Some(ids) = ids.filter(|i| !i.is_empty()) {
         args.extend(["--ids".into(), ids.join(",")]);

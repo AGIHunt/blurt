@@ -85,7 +85,11 @@ class SetupError(Exception):
 
 # ------------------------------------------------------------------ the socket
 def home() -> Path:
-    return Path(os.environ.get("BLURT_HOME") or (Path.home() / ".blurt"))
+    try:
+        from _common import blurt_home  # noqa: PLC0415  (BLURT_HOME, else the folder chosen in the app)
+    except ImportError:
+        return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
+    return blurt_home()
 
 
 def socket_path(h: Path | None = None, uid: int | None = None) -> str:

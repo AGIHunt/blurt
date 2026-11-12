@@ -30,6 +30,10 @@ const zh = () => (param('lang') ?? (typeof navigator === 'undefined' ? '' : navi
 const L = (en: string, cn: string) => (zh() ? cn : en);
 const now = Date.now() / 1000;
 const H = '/home/maya';
+// Storage → Data location: the default, or (?location=custom) a folder on another drive whose old copy is being deleted
+const mockLocation = param('location') === 'custom'
+  ? { home: '/media/maya/Data/Blurt/.blurt', workspace: '/media/maya/Data/Blurt', custom: true, folder: '/media/maya/Data/Blurt', profile: H, fixed_by: null, cleanup: true, moving: false }
+  : { home: `${H}/.blurt`, workspace: `${H}/Blurt`, custom: false, folder: null as string | null, profile: H, fixed_by: param('location') === 'env' ? 'BLURT_HOME' : null, cleanup: false, moving: false };
 
 // the main window's project menu edits these in memory (rename, pin, description, remove / restore)
 const projectEdits: Record<string, Record<string, unknown>> = {};
@@ -149,10 +153,18 @@ const mockShots = { allowed: param('shots') === '1' };
 let mdl: { id: string; done: number } | null = null;
 // ?cloud=1: DeepSeek connected, polish and translate on it (the API id "deepseek-flash": Settings names it)
 /** services connected in this mock session (cloud_connect) */
-const mockServices: { id: string; preset: string; has_key: boolean }[] = param('dashscope') === '1' ? [{ id: 'dashscope', preset: 'dashscope', has_key: true }] : [];
-const cloudSum = () => (param('cloud') === '1'
-  ? { services: [{ id: 'deepseek', preset: 'deepseek', has_key: true }, ...mockServices], routes: { polish: { service: 'deepseek', model: 'deepseek-flash' }, translate: null, vision: null } }
-  : { services: [...mockServices], routes: { polish: null, translate: null, vision: null } });
+const mockServices: { id: string; preset: string; has_key: boolean; region?: string; base_url?: string; name?: string }[] = param('dashscope') === '1' ? [{ id: 'dashscope', preset: 'dashscope', has_key: true }] : [];
+/** jobs put on a model in this mock session (cloud_job_set, cloud_custom_connect); null: Automatic */
+const mockJobs: Record<string, { service: string; model: string } | null> = {};
+/** record.cloud.jobs as Settings reads it back (the pop-up's value) */
+const syncJobs = () => (mockCfg.record.cloud = { v: 2, jobs: Object.fromEntries(Object.entries(mockJobs).filter(([, x]) => x)) });
+const cloudSum = () => {
+  const base = param('cloud') === '1'
+    ? { services: [{ id: 'deepseek', preset: 'deepseek', has_key: true }, ...mockServices], routes: { polish: { service: 'deepseek', model: 'deepseek-flash' }, translate: null, vision: null } as Record<string, { service: string; model: string } | null> }
+    : { services: [...mockServices], routes: { polish: null, translate: null, vision: null } as Record<string, { service: string; model: string } | null> };
+  for (const [j, r] of Object.entries(mockJobs)) if (r) base.routes[j] = r;
+  return base;
+};
 function mockDownload(id: string) {
   const total = id === 'sensevoice-small' ? 228 : 950;
   mdl = { id, done: 0 };
@@ -497,12 +509,20 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ ok: true });
     case 'handoff_create':
       return r({ id: 'H-0032', path: `${H}/.blurt/handoff/H-0032.md`, text: 'Please handle SF-12 — details and screenshots are in …' });
-    case 'agents_detect':
-      return r({ order: ['claude', 'codex', 'kimi'], pick: 'claude', agents: [
+    case 'agents_detect': {
+      // as agents.py detect: order = record.agents (else every headless agent); without ids only that order is listed
+      const all = [
         { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'ready', why: '', fix: '', installed: true, version: '2.3.1', login: 'ok', headless: true, interactive: 'terminal' },
         { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal' },
         { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal' },
-      ] });
+      ];
+      if (args.login !== false) await new Promise((ok) => setTimeout(ok, 2500)); // the full check takes a while
+      const want = mockCfg.record?.agents as string[] | null | undefined;
+      const order = want?.length ? want : all.map((a) => a.id);
+      const ids: string[] = args.ids ?? order;
+      const agents = all.filter((a) => ids.includes(a.id));
+      return r({ order, pick: order.find((id) => agents.some((a) => a.id === id && a.state === 'ready')) ?? null, agents });
+    }
     case 'agents_models':
       return r(args.agent === 'codex'
         ? { ok: true, id: 'codex', models: [{ id: 'gpt-6-astra', name: 'GPT-6-Astra', description: '', cheap: false }, { id: 'gpt-6-luna', name: 'GPT-6-Luna', description: 'Fast and affordable', cheap: true }], cheapest: 'gpt-6-luna', cli_default: 'gpt-6-astra', efforts: ['low', 'medium', 'high'] }
@@ -635,12 +655,38 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ count: 1, bytes: 620_000_000 });
     case 'storage_trash':
       return r(args.files ?? []);
+    // Storage → Data location (location.rs); ?location=custom starts on a chosen folder, ?location_error=<code> refuses
+    case 'storage_location':
+      return r({ ...mockLocation });
+    case 'storage_location_pick':
+    case 'storage_location_check': {
+      const to = cmd === 'storage_location_pick' ? '/media/maya/Data/Blurt' : (args.folder as string | null);
+      const err = param('location_error');
+      return r(err ? { ok: false, error: err, folder: to, bytes: 3_820_000_000, free: 1_200_000_000 } : { ok: true, folder: to, home: to ? `${to}/.blurt` : `${H}/.blurt`, workspace: to ?? `${H}/Blurt`, bytes: 3_820_000_000, free: 214_000_000_000, redownload: !!to });
+    }
+    case 'storage_location_move': {
+      const to = args.folder as string | null;
+      const total = 3_820_000_000;
+      mockLocation.moving = true;
+      let done = 0;
+      const t = setInterval(() => {
+        done = Math.min(total, done + total / 12);
+        emit('storage://move', { phase: 'copy', done, total });
+        if (done >= total) {
+          clearInterval(t);
+          emit('storage://move', { phase: 'restart' }); // the real app restarts here (?location=custom shows after)
+        }
+      }, 250);
+      return r({ ok: true, folder: to, bytes: total });
+    }
     case 'cloud_curated':
       return r({ jobs: { polish: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
         translate: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
         vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
         speech: [{ service: 'dashscope', model: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash' }, { service: 'dashscope', model: 'qwen-audio-3.1-asr-flash', name: 'Qwen Audio 3.1 ASR' }] } });
     case 'cloud_job_set':
+      mockJobs[args.job] = args.service ? { service: args.service, model: args.model ?? '' } : null;
+      syncJobs();
       return r(cloudSum());
     case 'asr_auto_apply':
       return r({ ok: true });
@@ -703,6 +749,25 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       if (String(args.key).length < 8) return r({ ok: false, code: 'auth' });
       if (!mockServices.some((s) => s.preset === args.preset)) mockServices.push({ id: args.preset, preset: args.preset, has_key: true });
       return r({ ok: true, summary: cloudSum() });
+    // Advanced → Custom Model…: a key under 8 characters is refused, a model id with "nope" in it isn't found
+    case 'cloud_custom_connect': {
+      await new Promise((ok) => setTimeout(ok, 900));
+      const own = mockServices.find((x) => x.id === args.service);
+      if (!own && !args.service && String(args.preset).startsWith('custom') && !/^https:\/\//.test(String(args.baseUrl ?? ''))) return r({ ok: false, code: 'address' });
+      if (!args.service && String(args.key).trim().length < 8) return r({ ok: false, code: String(args.key).trim() ? 'auth' : 'no_key' });
+      if (/nope/.test(String(args.model))) return r({ ok: false, code: 'model' });
+      let id = args.service as string | null;
+      if (!id) {
+        const custom = String(args.preset).startsWith('custom');
+        const taken = new Set(mockServices.map((x) => x.id));
+        id = custom ? 'custom-1' : args.preset;
+        for (let n = 2; taken.has(id!); n++) id = custom ? `custom-${n}` : `${args.preset}-${n}`;
+        mockServices.push({ id: id!, preset: args.preset, has_key: true, ...(args.region ? { region: args.region } : {}), ...(args.baseUrl ? { base_url: args.baseUrl } : {}), ...(args.name ? { name: args.name } : {}) });
+      }
+      mockJobs[args.job] = { service: id!, model: String(args.model).trim() };
+      syncJobs();
+      return r({ ok: true, ms: 820, service: id, summary: cloudSum() });
+    }
     case 'cloud_connect_speech':
       await new Promise((ok) => setTimeout(ok, 600));
       return r(String(args.token).length < 8 ? { ok: false, code: 'auth' } : { ok: true, ms: 480, summary: { services: [{ id: 'volcengine-speech', preset: 'volcengine-speech', has_key: true }], routes: {} } });

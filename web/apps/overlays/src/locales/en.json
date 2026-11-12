@@ -248,6 +248,7 @@
   "island.toast.taken_text": "Dragged out · picture and note",
   "island.toast.taken_files": "Dragged out · picture and note file",
   "island.toast.taken_files_note": "Dragged out with the note file · Note copied — Ctrl+V to paste",
+  "island.toast.taken_paths": "Dragged out · picture path and note",
   "launch.contract.skill_older": "The Blurt skill is older than this app",
   "launch.contract.app_older": "The Blurt skill is newer than this app",
   "launch.contract.how": "How to Update",

@@ -20,6 +20,7 @@ pub mod items;
 pub mod jobs;
 pub mod mainwin;
 pub mod l10n;
+pub mod location;
 pub mod onboarding;
 pub mod paths;
 pub mod projects;
@@ -779,6 +780,7 @@ fn browser_ui_off(wv: &tauri::Webview) {
 }
 
 pub fn run() {
+    location::init(); // where the data is, in our environment before any thread or child starts (location.rs)
     linux_graphics_workarounds();
     linux_xwayland();
     linux_working_dir();
@@ -832,6 +834,7 @@ pub fn run() {
             }
             mainwin::restore(&handle); // the main window's last frame (mainwin.rs)
             folder_drop::install(&handle); // folders dropped from Explorer onto the sidebar (folder_drop.rs)
+            location::start(&handle); // the asset scope where the data is; an earlier move's old folders deleted
             // the first run opens on the setup assistant: the window is its size from the start, not after a jump
             if onboarding::needed() {
                 mainwin::welcome_frame(&handle, true);
@@ -919,6 +922,7 @@ pub fn run() {
             dictation::commands::app_icon,
             dictation::commands::cloud_summary,
             dictation::commands::cloud_connect,
+            dictation::commands::cloud_custom_connect,
             dictation::commands::cloud_disconnect,
             dictation::history::dictation_history,
             dictation::history::dictation_history_edit,
@@ -988,6 +992,10 @@ pub fn run() {
             housekeeping::app_contract_help,
             housekeeping::storage_scan,
             housekeeping::storage_trash,
+            location::storage_location,
+            location::storage_location_pick,
+            location::storage_location_check,
+            location::storage_location_move,
             housekeeping::videos_trash,
             housekeeping::videos_auto_set,
             housekeeping::cloud_curated,

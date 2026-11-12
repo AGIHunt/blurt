@@ -736,8 +736,13 @@
 .st-dot.bad {
   background: var(--err);
 }
-.st-dot.off {
-  border: 1.5px solid var(--faint);
+.st-dot.off::before {
+  /* a small grey dot, not a ring: a ring beside a switch reads as a radio button */
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
 }
 .st-agent {
   position: relative;

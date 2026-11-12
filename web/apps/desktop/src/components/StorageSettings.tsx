@@ -6,10 +6,12 @@
 // the size in one size column; what can be done with it (Show in File Explorer, Delete) is in its ⋯ menu and its
 // right-click menu. Deleting goes to the Recycle Bin (Windows' own undo, where the Mac's island offers Undo); turning
 // automatic deletion on asks first when it would delete something right away. Sizes come from housekeeping.rs
-// (`storage_scan`); which model is which from `transcribe.py models` / `dictation-models`.
+// (`storage_scan`); which model is which from `transcribe.py models` / `dictation-models`. Location leads the page:
+// where the data is, Change… (a folder, checked, then a confirm with the size; the data is copied and Blurt restarts)
+// and moving back to the user folder (location.rs).
 import { useCallback, useEffect, useState } from 'react';
 import { Icon, type IconName } from '@blurt/icons';
-import { api, type AppStatus, type AsrModel, type DictationModels, type Settings, type StorageScan } from '../api';
+import { api, onStorageMove, type AppStatus, type AsrModel, type DictationModels, type LocationCheck, type MoveProgress, type Settings, type StorageLocation, type StorageScan } from '../api';
 import { i18n } from '../i18n';
 import { Group, Line, Page, Popup, Row, S, Switch } from '../settings/kit';
 
@@ -84,7 +86,97 @@ const FILES: Record<string, { title: string; detail: string; icon: IconName }> =
   bench: { title: 'settings.privacy.benchmark_samples', detail: 'settings.storage.detail.bench', icon: 'waveform' },
   tmp: { title: 'settings.storage.tmp', detail: 'settings.storage.detail.tmp', icon: 'inbox' },
   logs: { title: 'win.storage.logs', detail: 'win.storage.logs.detail', icon: 'document' },
+  python: { title: 'win.storage.python', detail: 'win.storage.python.detail', icon: 'code' },
+  uv_cache: { title: 'win.storage.uv_cache', detail: 'win.storage.uv_cache.detail', icon: 'sync' },
+  hf_cache: { title: 'win.storage.hf_cache', detail: 'win.storage.hf_cache.detail', icon: 'waveform' },
 };
+
+/** Why the data can't go there, in words (location.rs `check`). */
+export function locationError(c: LocationCheck): string {
+  const e = c.error ?? 'copy_failed';
+  if (e === 'env') return S('win.storage.location.env', c.var ?? 'BLURT_HOME');
+  if (e === 'no_space') return S('win.storage.location.error.no_space', size(c.bytes ?? 0), size(c.free ?? 0));
+  return S(`win.storage.location.error.${e}`, c.detail ?? '');
+}
+
+/** Storage → Location: the data folder, Change…, and back to the user folder. */
+export function LocationGroup({ onToast }: { onToast: (m: string) => void }) {
+  const [loc, setLoc] = useState<StorageLocation | null>(null);
+  // the confirm: where to (null = the user folder) and what the check said
+  const [ask, setAsk] = useState<{ to: string | null; check: LocationCheck } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [moving, setMoving] = useState<MoveProgress | null>(null);
+  useEffect(() => {
+    api.storageLocation().then(setLoc, (e) => onToast(String(e)));
+    return onStorageMove((p) => {
+      if (p.phase === 'error') {
+        setMoving(null);
+        setErr(S('win.storage.location.error.copy_failed', p.detail ?? ''));
+      } else setMoving(p);
+    });
+  }, [onToast]);
+  if (!loc) return null;
+  const fixed = !!loc.fixed_by;
+  const busy = !!moving || loc.moving;
+  const checked = (to: string | null, c: LocationCheck) => {
+    if (c.cancel) return;
+    if (c.ok) return setAsk({ to, check: c });
+    setErr(locationError(c));
+  };
+  const change = async () => {
+    setErr(null);
+    setAsk(null);
+    try {
+      const c = await api.storageLocationPick(S('win.storage.location.pick'));
+      checked(c.folder ?? null, c);
+    } catch (e) {
+      onToast(String(e));
+    }
+  };
+  const back = async () => {
+    setErr(null);
+    checked(null, await api.storageLocationCheck(null));
+  };
+  const move = async () => {
+    if (!ask) return;
+    const { to, check } = ask;
+    setAsk(null);
+    setMoving({ phase: 'copy', done: 0, total: check.bytes ?? 0 });
+    const r = await api.storageLocationMove(to).catch((e) => ({ ok: false, error: 'copy_failed', detail: String(e) }) as LocationCheck);
+    if (!r.ok) {
+      setMoving(null);
+      setErr(locationError(r));
+    }
+  };
+
+  const where = fixed ? `${loc.home} · ${S('win.storage.location.env', loc.fixed_by!)}` : loc.custom && loc.folder ? loc.folder : S('win.storage.location.default', loc.profile);
+  let detail: string = where;
+  if (moving?.phase === 'copy') detail = S('win.storage.location.copying', size(moving.done), size(moving.total));
+  else if (moving?.phase === 'restart') detail = S('win.storage.location.restarting');
+  else if (ask) detail = [S('win.storage.location.confirm', size(ask.check.bytes ?? 0), ask.to ?? loc.profile), ask.check.redownload ? S('win.storage.location.redownload') : ''].filter(Boolean).join(' ');
+  else if (err) detail = err;
+  else if (loc.cleanup) detail = `${where} · ${S('win.storage.location.cleanup')}`;
+  return (
+    <Group id="storage.location">
+      <Row id="storage.location" icon="drive" detail={detail} warn={!!err && !ask && !moving} help={null}>
+        {ask ? (
+          <>
+            <button onClick={() => setAsk(null)}>{S('action.cancel')}</button>
+            <button className="primary" onClick={move}>{S('win.storage.location.move')}</button>
+          </>
+        ) : (
+          <>
+            <Menu label={S('win.storage.location')} actions={[
+              { label: S('win.storage.show'), run: () => api.reveal(loc.custom && loc.folder ? loc.folder : loc.home).catch((e) => onToast(String(e))) },
+              ...(loc.custom && !fixed ? [{ label: S('win.storage.location.reset'), run: back, disabled: busy, sep: true }] : []),
+            ]} />
+            <button disabled={fixed || busy} onClick={change}>{S('win.storage.location.change')}</button>
+          </>
+        )}
+      </Row>
+    </Group>
+  );
+}
 
 export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s: Settings; save: (patch: Record<string, unknown>) => Promise<void>; onToast: (m: string) => void }) {
   const [scan, setScan] = useState<StorageScan | null>(null);
@@ -144,6 +236,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
         {typeof scan.available === 'number' && <span className="st-dim st-num">{S('settings.storage.available', size(scan.available))}</span>}
       </span>
     ) : S('settings.storage.counting')}>
+      <LocationGroup onToast={onToast} />
       <Group id="storage.recordings" accessory={scan ? <span className="st-size">{size(recBytes)}</span> : undefined}>
         {scan && (
           <StorageRow icon="record" title={S('settings.privacy.recordings_screenshots')} bytes={recBytes}

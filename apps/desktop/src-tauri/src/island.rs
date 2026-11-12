@@ -22,6 +22,8 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::capture::{self, Control};
 
+#[path = "card_drop.rs"]
+mod card_drop;
 #[cfg(windows)]
 #[path = "card_drag_win.rs"]
 mod card_drag_win;
@@ -700,20 +702,23 @@ pub fn on_action(app: &AppHandle, v: &Value) {
 /// What goes with a card's picture into another app (Settings → General → Cards): the picture itself — or a copy
 /// with the note under it, drawn by the island (`caption`, a PNG data URL) — and with record.drag_note_file the note
 /// as a small Markdown file. Returns the files, whether the picture carries the note, and whether the .md went too.
+/// The copy and the .md are written next to the session, `<session>/out/<NNN>/` (card_drop::out_dir, as on the Mac):
+/// an app or an agent may read them long after the drop (so an earlier drag's files stay too); housekeeping trashes
+/// the folder with the card. Named by when the picture was taken ("截图-153012").
 #[cfg_attr(not(windows), allow(dead_code))]
-fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> (Vec<PathBuf>, bool, bool) {
+fn drag_files(session: &std::path::Path, card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> (Vec<PathBuf>, bool, bool) {
     let note = card.text.clone().filter(|t| !t.trim().is_empty());
-    let dir = std::env::temp_dir().join("blurt-drag");
-    let _ = std::fs::create_dir_all(&dir);
-    let stamp = chrono::Local::now().format("%H%M%S").to_string();
+    let dir = card_drop::out_dir(session, card.n);
+    let taken = std::fs::metadata(&picture).and_then(|m| m.modified()).map(chrono::DateTime::<chrono::Local>::from).unwrap_or_else(|_| chrono::Local::now());
+    let stamp = taken.format("%H%M%S").to_string();
     let zh = l10n::lang().starts_with("zh");
     let mut files = vec![picture];
     let mut captioned = false;
     if let (Some(data), Some(_)) = (caption.and_then(|c| c.strip_prefix("data:image/png;base64,")), note.as_ref()) {
         use base64::Engine as _;
         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) {
-            let f = dir.join(format!("{}-{stamp}.png", if zh { "截图" } else { "Screenshot" }));
-            if std::fs::write(&f, bytes).is_ok() {
+            let f = dir.join(format!("{}.png", card_drop::stem(zh, &stamp)));
+            if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&f, bytes).is_ok() {
                 files[0] = f;
                 captioned = true;
             }
@@ -721,8 +726,8 @@ fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> 
     }
     let mut note_file = false;
     if let (true, Some(t)) = (record_flag("drag_note_file", false), note.as_ref()) {
-        let f = dir.join(if zh { format!("截图-{stamp}-备注.md") } else { format!("Screenshot-{stamp}-note.md") });
-        if std::fs::write(&f, t).is_ok() {
+        let f = dir.join(card_drop::note_name(zh, &stamp));
+        if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&f, t).is_ok() {
             files.push(f);
             note_file = true;
         }
@@ -731,7 +736,8 @@ fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> 
 }
 
 /// Starts the system's drag of a card (our own OLE drag, card_drag_win.rs): a snap's picture as a file (with the
-/// .md, or the captioned copy, per Settings → General → Cards), a voice card's words as text; the drag image is the
+/// .md, or the captioned copy, per Settings → General → Cards) — over a terminal one line of text instead, the
+/// picture's path then the note (card_drop::terminal_line) — and a voice card's words as text; the drag image is the
 /// card as the island drew it (`image`, a PNG data URL; `ox`/`oy` where the pointer holds it, physical px). False when
 /// it can't start (not Windows, nothing to drag).
 #[cfg(windows)]
@@ -745,11 +751,13 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
             if !path.is_file() {
                 return false;
             }
-            let (files, captioned, note_file) = drag_files(&card, path, v["caption"].as_str().filter(|_| mode == "caption"));
-            (Payload::Files(files), captioned, note_file)
+            let (files, captioned, note_file) = drag_files(&session, &card, path, v["caption"].as_str().filter(|_| mode == "caption"));
+            // a terminal: the picture's path (the captioned copy when there is one) and the note, paired on one line
+            let terminal = Some(card_drop::terminal_line(&files[0], card.text.as_deref()));
+            (Payload::Files { files, terminal }, captioned, note_file)
         }
         // a voice card is its words (not ready yet: it stays, as on the Mac)
-        None => match card.text.as_deref().map(card_drag_win::drag_text).filter(|t| !t.is_empty()) {
+        None => match card.text.as_deref().map(card_drop::one_line).filter(|t| !t.is_empty()) {
             Some(t) => (Payload::Text(t), true, false),
             None => return false,
         },
@@ -767,20 +775,23 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
         if let Some(i) = island(&app2) {
             let _ = i.window().set_ignore_cursor_events(true);
         }
-        if !card_drag_win::drag(&payload, image.as_deref(), offset) {
+        let Some(landed) = card_drag_win::drag(&payload, image.as_deref(), offset) else {
             return answer(&app2, "cancel");
-        }
+        };
         // taken: it leaves its thread (its files stay, History keeps it 7 days)
         capture::take_card(&session, n);
+        // a terminal got the picture's path and the note on one line: nothing more to do
+        let terminal = landed == card_drag_win::Landed::Terminal;
         // a note that couldn't go in goes on the clipboard (record.drag_copy_note, on; never with picture only): a file
         // drop can't paste it after the picture here
         let note = card.text.clone().filter(|t| !t.trim().is_empty());
-        let copy = !voice && note.is_some() && !captioned && mode != "picture" && record_flag("drag_copy_note", true);
+        let copy = !voice && !terminal && note.is_some() && !captioned && mode != "picture" && record_flag("drag_copy_note", true);
         if let (true, Some(t)) = (copy, &note) {
             let _ = app2.clipboard().write_text(t.clone());
         }
         let what = match (voice, captioned, note_file, copy) {
             (true, ..) => "words",
+            _ if terminal => if note.is_some() { "paths" } else { "picture" },
             (_, true, ..) => "text",
             (_, _, true, true) => "files_note",
             (_, _, true, false) => "files",

@@ -140,12 +140,14 @@ public struct CloudPreset: Hashable, Identifiable {
                               known: zhipuKnown),
                 CloudEndpoint(.global, "https://api.z.ai/api/paas/v4", key: "https://z.ai/manage-apikey/apikey-list", known: zhipuKnown),
             ], speech: false, allSeeImages: false, keyPrefixes: []),
+            // MiniMax; sk-cp-: a Token Plan (Coding Plan) subscription's key, on the same addresses as a pay-as-you-go one
+            // (platform.minimax.io/docs/token-plan/other-tools)
             CloudPreset(id: "minimax", api: .openai, endpoints: [
                 CloudEndpoint(.china, "https://api.minimax.cn/v1", key: "https://platform.minimax.cn/",
                               known: [m("MiniMax-M3.1-Flash", vision: true), m("MiniMax-M3", vision: true)]),
                 CloudEndpoint(.global, "https://api.minimax.io/v1", key: "https://platform.minimax.io/",
                               known: [m("MiniMax-M3.1-Flash", vision: true), m("MiniMax-M3", vision: true)]),
-            ], speech: false, allSeeImages: false, keyPrefixes: []),
+            ], speech: false, allSeeImages: false, keyPrefixes: ["sk-cp-"]),
             CloudPreset(id: "xiaomi", api: .openai, endpoints: [
                 CloudEndpoint(nil, "https://api.xiaomimimo.com/v1", key: "https://platform.xiaomimimo.com/",
                               known: [m("mimo-v2.6-flash", vision: true), m("mimo-v2.6-pro", vision: true), m("mimo-v2.5", vision: true),

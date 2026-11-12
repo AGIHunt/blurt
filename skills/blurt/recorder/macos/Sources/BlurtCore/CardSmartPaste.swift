@@ -17,7 +17,12 @@
 //     — img, text, img, text… — one single-flavour item on the clipboard per step, ⌘V each, the next step once the
 //     app has read the last (or after a timeout); then the card copy goes back on the clipboard (and is armed again),
 //     so ⌘V works again. Only while the clipboard still holds that copy (its change count). Rich apps (one RTFD paste
-//     brings both), terminals and the Finder get the ⌘V untouched; so does Blurt itself.
+//     brings both) and the Finder get the ⌘V untouched; so does Blurt itself.
+//   • ⌘V of the same copy in a terminal (Terminal, iTerm2, Ghostty, Warp…; Claude Code and Codex run there): one
+//     paste of text, one line per card in order — `'<picture path>' <note>`, a voice card its words
+//     (CardTransfer.terminalLines) — so each picture stays next to its own words. The copy's own plain text is the
+//     notes alone (chat and plain-text apps read it); the lines replace it only for that ⌘V, then the copy is back.
+//     A copy without a picture: the terminal's own paste.
 //   • a drag into a chat app: the drop brings the picture as its only file; then Blurt pastes the note into the same
 //     composer — the app is brought to the front at the window it was dropped on, the composer there gets the focus
 //     if Accessibility can find it (FollowUpFocus, ComposerPick), the caret goes after the picture where that is
@@ -43,6 +48,10 @@ public enum PasteStep: Equatable {
 }
 
 public enum CardPasteSequence {
+    /// What ⌘V of a copy of `cards` pastes in a terminal (CardTransfer.terminalLines): one line per card, each picture's
+    /// path then its note. nil: no picture — the copy's plain text is fine there as it is.
+    public static func terminalText(_ cards: [CardPasteboard.Card]) -> String? { CardTransfer.terminalLines(cards) }
+
     /// A copy's cards as single pastes, in order: each picture, then its note (line breaks kept). Text next to text (a
     /// voice card after a note) goes in as one paste, a blank line between; a note with more after it ends its line.
     public static func steps(_ cards: [CardPasteboard.Card]) -> [PasteStep] {
@@ -76,10 +85,14 @@ public enum CardPasteSequence {
         case needsAccessibility
     }
 
-    public static func arm(enabled: Bool, steps: [PasteStep], accessibility: Bool) -> Arm {
+    /// `terminal`: the copy's lines for a terminal (terminalText) — a lone picture is worth arming for that alone.
+    /// Without Accessibility only a chat sequence is worth saying anything about (a terminal then pastes the notes).
+    public static func arm(enabled: Bool, steps: [PasteStep], accessibility: Bool, terminal: String? = nil) -> Arm {
         guard enabled else { return .skip("off") }
-        guard needsSequence(steps) else { return .skip("one_thing") }
-        return accessibility ? .arm : .needsAccessibility
+        let sequence = needsSequence(steps)
+        guard sequence || terminal != nil else { return .skip("one_thing") }
+        if accessibility { return .arm }
+        return sequence ? .needsAccessibility : .skip("no_accessibility")
     }
 }
 
@@ -90,17 +103,29 @@ public struct SmartPasteArm: Equatable {
 
     public var changeCount: Int
     public var steps: [PasteStep]
+    /// what a ⌘V in a terminal pastes instead (CardPasteSequence.terminalText); nil: the terminal's own paste
+    public var terminal: String?
     public var until: Double
 
-    public init(changeCount: Int, steps: [PasteStep], now: Double) {
-        self.changeCount = changeCount; self.steps = steps; until = now + SmartPasteArm.window
+    public init(changeCount: Int, steps: [PasteStep], terminal: String? = nil, now: Double) {
+        self.changeCount = changeCount; self.steps = steps; self.terminal = terminal; until = now + SmartPasteArm.window
+    }
+
+    /// The kinds of app whose ⌘V this copy takes over: chat apps when there is a sequence, terminals when there are lines.
+    public var classes: Set<DropClass> {
+        var c: Set<DropClass> = []
+        if CardPasteSequence.needsSequence(steps) { c.insert(.chat) }
+        if terminal != nil { c.insert(.terminal) }
+        return c
     }
 
     /// Still ours and still in time: the clipboard holds this copy (nothing copied since) and the window hasn't passed.
     public func isLive(now: Double, changeCount: Int) -> Bool { now < until && changeCount == self.changeCount }
 
     /// After a sequence put the copy back: the new change count, and the window starts again.
-    public func rearmed(changeCount: Int, now: Double) -> SmartPasteArm { SmartPasteArm(changeCount: changeCount, steps: steps, now: now) }
+    public func rearmed(changeCount: Int, now: Double) -> SmartPasteArm {
+        SmartPasteArm(changeCount: changeCount, steps: steps, terminal: terminal, now: now)
+    }
 }
 
 /// Is this key press ⌘V? ⌘ alone (⇧⌘V / ⌥⌘V / ⌃⌘V are other commands), not a key repeat, and the key that types "v"
@@ -123,6 +148,8 @@ public enum SmartPastePolicy {
         case pass(String)
         /// the sequence runs instead
         case sequence
+        /// a terminal: one paste of the copy's lines (SmartPasteArm.terminal) instead
+        case terminalLines
     }
 
     public struct Input: Equatable {
@@ -149,6 +176,11 @@ public enum SmartPastePolicy {
         frontBundle != nil && DropTargets.classify(bundleID: frontBundle) == .chat
     }
 
+    /// The tap's quick look: a ⌘V with `frontBundle` in front is one an armed copy taking over `classes` may replace.
+    public static func intercepts(frontBundle: String?, classes: Set<DropClass>) -> Bool {
+        frontBundle != nil && classes.contains(DropTargets.classify(bundleID: frontBundle))
+    }
+
     public static func decide(_ i: Input) -> Decision {
         guard i.enabled else { return .pass("off") }
         guard let arm = i.arm else { return .pass("not_armed") }
@@ -156,17 +188,17 @@ public enum SmartPastePolicy {
         guard i.changeCount == arm.changeCount else { return .pass("clipboard_changed") }
         guard !i.frontIsBlurt else { return .pass("blurt") }
         guard i.frontBundle != nil else { return .pass("no_app") }
-        switch DropTargets.classify(bundleID: i.frontBundle) {
+        let cls = DropTargets.classify(bundleID: i.frontBundle)
+        switch cls {
         case .rich: return .pass("rich_app")
-        case .terminal: return .pass("terminal")
+        case .terminal: guard arm.terminal != nil else { return .pass("terminal") }
         case .finder: return .pass("finder")
-        case .chat: break
+        case .chat: guard CardPasteSequence.needsSequence(arm.steps) else { return .pass("one_thing") }
         }
-        guard CardPasteSequence.needsSequence(arm.steps) else { return .pass("one_thing") }
         guard i.accessibility else { return .pass("no_accessibility") }
         guard !i.secureInput else { return .pass("secure_input") }
         guard !i.running else { return .pass("running") }
-        return .sequence
+        return cls == .terminal ? .terminalLines : .sequence
     }
 }
 

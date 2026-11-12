@@ -248,6 +248,7 @@
   "island.toast.taken_text": "已拖走 · 图片和备注",
   "island.toast.taken_files": "已拖走 · 图片和备注文件",
   "island.toast.taken_files_note": "已拖走，附备注文件 · 备注已复制，Ctrl+V 粘贴",
+  "island.toast.taken_paths": "已拖走 · 图片路径和备注",
   "launch.contract.skill_older": "口喷鸡 skill 比 App 旧",
   "launch.contract.app_older": "口喷鸡 skill 比 App 新",
   "launch.contract.how": "如何更新",

@@ -346,5 +346,141 @@
  "settings.general.assistant.detail": [
   "Shortcuts, dictation, the speech model and a first try, in four steps.",
   "快捷键、听写、语音模型和试用，共四步。"
+ ],
+ "win.storage.location.section": [
+  "Location",
+  "位置"
+ ],
+ "win.storage.location": [
+  "Data folder",
+  "数据文件夹"
+ ],
+ "win.storage.location.detail": [
+  "Where recordings, models and settings are kept",
+  "录制、模型和设置存放的位置"
+ ],
+ "settings.kw.storage.location": [
+  "location, folder, drive, disk, move, D:, E:, data folder, change folder",
+  "位置, 文件夹, 磁盘, 盘, 移动, C盘, D盘, 数据位置, 更改位置"
+ ],
+ "win.storage.location.default": [
+  "Your user folder: {1}",
+  "用户文件夹：{1}"
+ ],
+ "win.storage.location.change": [
+  "Change…",
+  "更改…"
+ ],
+ "win.storage.location.pick": [
+  "Choose where Blurt keeps its data",
+  "选择口喷鸡存放数据的位置"
+ ],
+ "win.storage.location.reset": [
+  "Move Back to the User Folder",
+  "移回用户文件夹"
+ ],
+ "win.storage.location.env": [
+  "Set by the {1} environment variable",
+  "由环境变量 {1} 指定"
+ ],
+ "win.storage.location.confirm": [
+  "Move {1} of data to {2}? Blurt copies it there and restarts. The old copy is deleted after the restart.",
+  "把 {1} 数据移到 {2}？口喷鸡会复制过去并重新打开，重新打开后删除原来的数据。"
+ ],
+ "win.storage.location.redownload": [
+  "Python and its packages are downloaded again the first time they are needed.",
+  "Python 和依赖包会在第一次用到时重新下载。"
+ ],
+ "win.storage.location.move": [
+  "Move and Restart",
+  "移动并重新打开"
+ ],
+ "win.storage.location.copying": [
+  "Copying {1} of {2}…",
+  "正在复制 {1} / {2}…"
+ ],
+ "win.storage.location.restarting": [
+  "Restarting…",
+  "正在重新打开…"
+ ],
+ "win.storage.location.cleanup": [
+  "Deleting the old copy…",
+  "正在删除原来的数据…"
+ ],
+ "win.storage.location.error.same": [
+  "Blurt's data is already there.",
+  "数据已经在这里。"
+ ],
+ "win.storage.location.error.inside_current": [
+  "That folder is inside Blurt's current data. Choose one outside it.",
+  "这个文件夹在当前数据里面，请选择外面的文件夹。"
+ ],
+ "win.storage.location.error.contains_current": [
+  "That folder holds Blurt's current data. Choose another one.",
+  "这个文件夹包含当前数据，请换一个。"
+ ],
+ "win.storage.location.error.has_data": [
+  "That folder already has Blurt data in it. Choose an empty one.",
+  "这个文件夹里已经有口喷鸡的数据，请选择空文件夹。"
+ ],
+ "win.storage.location.error.not_writable": [
+  "Blurt can't write to that folder.",
+  "口喷鸡无法写入这个文件夹。"
+ ],
+ "win.storage.location.error.no_space": [
+  "Not enough space there: needs {1}, {2} free.",
+  "空间不够：需要 {1}，可用 {2}。"
+ ],
+ "win.storage.location.error.moving": [
+  "The data is already being moved.",
+  "数据正在移动。"
+ ],
+ "win.storage.location.error.busy_recording": [
+  "Stop the recording first.",
+  "请先停止录制。"
+ ],
+ "win.storage.location.error.busy_dictation": [
+  "Wait for the dictation to finish.",
+  "请等听写结束。"
+ ],
+ "win.storage.location.error.busy_download": [
+  "Wait for the model download to finish.",
+  "请等模型下载完。"
+ ],
+ "win.storage.location.error.busy_job": [
+  "Wait for the organizing to finish.",
+  "请等整理完成。"
+ ],
+ "win.storage.location.error.copy_failed": [
+  "Couldn't copy the data, nothing was changed: {1}",
+  "复制失败，数据没有改动：{1}"
+ ],
+ "win.storage.python": [
+  "Python",
+  "Python"
+ ],
+ "win.storage.python.detail": [
+  "Runs Blurt's scripts",
+  "运行口喷鸡的脚本"
+ ],
+ "win.storage.uv_cache": [
+  "Python packages",
+  "Python 依赖包"
+ ],
+ "win.storage.uv_cache.detail": [
+  "Downloaded again when needed",
+  "需要时会重新下载"
+ ],
+ "win.storage.hf_cache": [
+  "Hugging Face downloads",
+  "Hugging Face 下载"
+ ],
+ "win.storage.hf_cache.detail": [
+  "Models downloaded from Hugging Face",
+  "从 Hugging Face 下载的模型"
+ ],
+ "models.custom.lead": [
+  "Enter any model your service offers. Blurt hasn’t tested these models, so each one is tried once before it’s saved.",
+  "可以填写服务提供的任意模型。口喷鸡没有测试过这些模型，保存前会先试用一次。"
  ]
 }
