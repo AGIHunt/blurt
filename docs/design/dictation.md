@@ -257,6 +257,20 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
      didn't register went unnoticed — they talked, pressed again to stop, and that press started the take. Silence
      after a press now says nothing started. The clips are the film's (`assets/sounds/build.py`: its synthesized peep, at
      1:34, and peck; the founder chose the peep over a recorded hen's cluck), level-matched (−24.4 / −24.5 LUFS). Replaces v0.9's optional Tink (`start_sound`, off).
+   - **Start cue out of the take** (2026-11-12, macOS; BlurtCore `CueEraser`, `NoteVoice.cueStarted`): the peep plays
+     while the mic already records, so on the Mac's speakers it was in the take — in 203 of the founder's last 300 kept
+     takes, 0.20 s in, around −30 dBFS (headphones: not there). Heard while reviewing pieces for personal ASR; it is
+     in every kept recording, in the audio a personal model is trained on, and in what the endpointer and voiceprint
+     hear. Now, when `DictationSound.start` played, NoteVoice holds the next ≈ 0.85 s (search window 0.6 s + the clip),
+     finds the clip by normalized cross-correlation (or, under speech, as a sharp peak of the raw correlation),
+     subtracts a 48-tap least-squares fit of it (speaker, room, mic), and turns the window down to ≈ −30 dB unless the
+     speaker is already talking there (left louder than −38 dBFS with talk in the 0.2 s after: then only subtracted).
+     No match (headphones, a phone as the mic) leaves the samples as they were. The island's level is fed at once; the
+     file, the stream and the endpointer get the held samples. On the same 300 takes (`CueEraserTests.testRealTakes`,
+     `BLURT_CUE_TAKES` / `BLURT_CUE_CLIP`): found in 279, all at 0.20 s but a handful; turned down in 218, the median
+     window 41 dB quieter; ≈ 3 ms a take (release). In the app (test dictation, a real take as the mic): the window
+     −28 → −76 dB, the speech after it unchanged (−23 dB). `note_voice_cue` logs `found`, `at_ms`, `match`,
+     `before_db`, `after_db`, `muted`. Windows / Linux play the same peep (`dictation/engine.rs` `sound`): not done yet.
 - Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
   (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
 

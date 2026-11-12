@@ -248,7 +248,7 @@ final class VoiceInput {
             if self.levels.count > 120 { self.levels.removeFirst(self.levels.count - 120) }
         }
         v.onSpeech = { [weak self] in self?.heardSpeech = true }
-        v.onFirstAudio = { [weak self] in if self?.voice === v { DictationSound.start.play() } }     // as dictation's
+        v.onFirstAudio = { [weak self, weak v] in if let v = v, self?.voice === v, DictationSound.start.play() { v.cueStarted() } }     // as dictation's
         v.onEnd = { [weak self] e in
             guard let self = self, self.voice === v else { return }
             if e == .maxed { island.toast(Loc.t("capture.voice.maxed", table: "Capture", Island.clock(self.maxSeconds)), actionTitle: nil, action: nil) }

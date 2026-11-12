@@ -9,9 +9,11 @@
 // much on a fresh install; the start alone still tells a missed press) — record.dictation.sounds / stop_sound;
 // Settings → Dictation; the cancel peck goes with the stop's. Never while a screen recording runs: the cue
 // would be in it. The start cue waits for the first audio (Dictation.micStarted, NoteVoice.onFirstAudio), so it means
-// "talk now", not "key seen". The clips: assets/sounds/build.py → Resources/Sounds (the film's peep and peck, both
+// "talk now", not "key seen" — so on the Mac's speakers the mic records it: NoteVoice takes it back out (BlurtCore
+// CueEraser, `NoteVoice.cueStarted`). The clips: assets/sounds/build.py → Resources/Sounds (the film's peep and peck, both
 // synthesized), copied into Blurt.app by record.py.
 import AppKit
+import AVFoundation
 
 enum DictationSound: String, CaseIterable {
     case start, stop, cancel
@@ -21,14 +23,36 @@ enum DictationSound: String, CaseIterable {
     /// the stop's peck, and the cancel's
     static var stopOn: Bool { Dictation.settings["stop_sound"] as? Bool ?? false }
 
-    /// Plays it when its switch is on and nothing is being recorded; a cue already playing is cut, not doubled.
-    func play() {
+    /// Plays it when its switch is on and nothing is being recorded; a cue already playing is cut, not doubled. True
+    /// when it played (the start's: the take's NoteVoice then takes it out of what it records).
+    @discardableResult
+    func play() -> Bool {
         guard self == .start ? DictationSound.startOn : DictationSound.stopOn, (NSApp.delegate as? App)?.rec == nil,
-              let s = sound else { return }
+              let s = sound else { return false }
         if s.isPlaying { s.stop() }
         s.play()
         emit(["event": "dictation_sound", "cue": rawValue])
+        return true
     }
+
+    /// The start's peep as the microphone's samples are (16 kHz mono), for CueEraser; nil when the clip is missing.
+    static let startClip: [Float]? = {
+        guard let dir = dir, let f = try? AVAudioFile(forReading: dir.appendingPathComponent("start.wav")),
+              let inBuf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+              (try? f.read(into: inBuf)) != nil,
+              let out = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: NoteVoice.rate, channels: 1, interleaved: false),
+              let conv = AVAudioConverter(from: f.processingFormat, to: out),
+              let o = AVAudioPCMBuffer(pcmFormat: out, frameCapacity: AVAudioFrameCount(Double(inBuf.frameLength) * NoteVoice.rate
+                                                                                         / f.processingFormat.sampleRate) + 1024)
+        else { return nil }
+        var given = false
+        _ = conv.convert(to: o, error: nil) { _, status in
+            if given { status.pointee = .endOfStream; return nil }
+            given = true; status.pointee = .haveData; return inBuf
+        }
+        guard o.frameLength > 0, let ch = o.floatChannelData else { return nil }
+        return Array(UnsafeBufferPointer(start: ch[0], count: Int(o.frameLength)))
+    }()
 
     private var sound: NSSound? {
         if let s = DictationSound.cache[self] { return s }
@@ -51,5 +75,5 @@ enum DictationSound: String, CaseIterable {
     }()
 
     /// Loads the clips ahead of the first take (a cold NSSound can lag the first play by ~50 ms).
-    static func preload() { DispatchQueue.main.async { allCases.forEach { _ = $0.sound } } }
+    static func preload() { DispatchQueue.main.async { allCases.forEach { _ = $0.sound }; _ = startClip } }
 }

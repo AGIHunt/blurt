@@ -1175,7 +1175,7 @@ final class Dictation {
               "precaptured": precaptured, "builtin_mic": v.builtInMic, "phone_mic": v.phoneFeed != nil])
         if listening {
             island.dictationChanged()
-            DictationSound.start.play()
+            if DictationSound.start.play() { v.cueStarted() }
         }
     }
 
@@ -1264,7 +1264,7 @@ final class Dictation {
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
               "style_source": styleDecision?.source.rawValue ?? "default", "category": styleDecision?.category.rawValue ?? "other"])
-        if micLive { DictationSound.start.play() }
+        if micLive, DictationSound.start.play() { voice?.cueStarted() }
     }
 
     /// The text around the cursor, read while the user talks (Accessibility calls can take a moment). Test builds read

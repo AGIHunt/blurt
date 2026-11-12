@@ -108,6 +108,8 @@ final class NoteVoice {
     /// speech start / the pause that ends it (BlurtCore: an adaptive noise floor, so a room louder than the mic's
     /// first moments still counts as quiet)
     private var vad = NoteEndpointer(sampleRate: NoteVoice.rate)
+    /// takes the start cue back out of what is recorded (BlurtCore CueEraser): armed by `cueStarted()`
+    private var cueEraser = DictationSound.startClip.map { CueEraser(cue: $0, sampleRate: NoteVoice.rate) }
     let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: NoteVoice.rate, channels: 1, interleaved: false)!
     var noSpeechTimeout: Double {
         get { vad.noSpeechTimeout }
@@ -395,11 +397,14 @@ final class NoteVoice {
             onFirstAudio?()
             startWatchdog()
         }
-        try? file?.write(from: b)
-        let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
-        onSamples?(samples)
-        let db = NoteEndpointer.level(samples)
-        onLevel?(max(0, min(1, (db + 55) / 45)))
+        let raw = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
+        let db = NoteEndpointer.level(raw)
+        onLevel?(max(0, min(1, (db + 55) / 45)))      // the island's level at once, cue or not
+        // while the start cue may still be coming in, the samples wait (≈ 0.85 s, once a take) and come out without it
+        let samples = cueEraser?.process(raw) ?? raw
+        if samples.isEmpty { return }
+        if cueArmed { logCue() }
+        pass(samples, raw.count == samples.count && cueEraser?.result == nil ? b : nil)
         for e in vad.feed(samples) {
             switch e {
             case .speechStarted: onSpeech?()
@@ -409,6 +414,45 @@ final class NoteVoice {
                 finish(end == .silence ? .silence : end == .noSpeech ? .noSpeech : .maxed)
             }
         }
+    }
+
+    /// To the file and the listeners (dictation's stream): `b` when the samples are that buffer's own.
+    private func pass(_ samples: [Float], _ b: AVAudioPCMBuffer?) {
+        if let b = b { try? file?.write(from: b) } else if let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(samples.count)) {
+            out.frameLength = AVAudioFrameCount(samples.count)
+            samples.withUnsafeBufferPointer { out.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
+            try? file?.write(from: out)
+        }
+        onSamples?(samples)
+    }
+
+    /// The start cue began playing (DictationSound.start): what the mic records next is held until the cue is found in
+    /// it and taken out (BlurtCore CueEraser), or the search window passed without it (headphones).
+    func cueStarted() {
+        guard running, cueEraser?.isHolding == false, cueEraser?.result == nil else { return }
+        cueEraser?.armed()
+        cueArmed = cueEraser != nil
+    }
+
+    /// Samples still held for the cue go out before the take closes (a take shorter than the search window).
+    private func flushCue() {
+        guard var e = cueEraser, e.isHolding else { return }
+        let rest = e.flush()
+        cueEraser = e
+        if !rest.isEmpty { pass(rest, nil); _ = vad.feed(rest) }
+        logCue()
+    }
+
+    private var cueArmed = false, cueLogged = false
+    private func logCue() {
+        guard cueArmed, !cueLogged, let e = cueEraser, !e.isHolding else { return }
+        cueLogged = true
+        var ev: [String: Any] = ["event": "note_voice_cue", "found": e.result != nil]
+        if let r = e.result {
+            ev["at_ms"] = Int(Double(r.offset) / NoteVoice.rate * 1000); ev["match"] = (Double(r.match) * 100).rounded() / 100
+            ev["before_db"] = Int(r.beforeDB.rounded()); ev["after_db"] = Int(r.afterDB.rounded()); ev["muted"] = r.muted
+        }
+        emit(ev)
     }
 
     private func finish(_ e: End) {
@@ -440,6 +484,7 @@ final class NoteVoice {
 
     /// keep: false deletes the wav (no speech / skipped).
     func stop(keep: Bool) {
+        flushCue()
         running = false
         phoneFeed?.detach()
         phoneFeed = nil
