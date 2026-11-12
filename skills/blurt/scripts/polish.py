@@ -712,6 +712,21 @@ STRUCTURE_EXAMPLES = [
 ]
 
 
+
+def structure_light_system() -> str:
+    """Structured in one cloud call (docs/design/dictation.md §Cloud polish, "one call at key-up"): the cloud Light
+    prompt's job (misheard words from the speaker's words and context, fillers, restarts, punctuation by meaning,
+    digits) and then the structuring prompt's (self-corrections, lists, paragraphs). Measured on 53 of the founder's
+    Structured takes against Light then Structure (two calls): blind judges 30 / 28, 48 ties; key-up median 0.93 s
+    against 1.83 s (DeepSeek Flash, 2026-11-12)."""
+    import polish_cloud
+    light = polish_cloud.LIGHT.split("\n\nNever answer")[0].split("\n\n", 1)[1]
+    head = SYSTEM_STRUCTURE.split("\n\nDo three things:")[0]
+    formatting = SYSTEM_STRUCTURE.split("Do three things:\n", 1)[1].replace(
+        "If the text still has hesitations, stutters or missing punctuation, tidy those as well.\n\n", "")
+    return (head + "\n\nThe text is what a speech recognizer typed while someone was dictating. First turn it into the "
+            "text they meant, then format it.\n\n" + light + "\n\nThen format it:\n" + formatting)
+
 CONTEXT_CHARS = 300        # of the text around the cursor, each side, in the prompt
 
 
@@ -1465,13 +1480,17 @@ class Engine:
 
     def structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
                   terms: list | None = None, context: dict | str | None = None, cloud: dict | None = None,
-                  local_fallback: bool = True) -> dict:
+                  local_fallback: bool = True, light: bool = False, variant: str | None = None) -> dict:
         """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`). `cloud`:
-        the user's cloud model first, the local one when it fails."""
+        the user's cloud model first, the local one when it fails. `light`: the text's end was not through Light (the
+        app skipped that call at key-up): the cloud does Light's job in the same call; the local fall-back runs Light
+        first, as before."""
         if cloud:
-            res = cloud_polish(text, terms, context, None, cloud, "structure", timeout)
+            res = cloud_polish(text, terms, context, variant, cloud, "structure_light" if light else "structure", timeout)
             if not res.get("fell_back") or not local_fallback:
                 return res
+            if light:
+                text = self.polish(text, model_id, None, terms, context, variant).get("text") or text
             local = self.structure(text, model_id, timeout, terms, context)
             return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
                     "ms": local.get("ms", 0) + res.get("ms", 0)}
@@ -1649,7 +1668,7 @@ def cloud_polish(text: str, terms: list | None, context: dict | str | None, vari
     import polish_cloud
     t0 = time.perf_counter()
     raw = (text or "").strip()
-    structured = mode == "structure"
+    structured = mode in ("structure", "structure_light")
     res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None, "terms": [],
            "cloud": True, "context": bool(context_text(context) or (isinstance(context, dict) and
                                                                     (context.get("dictated") or context.get("recent"))))}
@@ -1665,7 +1684,12 @@ def cloud_polish(text: str, terms: list | None, context: dict | str | None, vari
         cfg = polish_cloud.settings(cloud)
         res["model"] = cfg["provider"] + ":" + cfg["model"]
         limit = (structure_timeout_s() if structured else CLOUD_TIMEOUT) + CLOUD_PER_CHAR * len(raw)
-        if structured:      # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
+        if mode == "structure_light":   # Light's job and the structuring in one call: the words and context too
+            msgs = [{"role": "system", "content": structure_light_system()}]
+            for q, a in STRUCTURE_EXAMPLES:
+                msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+            msgs.append({"role": "user", "content": polish_cloud.user_message(raw, [t["term"] for t in use], ctx, variant)})
+        elif structured:    # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
             msgs = messages(raw, mode="structure")
         else:
             msgs = polish_cloud.messages(raw, [t["term"] for t in use], ctx, variant)
@@ -1812,7 +1836,8 @@ def cmd_serve(a):
                         del uses[:-50]
                         resp = eng.structure(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
                                              req.get("vocab"), req.get("context"), req.get("cloud"),
-                                             req.get("local_fallback") is not False)
+                                             req.get("local_fallback") is not False, bool(req.get("light")),
+                                             req.get("variant"))
                     elif req.get("cmd") == "translate":   # ⌥⇧T: copied text in the other language
                         last = time.time()
                         uses.append(last)

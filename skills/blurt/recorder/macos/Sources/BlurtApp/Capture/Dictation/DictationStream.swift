@@ -283,6 +283,10 @@ final class DictationStream {
     /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
     /// punctuation it ended in — polished again with the next piece
     private var carry = "", carryPolished = "", carryEnd = ""
+    /// Structured with the cloud: from key-up on, windows skip their Light call and the structuring call does Light's
+    /// job too (one cloud call at key-up instead of two; docs/design/dictation.md §Cloud polish). `lightSkipped`: some
+    /// of the take's text did not go through Light.
+    private var lightInStructure = false, lightSkipped = false
     // the live text (main thread): when to decode the open piece, and what the interim requests said per piece
     private var live = DictationLiveDecode(sampleRate: NoteVoice.rate)
     private var interims: [Int: (text: String, arrived: CFTimeInterval)] = [:]
@@ -684,8 +688,11 @@ final class DictationStream {
         if opt.cloud != nil, !opt.recent.isEmpty { ctx["recent"] = opt.recent }
         p.polishInput = input
         let t0 = CACurrentMediaTime()
-        let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
-                                 context: ctx.isEmpty ? nil : ctx, variant: opt.variant, cloud: opt.cloud)
+        // after key-up in Structured with the cloud: no Light call — the structuring call does it (`lightInStructure`)
+        let skipLight = lock.locked { lightInStructure }
+        if skipLight { lock.locked { lightSkipped = true } }
+        let r = skipLight ? nil : Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
+                                                   context: ctx.isEmpty ? nil : ctx, variant: opt.variant, cloud: opt.cloud)
         p.polishSpan = (t0, CACurrentMediaTime())
         p.loadMS += r?["load_ms"] as? Int ?? 0
         p.polish = r
@@ -711,7 +718,8 @@ final class DictationStream {
             p.polishedPart = sm.commit
             carry = s.carry; carryEnd = s.end; carryPolished = sm.carry
         }
-        emit(["event": "dictation_window", "id": id, "index": p.index, "in_units": DictationStitch.units(input).count,
+        emit(["event": "dictation_window", "id": id, "index": p.index, "light_in_structure": skipLight,
+              "in_units": DictationStitch.units(input).count,
               "committed": DictationStitch.units(p.text).count, "carry": DictationStitch.units(carry).count,
               "ms": Int((p.polishSpan.1 - p.polishSpan.0) * 1000)])
     }
@@ -816,6 +824,8 @@ final class DictationStream {
                 _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
         self.onlyForLists = onlyForLists
+        let oneCall = structure && !onlyForLists && opt.cloud != nil && opt.polish && !opt.polishAtKeyUp && !opt.wholeAtKeyUp
+        lock.locked { lightInStructure = oneCall }
         lock.locked { finished = done; delivered = false }
         live.stop()             // no more interim requests: an answer under way still shows until its piece is in
         lock.locked { finalCounts = (interimSent, interimShown) }
@@ -922,10 +932,20 @@ final class DictationStream {
         // Auto asks the pass only whether there is a list: in the cloud it gets the polish's own limit, and when the
         // cloud is slower than that Light's text is typed (a 4.6 s wait for a one-sentence take, v1.0.4) — no second
         // wait for the local model
+        let light = lock.locked { lightSkipped }
+        var ctx = lock.locked { context }?.payload ?? [:]
+        if opt.cloud != nil, !opt.recent.isEmpty { ctx["recent"] = opt.recent }
         let s = onlyForLists && opt.cloud != nil
             ? Dictation.structure(r.text, timeout: DictationCloud.requestBudget(chars: r.text.count), loadBudget: opt.loadBudget,
                                   vocab: opt.vocab, cloud: opt.cloud, localFallback: false)
-            : Dictation.structure(r.text, timeout: opt.structureTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab, cloud: opt.cloud)
+            : Dictation.structure(r.text, timeout: opt.structureTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab, cloud: opt.cloud,
+                                  light: light, context: light && !ctx.isEmpty ? ctx : nil, variant: light ? opt.variant : nil)
+        if light, s?["fell_back"] as? Bool != false {
+            // the one call failed: the text whose Light was skipped still gets it, as without the shortcut
+            let l = Dictation.polish(r.text, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
+                                     context: ctx.isEmpty ? nil : ctx, variant: opt.variant, cloud: opt.cloud)
+            if let t = l?["text"] as? String, !t.isEmpty, l?["fell_back"] as? Bool != true { r.text = t }
+        }
         let ms = Int((CACurrentMediaTime() - t0) * 1000)
         r.timing["structure_ms"] = ms
         r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
@@ -933,7 +953,7 @@ final class DictationStream {
         if let t = s?["text"] as? String, !t.isEmpty, s?["fell_back"] as? Bool != true {
             r.structured = t
         }
-        emit(["event": "dictation_structure", "id": id, "ms": ms, "list": s?["list"] as? Bool ?? false,
+        emit(["event": "dictation_structure", "id": id, "ms": ms, "list": s?["list"] as? Bool ?? false, "light": light,
               "fell_back": s?["fell_back"] as? Bool ?? (s == nil), "reason": s?["reason"] ?? NSNull()])
     }
     /// Translate: the text in its style (Structured's when it picked it) through polish.py's `translate`, into the other
