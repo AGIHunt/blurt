@@ -698,15 +698,22 @@ fn exact_json(v: &mut Value, old: &str, new: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// An absolute root on every platform ("/" has no drive on Windows, so it isn't absolute there).
+    fn root() -> PathBuf {
+        PathBuf::from(if cfg!(windows) { r"C:\" } else { "/" })
+    }
+
     #[test]
     fn pointer_round_trip() {
-        let p = Pointer { cleanup: vec![PathBuf::from("/old/.blurt")], ..Pointer::for_folder(Path::new("/d/Blurt")) };
-        assert_eq!(p.home, PathBuf::from("/d/Blurt/.blurt"));
+        let r = root();
+        let p = Pointer { cleanup: vec![r.join("old").join(".blurt")], ..Pointer::for_folder(&r.join("d").join("Blurt")) };
+        assert_eq!(p.home, r.join("d").join("Blurt").join(".blurt"));
         assert_eq!(Pointer::parse(&p.to_json()), Some(p.clone()));
         // relative or missing paths are no pointer; own_caches defaults on
-        assert_eq!(Pointer::parse(&json!({"home": "rel", "workspace": "/w"})), None);
-        assert_eq!(Pointer::parse(&json!({"workspace": "/w"})), None);
-        assert!(Pointer::parse(&json!({"home": "/h", "workspace": "/w"})).unwrap().own_caches);
+        let abs = |x: &str| scripts::s(&r.join(x));
+        assert_eq!(Pointer::parse(&json!({"home": "rel", "workspace": abs("w")})), None);
+        assert_eq!(Pointer::parse(&json!({"workspace": abs("w")})), None);
+        assert!(Pointer::parse(&json!({"home": abs("h"), "workspace": abs("w")})).unwrap().own_caches);
         let d = tempfile::tempdir().unwrap();
         let f = d.path().join("Blurt/location.json");
         write_pointer(&f, Some(&p)).unwrap();
@@ -718,23 +725,25 @@ mod tests {
 
     #[test]
     fn exports_default_custom_and_user_set() {
-        let prof = Path::new("/u/me");
-        let ex = |p: Option<&Pointer>, user: &[&str]| exports(p, prof, user).into_iter().map(|(k, v)| (k, scripts::s(&v))).collect::<Vec<_>>();
+        let prof = root().join("u").join("me");
+        let ex = |p: Option<&Pointer>, user: &[&str]| exports(p, &prof, user);
         // default: the two folders, uv and Hugging Face keep their own
-        assert_eq!(ex(None, &[]), vec![("BLURT_HOME", "/u/me/.blurt".into()), ("BLURT_WORKSPACE", "/u/me/Blurt".into())]);
-        let p = Pointer::for_folder(Path::new("/e/Blurt"));
+        assert_eq!(ex(None, &[]), vec![("BLURT_HOME", prof.join(".blurt")), ("BLURT_WORKSPACE", prof.join("Blurt"))]);
+        let e = root().join("e").join("Blurt");
+        let p = Pointer::for_folder(&e);
+        let h = e.join(".blurt");
         assert_eq!(
             ex(Some(&p), &[]),
             vec![
-                ("BLURT_HOME", "/e/Blurt/.blurt".into()),
-                ("BLURT_WORKSPACE", "/e/Blurt".into()),
-                ("UV_CACHE_DIR", "/e/Blurt/.blurt/cache/uv".into()),
-                ("UV_PYTHON_INSTALL_DIR", "/e/Blurt/.blurt/python".into()),
-                ("HF_HOME", "/e/Blurt/.blurt/cache/huggingface".into()),
+                ("BLURT_HOME", h.clone()),
+                ("BLURT_WORKSPACE", e.clone()),
+                ("UV_CACHE_DIR", h.join("cache").join("uv")),
+                ("UV_PYTHON_INSTALL_DIR", h.join("python")),
+                ("HF_HOME", h.join("cache").join("huggingface")),
             ]
         );
         // the user's own variables win; their BLURT_HOME keeps the caches where they are
-        assert_eq!(ex(Some(&p), &["BLURT_HOME", "HF_HOME"]), vec![("BLURT_WORKSPACE", "/e/Blurt".into())]);
+        assert_eq!(ex(Some(&p), &["BLURT_HOME", "HF_HOME"]), vec![("BLURT_WORKSPACE", e.clone())]);
         assert_eq!(ex(Some(&p), &["UV_CACHE_DIR"]).len(), 4);
         // the legacy pointer: HOME's folders, the usual caches
         let l = Pointer { own_caches: false, ..p };
