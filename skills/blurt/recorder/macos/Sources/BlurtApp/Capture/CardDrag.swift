@@ -66,15 +66,19 @@ enum DropProbe {
 
     static func target(pid: pid_t) -> DropTarget {
         if testMode, let id = testMap[pid] ?? testFixed {
-            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id),
+            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id, agent: AgentProbe.isAgent(pid: pid, bundleID: id)),
                               kind: DropTargets.composer(bundleID: id, appURL: nil))
         }
-        if let t = cache[pid] { return t }
-        let app = NSRunningApplication(processIdentifier: pid)
-        let t = DropTarget(pid: pid, bundleID: app?.bundleIdentifier, cls: DropTargets.classify(bundleID: app?.bundleIdentifier),
-                           kind: DropTargets.composer(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
-        cache[pid] = t
-        return t
+        let base: DropTarget
+        if let t = cache[pid] { base = t } else {
+            let app = NSRunningApplication(processIdentifier: pid)
+            base = DropTarget(pid: pid, bundleID: app?.bundleIdentifier, cls: DropTargets.classify(bundleID: app?.bundleIdentifier),
+                              kind: DropTargets.composer(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
+            cache[pid] = base
+        }
+        // an agent's window gets a terminal's payload while agents get paths (AgentWindow, record.agent_drag)
+        guard let id = base.bundleID, AgentProbe.isAgent(pid: pid, bundleID: id) else { return base }
+        return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id, agent: true), kind: base.kind)
     }
 
     /// The owner of the frontmost window under `p`, front to back in CGWindowList order: not ours, not the Window
@@ -121,13 +125,82 @@ enum DropProbe {
                 if kv.count == 2, let pid = pid_t(kv[0]) { testMap[pid] = kv[1] }
             }
         case "fixed": testFixed = a.count > 1 ? a[1] : nil
-        case "clear": testMap = [:]; testFixed = nil
+        case "agent":
+            if a.count > 2, let pid = pid_t(a[1]) { AgentProbe.testAgent[pid] = a[2] == "on" }
+        case "clear": testMap = [:]; testFixed = nil; AgentProbe.testAgent = [:]
         default: break
         }
         cache = [:]
         names = [:]
         emit(["event": "droptarget", "map": Dictionary(uniqueKeysWithValues: testMap.map { ("\($0.key)", $0.value) }),
               "fixed": testFixed ?? NSNull()])
+    }
+}
+
+/// Whether app `pid` shows an agent that gets paths (BlurtCore AgentWindow; record.agent_drag, "paths" by default):
+/// an agent app throughout; the Codex app or the Claude app when its front window is an agent's — what
+/// Accessibility shows of it — its web pages' addresses, its pop-up buttons' labels — within a short walk (a few
+/// hundred elements, ~50 ms: the mode switch and the page sit near the top). The answer is kept for two seconds, so a drag's
+/// moves and the pasteboard's questions don't walk the tree again; the first look at an app also asks it to show its
+/// web content (AXManualAccessibility), and an answer found before that has settled isn't kept.
+enum AgentProbe {
+    private static var kept: [pid_t: (agent: Bool, at: CFTimeInterval)] = [:]
+    private static var woken: [pid_t: CFTimeInterval] = [:]
+    /// tests: stand-in pid → is an agent window (`droptarget agent PID on|off`)
+    static var testAgent: [pid_t: Bool] = [:]
+
+    static var getsPaths: Bool { AgentWindow.getsPaths(setting: recordConfig()["agent_drag"] as? String) }
+    /// record.agent_apps: the user's changes to the built-in list
+    static var changes: [String: Bool] { recordConfig()["agent_apps"] as? [String: Bool] ?? [:] }
+    /// the agents' apps while agents get paths, else none
+    static var list: Set<String> { getsPaths ? AgentWindow.list(changes) : [] }
+
+    static func isAgent(pid: pid_t, bundleID: String) -> Bool {
+        guard list.contains(bundleID) else { return false }
+        if !AgentWindow.checksWindow(bundleID) { return true }
+        if DropProbe.testMode { return testAgent[pid] ?? false }
+        let now = CACurrentMediaTime()
+        if let k = kept[pid], now - k.at < 2 { return k.agent }
+        guard AXIsProcessTrusted() else { return false }
+        let app = AXUIElementCreateApplication(pid)
+        if woken[pid] == nil {
+            AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            woken[pid] = now
+        }
+        let facts = self.facts(app)
+        let agent = AgentWindow.isAgent(bundleID: bundleID, facts)
+        if agent || now - (woken[pid] ?? 0) > 0.3 { kept[pid] = (agent, now) }
+        return agent
+    }
+
+    /// The facts of the app's focused (else main, else first) window.
+    static func facts(_ app: AXUIElement) -> AgentWindow.Facts {
+        func attr(_ e: AXUIElement, _ n: String) -> AnyObject? {
+            var v: AnyObject?
+            return AXUIElementCopyAttributeValue(e, n as CFString, &v) == .success ? v : nil
+        }
+        AXUIElementSetMessagingTimeout(app, 0.25)
+        let win = (attr(app, kAXFocusedWindowAttribute) ?? attr(app, kAXMainWindowAttribute)
+                   ?? (attr(app, kAXWindowsAttribute) as? [AnyObject])?.first)
+        guard let w = win, CFGetTypeID(w) == AXUIElementGetTypeID() else { return .init() }
+        var f = AgentWindow.Facts()
+        var queue: [AXUIElement] = [w as! AXUIElement]
+        var seen = 0
+        while !queue.isEmpty, seen < 400 {
+            let e = queue.removeFirst()
+            seen += 1
+            switch attr(e, kAXRoleAttribute) as? String {
+            case "AXWebArea":
+                if let u = attr(e, "AXURL") { f.urls.append((u as? URL)?.absoluteString ?? "\(u)") }
+            case "AXPopUpButton":
+                for n in [kAXDescriptionAttribute, kAXTitleAttribute] {
+                    if let s = attr(e, n) as? String, !s.isEmpty { f.popUps.append(s) }
+                }
+            default: break
+            }
+            if let kids = attr(e, kAXChildrenAttribute) as? [AXUIElement] { queue += kids }
+        }
+        return f
     }
 }
 

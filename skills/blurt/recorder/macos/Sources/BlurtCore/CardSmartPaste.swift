@@ -163,11 +163,13 @@ public enum SmartPastePolicy {
         public var running: Bool
         /// Blurt itself is in front (its own text views paste the rich copy as it is)
         public var frontIsBlurt: Bool
+        /// the window in front is an agent's and agents get paths (AgentWindow): a terminal's lines, not the sequence
+        public var frontAgent: Bool
         public init(enabled: Bool, arm: SmartPasteArm?, now: Double, changeCount: Int, frontBundle: String?,
-                    accessibility: Bool, secureInput: Bool, running: Bool, frontIsBlurt: Bool = false) {
+                    accessibility: Bool, secureInput: Bool, running: Bool, frontIsBlurt: Bool = false, frontAgent: Bool = false) {
             self.enabled = enabled; self.arm = arm; self.now = now; self.changeCount = changeCount
             self.frontBundle = frontBundle; self.accessibility = accessibility; self.secureInput = secureInput; self.running = running
-            self.frontIsBlurt = frontIsBlurt
+            self.frontIsBlurt = frontIsBlurt; self.frontAgent = frontAgent
         }
     }
 
@@ -177,8 +179,12 @@ public enum SmartPastePolicy {
     }
 
     /// The tap's quick look: a ⌘V with `frontBundle` in front is one an armed copy taking over `classes` may replace.
-    public static func intercepts(frontBundle: String?, classes: Set<DropClass>) -> Bool {
-        frontBundle != nil && classes.contains(DropTargets.classify(bundleID: frontBundle))
+    /// An agent's app (`agents`: AgentWindow.list, while agents get paths) may be either: the main thread looks at the
+    /// window.
+    public static func intercepts(frontBundle: String?, classes: Set<DropClass>, agents: Set<String> = []) -> Bool {
+        guard let id = frontBundle else { return false }
+        if agents.contains(id) { return classes.contains(.chat) || classes.contains(.terminal) }
+        return classes.contains(DropTargets.classify(bundleID: id))
     }
 
     public static func decide(_ i: Input) -> Decision {
@@ -188,7 +194,7 @@ public enum SmartPastePolicy {
         guard i.changeCount == arm.changeCount else { return .pass("clipboard_changed") }
         guard !i.frontIsBlurt else { return .pass("blurt") }
         guard i.frontBundle != nil else { return .pass("no_app") }
-        let cls = DropTargets.classify(bundleID: i.frontBundle)
+        let cls = DropTargets.classify(bundleID: i.frontBundle, agent: i.frontAgent)
         switch cls {
         case .rich: return .pass("rich_app")
         case .terminal: guard arm.terminal != nil else { return .pass("terminal") }

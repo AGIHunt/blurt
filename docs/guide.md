@@ -212,7 +212,7 @@ What you can do with a card:
   that keep only the picture when a paste has one — get the picture and then the note as a second paste (several
   cards: each picture, then its note), and the notch says *Picture and note pasted*. This works for 2 minutes after
   you click, as long as you haven't copied something else; the card copy is back on the clipboard afterwards, so `⌘V`
-  works again. In a terminal (Terminal, iTerm2, Ghostty, Warp…) `⌘V` pastes one line per card instead: the
+  works again. In a terminal (Terminal, iTerm2, Ghostty, Warp…) or an agent (Codex, Claude Code, WorkBuddy, Cursor…) `⌘V` pastes one line per card instead: the
   picture's path, then its note, in the cards' order — so Claude Code or Codex gets each picture with its own words.
   This needs Accessibility too; without it, or with Secure Keyboard Entry on in the terminal, the terminal gets the
   notes alone. The Finder gets a normal paste. A voice note copies its words. Right-click for *Copy Image* or *Copy
@@ -228,9 +228,10 @@ What you can do with a card:
   | Drop it on | You get |
   | --- | --- |
   | Notes, TextEdit, Mail, Messages, Pages, Keynote | the picture and the note together, in one go |
-  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app), Feishu/Lark, Slack, Notion, other Electron apps, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
+  | Agents: Codex (in Codex mode), Claude Code (the Claude app's Code tab), WorkBuddy, QoderWork, Qoder, DoubaoWork, Kimi Code, Cursor, Trae, Windsurf, Antigravity, Kiro, and any app you add under Settings → General → Agents… | the same line a terminal gets: the picture's path, then the note, one line per card. The agent opens the picture from the path, and every picture stays next to its own words. *Dragging a card into an agent → As in other apps* gives them the picture instead |
+  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app chats), Feishu/Lark, Slack, Notion, other Electron apps, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
   | WeChat, QQ | the picture in the message box, then Blurt pastes the note after it (needs Accessibility) |
-  | VS Code, Cursor, Windsurf, Zed, Xcode, JetBrains IDEs and other code editors | the picture; the note goes on the clipboard (*⌘V to paste the note*) — Blurt never pastes into a code editor by itself, where the cursor may be in your code |
+  | VS Code, Zed, Xcode, JetBrains IDEs and other code editors | the picture; the note goes on the clipboard (*⌘V to paste the note*) — Blurt never pastes into a code editor by itself, where the cursor may be in your code |
   | Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm, Alacritty | one line: the picture's path, then the note (`…/out/003/Screenshot-153012.png the button is cut off`; a path with a space in it is in quotes), so Claude Code or Codex reads the picture and keeps it with its own words. The note's line breaks become spaces and the line never ends with a Return, so nothing runs at a shell prompt |
   | Finder or the Desktop | the picture file |
 
@@ -855,16 +856,17 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 
 - **把卡片拖到刘海上列出的某个项目**：归到那个项目，开始整理。先按住 `⌘` 点选几张，就能一起移：拖其中任意一张，或者右键 →「把 N 张卡片移到 ▸」（最近用过的项目在前）。
 - 拖到「**未归类**」：先存着，稍后再选项目。「**整理**」（刘海上的按钮、卡片右键菜单，或刘海右键菜单里的「整理全部卡片」）把卡片一次交给 Agent：有当前项目就整理进这个项目，没有就整理进「未归类」，每一条附上建议的项目（见上）。
-- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的 App，直接一起贴进去，就像复制一条图文消息。聊天 App——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的 App——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），刘海上显示「图片和备注已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。在终端（终端、iTerm2、Ghostty、Warp…）里按 `⌘V`，每张卡片贴一行：图片路径，后面跟它的备注，按卡片顺序排——Claude Code、Codex 拿到的每张图都带着自己的那段话。这同样需要「辅助功能」权限；没有权限，或者终端开着「安全键盘输入」时，终端只收到备注文字。访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「复制图片」或「复制文字」。（单击后会等一个双击的间隔再复制，所以双击改备注不会先把你的剪贴板换掉。）
+- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的 App，直接一起贴进去，就像复制一条图文消息。聊天 App——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的 App——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），刘海上显示「图片和备注已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。在终端（终端、iTerm2、Ghostty、Warp…）或 Agent（Codex、Claude Code、WorkBuddy、Cursor…）里按 `⌘V`，每张卡片贴一行：图片路径，后面跟它的备注，按卡片顺序排——Claude Code、Codex 拿到的每张图都带着自己的那段话。这同样需要「辅助功能」权限；没有权限，或者终端开着「安全键盘输入」时，终端只收到备注文字。访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「复制图片」或「复制文字」。（单击后会等一个双击的间隔再复制，所以双击改备注不会先把你的剪贴板换掉。）
 - **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按显示的顺序排（最新的在前），就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「复制全部 N 张卡片」（或者刘海的右键菜单里「复制全部 N 张卡片」）一次复制所有卡片，最新的在前。
 - **拖到别的 App 里**：截图拖出去是图片（`截图-153012.png`，画过就带笔迹）连同备注——先图片，后文字：
 
   | 拖到 | 得到 |
   | --- | --- |
   | 备忘录、文本编辑、邮件、信息、Pages、Keynote | 图片和备注，一次一起进去 |
-  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版）、飞书/Lark、Slack、Notion、其他 Electron App、其他 App | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
+  | Agent：Codex（Codex 模式下）、Claude Code（Claude App 的 Code 标签页）、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae、Windsurf、Antigravity、Kiro，以及你在「设置 → 通用 → Agent 列表…」里加的 App | 和终端一样的一行：图片路径，后面跟备注，每张卡片一行。Agent 按路径打开图片，每张图都和自己的备注挨在一起。「把卡片拖进 Agent」选「和其他 App 一样」就改成放图片 |
+  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版的对话）、飞书/Lark、Slack、Notion、其他 Electron App、其他 App | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
   | 微信、QQ | 图片放进输入框，然后口喷鸡把备注贴在图片后面（需要「辅助功能」权限） |
-  | VS Code、Cursor、Windsurf、Zed、Xcode、JetBrains 系 IDE 等代码编辑器 | 图片；备注放进剪贴板（「⌘V 可粘贴」）——口喷鸡不会自己往代码编辑器里粘贴，光标可能正停在你的代码里 |
+  | VS Code、Zed、Xcode、JetBrains 系 IDE 等代码编辑器 | 图片；备注放进剪贴板（「⌘V 可粘贴」）——口喷鸡不会自己往代码编辑器里粘贴，光标可能正停在你的代码里 |
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 一行文字：图片路径，后面跟备注（`…/out/003/截图-153012.png 按钮被挡住了`；路径里有空格时加引号），Claude Code、Codex 读得到图片，也知道哪段话说的是哪张图。备注里的换行变成空格，末尾不带回车，所以在命令行提示符处什么都不会执行 |
   | 访达或桌面 | 图片文件 |
 

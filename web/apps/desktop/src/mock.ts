@@ -118,6 +118,16 @@ const hotkeyRows = () =>
     const label = spec === 'off' ? '' : spec.replace('opt', 'Alt').replace('shift', 'Shift').replace('ctrl', 'Ctrl').replace(/\+(\w)$/, (_, c) => `+${c.toUpperCase()}`);
     return { action: a, spec, label, default: `opt+shift+${k}`, active: resident, result: spec === 'off' ? 'off' : resident ? 'ok' : 'idle' };
   });
+
+// card_drop.rs AGENTS: the built-in agent apps (executable stems)
+const MOCK_AGENTS = ['workbuddy', 'qoderwork', 'qoder', 'kimi code', 'doubaowork', 'cursor', 'windsurf', 'trae', 'trae cn', 'antigravity', 'kiro', 'codex'];
+function mockAgentApps() {
+  const changes: Record<string, boolean> = mockCfg.record?.agent_apps ?? {};
+  return [
+    ...MOCK_AGENTS.map((id) => ({ id, builtin: true, on: changes[id] !== false })),
+    ...Object.keys(changes).filter((id) => changes[id] === true && !MOCK_AGENTS.includes(id)).sort().map((id) => ({ id, builtin: false, on: true })),
+  ];
+}
 // Settings' writes, kept in memory (the Rust merge: two levels deep)
 const mockHotkeys: Record<string, string> = {};
 const mockCfg: Record<string, any> = { record: { agents: ['claude', 'codex', 'kimi'] }, notify: {} };
@@ -656,6 +666,19 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     case 'storage_trash':
       return r(args.files ?? []);
     // Storage → Data location (location.rs); ?location=custom starts on a chosen folder, ?location_error=<code> refuses
+    // Settings → General → Cards → Agents… (island.rs agent_apps_*: card_drop.rs `listing` / `changing`)
+    case 'agent_apps_get':
+      return r(mockAgentApps());
+    case 'agent_apps_set': {
+      const id = String(args.id).trim().toLowerCase();
+      const changes: Record<string, boolean> = { ...(mockCfg.record?.agent_apps ?? {}) };
+      if (MOCK_AGENTS.includes(id) === !!args.on) delete changes[id];
+      else changes[id] = !!args.on;
+      mockMerge({ record: { agent_apps: Object.keys(changes).length ? changes : null } });
+      return r(mockAgentApps());
+    }
+    case 'agent_apps_pick':
+      return r({ ids: ['zed'] });
     case 'storage_location':
       return r({ ...mockLocation });
     case 'storage_location_pick':

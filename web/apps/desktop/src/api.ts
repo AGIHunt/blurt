@@ -35,6 +35,13 @@ export function fileSrc(abs: string | null | undefined): string {
 // ---- rows
 
 /** ItemRow v3 (K1; one K3 `state`) + what the list shows besides. Times are epoch seconds. */
+/** A row of Settings → General → Cards → Agents…: `id` is the program's executable stem ("cursor"). */
+export interface AgentApp {
+  id: string;
+  builtin: boolean;
+  on: boolean;
+}
+
 export interface ItemRow {
   uid: string;
   project_id: string;
@@ -491,6 +498,13 @@ export const api = {
   // Storage → Data location (location.rs): where the data is, the folder dialog + its check, the move (then a restart)
   storageLocation: () => invoke<StorageLocation>('storage_location'),
   storageLocationPick: (title: string) => invoke<LocationCheck>('storage_location_pick', { title }),
+  // Settings → General → Cards → Agents… (island.rs; card_drop.rs AGENTS): the agent apps a card goes into as the
+  // picture's path + its note — the built-ins, each switched on or off, then the programs the user added
+  agentApps: () => invoke<AgentApp[]>('agent_apps_get'),
+  /** a built-in switched on / off, a program added (on) or removed (off) → the rows */
+  setAgentApp: (id: string, on: boolean) => invoke<AgentApp[]>('agent_apps_set', { id, on }),
+  /** Add Program…: the Open dialog for programs → their ids (executable stems), or cancel */
+  pickAgentApps: (title: string) => invoke<{ ids?: string[]; cancel?: boolean }>('agent_apps_pick', { title }),
   storageLocationCheck: (folder: string | null) => invoke<LocationCheck>('storage_location_check', { folder }),
   storageLocationMove: (folder: string | null) => invoke<LocationCheck>('storage_location_move', { folder }),
   videosTrash: (days: number | null) => invoke<{ count: number; bytes: number }>('videos_trash', { days }),

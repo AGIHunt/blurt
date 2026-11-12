@@ -908,6 +908,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             island::cards_waiting,
             island::cards_reveal,
+            island::agent_apps_get,
+            island::agent_apps_set,
+            island::agent_apps_pick,
             dictation::commands::dictation_models,
             dictation::commands::model_download,
             dictation::commands::model_download_cancel,

@@ -637,7 +637,8 @@ function AskNote() {
 
 // ------------------------------------------------------------------ sheets
 
-function Sheet({ label, close, children, width = 560 }: { label: string; close: () => void; children: React.ReactNode; width?: number }) {
+/** A settings sheet over the page: Esc or a click outside closes it (also General → Cards → Agents…). */
+export function Sheet({ label, close, children, width = 560 }: { label: string; close: () => void; children: React.ReactNode; width?: number }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && close();
     window.addEventListener('keydown', k);
