@@ -8,7 +8,9 @@
 //                carries — one choice over three settings: "picture, then the note" (record.smart_paste, on:
 //                Capture/SmartPaste.swift), "picture with the note under it" (record.drag_caption), "picture only";
 //                with either of the first two, a note that couldn't go in goes on the clipboard (record.drag_copy_note,
-//                on), with picture only it doesn't —; the note as a .md file too (record.drag_note_file, off). Pasting
+//                on), with picture only it doesn't —; into an agent (Codex, Claude Code, WorkBuddy, Cursor…: BlurtCore
+//                AgentWindow) the picture's path and the note, as in a terminal (record.agent_drag "paths", the default),
+//                or as the choice above ("same"); the note as a .md file too (record.drag_note_file, off). Pasting
 //                the note needs Accessibility: said in attention ink with Allow… only while that choice is made and
 //                the permission is missing.
 //   About        one quiet line under the boxes: Blurt and its version, Check for Updates…, User Guide, Setup
@@ -53,6 +55,7 @@ final class GeneralModel: ObservableObject {
     @Published var cardDrag = CardDragMode.paste
     @Published var snapSound = false
     @Published var dragNoteFile = false
+    @Published var agentPaths = true
     @Published var voiceEndOnPause = false
     @Published var liveText = true
     @Published var menuBarIcon = true
@@ -72,6 +75,7 @@ final class GeneralModel: ObservableObject {
         cardDrag = CardDragMode.current
         snapSound = recordConfig()["snap_sound"] as? Bool ?? false
         dragNoteFile = CardExport.attachNoteFile
+        agentPaths = AgentProbe.getsPaths
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
         menuBarIcon = App.showsMenuBarIcon
@@ -106,6 +110,11 @@ final class GeneralModel: ObservableObject {
     }
     func setCardDrag(_ v: CardDragMode) { v.apply(); cardDrag = CardDragMode.current }
     func setSnapSound(_ v: Bool) { setRecordConfig("snap_sound", v ? true : nil); snapSound = v }
+    func setAgentPaths(_ v: Bool) {
+        setRecordConfig("agent_drag", v ? nil : "same")
+        agentPaths = v
+        emit(["event": "agent_drag_mode", "mode": v ? "paths" : "same"])
+    }
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
     func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
@@ -114,6 +123,7 @@ final class GeneralModel: ObservableObject {
 struct GeneralPane: View {
     @StateObject var m = GeneralModel()
     @StateObject var perms = Permissions()
+    @State private var agentApps = false
 
     static var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
@@ -184,6 +194,19 @@ struct GeneralPane: View {
                                     selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }))
                     }
                 }
+                SettingRow("general.agent_drag") {
+                    HStack(spacing: 8) {
+                        Button(T("settings.general.agent_apps.open")) { agentApps = true }
+                            .buttonStyle(SettingsOutlinedButtonStyle())
+                            .fixedSize()
+                        ChoicePopup(label: T("settings.general.agent_drag"),
+                                    choices: [(true, T("settings.general.agent_drag.paths")), (false, T("settings.general.agent_drag.same"))],
+                                    selection: Binding(get: { m.agentPaths }, set: { m.setAgentPaths($0) }))
+                    }
+                }
+                // screenshots: open the list with the page
+                .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_AGENT_APPS_SHEET"] == "1" { agentApps = true } }
+                .sheet(isPresented: $agentApps) { AgentAppsSheet { agentApps = false }.buttonStyle(.automatic) }
                 SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
             }
 

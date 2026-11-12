@@ -127,6 +127,8 @@ export const ENTRIES: Entry[] = (() => {
     row('general.collect', 'general.cards', 'settings.general.collect', { more: 'settings.general.collect.hint' }),
     row('general.snap_sound', 'general.cards', 'settings.general.snap_sound'),
     row('general.card_drag', 'general.cards', 'settings.general.card_drag', { more: 'settings.general.card_drag.hint' }),
+    // what an agent app gets (card_drop.rs AGENTS + the user's list): the picture's path and the note, as a terminal
+    row('general.agent_drag', 'general.cards', 'settings.general.agent_drag', { more: 'settings.general.agent_drag.hint' }),
     row('general.drag_note_file', 'general.cards', 'settings.general.drag_note_file', { more: 'settings.general.drag_note_file.hint' }),
     whole('general.about'),
     // Projects

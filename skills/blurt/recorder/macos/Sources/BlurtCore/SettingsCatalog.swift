@@ -227,6 +227,7 @@ public enum SettingsCatalog {
             row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
             row("general.snap_sound", "general.cards", "settings.general.snap_sound"),
             row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
+            row("general.agent_drag", "general.cards", "settings.general.agent_drag", more: S("settings.general.agent_drag.hint")),
             row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
             whole("general.about"),
 

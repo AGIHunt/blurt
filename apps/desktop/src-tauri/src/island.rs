@@ -123,6 +123,59 @@ fn card_drag_mode() -> &'static str {
     }
 }
 
+/// Settings → General → Cards → Agents…: the sheet's rows, `[{id, builtin, on}]` — every built-in agent app (on unless
+/// switched off), then the programs the user added (card_drop::listing; ids are executable stems).
+fn agent_rows(cfg: &Value) -> Value {
+    let rows = card_drop::listing(cfg.pointer("/record/agent_apps").and_then(Value::as_object));
+    json!(rows.into_iter().map(|(id, builtin, on)| json!({"id": id, "builtin": builtin, "on": on})).collect::<Vec<_>>())
+}
+
+#[tauri::command]
+pub fn agent_apps_get() -> Value {
+    agent_rows(&settings::read_config())
+}
+
+/// A built-in switched on or off, a program added (`on`) or removed: record.agent_apps keeps only the changes to the
+/// built-in list (card_drop::changing; none left: the key goes) → the sheet's rows.
+#[tauri::command]
+pub fn agent_apps_set(id: String, on: bool) -> Result<Value, String> {
+    let cfg = settings::update(|cfg| {
+        if !cfg.is_object() {
+            *cfg = json!({});
+        }
+        let rec = cfg.as_object_mut().unwrap().entry("record").or_insert_with(|| json!({}));
+        if !rec.is_object() {
+            *rec = json!({});
+        }
+        let rec = rec.as_object_mut().unwrap();
+        let changes = card_drop::changing(rec.get("agent_apps").and_then(Value::as_object).unwrap_or(&Default::default()), &id, on);
+        if changes.is_empty() {
+            rec.remove("agent_apps");
+        } else {
+            rec.insert("agent_apps".into(), Value::Object(changes));
+        }
+    })?;
+    Ok(agent_rows(&cfg))
+}
+
+/// Add Program…: the system's Open dialog for programs (.exe; a shortcut is followed to its program by the dialog)
+/// → `{ids: [stem…]}` (card_drop::program_id), or `{cancel: true}`. The caller adds them (agent_apps_set).
+#[tauri::command(async)]
+pub fn agent_apps_pick(app: AppHandle, title: String) -> Value {
+    let mut d = folder_dialog(&app).set_title(title).add_filter("Programs", &["exe", "lnk"]);
+    // where per-user installs go (Cursor, Trae, Kiro, Windsurf…: %LOCALAPPDATA%\Programs)
+    if let Some(dir) = dirs::data_local_dir().map(|d| d.join("Programs")).filter(|d| d.is_dir()) {
+        d = d.set_directory(dir);
+    }
+    let Some(picked) = d.blocking_pick_files() else { return json!({"cancel": true}) };
+    let mut ids: Vec<String> = picked.into_iter().filter_map(|f| f.into_path().ok()).filter_map(|p| card_drop::program_id(&p)).collect();
+    ids.dedup();
+    if ids.is_empty() {
+        return json!({"cancel": true});
+    }
+    json!({"ids": ids})
+}
+
 /// The shutter as a snap is taken (record.snap_sound, off): the island plays it. The snap flow calls this the moment
 /// the frame is on disk; a recording's snaps play it from their status line.
 pub fn shutter(app: &AppHandle) {
@@ -736,8 +789,8 @@ fn drag_files(session: &std::path::Path, card: &overlay::Card, picture: PathBuf,
 }
 
 /// Starts the system's drag of a card (our own OLE drag, card_drag_win.rs): a snap's picture as a file (with the
-/// .md, or the captioned copy, per Settings → General → Cards) — over a terminal one line of text instead, the
-/// picture's path then the note (card_drop::terminal_line) — and a voice card's words as text; the drag image is the
+/// .md, or the captioned copy, per Settings → General → Cards) — over a terminal or an agent app one line of text
+/// instead, the picture's path then the note (card_drop::terminal_line) — and a voice card's words as text; the drag image is the
 /// card as the island drew it (`image`, a PNG data URL; `ox`/`oy` where the pointer holds it, physical px). False when
 /// it can't start (not Windows, nothing to drag).
 #[cfg(windows)]
@@ -780,7 +833,7 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
         };
         // taken: it leaves its thread (its files stay, History keeps it 7 days)
         capture::take_card(&session, n);
-        // a terminal got the picture's path and the note on one line: nothing more to do
+        // a terminal (or an agent app) got the picture's path and the note on one line: nothing more to do
         let terminal = landed == card_drag_win::Landed::Terminal;
         // a note that couldn't go in goes on the clipboard (record.drag_copy_note, on; never with picture only): a file
         // drop can't paste it after the picture here

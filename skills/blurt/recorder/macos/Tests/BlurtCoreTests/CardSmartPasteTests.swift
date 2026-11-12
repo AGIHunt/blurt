@@ -180,6 +180,22 @@ final class CardSmartPasteTests: XCTestCase {
         XCTAssertEqual(SmartPastePolicy.decide(term { $0.arm?.steps = [.image(self.a)]; $0.frontBundle = "com.google.Chrome" }), .pass("one_thing"))
     }
 
+    func testCommandVInACodingAgentsWindowPastesTheLines() {
+        func agent(_ id: String, _ on: Bool) -> SmartPastePolicy.Input {
+            input { $0.arm?.terminal = "/s/out/001/截图-101010.png n"; $0.frontBundle = id; $0.frontAgent = on }
+        }
+        for id in [AgentWindow.codex, AgentWindow.claude] {
+            XCTAssertEqual(SmartPastePolicy.decide(agent(id, true)), .terminalLines, id)
+            XCTAssertEqual(SmartPastePolicy.decide(agent(id, false)), .sequence, "\(id) chat: picture, then note")
+            XCTAssertTrue(SmartPastePolicy.intercepts(frontBundle: id, classes: [.terminal], agents: AgentWindow.builtIn),
+                          "the main thread looks at the window")
+            XCTAssertTrue(SmartPastePolicy.intercepts(frontBundle: id, classes: [.chat], agents: AgentWindow.builtIn))
+            XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: id, classes: [.terminal]), "agents get the chat's way: Codex is chat")
+        }
+        XCTAssertEqual(SmartPastePolicy.decide(agent("com.tencent.workbuddy.mac", true)), .terminalLines)
+        XCTAssertEqual(SmartPastePolicy.decide(agent("com.tencent.workbuddy.mac", false)), .sequence, "record.agent_drag same")
+    }
+
     func testTheTapKeepsOnlyTheKeysTheCopyTakesOver() {
         XCTAssertTrue(SmartPastePolicy.intercepts(frontBundle: "com.apple.Terminal", classes: [.terminal]))
         XCTAssertFalse(SmartPastePolicy.intercepts(frontBundle: "com.apple.Terminal", classes: [.chat]))

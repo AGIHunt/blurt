@@ -6,8 +6,10 @@
 //!    Mac's chat class gets the picture alone; the note goes on the clipboard after the drop instead).
 //!    Over a terminal that takes a text drop (card_drop.rs: Windows Terminal, mintty) the same drag is one line of
 //!    text instead, `"<picture path>" <note>` (CF_UNICODETEXT alone, no CF_HDROP), so Claude Code or Codex there get
-//!    the picture with its own words. A terminal that takes only files (the classic console, Alacritty…) gets the
-//!    file, as before. Which one is decided when the app asks, not when the drag starts (the data object
+//!    the picture with its own words. An agent app gets that line too (card_drop::AGENTS and the user's own list,
+//!    Settings → General → Cards → Agents…, read once as the drag starts; none with record.agent_drag "same"):
+//!    Codex, Cursor, WorkBuddy… open the picture from its path, and several cards keep each picture next to its own
+//!    note. A terminal that takes only files (the classic console, Alacritty…) gets the file, as before. Which one is decided when the app asks, not when the drag starts (the data object
 //!    is built before anyone knows where it lands): `CardData` wraps the shell's object and answers each
 //!    EnumFormatEtc / QueryGetData / GetData for the window under the pointer at that moment — the window OLE itself
 //!    hands the drop to (WindowFromPoint), the way the Mac's CardDrag answers for the app under the pointer. A target
@@ -63,7 +65,7 @@ pub enum Payload {
 /// Where a taken drag landed, as far as what it got goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Landed {
-    /// a terminal: the picture's path and the note, one line (card_drop::Target::Terminal)
+    /// a terminal or an agent app: the picture's path and the note, one line (card_drop::Target::Terminal)
     Terminal,
     /// anything else: the files (or a voice card's words)
     Other,
@@ -158,11 +160,12 @@ pub fn drag(payload: &Payload, image: Option<&[u8]>, offset: (i32, i32)) -> Opti
     if !ole() {
         return None;
     }
+    // the agent apps a card goes into as path + note, once for the whole drag (Settings → General → Cards)
+    let agents = card_drop::agents(crate::settings::read_config().get("record"));
     let obj = match payload {
         Payload::Files { files, terminal: None } if !files.is_empty() => files_object(files),
-        Payload::Files { files, terminal: Some(line) } if !files.is_empty() => {
-            files_object(files).map(|inner| CardData { inner, line: line.clone(), exes: Default::default() }.into())
-        }
+        Payload::Files { files, terminal: Some(line) } if !files.is_empty() => files_object(files)
+            .map(|inner| CardData { inner, line: line.clone(), agents: agents.clone(), exes: Default::default() }.into()),
         Payload::Text(t) if !t.trim().is_empty() => text_object(t),
         _ => return None,
     };
@@ -178,7 +181,7 @@ pub fn drag(payload: &Payload, image: Option<&[u8]>, offset: (i32, i32)) -> Opti
         let t0 = std::time::Instant::now();
         let r = DoDragDrop(&obj, &source, DROPEFFECT_COPY, &mut effect);
         // where it was let go of (the pointer hasn't moved since): the window the drop went to
-        let at = if matches!(payload, Payload::Files { terminal: Some(_), .. }) { under_pointer(&mut Default::default()) } else { Target::Other };
+        let at = if matches!(payload, Payload::Files { terminal: Some(_), .. }) { under_pointer(&mut Default::default(), &agents) } else { Target::Other };
         if std::env::var_os("BLURT_DEBUG_KEYS").is_some() {
             eprintln!("blurt: card drag: {r:?} effect {} after {:?} over {at:?}", effect.0, t0.elapsed());
         }
@@ -189,26 +192,28 @@ pub fn drag(payload: &Payload, image: Option<&[u8]>, offset: (i32, i32)) -> Opti
 // ------------------------------------------------------------------ a card's data object: files, or a terminal's line
 
 /// The shell's data object for a card's files, answering for the window under the pointer when it is asked: over a
-/// terminal it offers one line of text (CF_UNICODETEXT) and hides the files (CF_HDROP, the shell's ID lists, …) —
+/// terminal (or an agent app) it offers one line of text (CF_UNICODETEXT) and hides the files (CF_HDROP, the shell's ID lists, …) —
 /// the drag image's own formats still pass, so the image shows over the terminal too; anywhere else it is the shell's
 /// object as it is. SetData (the drag image helper, a target's drop description) always goes to the shell's object.
 #[implement(IDataObject)]
 struct CardData {
     inner: IDataObject,
     line: String,
+    /// the agent apps in effect for this drag (card_drop::agents)
+    agents: card_drop::Agents,
     /// pid → executable, looked up once (GetData is asked many times during a drag)
     exes: std::sync::Mutex<HashMap<u32, Option<String>>>,
 }
 
 impl CardData {
     fn terminal(&self) -> bool {
-        under_pointer(&mut self.exes.lock().unwrap()) == Target::Terminal
+        under_pointer(&mut self.exes.lock().unwrap(), &self.agents) == Target::Terminal
     }
 }
 
-/// The window under the pointer — the one OLE hands the drop to — as a drop target kind. Ours (the island, the main
-/// window) or nothing: Other.
-fn under_pointer(exes: &mut HashMap<u32, Option<String>>) -> Target {
+/// The window under the pointer — the one OLE hands the drop to — as a drop target kind (`agents`: the agent apps in
+/// effect). Ours (the island, the main window) or nothing: Other.
+fn under_pointer(exes: &mut HashMap<u32, Option<String>>, agents: &card_drop::Agents) -> Target {
     unsafe {
         let mut p = POINT::default();
         if GetCursorPos(&mut p).is_err() {
@@ -229,7 +234,7 @@ fn under_pointer(exes: &mut HashMap<u32, Option<String>>) -> Target {
         let n = GetClassNameW(root, &mut buf);
         let class = (n > 0).then(|| String::from_utf16_lossy(&buf[..n as usize]));
         let exe = exes.entry(pid).or_insert_with(|| exe_name(pid)).clone();
-        card_drop::target(exe.as_deref(), class.as_deref())
+        card_drop::target(exe.as_deref(), class.as_deref(), agents)
     }
 }
 

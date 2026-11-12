@@ -33,6 +33,46 @@ final class CardDropTargetTests: XCTestCase {
     }
 
     /// The engine only says how the note's paste finds its place after the picture.
+    func testACodingAgentsWindowIsATerminal() {
+        let code = AgentWindow.Facts(urls: ["file:///Applications/Claude.app/Contents/Resources/app.asar/.vite/renderer/main_window/index.html",
+                                            "https://claude.ai/epitaxy/local_2f383153"])
+        let chat = AgentWindow.Facts(urls: ["https://claude.ai/chat/0b1c", "https://claude.ai/new"])
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.claude, code))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.claude, chat))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.claude, .init(urls: ["https://evil.example/epitaxy/x"])))
+        let codex = AgentWindow.Facts(popUps: ["Usage", "Switch mode, current mode: Codex", "GPT-6.1 Sol High"])
+        let chatgpt = AgentWindow.Facts(popUps: ["Switch mode, current mode: ChatGPT", "gpt-5-codex"])
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.codex, codex))
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.codex, .init(popUps: ["切换模式，当前模式：Codex"])))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.codex, chatgpt), "a model named codex is not the mode")
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.codex, .init()))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: "com.google.Chrome", codex))
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.codex, agent: true), .terminal)
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.codex), .chat)
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.claude), .chat)
+        for id in ["com.tencent.workbuddy.mac", "com.qoder.work", "com.kimi.code.desktop", "com.work.pc.doubao", "com.qoder.ide",
+                   "com.todesktop.230313mzl4w4u92", "com.trae.app"] {
+            XCTAssertEqual(DropTargets.classify(bundleID: id, agent: true), .terminal, id)
+        }
+        // cloud chats and plain editors are not agents here
+        for id in ["com.moonshot.kimichat", "com.microsoft.VSCode", "com.apple.dt.Xcode"] {
+            XCTAssertFalse(AgentWindow.builtIn.contains(id), id)
+        }
+        // the user's changes: add any app, switch a built-in one off; a built-in app's own state is no change
+        let mine = AgentWindow.changing(AgentWindow.changing([:], "com.example.agent", on: true), "com.trae.app", on: false)
+        XCTAssertEqual(mine, ["com.example.agent": true, "com.trae.app": false])
+        XCTAssertTrue(AgentWindow.list(mine).contains("com.example.agent"))
+        XCTAssertFalse(AgentWindow.list(mine).contains("com.trae.app"))
+        XCTAssertTrue(AgentWindow.list(mine).contains(AgentWindow.codex))
+        XCTAssertEqual(AgentWindow.changing(mine, "com.trae.app", on: true), ["com.example.agent": true])
+        XCTAssertEqual(AgentWindow.changing(mine, "com.example.agent", on: false), ["com.trae.app": false])
+        XCTAssertTrue(AgentWindow.checksWindow(AgentWindow.claude))
+        XCTAssertFalse(AgentWindow.checksWindow("com.tencent.workbuddy.mac"))
+        XCTAssertTrue(AgentWindow.getsPaths(setting: nil))
+        XCTAssertTrue(AgentWindow.getsPaths(setting: "paths"))
+        XCTAssertFalse(AgentWindow.getsPaths(setting: "same"))
+    }
+
     func testTheComposerKind() {
         for id in ["com.google.Chrome", "com.apple.Safari", "com.anthropic.claudefordesktop", "com.electron.lark", "com.tinyspeck.slackmacgap"] {
             XCTAssertEqual(DropTargets.composer(bundleID: id, appURL: nil), .web, id)

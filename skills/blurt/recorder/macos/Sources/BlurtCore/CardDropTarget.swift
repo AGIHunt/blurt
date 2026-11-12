@@ -49,6 +49,17 @@
 // Blurt never pastes there by itself: the picture goes in as the drop, the note goes on the clipboard ("⌘V to paste
 // the note"), and a voice card gets the editor's own text drop. A ⌘V after a click-copy is the user's own paste and
 // still runs the sequence where they put the caret.
+// v1.0.21 — agents: desktop apps whose agent works on this Mac's files (the Codex app in Codex mode, Claude Code in
+// the Claude app, WorkBuddy, QoderWork, Kimi Code, DoubaoWork, and the AI IDEs: Cursor, Windsurf, Trae, Qoder,
+// Antigravity, Kiro) got the chat layout — the picture as an attachment, the note after it — so with several cards
+// nothing said which picture went with which words (user report, 1.0.20). They now get a terminal's payload: the
+// picture's path, then its note, one line per card; the agent reads the picture from the path. Setting
+// record.agent_drag ("paths", the default; "same": as every other app, the Cards box's other choice). A chat that runs
+// in the cloud (Kimi, Doubao, ChatGPT mode, a Claude chat) can't read a path and keeps the chat layout; in the Codex
+// and Claude apps the window decides (AgentWindow.isAgent: its web page's address, its mode button).
+// Which apps: a built-in list, and the user's own changes to it (record.agent_apps: bundle id → on / off; Settings →
+// General → Agents…: add any app, switch a built-in one off). Not rules on app names: a name doesn't say whether the
+// app reads this Mac's files (Kimi / Kimi Code, 豆包 / 豆包工作 differ by one word), and new built-ins still arrive.
 
 import CoreGraphics
 import Foundation
@@ -135,8 +146,10 @@ public enum DropTargets {
     }
 
     /// The class of the app `bundleID` — the tables only (no file system: the smart-paste tap asks this too).
-    public static func classify(bundleID: String?) -> DropClass {
+    /// `agent`: the window is an agent's and agents get paths (AgentWindow; the caller decides): a terminal's payload.
+    public static func classify(bundleID: String?, agent: Bool = false) -> DropClass {
         guard let id = bundleID else { return .chat }
+        if agent { return .terminal }
         if finder.contains(id) { return .finder }
         if terminals.contains(id) { return .terminal }
         if richApps.contains(id) { return .rich }
@@ -155,6 +168,72 @@ public enum DropTargets {
     /// An Electron app: its bundle carries Electron's framework.
     public static func isElectron(_ appURL: URL, fileManager: FileManager = .default) -> Bool {
         fileManager.fileExists(atPath: appURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
+    }
+}
+
+/// A desktop app whose agent works on this Mac's files (v1.0.21): there a card is the picture's path and its note, as
+/// in a terminal (record.agent_drag, "paths" by default). Some apps are agents throughout; the Codex and Claude apps
+/// only in some windows, decided from what Accessibility shows of the window.
+public enum AgentWindow {
+    /// the Codex app (shipped as ChatGPT: Codex and chat modes), the Claude app (chats, and Claude Code in its Code tab)
+    public static let codex = "com.openai.codex"
+    public static let claude = "com.anthropic.claudefordesktop"
+    public static let hosts: Set<String> = [codex, claude]
+    /// agents in every window: desktop agents (WorkBuddy, QoderWork, Kimi Code, DoubaoWork) and AI IDEs, whose chat
+    /// panel's agent reads files (Cursor, Windsurf, Trae, Trae CN, Qoder, Antigravity, Kiro). Not the plain editors
+    /// (VS Code, Zed, Xcode, JetBrains: `editor`, as before) and not cloud chats (Kimi, Doubao: chat).
+    public static let apps: Set<String> = [
+        "com.tencent.workbuddy.mac", "com.qoder.work", "com.kimi.code.desktop", "com.work.pc.doubao",
+        "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "com.trae.app", "cn.trae.app", "com.qoder.ide",
+        "com.google.antigravity", "dev.kiro.desktop",
+    ]
+    public static let builtIn = hosts.union(apps)
+
+    /// record.agent_drag: "paths" (default, also when unset or unknown) or "same" (as every other app).
+    public static func getsPaths(setting: String?) -> Bool { setting != "same" }
+
+    /// The agents' apps with the user's changes (record.agent_apps: bundle id → true: added / kept, false: off).
+    public static func list(_ changes: [String: Bool]) -> Set<String> {
+        var s = builtIn
+        for (id, on) in changes { if on { s.insert(id) } else { s.remove(id) } }
+        return s
+    }
+
+    /// Of the list, the apps that are agents only in some windows (the rest are agents throughout).
+    public static func checksWindow(_ id: String) -> Bool { hosts.contains(id) }
+
+    /// record.agent_apps after switching `id` on or off: a built-in app's own state is no change (nil: left out).
+    public static func changing(_ changes: [String: Bool], _ id: String, on: Bool) -> [String: Bool] {
+        var c = changes
+        c[id] = builtIn.contains(id) == on ? nil : on
+        return c
+    }
+
+    /// What Accessibility shows of a window: the addresses of its web pages (AXWebArea's AXURL), and the labels of its
+    /// pop-up buttons (AXDescription / AXTitle), as far as a short walk from the window goes.
+    public struct Facts: Equatable {
+        public var urls: [String]
+        public var popUps: [String]
+        public init(urls: [String] = [], popUps: [String] = []) { self.urls = urls; self.popUps = popUps }
+    }
+
+    /// The window is an agent's: in the Claude app, a page of Claude Code (claude.ai/epitaxy/…, its Code tab; a chat
+    /// is claude.ai/chat/…); in the Codex app, the mode switch says Codex ("Switch mode, current mode: Codex"; in
+    /// chat mode it names ChatGPT). Anything else, or nothing found: not an agent (the chat layout, as before).
+    public static func isAgent(bundleID: String?, _ f: Facts) -> Bool {
+        switch bundleID {
+        case claude?:
+            return f.urls.contains { u in
+                guard let c = URLComponents(string: u), let h = c.host, h == "claude.ai" || h.hasSuffix(".claude.ai") else { return false }
+                return c.path.hasPrefix("/epitaxy") || c.path.hasPrefix("/code")
+            }
+        case codex?:
+            return f.popUps.contains { l in
+                let s = l.lowercased().trimmingCharacters(in: .whitespaces)
+                return (s.contains("mode") || s.contains("模式")) && s.hasSuffix("codex")
+            }
+        default: return false
+        }
     }
 }
 

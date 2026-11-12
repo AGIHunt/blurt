@@ -19,6 +19,7 @@ import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { ProjectGlyph } from './glyphs';
 import { OkMark } from './Welcome';
 import '../settings/settings.css';
+import { AgentAppsSheet } from './AgentAppsSheet';
 import { AgentsPane } from './AgentsSettings';
 import { DictationPane, ModelsPane, ScreenTextPane } from './DictationSettings';
 import { StoragePane } from './StorageSettings';
@@ -386,6 +387,9 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
   const [loginErr, setLoginErr] = useState(false);
   const [update, setUpdate] = useState<{ configured: boolean; text?: string; found?: string | null; busy?: boolean }>({ configured: false });
   const [contract, setContract] = useState<'skill_older' | 'app_older' | null>(null);
+  // General → Cards → Agents…
+  const [agentApps, setAgentApps] = useState(false);
+  const closeAgentApps = useCallback(() => setAgentApps(false), []);
   useEffect(() => {
     api.loginItem().then(setLogin, () => {});
     // Check for Updates… only where this build can update itself (the Mac: Sparkle with a key); a version the
@@ -466,9 +470,18 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
             <Popup label={S('settings.general.card_drag')} value={cardDrag} choices={(['paste', 'caption', 'picture'] as const).map((m) => [m, S(`settings.general.card_drag.${m}`)] as [string, string])}
               onChange={setCardDrag} />
           </Row>
+          {/* an agent app (Codex, Cursor, WorkBuddy…: card_drop.rs AGENTS + the user's list) gets the picture's path and
+              the note, as a terminal does (record.agent_drag "paths", the default), or what the row above says ("same") */}
+          <Row id="general.agent_drag">
+            <button onClick={() => setAgentApps(true)}>{S('settings.general.agent_apps.open')}</button>
+            <Popup label={S('settings.general.agent_drag')} value={rec.agent_drag === 'same' ? 'same' : 'paths'}
+              choices={(['paths', 'same'] as const).map((m) => [m, S(`settings.general.agent_drag.${m}`)] as [string, string])}
+              onChange={(m) => save({ record: { agent_drag: m === 'same' ? 'same' : null } })} />
+          </Row>
           <Toggle id="general.drag_note_file" on={rec.drag_note_file === true} set={(v) => save({ record: { drag_note_file: v ? true : null } })} />
         </Group>
       )}
+      {agentApps && <AgentAppsSheet close={closeAgentApps} />}
 
       {/* About, as one quiet line: the version, then the rarely needed ways on; a skill / app mismatch above it */}
       <div className="st-about st-about-line" data-setting="general.about" data-kind="section">

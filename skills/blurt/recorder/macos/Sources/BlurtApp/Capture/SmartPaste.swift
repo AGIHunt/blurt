@@ -16,6 +16,7 @@
 //    picture goes in, with Allow… (v0.9: it armed anyway and the note was silently lost).
 //    In a terminal (a copy with a picture: SmartPasteArm.terminal) the ⌘V is kept the same way and one text step
 //    pastes instead — a line per card, `'<picture path>' <note>` — then the copy goes back. No toast: it is one paste.
+//    The same in a coding agent's window of the Codex app or the Claude app (BlurtCore AgentWindow, v1.0.21).
 //    A terminal with Secure Keyboard Entry on hides its keys from the tap: there the ⌘V pastes the copy's notes.
 //  • DragNoteFollowUp: a card dropped into a chat app brought its picture as the only file; the app is brought
 //    forward at the window it landed on (Accessibility: raise that window, make the app frontmost); the composer that
@@ -199,12 +200,16 @@ final class SmartPasteGate {
     private var armed = false
     /// the kinds of app the armed copy takes ⌘V over (SmartPasteArm.classes: chat, terminal)
     private var classes: Set<DropClass> = []
+    /// the agents' apps while armed (AgentProbe.list: read on the main thread, looked at on the tap's)
+    private var agents: Set<String> = []
     private var front: String?
     private var running = false
 
-    func set(armed a: Bool? = nil, classes c: Set<DropClass>? = nil, front f: String?? = nil, running r: Bool? = nil) {
+    func set(armed a: Bool? = nil, classes c: Set<DropClass>? = nil, agents g: Set<String>? = nil, front f: String?? = nil,
+             running r: Bool? = nil) {
         lock.lock(); defer { lock.unlock() }
         if let a { armed = a }
+        if let g { agents = g }
         if let c { classes = c }
         if let f { front = f }
         if let r { running = r }
@@ -214,7 +219,7 @@ final class SmartPasteGate {
     /// sequence running.
     func intercepts() -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return armed && !running && front != SmartPasteGate.me && SmartPastePolicy.intercepts(frontBundle: front, classes: classes)
+        return armed && !running && front != SmartPasteGate.me && SmartPastePolicy.intercepts(frontBundle: front, classes: classes, agents: agents)
     }
     static let me = Bundle.main.bundleIdentifier
 }
@@ -272,7 +277,7 @@ final class SmartPaste {
         arm = a
         self.rewrite = rewrite
         count = cards.count
-        gate.set(armed: true, classes: a.classes, front: .some(NSWorkspace.shared.frontmostApplication?.bundleIdentifier))
+        gate.set(armed: true, classes: a.classes, agents: AgentProbe.list, front: .some(NSWorkspace.shared.frontmostApplication?.bundleIdentifier))
         startWatching()
         emit(["event": "smart_paste_armed", "steps": steps.map(PasteRunner.describe), "seconds": SmartPasteArm.window,
               "terminal_lines": terminal.map { $0.split(separator: "\n", omittingEmptySubsequences: false).count } ?? 0,
@@ -353,7 +358,8 @@ final class SmartPaste {
         let decision = SmartPastePolicy.decide(.init(
             enabled: SmartPaste.enabled, arm: arm, now: SmartPaste.now, changeCount: pasteboard.changeCount, frontBundle: frontBundle,
             accessibility: SmartPaste.accessibility, secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(),
-            running: runner != nil, frontIsBlurt: frontPID == getpid()))
+            running: runner != nil, frontIsBlurt: frontPID == getpid(),
+            frontAgent: frontPID.map { DropProbe.target(pid: $0).cls == .terminal } ?? false))
         emit(["event": "smart_paste_key", "bundle": frontBundle ?? NSNull(), "decision": "\(decision)"])
         // a chat app: picture, note, picture, note…; a terminal: one paste of a line per card (path, then note)
         let steps: [PasteStep]?
