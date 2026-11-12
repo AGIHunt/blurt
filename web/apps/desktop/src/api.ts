@@ -285,7 +285,8 @@ export interface ModelDownload {
   total_mb: number;
 }
 export interface CloudSummary {
-  services: { id: string; preset: string; has_key: boolean }[];
+  /** record.cloud.services: `region` for a preset with two addresses, `base_url` / `name` for the user's own */
+  services: { id: string; preset: string; has_key: boolean; region?: string; base_url?: string; name?: string }[];
   routes: Record<string, { service: string; model: string } | null>;
 }
 
@@ -443,6 +444,13 @@ export const api = {
   cloudConnect: (preset: string, key: string) =>
     invoke<{ ok: boolean; ms?: number; code?: string; error?: string; summary?: CloudSummary }>('cloud_connect', { preset, key, baseUrl: null }),
   cloudDisconnect: (id: string) => invoke<CloudSummary>('cloud_disconnect', { id }),
+  /** Advanced → Custom Model… (dictation/commands.rs `cloud_custom_connect`): the job is tested on the model first; only
+   *  then is the service saved and the job put on it. `service`: a connected one's id (its key kept unless one is typed);
+   *  else a new one of `preset`. */
+  cloudCustomConnect: (a: { job: string; service?: string | null; preset?: string | null; region?: string | null; baseUrl?: string | null; name?: string | null; key: string; model: string }) =>
+    invoke<{ ok: boolean; ms?: number; code?: string; service?: string; summary?: CloudSummary }>('cloud_custom_connect', {
+      job: a.job, service: a.service ?? null, preset: a.preset ?? null, region: a.region ?? null, baseUrl: a.baseUrl ?? null, name: a.name ?? null, key: a.key, model: a.model,
+    }),
   onboarding: () => invoke<Onboarding>('onboarding_get'),
   onboardingStep: (step: number) => invoke<void>('onboarding_step', { step }),
   onboardingFinish: (login: boolean | null) => invoke<LoginItem>('onboarding_finish', { login }),
@@ -480,6 +488,11 @@ export const api = {
   appContractHelp: () => invoke<void>('app_contract_help'),
   storageScan: () => invoke<StorageScan>('storage_scan'),
   storageTrash: (paths: string[]) => invoke<string[]>('storage_trash', { files: paths }),
+  // Storage → Data location (location.rs): where the data is, the folder dialog + its check, the move (then a restart)
+  storageLocation: () => invoke<StorageLocation>('storage_location'),
+  storageLocationPick: (title: string) => invoke<LocationCheck>('storage_location_pick', { title }),
+  storageLocationCheck: (folder: string | null) => invoke<LocationCheck>('storage_location_check', { folder }),
+  storageLocationMove: (folder: string | null) => invoke<LocationCheck>('storage_location_move', { folder }),
   videosTrash: (days: number | null) => invoke<{ count: number; bytes: number }>('videos_trash', { days }),
   videosAutoSet: (days: number | null) => invoke<{ auto_days: number | null }>('videos_auto_set', { days }),
   cloudCurated: () => invoke<{ jobs: Record<string, CuratedOption[]> }>('cloud_curated'),
@@ -591,6 +604,41 @@ export interface StorageScan {
   /** free space on Blurt's disk (bytes) */
   available?: number | null;
 }
+/** Where Blurt keeps its data now (location.rs `storage_location`). */
+export interface StorageLocation {
+  home: string;
+  workspace: string;
+  /** a folder the user chose (null: the default, ~/.blurt and ~/Blurt) */
+  custom: boolean;
+  folder: string | null;
+  profile: string;
+  /** BLURT_HOME / BLURT_WORKSPACE set outside Blurt: the location can't be changed here */
+  fixed_by: string | null;
+  /** an earlier move's old folders are still being deleted */
+  cleanup: boolean;
+  moving: boolean;
+}
+/** Can the data go there (and, from storage_location_move, it is on its way)? `cancel`: the dialog was closed. */
+export interface LocationCheck {
+  cancel?: boolean;
+  ok?: boolean;
+  /** same | inside_current | contains_current | has_data | not_writable | no_space | env | moving | busy_recording |
+   * busy_dictation | busy_download | busy_job */
+  error?: string;
+  var?: string;
+  /** copy_failed: what went wrong */
+  detail?: string;
+  folder?: string | null;
+  home?: string;
+  workspace?: string;
+  bytes?: number;
+  free?: number | null;
+  /** Python and its packages are downloaded again at the new place */
+  redownload?: boolean;
+}
+/** `storage://move` while the data is copied. */
+export type MoveProgress = { phase: 'copy'; done: number; total: number } | { phase: 'restart' } | { phase: 'error'; error: string; detail?: string };
+export const onStorageMove = (cb: (p: MoveProgress) => void) => listen<MoveProgress>('storage://move', cb);
 export interface CuratedOption {
   service: string;
   model: string;

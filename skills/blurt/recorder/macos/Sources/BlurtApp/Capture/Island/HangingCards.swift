@@ -87,9 +87,10 @@
 //                                                       (WeChat / QQ: the rich item, which
 //                                                       their composer puts the picture in
 //                                                       from — v0.9, BlurtCore DragLanding)
-//      terminal  Terminal, iTerm2, Ghostty, Warp…       the picture's path and the .md's   untouched
-//                                                       path (Claude Code / Codex read
-//                                                       it) — never the note's text
+//      terminal  Terminal, iTerm2, Ghostty, Warp…       one line of text: the picture's    a line per card: path,
+//                                                       path, then the note (its lines     then note (one paste;
+//                                                       joined with spaces) — no file,     the copy comes back)
+//                                                       no .md, never a newline
 //      finder    the Finder, the Desktop                the picture file                   untouched
 //    The .md (out/<NNN>/截图-HHMMSS-备注.md: the note and nothing else) is an option for chat apps and the Finder:
 //    Settings → General → "Also attach the note as a .md file" (record.drag_note_file, off).
@@ -110,7 +111,8 @@
 //    clipboard still holds it (its change count), ⌘V in a chat app runs a sequence instead — each picture alone, then
 //    its note alone, one paste each, each step once the app has read the last (a note with more after it ends its
 //    line) — then the card copy is back on the clipboard (armed again) and the island says "图 + 文已粘贴". An active
-//    event tap, only while a copy is armed; ⌘V in Blurt, a rich app, a terminal or the Finder passes untouched.
+//    event tap, only while a copy is armed; ⌘V in Blurt, a rich app or the Finder passes untouched. In a terminal the
+//    ⌘V of a copy with a picture pastes one line per card instead — `'<path>' <note>` — and the copy comes back.
 //    (2) after a drop into a chat app (only when it got the chat layout: one that read the rich layout by mistake
 //    already has the note): the app comes forward at that window; the composer that received the drop gets the focus
 //    if it hasn't (the editable text under the drop point, else the nearest one in that window — a chat page is often
@@ -131,7 +133,7 @@
 //    step couldn't run, the Finder without the .md, or not sure what it got), it also goes on the clipboard
 //    (record.drag_copy_note, on by default; DragReceipt.copiesNote); a rich app, a chat app that got the note pasted
 //    and a terminal leave the clipboard alone. The toast says what went in (DragReceipt): "Dragged out · picture and
-//    note" (rich apps, chat apps with the note pasted), "… picture and note paths" in a terminal (no ⌘V: that would
+//    note" (rich apps, chat apps with the note pasted), "… picture path and note" in a terminal (no ⌘V: that would
 //    paste at a prompt), "… picture · note copied, ⌘V to paste" where only the picture went in, "Dragged out · note
 //    copied, ⌘V to paste" when it isn't the kind of app the pasteboard was last written for. Undo puts the card back
 //    and the clipboard as it was. It went with the drag, so nothing falls: the thread lets go and its free end springs

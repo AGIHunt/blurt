@@ -6,7 +6,10 @@
 // is not what anyone wants in a chat. The rule now is the one WeChat got in v0.8.4: **the picture, then the text**.
 // The drop carries the picture as its only file, and Blurt pastes the note into the same composer right after
 // (CardSmartPaste.swift: DragFollowUp, FollowUpFocus). A click-copy's ⌘V does the same (smart paste: picture, then
-// note). The .md is an option (record.drag_note_file, off) — and still what a terminal gets.
+// note). The .md is an option (record.drag_note_file, off).
+// A terminal (and Claude Code / Codex running in it) gets each picture paired with its own words: a drop is
+// one line of text, `'<picture path>' <note>`; a ⌘V after a click-copy is one such line per card. With several
+// pictures and several notes nothing gets out of order (the .md next to a path left the agent to match them up).
 //
 //   class      apps                                          drop                              ⌘V after a click-copy
 //   rich       Notes, TextEdit, Mail, Pages, Keynote,        one rich item: picture + note     one rich paste (as it
@@ -19,9 +22,11 @@
 //                                                            if record.drag_note_file is on.
 //                                                            WeChat / QQ: the rich item (v0.9,
 //                                                            DragLanding), then the note
-//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty,       the picture's path and the        untouched
-//              WezTerm, Alacritty, Hyper, Tabby              .md's path (Claude Code / Codex
-//                                                            read it) — never the note's text
+//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty,       one line of text: the picture's   one line per card:
+//              WezTerm, Alacritty, Hyper, Tabby              path (shell-quoted where needed)  path, then note (smart
+//                                                            then the note, its lines joined   paste; else untouched)
+//                                                            with spaces — no file, no .md,
+//                                                            never a newline
 //   finder     the Finder (and the Desktop)                  the picture file (+ the .md if    untouched
 //                                                            record.drag_note_file is on)
 //
@@ -190,7 +195,7 @@ public enum DragReceipt {
         /// the picture went in, the note didn't: a chat app where the follow-up couldn't run (or the app never read
         /// the note), the Finder without the .md
         case pictureOnly = "picture_only"
-        /// a terminal: both paths
+        /// a terminal: the picture's path and the note, one line of text
         case paths
         /// the Finder with the .md (record.drag_note_file)
         case files
@@ -218,13 +223,13 @@ public enum DragReceipt {
     }
 
     /// The safety net: the note goes on the clipboard only where it didn't go in (picture only, or not sure). A rich
-    /// app, a chat app that got the note pasted, a terminal (both paths; ⌘V would paste at a prompt) and the Finder
-    /// with the .md leave the clipboard alone.
+    /// app, a chat app that got the note pasted, a terminal (path and note went in; ⌘V would paste at a prompt) and
+    /// the Finder with the .md leave the clipboard alone.
     public static func copiesNote(_ o: Outcome) -> Bool { o == .pictureOnly || o == .unsure }
 
     /// The Capture table key. `hasNote`: a shot with a note; `noteCopied`: the safety net put it on the clipboard;
     /// `noteFile`: the .md went too.
-    ///  • both: "Dragged out · picture and note" (nothing to paste) · paths: "… picture and note paths" (no ⌘V)
+    ///  • both: "Dragged out · picture and note" (nothing to paste) · paths: "… picture path and note" (no ⌘V)
     ///  • files: "… picture and note file" (the Finder with the .md)
     ///  • picture only: "… picture · note copied, ⌘V to paste" ("… picture and note file · …" when the .md went too)
     ///  • not sure: "Dragged out · note copied, ⌘V to paste"

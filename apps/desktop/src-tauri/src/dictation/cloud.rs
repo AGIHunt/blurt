@@ -16,18 +16,162 @@ pub const JOBS: [&str; 3] = ["polish", "translate", "vision"];
 #[cfg(windows)]
 const TARGET: &str = "Blurt Cloud Polish";
 
-/// preset → (base URL, protocol): polish_cloud.PRESETS
-fn preset(id: &str) -> Option<(&'static str, &'static str)> {
-    match id {
-        "deepseek" => Some(("https://api.deepseek.com", "openai")),
-        "dashscope" => Some((
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "openai",
-        )),
-        "openai" => Some(("https://api.openai.com/v1", "openai")),
-        "anthropic" => Some(("https://api.anthropic.com", "anthropic")),
-        _ => None,
+/// A service's preset (the Mac's CloudPreset.all, CloudServices.swift): its protocol and its address per region —
+/// one address, a mainland-China and an international one, or none (the user's own: custom-openai / custom-anthropic,
+/// whose service keeps its `base_url`). The addresses are the only hosts a key ever goes to.
+pub struct Preset {
+    pub id: &'static str,
+    pub protocol: &'static str,
+    /// (region "china" | "global" | None, base URL)
+    pub endpoints: &'static [(Option<&'static str>, &'static str)],
+}
+
+impl Preset {
+    /// the user's own address (no preset address)
+    pub fn custom(&self) -> bool {
+        self.endpoints.is_empty()
     }
+    /// two addresses: the service keeps its region
+    pub fn regional(&self) -> bool {
+        self.endpoints.len() > 1
+    }
+    /// The address for a region: that region's, else the first (a service saved without a region).
+    pub fn base(&self, region: Option<&str>) -> Option<&'static str> {
+        self.endpoints
+            .iter()
+            .find(|(r, _)| region.is_some() && *r == region)
+            .or_else(|| self.endpoints.first())
+            .map(|(_, b)| *b)
+    }
+}
+
+const CN: Option<&str> = Some("china");
+const GL: Option<&str> = Some("global");
+
+/// In the Mac's order. Volcengine Speech (speech only, a websocket) isn't here: it has no text models.
+pub const PRESETS: &[Preset] = &[
+    Preset { id: "deepseek", protocol: "openai", endpoints: &[(None, "https://api.deepseek.com")] },
+    Preset {
+        id: "dashscope",
+        protocol: "openai",
+        endpoints: &[
+            (CN, "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            (GL, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+        ],
+    },
+    Preset {
+        id: "volcengine",
+        protocol: "openai",
+        endpoints: &[(CN, "https://ark.cn-beijing.volces.com/api/v3"), (GL, "https://ark.ap-southeast.bytepluses.com/api/v3")],
+    },
+    Preset { id: "moonshot", protocol: "openai", endpoints: &[(CN, "https://api.moonshot.cn/v1"), (GL, "https://api.moonshot.ai/v1")] },
+    Preset {
+        id: "zhipu",
+        protocol: "openai",
+        endpoints: &[(CN, "https://open.bigmodel.cn/api/paas/v4"), (GL, "https://api.z.ai/api/paas/v4")],
+    },
+    // a Token Plan (subscription) key — sk-cp- — works on the same addresses as a pay-as-you-go one
+    Preset { id: "minimax", protocol: "openai", endpoints: &[(CN, "https://api.minimax.cn/v1"), (GL, "https://api.minimax.io/v1")] },
+    Preset { id: "xiaomi", protocol: "openai", endpoints: &[(None, "https://api.xiaomimimo.com/v1")] },
+    Preset { id: "openai", protocol: "openai", endpoints: &[(None, "https://api.openai.com/v1")] },
+    Preset { id: "anthropic", protocol: "anthropic", endpoints: &[(None, "https://api.anthropic.com")] },
+    Preset { id: "gemini", protocol: "openai", endpoints: &[(None, "https://generativelanguage.googleapis.com/v1beta/openai")] },
+    Preset { id: "openrouter", protocol: "openai", endpoints: &[(None, "https://openrouter.ai/api/v1")] },
+    Preset { id: "custom-openai", protocol: "openai", endpoints: &[] },
+    Preset { id: "custom-anthropic", protocol: "anthropic", endpoints: &[] },
+];
+
+pub fn preset(id: &str) -> Option<&'static Preset> {
+    PRESETS.iter().find(|p| p.id == id)
+}
+
+/// A free id for a new service of a preset (the Mac's CloudService.newID): the preset's own, else "<preset>-2", "-3"…;
+/// the user's own services "custom-1", "custom-2"…
+pub fn new_id(preset_id: &str, taken: &[String]) -> String {
+    let custom = preset_id.starts_with("custom");
+    let stem = if custom { "custom" } else { preset_id };
+    if !custom && !taken.iter().any(|t| t == stem) {
+        return stem.to_string();
+    }
+    let mut n = if custom { 1 } else { 2 };
+    while taken.iter().any(|t| *t == format!("{stem}-{n}")) {
+        n += 1;
+    }
+    format!("{stem}-{n}")
+}
+
+/// A service's address and protocol: its own base URL when it has one, else its preset's for its region. An unknown
+/// preset (an older or newer Blurt's) is sent as OpenAI-compatible to its own address.
+pub fn address(svc: &Value) -> (String, &'static str) {
+    let p = preset(svc["preset"].as_str().unwrap_or(""));
+    let own = svc["base_url"].as_str().map(str::trim).filter(|b| !b.is_empty());
+    let base = own
+        .map(str::to_string)
+        .or_else(|| p.and_then(|p| p.base(svc["region"].as_str())).map(str::to_string))
+        .unwrap_or_default();
+    (base, p.map_or("openai", |p| p.protocol))
+}
+
+/// The request's `cloud` object for polish.py / polish_cloud.py (polish_cloud.settings) for one service and model.
+pub fn request(svc: &Value, model: &str, key: &str) -> Value {
+    let (base_url, proto) = address(svc);
+    json!({"provider": svc["preset"].as_str().unwrap_or("custom"), "service": svc["id"], "base_url": base_url,
+           "model": model, "protocol": proto, "key": key, "translate_model": model, "vision_model": model})
+}
+
+/// What keeps a Custom Model's Save from even testing (the Mac's CloudCustom.problem), as the failure's code: the
+/// address (https, or http only to this computer), the model id, the key (none typed and none saved, or one no key can
+/// be). None: Save may test.
+pub fn custom_problem(base_url: &str, model: &str, typed_key: &str, key_saved: bool) -> Option<&'static str> {
+    if !valid_address(base_url) {
+        return Some("address");
+    }
+    if !valid_model_id(model.trim()) {
+        return Some("model_id");
+    }
+    let k = typed_key.trim();
+    if k.is_empty() {
+        return (!key_saved).then_some("no_key");
+    }
+    if k.chars().any(char::is_whitespace) {
+        return Some("key_spaces");
+    }
+    // printable ASCII only: an HTTP header can't carry anything else
+    if k.chars().any(|c| !c.is_ascii_graphic()) {
+        return Some("key_characters");
+    }
+    None
+}
+
+/// An address a key may go to: https, or http only to this computer (a local server).
+pub fn valid_address(s: &str) -> bool {
+    let s = s.trim();
+    let (scheme, rest) = match s.split_once("://") {
+        Some(x) => x,
+        None => return false,
+    };
+    let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = if host_port.starts_with('[') {
+        host_port.split(']').next().map(|h| format!("{h}]")).unwrap_or_default()
+    } else {
+        host_port.split(':').next().unwrap_or("").to_string()
+    };
+    if host.is_empty() || host.contains('@') || host.contains(' ') {
+        return false;
+    }
+    match scheme.to_ascii_lowercase().as_str() {
+        "https" => true,
+        "http" => ["localhost", "127.0.0.1", "[::1]"].contains(&host.as_str()),
+        _ => false,
+    }
+}
+
+/// A model id as services write them: letters, digits and . _ - : / @ + (OpenRouter's "vendor/model"), up to 100.
+pub fn valid_model_id(s: &str) -> bool {
+    let mut cs = s.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphanumeric())
+        && s.len() <= 100
+        && cs.all(|c| c.is_ascii_alphanumeric() || "._:/@+-".contains(c))
 }
 
 pub fn measured_default(preset: &str, job: &str) -> Option<&'static str> {
@@ -98,17 +242,8 @@ pub fn route(job: &str) -> Option<(Value, String)> {
 /// The request's `cloud` object for polish.py (polish_cloud.settings), with the key; None: the job stays local.
 pub fn payload(job: &str) -> Option<Value> {
     let (svc, model) = route(job)?;
-    let id = svc["id"].as_str()?;
-    let p = svc["preset"].as_str().unwrap_or("custom");
-    let (base, proto) = preset(p).unwrap_or(("", "openai"));
-    let base_url = svc["base_url"]
-        .as_str()
-        .filter(|b| !b.trim().is_empty())
-        .unwrap_or(base);
-    Some(
-        json!({"provider": p, "service": id, "base_url": base_url, "model": model, "protocol": proto,
-                "key": key(id)?, "translate_model": model, "vision_model": model}),
-    )
+    let k = key(svc["id"].as_str()?)?;
+    Some(request(&svc, &model, &k))
 }
 
 /// The cloud speech keys for the speech server (transcribe.py reads them from its environment, as the Mac's app sets
@@ -166,29 +301,49 @@ pub fn connect(
     base_url: Option<&str>,
     name: Option<&str>,
 ) -> Result<String, String> {
-    if key_value.trim().is_empty() {
-        return Err("empty key".into());
-    }
-    let mut s = setup();
-    let id = preset_id.to_string();
-    let mut services: Vec<Value> = s["services"].as_array().cloned().unwrap_or_default();
-    services.retain(|x| x["id"] != json!(id));
-    let mut svc = json!({"id": id, "preset": preset_id});
+    let mut svc = json!({"id": preset_id, "preset": preset_id});
     if let Some(b) = base_url.filter(|b| !b.trim().is_empty()) {
         svc["base_url"] = json!(b.trim());
     }
     if let Some(n) = name.filter(|n| !n.trim().is_empty()) {
         svc["name"] = json!(n.trim());
     }
+    connect_service(svc, Some(key_value))
+}
+
+/// Save a service as given ({"id", "preset", "region"?, "base_url"?, "name"?}, replacing one with its id) and, when a
+/// key comes with it, its key.
+pub fn connect_service(svc: Value, key_value: Option<&str>) -> Result<String, String> {
+    let id = svc["id"].as_str().filter(|i| !i.is_empty()).ok_or("no service id")?.to_string();
+    let k = key_value.map(str::trim);
+    if k == Some("") {
+        return Err("empty key".into());
+    }
+    let mut s = setup();
+    let mut services: Vec<Value> = s["services"].as_array().cloned().unwrap_or_default();
+    services.retain(|x| x["id"] != json!(id));
     services.push(svc);
     s["services"] = json!(services);
     s["v"] = json!(2);
     if s.get("jobs").is_none() {
         s["jobs"] = json!({});
     }
-    store_key(&id, key_value.trim())?;
+    if let Some(k) = k {
+        store_key(&id, k)?;
+    }
     save(s)?;
     Ok(id)
+}
+
+/// Put a job on a service's model (record.cloud.jobs[job] = {"service", "model"}).
+pub fn set_job(job: &str, service: &str, model: &str) -> Result<(), String> {
+    let mut s = setup();
+    if s.get("jobs").and_then(Value::as_object).is_none() {
+        s["jobs"] = json!({});
+    }
+    s["jobs"][job] = json!({"service": service, "model": model.trim()});
+    s["v"] = json!(2);
+    save(s)
 }
 
 pub fn disconnect(id: &str) -> Result<(), String> {
@@ -335,6 +490,71 @@ fn delete_key(_id: &str) {}
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn the_presets_addresses_by_region() {
+        let mm = super::preset("minimax").unwrap();
+        assert!(mm.regional() && !mm.custom());
+        assert_eq!(mm.base(Some("china")), Some("https://api.minimax.cn/v1"));
+        assert_eq!(mm.base(Some("global")), Some("https://api.minimax.io/v1"));
+        // a service saved without a region: the first address (Model Studio's Beijing one, as before regions)
+        assert_eq!(super::preset("dashscope").unwrap().base(None), Some("https://dashscope.aliyuncs.com/compatible-mode/v1"));
+        assert_eq!(super::preset("deepseek").unwrap().base(Some("global")), Some("https://api.deepseek.com"));
+        assert!(super::preset("custom-openai").unwrap().custom());
+        assert_eq!(super::preset("custom-anthropic").unwrap().base(None), None);
+        assert_eq!(super::preset("anthropic").unwrap().protocol, "anthropic");
+        assert!(super::preset("volcengine-speech").is_none());
+    }
+
+    #[test]
+    fn a_service_is_sent_to_its_address_in_its_protocol() {
+        let c = super::request(
+            &json!({"id": "custom-1", "preset": "custom-anthropic", "base_url": " https://api.minimax.io/anthropic "}),
+            "MiniMax-M3",
+            "sk-cp-x",
+        );
+        assert_eq!(c["protocol"], "anthropic");
+        assert_eq!(c["base_url"], "https://api.minimax.io/anthropic");
+        assert_eq!(c["model"], "MiniMax-M3");
+        assert_eq!(c["service"], "custom-1");
+        let c = super::request(&json!({"id": "custom-2", "preset": "custom-openai", "base_url": "https://opencode.ai/zen/go/v1"}), "m", "k");
+        assert_eq!((c["protocol"].as_str(), c["base_url"].as_str()), (Some("openai"), Some("https://opencode.ai/zen/go/v1")));
+        let c = super::request(&json!({"id": "minimax", "preset": "minimax", "region": "global"}), "MiniMax-M3", "k");
+        assert_eq!((c["protocol"].as_str(), c["base_url"].as_str()), (Some("openai"), Some("https://api.minimax.io/v1")));
+        let c = super::request(&json!({"id": "moonshot", "preset": "moonshot", "region": "china"}), "kimi", "k");
+        assert_eq!(c["base_url"], "https://api.moonshot.cn/v1");
+        let c = super::request(&json!({"id": "anthropic", "preset": "anthropic"}), "claude", "k");
+        assert_eq!((c["protocol"].as_str(), c["base_url"].as_str()), (Some("anthropic"), Some("https://api.anthropic.com")));
+        // a preset this build doesn't know: OpenAI-compatible, at its own address
+        let c = super::request(&json!({"id": "x", "preset": "future", "base_url": "https://x.example/v1"}), "m", "k");
+        assert_eq!((c["protocol"].as_str(), c["base_url"].as_str()), (Some("openai"), Some("https://x.example/v1")));
+    }
+
+    #[test]
+    fn a_new_services_id() {
+        let taken = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(super::new_id("minimax", &taken(&["deepseek"])), "minimax");
+        assert_eq!(super::new_id("minimax", &taken(&["minimax"])), "minimax-2");
+        assert_eq!(super::new_id("custom-openai", &taken(&[])), "custom-1");
+        assert_eq!(super::new_id("custom-anthropic", &taken(&["custom-1", "custom-2"])), "custom-3");
+    }
+
+    #[test]
+    fn what_keeps_a_custom_model_from_testing() {
+        let p = super::custom_problem;
+        assert_eq!(p("https://api.minimax.io/v1", "MiniMax-M3", "sk-cp-abc", false), None);
+        assert_eq!(p("http://localhost:11434/v1", "qwen3:8b", "", true), None);
+        assert_eq!(p("http://api.example.com/v1", "m", "k", false), Some("address"));
+        assert_eq!(p("api.example.com/v1", "m", "k", false), Some("address"));
+        assert_eq!(p("https://openrouter.ai/api/v1", "openai/gpt-6-mini", "k", false), None);
+        assert_eq!(p("https://x.example/v1", "", "k", false), Some("model_id"));
+        assert_eq!(p("https://x.example/v1", "a model", "k", false), Some("model_id"));
+        assert_eq!(p("https://x.example/v1", "m", "  ", false), Some("no_key"));
+        assert_eq!(p("https://x.example/v1", "m", "sk-a b", false), Some("key_spaces"));
+        assert_eq!(p("https://x.example/v1", "m", "sk-\u{e7}", false), Some("key_characters"));
+    }
+
     #[test]
     fn the_volcengine_pair() {
         assert_eq!(super::volc_split(" 123:abc:def "), Some(("123".into(), "abc:def".into())));

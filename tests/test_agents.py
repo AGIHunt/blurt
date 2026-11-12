@@ -521,3 +521,28 @@ def test_shim_target_is_the_native_program_not_node():
                     '"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n')
     assert agents.shim_target(claude) == "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"
     assert agents.shim_target(codex) is None
+
+
+def test_probe_timeout_kills_the_tree_and_returns():
+    """A probe that times out returns at once, even when a grandchild holds the pipes (Windows: cmd.exe → node.exe;
+    here sh → sleep): subprocess.run(timeout=) would wait for the grandchild."""
+    import time
+    t = time.monotonic()
+    code, out, _ = agents.probe(["sh", "-c", "echo started; sleep 30 & sleep 30"], dict(os.environ), 1)
+    assert code is None and time.monotonic() - t < 6
+
+
+def test_detect_probes_agents_side_by_side(tmp_path):
+    """detect() checks every agent at once: three CLIs taking 2 s each finish in about 2 s, not 6, in the asked order."""
+    import time
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    for name in ("claude", "codex", "kimi"):
+        f = bins / name
+        f.write_text("#!/bin/sh\nsleep 2\necho '1.0'\n")
+        f.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bins}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    t = time.monotonic()
+    d = agents.detect(["kimi", "claude", "codex"], login=False, version=True, env=env)
+    assert [r["id"] for r in d["agents"]] == ["kimi", "claude", "codex"]
+    assert time.monotonic() - t < 5

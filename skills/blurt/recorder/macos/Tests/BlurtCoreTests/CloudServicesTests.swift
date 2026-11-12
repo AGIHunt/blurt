@@ -49,6 +49,8 @@ final class CloudServicesTests: XCTestCase {
         XCTAssertEqual(CloudPreset.detect(key: " sk-or-v1-abc\n"), "openrouter")
         XCTAssertEqual(CloudPreset.detect(key: "AIzaSyabc"), "gemini")
         XCTAssertEqual(CloudPreset.detect(key: "sk-proj-abc"), "openai")
+        // a MiniMax Token Plan (subscription) key
+        XCTAssertEqual(CloudPreset.detect(key: "sk-cp-abc123"), "minimax")
         // DeepSeek, Model Studio, Moonshot, MiMo… all start with sk-: not guessed
         XCTAssertNil(CloudPreset.detect(key: "sk-0123456789abcdef"))
         XCTAssertNil(CloudPreset.detect(key: ""))

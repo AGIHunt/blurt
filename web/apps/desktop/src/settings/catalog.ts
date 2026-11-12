@@ -88,6 +88,7 @@ export const SECTIONS: Record<string, Key> = {
   'agents.manual': 'agents.manual.header',
   'agents.ask': 'agents.ask.header',
   'privacy.permissions': 'settings.privacy.permissions_live',
+  'storage.location': 'win.storage.location.section',
   'storage.recordings': 'settings.storage.recordings',
   'storage.models': 'settings.storage.models',
   'storage.files': 'settings.storage.app_data',
@@ -197,6 +198,7 @@ export const ENTRIES: Entry[] = (() => {
     whole('privacy.permissions'),
     row('privacy.mic', 'privacy.permissions', 'settings.perm.microphone', { detail: 'win.privacy.mic.detail' }),
     // Storage
+    row('storage.location', 'storage.location', 'win.storage.location', { detail: 'win.storage.location.detail' }),
     whole('storage.recordings'),
     row('storage.auto_delete', 'storage.recordings', 'settings.storage.videos.auto', { detail: 'settings.storage.videos.footer' }),
     whole('storage.models', 'settings.storage.model.footer'),

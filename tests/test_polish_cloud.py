@@ -84,6 +84,17 @@ def test_openai_and_anthropic_requests(api):
     assert seen["body"]["system"] == "s" and [m["role"] for m in seen["body"]["messages"]] == ["user"]
 
 
+def test_subscription_addresses_build_the_right_url():
+    # a coding plan used as a Custom Model: OpenCode Go (OpenAI-compatible) and MiniMax's Anthropic-compatible address
+    def url(base, protocol):
+        cfg = C.settings({"provider": "custom-" + protocol, "base_url": base, "model": "m", "protocol": protocol, "key": "k"})
+        return C.request(cfg, [{"role": "user", "content": "u"}], 10)[0]
+    assert url("https://opencode.ai/zen/go/v1", "openai") == "https://opencode.ai/zen/go/v1/chat/completions"
+    assert url("https://api.minimax.io/anthropic", "anthropic") == "https://api.minimax.io/anthropic/v1/messages"
+    assert url("https://api.minimax.io/v1", "openai") == "https://api.minimax.io/v1/chat/completions"
+    assert url("https://api.anthropic.com/v1/", "anthropic") == "https://api.anthropic.com/v1/messages"
+
+
 def test_errors_have_codes_and_never_the_key(api):
     api.status = 401
     r = C.check(cloud(api))

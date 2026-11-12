@@ -111,7 +111,7 @@ export type IslandOp =
   | { op: 'card'; card: Card; pull: boolean; from?: CssRect | null }
   | { op: 'toast'; kind: 'sorted' | 'failed' | 'error'; n?: number; job?: string; code?: string; type?: string }
   /** a card dragged into another app (island.rs): taken, Undo puts it back; `note`: its note went on the clipboard */
-  | { op: 'toast'; kind: 'taken'; cards: { n: number; session?: string | null }[]; what?: 'picture' | 'note' | 'text' | 'files' | 'files_note' }
+  | { op: 'toast'; kind: 'taken'; cards: { n: number; session?: string | null }[]; what?: 'picture' | 'note' | 'text' | 'files' | 'files_note' | 'paths' | 'words' }
   /** a dictation line: `msg` a catalog key, `vars` its values, `action` one button (sent back as `data-a`); `key` what
    *  it is about (a newer line with the same key replaces it; dictation/flow.rs `toast_keys`), `passive` a tip or a
    *  reminder that never covers another line, `mark` the ok check for a done line */

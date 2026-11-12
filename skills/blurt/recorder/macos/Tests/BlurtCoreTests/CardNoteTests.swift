@@ -115,4 +115,69 @@ final class CardNoteTests: XCTestCase {
         XCTAssertNil(CardTransfer.dragText(nil))
         XCTAssertNil(CardTransfer.dragText(" \n\u{1B}\n "))
     }
+
+    // MARK: a terminal: the picture's path, then its note (Claude Code / Codex read the picture from its path)
+
+    func testAPlainPathStaysAsItIs() {
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/ana/.blurt/sessions/2026-11-12-101010/out/003/Screenshot-144012.png"),
+                       "/Users/ana/.blurt/sessions/2026-11-12-101010/out/003/Screenshot-144012.png")
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/ana/.blurt/out/003/截图-144012.png"), "/Users/ana/.blurt/out/003/截图-144012.png",
+                       "another script's letters need no quotes")
+        XCTAssertEqual(CardTransfer.shellQuoted("/a/b_c+d,e:f@g%h.png"), "/a/b_c+d,e:f@g%h.png")
+    }
+
+    func testAPathThatNeedsItIsSingleQuoted() {
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/Ana Li/Library/Application Support/x.png"),
+                       "'/Users/Ana Li/Library/Application Support/x.png'")
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/o'brien/x.png"), "'/Users/o'\\''brien/x.png'", "a quote inside: '\\''")
+        XCTAssertEqual(CardTransfer.shellQuoted("/tmp/\"q\" $HOME `id` *.png"), "'/tmp/\"q\" $HOME `id` *.png'",
+                       "inside single quotes nothing expands")
+        XCTAssertEqual(CardTransfer.shellQuoted("/tmp/a;b&c|d(e)!.png"), "'/tmp/a;b&c|d(e)!.png'")
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/李 雷/截图 144012.png"), "'/Users/李 雷/截图 144012.png'")
+        XCTAssertEqual(CardTransfer.shellQuoted("/Users/李\u{3000}雷/x.png"), "'/Users/李\u{3000}雷/x.png'", "an ideographic space")
+        XCTAssertEqual(CardTransfer.shellQuoted("/x/\u{202E}gnp.exe"), "'/x/\u{202E}gnp.exe'", "a bidi override is quoted, never bare")
+        XCTAssertEqual(CardTransfer.shellQuoted("~/x.png"), "'~/x.png'", "no tilde expansion")
+    }
+
+    func testAPathNeverCarriesAControlCharacter() {
+        XCTAssertEqual(CardTransfer.shellQuoted("/tmp/a\nb\u{1B}c.png"), "/tmp/abc.png")
+        XCTAssertEqual(CardTransfer.shellQuoted("\n"), "''")
+    }
+
+    func testATerminalLineIsThePathThenTheNoteOnOneLine() {
+        let img = URL(fileURLWithPath: "/Users/Ana Li/.blurt/out/003/截图-144012.png")
+        XCTAssertEqual(CardTransfer.terminalLine(image: img, note: "结账按钮被挡住了\nthe banner covers it\r\n\n  see the logo "),
+                       "'/Users/Ana Li/.blurt/out/003/截图-144012.png' 结账按钮被挡住了 the banner covers it see the logo",
+                       "line breaks flattened to spaces, blank lines and ends dropped")
+        let line = CardTransfer.terminalLine(image: img, note: "ls\n\u{1B}[201~rm -rf ~\r\u{07}\u{2028}x")!
+        XCTAssertFalse(line.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F || $0.value == 0x2028 },
+                       "nothing a terminal would run or read as an escape (the end of a bracketed paste)")
+        XCTAssertEqual(line, "'/Users/Ana Li/.blurt/out/003/截图-144012.png' ls [201~rm -rf ~ x")
+        XCTAssertEqual(CardTransfer.terminalLine(image: img, note: nil), "'/Users/Ana Li/.blurt/out/003/截图-144012.png'")
+        XCTAssertEqual(CardTransfer.terminalLine(image: img, note: " \n "), "'/Users/Ana Li/.blurt/out/003/截图-144012.png'")
+        XCTAssertEqual(CardTransfer.terminalLine(image: nil, note: "call Ana\nabout pricing"), "call Ana about pricing", "a voice card: its words")
+        XCTAssertNil(CardTransfer.terminalLine(image: nil, note: nil))
+        XCTAssertEqual(CardTransfer.terminalLine(image: URL(fileURLWithPath: "/s/a.png"), note: "tab\there"), "/s/a.png tab here")
+    }
+
+    /// Several cards: one line each, in the copy's order — each picture keeps its own words.
+    func testTerminalLinesKeepEveryPictureWithItsNote() {
+        let a = URL(fileURLWithPath: "/s/out/001/截图-101010.png"), b = URL(fileURLWithPath: "/s/o ut/002/截图-101020.png")
+        let text = CardTransfer.terminalLines([
+            CardPasteboard.Card(image: a, note: "first\nline two"),
+            CardPasteboard.Card(image: nil, note: "a voice card"),
+            CardPasteboard.Card(image: b, note: nil),
+            CardPasteboard.Card(image: nil, note: "  "),
+            CardPasteboard.Card(image: a, note: "again"),
+        ])
+        XCTAssertEqual(text, [
+            "/s/out/001/截图-101010.png first line two",
+            "a voice card",
+            "'/s/o ut/002/截图-101020.png'",
+            "/s/out/001/截图-101010.png again",
+        ].joined(separator: "\n"))
+        XCTAssertNil(CardTransfer.terminalLines([CardPasteboard.Card(image: nil, note: "only words")]),
+                     "no picture: the copy's own text is what a terminal gets")
+        XCTAssertNil(CardTransfer.terminalLines([]))
+    }
 }

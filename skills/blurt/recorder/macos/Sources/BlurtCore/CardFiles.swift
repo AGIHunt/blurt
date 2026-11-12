@@ -4,8 +4,8 @@
 // "2" on the drag badge, but only the picture arrived. A web app's drop handler gets `dataTransfer.files` and a
 // separate `getData('text/plain')`; when there are files it attaches them and ignores the loose text. The note then
 // travelled as a .md file next to the picture — until v0.8.5, when the note is pasted into the composer after the
-// picture instead (CardDropTarget.swift has the table) and the .md is an option (record.drag_note_file, off) and
-// what a terminal gets:
+// picture instead (CardDropTarget.swift has the table) and the .md is an option (record.drag_note_file, off). A
+// terminal gets one line of text, the picture's path and then the note (CardTransfer.terminalLine). The files:
 //   • <stem>.png        the picture (inked if marked) — its note also in the PNG's own "Description" (an iTXt chunk:
 //                       UTF-8, what Preview / exiftool / an image pipeline read); never relied on, it just doesn't hurt.
 //   • <stem>-备注.md     the note and nothing else — line breaks kept, no heading, no image line (v0.8.2: the image line
@@ -194,8 +194,9 @@ public enum CardPasteboard {
     ///    bytes) — no HTML, no RTFD, no text, so every composer ends up with the picture and nothing else; the note is
     ///    pasted after the drop (CardSmartPaste.swift). Then the note's .md only with `attachNote`
     ///    (record.drag_note_file), else an inert item. (WeChat / QQ get the rich item: drag(into:).)
-    ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell; Claude Code and
-    ///    Codex read the .md).
+    ///  • terminal: one plain-text item, `'<picture path>' <note>` (CardTransfer.terminalLine: the note on the same line,
+    ///    never a newline — nothing runs at a shell prompt) — no file URL (the terminal would type its own copy of the
+    ///    path) and no .md: Claude Code and Codex read the picture from its path, and its own words are right after it.
     /// The number of items is fixed when the drag starts (the badge counts them), so a shot with a note always has two
     /// — the second inert where it carries nothing. A voice card: its words (one line), nothing else, for every app.
     public static func drag(for target: DropClass, card: Card, attachNote: Bool = false) -> [Item] {
@@ -203,14 +204,14 @@ public enum CardPasteboard {
         guard let img = card.image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
         let first: Item
         switch target {
-        case .terminal: first = Item(file: img, tag: true)
+        case .terminal: first = Item(text: CardTransfer.terminalLine(image: img, note: card.note), tag: true)
         case .chat, .finder: first = Item(file: img, image: img, tag: true)
         case .rich: first = Item(file: img, image: img, rich: true, text: text, tag: true)
         }
         guard text != nil else { return [first] }
         let md = card.noteFile.map { Item(file: $0) }
         switch target {
-        case .terminal: return [first, md ?? Item(tag: true)]
+        case .terminal: return [first, Item(tag: true)]
         case .chat, .finder: return [first, attachNote ? md ?? Item(tag: true) : Item(tag: true)]
         case .rich: return [first, Item(tag: true)]
         }
@@ -232,9 +233,9 @@ public enum CardPasteboard {
     /// its writer was a fixed file URL plus the title). An item is a card whose note is its text (title, then its
     /// words) and whose note file is its own .md:
     ///  • with a picture (its first frame): the card's layout, drag(into:) — the picture, then the text pasted after
-    ///    the drop in a chat app; the rich item in a rich app, WeChat and QQ; both paths in a terminal — but the
-    ///    Finder always gets the .md next to the picture (a copy of the item, as its two files; nothing goes on the
-    ///    clipboard behind a drop into a folder).
+    ///    the drop in a chat app; the rich item in a rich app, WeChat and QQ; its path and text as one line in a
+    ///    terminal — but the Finder always gets the .md next to the picture (a copy of the item, as its two files;
+    ///    nothing goes on the clipboard behind a drop into a folder).
     ///  • without one (a voice or typed item): a rich app and a chat app get its text as the rich item — HTML, RTFD
     ///    and RTF with its line breaks, the plain text as one line (a web composer drops loose text when a file is
     ///    there, so no .md rides along); a terminal and the Finder its .md (Claude Code reads it; the Finder copies

@@ -180,12 +180,9 @@ def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
     code, text = None, ""
     args = (defn.get("status") or {}).get("args")
     if args:
-        try:
-            p = subprocess.run([path, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               timeout=15, env=env, stdin=subprocess.DEVNULL)
-            code, text = p.returncode, p.stdout + p.stderr
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        code, so, se = probe([path, *args], env, 15)
+        if code is not None:
+            text = so + se
     state = parse_status(defn, code, text, env)
     why = {"ready": ("已登录", "logged in"), "configured": ("已配置", "configured"),
            "logged_out": ("未登录", "not logged in"), "unknown": ("登录状态未知，会直接试", "login unknown, will try")}[state]
@@ -391,16 +388,45 @@ LOGIN = {"ready": "ok", "logged_out": "logged_out", "configured": "unknown", "un
          "not_installed": "n/a"}
 
 
+def probe(argv: list[str], env: dict, timeout: float) -> tuple[int | None, str, str]:
+    """Run a short probe → (returncode | None on timeout or failure, stdout, stderr). On a timeout the whole process tree
+    is killed, not only the direct child: on Windows an npm agent is cmd.exe → node.exe, and subprocess.run(timeout=)
+    kills cmd.exe then waits, without a limit, for pipes node still holds (grok models, opencode auth list waiting on
+    the network) — Settings → Agent sat on "Checking…" until the app's 90 s limit."""
+    nt = os.name == "nt"
+    try:
+        p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env,
+                             text=True, encoding="utf-8", errors="replace", start_new_session=not nt,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if nt else 0)
+    except OSError as e:
+        return None, "", str(e)
+    try:
+        out, err = p.communicate(timeout=timeout)
+        return p.returncode, out or "", err or ""
+    except subprocess.TimeoutExpired:
+        try:
+            if nt:
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, timeout=10,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            else:
+                os.killpg(p.pid, 9)
+        except (OSError, subprocess.SubprocessError):
+            p.kill()
+        try:
+            out, err = p.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            out, err = "", ""  # a grandchild kept the pipes: give up on its output rather than wait
+        return None, out or "", err or ""
+
+
 def version_of(defn: dict, path: str, env: dict) -> str | None:
     args = defn.get("version")
     if not args:
         return None
-    try:
-        p = subprocess.run([path, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           timeout=10, env=env, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.TimeoutExpired):
+    code, out, err = probe([path, *args], env, 10)
+    if code is None:
         return None
-    text = ANSI.sub("", (p.stdout or "") + "\n" + (p.stderr or "")).strip()
+    text = ANSI.sub("", out + "\n" + err).strip()
     return text.splitlines()[0].strip() if text else None
 
 
@@ -413,12 +439,10 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
     defs = definitions(cfg)
     order = agent_order(cfg)
     env = clean_env(env)
-    rows = []
     # connect-only agents (headless: false) follow the order: Settings → Agents lists them for Connect
-    for i in ids or order + [k for k in defs if k not in order and not is_headless(defs[k])]:
-        d = defs.get(i)
-        if not d:
-            continue
+    todo = [defs[i] for i in ids or order + [k for k in defs if k not in order and not is_headless(defs[k])] if i in defs]
+
+    def one(d: dict) -> dict:
         if login:
             r = check(d, env, lang)
         else:
@@ -431,7 +455,13 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["version"] = version_of(d, r["path"], env) if version and r["installed"] and find_bin(d, env) else None
         r["login"] = LOGIN.get(r["state"], "unknown")
         r["headless"] = is_headless(d)
-        rows.append(r)
+        return r
+
+    # every agent at once: each probe is a CLI start-up (node on Windows: seconds), one after another they added up
+    # past the app's limit. Rows stay in `todo`'s order.
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+    with ThreadPoolExecutor(max_workers=max(1, min(8, len(todo)))) as pool:
+        rows = list(pool.map(one, todo))
     # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
     by_id = {r["id"]: r for r in rows}
     pick = None
@@ -677,12 +707,10 @@ def parse_usage(defn: dict, text: str) -> dict | None:
 
 
 def _run(argv: list[str], env: dict, timeout: int = 60) -> tuple[int | None, str]:
-    try:
-        p = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
-                           env=env, stdin=subprocess.DEVNULL)
-        return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return None, str(e)
+    code, out, err = probe(argv, env, timeout)
+    if code is None and not (out or err):
+        return None, f"timed out after {timeout} s or couldn't start: {argv[0]}"
+    return code, (out + err).strip()
 
 
 COPY_MARK = ".blurt-skill-copy"  # in a skill folder install() copied (Windows, no junction): the folder it copies

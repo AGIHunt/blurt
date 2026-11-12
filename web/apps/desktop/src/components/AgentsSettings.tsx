@@ -64,8 +64,10 @@ function sentence(s: string): string {
   return t[0].toUpperCase() + t.slice(1) + (t.endsWith('.') || t.endsWith('。') || !ascii ? '' : '.');
 }
 
-type Tone = 'good' | 'warn' | 'bad' | 'off';
+type Tone = 'good' | 'warn' | 'bad' | 'off' | 'busy';
 function Dot({ tone }: { tone: Tone }) {
+  // still checking: a spinner — an empty ring on every row read as radio buttons beside the switches
+  if (tone === 'busy') return <span className="st-dot busy" aria-hidden><span className="st-spin" /></span>;
   return <span className={`st-dot ${tone}`} aria-hidden>{tone === 'good' ? <Icon name="check" size={9} /> : tone === 'warn' ? '!' : tone === 'bad' ? '×' : null}</span>;
 }
 
@@ -104,10 +106,21 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
   const processing: Record<string, unknown> = cfg.record?.agent_processing ?? {};
   const def = (id: string) => reg?.agents.find((d) => d.id === id);
 
+  const defIds = useRef<string[] | null>(null);
+  /** bumped by every save: a check that started before it read the old config and mustn't set the switches back */
+  const saves = useRef(0);
   const load = useCallback(async (login = true) => {
     setLoading(true);
+    const at = saves.current;
     try {
-      const d = await api.detect({ login });
+      // every agent, not only the configured order: one switched off has to stay listed so it can be switched back on
+      // (as the Mac's detectAll). Registry ids plus record.agent_defs; configured order first, then the rest.
+      defIds.current ??= (await api.agentsRegistry()).agents.map((a) => a.id);
+      const ids = [...new Set([...defIds.current, ...Object.keys(cfg.record?.agent_defs ?? {})])];
+      const d = await api.detect({ login, ids });
+      const pos = new Map(d.order.map((id, i) => [id, i]));
+      const rank = (id: string) => pos.get(id) ?? 1000 + ids.indexOf(id);
+      d.agents.sort((a, b) => rank(a.id) - rank(b.id));
       let fresh = d.agents;
       if (!login) {
         // a quick look can't tell who is signed in: keep what the last full check found
@@ -115,15 +128,17 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
           const known = new Map(old.map((r) => [r.id, r]));
           fresh = fresh.map((r) => {
             const o = known.get(r.id);
-            if (o?.state === 'checking' && r.installed && r.state === 'unknown') return { ...r, state: 'checking' };
-            return o && o.installed === r.installed && o.state !== 'unknown' ? { ...r, state: o.state, why: o.why, fix: o.fix, login: o.login } : r;
+            // the quick look starts no CLI (no version, no sign-in): both come from the last full check
+            if (o?.state === 'checking' && r.installed && r.state === 'unknown') return { ...r, state: 'checking', version: r.version ?? o.version };
+            return o && o.installed === r.installed && o.state !== 'unknown' ? { ...r, state: o.state, why: o.why, fix: o.fix, login: o.login, version: r.version ?? o.version } : r;
           });
           return fresh;
         });
       } else setRows(fresh);
-      setPick(['ready', 'configured', 'unknown'].map((want) => d.order.find((id) => fresh.some((a) => a.id === id && a.headless && a.state === want))).find(Boolean) ?? d.pick);
-      const en = new Set(order ?? d.agents.filter((a) => a.headless).map((a) => a.id));
-      setEnabled(en.size ? en : new Set(d.order));
+      if (at === saves.current) setPick(['ready', 'configured', 'unknown'].map((want) => d.order.find((id) => fresh.some((a) => a.id === id && a.headless && a.state === want))).find(Boolean) ?? d.pick);
+      // d.order is what the config file says right now (record.agents, else every headless agent) — not `order`, which
+      // this callback may hold from before the save that called it
+      if (at === saves.current) setEnabled(new Set(d.order));
       if (login) setSignInChecked(true);
       setError(null);
       for (const a of fresh.filter((x) => x.headless && x.installed)) {
@@ -137,7 +152,7 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
     } finally {
       setLoading(false);
     }
-  }, [order]);
+  }, [cfg.record?.agent_defs]);
 
   const checkConnected = useCallback(async (list: AgentInfo[]) => {
     for (const a of list.filter((x) => x.installed)) {
@@ -174,6 +189,7 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
   /** record.agents = the ticked headless agents in the shown order */
   const saveOrder = async (list: AgentInfo[], en: Set<string>) => {
     const ids = list.filter((a) => a.headless && en.has(a.id)).map((a) => a.id);
+    saves.current += 1;
     await save({ record: { agents: ids.length ? ids : null } });
     load(false);
   };
@@ -319,7 +335,8 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
   const apps = m.manual.filter((a) => a.installed);
   const on = (a: AgentInfo, ordered: boolean) => !ordered || m.enabled.has(a.id);
   const tone = (a: AgentInfo, ordered: boolean): Tone => {
-    if (!a.installed || a.state === 'checking') return 'off';
+    if (a.state === 'checking') return 'busy';
+    if (!a.installed) return 'off';
     if (!ordered) return m.connected[a.id] ? 'good' : 'off';
     if (!on(a, ordered)) return 'off';
     if (a.state === 'ready') return 'good';

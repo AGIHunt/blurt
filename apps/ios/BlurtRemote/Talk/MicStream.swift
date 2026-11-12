@@ -8,7 +8,10 @@ import Foundation
 final class MicStream {
     static let shared = MicStream()
 
-    private let engine = AVAudioEngine()
+    /// a new engine for every start: an engine's input node keeps the format it first read, and once the route has changed
+    /// since (AirPods' 16/24 kHz against the built-in 48 kHz, a call, another app) installTap throws an Objective-C
+    /// exception Swift can't catch — two crashes on an iPhone 16 Pro Max on 2026-11-12, both on the talk bar's key-down
+    private var engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
     private var running = false
@@ -68,11 +71,14 @@ final class MicStream {
             try s.setCategory(.record, mode: .default, options: [.allowBluetooth])
             try s.setPreferredIOBufferDuration(0.02)
             try s.setActive(true, options: [])
+            engine = AVAudioEngine()
             let input = engine.inputNode
             let f = input.outputFormat(forBus: 0)
-            guard f.sampleRate > 0, let c = AVAudioConverter(from: f, to: target) else { throw CocoaError(.featureUnsupported) }
+            // the tap's format has to be the hardware's, or installTap raises; a mismatch here means the route is still
+            // settling: no take this time rather than a crash
+            guard f.sampleRate > 0, f.channelCount > 0, f.sampleRate == input.inputFormat(forBus: 0).sampleRate,
+                  let c = AVAudioConverter(from: f, to: target) else { throw CocoaError(.featureUnsupported) }
             converter = c
-            input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 2048, format: f) { [weak self] b, _ in self?.convert(b) }
             engine.prepare()
             try engine.start()

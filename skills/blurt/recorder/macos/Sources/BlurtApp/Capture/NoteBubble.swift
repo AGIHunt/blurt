@@ -589,7 +589,11 @@ final class MicEngine {
             // the default input changed (headphones plugged in, AirPods connected): the spare is stale
             observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] n in
                 guard let self = self else { return }
-                self.queue.async { if let s = self.spare, (n.object as? AVAudioEngine) === s { self.spare = nil } }
+                // only the engine's identity crosses to the queue, never the notification: an engine being torn down posts
+                // this too, and a notification carried past that dealloc released a freed engine on the queue (1.0.17
+                // crash, EXC_BAD_ACCESS on blurt.mic, 2026-11-12)
+                guard let changed = (n.object as AnyObject?).map(ObjectIdentifier.init) else { return }
+                self.queue.async { if let s = self.spare, ObjectIdentifier(s) == changed { self.spare = nil } }
             }
         }
         return e

@@ -3,8 +3,8 @@
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
 // v0.8.5: a rich app (Notes, TextEdit, Mail…) gets the rich item (picture file + PNG + HTML + RTFD + RTF + the note as
 // one line); every chat app (browsers, Electron apps, WeChat, QQ, anything else) and the Finder the picture alone —
-// the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal both paths. The .md rides as the
-// second item only for a terminal, or with record.drag_note_file on.
+// the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal one line of text, the picture's
+// path then the note. The .md rides as the second item only with record.drag_note_file on (chat apps, the Finder).
 // v0.8.6: a voice card (its words, one item) over a chat app's window — BlurtCore VoiceCardDrop — gets our own hint
 // drawn under the card in the drag image ("松手粘贴到 Claude": the app shows none for text) and doesn't fly back when
 // the app refuses the drop; the caller (HangingCards / TakenPanel) then has the words pasted into that window's
@@ -265,7 +265,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     }
 
     /// The drag began with one writer of ours (a table row: NSTableView takes one per row): the session's pasteboard
-    /// gets every item of the layout written for (a terminal's .md path, a chat app's .md with record.drag_note_file).
+    /// gets every item of the layout written for (a chat app's .md with record.drag_note_file).
     func began(_ s: NSDraggingSession) {
         session = s
         guard live.count > 1 else { return }

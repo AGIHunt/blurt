@@ -1533,9 +1533,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // drag rows. One row goes out like a hanging card (BA-22: into WeChat it brought only its picture) — CardDrag: what
     // it carries follows the app under the pointer (the first frame; its text pasted in after it in a chat app, in the
-    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's and the .md's paths
-    // in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the list's own
-    // drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
+    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's path and its text
+    // as one line in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the
+    // list's own drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
     // Terminal pastes the paths).
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let it = model.item(at: row) else { return nil }

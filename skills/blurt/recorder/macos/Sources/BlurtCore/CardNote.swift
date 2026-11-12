@@ -17,12 +17,15 @@
 // Copy / drag-out (v0.8.3: CardFiles.swift / CardPasteboard / CardDropTarget.swift): one rich item — picture and note
 // together as HTML, RTFD and RTF, the picture's PNG, the note as text (a WeChat-style copy) — and, for a drag, what the
 // app under the pointer needs besides: the note's .md for web apps and the Finder (they take files and drop the text),
-// nothing for WeChat / Notes, only the two paths for a terminal.
+// nothing for WeChat / Notes, and for a terminal one line of text: the picture's path, then the note.
 // A drag's text is CardTransfer.dragText: one line (the note's lines joined with " · "), control characters out. The
 // app that reads the text first is the one under the pointer when it asks, which is not always where the drag ends —
 // and a terminal types what it gets at its prompt (a dropped newline would run the line, an escape sequence could end
-// a bracketed paste). So every drop gets the safe form, and a terminal is only ever offered file paths. A copy (click)
-// keeps the note's line breaks: pasting is the user's own act.
+// a bracketed paste). So every drop gets the safe form. A terminal's line is CardTransfer.terminalLine: the picture's
+// absolute path, shell-quoted where it needs it, a space, the note's lines joined with spaces — so Claude Code or Codex
+// (they read a local picture from its path) get each picture with its own words, and nothing runs at a shell prompt.
+// A copy (click) keeps the note's line breaks: pasting is the user's own act; ⌘V of a copy in a terminal pastes one
+// such line per card (CardTransfer.terminalLines, smart paste).
 
 import Foundation
 
@@ -85,7 +88,11 @@ public struct CardNote: Equatable {
 public enum CardTransfer {
     /// A dragged card's text: the note's lines joined with " · " on one line, every control character out (nothing a
     /// terminal would run or take as an escape sequence). nil when nothing is left.
-    public static func dragText(_ note: String?) -> String? {
+    public static func dragText(_ note: String?) -> String? { oneLine(note, joiner: " · ") }
+
+    /// The note's lines joined with `joiner`, tabs as spaces, every other control character out (C0, DEL, C1: nothing
+    /// a terminal would run or take as an escape sequence). nil when nothing is left.
+    public static func oneLine(_ note: String?, joiner: String) -> String? {
         guard let note = note else { return nil }
         var lines: [String] = []
         var cur = ""
@@ -100,6 +107,61 @@ public enum CardTransfer {
         }
         lines.append(cur)
         let kept = lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        return kept.isEmpty ? nil : kept.joined(separator: " · ")
+        return kept.isEmpty ? nil : kept.joined(separator: joiner)
+    }
+
+    // MARK: a terminal: the picture's path, then its note
+
+    /// One card for a terminal (a drop, or a line of a copy's ⌘V there): `'<absolute picture path>' <note>` — the path
+    /// shell-quoted where it needs it (shellQuoted), the note on the same line (its lines joined with spaces, control
+    /// characters out: oneLine). Never a newline, so a paste or drop at a shell prompt runs nothing; Claude Code and
+    /// Codex read the picture from its path and keep it next to its own words. No picture (a voice card): the note
+    /// alone; no note: the path alone. nil: nothing.
+    public static func terminalLine(image: URL?, note: String?) -> String? {
+        let words = oneLine(note, joiner: " ")
+        guard let img = image else { return words }
+        let path = shellQuoted(img.path)
+        return words.map { path + " " + $0 } ?? path
+    }
+
+    /// A copy of several cards, for a terminal: one terminalLine per card, in the copy's order, joined with newlines
+    /// (zsh, bash, fish, Terminal and iTerm2 take a paste bracketed: its newlines don't run anything; Claude Code shows
+    /// a long one as "[Pasted text]" and keeps it whole). nil when no card has a picture: the copy's plain text (the
+    /// notes) is already what a terminal should get.
+    public static func terminalLines(_ cards: [CardPasteboard.Card]) -> String? {
+        guard cards.contains(where: { $0.image != nil }) else { return nil }
+        let lines = cards.compactMap { terminalLine(image: $0.image, note: $0.note) }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    /// `path` as one shell word: as it is when every character is plain (ASCII letters, digits, `/ . _ - + , : @ %`,
+    /// and letters of other scripts — 截图-153012.png stays readable), else in single quotes, a quote inside written
+    /// `'\''`. A control character can't be quoted for a terminal: it is left out.
+    public static func shellQuoted(_ path: String) -> String {
+        let clean = String(String.UnicodeScalarView(path.unicodeScalars.filter { !isControl($0) }))
+        guard !clean.isEmpty else { return "''" }
+        if clean.unicodeScalars.allSatisfy(isPlain) { return clean }
+        return "'" + clean.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    static func isControl(_ u: Unicode.Scalar) -> Bool {
+        let v = u.value
+        return v < 0x20 || v == 0x7F || (0x80...0x9F).contains(v) || v == 0x2028 || v == 0x2029
+    }
+
+    static func isPlain(_ u: Unicode.Scalar) -> Bool {
+        let v = u.value
+        if v < 0x80 {
+            return (0x30...0x39).contains(v) || (0x41...0x5A).contains(v) || (0x61...0x7A).contains(v)
+                || "/._-+,:@%".unicodeScalars.contains(u)
+        }
+        // another script's letters and marks, its digits and punctuation (。、「」), but no space of any kind and no
+        // invisible format character (a bidi override would make the path read differently than it is)
+        switch u.properties.generalCategory {
+        case .spaceSeparator, .lineSeparator, .paragraphSeparator, .control, .format, .privateUse, .surrogate, .unassigned:
+            return false
+        default:
+            return !u.properties.isWhitespace
+        }
     }
 }

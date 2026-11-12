@@ -928,7 +928,7 @@ final class Snapper {
     /// record.smart_paste) — never in a code editor, whose focus may be source code. Where the note didn't go in after
     /// all (a code editor, the follow-up couldn't run, the app didn't read it, the Finder, not sure), the note goes on
     /// the clipboard (record.drag_copy_note; BlurtCore DragReceipt) and the
-    /// toast says "⌘V to paste"; a rich app (it took the note from the rich item) and a terminal (both paths) leave the
+    /// toast says "⌘V to paste"; a rich app (it took the note from the rich item) and a terminal (path and note) leave the
     /// clipboard alone. "Undo" in the toast puts the card back on its thread (and the clipboard as it was, if nothing
     /// was copied since). `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days
     /// start over).

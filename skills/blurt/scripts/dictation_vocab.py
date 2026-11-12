@@ -31,7 +31,11 @@ SCHEMA = 2               # the file's format (BlurtCore DictationVocabulary.sche
 
 
 def vocab_file() -> Path:
-    home = Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
+    try:
+        from _common import blurt_home  # noqa: PLC0415  (BLURT_HOME, else the folder chosen in the app)
+        home = blurt_home()
+    except ImportError:
+        home = Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
     return home / "dictation" / "vocabulary.json"
 
 

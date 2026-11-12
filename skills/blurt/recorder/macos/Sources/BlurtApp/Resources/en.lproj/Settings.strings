@@ -37,12 +37,12 @@
 "settings.general.collect.hint" = "Screenshots taken with the macOS shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) are also added as cards.";
 "settings.general.drag_copy_note" = "If the note didn’t go in with a drop, copy it";
 "settings.general.drag_copy_note.hint" = "When Blurt can’t paste the note after the picture (no Accessibility, the setting above off, the app didn’t come forward, or it was the Finder), the note goes on the clipboard so ⌘V pastes it. This replaces what’s on the clipboard; Undo under the notch puts it back.";
-"settings.general.drag_note_file.hint" = "A card dragged into a chat app or the Finder also brings its note as a small Markdown file (Screenshot-153012-note.md). Terminals always get that file’s path, so Claude Code or Codex can read the note.";
+"settings.general.drag_note_file.hint" = "A card dragged into a chat app or the Finder also brings its note as a small Markdown file (Screenshot-153012-note.md). Terminals don’t need it: they get the picture’s path with the note on the same line.";
 "settings.general.drag_note_file" = "Also attach the note as a Markdown file";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
 "settings.general.drag_caption.hint" = "On: the dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
 "settings.general.smart_paste" = "Chat apps: the picture, then the note";
-"settings.general.smart_paste.hint" = "Browsers, Claude, ChatGPT, Slack, Feishu, WeChat and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
+"settings.general.smart_paste.hint" = "Browsers, Claude, ChatGPT, Slack, Feishu, WeChat and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go. In a terminal, ⌘V pastes one line per card: the picture’s path, then its note, so Claude Code or Codex gets each picture with its own words. The Finder is left as it is. Needs Accessibility.";
 "settings.general.about" = "About";
 "settings.general.version" = "Version";
 "settings.general.help" = "User Guide";

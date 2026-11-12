@@ -170,7 +170,7 @@ export function Toggle({ id, on, set, detail, warn }: { id: string; on: boolean;
 }
 
 /** A pop-up at the page's one control width (the Mac's ChoicePopup); `dividers`: a line before these indexes. */
-export function Popup<V extends string | number | boolean>({ label, value, choices, onChange, wide, dividers = [], disabled, hints }: {
+export function Popup<V extends string | number | boolean>({ label, value, choices, onChange, wide, dividers = [], headers = {}, disabled, hints }: {
   label: string;
   disabled?: boolean;
   value: V;
@@ -178,6 +178,8 @@ export function Popup<V extends string | number | boolean>({ label, value, choic
   onChange: (v: V) => void;
   wide?: boolean;
   dividers?: number[];
+  /** a section heading in the open menu before the choice at that index (a text job's Advanced) */
+  headers?: Record<number, string>;
   /** a second line under a choice in the open menu (what it means) */
   hints?: (string | undefined)[];
 }) {
@@ -192,6 +194,7 @@ export function Popup<V extends string | number | boolean>({ label, value, choic
   const open = () => btn.current && setAt({ x: 0, y: 0, anchor: btn.current, align: 'end', minWidth: btn.current.offsetWidth });
   const entries: MenuEntry[] = choices.flatMap(([v, l], i): MenuEntry[] => [
     ...(dividers.includes(i) ? [{ kind: 'separator' } as MenuEntry] : []),
+    ...(headers[i] ? [{ kind: 'header', label: headers[i] } as MenuEntry] : []),
     { label: l, note: hints?.[i], checked: i === idx, run: () => v !== value && onChange(v) },
   ]);
   return (
