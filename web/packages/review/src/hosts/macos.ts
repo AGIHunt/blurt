@@ -33,7 +33,7 @@ type W = Window & {
   blurtHostInfo?: HostInfo;
 };
 
-export const OPTIONAL = ["reveal", "quickLook", "openCode", "handoff", "registerDragRects", "download"] as const;
+export const OPTIONAL = ["reveal", "quickLook", "openCode", "handoff", "registerDragRects", "download", "addFiles"] as const;
 
 /** the scope from blurtHostInfo, else the page URL (?project= / ?session=) */
 export function scopeFrom(win: Window, info: HostInfo = {}): Scope | undefined {
@@ -125,6 +125,7 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000, toastTi
   };
   if (has.has("reveal")) host.reveal = (path) => notify("reveal", { path });
   if (has.has("quickLook")) host.quickLook = (path) => notify("quickLook", { path });
+  if (has.has("addFiles")) host.addFiles = (uid) => notify("addFiles", { uid });
   if (has.has("openCode")) host.openCode = (ref) => notify("openCode", { ref });
   if (has.has("handoff")) host.handoff = (uids, what) => call<HandoffResult>("handoff", { uids, what });
   if (info.sessionBanner) host.sessionBanner = true;

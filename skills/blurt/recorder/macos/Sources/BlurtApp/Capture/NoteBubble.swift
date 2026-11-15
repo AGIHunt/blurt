@@ -966,8 +966,16 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     // MARK: open
 
     /// `inPlace`: the frozen selection of a fresh snap (InkStage is open on it): the bubble docks beside it.
-    func begin(_ s: Shot, mode m: Mode, anchor a: (() -> NSRect?)? = nil, inPlace: NSRect? = nil) {
+    /// v1.0.23 — a note offered after something was dropped on the island (`passive`): the bubble opens without
+    /// taking the keyboard (the user is often still typing in the app they dragged from); it takes it once the pointer
+    /// comes onto it or it is clicked. Never touched: it folds away after `passiveSeconds`; typed into: it stays until
+    /// ↩ / a click elsewhere, like any note.
+    private(set) var passive = false
+    static let passiveSeconds: Double = 6
+
+    func begin(_ s: Shot, mode m: Mode, anchor a: (() -> NSRect?)? = nil, inPlace: NSRect? = nil, passive p: Bool = false) {
         if isOpen { commit() }
+        passive = p
         generation += 1
         // a close of the bubble before this one may still be fading out: it never hides this one
         closeWork?.cancel()
@@ -1398,7 +1406,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // the panel is non-activating: it takes the typing without activating Blurt, so Blurt's main window never
         // jumps above the app the user just snapped; close() still hands focus back
         if mode == .recording { snapper.rememberFrontApp() }
-        if !NoteBubble.testNoKey { p.makeKey() }
+        if !NoteBubble.testNoKey, !passive { p.makeKey() }
+        if passive {
+            let g = generation
+            DispatchQueue.main.asyncAfter(deadline: .now() + NoteBubble.passiveSeconds) { [weak self] in
+                guard let self = self, self.generation == g, self.passive, self.isOpen else { return }
+                self.close(save: true, flash: false)       // never touched: nothing to keep but the card as it was
+            }
+        }
         p.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
         // the panel is reused for every note, and its undo stack is the field editor's. A ⌘Z the bubble
@@ -1801,6 +1816,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func hover(_ on: Bool) {
         guard hovering != on, isOpen else { return }
         hovering = on
+        if on, passive, let p = panel {
+            // the pointer came onto a note offered after a drop: now it takes the typing (and gives it back on close)
+            passive = false
+            snapper.rememberFrontApp()
+            if !NoteBubble.testNoKey { p.makeKey() }
+            p.makeFirstResponder(field)
+        }
         let quiet = hoverTools
         if on { quiet.forEach { $0.alphaValue = 0 } }
         layout()
@@ -2475,11 +2497,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let g = generation
         let cb = onClose
         onClose = nil
+        // a note offered after a drop that never took the keyboard has no focus to hand back (the app remembered may
+        // be one from a snap hours ago)
+        let hadKey = !passive
+        passive = false
         // only the newest open may hide the panel and hand the focus back (a bubble opened meanwhile owns them)
         let done = { [weak self] in
             if self?.generation == g, self?.isOpen == false {
                 p?.orderOut(nil)
-                snapper.restoreFocus()
+                if hadKey { snapper.restoreFocus() }
             }
             cb?()
         }

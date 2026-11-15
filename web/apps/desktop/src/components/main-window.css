@@ -2302,3 +2302,99 @@ body.mw-resizing * {
 .mw-detail:hover::-webkit-scrollbar-thumb {
   background-color: var(--line-2);
 }
+
+/* ---- drops on the main window (docs/design/drag-drop.md §4) ---- */
+/* New Item's other files: one row each, icon + name, removable (they are referenced, not copied) */
+.mw-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.mw-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+}
+.mw-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.app .mw-file .mw-pic-x.static {
+  position: static;
+  opacity: 1;
+  flex: none;
+}
+/* "Drop for a new item": pinned at the top of the list while something is dragged over it — a full list has no
+   empty area left to drop on */
+.mw-drop-band {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  height: 44px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  border: 1.5px dashed color-mix(in srgb, var(--brand-ink) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 92%, var(--brand-ink));
+  color: var(--brand-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.mw-drop-band.on {
+  border-style: solid;
+  background: var(--brand-tint);
+}
+/* the item a drop adds to */
+.mw-row.drop {
+  background: var(--brand-tint);
+  box-shadow: inset 0 0 0 1.5px var(--brand-ink);
+}
+/* the detail under a drop for the item on show (the Mac's accent border on DetailWebView): a ring over the page,
+   never in the way of the drag */
+.mw-detail.drop {
+  position: relative;
+}
+.mw-detail.drop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px var(--brand-ink);
+  background: color-mix(in srgb, var(--brand-tint) 35%, transparent);
+}
+/* what letting go does, next to the pointer */
+.mw-drop-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow-pop);
+}

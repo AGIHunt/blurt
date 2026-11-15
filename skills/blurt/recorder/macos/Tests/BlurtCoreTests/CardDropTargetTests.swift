@@ -263,3 +263,93 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertNil(ComposerPick.nearest([], to: .zero))
     }
 }
+
+/// DropWindows: the window under a drag. The 1.0.22 report — every card dropped into Claude Code / Codex arrived as the
+/// picture alone: macOS 26.5's Notification Center window (full screen, transparent, layer 21) was taken for the app.
+final class DropWindowsTests: XCTestCase {
+    let full = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let me = 87047
+
+    func testNotificationCenterAndTheMenuBarAreNeverTheTarget() {
+        let ws: [DropWindows.Window] = [
+            .init(pid: 83774, ownerName: "Bartender 6", layer: 26, alpha: 0, bounds: CGRect(x: 0, y: -1, width: 1728, height: 34)),
+            .init(pid: 581, bundleID: "com.apple.controlcenter", layer: 25, bounds: CGRect(x: 1395, y: 0, width: 56, height: 33)),
+            .init(pid: 166, ownerName: "Window Server", layer: 24, bounds: CGRect(x: 0, y: 0, width: 1728, height: 33)),
+            .init(pid: 547, bundleID: "com.apple.notificationcenterui", layer: 21, bounds: full),
+            .init(pid: 23477, bundleID: "com.anthropic.claudefordesktop", bounds: CGRect(x: 0, y: 33, width: 1728, height: 1084)),
+        ]
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 800, y: 600), me: me), .app(23477))
+        // over the menu bar: nothing that takes a drop
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 1400, y: 10), me: me), .nothing)
+    }
+
+    func testAnOverlayProcessIsSkippedAtAnyLevel() {
+        let ws: [DropWindows.Window] = [
+            .init(pid: 547, bundleID: "com.apple.notificationcenterui", layer: 0, bounds: full),
+            .init(pid: 9, bundleID: "com.openai.codex", bounds: full),
+        ]
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 5, y: 500), me: me), .app(9))
+    }
+
+    func testOurWindowsAreAnInAppDropUnlessMouseTransparent() {
+        let island = DropWindows.Window(pid: me, layer: 27, bounds: CGRect(x: 544, y: 0, width: 640, height: 470))
+        let cards = DropWindows.Window(pid: me, layer: 25, bounds: CGRect(x: 300, y: 0, width: 1100, height: 300), oursTakesMouse: false)
+        let main = DropWindows.Window(pid: me, bounds: CGRect(x: 205, y: 127, width: 1277, height: 889))
+        let app = DropWindows.Window(pid: 9, bundleID: "com.openai.codex", bounds: full)
+        XCTAssertEqual(DropWindows.pick([island, app], at: CGPoint(x: 600, y: 100), me: me), .ours)
+        XCTAssertEqual(DropWindows.pick([cards, app], at: CGPoint(x: 400, y: 100), me: me), .app(9), "the cards take no drops")
+        XCTAssertEqual(DropWindows.pick([cards, main, app], at: CGPoint(x: 400, y: 200), me: me), .ours, "the main window under the cards")
+        let dragImage = DropWindows.Window(pid: me, layer: 500, bounds: full)
+        XCTAssertEqual(DropWindows.pick([dragImage, app], at: CGPoint(x: 400, y: 600), me: me), .app(9))
+    }
+}
+
+/// Several cards dragged as one (v1.0.23), and file cards (a referenced PDF / video).
+final class MultiCardDragTests: XCTestCase {
+    let a = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/001.png"), note: "header overlaps")
+    let b = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/003.png"), note: "button\ntoo small")
+    let pdf = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/004.png"), note: "the spec",
+                                  ref: URL(fileURLWithPath: "/Users/me/Documents/spec v2.pdf"))
+    let words = CardPasteboard.Card(image: nil, note: "also check dark mode")
+
+    func testAnAgentGetsALinePerCardATerminalOneLine() {
+        let agent = CardPasteboard.drag(into: DragLanding(cls: .terminal, lines: true), cards: [a, b, pdf, words])
+        XCTAssertEqual(agent.first, .init(text: "/s/shots/001.png header overlaps\n/s/shots/003.png button too small\n'/Users/me/Documents/spec v2.pdf' the spec\nalso check dark mode", tag: true))
+        XCTAssertEqual(agent.count, 4, "one item per card: the count badge says 4")
+        XCTAssertTrue(agent.allSatisfy(\.tag), "every item names the cards (an in-app drop reads any of them)")
+        let term = CardPasteboard.drag(into: DragLanding(cls: .terminal), cards: [a, b])
+        XCTAssertEqual(term.first?.text, "/s/shots/001.png header overlaps  /s/shots/003.png button too small")
+        XCTAssertFalse(term.first?.text?.contains("\n") ?? true, "never a newline at a shell prompt")
+    }
+
+    func testAChatAppGetsEveryFileInOrderAndTheNotesAfter() {
+        let items = CardPasteboard.drag(into: DragLanding(cls: .chat, kind: .web), cards: [a, words, pdf])
+        XCTAssertEqual(items.map(\.file?.path), ["/s/shots/001.png", nil, "/Users/me/Documents/spec v2.pdf"])
+        XCTAssertEqual(items.map(\.image?.path), ["/s/shots/001.png", nil, nil], "a file card's thumbnail never goes out")
+        XCTAssertTrue(items.allSatisfy(\.tag))
+        XCTAssertEqual(CardTransfer.followUpNotes([a, words, pdf]), "1. header overlaps\n2. the spec\nalso check dark mode")
+        XCTAssertEqual(CardTransfer.followUpNotes([a, words]), "header overlaps\nalso check dark mode", "one picture: no numbers")
+    }
+
+    func testARichAppGetsOneRichItemAndTheFinderTheFiles() {
+        let rich = CardPasteboard.drag(into: DragLanding(cls: .rich), cards: [a, b])
+        XCTAssertEqual(rich.count, 2)
+        XCTAssertTrue(rich[0].rich)
+        XCTAssertEqual(rich[1], .init(tag: true))
+        let finder = CardPasteboard.drag(into: DragLanding(cls: .finder), cards: [a, pdf])
+        XCTAssertEqual(finder.map(\.file?.lastPathComponent), ["001.png", "spec v2.pdf"])
+    }
+
+    func testOneFileCardGoesOutAsItsFile() {
+        XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .terminal), card: pdf),
+                       [.init(text: "'/Users/me/Documents/spec v2.pdf' the spec", tag: true), .init(tag: true)])
+        XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .chat, kind: .web), card: pdf).first,
+                       .init(file: URL(fileURLWithPath: "/Users/me/Documents/spec v2.pdf"), tag: true))
+    }
+
+    func testTheItemCountIsTheCardCountForEveryApp() {
+        let landings: [DragLanding] = [.init(cls: .chat, kind: .web), .init(cls: .chat, kind: .qt), .init(cls: .rich), .init(cls: .finder),
+                                       .init(cls: .terminal), .init(cls: .terminal, lines: true)]
+        for l in landings { XCTAssertEqual(CardPasteboard.drag(into: l, cards: [a, words, pdf]).count, 3, "\(l)") }
+    }
+}

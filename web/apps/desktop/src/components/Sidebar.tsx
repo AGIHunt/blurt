@@ -3,7 +3,9 @@
 // "+ Open Folder…" at the bottom. A count is the Inbox's mint pill (what's new for you) or quiet digits; a project's
 // count is what needs you there. The current project carries the scope mark after its name. A project renames in place
 // (double-click, F2 — Windows' key for it — or Rename in its menu); its right-click menu is the Mac's. Items dragged
-// onto a project or Unassigned move there. Windows has no app menu, so Settings is the gear at the bottom right.
+// onto a project or Unassigned move there; files from another app or the island's cards dropped on one go there
+// (onDropAt: New Item in that project, the cards filed — drag-drop.md §4). Windows has no app menu, so Settings is the
+// gear at the bottom right.
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import type { ProjectRow, Summary } from '../api';
@@ -32,6 +34,7 @@ export function Sidebar({
   onRenameDone,
   dragging,
   fresh,
+  onDropAt,
 }: {
   place: Place;
   /** focusList false: the click keeps the focus on the row (App.go) */
@@ -53,6 +56,9 @@ export function Sidebar({
   dragging?: { current: string[] | null };
   /** a project just added (a folder dropped or opened): its row glows once, tying the toast to it */
   fresh?: string | null;
+  /** files, text or the island's cards dragged over / dropped on a project row (null: the sidebar, not a row — a
+      folder drop): true when the app takes it (App.sidebarDrop) */
+  onDropAt?: (e: React.DragEvent, project: string | null, phase: 'over' | 'drop' | 'leave') => boolean;
 }) {
   const [over, setOver] = useState<string | null>(null);
   // folders dragged in from Explorer (the Mac's sidebar takes file URLs): the whole sidebar lights up, and on the drop
@@ -75,24 +81,42 @@ export function Sidebar({
       setFolderOver(false);
       if (!folderDrag(e)) return;
       e.preventDefault();
-      webview()?.postMessageWithAdditionalObjects?.('blurt-drop-folders', e.dataTransfer.files);
+      // the folders open as projects; files dropped with them go to the row they were let go on (App.sidebarDrop)
+      const row = (e.target as HTMLElement).closest<HTMLElement>('[data-drop-to]')?.dataset.dropTo ?? null;
+      if (!onDropAt?.(e, row, 'drop')) webview()?.postMessageWithAdditionalObjects?.('blurt-drop-folders', e.dataTransfer.files);
     },
   };
   const drop = (target: string) => ({
+    'data-drop-to': target,
     onDragOver: (e: React.DragEvent) => {
       const native = !!dragging?.current && e.dataTransfer.types.includes('Files');
-      if (!e.dataTransfer.types.includes(DRAG_TYPE) && !native) return;
+      if (!e.dataTransfer.types.includes(DRAG_TYPE) && !native) {
+        // from outside or the island: the app says whether this row takes it (a folder drag is the sidebar's)
+        if (folderDrag(e) || !onDropAt?.(e, target, 'over')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(target);
+        return;
+      }
       e.preventDefault();
       // Windows' own file drag (rows dragged out as files) allows only a copy: asking for a move refuses the drop
       e.dataTransfer.dropEffect = native ? 'copy' : 'move';
       setOver(target);
     },
-    onDragLeave: () => setOver((o) => (o === target ? null : o)),
+    onDragLeave: (e: React.DragEvent) => {
+      setOver((o) => (o === target ? null : o));
+      if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) onDropAt?.(e, target, 'leave');
+    },
     onDrop: (e: React.DragEvent) => {
       setOver(null);
       const raw = e.dataTransfer.getData(DRAG_TYPE);
       const uids = raw ? (JSON.parse(raw) as string[]) : dragging?.current;
-      if (!uids?.length) return;
+      if (!uids?.length) {
+        if (folderDrag(e) || !onDropAt?.(e, target, 'drop')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       onMove(uids, target);
     },
@@ -248,5 +272,5 @@ export function MidName({ name, tail = 6 }: { name: string; tail?: number }) {
 }
 
 /** WebView2's host bridge (Windows): how dropped folders reach the app (folder_drop.rs) */
-const webview = () =>
+export const webview = () =>
   (window as unknown as { chrome?: { webview?: { postMessageWithAdditionalObjects?: (m: string, o: FileList) => void } } }).chrome?.webview;

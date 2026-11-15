@@ -852,5 +852,19 @@
   "welcome.cloudrec.on": "听写正在用 {name} 在云端识别。",
   "welcome.cloudrec.use": "使用云端识别…",
   "welcome.cloudrec.local": "改回本机",
-  "welcome.models.detail_cloud": "听写的录音会发到你选的云端服务识别。"
+  "welcome.models.detail_cloud": "听写的录音会发到你选的云端服务识别。",
+  "main.drop.new": "松手新建事项",
+  "main.drop.new_in": "在「{a}」新建事项",
+  "main.drop.add": "加到「{a}」",
+  "main.drop.file_into": "归入「{a}」",
+  "main.drop.folders": "文件夹请拖到侧栏，打开为项目",
+  "main.drop.added": "已加到「{a}」",
+  "main.drop.undo_name": "添加到事项",
+  "main.drop.n_pictures_other": "{n} 张图",
+  "main.drop.n_files_other": "{n} 个文件",
+  "main.drop.text": "文字",
+  "main.drop.filed_other": "{n} 张卡片已归入「{a}」",
+  "main.drop.skipped_other": "{n} 个文件没加：这里拿不到它们的位置",
+  "main.new_item.files": "文件",
+  "main.new_item.remove_file": "移除 {a}"
 }

@@ -5,6 +5,7 @@ import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
+import type { CardRef } from './drops';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -40,6 +41,12 @@ export interface AgentApp {
   id: string;
   builtin: boolean;
   on: boolean;
+}
+
+/** items.py attach's answer: what the item had (the Undo puts it back) and what was added */
+export interface AttachResult {
+  before?: unknown;
+  added?: { frames?: string[]; attachments?: string[]; details?: string };
 }
 
 export interface ItemRow {
@@ -474,6 +481,28 @@ export const api = {
   // the main window's writes (docs/design/windows-parity/main-window.md)
   undoState: (uids: string[], to: State) => invoke('items_undo_state', { uids, to }),
   addItem: (project: string, item: Record<string, unknown>) => invoke<{ uid?: string; item?: { uid?: string } } | null>('items_add', { project, item }),
+  /** something dropped on an item (drag-drop.md §4): pictures as frames, files referenced, text after the details;
+   *  `restore`: the `before` an earlier call returned (the Undo) */
+  attachItem: (uid: string, frames: string[], files: string[], text: string | null, restore?: unknown) =>
+    invoke<AttachResult>('items_attach', { uid, frames, files, text, restore: restore ?? null }),
+  /** the island cards of the drag under way, if it is one (Windows: their own drag; elsewhere none) */
+  cardsDragging: () => invoke<CardRef[] | null>('cards_dragging'),
+  /** island cards dropped on a project (or a project's list): filed there ("inbox": Unassigned) */
+  cardsFile: (cards: CardRef[], project: string) => invoke<void>('cards_file', { cards, project }),
+  /** island cards dropped on an item: added to it, then taken; Undo: attachItem(restore) + cardsPutBack */
+  cardsAttach: (cards: CardRef[], uid: string) => invoke<AttachResult>('cards_attach', { cards, uid }),
+  cardsPutBack: (cards: CardRef[]) => invoke<void>('cards_put_back', { cards }),
+  /** Ctrl+V: what the system clipboard holds, read natively (pictures and files by path, else the text; Blurt's own
+   *  copies and a document's picture of itself left out) */
+  clipboardThings: () => invoke<{ images: string[]; files: string[]; text: string | null; rich?: boolean; ours?: boolean }>('clipboard_things'),
+  /** a drop or paste event for the drag log (BLURT_HOME/logs/card-drag.log; never words) */
+  dragLog: (event: Record<string, unknown>) => invoke<void>('drag_log', { event }),
+  /** the review page's Show in folder / open of a file it was served (review_file: only files a loaded doc names) */
+  reviewFile: (path: string, open: boolean) => invoke<string>('review_file', { path, open }),
+  /** the item detail's Add Image or File…: the Open dialog, then attached as a drop is (null: cancelled) */
+  addFiles: (uid: string) => invoke<AttachResult | null>('items_add_files', { uid }),
+  /** dropped files' paths (Linux: from text/uri-list): which are folders; the files may show as thumbnails */
+  dropPaths: (paths: string[]) => invoke<{ path: string; dir: boolean }[]>('drop_paths', { paths }),
   exportBundle: (uids: string[], name: string, lang: string) => invoke<{ path?: string } | null>('items_export_bundle', { uids, name, lang }),
   pickImages: () => invoke<string[]>('pick_images'),
   removeProject: (id: string) => invoke<Record<string, unknown>>('projects_remove', { id }),

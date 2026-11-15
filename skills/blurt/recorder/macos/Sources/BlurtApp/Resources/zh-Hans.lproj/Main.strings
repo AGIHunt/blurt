@@ -725,3 +725,18 @@
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";
 "main.open.rename" = "重命名";
+"main.drop.text" = "一段文字";
+"main.drop.and" = "、";
+"main.drop.new_item" = "拖到这里，新建事项";
+"main.drop.new_item_in" = "新建事项，存到「%@」";
+"main.drop.add_to" = "加到「%@」";
+"main.drop.file_to" = "归入「%@」";
+"main.drop.read_only" = "只读事项，不能添加 · 拖到上方新建";
+"main.drop.folders" = "文件夹请拖到侧栏，打开为项目";
+"main.drop.folders_skipped" = "%@ · 文件夹不收";
+"main.drop.added" = "已加到「%@」 · %@";
+"main.drop.added_undo" = "加到「%@」";
+"main.drop.add_failed" = "没能加到事项";
+"main.new_item.remove_file" = "移除 %@";
+"main.drop.pick_add" = "添加";
+"main.drop.pick_message" = "给「%@」添加图片或文件";

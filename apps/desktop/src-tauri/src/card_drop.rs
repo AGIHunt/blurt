@@ -23,6 +23,14 @@
 //!    Kimi Code, Doubao vs DoubaoWork). record.agent_apps keeps only the user's changes to the built-in list,
 //!    `{stem: true}` added, `{stem: false}` a built-in switched off (`changing`).
 //!
+//!  • several cards dragged as one (a Ctrl/Shift-click selection, drag-drop.md §2), in the order picked: a terminal
+//!    (and an AI IDE, whose drop may land in its built-in terminal) gets every card's line on one line, two spaces
+//!    between them — a newline at a shell prompt would run what came before it; a desktop agent with its own composer
+//!    (COMPOSERS: Codex, WorkBuddy…) gets one line per card. A file-taking app gets every picture as a file and the
+//!    notes after the drop, numbered by file (`follow_up_notes`, the Mac's CardTransfer.followUpNotes).
+//!  • every card drag also carries which cards they are (`cards_json`, as the web's custom data `CARDS_MIME`), so
+//!    Blurt's own main window files them or adds them to an item instead of taking a bare picture (§4).
+//!
 //! Pure: tests below.
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -34,8 +42,11 @@ use serde_json::{Map, Value};
 /// The kind of window a card is dropped on, as far as what the drag carries goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
-    /// a terminal that takes a text drop: the picture's path and the note, one line of text
+    /// a terminal that takes a text drop: the picture's path and the note, one line of text (several cards: still one
+    /// line, two spaces between the cards)
     Terminal,
+    /// a desktop agent with its own composer (COMPOSERS): as Terminal, but several cards are one line each
+    Composer,
     /// a terminal that takes only file drops (the classic console, Alacritty…): the picture as a file, as Other
     FilesOnly,
     /// everything else: the picture as a file (Explorer, chat apps, editors)
@@ -58,6 +69,11 @@ pub const CONSOLE_CLASS: &str = "ConsoleWindowClass";
 /// yet seen on a PC: the user's own list (Agents… → Add Program…) is the way out when one is wrong.
 pub const AGENTS: &[&str] =
     &["workbuddy", "qoderwork", "qoder", "kimi code", "doubaowork", "cursor", "windsurf", "trae", "trae cn", "antigravity", "kiro", "codex"];
+
+/// Of the agents, the desktop apps whose drop lands in their own composer, not a shell (the Mac's
+/// AgentWindow.composers): several cards go in one line each there. The AI IDEs (Cursor, Windsurf, Trae, Qoder,
+/// Antigravity, Kiro) stay one line: a drop may land in their built-in terminal. A program the user added: one line.
+pub const COMPOSERS: &[&str] = &["workbuddy", "qoderwork", "kimi code", "doubaowork", "codex"];
 
 /// The agent apps in effect (executable stems).
 pub type Agents = BTreeSet<String>;
@@ -124,8 +140,13 @@ pub fn target(exe: Option<&str>, class: Option<&str>, agents: &Agents) -> Target
         return Target::FilesOnly;
     }
     let stem = exe.map(crate::dictation::apps::stem);
-    if stem.as_deref().is_some_and(|s| TEXT_DROP.contains(&s) || agents.contains(s)) {
-        return Target::Terminal;
+    if let Some(s) = stem.as_deref() {
+        if agents.contains(s) && COMPOSERS.contains(&s) {
+            return Target::Composer;
+        }
+        if TEXT_DROP.contains(&s) || agents.contains(s) {
+            return Target::Terminal;
+        }
     }
     if crate::dictation::apps::is_terminal(exe) {
         return Target::FilesOnly;
@@ -157,6 +178,94 @@ pub fn terminal_line(picture: &Path, note: Option<&str>) -> String {
     } else {
         format!("{} {words}", quoted(picture))
     }
+}
+
+/// A card as a drag carries it: its file (a snap's picture; None for a voice card) and its note.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DragCard {
+    pub file: Option<PathBuf>,
+    pub note: Option<String>,
+}
+
+/// A note with its outer white space trimmed; None when nothing is left (the Mac's CardNote.clean).
+pub fn clean(note: Option<&str>) -> Option<String> {
+    note.map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned)
+}
+
+/// One card's part of a terminal's text: `"<path>" <note>`, or a voice card's words on one line; None: nothing.
+pub fn card_line(card: &DragCard) -> Option<String> {
+    match &card.file {
+        Some(f) => Some(terminal_line(f, card.note.as_deref())),
+        None => Some(one_line(card.note.as_deref().unwrap_or_default())).filter(|w| !w.is_empty()),
+    }
+}
+
+/// What a terminal or an agent gets for cards dragged as one, in their order: each card's line, joined by two spaces
+/// (`lines` false: a shell prompt, where a newline runs the line) or by a newline (`lines` true: an agent's composer).
+/// None when no card has anything to say.
+pub fn terminal_text(cards: &[DragCard], lines: bool) -> Option<String> {
+    let parts: Vec<String> = cards.iter().filter_map(card_line).collect();
+    (!parts.is_empty()).then(|| parts.join(if lines { "\n" } else { "  " }))
+}
+
+/// The notes that follow several cards dropped into an app that took their files (a chat app): with one file among
+/// them, the notes as they are; with two or more, each file card's note numbered by its place among the files ("1. …",
+/// "3. …": the pictures arrive in this order); the words of cards without a file after them. None: no words.
+pub fn follow_up_notes(cards: &[DragCard]) -> Option<String> {
+    let files: Vec<&DragCard> = cards.iter().filter(|c| c.file.is_some()).collect();
+    let mut out: Vec<String> = Vec::new();
+    for (i, c) in files.iter().enumerate() {
+        if let Some(n) = clean(c.note.as_deref()) {
+            out.push(if files.len() > 1 { format!("{}. {n}", i + 1) } else { n });
+        }
+    }
+    out.extend(cards.iter().filter(|c| c.file.is_none()).filter_map(|c| clean(c.note.as_deref())));
+    (!out.is_empty()).then(|| out.join("\n"))
+}
+
+/// The plain text of a copy of several cards (Windows has no smart paste: a terminal pastes the plain text): one
+/// `"<path>" <note>` line per card, in the copy's order, when any card has a picture (Claude Code and Codex read the
+/// picture from its path, each with its own words); None when none has — the notes are then the plain text.
+pub fn copy_text(cards: &[DragCard]) -> Option<String> {
+    if !cards.iter().any(|c| c.file.is_some()) {
+        return None;
+    }
+    terminal_text(cards, true)
+}
+
+/// The web's type for the cards a drag carries: Blurt's main window (WebView2) reads it from the drop's
+/// DataTransfer and files those cards (drag-drop.md §4).
+pub const CARDS_MIME: &str = "application/x-blurt-cards";
+
+/// Which cards: `[{"session": "<batch dir>", "n": 3}, …]`, in the drag's order.
+pub fn cards_json(cards: &[(String, u64)]) -> String {
+    serde_json::Value::Array(cards.iter().map(|(s, n)| serde_json::json!({"session": s, "n": n})).collect()).to_string()
+}
+
+/// Custom web data as Chromium reads it from a drop ("Chromium Web Custom MIME Data Format", the clipboard format
+/// WebView2's page sees as extra DataTransfer types): a base::Pickle — a u32 payload size, then a u32 count and each
+/// type and value as a string16 (an i32 length in UTF-16 units, the units, padded to 4 bytes). Chromium's own drags
+/// between its windows write the same (ui/base/clipboard/custom_data_helper.cc).
+pub fn web_custom_data(entries: &[(&str, &str)]) -> Vec<u8> {
+    fn string16(out: &mut Vec<u8>, s: &str) {
+        let units: Vec<u16> = s.encode_utf16().collect();
+        out.extend_from_slice(&(units.len() as i32).to_le_bytes());
+        for u in &units {
+            out.extend_from_slice(&u.to_le_bytes());
+        }
+        while !out.len().is_multiple_of(4) {
+            out.push(0);
+        }
+    }
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (k, v) in entries {
+        string16(&mut payload, k);
+        string16(&mut payload, v);
+    }
+    let mut out = (payload.len() as u32).to_le_bytes().to_vec();
+    out.extend(payload);
+    out
 }
 
 /// Where card `n`'s files for other apps live: `<session>/out/<NNN>/` (housekeeping trashes it with the card).
@@ -208,8 +317,12 @@ mod tests {
     fn an_agent_app_gets_the_terminal_line() {
         let built_in = agents(None);
         assert_eq!(built_in.len(), AGENTS.len());
-        for exe in [r"C:\Users\a\AppData\Local\Programs\cursor\Cursor.exe", "Codex.exe", "WorkBuddy.exe", "Kimi Code.exe", "Trae CN.exe", "kiro.exe"] {
+        for exe in [r"C:\Users\a\AppData\Local\Programs\cursor\Cursor.exe", "Trae CN.exe", "kiro.exe", "Windsurf.exe", "Qoder.exe", "Antigravity.exe"] {
             assert_eq!(target(Some(exe), Some("Chrome_WidgetWin_1"), &built_in), Target::Terminal, "{exe}");
+        }
+        // desktop agents with their own composer: the same line, but several cards one line each
+        for exe in ["Codex.exe", "WorkBuddy.exe", "Kimi Code.exe", "QoderWork.exe", "DoubaoWork.exe"] {
+            assert_eq!(target(Some(exe), Some("Chrome_WidgetWin_1"), &built_in), Target::Composer, "{exe}");
         }
         // cloud chats and the Claude desktop app (its chat and its Code tab are one window) get the picture
         for exe in ["claude.exe", "ChatGPT.exe", "Kimi.exe", "Doubao.exe", "Code.exe", "chrome.exe", "explorer.exe"] {
@@ -230,6 +343,9 @@ mod tests {
         assert!(!a.contains("cursor") && a.contains("zed") && a.contains("myagent") && a.contains("trae") && !a.contains("odd"));
         assert_eq!(target(Some("Cursor.exe"), None, &a), Target::Other);
         assert_eq!(target(Some("zed.exe"), None, &a), Target::Terminal);
+        // a composer switched off is an ordinary app; one the user added is one line
+        let off = agents(record(json!({"agent_apps": {"codex": false}})).as_ref());
+        assert_eq!(target(Some("Codex.exe"), None, &off), Target::Other);
         // "paths" and anything unknown: the list; "same": none at all
         assert_eq!(agents(record(json!({"agent_drag": "paths"})).as_ref()).len(), AGENTS.len());
         assert_eq!(agents(record(json!({"agent_drag": 3})).as_ref()).len(), AGENTS.len());
@@ -295,6 +411,69 @@ mod tests {
         assert_eq!(stem(true, "153012"), "截图-153012");
         assert_eq!(note_name(false, "153012"), "Screenshot-153012-note.md");
         assert_eq!(note_name(true, "153012"), "截图-153012-备注.md");
+    }
+
+    fn shot(p: &str, note: Option<&str>) -> DragCard {
+        DragCard { file: Some(PathBuf::from(p)), note: note.map(str::to_owned) }
+    }
+    fn voice(words: &str) -> DragCard {
+        DragCard { file: None, note: Some(words.to_owned()) }
+    }
+
+    #[test]
+    fn several_cards_for_a_terminal_are_one_line_for_a_composer_one_line_each() {
+        let cards = [shot(r"C:\s\001.png", Some("the logo\nis cut")), shot(r"C:\s\003.png", None), voice("  call Ana\r\nabout it "), voice(" \n ")];
+        assert_eq!(
+            terminal_text(&cards, false).unwrap(),
+            "\"C:\\s\\001.png\" the logo is cut  \"C:\\s\\003.png\"  call Ana about it"
+        );
+        assert_eq!(
+            terminal_text(&cards, true).unwrap(),
+            "\"C:\\s\\001.png\" the logo is cut\n\"C:\\s\\003.png\"\ncall Ana about it"
+        );
+        // nothing in the one line runs at a prompt
+        assert!(!terminal_text(&cards, false).unwrap().chars().any(char::is_control));
+        assert_eq!(terminal_text(&[voice(""), voice("\n")], false), None);
+        assert_eq!(terminal_text(&[], true), None);
+    }
+
+    #[test]
+    fn notes_after_a_chat_drop_are_numbered_by_file() {
+        // two files: numbered by their place among the files (the second picture has no note: 1 and 3 remain)
+        let cards = [shot("/a.png", Some(" first ")), shot("/b.png", None), voice("spoken"), shot("/c.png", Some("third\nline"))];
+        assert_eq!(follow_up_notes(&cards).unwrap(), "1. first\n3. third\nline\nspoken");
+        // one file: the note as it is
+        assert_eq!(follow_up_notes(&[shot("/a.png", Some("only")), voice("words")]).unwrap(), "only\nwords");
+        assert_eq!(follow_up_notes(&[shot("/a.png", None), shot("/b.png", Some("  "))]), None);
+    }
+
+    #[test]
+    fn a_copy_of_several_cards_is_a_line_each_when_one_has_a_picture() {
+        let cards = [shot(r"C:\s\001.png", Some("one")), voice("two")];
+        assert_eq!(copy_text(&cards).unwrap(), "\"C:\\s\\001.png\" one\ntwo");
+        assert_eq!(copy_text(&[voice("a"), voice("b")]), None);
+    }
+
+    #[test]
+    fn the_cards_ride_along_as_web_custom_data() {
+        let json = cards_json(&[("C:\\s\\b1".into(), 3), ("/s/b2".into(), 12)]);
+        let v: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, json!([{"session": "C:\\s\\b1", "n": 3}, {"session": "/s/b2", "n": 12}]));
+        // base::Pickle: payload size, count, then (len, UTF-16 units, padding to 4) for the type and the value
+        let p = web_custom_data(&[("ab", "xyz")]);
+        let u32_at = |i: usize| u32::from_le_bytes(p[i..i + 4].try_into().unwrap());
+        assert_eq!(u32_at(0) as usize, p.len() - 4);
+        assert_eq!(u32_at(4), 1);
+        assert_eq!(u32_at(8), 2);
+        assert_eq!(&p[12..16], &[b'a', 0, b'b', 0]);
+        assert_eq!(u32_at(16), 3);
+        assert_eq!(&p[20..26], &[b'x', 0, b'y', 0, b'z', 0]);
+        assert_eq!(&p[26..28], &[0, 0]); // padded
+        assert_eq!(p.len(), 28);
+        assert_eq!(p.len() % 4, 0);
+        // a value outside the BMP is two units
+        let q = web_custom_data(&[(CARDS_MIME, "😀")]);
+        assert_eq!(u32::from_le_bytes(q[q.len() - 8..q.len() - 4].try_into().unwrap()), 2);
     }
 
     #[test]

@@ -724,3 +724,18 @@
 /* A folder opened as a new project */
 "main.open.added" = "Added %1$@ · items start at %2$@-1";
 "main.open.rename" = "Rename";
+"main.drop.text" = "text";
+"main.drop.and" = ", ";
+"main.drop.new_item" = "Drop for a new item";
+"main.drop.new_item_in" = "New item in “%@”";
+"main.drop.add_to" = "Add to “%@”";
+"main.drop.file_to" = "File to “%@”";
+"main.drop.read_only" = "Read-only item — drop on the band above for a new one";
+"main.drop.folders" = "Folders open as projects — drop on the sidebar";
+"main.drop.folders_skipped" = "%@ · folder skipped";
+"main.drop.added" = "Added to “%@” · %@";
+"main.drop.added_undo" = "Add to “%@”";
+"main.drop.add_failed" = "Couldn’t add to the item";
+"main.new_item.remove_file" = "Remove %@";
+"main.drop.pick_add" = "Add";
+"main.drop.pick_message" = "Add pictures or files to “%@”";

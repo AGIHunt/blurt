@@ -78,5 +78,6 @@
   "tray.models.stop_download": "Stop download",
   "tray.models.status": "Downloading · {pct}%",
   "tray.models.row": "Speech model · {done} / {total}",
-  "tray.counts_sep": ", "
+  "tray.counts_sep": ", ",
+  "mainwin.add_files.title": "Add Images or Files"
 }

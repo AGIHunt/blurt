@@ -11,6 +11,7 @@ pub mod agents;
 pub mod capture;
 pub mod control;
 pub mod dictation;
+pub mod draglog;
 pub mod folder_drop;
 pub mod hotkeys;
 pub mod housekeeping;
@@ -398,6 +399,169 @@ fn items_add(state: tauri::State<'_, AppState>, project: String, item: Value) ->
     items::add(&state.runner(), &project, &item)
 }
 
+// Drops on the main window (docs/design/drag-drop.md §4): files and text on an item, hanging cards from the island.
+
+/// Something dropped on an item: pictures as frames, other files referenced (or copied, from a temporary place),
+/// text after the details; `restore` (the "before" an earlier call returned): the Undo.
+#[tauri::command(async)]
+fn items_attach(state: tauri::State<'_, AppState>, uid: String, frames: Vec<String>, files: Vec<String>, text: Option<String>, restore: Option<Value>) -> R<Value> {
+    items::attach(&state.runner(), &uid, &frames, &files, text.as_deref(), restore.as_ref())
+}
+
+/// Dropped files' paths the page found itself (Linux: a file manager's text/uri-list): which are folders (projects,
+/// on the sidebar) — and each file may show as a thumbnail in New Item (the asset protocol may read it, that file
+/// only). An empty or relative path stays as it is ('' : no path).
+#[tauri::command(async)]
+fn drop_paths(app: AppHandle, paths: Vec<String>) -> Vec<Value> {
+    paths
+        .into_iter()
+        .map(|p| {
+            let path = std::path::Path::new(&p);
+            let ok = path.is_absolute() && path.exists();
+            let dir = ok && path.is_dir();
+            if ok && !dir {
+                let _ = app.asset_protocol_scope().allow_file(path);
+            }
+            json!({"path": if ok { p.as_str() } else { "" }, "dir": dir})
+        })
+        .collect()
+}
+
+/// Ctrl+V in the main window (drag-drop.md §0.6): what the system clipboard holds, read here — a page learns no file
+/// paths, WebKitGTK may give it no files at all, and only here can a document's copy (rich text with a picture of
+/// itself) or Blurt's own copy be told apart. → {images, files, text}: pictures and other files by path (a picture
+/// that came as data is written to a temporary PNG first), text only when nothing else came. Each file may then show
+/// as a thumbnail in New Item. Blurt's own copies and files in its own folders are never pasted back as files.
+#[tauri::command(async)]
+fn clipboard_things(app: AppHandle) -> Value {
+    use island::drop_in;
+    let read = island::clipboard_read();
+    let (rich, ours) = (read.rich, read.ours);
+    let c = drop_in::clipboard_pick(read, |p| p.is_dir(), drop_in::is_mine);
+    let mut images: Vec<String> = c.images.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    if let Some(png) = &c.png {
+        if let Ok(p) = items::save_temp_image("pasted.png", png) {
+            images.push(p);
+        }
+    }
+    let files: Vec<String> = c.files.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    for p in images.iter().chain(&files) {
+        let _ = app.asset_protocol_scope().allow_file(p);
+    }
+    json!({"images": images, "files": files, "text": c.text, "rich": rich, "ours": ours})
+}
+
+/// The main window's own drop and paste events for the drag log (draglog.rs; never their words).
+#[tauri::command]
+fn drag_log(event: Value) {
+    draglog::log(event);
+}
+
+/// The review page's "Show in folder" and its file rows (a frame, a recording, an item's attached file — the user's
+/// own PDF or video, anywhere on disk). Only a file the page was served is shown — one in Blurt's stores, or one a doc
+/// it loaded names (the Mac's `attached()`: the path is in the item's own file) — never any path a page asks for.
+/// `open`: opened in its default app (the detail's Space / Quick Look, Windows and Linux having none); a program or
+/// script is never run that way — it is shown in its folder instead. → "opened" | "revealed".
+#[tauri::command]
+fn review_file(app: AppHandle, state: tauri::State<'_, AppState>, path: String, open: Option<bool>) -> R<String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err(format!("not found: {path}"));
+    }
+    if !(state.docs.listed(&path) || app.asset_protocol_scope().is_allowed(p)) {
+        return Err(format!("not a file of this item: {path}"));
+    }
+    if open.unwrap_or(false) && !runs_as_program(p) && !p.is_dir() {
+        open_path(app, path)?;
+        return Ok("opened".into());
+    }
+    app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())?;
+    Ok("revealed".into())
+}
+
+/// A file that opening would run rather than show: a program, a script, a shortcut, an installer (Windows: by its
+/// extension; Linux: a .desktop launcher, an AppImage, or anything executable).
+fn runs_as_program(p: &std::path::Path) -> bool {
+    const RUNS: &[&str] = &[
+        "exe", "com", "bat", "cmd", "msi", "msix", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "scr", "pif",
+        "cpl", "msc", "lnk", "url", "reg", "jar", "appref-ms", "application", "gadget", "inf", "sh", "bash", "zsh", "run", "desktop",
+        "appimage", "command", "app", "py", "pyw", "pl", "rb",
+    ];
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if RUNS.contains(&ext.as_str()) {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The item detail's "Add image or file…" (the review page's `host.addFiles`): the system's Open dialog, any files,
+/// then attached as a drop would be — pictures as frames (copied in), other files referenced where they are (copied
+/// when in a temporary place), folders not taken. Ok(None): cancelled or nothing to add; else items.py's {before,
+/// added} for the toast's Undo.
+#[tauri::command(async)]
+fn items_add_files(app: AppHandle, state: tauri::State<'_, AppState>, uid: String) -> R<Option<Value>> {
+    let picked: Vec<std::path::PathBuf> = tauri_plugin_dialog::DialogExt::dialog(&app)
+        .file()
+        .set_title(l10n::t("mainwin.add_files.title"))
+        .blocking_pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .collect();
+    let (frames, files) = split_picked(&picked);
+    draglog::log(json!({"event": "item_add_files", "picked": picked.len(), "images": frames.len(), "files": files.len()}));
+    if frames.is_empty() && files.is_empty() {
+        return Ok(None);
+    }
+    let r = items::attach(&state.runner(), &uid, &frames, &files, None, None)?;
+    Ok(Some(r))
+}
+
+/// Picked files as a drop sorts them: pictures (frames) and other files (attachments); folders left out.
+fn split_picked(picked: &[std::path::PathBuf]) -> (Vec<String>, Vec<String>) {
+    let (mut frames, mut files) = (Vec::new(), Vec::new());
+    for p in picked.iter().filter(|p| !p.is_dir()) {
+        let s = p.to_string_lossy().into_owned();
+        if island::drop_in::is_picture(p) {
+            frames.push(s);
+        } else {
+            files.push(s);
+        }
+    }
+    (frames, files)
+}
+
+/// The island cards of the drag under way (`[{session, n}]`), if it is one: the list asks as a drag of files enters.
+#[tauri::command(async)]
+fn cards_dragging() -> Option<Value> {
+    island::dragging_cards()
+}
+
+/// Hanging cards dropped on a project (the sidebar's row, or the list of a project): filed there.
+#[tauri::command(async)]
+fn cards_file(app: AppHandle, cards: Vec<Value>, project: String) {
+    island::cards_into_project(&app, &cards, &project);
+}
+
+/// Hanging cards dropped on an item: added to it, then taken. Ok(items.py's {before, added}) for the Undo.
+#[tauri::command(async)]
+fn cards_attach(app: AppHandle, state: tauri::State<'_, AppState>, cards: Vec<Value>, uid: String) -> R<Value> {
+    island::cards_into_item(&app, &state.runner(), &cards, &uid)
+}
+
+/// Undo of `cards_attach`: the cards hang again.
+#[tauri::command(async)]
+fn cards_put_back(app: AppHandle, cards: Vec<Value>) {
+    island::cards_put_back(&app, &cards);
+}
+
 /// The Save dialog (with the Mac's file name), then the bundle; Ok(None) when the dialog was cancelled.
 #[tauri::command(async)]
 fn items_export_bundle(app: AppHandle, state: tauri::State<'_, AppState>, uids: Vec<String>, name: String, lang: String) -> R<Option<Value>> {
@@ -765,9 +929,18 @@ fn test_channel(app: &AppHandle) {
 #[cfg(windows)]
 fn browser_ui_off(wv: &tauri::Webview) {
     let overlay = wv.label() != "main";
+    let island = wv.label() == blurt_capture::overlay::Kind::Island.label();
     let _ = wv.with_webview(move |p| unsafe {
-        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+        use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2Controller4, ICoreWebView2Settings3};
         use windows::core::Interface;
+        // the island (as big as the work area) is never a drop target: a file let go over a hanging card or the pill
+        // would vanish into it, and under its transparent parts other apps must get their drops. Another app's drops
+        // come in through the catcher over the notch (island_drop_win.rs).
+        if island {
+            if let Ok(c4) = p.controller().cast::<ICoreWebView2Controller4>() {
+                let _ = c4.SetAllowExternalDrop(false);
+            }
+        }
         let Ok(core) = p.controller().CoreWebView2() else { return };
         let Ok(settings) = core.Settings() else { return };
         if overlay {
@@ -958,6 +1131,16 @@ pub fn run() {
             items_move,
             items_undo_state,
             items_add,
+            items_attach,
+            items_add_files,
+            clipboard_things,
+            drag_log,
+            review_file,
+            cards_dragging,
+            drop_paths,
+            cards_file,
+            cards_attach,
+            cards_put_back,
             items_export_bundle,
             pick_images,
             projects_remove,

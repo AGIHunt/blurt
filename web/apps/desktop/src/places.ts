@@ -185,7 +185,10 @@ export type UndoStep =
   | { kind: 'edit'; name: string; project: string; uid: string; before: Record<string, unknown>; after: Record<string, unknown> }
   | { kind: 'remove_project'; name: string; id: string; removed: unknown }
   /** a step of the review page on show (host.registerUndo): the page undoes / redoes it itself */
-  | { kind: 'page'; name: string };
+  | { kind: 'page'; name: string }
+  /** something added to an item (a drop, a paste, Add Image or File…): `before` / `after` its frames, attachments and
+   *  details (items.py attach --restore); island cards it took go back on Undo (no Redo then: they hang again) */
+  | { kind: 'attach'; name: string; uid: string; before: unknown; after: unknown; cards?: { session: string; n: number }[] };
 
 /** The Inbox's "3 new · 2 to verify" parts (a zero part left out). */
 export function needsYouParts(fresh: number, verify: number, t: (k: string, p?: { n: number }) => string): string {

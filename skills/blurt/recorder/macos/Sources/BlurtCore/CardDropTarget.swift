@@ -188,6 +188,11 @@ public enum AgentWindow {
         "com.google.antigravity", "dev.kiro.desktop",
     ]
     public static let builtIn = hosts.union(apps)
+    /// agents whose drop lands in their own message box, never a terminal: several cards may go in as several lines
+    /// there. The AI IDEs (Cursor, Windsurf…) aren't: a drop may land in their built-in terminal, where a newline runs
+    /// the line — they get the terminal's one line.
+    public static let composers: Set<String> = hosts.union(["com.tencent.workbuddy.mac", "com.qoder.work", "com.kimi.code.desktop",
+                                                            "com.work.pc.doubao"])
 
     /// record.agent_drag: "paths" (default, also when unset or unknown) or "same" (as every other app).
     public static func getsPaths(setting: String?) -> Bool { setting != "same" }
@@ -250,9 +255,12 @@ public struct DragLanding: Equatable {
     public var cls: DropClass
     public var kind: ComposerKind?
     public var wordsWithheld: Bool
+    /// an agent's own window (the Claude app's Code tab, the Codex app, Cursor…), not a terminal: several cards may go
+    /// in as several lines (its composer is a text box; at a shell prompt a newline would run the line)
+    public var lines: Bool
 
-    public init(cls: DropClass, kind: ComposerKind? = nil, wordsWithheld: Bool = false) {
-        self.cls = cls; self.kind = kind; self.wordsWithheld = wordsWithheld
+    public init(cls: DropClass, kind: ComposerKind? = nil, wordsWithheld: Bool = false, lines: Bool = false) {
+        self.cls = cls; self.kind = kind; self.wordsWithheld = wordsWithheld; self.lines = lines
     }
 
     /// Where a drag over the app `bundleID` (`kind`: its composer) lands; `voice`: a voice card; `canPaste`: smart paste
@@ -353,5 +361,64 @@ public enum ComposerPick {
             if best == nil || d < best!.d { best = (i, d) }
         }
         return best?.i
+    }
+}
+
+/// The window a drag is over (CardDrag's DropProbe): the frontmost one under the point in CGWindowList's z-order that
+/// can take a drop. v1.0.23 — user report: cards dragged into Claude Code / Codex lost their note (the picture alone).
+/// On macOS 26.5 Notification Center keeps a full-screen, fully transparent window (layer 21, alpha 1) above every
+/// app, and the probe took it for the app under the pointer: every drop was "Notification Center", a chat app with no
+/// composer, so agents never got path + note and chat apps never got the note pasted. Windows at or above the Dock's
+/// level + 1 (Notification Center, the menu bar and its items, the drag image, the cursor) are never drop targets,
+/// and neither are the system's overlay processes at any level.
+public enum DropWindows {
+    public struct Window: Equatable {
+        public var pid: Int
+        public var bundleID: String?
+        public var ownerName: String?
+        public var layer: Int
+        public var alpha: Double
+        /// in CG coordinates (top-left origin)
+        public var bounds: CGRect
+        /// one of ours that takes the pointer (not the cards' panel during a drag)
+        public var oursTakesMouse: Bool
+        public init(pid: Int, bundleID: String? = nil, ownerName: String? = nil, layer: Int = 0, alpha: Double = 1,
+                    bounds: CGRect, oursTakesMouse: Bool = true) {
+            self.pid = pid; self.bundleID = bundleID; self.ownerName = ownerName; self.layer = layer; self.alpha = alpha
+            self.bounds = bounds; self.oursTakesMouse = oursTakesMouse
+        }
+    }
+
+    public enum Pick: Equatable {
+        /// another app's window
+        case app(Int)
+        /// one of Blurt's own windows (the main window, the island, a note): an in-app drop
+        case ours
+        case nothing
+    }
+
+    /// above the Dock (kCGDockWindowLevel = 20): Notification Center (21), the menu bar (24/25), pop-up menus, the drag
+    public static let maxLayer = 20
+    /// processes whose windows float over the apps without ever taking a drop
+    public static let overlays: Set<String> = [
+        "com.apple.notificationcenterui", "com.apple.controlcenter", "com.apple.WindowManager", "com.apple.Spotlight",
+        "com.apple.screencaptureui", "com.apple.TextInputMenuAgent", "com.apple.TextInputUI.xpc.CursorUIViewService",
+    ]
+
+    /// `windows` front to back (CGWindowList order), `q` in CG coordinates, `me` Blurt's pid.
+    public static func pick(_ windows: [Window], at q: CGPoint, me: Int) -> Pick {
+        for w in windows {
+            guard w.alpha > 0.01, w.ownerName != "Window Server", w.bounds.contains(q) else { continue }
+            if w.pid == me {
+                // ours at any level below the drag image (the island sits over the menu bar)
+                guard w.layer < 500 else { continue }
+                if w.oursTakesMouse { return .ours }
+                continue            // the cards' panel during a drag: the drop goes to what is under it
+            }
+            guard w.layer <= maxLayer else { continue }
+            if let id = w.bundleID, overlays.contains(id) { continue }
+            return .app(w.pid)
+        }
+        return .nothing
     }
 }

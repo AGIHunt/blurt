@@ -43,6 +43,8 @@ protocol SidebarActions: AnyObject {
     func renameProject(_ id: String, to name: String)
     /// the projects dragged into a new order
     func reorderProjects(_ ids: [String])
+    /// v1.0.23: another app's pictures / files / text dropped on a project: a New Item sheet into it
+    func newItem(from drop: DropIn, in project: String)
 }
 
 extension NSPasteboard.PasteboardType {
@@ -94,7 +96,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.setAccessibilityLabel(T("main.sidebar.label"))
         outline.menu = NSMenu()
         outline.menu?.delegate = self
-        outline.registerForDraggedTypes([.fileURL, .blurtItems, .blurtProject, capturePasteboardType])
+        outline.registerForDraggedTypes([.blurtItems, .blurtProject, capturePasteboardType] + DropIn.types)
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.target = self
@@ -313,7 +315,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             o.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)     // the whole list highlights
             return .link
         }
-        return []
+        // v1.0.23: pictures, files, text from another app onto a project (or Unassigned): a new item there
+        let d = DropIn.read(pb, decode: false)
+        guard !d.isEmpty, let n = item as? SidebarNode, index == NSOutlineViewDropOnItemIndex, let s = n.scope else { return [] }
+        switch s {
+        case .project(let p) where model.project(id: p)?.registered == true: return .copy
+        case .unassigned: return .copy
+        default: return []
+        }
     }
 
     func outlineView(_ o: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
@@ -334,18 +343,33 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             }
             return true
         }
-        if let raw = pb.pasteboardItems?.first?.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
+        let shots = Island.shots(from: pb)
+        if !shots.isEmpty {
             guard let s = (item as? SidebarNode)?.scope else { return false }
+            HangingCards.takenInApp = CACurrentMediaTime()
             switch s {
-            case .project(let p): snapper.assign(hanging.withSelection(shot), to: p)
-            case .unassigned: snapper.assign(hanging.withSelection(shot), to: "inbox")
+            case .project(let p): snapper.assign(shots, to: p)
+            case .unassigned: snapper.assign(shots, to: "inbox")
             default: return false
             }
             return true
         }
         let dirs = folders(pb)
-        guard !dirs.isEmpty else { return false }
-        actions?.openFolders(dirs)
+        if !dirs.isEmpty {
+            actions?.openFolders(dirs)
+            return true
+        }
+        guard let s = (item as? SidebarNode)?.scope else { return false }
+        let project: String
+        switch s {
+        case .project(let p): project = p
+        case .unassigned: project = "inbox"
+        default: return false
+        }
+        DropIn.read(pb, decode: true).resolved { [weak self] got in
+            guard !got.isEmpty else { return NSSound.beep() }
+            self?.actions?.newItem(from: got, in: project)
+        }
         return true
     }
 

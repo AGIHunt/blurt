@@ -813,8 +813,8 @@ fn snap_area(app: &AppHandle) {
 }
 
 /// "Edit Note…" on a card: the full note bubble (snap.rs). Blocks: a worker thread.
-pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>) {
-    snap::edit_note(app, session, n, under);
+pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>, passive: bool) {
+    snap::edit_note(app, session, n, under, passive);
 }
 
 /// The island's Undo on "Snap discarded".
@@ -1243,10 +1243,16 @@ pub fn card_lines(session: &Path) -> Vec<CardLine> {
         .map(|(n, m)| {
             let text = ["said", "text"].iter().find_map(|k| m.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty())).map(str::to_owned);
             let voice_only = m.get("type").and_then(Value::as_str) == Some("voice");
-            let card = match (voice_only, m.get("marked").and_then(Value::as_str).or(m.get("file").and_then(Value::as_str))) {
+            let mut card = match (voice_only, m.get("marked").and_then(Value::as_str).or(m.get("file").and_then(Value::as_str))) {
                 (false, Some(f)) => Card::from_shot(session, n as u32, f, text),
                 _ => Card::voice(session, n as u32, text),
             };
+            // dropped on the island (drag-drop.md §3): a file card refers to its file ("ref"), a text card is a voice
+            // card with no recording (captures.py reads both the same way)
+            card.reference = m.get("ref").and_then(Value::as_str).filter(|r| !r.is_empty()).map(str::to_owned);
+            // its file moved or deleted (no bookmark to find it again, as the Mac has): said on the card
+            card.missing = card.reference.as_deref().is_some_and(|r| !Path::new(r).exists());
+            card.text_card = voice_only && m.get("voice").and_then(Value::as_str).is_none_or(|v| v.is_empty());
             CardLine { card, taken: m.get("taken").and_then(Value::as_f64), wall: m.get("wall").and_then(Value::as_f64) }
         })
         .collect()
@@ -1306,19 +1312,74 @@ fn next_shot_n(session: &Path) -> u64 {
 /// A screenshot the system took (Settings → General → Cards, record.collect_system_shots): copied into the shots batch
 /// as the next capture — a card, or filed into `project` as a snap would be. The file itself stays where it was.
 pub fn import_system_shot(session: &Path, project: Option<&str>, src: &Path) -> Option<Card> {
+    import_picture(session, project, src, "system")
+}
+
+/// A picture file copied in as a card (its own format kept: png / jpg): `source` says where it came from ("system":
+/// the system's screenshot folder; "drop": dropped on the island).
+pub fn import_picture(session: &Path, project: Option<&str>, src: &Path, source: &str) -> Option<Card> {
     let ext = src.extension()?.to_string_lossy().to_lowercase();
     std::fs::create_dir_all(session.join("shots")).ok()?;
     let n = next_shot_n(session);
     let file = format!("shots/{n:03}.{ext}");
     std::fs::copy(src, session.join(&file)).ok()?;
+    Some(picture_line(session, project, n, &file, source, None))
+}
+
+/// A picture as PNG bytes (decoded from another format, or image data a drag carried) written in as a card.
+pub fn add_png_card(session: &Path, png: &[u8], source: &str) -> Option<Card> {
+    std::fs::create_dir_all(session.join("shots")).ok()?;
+    let n = next_shot_n(session);
+    let file = format!("shots/{n:03}.png");
+    std::fs::write(session.join(&file), png).ok()?;
+    Some(picture_line(session, None, n, &file, source, None))
+}
+
+/// A file card (drag-drop.md §3): `face` (PNG: the file's thumbnail or icon) is only how it looks; the card refers
+/// to the file (shots.jsonl "ref", as the Mac writes it; captures.py makes it the item's attachment). `temporary`: the
+/// file sits where it won't stay (a chat app's cache, %TEMP%): a copy goes to `<session>/files/<NNN>/` first (the
+/// Mac's batch layout) and the card refers to that. The original is never moved, written or deleted.
+pub fn add_file_card(session: &Path, face: &[u8], file: &Path, temporary: bool) -> Option<Card> {
+    std::fs::create_dir_all(session.join("shots")).ok()?;
+    let n = next_shot_n(session);
+    let reference = if temporary {
+        let dir = session.join("files").join(format!("{n:03}"));
+        let dst = dir.join(file.file_name()?);
+        std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(file, &dst)).ok().map(|_| dst).unwrap_or_else(|| file.to_path_buf())
+    } else {
+        file.to_path_buf()
+    };
+    let face_file = format!("shots/{n:03}.png");
+    std::fs::write(session.join(&face_file), face).ok()?;
+    Some(picture_line(session, None, n, &face_file, "drop", Some(&reference.to_string_lossy())))
+}
+
+/// A text card: text or a link dropped on the island, a voice card with no recording (the Mac's addText).
+pub fn add_text_card(session: &Path, text: &str) -> Option<Card> {
+    std::fs::create_dir_all(session).ok()?;
+    let n = next_shot_n(session);
+    let wall = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
+    append_line(session, &json!({"n": n, "file": null, "marked": null, "t": null, "wall": wall, "region": [], "voice": null,
+                                  "text": text, "strokes": [], "type": "voice", "source": "drop", "project": null}));
+    let mut c = Card::voice(session, n as u32, Some(text.to_string()));
+    c.text_card = true;
+    Some(c)
+}
+
+fn picture_line(session: &Path, project: Option<&str>, n: u64, file: &str, source: &str, reference: Option<&str>) -> Card {
     let wall = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
     let mut line = json!({"n": n, "file": file, "marked": null, "t": null, "wall": wall, "region": [], "voice": null,
-                          "text": null, "strokes": [], "type": "shot", "source": "system", "project": project});
+                          "text": null, "strokes": [], "type": "shot", "source": source, "project": project});
     if project.is_some() {
         line["assigned_by"] = json!("capture");
     }
+    if let Some(r) = reference {
+        line["ref"] = json!(r);
+    }
     append_line(session, &line);
-    Some(Card::from_shot(session, n as u32, &file, None))
+    let mut c = Card::from_shot(session, n as u32, file, None);
+    c.reference = reference.map(str::to_owned);
+    c
 }
 
 #[cfg(test)]

@@ -73,6 +73,8 @@ const kinds = $<HTMLElement>('.list.kinds');
 const kindRows = $<HTMLElement>('.kinds .rows');
 
 const snapMode = params.get('mode') === 'snap' || params.get('mode') === 'edit';
+/** a note offered after a drop folds away untouched after this long (the Mac's NoteBubble.passiveSeconds) */
+const PASSIVE_MS = 6000;
 /** Edit Note on a card: the same composer in its own window, the picture enlarged in it with its strokes */
 const editMode = params.get('mode') === 'edit';
 const n = () => Number(params.get('n') ?? 0);
@@ -1022,6 +1024,26 @@ function snapNote() {
     }, 3000);
   });
   addEventListener('focus', () => clearTimeout(resign));
+
+  // ---- offered after a drop on the island (`passive`, drag-drop.md §3; the Mac's NoteBubble.passive): the window
+  // opened without the keyboard — the user is often still in the app they dragged from. The pointer coming onto the
+  // bubble (or a press on it) asks for the keys (`note.keys`); never touched, it folds away after 6 s with the card as
+  // it was. Typed into, it stays like any note (Enter, or another app taking over, saves it).
+  let passive = editMode && params.get('passive') === '1';
+  const passiveTimer = passive
+    ? window.setTimeout(() => {
+        if (passive && !closed && !typed) cancel();
+      }, PASSIVE_MS)
+    : 0;
+  const takeKeys = () => {
+    if (!passive || closed) return;
+    passive = false;
+    clearTimeout(passiveTimer);
+    void host.emit(EV.action, { action: 'note.keys', g: gen });
+    field.focus({ preventScroll: true });
+  };
+  bubble.addEventListener('pointerenter', takeKeys);
+  bubble.addEventListener('pointerdown', takeKeys);
 
   // ---- closing (NoteBubble.close)
   function commit() {

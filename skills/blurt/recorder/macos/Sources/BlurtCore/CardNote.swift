@@ -134,6 +134,21 @@ public enum CardTransfer {
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
+    /// The note pasted after several cards were dropped into a chat app (v1.0.23): with one file among them, the notes
+    /// as they are, one paragraph each; with two or more, each file card's note numbered by its place among the files
+    /// ("1. …", "3. …": the pictures arrive in this order), the words of cards without a file (voice, text) after them.
+    /// nil: no words.
+    public static func followUpNotes(_ cards: [CardPasteboard.Card]) -> String? {
+        let files = cards.filter { $0.file != nil }
+        var out: [String] = []
+        for (i, c) in files.enumerated() {
+            guard let n = CardNote.clean(c.note) else { continue }
+            out.append(files.count > 1 ? "\(i + 1). \(n)" : n)
+        }
+        out += cards.filter { $0.file == nil }.compactMap { CardNote.clean($0.note) }
+        return out.isEmpty ? nil : out.joined(separator: "\n")
+    }
+
     /// `path` as one shell word: as it is when every character is plain (ASCII letters, digits, `/ . _ - + , : @ %`,
     /// and letters of other scripts — 截图-153012.png stays readable), else in single quotes, a quote inside written
     /// `'\''`. A control character can't be quoted for a terminal: it is left out.

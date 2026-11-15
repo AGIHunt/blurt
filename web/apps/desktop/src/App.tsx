@@ -12,7 +12,7 @@ import { Icon } from '@blurt/icons';
 import { applyPlatform, applyTheme, menuCase, targetOf, type Action, type State } from '@blurt/ui';
 import { KindIcon, StatusRing } from '@blurt/ui/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { api, inTauri, invoke, listen, type AppStatus, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
+import { api, inTauri, invoke, listen, type AppStatus, type AttachResult, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
 import { codeUrl, hostFor, type HostCallbacks } from './host';
 import type { ReviewHandle } from './review';
 import { errText, i18n, plural, setLang, t } from './i18n';
@@ -55,6 +55,7 @@ import { CapturesBanner, FilterBar, JobsSection, ListHeading, MissingFolderBanne
 import { tidy, useMenu, type MenuEntry, type MenuItem } from './components/Menu';
 import { MovePopover } from './components/MovePopover';
 import { NewItemSheet, prefillFromText, type Prefill } from './components/NewItemSheet';
+import { CARDS_MIME, DragState, attachedAfter, detailTakes, dragKind, droppedText, dropLabel, parseCards, pasteTarget, pathsByName, sortEntries, titleFromFiles, type CardRef, type DragKind, type DropEntry, type PasteTo, type Zone } from './drops';
 import { Palette, type PaletteEntry } from './components/Palette';
 import { ProjectSettingsSheet } from './components/ProjectSettingsSheet';
 import { PhoneAsk } from './settings/PhonePane';
@@ -64,7 +65,7 @@ import { goSettingsPane, SettingsView } from './components/SettingsView';
 import { DictationView } from './components/DictationView';
 import { Shortcuts } from './components/Shortcuts';
 import { AgentSetupAsk } from './components/AgentSetupAsk';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, webview } from './components/Sidebar';
 import { Welcome } from './components/Welcome';
 import './components/main-window.css';
 
@@ -192,6 +193,16 @@ export default function App() {
   /** rows drag out as Windows' own file drag (mainwin.rs), and the rows of the drag under way */
   const [nativeDrag, setNativeDrag] = useState(false);
   const dragging = useRef<string[] | null>(null);
+  /** something from outside (files, text) or the island's cards dragged over the window: where, and what it is
+      (drag-drop.md §4); the label next to the pointer moves with it without a render (`dropTip`) */
+  const [drop, setDrop] = useState<{ zone: Zone; what: DragKind; where: 'list' | 'side' | 'detail' } | null>(null);
+  const dropTip = useRef<HTMLDivElement>(null);
+  const dropAt = useRef({ x: 0, y: 0 });
+  /** the drag under way: the island cards it is (Rust's answer, asked once per drag: cards_dragging), whether it
+      began in this window — all reset when it is over (DragState) */
+  const dragState = useRef(new DragState());
+  /** drops waiting for their files' paths (folder_drop.rs answers `mainwin://files-dropped` with the token) */
+  const pathWaits = useRef(new Map<string, (files: { path: string; dir: boolean }[] | null) => void>());
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const undo = useRef<UndoStep[]>([]);
   const redo = useRef<UndoStep[]>([]);
@@ -229,6 +240,7 @@ export default function App() {
     windowUndo: (redo: boolean) => void;
     undone: (uid: string) => void;
     openFolders: (paths: string[]) => Promise<void>;
+    addedFiles: (uid: string, r: AttachResult) => void;
   }>(null!);
   /** the review page on show (ReviewPane's handle): the window's undo calls its steps back, the list's writes poll it */
   const page = useRef<ReviewHandle | null>(null);
@@ -266,6 +278,11 @@ export default function App() {
       listen<{ count: number }>('cards://changed', (p) => setCardsWaiting(p.count)),
       listen<HotkeyRow[]>('hotkeys://changed', (rows) => setHotkeys(rows)),
       listen<{ paths: string[] }>('mainwin://folders-dropped', (p) => void live.current.openFolders(p.paths)),
+      listen<{ token: string; files: { path: string; dir: boolean }[] }>('mainwin://files-dropped', (p) => {
+        const w = pathWaits.current.get(p.token);
+        pathWaits.current.delete(p.token);
+        w?.(p.files);
+      }),
       listen('index://changed', refresh),
       listen('projects://changed', refresh),
       listen('mainwin://dragout', () => setTimeout(() => (dragging.current = null), 300)),
@@ -573,6 +590,12 @@ export default function App() {
       } else if (s.kind === 'page') {
         // a step of the page on show (a page since replaced took its steps with it)
         page.current?.undo();
+      } else if (s.kind === 'attach') {
+        await api.attachItem(s.uid, [], [], null, s.before ?? {});
+        if (s.cards?.length) await api.cardsPutBack(s.cards);
+        page.current?.pollNow();
+        // the cards hang again: taking them anew is a new drag, not a Redo
+        if (s.cards?.length) return refresh();
       }
       redo.current.push(s);
       refresh();
@@ -598,6 +621,10 @@ export default function App() {
         await removeProject(s.id, true);
       } else if (s.kind === 'page') {
         page.current?.redo();
+        undo.current.push(s);
+      } else if (s.kind === 'attach') {
+        await api.attachItem(s.uid, [], [], null, s.after ?? {});
+        page.current?.pollNow();
         undo.current.push(s);
       }
       redo.current = keep;
@@ -677,12 +704,241 @@ export default function App() {
     }
   };
 
-  /** Pictures (or text) pasted into the list or dropped on it: New Item holding them (BA-52). */
-  const newItemFrom = async (files: File[], text: string) => {
-    const pics = files.filter((f) => f.type.startsWith('image/'));
-    const images = (await Promise.all(pics.map((f) => api.saveTempImage(f).catch(() => null)))).filter((p): p is string => !!p);
-    if (!images.length && !text.trim()) return;
-    setNewItem({ ...(images.length ? { title: '', details: '' } : prefillFromText(text)), images });
+  /** Ctrl+V (drag-drop.md §0.6): in the list, the sidebar or nowhere in particular → New Item, filled with the
+      clipboard's files, pictures or text, in the place on show (Enter creates); on the detail with files or a picture
+      on the clipboard → added to the item on show (undoable); text there is the page's own paste. Rust reads the
+      clipboard (clipboard_things: paths, a document's copy told from a picture, Blurt's own copies never pasted back
+      as files); without it (a browser, an error) the page's own clipboard data is used. `sync`: what the paste event
+      carried — gone once it is over. */
+  const pasteInto = async (to: PasteTo, item: Extract<Zone, { kind: 'item' }> | null, sync: { files: File[]; text: string; field: HTMLElement | null }) => {
+    const got = await api.clipboardThings().catch(() => null);
+    let images = got?.images ?? [];
+    const files = got?.files ?? [];
+    let text = got?.text ?? '';
+    if (!got || (!got.ours && !images.length && !files.length && !text)) {
+      const pics = sync.files.filter((f) => f.type.startsWith('image/'));
+      images = (await Promise.all(pics.map((f) => api.saveTempImage(f).catch(() => null)))).filter((p): p is string => !!p);
+      text = images.length ? '' : sync.text;
+    }
+    dragLog({ event: 'main_paste', to, images: images.length, files: files.length, has_text: !!text.trim(), rich: !!got?.rich, ours: !!got?.ours });
+    if (to === 'item' && item) {
+      if (images.length || files.length) return void addTo(item, images, files, null);
+      // only text (a document's copy whose picture was left out): into the field the paste was for
+      const f = sync.field as HTMLInputElement | HTMLTextAreaElement | null;
+      if (text && f?.isConnected) {
+        f.focus();
+        document.execCommand('insertText', false, text);
+      }
+      return;
+    }
+    if (!images.length && !files.length && !text.trim()) return;
+    const words = !images.length && !files.length ? prefillFromText(text) : null;
+    setNewItem({ title: words?.title ?? (images.length ? '' : titleFromFiles(files)), details: words?.details ?? '', images, files, target: listTarget });
+  };
+
+  // ---------------------------------------------------------------- drops (docs/design/drag-drop.md §4)
+  /** where New Item puts what it makes, and where the list's own drops go: the project on show; Unassigned for the
+      Inbox and Unassigned; else the current project */
+  const listTarget = isProject(place) ? place.slice(8) : place === 'inbox' || place === 'unassigned' ? 'inbox' : current ?? 'inbox';
+  const endDrag = () => {
+    setDrop(null);
+    lastOver.current = '';
+    dragState.current.end();
+  };
+  useEffect(() => {
+    // the drag left the window or ended anywhere: nothing is over us any more
+    const leave = (e: DragEvent) => !e.relatedTarget && endDrag();
+    const started = (e: DragEvent) => dragState.current.started(e.defaultPrevented);
+    const ended = () => {
+      dragState.current.innerEnded();
+      endDrag();
+    };
+    // a new press: whatever drag began here is long over (a dragend WebView2 never sent)
+    const pressed = () => dragState.current.innerEnded();
+    // Files, a link or a picture let go where nothing here takes it would make the window navigate to it (WebView2,
+    // WebKitGTK): refused instead — "no drop" under the pointer, nothing happens. Text into a field stays the field's.
+    const guard = (e: DragEvent) => {
+      if (e.defaultPrevented || !e.dataTransfer) return;
+      const types = [...e.dataTransfer.types];
+      if (!types.includes('Files') && !types.includes('text/uri-list')) return;
+      if (!types.includes('Files') && inField(e.target)) return;
+      e.preventDefault();
+      if (e.type === 'dragover') e.dataTransfer.dropEffect = 'none';
+    };
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', endDrag);
+    window.addEventListener('dragend', ended);
+    window.addEventListener('dragstart', started);
+    window.addEventListener('pointerdown', pressed, true);
+    window.addEventListener('dragover', guard);
+    window.addEventListener('drop', guard);
+    return () => {
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', endDrag);
+      window.removeEventListener('dragend', ended);
+      window.removeEventListener('dragstart', started);
+      window.removeEventListener('pointerdown', pressed, true);
+      window.removeEventListener('dragover', guard);
+      window.removeEventListener('drop', guard);
+    };
+  }, []);
+  /** What is being dragged over us; a drag of files may be the island's cards (Windows' own drag of them carries
+      files): Rust is asked once, and says so for the dragovers after. */
+  const dragWhat = (e: React.DragEvent): DragKind => {
+    const types = e.dataTransfer.types;
+    const d = dragState.current;
+    if (types.includes('Files') && !types.includes(CARDS_MIME) && !dragging.current && !d.inner) {
+      const token = d.ask();
+      if (token !== null) api.cardsDragging().then((c) => d.answer(token, c), () => {});
+    }
+    return dragKind(types, { rows: !!dragging.current, cards: !!d.cards?.length, inner: d.inner });
+  };
+  /** the zone last said in the drag log (one line a zone, not one a dragover) */
+  const lastOver = useRef('');
+  const zoneKey = (z: Zone) => (z.kind === 'item' ? `i:${z.uid}` : z.kind === 'project' ? `p:${z.project}` : z.kind === 'new' ? `n:${z.project}` : 'none');
+  /** The zone under the pointer, and the label next to it. */
+  const dragOverZone = (e: React.DragEvent, zone: Zone, what: DragKind, where: 'list' | 'side' | 'detail') => {
+    dropAt.current = { x: e.clientX, y: e.clientY };
+    if (dropTip.current) dropTip.current.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 18}px)`;
+    const k = `${where}:${zoneKey(zone)}:${what}`;
+    if (k !== lastOver.current) {
+      lastOver.current = k;
+      dragLog({ event: where === 'detail' ? 'detail_drop_over' : 'main_drop_over', zone: zone.kind, where, what, types: [...e.dataTransfer.types].slice(0, 6) });
+    }
+    setDrop((d) => (d && d.what === what && d.where === where && zoneKey(d.zone) === zoneKey(zone) ? d : { zone, what, where }));
+  };
+  const dragLog = (ev: Record<string, unknown>) => void api.dragLog(ev).catch(() => {});
+  /** The detail's zone: the item on show (a drop or a paste adds to it); none while it shows a batch, a job, several
+      items or nothing. */
+  const detailZone = (): Extract<Zone, { kind: 'item' }> | null =>
+    current1 && !detail && screen.kind === 'main' && place !== 'dictation'
+      ? { kind: 'item', uid: current1.uid, title: current1.title || current1.item_id || t('main.item.untitled') }
+      : null;
+  /** The list's zones: an item's row adds to it; anything else in the list (the band, the empty area, an empty
+      list) is a new item in the place on show. */
+  const listZone = (el: HTMLElement): Zone => {
+    const uid = el.closest<HTMLElement>('.mw-row[data-uid]')?.dataset.uid;
+    const r = uid ? rows.find((x) => x.uid === uid) : null;
+    if (r) return { kind: 'item', uid: r.uid, title: r.title || r.item_id || t('main.item.untitled') };
+    return { kind: 'new', project: listTarget };
+  };
+  /** Each dropped file's path: WebView2 knows it (folder_drop.rs, Windows); null elsewhere or when it doesn't answer. */
+  const hostPaths = (files: FileList): Promise<{ path: string; dir: boolean }[] | null> | null => {
+    const wv = webview();
+    if (!wv?.postMessageWithAdditionalObjects || !files.length) return null;
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const got = new Promise<{ path: string; dir: boolean }[] | null>((res) => {
+      pathWaits.current.set(token, res);
+      setTimeout(() => pathWaits.current.delete(token) && res(null), 4000);
+    });
+    wv.postMessageWithAdditionalObjects(`blurt-drop-files:${token}`, files);
+    return got;
+  };
+  /** A drop on `zone`. The DataTransfer is only readable during the event: everything is taken from it now. */
+  const dropOn = (e: React.DragEvent, zone: Zone, what: DragKind) => {
+    const dt = e.dataTransfer;
+    // the cards: as the drag names them (card_drop.rs CARDS_MIME), else as Rust said when the drag came in
+    const named = what === 'cards' ? parseCards(dt.getData(CARDS_MIME)) : [];
+    const cards = named.length ? named : (dragState.current.cards ?? []);
+    endDrag();
+    dragLog({ event: zone.kind === 'item' && drop?.where === 'detail' ? 'detail_drop' : 'main_drop', zone: zone.kind, what, files: dt.files.length, cards: cards.length });
+    if (what === 'cards') return void dropCards(cards, zone);
+    const files = [...dt.files];
+    void dropThings({ files, plain: dt.getData('text/plain'), uris: dt.getData('text/uri-list'), paths: hostPaths(dt.files) }, zone);
+  };
+  /** "Added to “title” · 2 pictures · 1 file · text" */
+  const addedText = (title: string, pics: number, files: number, text: boolean) =>
+    [t('main.drop.added', { a: title }), pics ? plural('main.drop.n_pictures', pics) : '', files ? plural('main.drop.n_files', files) : '', text ? t('main.drop.text') : '']
+      .filter(Boolean)
+      .join(' · ');
+  /** Files, pictures, text from another app: added to an item (Undo restores what it had), or New Item holding them. */
+  const dropThings = async (d: { files: File[]; plain: string; uris: string; paths: Promise<{ path: string; dir: boolean }[] | null> | null }, zone: Zone) => {
+    let entries: DropEntry[] = d.files.map((f) => ({ name: f.name, type: f.type, path: '' }));
+    const got = d.paths ? await d.paths : null;
+    if (got) entries = entries.map((x, i) => ({ ...x, path: got[i]?.path ?? '', dir: !!got[i]?.dir }));
+    else if (d.files.length && d.uris) {
+      // Linux: a file manager's drag names its files in text/uri-list; Rust says which are folders (and lets the
+      // thumbnails load)
+      const known = await api.dropPaths(pathsByName(d.files.map((f) => f.name), d.uris)).catch(() => null);
+      if (known) entries = entries.map((x, i) => ({ ...x, path: known[i]?.path ?? '', dir: !!known[i]?.dir }));
+    }
+    const s = sortEntries(entries);
+    const read = await Promise.all(s.bytes.map((i) => api.saveTempImage(d.files[i]).catch(() => null)));
+    const images = [...s.images, ...read.filter((p): p is string => !!p)];
+    const text = d.files.length ? '' : droppedText(d.plain, d.uris);
+    if (s.folders.length) {
+      // folders open as projects — on the sidebar; anywhere else, where to take them
+      if (zone.kind === 'project') void openFolders(s.folders);
+      else showToast(t('main.drop.folders'));
+    }
+    if (!images.length && !s.files.length && !text) {
+      if (s.skipped.length) showToast(plural('main.drop.skipped', s.skipped.length));
+      return;
+    }
+    if (zone.kind === 'item') return void addTo(zone, images, s.files, text || null, s.skipped.length);
+    const target = zone.kind === 'project' || zone.kind === 'new' ? zone.project : listTarget;
+    const words = text ? prefillFromText(text) : null;
+    setNewItem({ title: words?.title ?? (images.length ? '' : titleFromFiles(s.files)), details: words?.details ?? '', images, files: s.files, target });
+    if (s.skipped.length) showToast(plural('main.drop.skipped', s.skipped.length));
+  };
+  /** Pictures, files, text added to an item (a drop on its row or the detail, a paste, Add Image or File…): the
+      detail shows them at once, the toast says what with its Undo, and Ctrl+Z takes it back (attach --restore). */
+  const addTo = async (zone: Extract<Zone, { kind: 'item' }>, images: string[], files: string[], text: string | null, skipped = 0) => {
+    try {
+      added(zone, await api.attachItem(zone.uid, images, files, text), undefined, skipped);
+    } catch (e) {
+      fail(e);
+    }
+  };
+  /** An attach done (`r`: items.py's {before, added}): the step on the window's undo stack, the toast, the page polled. */
+  const added = (zone: Extract<Zone, { kind: 'item' }>, r: AttachResult | null, cards?: CardRef[], skipped = 0) => {
+    const a = r?.added ?? {};
+    const name = t('main.drop.undo_name');
+    pushUndo({ kind: 'attach', name, uid: zone.uid, before: r?.before ?? {}, after: attachedAfter(r?.before, a), ...(cards?.length ? { cards } : {}) });
+    refresh();
+    page.current?.pollNow();
+    const pics = a.frames?.length ?? 0;
+    const files = a.attachments?.length ?? 0;
+    dragLog({ event: 'item_drop_add', images: pics, files, has_text: !!a.details, cards: cards?.length ?? 0 });
+    const msg = [addedText(zone.title, pics, files, !!a.details), skipped ? plural('main.drop.skipped', skipped) : ''].filter(Boolean).join(' · ');
+    showToast(msg, { mark: 'ok', undo: undoToast(name) });
+  };
+  /** The island's cards dropped here: on an item, added to it (their pictures as frames, their notes after the
+      details; Undo restores the item and hangs the cards again); anywhere else, filed into that project. */
+  const dropCards = async (cards: CardRef[], zone: Zone) => {
+    if (!cards.length) return;
+    if (zone.kind === 'item') {
+      try {
+        const r = await api.cardsAttach(cards, zone.uid);
+        added(zone, r, cards);
+      } catch (e) {
+        fail(e);
+      }
+      return;
+    }
+    const project = zone.kind === 'project' || zone.kind === 'new' ? zone.project : listTarget;
+    try {
+      await api.cardsFile(cards, project);
+      showToast(plural('main.drop.filed', cards.length, { a: projectName(project) }), { mark: 'ok' });
+    } catch (e) {
+      fail(e);
+    }
+  };
+  /** A sidebar row (a project, Unassigned) under something dragged from outside or the island's cards: New Item
+      there, or the cards filed there. `phase` "over": whether the row takes it (Sidebar lights it). */
+  const sidebarDrop = (e: React.DragEvent, project: string, phase: 'over' | 'drop' | 'leave'): boolean => {
+    if (phase === 'leave') {
+      setDrop((d) => (d?.zone.kind === 'project' && d.zone.project === project ? null : d));
+      return true;
+    }
+    const what = dragWhat(e);
+    if (what === 'rows' || what === 'none') return false;
+    const zone: Zone = { kind: 'project', project, name: projectName(project) };
+    if (phase === 'over') {
+      e.dataTransfer.dropEffect = 'copy';
+      dragOverZone(e, zone, what, 'side');
+    } else dropOn(e, zone, what);
+    return true;
   };
 
   /** M: the Move popover under the selection (or the button that asked). */
@@ -1107,6 +1363,10 @@ export default function App() {
     undone: (uid) => {
       if (!selected.has(uid)) reveal(uid);
     },
+    addedFiles: (uid, r) => {
+      const it = itemsOf([uid])[0] ?? (current1?.uid === uid ? current1 : null);
+      added({ kind: 'item', uid, title: it?.title || it?.item_id || t('main.item.untitled') }, r);
+    },
   };
   const hostCb: HostCallbacks = useMemo(() => ({
     onHandoff: (_r: unknown, what: 'instruction' | 'full') => showToast(t(what === 'full' ? 'main.handoff.copied_full' : 'main.handoff.copied'), { mark: 'ok' }),
@@ -1134,6 +1394,7 @@ export default function App() {
     onWindowUndo: (r: boolean) => live.current.windowUndo(r),
     onUndone: (uid: string) => live.current.undone(uid),
     onDownloaded: (name: string) => showToast(name ? t('main.toast.downloaded', { name }) : t('main.toast.download_failed')),
+    onAddedFiles: (uid: string, r: AttachResult) => live.current.addedFiles(uid, r),
   }), []);
   /** an item the project's doc leaves out (discarded, moved in since): its page loads with it listed */
   const [docItem, setDocItem] = useState<string | null>(null);
@@ -1302,6 +1563,27 @@ export default function App() {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
+  // Ctrl+V wherever the focus is, unless the page took it itself (pasteTarget, pasteInto)
+  const onPaste = (e: ClipboardEvent) => {
+    if (e.defaultPrevented || welcome || overlay) return;
+    const el = e.target as HTMLElement | null;
+    const field = inField(el);
+    const item = detailZone();
+    const types = [...(e.clipboardData?.types ?? [])];
+    const to = pasteTarget({ field, detail: !!el?.closest?.('.mw-detail'), item: !!item, files: types.includes('Files'), main: screen.kind === 'main' && place !== 'dictation' });
+    if (to === 'page' || to === 'none') return;
+    const sync = { files: [...(e.clipboardData?.files ?? [])], text: e.clipboardData?.getData('text/plain') ?? '', field: field ? el : null };
+    e.preventDefault();
+    void pasteInto(to, item, sync);
+  };
+  const pasteRef = useRef(onPaste);
+  pasteRef.current = onPaste;
+  useEffect(() => {
+    const h = (e: ClipboardEvent) => pasteRef.current(e);
+    document.addEventListener('paste', h);
+    return () => document.removeEventListener('paste', h);
+  }, []);
+
   // The dictation key while this window has the focus: Windows' key hook doesn't hear it then, so it is passed on.
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -1455,6 +1737,7 @@ export default function App() {
               projects={registered}
               current={current}
               onMove={(u, p) => moveItems(u, p)}
+              onDropAt={(e, p, phase) => sidebarDrop(e, p ?? listTarget, phase)}
               onOpenFolder={openFolder}
               onSettings={() => setScreen({ kind: 'settings' })}
               onProjectMenu={(p, at) => menu.open(projectMenu(p), at, p.name)}
@@ -1491,29 +1774,34 @@ export default function App() {
           aria-label={scopeTitle}
           data-testid="list"
           onDragOver={(e) => {
-            if (!dragging.current && e.dataTransfer.types.includes('Files')) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
-            }
+            // files, pictures, text from another app, or the island's cards (rows of the list have their own drag)
+            const what = dragWhat(e);
+            if (what === 'rows' || what === 'none') return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy'; // (Windows' drag of files and cards allows only a copy)
+            dragOverZone(e, listZone(e.target as HTMLElement), what, 'list');
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop((d) => (d?.where === 'list' ? null : d));
           }}
           onDrop={(e) => {
-            if (dragging.current || !e.dataTransfer.files.length) return;
+            const what = dragWhat(e);
+            if (what === 'rows' || what === 'none') return;
             e.preventDefault();
-            newItemFrom([...e.dataTransfer.files], '');
-          }}
-          onPaste={(e) => {
-            if (inField(e.target) || place === 'dictation') return;
-            const files = [...e.clipboardData.files];
-            const text = e.clipboardData.getData('text/plain');
-            if (!files.length && !text.trim()) return;
-            e.preventDefault();
-            newItemFrom(files, files.length ? '' : text);
+            dropOn(e, listZone(e.target as HTMLElement), what);
           }}
           onMouseDown={(e) => {
             const el = e.target as HTMLElement;
             if (!inField(el) && !el.closest('button')) listRef.current?.focus({ preventScroll: true });
           }}
         >
+          {drop?.where === 'list' && (
+            // pinned at the top while something is dragged over the list: a full list has no empty area to drop on
+            <div className={`mw-drop-band ${drop.zone.kind === 'new' ? 'on' : ''}`} aria-hidden="true" data-testid="drop-band">
+              <Icon name="plus" size={14} />
+              {drop.what === 'cards' ? t('main.drop.file_into', { a: projectName(listTarget) }) : t('main.drop.new')}
+            </div>
+          )}
           <ListHeading
             title={headTitle}
             counts={counts}
@@ -1582,6 +1870,7 @@ export default function App() {
               mac={mac}
               scrollTo={scrollTo}
               nativeDrag={nativeDrag}
+              dropUid={drop?.zone.kind === 'item' ? drop.zone.uid : null}
               onNativeDrag={(uids) => {
                 dragging.current = uids;
                 api.dragOut(uids).then((ok) => !ok && (dragging.current = null), () => (dragging.current = null));
@@ -1593,7 +1882,31 @@ export default function App() {
       )}
 
       {showDetail && (
-        <aside className="mw-detail" data-testid="detail" aria-label={t('main.detail.label')}>
+        <aside
+          className={`mw-detail ${drop?.where === 'detail' ? 'drop' : ''}`}
+          data-testid="detail"
+          aria-label={t('main.detail.label')}
+          // files, pictures and the island's cards dropped on the item on show are added to it (drag-drop.md §4);
+          // text stays the page's (into the field under the pointer)
+          onDragOver={(e) => {
+            const what = dragWhat(e);
+            const zone = detailZone();
+            if (!zone || !detailTakes(what, e.dataTransfer.types)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            dragOverZone(e, zone, what, 'detail');
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop((d) => (d?.where === 'detail' ? null : d));
+          }}
+          onDrop={(e) => {
+            const what = dragWhat(e);
+            const zone = detailZone();
+            if (!zone || !detailTakes(what, e.dataTransfer.types)) return;
+            e.preventDefault();
+            dropOn(e, zone, what);
+          }}
+        >
           {detail?.kind === 'session' && reviewHost ? (
             <ReviewPane host={reviewHost} hostKey={detail.dir} opts={{ mode: 'review', platform, theme: 'auto', lang }} rev={tick} onHandle={onPage} />
           ) : shownJob ? (
@@ -1647,10 +1960,18 @@ export default function App() {
       )}
 
       {menu.node}
+      {(() => {
+        const label = drop && dropLabel(drop.zone, drop.what, projectName);
+        return label ? (
+          <div ref={dropTip} className="mw-drop-tip" role="status" style={{ transform: `translate(${dropAt.current.x + 14}px, ${dropAt.current.y + 18}px)` }}>
+            {t(label.key, label.vars)}
+          </div>
+        ) : null;
+      })()}
       <Tooltip />
       {movePop && <MovePopover projects={registered} here={movePop.here} subject={movePop.subject} anchor={movePop.anchor} onClose={() => setMovePop(null)} onPick={(p) => moveItems(movePop.uids, p)} onOpenFolder={openFolder} />}
       {newItem && (() => {
-        const target = isProject(place) ? place.slice(8) : place === 'inbox' || place === 'unassigned' ? 'inbox' : current ?? 'inbox';
+        const target = (typeof newItem === 'object' && newItem.target) || listTarget;
         return (
           <NewItemSheet
             target={target}

@@ -63,6 +63,8 @@ export interface ListRowsProps {
   /** rows drag out as Windows' own file drag (mainwin.rs) instead of the page's */
   nativeDrag?: boolean;
   onNativeDrag?: (uids: string[]) => void;
+  /** the row a drop would add to (drag-drop.md §4): lit while something is dragged over it */
+  dropUid?: string | null;
 }
 
 /** Row metrics (ItemCells.swift's Look): a row is 32 px; a run's header 34 px above its first row (28 above the list's
@@ -157,7 +159,7 @@ export const ItemList = memo(function ItemList(p: ListRowsProps) {
               aria-label={[sec ? `${grouping === 'state' ? t(`state.${sec.key}`) : p.projectName(sec.key)}, ${plural('main.items.count', sec.count)}` : '', t(`kind.${r.kind}`), r.title || t('main.item.untitled'), r.item_id, stateText(r), r.project_id === 'inbox' ? t('project.inbox') : r.project_name].filter(Boolean).join(', ')}
               data-uid={r.uid}
               data-testid="item-row"
-              className={`mw-row ${sel ? 'sel' : ''} ${focus === r.uid ? 'cur' : ''} ${ringAtRest ? 'ring-on' : ''} ${quiet ? 'quiet' : ''} ${r.state === 'discarded' ? 'gone' : ''}`}
+              className={`mw-row ${sel ? 'sel' : ''} ${focus === r.uid ? 'cur' : ''} ${ringAtRest ? 'ring-on' : ''} ${quiet ? 'quiet' : ''} ${r.state === 'discarded' ? 'gone' : ''} ${p.dropUid === r.uid ? 'drop' : ''}`}
               draggable={p.renaming !== r.uid}
               onDragStart={(e) => {
                 const uids = sel ? [...selected] : [r.uid];

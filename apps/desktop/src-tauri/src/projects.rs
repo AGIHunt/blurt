@@ -179,6 +179,17 @@ fn unique(p: PathBuf) -> PathBuf {
 /// The open shots batch of the capture store (the newest `<ts>-shots` session nobody has processed yet), or a new one.
 pub fn shots_session(reg: &Registry) -> (Option<String>, PathBuf) {
     let (project, store) = reg.capture_store();
+    (project, open_shots_session(&store))
+}
+
+/// The open shots batch of Unassigned (the inbox store), whatever the current project: where things dropped on the
+/// island hang (drag-drop.md §3 — "hang it" is what was asked, not "file it").
+pub fn inbox_shots_session() -> PathBuf {
+    open_shots_session(&paths::inbox_store())
+}
+
+/// `store`'s newest shots batch still collecting, else a new one's path.
+fn open_shots_session(store: &Path) -> PathBuf {
     let dir = store.join("sessions");
     let open = std::fs::read_dir(&dir)
         .ok()
@@ -188,7 +199,7 @@ pub fn shots_session(reg: &Registry) -> (Option<String>, PathBuf) {
         .map(|e| e.path())
         .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("-shots")) && is_open_batch(p))
         .max();
-    (project, open.unwrap_or_else(|| unique(dir.join(format!("{}-shots", timestamp())))))
+    open.unwrap_or_else(|| unique(dir.join(format!("{}-shots", timestamp()))))
 }
 
 /// A shots session still collecting: no agent has written its items yet.

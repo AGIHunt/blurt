@@ -399,3 +399,7 @@
 "capture.text.card.copied" = "Copied";
 "capture.text.card.ax" = "Translation";
 "capture.card.ax_follow_up" = "Turn on Accessibility to paste a card’s note automatically";
+"capture.drawer.drop_in_title" = "Drop into";
+"capture.drawer.hang" = "Keep as cards under the notch";
+"capture.drawer.hang_one" = "%@ · add a note after";
+"capture.drawer.hang_many" = "%@ · one card each";

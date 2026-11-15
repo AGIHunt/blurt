@@ -946,6 +946,74 @@ final class Snapper {
         }
     }
 
+    /// Several cards dragged out as one (a ⌘-click selection) and taken by another app: they all leave their threads;
+    /// in a chat app the notes are pasted after the files as one text, numbered by picture (CardTransfer.followUpNotes);
+    /// where they didn't go in, that text goes on the clipboard. One toast ("Dragged out 3 cards · …"), one Undo for all.
+    func takeOut(_ ss: [Shot], delivered: DropClass?, noteFile: Bool, landed: DropTarget?, at p: NSPoint?) {
+        let shots = ss.filter { $0.batch != nil && !$0.deleted }
+        if shots.count == 1 { return takeOut(shots[0], delivered: delivered, noteFile: noteFile, landed: landed, at: p) }
+        guard !shots.isEmpty else { return }
+        for s in shots {
+            if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+            hanging.takeAway(s)
+            s.batch?.take(s, at: Snapper.now)
+        }
+        takenChanged()
+        let cards = shots.map { CardExport.card($0).0 }
+        let lead = CardPasteboard.Card(image: cards.compactMap(\.file).first, note: CardTransfer.followUpNotes(cards))
+        DragOutEnd.finish(card: lead, delivered: delivered, noteFile: noteFile, landed: landed, at: p, who: ["n": shots.map(\.n)]) { [weak self] d in
+            let key = DragReceipt.toastKey(d.outcome, hasNote: d.hasNote, noteCopied: d.noteCopied, noteFile: noteFile,
+                                           noAccessibility: d.asksAccessibility)
+            let text = Snapper.many(Loc.plural("capture.taken_out_many", table: "Capture", count: shots.count), Loc.t(key, table: "Capture"))
+            emit(["event": "take_out", "n": shots.map(\.n), "note_copied": d.noteCopied, "delivered": delivered?.rawValue ?? NSNull(),
+                  "note_pasted": d.notePasted, "outcome": d.outcome.rawValue, "toast": key])
+            let saved = d.saved
+            island.toast(DragOutEnd.toast(d, text: text, undo: { [weak self] in
+                saved?.restore(capturePasteboard)
+                for s in shots { self?.putBack(s) }
+            }))
+        }
+    }
+
+    /// Cards dropped on an item in the main window (v1.0.23): they went into it — off their threads, in Recently Taken
+    /// (the item's Undo puts them back).
+    func usedInItem(_ ss: [Shot]) {
+        guard !ss.isEmpty else { return }
+        for s in ss where s.batch != nil && !s.deleted {
+            if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+            hanging.takeAway(s)
+            s.batch?.take(s, at: Snapper.now)
+        }
+        takenChanged()
+    }
+
+    /// ⌥-dragged out (v1.0.23): the cards stay on their threads, but what follows a drop still happens — the notes
+    /// pasted after the pictures in a chat app, or put on the clipboard where they didn't go in. No Undo: nothing left.
+    func copiedOut(_ ss: [Shot], delivered: DropClass?, noteFile: Bool, landed: DropTarget?, at p: NSPoint?) {
+        let shots = ss.filter { $0.batch != nil && !$0.deleted }
+        guard !shots.isEmpty else { return }
+        let cards = shots.map { CardExport.card($0).0 }
+        let lead = shots.count == 1 ? CardPasteboard.Card(image: shots[0].kind == .shot ? shots[0].bestURL : nil, note: shots[0].copyText)
+            : CardPasteboard.Card(image: cards.compactMap(\.file).first, note: CardTransfer.followUpNotes(cards))
+        DragOutEnd.finish(card: lead, delivered: delivered, noteFile: noteFile, landed: landed, at: p, who: ["n": shots.map(\.n), "kept": true]) { d in
+            let key = DragReceipt.toastKey(d.outcome, hasNote: d.hasNote, noteCopied: d.noteCopied, noteFile: noteFile,
+                                           noAccessibility: d.asksAccessibility)
+            let text = shots.count > 1 ? Snapper.many(Loc.plural("capture.taken_out_many", table: "Capture", count: shots.count),
+                                                      Loc.t(key, table: "Capture")) : Loc.t(key, table: "Capture")
+            emit(["event": "copied_out", "n": shots.map(\.n), "outcome": d.outcome.rawValue, "toast": key])
+            island.toast(DragOutEnd.toast(d, text: text, undo: nil))
+        }
+    }
+
+    /// A single card's toast said of several: "Dragged out 3 cards" in place of its first part ("Dragged out · picture
+    /// and note" → "Dragged out 3 cards · picture and note"), what follows kept.
+    static func many(_ head: String, _ single: String) -> String {
+        var lines = single.components(separatedBy: "\n")
+        let parts = lines[0].components(separatedBy: " · ")
+        lines[0] = ([head] + parts.dropFirst()).joined(separator: " · ")
+        return lines.joined(separator: "\n")
+    }
+
     /// A voice card let go of over a chat app's window (VoiceCardDrop): the app took the drop (its message box), or
     /// Blurt pastes the words into that window's composer — the shot cards' follow-up (DragNoteFollowUp: the window
     /// forward, the composer focused, one paste, the clipboard back). Can't: the words on the clipboard. Either way the

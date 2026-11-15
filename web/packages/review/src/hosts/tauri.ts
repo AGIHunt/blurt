@@ -1,5 +1,7 @@
-/* tauri host (C6 / C8, protocol v3): invoke('items_doc' | 'items_poll' | 'items_ops' | 'handoff_create' | 'reveal', …)
-   with the scope. Uses the IPC global Tauri 2 always injects (__TAURI_INTERNALS__), so the canvas needs no
+/* tauri host (C6 / C8, protocol v3): invoke('items_doc' | 'items_poll' | 'items_ops' | 'handoff_create' | 'review_file' |
+   'items_add_files', …) with the scope. A file is shown in its folder (or opened in its default app: Windows and Linux
+   have no Quick Look) only when a doc the page loaded names it — an item's attached PDF may be anywhere on disk, but
+   the page can't reveal or open any other path (review_file). Uses the IPC global Tauri 2 always injects (__TAURI_INTERNALS__), so the canvas needs no
    @tauri-apps/api import. Files load through the asset protocol (convertFileSrc), which the shell scopes to the
    registered stores, session dirs and $BLURT_HOME/handoff. Hand off is `handoff_create` (handoff.py --to external
    --mark; the shell copies the instruction or the full text). */
@@ -38,7 +40,11 @@ export function createTauriHost(scope: Scope | string, win: W = window as W): Bl
       const a = abs(p);
       return convert ? convert(a, "asset") : "asset://localhost/" + encodeURIComponent(a);
     },
-    reveal: (p: string) => void invoke("reveal", { path: abs(p) }).catch(() => {}),
+    reveal: (p: string) => void invoke("review_file", { path: abs(p), open: false }).catch(() => {}),
+    quickLook: (p: string) => void invoke("review_file", { path: abs(p), open: true }).catch(() => {}),
+    // "Add image or file…": the system's Open dialog, any files; pictures become the item's pictures, other files its
+    // attachments, as a drop would (the page sees them at its next poll)
+    addFiles: (uid: string) => void invoke("items_add_files", { uid }).catch(() => {}),
     handoff: (uids: string[], what: "instruction" | "full") => invoke<HandoffResult>("handoff_create", { uids, full: what === "full" }),
   };
 }
