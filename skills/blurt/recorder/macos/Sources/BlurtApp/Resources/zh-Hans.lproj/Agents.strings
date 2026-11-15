@@ -43,13 +43,18 @@
 "agents.state.installed" = "已安装";
 "agents.state.unchecked" = "无法确认登录";
 "agents.state.unchecked.help" = "无法在不消耗 token 的情况下确认登录状态。首次用它整理时会确认；如未登录，口喷鸡会改用下一个 Agent，并在此提示。";
-"agents.state.manual.help" = "这是一个独立的 App，口喷鸡不会自动把事项交给它。请在它的设置 → Skills / MCP 中导入 blurt，或点「连接…」查看步骤。";
-"agents.manual.footer" = "口喷鸡不能直接运行它们，用「复制指令」把事项交给它们。";
+"agents.state.manual.help" = "独立 App。点「连接…」为 %@ 安装 blurt skill 和 MCP（会先列出改动），或在它的设置中通过 Skills / MCP 导入。之后在对话中说「处理我录的视频」即可整理录屏。";
+"agents.manual.footer" = "在对话中说「处理我录的视频」即可整理录屏。事项可通过「复制指令给 Agent」交给它们处理。";
+"agents.state.chat" = "在对话中整理";
+"agents.state.chat.help" = "在 %@ 的对话中说「处理我录的视频」，即可将未整理的录屏整理成事项。处理事项请使用「复制指令给 Agent」。";
+"agents.request" = "处理我录的视频";
+"agents.request.copy" = "复制";
+"agents.request.copied" = "已复制";
 "agents.move_up" = "上移";
 "agents.connected.help" = "已接入：它能查找、读取和更新你的事项。";
 "agents.not_connected.help" = "未接入。点「连接…」会先列出要更改的内容。";
 "agents.ask.header" = "可以这样跟 Agent 说";
-"agents.ask.footer" = "口喷鸡会把事项交给它；需要给他人查看时，可附上交接包（含截图的 .zip）。";
+"agents.ask.footer" = "Agent 通过口喷鸡 MCP 读取事项；需要发给他人时，会打包成交接包（含截图的 .zip）。";
 "agents.ask.copy" = "复制";
 
 /* 安装确认 */

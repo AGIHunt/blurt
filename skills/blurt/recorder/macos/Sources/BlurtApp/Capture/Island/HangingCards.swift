@@ -67,7 +67,9 @@
 //    Finder, Move To ▸ (projects recently used first, then Unassigned), Organize (these cards: into Unassigned with a
 //    suggested project each), Delete · drag = into any app, or onto a project in the island: the thread stretches after
 //    it, then snaps and springs back up · × = the thread lets go and the card falls. Delete never asks: "Deleted · Undo"
-//    in the island for 5 s (Snapper.delete; the files stay until then). The island's right-click menu is about every card: Show, Copy All, Organize All Cards, Delete All N Cards (one Undo for all). Filed
+//    in the island for 5 s (Snapper.delete; the files stay until then). With Recording & Items off (Capabilities.swift)
+//    there is no Move To ▸ and no Organize anywhere — a card is copied, edited, shown or deleted; with Cards off none
+//    hangs at all (refresh: they stay stored and come back with the switch). The island's right-click menu is about every card: Show, Copy All, Organize All Cards, Delete All N Cards (one Undo for all). Filed
 //    cards say so in the island — "Filed to X · AW-14 · Change" (Refile.swift: Change picks another project).
 //  • the first card ever says what it is for, once, under it: "Click to copy, or drag into any app" (record
 //    cards_hint_shown), after its note bubble has closed.
@@ -1063,8 +1065,10 @@ final class HangingCards: NSObject {
     }
 
     /// Sync the cards with the captures (new ones appear quietly, gone ones leave).
+    /// With Cards switched off (Capabilities.swift) none hangs: the cards stay where they are stored — their batches
+    /// are kept (Snapper.cardBatches) — and hang again, quietly, when the switch comes back (Island.capabilitiesChanged).
     func refresh(quiet: Bool = false) {
-        let want = snapper.cards
+        let want = Capability.cards.isOn ? snapper.cards : []
         // a capture that came with a project hangs only until it is pulled into the island (pullIn removes it)
         // (a take's snap, filed with the take's project, leaves with the take)
         for c in cards where !want.contains(where: { $0 === c.shot }) && dragging !== c
@@ -1144,6 +1148,9 @@ final class HangingCards: NSObject {
     /// A capture is complete: a thread drops out of the island and catches it as it flies up from `from` (a screen rect).
     /// `image`: what flies (the marked picture at full size, from an in-place markup); else the card's thumbnail.
     func catchCapture(_ s: Shot, from: NSRect?, image: CGImage? = nil) {
+        // Cards off: nothing hangs. (⌥A while recording still marks its moment: that snap is the take's — its file, its
+        // note and its line in the recording are written already; only the card is left out.)
+        guard Capability.cards.isOn else { return }
         let target = island.screen ?? from.flatMap { r in NSScreen.screens.first { $0.frame.intersects(r) } } ?? NSScreen.main ?? NSScreen.screens[0]
         if panel == nil || screen != target { ensurePanel(on: target) }
         // the batch's change callback may have hung it already (quietly): catch that card
@@ -1262,6 +1269,7 @@ final class HangingCards: NSObject {
     }
 
     func update(_ s: Shot) {
+        NotificationCenter.default.post(name: .blurtCardsChanged, object: nil, userInfo: ["count": island.hangingCount])   // its note changed: the Cards page shows it
         guard let c = cards.first(where: { $0.shot === s }) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1284,6 +1292,7 @@ final class HangingCards: NSObject {
 
     /// `sticky`: down until the pointer has come and gone (or Esc) — see `reveal()`.
     func show(peek: Double = 0, sticky: Bool = false) {
+        guard Capability.cards.isOn else { return }
         if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
         if !shown, !cards.isEmpty { AgentProbe.prewarm() }     // is Claude / Codex on an agent's page? known before a drag
         if peek > 0 { peekUntil = max(peekUntil, CACurrentMediaTime() + peek) }
@@ -1325,6 +1334,7 @@ final class HangingCards: NSObject {
     /// and stays until the pointer has come and gone, or Esc. Nothing hanging: the island says so. ⌥H (`keyboard`)
     /// also puts the keyboard on them (see `key`).
     func reveal(via: String, keyboard: Bool = false) {
+        guard Capability.cards.isOn else { return }
         emit(["event": "cards_reveal", "via": via, "count": cards.count])
         guard !cards.isEmpty else {
             island.toast(Loc.t("capture.cards.none", table: "Capture"), actionTitle: nil, action: nil)
@@ -2402,6 +2412,12 @@ final class HangingCards: NSObject {
             m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
             return m
         }
+        // Move To ▸ and Organize file a card as an item of a project: Recording & Items'. Without it a card is copied,
+        // edited, shown or deleted — nothing else
+        guard Capability.projectsShown else {
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+            return m
+        }
         let these = withSelection(s)
         let move = NSMenuItem(title: these.count > 1 ? Loc.plural("capture.card.move_n", table: "Capture", count: these.count)
                                                      : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
@@ -2435,12 +2451,15 @@ final class HangingCards: NSObject {
     /// suggested project each), Delete All N Cards (one Undo for all).
     func islandMenuItems() -> [(String, () -> Void)] {
         let n = count
-        guard n > 0 else { return [] }
+        guard n > 0, Capability.cards.isOn else { return [] }
         var out: [(String, () -> Void)] = [
             (Loc.plural("capture.menu.show_cards", table: "Capture", count: n), { hanging.reveal(via: "island_menu") }),
             (Loc.plural("capture.menu.copy_cards", table: "Capture", count: n), { hanging.copyAll() }),
-            (Loc.t("capture.menu.organize_all", table: "Capture"), { snapper.handToAI(project: ProjectStore.shared.organizeTarget) }),
         ]
+        // (Organize makes items of them: only with Recording & Items)
+        if Capability.projectsShown {
+            out.append((Loc.t("capture.menu.organize_all", table: "Capture"), { snapper.handToAI(project: ProjectStore.shared.organizeTarget) }))
+        }
         out.append((Loc.plural("capture.card.delete_all", table: "Capture", count: n), { snapper.deleteAllCards() }))
         return out
     }
@@ -2737,9 +2756,12 @@ final class HangingCards: NSObject {
     // MARK: accessibility
 
     private var axCards: [ObjectIdentifier: LayerAXElement] = [:]
+    /// the actions the kept elements were made with (axActions: with or without the projects)
+    private var axFiling = Capability.projectsShown
     /// The hanging cards in the order they hang (newest first).
     func accessibilityElements() -> [LayerAXElement] {
         guard let v = view else { return [] }
+        if axFiling != Capability.projectsShown { axFiling = Capability.projectsShown; axCards = [:] }
         var out: [LayerAXElement] = []
         var keep: [ObjectIdentifier: LayerAXElement] = [:]
         for c in shownCards where !c.flying {
@@ -2764,6 +2786,10 @@ final class HangingCards: NSObject {
     /// with AI, delete it.
     static func axActions(_ s: Shot) -> [NSAccessibilityCustomAction] {
         var actions = [NSAccessibilityCustomAction(name: Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit); return true }]
+        guard Capability.projectsShown else {          // no projects, no Organize: edit and delete
+            actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s); return true })
+            return actions
+        }
         for p in ProjectStore.shared.projects.prefix(8) {
             let name = p.exists ? p.name : p.name + ", " + T("main.sidebar.missing")     // chosen: the card stays, Locate…
             actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", name)) { snapper.assign(s, to: p.id); return true })

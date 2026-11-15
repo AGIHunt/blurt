@@ -253,3 +253,6 @@
 "speech.compare.needs_apple" = "需要 Apple 芯片";
 "speech.compare.needs_macos" = "需要 macOS 26";
 "speech.compare.add_key" = "添加 Key…";
+
+/* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
+"speech.speed.reference" = "%1$@：识别用时约 %2$@（参考值）";

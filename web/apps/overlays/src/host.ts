@@ -103,6 +103,8 @@ export interface IslandState {
   cardPrefs?: { snapSound?: boolean; drag?: 'paste' | 'caption' | 'picture' };
   /** Settings → General → "Show the island when idle" (app.island_idle); false: nothing stands at rest */
   idle?: boolean;
+  /** the capabilities turned off (apps/desktop/src-tauri/src/capabilities.rs ids): their buttons and hints don't show */
+  off?: string[];
   /** tests / demo: start expanded */
   expanded?: boolean;
 }

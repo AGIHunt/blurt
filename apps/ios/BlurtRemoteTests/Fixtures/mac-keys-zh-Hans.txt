@@ -27,7 +27,7 @@ mark:tabNew	⌘T	新标签页
 mark:tabClose	⌘W	关闭标签页
 sf:camera.viewfinder	截图	截图
 sf:record.circle	录屏	录屏
-sf:waveform	语音便签	语音便签
+sf:waveform	语音备注	语音备注
 sf:text.viewfinder	截图取字	截图取字
 sf:character.bubble	翻译	翻译
 sf:rectangle.stack	卡片	卡片
@@ -205,7 +205,7 @@ sf:minus.magnifyingglass	⌘-	缩小
 Blurt	-	Blurt
 sf:camera.viewfinder	截图	截图
 sf:record.circle	录屏	录屏
-sf:waveform	语音便签	语音便签
+sf:waveform	语音备注	语音备注
 sf:text.viewfinder	截图取字	截图取字
 sf:character.bubble	翻译	翻译
 sf:rectangle.stack	卡片	卡片

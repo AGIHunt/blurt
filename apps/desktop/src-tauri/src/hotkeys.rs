@@ -406,6 +406,8 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let rec = *h.recording.lock().unwrap();
     let cfg = settings::read_config();
     let combos = from_config(&cfg);
+    // a capability that is off holds none of its keys (capabilities.rs): they go back to the other apps
+    let disabled = crate::capabilities::disabled_hotkeys(&crate::capabilities::off(&cfg), rec);
     let gs = app.global_shortcut();
     // drop what we hold, then register again in action order (the first of two duplicates wins)
     let held: Vec<Shortcut> = h.registered.lock().unwrap().drain().map(|(_, s)| s).collect();
@@ -416,8 +418,10 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let wayland = is_wayland();
     if wayland && h.mode.lock().unwrap().is_empty() {
         *h.mode.lock().unwrap() = "portal-pending".into();
+        // the portal binds once per launch: an off capability's keys are left out then; one turned off later stays
+        // bound until the next launch, and `crate::dispatch` refuses it meanwhile
         #[cfg(target_os = "linux")]
-        portal::start(app.clone(), combos.clone());
+        portal::start(app.clone(), combos.iter().filter(|(a, _)| !disabled.contains(a)).cloned().collect());
     }
     if !wayland {
         *h.mode.lock().unwrap() = "plugin".into();
@@ -429,7 +433,8 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     // tray reads the rows there (hotkeys://changed → tray::menu → rows) — holding it across either deadlocks
     let mut fresh: Vec<(String, Value)> = Vec::new();
     for (a, c) in &combos {
-        let active = RESIDENT.contains(a) || rec;
+        let off = disabled.contains(a);
+        let active = (RESIDENT.contains(a) || rec) && !off;
         let mut row = json!({"action": a, "active": active, "default": format!("opt+shift+{}", default_key(a))});
         let Some(c) = c else {
             row["result"] = json!("off");
@@ -441,7 +446,10 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
         };
         row["spec"] = json!(c.spec());
         row["label"] = json!(c.label());
-        if let Some(first) = seen.get(&c.spec()) {
+        if off {
+            // its capability is off: not registered, its keys kept for when it is back (never a duplicate of another)
+            row["result"] = json!("disabled");
+        } else if let Some(first) = seen.get(&c.spec()) {
             row["result"] = json!("duplicate");
             row["of"] = json!(first);
         } else if let Some(name) = system_conflict(c) {

@@ -446,6 +446,7 @@
   "island.ext.text": "Text",
   "island.ext.and": ", ",
   "island.drop.nothing": "Nothing here could become a card",
+  "island.dictation.copied_last": "Last dictation copied",
   "island.card.file": "File · {name}",
   "island.card.text": "Text",
   "island.card.missing": "Original file not found"

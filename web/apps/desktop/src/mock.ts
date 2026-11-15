@@ -116,8 +116,54 @@ const hotkeyRows = () =>
     const resident = !['pause', 'pen', 'stop'].includes(a);
     const spec = mockHotkeys[a] ?? `opt+shift+${k}`;
     const label = spec === 'off' ? '' : spec.replace('opt', 'Alt').replace('shift', 'Shift').replace('ctrl', 'Ctrl').replace(/\+(\w)$/, (_, c) => `+${c.toUpperCase()}`);
-    return { action: a, spec, label, default: `opt+shift+${k}`, active: resident, result: spec === 'off' ? 'off' : resident ? 'ok' : 'idle' };
+    // ?taken=snap: another app holds that key (Home's fix line)
+    const disabled = mockOff().includes(OWNER[a] ?? '');
+    const result = spec === 'off' ? 'off' : disabled ? 'disabled' : param('taken') === a ? 'taken' : resident ? 'ok' : 'idle';
+    return { action: a, spec, label, default: `opt+shift+${k}`, active: resident && !disabled, result };
   });
+const OWNER: Record<string, string> = { reformat: 'dictation', snap: 'cards', voice: 'cards', cards: 'cards', text: 'screen_text', translate: 'screen_text', record: 'recording', pause: 'recording', pen: 'recording', stop: 'recording', project: 'recording' };
+
+// the capability switches (capabilities.rs): ?off=cards,phone starts with those off
+const CAP_IDS = ['dictation', 'cards', 'screen_text', 'recording', 'phone'];
+function mockOff(): string[] {
+  return CAP_IDS.filter((c) => (c === 'dictation' ? mockCfg.record?.dictation?.enabled === false : mockCfg.app?.capabilities?.[c] === false));
+}
+function mockSetCapability(id: string, on: boolean) {
+  if (id === 'dictation') {
+    mockCfg.record = mockCfg.record ?? {};
+    const d = { ...(mockCfg.record.dictation ?? {}) };
+    if (on) delete d.enabled;
+    else d.enabled = false;
+    mockCfg.record.dictation = d;
+  } else {
+    mockCfg.app = mockCfg.app ?? {};
+    const caps = { ...(mockCfg.app.capabilities ?? {}) };
+    if (on) delete caps[id];
+    else caps[id] = false;
+    mockCfg.app.capabilities = caps;
+  }
+  emit('capabilities://changed', { off: mockOff() });
+  emit('hotkeys://changed', hotkeyRows());
+}
+
+// the Cards page (cards_list): pictures drawn here as small app screens, a voice note, one used yesterday; ?cards=0 for none
+const shotSvg = (title: string, accent: string, lines: string[]) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" font-family="Segoe UI, sans-serif">
+<rect width="480" height="300" fill="#f6f7f9"/><rect width="480" height="34" fill="#ffffff"/><circle cx="18" cy="17" r="5" fill="#d0d4da"/><circle cx="34" cy="17" r="5" fill="#d0d4da"/>
+<text x="56" y="22" font-size="13" fill="#3a3f47">${title}</text><rect x="20" y="52" width="140" height="228" rx="8" fill="#ffffff"/>
+${[0, 1, 2, 3, 4].map((i) => `<rect x="34" y="${70 + i * 30}" width="${90 - i * 8}" height="10" rx="5" fill="#e3e6ea"/>`).join('')}
+<rect x="176" y="52" width="284" height="228" rx="8" fill="#ffffff"/>${lines.map((l, i) => `<text x="194" y="${84 + i * 26}" font-size="13" fill="#4a505a">${l}</text>`).join('')}
+<rect x="194" y="226" width="110" height="32" rx="7" fill="${accent}"/><text x="214" y="247" font-size="13" fill="#fff">Checkout</text></svg>`)}`;
+const mockCards = {
+  current: param('cards') === '0' ? [] : [
+    { n: 3, src: shotSvg('Cart — storefront', '#2f6fde', ['Subtotal  $128.00', 'Shipping  Free', 'Total  $128.00']), kind: 'shot', text: L('The total doesn’t include tax', '合计没有算税'), session: S2, wall: now - 1500 },
+    { n: 4, src: '', kind: 'voice', text: L('Move the promo code field above the total', '把优惠码输入框挪到合计上面'), session: S2, wall: now - 900 },
+    { n: 5, src: shotSvg('Orders — admin', '#109478', ['#10482  Shipped', '#10481  Packing', '#10480  Refunded']), kind: 'shot', text: '', session: S2, wall: now - 300 },
+  ],
+  history: param('cards') === '0' ? [] : [
+    { n: 1, src: shotSvg('Settings — mobile-app', '#7a5af5', ['Notifications  On', 'Language  English', 'Theme  System']), kind: 'shot', text: L('Theme picker is cut off on small phones', '小屏手机上主题选择被截断'), session: S2, wall: now - 90000, taken: now - 86000 },
+  ],
+};
 
 // card_drop.rs AGENTS: the built-in agent apps (executable stems)
 const MOCK_AGENTS = ['workbuddy', 'qoderwork', 'qoder', 'kimi code', 'doubaowork', 'cursor', 'windsurf', 'trae', 'trae cn', 'antigravity', 'kiro', 'codex'];
@@ -131,6 +177,10 @@ function mockAgentApps() {
 // Settings' writes, kept in memory (the Rust merge: two levels deep)
 const mockHotkeys: Record<string, string> = {};
 const mockCfg: Record<string, any> = { record: { agents: ['claude', 'codex', 'kimi'] }, notify: {} };
+for (const c of (param('off') ?? '').split(',').filter((x) => CAP_IDS.includes(x))) {
+  if (c === 'dictation') mockCfg.record.dictation = { enabled: false };
+  else mockCfg.app = { ...(mockCfg.app ?? {}), capabilities: { ...(mockCfg.app?.capabilities ?? {}), [c]: false } };
+}
 function mockMerge(patch: Record<string, any>) {
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete mockCfg[k];
@@ -402,7 +452,24 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         dictation_keys: param('platform') === 'win' ? 'hook' : param('keys') === 'evdev' ? 'evdev' : 'portal', dictation_key: param('platform') === 'win' ? null : 'Menu',
         start_view: param('view') });
     case 'cards_waiting':
-      return r(Number(param('cards') ?? 0));
+      return r(mockOff().includes('cards') ? 0 : Number(param('cards') ?? mockCards.current.length));
+    case 'capabilities_get':
+      return r({ off: mockOff() });
+    case 'capability_set':
+      mockSetCapability(args.id, !!args.on);
+      return r({ off: mockOff() });
+    case 'cards_list':
+      return r(mockOff().includes('cards') ? { current: [], history: [] } : JSON.parse(JSON.stringify(mockCards)));
+    case 'card_action': {
+      const all = [...mockCards.current, ...mockCards.history];
+      const c = all.find((x) => x.n === args.n);
+      if (c && args.action === 'remove') {
+        mockCards.current = mockCards.current.filter((x) => x !== c);
+        mockCards.history = mockCards.history.filter((x) => x !== c);
+        emit('cards://changed', { count: mockCards.current.length });
+      }
+      return r(undefined);
+    }
     case 'cards_reveal':
       return r(undefined);
     case 'projects_list':
@@ -573,9 +640,12 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       mockHotkeys[args.action] = args.combo;
       return r({ result: 'ok', spec: args.combo, label: args.combo });
     }
-    case 'settings_set':
+    case 'settings_set': {
+      const before = mockOff().join();
       mockMerge(args.patch ?? {});
+      if (mockOff().join() !== before) emit('capabilities://changed', { off: mockOff() });
       return r(mockCfg);
+    }
     case 'asr_models':
       return r({ models: [{ id: 'sensevoice-small', name: 'SenseVoice Small', backend: 'sherpa-onnx', installed: true, size_mb: 228, languages: ['zh', 'en', 'ja', 'ko', 'yue'] }, { id: 'whisper-large-v3-turbo-ct2', name: 'Whisper large-v3 turbo', backend: 'faster-whisper', installed: false, size_mb: 1620, languages: 'multi' }] });
     case 'dictation_models':
@@ -614,7 +684,7 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     // ?mic=denied|none, ?uv=failed for the other states
     case 'onboarding_get':
       return r({ ...onb, uv: param('uv') !== 'failed' || onb.uvRetried, uv_state: param('uv') === 'failed' && !onb.uvRetried ? 'failed' : 'done', first_download_pending: false,
-        dictation: { available: param('dictation') !== '0', key: 'right_option', mode: 'auto', enabled: true } });
+        dictation: { available: param('dictation') !== '0', key: 'right_option', mode: 'auto', enabled: !mockOff().includes('dictation') }, off: mockOff() });
     case 'onboarding_step':
       onb.step = args.step;
       return r(undefined);

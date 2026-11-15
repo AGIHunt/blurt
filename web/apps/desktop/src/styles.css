@@ -1070,6 +1070,19 @@ tr.conflict td:first-child {
   align-items: center;
   gap: 8px;
 }
+/* step 1's capabilities: the keys, then the switch; off, the glyph, the name and the keys step back */
+.wl-capkeys {
+  display: inline-flex;
+  gap: 8px;
+  margin-inline-end: 6px;
+}
+.wl-row.muted .wl-glyph,
+.wl-row.muted .wl-capkeys {
+  opacity: 0.4;
+}
+.wl-row.muted .wl-title {
+  color: var(--mute);
+}
 .wl-caps {
   display: inline-flex;
   gap: 4px;

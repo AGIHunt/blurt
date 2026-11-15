@@ -65,6 +65,8 @@
 /* menus */
 "dictation.menu.history" = "Dictation History…";
 "dictation.menu.history.tip" = "Tap %@ in any app to dictate";
+"dictation.menu.copy_last" = "Copy Last Dictation";
+"dictation.menu.copied_last" = "Last dictation copied";
 "dictation.menu.turn_on" = "Turn On Dictation…";
 "dictation.menu.turn_on.tip" = "Dictating with %@ needs Accessibility or Input Monitoring.";
 "dictation.menu.turn_on.subtitle" = "Set up permissions to use %@";
@@ -507,7 +509,7 @@
 "dictation.words.source.suggested" = "From a correction";
 "dictation.words.info.used" = "Used in dictations";
 "dictation.words.info.used.value" = "%ld";
-"dictation.words.info.heard" = "Often recognized as";
+"dictation.words.info.heard" = "Often heard as";
 "dictation.words.info.added" = "Added";
 "dictation.settings.enable.detail" = "Speak, and the text is typed at the cursor.";
 "dictation.style.default" = "Style";
@@ -764,3 +766,20 @@
 "dictation.settings.cancel_key" = "Cancel dictation";
 "dictation.settings.cancel_key.default" = "%@ (default)";
 "dictation.settings.cancel_key.detail" = "In terminals like Claude Code, Esc stops the running task. With ⌃Esc or ⇧Esc, Esc alone never cancels dictation.";
+
+/* How fast dictation is (DictationSpeed, DictationSpeedText.swift): the page's first day heading, an entry's details, Settings */
+"dictation.speed.label" = "Speed";
+"dictation.speed.seconds" = "%@ s";
+"dictation.speed.under" = "under 0.1 s";
+"dictation.speed.after" = "Typed in %@";
+"dictation.speed.usual" = "Usually %@";
+"dictation.speed.usual.tip" = "Median of your last %1$@ dictations, from releasing the dictation key to the text at the cursor.";
+"dictation.speed.usual.long" = "Dictations over 30 s: usually %@.";
+"dictation.speed.here" = "Usually %@ on your Mac";
+"dictation.speed.here.asr" = "Usually %1$@ on your Mac (recognition %2$@)";
+"dictation.speed.parts.tip" = "Counts only the wait after you stop talking. Work done while you spoke isn’t included, so the parts can add up to less than the total.";
+"dictation.speed.load" = "Model loading %@";
+"dictation.speed.asr" = "Recognition %@";
+"dictation.speed.polish" = "Polish %@";
+"dictation.speed.structure" = "Structuring %@";
+"dictation.speed.translate" = "Translation %@";

@@ -303,6 +303,18 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (_state.value == State.REPLACED) connect()
     }
 
+    /**
+     * The pad's Retry, when nothing has answered for a while: the same attempts, started over now, and the pad says "connecting" again
+     * while they run. It was already trying every 3 s; this is for the moment the user has just woken the computer or started Blurt.
+     */
+    fun tryAgain() {
+        if (!active || _current.value == null || _state.value != State.UNREACHABLE) return
+        firstAttempt = null
+        _state.value = State.CONNECTING
+        cancelAttempts()
+        connect()
+    }
+
     /** The shade or a dialog over the app: let go of what's held, keep the connection. */
     fun leaving() = send(ToMac.ReleaseAll)
 

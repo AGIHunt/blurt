@@ -4,7 +4,7 @@
   "groups": {
     "inbox": ["new", "to_verify"],
     "open": ["new", "todo", "handed_off", "in_progress"],
-    "active": ["handed_off", "in_progress", "to_verify"],
+    "active": ["todo", "handed_off", "in_progress"],
     "closed": ["done", "wontfix"]
   },
   "actions": [

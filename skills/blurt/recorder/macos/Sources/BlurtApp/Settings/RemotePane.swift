@@ -1,17 +1,17 @@
-// Settings → Phone: pair a phone with the QR code, see what's connected, remove a phone. The code shows while "Add Phone"
-// is open and there's nothing to switch on: with no paired phone Blurt doesn't listen at all (Remote/RemoteServer.swift).
+// Settings → Phone: pair a phone with the QR code, see what's connected, remove a phone, and the options (keys on screen,
+// the screen, the relay). The code shows while "Add Phone" is open and there's nothing to switch on: with no paired phone
+// Blurt doesn't listen at all (Remote/RemoteServer.swift).
+//
+// The phones, the connection and the pairing code are PhoneModel's (MainWindow/PhonePage.swift), the one model this pane
+// shares with the main window's Phone page — where the connection's state and what to try when it won't connect live;
+// RemoteModel keeps what only this pane edits (the options, the relay's field).
 import AppKit
-import ApplicationServices
 import BlurtCore
 import BlurtRemoteKit
-import CoreImage
 import SwiftUI
 
 @MainActor
 final class RemoteModel: ObservableObject {
-    @Published var status = RemoteServer.Status()
-    @Published var devices: [RemoteServer.Device] = []
-    @Published var adding = false
     @Published var hud = RemoteHUD.enabled
     @Published var relayText = Config.shared["record.remote.relay_url"] as? String ?? ""
     @Published var relayState = RelayState.idle
@@ -19,52 +19,43 @@ final class RemoteModel: ObservableObject {
     enum RelayState { case idle, checking, ok, failed, invalid, fromPhone }
     @Published var screen = RemoteServer.screenAllowed
 
-    private var pollAccess: Timer?
-    @Published var canControl = AXIsProcessTrusted()
+    private var adoption: NSObjectProtocol?
 
+    /// The pane came on show. The QR code waits for Add Phone…: showing it listens on the network and advertises this Mac.
     func start() {
-        let s = RemoteServer.shared
-        s.onStatus = { [weak self] st in MainActor.assumeIsolated { self?.statusChanged(st) } }
-        s.onDevices = { [weak self] d in MainActor.assumeIsolated { self?.devicesChanged(d) } }
-        s.onRelayAdopted = { [weak self] a in MainActor.assumeIsolated { self?.adopted(a) } }
-        status = s.status
-        devices = s.devices()
-        // the QR code waits for Add Phone…: showing it listens on the network and advertises this Mac
-        pollAccess = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.canControl = RemoteServer.shared.canControl }
+        PhoneModel.shared.watch("settings")
+        guard adoption == nil else { return }
+        adoption = NotificationCenter.default.addObserver(forName: RemoteServer.relayAdopted, object: nil, queue: .main) { [weak self] n in
+            guard let a = n.object as? String else { return }
+            MainActor.assumeIsolated { self?.adopted(a) }
         }
     }
 
+    /// The pane left: a code on show goes with it.
     func stop() {
-        setAdding(false)
-        pollAccess?.invalidate()
-        pollAccess = nil
-    }
-
-    private func statusChanged(_ st: RemoteServer.Status) { status = st }
-
-    private func devicesChanged(_ d: [RemoteServer.Device]) {
-        // a phone just paired from the code on screen: the code's job is done
-        if adding, d.count > devices.count { setAdding(false) }
-        devices = d
+        PhoneModel.shared.unwatch("settings")
+        if let a = adoption { NotificationCenter.default.removeObserver(a) }
+        adoption = nil
     }
 
     /// A phone filled it in. Say so, and try it as if it had been typed.
     private func adopted(_ a: String) {
         relayText = a
         committed = a
-        relayState = .checking
-        RemoteRelay.check(address: a, queue: .main) { [weak self] ok in
-            MainActor.assumeIsolated {
-                guard let self, self.relayText == a else { return }
-                self.relayState = ok ? .fromPhone : .failed
-            }
-        }
+        check(a, good: .fromPhone)
     }
 
-    func setAdding(_ on: Bool) {
-        adding = on
-        RemoteServer.shared.showPairing(on)
+    /// Asks the relay at this address, once, for this pane's line and the Phone page's alike.
+    private func check(_ a: String, good: RelayState) {
+        relayState = .checking
+        PhoneModel.shared.relayAsking(a)
+        RemoteRelay.check(address: a, queue: .main) { [weak self] ok in
+            MainActor.assumeIsolated {
+                PhoneModel.shared.relayAnswered(a, ok)
+                guard let self, self.relayText == a else { return }
+                self.relayState = ok ? good : .failed
+            }
+        }
     }
 
     func setScreen(_ on: Bool) {
@@ -87,15 +78,9 @@ final class RemoteModel: ObservableObject {
         guard let a = RemoteRelay.address(typed) else { relayState = .invalid; return }
         relayText = a
         committed = a
-        relayState = .checking
         Config.shared.set("record.remote.relay_url", a)
         RemoteServer.shared.relayChanged()
-        RemoteRelay.check(address: a, queue: .main) { [weak self] ok in
-            MainActor.assumeIsolated {
-                guard let self, self.relayText == a else { return }
-                self.relayState = ok ? .ok : .failed
-            }
-        }
+        check(a, good: .ok)
     }
 
     /// Whatever was said about the last address doesn't hold for this one.
@@ -111,7 +96,7 @@ final class RemoteModel: ObservableObject {
     }
     @Published var copied = false
 
-    /// Where to get the phone apps (iPhone and iPad, Android): their build steps until they are in the stores.
+    /// Where the phone apps come from (iPhone and iPad, Android): their build steps, until they are in the stores.
     static let appPage = URL(string: "https://github.com/AGIHunt/blurt#what-it-does")!
 
     /// For the user's own coding agent: Blurt doesn't run a relay, and setting one up is a job for someone at a terminal.
@@ -144,6 +129,7 @@ final class RemoteModel: ObservableObject {
 
 struct RemotePane: View {
     @StateObject private var m = RemoteModel()
+    @ObservedObject private var phone = PhoneModel.shared
     @FocusState private var relayFocused: Bool
     @State private var removing: RemoteServer.Device?
 
@@ -158,15 +144,29 @@ struct RemotePane: View {
         }
     }
 
+    private func allowAccessibility() { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
+
+    /// Under the phones: where the connection's state is. Only while there is a main window to open.
+    private var pageNote: AnyView? {
+        guard AppEnvironment.mainWindow != nil else { return nil }
+        return AnyView(HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(T("phone.pane.see_page"))
+            InkLink(T("phone.pane.open_page")) {
+                MainWindowController.shared.show()
+                MainWindowController.shared.go(.phone)
+            }
+        })
+    }
+
     var body: some View {
         SettingsPage(.remote) {
-            if !m.canControl, !m.devices.isEmpty {
+            if !phone.canControl, !phone.devices.isEmpty {
                 SettingsNotice(title: T("settings.remote.needs_access"), detail: T("settings.remote.needs_access.detail")) {
-                    Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .general) }
+                    Button(T("settings.kit.allow")) { allowAccessibility() }
                 }
                 .padding(.top, SettingsMetrics.groupGap)
             }
-            SettingsGroup("remote.phones") { phones }
+            SettingsGroup("remote.phones", note: pageNote) { phones }
             SettingsGroup("remote.options") {
                 SettingToggle("remote.hud", isOn: Binding(get: { m.hud }, set: { m.setHUD($0) }))
                 SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
@@ -188,82 +188,46 @@ struct RemotePane: View {
         }
         .onAppear { m.start() }
         .onDisappear { m.stop() }
-        .alert(T("settings.remote.remove.title", removing?.name ?? ""), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button(T("settings.remote.cancel"), role: .cancel) {}
-            Button(T("settings.remote.remove"), role: .destructive) { if let d = removing { RemoteServer.shared.remove(d.id) } }
-        } message: { Text(T("settings.remote.remove.detail")) }
-    }
-
-    private func lastUsed(_ d: RemoteServer.Device) -> String {
-        guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
-        return T("settings.remote.last_used", RelativeDateTimeFormatter().localizedString(for: t, relativeTo: Date()))
+        .phoneRemoveAlert($removing)
     }
 
     @ViewBuilder var phones: some View {
-        ForEach(m.devices) { d in
-            let on = m.status.connectedID == d.id
-            SettingRow("remote.device.\(d.id)", title: d.name, detail: on ? T("settings.remote.connected") : lastUsed(d)) {
+        ForEach(phone.devices) { d in
+            let on = phone.status.connectedID == d.id
+            SettingRow("remote.device.\(d.id)", title: PhoneStatus.name(d.name), detail: on ? T("settings.remote.connected") : PhoneText.lastUsed(d)) {
                 Button(T("settings.remote.remove")) { removing = d }
             }
         }
-        if let who = m.status.asking {
-            let n = m.status.askingNumber
-            // the four digits, large: the yes is for the phone showing the same ones. No default button: Return mustn't say yes
-            SettingRow("remote.device.\(who)", title: T("settings.remote.ask.title", who),
-                       detail: T("settings.remote.ask.detail", m.status.askingCheck ?? "")) {
-                HStack {
-                    Text(m.status.askingCheck ?? "").font(.system(size: 20, weight: .semibold, design: .monospaced)).padding(.trailing, 8)
-                    Button(T("settings.remote.ask.no")) { RemoteServer.shared.answerPairing(false, number: n) }
-                    Button(T("settings.remote.ask.yes")) { RemoteServer.shared.answerPairing(true, number: n) }
-                }
+        if let who = phone.status.asking {
+            SettingsLine(flashID: "remote.ask", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
+                PhoneAsk(who: who, check: phone.status.askingCheck ?? "") { phone.answer($0) }
             }
         }
-        if m.adding {
+        if phone.adding {
             SettingsLine(flashID: "remote.add", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
-                HStack(alignment: .center, spacing: 20) {
-                    QRImage(link: m.status.pairingLink).frame(width: 168, height: 168)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(T("settings.remote.scan")).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
-                        Text(T("settings.remote.scan.detail")).font(.system(size: 11)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let f = m.status.failure { Text(f).font(.system(size: 11)).foregroundStyle(Color.brandAttnInk) }
-                        Button(T("settings.remote.cancel")) { m.setAdding(false) }
-                    }
-                    Spacer(minLength: 0)
-                }
+                PhonePairingCode(link: phone.status.pairingLink, failure: phone.status.failure) { phone.setAdding(false) }
             }
         } else {
             SettingRow("remote.add") {
                 HStack(spacing: 12) {
-                    // not on the App Store yet: the page says how to build it with Xcode
+                    // not in the stores yet: the page has the build steps (the Phone page says so in words)
                     Link(T("settings.remote.get_app"), destination: RemoteModel.appPage).font(.system(size: 12))
-                    Button(T("settings.remote.add")) { m.setAdding(true) }
+                        .help(T("phone.pane.build.tip"))
+                    Button(T("settings.remote.add")) { phone.setAdding(true, by: "settings") }
+                }
+            }
+            // said before pairing, not after: with no phone yet the notice above isn't showing
+            if !phone.canControl, phone.devices.isEmpty {
+                SettingsLine(flashID: "remote.access", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
+                    HStack(alignment: .center, spacing: 6) {
+                        StatusDot(tone: .warn)
+                        Text(T("phone.pane.before")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button(T("settings.kit.allow")) { allowAccessibility() }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                    }
                 }
             }
         }
-    }
-}
-
-/// The pairing link as a QR code: sharp pixels, dark on a white plate, whichever the appearance.
-private struct QRImage: View {
-    let link: URL?
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10).fill(Color.white)
-            if let i = link.flatMap(Self.image) {
-                Image(nsImage: i).interpolation(.none).resizable().padding(10)
-            } else {
-                BrandSpinnerView()
-            }
-        }
-    }
-
-    static func image(_ url: URL) -> NSImage? {
-        guard let f = CIFilter(name: "CIQRCodeGenerator") else { return nil }
-        f.setValue(Data(url.absoluteString.utf8), forKey: "inputMessage")
-        f.setValue("M", forKey: "inputCorrectionLevel")
-        guard let o = f.outputImage, let cg = CIContext().createCGImage(o, from: o.extent) else { return nil }
-        return NSImage(cgImage: cg, size: NSSize(width: o.extent.width, height: o.extent.height))
     }
 }

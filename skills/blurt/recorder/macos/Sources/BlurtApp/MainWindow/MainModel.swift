@@ -22,6 +22,12 @@ enum Scope: Hashable {
     case inbox, inProgress, unassigned, all
     /// the Dictation page (DictationPage.swift): no item rows
     case dictation
+    /// Home (HomePage.swift): what Blurt does, each with its switch and key, and what you made lately
+    case home
+    /// the cards under the notch and the used ones (CardsPage.swift)
+    case cards
+    /// the phones paired with this Mac (PhonePage.swift)
+    case phone
     case project(String)
     case session(String)
 
@@ -32,6 +38,9 @@ enum Scope: Hashable {
         case .unassigned: return "unassigned"
         case .all: return "all"
         case .dictation: return "dictation"
+        case .home: return "home"
+        case .cards: return "cards"
+        case .phone: return "phone"
         case .project(let p): return "project:" + p
         case .session(let s): return "session:" + s
         }
@@ -44,6 +53,9 @@ enum Scope: Hashable {
         case "unassigned": self = .unassigned
         case "all": self = .all
         case "dictation": self = .dictation
+        case "home": self = .home
+        case "cards": self = .cards
+        case "phone": self = .phone
         default:
             if key.hasPrefix("project:") { self = .project(String(key.dropFirst(8))) }
             else if key.hasPrefix("session:") { self = .session(String(key.dropFirst(8))) }
@@ -51,6 +63,22 @@ enum Scope: Hashable {
         }
     }
 
+    /// A page of its own in place of the items' list and detail: nothing of the items (rows, filters, the Item menu)
+    /// applies there.
+    var isPage: Bool {
+        switch self { case .dictation, .home, .cards, .phone: return true; default: return false }
+    }
+    /// The capability a place belongs to (nil: Home, always there): with it off the place is not in the sidebar, and
+    /// a window that remembers being there opens on Home.
+    var capability: Capability? {
+        switch self {
+        case .home: return nil
+        case .dictation: return .dictation
+        case .cards: return .cards
+        case .phone: return .phone
+        default: return .recording
+        }
+    }
     /// Every place is the one dense list (one row grammar: kind, id, title, state, date) — no column table anywhere.
     var isTable: Bool { false }
     /// How the place groups its rows (ListSections): the Inbox by project (the one project order, Unassigned last), so a
@@ -302,7 +330,7 @@ final class MainModel {
         case .unassigned: q.project = "inbox"; q.bySuggestion = true     // each suggested project's items together
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
-        case .all, .dictation: break
+        case .all, .dictation, .home, .cards, .phone: break
         }
         return q
     }
@@ -370,7 +398,7 @@ final class MainModel {
         pages.removeAll()
         overrides.removeAll()
         let emptied = testEmpty.map { !["no_results", "no_match"].contains($0) } ?? false
-        if scope == .dictation || emptied {
+        if scope.isPage || emptied {
             uids = []
             rowKeys = []
         } else if grouping != .none {
@@ -386,7 +414,7 @@ final class MainModel {
         }
         recut()
         // "12 of 52": the place's own count, while a search or a filter narrows it
-        if filtered, scope != .dictation, let r = reader {
+        if filtered, !scope.isPage, let r = reader {
             let (k, s, t) = (kinds, state, text)
             kinds = []; state = nil; text = ""
             let q = query
@@ -466,7 +494,7 @@ final class MainModel {
     /// How many of each built-in kind this place lists with its other filters (state, search) as they are — the
     /// Filter menu's counts.
     func kindCounts() -> [String: Int] {
-        guard let r = reader, scope != .dictation else { return [:] }
+        guard let r = reader, !scope.isPage else { return [:] }
         var out: [String: Int] = [:]
         for k in ["issue", "idea", "note", "task"] {
             var q = query
@@ -496,6 +524,9 @@ final class MainModel {
         case .unassigned: return T("project.inbox")
         case .all: return T("main.place.all")
         case .dictation: return T("dictation.history.sidebar")
+        case .home: return T("home.title")
+        case .cards: return T("cards.title")
+        case .phone: return T("phone.title")
         case .project(let p): return project(id: p)?.name ?? ProjectStore.shared.project(id: p)?.name ?? T("main.place.project")
         case .session(let s): return sessionRow(id: s).map(MainModel.title(of:)) ?? T("main.place.session")
         }

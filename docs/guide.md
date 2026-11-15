@@ -38,7 +38,7 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 | **Snap** | `⌥A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in grey in the note as you talk, and the note waits for you, however long you pause: `⏎` (or *Done*) saves it with the words as they are; `Tab` takes the words into the note so you can fix or add to them with the keyboard (listening stops); typing straight away replaces them; `⇧⏎` starts a new line. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` (or the undo arrow that shows with the pointer over the note) takes the last stroke back. Finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). The place under the note (a project, or *Unassigned* when there is no current project) changes where this snap goes: click it (or press Tab when there are no grey words), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. Next to it, *Type* says what the snap is: click it and pick *Issue*, *Idea*, *Note* or *Task*, or press `⌘1`–`⌘4` anywhere in the note (`⌘0` clears it; the list shows the keys). The item made from the snap is that kind, and organizing or *AI fill-in* won't change it; left unset, Blurt decides from the note as before. A card with a type shows the kind's icon. When the note is saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥V` | Press once and talk — pauses to think are fine; press `⌥V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Double-tap `⇧` while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
 | **Copy Text from Screen** | `⌥C` | Drag across any text on the screen (a crosshair, nothing dims) and let go: the text is on the clipboard about 0.2 s later, laid out as it was — lists, tables, code indentation — without the half lines cut off at the edges. With another app in front it is pasted there too, wherever dictation would paste (WeChat included; not into a password field, nor when nothing that takes text has the focus). The notch says *Pasted* only once the text shows in the field; where Blurt can't check that (WeChat), it says *Copied · ⌘V to paste*. The clipboard keeps the text either way. Nothing is saved as a card. Esc or a click without a drag cancels. It uses macOS's own text recognition, so nothing to download; with the AI service key (or a local model) a second read corrects it, and the clipboard is swapped for the corrected text only if you haven't copied something else meanwhile. |
-| **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Copy Text from Screen → ⌥T translates into* (⌥T's own; dictation's ⌘ has its own, since reading usually goes the other way). *Auto* (the default) is your own language ↔ the other one, named in the list (*Auto: 简体中文 ↔ English*, *Auto: English ↔ 日本語*): text in your language goes into the other one, anything else into yours; a language you pick is always what you get — text already in it is copied as it is, and the notch says so (*Already in English · original copied*). Line breaks, lists, code, paths and names are kept. The notch says *Translating…*, then what became of it (*Translation pasted*, *Copied · ⌘V to paste* or *Translation copied*); the whole translation shows in a card under the notch, with *Copy*. The card goes after 10 s (not while the pointer is on it); with the pointer on it, Esc closes it — otherwise Esc stays with the app you're typing in. The translation is on the clipboard and pasted by the same rules as ⌥C. It uses the AI service key when you added one, else this Mac's polish model. |
+| **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Screen Text → ⌥T translates into* (⌥T's own; dictation's ⌘ has its own, since reading usually goes the other way). *Auto* (the default) is your own language ↔ the other one, named in the list (*Auto: 简体中文 ↔ English*, *Auto: English ↔ 日本語*): text in your language goes into the other one, anything else into yours; a language you pick is always what you get — text already in it is copied as it is, and the notch says so (*Already in English · original copied*). Line breaks, lists, code, paths and names are kept. The notch says *Translating…*, then what became of it (*Translation pasted*, *Copied · ⌘V to paste* or *Translation copied*); the whole translation shows in a card under the notch, with *Copy*. The card goes after 10 s (not while the pointer is on it); with the pointer on it, Esc closes it — otherwise Esc stays with the app you're typing in. The translation is on the clipboard and pasted by the same rules as ⌥C. It uses the AI service key when you added one, else this Mac's polish model. |
 | **Record** | `⌥R` | Pick an area, a window or the full screen and click *Start recording*; after a 3-second countdown (*Start now* skips it), talk while you use your product. `⌥R` again (or *Finish* at the notch) stops. |
 
 While recording: `⌥P` pause; `⌥A` (or the snap button on the notch) is the same snap as always — drag an area, say or type the note (its microphone
@@ -65,6 +65,11 @@ shown in the Finder. Blurt never deletes it on its own (*Delete videos automatic
 recordings). The app has no button to organize it later; ask the blurt skill in your agent to process that recording.
 Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
+
+**Who organizes.** In the background, the first agent CLI in *Settings → Agents* that is installed and signed in:
+Claude Code, Codex, Kimi Code, OpenCode, Gemini CLI or Grok. Any agent that has the Blurt skill can also do it from
+its chat, WorkBuddy, Cursor and CodeBuddy included: say "process my Blurt recordings" and it organizes the recordings
+that aren't organized yet.
 
 **When something gets in the way.** A snap or a recording without Screen Recording permission says so at the notch
 before you pick an area, with *Open Settings*. After an update macOS sometimes keeps an old build's permission that no
@@ -337,22 +342,22 @@ Editing, the Mac way:
   says once which file needs fixing. Fix it and save; it shows up again. A file whose item changed underneath it (a
   checkout, a sync, a uid edited by hand) simply shows the new item.
 
-### 5. Hand off to an agent
+### 5. Copy an instruction for your agent
 
-Blurt doesn't run coding agents in a window of its own. You hand items to the agent you already use (Claude Code,
-Codex, Cursor…), wherever you run it. Select one or more items and choose:
+Items go to the agent you already use (Claude Code, Codex, WorkBuddy, Cursor…) as one line you paste. Blurt doesn't
+start or pick an agent for this. Select one or more items and choose:
 
-- **Copy instruction** — a one-line instruction pointing at a note with everything the agent needs
-  (screenshots included). Paste it into your agent. The items move to *Handed off*. **Copy full text** copies the note
-  itself.
+- **Copy Instruction for Agent** (`⌘↩`, also in the Item menu and the selection's button) — a one-line instruction
+  pointing at a hand-off note with everything the agent needs (screenshots included) goes to the clipboard. Paste it
+  into your agent. The items move to *Handed off*. **Copy full text** copies the note itself.
 - **Export Hand-off Bundle…** — for a person rather than an agent: one `.zip` with a summary (counts by kind and
   state, then each item with its state, what you said, the steps, suspected code and screenshots), a file per item,
   and the screenshots and clips. It uses relative paths only, so it opens on a teammate's computer. Pick where to
   save it; it is named after the project, the date and the number of items. While it packs, the notch says so; then
   it says where it saved it, with **Show in Finder**. The items keep their state. Paths on your Mac don't go into it:
   a path inside the project becomes relative, any other one keeps only the file name, and a screenshot that is no
-  longer on disk is listed as not included. It is in the Item menu, the context menu, the **Hand Off** toolbar menu
-  and `⌘K`.
+  longer on disk is listed as not included. It is in the Item menu, the context menu, the **Copy for Agent** toolbar
+  menu and `⌘K`.
 
 To send items somewhere — a Slack channel, a Feishu group, Linear, GitHub, Notion — ask your agent, for example
 "Bundle the checkout issues and post them to #web in Slack". It packs them (the `bundle_items` tool) and sends them
@@ -377,10 +382,10 @@ your order with its own fix.
 Every item has one state.
 
 ```
-New ──keep──▶ To do ──hand off──▶ Handed off ──▶ In progress ──▶ To verify ──mark as done──▶ Done
-                ▲                      │              │              │
-                ├── take back ─────────┴──────────────┘              │
-                └── send back ───────────────────────────────────────┘
+New ──keep──▶ To do ──copy instruction──▶ Handed off ──▶ In progress ──▶ To verify ──mark as done──▶ Done
+                ▲                              │              │              │
+                ├── take back ─────────────────┴──────────────┘              │
+                └── send back ───────────────────────────────────────────────┘
 ```
 
 - **New** — just captured; you haven't looked yet. **To do** — you kept it.
@@ -485,7 +490,7 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   Flash once you add a DeepSeek or Model Studio key (better, about 1 s), else the local polish model.
 - **Cloud services.** *Settings → Models → Cloud services*: add an API key for DeepSeek (recommended; about ¥0.001 a
   dictation) or Alibaba Cloud Model Studio — no model to pick. The key stays in your Keychain; *Test* says
-  "OK · 320 ms" or why not. Under *Which model does each job*, Polish, Translate and Copy Text from Screen each offer
+  "OK · 320 ms" or why not. Under *Which model does each job*, Polish, Translate and Screen Text each offer
   this Mac and the cloud models Blurt measured for that job (DeepSeek V4.1 Flash; Qwen3.6 Flash for screenshots), and
   say where the text goes. Any other model — Kimi, GLM, Gemini, Claude, OpenRouter, your own server — is
   *Advanced → Custom Model…* in the job's menu: the service, its key and the model ID, marked "Not tested by Blurt";
@@ -678,8 +683,9 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
   stops Blurt shows in red. Each installed agent shows *Skill + MCP* once the blurt skill and MCP are in it; while they
   are missing it offers *Connect…*, which shows what it will change before it does. **Ask your agent** at the bottom
   has three requests to start from (copy one with the button next to it): sending items to a chat, filing them in a
-  tracker, fixing one. There is no Export pane any more: your agent sends items with its own tools, and old links to
-  it open here.
+  tracker, fixing one: your agent sends items with its own tools. Agent apps Blurt doesn't run in the background
+  (WorkBuddy, Cursor, CodeBuddy…) are under **Other agent apps**: once connected, a row says *Organizes in its chat*,
+  and the footnote's **Copy Request** copies what to say there ("Process my Blurt recordings").
 - **Storage** shows what takes space: recordings and snaps per folder, every model by name with its size (*In use* or
   not), dictation history and audio, and Blurt's own files. A model nothing uses — an older one this version doesn't
   use included — can go to the Trash. Videos are most of the
@@ -802,6 +808,10 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 点完成后，刘海会说「正在整理到 Atlas Web」；口喷鸡在这台 Mac 上整理过几段录屏之后，还会说通常要多久（「通常约 4 分钟」；在那之前不瞎猜），旁边的「更改」可以换项目。鼠标移到刘海上能看到进度和剩余时间。整理好后，刘海会说「已整理到 Atlas Web · 5 条新的」，点「打开」。只想留下视频、不整理（比如要把视频发给别人）：在刘海的 ··· 菜单（或菜单栏菜单）里选「只保存视频」代替「完成」，视频会保存并在访达中显示。口喷鸡不会自己删它（「自动删除视频」只处理已经整理过的录屏）。App 里暂时没有「之后再整理」的按钮；需要的话，让你的 agent 里的 blurt 技能处理这段录屏。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
+**谁来整理。** 后台整理用「设置 → Agent」里第一个已安装并登录的命令行 Agent：Claude Code、Codex、Kimi Code、OpenCode、
+Gemini CLI 或 Grok。装了口喷鸡 skill 的 Agent 也能在对话里整理，WorkBuddy、Cursor、CodeBuddy 都行：跟它说「处理我录的视频」，
+它会把还没整理的录屏整理成事项。
+
 **出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，8 秒内（鼠标停在上面时更久）可以点「留下」，没留下的录音会放进废纸篓，不会直接删掉；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空事项。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注也不会因为停顿结束：它等你按 `⏎`、点「完成」或按 `Tab`。
@@ -911,18 +921,18 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
   「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他事项照常更新，口喷鸡只提醒一次是哪个文件要改。
   改好保存，它就回来了。同一个文件换成了另一条（切分支、同步、手改了 uid），列表里显示的就是新的那条。
 
-### 5. 交给 Agent
+### 5. 复制指令给 Agent
 
-口喷鸡不在自己的窗口里运行编程 Agent。事项交给你平时用的 Agent（Claude Code、Codex、Cursor……），在哪儿用都行。
-选中一条或几条，选一种交法：
+事项以一行指令的形式交给你平时用的 Agent（Claude Code、Codex、WorkBuddy、Cursor……），由你粘贴过去。口喷鸡不会为此启动或挑选 Agent。
+选中一条或几条，选一种方式：
 
-- **复制指令**：一句话的指令，指向一份交接说明，Agent 需要的东西（包括截图）都在里面。粘贴给你的 Agent 就行，
-  事项会变成「已交给 Agent」。「**复制全文**」复制的是交接说明本身。
+- **复制指令给 Agent**（`⌘↩`，「事项」菜单和选中后的按钮里也有）：一句话的指令复制到剪贴板，指向一份交接说明，Agent 需要的东西
+  （包括截图）都在里面。粘贴给你的 Agent 就行，事项会变成「已交给 Agent」。「**复制全文**」复制的是交接说明本身。
 - **导出交接包…**：给人看，而不是给 Agent：一个 `.zip`，里面有概要（按种类、按状态的条数，然后每一条的状态、你的原话、复现步骤、
   疑似代码位置和截图）、每条一个文件，以及截图和录屏片段。里面只用相对路径，同事的电脑上也能打开。选好保存位置即可，文件名是
   项目、日期和条数。打包时刘海会显示进度，完成后告诉你存在哪里，并带「**在访达中显示**」。事项的状态不会变。你这台 Mac 上的路径
   不会写进去：项目里的路径变成相对路径，其他路径只留文件名；已经找不到的截图会注明没有打包进来。「事项」菜单、右键菜单、
-  工具栏的「**交给 Agent**」菜单和 `⌘K` 里都有。
+  工具栏的「**复制指令给 Agent**」菜单和 `⌘K` 里都有。
 
 想把事项发到别处——Slack 频道、飞书群、Linear、GitHub、Notion——直接跟 Agent 说，比如「把结账页的问题打包，发到 Slack 的 #web 频道」。
 它会打包（`bundle_items` 工具），再用它自己已有的工具发出去；口喷鸡本身不接任何第三方服务。「设置 → Agent → 可以这样跟 Agent 说」
@@ -942,10 +952,10 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 每条只有一个状态。
 
 ```
-新 ──要做──▶ 要做 ──交给 Agent──▶ 已交给 Agent ──▶ 进行中 ──▶ 待验证 ──标为完成──▶ 完成
-               ▲                     │               │          │
-               ├── 收回 ─────────────┴───────────────┘          │
-               └── 退回 ────────────────────────────────────────┘
+新 ──要做──▶ 要做 ──复制指令──▶ 已交给 Agent ──▶ 进行中 ──▶ 待验证 ──标为完成──▶ 完成
+               ▲                   │               │          │
+               ├── 收回 ───────────┴───────────────┘          │
+               └── 退回 ──────────────────────────────────────┘
 ```
 
 - **新**：刚记下，你还没看。**要做**：你留下了。
@@ -1019,7 +1029,7 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 
 ### 8. 设置、存储和隐私
 
-- **Agent**：口喷鸡用来整理录屏、截图和语音备注以及 AI 补全的 Agent，按顺序用：排在前面、能用的先用，没登录或额度用完时自动换下一个。用不到的取消勾选。每个 Agent 下面的「**录屏**」和「**卡片**」是各自用的模型和思考强度：录屏默认用 Agent 自己的模型、低思考强度，卡片（和 AI 补全）默认用最省的模型，都能在这里改。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」；还没装时有「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
+- **Agent**：口喷鸡用来整理录屏、截图和语音备注以及 AI 补全的 Agent，按顺序用：排在前面、能用的先用，没登录或额度用完时自动换下一个。用不到的取消勾选。每个 Agent 下面的「**录屏**」和「**卡片**」是各自用的模型和思考强度：录屏默认用 Agent 自己的模型、低思考强度，卡片（和 AI 补全）默认用最省的模型，都能在这里改。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」；还没装时有「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条：发到哪里由 Agent 用它自己的工具完成。口喷鸡不在后台运行的 Agent App（WorkBuddy、Cursor、CodeBuddy……）列在「**其他 Agent 应用**」里：接入后那一行写着「在对话里整理」，下面的「**复制说法**」复制在它对话里要说的话（「处理我录的视频」）。
 - **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的名字和大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型（包括这个版本用不到的旧模型）可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），事项、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
 - **数据文件夹（Windows 和 Linux）**：「设置 → 存储 → 数据文件夹」显示口喷鸡把录屏、模型、听写历史和设置放在哪：默认是用户文件夹里的 `.blurt` 和 `Blurt`。「更改…」可以移到你选的文件夹，任何盘都行（口喷鸡会在里面建一个 `Blurt` 文件夹，选 `E:\` 就是 `E:\Blurt`）。口喷鸡会先看那个盘空间够不够，复制时显示进度，复制完重新打开，在新位置打开后再删掉原来的数据。之后 Python 和脚本用的依赖包也放在那里，第一次用到时会重新下载。项目的事项在项目自己的文件夹里，不会移动。⋯ 菜单里的「移回用户文件夹」可以改回去。录屏、听写、模型下载或整理进行中时要先等它结束。这个选择记在 `%APPDATA%\Blurt\location.json`（Linux：`~/.config/Blurt/location.json`）；你自己设置了 `BLURT_HOME` 或 `BLURT_WORKSPACE` 时以它们为准。Windows 上口喷鸡不再跟随其他工具设置的 `HOME` 变量；以前数据放在 `HOME` 下的电脑会继续用那个文件夹，显示为数据文件夹。

@@ -14,8 +14,9 @@ public enum Lifecycle {
     public static let inbox: Set<String> = ["new", "to_verify"]
     /// not finished (MCP open_items, a project's open count)
     public static let open: Set<String> = ["new", "todo", "handed_off", "in_progress"]
-    /// with an agent, or back from one (the In Progress place)
-    public static let active: Set<String> = ["handed_off", "in_progress", "to_verify"]
+    /// the In Progress place: what you took on and haven't checked off — to do (kept from the Inbox), handed off, with an
+    /// agent. To verify is the Inbox's (it needs you), so an open item is listed — and counted — in exactly one of them.
+    public static let active: Set<String> = ["todo", "handed_off", "in_progress"]
     public static let closed: Set<String> = ["done", "wontfix"]
     /// everything a list shows unless it asks for the Discarded filter
     public static let live: [String] = states.filter { $0 != "discarded" }

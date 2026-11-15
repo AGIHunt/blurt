@@ -44,12 +44,16 @@ fn zh() -> bool {
     crate::l10n::lang() == "zh-Hans"
 }
 
-/// At launch: the host, idle until a code shows or a phone is paired.
+/// At launch: the host, idle until a code shows or a phone is paired. With the Phone capability off (capabilities.rs)
+/// nothing of it starts: it does when Phone is turned on (`capability_changed`). Called on the main thread.
 pub fn start(app: &AppHandle) {
     if HOST.get().is_some() || std::env::var_os("BLURT_NO_REMOTE").is_some() {
         return;
     }
     let _ = APP.set(app.clone());
+    if !crate::capabilities::on_now(crate::capabilities::Capability::Phone) {
+        return;
+    }
     let dir = crate::paths::blurt_home().join("remote");
     let keys: Box<dyn KeyStore> = if testing() || cfg!(not(any(windows, target_os = "linux"))) {
         Box::new(blurt_remote::store::FileKeyStore::new(dir.join("test-keys.json")))
@@ -132,6 +136,39 @@ fn linux_paste(text: &str) -> bool {
         }
     });
     true
+}
+
+/// The Phone capability was turned on or off: off, the host lets go of everything and listens for nothing (the paired
+/// phones are kept); on, it listens again — or starts, when Phone was off at launch.
+pub fn capability_changed() {
+    let on = crate::capabilities::on_now(crate::capabilities::Capability::Phone);
+    match host() {
+        Some(h) => h.set_off(!on),
+        None if on => {
+            if let Some(app) = APP.get() {
+                let a = app.clone();
+                // the Linux portal's setup wants the main thread, as at launch
+                let _ = app.run_on_main_thread(move || {
+                    start(&a);
+                    emit_now();
+                });
+            }
+        }
+        None => {}
+    }
+    emit_now();
+}
+
+/// The tray's phone row: (phones paired, the connected phone's name — "" when it gave none —, whether a phone can
+/// control this computer now).
+pub fn summary() -> (usize, Option<String>, bool) {
+    match host() {
+        Some(h) => {
+            let s = h.status();
+            (s.devices.len(), s.connected.map(|c| c.name), s.can_control)
+        }
+        None => (0, None, true),
+    }
 }
 
 /// Quitting: let go of everything held, close the session, stop listening.
@@ -448,6 +485,8 @@ impl App for Desktop {
             BlurtCommand::CopyText => "text",
             BlurtCommand::Translate => "translate",
             BlurtCommand::Cards => "cards",
+            // a voice note is a card: not with Cards off (the other commands are refused in crate::dispatch)
+            BlurtCommand::VoiceNote if !crate::capabilities::on_now(crate::capabilities::Capability::Cards) => return,
             BlurtCommand::VoiceNote => return voice_note(&self.app, phone_mic),
             #[cfg(dict)]
             BlurtCommand::DictationCancel => return crate::dictation::engine::remote_command(crate::dictation::engine::Remote::Cancel),

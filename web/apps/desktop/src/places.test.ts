@@ -8,7 +8,7 @@ const proj = (id: string, more: Partial<ProjectRow> = {}) => ({ id, name: id, ke
 describe('places (MainModel.query)', () => {
   it('queries each place as the Mac does', () => {
     expect(placeQuery('inbox', NO_FILTER, '', 'updated', false, 10).state).toEqual(['new', 'to_verify']);
-    expect(placeQuery('progress', NO_FILTER, '', 'updated', false, 10).state).toEqual(['handed_off', 'in_progress', 'to_verify']);
+    expect(placeQuery('progress', NO_FILTER, '', 'updated', false, 10).state).toEqual(['todo', 'handed_off', 'in_progress']);
     expect(placeQuery('progress', { kinds: [], state: 'done' }, '', 'updated', false, 10).state).toEqual(['done']);
     expect(placeQuery('unassigned', NO_FILTER, '', 'updated', false, 10).project).toBe('inbox');
     expect(placeQuery('project:p2', { kinds: ['idea'], state: null }, ' x ', 'title', true, 10)).toMatchObject({ project: 'p2', kind: ['idea'], query: 'x', sort: 'title', ascending: true });

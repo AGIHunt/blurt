@@ -246,7 +246,8 @@ export interface HotkeyRow {
   label: string;
   default: string;
   active: boolean;
-  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual';
+  /** disabled: its capability is off (the key stays set, but isn't held) */
+  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual' | 'disabled';
   of?: string;
   name?: string;
   hint_url?: string;
@@ -315,6 +316,8 @@ export interface Onboarding {
   /** setup.rs is still to start the first model download */
   first_download_pending: boolean;
   dictation: { available: boolean; key: string; mode: 'auto' | 'tap' | 'hold' | string; enabled: boolean };
+  /** the capabilities turned off (the first step's switches) */
+  off?: string[];
 }
 export interface MicState {
   supported: boolean;
@@ -585,7 +588,34 @@ export const api = {
   /** Windows Firewall keeps phones out (`firewall: 'blocked'`): its rule, through Windows' own administrator prompt; answers
    *  once that's done or declined (declined: still 'blocked', no error) */
   remoteAllowFirewall: () => invoke<RemoteStatus>('remote_allow_firewall'),
+  // the five capabilities (src-tauri/src/capabilities.rs, docs/design/capabilities.md): which are off; every change —
+  // from here, Settings → Dictation's own switch or config.json edited by hand — also comes as 'capabilities://changed'
+  capabilities: () => invoke<{ off: string[] }>('capabilities_get'),
+  setCapability: (id: string, on: boolean) => invoke<{ off: string[] }>('capability_set', { id, on }),
+  /** the Cards page: the cards at the top of the screen now, and those used in other apps in the last 7 days */
+  cardsList: () => invoke<{ current: CardInfo[]; history: CardInfo[] }>('cards_list'),
+  /** what the Cards panel does to one card, done from the main window */
+  cardAction: (action: 'copy' | 'copy_text' | 'remove' | 'restore' | 'reveal' | 'putback', session: string, n: number) =>
+    invoke<void>('card_action', { action, session, n }),
 };
+
+export const onCapabilities = (cb: (p: { off: string[] }) => void) => listen<{ off: string[] }>('capabilities://changed', cb);
+
+/** A card as the island shows it (blurt-capture overlay::Card + when): `src` the picture's URL ("" for a voice or text
+ *  card), `wall` when it was taken, `taken` when it was used in another app (History). Times are epoch seconds. */
+export interface CardInfo {
+  n: number;
+  src: string;
+  text?: string | null;
+  file?: string | null;
+  kind: 'shot' | 'voice' | string;
+  session?: string | null;
+  ref?: string;
+  textCard?: boolean;
+  missing?: boolean;
+  wall?: number | null;
+  taken?: number | null;
+}
 
 /** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
 export interface RemoteStatus {

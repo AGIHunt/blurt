@@ -22,6 +22,11 @@ func installHotkeyHandler() {
     c.installHandler()
     c.onRaw = { id in if let k = HK(rawValue: id) { hotkeyHandler?(k) } }
     c.onFire = { a in
+        // a capability that is off does nothing, whoever asks: its keys aren't held, and a paired phone's buttons and
+        // the test channel come through here too
+        guard Capability.allows(a, off: Hotkeys.shared.resident ? Capability.off : [], recording: appDelegate?.rec != nil) else {
+            return emit(["event": "capability_off", "action": a.rawValue])
+        }
         if let k = a.hk { hotkeyHandler?(k) } else if a == .openMain { AppEnvironment.mainWindow?.show() }
     }
     c.onRelease = { a in if a == .voice { VoiceInput.shared.released() } }

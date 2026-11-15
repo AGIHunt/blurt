@@ -40,9 +40,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
 MACOS = ROOT / "skills" / "blurt" / "recorder" / "macos"
 BUNDLE_ID = "dev.blurt.recorder.layouttest"
-SETTINGS_PANES = ["general", "projects", "dictation", "screentext", "speech", "shortcuts", "agents", "privacy", "storage"]
+SETTINGS_PANES = ["general", "dictation", "cards", "screentext", "recording", "projects", "remote", "speech", "shortcuts", "agents",
+                  "privacy", "storage"]
 ONBOARDING_STEPS = 4
-MAIN_SCOPES = ["inbox", "progress", "unassigned", "all", "dictation"]
+MAIN_SCOPES = ["home", "dictation", "cards", "phone", "inbox", "progress", "unassigned", "all"]
 EMPTY_STATES = ["first", "inbox_zero", "project", "no_results", "no_index", "failed", "missing", "scanning", "discarded"]
 
 

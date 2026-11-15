@@ -239,6 +239,15 @@ Terminal (paths typed), into Chrome's upload box, into Blurt's main window (file
 drag (it comes back); Ctrl+V in the main window with files copied in Files, a screenshot, a LibreOffice copy; the
 passive note doesn't take the keyboard.
 
+## Capabilities (v1.0.24, 2026-11-16)
+
+The five switches of docs/design/capabilities.md hold on Linux as on Windows (`src-tauri/src/capabilities.rs`, the same
+config.json keys). Linux-specific: the GlobalShortcuts portal binds once per launch, so a capability turned off later
+keeps its GNOME binding until the next launch, and the app refuses the action meanwhile; one off at launch isn't bound
+at all. The tray now also shows Copy text / Translate text from screen and the dictation rows on Linux (they were gated
+on Windows only). Home's Screen Text row says when GNOME hasn't allowed screenshots yet, with Allow…. Not run on the
+26.04 VM yet: the switches, the tray and the Phone page were checked in the browser with the mock only.
+
 ## Onboarding on Linux
 
 Four system dialogs, each asked where it makes sense, with one line of ours before it:

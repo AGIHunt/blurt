@@ -7,8 +7,11 @@
 //
 // Ids are "<pane>.<name>". A `.section` entry is a whole section (a list like the projects or the models) that search
 // can land on; `generated` rows come out of a ForEach over an enum (the shortcuts, the dictation app categories, the
-// speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there, or whose menu
-// holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
+// speech purposes, General's capability switches); `fold` names the row whose disclosure hides the entry until a
+// search jumps there, or whose menu holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
+// Capabilities (Capabilities.swift, v1.0.24): the panes are arranged by them, and one that is turned off takes its
+// pane, its rows elsewhere (its shortcuts) and its search results with it — `paneShown`, `rowShown`, `results(_:off:)`
+// — while its switch in General ("general.feature.<id>") stays, and is where a link to anything of it lands (`landing`).
 // Search: every word of the query has to appear in the entry's title, description, keywords or section — in the UI
 // language or in the other one — scored title first. Plain substring matching, no language rules. The results come in
 // groups, one per pane, best group first (ties: the sidebar's order), each by section, best first: what the results
@@ -74,23 +77,32 @@ public struct SettingsResultGroup: Hashable {
 public enum SettingsCatalog {
     // MARK: panes
 
-    /// The sidebar's groups, in order: (id, title).
+    /// The sidebar's groups, in order: (id, title). v1.0.24: by capability (Capabilities.swift) — Features: one pane per
+    /// thing Blurt does, named and drawn as in the main window's sidebar, each there only while its capability is on
+    /// (`paneShown`) · App: what every feature shares (General with the five switches, Models, Shortcuts, Agents) ·
+    /// This Mac: Privacy, Storage. Before, Preferences / Work / This Mac, with the recording, voice-note and card
+    /// settings in General.
     public static let groups: [(id: String, title: SettingsText)] = [
-        ("preferences", SettingsText("settings.group.preferences", "Settings")),
-        ("work", SettingsText("settings.group.work", "Settings")),
+        ("features", SettingsText("settings.group.features", "Settings")),
+        ("app", SettingsText("settings.group.app", "Settings")),
         ("mac", SettingsText("settings.group.mac", "Settings")),
     ]
 
     public static let panes: [SettingsPaneInfo] = [
-        pane("general", "settings.kit.general", "Settings", "gearshape", "preferences"),
-        pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
+        // a capability's pane is named as the capability is everywhere (feature.<id>, Home.strings)
+        pane("dictation", "feature.dictation", "Home", "character.cursor.ibeam", "features"),
+        // snaps, voice notes and what a dragged card carries (v1.0.24: before, two boxes in General)
+        pane("cards", "feature.cards", "Home", "rectangle.stack", "features"),
         // ⌥C and ⌥T (2026-10-30: its own page; before, a box in General)
-        pane("screentext", "settings.kit.screen_text", "Settings", "text.viewfinder", "preferences"),
-        pane("speech", "settings.kit.speech", "Settings", "cpu", "preferences"),
-        pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
-        pane("remote", "settings.kit.remote", "Settings", "iphone", "preferences"),
-        pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
-        pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
+        pane("screentext", "feature.screen_text", "Home", "text.viewfinder", "features"),
+        // a recording and what becomes of it (v1.0.24: before, a box in General); its projects follow
+        pane("recording", "feature.recording", "Home", "record.circle", "features"),
+        pane("projects", "main.sidebar.projects", "Main", "folder", "features"),
+        pane("remote", "feature.phone", "Home", "iphone", "features"),
+        pane("general", "settings.kit.general", "Settings", "gearshape", "app"),
+        pane("speech", "settings.kit.speech", "Settings", "cpu", "app"),
+        pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "app"),
+        pane("agents", "settings.kit.agents", "Settings", "paperplane", "app"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
     ]
@@ -102,6 +114,62 @@ public enum SettingsCatalog {
 
     public static func pane(_ id: String) -> SettingsPaneInfo? { panes.first { $0.id == id } }
 
+    /// The capability a pane is the settings of (Capabilities.swift); nil: the app's own panes, always there.
+    public static func capability(ofPane id: String) -> Capability? {
+        switch id {
+        case "dictation": return .dictation
+        case "cards": return .cards
+        case "screentext": return .screenText
+        case "recording", "projects": return .recording
+        case "remote": return .phone
+        default: return nil
+        }
+    }
+
+    /// A capability's own pane (Recording & Items', not the Projects that go with it): its glyph is the capability's.
+    public static func pane(of c: Capability) -> SettingsPaneInfo? { panes.first { capability(ofPane: $0.id) == c } }
+
+    /// A capability that is off has no pane: not in the sidebar, not in search, and a link to it lands on General
+    /// (where the five switches are).
+    public static func paneShown(_ id: String, off: Set<Capability> = Capability.off) -> Bool {
+        capability(ofPane: id).map { !off.contains($0) } ?? true
+    }
+
+    /// The capability a row belongs to when that isn't its pane's: a shortcut's owner (the Shortcuts pane lists every
+    /// capability's keys), the dictation key shown there, and Projects' "new snaps and voice notes go to" (Cards').
+    public static func capability(ofRow id: String) -> Capability? {
+        if id == "shortcuts.dictation_key" { return .dictation }
+        if id.hasPrefix("shortcuts."), let a = HotkeyCenter.Action(rawValue: String(id.dropFirst("shortcuts.".count))) {
+            return Capability.owner(of: a)
+        }
+        if id == "projects.capture_into" || id == "projects.capture" { return .cards }
+        return nil
+    }
+
+    /// Whether a row (or a section) is drawn and found: its pane is there, and so is the capability it belongs to. The
+    /// words under the notch while you speak are dictation's and the voice note's alike: gone only with both.
+    public static func rowShown(_ id: String, off: Set<Capability> = Capability.off) -> Bool {
+        guard paneShown(String(id.prefix { $0 != "." }), off: off) else { return false }
+        if id == "general.live_text" { return !(off.contains(.dictation) && off.contains(.cards)) }
+        return capability(ofRow: id).map { !off.contains($0) } ?? true
+    }
+
+    /// A capability's switch in General's Features section: where a link to something of an off capability lands.
+    public static func featureRow(_ c: Capability) -> String { "general.feature.\(c.rawValue)" }
+
+    /// Where a link ("cards", "cards/cards.snap_sound", "shortcuts/snap" — after `redirect`) lands with these
+    /// capabilities off: where it says, or, its pane or its row being an off capability's, General at that
+    /// capability's switch ("general/general.feature.cards") — one click from having it back.
+    public static func landing(_ link: String, off: Set<Capability> = Capability.off) -> String {
+        let pane = String(link.prefix { $0 != "/" })
+        if let c = capability(ofPane: pane), off.contains(c) { return "general/\(featureRow(c))" }
+        guard link.count > pane.count + 1 else { return link }
+        let rest = String(link.dropFirst(pane.count + 1))
+        let row = rest.contains(".") ? rest : "\(pane).\(rest)"
+        if let c = capability(ofRow: row), off.contains(c) { return "general/\(featureRow(c))" }
+        return link
+    }
+
     /// Panes that are gone, and where their links (blurt://settings/<pane>[/<row>], a remembered last pane) land now.
     /// Export went in v0.9: the user's agent sends items with its own tools, so Agents says how to ask it.
     public static let moved: [String: String] = ["export": "agents/agents.ask"]
@@ -111,7 +179,16 @@ public enum SettingsCatalog {
     public static let movedRows: [String: String] = [
         "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
         "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
-        "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
+        "general.smart_paste": "cards.card_drag", "general.drag_caption": "cards.card_drag", "general.drag_copy_note": "cards.card_drag",
+        // v1.0.24: Settings by capability — General's Voice notes and Cards boxes are the Cards pane, its Recording
+        // box the Recording & Items pane (the words under the notch stay in General: dictation shows them too)
+        "general.collect": "cards.collect", "general.snap_sound": "cards.snap_sound",
+        "general.voice_end_on_pause": "cards.voice_end_on_pause",
+        "general.card_drag": "cards.card_drag", "general.agent_drag": "cards.agent_drag", "general.drag_note_file": "cards.drag_note_file",
+        "general.cards": "cards.snaps", "general.voice": "cards.voice",
+        "general.after_recording": "recording.after_recording", "general.countdown": "recording.countdown",
+        "general.system_audio": "recording.system_audio", "general.hide_notch": "recording.hide_notch",
+        "general.recording": "recording.capture",
         // v1.0.8: one cloud service became a list of them, and each job its row (Settings → Models)
         "dictation.cloud_polish": "speech.polish", "speech.cloud_polish": "speech.polish",
         "dictation.translate_cloud": "dictation.translate_model", "screentext.translate_cloud": "screentext.translate_model",
@@ -135,11 +212,19 @@ public enum SettingsCatalog {
     // MARK: sections
 
     public static let sections: [SettingsSection] = [
+        // General: the five capabilities' switches, then the app's own choices
+        sec("general.features", "settings.general.features"),
         sec("general.app", "settings.general.app"),
-        sec("general.recording", "settings.general.recording"),
-        sec("general.voice", "settings.general.section.voice"),
-        sec("general.cards", "settings.general.section.cards"),
         sec("general.about", "settings.general.about"),
+
+        // Cards, in the order a card is made and used: taking a snap, the voice note, dragging the card out
+        sec("cards.snaps", "settings.cards.section.snaps"),
+        sec("cards.voice", "settings.general.section.voice"),
+        sec("cards.drag", "settings.cards.section.drag"),
+
+        // Recording & Items: the recording itself, then what becomes of it
+        sec("recording.capture", "settings.general.recording"),
+        sec("recording.items", "settings.recording.section.items"),
 
         sec("projects.list", "main.sidebar.projects", "Main"),
         sec("projects.capture", "settings.projects.capture_heading"),
@@ -212,24 +297,38 @@ public enum SettingsCatalog {
 
     public static let entries: [SettingsEntry] = {
         var e: [SettingsEntry] = [
-            // General
+            // General: the capabilities' switches (the section is found by "features", "功能"; each switch by its
+            // capability's name and by "turn off", "关闭"), then the app's own rows
+            whole("general.features", detail: S("settings.general.features.footer")),
+        ]
+        for c in Capability.allCases {
+            e.append(row(featureRow(c), "general.features", SettingsText("feature.\(c.rawValue)", "Home"),
+                         detail: SettingsText("feature.\(c.rawValue).what", "Home"), generated: true))
+        }
+        e += [
             row("general.login", "general.app", "settings.general.login", detail: S("settings.general.login.detail")),
             row("general.menu_bar_icon", "general.app", "settings.general.menu_bar_icon", detail: S("settings.general.menu_bar_icon.detail")),
             row("general.island_idle", "general.app", "settings.general.island_idle", detail: S("settings.general.island_idle.detail")),
+            // dictation's and the voice note's alike (record.live_text): the app's, not one capability's
+            row("general.live_text", "general.app", "settings.general.live_text", detail: S("settings.general.live_text.detail"),
+                more: S("settings.general.live_text.hint")),
             row("general.language", "general.app", "settings.general.language"),
-            row("general.after_recording", "general.recording", "settings.general.after_recording"),
-            row("general.countdown", "general.recording", SettingsText("app.menu.countdown", "Main")),
-            row("general.system_audio", "general.recording", "settings.general.system_audio"),
-            row("general.hide_notch", "general.recording", "settings.general.hide_notch", detail: S("settings.general.hide_notch.detail")),
-            row("general.voice_end_on_pause", "general.voice", "settings.general.voice_end_on_pause",
-                more: S("settings.general.voice_end_on_pause.hint")),
-            row("general.live_text", "general.voice", "settings.general.live_text", more: S("settings.general.live_text.hint")),
-            row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
-            row("general.snap_sound", "general.cards", "settings.general.snap_sound"),
-            row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
-            row("general.agent_drag", "general.cards", "settings.general.agent_drag", more: S("settings.general.agent_drag.hint")),
-            row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
             whole("general.about"),
+
+            // Cards (the strings keep their settings.general.* keys from when these rows were in General)
+            row("cards.collect", "cards.snaps", "settings.general.collect", more: S("settings.general.collect.hint")),
+            row("cards.snap_sound", "cards.snaps", "settings.general.snap_sound"),
+            row("cards.voice_end_on_pause", "cards.voice", "settings.general.voice_end_on_pause",
+                more: S("settings.general.voice_end_on_pause.hint")),
+            row("cards.card_drag", "cards.drag", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
+            row("cards.agent_drag", "cards.drag", "settings.general.agent_drag", more: S("settings.general.agent_drag.hint")),
+            row("cards.drag_note_file", "cards.drag", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
+
+            // Recording & Items
+            row("recording.countdown", "recording.capture", SettingsText("app.menu.countdown", "Main")),
+            row("recording.system_audio", "recording.capture", "settings.general.system_audio"),
+            row("recording.hide_notch", "recording.capture", "settings.general.hide_notch", detail: S("settings.general.hide_notch.detail")),
+            row("recording.after_recording", "recording.items", "settings.general.after_recording"),
 
             // Projects
             row("projects.capture_into", "projects.capture", "settings.projects.capture_row"),
@@ -400,15 +499,20 @@ public enum SettingsCatalog {
     // MARK: search
 
     /// Every setting found, in the order the results page lists them (its groups one after the other).
-    public static func search(_ query: String) -> [SettingsHit] { results(query).flatMap(\.hits) }
+    public static func search(_ query: String, off: Set<Capability> = Capability.off) -> [SettingsHit] {
+        results(query, off: off).flatMap(\.hits)
+    }
 
     /// The results by pane, best group first; ties keep the sidebar's order. A query that is a pane's name or its start
     /// ("快捷", "short") finds that pane as a whole; one that only matches a pane's keywords ("hotkey") does so when
     /// nothing matches the rows themselves — "voice" finds the voice settings, not the whole of Dictation.
-    public static func results(_ query: String) -> [SettingsResultGroup] {
+    /// `off`: the capabilities turned off — their panes and rows are not found (`rowShown`); their switches in General are.
+    public static func results(_ query: String, off: Set<Capability> = Capability.off) -> [SettingsResultGroup] {
         let terms = words(query)
         guard !terms.isEmpty else { return [] }
         let here = Loc.language, other = otherLanguage
+        let entries = off.isEmpty ? Self.entries : Self.entries.filter { rowShown($0.id, off: off) }
+        let panes = off.isEmpty ? Self.panes : Self.panes.filter { paneShown($0.id, off: off) }
         let all = entries.map { fields($0, here: here, other: other) }
         func pass(_ paneLevel: Bool) -> [SettingsHit] {
             var hits: [(SettingsHit, Int)] = []

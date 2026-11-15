@@ -28,11 +28,14 @@ final class RemoteServer {
         var lastSeen: Date?
     }
 
-    /// Published to the Settings page, always on the main thread.
+    /// Published to whoever shows the phone (the Phone page, Settings → Phone, the menu-bar menu, Home), always on the
+    /// main thread: `statusChanged` / `devicesChanged`.
     struct Status: Equatable {
         var listening = false
         var connected: String?
         var connectedID: String?
+        /// the connected phone came in through the relay (another network), not straight over the local one
+        var viaRelay = false
         /// a phone used the code over the relay, and waits for a yes
         var asking: String?
         /// the four digits the phone that's asking shows too, and which session it is
@@ -64,7 +67,20 @@ final class RemoteServer {
     let queue = DispatchQueue(label: "blurt.remote", qos: .userInteractive)
     var onStatus: ((Status) -> Void)?
     var onDevices: (([Device]) -> Void)?
-    private(set) var status = Status() { didSet { if status != oldValue { let s = status; DispatchQueue.main.async { self.onStatus?(s) } } } }
+    /// Posted on the main thread after `status` changed / the paired phones changed / a phone filled in the relay
+    /// address (`object`: the address). Anyone may follow these; the closures are one owner's.
+    static let statusChanged = Notification.Name("blurt.remote.status_changed")
+    static let devicesChanged = Notification.Name("blurt.remote.devices_changed")
+    static let relayAdopted = Notification.Name("blurt.remote.relay_adopted")
+    private(set) var status = Status() { didSet { if status != oldValue { let s = status; DispatchQueue.main.async { self.tell(s) } } } }
+    private func tell(_ s: Status) {
+        onStatus?(s)
+        NotificationCenter.default.post(name: Self.statusChanged, object: self)
+    }
+    private func tell(_ list: [Device]) {
+        onDevices?(list)
+        NotificationCenter.default.post(name: Self.devicesChanged, object: self)
+    }
 
     private var udpFlows: [ObjectIdentifier: NWConnection] = [:]
     private var tcp: NWListener?
@@ -182,8 +198,23 @@ final class RemoteServer {
             try? d.write(to: devicesFile, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: devicesFile.path)
         }
-        DispatchQueue.main.async { self.onDevices?(list) }
+        DispatchQueue.main.async { self.tell(list) }
     }
+
+    #if DEBUG || BLURT_TEST_HOOKS
+    /// Tests (`phonepage fake …`): these phones and this status as if they were real, for a look at every state of the
+    /// Phone page. Nothing is saved, no key is made and nothing listens because of it.
+    func testFake(devices list: [Device], status st: Status) {
+        guard Self.testing else { return }
+        queue.async {
+            self.cacheLock.lock()
+            self.deviceCache = list
+            self.cacheLock.unlock()
+            self.status = st
+            DispatchQueue.main.async { self.tell(list) }
+        }
+    }
+    #endif
 
     private func keychainQuery(_ id: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.serviceKeychain, kSecAttrAccount as String: id]
@@ -284,8 +315,12 @@ final class RemoteServer {
     }
     private var lastControl = true
 
+    /// The Phone capability was turned on or off (CapabilityWatch): off closes the port and drops the phone that is
+    /// connected; the paired phones are kept, so on is all it takes to have them back.
+    func capabilityChanged() { queue.async { self.updateListening() } }
+
     private func updateListening() {
-        let want = showingPairing || !devices().isEmpty
+        let want = Capability.phone.isOn && (showingPairing || !devices().isEmpty)
         if want, tcp == nil { startListening() } else if !want, tcp != nil { stopListening() }
         updateRelays()
     }
@@ -511,7 +546,10 @@ final class RemoteServer {
         Config.shared.set("record.remote.relay_url", a)
         emit(["event": "remote_relay", "state": "adopted"])
         relayChanged()
-        DispatchQueue.main.async { self.onRelayAdopted?(a) }
+        DispatchQueue.main.async {
+            self.onRelayAdopted?(a)
+            NotificationCenter.default.post(name: Self.relayAdopted, object: a)
+        }
     }
 
     private func updateRelays() {
@@ -601,6 +639,7 @@ final class RemoteServer {
         keepAwake(false)
         status.connected = nil
         status.connectedID = nil
+        status.viaRelay = false
         status.udp = false
         dropFlows()
         letGo(s)
@@ -871,6 +910,7 @@ final class RemoteServer {
 
     private func begin(_ s: Session) {
         s.greeted = true
+        status.viaRelay = s.channel.isRelay
         status.connected = s.name
         status.connectedID = s.id
         keepAwake()

@@ -10,7 +10,10 @@
 //              stops by itself. Test builds: BLURT_TEST_ASR_SETUP / BLURT_TEST_POLISH_SETUP stand in for the scripts.
 //   shows      Settings → Speech's rows (the running one's bar and Stop, "Queued" for the rest, "Unpacking…" after an
 //              archive's download), the menu-bar menu's first row while it runs ("Downloading speech models · 2.1 of
-//              6.1 GB": Show / Stop), the assistant's models step; a toast when the assistant closes mid-download, when
+//              6.1 GB": Show / Stop), the assistant's models step, the quiet line under its other steps and Home's
+//              Dictation row (BlurtCore ModelDownloadNotice); the first run's batch, which nobody asked for, says once
+//              as it starts "Downloading speech models in the background (5.9 GB) · Stop" (and then not again on the
+//              assistant's close); a toast when the assistant closes mid-download, when
 //              the batch is in ("Speech models are ready · tap Fn to try") and when a request stopped on an error (Try
 //              Again). "Stop" on every surface.
 //   errors     a failed model ends its own request (the assistant's batch, one Settings row…): the rest of that
@@ -67,6 +70,9 @@ final class ModelDownloads: ObservableObject {
     private var announceResume = false
     /// "finish once you're online" was said: a retry the network's return started stays quiet if it fails again
     private var offlineSaid = false
+    /// this batch's start went up on the island (BlurtCore ModelDownloadNotice: the first run's, nobody asked for
+    /// it): nothing more is said until it is in — closing the assistant doesn't repeat it
+    private(set) var startSaid = false
 
     var active: Bool { queue.active }
     var progress: (done: Double, total: Double) { queue.progress(current: current, line: line) }
@@ -94,12 +100,25 @@ final class ModelDownloads: ObservableObject {
             waitingForNetwork = false
             queue.add(kept.pending)
         }
-        if !queue.active { via = source }
+        if !queue.active { via = source; startSaid = false }
         let added = queue.add(jobs, group: String(UUID().uuidString.prefix(8)))
         queue.save()
         emit(["event": "model_download", "op": "add", "via": source, "models": jobs.map(\.id), "added": added.map(\.id),
               "queue": queue.pending.map(\.id)])
         if proc == nil { runNext() }
+        if !added.isEmpty, !startSaid, ModelDownloadNotice.announcesStart(via: source) { announceStart() }
+    }
+
+    /// The first run's batch started without asking: the island says so once, with its size and Stop.
+    private func announceStart() {
+        startSaid = true
+        let size = modelSize(remainingMB)
+        emit(["event": "model_download", "op": "announce", "text": T("app.models.started", size)])
+        var t = Island.Toast(text: T("app.models.started", size), actionTitle: T("app.models.stop")) {
+            MainActor.assumeIsolated { ModelDownloads.shared.stop() }
+        }
+        t.seconds = 8
+        island.toast(t)
     }
 
     /// Stop: one model (`id`: a queued one just leaves the queue, the running one ends — what came down is kept and
@@ -114,6 +133,9 @@ final class ModelDownloads: ObservableObject {
         guard let p = proc else { queue.clear(); queue.save(); return }
         stopping = id ?? ""
         if id == nil { stopSet = Set(queue.pending.map(\.id)) }
+        // the user's Stop is on disk now: a quit or a crash before the setup has ended can't bring it back at the
+        // next launch (a quit or a crash without a Stop still carries on)
+        queue.afterStop(id.map { .one($0) } ?? .all(stopSet), running: current).save()
         p.terminate()
     }
 
@@ -340,10 +362,10 @@ final class ModelDownloads: ObservableObject {
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "state" {
-        case "add" where a.count >= 3:          // add ID[,ID…] KIND [select]: one request
+        case "add" where a.count >= 3:          // add ID[,ID…] KIND [select] [install]: one request (install: as the first run's)
             let kind = ModelBundle.Kind(rawValue: a[2]) ?? .note
             download(a[1].split(separator: ",").map { Job(id: String($0), kind: kind, name: String($0), sizeMB: 100, select: a.contains("select")) },
-                     via: "test")
+                     via: a.contains("install") ? "install" : "test")
         case "stop": stop(a.count > 1 ? a[1] : nil)
         case "resume": resumeAtLaunch()
         case "online": backOnline()
@@ -353,6 +375,6 @@ final class ModelDownloads: ObservableObject {
         emit(["event": "downloads_state", "current": current ?? NSNull(), "queue": queue.pending.map(\.id), "unpacking": unpacking,
               "finished": queue.finished, "progress": [Int(p.done), Int(p.total)], "failed": failed,
               "file": FileManager.default.fileExists(atPath: ModelDownloadQueue.url.path), "menu": menuTitle ?? NSNull(),
-              "waiting_for_network": waitingForNetwork, "remaining_mb": Int(remainingMB)])
+              "waiting_for_network": waitingForNetwork, "remaining_mb": Int(remainingMB), "start_said": startSaid, "via": via])
     }
 }

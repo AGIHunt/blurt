@@ -115,6 +115,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.font = .systemFont(ofSize: 13)
         open.toolTip = T("main.sidebar.open_folder.tip")
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
+        openButton = open
         let root = NSView()
         for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
@@ -161,11 +162,23 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             node.accessibility = ax
             return node
         }
-        // not items: what was dictated into other apps — a page of its own (DictationPage.swift); text typed at a cursor, as
-        // Settings → Dictation, the menu bar and ⌘K mark it (the mic is a voice note's)
-        let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
-        // (cards used in other apps are not a place here: they are the Cards panel's History, ⌥H — v1.0.7)
-        let top = [
+        // The sidebar follows the capabilities (BlurtCore Capabilities.swift), one place each, and a capability that is
+        // off has no place: Home (always), Dictation, Cards, Phone — pages of their own — then Recording's two groups,
+        // the items' places and the projects they are filed in. Screen Text has no place: it leaves nothing behind
+        // but the clipboard (Home has its tile).
+        var pages = [place(T("home.title"), .home, "house", nil)]
+        // what was dictated into other apps (DictationPage.swift); text typed at a cursor, as Settings → Dictation,
+        // the menu bar and ⌘K mark it (the mic is a voice note's)
+        if Capability.dictation.isOn {
+            pages.append(place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax")))
+        }
+        if Capability.cards.isOn {
+            let n = AppEnvironment.island?.hangingCount ?? 0
+            pages.append(place(T("cards.title"), .cards, "rectangle.stack", n > 0 ? n : nil))
+        }
+        if Capability.phone.isOn { pages.append(place(T("phone.title"), .phone, "iphone", nil)) }
+        let recording = Capability.recording.isOn
+        let itemPlaces = !recording ? [] : [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
             { () -> SidebarNode in
@@ -174,8 +187,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
                 return n
             }(),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
-            dictation,
         ]
+        let items = SidebarNode(T("main.sidebar.items"), scope: nil, children: itemPlaces)
         let projectNodes = model.projects.map { p -> SidebarNode in
             // a project's count is plain secondary digits: the one mint pill is the Inbox's (what's new for you, §3.3),
             // so the brand marks on screen stay few. The key ("AW", its ids' prefix) is the row's tooltip, not text.
@@ -193,8 +206,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             return n
         }
         let projects = SidebarNode(T("main.sidebar.projects"), scope: nil, children: projectNodes)
+        projectsGroup = recording && !projectNodes.isEmpty ? projects : nil
         let selected = selectedScope
-        roots = top + (projectNodes.isEmpty ? [] : [projects])     // no bare "Projects" header before the first one
+        // no bare "Projects" header before the first one; neither group with Recording off
+        roots = pages + (recording ? [items] : []) + (projectsGroup.map { [$0] } ?? [])
+        openButton?.isHidden = !recording
         reloading = true
         outline.reloadData()
         for r in roots where r.isGroup { outline.expandItem(r) }
@@ -286,8 +302,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     static let reorderByDrag = false
 
-    /// The projects group node (where a dragged project lands).
-    private var projectsGroup: SidebarNode? { roots.first(where: \.isGroup) }
+    /// The projects group node (where a dragged project lands); nil while there is none.
+    private var projectsGroup: SidebarNode?
+    /// "Open Folder…" at the foot: the projects' (hidden with Recording off)
+    private weak var openButton: NSButton?
 
     func outlineView(_ o: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let pb = info.draggingPasteboard

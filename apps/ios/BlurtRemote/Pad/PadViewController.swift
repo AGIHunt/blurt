@@ -52,11 +52,12 @@ final class PadViewController: UIViewController {
     private let liveText = UILabel()
     /// over the picture, the words need something behind them
     private let liveBack = UIView()
-    private let message = UILabel()
+    /// what the pad says when the connection isn't simply there (StatusCard.swift)
+    private let card = StatusCard()
+    private var follower = StatusFollower()
     /// the empty pad, the first times: what it is and where the picture is. Gone once the pad is touched, for good once the picture's been on
     private let emptyHint = UILabel()
     private var padTouched = false
-    private let action = UIButton(type: .system)
     private let dim = UIView()
     private let field = TypeField(frame: .zero, textContainer: nil)
     private let modRow = ModifierRow()
@@ -152,7 +153,7 @@ final class PadViewController: UIViewController {
         standIn.isHidden = true
         pad.layer.insertSublayer(standIn, at: 1)
         #endif
-        for v in [header, liveBack, liveText, message, emptyHint, action, edgeMark] as [UIView] { pad.addSubview(v) }
+        for v in [header, liveBack, liveText, emptyHint, edgeMark, card] as [UIView] { pad.addSubview(v) }
         liveBack.backgroundColor = UIColor(white: 0, alpha: 0.72)
         liveBack.layer.cornerRadius = 12
         liveBack.layer.cornerCurve = .continuous
@@ -178,19 +179,13 @@ final class PadViewController: UIViewController {
         liveText.numberOfLines = 3
         liveText.lineBreakMode = .byWordWrapping
         liveText.isUserInteractionEnabled = false
-        message.textAlignment = .center
-        message.numberOfLines = 0
-        message.font = .systemFont(ofSize: 15)
-        message.textColor = Theme.caption
-        message.isUserInteractionEnabled = false
+        card.onAction = { [weak self] in self?.cardAction(second: false) }
+        card.onSecond = { [weak self] in self?.cardAction(second: true) }
         emptyHint.textAlignment = .center
         emptyHint.numberOfLines = 0
         emptyHint.isUserInteractionEnabled = false
         emptyHint.attributedText = Self.emptyHintText()
         emptyHint.isHidden = true
-        action.tintColor = Theme.mark
-        action.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
-        action.addAction(UIAction { [weak self] _ in self?.primaryAction() }, for: .touchUpInside)
 
         view.addSubview(list)
         list.onCycle = { [weak self] on, c in self?.cycling(on, by: c) }
@@ -287,6 +282,14 @@ final class PadViewController: UIViewController {
             self?.thumbPad.letGo()
             HardwareKeys.shared.letGo()
             Sticky.shared.clear()
+        }
+        // left and come back to, the connection starts again: that's not a drop to tell the thumb about
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.follower = StatusFollower()
+        }
+        // the card's words follow the system's text size
+        NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.view.setNeedsLayout()
         }
         touched()
         #if DEBUG
@@ -398,57 +401,59 @@ final class PadViewController: UIViewController {
         }.store(in: &bag)
     }
 
-    /// What the pad says, in the few states where it should say anything.
+    /// What the pad says, in the few states where it should say anything: which words for which state is LinkStatus.swift's, the same
+    /// on Android. Connected and working it's the computer's name, small, in the corner; anything else is the card in the middle.
     private func status() {
         let l = Link.shared
-        var text: String?, button: String?
-        switch l.state {
-        case .unpaired:
-            text = Words.whereTheCodeIs
-            button = String(localized: "Scan Code")
-        case .forgotten:
-            text = String(localized: "\(l.current?.title ?? String(localized: "This computer")) no longer knows this iPhone.")
-            button = String(localized: "Scan Code")
-        case .unreachable:
-            let n = l.current?.title ?? String(localized: "the computer")
-            text = l.current?.relayAddress == nil ? String(localized: "Can’t reach \(n). Check that Blurt is running and both are on the same network.")
-                : String(localized: "Can’t reach \(n). Check that it’s awake and Blurt is running.")
-            if l.macs.count > 1 { button = String(localized: "Try Another Computer") }
-        case .connecting: break
-        case .replaced:
-            text = String(localized: "Another phone is connected. Touch to take over.")
-        case .connected:
-            let n = l.current?.title ?? ""
-            if !l.canControl { text = Words.cantControl(l.host, n) }
-            if l.screenError == "permission" { text = Words.noScreenPermission(l.host, n) }
-            if l.screenError == "off" { text = Words.screenOff(l.host, n) }
+        let phase: LinkStatus.Phase = switch l.state {
+        case .unpaired: .unpaired
+        case .connecting: .connecting
+        case .unreachable: .unreachable
+        case .connected: .connected
+        case .forgotten: .forgotten
+        case .replaced: .replaced
         }
-        if l.waitingForMac {
-            text = String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@."), l.pairCheck ?? "")
-            button = nil
-        }
-        if let f = l.pairFailed { text = f }
+        let cue = follower.see(phase, computer: l.current?.id, inUse: UIApplication.shared.applicationState != .background)
+        var banner = StatusBanner.of(LinkStatus(phase: phase, dropped: follower.dropped, hasRelay: l.current?.relayAddress != nil,
+                                                otherComputers: l.macs.count > 1, canControl: l.canControl, screenError: l.screenError,
+                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil))
         var ready = l.state == .connected
         #if DEBUG
-        if Pretend.connected { text = nil; button = nil; ready = true }
+        if Pretend.connected { banner = nil; ready = true }
         #endif
-        message.text = text
-        message.isHidden = text == nil
-        emptyHint.isHidden = !(ready && text == nil && !showing && !padTouched && !Prefs.shared.screenFound)
-        action.setTitle(button, for: .normal)
-        action.isHidden = button == nil
-        let name = l.current?.title ?? ""
-        let via = l.route == .relay ? String(localized: "\(name) · Internet") : l.route == .direct ? String(localized: "\(name) · Direct") : name
-        header.text = showing && l.state == .connected ? nil : l.state == .connected ? via : l.state == .connecting ? String(localized: "Connecting to \(name)…") : nil
+        let name = l.current?.title
+        func say(_ line: StatusBanner.Line) -> String { Words.status(line, host: l.host, name: name, check: l.pairCheck, failed: l.pairFailed) }
+        shownBanner = banner
+        let words = banner.map { StatusCard.Words(title: say($0.title), detail: $0.detail.map(say), action: $0.action.map { Words.status($0) }, second: $0.second.map { Words.status($0) }) }
+        let changed = card.show(banner?.mark, words)
+        // the pad is one thing to VoiceOver ("Trackpad"), which hides what's in it: while the card is up, its words and buttons are the things
+        pad.isAccessibilityElement = banner == nil
+        // the thumb and VoiceOver hear of it too: the connection went, it's back, or the card says something new
+        switch cue {
+        case .dropped: Haptics.release()
+        case .back:
+            Haptics.grab()
+            UIAccessibility.post(notification: .announcement, argument: String(localized: "Connected to \(name ?? String(localized: "the computer"))"))
+        case nil: break
+        }
+        if changed, let words { UIAccessibility.post(notification: .announcement, argument: words.spoken) }
+        emptyHint.isHidden = !(ready && banner == nil && !showing && !padTouched && !Prefs.shared.screenFound)
+        let via = l.route == .relay ? String(localized: "\(name ?? "") · Internet") : l.route == .direct ? String(localized: "\(name ?? "") · Direct") : name
+        header.text = l.state == .connected && !showing ? via : nil
         talk.alpha = ready ? 1 : 0.35
         if cycleKey == nil { allCells.forEach { $0.alpha = ready ? 1 : 0.35 } }
         view.setNeedsLayout()
     }
 
-    private func primaryAction() {
-        switch Link.shared.state {
-        case .unreachable: showSettings()
-        default: showPairing()
+    private var shownBanner: StatusBanner?
+
+    private func cardAction(second: Bool) {
+        guard let a = second ? shownBanner?.second : shownBanner?.action else { return }
+        Haptics.tick()
+        switch a {
+        case .retry: Link.shared.tryAgain()
+        case .scan: showPairing()
+        case .another: showSettings()
         }
     }
 
@@ -711,13 +716,13 @@ final class PadViewController: UIViewController {
         liveText.frame = CGRect(x: hint.midX - wordsW / 2, y: chipsTop - 6 - fit, width: wordsW, height: fit)
         liveBack.frame = liveText.frame.insetBy(dx: -10, dy: -6)
         liveBack.isHidden = !hasWords
-        let tall = sizeForMessage(inset.width)
-        message.frame = CGRect(x: inset.minX + 8, y: hint.midY - tall / 2 - 20, width: inset.width - 16, height: tall)
+        // in the middle of what's clear, a little above it as the eye expects; a pad too short for it keeps its top
+        let cardW = min(inset.width, StatusCard.maxWidth)
+        let cardH = min(card.height(width: cardW), inset.height)
+        card.frame = CGRect(x: hint.midX - cardW / 2, y: max(inset.minY, hint.midY - cardH / 2 - min(20, (inset.height - cardH) / 2)), width: cardW, height: cardH)
         let hintSize = emptyHint.sizeThatFits(CGSize(width: inset.width - 16, height: .greatestFiniteMagnitude))
         emptyHint.frame = CGRect(x: hint.midX - hintSize.width / 2, y: hint.midY - hintSize.height / 2, width: hintSize.width, height: hintSize.height)
         emptyHint.isHidden = emptyHint.isHidden || typing
-        let actionW = min(inset.width, 280)
-        action.frame = CGRect(x: hint.midX - actionW / 2, y: message.frame.maxY + 8, width: actionW, height: 44)
     }
 
     /// The safe area, and on iPadOS 26 a window's controls too: the stage's top corner stays clear of them.
@@ -751,11 +756,6 @@ final class PadViewController: UIViewController {
         t.append(i)
         t.append(NSAttributedString(string: parts.dropFirst().joined(), attributes: a))
         return t
-    }
-
-    private func sizeForMessage(_ w: CGFloat) -> CGFloat {
-        ceil((message.text as NSString? ?? "").boundingRect(with: CGSize(width: w - 16, height: 400), options: .usesLineFragmentOrigin,
-                                                           attributes: [.font: message.font as Any], context: nil).height)
     }
 
     /// A turn, a window resized, the Duo opened or closed: the same session goes on. Touches in flight end cleanly (a drag lets go,

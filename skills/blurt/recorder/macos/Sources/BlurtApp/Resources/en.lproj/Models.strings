@@ -85,8 +85,8 @@
 
 "models.job.translate" = "Translate";
 "models.job.translate.detail" = "Dictation translation (⌘) and screen translation (⌥T).";
-"models.job.vision" = "Copy Text from Screen";
-"models.job.vision.detail" = "Improves Copy Text from Screen (⌥C).";
+"models.job.vision" = "Screen Text";
+"models.job.vision.detail" = "Makes Screen Text (⌥C) more accurate.";
 "models.job.goes.text" = "Text is processed by %@.";
 "models.job.goes.images" = "Screenshots are processed by %@.";
 "models.job.local" = "Processed on your Mac.";

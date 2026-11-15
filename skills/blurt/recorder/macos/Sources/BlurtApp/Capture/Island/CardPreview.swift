@@ -17,7 +17,7 @@ final class CardPreview: NSObject, NSWindowDelegate {
     static let footerH: CGFloat = 50
     static let minWidth: CGFloat = 480
 
-    weak var overview: CardsOverview?
+    weak var overview: CardPreviewHost?         // the Cards panel, or the main window's Cards page
     var onPointer: ((Bool) -> Void)?
     private var window: OverviewPanel?
     private var header: PanelHeader?

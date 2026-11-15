@@ -31,7 +31,7 @@
 "app.menu.project.none_tip" = "未设置当前项目：录屏存入未归类，截图和语音备注以卡片形式留在刘海下方";
 "app.menu.quit" = "退出口喷鸡";
 "app.menu.record" = "开始录屏";
-"app.menu.record_last" = "录制上次的区域";
+"app.menu.record_last" = "按上次的区域录屏";
 "app.menu.restart" = "重新录屏";
 "app.menu.resume" = "继续";
 "app.menu.selecting" = "正在选择区域…";
@@ -48,23 +48,23 @@
 "app.name" = "口喷鸡";
 
 "app.record.failed" = "录屏未保存";
-"app.record.failed.disk_full" = "磁盘已满，录屏未保存。请释放空间后重新录制。";
+"app.record.failed.disk_full" = "磁盘已满，录屏未保存。请释放空间后重新录屏。";
 "app.record.failed.permission" = "口喷鸡没有屏幕录制权限。请在「系统设置」中为口喷鸡打开「屏幕录制」。";
-"app.record.failed.stopped" = "macOS 在录制中途停止了录屏，录屏未保存。";
+"app.record.failed.stopped" = "macOS 在中途停止了录屏，录屏未保存。";
 "app.record.failed.no_frames" = "未收到屏幕画面，没有录到内容。";
 "app.record.failed.unknown" = "无法完成视频写入，录屏未保存。";
 "app.record.reason.disk_full" = "磁盘已满";
 "app.record.reason.permission" = "没有屏幕录制权限";
-"app.record.reason.stopped" = "macOS 中途停止了录制";
+"app.record.reason.stopped" = "macOS 中途停止了录屏";
 "app.record.reason.no_frames" = "未收到屏幕画面";
 "app.record.reason.unknown" = "发生错误";
-"app.record.failed.display_gone" = "录制的显示器中途断开，录屏未保存。请重新连接显示器后再录制。";
-"app.record.failed.interrupted" = "录制中途 Mac 进入了睡眠、锁屏或屏幕保护程序，录屏未保存。录制时请保持 Mac 唤醒。";
-"app.record.failed.writer" = "写入视频文件时出错，录屏未保存。请重新录制，详细错误见日志。";
-"app.record.reason.display_gone" = "录制的显示器已断开";
-"app.record.reason.interrupted" = "录制因睡眠或锁屏中断";
+"app.record.failed.display_gone" = "录屏的显示器中途断开，录屏未保存。请重新连接显示器后再录屏。";
+"app.record.failed.interrupted" = "录屏中途 Mac 进入了睡眠、锁屏或屏幕保护程序，录屏未保存。录屏时请保持 Mac 唤醒。";
+"app.record.failed.writer" = "写入视频文件时出错，录屏未保存。请重新录屏，详细错误见日志。";
+"app.record.reason.display_gone" = "录屏的显示器已断开";
+"app.record.reason.interrupted" = "录屏因睡眠或锁屏中断";
 "app.record.reason.writer" = "无法写入视频文件";
-"app.record.recovered" = "录屏已保存 · 中途写入出错，已继续录制";
+"app.record.recovered" = "录屏已保存 · 写入出错后已自动恢复";
 "app.record.recovered_lost" = "录屏已保存 · 中途写入出错，缺少约 %@ 秒";
 "app.record.recovered_parts" = "录屏已分段保存 · 中途写入出错";
 "app.record.partial" = "%1$@，前 %2$@ 已保留";
@@ -83,7 +83,7 @@
 "app.url.no_item" = "找不到该事项，它可能已被删除或移动。";
 "app.url.no_session" = "找不到该录屏或截图，它可能已被删除或移动。";
 
-"main.action.record" = "录制";
+"main.action.record" = "开始录屏";
 "main.action.snap" = "截图";
 
 "main.banner.agent" = "Agent";
@@ -141,7 +141,7 @@
 "main.empty.no_scripts" = "找不到 blurt skill 的脚本";
 "main.empty.no_scripts.detail" = "口喷鸡的脚本缺失。请从 blurt.work 重新安装，然后重新打开此窗口。";
 "main.empty.nothing_in_progress" = "没有进行中的事项";
-"main.empty.nothing_in_progress.detail" = "交给 Agent 的事项会显示在这里，直到你验证。";
+"main.empty.nothing_in_progress.detail" = "已接受和已交给 Agent 的事项显示在这里，直到完成。";
 "main.empty.outdated" = "正在更新你的事项…";
 "main.empty.outdated.detail" = "更新后需要片刻，事项不会丢失。";
 "main.empty.project" = "这个项目里还没有事项";
@@ -216,9 +216,9 @@
 "main.job.error.network" = "网络连接已断开。";
 "main.job.error.quota" = "Agent 的额度已用完。";
 "main.job.error.quota.named" = "%@ 的额度已用完。";
-"main.job.hint.no_agent" = "没有可用的 Agent。请在设置的「Agent」中安装或登录。";
+"main.job.hint.no_agent" = "后台整理需要命令行 Agent，请在「设置 > Agent」中安装或登录。也可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」。";
 "main.job.capture" = "一次采集";
-"main.job.no_agent" = "没有可用的 Agent：%@。";
+"main.job.no_agent" = "没有可在后台整理的 Agent：%@。也可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」。";
 "main.job.no_agent.sep" = "；";
 "main.job.organized_by" = "由 %1$@ 整理（%2$@）";
 "main.job.error.agent_exit" = "Agent 未完成就停止了。";
@@ -297,7 +297,7 @@
 "main.menu.quick_look" = "快速查看";
 "main.menu.rename" = "改标题";
 "main.menu.review_batch" = "审核整个批次";
-"main.menu.start_session" = "交给你的 Agent";
+"main.menu.start_session" = "复制指令给 Agent";
 
 "main.misc.by_codex" = "由 Codex 修复";
 "main.misc.drag_finder_terminal" = "拖到访达或终端";
@@ -319,6 +319,7 @@
 "main.palette.only_kind" = "只看%@";
 "main.palette.placeholder" = "输入命令、项目或事项…";
 "main.palette.project" = "项目 · %@";
+"main.palette.settings_pane" = "设置 · %@";
 
 "main.place.all" = "全部事项";
 "main.place.inbox" = "待处理";
@@ -373,8 +374,9 @@
 "main.missing.other" = "那是「%1$@」的文件夹，不是「%2$@」";
 "main.sidebar.not_opened" = "未作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
-"main.sidebar.progress.ax" = "进行中：交给 Agent 的事项和正在运行的整理";
+"main.sidebar.progress.ax" = "进行中：要做的事项、Agent 在做的事项和正在运行的整理";
 "main.sidebar.projects" = "项目";
+"main.sidebar.items" = "事项";
 "main.sidebar.unassigned.ax" = "未归类：还没归到项目的事项";
 
 "main.state.ax" = "状态：%@。点按可更改。";
@@ -384,7 +386,7 @@
 "main.speech.recommended" = "推荐的语音识别模型 · %@";
 "main.speech.recommended.action" = "查看";
 
-"main.toolbar.handoff" = "交给 Agent";
+"main.toolbar.handoff" = "复制指令给 Agent";
 "main.toolbar.handoff.own" = "给你自己的 Agent";
 "main.toolbar.handoff.tip" = "复制指令，让你自己的 Agent 处理这些事项";
 "main.toolbar.move" = "移动";
@@ -540,6 +542,7 @@
 "app.models.show" = "查看";
 "app.models.menu_unpacking" = "正在解压语音模型…";
 "app.models.stop" = "停止";
+"app.models.started" = "正在后台下载语音模型（%@）";
 "app.toast.welcome_dictation_only" = "口喷鸡在菜单栏里 · 按%@ 听写";
 "app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 未下载语音模型";
 "app.toast.welcome_no_model.action" = "下载";
@@ -583,7 +586,7 @@
 "main.dictation.banner.no_model" = "听写需要一个语音模型";
 "main.dictation.banner.no_model.detail" = "下载后即可听写 · %@";
 "main.dictation.banner.no_model.detail_plain" = "设置完成后即可听写。";
-"main.dictation.banner.permission" = "听写快捷键需要权限";
+"main.dictation.banner.permission" = "听写键需要权限";
 "main.dictation.banner.downloading" = "语音模型正在下载";
 "main.dictation.banner.downloading.detail" = "%1$@ / %2$@ · 下载完成后即可听写";
 "main.dictation.chip.copied" = "仅复制";
@@ -623,11 +626,10 @@
 "main.filter.kind_plural.task" = "待办";
 "main.toolbar.filter" = "筛选";
 "main.toolbar.filter.tip" = "只看某些种类或状态";
-"main.toolbar.title" = "标题";
 "main.sidebar.project_tip" = "%@ · 编号以 %@ 开头";
 "main.palette.section.selected" = "选中的事项";
 "main.palette.section.selected_n" = "选中的事项";
-"main.palette.section.capture" = "录制与截图";
+"main.palette.section.capture" = "录屏与截图";
 "main.palette.section.go" = "前往";
 "main.palette.section.items" = "事项";
 "main.palette.section.commands" = "命令";
@@ -642,7 +644,7 @@
 "main.palette.hint.copy_full" = "把整个事项复制为文本";
 
 /* several items selected (SelectionView) */
-"main.selection.hand_off" = "交给 Agent";
+"main.selection.hand_off" = "复制指令给 Agent";
 "main.selection.move" = "移到项目…";
 "main.selection.more" = "更多操作";
 "main.selection.remove" = "不选这一条";

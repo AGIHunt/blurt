@@ -56,3 +56,8 @@ debug builds only, each with the `SIMCTL_CHILD_` prefix. On the Mac, `BLURT_SCRE
 Layout without a computer (debug builds): `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys as if connected, `=screen` also shows a
 made-up desktop where the picture goes, and `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_DISPLAYS=1` adds a second display for the switcher. `TEST_RUNNER_BLURT_RENDER_DIR=<folder>` makes `RenderTests` draw the main screen at every iPad
 and iPhone Duo size and fold into that folder (docs/design/remote.md §iPad and iPhone Duo).
+
+What the pad says when the connection isn't there (docs/design/remote.md §What the pad says), without a Mac: Android's fake computer speaks the
+same wire. `./gradlew :fakehost:installDist` in `apps/android`, run `fakehost/build/install/fakehost/bin/fakehost --address 127.0.0.1`, and pair
+the simulator with the link it prints (`SIMCTL_CHILD_BLURT_REMOTE_PAIR`). Stop it to see "Reconnecting…" and then "Can't reach…"; start it again
+and the phone comes back by itself. `TEST_RUNNER_BLURT_RENDER_DIR` also makes `LinkStatusTests` draw every card (`-testLanguage en` or `zh-Hans`).

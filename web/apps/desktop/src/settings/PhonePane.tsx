@@ -146,7 +146,7 @@ function GetApp() {
 }
 
 /** The code to scan, its time left, and the way out. A code past its time is dimmed with New Code beside it. */
-function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel: () => void; onRenew: () => void }) {
+export function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel: () => void; onRenew: () => void }) {
   const p = r.pairing;
   const now = useNow(!!p);
   const expired = !!p && p.expiresAt <= now;
@@ -310,7 +310,7 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
 }
 
 /** A confirm on the app's ContentDialog (the Clear History sheet): Cancel is the default, the destructive one tinted. */
-function Confirm({ title, detail, cancel, ok, onOk, onClose }: { title: string; detail: string; cancel: string; ok: string; onOk: () => void; onClose: () => void }) {
+export function Confirm({ title, detail, cancel, ok, onOk, onClose }: { title: string; detail: string; cancel: string; ok: string; onOk: () => void; onClose: () => void }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" aria-labelledby="phone-confirm-title" onClick={(e) => e.stopPropagation()}

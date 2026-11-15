@@ -446,6 +446,7 @@
   "island.ext.text": "文字",
   "island.ext.and": "、",
   "island.drop.nothing": "拖来的东西没能变成卡片",
+  "island.dictation.copied_last": "已复制上一条听写",
   "island.card.file": "文件 · {name}",
   "island.card.text": "文字",
   "island.card.missing": "找不到原文件"

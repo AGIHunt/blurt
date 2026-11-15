@@ -253,3 +253,6 @@
 "speech.compare.needs_apple" = "Needs Apple silicon";
 "speech.compare.needs_macos" = "Needs macOS 26";
 "speech.compare.add_key" = "Add Key…";
+
+/* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
+"speech.speed.reference" = "%1$@: recognition about %2$@ (reference figure)";

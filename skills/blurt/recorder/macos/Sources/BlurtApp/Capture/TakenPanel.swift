@@ -31,7 +31,7 @@ final class TakenPanel {
     func makeRoomForCards() { CardsOverview.shared.makeRoomForCards() }
 
     /// The island's right-click menu: what concerns every hanging card (HangingCards.islandMenuItems: Show, Copy All,
-    /// Organize All, Delete All); nothing while none hangs.
+    /// Organize All — only with Recording & Items on —, Delete All); nothing while none hangs, or with Cards off.
     static func islandMenu() -> NSMenu {
         let m = NSMenu()
         for (t, f) in hanging.islandMenuItems() { m.addItem(ClosureMenuItem(t, f)) }

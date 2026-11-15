@@ -4,7 +4,12 @@
 · 基于 `feat/live-snap`（v0.6）
 
 目标：把「菜单栏小工具 + 浏览器审核页 + Python 脚本」升级成一个给 vibe coder 用的**想法/bug 管理器**：
-跨项目管理录屏和截图批次，浏览历史条目，在应用内审核，一键交给 coding agent 去修，修完后状态回传到应用。
+跨项目管理录屏和截图批次，浏览历史条目，在应用内审核，交给 coding agent 去修，修完后状态回传到应用。
+
+> 2026-11 现状：交给 Agent = 复制一行指令（「复制指令给 Agent」，`⌘↩`），指向一份交接说明，由用户粘贴到自己用的 Agent
+> （Claude Code、Codex、WorkBuddy、Cursor……）；口喷鸡不为此启动或挑选 Agent。口喷鸡只在后台无人值守地跑 Agent 做整理和 AI 补全；
+> 整理也可以在任何装了 blurt skill 的 Agent 对话里做（「处理我录的视频」）。下文 2026-10 方案里的应用拉起 Agent 修复、
+> 交互式修复 deep link、「Agent 运行」页和每次运行的费用都没有做或已删除（`next-round.md` 开头的说明）。
 
 总原则不变：
 - **录制中绝不打断**；
@@ -41,7 +46,8 @@
 4. **Agent 集成分三层，都基于标准机制**：
    - SKILL.md：Claude Code、Codex、Kimi Code、ZCode 都能读；
    - 本地 MCP：四家都支持；
-   - 应用直接拉起运行：headless 用 `claude -p` / `codex exec --json` / `kimi --print`；交互式用 `claude-cli://open` deep link 或终端。
+   - 应用在后台拉起 headless 运行，只用于整理和 AI 补全：`claude -p` / `codex exec --json` / `kimi -p`……；
+     交给 Agent 修是复制一行指令，用户粘贴到自己的 Agent（2026-11；原方案的交互式 deep link 已删除）。
 
    agent 调用 `mark_fixed` 后，应用里小鸡把虫子啄掉。ZCode 目前没有 CLI 或 headless 模式，只接 skill 和 MCP 两层。
 5. **不再排周期，直接并行开工**：8 个工作包分别在独立 worktree 里由 agent 同时推进（§6）。
@@ -157,6 +163,10 @@ Windows/Linux: Blurt（Tauri 2）
 
 ### 2.1 主窗口（macOS：原生外壳 + Web 画布；Tauri：React 实现同样的布局）
 
+> **v1.0.24 起（macOS）**：主窗口按能力组织，详见 [capabilities.md](capabilities.md)。侧栏 = 主页 / 听写 / 卡片 / 手机，然后
+> 「事项」组（待处理、进行中、未归类、全部事项）和「项目」组；关掉的能力不出现。第一次打开落在主页。下面的草图是事项那一组的布局。
+
+
 ```
 ┌ Blurt ─────────────────────────────────────────────────────────── ⌘K 搜索 ─┐
 │ ● 录制 ⌥⇧R   📸 截图 ⌥⇧A          项目: [ my-saas ▾ ]            🥚 整理中 1 │
@@ -164,11 +174,11 @@ Windows/Linux: Blurt（Tauri 2）
 │ 收件箱    3  │ 事项  [issue ✓][idea][note][task]     │ (WKWebView 画布)      │
 │ 全部事项  128│ 状态: 待处理 ▾  项目: 全部 ▾  时间 ▾  │ I-014 · issue · P1    │
 │ 会话         │ ──────────────────────────────────── │ ┌──────────────────┐ │
-│ Agent 运行 ● │ 🐞 登录按钮点击无响应    my-saas  2h  │ │  frame #1 (红框)  │ │
+│              │ 🐞 登录按钮点击无响应    my-saas  2h  │ │  frame #1 (红框)  │ │
 │ 导出         │ 🐞 价格页移动端溢出      my-saas  2h  │ └──────────────────┘ │
 │ ── 项目 ──   │ 💡 学 Linear 的空状态    ideas    1d  │ ◀ 1/3 ▶  ▶ 片段 0:14 │
 │  my-saas     │ ✓ 🐞 头像上传 500  → 已修 #a1c3   3d  │ "这个登录按钮点了…"   │
-│  ~/Blurt     │ (NSTableView，右键菜单、拖拽、空格 QL)  │ [让 Claude 修 ⌘↩]     │
+│  ~/Blurt     │ (NSTableView，右键菜单、拖拽、空格 QL)  │ [复制指令给 Agent ⌘↩] │
 │ ⚙ 设置       │                                      │ 历史: 创建→确认→已修   │
 └──────────────┴──────────────────────────────────────┴──────────────────────┘
 ```
@@ -199,7 +209,8 @@ Windows/Linux: Blurt（Tauri 2）
 - **会话**：时间线；详情页是视频加字幕滚动（点字幕跳到对应时刻），条目在时间轴上打点，旁边是 digest。
 - **事项详情**：帧（带框）、片段、原话、lens 字段、`code_refs`（用 `vscode://`、`cursor://`、`zed://` 在编辑器打开）、问答、事件历史和修复记录。
 - **审核模式**（`R`）：同一个组件的全屏 triage 模式，键位不变：A / X / J / K / Z / G / V。
-- **Agent 运行**：每次运行一行，显示 agent、项目、条目、状态、耗时和费用（`claude -p --output-format json` 里有 `total_cost_usd` [S21]），可以展开看流式日志。
+- **正在运行**：整理任务列在事项列表上方，失败的带「重试」和「忽略」（`guide.md` §5）。交给 Agent 的事项不在这里：口喷鸡不替它们跑 Agent，
+  也不显示每条的费用（2026-10 方案里单独一页「Agent 运行」、带费用和流式日志，现在没有这一页）。
 - **菜单栏和托盘**：录制、截图、显示鸡舍、切换项目、最近会话（带状态蛋）、打开 Blurt（⌥⇧B）。
 - **浮层**：选区、倒计时、HUD、墨迹、鸡舍、气泡。macOS 继续用原生实现；Win/Linux 用透明 WebView 窗口重写同样的动效
   （弹簧参数照搬 `Perch.swift`）。GNOME Wayland 上没法置顶，鸡舍降级成窗口内的托盘加系统通知 [S16]。
@@ -269,6 +280,11 @@ Windows/Linux: Blurt（Tauri 2）
 听写、语音备注、整理都照常，只有写设置会被拒：`update_global_config` 抛 `ConfigUnreadable`（CLI 报 JSON `config_unreadable`，没有
 traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`last_region`、`skill_dir`、下载完「用它」）走 `save_config_if_readable`，
 跳过并在结果里带 `"saved": false`——模型照样算下好了。NaN / Infinity 两边都不认（Python 的 json 认、JSONSerialization 不认）。
+
+**后台下载让人看见**（v1.0.24，`BlurtCore/ModelDownloadNotice.swift`）：首次的推荐模型下载不问，但下载开始时刘海说一次「正在后台下载
+语音模型（5.9 GB）· 停止」，引导除模型那一步外每一步底部一行进度和「停止」，主页听写那行显示进度和「停止」；「停止」立刻写进
+`model-downloads.json`，下次启动不再自己继续（退出或崩溃仍会续传），主页改成「下载更准的语音模型 · 5.9 GB」。引导第 1 步关掉
+听写就不下载；之后在主页或设置关掉听写，正在下的停止。
 
 **模型下载**（macOS `App/ModelDownloads.swift`，规则在 `BlurtCore/ModelDownloadQueue.swift`）：App 里所有模型下载都走这一个
 管理器——引导的「下载推荐模型」、设置 → 语音（听写的识别和润色模型、录屏和语音备注的模型）、听写键的「还没有语音模型 · 下载」。
@@ -396,7 +412,7 @@ traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`la
 | `/` | 搜索 |
 | `J` / `K` | 下一条 / 上一条 |
 | `↩` | 打开 |
-| `⌘↩` | 交给 agent |
+| `⌘↩` | 复制指令给 Agent（用户粘贴到自己的 Agent） |
 | `E` | 就地改标题（在列表行里；↩ / Tab / 点别处保存，Esc 恢复，空标题不保存）|
 | `1`–`4` | 改 kind（列表和详情页一样；严重程度在详情的标签菜单里）|
 | `S` | 改状态 |
@@ -483,12 +499,12 @@ v0.9 补充（主窗口）：
   - 一个 `SessionEnd` hook，会话结束时执行 `index.py update --workspace ${CLAUDE_PROJECT_DIR}`（`Stop` 每轮都触发，太频繁）。
 - **MCP**：工具定义见 C4。
 - **应用拉起 agent**：
-  - **后台整理**和**后台修复**：从 `agents.py command <id> headless` 拿到 argv 后执行，解析 stream-json 显示进度；
-    沿用 v0.6 的登录 shell 环境，不用 bare 模式，因为 bare 模式不读 OAuth 登录状态 [S21]。
-  - **交互式修复**：Claude 用 `open "claude-cli://open?cwd=<repo>&q=<prompt>"`；Codex 和 Kimi 在用户的终端里打开
-    `codex "<prompt>"` 或 `kimi`；ZCode 复制提示词并引导用户粘贴。
-  - **选哪个 agent**：项目设置 → 全局默认 → 已登录的那个（Claude → Codex → Kimi）→ 「复制提示词」兜底。
-  - 后台修复不会提交，也不会推送，只把 `fix.state` 改成 `fixing` / `fixed`，由用户验收。
+  - **后台整理**（和 AI 补全）：从 `agents.py command <id> headless` 拿到 argv 后执行，解析 stream-json 显示进度；
+    沿用 v0.6 的登录 shell 环境，不用 bare 模式，因为 bare 模式不读 OAuth 登录状态 [S21]。用「设置 → Agent」顺序里第一个能用的
+    命令行 Agent；一个都没有时，整理在装了 skill 的 Agent 对话里做（「处理我录的视频」，WorkBuddy、Cursor 这类 App 也行）。
+  - **交给 Agent 修**：「复制指令给 Agent」复制一行指令（指向交接说明），用户粘贴到自己用的 Agent，事项变成「已交给 Agent」；
+    Agent 通过 MCP 或 `items.py` 回报，「修好了」只到「待验证」，由用户验收。口喷鸡不为此启动或挑选 Agent。
+    （2026-10 方案里的后台修复、交互式修复 deep link、按项目选 Agent 都已删除或没有做。）
 - **以后再做**：ACP 对话面板、Codex app-server 内嵌、其他 CLI（Gemini、OpenCode、Qwen Code…）。后者在 `agents.json` 里加一条即可。
 
 ---
@@ -944,7 +960,7 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   `mainWindow`（`show()` 后 `reveal(uid:)` / `reveal(session:)`），没有主窗口时打开该会话的审核窗口。
 - **Agent 运行记录**：每次后台运行写 `$BLURT_HOME/runs/<run_id>.json`
   `{id, agent, repo, items: [uid], state: running|done|failed|cancelled, started, ended?, exit?, cost_usd?, summary?, log}`，
-  原始事件流在同目录的 `<run_id>.log`。主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
+  原始事件流在同目录的 `<run_id>.log`。（2026-11：主窗口没有「Agent 运行」页，后台修复也已删除，后台只跑整理和 AI 补全；本条其余是 2026-10 的方案。）主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
   `items.py fix SESSION UID --state fixing --agent ID --run-id R`，agent 自己收尾时（mark_fixed）沿用这个 run_id（C1 规则）。
 - **「修好了」**：应用用 FSEvents 监听所有工作区的会话目录，任何来源把某个条目的 `fix.state` 改成 `fixed`（应用拉起的 agent、
   终端里的交互式会话、同事同步过来的文件）都会触发啄虫动画和系统通知；第一次看到的文件只记基线，不补放旧的。
@@ -1227,7 +1243,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
 1. `uv run --with pytest pytest tests/`
    （动了窗口或面板的版面：再跑 `BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s`）
 2. `pnpm -C web test && pnpm -C web build`
-3. `record.py build` 后启动 Blurt.app，跑一次截图闭环：⌥⇧A → 鸡舍 → 整理 → 主窗口出现条目 → 审核 → 「让 Claude 修」→ 收到 `mark_fixed` → 播放啄虫动画
+3. `record.py build` 后启动 Blurt.app，跑一次截图闭环：⌥⇧A → 鸡舍 → 整理 → 主窗口出现条目 → 审核 → 「复制指令给 Agent」→ 粘贴到 Agent → 收到 `mark_fixed` → 播放啄虫动画
 4. CI 上 desktop 的构建矩阵全绿
 
 ### 主要风险

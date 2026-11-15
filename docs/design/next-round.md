@@ -591,7 +591,7 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 | 动作 | 从 | 到 | 快捷键 | en | zh-Hans |
 |---|---|---|---|---|---|
 | `keep` | new | todo | A（审核模式还有 ↩） | Accept — leaves the inbox as To do | 放进要做 — 移出待处理，记为要做 |
-| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — run it in Blurt, or copy the instruction | 交给 Agent… — 在口喷鸡里运行，或复制指令 |
+| `hand_off` | new, todo | handed_off | ⌘↩ | Copy instruction for agent — paste it into Claude Code, Codex or any agent | 复制指令给 Agent — 粘贴到 Claude Code、Codex 或任何 Agent |
 | `done` | new, todo, handed_off, in_progress, to_verify（new：不用先接受，BA-56，2026-10-30） | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |

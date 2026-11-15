@@ -103,7 +103,8 @@ def table_of(key: str) -> str:
     """Strings.swift's rule for T() / TP()."""
     head = key.split(".")[0]
     return "Main" if head in ("main", "menu", "app", "notify") else "Settings" if head in ("settings", "onboarding") \
-        else "Dictation" if head == "dictation" else "Common"
+        else "Dictation" if head == "dictation" else "Home" if head in ("home", "feature") else "Cards" if head == "cards" \
+        else "Phone" if head == "phone" else "Common"
 
 
 def keys(table: str, lang: str) -> dict:

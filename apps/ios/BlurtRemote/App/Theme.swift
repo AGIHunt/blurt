@@ -16,6 +16,8 @@ enum Theme {
     static let mark = UIColor(white: 1, alpha: 0.9)
     static let caption = UIColor(white: 1, alpha: 0.66)
     static let faint = UIColor(white: 1, alpha: 0.42)
+    /// needs you: the mark on a connection that isn't there (docs/design/system.md `attn`, dark). Always with a shape, never colour alone
+    static let attn = UIColor(red: 0xF5 / 255, green: 0xA5 / 255, blue: 0x24 / 255, alpha: 1)
     static let radius: CGFloat = 16
     static let keyRadius: CGFloat = 11
     static let talkRest = UIColor(red: 0.13, green: 0.20, blue: 0.185, alpha: 1)

@@ -1,12 +1,14 @@
 // Dictation (听写): a page of the main window — the sidebar's Dictation place, ⌥⌘D, the menu-bar menu's "Dictation
-// History…", the command palette and Settings → Dictation all open it. The list column starts with one header band
-// (DictationPageHeader): the views History | Words (DictationWords.swift: the custom words, managed here only) | Lab
+// History…", the command palette and Settings → Dictation all open it. The list column starts with its header
+// (DictationPageHeader): the page's name and count as the item places' ListHeading, then the views History | Words (DictationWords.swift: the custom words, managed here only) | Lab
 // (when on) as a neutral segmented control on the column's leading edge, and the view's own few commands on the right
-// (the Lab's; History's Send Feedback…, DictationFeedback.swift). History: every dictation, newest first, grouped by day (today's numbers on the Today heading) — what
+// (the Lab's; History's Send Feedback…, DictationFeedback.swift). History: every dictation, newest first, grouped by day (today's numbers on the Today heading,
+// the usual wait after you stop on the first heading's right: DictationSpeed / DictationSpeedText) — what
 // stands in dictation's way (no speech model…) as one banner above it, with the view's one primary; the detail column
 // shows one dictation: where and when, the text (polished, original, or the changes polish made marked in one text),
 // Copy and Correct on hover, Turn into Item, the rest in "⋯" (and the row's right-click), and how it was typed behind
-// "Details" — the style that actually ran, what polish did, and the models by name (DictationModels), not their ids.
+// "Details" — how long the text took after key-up and what that went on, the style that actually ran, what polish did,
+// and the models by name (DictationModels), not their ids.
 // The lists draw their selection as the brand wash (ListWash / RowWash).
 //
 // Keys (the list focused): ↑↓ (⇧/⌘-click for more), ⌫ deletes (⌘Z puts it back), ⌘C copies, ⌘F searches — the
@@ -541,11 +543,14 @@ final class DictationPage {
     }
     private var countWatch: AnyCancellable?
 
-    /// The window's subtitle while the page shows: one live count in one form, following the tab and the search —
-    /// "9 dictations", "3 of 9 dictations", "26 words", "1 case". Headings never carry counts.
-    var subtitle: String {
-        switch model.tab {
-        case .history: return model.subtitle
+    /// The page's one live count, beside its name (DictationPageHeader) and in the window's subtitle (the Window menu,
+    /// Mission Control): one form, following the tab and the search — "9 dictations", "3 of 9 dictations", "26 words",
+    /// "1 case". Headings never carry counts.
+    var subtitle: String { Self.count(m: model, words: words, lab: lab) }
+
+    static func count(m: DictationHistoryModel, words: DictationWordsModel, lab: DictationLabModel) -> String {
+        switch m.tab {
+        case .history: return m.subtitle
         case .words:
             let n = words.mine.count + words.projects.count + words.builtIn.count
             return n > 0 ? TP("main.dictation.words_count", n) : ""
@@ -654,15 +659,24 @@ private struct LinkButton: View {
 
 // MARK: - the views (the list column's header band)
 
-/// The list column's one header band: History | Words (| Lab, when it is on) on the column's leading edge — the rows'
-/// edge — as a native segmented control with a neutral selected segment (a view is where you are, not an action: never
-/// a brand fill, system.md §3.3), and on the right the view's own few commands (the Lab's). Nothing else sits above the
-/// list: today's numbers are on the Today heading, what stops dictation is the banner.
+/// The list column's header: the page's name in the item places' heading style (ListHeading: 17 pt semibold, its one
+/// live count beside it in 12 pt secondary — "听写  13 条听写", "3 of 9 dictations" while searching, "26 words") and under
+/// it one band: History | Words (| Lab, when it is on) on the column's leading edge — the rows' edge — as a native
+/// segmented control with a neutral selected segment (a view is where you are, not an action: never a brand fill,
+/// system.md §3.3), and on the right the view's own few commands (the Lab's). Nothing else sits above the list: today's
+/// numbers are on the Today heading, what stops dictation is the banner. The toolbar holds no title: every page of the
+/// window names itself in its own content.
 struct DictationPageHeader: View {
     @ObservedObject var m: DictationHistoryModel
     @ObservedObject var lab: DictationLabModel
+    @ObservedObject var words: DictationWordsModel
 
+    /// the detail column's header row (where and when / the word), level with the top of the list's header
     static let height: CGFloat = 44
+    /// the views' band, under the name
+    static let band: CGFloat = 36
+    /// all of it: what the empty state's middle leaves out
+    static let total: CGFloat = ListHeading.titleRow + band
     /// the rows' leading edge (List .inset), so the segments, the headings and the text share one line
     static let inset: CGFloat = 16
 
@@ -672,21 +686,39 @@ struct DictationPageHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            NeutralSegments(items: tabs, selection: $m.tab, label: T("dictation.lab.tab.label"))
-                .fixedSize()
-            Spacer(minLength: 8)
-            if m.tab == .lab { LabCommandBar(lab: lab) }
-            if m.tab == .history && !m.entries.isEmpty {
-                // the history's one command: send chosen dictations to the developers (DictationFeedback.swift)
-                ViewThatFits(in: .horizontal) {
-                    feedbackButton(titled: true)
-                    feedbackButton(titled: false)
+        let title = T("dictation.history.sidebar")
+        let count = DictationPage.count(m: m, words: words, lab: lab)
+        VStack(alignment: .leading, spacing: 0) {
+            // ListHeading's line: the name 18 pt in, 6 pt down, the count on its baseline 8 pt after it
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(.primary)
+                    .lineLimit(1).layoutPriority(1)
+                if !count.isEmpty {
+                    Text(count).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 18).padding(.trailing, 14).padding(.top, 6)
+            .frame(height: ListHeading.titleRow, alignment: .topLeading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel([title, count].filter { !$0.isEmpty }.joined(separator: ", "))
+            .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                NeutralSegments(items: tabs, selection: $m.tab, label: T("dictation.lab.tab.label"))
+                    .fixedSize()
+                Spacer(minLength: 8)
+                if m.tab == .lab { LabCommandBar(lab: lab) }
+                if m.tab == .history && !m.entries.isEmpty {
+                    // the history's one command: send chosen dictations to the developers (DictationFeedback.swift)
+                    ViewThatFits(in: .horizontal) {
+                        feedbackButton(titled: true)
+                        feedbackButton(titled: false)
+                    }
                 }
             }
+            .padding(.leading, DictationPageHeader.inset).padding(.trailing, 10)
+            .frame(height: DictationPageHeader.band, alignment: .top)
         }
-        .padding(.leading, DictationPageHeader.inset).padding(.trailing, 10)
-        .frame(height: DictationPageHeader.height)
         .onAppear { if m.tab == .lab && !DictationLabModel.enabled { m.tab = .history } }
         .sheet(isPresented: $m.feedbackOpen) {
             DictationFeedbackSheet(f: DictationFeedbackModel(entries: m.entries, selected: m.selection)) { m.feedbackOpen = false }
@@ -768,7 +800,7 @@ struct DictationPageList: View {
     let search: NSSearchField
     var body: some View {
         VStack(spacing: 0) {
-            DictationPageHeader(m: m, lab: lab)
+            DictationPageHeader(m: m, lab: lab, words: words)
             switch m.tab {
             case .lab: LabListView(lab: lab)
             case .words: DictationWordsList(w: words)
@@ -965,7 +997,9 @@ struct DictationListView: View {
             ForEach(Array(m.days.enumerated()), id: \.element.day) { n, group in
                 // the day as a plain, untagged (so never selectable) row: a section header would bring the table's
                 // own rule under it, a second line over every group
-                DayHeading(title: DictationHistoryModel.dayTitle(group.day), first: n == 0, tip: todayTip(group.day))
+                DayHeading(title: DictationHistoryModel.dayTitle(group.day), first: n == 0, tip: todayTip(group.day),
+                           speed: n == 0 && m.query.trimmingCharacters(in: .whitespaces).isEmpty
+                               ? DictationSpeed(m.entries).map(DictationSpeedText.usual) : nil)
                 ForEach(group.rows) { e in
                     DictationRow(m: m, e: e).tag(e.id)
                         .listRowBackground(RowWash(on: m.selection.contains(e.id), working: m.working.contains(e.id)))
@@ -1000,12 +1034,26 @@ private struct DayHeading: View {
     let title: String
     let first: Bool
     var tip: String? = nil
+    /// the page's usual wait (the first heading only, not while searching): DictationSpeedText.usual
+    var speed: (line: String, tip: String)? = nil
     var body: some View {
         let t = HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
                 .help(tip ?? "")
             Spacer(minLength: 8)
+            if let s = speed {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: "timer").font(.system(size: 10, weight: .regular)).foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Text(s.line).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                }
+                .fixedSize()
+                .help(s.tip)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(s.line)
+                .accessibilityHint(s.tip)
+            }
         }
         .padding(.top, first ? 4 : 18).padding(.bottom, 2)
         .listRowSeparator(.hidden)
@@ -1024,7 +1072,7 @@ struct DictationNoResultsView: View {
         EmptyStateContent(title: T("dictation.history.no_match", Self.shortQuery(query)), message: T("dictation.history.no_match.hint")) {
             Button(T("dictation.history.clear_search"), action: clear).controlSize(.regular)
         }
-        .padding(.bottom, DictationPageHeader.height)      // the window's middle, not the column's under the header
+        .padding(.bottom, DictationPageHeader.total)      // the window's middle, not the column's under the header
         .accessibilityElement(children: .contain)
     }
 
@@ -2005,6 +2053,7 @@ struct DictationDetailView: View {
             Divider()
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 7) {
                 if e.insert == "none" { row(T("main.dictation.info.result"), T("main.dictation.info.not_typed")) }
+                speedRow(e)
                 if let a = e.asrModel { row(T("main.dictation.info.asr"), asrName(a)) }
                 polishRow(e)
                 if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
@@ -2024,6 +2073,26 @@ struct DictationDetailView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(T("main.dictation.details"))
+    }
+
+    /// How long the text took after the key went up (DictationSpeedText): the wait as the row's value, a step up from
+    /// the other facts, and under it what it went on — only the stages that ran. An older entry without timings, or a
+    /// take that typed nothing, has no row at all.
+    @ViewBuilder func speedRow(_ e: DictationEntry) -> some View {
+        if let headline = DictationSpeedText.after(e) {
+            GridRow {
+                label(T("dictation.speed.label"))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(headline).font(.system(size: 13, weight: .medium)).monospacedDigit().textSelection(.enabled)
+                    if let parts = DictationSpeedText.parts(e) {
+                        Text(parts).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help(T("dictation.speed.parts.tip"))
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
     }
 
     /// A model by name; one this Mac no longer has says so (the page may be saying "no speech model" above).

@@ -223,6 +223,8 @@ struct State {
     /// the displays the phone was last told of
     displays_sent: Option<Vec<DisplayInfo>>,
     problem: Option<Problem>,
+    /// the app's Phone capability is off (`Host::set_off`): nothing listens, no relay is held, no code shows
+    off: bool,
 }
 
 struct Core {
@@ -296,6 +298,7 @@ impl Host {
             awake: false,
             displays_sent: None,
             problem: None,
+            off: false,
         };
         let core = Arc::new(Core {
             rt,
@@ -448,6 +451,28 @@ impl Host {
 
     pub fn platform(&self) -> &'static str {
         self.core.platform
+    }
+
+    /// The app's Phone capability turned off (true) or back on: off, everything `stop` lets go of goes and stays gone
+    /// — no port, no relay, no code — until it is on again; the paired phones are kept.
+    pub fn set_off(&self, off: bool) {
+        let c = &self.core;
+        {
+            let mut s = c.st.lock().unwrap();
+            if s.off == off {
+                return;
+            }
+            s.off = off;
+            if !off {
+                c.update_listening(&mut s);
+                c.publish(&mut s);
+                return;
+            }
+        }
+        self.stop();
+        let mut s = c.st.lock().unwrap();
+        c.update_listening(&mut s); // the relay's address forgotten too: nothing reconnects while off
+        c.publish(&mut s);
     }
 
     /// Lets go of everything, closes the session, stops listening (the app is quitting).
@@ -614,7 +639,7 @@ impl Core {
 
     fn update_listening(&self, s: &mut State) {
         // a question already asked keeps its way in, even once Settings stopped showing the code
-        let want = s.showing_pairing || !s.devices.is_empty() || s.asking.is_some();
+        let want = !s.off && (s.showing_pairing || !s.devices.is_empty() || s.asking.is_some());
         if want && s.listeners.is_none() {
             self.start_listening(s);
         } else if !want && s.listeners.is_some() {

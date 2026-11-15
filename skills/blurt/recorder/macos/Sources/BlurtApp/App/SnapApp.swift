@@ -33,6 +33,8 @@
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
+//     capability ID on|off    a capability's switch, as Home's (dictation cards screen_text recording phone | all);
+//                             alone: which are off ("capabilities_state")
 //     island open|close|switcher|frame   open / close the island, ⌥O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥V pressed / released (a tap = down + up)
 //     voice keys SCRIPT | structure | earclick   key events while it listens ("shift-down@0 shift-up@120": a lone ⇧
@@ -53,6 +55,9 @@
 //     notekind open|close|click|row N|hover|unhover   the bubble's type chip and its list (notekey cmd-1…cmd-4, cmd-0,
 //                             up, down: its keys)
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
+//     notetool tool pen|box|ellipse|arrow|text|mosaic · color markup|yellow|blue|black|white · undo · copy · redo ·
+//                             text X,Y TEXT · textopen X,Y TEXT   the markup tools: the strip's controls (copy = ⌘↩), a text
+//                             box typed and ended with ↩ (textopen: left open); notekey cmd-return | cmd-shift-z | cmd-L…
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
 //     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
@@ -134,6 +139,14 @@ extension App {
             else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
         case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
             ScreenTextCard.shared.testCommand(arg)
+        case "cardspage":                               // the main window's Cards page (CardsPage.testCommand: state, query, key, select…)
+            (MainWindowController.shared.fullPage(.cards) as? CardsPage)?.testCommand(arg)
+        case "capability":                              // capability ID on|off: its switch, as Home's (ID: dictation cards
+            let a = arg.split(separator: " ").map(String.init)      // screen_text recording phone | all); no args: which are off
+            if a.count == 2 {
+                for c in a[0] == "all" ? Capability.allCases : [Capability(rawValue: a[0])].compactMap({ $0 }) { Capability.set(c, on: a[1] != "off") }
+            }
+            emit(["event": "capabilities_state", "off": Capability.off.map(\.rawValue).sorted()])
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count (⌥H opens the Cards panel)
@@ -438,6 +451,7 @@ extension App {
             if a.contains("option") { mods.insert(.option) }
             NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5, mods: mods)
         case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
+        case "notetool": NoteBubble.shared.testTool(arg)                            // notetool tool|color NAME · undo · copy · redo · text X,Y TEXT
         case "notehover": NoteBubble.shared.testHover(arg != "off")                 // notehover [off]: the pointer on the bubble
         case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
         case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the mic stopped, the final words came in
@@ -619,8 +633,10 @@ extension App {
             }
             emit(["event": "ax", "elements": els])
         case "dictation": dictationCommand(arg)
+        case "home": HomePage.testCommand(arg)          // home state | show | toggle <capability> | key K | point STOP | … (HomePage.swift)
         case "live": LiveTranscript.shared.testCommand(arg)          // live state | caret X,Y,W,H | caret - | set on|off
         case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
+        case "phonepage": PhonePage.testCommand(arg)   // phonepage fake none|paired|connected|… | ax | relay | add | cancel | state (PhonePage.swift)
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
@@ -633,10 +649,11 @@ extension App {
         switch k {
         case .voice:
             VoiceInput.shared.pressed()
-            Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
+            // reaching for the voice: if dictation can't hear its key, say so (≈ daily) — while Dictation is on
+            if Capability.dictation.isOn { Dictation.shared.nudge("voice_key") }
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
         case .dictationEsc: Dictation.shared.escFromHotkey()
-        case .project: if resident { island.toggleSwitcher() }
+        case .project: if resident, Capability.projectsShown { island.toggleSwitcher() }       // (projects: Recording & Items')
         // ⌥H: the Cards panel with the keyboard — Hanging, or Used when nothing hangs; open already, it closes
         case .cards: if resident { CardsOverview.shared.toggle(via: "hotkey") }
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥L (dictation-styles.md)
@@ -665,17 +682,21 @@ extension App {
             item("capture.menu.live_caption", #selector(mLiveCaption), on: liveCaptionOn)
             return
         }
-        item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
-        item("capture.menu.text", #selector(mText)).showHotkey(.text)
-        item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
-        item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
+        // each capability's own rows, while it is on (BlurtCore Capabilities.swift)
+        let cards = Capability.cards.isOn
+        if cards { item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap) }
+        if Capability.screenText.isOn {
+            item("capture.menu.text", #selector(mText)).showHotkey(.text)
+            item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
+        }
+        if cards { item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice) }
     }
 
     /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards panel) while a card
     /// hangs or one was used in the last 7 days, Dictation History. Counts are the rows' badges (macOS 14+), never part
     /// of their titles.
     func addWaitingMenuItems(_ menu: NSMenu) {
-        if hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
+        if Capability.cards.isOn, hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
             let cards: NSMenuItem
             if #available(macOS 14.0, *) {
                 cards = NSMenuItem(title: T("app.menu.cards"), action: #selector(mShowCards), keyEquivalent: "")
@@ -689,11 +710,37 @@ extension App {
             cards.showHotkey(.cards)
             menu.addItem(cards)
         }
-        let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
-        dict.target = self
-        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline) }
-        menu.addItem(dict)
+        if Dictation.enabled {
+            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere
+            if let last = MainActor.assumeIsolated({ DictationHistory.shared.load().first }) {
+                let copy = NSMenuItem(title: Loc.t("dictation.menu.copy_last", table: "Dictation"), action: #selector(mCopyLastDictation), keyEquivalent: "")
+                copy.target = self
+                copy.toolTip = last.finalText
+                if #available(macOS 14.4, *) { copy.subtitle = MenuText.oneLine(last.finalText, limit: 44) }
+                menu.addItem(copy)
+            }
+            let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
+            dict.target = self
+            dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline)
+            menu.addItem(dict)
+        }
+        // the phone: whether one is connected, and the way to its page (pairing, what to do when it won't connect)
+        if Capability.phone.isOn, AppEnvironment.mainWindow != nil {
+            let phone = NSMenuItem(title: PhoneStatus.menuTitle, action: #selector(mPhone), keyEquivalent: "")
+            phone.target = self
+            menu.addItem(phone)
+        }
     }
+
+    @objc func mCopyLastDictation() {
+        MainActor.assumeIsolated {
+            guard let last = DictationHistory.shared.load().first else { return }
+            DictationInsert.copy(last.finalText)
+            emit(["event": "dictation_history", "action": "copy_last"])
+            island.toast(Loc.t("dictation.menu.copied_last", table: "Dictation"), key: "dictation-copy", icon: nil, seconds: 2, actionTitle: nil, action: nil)
+        }
+    }
+    @objc func mPhone() { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
 
 
     @objc func mSnap() {

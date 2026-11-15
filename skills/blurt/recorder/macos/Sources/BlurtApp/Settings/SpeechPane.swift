@@ -470,6 +470,8 @@ struct SpeechPane: View {
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
     @ObservedObject private var cloud = CloudModelsUI.shared
+    /// the capabilities turned off (General's switches): a job that only they have is dimmed and says so
+    @ObservedObject private var features = SettingsFeatures.shared
     @State private var library = false
     /// dictation's choices side by side (DictationCompare.swift)
     @State private var compare = false
@@ -576,19 +578,31 @@ struct SpeechPane: View {
                 dictationRow
             }
             CloudObserving {
-                SettingRow("speech.polish", detail: d.polish?.supported == false && CloudStore.connected.isEmpty
-                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish), icon: "wand.and.stars") {
+                SettingRow("speech.polish", detail: unused(.dictation) ?? (d.polish?.supported == false && CloudStore.connected.isEmpty
+                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish)), icon: "wand.and.stars") {
                     JobModelControl(job: .polish) { library = true }
                 }
-                SettingRow("speech.translate", detail: CloudText.line(.translate), icon: CloudJob.translate.symbol) {
+                .disabled(unused(.dictation) != nil)
+                SettingRow("speech.translate", detail: unused(.dictation, .screenText) ?? CloudText.line(.translate), icon: CloudJob.translate.symbol) {
                     JobModelControl(job: .translate) { library = true }
                 }
-                SettingRow("speech.vision", detail: CloudText.line(.vision), icon: CloudJob.vision.symbol) {
+                .disabled(unused(.dictation, .screenText) != nil)
+                SettingRow("speech.vision", detail: unused(.screenText) ?? CloudText.line(.vision), icon: CloudJob.vision.symbol) {
                     JobModelControl(job: .vision) { library = true }
                 }
+                .disabled(unused(.screenText) != nil)
             }
         }
     }
+
+    /// "Feature is off" for a job that only capabilities turned off have (General's switches; translating is
+    /// dictation's and Screen Text's, the one recognition model dictation's, the voice note's and the recording's): its
+    /// row stays where it is, dimmed, with that line in place of its model's — and nothing is recommended for it.
+    func unused(_ caps: Capability...) -> String? {
+        caps.allSatisfy(features.off.contains) ? T("settings.feature.off") : nil
+    }
+    /// The capability a speech job is for: the recording's two, the voice note's.
+    func capability(_ p: ASRPurpose) -> Capability { p == .note ? .cards : .recording }
 
     // the one recommendation
 
@@ -604,11 +618,13 @@ struct SpeechPane: View {
             } else { out.append(Pick(job: j, uses: [use])) }
         }
         if m.auto && m.state != nil {
-            for p in ASRPurpose.allCases {
+            for p in ASRPurpose.allCases where unused(capability(p)) == nil {
                 guard let r = m.recommended(p), !r.installed, r.local, r.runsHere ?? true else { continue }
                 add(.init(id: r.id, kind: .note, name: r.title, sizeMB: r.sizeMB), p.title)
             }
         }
+        // dictation turned off: its pair isn't asked for
+        guard unused(.dictation) == nil else { return out }
         let dictation = S("speech.purpose.dictation")
         if let a = d.recommendedASR, !a.installed, a.files != true {
             add(.init(id: a.id, kind: .dictation, name: a.name ?? d.asrName(a.id), sizeMB: a.sizeMB), dictation)
@@ -678,6 +694,11 @@ struct SpeechPane: View {
                                 Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+                            // what the dictation model would be like: the published figure, said as not this Mac's
+                            if let r = DictationSpeedText.reference(ps.filter { $0.uses.contains(S("speech.purpose.dictation")) }.map(\.job.id)) {
+                                Text(r).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if failed {
                                 Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
                                     .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -722,7 +743,7 @@ struct SpeechPane: View {
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", detail: m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p)),
+        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)) ?? (m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p))),
                    icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
@@ -733,6 +754,7 @@ struct SpeechPane: View {
                 }
             }
         }
+        .disabled(unused(capability(p)) != nil)
     }
 
     /// Every job on one model (Chinese and English on Apple silicon, by default): one row, its pop-up the models every
@@ -740,7 +762,8 @@ struct SpeechPane: View {
     func recognitionRow(_ one: ASRModel) -> some View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
-        return SettingRow("speech.recognition", detail: autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)),
+        let off = unused(.dictation, .cards, .recording)
+        return SettingRow("speech.recognition", detail: off ?? DictationSpeedText.withMeasured(autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)), model: d.asr?.selected),
                           icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
                        auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
@@ -748,6 +771,7 @@ struct SpeechPane: View {
                 if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
+        .disabled(off != nil)
     }
 
     /// What a purpose runs on: the model's name once it is on this Mac; "· downloading" while it comes down, "none
@@ -766,7 +790,7 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", detail: d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) },
+        SettingRow("speech.dictation", detail: unused(.dictation) ?? DictationSpeedText.withMeasured(d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) }, model: d.asr?.selected),
                    icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 // a model whose own files are in can be chosen (its setup then fetches only the VAD)
@@ -780,6 +804,7 @@ struct SpeechPane: View {
                 BrandSpinnerView(size: 12)
             }
         }
+        .disabled(unused(.dictation) != nil)
     }
 
     func dictationValue(_ a: DictationASRState) -> String {

@@ -50,6 +50,51 @@ pub fn append_line(row: &Value) {
     }
 }
 
+/// The last thing dictated, as it went out (the user's correction, else the text typed), for the tray's Copy last
+/// dictation — read from the file itself (dictation.py `load`'s rules: delete / clear / correct lines applied), since
+/// the menu is worked out often and a `uv run` each time is too slow. None: nothing with text in the history.
+pub fn last_text() -> Option<String> {
+    last_text_in(&std::fs::read_to_string(dir().join("history.jsonl")).ok()?)
+}
+
+pub fn last_text_in(raw: &str) -> Option<String> {
+    let mut by_id: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for ln in raw.lines() {
+        let Ok(o) = serde_json::from_str::<Value>(ln) else { continue };
+        match o["op"].as_str() {
+            Some("delete") => {
+                for i in o["ids"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    by_id.remove(i);
+                }
+            }
+            Some("clear") => by_id.clear(),
+            Some("correct") => {
+                if let Some(e) = o["id"].as_str().and_then(|i| by_id.get_mut(i)) {
+                    match o["text"].as_str() {
+                        Some(t) => e["corrected"] = json!(t),
+                        None => {
+                            e.as_object_mut().map(|m| m.remove("corrected"));
+                        }
+                    }
+                }
+            }
+            Some(_) => {}
+            None => {
+                if let (Some(id), true) = (o["id"].as_str(), o["raw"].is_string()) {
+                    by_id.insert(id.to_string(), o.clone());
+                }
+            }
+        }
+    }
+    let text = |e: &Value| {
+        ["corrected", "text", "polished", "raw"]
+            .iter()
+            .find_map(|k| e[*k].as_str().filter(|t| !t.trim().is_empty()))
+            .map(str::to_owned)
+    };
+    by_id.values().filter(|e| text(e).is_some()).max_by(|a, b| a["t"].as_str().unwrap_or("").cmp(b["t"].as_str().unwrap_or(""))).and_then(text)
+}
+
 fn run(runner: &Runner, args: &[&str], stdin: Option<&Value>) -> R<Value> {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let body = stdin.map(|v| v.to_string().into_bytes());
@@ -240,6 +285,22 @@ pub fn dictation_retry(app: AppHandle, id: String) -> R<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn last_text_applies_the_edit_lines() {
+        let raw = [
+            r#"{"id":"a","t":"2026-11-16T10:00:00Z","raw":"one","text":"One."}"#,
+            r#"{"id":"b","t":"2026-11-16T11:00:00Z","raw":"two","text":"Two."}"#,
+            r#"{"id":"c","t":"2026-11-16T12:00:00Z","raw":"","text":""}"#,
+            r#"{"op":"correct","id":"b","text":"Two!"}"#,
+        ]
+        .join("\n");
+        assert_eq!(last_text_in(&raw).as_deref(), Some("Two!"));
+        let raw = format!("{raw}\n{}", r#"{"op":"delete","ids":["b"]}"#);
+        assert_eq!(last_text_in(&raw).as_deref(), Some("One."));
+        let raw = format!("{raw}\n{}", r#"{"op":"clear"}"#);
+        assert_eq!(last_text_in(&raw), None);
+    }
 
     #[test]
     fn retried_entry_is_copied_and_drops_the_old_correction() {

@@ -30,6 +30,10 @@
 //    "Move to X", a drop on the island, the note's "Goes to" chip, Organize — is refused before anything is written
 //    (`keepAsCards`); captures.py refuses too (folder_missing) and never makes the old folder again. The island
 //    offers Locate… (MissingFolder), and the same project found again takes the cards kept back from it.
+//  • Recording & Items off (v1.0.24, BlurtCore Capabilities): projects and items are its — so every capture is a
+//    card, kept in the Unassigned store (`target`), whatever project was current before; nothing is filed, moved or
+//    organized (`settled`, `assign`, `handToAI`, `retarget` do nothing), and nothing about a project is ever asked or
+//    said. Cards off: the cards stay in their batches here and just don't hang (HangingCards.refresh).
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 //
 // ⌥A while recording (BA-60…66, 2026-10-31) is the same snap as everywhere else — the picker, the in-place note
@@ -182,7 +186,8 @@ final class Snapper {
 
     /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none — or when
     /// the current project's folder can't be found (moved, renamed): nothing is written there (MissingFolder).
-    var target: Project { ProjectStore.shared.captureTarget }
+    /// With Recording & Items off there are no projects: always the inbox store, as a card.
+    var target: Project { Capability.projectsShown ? ProjectStore.shared.captureTarget : ProjectStore.shared.inbox }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
     /// Kept by the store's path, not the project's id: a project relocated with Locate… keeps its id but has a new
@@ -264,7 +269,7 @@ final class Snapper {
                   "in_place": withNote])
             // the current project's folder is gone: said once the snap is a card (the island can't show it under an
             // in-place note — the note's chip says it meanwhile)
-            if p.isInbox, ProjectStore.shared.missingCurrent != nil {
+            if p.isInbox, Capability.projectsShown, ProjectStore.shared.missingCurrent != nil {
                 if withNote, let m = ProjectStore.shared.missingCurrent { self.warnWhenSettled(shot, missing: m) }
                 else { MissingFolder.warnIfCurrentMissing() }
             }
@@ -292,7 +297,7 @@ final class Snapper {
     /// The bubble's "Goes to X" chip: this capture goes to `project` instead (nil: it hangs as a card). The island's
     /// current project stays as it is.
     func retarget(_ s: Shot, to project: String?) {
-        guard let b = s.batch, !s.deleted else { return }
+        guard let b = s.batch, !s.deleted, Capability.projectsShown || project == nil else { return }
         let was = s.project
         if let p = project { b.assign(s, project: p, by: "capture") } else { b.release(s) }
         emit(["event": "retarget", "n": s.n, "from": was ?? NSNull(), "project": project ?? NSNull()])
@@ -630,6 +635,12 @@ final class Snapper {
             if s.needsWords { transcribe(s) { _ in } }
             return
         }
+        // Recording & Items off: nothing is filed — a card, its words fetched for it. (One left on its way into a
+        // project by an earlier quit waits as it is: `restore` picks it up again once the switch is back on.)
+        guard Capability.projectsShown else {
+            if s.needsWords { transcribe(s) { _ in } }
+            return
+        }
         let filing = s.assignedBy == "capture" ? s.project : nil
         // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
         let noWords = s.transcription == .failed || (s.kind == .voice && s.voice != nil && s.said?.isEmpty == true)
@@ -777,6 +788,7 @@ final class Snapper {
     /// Cards — one, or a ⌘-click selection — onto a project (Move To ▸, a drop on the island): each batch's filed in
     /// one go, the user's own choice (assigned_by "user").
     func assign(_ shots: [Shot], to project: String) {
+        guard Capability.projectsShown else { return }
         if let gone = missingProject(project) { return keepAsCards(shots.filter(\.isCard), missing: gone, via: "assign") }
         var by: [ObjectIdentifier: (ShotBatch, [Shot])] = [:]
         var order: [ObjectIdentifier] = []
@@ -799,6 +811,7 @@ final class Snapper {
     /// per item (nothing moves — "Looks like X · Move" in the main window). `shots`: just these (a card's own
     /// "Organize", a drop on Organize); nil: every hanging card (the island's Organize, "Organize All Cards").
     func handToAI(project: String? = nil, shots: [Shot]? = nil) {
+        guard Capability.projectsShown else { return }          // Organize makes items: Recording & Items'
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
         // never into a project whose folder is gone: the cards stay, and the island offers Locate… (MissingFolder)
@@ -812,9 +825,24 @@ final class Snapper {
             guard let self = self else { return }
             guard ok else {
                 emit(["event": "organize_no_agent", "captures": all.map(\.n)])
-                var t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
+                // no agent CLI to run in the background: an agent app with the skill (WorkBuddy, Cursor…) organizes
+                // when asked in its chat — copy what to say there; none known to have it → Settings → Agents
+                var t: Island.Toast
+                if let chat = MainActor.assumeIsolated({ AgentsModel.shared.chatAgentName }) {
+                    t = Island.Toast(text: Loc.t("capture.sort.no_agent.chat", table: "Capture", chat),
+                                     actionTitle: Loc.t("capture.sort.copy_request", table: "Capture")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Loc.t("capture.sort.request", table: "Capture"), forType: .string)
+                        emit(["event": "organize_request_copied", "agent": chat])
+                        var done = Island.Toast(text: Loc.t("capture.sort.request_copied", table: "Capture", chat), actionTitle: nil, action: nil)
+                        done.icon = .check
+                        island.toast(done)
+                    }
+                } else {
+                    t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
                                      actionTitle: Loc.t("capture.sort.set_up", table: "Capture")) {
-                    AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
+                        AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
+                    }
                 }
                 t.icon = .warning           // a failure leads with the attention triangle (system.md §3.2)
                 t.seconds = 8
@@ -1086,6 +1114,26 @@ final class Snapper {
         hanging.catchCapture(s, from: from)
         takenChanged()
         TakenPanel.shared.makeRoomForCards()        // the card hangs where the panel may be
+    }
+
+    /// ⌘↩ in a fresh snap's note (BlurtCore NoteKeys .copyAndFinish, v1.0.24): the picture (marked) and its note on the
+    /// clipboard — the items a card's click-copy puts there (CardExport.copy, armed for smart paste) — and no card: one
+    /// that would have hung is used at once, so the Cards panel's History has it (the drag-out's `take`). One filed into
+    /// a project is filed as ever and copied all the same. Spoken words still coming are waited for, then copied.
+    func copyAndDone(_ s: Shot) {
+        guard let b = s.batch, !s.deleted else { return }
+        if s.isCard {
+            b.take(s, at: Snapper.now)
+            takenChanged()
+        }
+        let copy = {
+            guard !s.deleted else { return }
+            let items = CardExport.copy([s])
+            emit(["event": "snap_copied", "n": s.n, "ok": items != nil, "taken": s.taken != nil, "note": s.words ?? NSNull(),
+                  "types": (items?.first?.types ?? []).map(\.rawValue)])
+            if items != nil { island.toast(Loc.t("capture.card.copied", table: "Capture"), key: "snap_copied", icon: .check, seconds: 2) }
+        }
+        if s.needsWords { fetchWords(s) { _ in copy() } } else { copy() }
     }
 
     /// Recently Taken: captures dragged out in the last 7 days, newest first.

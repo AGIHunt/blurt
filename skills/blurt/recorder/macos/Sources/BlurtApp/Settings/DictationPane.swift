@@ -849,8 +849,10 @@ struct DictationPane: View {
                     parts.append(T(asrHere || j.sizeMB <= 1 ? "dictation.models.small_missing" : "dictation.models.asr_missing"))
                 } else if jobs.contains(where: { $0.kind == .polish }) { parts.append(T("dictation.models.polish_missing")) }
                 let line = parts.joined(separator: " · ")
-                return line.prefix(1).uppercased(with: Loc.locale) + line.dropFirst()
-            case .ready: return modelNames
+                // the recogniser that is here has a measured wait even while polish's model is still to come
+                return DictationSpeedText.withMeasured(line.prefix(1).uppercased(with: Loc.locale) + line.dropFirst(),
+                                                       model: asrHere ? models.selectedASR?.id : nil)
+            case .ready: return DictationSpeedText.withMeasured(modelNames, model: models.selectedASR?.id)   // + this Mac's usual wait
             }
         }()
         return SettingRow("dictation.models", detail: detail) {

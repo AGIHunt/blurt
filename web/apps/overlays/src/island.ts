@@ -565,12 +565,15 @@ function hkHint(key: string | undefined, label: string) {
   return key ? t('island.hint', { key, label }) : null;
 }
 
+/** A capability is on (the app's switches: capabilities.rs); off, its buttons and hints aren't drawn. */
+const on = (c: 'cards' | 'recording') => !S.off?.includes(c);
+
 function homeBody() {
   // Peep at the row's left end whenever the island is open (BA-17): thinking while captures are organized, as in the ear
-  const head = `<div class="head">${mascotHtml(S.hatching ? 'thinking' : 'idle', { size: 24, className: 'home' })}${projectChip()}<span class="grow"></span>
-    ${toolBtn('record', recordGlyph(), t('island.record'), S.hotkeys.record)}
-    ${toolBtn('snap', ic('snap', 15), t('island.snap'), S.hotkeys.snap)}
-    ${toolBtn('voice', ic('mic', 15), t('island.voice'), S.hotkeys.voice)}</div>`;
+  const head = `<div class="head">${mascotHtml(S.hatching ? 'thinking' : 'idle', { size: 24, className: 'home' })}${on('recording') ? projectChip() : ''}<span class="grow"></span>
+    ${on('recording') ? toolBtn('record', recordGlyph(), t('island.record'), S.hotkeys.record) : ''}
+    ${on('cards') ? toolBtn('snap', ic('snap', 15), t('island.snap'), S.hotkeys.snap) : ''}
+    ${on('cards') ? toolBtn('voice', ic('mic', 15), t('island.voice'), S.hotkeys.voice) : ''}</div>`;
   const rows: string[] = [];
   for (const j of S.jobs.slice(0, 3)) rows.push(jobRow(j));
   const n = cardCount();
@@ -590,7 +593,11 @@ function homeBody() {
   }
   if (!rows.length) {
     // nothing going on: what the keys do, on the text column
-    const hint = [hkHint(S.hotkeys.snap, t('island.snap')), hkHint(S.hotkeys.voice, t('island.voice')), hkHint(S.hotkeys.project, t('island.switch'))]
+    const hint = [
+      on('cards') && hkHint(S.hotkeys.snap, t('island.snap')),
+      on('cards') && hkHint(S.hotkeys.voice, t('island.voice')),
+      on('recording') && hkHint(S.hotkeys.project, t('island.switch')),
+    ]
       .filter(Boolean)
       .join('   ·   ');
     if (hint) rows.push(`<div class="keys">${esc(hint)}</div>`);

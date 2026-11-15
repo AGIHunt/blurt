@@ -21,6 +21,7 @@ enum MissingFolder {
 
     /// "Can't find billing-api's folder — kept as a card · Locate…" (or "— recording to Unassigned").
     static func warn(_ p: Project, recording: Bool = false) {
+        guard Capability.projectsShown else { return }      // no projects with Recording & Items off
         emit(["event": "project_missing", "project": p.id, "recording": recording])
         var t = Island.Toast(text: Loc.t(recording ? "capture.project.missing_rec" : "capture.project.missing_card",
                                          table: "Capture", p.name),
@@ -34,7 +35,7 @@ enum MissingFolder {
     /// The current project's folder is gone: say so (captures go to Unassigned meanwhile). True when it was.
     @discardableResult
     static func warnIfCurrentMissing(recording: Bool = false) -> Bool {
-        guard let p = ProjectStore.shared.missingCurrent else { return false }
+        guard Capability.projectsShown, let p = ProjectStore.shared.missingCurrent else { return false }
         warn(p, recording: recording)
         return true
     }

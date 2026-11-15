@@ -52,4 +52,24 @@ class AppLogicTest {
         assertEquals(Face.textSize("Ctrl"), Face.textSize("Shift"))
         assertEquals(Face.textSize("Win"), Face.textSize("Alt"))
     }
+
+    /** The pad's card (pad/StatusCard.kt): every line it can say is there in English and Chinese, plainly, with the name where it belongs. */
+    @Test fun theCardsWordsAreInBothLanguages() {
+        fun strings(dir: String) = Regex("<string name=\"([a-z_0-9]+)\">(.*?)</string>").findAll(java.io.File("src/main/res/$dir/strings.xml").readText())
+            .associate { it.groupValues[1] to it.groupValues[2] }
+        val en = strings("values")
+        val zh = strings("values-b+zh+Hans")
+        val named = setOf("connecting_to", "status_reconnecting", "status_cant_reach", "status_cant_control", "status_forgotten", "connected_to")
+        val plain = setOf("status_check_network", "status_check_awake", "s_forgotten", "status_other_phone", "status_take_over", "status_pair_first",
+            "status_unpaired", "status_waiting_title", "status_pair_failed", "status_accessibility", "status_control", "status_cant_show_screen",
+            "status_screen_permission", "status_screen_permission_pc", "status_screen_off", "retry", "scan_code", "try_another", "the_computer")
+        for (k in named + plain) for (t in listOf(en, zh)) {
+            val v = t[k]
+            assertNotNull(k, v)
+            assertTrue(k, v!!.isNotBlank() && !v.contains('!') && !v.contains('！'))
+            assertEquals(k, k in named, v.contains("%1\$s"))
+        }
+        // the same network is needed only without a relay: the line says both, the relay by its name
+        assertTrue(en["status_check_network"]!!.contains("relay") && zh["status_check_network"]!!.contains("中转"))
+    }
 }

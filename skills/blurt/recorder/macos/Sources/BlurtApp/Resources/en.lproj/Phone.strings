@@ -1,0 +1,76 @@
+/* The Phone page (MainWindow/PhonePage.swift, PhonePageViews.swift). */
+
+"phone.title" = "Phone";
+"phone.settings" = "Phone Settings…";
+"phone.settings.tip" = "On-screen keys, the screen on your phone, and the relay for connecting away from home";
+/* a phone that gave no name */
+"phone.unnamed" = "Phone";
+
+/* the menu-bar menu's row (SnapApp.addWaitingMenuItems): opens the Phone page */
+"phone.menu.connected" = "Phone: %@ Connected";
+"phone.menu.paired" = "Phone: Not Connected";
+"phone.menu.add" = "Add a Phone…";
+"phone.menu.needs_access" = "Phone: Can’t Control Mac";
+
+/* the Phone tile's state on Home (PhoneStatus.line) */
+"phone.line.connected" = "%@ connected";
+"phone.line.not_connected" = "Not connected";
+
+/* the page's one headline */
+"phone.head.none" = "No phone paired yet";
+"phone.head.none.detail" = "Once paired, a phone or tablet works as your Mac’s trackpad, keyboard and microphone, and can show its screen.";
+"phone.head.not_connected" = "Not connected";
+"phone.head.not_connected.detail" = "Open Blurt on your phone to connect.";
+"phone.head.connected" = "%@ is connected";
+"phone.head.local" = "Same network as your Mac, connected directly.";
+"phone.head.relay" = "On another network, connected through your relay.";
+
+"phone.add" = "Add a Phone…";
+"phone.add.tip" = "Shows the pairing code to scan with the phone";
+"phone.remove" = "Remove…";
+"phone.remove.named" = "Remove %@";
+
+/* This Mac: only what stands in a phone's way; one line when all is well */
+"phone.mac" = "This Mac";
+"phone.mac.ok" = "A phone can control your Mac";
+"phone.mac.ok.keys" = "Pointer and keys";
+"phone.mac.ok.screen" = "Screen";
+"phone.mac.ok.relay" = "Away from home through your relay";
+"phone.mac.ok.relay_checking" = "Checking the relay…";
+"phone.mac.accessibility" = "Accessibility is off";
+"phone.mac.accessibility.detail" = "Until it’s on, a phone can connect but can’t move the pointer or press keys.";
+"phone.mac.screen" = "Screen Recording is off";
+"phone.mac.screen.detail" = "Until it’s on, the phone can’t show your screen. The pointer and keys still work.";
+"phone.mac.deaf" = "Couldn’t start listening for phones";
+"phone.mac.deaf.detail" = "macOS error: %@";
+"phone.mac.deaf.retry" = "Try Again";
+"phone.mac.relay" = "Relay not responding";
+"phone.mac.relay.detail" = "A phone on another network can’t connect. On the same Wi-Fi it still works.";
+"phone.mac.relay.again" = "Check Again";
+"phone.relay_settings" = "Relay Settings…";
+/* what VoiceOver says after a state row's title */
+"phone.ax.ok" = "OK";
+"phone.ax.needs_you" = "Needs attention";
+
+"phone.paired" = "Paired Phones";
+
+/* where the phone app comes from */
+"phone.app" = "Blurt on Your Phone";
+"phone.app.where" = "Not in the app stores yet. Build it from source.";
+"phone.app.ios" = "iPhone and iPad";
+"phone.app.android" = "Android";
+
+/* if it won't connect: in the order to try */
+"phone.tips" = "If It Won’t Connect";
+"phone.tips.network" = "Put the phone and your Mac on the same Wi-Fi.";
+"phone.tips.open" = "Open Blurt on the phone and make sure your Mac isn’t asleep.";
+"phone.tips.vpn" = "Turn off VPN on both. If your Mac’s firewall is on, allow incoming connections for Blurt.";
+"phone.tips.vpn.local" = "Turn off VPN on both. On your Mac, allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
+"phone.tips.away.none" = "On another network (for example, away from home), the phone connects through your own relay. None is set.";
+"phone.tips.away.ok" = "On another network it connects through your relay. The phone only needs internet access.";
+
+/* Settings → Phone (Settings/RemotePane.swift): the way to this page, and the reminder before pairing */
+"phone.pane.before" = "Turn on Accessibility first. Without it, a paired phone can’t move the pointer or press keys.";
+"phone.pane.see_page" = "Connection status and troubleshooting are on the Phone page in the main window.";
+"phone.pane.open_page" = "Open";
+"phone.pane.build.tip" = "The phone app isn’t in the app stores yet. Build it from source";

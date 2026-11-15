@@ -26,10 +26,7 @@
     <string name="status_unpaired">On your computer, open Blurt’s Settings and choose Phone.</string>
     <string name="scan_code">Scan Code</string>
     <string name="status_forgotten">%1$s no longer knows this phone.</string>
-    <string name="status_unreachable_local">Can’t reach %1$s. Check that Blurt is running and both are on the same network.</string>
-    <string name="status_unreachable_relay">Can’t reach %1$s. Check that it’s awake and Blurt is running.</string>
     <string name="try_another">Try Another Computer</string>
-    <string name="status_replaced">Another phone is connected. Touch to take over.</string>
     <string name="status_accessibility">On your Mac, allow Accessibility for Blurt.</string>
     <string name="status_control">Blurt on your computer can’t press keys yet. Open its Settings → Phone.</string>
     <string name="status_screen_permission">On your Mac, allow Screen Recording for Blurt.</string>
@@ -39,8 +36,23 @@
     <string name="via_internet">%1$s · Internet</string>
     <string name="via_direct">%1$s · Direct</string>
     <string name="connecting_to">Connecting to %1$s…</string>
+    <!-- the pad's card, when the connection isn't simply there: a strong line, then the one thing to do (core/LinkStatus.kt) -->
+    <string name="status_reconnecting">Reconnecting to %1$s…</string>
+    <string name="status_cant_reach">Can’t reach %1$s</string>
+    <string name="status_check_network">Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer.</string>
+    <string name="status_check_awake">Check that the computer isn’t asleep and Blurt is running.</string>
+    <string name="status_other_phone">Another phone is connected</string>
+    <string name="status_take_over">Touch to take over.</string>
+    <string name="status_pair_first">Pair with your computer</string>
+    <string name="status_waiting_title">Waiting for your computer</string>
+    <string name="status_pair_failed">Pairing didn’t work</string>
+    <string name="status_cant_control">Can’t control %1$s</string>
+    <string name="status_cant_show_screen">Can’t show the screen</string>
+    <string name="retry">Retry</string>
+    <string name="connected_to">Connected to %1$s</string>
+    <string name="the_computer">the computer</string>
     <string name="pair_not_allowed">%1$s didn’t allow this phone.</string>
-    <string name="pair_unreachable_local">Couldn’t reach %1$s. Put this phone on the same network, or set a relay on that computer first.</string>
+    <string name="pair_unreachable_local">Couldn’t reach %1$s. Put this phone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first.</string>
     <string name="pair_unreachable_relay">Couldn’t reach %1$s. Scan a fresh code on that computer.</string>
 
     <string name="displays">Displays</string>

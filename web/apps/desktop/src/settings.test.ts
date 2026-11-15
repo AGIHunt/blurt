@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import SET_EN from './locales/settings.en.json';
 import SET_ZH from './locales/settings.zh-Hans.json';
-import { ENTRIES, GROUPS, PANES, results, SECTIONS, SHORTCUT_SECTIONS, SUGGESTIONS, textIn } from './settings/catalog';
+import { ENTRIES, GROUPS, PANES, results, SECTIONS, SHORTCUT_SECTIONS, SUGGESTIONS, textIn, redirect } from './settings/catalog';
 
 const ph = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
@@ -52,7 +52,7 @@ describe('settings search', () => {
     expect(results('language', 'en').flatMap((g) => g.hits.map((h) => h.entry.id))).toContain('general.language');
     expect(results('language', 'zh-Hans').flatMap((g) => g.hits.map((h) => h.entry.id))).toContain('general.language');
     expect(panes('翻译', 'zh-Hans')).toEqual(expect.arrayContaining(['dictation', 'screentext']));
-    expect(results('voice', 'en').flatMap((g) => g.hits.map((h) => h.entry.id))).toContain('general.voice_end_on_pause');
+    expect(results('voice', 'en').flatMap((g) => g.hits.map((h) => h.entry.id))).toContain('cards.voice_end_on_pause');
   });
   it('Restore Defaults only by its own words', () => {
     expect(results('restore', 'en').flatMap((g) => g.hits.map((h) => h.entry.id))).toContain('shortcuts.restore');
@@ -61,5 +61,18 @@ describe('settings search', () => {
   it('a miss is no results; every suggestion finds something', () => {
     expect(results('zzqx', 'en')).toEqual([]);
     for (const k of SUGGESTIONS) for (const l of ['en', 'zh-Hans'] as const) expect(results(textIn(k, l)!, l).length, `${k} ${l}`).toBeGreaterThan(0);
+  });
+});
+
+describe('settings by capability (capabilities.md)', () => {
+  it('the five switches are in General, and found by "turn off"', () => {
+    const ids = results('turn off', 'en').flatMap((g) => g.hits.map((h) => h.entry.id));
+    for (const c of ['dictation', 'cards', 'screen_text', 'recording', 'phone']) expect(ids).toContain(`general.feature.${c}`);
+  });
+  it("General's old card and recording rows land in their capability's pane", () => {
+    expect(redirect('general/general.collect')).toBe('cards/cards.collect');
+    expect(redirect('general/countdown')).toBe('recording/recording.countdown');
+    expect(redirect('export')).toBe('agents');
+    expect(redirect('dictation/dictation.key')).toBe('dictation/dictation.key');
   });
 });

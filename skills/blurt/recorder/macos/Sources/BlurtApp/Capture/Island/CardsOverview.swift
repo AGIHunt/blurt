@@ -8,10 +8,12 @@
 //
 // Ways in: ⌥H ("Show Cards", also the menu bar's row) opens it with the keyboard — on Current, or on History when
 // nothing hangs — and closes it when it is open (BlurtCore CardsPanelRules.toggle); the island's cards row and the row's
-// "+N" tile (a click, ↩ on it with the keyboard, its VoiceOver press) open Current. It stays a panel by the notch,
-// never a page in the main window: cards are used while working in another app (dragged into WeChat, a browser, an
-// editor), so it floats over that app and never makes the user switch to Blurt. It never activates Blurt and takes
-// the keyboard only from ⌥H or a click on it.
+// "+N" tile (a click, ↩ on it with the keyboard, its VoiceOver press) open Current. It stays a panel by the notch:
+// cards are used while working in another app (dragged into WeChat, a browser, an editor), so it floats over that
+// app and never makes the user switch to Blurt. It never activates Blurt and takes the keyboard only from ⌥H or a
+// click on it. The main window's Cards page (MainWindow/CardsPage.swift, v1.0.24) is the cards' home for browsing
+// and finding — the same tiles (OverviewTile, through OverviewTileHost), both sets on one page, with a search; this
+// panel remains the place to use them mid-work.
 //
 // A light panel (BA-63): a click anywhere outside it — another app, the desktop, Blurt's own main window — closes it;
 // so does Esc while it has the keyboard, while Blurt is the app in front, or while the pointer is on it (Esc is held
@@ -445,7 +447,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
     }
 
     /// A tile is pointed at (nil: none): the footer says what it is.
-    fileprivate func pointed(_ t: OverviewTile, _ on: Bool) {
+    func pointed(_ t: OverviewTile, _ on: Bool) {
         if on { hovered = t } else if hovered === t { hovered = nil }
         updateHint()
     }
@@ -530,7 +532,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
 
     /// A click on a tile: two = edit the note (Hanging) or the preview (Used); one = copy, after the double-click
     /// interval (DeferredClick).
-    fileprivate func clicked(_ t: OverviewTile, count: Int) {
+    func clicked(_ t: OverviewTile, count: Int) {
         select(tiles.firstIndex { $0 === t })
         switch click.click(ObjectIdentifier(t.shot), count: count, at: CACurrentMediaTime(), interval: NSEvent.doubleClickInterval) {
         case .edit:
@@ -551,7 +553,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         }
     }
 
-    fileprivate func copy(_ t: OverviewTile, _ what: HangingCards.Copy) {
+    func copy(_ t: OverviewTile, _ what: HangingCards.Copy) {
         let ok = HangingCards.copyShot(t.shot, what)
         emit(["event": t.used ? "taken_copied" : "card_copied", "n": t.shot.n, "what": what.rawValue, "from": "overview", "ok": ok])
         if ok { t.flashCopied() }
@@ -559,7 +561,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
 
     /// The card's menu: Preview first, then the segment's own (Hanging: the card's menu on its thread; Used:
     /// TakenPanel.menu — Copy Image · Copy Note · Put Back · Show in Finder · Delete).
-    fileprivate func menu(for t: OverviewTile) -> NSMenu {
+    func menu(for t: OverviewTile) -> NSMenu {
         click.cancel()
         defer { settled() }
         select(tiles.firstIndex { $0 === t })
@@ -583,12 +585,12 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         }
     }
 
-    fileprivate func dragStarted() {
+    func dragStarted() {
         click.cancel()
         dragging = true
     }
 
-    fileprivate func dragEnded() {
+    func dragEnded() {
         dragging = false
         settled()
     }
@@ -597,7 +599,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
 
     /// The big view of a tile's card (the eye chip, Space, the menu, a used card's double-click). A click on the panel
     /// is a click: the panel and then the preview take the keyboard (←, → and Space work in it), never activating Blurt.
-    fileprivate func openPreview(_ t: OverviewTile, via: String) {
+    func openPreview(_ t: OverviewTile, via: String) {
         guard let i = tiles.firstIndex(where: { $0 === t }) else { return }
         select(i)
         let keyed = !testKeyless
@@ -718,7 +720,9 @@ final class OverviewTile: NSView, NSDraggingSource {
     let shot: Shot
     /// a used card (dragged out or pasted, Snapper.recentlyTaken): its menu, its drag and its double-click differ
     let used: Bool
-    private weak var overview: CardsOverview?
+    /// its picture's size: the panel's 148 × 100 (CardsOverview.tile); the main window's Cards page fits its column
+    let box: CGSize
+    private weak var overview: OverviewTileHost?
     private let wash = CALayer()
     private let face = CALayer()
     private let ring = CALayer()
@@ -743,17 +747,18 @@ final class OverviewTile: NSView, NSDraggingSource {
     /// Its picture on screen (Cocoa coordinates): where a card put back flies up from, the tests' rects.
     var faceOnScreen: NSRect? {
         guard let w = window else { return nil }
-        return w.convertToScreen(convert(NSRect(origin: .zero, size: CardsOverview.tile), to: nil))
+        return w.convertToScreen(convert(NSRect(origin: .zero, size: box), to: nil))
     }
 
-    init(_ s: Shot, overview: CardsOverview, used: Bool = false) {
+    init(_ s: Shot, overview: OverviewTileHost, used: Bool = false, size: CGSize = CardsOverview.tile) {
         shot = s
         self.used = used
         self.overview = overview
+        box = size
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = false
-        let sz = CardsOverview.tile
+        let sz = box
         wash.frame = CGRect(x: -6, y: -6, width: sz.width + 12, height: sz.height + 12)
         wash.cornerRadius = 10
         wash.isHidden = true
@@ -898,7 +903,7 @@ final class OverviewTile: NSView, NSDraggingSource {
         CATransaction.setDisableActions(true)
         wash.frame = CGRect(x: -6, y: -6, width: bounds.width + 12, height: bounds.height + 6)
         CATransaction.commit()
-        let sz = CardsOverview.tile, fit = actions.fittingSize
+        let sz = box, fit = actions.fittingSize
         actions.frame = NSRect(x: sz.width - fit.width - 6, y: 6, width: fit.width, height: fit.height)
     }
 
@@ -1009,7 +1014,7 @@ final class OverviewTile: NSView, NSDraggingSource {
     func flashCopied() {
         let tw = ceil(copiedText.frame.width)
         let w = 12 + 11 + 4 + tw + 12
-        copiedPill.frame = NSRect(x: (CardsOverview.tile.width - w) / 2, y: (CardsOverview.tile.height - 22) / 2, width: w, height: 22)
+        copiedPill.frame = NSRect(x: (box.width - w) / 2, y: (box.height - 22) / 2, width: w, height: 22)
         copiedCheck.frame = NSRect(x: 12, y: 5.5, width: 11, height: 11)
         copiedText.frame = NSRect(x: 12 + 11 + 4 - 2, y: (22 - copiedText.frame.height) / 2, width: tw, height: copiedText.frame.height)
         copiedPill.isHidden = false
@@ -1036,14 +1041,14 @@ final class OverviewTile: NSView, NSDraggingSource {
         overview?.dragStarted()
         let drag = CardDrag(shot)            // its items follow the app under the pointer
         cardDrag = drag
-        let img = NSImage(size: CardsOverview.tile)
+        let img = NSImage(size: box)
         if let cg = shot.kind == .shot ? shot.markedThumb ?? shot.thumb : nil {
             img.addRepresentation(NSBitmapImageRep(cgImage: cg))
-        } else if let rep = bitmapImageRepForCachingDisplay(in: NSRect(origin: .zero, size: CardsOverview.tile)) {
-            cacheDisplay(in: NSRect(origin: .zero, size: CardsOverview.tile), to: rep)
+        } else if let rep = bitmapImageRepForCachingDisplay(in: NSRect(origin: .zero, size: box)) {
+            cacheDisplay(in: NSRect(origin: .zero, size: box), to: rep)
             img.addRepresentation(rep)
         }
-        let frame = NSRect(origin: .zero, size: CardsOverview.tile)
+        let frame = NSRect(origin: .zero, size: box)
         let items = drag.pasteboardItems().enumerated().map { i, it -> NSDraggingItem in
             let di = NSDraggingItem(pasteboardWriter: it)
             di.setDraggingFrame(i == 0 ? frame : NSRect(x: frame.midX, y: frame.midY, width: 1, height: 1), contents: i == 0 ? img : nil)

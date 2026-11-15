@@ -150,6 +150,7 @@ enum Housekeeping {
     /// v0.6's bound repo became the current project in the migration, which nobody chose here: ask once, in the
     /// island, whether captures should keep going there. Either answer is recorded (current_by "user").
     static func askAboutCarriedOverProject() {
+        guard Capability.projectsShown else { return }      // no projects with Recording & Items off
         let store = ProjectStore.shared
         guard store.currentBy == "migrate", let p = store.current else { return }
         emit(["event": "ask_current_project", "project": p.id])

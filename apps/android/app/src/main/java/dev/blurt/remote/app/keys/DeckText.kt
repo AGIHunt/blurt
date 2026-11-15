@@ -22,7 +22,7 @@ object DeckText {
         "Reopen Tab" to "恢复标签页", "Rewind" to "回退", "Save" to "保存", "Select All" to "全选", "Send" to "发送", "Sidebar" to "侧栏",
         "Snap" to "截图", "Snip" to "截取屏幕", "Space" to "空格", "Spotlight" to "Spotlight", "Start" to "开始菜单", "Stop" to "停止",
         "Task Manager" to "任务管理器", "Task View" to "任务视图", "Terminal Panel" to "终端面板", "Terminal" to "终端", "Transcript" to "详细记录",
-        "Translate" to "翻译", "Undo" to "撤销", "Voice Note" to "语音便签", "Windows" to "切换窗口", "Word Left" to "上一单词",
+        "Translate" to "翻译", "Undo" to "撤销", "Voice Note" to "语音备注", "Windows" to "切换窗口", "Word Left" to "上一单词",
         "Word Right" to "下一单词", "Zoom In" to "放大", "Zoom Out" to "缩小", "Option" to "Option", "Shift" to "Shift",
         "Next tab, ⌘⇧] in a terminal" to "下一标签（终端里用 ⌘⇧]）",
         // what the screen costs (ScreenQuality)
