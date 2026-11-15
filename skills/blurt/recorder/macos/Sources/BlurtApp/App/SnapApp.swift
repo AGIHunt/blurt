@@ -72,6 +72,7 @@
 //                             (Capture/Dictation/DictationTestHooks.swift)
 
 import AppKit
+import UniformTypeIdentifiers
 import Carbon.HIToolbox
 import WebKit
 import BlurtCore
@@ -151,6 +152,13 @@ extension App {
             case "close": island.setOpen(false); island.closeSwitcher()
             case "switcher": island.showSwitcher()
             case "hello": island.hello()                    // the launch hello again (Peep in the ear)
+            case let a where a.hasPrefix("dropin "):        // dropin PATH|PATH…: the drawer as another app's drag over the notch shows it
+                var d = DropIn()
+                for part in a.dropFirst(7).split(separator: "|") {
+                    let u = URL(fileURLWithPath: String(part))
+                    if UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { d.images.append(u) } else { d.files.append(u) }
+                }
+                island.testExternal(d)
             case "idle on", "idle off": Island.showsAtRest = arg == "idle on"   // Settings' "Show the notch when idle"
             case "reveal": island.testReveal()              // = the pointer resting on the top edge's centre (the hot zone)
             case "transcribing", "polishing":               // dictation's working ears, held 3 s for a look
@@ -229,6 +237,41 @@ extension App {
                 emit(["event": "card_drag", "n": n, "class": landing.cls.rawValue, "kind": landing.kind?.rawValue ?? NSNull(),
                       "words_withheld": landing.wordsWithheld, "types": types])
             }
+        case "carddragmany":                            // carddragmany N,M… PASTEBOARD CLASS[+lines]: a selection's drag (v1.0.23)
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count >= 3 {
+                let ns = a[0].split(separator: ",").compactMap { Int($0) }
+                let ss = ns.compactMap { n in snapper.cards.last { $0.n == n } }
+                let cls = testDropClass(a[2].replacingOccurrences(of: "+lines", with: ""))
+                let drag = CardDrag(ss)
+                let items = drag.layout(DragLanding(cls: cls, lines: a[2].hasSuffix("+lines")))
+                let pb = NSPasteboard(name: .init(a[1]))
+                pb.clearContents()
+                pb.writeObjects(CardExport.pasteboardItems(items, rich: drag.rich, copy: false, tag: drag.tag))
+                emit(["event": "card_drag_many", "n": ns, "class": cls.rawValue, "items": items.count,
+                      "types": (pb.pasteboardItems ?? []).map { $0.types.map(\.rawValue) },
+                      "text": pb.pasteboardItems?.first?.string(forType: .string) ?? NSNull(),
+                      "notes": CardTransfer.followUpNotes(drag.cards) ?? NSNull(),
+                      "tagged": Island.shots(from: pb).map(\.n)])
+            }
+        case "takeoutmany":                             // takeoutmany N,M… CLASS: a selection dragged out and taken
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count >= 2 {
+                let ss = a[0].split(separator: ",").compactMap { n in snapper.cards.last { $0.n == Int(n) } }
+                snapper.takeOut(ss, delivered: testDropClass(a[1]), noteFile: false, landed: nil, at: nil)
+            }
+        case "drophang":                                // drophang PATH|PATH… [| TEXT]: as if dropped on the island (v1.0.23)
+            var d = DropIn()
+            for part in arg.split(separator: "|").map({ $0.trimmingCharacters(in: .whitespaces) }) where !part.isEmpty {
+                let u = URL(fileURLWithPath: part)
+                if part.hasPrefix("/"), FileManager.default.fileExists(atPath: part) {
+                    if UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { d.images.append(u) } else { d.files.append(u) }
+                } else { d.text = part }
+            }
+            snapper.hang(d)
+        case "cardshift":                               // cardshift N: a ⇧-click on card N (a range from the last one picked)
+            hanging.testShift(n: Int(arg) ?? 0)
+            emit(["event": "card_selection", "n": hanging.pickedNs])
         case "takeout":                                 // takeout N [CLASS]: as if card N was dragged out and taken
             let a = arg.split(separator: " ").map(String.init)
             if let n = Int(a.first ?? ""), let s = snapper.cards.last(where: { $0.n == n }) {
@@ -475,6 +518,16 @@ extension App {
                 if parts[0] == "raise" { w.orderFrontRegardless() }
             }
             if parts[0] == "raise" { HotkeySettings.shared.shortcutsWindow?.orderFrontRegardless() }
+        case "mainpaste":                               // mainpaste PASTEBOARD: ⌘V in the main window, from that named pasteboard
+            MainWindowController.shared.paste(from: NSPasteboard(name: .init(arg)))
+        case "dragdest":                                // dragdest X Y (screen, y from the top): the views a drag there meets
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let w = MainWindowController.shared.window, let top = NSScreen.screens.first?.frame.maxY else { return }
+            let p = w.convertPoint(fromScreen: NSPoint(x: a[0], y: top - a[1]))
+            var chain: [String] = []
+            var v = w.contentView?.superview?.hitTest(p)
+            while let x = v { chain.append("\(type(of: x)):\(x.registeredDraggedTypes.count)"); v = x.superview }
+            emit(["event": "dragdest", "chain": chain])
         case "js":                                      // js CODE: run in the main window's review canvas
             MainWindowController.shared.detail.web?.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
         case "webjs":                                   // webjs CODE: run in every blurt-app:// canvas (main window detail)

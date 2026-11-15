@@ -1059,7 +1059,7 @@ final class OverviewTile: NSView, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .outsideApplication ? [.copy, .generic] : (used ? [] : [.generic, .move])
+        context == .outsideApplication ? (shot.ref != nil ? [.copy] : [.copy, .generic]) : (used ? [] : [.generic, .move])
     }
 
     func draggingSession(_ session: NSDraggingSession, movedTo p: NSPoint) {

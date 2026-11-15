@@ -17,6 +17,9 @@ public enum DragLog {
         "overview_drag_end", "taken_drag_end", "drag_note_plan", "drag_note_activate", "drag_note_composer",
         "drag_note_focus", "drag_note_follow_up", "voice_drop_plan", "take_out", "paste_key", "paste_step",
         "paste_step_read", "paste_run", "drag_web_ax", "card_drag_hint", "item_drag_out",
+        // v1.0.23: drops from other apps (the island's catcher, the main window's list and detail)
+        "drop_watch", "drop_external", "drop_hang", "main_drop_over", "main_drop", "detail_drop_over", "detail_drop",
+        "item_drop_add", "main_paste",
     ]
 
     /// Fields that may carry what the card says.

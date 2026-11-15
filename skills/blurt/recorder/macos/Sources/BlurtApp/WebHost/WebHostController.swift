@@ -32,6 +32,7 @@
 import AppKit
 import BlurtCore
 import WebKit
+import UniformTypeIdentifiers
 
 protocol WebHostActions: AnyObject {
     func reveal(file: URL)
@@ -53,6 +54,97 @@ protocol WebHostActions: AnyObject {
     func selectionAction(_ id: String, from: NSView)
     /// × on a row of the selection summary: that item leaves the selection.
     func deselect(uid: String)
+    /// v1.0.23: another app's pictures / files dropped on the item shown — added to it (as on its row in the list)
+    func add(_ drop: DropIn, to item: ItemRow)
+    /// hanging cards dropped on the item shown
+    func add(cards: [Shot], to item: ItemRow)
+}
+
+/// The detail's web view: a drop of files, pictures or Blurt's cards on it adds them to the item shown (v1.0.23) —
+/// WebKit would otherwise navigate to a dropped file (cancelled: nothing happened) or open a dropped link in the
+/// browser. Text still goes to the page (into the field under the pointer), as before.
+final class DetailWebView: WKWebView {
+    /// the item a drop adds to (nil: none shown, or read-only)
+    var dropItem: (() -> ItemRow?)?
+    var onDrop: ((NSPasteboard, ItemRow) -> Void)?
+    private var ours = false
+    private let hint = DropHint()
+
+    private func takes(_ s: NSDraggingInfo) -> ItemRow? {
+        let pb = s.draggingPasteboard
+        guard let it = dropItem?(), !it.readOnly else { return nil }
+        if !Island.shots(from: pb).isEmpty { return it }
+        let d = DropIn.read(pb, decode: false)
+        return d.pictureCount > 0 || !d.files.isEmpty ? it : nil
+    }
+
+    private func show(_ s: NSDraggingInfo, _ it: ItemRow) -> NSDragOperation {
+        if hint.superview == nil { addSubview(hint) }
+        wantsLayer = true
+        layer?.borderWidth = 2
+        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        hint.show(T("main.drop.add_to", ItemListController.shortTitle(it)), at: convert(s.draggingLocation, from: nil), ok: true)
+        return Island.shots(from: s.draggingPasteboard).isEmpty ? .copy : .move
+    }
+
+    private func clear() { ours = false; layer?.borderWidth = 0; hint.hide() }
+
+    override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation {
+        let it = takes(s)
+        emit(["event": "detail_drop_over", "takes": it != nil, "item": dropItem?() != nil,
+              "types": (s.draggingPasteboard.types ?? []).prefix(6).map(\.rawValue)])
+        if let it { ours = true; return show(s, it) }
+        return super.draggingEntered(s)
+    }
+    override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation {
+        if ours, let it = takes(s) { return show(s, it) }
+        return super.draggingUpdated(s)
+    }
+    override func draggingExited(_ s: NSDraggingInfo?) {
+        if ours { clear(); return }
+        super.draggingExited(s)
+    }
+    override func prepareForDragOperation(_ s: NSDraggingInfo) -> Bool { ours ? true : super.prepareForDragOperation(s) }
+    override func performDragOperation(_ s: NSDraggingInfo) -> Bool {
+        guard ours, let it = takes(s) else { emit(["event": "detail_drop", "ours": false]); return super.performDragOperation(s) }
+        emit(["event": "detail_drop", "ours": true])
+        clear()
+        onDrop?(s.draggingPasteboard, it)
+        return true
+    }
+    override func concludeDragOperation(_ s: NSDraggingInfo?) { if !ours { super.concludeDragOperation(s) } }
+    /// ⌘V on the page with files or a picture on the clipboard (copied in Finder, a browser's Copy Image, a
+    /// screenshot): added to the item shown, as a drop would be. Text is the page's own paste (into its field).
+    var onPaste: ((DropIn, ItemRow) -> Void)?
+    private static let pasteSel = NSSelectorFromString("paste:")
+
+    private var pasteItem: ItemRow? {
+        guard let it = dropItem?(), !it.readOnly, DropIn.clipboardHasFiles() else { return nil }
+        return it
+    }
+
+    @objc func paste(_ sender: Any?) {
+        if let it = pasteItem {
+            let d = DropIn.clipboard()
+            if !d.images.isEmpty || !d.files.isEmpty {
+                emit(["event": "main_paste", "to": "item", "images": d.images.count, "files": d.files.count, "has_text": false])
+                onPaste?(d, it)
+                return
+            }
+        }
+        // WebKit's own paste (not in its public headers)
+        typealias Paste = @convention(c) (AnyObject, Selector, Any?) -> Void
+        guard let m = class_getInstanceMethod(WKWebView.self, DetailWebView.pasteSel) else { return }
+        unsafeBitCast(method_getImplementation(m), to: Paste.self)(self, DetailWebView.pasteSel, sender)
+    }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == DetailWebView.pasteSel, pasteItem != nil { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    // (no super: WKWebView has no draggingEnded — see ItemTableView)
+    override func draggingEnded(_ s: NSDraggingInfo) { clear() }
 }
 
 /// What a page shows: one capture session's batch, or one project's items.
@@ -72,7 +164,7 @@ enum DocScope: Equatable {
 
 final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     weak var actions: WebHostActions?
-    private(set) var web: WKWebView!
+    private(set) var web: DetailWebView!
     let overlay = DragOverlay()
     let schemes = SchemeHandler()
     let placeholder = EmptyStateView()
@@ -89,6 +181,27 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     /// The project whose missing folder the placeholder offers to find.
     private var missingProject: String?
 
+    /// The open panel for an item (v1.0.23): any files, several at once; pictures become its pictures, other files
+    /// its attachments — WebHostActions.add, the same as a drop on the page (the toast, ⌘Z).
+    private func pickFiles(for it: ItemRow) {
+        guard let w = view.window else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = T("main.drop.pick_add")
+        panel.message = T("main.drop.pick_message", ItemListController.shortTitle(it))
+        panel.beginSheetModal(for: w) { [weak self] r in
+            guard r == .OK, !panel.urls.isEmpty else { return }
+            var d = DropIn()
+            for u in panel.urls {
+                if UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { d.images.append(u) } else { d.files.append(u) }
+            }
+            emit(["event": "item_pick_add", "images": d.images.count, "files": d.files.count])
+            self?.actions?.add(d, to: it)
+        }
+    }
+
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 600))
         let cfg = WKWebViewConfiguration()
@@ -97,7 +210,15 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         cfg.mediaTypesRequiringUserActionForPlayback = []
         if #available(macOS 12.3, *) { cfg.preferences.isElementFullscreenEnabled = true }
         cfg.websiteDataStore = .nonPersistent()
-        web = WKWebView(frame: root.bounds, configuration: cfg)
+        web = DetailWebView(frame: root.bounds, configuration: cfg)
+        web.registerForDraggedTypes(web.registeredDraggedTypes + [capturePasteboardType] + DropIn.types)
+        web.dropItem = { [weak self] in self?.currentItem }
+        web.onDrop = { [weak self] pb, it in
+            let cards = Island.shots(from: pb)
+            if !cards.isEmpty { HangingCards.takenInApp = CACurrentMediaTime(); self?.actions?.add(cards: cards, to: it); return }
+            DropIn.read(pb, decode: true).resolved { got in self?.actions?.add(got, to: it) }
+        }
+        web.onPaste = { [weak self] d, it in self?.actions?.add(d, to: it) }
         web.navigationDelegate = self
         web.uiDelegate = self
         web.allowsBackForwardNavigationGestures = false
@@ -154,7 +275,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     /// The optional host methods we implement.
     var methods: [String] {
         ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff",
-         "fileUrl", "toast", "registerUndo", "focusList"]
+         "fileUrl", "toast", "registerUndo", "focusList", "addFiles"]
     }
 
     // MARK: one undo stack per window
@@ -402,6 +523,14 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     /// One host method. `reply(result, error)`; notifications reply nil.
     func call(_ method: String, _ p: [String: Any], reply: @escaping (Any?, String?) -> Void) {
         let session = schemes.session
+        /// A file the item on show refers to (its attachments, v1.0.23: the user's own PDF or video, anywhere on
+        /// disk — outside the roots `file` allows): only to show it in the Finder or Quick Look, never served to the
+        /// page. The path has to be in the item's own file.
+        func attached() -> URL? {
+            guard let s = p["path"] as? String, s.hasPrefix("/"), let it = currentItem, FileManager.default.fileExists(atPath: s),
+                  let text = try? String(contentsOf: it.fileURL, encoding: .utf8), text.contains(s) else { return nil }
+            return URL(fileURLWithPath: s)
+        }
         func file(_ k: String = "path") -> URL? {
             ((p[k] ?? p["rel"]) as? String).flatMap { SchemeHandler.locate($0, session: session) }
         }
@@ -431,10 +560,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         case "fileUrl":
             reply((p["path"] as? String).map(SchemeHandler.fileURL), nil)
         case "reveal":
-            if let f = file() { actions?.reveal(file: f) }
+            if let f = file() ?? attached() { actions?.reveal(file: f) }
             reply(nil, nil)
         case "quickLook":
-            if let f = file() { actions?.quickLook(files: [f]) }
+            if let f = file() ?? attached() { actions?.quickLook(files: [f]) }
+            reply(nil, nil)
+        case "addFiles":            // "Add image or file…" on the page: the open panel, then as a drop on the item
+            if let it = currentItem, !it.readOnly, (p["uid"] as? String) == it.uid { pickFiles(for: it) }
             reply(nil, nil)
         case "openCode":
             if let r = p["ref"] as? String { actions?.openCode(r, item: currentItem) }

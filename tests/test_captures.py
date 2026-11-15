@@ -52,6 +52,15 @@ class Heuristics(TmpCase):
                                     "said": "the logo overlaps the menu"}, "en")
         self.assertEqual((f["title"], f["quote"]), ("Header looks off", "Header looks off.\nthe logo overlaps the menu"))
 
+    def test_dropped_cards(self):
+        """v1.0.23: a file card refers to its file (attachments, no frames: its picture is only a thumbnail); a text
+        card is a voice card with no recording."""
+        f = captures.fields_for(7, {"type": "shot", "file": "shots/007.png", "ref": "/Users/me/Docs/spec v2.pdf", "text": None}, "en")
+        self.assertEqual((f["title"], f["attachments"], f["source"]["type"]), ("spec v2.pdf", ["/Users/me/Docs/spec v2.pdf"], "file"))
+        self.assertNotIn("frames", f)
+        t = captures.fields_for(8, {"type": "voice", "voice": None, "text": "https://example.com/a and check this"}, "en")
+        self.assertEqual(t["source"]["type"], "text")
+
     def test_first_sentence(self):
         f = captures.first_sentence
         self.assertEqual(f("The save button does nothing. It used to work yesterday."), "The save button does nothing")

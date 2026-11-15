@@ -496,6 +496,32 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       emit('index://changed', {});
       return r({ ok: true, uid });
     }
+    // drops on the main window (drag-drop.md §4): nothing to attach to in the browser preview
+    case 'items_attach':
+      return r({
+        ok: true,
+        before: { frames: null, attachments: null, details: null },
+        added: args.restore ? {} : { frames: args.frames ?? [], attachments: args.files ?? [], ...(args.text ? { details: args.text } : {}) },
+      });
+    case 'cards_attach':
+      return r({ ok: true, before: { frames: null, attachments: null, details: null }, added: { frames: (args.cards ?? []).map(() => '/tmp/card.png') } });
+    // Ctrl+V: the browser preview reads no system clipboard — the page's own paste data is used
+    case 'clipboard_things':
+      return Promise.reject(new Error('no native clipboard in the browser preview'));
+    case 'drag_log':
+      (window as unknown as { __dragLog?: unknown[] }).__dragLog = [...((window as unknown as { __dragLog?: unknown[] }).__dragLog ?? []), args.event];
+      return r(null);
+    case 'review_file':
+      return r(args.open ? 'opened' : 'revealed');
+    case 'items_add_files':
+      return r({ ok: true, before: { frames: null, attachments: null, details: null }, added: { frames: ['/tmp/picked.png'], attachments: ['/Users/me/Documents/spec.pdf'] } });
+    case 'cards_dragging':
+      return r(null);
+    case 'drop_paths':
+      return r((args.paths ?? []).map((p: string) => ({ path: p, dir: false })));
+    case 'cards_file':
+    case 'cards_put_back':
+      return r(null);
     case 'items_export_bundle':
       return r({ ok: true, path: `${H}/Downloads/${args.name}`, items: (args.uids ?? []).length });
     case 'pick_images':

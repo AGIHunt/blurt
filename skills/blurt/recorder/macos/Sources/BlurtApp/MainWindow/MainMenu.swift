@@ -71,7 +71,7 @@ enum MainMenu {
         rec.showHotkey(.toggleRecord)
         let sn = item(T("main.action.snap"), #selector(MainWindowController.snap))
         sn.showHotkey(.snap)
-        _ = menu(T("menu.file"), [item(T("main.new_item.menu"), #selector(MainWindowController.newItem), "n"),
+        _ = menu(T("menu.file"), [item(T("main.new_item.menu"), #selector(MainWindowController.newItem as (MainWindowController) -> () -> Void), "n"),
                                   item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(),
                                   rec, sn, .separator(),
                                   item(T("menu.rescan"), #selector(MainWindowController.mRescan)), .separator(),

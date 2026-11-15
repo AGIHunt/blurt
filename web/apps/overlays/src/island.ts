@@ -48,6 +48,8 @@ import {
   type Segment,
 } from './cards';
 import { meterBars } from './clock';
+import { extTargets, extWhatOf, hangSubtitle, pageDrop, refName, type ExtWhat } from './extdrop';
+import { CardSelection, COPY_AFTER_MS, KEEP_MS } from './selection';
 import {
   EV,
   connect,
@@ -177,6 +179,14 @@ let level = 0;
 setMascotLevel(() => Math.min(1, level * 9));
 let open = false; // expanded
 let drawer: null | 'switch' | 'drop' = null;
+/** another app's drag over the notch (island_drop_win.rs, the catcher): what it carries; the drawer offers Hang */
+let ext: ExtWhat | null = null;
+/** Linux: the island page takes another app's drop itself (WebKitGTK, over what the island draws); on Windows the
+ *  catcher window does (WebView2's drops are off for the island), so these handlers never run there */
+const linuxDrops = document.documentElement.dataset.platform === 'gnome';
+/** the cards were down at the last frame; when Rust last looked at the file cards' files again */
+let cardsWereDown = false;
+let cardsCheckedAt = -1e9;
 let confirmDiscard = false;
 let liveText: null | { text: string; partial: string; typed: boolean } = null;
 let liveTop = 0; // where the live panel sits once its text has gone in (it doesn't move any more)
@@ -347,6 +357,7 @@ function visible(): boolean {
     toastNow ||
     open ||
     drawer ||
+    ext ||
     hovering ||
     // a first card still flying in: the island it lands in is there (the landed ones only while the island may rest)
     live.some((l) => l.phase === 'fly') ||
@@ -656,6 +667,7 @@ function projectRows(): { rows: ProjectRef[]; more: boolean } {
 /** The drawer's choosable rows, in keyboard order: projects, More…, then (switcher) Unassigned and Add Project…. */
 function choices(): string[] {
   const { rows, more } = projectRows();
+  if (drawer === 'drop' && ext) return extTargets(rows.map((p) => p.id), more);
   const ids = rows.map((p) => `project:${p.id}`);
   if (more) ids.push('more');
   if (drawer === 'switch') ids.push(...(pickFor ? ['none'] : ['none', 'add']));
@@ -669,6 +681,11 @@ function drawerRows(): string {
   const sel = (id: string) => (drawer === 'switch' && ids[selIx] === id ? ' sel' : '');
   const { rows, more } = projectRows();
   const items: string[] = [];
+  // another app's things: first of all, hang them under the island (what letting go on the notch does too); the
+  // projects below file them straight in
+  if (drawer === 'drop' && ext) {
+    items.push(`<div class="row target hangrow" data-drop="hang"><span class="lead">${ic('cards', 15)}</span><span class="txt"><span class="title">${esc(t('island.ext.hang'))}</span><span class="sub">${esc(hangSubtitle(ext, { t, plural }))}</span></span></div>`);
+  }
   for (const p of rows) {
     const id = `project:${p.id}`;
     const checked = drawer === 'switch' && cur === p.id;
@@ -679,7 +696,9 @@ function drawerRows(): string {
       <span class="lead">${placeGlyph(p)}</span><span class="txt"><span class="title">${esc(p.name)}</span>${gone ? `<span class="sub">${esc(t('island.drawer.missing_sub'))}</span>` : ''}</span>
       ${checked ? ic('check', 14, 'tick') : `<span class="key">${esc(p.key)}</span>`}</button>`);
   }
-  if (more) items.push(`<button class="row${sel('more')}" data-c="more"><span class="lead">${ic('more', 15)}</span><span class="txt"><span class="title">${esc(t('island.drawer.more'))}</span></span></button>`);
+  // (under another app's drag More… takes nothing: it says so to the catcher, `data-drop="more"`, so a drop there
+  // doesn't land in the row last passed over)
+  if (more) items.push(`<button class="row${sel('more')}" data-c="more"${drawer === 'drop' && ext ? ' data-drop="more"' : ''}><span class="lead">${ic('more', 15)}</span><span class="txt"><span class="title">${esc(t('island.drawer.more'))}</span></span></button>`);
   if (!S.projects.length) items.push(`<div class="keys">${esc(t('island.drawer.no_projects'))}</div>`);
   if (drawer === 'switch') {
     // Unassigned comes last, under a line, in every project picker; then Add Project…
@@ -691,7 +710,8 @@ function drawerRows(): string {
   } else {
     items.push('<div class="sep"></div>');
     items.push(`<div class="row target" data-drop="inbox" data-tip="${esc(t('island.drawer.inbox_sub'))}"><span class="lead dim">${ringGlyph()}</span><span class="txt"><span class="title">${esc(t('island.unassigned'))}</span></span></div>`);
-    items.push(`<div class="row target" data-drop="organize"><span class="lead mint">${ic('spark', 15)}</span><span class="txt"><span class="title">${esc(t('island.organize'))}</span><span class="sub">${esc(plural('island.drawer.organize_sub', dropCount()))}</span></span></div>`);
+    // no Organize for another app's things: they go where the user points
+    if (!ext) items.push(`<div class="row target" data-drop="organize"><span class="lead mint">${ic('spark', 15)}</span><span class="txt"><span class="title">${esc(t('island.organize'))}</span><span class="sub">${esc(plural('island.drawer.organize_sub', dropCount()))}</span></span></div>`);
   }
   return items.join('');
 }
@@ -702,7 +722,7 @@ function drawerHtml() {
     return `<div class="dhead"><label class="filter">${ic('search', 15)}<input type="text" spellcheck="false" autocomplete="off" placeholder="${esc(t('island.drawer.filter'))}" value="${esc(filter)}" aria-label="${esc(t('island.drawer.filter'))}"></label>
       <span class="dtitle">${esc(t(pickFor?.title ?? 'island.drawer.switch_title'))}</span></div><div class="list" role="listbox">${drawerRows()}</div>`;
   }
-  return `<div class="dhead"><span class="dtitle left">${esc(t('island.drawer.drop_title'))}</span></div><div class="list">${drawerRows()}</div>`;
+  return `<div class="dhead"><span class="dtitle left">${esc(t(ext ? 'island.ext.title' : 'island.drawer.drop_title'))}</span></div><div class="list">${drawerRows()}</div>`;
 }
 
 const dropCount = () => (dragging ? withSelection(dragging).length : cardCount());
@@ -872,7 +892,9 @@ function size(expanded: boolean) {
     }
   } else {
     w = restingW;
-    h = PILL_H;
+    // another app's drag on the notch: a little taller and wider (the Mac's notch grows): here it can go
+    h = ext ? PILL_H + 6 : PILL_H;
+    if (ext) w = Math.max(w, PEEK_W);
   }
   if (!S.dictation) takeLineW = 0;
   island.style.width = `${w}px`;
@@ -1250,7 +1272,10 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
     case 'taken': {
       // what went in (the Mac's DragReceipt): the picture, the picture and its note, the .md too, the note copied
       const o = op as Extract<IslandOp, { kind: 'taken' }>;
-      const text = t(`island.toast.taken_${o.what ?? 'picture'}`);
+      const n = o.cards?.length ?? 1;
+      // several cards (a selection dragged as one): how many, then what came with them
+      const tail = o.what === 'paths' ? t('island.toast.taken_paths_tail') : o.what === 'note' ? t('island.toast.notes_copied') : '';
+      const text = n > 1 ? [plural('island.toast.taken_many', n), tail].filter(Boolean).join(' · ') : t(`island.toast.taken_${o.what ?? 'picture'}`);
       return postToast({ key: 'taken', text, mark: 'check', overOpen: true, ms: UNDO_MS, action: { a: 'card.putback', label: 'island.undo', extra: { cards: o.cards ?? [] } } });
     }
     case 'line':
@@ -1470,29 +1495,60 @@ function missingToast(p: ProjectRef) {
   postToast({ key: 'missing-folder', text: t('island.missing.card_kept', { name: p.name }), mark: 'warning', overOpen: true, ms: 8000, action: { a: 'project.locate', label: 'island.locate', extra: { id: p.id } } });
 }
 
-// --- the Ctrl-click selection (the Mac's ⌘-click): copied as one, moved as one; a plain click or the cards going up
-// ends it
-const selection = new Set<string>();
+// --- the selection (the Mac's ⌘-click; drag-drop.md §2, rules in selection.ts): Ctrl-click toggles, Shift-click adds
+// a run; the order picked is each card's number and the order the cards leave in. Copied once, 0.6 s after the last
+// change; a plain click, a drag out, filing, or a minute with the cards up ends it.
+const selection = new CardSelection();
 let selCopiedUntil = 0;
-function withSelection(l: Live): Live[] {
-  if (!selection.has(l.key)) return [l];
-  return hanging().filter((x) => selection.has(x.key)).reverse(); // newest first, as the row
+let selCopyTimer = 0;
+let selKeepTimer = 0;
+const livesOf = (keys: string[]) => keys.map((k) => live.find((x) => x.key === k && x.phase !== 'fall' && x.phase !== 'pull')).filter((x): x is Live => !!x);
+/** The cards a gesture on `l` acts on: the selection, in its order, when `l` is picked; else `l` alone. */
+const withSelection = (l: Live): Live[] => livesOf(selection.group(l.key));
+const pickedLives = (): Live[] => livesOf(selection.order());
+/** Each card's ring and number (1, 2, 3: its place in the selection). */
+function paintPicks() {
+  selection.retain(hanging().map((x) => x.key));
+  for (const x of live) {
+    const n = selection.badge(x.key);
+    x.face.classList.toggle('picked', n > 0);
+    if (n) x.face.dataset.pick = String(n);
+    else delete x.face.dataset.pick;
+  }
+}
+function selectionChanged() {
+  paintPicks();
+  if (panel?.seg === 'hanging') renderPanel();
+  clearTimeout(selCopyTimer);
+  if (selection.size) selCopyTimer = window.setTimeout(copySelection, COPY_AFTER_MS);
+  kick();
 }
 function toggleSelected(l: Live) {
-  if (selection.has(l.key)) selection.delete(l.key);
-  else selection.add(l.key);
-  for (const x of live) x.face.classList.toggle('picked', selection.has(x.key));
-  if (selection.size) {
-    const cards = hanging().filter((x) => selection.has(x.key)).reverse().map((x) => cardRef(x.card));
-    void host.emit(EV.action, { action: 'card.copy_all', cards });
-    selCopiedUntil = performance.now() + 2600;
-  }
+  selection.toggle(l.key, performance.now());
+  selectionChanged();
+}
+/** Shift-click: from the last card clicked to this one, oldest first (hanging() is oldest first). */
+function extendSelection(l: Live) {
+  selection.extend(l.key, hanging().map((x) => x.key), performance.now());
+  selectionChanged();
+}
+/** The selection on the clipboard as one, in its order (island.rs copy_cards: pictures and notes; the plain text is a
+ *  terminal's `"<path>" <note>` line per card). */
+function copySelection() {
+  if (!selection.copyDue(performance.now())) return;
+  selection.copied();
+  const cards = pickedLives().map((x) => cardRef(x.card));
+  if (!cards.length) return;
+  void host.emit(EV.action, { action: 'card.copy_all', cards });
+  selCopiedUntil = performance.now() + 2600;
   kick();
 }
 function clearSelection() {
+  clearTimeout(selCopyTimer);
+  clearTimeout(selKeepTimer);
   if (!selection.size) return;
   selection.clear();
-  for (const x of live) x.face.classList.remove('picked');
+  paintPicks();
   kick();
 }
 
@@ -1627,11 +1683,17 @@ function showTip(l: Live) {
 
 function faceHtml(l: Live) {
   const c = l.card;
+  if (c.textCard) return `<div class="face voice text"><span class="cap">${esc(c.text ?? '')}</span></div>`; // dropped text: no mic
   if (isVoice(c)) {
     // a voice card is a text card: up to two lines of its words and a small mic mark
     return `<div class="face voice">${ic('mic', 13, 'vmic')}<span class="cap">${esc(c.text || t('island.card.transcribing'))}</span></div>`;
   }
-  return `<div class="face shot${l.fills ? '' : ' whole'}"><img alt="" draggable="false" crossorigin="anonymous" src="${esc(c.src)}">${c.text ? `<span class="band">${esc(c.text.replace(/\s+/g, ' '))}</span>` : ''}</div>`;
+  // a file card's face is its thumbnail with its name along the bottom (Rust draws it): its note goes along the top
+  // a file card: its name on the face's dark band where Rust couldn't draw it (Linux: no thumbnails or text of the
+  // system's there); "Original file not found" once its file moved or was deleted (it then hands nothing over)
+  const name = c.ref && linuxDrops ? `<span class="fname">${esc(refName(c.ref))}</span>` : '';
+  const gone = c.ref && c.missing ? `<span class="gone">${esc(t('island.card.missing'))}</span>` : '';
+  return `<div class="face shot${l.fills ? '' : ' whole'}${c.ref ? ' file' : ''}${c.missing ? ' missing' : ''}"><img alt="" draggable="false" crossorigin="anonymous" src="${esc(c.src)}">${name}${gone}${c.text ? `<span class="band">${esc(c.text.replace(/\s+/g, ' '))}</span>` : ''}</div>`;
 }
 
 function measure(l: Live) {
@@ -1696,6 +1758,7 @@ function makeCard(card: Card, from: 'fly' | 'still'): Live {
     if ((e.target as HTMLElement).closest('.x')) return;
     if (l.justDragged) return void (l.justDragged = false);
     if (e.ctrlKey || e.metaKey) return toggleSelected(l); // Ctrl-click: into (or out of) the selection, copied as one
+    if (e.shiftKey) return extendSelection(l); // Shift-click: the run from the last card clicked
     clearSelection();
     // a plain click copies once the double-click interval has passed; a double-click edits the note, never copying first
     if (clicks.click(l.key, e.detail, performance.now(), DOUBLE_CLICK_MS) === 'edit') {
@@ -1721,7 +1784,12 @@ function makeCard(card: Card, from: 'fly' | 'still'): Live {
 function setFace(l: Live) {
   l.face.innerHTML = `${faceHtml(l)}<button class="x" aria-label="${esc(t('island.card.delete'))}">${ic('x', 10)}</button>`;
   // (no native tooltip: its white system box isn't the island's — the note is the card's label for assistive tech)
-  l.face.setAttribute('aria-label', l.card.text || (isVoice(l.card) ? t('island.cards.voice') : t('island.card.snap')));
+  l.face.setAttribute(
+    'aria-label',
+    [l.card.text || (l.card.ref ? t('island.card.file', { name: refName(l.card.ref) }) : isVoice(l.card) ? t('island.cards.voice') : t('island.card.snap')), l.card.missing ? t('island.card.missing') : '']
+      .filter(Boolean)
+      .join(' · '),
+  );
   l.face.querySelector('.x')!.addEventListener('click', (e) => {
     e.stopPropagation();
     deleteCards([l]);
@@ -1739,7 +1807,7 @@ function setCards(cards: Card[]) {
   for (const c of cards.slice(-MAX_CARDS_KEPT)) {
     const l = live.find((x) => x.key === keyOf(c) && x.phase !== 'fall' && x.phase !== 'pull');
     if (l) {
-      if (l.card.text !== c.text || l.card.src !== c.src) {
+      if (l.card.text !== c.text || l.card.src !== c.src || !!l.card.missing !== !!c.missing) {
         l.card = c;
         setFace(l);
       }
@@ -1779,6 +1847,18 @@ function addCard(card: Card, pull: boolean, from?: CssRect | null) {
   if (pull) setTimeout(() => drop(l, 'pull'), reduceMotion() ? 200 : 650); // caught, then hauled into the island
   showFirstHint();
   render();
+}
+
+/** One thing dropped on the island and hung (drag-drop.md §3): its note is offered — the bubble opens beside the card
+ *  once it has landed, without taking the keyboard (the user is often still in the app they dragged from); it takes
+ *  it when the pointer comes onto it, and folds away untouched after 6 s (note.ts `passive`). Not over a note that is
+ *  up, a drag, the Cards panel or a recording. */
+function offerNote(card: Card) {
+  setTimeout(() => {
+    const l = live.find((x) => x.key === keyOf(card) && (x.phase === 'hang' || x.phase === 'fly'));
+    if (!l || editing || dragging || panel || S.recording || busyCapture) return;
+    void host.emit(EV.action, { action: 'card.note', ...cardRef(card), rect: faceRect(card), passive: true });
+  }, reduceMotion() ? 200 : 600);
 }
 
 /** A card leaves: pulled into the island, falling (deleted), or just gone (filed elsewhere, taken by a drag). */
@@ -1970,7 +2050,8 @@ function startDrag(l: Live, e: PointerEvent) {
     // out of the island's zone and off the cards' band: the system's own drag takes the picture on to another app
     const band = islandBottom() + BELOW + 84 + 30;
     const offRow = ev.clientY > band || ev.clientX < row.span[0] - 24 || ev.clientX > row.span[1] + 24;
-    if ((l.card.file || (isVoice(l.card) && l.card.text)) && !near && offRow && !targetAt(ev.clientX, ev.clientY)) {
+    const leaves = (x: Live) => !!(x.card.file || (isVoice(x.card) && x.card.text));
+    if (leaves(l) && !near && offRow && !targetAt(ev.clientX, ev.clientY)) {
       l.face.releasePointerCapture(ev.pointerId);
       end();
       l.drag = undefined;
@@ -1978,17 +2059,29 @@ function startDrag(l: Live, e: PointerEvent) {
       stage.classList.remove('dragging');
       drawer = null;
       lastBody = '';
-      l.phase = 'out'; // it went with the drag: shown again only if the drop is cancelled
-      l.el.classList.remove('dragging');
-      l.el.style.visibility = 'hidden';
-      outTimer = window.setTimeout(() => dragOut({ ...cardRef(l.card), result: 'cancel' }), 60000);
+      // a picked card takes the whole selection with it, in its order (drag-drop.md §2); any other card goes alone
+      const group = [l, ...withSelection(l).filter((x) => x !== l && x.phase === 'hang' && leaves(x))];
+      const ordered = selection.has(l.key) ? withSelection(l).filter((x) => group.includes(x)) : group;
+      for (const x of group) {
+        x.phase = 'out'; // it went with the drag: shown again only if the drop is cancelled
+        x.el.classList.remove('dragging');
+        x.el.style.visibility = 'hidden';
+      }
+      const refs = ordered.map((x) => cardRef(x.card));
+      outTimer = window.setTimeout(() => dragOut({ ...cardRef(l.card), cards: refs, result: 'cancel' }), 60000);
       render();
-      // "Picture with the note under it": the dragged picture is a copy with the note in a strip under it
-      const caption = S.cardPrefs?.drag === 'caption' && l.card.text ? captioned(l) : null;
+      // "Picture with the note under it": the dragged picture is a copy with the note in a strip under it (one card)
+      const caption = refs.length === 1 && S.cardPrefs?.drag === 'caption' && l.card.text ? captioned(l) : null;
       // the window stops taking the mouse first (it took all of it while the card was dragged inside): else, under
       // the pointer everywhere, the island itself is the drop target the system's drag finds, and nothing else gets it
       reportHits(true);
-      void host.emit(EV.action, { action: 'card.dragout', ...cardRef(l.card), ...(caption ? { caption } : {}), ...dragImage(l.card, l.face, d) });
+      void host.emit(EV.action, {
+        action: 'card.dragout',
+        ...cardRef(l.card),
+        ...(refs.length > 1 ? { cards: refs } : {}),
+        ...(caption ? { caption } : {}),
+        ...dragImage(l.card, l.face, d, refs.length),
+      });
       return;
     }
     highlight(ev.clientX, ev.clientY);
@@ -2104,12 +2197,17 @@ function backOnThread(l: Live) {
 let outTimer = 0;
 /** The system's drag ended (island.rs `card.dragout`): dropped in another app = taken (Rust files it as taken and
  *  says so), else it comes back to its thread. */
-function dragOut(o: { n: number; session?: string | null; result: string }) {
+function dragOut(o: { n: number; session?: string | null; cards?: { n: number; session?: string | null }[]; result: string }) {
   clearTimeout(outTimer);
-  const l = live.find((x) => x.phase === 'out' && x.card.n === o.n && (x.card.session ?? null) === (o.session ?? null));
-  if (!l) return;
-  if (o.result === 'dropped') drop(l, 'gone');
-  else backOnThread(l);
+  const refs = o.cards?.length ? o.cards : [o];
+  const ls = live.filter((x) => x.phase === 'out' && refs.some((r) => x.card.n === r.n && (x.card.session ?? null) === (r.session ?? null)));
+  if (!ls.length) return;
+  for (const l of ls) {
+    if (o.result === 'dropped') drop(l, 'gone');
+    else backOnThread(l);
+  }
+  // all of them went: the selection is over (cancelled, it stays for another try)
+  if (o.result === 'dropped') clearSelection();
   render();
 }
 
@@ -2121,6 +2219,147 @@ function targetAt(x: number, y: number): string | null {
 function highlight(x: number, y: number) {
   const hit = targetAt(x, y);
   for (const el of island.querySelectorAll<HTMLElement>('[data-drop]')) el.classList.toggle('over', el.dataset.drop === hit);
+}
+
+// --- another app's drag over the notch (drag-drop.md §3). The catcher window (island_drop_win.rs) takes the drag —
+// this page never does — and tells it here: `enter` what it carries (the island grows a little), `open` after 250 ms
+// (the drawer: Hang, the projects, Unassigned), `over` the pointer (CSS px) — the row under it lights up and goes back
+// as `ext.row`, which the drop lands on — and `close` / `end`.
+let extRow: string | null = null;
+function extDrag(op: Extract<IslandOp, { op: 'ext' }>) {
+  switch (op.phase) {
+    case 'enter':
+      ext = op.what ?? null;
+      extRow = null;
+      break;
+    case 'open':
+      if (!ext || dragging) return;
+      if (drawer === 'switch') closeSwitcher();
+      drawer = 'drop';
+      filter = '';
+      showAll = false;
+      break;
+    case 'over': {
+      if (drawer !== 'drop' || !ext || op.x == null || op.y == null) return;
+      highlight(op.x, op.y);
+      // only a row: between rows (the drawer's head, a line) the last one stays, as on the Mac
+      const row = targetAt(op.x, op.y);
+      if (row && row !== extRow) {
+        extRow = row;
+        void host.emit(EV.action, { action: 'ext.row', row });
+      }
+      return;
+    }
+    case 'close':
+    case 'end':
+      if (!ext && drawer !== 'drop') return;
+      ext = null;
+      extRow = null;
+      if (drawer === 'drop' && !dragging) drawer = null;
+      break;
+  }
+  render();
+  kick();
+}
+
+// --- Linux: another app's drag over what the island draws (drag-drop.md §3, linux-port.md "Drag and drop"). There is
+// no catcher (XWayland gives no global pointer to see a drag coming): the island's own window gets the drag where its
+// input region is — the notch, the strip at the top (unless the island hides at rest), the cards while they are down
+// — and this page plays the catcher's part with the same ops: enter (what it carries), open after 250 ms (the
+// drawer), over (the row under the pointer), close 300 ms after it left, end. While it is on, the island and its
+// drawer (and a margin) take the pointer, so the drag can go down the drawer's rows. A drop reads what the page can
+// (extdrop.ts pageDrop) and Rust hangs or files it (`ext.drop`). Never while a card of ours is being dragged out.
+let lxOpen = 0;
+let lxLeave = 0;
+function lxOff() {
+  clearTimeout(lxOpen);
+  clearTimeout(lxLeave);
+  lxOpen = lxLeave = 0;
+}
+function lxEnd(why: string) {
+  lxOff();
+  if (!ext) return;
+  void host.emit(EV.action, { action: 'ext.log', log: { event: 'drop_watch', via: 'page', phase: why } });
+  extDrag({ op: 'ext', phase: 'end' });
+  reportHits(true);
+}
+const ourDragOut = () => !!dragging || live.some((l) => l.phase === 'out');
+if (linuxDrops) {
+  addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer || ourDragOut()) return;
+    const what = extWhatOf([...e.dataTransfer.types], [...e.dataTransfer.items].map((i) => ({ kind: i.kind, type: i.type })));
+    if (!what) return;
+    e.preventDefault();
+    clearTimeout(lxLeave);
+    lxLeave = 0;
+    if (ext) return; // moving between the page's own elements
+    void host.emit(EV.action, { action: 'ext.log', log: { event: 'drop_watch', via: 'page', phase: 'enter', what } });
+    extDrag({ op: 'ext', phase: 'enter', what });
+    reportHits(true);
+    lxOpen = window.setTimeout(() => {
+      extDrag({ op: 'ext', phase: 'open' });
+      reportHits(true);
+    }, 250);
+  });
+  addEventListener('dragover', (e) => {
+    if (!ext || !e.dataTransfer) return;
+    e.preventDefault();
+    clearTimeout(lxLeave);
+    lxLeave = 0;
+    extDrag({ op: 'ext', phase: 'over', x: e.clientX, y: e.clientY });
+    // More… takes nothing (as the catcher answers it)
+    e.dataTransfer.dropEffect = drawer === 'drop' && targetAt(e.clientX, e.clientY) === 'more' ? 'none' : 'copy';
+  });
+  addEventListener('dragleave', (e) => {
+    if (!ext || e.relatedTarget) return; // still over the page
+    clearTimeout(lxLeave);
+    lxLeave = window.setTimeout(() => lxEnd('left'), 300);
+  });
+  addEventListener('drop', (e) => {
+    if (!ext || !e.dataTransfer) return;
+    e.preventDefault();
+    const dt = e.dataTransfer;
+    // where: the drawer's row under the pointer (or the last one lit), else the notch itself = hang
+    const row = drawer === 'drop' ? (targetAt(e.clientX, e.clientY) ?? extRow) : null;
+    const files = [...dt.files];
+    const got = pageDrop(files.map((f) => ({ name: f.name, type: f.type })), dt.getData('text/uri-list'), dt.getData('text/plain'));
+    lxEnd('drop');
+    if (row === 'more') return;
+    void Promise.all(
+      got.bytes.map(
+        (i) =>
+          new Promise<{ name: string; data: string } | null>((done) => {
+            const r = new FileReader();
+            r.onload = () => done({ name: files[i].name, data: String(r.result) });
+            r.onerror = () => done(null);
+            r.readAsDataURL(files[i]);
+          }),
+      ),
+    ).then((pictures) => {
+      void host.emit(EV.action, { action: 'ext.drop', row, paths: got.paths, pictures: pictures.filter(Boolean), text: got.text });
+    });
+  });
+}
+
+/** Where the notch is — where it would be, while it hides at rest — and the open drawer, for the drop catcher (Rust):
+ *  it sits over them only while another app drags something near. Sent when they change: at once while another app's
+ *  drag is on (the catcher follows the drawer opening), else once things settle (not every frame of an animation). */
+let lastZone = '';
+let zoneTimer = 0;
+function reportZone() {
+  const r = island.getBoundingClientRect();
+  const shown = island.classList.contains('shown');
+  const w = Math.max(r.width, PILL_MIN_W);
+  const notch = shown ? { x: r.left, y: r.top, w: r.width, h: r.height } : { x: innerWidth / 2 - w / 2, y: TOP, w, h: PILL_H };
+  const round = (b: { x: number; y: number; w: number; h: number }) => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
+  const zone = { notch: round(notch), drawer: drawer === 'drop' && ext ? round({ x: r.left, y: r.top, w: r.width, h: r.height }) : null };
+  const z = JSON.stringify(zone);
+  if (z === lastZone || !r.width) return;
+  lastZone = z;
+  clearTimeout(zoneTimer);
+  const send = () => void host.emit(EV.action, { action: 'drop.zone', ...zone });
+  if (ext) send();
+  else zoneTimer = window.setTimeout(send, 150);
 }
 
 // --- the frame loop (runs only while something moves): one chain at a time — an animation frame, or a timer when
@@ -2272,12 +2511,26 @@ function step(now: number) {
     lip.style.width = `${(2 * half).toFixed(1)}px`;
   }
   rowMask();
+  // the cards coming down: a file card whose file moved or was deleted since says so (Rust looks again; at most
+  // every 5 s)
+  if (down > 0.5 && !cardsWereDown && live.some((l) => l.card.ref) && now - cardsCheckedAt > 5000) {
+    cardsCheckedAt = now;
+    void host.emit(EV.action, { action: 'cards.check' });
+  }
+  cardsWereDown = down > 0.5;
   if (down < 0.02 && scrollX && !dragging) {
     scrollX = 0; // next time they come down: the newest first
     layoutCards(true);
   }
-  // the selection: a ring on each card, "✓ 2 selected · Copied" under the row; it ends as the cards go up
-  if (selection.size && down < 0.02) clearSelection();
+  // the selection: a ring and a number on each card, "✓ 2 selected · Copied" under the row; it outlives the cards
+  // going up by a minute (picking 1, 3, 5, 7 along a long row runs into that), then ends
+  if (selection.size) {
+    if (selection.cardsUp(down < 0.02, now)) {
+      clearTimeout(selKeepTimer);
+      selKeepTimer = window.setTimeout(kick, KEEP_MS + 50);
+    }
+    if (selection.expired(now)) clearSelection();
+  }
   // a plain click's copy: "✓ Copied" under that card, 1.2 s (the same chip)
   const copiedL = copiedAt && now < copiedAt.until && !selection.size ? (hanging().find((l) => l.key === copiedAt!.key) ?? null) : null;
   if (copiedAt && !copiedL && now >= copiedAt.until) copiedAt = null;
@@ -2376,6 +2629,12 @@ function reportHits(force = false) {
   if (dragging) rects.push({ x: 0, y: 0, w: innerWidth, h: innerHeight });
   else {
     if (island.classList.contains('shown')) add(island);
+    // Linux: another app's drag is on the island — the island, its drawer and a margin keep it (the catcher's area)
+    if (linuxDrops && ext) {
+      const b = island.getBoundingClientRect();
+      const m = 24;
+      if (b.width) rects.push({ x: Math.floor(b.left - m), y: Math.max(0, Math.floor(b.top - m)), w: Math.ceil(b.width + 2 * m), h: Math.ceil(b.height + 2 * m) });
+    }
     // the strip at the top centre takes the pointer: pushed against the top edge it opens the island, even with
     // nothing to show (else an empty island could never be found). Not while the island stays hidden at rest
     // (app.island_idle off): there the top edge is the apps' own — a maximized browser's tabs took these clicks. The
@@ -2398,6 +2657,7 @@ function reportHits(force = false) {
   // nothing showing: the window may follow the pointer to another screen (Island.swift poll)
   const idle =
     !open && !drawer && !toastNow && !S.recording && !S.voice && !S.dictation && !dragging && menuEl.hidden && panelEl.hidden && previewEl.hidden;
+  reportZone();
   const s = JSON.stringify(rects) + idle;
   if (s !== lastHits || force) {
     lastHits = s;
@@ -2438,7 +2698,7 @@ function agoText(sec: number): string {
 const timeOf = (wall?: number | null) => (wall ? new Date(wall * 1000).toLocaleTimeString(i18n.lang, { hour: '2-digit', minute: '2-digit' }) : '');
 /** "Snap · 19:03" / "Voice note · 19:03": what a card is and when, where it has no words of its own. */
 const cardName = (c: HCard) => {
-  const what = isVoice(c) ? t('island.cards.voice') : t('island.card.snap');
+  const what = c.ref ? t('island.card.file', { name: refName(c.ref) }) : c.textCard ? t('island.card.text') : isVoice(c) ? t('island.cards.voice') : t('island.card.snap');
   const at = timeOf(c.wall);
   return at ? `${what} · ${at}` : what;
 };
@@ -2502,12 +2762,16 @@ function tileHtml(c: HCard, i: number, seg: Segment) {
   const f = panel!.focus === i;
   const pointed = panel!.pointed === i;
   const pic = isVoice(c)
-    ? `<div class="tpic voice">${ic('mic', 13, 'vmic')}<span>${esc(c.text || t('island.card.transcribing'))}</span></div>`
+    ? `<div class="tpic voice">${c.textCard ? '' : ic('mic', 13, 'vmic')}<span>${esc(c.text || t('island.card.transcribing'))}</span></div>`
     : `<div class="tpic"><img alt="" draggable="false" crossorigin="anonymous" src="${esc(c.src)}"></div>`;
-  const note = !isVoice(c) ? `<div class="tnote${c.text ? '' : ' quiet'}">${esc(c.text || cardName(c))}</div>` : '';
+  const note = !isVoice(c)
+    ? `<div class="tnote${c.text && !c.missing ? '' : ' quiet'}">${esc(c.missing ? t('island.card.missing') : c.text || cardName(c))}</div>`
+    : '';
+  // Current: the card's place in the selection (1, 2, 3), as on the row
+  const pick = seg === 'hanging' ? selection.badge(keyOf(c)) : 0;
   const left = seg === 'used' && c.taken ? daysLeft(c.taken, nowS()) : 9;
   const last = left <= 1 ? `<div class="tlast">${esc(plural('island.taken.days_left', left))}</div>` : '';
-  return `<div class="ptile${f ? ' focus' : ''}${pointed ? ' hover' : ''}" data-i="${i}" role="button" aria-label="${esc(c.text || cardName(c))}">${pic}
+  return `<div class="ptile${f ? ' focus' : ''}${pointed ? ' hover' : ''}${pick ? ' picked' : ''}"${pick ? ` data-pick="${pick}"` : ''} data-i="${i}" role="button" aria-selected="${pick > 0}" aria-label="${esc(c.text || cardName(c))}">${pic}
     <div class="tacts"><button data-t="preview" aria-label="${esc(t('island.card.preview'))}">${ic('eye', 13)}</button><button data-t="menu" aria-label="${esc(t('island.taken.more'))}">${ic('more', 13)}</button><button data-t="copy" class="tcopy">${esc(t('island.taken.copy'))}</button></div>
     ${note}${last}</div>`;
 }
@@ -2543,13 +2807,23 @@ function renderPanel() {
     ? `<span class="fnote">${esc(fc.text || cardName(fc))}</span>${when ? `<span class="fwhen">${esc(when)}</span>` : ''}`
     : `<span class="fhint">${esc(t(seg === 'used' ? 'island.cards.history_hint' : 'island.cards.overview_hint'))}</span>`;
   const keys = cards.length
-    ? keysHtml([
-        [['←', '→'], t('island.keys.choose')],
-        [['Enter'], t('island.keys.copy')],
-        [['Space'], t('island.keys.preview')],
-        [['Del'], t('island.keys.delete')],
-        [['Esc'], t('island.keys.close')],
-      ])
+    ? keysHtml(
+        seg === 'hanging'
+          ? [
+              [['←', '→'], t('island.keys.choose')],
+              [['Space'], t('island.keys.select')],
+              [['Enter'], t('island.keys.copy')],
+              [['Del'], t('island.keys.delete')],
+              [['Esc'], t('island.keys.close')],
+            ]
+          : [
+              [['←', '→'], t('island.keys.choose')],
+              [['Enter'], t('island.keys.copy')],
+              [['Space'], t('island.keys.preview')],
+              [['Del'], t('island.keys.delete')],
+              [['Esc'], t('island.keys.close')],
+            ],
+      )
     : '';
   panelEl.style.width = `${w}px`;
   panelEl.innerHTML = `${head}${grid}<div class="pfoot"><div class="pfl">${foot}</div><div class="pkeys">${keys}</div></div>`;
@@ -2708,8 +2982,44 @@ function panelKeyDown(e: KeyboardEvent): boolean {
   }
   const cards = panelCards(panel.seg);
   const cols = gridColumns(cards.length || 1);
-  const a = CardsPanelRules.action(k, panel.seg, panel.focus, cards.length, cols, panel.pointed);
+  const a = CardsPanelRules.action(k, panel.seg, panel.focus, cards.length, cols, panel.pointed, selection.size);
+  // the selection keys act on the hanging card behind a tile (Current only: the row's own selection, its numbers)
+  const keyOfTile = (i: number) => (cards[i] ? keyOf(cards[i]) : null);
+  const now = performance.now();
   switch (a.a) {
+    case 'toggle': {
+      const key = keyOfTile(a.i);
+      if (key) selection.toggle(key, now);
+      panel.focus = a.i;
+      selectionChanged();
+      break;
+    }
+    case 'extend': {
+      // nothing picked yet: the card the keyboard is on comes first, as a Shift-click from it would
+      const from = a.from === null ? null : keyOfTile(a.from);
+      if (from && !selection.size) selection.add(from, now);
+      const key = keyOfTile(a.i);
+      if (key) selection.add(key, now);
+      panel.focus = a.i;
+      selectionChanged();
+      panelEl.querySelector('.ptile.focus')?.scrollIntoView({ block: 'nearest' });
+      break;
+    }
+    case 'all':
+      selection.pickAll(hanging().map((x) => x.key), now);
+      selectionChanged();
+      break;
+    case 'copySelection': {
+      // the selection, in the order picked, at once (not 0.6 s later), and the keyboard back where the user was
+      clearTimeout(selCopyTimer);
+      selection.copied();
+      const refs = pickedLives().map((x) => cardRef(x.card));
+      if (refs.length) void host.emit(EV.action, { action: 'card.copy_all', cards: refs });
+      earMoment(t('island.cards.copied'));
+      selCopiedUntil = performance.now() + 2600;
+      closePanel();
+      break;
+    }
     case 'segment':
       switchSeg(a.seg);
       break;
@@ -2870,7 +3180,9 @@ panelEl.addEventListener('pointerdown', (e) => {
 
 /** The card as the island draws it, for the system's drag image: a PNG of its face at the screen's scale, and where
  *  the pointer holds it (physical px). */
-function dragImage(c: Card, el: HTMLElement, at: { ox: number; oy: number }): { image?: string; ox: number; oy: number } {
+/** The card as the drag image (a PNG the system draws under the pointer); `count` > 1: a group, its number in a dark
+ *  disc in the corner (Windows draws no count badge of its own for one data object). */
+function dragImage(c: Card, el: HTMLElement, at: { ox: number; oy: number }, count = 1): { image?: string; ox: number; oy: number } {
   const dpr = devicePixelRatio || 1;
   const r = el.getBoundingClientRect();
   const w = Math.round(Math.min(r.width, 240));
@@ -2912,6 +3224,18 @@ function dragImage(c: Card, el: HTMLElement, at: { ox: number; oy: number }): { 
         } else line += ch;
       }
       if (y <= h - 18) g.fillText(line, 11, y);
+    }
+    if (count > 1) {
+      const label = String(count);
+      g.font = `700 12px "Segoe UI", system-ui, sans-serif`;
+      const rw = Math.max(22, g.measureText(label).width + 12);
+      round(w - rw - 4, 4, rw, 22, 11);
+      g.fillStyle = 'rgba(20, 20, 22, 0.88)';
+      g.fill();
+      g.fillStyle = '#fff';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(label, w - 4 - rw / 2, 15.5);
     }
     return { image: cv.toDataURL('image/png'), ox: Math.round(at.ox * dpr), oy: Math.round(at.oy * dpr) };
   } catch {
@@ -2960,6 +3284,7 @@ function apply(op: IslandOp) {
       break;
     case 'card':
       addCard(op.card, op.pull, op.from);
+      if (op.offerNote && !op.pull) offerNote(op.card);
       return;
     case 'toast': {
       // the take's ✓ and length own the ears for their 1.6 s: a line that follows the take ("Organizing into …") waits
@@ -3012,6 +3337,8 @@ function apply(op: IslandOp) {
       return ticks();
     case 'dragout':
       return dragOut(op);
+    case 'ext':
+      return extDrag(op);
     case 'reveal':
       revealCards(true);
       if (op.open && cardCount()) {
@@ -3088,7 +3415,8 @@ setTimeout(() => {
 
 await ready(host, 'island', (push) => {
   // ?demo=1 idle, expanded · rec · voice · drop (a card being filed) · switch · toast · cards · dict · live · discard ·
-  // menu (a card's right-click menu) · ears (collapsed, cards waiting) · many (eight cards: five and "+3")
+  // menu (a card's right-click menu) · ears (collapsed, cards waiting) · many (eight cards: five and "+3") · ext
+  // (another app's drag on the notch)
   const demo = params.get('demo') ?? '1';
   const shot = (n: number, hue: number, text: string | null, w = 224, h = 168): Card => ({
     n,
@@ -3170,6 +3498,31 @@ await ready(host, 'island', (push) => {
     push(EV.island, { op: 'cards', cards });
     if (demo !== 'many') setTimeout(() => push(EV.island, { op: 'card', card: shot(3, 140, null), pull: false }), params.has('still') ? 0 : 500);
     if (demo !== 'ears' && demo !== '1') setTimeout(() => revealCards(true), 10);
+  }
+  // ?demo=ext: another app's drag of a picture and two files resting on the notch (the drawer, the second project
+  // under the pointer), with a file card and a text card hanging
+  if (demo === 'ext') {
+    const fileFace = (name: string) =>
+      'data:image/svg+xml,' +
+      encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="240"><rect width="300" height="240" fill="#f2f1ee"/><rect x="104" y="20" width="92" height="150" rx="6" fill="#fff" stroke="#d6d3cc"/><rect x="118" y="44" width="64" height="6" fill="#c9c5bd"/><rect x="118" y="60" width="54" height="6" fill="#c9c5bd"/><rect y="194" width="300" height="46" fill="#1e1e1e"/><text x="150" y="224" font-family="Segoe UI, sans-serif" font-size="21" font-weight="600" fill="#fff" text-anchor="middle">${name}</text></svg>`,
+      );
+    const session = '/demo/inbox/sessions/20261022-101500-shots';
+    push(EV.island, {
+      op: 'cards',
+      cards: [
+        shot(1, 210, zh ? '保存按钮太浅' : 'Save button too faint', 320, 120),
+        { n: 2, kind: 'shot', session, src: fileFace('Q3 report.pdf'), ref: 'C:\\Users\\Ana\\Documents\\Q3 report.pdf', text: zh ? '第 4 页的数字对不上' : 'Page 4 numbers are off' },
+        { n: 3, kind: 'voice', session, src: '', textCard: true, text: 'https://example.com/pricing' },
+      ],
+    });
+    setTimeout(() => revealCards(true), 10);
+    setTimeout(() => push(EV.island, { op: 'ext', phase: 'enter', what: { pictures: 1, files: 2, text: false, folders: 0 } }), 300);
+    setTimeout(() => push(EV.island, { op: 'ext', phase: 'open' }), 700);
+    setTimeout(() => {
+      const r = island.querySelector('[data-drop="project:p2"]')?.getBoundingClientRect();
+      if (r) push(EV.island, { op: 'ext', phase: 'over', x: r.left + 40, y: r.top + r.height / 2 });
+    }, 1300);
   }
   if (demo === 'drop') {
     drawer = 'drop';

@@ -61,6 +61,44 @@ final class IslandPanel: NSPanel {
 
 final class FlippedView: NSView { override var isFlipped: Bool { true } }
 
+/// v1.0.23 — drops from other apps on the island (docs/design/drag-drop.md §3): a small transparent panel over the
+/// notch (notch + 8 pt; the drawer + 24 pt once it opens), shown only while another app's drag of something the
+/// island takes is under way, and gone at mouse-up. The island's own 640×470 panel never becomes the drop target for
+/// another app: under its transparent parts a browser's tab strip or upload area must still get its drops.
+final class DropCatcher: NSPanel {
+    let catchView = CatchView()
+    init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 10, height: 10), styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered, defer: true)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)    // over the island's own panel
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        isReleasedWhenClosed = false
+        contentView = catchView
+        // a window with nothing drawn in it gets no drags (the window server gives a clear pixel's events to what is
+        // under it — first build: the catcher came up and every drop went past it): told to take the mouse, and
+        // filled with the faintest colour so every pixel of it is there to hit
+        ignoresMouseEvents = false
+        catchView.wantsLayer = true
+        catchView.layer?.backgroundColor = CGColor(gray: 0, alpha: 0.02)
+        catchView.registerForDraggedTypes(DropIn.types)
+        setAccessibilityElement(false)
+    }
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+    override func constrainFrameRect(_ r: NSRect, to screen: NSScreen?) -> NSRect { r }
+}
+
+final class CatchView: NSView {
+    weak var island: Island?
+    override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation { island?.externalOver(s) ?? [] }
+    override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { island?.externalOver(s) ?? [] }
+    override func draggingExited(_ s: NSDraggingInfo?) { island?.externalLeft() }
+    override func performDragOperation(_ s: NSDraggingInfo) -> Bool { island?.externalDrop(s) ?? false }
+}
+
 final class IslandView: NSView {
     weak var island: Island?
     override var isFlipped: Bool { true }
@@ -1032,6 +1070,7 @@ final class Island: NSObject, IslandHosting {
 
     private func poll(_ now: CFTimeInterval) {
         guard let p = panel else { return }
+        watchDrags(now)
         let m = NSEvent.mouseLocation
         let busyElsewhere = (NSApp.delegate as? App)?.picker != nil
         // follow the pointer to another screen while nothing is showing
@@ -1073,7 +1112,7 @@ final class Island: NSObject, IslandHosting {
         } else {
             hoverSince = nil
             // the pointer went down onto the hanging cards: the island stays open over them
-            let pinned = sticky || drawer == .switcher || confirmingDiscard || dragActive || VoiceInput.shared.active
+            let pinned = sticky || drawer == .switcher || confirmingDiscard || dragActive || external != nil || VoiceInput.shared.active
                 || NoteBubble.shared.isOpen && NoteBubble.shared.mode == .recording && isRecording || hanging.holdsIsland
             if pinned {
                 awaySince = nil                // (counting starts when it lets go, not from before)
@@ -1207,6 +1246,131 @@ final class Island: NSObject, IslandHosting {
 
     func dragBegan() { dragActive = true; dropped = false; wake() }
 
+    // MARK: drops from other apps (v1.0.23)
+
+    /// what another app's drag over the notch carries (nil: none over it)
+    private(set) var external: DropIn?
+    private var externalSince: CFTimeInterval?
+    private var externalLeftAt: CFTimeInterval?
+    private var externalUpAt: CFTimeInterval?
+    /// the drawer's row last under another app's drag (the drop may come after the drawer has gone)
+    private var externalTarget: IslandContent.Target?
+    /// the drag pasteboard's change count while no button was down: a new drag changes it
+    private var idleDragCount = NSPasteboard(name: .drag).changeCount
+    private lazy var catcher: DropCatcher = { let c = DropCatcher(); c.catchView.island = self; return c }()
+
+    /// Another app's drag of something the island takes (files, pictures, text) is under way: the catcher sits over
+    /// the notch until the button comes up. Blurt's own drags (cards, rows) never count (they have their own way in).
+    private func watchDrags(_ now: CFTimeInterval) {
+        let pb = NSPasteboard(name: .drag)
+        guard NSEvent.pressedMouseButtons & 1 != 0 else {
+            idleDragCount = pb.changeCount
+            // the button comes up before the drop reaches us (performDragOperation): the catcher and the drawer stay
+            // half a second for it, then go
+            if catcher.isVisible || external != nil && !externalTest {
+                let up = externalUpAt ?? now
+                externalUpAt = up
+                if now - up >= 0.5 { endExternal() }
+            }
+            return
+        }
+        externalUpAt = nil
+        guard pb.changeCount != idleDragCount, !dragActive, hanging.dragging == nil, panel != nil else { return }
+        if !catcher.isVisible {
+            guard let types = pb.types, !DropIn.isOurs(pb), !Set(types).isDisjoint(with: DropIn.types) else { return }
+            placeCatcher()
+            catcher.orderFrontRegardless()
+            emit(["event": "drop_watch", "types": types.prefix(6).map(\.rawValue)])
+        }
+        // resting on the notch for 250 ms opens the drawer (a drag only passing by on its way to the menu bar doesn't)
+        if external != nil, drawer != .drop, let t = externalSince, now - t >= 0.25 {
+            drawer = .drop
+            content.rebuild()
+            wake()
+        }
+        if let l = externalLeftAt, now - l >= 0.3 {
+            externalLeftAt = nil
+            external = nil
+            externalSince = nil
+            if drawer == .drop { drawer = nil; content.highlight(at: nil); content.rebuild(); wake() }
+        }
+        placeCatcher()
+    }
+
+    /// The catcher over the notch (+ 8 pt), over the drawer (+ 24 pt) once it is open.
+    private func placeCatcher() {
+        guard let p = panel else { return }
+        let r = islandRect(margin: drawer == .drop ? 24 : 8)
+        let f = NSRect(x: p.frame.minX + r.minX, y: p.frame.maxY - r.maxY, width: r.width, height: r.height)
+        if catcher.frame != f { catcher.setFrame(f, display: false) }
+    }
+
+    private func endExternal() {
+        catcher.orderOut(nil)
+        let had = external != nil || drawer == .drop
+        external = nil
+        externalSince = nil
+        externalLeftAt = nil
+        externalUpAt = nil
+        externalTarget = nil
+        if had, !dragActive, drawer == .drop { drawer = nil; content.highlight(at: nil); content.rebuild(); wake() }
+    }
+
+    private func islandPoint(_ s: NSDraggingInfo) -> NSPoint? {
+        guard let p = panel, let w = s.draggingDestinationWindow else { return nil }
+        let screen = w.convertPoint(toScreen: s.draggingLocation)
+        let local = NSPoint(x: screen.x - p.frame.minX, y: p.frame.maxY - screen.y)
+        return view.convert(local, to: content)
+    }
+
+    /// Another app's drag over the catcher: what it carries (read once), the row under it; always a copy, never a
+    /// move (a text view as the source would cut what was dragged).
+    func externalOver(_ s: NSDraggingInfo) -> NSDragOperation {
+        externalLeftAt = nil
+        if external == nil {
+            let d = DropIn.read(s.draggingPasteboard, decode: false)
+            guard !d.isEmpty else { return [] }
+            external = d
+            externalSince = CACurrentMediaTime()
+            wake()
+        }
+        if drawer == .drop, let pt = islandPoint(s) { externalTarget = content.highlight(at: pt) }
+        return .copy
+    }
+
+    func externalLeft() { externalLeftAt = CACurrentMediaTime() }
+
+    /// Tests: the drawer as it shows for another app's drag of `d` (no drag under way; `island close` ends it).
+    private var externalTest = false
+    func testExternal(_ d: DropIn) {
+        externalTest = true
+        external = d
+        drawer = .drop
+        content.rebuild()
+        wake()
+    }
+
+    /// Let go of over the notch: hung as cards (the drawer's first row, or the notch before the drawer opened), or
+    /// filed straight into the project under the pointer.
+    func externalDrop(_ s: NSDraggingInfo) -> Bool {
+        let target = drawer == .drop ? islandPoint(s).flatMap { content.highlight(at: $0) } ?? externalTarget : externalTarget
+        let pb = s.draggingPasteboard
+        let into: String?
+        switch target {
+        case .project(let id)?: into = id
+        case .inbox?: into = "inbox"
+        case .locate?, .openFolder?, .more?: return false
+        default: into = nil                                   // .hang, or the notch itself
+        }
+        emit(["event": "drop_external", "target": "\(String(describing: target))"])
+        DropIn.read(pb, decode: true).resolved { d in
+            guard !d.isEmpty else { return NSSound.beep() }
+            snapper.hang(d, into: into)
+        }
+        endExternal()
+        return true
+    }
+
     /// The pointer of a card drag (screen coordinates): near the island, the drawer opens and takes the drop.
     func dragMoved(to s: NSPoint) {
         guard let p = panel else { return }
@@ -1229,20 +1393,20 @@ final class Island: NSObject, IslandHosting {
     }
 
     func drop(_ pb: NSPasteboard, at p: NSPoint) -> Bool {
-        guard let target = content.highlight(at: view.convert(p, to: content)),
-              let raw = pb.string(forType: capturePasteboardType), let s = Island.shot(fromPasteboard: raw) else { return false }
+        let ss = Island.shots(from: pb)
+        guard let target = content.highlight(at: view.convert(p, to: content)), !ss.isEmpty else { return false }
         dropped = true
-        content.perform(target, shot: s)
+        content.perform(target, shots: ss)
         return true
     }
 
     /// The drag is over: true when the island took the card.
     func dragEnded(at s: NSPoint) -> Bool {
         dragActive = false
-        if !dropped, drawer == .drop, let p = panel, let card = hanging.dragging?.shot {
+        if !dropped, drawer == .drop, let p = panel, let shots = hanging.draggingShots, !shots.isEmpty {
             // the drop landed on us without a destination callback (rare): resolve it here
             let local = NSPoint(x: s.x - p.frame.minX, y: p.frame.maxY - s.y)
-            if let t = content.highlight(at: view.convert(local, to: content)) { content.perform(t, shot: card); dropped = true }
+            if let t = content.highlight(at: view.convert(local, to: content)) { content.perform(t, shots: shots); dropped = true }
         }
         if drawer == .drop { drawer = nil }
         content.highlight(at: nil)
@@ -1251,10 +1415,26 @@ final class Island: NSObject, IslandHosting {
         return dropped
     }
 
-    static func shot(fromPasteboard raw: String) -> Shot? {
+    static func shot(fromPasteboard raw: String) -> Shot? { shots(fromTag: raw).first }
+
+    /// The hanging cards a tag names ("<batch dir>\n<n>", one pair per card: CardDrag.tag), in its order.
+    static func shots(fromTag raw: String) -> [Shot] {
         let parts = raw.split(separator: "\n").map(String.init)
-        guard parts.count == 2, let n = Int(parts[1]) else { return nil }
-        return snapper.cards.first { $0.n == n && $0.batch?.dir.path == parts[0] }
+        guard parts.count >= 2, parts.count % 2 == 0 else { return [] }
+        return stride(from: 0, to: parts.count, by: 2).compactMap { i in
+            Int(parts[i + 1]).flatMap { n in snapper.cards.first { $0.n == n && $0.batch?.dir.path == parts[i] } }
+        }
+    }
+
+    /// The cards a drag carries — read from every item (the first may be a terminal's line, no tag), each card once.
+    /// One card that is part of a ⌘-click selection brings the selection (a tile of the overview dragged alone).
+    static func shots(from pb: NSPasteboard) -> [Shot] {
+        var out: [Shot] = []
+        for it in pb.pasteboardItems ?? [] {
+            guard let raw = it.string(forType: capturePasteboardType) else { continue }
+            for s in shots(fromTag: raw) where !out.contains(where: { $0 === s }) { out.append(s) }
+        }
+        return out.count == 1 ? hanging.withSelection(out[0]) : out
     }
 
     // MARK: inputs from the rest of the app

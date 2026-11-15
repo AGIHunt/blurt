@@ -186,6 +186,59 @@ DMA-BUF workaround). The island appears only for activity now, but that pill and
 position and keep-above, which only XWayland gives. Portals, AT-SPI and PipeWire don't care which backend the window uses. Risk to check: XWayland
 windows are blurry at fractional scaling (125 %/150 %) unless mutter's `xwayland-native-scaling` is on.
 
+**Drag and drop (2026-11-15, docs/design/drag-drop.md §5).** The island page is shared, so Ctrl-click / Shift-click
+selection, the pick numbers (1, 2, 3), the one copy 0.6 s after the last pick and the minute the selection outlives
+the cards going up work here as on Windows. A card still can't be dragged out of the island on Linux (XWayland, no
+global pointer; no drag-out at all), and the island takes no drops from other apps (Windows has a drop catcher over the
+notch, `island_drop_win.rs`; on Linux the island page is built for it — the drawer's Hang row, file and text cards — but
+nothing catches the drag: XWayland gives no global pointer to tell a drag is coming, XDND to an input region is next). The main
+window (WebKitGTK, same React code as Windows) now takes any files, not just pictures: pictures become frames, other
+files are referenced by path (copied when they sit in /tmp or /var/tmp), text after the details; on an item's row
+they are added to it (with Undo), on the "Drop for a new item" band, the list or a sidebar project they open New
+Item. A page gets no file paths, so Linux reads them from the drop's `text/uri-list` (`file://` URIs, matched to the
+files by name) and asks Rust which are folders (`drop_paths`); a picture without a path is read as bytes, any other
+file without one is left out and the toast says so. Folders dropped on the sidebar now go the same way, so they may
+open as projects on Linux too (before, only Windows could). None of this has run on Ubuntu yet: whether WebKitGTK
+exposes `text/uri-list` for a drop from Files is the first thing to check.
+
+**Drag and drop, second round (2026-11-15 night).** What was missing on Linux, what is built now, and what isn't possible:
+
+- *Drags into the island.* Windows has a catcher window that appears when another app's drag nears the notch; it
+  needs the global pointer and button state, which an XWayland client doesn't get (the pointer reaches an X client only
+  over its own windows; Wayland gives no app a global pointer at all, and no portal announces "a drag is under way").
+  What is possible: the island's own window is an XDND target wherever its input region is — mutter honours the X
+  input shape for an XWayland window, and bridges Wayland sources (Files, GNOME apps, Firefox, Chrome on Wayland) to
+  XDND targets. So the island page takes the drop itself (island.ts "Linux"; Tauri's drop handler is off for the
+  island, so WebKitGTK delivers HTML5 drag events): over the notch, the hot strip at the top and hanging cards that are
+  down, it plays the catcher's part (enter → drawer after 250 ms → row lit → drop), widens its input region to the
+  island + drawer + 24 px while the drag is on, reads paths from `text/uri-list`, pictures without a path as bytes, text
+  otherwise, and Rust hangs or files them (`ext.drop` → `drop_in::hang`). Limits: with "show the island at rest" off
+  there is no hot strip, so there is nothing to drop on until something shows; no system thumbnails (a file card's face
+  is the plain sheet, the page writes the name on its band); gif / webp / heic stay file cards (no decoder here).
+- *Cards dragged out of the island.* Built: when the page hands a card over (`card.dragout`, the same point as on
+  Windows), Rust clears the island's input region at once (else the island, under the pointer everywhere during an
+  inside drag, is the target the drag finds) and starts a GTK drag from the island's window with the button still
+  held (`blurt_capture::linux_dnd`, `gtk_drag_begin_with_coordinates`, no event: the press's implicit X grab is ours,
+  so GTK's grab is granted). It offers `text/uri-list` (the files) and text (`'path' note`, one line); the target
+  picks. GTK doesn't say which app the target is, so there are no per-app payloads as on the Mac and Windows: after a
+  drop in another app the notes go on the clipboard (`record.drag_copy_note`), the cards are taken (one Undo); dropped
+  on Blurt's main window (its GDK toplevel), that window files them (`cards_dragging`). Not possible: a "copy drag"
+  with Alt (GTK DnD gives the source no modifier state at the drop).
+- *Main window, Ctrl+V:* arboard over XWayland's clipboard (`file_list` = text/uri-list, image, text, HTML). arboard
+  can't ask whether RTF is there, so "text + HTML + a picture" together counts as a document's copy (its text).
+- *Passive note after a single drop:* the same code as Windows (a note window with accept-focus off until the
+  pointer comes onto it).
+
+Checked here: `linux_dnd.rs` and the arboard calls compile for `x86_64-unknown-linux-gnu` in a scratch crate (fake
+pkg-config, `--ignore-rust-version`); the desktop crate itself still can't be checked for Linux on this Mac —
+libspa-sys (PipeWire, through blurt-remote) runs bindgen on PipeWire's headers. The island's Linux drop ran in the
+browser mock (`island.html?platform=gnome`) twice in a row with synthetic DragEvents. To check on Ubuntu 26.04: drag a
+PDF and a picture from Files onto the notch / hot strip (drawer opens, Hang / a project row work, a second drag right
+after works); Firefox / Chrome image drag (bytes, no path); a card dragged into Files (copied), into Ptyxis / GNOME
+Terminal (paths typed), into Chrome's upload box, into Blurt's main window (filed, not duplicated); Esc during a card
+drag (it comes back); Ctrl+V in the main window with files copied in Files, a screenshot, a LibreOffice copy; the
+passive note doesn't take the keyboard.
+
 ## Onboarding on Linux
 
 Four system dialogs, each asked where it makes sense, with one line of ours before it:

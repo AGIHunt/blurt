@@ -130,7 +130,7 @@ enum CardExport {
     /// A shot or voice card as it travels (its files freshly written).
     static func card(_ s: Shot) -> (CardPasteboard.Card, CardRich.Part) {
         let f = prepare(s)
-        return (CardPasteboard.Card(image: f.image, note: s.copyText, noteFile: f.note),
+        return (CardPasteboard.Card(image: f.image, note: s.copyText, noteFile: f.note, ref: s.refURL),
                 CardRich.Part(image: f.image, note: s.copyText, scale: s.scale))
     }
 

@@ -536,7 +536,9 @@ fn line_of(session: &Path, n: u32) -> serde_json::Map<String, Value> {
 /// said), the unmarked picture enlarged with its strokes and the pen, the type and the place, the voice to play and
 /// Record Again; Save ↩ keeps it (NoteEdit), Esc puts everything back. Blocks until it closes: call on a worker thread.
 /// `under`: the card's own rect on the screen (physical px) — the composer opens under that card (else under the island).
-pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>) {
+/// `passive`: offered after a drop on the island (drag-drop.md §3) — the bubble opens beside the card without taking
+/// the keyboard, takes it when the pointer comes onto it (`note.keys`), and folds away untouched after 6 s (note.ts).
+pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>, passive: bool) {
     let line = line_of(session, n);
     if line.is_empty() {
         return;
@@ -561,6 +563,9 @@ pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>)
     params.insert("projects", projects_json(&reg));
     params.insert("strokes", strokes_was.to_string());
     params.insert("first", "0".into());
+    if passive {
+        params.insert("passive", "1".into());
+    }
     if has_voice {
         params.insert("voiceSrc", overlay::file_src(&session.join(&voice_rel)));
     }
@@ -620,6 +625,12 @@ pub fn edit_note(app: &AppHandle, session: &Path, n: u32, under: Option<Region>)
                 Some("note.mic") => {
                     if let Some(m) = mic.lock().unwrap().as_ref() {
                         mic_stop(m, v["keep"] == true);
+                    }
+                }
+                // a passive note: the pointer came onto it — now it takes the typing
+                Some("note.keys") => {
+                    if let Some(win) = a.get_webview_window(label) {
+                        overlay::take_keys(&win);
                     }
                 }
                 Some("note.activity") => {

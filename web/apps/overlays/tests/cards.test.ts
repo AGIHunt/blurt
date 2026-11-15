@@ -145,8 +145,8 @@ describe('the Cards panel (CardsPanelKeys, CardGrid)', () => {
     expect(R.action('right', 'hanging', 4, 5, 3)).toEqual({ a: 'none' });
     expect(R.action('tab', 'used', 2, 5, 3)).toEqual({ a: 'segment', seg: 'hanging' });
   });
-  it('Space previews the focused card or the pointed one; Enter copies and closes; Esc closes', () => {
-    expect(R.action('space', 'hanging', null, 5, 3, 2)).toEqual({ a: 'preview', i: 2 });
+  it('Space previews the focused card or the pointed one (History); Enter copies and closes; Esc closes', () => {
+    expect(R.action('space', 'used', null, 5, 3, 2)).toEqual({ a: 'preview', i: 2 });
     expect(R.action('enter', 'hanging', 1, 5, 3)).toEqual({ a: 'copyAndClose', i: 1 });
     expect(R.action('enter', 'hanging', null, 5, 3)).toEqual({ a: 'none' });
     expect(R.action('delete', 'used', 0, 1, 1)).toEqual({ a: 'delete', i: 0 });
@@ -154,7 +154,28 @@ describe('the Cards panel (CardsPanelKeys, CardGrid)', () => {
     expect(R.previewAction('right')).toEqual({ a: 'step', d: 1 });
     expect(R.previewAction('space')).toEqual({ a: 'close' });
   });
+  it('Current has the row’s selection keys (drag-drop.md §2): Space picks, Shift+←/→ adds, Ctrl+A all, Enter copies the selection', () => {
+    expect(R.action('space', 'hanging', 1, 5, 3)).toEqual({ a: 'toggle', i: 1 });
+    expect(R.action('space', 'hanging', null, 5, 3, 3)).toEqual({ a: 'toggle', i: 3 });
+    expect(R.action('space', 'hanging', null, 5, 3)).toEqual({ a: 'focus', i: 0 });
+    expect(R.action('shiftRight', 'hanging', 1, 5, 3)).toEqual({ a: 'extend', from: 1, i: 2 });
+    expect(R.action('shiftLeft', 'hanging', 0, 5, 3)).toEqual({ a: 'extend', from: 0, i: 0 });
+    expect(R.action('shiftRight', 'hanging', 4, 5, 3)).toEqual({ a: 'extend', from: 4, i: 4 });
+    expect(R.action('shiftRight', 'hanging', null, 5, 3)).toEqual({ a: 'extend', from: null, i: 0 });
+    expect(R.action('all', 'hanging', null, 5, 3)).toEqual({ a: 'all' });
+    expect(R.action('enter', 'hanging', 1, 5, 3, null, 3)).toEqual({ a: 'copySelection' });
+    expect(R.action('copy', 'hanging', null, 5, 3, null, 2)).toEqual({ a: 'copySelection' });
+    expect(R.action('enter', 'hanging', 1, 5, 3, null, 1)).toEqual({ a: 'copyAndClose', i: 1 });
+    // History: no selection there — Shift+arrows move, Ctrl+A does nothing
+    expect(R.action('shiftRight', 'used', 1, 5, 3)).toEqual({ a: 'focus', i: 2 });
+    expect(R.action('all', 'used', 1, 5, 3)).toEqual({ a: 'none' });
+    expect(R.action('space', 'hanging', null, 0, 1)).toEqual({ a: 'none' });
+  });
   it('Windows keys: Ctrl where the Mac has ⌘', () => {
+    expect(panelKey({ key: 'ArrowRight', shiftKey: true })).toBe('shiftRight');
+    expect(panelKey({ key: 'ArrowLeft', shiftKey: true })).toBe('shiftLeft');
+    expect(panelKey({ key: 'a', ctrlKey: true })).toBe('all');
+    expect(panelKey({ key: 'a' })).toBeNull();
     expect(panelKey({ key: 'c', ctrlKey: true })).toBe('copy');
     expect(panelKey({ key: ' ' })).toBe('space');
     expect(panelKey({ key: 'Delete' })).toBe('delete');

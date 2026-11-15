@@ -399,3 +399,7 @@
 "capture.text.card.copied" = "已复制";
 "capture.text.card.ax" = "译文";
 "capture.card.ax_follow_up" = "开启「辅助功能」权限后，卡片的备注会自动粘贴";
+"capture.drawer.drop_in_title" = "放到";
+"capture.drawer.hang" = "作为卡片留在刘海下方";
+"capture.drawer.hang_one" = "%@ · 之后可以加备注";
+"capture.drawer.hang_many" = "%@ · 每样一张卡片";

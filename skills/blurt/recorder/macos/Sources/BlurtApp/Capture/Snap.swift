@@ -196,6 +196,25 @@ final class Shot {
     var structure = false        // Structured (⇧ while the voice note listened): its words get the structuring pass
     var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
+    /// a file card's file (v1.0.23, shots.jsonl "ref"): an absolute path the card only refers to — a PDF, a video…
+    /// dropped on the island. `file` is then its thumbnail. Never moved, written or trashed by Blurt.
+    var ref: String?
+    /// a bookmark of `ref` (shots.jsonl "ref_bookmark", base64): the file is found again after it was moved or renamed
+    var refBookmark: String?
+    var refURL: URL? {
+        guard let r = ref else { return nil }
+        if FileManager.default.fileExists(atPath: r) { return URL(fileURLWithPath: r) }
+        var stale = false
+        if let b = refBookmark.flatMap({ Data(base64Encoded: $0) }),
+           let u = try? URL(resolvingBookmarkData: b, options: [.withoutUI, .withoutMounting], relativeTo: nil, bookmarkDataIsStale: &stale),
+           FileManager.default.fileExists(atPath: u.path) {
+            ref = u.path                // found where it went (kept in memory; the next save writes it)
+            return u
+        }
+        return URL(fileURLWithPath: r)
+    }
+    /// the referenced file is where it was (checked when asked)
+    var refMissing: Bool { ref.map { !FileManager.default.fileExists(atPath: $0) } ?? false }
     /// the type chosen in the note bubble (⌘1–⌘4, the type chip): its item's kind; nil = undecided (BlurtCore NoteKind)
     var itemKind: NoteKind?
     var deleted = false
@@ -273,6 +292,8 @@ final class Shot {
         if let a = assignedBy { o["assigned_by"] = a }
         if let p = intendedProject { o["intended_project"] = p }
         if let t = taken { o["taken"] = (t * 1000).rounded() / 1000 }
+        if let r = ref { o["ref"] = r }
+        if let b = refBookmark { o["ref_bookmark"] = b }
         if deleted { o["deleted"] = true }
         return o
     }
@@ -312,7 +333,7 @@ final class ShotBatch {
     /// Writes the PNG off the main thread; the shots.jsonl line follows once the file is there.
     @discardableResult
     func add(n: Int, image: CGImage, scale: CGFloat, region: CGRect, t: Double?, project: String? = nil, wall: Date = Date(),
-             done: ((Shot) -> Void)? = nil) -> Shot {
+             ref: String? = nil, refBookmark: String? = nil, done: ((Shot) -> Void)? = nil) -> Shot {
         let file = "shots/\(ShotBatch.name(n)).png"
         let s = Shot(n: n, file: file, wall: wall.timeIntervalSince1970,
                      region: [region.minX, region.minY, region.width, region.height].map { Double(($0 * 10).rounded() / 10) })
@@ -321,6 +342,8 @@ final class ShotBatch {
         s.pixelSize = CGSize(width: image.width, height: image.height)
         s.thumb = thumbnail(image, maxPixels: 520)
         s.full = image
+        s.ref = ref
+        s.refBookmark = refBookmark
         insert(s, project: project)
         let url = dir.appendingPathComponent(file)
         let dirURL = shotsDir
@@ -349,6 +372,17 @@ final class ShotBatch {
         s.kind = .voice
         s.voice = "shots/\(ShotBatch.name(n)).wav"
         s.duration = duration
+        insert(s, project: project)
+        save(s)
+        if !inRecording { writeMeta() }
+        return s
+    }
+
+    /// A text card (v1.0.23: text or a link dropped on the island): a voice card's face, no recording.
+    func addText(n: Int, text: String, project: String?, wall: Date = Date()) -> Shot {
+        let s = Shot(n: n, file: nil, wall: wall.timeIntervalSince1970, region: [])
+        s.kind = .voice
+        s.text = text
         insert(s, project: project)
         save(s)
         if !inRecording { writeMeta() }
@@ -500,6 +534,8 @@ final class ShotBatch {
             s.structure = o["structure"] as? Bool ?? false
             s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
+            if let r = o["ref"] as? String { s.ref = r }
+            if let b = o["ref_bookmark"] as? String { s.refBookmark = b }
             s.itemKind = NoteKind.parse(o["kind"])
             s.deleted = o["deleted"] as? Bool ?? false
             s.project = o["project"] as? String
@@ -513,7 +549,12 @@ final class ShotBatch {
                 s.thumb = thumbnail(img, maxPixels: 520)
                 if let m = s.markedURL, let mi = loadCGImage(m) { s.markedThumb = thumbnail(mi, maxPixels: 520) }
             } else if kind == .shot, !s.deleted { s.deleted = true }
-            if kind == .voice, !s.deleted, !(s.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false) { s.deleted = true }
+            // a voice note whose recording is gone; a text card (v1.0.23: no recording, its words typed or dropped) only
+            // when it has no words either
+            if kind == .voice, !s.deleted {
+                if let u = s.voiceURL { if !FileManager.default.fileExists(atPath: u.path) { s.deleted = true } }
+                else if (s.text ?? "").isEmpty { s.deleted = true }
+            }
             b.shots.append(s)
             b.nextN = max(b.nextN, n + 1)
         }

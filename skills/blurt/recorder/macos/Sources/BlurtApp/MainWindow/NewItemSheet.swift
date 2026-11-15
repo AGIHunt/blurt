@@ -16,6 +16,9 @@ struct NewItemSheet: View {
     /// What ⌘V or a drop on the list brought: text (its first line the title) and pictures.
     struct Prefill {
         var title = "", details = "", images: [URL] = []
+        /// other files (v1.0.23: a PDF, a video dropped on the list): referenced by the item, never copied (one in a
+        /// temporary place is: FilePlace)
+        var files: [URL] = []
         init(images: [URL]) { self.images = images }
         /// Text: its first line the title (cut at 60), the rest the details.
         init(text: String, images: [URL] = []) {
@@ -38,7 +41,7 @@ struct NewItemSheet: View {
         self.close = close
         _title = State(initialValue: prefill?.title ?? "")
         _details = State(initialValue: prefill?.details ?? "")
-        _images = StateObject(wrappedValue: NewItemImages(prefill?.images ?? []))
+        _images = StateObject(wrappedValue: NewItemImages(prefill?.images ?? [], files: prefill?.files ?? []))
     }
 
     @State private var kind: Kind = .issue
@@ -47,6 +50,8 @@ struct NewItemSheet: View {
     @StateObject private var images: NewItemImages
     @State private var dropping = false
     @State private var saving = false
+    /// written by `items.py add` already (its files still to attach)
+    @State private var madeItem: (ref: String, uid: String?)?
     @State private var error: String?
     @FocusState private var titleFocused: Bool
 
@@ -74,13 +79,14 @@ struct NewItemSheet: View {
             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
             .padding(.top, 10)
             pictures.padding(.top, 10)
+            if !images.files.isEmpty { fileRows.padding(.top, 12) }
             HStack(spacing: 10) {
                 if let e = error { Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr).lineLimit(2) }
                 if saving { BrandSpinnerView(size: 12) }
                 Spacer()
                 Button(T("action.cancel")) { close(nil) }.keyboardShortcut(.cancelAction)
                 Button(T("main.new_item.create"), action: create).keyboardShortcut(.defaultAction)
-                    .disabled((title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.urls.isEmpty) || saving)
+                    .disabled((title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.urls.isEmpty && images.files.isEmpty) || saving)
             }
             .padding(.top, 16)
         }
@@ -95,6 +101,26 @@ struct NewItemSheet: View {
         .onDrop(of: [.fileURL, .image], isTargeted: $dropping) { providers in images.take(providers); return true }
         .onAppear { titleFocused = images.urls.isEmpty || !title.isEmpty; images.listenForPaste() }
         .onDisappear { images.stopListening() }
+    }
+
+    /// The files the item will refer to: the Finder's icon, the name, its × (v1.0.23).
+    var fileRows: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(images.files, id: \.self) { u in
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: u.path)).resizable().frame(width: 18, height: 18)
+                    Text(u.lastPathComponent).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    Button { images.files.removeAll { $0 == u } } label: {
+                        Image(nsImage: BlurtIcon.x.symbolImage(pointSize: 7, weight: .bold)).frame(width: 15, height: 15)
+                            .background(Circle().fill(.regularMaterial))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(T("main.new_item.remove_file", u.lastPathComponent))
+                }
+                .help(u.path)
+            }
+        }
     }
 
     /// The pictures so far (a row of thumbnails, each with its ×), then Add Image… and the ways in.
@@ -126,21 +152,43 @@ struct NewItemSheet: View {
         var t = title.trimmingCharacters(in: .whitespacesAndNewlines)
         // pictures alone: a title that says when (the user can rename it in the detail)
         if t.isEmpty, !images.urls.isEmpty { t = T("main.new_item.image_title", Date().formatted(date: .omitted, time: .shortened)) }
+        if t.isEmpty, let f = images.files.first { t = f.deletingPathExtension().lastPathComponent }
         guard !t.isEmpty, !saving else { return }
         saving = true
         error = nil
         var item: [String: Any] = ["kind": kind.rawValue, "title": t]
         let d = details.trimmingCharacters(in: .whitespacesAndNewlines)
         if !d.isEmpty { item["details"] = d }          // the item's Details section (store.BODY)
-        if !images.urls.isEmpty { item["frames"] = images.urls.map { ["path": $0.path] } }    // copied into the store
+        // copied into the store — from a copy of our own, so `items.py add` never hard-links the user's original
+        if !images.urls.isEmpty { item["frames"] = NewItemImages.privateCopies(images.urls).map { ["path": $0.path] } }
         let json = (try? JSONSerialization.data(withJSONObject: item)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         emit(["event": "item_new", "kind": kind.rawValue, "target": target == "inbox" ? "inbox" : "project", "images": images.urls.count])
+        let files = images.files
+        // the item was written but its files failed: Create again only adds the files (never a second item)
+        if let made = madeItem { return attachFiles(files, to: made.ref, uid: made.uid) }
         Scripts.call("items.py", ["add", "--project", target, "--json", json], timeout: 30) { r in
-            saving = false
             switch r {
-            case .success(let o): close(o["uid"] as? String ?? (o["item"] as? [String: Any])?["uid"] as? String)
-            case .failure(let f): error = f.localized
+            case .success(let o):
+                let uid = o["uid"] as? String ?? (o["item"] as? [String: Any])?["uid"] as? String
+                let path = o["path"] as? String ?? (o["item"] as? [String: Any])?["path"] as? String
+                guard !files.isEmpty, let ref = path ?? uid else { saving = false; return close(uid) }
+                madeItem = (ref, uid)
+                attachFiles(files, to: ref, uid: uid)
+            case .failure(let f):
+                saving = false
+                error = f.localized
             }
+        }
+    }
+
+    /// The files the new item refers to (a temporary one copied into its assets first).
+    private func attachFiles(_ files: [URL], to ref: String, uid: String?) {
+        saving = true
+        var args = ["attach", ref]
+        for u in files { args += [FilePlace.isTemporary(u) ? "--keep" : "--file", u.path] }
+        Scripts.call("items.py", args, timeout: 60) { r in
+            saving = false
+            if case .failure(let f) = r { error = f.localized } else { close(uid) }
         }
     }
 }
@@ -150,9 +198,10 @@ struct NewItemSheet: View {
 @MainActor
 final class NewItemImages: ObservableObject {
     @Published var urls: [URL]
+    @Published var files: [URL]
     private var monitor: Any?
 
-    init(_ urls: [URL]) { self.urls = urls }
+    init(_ urls: [URL], files: [URL] = []) { self.urls = urls; self.files = files }
 
     /// Pictures on a pasteboard as files: image files as they are, image data as temporary PNGs.
     static func files(from pb: NSPasteboard) -> [URL] {
@@ -175,6 +224,17 @@ final class NewItemImages: ObservableObject {
 
     func add(_ new: [URL]) { urls += new.filter { !urls.contains($0) } }
 
+    /// `urls` copied into a temporary folder of ours: what `items.py add` imports (it hard-links where it can, and a
+    /// hard link to the user's own picture would change with it).
+    static func privateCopies(_ urls: [URL]) -> [URL] {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-new-item/\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return urls.enumerated().map { i, u in
+            let dst = dir.appendingPathComponent("\(i)-\(u.lastPathComponent)")
+            return (try? FileManager.default.copyItem(at: u, to: dst)) != nil ? dst : u
+        }
+    }
+
     func choose() {
         let p = NSOpenPanel()
         p.allowedContentTypes = [.image]
@@ -187,8 +247,13 @@ final class NewItemImages: ObservableObject {
         for pr in providers {
             if pr.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                 _ = pr.loadObject(ofClass: URL.self) { u, _ in
-                    guard let u, UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true else { return }
-                    DispatchQueue.main.async { self.add([u]) }
+                    guard let u else { return }
+                    var dir: ObjCBool = false
+                    guard FileManager.default.fileExists(atPath: u.path, isDirectory: &dir), !dir.boolValue else { return }
+                    let image = UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true
+                    DispatchQueue.main.async {
+                        if image { self.add([u]) } else if !self.files.contains(u) { self.files.append(u) }   // v1.0.23: any file
+                    }
                 }
             } else if pr.canLoadObject(ofClass: NSImage.self) {
                 _ = pr.loadObject(ofClass: NSImage.self) { img, _ in

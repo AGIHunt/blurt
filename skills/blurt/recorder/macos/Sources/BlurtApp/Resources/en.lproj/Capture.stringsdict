@@ -92,6 +92,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Deleted</string><key>other</key><string>Deleted %d cards</string></dict>
   </dict>
+  <key>capture.taken_out_many</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Dragged out %d card</string><key>other</key><string>Dragged out %d cards</string></dict>
+  </dict>
   <key>capture.cards.selected</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -158,5 +164,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt are using one of these shortcuts</string><key>other</key><string>Other copies of Blurt are using %d of these shortcuts</string></dict>
   </dict>
+	<key>capture.drawer.hang_sub</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>As a card, add a note any time</string><key>other</key><string>As %d cards</string></dict>
+	</dict>
 </dict>
 </plist>

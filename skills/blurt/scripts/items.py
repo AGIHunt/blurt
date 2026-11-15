@@ -17,6 +17,7 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   patch      REF | SESSION ID --set key=VALUE … [--unset key …] [--force]
              VALUE is JSON if it parses (list, object, number, true/false, "quoted"), else a plain string
   set-frames REF | SESSION ID PATH[@T][#CAPTION] … [--append]     PATH relative to SESSION, or absolute
+  attach REF [--frame PATH]… [--file PATH]… [--text T] [--restore JSON]   the user's drop on an item (Undo: --restore)
   done       SESSION                                   processing finished (the page stops saying "still working")
   get        REF | SESSION ID                          → {"item": {…}, "session": …}; every path absolute
   list       [SESSION] [--project P|inbox] [--kind K]… [--state S]…     (--status / --work / --fix-state: old names)
@@ -476,6 +477,80 @@ def parse_frame(spec: str) -> dict:
     if caption:
         f["caption"] = caption
     return f
+
+
+def attach(ref: str, frames: list[str], files: list[str], text: str | None, restore: dict | None = None,
+           keep: list[str] | None = None) -> dict:
+    """The user added to an item by dropping something on it (v1.0.23, the main window): pictures become frames
+    (copied into assets/<uid>/), other files are referenced by absolute path in `attachments` (never copied: a PDF,
+    a video), text goes after its details. All of it is the user's own edit (_user). `restore`: the "before" an
+    earlier call returned — the Undo. Returns {"before": {frames, attachments, details}, "added": {...}}."""
+    import time  # noqa: PLC0415
+    path, _uid, into = locate(None, ref)
+    if path is None or into is not None:
+        fail(f"no item {ref}", "not_found")
+    keep = keep or []
+    for f in frames + keep:
+        if not os.path.isabs(f) or not Path(f).is_file():
+            fail(f"{f}: no such file", "not_found")
+    root = st.store_of_item(path).root
+    # the user's own pictures are copied, never hard-linked (link_or_copy would share the file with the original)
+    import tempfile  # noqa: PLC0415
+    tmp = Path(tempfile.mkdtemp(prefix="blurt-attach-"))
+    copies = []
+    for i, f in enumerate(frames):
+        c = tmp / f"{i}-{Path(f).name}"
+        shutil.copyfile(f, c)
+        copies.append(str(c))
+    now = round(time.time(), 1)
+
+    def fn(it):
+        before = {k: it.get(k) for k in ("frames", "attachments", "details")}
+        user = it.setdefault("_user", {})
+        if restore is not None:
+            for k in ("frames", "attachments", "details"):
+                if restore.get(k) is None:
+                    it.pop(k, None)
+                else:
+                    it[k] = restore[k]
+                user[k] = now
+            return {"ok": True, "id": it["id"], "uid": it["uid"], "restored": True, "before": before}
+        added = {}
+        if frames:
+            have = it.get("frames") or []
+            new = import_media(it, "frames", [{"path": f} for f in copies], None, root, allow_external=True)
+            known = {f.get("path") for f in have if isinstance(f, dict)}
+            new = [f for f in new if f["path"] not in known]
+            it["frames"] = have + new
+            user["frames"] = now
+            added["frames"] = [f["path"] for f in new]
+        kept = []
+        for f in keep:  # a file in a temporary place (a chat app's cache, /var/folders): a copy in assets/<uid>/
+            adir = media_path(root, str(_asset_dir(root, it["uid"]).relative_to(root)))
+            adir.mkdir(parents=True, exist_ok=True)
+            dst, n = adir / Path(f).name, 2
+            while dst.exists():  # its own name kept (the agent and the user read it), numbered if taken
+                dst, n = adir / f"{Path(f).stem}-{n}{Path(f).suffix}", n + 1
+            shutil.copyfile(f, dst)
+            kept.append(str(dst))
+        if files or kept:
+            have = [a for a in (it.get("attachments") or []) if isinstance(a, str)]
+            new = [a for a in [os.path.abspath(f) for f in files] + kept if a not in have]
+            it["attachments"] = have + new
+            user["attachments"] = now
+            added["attachments"] = new
+        if text and text.strip():
+            d = (it.get("details") or "").rstrip()
+            it["details"] = (d + "\n\n" if d else "") + text.strip()
+            user["details"] = now
+            added["details"] = text.strip()
+        if not added:
+            return {"ok": True, "id": it["id"], "uid": it["uid"], "added": {}, "before": before, "_write": False}
+        return {"ok": True, "id": it["id"], "uid": it["uid"], "added": added, "before": before}
+    try:
+        return mutate(path, fn)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def set_frames(session: Path | None, ref: str, frames: list[dict], append: bool, force: bool) -> dict:
@@ -1601,6 +1676,14 @@ def build_parser() -> Parser:
     s.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     s.add_argument("--unset", action="append", default=[], metavar="KEY")
     s.add_argument("--force", action="store_true", help="overwrite fields the user edited (only if they asked)")
+    s = sub.add_parser("attach", help="the user added pictures / files / text to an item (a drop in the main window)")
+    s.add_argument("ref")
+    s.add_argument("--frame", action="append", default=[], metavar="PATH", help="a picture (absolute path): copied in")
+    s.add_argument("--file", action="append", default=[], metavar="PATH", help="any file: referenced, never copied")
+    s.add_argument("--text")
+    s.add_argument("--keep", action="append", default=[], metavar="PATH",
+                   help="a file in a temporary place: copied into the item's assets, then referenced")
+    s.add_argument("--restore", metavar="JSON", help="undo: the 'before' a previous attach returned")
     s = sub.add_parser("set-frames")
     s.add_argument("target", nargs="+", metavar="REF | SESSION ID, then PATH[@T][#CAPTION] …")
     s.add_argument("--append", action="store_true")
@@ -1721,6 +1804,8 @@ def run(a) -> dict:
         out = patch(path, sets, a.unset, a.force, session)
         touch_batch(st.read_header(path))
         return out
+    if a.cmd == "attach":
+        return attach(a.ref, a.frame, a.file, a.text, json.loads(a.restore) if a.restore else None, a.keep)
     if a.cmd == "set-frames":
         session, rest = target_of(a.target)
         if session is not None:

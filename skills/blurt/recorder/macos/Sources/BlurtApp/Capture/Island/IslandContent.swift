@@ -531,7 +531,7 @@ final class IslandContent: NSView {
 
     /// `locate`: a project whose folder is gone — choosing it asks where the folder is now (never files into it: that
     /// recreated the old folder with a fresh store, and its ids clashed with the moved project's).
-    enum Target: Equatable { case project(String), inbox, organize, none, openFolder, more, locate(String) }
+    enum Target: Equatable { case project(String), inbox, organize, none, openFolder, more, locate(String), hang }
 
     private var rows: [IslandRow] = []
     private var selected: Int?
@@ -1065,7 +1065,9 @@ final class IslandContent: NSView {
         // placeholder or what was typed on the text column, the caret after it), what this is across the notch
         let row = firstRow
         let pick = d == .switcher ? island?.pick : nil
-        let headText = d == .drop ? Loc.t("capture.drawer.drop_title", table: "Capture")
+        let ext = d == .drop ? island?.external : nil
+        // (the header sits beside the notch: short; what is being dragged is said on the Hang row)
+        let headText = d == .drop ? Loc.t(ext == nil ? "capture.drawer.drop_title" : "capture.drawer.drop_in_title", table: "Capture")
             : pick?.title ?? Loc.t("capture.drawer.switch_title", table: "Capture")
         let head = label(headText, size: 12, weight: .medium, color: ink3)
         head.alignment = .right
@@ -1089,6 +1091,15 @@ final class IslandContent: NSView {
             rows.append(r)
             place(r, x: 0, y: y, w: w, h: r.frame.height)
             y += r.frame.height
+        }
+        // v1.0.23: another app's files, pictures or text: first of all, hang them under the island (what letting go on
+        // the notch itself does too); the projects below file them straight in
+        if let e = ext {
+            let n = e.pictureCount + e.files.count + (e.text == nil ? 0 : 1)
+            add(IslandRow(icon: IslandContent.lineIcon(.cards, color: BrandColor.Island.fill),
+                          title: Loc.t("capture.drawer.hang", table: "Capture"),
+                          subtitle: Loc.t(n > 1 ? "capture.drawer.hang_many" : "capture.drawer.hang_one", table: "Capture", e.summary),
+                          height: 44), .hang)
         }
         // what is checked: the current project (nil = none), or where the thing being re-filed went
         let checkedID: String? = pick.map { $0.current } ?? (store.currentID ?? "inbox")
@@ -1156,8 +1167,8 @@ final class IslandContent: NSView {
             add(un, .inbox)
             // with no current project: one run for the cards, into Unassigned with a suggested project each
             let n = island?.dropCount ?? 1
-            add(IslandRow(icon: IslandContent.lineIcon(.spark, color: BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
-                          subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize)
+            if ext == nil { add(IslandRow(icon: IslandContent.lineIcon(.spark, color: BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
+                          subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize) }
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
         return y + 8
@@ -1184,8 +1195,11 @@ final class IslandContent: NSView {
 
     /// A card dropped on a target: that card — or the ⌘-click selection it is part of — goes there (Organize: those
     /// cards, organized into Unassigned with suggestions; from the island itself, every card).
-    func perform(_ t: Target, shot: Shot?) {
-        let shots = shot.map { hanging.withSelection($0) }
+    func perform(_ t: Target, shot: Shot?) { perform(t, shots: shot.map { hanging.withSelection($0) } ?? []) }
+
+    /// File `ss` (a card, a selection dragged as one) where `t` says.
+    func perform(_ t: Target, shots ss: [Shot]) {
+        let shots: [Shot]? = ss.isEmpty ? nil : ss
         switch t {
         case .project(let id): if let s = shots { snapper.assign(s, to: id) }
         case .inbox: if let s = shots { snapper.assign(s, to: "inbox") }
@@ -1215,6 +1229,7 @@ final class IslandContent: NSView {
             MissingFolder.use(id, via: "switch")
         case .inbox, .organize:
             perform(t, shot: nil)
+        case .hang: break                 // only ever a drop target (another app's drag)
         case .locate(let id):
             guard let p = ProjectStore.shared.project(id: id) else { return }
             let pick = island?.pick

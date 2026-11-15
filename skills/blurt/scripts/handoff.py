@@ -129,7 +129,7 @@ T = {
         "rule_external": "Don't push, and don't commit unless the user asks you to.",
         "said": "They said", "summary": "Summary", "why": "Why", "inspired_by": "Inspired by", "actual": "Actual",
         "expected": "Expected", "steps": "Steps", "details": "Details", "next_steps": "Next steps",
-        "open_questions": "Open questions", "answer": "Their answer", "code": "Suspected code", "frame": "Frame",
+        "open_questions": "Open questions", "answer": "Their answer", "code": "Suspected code", "frame": "Frame", "files": "Files", "missing": "not found",
         "module": "module", "project": "project",
         "kind": {"issue": "issue", "idea": "idea", "note": "note", "task": "task"},
         "severity": {},
@@ -147,7 +147,7 @@ T = {
         "rule_external": "不要推送；除非用户要求，也不要提交。",
         "said": "原话", "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "actual": "实际效果",
         "expected": "预期效果", "steps": "复现步骤", "details": "详情", "next_steps": "下一步", "open_questions": "待定问题",
-        "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "module": "模块", "project": "项目",
+        "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "files": "文件", "missing": "找不到", "module": "模块", "project": "项目",
         "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
         "severity": {"critical": "严重", "high": "高", "medium": "中", "low": "低"},
         "instr_one": "请处理 {id}，详情和截图见 {path}。做完后如果有 blurt MCP，调用 mark_fixed。",
@@ -235,6 +235,10 @@ def render_item(n: int, it: dict, lang: str, show_project: bool = False) -> str:
     refs = [r for r in (it.get("code_refs") or []) if _text(r)] if isinstance(it.get("code_refs"), list) else []
     if refs:
         parts.append(f"**{t['code']}** " + ", ".join(f"`{_text(r)}`" for r in refs))
+    # v1.0.23: files the user dropped on the item (a PDF, a video…), referenced where they are
+    files = [a for a in (it.get("attachments") or []) if isinstance(a, str) and a] if isinstance(it.get("attachments"), list) else []
+    if files:
+        parts.append(f"**{t['files']}**\n" + "\n".join(f"- `{a}`" + ("" if Path(a).exists() else f" ({t['missing']})") for a in files))
     for i, (p, f) in enumerate(frames_of(it), 1):
         label = f"{t['frame']} {i}"
         if _mmss(f.get("t")) is not None:

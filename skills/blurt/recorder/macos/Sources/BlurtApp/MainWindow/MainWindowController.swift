@@ -278,15 +278,91 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// …holding what ⌘V or a drop on the list brought (BA-52).
     func newItemHolding(_ prefill: NewItemSheet.Prefill) { openNewItem(prefill) }
 
-    private func openNewItem(_ prefill: NewItemSheet.Prefill?) {
+    /// ⌘V in the window (the list or the sidebar has the keys; a text field pastes for itself, the detail page adds
+    /// to its item): the clipboard's pictures, files or text as a new item in the place on show — the sheet a drop
+    /// opens, holding them (↩ creates it; nothing is written before). Not rows or cards copied in Blurt itself.
+    @objc func paste(_ sender: Any?) { paste(from: .general) }
+
+    func paste(from pb: NSPasteboard) {
+        let d = DropIn.clipboard(pb)
+        emit(["event": "main_paste", "to": "new_item", "images": d.images.count, "files": d.files.count, "has_text": d.text != nil])
+        guard !d.isEmpty else { return NSSound.beep() }
+        newItem(from: d, in: dropTarget())
+    }
+
+    func dropTarget() -> String {
+        switch model.scope {
+        case .project(let id): return id
+        case .inbox, .unassigned: return "inbox"
+        default: return ProjectStore.shared.currentID ?? "inbox"
+        }
+    }
+
+    /// A New Item sheet holding a drop from another app (v1.0.23): its pictures, its files (referenced; one in a
+    /// temporary place is copied), its text; with only files, the first one's name is the title (↩ creates it).
+    func newItem(from d: DropIn, in project: String) {
+        var pre = d.text.map { NewItemSheet.Prefill(text: $0, images: d.images) } ?? NewItemSheet.Prefill(images: d.images)
+        pre.files = d.files
+        if pre.title.isEmpty, d.images.isEmpty, let f = d.files.first { pre.title = f.deletingPathExtension().lastPathComponent }
+        openNewItem(pre, target: project)
+    }
+
+    /// Another app's drop on an item: added to it, no dialog; "Added to “X” · 2 pictures · Undo" (⌘Z too).
+    func add(_ d: DropIn, to it: ItemRow) {
+        var args = ["attach", it.fileURL.path]
+        for u in d.images { args += ["--frame", u.path] }
+        for u in d.files { args += [FilePlace.isTemporary(u) ? "--keep" : "--file", u.path] }
+        if let t = d.text { args.append("--text=" + t) }       // (a text starting with "-" is still the value)
+        attach(args, to: it, what: d.summary, cards: [])
+    }
+
+    /// Hanging cards dropped on an item: each one's picture (a file card: its file) and the notes, in the cards'
+    /// order; the cards are used (Recently Taken), and Undo puts them back with the item as it was.
+    func add(cards: [Shot], to it: ItemRow) {
+        var args = ["attach", it.fileURL.path]
+        var notes: [String] = []
+        for s in cards {
+            if let r = s.refURL { args += [FilePlace.isTemporary(r) ? "--keep" : "--file", r.path] }
+            else if s.kind == .shot, let u = s.bestURL { args += ["--frame", u.path] }
+            if let n = s.copyText { notes.append(n) }
+        }
+        if !notes.isEmpty { args.append("--text=" + notes.joined(separator: "\n\n")) }
+        attach(args, to: it, what: TP("main.drop.cards", cards.count), cards: cards)
+    }
+
+    private func attach(_ args: [String], to it: ItemRow, what: String, cards: [Shot]) {
+        let title = ItemListController.shortTitle(it)
+        let name = T("main.drop.added_undo", title)
+        let step = UndoStep<String>()
+        emit(["event": "item_drop_add", "uid": it.uid, "args": args.count, "cards": cards.map(\.n)])
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            switch await Scripts.awaiting({ Scripts.call("items.py", args, timeout: 60, done: $0) }) {
+            case .success(let o):
+                step.value = (o["before"]).flatMap { try? JSONSerialization.data(withJSONObject: $0) }.flatMap { String(data: $0, encoding: .utf8) }
+                // ⌘Z (and the toast's Undo) once there is something to undo: the item as it was, the cards back
+                self.register(name, step) { c, s in
+                    guard let before = s.value else { return }
+                    c.writes.run {
+                        _ = await Scripts.awaiting({ Scripts.call("items.py", ["attach", it.fileURL.path, "--restore", before], timeout: 30, done: $0) })
+                        for k in cards { snapper.putBack(k) }
+                        c.wrote([it])
+                    }
+                }
+                snapper.usedInItem(cards)
+                self.wrote([it])
+                self.reveal(uid: it.uid)
+                appDelegate?.toast(T("main.drop.added", title, what), icon: .check, undo: self.undoToast(name))
+            case .failure(let f):
+                self.alert(T("main.drop.add_failed"), f.localized)
+            }
+        }
+    }
+
+    private func openNewItem(_ prefill: NewItemSheet.Prefill?, target given: String? = nil) {
         show()
         guard let w = window, w.attachedSheet == nil else { return }
-        let target: String
-        switch model.scope {
-        case .project(let id): target = id
-        case .inbox, .unassigned: target = "inbox"
-        default: target = ProjectStore.shared.currentID ?? "inbox"
-        }
+        let target = given ?? dropTarget()
         let name = target == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: target)?.name ?? T("project.inbox")
         var sheet: NSWindow?
         let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name, prefill: prefill) { [weak self] uid in

@@ -27,9 +27,28 @@ pub fn bump() {
 pub struct DocCache {
     /// scope key → (etag, generation it was computed at)
     last: Mutex<HashMap<String, (String, u64)>>,
+    /// scope key → every absolute path the doc last served for it names (frames, clips, attachments, sessions): the
+    /// files the page may show in the file manager or open (`listed`)
+    files: Mutex<HashMap<String, std::collections::HashSet<String>>>,
 }
 
 impl DocCache {
+    /// The paths `doc` names, kept for `scope` (replacing what it named before).
+    pub fn note_files(&self, scope: &Value, doc: &Value) {
+        let mut set = std::collections::HashSet::new();
+        let session = scope.get("session").and_then(Value::as_str).map(std::path::Path::new);
+        collect_paths(doc.get("items").unwrap_or(&Value::Null), session, &mut set);
+        // a session's own recording
+        collect_paths(&json!([{"clip": doc.get("source_video").cloned().unwrap_or(Value::Null)}]), session, &mut set);
+        self.files.lock().unwrap().insert(scope_key(scope), set);
+    }
+
+    /// A doc the page was served names this path (an item's own file says it: the Mac's `attached()`).
+    pub fn listed(&self, path: &str) -> bool {
+        let want = path_key(path);
+        self.files.lock().unwrap().values().any(|s| s.contains(&want))
+    }
+
     fn remember(&self, scope: &Value, etag: &str, generation: u64) {
         self.last.lock().unwrap().insert(scope_key(scope), (etag.to_string(), generation));
     }
@@ -37,6 +56,50 @@ impl DocCache {
     fn fresh(&self, scope: &Value, etag: &str) -> bool {
         let now = GENERATION.load(Ordering::SeqCst);
         self.last.lock().unwrap().get(&scope_key(scope)).is_some_and(|(e, g)| e == etag && *g == now)
+    }
+}
+
+/// A path as compared: slashes one way, no trailing one; a Windows path (a drive, UNC) without regard to case, as
+/// Windows compares them — a POSIX one exactly (Linux's names differ by case).
+fn path_key(p: &str) -> String {
+    let b = p.as_bytes();
+    let windows = p.starts_with("\\\\") || (b.len() > 1 && b[0].is_ascii_alphabetic() && b[1] == b':');
+    let k = p.replace('\\', "/");
+    let k = k.trim_end_matches('/');
+    if windows {
+        k.to_lowercase()
+    } else {
+        k.to_string()
+    }
+}
+
+/// The files a doc's items name — their pictures (`frames[].path`), recording (`clip`), attached files
+/// (`attachments`), capture (`source.session`) and file (`path`) — never words in a field. Absolute paths (POSIX,
+/// a Windows drive, UNC); in a session's v2 doc, relative ones under the session.
+fn collect_paths(items: &Value, session: Option<&std::path::Path>, out: &mut std::collections::HashSet<String>) {
+    let mut add = |v: &Value| {
+        let Some(s) = v.as_str().filter(|s| !s.is_empty() && !s.contains('\n') && s.len() < 4096) else { return };
+        let b = s.as_bytes();
+        let drive = b.len() > 2 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\');
+        if s.starts_with('/') || s.starts_with("\\\\") || drive {
+            out.insert(path_key(s));
+        } else if let Some(root) = session.filter(|_| !s.contains("://") && !s.split(['/', '\\']).any(|c| c == "..")) {
+            out.insert(path_key(&root.join(s).to_string_lossy()));
+        }
+    };
+    for it in items.as_array().into_iter().flatten() {
+        for f in it.get("frames").and_then(Value::as_array).into_iter().flatten() {
+            add(f.get("path").unwrap_or(f));
+        }
+        match it.get("attachments") {
+            Some(Value::Array(a)) => a.iter().for_each(&mut add),
+            Some(v) => add(v),
+            None => {}
+        }
+        for k in ["clip", "path"] {
+            add(it.get(k).unwrap_or(&Value::Null));
+        }
+        add(it.pointer("/source/session").unwrap_or(&Value::Null));
     }
 }
 
@@ -73,7 +136,9 @@ pub fn doc(runner: &Runner, cache: &DocCache, scope: &Value) -> Result<Value, St
     let r = runner.run("items.py", &args, None, Duration::from_secs(30)).map_err(String::from)?;
     let etag = r.get("etag").and_then(Value::as_str).unwrap_or("").to_string();
     cache.remember(scope, &etag, generation);
-    Ok(json!({"doc": r.get("doc").cloned().unwrap_or(Value::Null), "etag": etag}))
+    let doc = r.get("doc").cloned().unwrap_or(Value::Null);
+    cache.note_files(scope, &doc);
+    Ok(json!({"doc": doc, "etag": etag}))
 }
 
 /// → {etag} when unchanged, {doc, etag} otherwise
@@ -89,7 +154,10 @@ pub fn poll(runner: &Runner, cache: &DocCache, scope: &Value, etag: &str) -> Res
     let now = r.get("etag").and_then(Value::as_str).unwrap_or(etag).to_string();
     cache.remember(scope, &now, generation);
     Ok(match r.get("doc") {
-        Some(d) if !d.is_null() => json!({"doc": d, "etag": now}),
+        Some(d) if !d.is_null() => {
+            cache.note_files(scope, d);
+            json!({"doc": d, "etag": now})
+        }
         _ => json!({"etag": now}),
     })
 }
@@ -107,6 +175,9 @@ pub fn ops(runner: &Runner, cache: &DocCache, scope: &Value, ops: &Value, confir
     bump(); // our own write: every other scope may show these items too
     if let Some(e) = r.get("etag").and_then(Value::as_str) {
         cache.remember(scope, e, GENERATION.load(Ordering::SeqCst));
+    }
+    if let Some(d) = r.get("doc").filter(|d| !d.is_null()) {
+        cache.note_files(scope, d);
     }
     Ok(r)
 }
@@ -146,12 +217,62 @@ pub fn undo_state(runner: &Runner, uids: &[String], to: &str) -> Result<Value, S
     Ok(r)
 }
 
-/// `items.py add --project P --json ITEM` — New Item (the list heading's + / Ctrl+N): kind, title, details, frames.
+/// `items.py add --project P --json ITEM` — New Item (the list heading's + / Ctrl+N, a paste, a drop): kind, title,
+/// details, frames. `attachments` (files dropped that aren't pictures, absolute paths) go on with `attach` once the
+/// item exists, which references them where they are and copies the ones in a temporary place (`is_temporary`).
 pub fn add(runner: &Runner, project: &str, item: &Value) -> Result<Value, String> {
+    let mut item = item.clone();
+    let files: Vec<String> = item
+        .as_object_mut()
+        .and_then(|o| o.remove("attachments"))
+        .and_then(|a| a.as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_owned).collect()))
+        .unwrap_or_default();
     let args = vec!["add".to_string(), "--project".into(), project.into(), "--json".into(), item.to_string()];
     let r = runner.run("items.py", &args, None, Duration::from_secs(30)).map_err(String::from)?;
+    if let (false, Some(uid)) = (files.is_empty(), r["uid"].as_str()) {
+        attach(runner, uid, &[], &files, None, None)?;
+    }
     bump();
     Ok(r)
+}
+
+/// `items.py attach REF` — something dropped on an item of the main window (drag-drop.md §4): pictures become frames
+/// (`frames`: items.py copies them in), other files are referenced by absolute path (`files`; one in a temporary
+/// place — a chat app's cache, %TEMP%, /tmp — is copied into the item's assets first: `--keep`), text goes after the
+/// details. `restore`: the "before" an earlier attach returned — the Undo. Returns items.py's {before, added}.
+pub fn attach(runner: &Runner, uid: &str, frames: &[String], files: &[String], text: Option<&str>, restore: Option<&Value>) -> Result<Value, String> {
+    let mut args = vec!["attach".to_string(), uid.to_string()];
+    if let Some(before) = restore {
+        args.extend(["--restore".into(), before.to_string()]);
+    } else {
+        let temp = std::env::temp_dir();
+        for f in frames {
+            args.extend(["--frame".into(), f.clone()]);
+        }
+        for f in files {
+            let flag = if is_temporary(std::path::Path::new(f), &temp) { "--keep" } else { "--file" };
+            args.extend([flag.into(), f.clone()]);
+        }
+        if let Some(t) = text.filter(|t| !t.trim().is_empty()) {
+            args.extend(["--text".into(), t.to_string()]);
+        }
+    }
+    let r = runner.run("items.py", &args, None, Duration::from_secs(60)).map_err(String::from)?;
+    bump();
+    Ok(r)
+}
+
+/// A file in a place that empties itself — the system's temporary folder (`temp`: %TEMP% on Windows, $TMPDIR / /tmp
+/// elsewhere), any user's AppData\Local\Temp, /tmp, /var/tmp, macOS's /var/folders — so an item can't just point at
+/// it: a chat app's cached PDF, a browser's download in progress. Compared without regard to case or slash direction
+/// (Windows paths).
+pub fn is_temporary(path: &std::path::Path, temp: &std::path::Path) -> bool {
+    let norm = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/").to_lowercase();
+    let (p, t) = (norm(path), norm(temp));
+    let t = t.trim_end_matches('/');
+    (!t.is_empty() && p.starts_with(&format!("{t}/")))
+        || p.contains("/appdata/local/temp/")
+        || ["/tmp/", "/var/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"].iter().any(|d| p.starts_with(d))
 }
 
 /// `export_local.py bundle` — Export Hand-off Bundle…: the items as one .zip for someone else (the Mac's
@@ -309,6 +430,25 @@ mod tests {
     }
 
     #[test]
+    fn files_in_temporary_places_are_copied_not_referenced() {
+        use std::path::Path;
+        let win_temp = Path::new(r"C:\Users\Ana\AppData\Local\Temp");
+        assert!(is_temporary(Path::new(r"C:\Users\Ana\AppData\Local\Temp\WeChat Files\a.pdf"), win_temp));
+        assert!(is_temporary(Path::new(r"c:\users\ana\appdata\local\temp\x.mp4"), win_temp));
+        // another user's temp (an elevated app), and a TEMP moved elsewhere
+        assert!(is_temporary(Path::new(r"C:\Users\Admin\AppData\Local\Temp\x.zip"), win_temp));
+        assert!(is_temporary(Path::new(r"D:\tmp\scratch\x.zip"), Path::new(r"D:\tmp\")));
+        assert!(!is_temporary(Path::new(r"C:\Users\Ana\Documents\spec.pdf"), win_temp));
+        assert!(!is_temporary(Path::new(r"C:\Users\Ana\AppData\Local\Templates\a.pdf"), win_temp));
+        let linux = Path::new("/tmp");
+        assert!(is_temporary(Path::new("/tmp/feishu/a.pdf"), linux));
+        assert!(is_temporary(Path::new("/var/tmp/a.pdf"), linux));
+        assert!(!is_temporary(Path::new("/home/ana/tmp-notes/a.pdf"), linux));
+        assert!(!is_temporary(Path::new("/tmpfile.pdf"), linux));
+        assert!(is_temporary(Path::new("/var/folders/x/T/a.pdf"), Path::new("")));
+    }
+
+    #[test]
     fn scopes() {
         assert_eq!(scope_args(&json!({"session": "/s/x"})).unwrap(), ["/s/x"]);
         assert_eq!(
@@ -321,6 +461,28 @@ mod tests {
         );
         assert!(scope_args(&json!({})).is_err());
         assert_eq!(scope_args(&json!({"project": "p", "item": "u1"})).unwrap(), ["--project", "p", "--item", "u1"]);
+    }
+
+    #[test]
+    fn a_page_may_reveal_only_what_its_doc_names() {
+        let c = DocCache::default();
+        let doc = json!({"items": [
+            {"uid": "u1", "frames": [{"path": "/s/p/.blurt/assets/u1/a.png"}], "attachments": ["/Users/ana/Documents/Spec V2.pdf", r"C:\Users\Ana\clip.mp4"],
+             "source": {"session": "/s/p/.blurt/sessions/x"}, "title": "/etc/passwd", "details": "/etc/hosts"},
+        ]});
+        c.note_files(&json!({"project": "p"}), &doc);
+        assert!(c.listed("/Users/ana/Documents/Spec V2.pdf"));
+        assert!(c.listed(r"c:\users\ana\CLIP.mp4") && c.listed("C:/Users/Ana/clip.mp4"));
+        assert!(c.listed("/s/p/.blurt/assets/u1/a.png") && c.listed("/s/p/.blurt/sessions/x/"));
+        // only the fields that name files: a title or the details never do
+        assert!(!c.listed("/etc/passwd") && !c.listed("/etc/hosts") && !c.listed("/Users/ana/Documents"));
+        // a later doc for the same scope replaces what it named (an attachment removed is no longer revealable)
+        c.note_files(&json!({"project": "p"}), &json!({"items": [{"uid": "u1"}]}));
+        assert!(!c.listed("/Users/ana/Documents/Spec V2.pdf"));
+        // a v2 session doc: its relative frames, under the session
+        c.note_files(&json!({"session": "/r/s1"}), &json!({"items": [{"frames": [{"path": "shots/001.png"}, {"path": "../x/y.png"}]}], "source_video": "rec.mp4"}));
+        assert!(c.listed("/r/s1/shots/001.png") && c.listed("/r/s1/rec.mp4"));
+        assert!(!c.listed("/r/x/y.png") && !c.listed("/r/s1/../x/y.png"));
     }
 
     #[test]

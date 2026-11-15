@@ -130,6 +130,17 @@ pub struct Card {
     /// The batch (session dir) it belongs to.
     #[serde(default)]
     pub session: Option<String>,
+    /// A file card (something dropped on the island that isn't a picture, drag-drop.md §3): the file it refers to
+    /// (absolute path; shots.jsonl `"ref"`). Its `file` is only its face — a thumbnail or icon with its name.
+    #[serde(default, rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// A text card (text or a link dropped on the island): a voice card's face with no recording behind it.
+    #[serde(default, rename = "textCard", skip_serializing_if = "std::ops::Not::not")]
+    pub text_card: bool,
+    /// A file card whose file isn't where it was (moved, deleted, a drive unplugged): the card says "Original file not
+    /// found" and hands nothing over. Deleting the card never touches the file either way.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub missing: bool,
 }
 
 fn shot() -> String {
@@ -145,11 +156,24 @@ impl Card {
             file: Some(file.to_string()),
             kind: shot(),
             session: Some(session.to_string_lossy().into_owned()),
+            reference: None,
+            text_card: false,
+            missing: false,
         }
     }
 
     pub fn voice(session: &Path, n: u32, text: Option<String>) -> Self {
-        Card { n, src: String::new(), text, file: None, kind: "voice".into(), session: Some(session.to_string_lossy().into_owned()) }
+        Card {
+            n,
+            src: String::new(),
+            text,
+            file: None,
+            kind: "voice".into(),
+            session: Some(session.to_string_lossy().into_owned()),
+            reference: None,
+            text_card: false,
+            missing: false,
+        }
     }
 }
 
@@ -215,6 +239,9 @@ pub fn open<R: Runtime>(
     if let Some(pl) = &cfg.platform {
         p.entry("platform").or_insert_with(|| pl.clone());
     }
+    // a note offered after a drop (`passive=1`): shown beside its card without taking the keyboard — the app the user
+    // dragged from keeps it; the page asks for the keys once the pointer comes onto the bubble (`take_keys`)
+    let keys = kind.takes_keys() && p.get("passive").map(String::as_str) != Some("1");
     let init = format!("window.__BLURT_OVERLAY_PARAMS__ = {};", serde_json::to_string(&p).unwrap_or_default());
     let url = WebviewUrl::App(format!("{}{}", cfg.base, kind.page()).into());
     let w = WebviewWindowBuilder::new(app, kind.label(), url)
@@ -229,16 +256,21 @@ pub fn open<R: Runtime>(
         .always_on_top(true)
         .visible_on_all_workspaces(true)
         .content_protected(!cfg.capturable)
-        .focusable(kind.takes_keys())
-        .focused(kind.takes_keys())
+        .focusable(keys)
+        .focused(keys)
         .position(at.x as f64 / scale, at.y as f64 / scale)
         .inner_size(at.w as f64 / scale, at.h as f64 / scale)
-        .visible(false)
-        .build()?;
+        .visible(false);
+    // the island (as big as the work area) is never another app's drop target: Tauri's own drop handler would take
+    // a file let go over a hanging card and do nothing with it. Drops from other apps come in through a small window
+    // of their own over the island (the desktop app's island drop catcher, drag-drop.md §3); the app also switches
+    // WebView2's external drops off for this window.
+    let w = if kind == Kind::Island { w.disable_drag_drop_handler() } else { w };
+    let w = w.build()?;
     w.set_position(PhysicalPosition::new(at.x, at.y))?;
     w.set_size(PhysicalSize::new(at.w, at.h))?;
     w.show()?;
-    if kind.takes_keys() {
+    if keys {
         take_keys(&w);
     }
     Ok(w)
@@ -253,8 +285,10 @@ pub fn set_focus_hook(f: fn(isize)) {
     let _ = FOCUS_HOOK.set(f);
 }
 
-/// The window takes the keyboard: focus, then (Windows) the host's forcing until it really is in front.
+/// The window takes the keyboard: focus, then (Windows) the host's forcing until it really is in front. A window opened
+/// without the keys (a passive note) becomes focusable first.
 pub fn take_keys<R: Runtime>(w: &WebviewWindow<R>) {
+    let _ = w.set_focusable(true);
     let _ = w.set_focus();
     #[cfg(windows)]
     if let (Some(f), Ok(h)) = (FOCUS_HOOK.get().copied(), w.hwnd()) {
@@ -657,6 +691,14 @@ impl<R: Runtime> Island<R> {
     /// The island's area on the desktop (physical px).
     pub fn rect(&self) -> Region {
         self.at.lock().unwrap().0
+    }
+
+    /// Linux: the window takes no pointer at all, now (not at the hit tester's next tick): a card's system drag is
+    /// about to start, and the island — under the pointer everywhere while a card was dragged inside it — must not be
+    /// the window that drag finds to drop on. The page's next rects bring the input region back.
+    #[cfg(target_os = "linux")]
+    pub fn passthrough(&self) {
+        input_shape(&self.window, &[]);
     }
 }
 

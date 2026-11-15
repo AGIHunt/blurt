@@ -1937,6 +1937,14 @@ button.row:hover::before,
 .card.picked .x {
   display: none;
 }
+/* its place in the selection (1, 2, 3) in place of the tick: the order the cards leave in (drag-drop.md §2) */
+.card.picked[data-pick]::after {
+  content: attr(data-pick);
+  background-image: none;
+  color: #fff;
+  font: 700 11px/18px 'Segoe UI', system-ui, sans-serif;
+  text-align: center;
+}
 /* the selection's line (and a click's "Copied"): the theme's surface — light in light mode */
 @media (prefers-color-scheme: light) {
   .selpill {
@@ -2164,4 +2172,79 @@ button.row:hover::before,
 /* the project chip's chevron: secondary white, the size of the cap height, so it reads as a switcher */
 .proj .chev {
   color: rgba(255, 255, 255, 0.55) !important;
+}
+
+/* ------------------------------------------------------------ dropped from another app (drag-drop.md §3) */
+/* the drawer's first row for another app's things: Keep as cards under the notch, what came under it */
+.row.target.hangrow {
+  min-height: 44px;
+}
+/* a file card: its face carries the file's name along the bottom (Rust draws it), so its note goes along the top */
+.face.shot.file .band {
+  top: 3px;
+  bottom: auto;
+  border-radius: 7px 7px 0 0;
+}
+/* a text card (text or a link dropped): its words, no mic — nothing was said */
+.face.voice.text .cap {
+  -webkit-line-clamp: 2;
+  word-break: break-word;
+}
+/* Linux: a file card's face has no name drawn on it (no system text there) — the page writes it on the dark band
+   along the bottom, where Windows' and the Mac's face carry it */
+.face.shot.file .fname {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  height: 19%;
+  min-height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border-radius: 0 0 7px 7px;
+  color: #fff;
+  font: 500 11px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* its file moved or was deleted: said on the face, the picture of it faded */
+.face.shot.file.missing img {
+  opacity: 0.45;
+}
+.face.shot.file .gone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 16px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font: 500 11px/15px var(--font);
+  text-align: center;
+  white-space: normal;
+}
+/* the Cards panel's Current: a tile's place in the selection (1, 2, 3), as the card on the row shows it */
+.ptile.picked .tpic {
+  box-shadow:
+    0 0 0 2.5px rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(0, 0, 0, 0.3);
+}
+.ptile.picked::after {
+  content: attr(data-pick);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1f8a3a;
+  box-shadow: 0 0 0 1.5px #fff;
+  color: #fff;
+  font: 700 11px/20px var(--font);
+  text-align: center;
 }

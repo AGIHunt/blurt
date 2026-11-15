@@ -78,5 +78,6 @@
   "tray.models.stop_download": "停止下载",
   "tray.models.status": "正在下载 · {pct}%",
   "tray.models.row": "语音模型 · {done} / {total}",
-  "tray.counts_sep": "，"
+  "tray.counts_sep": "，",
+  "mainwin.add_files.title": "添加图片或文件"
 }

@@ -548,10 +548,17 @@ enum DragNoteFollowUp {
         // an Electron app shows its web content to Accessibility only once asked (BA-54: the composer wasn't found when
         // the pointer wasn't over it); asked only just now — not while the drag passed over it — its tree needs a moment
         let wait = t.kind == .web ? WebAXWake.wake(t.pid) : 0
-        guard wait <= 0 else {
-            return DispatchQueue.main.asyncAfter(deadline: .now() + wait) { probe(target: t, at: p, window: window, facts: f, then) }
+        // Feishu: its tree builds for a moment after the wake — look again until Accessibility names a focus
+        var tries = f.needsText ? Int(WebAXWake.feishuPatience / 0.2) : 0
+        func look() {
+            probe(target: t, at: p, window: window, facts: f) { g in
+                guard focusRole == "none", tries > 0 else { return then(g) }
+                tries -= 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: look)
+            }
         }
-        probe(target: t, at: p, window: window, facts: f, then)
+        guard wait <= 0 else { return DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: look) }
+        look()
     }
 
     /// focus(…)'s Accessibility part: read the focus, move it to the composer that received the drop if it isn't there.

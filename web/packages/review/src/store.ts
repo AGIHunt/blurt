@@ -234,6 +234,10 @@ export class ReviewStore {
     return this.missing && !!want && (this.data._unreadable || []).some((u) => u.uid === want || u.id === want);
   }
   keyOf = (i: Item) => this.key(i);
+  /** The item can't be changed from this page: the review is being handed back or was (nothing is saved after that),
+      or the doc marks the item (`_readonly`: a host showing one it won't write). Its fields still read; controls that
+      only change it (an attached file's Remove) are left out. */
+  readOnly = (i: Item) => this.confirming || this.confirmed || i._readonly === true;
   /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
   st = (i: Item) => statusOf(i);
   get stalled(): boolean {

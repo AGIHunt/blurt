@@ -168,11 +168,19 @@ export const UNDO_MS = 5000;
 // ------------------------------------------------------------------ the Cards panel (BlurtCore CardsPanelKeys, CardGrid)
 
 export type Segment = 'hanging' | 'used';
-export type PanelKey = 'left' | 'right' | 'up' | 'down' | 'space' | 'tab' | 'enter' | 'copy' | 'delete' | 'escape' | 'close';
+export type PanelKey = 'left' | 'right' | 'up' | 'down' | 'space' | 'tab' | 'enter' | 'copy' | 'delete' | 'escape' | 'close' | 'shiftLeft' | 'shiftRight' | 'all';
 export type PanelAction =
   | { a: 'segment'; seg: Segment }
   | { a: 'focus'; i: number | null }
   | { a: 'preview'; i: number }
+  /** Current: the card in or out of the selection (Space) */
+  | { a: 'toggle'; i: number }
+  /** Current: Shift+←/→ — `from` joins first when nothing is picked yet, the keyboard moves to `i`, which joins */
+  | { a: 'extend'; from: number | null; i: number }
+  /** Current: Ctrl+A, every card */
+  | { a: 'all' }
+  /** Current: Enter / Ctrl+C with several picked — the selection, in the order picked */
+  | { a: 'copySelection' }
   | { a: 'copyAndClose'; i: number }
   | { a: 'delete'; i: number }
   | { a: 'close' }
@@ -197,11 +205,31 @@ export const CardsPanelRules = {
     if (isOpen) return 'close';
     return CardsPanelRules.openSegment(hanging, used) ?? 'nothing';
   },
-  /** What `key` does with the keyboard on the panel (the one key map). */
-  action(key: PanelKey, seg: Segment, focus: number | null, count: number, columns: number, pointed: number | null = null): PanelAction {
+  /** What `key` does with the keyboard on the panel (the one key map). `picked`: how many cards are selected. Current
+   *  (the hanging cards) has the row's selection keys (drag-drop.md §2): Space picks, Shift+←/→ adds the next card,
+   *  Ctrl+A all, Enter / Ctrl+C copies the selection when several are picked. History: Space previews. */
+  action(key: PanelKey, seg: Segment, focus: number | null, count: number, columns: number, pointed: number | null = null, picked = 0): PanelAction {
     const f = focus !== null && focus >= 0 && focus < count ? focus : null;
     const cols = Math.max(1, columns);
+    const hanging = seg === 'hanging';
+    if (hanging && count > 0) {
+      if (key === 'space') {
+        const i = f ?? (pointed !== null && pointed >= 0 && pointed < count ? pointed : null);
+        return i === null ? { a: 'focus', i: 0 } : { a: 'toggle', i };
+      }
+      if (key === 'shiftLeft' || key === 'shiftRight') {
+        const d = key === 'shiftLeft' ? -1 : 1;
+        const i = f === null ? 0 : Math.max(0, Math.min(count - 1, f + d));
+        return { a: 'extend', from: f, i };
+      }
+      if (key === 'all') return { a: 'all' };
+      if ((key === 'enter' || key === 'copy') && picked > 1) return { a: 'copySelection' };
+    }
+    if (key === 'shiftLeft') key = 'left';
+    if (key === 'shiftRight') key = 'right';
     switch (key) {
+      case 'all':
+        return { a: 'none' };
       case 'tab':
         return { a: 'segment', seg: seg === 'hanging' ? 'used' : 'hanging' };
       case 'left':
@@ -242,13 +270,13 @@ export const CardsPanelRules = {
 };
 
 /** A key event as the panel names it (Windows: Ctrl where the Mac has ⌘). */
-export function panelKey(e: { key: string; ctrlKey?: boolean; metaKey?: boolean }): PanelKey | null {
+export function panelKey(e: { key: string; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }): PanelKey | null {
   const cmd = !!(e.ctrlKey || e.metaKey);
   switch (e.key) {
     case 'ArrowLeft':
-      return 'left';
+      return e.shiftKey ? 'shiftLeft' : 'left';
     case 'ArrowRight':
-      return 'right';
+      return e.shiftKey ? 'shiftRight' : 'right';
     case 'ArrowUp':
       return 'up';
     case 'ArrowDown':
@@ -266,6 +294,7 @@ export function panelKey(e: { key: string; ctrlKey?: boolean; metaKey?: boolean 
       return 'escape';
   }
   if (cmd && e.key.toLowerCase() === 'c') return 'copy';
+  if (cmd && e.key.toLowerCase() === 'a') return 'all';
   if (cmd && e.key.toLowerCase() === 'w') return 'close';
   return null;
 }
