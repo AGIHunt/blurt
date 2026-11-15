@@ -292,6 +292,48 @@ Not measured on a network: only the arithmetic, as a run of reports (`testOverAn
 a network that carries 3 Mbps, a rate at the floor, a still picture every 20 s; back over 2.1 Mbps within 30 pictures, never lower for
 asking). The cost when the answer is no: over the relay's one stream, up to half a second of picture ahead of a key, once per 30 reports.
 
+### 9. A picture that stopped, and kept the phones out (2026-11-15)
+
+What the founder saw: the iPad and then the iPhone 16 couldn't connect, on the home Wi-Fi, until a scroll in Chrome on the Mac; then the
+phone was in at once. "It drops often, the iPad more." Reconstructed from the Mac's unified log (Blurt 1.0.21; the Mac never slept,
+another app held it awake):
+
+- 10:50:48 a phone connects over the LAN, picture on. 11:02:30.367 the last encoder change of any kind; from then until 11:14:09.797,
+  11.5 minutes, the screen's queue encoded nothing.
+- 11:02:36 the phone, its picture frozen, closes and connects again (the right thing). Taking the session over stops the old picture:
+  `RemoteScreen.stop()` did `q.sync` on the server's queue, and `q` never came free. The server's queue was held too.
+- Every connection after that: the listener saw it (`Handling inbound connection`), its handler, on the held queue, never ran, and 5 s
+  later `TCP listener failed to receive inbound connection within timeout`. 90 of them, every ~3 s from both devices, plus the relay's
+  waiting connection, dropped by the proxy at 11:04:36 and not replaced. The same error on 11-13 at 02:20 (24 of them).
+- 11:14:09.797 the scroll changed the screen; `q` moved, and within 60 ms everything queued since 11:02 ran: the old picture stopped, the
+  stale connections failed, the next phone got in.
+
+Where `q` was: a thread sample of a normal live session (3 s) had `q` in our still-frame check (`same`: `CVPixelBufferLockBaseAddress`
+→ `IOSurfaceClientLock`) for 430 of its 483 busy samples, memcmp itself 25. ScreenCaptureKit delivered on `q` through a receiving source
+that takes every frame waiting before it returns, and a still window comes as complete frames at full rate (120 a second at 60 fps and
+up). Each one locked two surfaces; when that fell behind, the source never let go of `q`. Not caught in the act: the one sample taken
+during a freeze watch turned out to be of a normal session, so the lock as the hold is inferred from that share and the timeline. The
+iPad asking for a larger picture (2752 wide under Auto on Wi-Fi) would make each compare dearer; not measured.
+
+Built (Mac, `RemoteScreen`): frames come on a queue of their own, which only drops frames with nothing new and hands the newest of the
+rest to `q`, one hand-over at a time (a newer frame replaces one not yet taken, counted as skipped). `stop()` returns at once: it stops
+capture from outside `q` and tears the rest down on `q` later, so a picture in trouble can't hold the server's queue. Remote state events
+also go to the unified log (`subsystem == "dev.blurt.recorder" AND category == "remote"`, no stats, no pairing links), since a normal
+launch's stdout goes nowhere. Live on this Mac with the Rust test phone (loopback, 2026-11-15): picture on, still frames skipped
+(about 180 a second), and a second phone taking the session over mid-picture: old picture off, old session closed, new one open and
+its picture on, nothing waiting.
+
+Rust host: frames already went to its workers through newest-frame slots, so the first half doesn't apply. The second does:
+`closed_session` ran under the server's lock and `ScreenSession::stop` joined the backend's capture and encoder threads under the
+backend's lock, which input and keeping awake need too. Now `Screen::begin_stop` tells the capture to end under the lock and returns the
+wait, which a thread of its own runs without it; a new picture on the same backend waits for that (`Stopping`), since there is one
+screen and a late stop would end the new one. `tests/stuck_stop.rs`: a backend whose stop hangs, the same phone connecting again
+mid-picture: it gets in and is answered at once, its picture starts only when the old stop finishes. Fails ("the server is held up")
+with the stop run inline.
+
+Not verified: the freeze itself on a real phone after the change (it showed after 12 minutes of use), and the Windows and Linux
+backends' `begin_stop` on their own machines (CI builds and tests them; this Mac can't cross-compile `ring` or the GTK crates).
+
 ### Measured, before and after (same tests, `BLURT_SCREEN_REPAIR=0` on the phone for before)
 
 Scrolling at 60 Hz (`testwin2 scroll`), Auto at home, 12 s a stage, two stages (whole and 2×) each unless one number is given. "Longest

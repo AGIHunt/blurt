@@ -3,6 +3,7 @@ import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
+import os
 import ScreenCaptureKit
 import ServiceManagement
 
@@ -78,8 +79,23 @@ func emit(_ obj: [String: Any]) {
        let s = String(data: d, encoding: .utf8) {
         print(s)
         fflush(stdout)
+        if RemoteLog.keeps(obj) { RemoteLog.logger.notice("\(s, privacy: .public)") }
     }
     if let line = DragLog.line(obj, at: Date().timeIntervalSince1970) { DragLogFile.append(line) }
+}
+
+/// The phone's comings and goings, kept in the system log (`log show --predicate 'subsystem == "dev.blurt.recorder" AND category ==
+/// "remote"'`): a normal launch's stdout goes nowhere, and a phone that can't get in leaves nothing else to go on. States only; the
+/// every-two-seconds picture figures, the tests' input lines and anything with a pairing link in it (a test build prints one) stay
+/// on stdout.
+enum RemoteLog {
+    static let logger = Logger(subsystem: "dev.blurt.recorder", category: "remote")
+    private static let kept: Set<String> = ["remote_screen_mac", "remote_screen_phone", "remote_input", "remote_pairing"]
+
+    static func keeps(_ obj: [String: Any]) -> Bool {
+        guard let e = obj["event"] as? String, e.hasPrefix("remote_"), !kept.contains(e) else { return false }
+        return obj["link"] == nil && obj["url"] == nil
+    }
 }
 
 /// <BLURT_HOME>/logs/card-drag.log (BlurtCore DragLog): a card drag's events, kept where a normal launch's stdout isn't.

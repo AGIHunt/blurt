@@ -8,6 +8,16 @@ import XCTest
 final class NoteKeysTests: XCTestCase {
     typealias S = NoteKeys.State
 
+    // MARK: ⌘Z — the panel's, before the Edit menu's Undo
+
+    func testCommandZIsTheBubblesBeforeTheMenusUndo() {
+        XCTAssertTrue(NoteKeys.takesCommandZBeforeTheMenu(shift: false, charactersIgnoringModifiers: "z"))
+        // Redo stays the menu's. So does every other ⌘ letter.
+        XCTAssertFalse(NoteKeys.takesCommandZBeforeTheMenu(shift: true, charactersIgnoringModifiers: "z"))
+        XCTAssertFalse(NoteKeys.takesCommandZBeforeTheMenu(shift: false, charactersIgnoringModifiers: "x"))
+        XCTAssertFalse(NoteKeys.takesCommandZBeforeTheMenu(shift: false, charactersIgnoringModifiers: nil))
+    }
+
     // MARK: ↩ — the user commits; nothing else does
 
     func testReturnCommitsInEveryState() {

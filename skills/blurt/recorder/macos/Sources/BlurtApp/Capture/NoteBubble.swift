@@ -748,9 +748,13 @@ final class NotePanel: NSPanel {
         if e.type == .keyDown, onKey?(e) == true { return }
         super.sendEvent(e)
     }
-    /// ⌘-digits are the bubble's (the type) before the main menu's ⌘1–⌘4 (Go to Inbox…, the main window's) see them.
+    /// ⌘-digits are the bubble's (the type) before the main menu's ⌘1–⌘4 (Go to Inbox…, the main window's).
+    /// ⌘Z is the bubble's before the Edit menu's Undo (NoteKeys.takesCommandZBeforeTheMenu). Key equivalents
+    /// are routed before sendEvent, so a ⌘Z left to the menu undoes typing in the field editor and never reaches
+    /// the stroke undo below. That typing undo runs on this thread; layout during it used to record more undo,
+    /// so it never returned — and the frozen picture, which takes every click, stayed up.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
-        if e.type == .keyDown, NoteBubble.commandDigit(e) != nil, onKey?(e) == true { return true }
+        if e.type == .keyDown, NoteBubble.claimsBeforeTheMenu(e), onKey?(e) == true { return true }
         return super.performKeyEquivalent(with: e)
     }
 }
@@ -1305,12 +1309,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     private func fieldHeight(_ w: CGFloat, max cap: CGFloat) -> CGFloat {
-        // the live words take the placeholder's place, so they size the field as typed text does
-        let s = field.stringValue.isEmpty ? (field.placeholderAttributedString?.string ?? field.placeholderString ?? "x") : field.stringValue
+        // the live words take the placeholder's place, so they size the field as typed text does.
+        // measure a prefix: the field is at most a few lines (cap), and laying out an unbounded string here
+        // runs on the main thread under the frozen picture
+        var s = field.stringValue.isEmpty ? (field.placeholderAttributedString?.string ?? field.placeholderString ?? "x") : field.stringValue
+        if s.count > NoteBubble.measuredChars { s = String(s.prefix(NoteBubble.measuredChars)) }
         let r = (s as NSString).boundingRect(with: NSSize(width: w, height: 400), options: [.usesLineFragmentOrigin],
                                              attributes: [.font: field.font!])
         return min(cap, max(20, ceil(r.height) + 2))
     }
+
+    /// enough lines to hit the field's cap; past this, measuring the rest only stalls the main thread
+    static let measuredChars = 2_000
 
     private func position() {
         guard let p = panel else { return }
@@ -1391,6 +1401,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         if !NoteBubble.testNoKey { p.makeKey() }
         p.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
+        // the panel is reused for every note, and its undo stack is the field editor's. A ⌘Z the bubble
+        // doesn't take (text, not a stroke) is the Edit menu's Undo of whatever is still on that stack.
+        // Drop the previous note's typing: one leftover undo, replayed under the frozen picture, never returned.
+        p.undoManager?.removeAllActions()
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in self?.tick() }
         fadePenHint(for: shot, after: NoteBubble.penHintSeconds)
@@ -1852,7 +1866,17 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         return true
     }
 
+    /// layout() sets the field's frame from inside the field editor's own text-change. Doing that while an
+    /// undo is open records another undo into the group being undone, so one ⌘Z never returns.
+    private var applyingTextChange = false
+
     func controlTextDidChange(_ n: Notification) {
+        if applyingTextChange { return }
+        applyingTextChange = true
+        defer { applyingTextChange = false }
+        let undo = field.window?.undoManager
+        undo?.disableUndoRegistration()
+        defer { undo?.enableUndoRegistration() }
         let marked = (field.currentEditor() as? NSTextView).flatMap { $0.hasMarkedText() ? $0.markedRange() : nil }
         let committed = NoteTyping.committed(field.stringValue, marked: marked)
         var now = NoteTyping.typed(field.stringValue, marked: marked)
@@ -1993,6 +2017,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     // MARK: the type chip: what it is
+
+    /// ⌘-digit or ⌘Z: the panel answers these in performKeyEquivalent, before the main menu.
+    static func claimsBeforeTheMenu(_ e: NSEvent) -> Bool {
+        if commandDigit(e) != nil { return true }
+        let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
+        return NoteKeys.takesCommandZBeforeTheMenu(shift: mods.contains(.shift),
+                                                    charactersIgnoringModifiers: e.charactersIgnoringModifiers)
+            && mods.contains(.command) && !mods.contains(.option) && !mods.contains(.control)
+    }
 
     /// ⌘ and a digit, the top row or the keypad, nothing else held: the digit (0–9); nil for any other key.
     static func commandDigit(_ e: NSEvent) -> Int? {
@@ -2215,6 +2248,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
               let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: ProcessInfo.processInfo.systemUptime,
                                        windowNumber: p.windowNumber, context: nil, characters: "z", charactersIgnoringModifiers: "z",
                                        isARepeat: false, keyCode: UInt16(kVK_ANSI_Z)) else { return }
+        // a real ⌘Z is a key equivalent first — the Edit menu's Undo — before sendEvent
+        if p.performKeyEquivalent(with: e) { return }
         p.sendEvent(e)
     }
 
