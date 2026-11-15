@@ -115,6 +115,17 @@ public enum NoteKeys {
         case pass
     }
 
+    /// ⌘Z is the bubble's, before the Edit menu's Undo. ⇧⌘Z stays the menu's Redo.
+    ///
+    /// The menu's Undo runs the field editor's typing undo on the main thread. A snap frozen in
+    /// place eats every click until that thread gets back, so a ⌘Z the menu takes — and a typing
+    /// undo that never returns — leaves the whole screen stuck. The panel claims ⌘Z in
+    /// `performKeyEquivalent` (key equivalents run before `sendEvent`) and only then decides
+    /// stroke versus text.
+    public static func takesCommandZBeforeTheMenu(shift: Bool, charactersIgnoringModifiers: String?) -> Bool {
+        !shift && charactersIgnoringModifiers == "z"
+    }
+
     public static func action(_ key: Key, _ s: State) -> Action {
         if s.composing { return .pass }
         if case .command(let d) = key {

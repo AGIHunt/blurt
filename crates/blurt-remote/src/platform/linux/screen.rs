@@ -214,18 +214,26 @@ impl Screen for LinuxScreen {
     }
 
     fn stop(&mut self) {
+        if let Some(wait) = self.begin_stop() {
+            wait();
+        }
+    }
+
+    fn begin_stop(&mut self) -> Option<Box<dyn FnOnce() + Send>> {
         self.capped = false;
-        if let Some(mut r) = self.running.take() {
-            {
-                let (m, cv) = &*r.feed;
-                m.lock().unwrap().stop = true;
-                cv.notify_all();
-            }
+        let mut r = self.running.take()?;
+        {
+            let (m, cv) = &*r.feed;
+            m.lock().unwrap_or_else(|e| e.into_inner()).stop = true;
+            cv.notify_all();
+        }
+        Some(Box::new(move || {
             if let Some(t) = r.feeder.take() {
                 let _ = t.join();
             }
             // the capture thread stops when `r` drops
-        }
+            drop(r);
+        }))
     }
 }
 

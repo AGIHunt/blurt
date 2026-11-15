@@ -266,6 +266,13 @@ pub trait Screen: Send {
         self.refresh()
     }
     fn stop(&mut self);
+    /// `stop` in two halves: what has to happen under the backend's lock (telling the capture to end), returned with the wait for it to
+    /// end, which the caller runs without the lock so input, keeping awake and the server's other work go on meanwhile (screen.rs,
+    /// `ScreenSession::stop`). The default stops here and leaves nothing to wait for.
+    fn begin_stop(&mut self) -> Option<Box<dyn FnOnce() + Send>> {
+        self.stop();
+        None
+    }
     /// Whether this stream's encoder makes recovery frames (`recovery_frame` other than a keyframe). Asked after `start`; true lets
     /// the server offer the phone "ltr" (docs/design/remote-realtime.md §2). False (the default): a frame lost for good costs a
     /// keyframe, as before.

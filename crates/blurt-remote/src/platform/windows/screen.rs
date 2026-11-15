@@ -236,14 +236,24 @@ impl Screen for WinScreen {
     }
 
     fn stop(&mut self) {
-        if let Some(mut r) = self.running.take() {
+        if let Some(wait) = self.begin_stop() {
+            wait();
+        }
+    }
+
+    fn begin_stop(&mut self) -> Option<Box<dyn FnOnce() + Send>> {
+        let thread = self.running.take().and_then(|mut r| {
             let _ = r.tx.send(Cmd::Stop);
             r.signal.notify();
-            if let Some(t) = r.thread.take() {
+            r.thread.take()
+        });
+        let shown = self.shown.clone();
+        Some(Box::new(move || {
+            if let Some(t) = thread {
                 let _ = t.join();
             }
-        }
-        *self.shown.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *shown.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }))
     }
 }
 

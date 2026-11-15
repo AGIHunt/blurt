@@ -19,9 +19,14 @@
 //!    recovery frame (ltr, only when its encoder makes one); parity pieces when the round trip is long and pieces go missing (fec).
 //!
 //! The sink runs on the backend's thread and never touches the backend (its `stop` may be waiting for that thread); the ticker does.
+//!
+//! `ScreenSession::stop` returns at once: the server calls it holding its own lock, the one every phone's connection needs, and the
+//! backend's stop joins its capture thread, however long that takes. The backend's half runs on a thread of its own, and the next
+//! picture on the same backend waits for it before it starts (`Stopping`): one backend, one screen, and a late stop mustn't end the new
+//! one (docs/design/remote-realtime.md §A picture that stopped).
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::channel::Chan;
@@ -119,6 +124,37 @@ impl St {
     }
 }
 
+/// The backend stops still under way, per backend (its address): a start waits for them.
+struct Stopping {
+    under_way: Mutex<Vec<usize>>,
+    done: Condvar,
+}
+
+static STOPPING: Stopping = Stopping { under_way: Mutex::new(Vec::new()), done: Condvar::new() };
+
+impl Stopping {
+    fn key(b: &Shared) -> usize {
+        Arc::as_ptr(b) as *const () as usize
+    }
+
+    fn begin(&self, key: usize) {
+        self.under_way.lock().unwrap_or_else(|e| e.into_inner()).push(key);
+    }
+
+    fn end(&self, key: usize) {
+        let mut v = self.under_way.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = v.iter().position(|k| *k == key) {
+            v.swap_remove(i);
+        }
+        self.done.notify_all();
+    }
+
+    fn wait(&self, key: usize) {
+        let v = self.under_way.lock().unwrap_or_else(|e| e.into_inner());
+        drop(self.done.wait_while(v, |v| v.contains(&key)).unwrap_or_else(|e| e.into_inner()));
+    }
+}
+
 pub struct ScreenSession {
     st: Arc<Mutex<St>>,
     chan: Arc<Chan>,
@@ -166,6 +202,8 @@ impl ScreenSession {
         told: Arc<Told>,
     ) -> Result<ScreenSession, String> {
         let r = clamp(r);
+        // the last picture on this backend has stopped, all of it, before this one touches it
+        STOPPING.wait(Stopping::key(&backend));
         // a dialog the user answers (Wayland's portal) is waited on without the backend's lock: input goes on meanwhile
         let wait = backend.lock().unwrap().screen().and_then(|s| s.prepare());
         if let Some(wait) = wait {
@@ -506,11 +544,27 @@ impl ScreenSession {
                 stats(&mut s, now, &self.log);
             }
         }
-        if let Some(sc) = self.backend.lock().unwrap().screen() {
-            sc.stop();
+        // the backend's half off the caller's thread (see the top of this file); the next start waits for it
+        let (backend, log) = (self.backend.clone(), self.log.clone());
+        let key = Stopping::key(&backend);
+        STOPPING.begin(key);
+        let finish = move || finish_stop(&backend, key, &log);
+        if let Err(e) = std::thread::Builder::new().name("blurt-screen-stop".into()).spawn(finish) {
+            // no thread to be had: stop here rather than not at all
+            (self.log)(serde_json::json!({"event": "remote_screen", "state": "stop_inline", "why": e.to_string()}));
+            finish_stop(&self.backend, key, &self.log);
         }
-        (self.log)(serde_json::json!({"event": "remote_screen", "state": "off"}));
     }
+}
+
+/// The backend's half of a stop: the lock only to tell the capture to end, its threads waited for without it; then the next start may go.
+fn finish_stop(backend: &Shared, key: usize, log: &Arc<dyn Fn(serde_json::Value) + Send + Sync>) {
+    let wait = backend.lock().unwrap_or_else(|e| e.into_inner()).screen().and_then(|sc| sc.begin_stop());
+    if let Some(wait) = wait {
+        wait();
+    }
+    STOPPING.end(key);
+    log(serde_json::json!({"event": "remote_screen", "state": "off"}));
 }
 
 impl Drop for ScreenSession {
@@ -725,7 +779,18 @@ impl Parts {
                 sc.keyframe();
                 crate::host::ScreenInfo { width: d.width, height: d.height, codec: self.view.codec.lock().unwrap().clone() }
             } else {
-                sc.stop();
+                // the old stream's threads are waited for without the lock, as in `stop`
+                let wait = sc.begin_stop();
+                drop(b);
+                if let Some(wait) = wait {
+                    wait();
+                }
+                b = self.backend.lock().unwrap();
+                // stopped meanwhile: its stop has already been and gone, and a stream started now would run for nobody
+                if self.stopped.load(SeqCst) {
+                    return Ok(());
+                }
+                let Some(sc) = b.screen() else { return Err(NO_SCREEN.into()) };
                 let info = sc.start(&config, self.view.sink.clone())?;
                 // another encoder: its references and what it can do are its own
                 let (capped, cheap) = (sc.caps_quantiser(), sc.rate_change_is_cheap());
