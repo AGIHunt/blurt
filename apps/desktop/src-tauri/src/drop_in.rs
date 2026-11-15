@@ -1006,7 +1006,7 @@ mod tests {
         assert_eq!(made[1].reference.as_deref(), Some(gif.to_string_lossy().as_ref()));
         assert_eq!(made[2].reference.as_deref(), Some(pdf.to_string_lossy().as_ref()));
         // the file in a temporary place: copied into the batch (files/NNN/), the card refers to the copy
-        let copy = session.join("files/004/recv.docx");
+        let copy = session.join("files").join("004").join("recv.docx");
         assert_eq!(made[3].reference.as_deref(), Some(copy.to_string_lossy().as_ref()));
         assert_eq!(std::fs::read(&copy).unwrap(), b"y");
         assert!(made[4].text_card && made[4].text.as_deref() == Some("a note"));
@@ -1049,15 +1049,17 @@ mod tests {
 
     #[test]
     fn a_drop_the_island_page_took_itself() {
+        // absolute on this platform (a path with no drive isn't absolute on Windows)
+        let home = if cfg!(windows) { "C:/Users/ana" } else { "/home/ana" };
         let p: PageDrop = serde_json::from_value(json!({
-            "paths": ["/home/ana/Documents/spec.pdf", "/home/ana/shot.png", "relative/x.pdf", "/home/ana/code"],
+            "paths": [format!("{home}/Documents/spec.pdf"), format!("{home}/shot.png"), "relative/x.pdf".to_string(), format!("{home}/code")],
             "pictures": [{"name": "../../evil/cat.png", "data": "data:image/png;base64,iVBORw0KGgo="}, {"name": "", "data": "%%%"}],
             "text": "ignored when files came", "row": "project:p1"
         }))
         .unwrap();
         let d = page_drop(&p, |x| x.ends_with("code"), |_| None);
-        assert_eq!(d.files, [PathBuf::from("/home/ana/Documents/spec.pdf")]);
-        assert_eq!(d.images, [PathBuf::from("/home/ana/shot.png")]);
+        assert_eq!(d.files, [PathBuf::from(format!("{home}/Documents/spec.pdf"))]);
+        assert_eq!(d.images, [PathBuf::from(format!("{home}/shot.png"))]);
         assert_eq!(d.folders, 1);
         // a picture with no path: its own name only (never a path the page made up), the malformed one left out
         assert_eq!(d.virtual_names, ["cat.png"]);
