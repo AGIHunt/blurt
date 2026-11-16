@@ -784,3 +784,8 @@
 "dictation.speed.polish" = "Polish %@";
 "dictation.speed.structure" = "Structuring %@";
 "dictation.speed.translate" = "Translation %@";
+
+/* A dictation that wasn't recognised: Retry Last Dictation in the menu bar, the hint on the first failure (DictationRetry) */
+"dictation.menu.retry_last" = "Retry Last Dictation";
+"dictation.menu.retry_last.subtitle" = "Not recognized · %1$@ · %2$@";
+"dictation.toast.retry_later" = "You can retry it later from the menu bar";

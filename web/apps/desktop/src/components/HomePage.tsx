@@ -77,12 +77,16 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   const [lists, setLists] = useState<{ dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts: FeedEntry[]; items: FeedEntry[] }>({ dictations: [], cards: [], screenTexts: [], items: [] });
   const [loaded, setLoaded] = useState(false);
   const [cardsTick, setCardsTick] = useState(0);
+  /** failed dictations whose Retry is running: "Recognizing…" until the history has their text */
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.settings().then((s) => setCfg(s.config), () => {});
   }, [off]);
   useEffect(() => listen('cards://changed', () => setCardsTick((n) => n + 1)), []);
   useEffect(() => listen('screen-text://changed', () => setCardsTick((n) => n + 1)), []);
+  // a take landed, failed or was retried (a failed one is a row with Retry; once retried, a dictation like any other)
+  useEffect(() => listen('dictation://changed', () => setCardsTick((n) => n + 1)), []);
   // an agent that can organize recordings in the background: none means "say it to your agent" (capabilities.md §3.2)
   useEffect(() => {
     if (off.has('recording')) return;
@@ -100,10 +104,22 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
       off.has('screen_text') || !built.screen_text ? null : api.screenTextHistory().catch(() => null),
       off.has('recording') ? null : api.items({ sort: 'updated', ascending: false, limit: 40 }).catch(() => null),
     ]);
+    // a take that wasn't recognised, its recording kept, is a row too: its action is Retry (DictationRetry.onHome)
     const dictations: FeedEntry[] = (dh?.entries ?? [])
-      .filter((e) => !D.isFailed(e) && D.finalText(e))
+      .filter((e) => D.onHome(e, !!dh?.can_retry && !!e.audio_path))
       .slice(0, 40)
-      .map((e) => ({ kind: 'dictation', key: e.id, time: new Date(e.t).getTime() / 1000, source: D.appName(e) ?? '', text: D.preview(D.finalText(e)) }));
+      .map((e) => {
+        const failed = D.failedNotCancelled(e);
+        const len = i18n().formatDuration(Math.round(e.duration || 0), 'clock');
+        return {
+          kind: 'dictation',
+          key: e.id,
+          time: new Date(e.t).getTime() / 1000,
+          source: D.appName(e) ?? '',
+          text: failed ? t('home.entry.failed', { len }) : D.preview(D.finalText(e)),
+          ...(failed ? { sub: 'failed' } : {}),
+        };
+      });
     const card = (c: CardInfo): FeedEntry => ({
       kind: 'card',
       key: `${c.session ?? ''}#${c.n}`,
@@ -234,8 +250,31 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
       </div>,
     );
 
+  const isFailed = (e: FeedEntry) => e.kind === 'dictation' && e.sub === 'failed';
+  /** A failed dictation's Retry: the recording again, the text onto the clipboard (never pasted: the user is here). */
+  const retry = async (e: FeedEntry) => {
+    if (retrying.has(e.key)) return;
+    setRetrying((w) => new Set(w).add(e.key));
+    try {
+      await api.dictationRetry(e.key);
+      onToast(t('dictation_page.retry.done'));
+      await load();
+    } catch (err) {
+      onToast(String(err).includes('[retry_gone]') ? t('dictation_page.retry.gone') : t('dictation_page.retry.failed'));
+    } finally {
+      setRetrying((w) => {
+        const n = new Set(w);
+        n.delete(e.key);
+        return n;
+      });
+    }
+  };
+  const primary = (e: FeedEntry) => (isFailed(e) ? void retry(e) : openEntry(e));
   const openEntry = (e: FeedEntry) => (e.kind === 'dictation' ? onGo('dictation') : e.kind === 'card' ? onGo('cards') : e.kind === 'screen_text' ? onGo('screen_text') : onReveal(e.key));
-  const entryMenu = (e: FeedEntry): MenuEntry[] => [
+  const entryMenu = (e: FeedEntry): MenuEntry[] => isFailed(e) ? [
+    { label: t('home.entry.retry'), disabled: retrying.has(e.key), run: () => void retry(e) },
+    { label: t('home.entry.open'), run: () => openEntry(e) },
+  ] : [
     { label: t('home.entry.open'), run: () => openEntry(e) },
     ...(e.text ? [{ label: e.kind === 'item' ? t('home.entry.copy_title') : t('home.entry.copy'), run: () => void api.copyText(e.text).then(() => onToast(t('dictation_page.copied')), () => {}) }] : []),
   ];
@@ -313,20 +352,33 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
               <section key={d.day} className="hm-day">
                 <h3 className="hm-day-title">{dayLabel(d.day)}</h3>
                 <div className="pg-box">
-                  {d.rows.map((e) => (
-                    <button key={feedId(e)} className="hm-entry" onClick={() => openEntry(e)} data-testid={`home-entry-${e.kind}`}
-                      onContextMenu={(ev) => {
-                        ev.preventDefault();
-                        menu.open(entryMenu(e), { x: ev.clientX, y: ev.clientY });
-                      }}>
-                      <span className="hm-entry-ic">{entryIcon(e)}</span>
-                      <span className="hm-entry-text">
-                        <span className="hm-entry-src">{e.source}</span>
-                        <span className={`hm-entry-body ${e.text ? '' : 'none'}`}>{e.text || t('cards.no_note')}</span>
-                      </span>
-                      <span className="hm-entry-time">{clock(e.time)}</span>
-                    </button>
-                  ))}
+                  {d.rows.map((e) => {
+                    const failed = isFailed(e);
+                    const busy = failed && retrying.has(e.key);
+                    return (
+                      <button key={feedId(e)} className={`hm-entry ${failed ? 'failed' : ''}`} onClick={() => primary(e)} aria-busy={busy || undefined}
+                        data-testid={failed ? 'home-entry-dictation-failed' : `home-entry-${e.kind}`} title={failed ? t('dictation_page.retry.tip') : undefined}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          menu.open(entryMenu(e), { x: ev.clientX, y: ev.clientY });
+                        }}>
+                        <span className="hm-entry-ic">{entryIcon(e)}</span>
+                        <span className="hm-entry-text">
+                          <span className="hm-entry-src">{e.source}</span>
+                          {/* not recognised, recording kept: said in the attention ink, Retry is the row's action */}
+                          <span className={`hm-entry-body ${failed ? 'attn' : e.text ? '' : 'none'}`}>{busy ? t('home.entry.retrying') : e.text || t('cards.no_note')}</span>
+                        </span>
+                        {failed ? (
+                          <span className="hm-entry-end">
+                            <span className="hm-entry-time">{clock(e.time)}</span>
+                            {!busy && <span className="hm-entry-act">{t('home.entry.retry')}</span>}
+                          </span>
+                        ) : (
+                          <span className="hm-entry-time">{clock(e.time)}</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             ))}

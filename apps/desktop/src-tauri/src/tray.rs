@@ -9,7 +9,8 @@
 //!               Pause / Resume · Start over · Discard recording — Snap · Live caption ✓   (no Quit, as on the Mac)
 //!   idle        [**Download speech model for dictation…** | Speech model · x / y MB ▸] — Start recording · Snap ·
 //!               Copy text from screen · Translate text from screen · Voice note (each with its key) — Open Blurt ·
-//!               counts · Show cards · n · Dictation history… · running jobs — Project (greyed header) · X ▸
+//!               counts · Show cards · n · [Copy last dictation | Retry last dictation · 14:02 · 0:12] · Dictation
+//!               history… · running jobs — Project (greyed header) · X ▸
 //!               (Unassigned and the projects as one checked group, Switch project…, Add project folder…) — Settings… ·
 //!               [Check for updates… —] Quit Blurt
 //!
@@ -748,9 +749,18 @@ fn plan(app: &AppHandle) -> Vec<Node> {
             }
         }
         if dictation {
-            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere
-            if crate::dictation::history::last_text().is_some() {
-                rows.push(item("copy_last_dictation", l10n::t("tray.copy_last_dictation"), None));
+            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere — or,
+            // when the last take wasn't recognised and its recording is kept, Retry (history::menu_row; the Mac's
+            // DictationRetry): when and how long in the title, as Windows menus have no subtitles
+            use crate::dictation::history::{self as dh, MenuRow};
+            match dh::menu_row_now() {
+                Some(MenuRow::Copy(_)) => rows.push(item("copy_last_dictation", l10n::t("tray.copy_last_dictation"), None)),
+                Some(MenuRow::Retry(e)) => {
+                    let when = dh::when_and_length(&e, chrono::Local::now(), l10n::lang() == "zh-Hans");
+                    let id = format!("retry_last_dictation:{}", e["id"].as_str().unwrap_or(""));
+                    rows.push(item(&id, l10n::tf("tray.retry_last_dictation", &[("when", when)]), None));
+                }
+                None => {}
             }
             rows.push(item("dictation_history", l10n::t("tray.dictation_history"), None));
         }
@@ -864,6 +874,10 @@ fn chose(app: &AppHandle, id: &str) {
             }
         }
         "dictation_history" => open_at(app, json!({"view": "dictation"})),
+        _ if id.starts_with("retry_last_dictation:") => {
+            let (h, take) = (app.clone(), id["retry_last_dictation:".len()..].to_string());
+            std::thread::spawn(move || crate::dictation::history::retry_from_tray(&h, take));
+        }
         "settings" => open_at(app, json!({"view": "settings"})),
         "updates" => open_at(app, json!({"view": "settings", "pane": "general", "check_updates": true})),
         "update_now" => crate::housekeeping::install_update(app.clone()),

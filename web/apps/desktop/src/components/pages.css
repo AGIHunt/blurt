@@ -358,6 +358,32 @@
 .hm-entry-body.none {
   color: var(--faint);
 }
+/* a dictation that wasn't recognised: said in the attention ink, one line; Retry in the time's place under the pointer */
+.hm-entry-body.attn {
+  color: var(--attn-ink);
+  -webkit-line-clamp: 1;
+}
+.hm-entry-end {
+  flex: none;
+  display: grid;
+  justify-items: end;
+}
+.hm-entry-end > * {
+  grid-area: 1 / 1;
+}
+.hm-entry-act {
+  visibility: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-ink);
+  padding-top: 1px;
+}
+.app button.hm-entry.failed:is(:hover, :focus-visible) .hm-entry-act {
+  visibility: visible;
+}
+.app button.hm-entry.failed:is(:hover, :focus-visible) .hm-entry-time {
+  visibility: hidden;
+}
 .hm-entry-time {
   flex: none;
   font-size: 11.5px;

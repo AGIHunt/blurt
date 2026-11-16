@@ -675,6 +675,25 @@ fn say(app: &AppHandle, msg: &str, vars: Value, key: &str, ms: u64, action: Opti
     island::send(app, op);
 }
 
+/// `say` with a second line under the first (`more`, a catalog key: the island puts it after a line break).
+fn say_more(app: &AppHandle, msg: &str, more: Option<&str>, key: &str, ms: u64, action: Option<(String, &str)>) {
+    let mut op = json!({"op": "toast", "kind": "dictation", "msg": msg, "key": key, "ms": ms});
+    if let Some(m) = keys::mark(msg) {
+        op["mark"] = json!(m);
+    }
+    if let Some((a, label)) = action {
+        op["action"] = json!({"a": a, "label": label});
+    }
+    if let Some(m) = more {
+        op["more"] = json!(m);
+    }
+    *LAST_TOAST.lock().unwrap() = Some((Instant::now(), ms));
+    island::send(app, op);
+}
+
+/// The first failed take of this run said where Retry is afterwards.
+static RETRY_LATER_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// "Sent" (a double tap's Return went in): the ears' moment — keyboard on the left, ✓ and the word on the right for
 /// 1.6 s (the Mac's island.dictationSent → earMoment(lead: .keyboard)), not a line.
 fn say_sent(app: &AppHandle) {
@@ -1947,7 +1966,10 @@ impl Engine {
         } else {
             ("dictation.settings".to_string(), "dictation.toast.asr_cloud_key.action")
         };
-        say(&self.app, l.key(), json!({}), &keys::failed(&t.id), 8000, Some(action), false);
+        // the first failure of a run says where Retry is once this line has gone (the tray's Retry last dictation,
+        // Home's row): a second line under it
+        let later = l.retry_helps() && super::history::CAN_RETRY && !RETRY_LATER_SAID.swap(true, SeqCst);
+        say_more(&self.app, l.key(), later.then_some("dictation.toast.retry_later"), &keys::failed(&t.id), 8000, Some(action));
     }
 
     /// Hear a take's whole recording again (Retry, Undo) and type it like any take — into the app in front then.
