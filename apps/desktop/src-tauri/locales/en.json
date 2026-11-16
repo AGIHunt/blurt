@@ -15,6 +15,7 @@
   "tray.inbox.verify": "{n} to verify",
   "tray.dictation_history": "Dictation history…",
   "tray.copy_last_dictation": "Copy last dictation",
+  "tray.retry_last_dictation": "Retry last dictation · {when}",
   "tray.phone.connected": "Phone: {name} connected",
   "tray.phone.not_connected": "Phone: not connected",
   "tray.phone.needs_access": "Phone: can’t control computer",

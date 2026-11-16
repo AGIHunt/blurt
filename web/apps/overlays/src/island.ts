@@ -1259,7 +1259,7 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
       // column); "Sent" is the ears' moment, not a line
       if (op.moment) return earMoment(t(op.msg ?? '', op.vars), op.moment);
       {
-        const text = keepUnits(t(op.msg ?? '', op.vars));
+        const text = keepUnits(t(op.msg ?? '', op.vars)) + (op.more ? `\n${t(op.more)}` : '');
         // a short done line with nothing to do about it ("✓ Copied", "✓ 已复制 · Ctrl+V 粘贴") is a moment in the ears,
         // like "Sent" (the Mac's Island.toast: icon check, no action, no " · ", one line, at most earMomentMaxText —
         // 130 px here, as Windows' key names are longer than ⌘V)

@@ -15,6 +15,7 @@
   "tray.inbox.verify": "{n} 条待验证",
   "tray.dictation_history": "听写历史…",
   "tray.copy_last_dictation": "复制上一条听写",
+  "tray.retry_last_dictation": "重试上一条听写 · {when}",
   "tray.phone.connected": "手机：{name} 已连接",
   "tray.phone.not_connected": "手机：未连接",
   "tray.phone.needs_access": "手机：无法控制电脑",

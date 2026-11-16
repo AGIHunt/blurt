@@ -291,12 +291,18 @@ extension Dictation {
     }
 
     /// "Recognition failed · recording kept" (or "too slow"), with Retry.
-    private func toastFailed(_ id: String, _ f: DictationASRFailure) {
+    func toastFailed(_ id: String, _ f: DictationASRFailure) {
         MenuGlyph.shared.error()          // Peep shakes its head in the menu bar: a real failure (the audio is kept)
         // the plain reason (DictationASRFailure.line): a cloud key that didn't work opens Settings — Retry would only
         // fail the same way (the take stays in the history for a Retry once the key is fixed)
         let line = f.line
-        island.toast(Loc.t(line.key, table: "Dictation"), key: Dictation.failedToastKey(id), seconds: 8,
+        // the first failure of a run says where Retry is once this line has gone (Retry Last Dictation, Home)
+        var text = Loc.t(line.key, table: "Dictation")
+        if line.retryHelps, !Dictation.retryLaterSaid {
+            Dictation.retryLaterSaid = true
+            text += "\n" + Loc.t("dictation.toast.retry_later", table: "Dictation")
+        }
+        island.toast(text, key: Dictation.failedToastKey(id), seconds: 8,
                      actionTitle: Loc.t(line.retryHelps ? "dictation.toast.retry" : "dictation.toast.asr_cloud_key.action", table: "Dictation"),
                      action: { [weak self] in
             if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.cloud") }
@@ -384,9 +390,14 @@ extension Dictation {
     }
 
     /// Retry a take whose recognition failed (the island's button, the history's): the whole recording again, then
-    /// pasted like any take — into the app in front then (from the history: always copied).
-    func retry(_ id: String, via: String) {
-        let take = failedTakes.removeValue(forKey: id) ?? cancelledTakes.removeValue(forKey: id) ?? historyTake(id)
+    /// pasted like any take — into the app in front then (from the history: always copied). `copy`: only onto the
+    /// clipboard, also when the take is still in memory (the menu bar's Retry Last Dictation, Home's row: by then the
+    /// user may be anywhere).
+    func retry(_ id: String, via: String, copy: Bool = false) {
+        let live = copy ? nil : (failedTakes[id] ?? cancelledTakes[id])
+        failedTakes[id] = nil
+        cancelledTakes[id] = nil
+        let take = live ?? historyTake(id)
         island.dropToasts(key: Dictation.failedToastKey(id))      // its Retry is being done
         guard let take = take, FileManager.default.fileExists(atPath: take.wav.path) else {
             emit(["event": "dictation_retry", "id": id, "result": "no_audio", "via": via])
@@ -401,6 +412,9 @@ extension Dictation {
         emit(["event": "dictation_retry", "id": id, "via": via])
         take.stream.retry(structure: take.structure, translate: take.translate) { [weak self] r in self?.landed(take, r) }
     }
+
+    /// The first failure of this run said where Retry is afterwards.
+    static var retryLaterSaid = false
 
     /// A failed take from the history (after a relaunch): its audio, today's settings, no app to paste into.
     private func historyTake(_ id: String) -> DictationTake? {

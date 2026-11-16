@@ -700,13 +700,30 @@ extension App {
             menu.addItem(cards)
         }
         if Dictation.enabled {
-            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere
-            if let last = MainActor.assumeIsolated({ DictationHistory.shared.load().first }) {
+            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere — or,
+            // when the last take wasn't recognised and its recording is kept, Retry (DictationRetry)
+            let entries = MainActor.assumeIsolated { DictationHistory.shared.load() }
+            switch DictationRetry.menuRow(entries, audioKept: Self.audioKept) {
+            case .copy(let id)?:
+                let last = entries.first { $0.id == id }!
                 let copy = NSMenuItem(title: Loc.t("dictation.menu.copy_last", table: "Dictation"), action: #selector(mCopyLastDictation), keyEquivalent: "")
                 copy.target = self
                 copy.toolTip = last.finalText
                 if #available(macOS 14.4, *) { copy.subtitle = MenuText.oneLine(last.finalText, limit: 44) }
                 menu.addItem(copy)
+            case .retry(let id)?:
+                let last = entries.first { $0.id == id }!
+                let retry = NSMenuItem(title: Loc.t("dictation.menu.retry_last", table: "Dictation"), action: #selector(mRetryLastDictation(_:)), keyEquivalent: "")
+                retry.target = self
+                retry.representedObject = id
+                let when = MainActor.assumeIsolated {
+                    Loc.t("dictation.menu.retry_last.subtitle", table: "Dictation", DictationHistoryModel.time(last.time),
+                          DictationHistoryModel.duration(last.duration))
+                }
+                retry.toolTip = when
+                if #available(macOS 14.4, *) { retry.subtitle = when }
+                menu.addItem(retry)
+            case nil: break
             }
             let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
             dict.target = self
@@ -721,9 +738,22 @@ extension App {
         }
     }
 
+    /// A failed take's recording is still on disk.
+    static func audioKept(_ e: DictationEntry) -> Bool {
+        e.audio.map { FileManager.default.fileExists(atPath: DictationHistory.shared.resolve($0).path) } ?? false
+    }
+
+    @objc func mRetryLastDictation(_ i: NSMenuItem) {
+        guard let id = i.representedObject as? String else { return }
+        emit(["event": "dictation_history", "action": "retry_last", "id": id])
+        Dictation.shared.retry(id, via: "menu", copy: true)
+    }
+
     @objc func mCopyLastDictation() {
         MainActor.assumeIsolated {
-            guard let last = DictationHistory.shared.load().first else { return }
+            guard let last = DictationHistory.shared.load().first(where: {
+                !$0.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) else { return }
             DictationInsert.copy(last.finalText)
             emit(["event": "dictation_history", "action": "copy_last"])
             island.toast(Loc.t("dictation.menu.copied_last", table: "Dictation"), key: "dictation-copy", icon: nil, seconds: 2, actionTitle: nil, action: nil)

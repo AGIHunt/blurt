@@ -262,7 +262,7 @@ if (typeof window !== 'undefined') {
 }
 
 // the Dictation page (dictation/history.rs): a few takes today and yesterday, one copied, one not polished, one not
-// recognised, one turned into an item; ?dictations=0 for the empty page
+// recognised, one cancelled, one turned into an item; ?dictations=0 for the empty page
 const dIso = (hoursAgo: number) => new Date(Date.now() - hoursAgo * 3600_000).toISOString();
 const dEntry = (id: string, hoursAgo: number, app: string, raw: string, text: string, more: Record<string, unknown> = {}) => ({
   id, t: dIso(hoursAgo), app, bundle: `${app}.exe`, duration: Math.max(2, raw.length / 9), raw, polished: text === raw ? null : text, text,
@@ -274,7 +274,9 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
   dEntry('d-2', 0.9, 'Code', L('the checkout button does nothing on safari clicking it shows no spinner', '那个结算按钮在 safari 上点了没反应 也没有加载'), L('The checkout button does nothing on Safari. Clicking it shows no spinner.', '结算按钮在 Safari 上点了没反应，也没有加载。'), { item: 'SF-12', item_uid: 'u01' }),
   dEntry('d-3', 1.5, 'chrome', L('reply to anna saying the deck is ready for review', '回复安娜说幻灯片可以看了'), L('reply to anna saying the deck is ready for review', '回复安娜说幻灯片可以看了'), { fell_back: true, reason: 'timeout' }),
   dEntry('d-4', 2.4, 'explorer', L('rename the folder to launch notes', '把文件夹改名叫发布笔记'), L('Rename the folder to Launch notes.', '把文件夹改名为「发布笔记」。'), { insert: 'copied' }),
-  dEntry('d-5', 3.1, 'WINWORD', '', '', { reason: 'asr_failed:asr_slow', insert: 'none', polished: null, model: null }),
+  dEntry('d-5', 3.1, 'WINWORD', '', '', { reason: 'asr_failed:asr_slow', insert: 'none', polished: null, model: null, duration: 12 }),
+  // cancelled (Esc), its recording kept: the Dictation page offers Retry; Home and the tray never do
+  dEntry('d-8', 3.3, 'Code', '', '', { reason: 'asr_failed:cancelled', insert: 'none', polished: null, model: null, duration: 4 }),
   dEntry('d-6', 26, 'Teams', L('lets move standup to ten thirty tomorrow', '明天站会改到十点半吧'), L('Let’s move stand-up to 10:30 tomorrow.', '明天站会改到 10:30 吧。'), { corrected: L('Let’s move stand-up to 10:30 tomorrow, not 10.', '明天站会改到 10:30 吧，不是 10 点。') }),
   dEntry('d-7', 30, 'Notion', L('three things for the launch one the press kit two the demo video three the faq', '发布要准备三件事 一是新闻稿 二是演示视频 三是常见问题'), L('Three things for the launch:\n1. The press kit\n2. The demo video\n3. The FAQ', '发布要准备三件事：\n1. 新闻稿\n2. 演示视频\n3. 常见问题'), { style: 'structured' }),
 ];

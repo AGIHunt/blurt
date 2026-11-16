@@ -73,6 +73,7 @@ extension App {
                                    "models": [["id": "test-asr", "installed": ok]]])
             }
         case "retry": d.retry(rest, via: "test")    // retry ID: a failed take again (the island's / history's Retry)
+        case "failed-line": d.toastFailed(rest.isEmpty ? "test" : rest, .timedOut)   // failed-line ID: the island's "not recognised" line, with Retry
         case "apply":
             d.apply()
             d.refreshPolishModel { emit(["event": "dictation_polish_model", "model": d.polishModel ?? NSNull()]) }

@@ -181,6 +181,10 @@ final class HomeModel: ObservableObject {
     private(set) var shots: [String: Shot] = [:]
     private(set) var items: [String: ItemRow] = [:]
     private(set) var screenTexts: [String: ScreenTextEntry] = [:]
+    /// dictations that weren't recognised, recording kept (DictationRetry.onHome): the row offers Retry
+    private(set) var failed: Set<String> = []
+    /// a failed row whose Retry is running: "Recognizing…" until the history has its text
+    @Published private(set) var retrying: Set<String> = []
 
     /// a coding agent can take a recording (AgentHub's cached check; nil: not known yet — nothing is claimed)
     private var agentReady: Bool?
@@ -466,13 +470,16 @@ final class HomeModel: ObservableObject {
 
     private func reloadFeed() {
         var ds: [HomeFeed.Entry] = [], cs: [HomeFeed.Entry] = [], sts: [HomeFeed.Entry] = [], its: [HomeFeed.Entry] = []
-        dictations = [:]; shots = [:]; items = [:]; screenTexts = [:]; thumbs = [:]
+        dictations = [:]; shots = [:]; items = [:]; screenTexts = [:]; failed = []; thumbs = [:]
         if Capability.dictation.isOn {
-            for e in DictationHistory.shared.load() where !e.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            for e in DictationHistory.shared.load() where DictationRetry.onHome(e, audioKept: App.audioKept) {
                 dictations[e.id] = e
+                let isFailed = DictationRetry.failed(e)
+                if isFailed { failed.insert(e.id) } else { retrying.remove(e.id) }
                 ds.append(.init(kind: .dictation, key: e.id, time: e.time,
                                 source: AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app"),
-                                text: DictationEntry.preview(e.finalText)))
+                                text: isFailed ? T("home.entry.failed", DictationHistoryModel.duration(e.duration))
+                                               : DictationEntry.preview(e.finalText)))
             }
         }
         if Capability.cards.isOn {
@@ -709,6 +716,7 @@ final class HomeModel: ObservableObject {
     /// click on its tile in the Cards panel copies it, an item opens in its place.
     func primary(_ id: String) {
         guard let e = entry(id) else { return }
+        if failed.contains(e.key) { return retry(e.key) }
         if e.kind == .item {
             emit(["event": "home", "action": "open_item", "uid": e.key])
             MainWindowController.shared.reveal(uid: e.key)
@@ -717,12 +725,26 @@ final class HomeModel: ObservableObject {
         }
     }
 
+    /// A failed dictation's Retry: the recording again, the text onto the clipboard (DictationRetry).
+    func retry(_ key: String) {
+        guard !retrying.contains(key) else { return }
+        emit(["event": "home", "action": "retry", "id": key])
+        retrying.insert(key)
+        Dictation.shared.retry(key, via: "home", copy: true)
+        // a retry that fails again leaves the row as it was
+        DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [weak self] in
+            MainActor.assumeIsolated { _ = self?.retrying.remove(key) }
+        }
+    }
+
     /// ⌘C: the dictation's text, the screen text (the translation, for one), the card (picture and note, HangingCards.copyShot), the item's id and title.
     func copy(_ id: String) {
         guard let e = entry(id) else { return }
         var ok = true
         switch e.kind {
-        case .dictation: DictationInsert.copy(dictations[e.key]?.finalText ?? e.text)
+        case .dictation:
+            if failed.contains(e.key) { return retry(e.key) }       // nothing to copy yet: Retry gives it
+            DictationInsert.copy(dictations[e.key]?.finalText ?? e.text)
         case .card: ok = shots[e.key].map { HangingCards.copyShot($0, .click) } ?? false
         case .screenText: DictationInsert.copy(screenTexts[e.key]?.text ?? e.text)
         case .item: DictationInsert.copy(items[e.key].map { $0.itemID.isEmpty ? $0.title : $0.itemID + " " + $0.title } ?? e.text)

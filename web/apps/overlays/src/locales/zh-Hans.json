@@ -75,6 +75,7 @@
   "dictation.toast.no_model": "未安装语音模型",
   "dictation.toast.no_model.get": "下载…",
   "dictation.toast.asr_failed": "无法识别 · 录音已保留",
+  "dictation.toast.retry_later": "之后可在托盘菜单重试",
   "dictation.toast.slow.asr": "还在识别… · {cancel} 取消",
   "dictation.toast.recording_busy": "录屏时听写不可用",
   "dictation.toast.mic": "麦克风不可用",
