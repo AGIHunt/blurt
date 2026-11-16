@@ -13,6 +13,9 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- a relay the owner runs themselves may be ws:// (plain HTTP) when they have no domain for wss://:
+         what passes is sealed on the phone before it goes out, so a plain socket leaks nothing. Android
+         blocks plain sockets from API 28 unless the app asks for them here. -->
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -23,6 +26,7 @@
         android:label="@string/app_name"
         android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:resizeableActivity="true"
         android:theme="@style/Theme.Blurt"
         tools:targetApi="36">
