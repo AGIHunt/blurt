@@ -491,10 +491,11 @@ export const api = {
   cloudDisconnect: (id: string) => invoke<CloudSummary>('cloud_disconnect', { id }),
   /** Advanced → Custom Model… (dictation/commands.rs `cloud_custom_connect`): the job is tested on the model first; only
    *  then is the service saved and the job put on it. `service`: a connected one's id (its key kept unless one is typed);
-   *  else a new one of `preset`. */
-  cloudCustomConnect: (a: { job: string; service?: string | null; preset?: string | null; region?: string | null; baseUrl?: string | null; name?: string | null; key: string; model: string }) =>
-    invoke<{ ok: boolean; ms?: number; code?: string; service?: string; summary?: CloudSummary }>('cloud_custom_connect', {
-      job: a.job, service: a.service ?? null, preset: a.preset ?? null, region: a.region ?? null, baseUrl: a.baseUrl ?? null, name: a.name ?? null, key: a.key, model: a.model,
+   *  else a new one of `preset`. `jobs` (Add Cloud Model's 用于 boxes): each is checked in turn, nothing saved unless all
+   *  pass, then each is put on the model; a failure names its `job`. */
+  cloudCustomConnect: (a: { job?: string; jobs?: string[]; service?: string | null; preset?: string | null; region?: string | null; baseUrl?: string | null; name?: string | null; key: string; model: string }) =>
+    invoke<{ ok: boolean; ms?: number; code?: string; job?: string; service?: string; summary?: CloudSummary }>('cloud_custom_connect', {
+      job: a.job ?? null, jobs: a.jobs ?? null, service: a.service ?? null, preset: a.preset ?? null, region: a.region ?? null, baseUrl: a.baseUrl ?? null, name: a.name ?? null, key: a.key, model: a.model,
     }),
   onboarding: () => invoke<Onboarding>('onboarding_get'),
   onboardingStep: (step: number) => invoke<void>('onboarding_step', { step }),

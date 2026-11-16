@@ -324,13 +324,16 @@ pub fn cloud_disconnect(id: String) -> R<Value> {
 /// (`preset`, `region` for a preset with two addresses, `base_url` for the user's own address, `name`). What can be
 /// checked here goes first (the address, the model id, the key), then the job itself (`polish_cloud.py check` with the
 /// job: one short sentence, or a small picture with text for Copy Text from Screen); only when that passes is the
-/// service saved and the job put on the model. {"ok", "ms", "service", "summary"} or {"ok": false, "code"}: address |
-/// model_id | no_key | key_spaces | key_characters | auth | network | timeout | rate_limited | model | vision | empty | …
+/// service saved and the job put on the model. `jobs` (Add Cloud Model's 用于 boxes, for a service Blurt never
+/// measured): each is checked in turn and nothing is saved unless all pass; then each is put on the model.
+/// {"ok", "ms", "service", "summary"} or {"ok": false, "code", "job"?}: address | model_id | no_key | key_spaces |
+/// key_characters | auth | network | timeout | rate_limited | model | vision | empty | … (`job`: the one that failed)
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn cloud_custom_connect(
     app: AppHandle,
-    job: String,
+    job: Option<String>,
+    jobs: Option<Vec<String>>,
     service: Option<String>,
     preset: Option<String>,
     region: Option<String>,
@@ -339,9 +342,7 @@ pub fn cloud_custom_connect(
     key: String,
     model: String,
 ) -> R<Value> {
-    if !cloud::JOBS.contains(&job.as_str()) {
-        return Err(format!("unknown job {job}"));
-    }
+    let jobs = cloud::job_list(job.as_deref(), jobs.as_deref())?;
     let services: Vec<Value> = cloud::setup()["services"].as_array().cloned().unwrap_or_default();
     let existing = match service.as_deref().filter(|s| !s.is_empty()) {
         Some(id) => Some(services.iter().find(|x| x["id"] == json!(id)).cloned().ok_or("no such service")?),
@@ -377,28 +378,35 @@ pub fn cloud_custom_connect(
         return Ok(json!({"ok": false, "code": code}));
     }
     let k = if typed.is_empty() { saved.unwrap_or_default() } else { typed.clone() };
-    // the key on stdin, never on the command line
-    let body = json!({"cloud": cloud::request(&svc, &m, &k), "job": job}).to_string();
     let runner = app.state::<AppState>().runner();
-    let v = match runner.run("polish_cloud.py", &["check".to_string()], Some(body.as_bytes()), Duration::from_secs(45)) {
-        Ok(v) => v,
-        Err(e) => e
-            .stdout
-            .lines()
-            .rev()
-            .find_map(|l| serde_json::from_str::<Value>(l.trim()).ok())
-            .unwrap_or_else(|| json!({"ok": false, "code": "error"})),
-    };
-    if v["ok"] != json!(true) {
-        return Ok(json!({"ok": false, "code": v["code"].as_str().filter(|c| !c.is_empty()).unwrap_or("error")}));
+    let mut ms = Value::Null;
+    for job in &jobs {
+        // the key on stdin, never on the command line
+        let body = json!({"cloud": cloud::request(&svc, &m, &k), "job": job}).to_string();
+        let v = match runner.run("polish_cloud.py", &["check".to_string()], Some(body.as_bytes()), Duration::from_secs(45)) {
+            Ok(v) => v,
+            Err(e) => e
+                .stdout
+                .lines()
+                .rev()
+                .find_map(|l| serde_json::from_str::<Value>(l.trim()).ok())
+                .unwrap_or_else(|| json!({"ok": false, "code": "error"})),
+        };
+        if v["ok"] != json!(true) {
+            let code = v["code"].as_str().filter(|c| !c.is_empty()).unwrap_or("error");
+            return Ok(json!({"ok": false, "code": code, "job": job}));
+        }
+        ms = v["ms"].clone();
     }
     if existing.is_none() || !typed.is_empty() {
         cloud::connect_service(svc, Some(&typed))?;
         // a key that also recognises speech (OpenAI, Model Studio): the next take's speech server has it
         restart_asr();
     }
-    cloud::set_job(&job, &id, &m)?;
-    Ok(json!({"ok": true, "ms": v["ms"], "service": id, "summary": cloud::summary()}))
+    for job in &jobs {
+        cloud::set_job(job, &id, &m)?;
+    }
+    Ok(json!({"ok": true, "ms": ms, "service": id, "summary": cloud::summary()}))
 }
 
 pub(crate) fn cloud_check(app: &AppHandle, preset: &str, key: &str, base_url: Option<&str>) -> R<Value> {

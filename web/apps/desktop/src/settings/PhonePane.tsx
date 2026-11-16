@@ -309,8 +309,9 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
   );
 }
 
-/** A confirm on the app's ContentDialog (the Clear History sheet): Cancel is the default, the destructive one tinted. */
-export function Confirm({ title, detail, cancel, ok, onOk, onClose }: { title: string; detail: string; cancel: string; ok: string; onOk: () => void; onClose: () => void }) {
+/** A confirm on the app's ContentDialog (the Clear History sheet): Cancel is the default, the destructive one tinted
+ *  (`danger`; otherwise the accent button: a choice that loses nothing, as Models' Use for Dictation). */
+export function Confirm({ title, detail, cancel, ok, onOk, onClose, danger = true }: { title: string; detail: string; cancel: string; ok: string; onOk: () => void; onClose: () => void; danger?: boolean }) {
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" aria-labelledby="phone-confirm-title" onClick={(e) => e.stopPropagation()}
@@ -319,7 +320,7 @@ export function Confirm({ title, detail, cancel, ok, onOk, onClose }: { title: s
         <p>{detail}</p>
         <div className="dict-confirm-foot">
           <button autoFocus className="dict-confirm-cancel" onClick={onClose}>{cancel}</button>
-          <button className="dict-danger-tint" onClick={onOk}>{ok}</button>
+          <button className={danger ? 'dict-danger-tint' : 'primary'} onClick={onOk}>{ok}</button>
         </div>
       </div>
     </div>
