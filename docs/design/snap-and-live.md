@@ -51,7 +51,7 @@
      - 保存：随备注一起写进 `shots.jsonl` 的 `"kind"`（`Shot.itemKind`；null = 待定）；编辑备注和录屏中的备注按 Esc，类型保持原样。
        录屏中的截图同样写进录屏 session 的 `shots.jsonl`。
      - 卡片：有类型的卡片显示它的图标——截图卡片排在麦克风、笔迹标记前面（白色，同一个小胶囊或备注条上），语音卡片在麦克风上方用
-       类型颜色；卡片面板的格子里，截图在画面左下角（右上角是操作按钮），语音在麦克风左边（`CardKindMark`）。
+       类型颜色；卡片页的格子里，截图在画面左下角（右上角是操作按钮），语音在麦克风左边（`CardKindMark`）。
      - 生成事项：选了类型，事项就是这个 `kind`，不管关键词猜测还是 agent 怎么判断，并记为用户设定（`_user.kind`），之后的整理、
        「AI 补全」、重新 ingest 都不会改（`items.py build_item`、`captures.py fields_for`、`frames.py marks` 的 `kind`，
        SKILL.md §3；`tests/test_captures.py`）。旧截图没有这个字段，行为不变。

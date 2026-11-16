@@ -576,3 +576,82 @@
 .ph-tips .pg-link {
   margin-inline-start: 6px;
 }
+
+/* ---------------------------------------------------------------- Text & Translation (ScreenTextPage.tsx) */
+.sx-head-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 6px;
+}
+.sx-head-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sx-selected {
+  align-self: center;
+  color: var(--mute);
+  font-size: 12.5px;
+}
+.sx-list {
+  margin-top: 18px;
+  outline: none;
+}
+.sx-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+}
+.sx-row:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+/* the selection is the fill alone, as the item list's (main-window.css .mw-row.sel) */
+.sx-row.sel {
+  background: var(--brand-tint);
+}
+.sx-row-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.sx-row-orig {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mute);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.sx-row-orig-k {
+  color: var(--faint);
+}
+.sx-row-end {
+  flex: none;
+  display: grid;
+  justify-items: end;
+}
+/* the time, and Copy in its place under the pointer */
+.sx-row-end > * {
+  grid-area: 1 / 1;
+}
+.app button.sx-row-copy {
+  visibility: hidden;
+  margin-top: -3px;
+}
+.sx-row:hover .sx-row-copy {
+  visibility: visible;
+}
+.sx-row:hover .hm-entry-time {
+  visibility: hidden;
+}

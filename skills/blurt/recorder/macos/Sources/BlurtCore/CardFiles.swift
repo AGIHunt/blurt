@@ -360,18 +360,41 @@ public enum CardPasteboard {
     public static let htmlPNGLimit = 3 << 20
 }
 
-/// A card dragged out into another app, and taken there: off its thread, but not gone — kept `keepDays`, then trashed.
+/// A card dragged out into another app, and taken there: off its thread, but not gone — kept in the Cards page's
+/// History for `days` (Settings → Cards → History, record.cards.history_days: 7, the default and left out of the
+/// config; 30; -1 = until you delete it), then trashed.
 public enum TakenCaptures {
-    public static let keepDays: Double = 7
-    static var keep: Double { keepDays * 86400 }
+    /// the default, and what an unknown value in the config means
+    public static let defaultDays = 7
+    /// "Forever": kept until deleted
+    public static let forever = -1
+    /// the choices Settings offers, in its order
+    public static let choices = [7, 30, forever]
 
-    /// Still in "Recently Taken" (`taken` and `now`: seconds since 1970).
-    public static func isRecent(taken: Double, now: Double) -> Bool { now - taken < keep }
-    /// Past its days: housekeeping moves its files to the Trash.
-    public static func isExpired(taken: Double, now: Double) -> Bool { !isRecent(taken: taken, now: now) }
-    /// Days left before it goes (rounded up; 0 when expired).
-    public static func daysLeft(taken: Double, now: Double) -> Int { max(0, Int(ceil((keep - (now - taken)) / 86400))) }
-    /// A row says how long it is kept only on its last day (in attention ink): the panel's footer says "7 days" once
-    /// for all of them — "kept 7 more days" on every row repeated it.
-    public static func showsDaysLeft(_ days: Int) -> Bool { days <= 1 }
+    /// record.cards.history_days as read from the config's `record` section (anything else: 7).
+    public static func days(record: [String: Any]) -> Int {
+        let raw = (record["cards"] as? [String: Any])?["history_days"]
+        let d = (raw as? Int) ?? (raw as? Double).map { Int($0) } ?? defaultDays
+        return choices.contains(d) ? d : defaultDays
+    }
+
+    /// What to write for `days`: nothing for the default (the key is left out), else the number.
+    public static func configValue(_ days: Int) -> Int? { days == defaultDays ? nil : days }
+
+    /// Still in History (`taken` and `now`: seconds since 1970).
+    public static func isRecent(taken: Double, now: Double, days: Int = defaultDays) -> Bool {
+        days < 0 || now - taken < Double(days) * 86400
+    }
+    /// Past its days: housekeeping moves its files to the Trash. Kept forever: never.
+    public static func isExpired(taken: Double, now: Double, days: Int = defaultDays) -> Bool {
+        !isRecent(taken: taken, now: now, days: days)
+    }
+    /// Days left before it goes (rounded up; 0 when expired; nil when it is kept forever).
+    public static func daysLeft(taken: Double, now: Double, days: Int = defaultDays) -> Int? {
+        guard days >= 0 else { return nil }
+        return max(0, Int(ceil((Double(days) * 86400 - (now - taken)) / 86400)))
+    }
+    /// A tile says how long it is kept only on its last day (in attention ink): History's heading says "Kept for 7
+    /// days" once for all of them — "kept 7 more days" on every tile repeated it.
+    public static func showsDaysLeft(_ days: Int?) -> Bool { days.map { $0 <= 1 } ?? false }
 }

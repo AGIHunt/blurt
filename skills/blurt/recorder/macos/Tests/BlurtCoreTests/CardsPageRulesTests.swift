@@ -116,6 +116,31 @@ final class CardsPageRulesTests: XCTestCase {
         XCTAssertNil(CardsPageRules.focusAfterDelete(0, count: 1))
     }
 
+    func testFocusAfterDeletingSeveral() {
+        XCTAssertEqual(CardsPageRules.focusAfterDelete([1, 3], count: 6), 1)       // the card after the first one gone
+        XCTAssertEqual(CardsPageRules.focusAfterDelete([4, 5], count: 6), 3)       // they were the last: the last left
+        XCTAssertEqual(CardsPageRules.focusAfterDelete([3, 0], count: 4), 0)       // any order
+        XCTAssertNil(CardsPageRules.focusAfterDelete([0, 1, 2], count: 3))         // nothing left
+        XCTAssertNil(CardsPageRules.focusAfterDelete([], count: 3))
+        XCTAssertNil(CardsPageRules.focusAfterDelete([7], count: 3))               // not a card showing
+    }
+
+    func testSelectAllTakesTheFocusedCardsSection() {
+        XCTAssertEqual(CardsPageRules.section(of: 2, sections: [3, 4]), 0..<3)
+        XCTAssertEqual(CardsPageRules.section(of: 5, sections: [3, 4]), 3..<7)
+        XCTAssertEqual(CardsPageRules.section(of: nil, sections: [3, 4]), 0..<3)    // no card: the first section
+        XCTAssertEqual(CardsPageRules.section(of: nil, sections: [0, 4]), 0..<4)    // that shows a card
+        XCTAssertNil(CardsPageRules.section(of: nil, sections: [0, 0]))
+        XCTAssertNil(CardsPageRules.section(of: 9, sections: [3, 4]))
+    }
+
+    func testOptionHOpensThePageAndHidesItWhenItIsInFront() {
+        XCTAssertEqual(CardsPageRules.hotkey(windowKey: false, onCards: false), .open)
+        XCTAssertEqual(CardsPageRules.hotkey(windowKey: false, onCards: true), .open)      // behind another app: forward
+        XCTAssertEqual(CardsPageRules.hotkey(windowKey: true, onCards: false), .open)       // on another page: to Cards
+        XCTAssertEqual(CardsPageRules.hotkey(windowKey: true, onCards: true), .hide)
+    }
+
     func testSearchFindsEveryWordAnywhereInTheCard() {
         let card: [String?] = ["结账按钮一直是灰的 Checkout button stays grey", "Snap · 19:05", nil]
         XCTAssertTrue(CardsPageRules.matches("", fields: card))

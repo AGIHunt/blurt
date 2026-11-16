@@ -176,6 +176,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             let n = AppEnvironment.island?.hangingCount ?? 0
             pages.append(place(T("cards.title"), .cards, "rectangle.stack", n > 0 ? n : nil))
         }
+        if Capability.screenText.isOn { pages.append(place(T("feature.screen_text"), .screenText, "text.viewfinder", nil)) }
         if Capability.phone.isOn { pages.append(place(T("phone.title"), .phone, "iphone", nil)) }
         let recording = Capability.recording.isOn
         let itemPlaces = !recording ? [] : [

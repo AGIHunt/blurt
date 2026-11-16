@@ -728,18 +728,18 @@ final class IslandContent: NSView {
         let review = home.inbox, cards = home.cards
         if cards > 0, !home.organize {
             // Recording & Items off: the cards are cards — nothing organizes them into items. The row alone: their
-            // count, and a click (or ⌥H) for the Cards panel
+            // count, and a click (or ⌥H) for the Cards page
             let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
-                              height: 36) { CardsOverview.shared.show(segment: .hanging) }
-            r.toolTip = tip("capture.action.cards", .cards) + "\n" + Loc.t("capture.cards.panel_keys", table: "Capture")
+                              height: 36) { hanging.openCardsPage() }
+            r.toolTip = tip("capture.action.cards", .cards)
             r.disclosure = true
             place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         } else if cards > 0 {
             // the cards waiting ("2 cards" — one noun; the Inbox is the row under it), and the view's one filled button,
             // the sparkle: with a current project they are organised into it; with none, into Unassigned, each item
-            // with the project the run suggests (one agent run for all). A click on the row opens the Cards panel (as
-            // ⌥H does); its tooltip names ⌥H and the panel's keys once.
+            // with the project the run suggests (one agent run for all). A click on the row opens the Cards page (as
+            // ⌥H does); its tooltip names ⌥H.
             let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
             let b = cur.map { p in
                 IslandButton(icon: .spark, title: Loc.t("capture.island.organize", table: "Capture"),
@@ -749,8 +749,8 @@ final class IslandContent: NSView {
                               tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
                               gradient: BrandGradient.buttonStops) { snapper.handToAI() }
             let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
-                              height: 36) { CardsOverview.shared.show(segment: .hanging) }
-            r.toolTip = tip("capture.action.cards", .cards) + "\n" + Loc.t("capture.cards.panel_keys", table: "Capture")
+                              height: 36) { hanging.openCardsPage() }
+            r.toolTip = tip("capture.action.cards", .cards)
             r.trailingReserve = b.frame.width + 4
             place(r, x: 0, y: y, w: w, h: 36)
             b.frame.origin = NSPoint(x: w - 18 - b.frame.width, y: ((36 - b.frame.height) / 2).rounded())   // the rows' trailing edge

@@ -768,4 +768,6 @@ final class StubMainWindow: MainWindowHosting {
     func reveal(job: String) { emit(["event": "mainwindow", "call": "reveal_job", "job": job]) }
     func reveal(project: String) { emit(["event": "mainwindow", "call": "reveal_project", "project": project]) }
     func showInbox() { emit(["event": "mainwindow", "call": "show_inbox"]) }
+    func showCards() { emit(["event": "mainwindow", "call": "show_cards"]) }
+    func toggleCards(via: String) { emit(["event": "mainwindow", "call": "toggle_cards", "via": via]) }
 }

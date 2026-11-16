@@ -236,7 +236,7 @@ final class NoteKeysTests: XCTestCase {
         XCTAssertEqual(NoteKeys.action(.escape, S(mode: .fresh, picking: true, filing: false)), .close)
     }
 
-    // MARK: ⌘↩ copy and done (v1.0.24)
+    // MARK: ⌘↩ copy and done (v1.0.23)
 
     func testCommandReturnCopiesAFreshSnapAndFinishes() {
         for v: NoteKeys.Voice in [.none, .listening, .words] {

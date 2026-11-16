@@ -1,5 +1,5 @@
 // Settings (the Mac's Settings window: Settings/SettingsWindow.swift, SettingsSearch.swift and the panes): a sidebar
-// with the search field on top and the panes in three groups, by capability (v1.0.24, docs/design/capabilities.md) —
+// with the search field on top and the panes in three groups, by capability (v1.0.23, docs/design/capabilities.md) —
 // Features: Dictation, Cards, Screen Text, Recording & Items, Projects, Phone, each only while its capability is on ·
 // App: General (with the five switches), Models, Shortcuts, Agents · This PC: Privacy, Storage —, and the page: the
 // pane, or the search results while there is a query. A link into an off capability lands on its switch in General. Ctrl+F focuses the search (the Mac's ⌘F), Esc clears it, ↓ / ↑ walk the results,
@@ -16,6 +16,7 @@ import {
   SUGGESTIONS, textIn, type Entry, type Key, type PaneId, type ResultGroup,
 } from '../settings/catalog';
 import { CAPS, landing, owner, paneShown, rowShown, type Capability, type Off } from '../capabilities';
+import type { Place } from '../places';
 import { setCapability, useOff } from './useCapabilities';
 import { Group, Line, Page, Popup, requestFlash, Row, S, Switch, TextLink, Toggle, lang, setPlatform } from '../settings/kit';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
@@ -59,7 +60,7 @@ export function resolveLink(link: string | undefined | null, last: string | unde
   return [p, null];
 }
 
-export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void }) {
+export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack, onGo }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void; onGo?: (p: Place) => void }) {
   // read again when Settings opens and whenever the shortcuts change: GNOME binds the dictation key (the portal's
   // dialog) after the app started, and app_status says which key it bound
   const [status, setStatus] = useState(given);
@@ -257,7 +258,7 @@ export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack
       ) : cur === 'dictation' ? (
         <DictationPane cfg={cfg} save={save} goModels={() => go('speech', 'speech.dictation')} goTranslate={() => go('speech', 'speech.translate')} keyOf={hk} portalKey={portalKey} />
       ) : cur === 'screentext' ? (
-        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} linux={status.platform === 'gnome'} />
+        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} openHistory={onGo && (() => onGo('screen_text'))} linux={status.platform === 'gnome'} />
       ) : cur === 'speech' ? (
         <ModelsPane status={status} onToast={onToast} />
       ) : cur === 'shortcuts' ? (
@@ -521,7 +522,7 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
 
 // ------------------------------------------------------------------ Cards, Recording & Items
 
-/** Settings → Cards (v1.0.24: before, General's Voice notes and Cards boxes): taking a snap, the voice note, what a
+/** Settings → Cards (v1.0.23: before, General's Voice notes and Cards boxes): taking a snap, the voice note, what a
  *  dragged card carries. The snap and drag rows are Windows' (its screenshot cards and card drag). */
 function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void>; win: boolean }) {
   const [agentApps, setAgentApps] = useState(false);
@@ -569,7 +570,7 @@ function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch:
   );
 }
 
-/** Settings → Recording & Items (v1.0.24: before, General's Recording box): the recording itself, then what becomes of
+/** Settings → Recording & Items (v1.0.23: before, General's Recording box): the recording itself, then what becomes of
  *  it — record.countdown / system_audio / process, as the Mac writes them (capture reads them at the next recording). */
 function RecordingPane({ cfg, save }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void> }) {
   const rec = cfg.record ?? {};

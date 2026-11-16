@@ -2,7 +2,7 @@
 // rendered exactly once by the panes (BlurtApp/Settings/*.swift, App/HotkeySettings.swift: SettingRow / SettingToggle /
 // SettingMenuToggle / SettingMenuPicker / SettingsPageButton / SettingsGroup with that id) and nothing is rendered that the catalogue — and so search — doesn't know; search finds
 // rows by title, keyword or the other language.
-// v1.0.24: the panes are arranged by capability (Capabilities.swift). A capability that is off has no pane, no rows in
+// v1.0.23: the panes are arranged by capability (Capabilities.swift). A capability that is off has no pane, no rows in
 // the Shortcuts pane and nothing in search; a link to it lands on its switch in General. The search tests pass `off`
 // themselves (the default reads the config of whoever runs the tests).
 import XCTest
@@ -288,7 +288,7 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.redirect("general/capture_into"), "projects/projects.capture_into")
         XCTAssertEqual(SettingsCatalog.redirect("general/general.dictation_lab"), "dictation/dictation.lab")
         XCTAssertEqual(SettingsCatalog.redirect("general/smart_paste"), "cards/cards.card_drag")
-        // v1.0.24: the recording, voice-note and card settings left General for their capabilities' panes
+        // v1.0.23: the recording, voice-note and card settings left General for their capabilities' panes
         XCTAssertEqual(SettingsCatalog.redirect("general/general.snap_sound"), "cards/cards.snap_sound")
         XCTAssertEqual(SettingsCatalog.redirect("general/general.card_drag"), "cards/cards.card_drag")
         XCTAssertEqual(SettingsCatalog.redirect("general/collect"), "cards/cards.collect")

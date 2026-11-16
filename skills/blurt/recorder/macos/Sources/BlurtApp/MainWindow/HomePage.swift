@@ -7,7 +7,7 @@
 //   waiting for you         one quiet line each: new items and items to verify (Recording on), cards hanging under the
 //                           notch (Cards on).
 //   recent                  one timeline of what was made with the capabilities that are on (BlurtCore HomeFeed):
-//                           dictations, cards, items, newest first under their days. Nothing made yet: Peep and the
+//                           dictations, cards, text from the screen (⌥C / ⌥T), items, newest first under their days. Nothing made yet: Peep and the
 //                           one thing to try per capability.
 //
 // The facts in the rows are read from where the rest of the app reads them (SpeechSetup.menuRow as the menu-bar menu,
@@ -18,7 +18,7 @@
 //   ↑ ↓      line by line through the page          ← →   along a capability's line: its row, its fix, its switch
 //   Tab ⇧Tab every row, fix and switch, the links, the timeline as one stop
 //   ↩ Space  the stop's action (a row: its place; a switch: flips it) — in the timeline ↩ is the row's main action
-//            (a dictation or a card is copied, an item opens) and ⌘C copies
+//            (a dictation, a card or a screen text is copied, an item opens) and ⌘C copies
 //   Esc      lets go of the selection
 //
 // Test commands (`home …` on the shell channel): state | show | toggle <capability> | key <down|up|left|right|tab|
@@ -180,6 +180,7 @@ final class HomeModel: ObservableObject {
     private(set) var dictations: [String: DictationEntry] = [:]
     private(set) var shots: [String: Shot] = [:]
     private(set) var items: [String: ItemRow] = [:]
+    private(set) var screenTexts: [String: ScreenTextEntry] = [:]
 
     /// a coding agent can take a recording (AgentHub's cached check; nil: not known yet — nothing is claimed)
     private var agentReady: Bool?
@@ -226,7 +227,8 @@ final class HomeModel: ObservableObject {
             let feed = n == Capability.didChange
             nc.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.changed(feed: feed) } }
         }
-        let made: [Notification.Name] = [DictationHistory.changed, .blurtCardsChanged, .blurtTakenChanged, .blurtJobsChanged]
+        let made: [Notification.Name] = [DictationHistory.changed, .blurtCardsChanged, .blurtTakenChanged, .blurtJobsChanged,
+                                         .blurtScreenTextChanged]
         for n in made { nc.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.changed(feed: true) } } }
         // the speech model, its download and the permissions are observable objects: their changes redraw the rows
         DictationModels.shared.objectWillChange.sink { [weak self] _ in self?.changed(feed: false) }.store(in: &bag)
@@ -463,8 +465,8 @@ final class HomeModel: ObservableObject {
     static func cardKey(_ s: Shot) -> String { "\(s.batch?.dir.path ?? "")#\(s.n)" }
 
     private func reloadFeed() {
-        var ds: [HomeFeed.Entry] = [], cs: [HomeFeed.Entry] = [], its: [HomeFeed.Entry] = []
-        dictations = [:]; shots = [:]; items = [:]; thumbs = [:]
+        var ds: [HomeFeed.Entry] = [], cs: [HomeFeed.Entry] = [], sts: [HomeFeed.Entry] = [], its: [HomeFeed.Entry] = []
+        dictations = [:]; shots = [:]; items = [:]; screenTexts = [:]; thumbs = [:]
         if Capability.dictation.isOn {
             for e in DictationHistory.shared.load() where !e.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 dictations[e.id] = e
@@ -483,6 +485,13 @@ final class HomeModel: ObservableObject {
                 cs.append(.init(kind: .card, key: k, time: Date(timeIntervalSince1970: s.wall), source: name, text: words))
             }
         }
+        if Capability.screenText.isOn {
+            for e in ScreenTextHistory.shared.load().prefix(HomeFeed.limit) {
+                screenTexts[e.id] = e
+                sts.append(.init(kind: .screenText, key: e.id, time: e.time, source: ScreenTextPage.source(e),
+                                 text: ScreenTextEntry.preview(e.text)))
+            }
+        }
         if Capability.recording.isOn, let reader = MainWindowController.shared.model.reader {
             indexVersion = reader.dataVersion
             var q = ItemQuery()
@@ -497,7 +506,7 @@ final class HomeModel: ObservableObject {
         } else {
             indexVersion = 0
         }
-        let f = HomeFeed.merge(dictations: ds, cards: cs, items: its, off: Capability.off)
+        let f = HomeFeed.merge(dictations: ds, cards: cs, screenTexts: sts, items: its, off: Capability.off)
         if f != feed {
             feed = f
             days = HomeFeed.days(f.entries)
@@ -509,11 +518,11 @@ final class HomeModel: ObservableObject {
 
     private var thumbs: [String: CGImage] = [:]
     /// A snap's picture for its row: cut to the row's 56 × 40 from its top-left corner, as a tile of the Cards panel
-    /// (OverviewTile.topLeading: a window's title stays in view). nil: a voice note, or no picture.
+    /// (CardTile.topLeading: a window's title stays in view). nil: a voice note, or no picture.
     func thumb(_ key: String) -> CGImage? {
         if let t = thumbs[key] { return t }
         guard let s = shots[key], s.kind == .shot, let img = s.markedThumb ?? s.thumb else { return nil }
-        let t = OverviewTile.topLeading(img, box: HomeMetrics.thumb)
+        let t = CardTile.topLeading(img, box: HomeMetrics.thumb)
         thumbs[key] = t
         return t
     }
@@ -524,6 +533,7 @@ final class HomeModel: ObservableObject {
             switch k {
             case .dictation: return ("all.dictation", T("home.all.dictation"))
             case .card: return ("all.cards", T("home.all.cards"))
+            case .screenText: return ("all.screen_text", T("home.all.screen_text"))
             case .item: return ("all.items", T("home.all.items"))
             }
         }
@@ -635,7 +645,7 @@ final class HomeModel: ObservableObject {
 
     // MARK: what the stops do
 
-    /// A capability's row: its place (Screen Text has none in the window: its settings).
+    /// A capability's row: its place.
     func open(_ c: Capability) {
         guard c.isOn else { return select(.toggle(c), keyboard: true) }      // an off row only points at its switch
         emit(["event": "home", "action": "open", "capability": c.rawValue])
@@ -643,7 +653,7 @@ final class HomeModel: ObservableObject {
         switch c {
         case .dictation: w.showDictation()
         case .cards: w.go(.cards)
-        case .screenText: AppEnvironment.settings?.show(pane: "screentext")
+        case .screenText: w.go(.screenText)
         case .recording: w.go(.inbox)
         case .phone: w.go(.phone)
         }
@@ -686,9 +696,10 @@ final class HomeModel: ObservableObject {
         let w = MainWindowController.shared
         switch id {
         case "inbox": w.go(.inbox)
-        case "cards": CardsOverview.shared.show(keyboard: false, segment: .hanging)
+        case "cards": w.go(.cards)
         case "all.dictation": w.showDictation()
         case "all.cards": w.go(.cards)
+        case "all.screen_text": w.go(.screenText)
         case "all.items": w.go(.all)
         default: break
         }
@@ -706,13 +717,14 @@ final class HomeModel: ObservableObject {
         }
     }
 
-    /// ⌘C: the dictation's text, the card (picture and note, HangingCards.copyShot), the item's id and title.
+    /// ⌘C: the dictation's text, the screen text (the translation, for one), the card (picture and note, HangingCards.copyShot), the item's id and title.
     func copy(_ id: String) {
         guard let e = entry(id) else { return }
         var ok = true
         switch e.kind {
         case .dictation: DictationInsert.copy(dictations[e.key]?.finalText ?? e.text)
         case .card: ok = shots[e.key].map { HangingCards.copyShot($0, .click) } ?? false
+        case .screenText: DictationInsert.copy(screenTexts[e.key]?.text ?? e.text)
         case .item: DictationInsert.copy(items[e.key].map { $0.itemID.isEmpty ? $0.title : $0.itemID + " " + $0.title } ?? e.text)
         }
         emit(["event": "home", "action": "copy", "id": id, "ok": ok])

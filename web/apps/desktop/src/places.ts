@@ -4,12 +4,13 @@
 import { ACTIONS, canDo, TRANSITIONS, type Action, type State } from '@blurt/ui';
 import type { ItemQuery, ItemRow, Job, ProjectRow } from './api';
 
-/** home · dictation · cards · phone (pages of their own) · inbox · progress · unassigned · all · project:<id> (the Mac's
- *  Scope keys; capabilities.md) */
-export type Place = 'home' | 'dictation' | 'cards' | 'phone' | 'inbox' | 'progress' | 'unassigned' | 'all' | `project:${string}`;
+/** home · dictation · cards · screen_text · phone (pages of their own) · inbox · progress · unassigned · all ·
+ *  project:<id> (the Mac's Scope keys; capabilities.md) */
+export type Place = 'home' | 'dictation' | 'cards' | 'screen_text' | 'phone' | 'inbox' | 'progress' | 'unassigned' | 'all' | `project:${string}`;
 
-/** A page that takes the list and the detail columns (the Mac's FullPage): Home, Dictation, Cards, Phone. */
-export const PAGES: readonly Place[] = ['home', 'dictation', 'cards', 'phone'];
+/** A page that takes the list and the detail columns (the Mac's FullPage): Home, Dictation, Cards, Text & Translation,
+ *  Phone. */
+export const PAGES: readonly Place[] = ['home', 'dictation', 'cards', 'screen_text', 'phone'];
 export const isPage = (p: Place) => PAGES.includes(p);
 
 export const isProject = (p: Place): p is `project:${string}` => p.startsWith('project:');

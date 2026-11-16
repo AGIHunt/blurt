@@ -34,7 +34,7 @@ export interface Entry {
   more?: Key;
 }
 
-/** The sidebar's groups (v1.0.24, the Mac's SettingsCatalog.groups): Features — one pane per capability, named as the
+/** The sidebar's groups (v1.0.23, the Mac's SettingsCatalog.groups): Features — one pane per capability, named as the
  *  capability is everywhere, each there only while it is on (capabilities.ts `paneShown`) · App — what every feature
  *  shares · This PC. Before: Preferences / Work / This PC, with the recording, voice-note and card settings in General. */
 export const GROUPS: { id: PaneInfo['group']; title: Key }[] = [
@@ -45,10 +45,10 @@ export const GROUPS: { id: PaneInfo['group']; title: Key }[] = [
 
 export const PANES: PaneInfo[] = [
   { id: 'dictation', title: 'feature.dictation', icon: 'character-cursor', group: 'features' },
-  // snaps, voice notes and what a dragged card carries (v1.0.24: before, two boxes in General)
+  // snaps, voice notes and what a dragged card carries (v1.0.23: before, two boxes in General)
   { id: 'cards', title: 'feature.cards', icon: 'cards', group: 'features' },
   { id: 'screentext', title: 'feature.screen_text', icon: 'text-viewfinder', group: 'features' },
-  // a recording and what becomes of it (v1.0.24: before, a box in General); its projects follow
+  // a recording and what becomes of it (v1.0.23: before, a box in General); its projects follow
   { id: 'recording', title: 'feature.recording', icon: 'record', group: 'features' },
   { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'features' },
   // the Mac's iPhone pane ("remote"), for any phone: Settings → Phone (PhonePane.tsx)
@@ -64,7 +64,7 @@ export const pane = (id: string) => PANES.find((p) => p.id === id);
 
 /** Old links (blurt://settings/<pane>, a remembered last pane) and where they land now. */
 export const MOVED: Record<string, string> = { export: 'agents', cloud: 'speech', 'speech.cloud': 'speech', remote: 'phone' };
-/** Rows that moved (old row → new row): Export's old place lands at Ask your agent; v1.0.24 moved General's Voice notes
+/** Rows that moved (old row → new row): Export's old place lands at Ask your agent; v1.0.23 moved General's Voice notes
  *  and Cards boxes to the Cards pane and its Recording box to Recording & Items (the Mac's SettingsCatalog.movedRows). */
 export const MOVED_ROW: Record<string, string> = {
   export: 'agents.ask',
@@ -104,6 +104,7 @@ export const SECTIONS: Record<string, Key> = {
   'dictation.data': 'dictation.data.section',
   'screentext.copy': 'settings.screen_text.section.copy',
   'screentext.translation': 'settings.screen_text.section.translate',
+  'screentext.history_section': 'settings.screen_text.section.history',
   'speech.services': 'models.section.services',
   'speech.jobs': 'speech.section.jobs',
   'speech.models': 'speech.section.models',
@@ -196,11 +197,13 @@ export const ENTRIES: Entry[] = (() => {
     row('dictation.history_saved', 'dictation.data', 'dictation.history.saved', { detail: 'dictation.history.saved.detail' }),
     row('dictation.keep_audio', 'dictation.data', 'dictation.history.keep_audio', { detail: 'dictation.history.keep_audio.detail' }),
     row('dictation.models', 'dictation.data', 'dictation.models.section', { detail: 'dictation.models.detail' }),
-    // Copy Text from Screen
+    // Text & Translation
     row('screentext.allow', 'screentext.copy', 'screentext.allow', { detail: 'screentext.allow.detail' }),
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
     row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
+    // how long the history keeps what was read (record.screen_text.history_days), Open History…, Clear History…
+    row('screentext.history', 'screentext.history_section', 'settings.screen_text.history', { detail: 'settings.screen_text.history.detail' }),
     // Models
     whole('speech.services', 'models.services.detail'),
     row('speech.batch', 'speech.jobs', 'speech.purpose.batch', { detail: 'speech.purpose.batch.detail' }),

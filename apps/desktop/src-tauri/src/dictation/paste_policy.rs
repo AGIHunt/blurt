@@ -236,6 +236,13 @@ pub mod screen_text {
         }
     }
 
+    /// The card under the island with the whole text, for ⌥C and ⌥T alike (the Mac's ScreenTextPaste.showsCard,
+    /// 2026-11-16: "if it went into a field, a card under the island is only in the way"): only when the text went
+    /// nowhere but the clipboard. Pasted — confirmed or not — the text is where the user wanted it; the line says so.
+    pub fn shows_card(o: Outcome) -> bool {
+        o == Outcome::Copied
+    }
+
     /// The island's line (a localisation key, the Mac's Capture.strings) for what happened to ⌥C's text or ⌥T's
     /// translation.
     pub fn line_key(o: Outcome, translate: bool) -> &'static str {
@@ -627,6 +634,16 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The card under the island only when the text went nowhere but the clipboard (⌥C and ⌥T alike).
+    #[test]
+    fn screen_text_card_only_when_only_copied() {
+        use screen_text::*;
+        assert!(shows_card(Outcome::Copied));
+        assert!(!shows_card(Outcome::Pasted));
+        assert!(!shows_card(Outcome::Unconfirmed));
+        assert!(!shows_card(Outcome::AlreadyInTarget));
     }
 
     /// "Pasted" only once the field shows it; Ctrl+V that can't be confirmed says the text is on the clipboard.

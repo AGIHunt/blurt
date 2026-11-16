@@ -16,7 +16,7 @@ final class InkTests: XCTestCase {
         XCTAssertEqual(InkModifiers.snapTool(shift: false, option: false), .free)
         XCTAssertEqual(InkModifiers.snapTool(shift: true, option: false), .box)
         XCTAssertEqual(InkModifiers.snapTool(shift: false, option: true), .ellipse)
-        XCTAssertEqual(InkModifiers.snapTool(shift: true, option: true), .arrow, "⇧⌥: an arrow (v1.0.24)")
+        XCTAssertEqual(InkModifiers.snapTool(shift: true, option: true), .arrow, "⇧⌥: an arrow (v1.0.23)")
     }
 
     func testTheRecordingPenUsesTheSameModifiersUnderItsKey() {
@@ -267,7 +267,7 @@ final class InkTests: XCTestCase {
             (.control, [c], .free),
             (.control, [c, sh], .box),                 // ⌃ then ⇧, ⇧ then ⌃, ⌃⇧ together: a box (the founder's case)
             (.control, [c, o], .ellipse),              // ⌥ first or together too
-            (.control, [c, sh, o], .arrow),            // both shape keys: an arrow, as on a snap (v1.0.24)
+            (.control, [c, sh, o], .arrow),            // both shape keys: an arrow, as on a snap (v1.0.23)
             (.control, [c, cmd], nil),                 // ⌃⌘ is a shortcut in any order
             (.control, [c, sh, cmd], nil),
             (.control, [sh, o], nil),                  // no pen key: never the pen

@@ -1,4 +1,4 @@
-// The markup tools on a snap (v1.0.24): the tool chosen and its keys, colours, the arrow's head, the mosaic's blocks,
+// The markup tools on a snap (v1.0.23): the tool chosen and its keys, colours, the arrow's head, the mosaic's blocks,
 // the text box, how every mark is kept (shots.jsonl "marks" next to the old "strokes"), undo / redo, and where the tool
 // strip goes. The model and the key decision are in Ink.swift's header; InkMarksTests covers each rule.
 import CoreGraphics

@@ -37,6 +37,7 @@ export function placeCapability(p: Place): Capability | null {
   if (p === 'home') return null;
   if (p === 'dictation') return 'dictation';
   if (p === 'cards') return 'cards';
+  if (p === 'screen_text') return 'screen_text';
   if (p === 'phone') return 'phone';
   return 'recording';
 }
@@ -107,10 +108,12 @@ export function landing(link: string, off: Off): string {
 
 // ---------------------------------------------------------------- Home's Recent (HomeFeed)
 
-export type FeedKind = 'dictation' | 'card' | 'item';
-export const FEED_CAPABILITY: Record<FeedKind, Capability> = { dictation: 'dictation', card: 'cards', item: 'recording' };
+export type FeedKind = 'dictation' | 'card' | 'screen_text' | 'item';
+export const FEED_KINDS: readonly FeedKind[] = ['dictation', 'card', 'screen_text', 'item'];
+export const FEED_CAPABILITY: Record<FeedKind, Capability> = { dictation: 'dictation', card: 'cards', screen_text: 'screen_text', item: 'recording' };
 
-/** One row of the timeline. `key` is the thing's own id (a dictation's id, a card's "<session>#<n>", an item's uid);
+/** One row of the timeline. `key` is the thing's own id (a dictation's id, a card's "<session>#<n>", a screen text's
+ *  id, an item's uid);
  *  `time` epoch seconds; `source` the quiet line over the text; `text` what was made. */
 export interface FeedEntry {
   kind: FeedKind;
@@ -118,7 +121,8 @@ export interface FeedEntry {
   time: number;
   source: string;
   text: string;
-  /** what sort of thing it is, for its glyph: an item's kind; a card's shot | voice | file | text */
+  /** what sort of thing it is, for its glyph: an item's kind; a card's shot | voice | file | text; a screen text's
+   *  copy | translate */
   sub?: string;
 }
 export const feedId = (e: FeedEntry) => `${e.kind}:${e.key}`;
@@ -134,17 +138,17 @@ export interface Feed {
 
 export const FEED_LIMIT = 40;
 
-/** The three lists as one: kinds whose capability is off left out, a thing listed twice once, newest first (rows of one
+/** The lists as one: kinds whose capability is off left out, a thing listed twice once, newest first (rows of one
  *  moment in the capabilities' order, then by key), cut at `limit`. */
-export function mergeFeed(lists: { dictations: FeedEntry[]; cards: FeedEntry[]; items: FeedEntry[] }, off: Off, limit = FEED_LIMIT): Feed {
-  const order: Record<FeedKind, number> = { dictation: 0, card: 1, item: 2 };
+export function mergeFeed(lists: { dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts?: FeedEntry[]; items: FeedEntry[] }, off: Off, limit = FEED_LIMIT): Feed {
+  const order: Record<FeedKind, number> = { dictation: 0, card: 1, screen_text: 2, item: 3 };
   const seen = new Set<string>();
-  const all = [...lists.dictations, ...lists.cards, ...lists.items]
+  const all = [...lists.dictations, ...lists.cards, ...(lists.screenTexts ?? []), ...lists.items]
     .filter((e) => !off.has(FEED_CAPABILITY[e.kind]))
     .filter((e) => (seen.has(feedId(e)) ? false : (seen.add(feedId(e)), true)))
     .sort((a, b) => b.time - a.time || order[a.kind] - order[b.kind] || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const entries = all.slice(0, Math.max(0, limit));
-  const kinds = (['dictation', 'card', 'item'] as FeedKind[]).filter((k) => all.some((e) => e.kind === k));
+  const kinds = FEED_KINDS.filter((k) => all.some((e) => e.kind === k));
   const cut = new Set(kinds.filter((k) => entries.filter((e) => e.kind === k).length < all.filter((e) => e.kind === k).length));
   return { entries, kinds, cut };
 }

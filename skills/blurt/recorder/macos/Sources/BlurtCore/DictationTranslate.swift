@@ -23,6 +23,7 @@
 // record.dictation.translate = {"target": "auto" | "en" | "zh" | …, "cloud": true, "apps": [bundle ids],
 //                               "asked": [bundle ids]}  (one dictionary: bundle ids have dots)
 import Foundation
+import NaturalLanguage
 
 /// A translate target in Settings (dictation's "⌘ translates into", ⌥T's "⌥T translates into"): Auto — your own
 /// language ↔ the other one (TranslateAutoPair), the model picks the direction — or one language.
@@ -104,6 +105,46 @@ public struct TranslateAutoPair: Equatable {
     /// polish.py's target: "auto:H|O" (text in H into O, anything else into H); without a pair, "H|keep" (into H, a
     /// text in H as it is).
     public var request: String { other.map { "auto:\(home.rawValue)|\($0.rawValue)" } ?? home.rawValue + "|keep" }
+}
+
+/// ⌥T's direction from the text itself (2026-11-16). Asking the model to pick the direction ("text in H into O, anything
+/// else into H") failed on the local model: it gave English back as English and put Japanese into English, while the
+/// same model asked for one language translated every case. So the language is identified first, by Apple's language
+/// identifier (a statistical model over the whole text, not word lists), and the model is asked for one language.
+public enum TranslateDirection {
+    /// What ⌥T does with a text: ask the model for `request`, or nothing — the text is in the target already.
+    public enum Plan: Equatable {
+        case send(String)
+        case already(DictationTranslateTarget)
+    }
+
+    /// How sure the identifier must be before the app picks the direction itself; below it the model decides (Auto's
+    /// pair request), as before.
+    public static let sure = 0.6
+
+    /// The language a text is mostly in, when the identifier is sure: its code ("zh-Hans", "en", "ja", "th" …), else nil.
+    public static func language(of text: String) -> String? {
+        let r = NLLanguageRecognizer()
+        r.processString(String(text.prefix(2000)))
+        guard let (lang, p) = r.languageHypotheses(withMaximum: 1).first, p >= sure, lang != .undetermined else { return nil }
+        return lang.rawValue
+    }
+
+    /// `detected`: language(of:) of the text. Auto: text in home → other (none: already in home); text in any other
+    /// language → home; not sure → the pair's request. A fixed X: text in X → already (Chinese into Traditional is
+    /// still a translation); anything else, or not sure → "X|keep".
+    public static func plan(_ setting: DictationTranslateTarget, detected: String?, pair: TranslateAutoPair) -> Plan {
+        let family = detected.map { DictationTranslateTarget.of($0)?.family ?? DictationTranslateRoute.family($0) }
+        switch setting {
+        case .auto:
+            guard let f = family else { return .send(pair.request) }
+            if f == pair.home.family { return pair.other.map { .send($0.rawValue) } ?? .already(pair.home) }
+            return .send(pair.home.rawValue)
+        default:
+            if let f = family, f == setting.family, setting != .zhHant { return .already(setting) }
+            return .send(family == nil ? setting.request(auto: pair) : setting.rawValue)
+        }
+    }
 }
 
 public struct DictationTranslateConfig: Equatable {

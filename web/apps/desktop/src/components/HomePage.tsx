@@ -1,7 +1,8 @@
 // Home (the Mac's MainWindow/HomePage.swift + HomeViews.swift; docs/design/capabilities.md): the main window's first
 // page. The five capabilities, one row each — what it does, its keys, its switch, and when something stands in its way
 // one line with the one way to fix it —; what waits for you (new items, cards at the top of the screen); and Recent,
-// one timeline of what was made with the capabilities that are on (dictations, cards, items), newest first by day.
+// one timeline of what was made with the capabilities that are on (dictations, cards, text read or translated from the
+// screen, items), newest first by day.
 // A row goes to its place; its right-click menu also opens its settings. Off: the name and keys step back, the line
 // stays readable, the switch brings it back.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -16,6 +17,7 @@ import type { Place } from '../places';
 import { useRemoteStatus } from '../settings/phone';
 import { Switch } from '../settings/kit';
 import { useMenu, type MenuEntry } from './Menu';
+import { screenTextSource } from './ScreenTextPage';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 import { CAP_ICON, dictationKeyName } from './SettingsView';
 import { setCapability, useOff } from './useCapabilities';
@@ -47,7 +49,7 @@ function dayLabel(day: number): string {
 const clock = (time: number) => new Intl.DateTimeFormat(i18n().locale, { hour: 'numeric', minute: '2-digit' }).format(new Date(time * 1000));
 
 /** Where a capability's row goes. */
-const PLACE: Record<Capability, Place | null> = { dictation: 'dictation', cards: 'cards', screen_text: null, recording: 'inbox', phone: 'phone' };
+const PLACE: Record<Capability, Place | null> = { dictation: 'dictation', cards: 'cards', screen_text: 'screen_text', recording: 'inbox', phone: 'phone' };
 /** Its Settings pane. */
 const PANE: Record<Capability, string> = { dictation: 'dictation', cards: 'cards', screen_text: 'screentext', recording: 'recording', phone: 'phone' };
 
@@ -72,7 +74,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   const dict = useDictationModels();
   const [agentReady, setAgentReady] = useState<boolean | null>(null);
   const [shotsAllowed, setShotsAllowed] = useState(true);
-  const [lists, setLists] = useState<{ dictations: FeedEntry[]; cards: FeedEntry[]; items: FeedEntry[] }>({ dictations: [], cards: [], items: [] });
+  const [lists, setLists] = useState<{ dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts: FeedEntry[]; items: FeedEntry[] }>({ dictations: [], cards: [], screenTexts: [], items: [] });
   const [loaded, setLoaded] = useState(false);
   const [cardsTick, setCardsTick] = useState(0);
 
@@ -80,6 +82,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
     api.settings().then((s) => setCfg(s.config), () => {});
   }, [off]);
   useEffect(() => listen('cards://changed', () => setCardsTick((n) => n + 1)), []);
+  useEffect(() => listen('screen-text://changed', () => setCardsTick((n) => n + 1)), []);
   // an agent that can organize recordings in the background: none means "say it to your agent" (capabilities.md §3.2)
   useEffect(() => {
     if (off.has('recording')) return;
@@ -89,11 +92,12 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
     if (status.platform === 'gnome' && !off.has('screen_text')) api.screenTextAllowed().then(setShotsAllowed, () => {});
   }, [status.platform, off.has('screen_text')]);
 
-  // Recent: the three lists, each only while its capability is on
+  // Recent: the lists, each only while its capability is on
   const load = useCallback(async () => {
-    const [dh, cl, it] = await Promise.all([
+    const [dh, cl, st, it] = await Promise.all([
       off.has('dictation') ? null : api.dictationHistory().catch(() => null),
       off.has('cards') ? null : api.cardsList().catch(() => null),
+      off.has('screen_text') || !built.screen_text ? null : api.screenTextHistory().catch(() => null),
       off.has('recording') ? null : api.items({ sort: 'updated', ascending: false, limit: 40 }).catch(() => null),
     ]);
     const dictations: FeedEntry[] = (dh?.entries ?? [])
@@ -117,9 +121,17 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
       text: r.title,
       sub: r.kind,
     }));
-    setLists({ dictations, cards, items });
+    const screenTexts: FeedEntry[] = (st?.entries ?? []).slice(0, 40).map((e) => ({
+      kind: 'screen_text',
+      key: e.id,
+      time: e.time,
+      source: screenTextSource(e),
+      text: D.preview(e.text),
+      sub: e.translated ? 'translate' : 'copy',
+    }));
+    setLists({ dictations, cards, screenTexts, items });
     setLoaded(true);
-  }, [off]);
+  }, [off, built.screen_text]);
   useEffect(() => {
     void load();
   }, [load, tick, cardsTick]);
@@ -222,7 +234,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
       </div>,
     );
 
-  const openEntry = (e: FeedEntry) => (e.kind === 'dictation' ? onGo('dictation') : e.kind === 'card' ? onGo('cards') : onReveal(e.key));
+  const openEntry = (e: FeedEntry) => (e.kind === 'dictation' ? onGo('dictation') : e.kind === 'card' ? onGo('cards') : e.kind === 'screen_text' ? onGo('screen_text') : onReveal(e.key));
   const entryMenu = (e: FeedEntry): MenuEntry[] => [
     { label: t('home.entry.open'), run: () => openEntry(e) },
     ...(e.text ? [{ label: e.kind === 'item' ? t('home.entry.copy_title') : t('home.entry.copy'), run: () => void api.copyText(e.text).then(() => onToast(t('dictation_page.copied')), () => {}) }] : []),
@@ -230,6 +242,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   const ALL: Record<FeedKind, { key: string; place: Place }> = {
     dictation: { key: 'home.all.dictation', place: 'dictation' },
     card: { key: 'home.all.cards', place: 'cards' },
+    screen_text: { key: 'home.all.screen_text', place: 'screen_text' },
     item: { key: 'home.all.items', place: 'all' },
   };
   const allOff = shownCaps.every((c) => off.has(c));
@@ -361,6 +374,7 @@ function tryLine(key: string, label: string): ReactNode {
 
 function entryIcon(e: FeedEntry): ReactNode {
   if (e.kind === 'dictation') return <Icon name="character-cursor" size={15} />;
+  if (e.kind === 'screen_text') return <Icon name={e.sub === 'translate' ? 'languages' : 'text-viewfinder'} size={15} />;
   if (e.kind === 'card') return <Icon name={e.sub === 'voice' ? 'mic' : e.sub === 'file' ? 'document' : e.sub === 'text' ? 'quote' : 'snap'} size={15} />;
   return <KindIcon kind={e.sub ?? 'note'} size={15} />;
 }

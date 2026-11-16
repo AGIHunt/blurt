@@ -104,28 +104,35 @@ class Glossary(unittest.TestCase):
             island = plural_forms(RES / f"{lang}.lproj" / "Capture.stringsdict", "capture.island.to_review")
             self.assertTrue(all("review" not in f for f in island), island)
 
-    def test_used_cards_are_the_cards_panels_history_only(self):
+    def test_used_cards_are_the_cards_pages_history_only(self):
         # v1.0.7: "Recently Dragged Out" (its own panel, menu-bar row, island menu row, main-window row and notice) is
-        # gone; cards used in other apps are the Cards panel's History segment, reached by ⌥H — and the two segments
-        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的")
+        # gone; cards used in other apps are the Cards page's History section, reached by ⌥H — and the two sections
+        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的"). v1.0.23: ⌥H's floating
+        # Cards panel is gone too (the page is the one place for every card); how long History keeps a card follows
+        # Settings → Cards → History, never a "7 days" written into the copy
         for lang in ("en", "zh-Hans"):
             main = strings(RES / f"{lang}.lproj" / "Main.strings")
             cap = strings(RES / f"{lang}.lproj" / "Capture.strings")
+            cards = strings(RES / f"{lang}.lproj" / "Cards.strings")
             for k in ("main.captures.taken", "main.captures.taken.show", "main.captures.taken.tip", "main.sidebar.taken"):
                 self.assertNotIn(k, main, (lang, k))
             for k in ("capture.taken.title", "capture.taken.menu", "capture.taken.show_all", "capture.taken.hint",
-                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again"):
+                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again",
+                      "capture.cards.seg_current", "capture.cards.seg_history", "capture.cards.overview_heading",
+                      "capture.cards.panel_keys", "capture.cards.history_hint"):
                 self.assertNotIn(k, cap, (lang, k))
-            for t in (main, cap):
+            for t in (main, cap, cards):
                 for k, v in t.items():
-                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”"):
+                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”",
+                                 "Cards panel", "卡片面板", "7 days", "7 天"):
                         self.assertNotIn(gone, v, (lang, k))
-        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_current"], "Current %@")
-        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_history"], "History %@")
-        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_current"], "当前 %@")
-        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_history"], "历史 %@")
+            self.assertIn("%d", cards["cards.history.kept"], lang)
+        self.assertEqual(strings(RES / "en.lproj" / "Cards.strings")["cards.section.current"], "Current")
+        self.assertEqual(strings(RES / "en.lproj" / "Cards.strings")["cards.section.history"], "History")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Cards.strings")["cards.section.current"], "当前")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Cards.strings")["cards.section.history"], "历史")
         src = "\n".join(p.read_text() for p in (RES.parent).rglob("*.swift"))
-        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu"):
+        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu", "CardsOverview", "overviewEsc"):
             self.assertNotIn(gone, src, gone)
 
 
@@ -246,7 +253,10 @@ class OneWordPerConcept(unittest.TestCase):
         for lang in ("zh-Hans", "en"):
             t = self.every(lang)
             name = t["Home.strings"]["feature.screen_text"]
-            self.assertEqual(t["Models.strings"]["models.job.vision"], name, lang)
+            # the capability (its pane, its page) is 取字与翻译 / Text & Translation; the model job serves ⌥C only, so it
+            # carries ⌥C's own name (2026-11-16)
+            self.assertEqual(t["Settings.strings"]["settings.kit.screen_text"], name, lang)
+            self.assertEqual(t["Models.strings"]["models.job.vision"], t["Capture.strings"]["capture.menu.text"], lang)
             self.assertIn(name, t["Capture.strings"]["capture.action.translate.detail"], lang)
 
     def test_an_agents_field_has_a_label_not_its_key(self):

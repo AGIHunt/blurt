@@ -163,7 +163,7 @@ Windows/Linux: Blurt（Tauri 2）
 
 ### 2.1 主窗口（macOS：原生外壳 + Web 画布；Tauri：React 实现同样的布局）
 
-> **v1.0.24 起（macOS）**：主窗口按能力组织，详见 [capabilities.md](capabilities.md)。侧栏 = 主页 / 听写 / 卡片 / 手机，然后
+> **v1.0.23 起（macOS）**：主窗口按能力组织，详见 [capabilities.md](capabilities.md)。侧栏 = 主页 / 听写 / 卡片 / 手机，然后
 > 「事项」组（待处理、进行中、未归类、全部事项）和「项目」组；关掉的能力不出现。第一次打开落在主页。下面的草图是事项那一组的布局。
 
 
@@ -281,7 +281,7 @@ Windows/Linux: Blurt（Tauri 2）
 traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`last_region`、`skill_dir`、下载完「用它」）走 `save_config_if_readable`，
 跳过并在结果里带 `"saved": false`——模型照样算下好了。NaN / Infinity 两边都不认（Python 的 json 认、JSONSerialization 不认）。
 
-**后台下载让人看见**（v1.0.24，`BlurtCore/ModelDownloadNotice.swift`）：首次的推荐模型下载不问，但下载开始时刘海说一次「正在后台下载
+**后台下载让人看见**（v1.0.23，`BlurtCore/ModelDownloadNotice.swift`）：首次的推荐模型下载不问，但下载开始时刘海说一次「正在后台下载
 语音模型（5.9 GB）· 停止」，引导除模型那一步外每一步底部一行进度和「停止」，主页听写那行显示进度和「停止」；「停止」立刻写进
 `model-downloads.json`，下次启动不再自己继续（退出或崩溃仍会续传），主页改成「下载更准的语音模型 · 5.9 GB」。引导第 1 步关掉
 听写就不下载；之后在主页或设置关掉听写，正在下的停止。

@@ -211,12 +211,17 @@
 "settings.group.features" = "Features";
 "settings.group.app" = "App";
 "settings.group.mac" = "This Mac";
-/* Settings by capability (v1.0.24): General's five switches, the Cards and the Recording & Items panes, the note on
+/* Settings by capability (v1.0.23): General's five switches, the Cards and the Recording & Items panes, the note on
    the recording-only keys in Shortcuts */
 "settings.general.features" = "Features";
 "settings.general.features.footer" = "Features that are off hold no shortcuts and don’t appear in menus, the main window or Settings.";
 "settings.cards.section.snaps" = "Snaps";
 "settings.cards.section.drag" = "Dragging cards";
+"settings.cards.history" = "History";
+"settings.cards.history.detail" = "How long cards dragged or pasted into other apps stay on the Cards page.";
+"settings.cards.history.days" = "%d days";
+"settings.cards.history.forever" = "Forever";
+"settings.kw.cards.history" = "history, used cards, kept, keep, days, forever, trash, delete";
 "settings.recording.section.items" = "Items";
 "settings.recording.agent" = "Agent that organizes";
 "settings.recording.agent.detail" = "Uses the first available agent in your list, with the model and effort set there.";
@@ -510,7 +515,7 @@
 "settings.general.screen_text.detail.download" = "Needs a %@ download";
 "settings.general.screen_text.detail.downloading" = "Downloading… %@";
 "settings.general.screen_text.download" = "Download";
-"settings.kit.screen_text" = "Screen Text";
+"settings.kit.screen_text" = "Text & Translation";
 "settings.kw.pane.screentext" = "OCR, screenshot text, copy text, translate, screen, option C, option T";
 "settings.screen_text.section.copy" = "Copy (⌥C)";
 "settings.screen_text.section.translate" = "Translate (⌥T)";
@@ -604,3 +609,18 @@
 "settings.remote.screen" = "Show your Mac’s screen on the phone";
 "settings.remote.screen.detail" = "Only while you turn it on from your paired phone.";
 "settings.kw.remote.screen" = "screen, mirror, view, picture";
+/* Text & Translation → History */
+"settings.screen_text.section.history" = "History";
+"settings.screen_text.history" = "History";
+"settings.screen_text.history.detail" = "The text ⌥C copied and ⌥T’s translations.";
+"settings.screen_text.history.keep" = "Keep history for";
+"settings.screen_text.history.forever" = "Forever";
+"settings.screen_text.history.summary.off" = "Not kept · nothing is saved after copying";
+"settings.screen_text.history.open" = "Open History…";
+"settings.screen_text.history.clear" = "Clear History…";
+"settings.screen_text.history.clear.title" = "Clear the history?";
+"settings.screen_text.history.clear.message" = "%ld entries will be deleted. This can’t be undone.";
+"settings.screen_text.history.clear.confirm" = "Clear";
+"settings.screen_text.history.cancel" = "Cancel";
+"settings.kw.screentext.history" = "history, kept, days, forever, don’t keep, clear, privacy";
+"settings.kw.screentext.history_keep" = "history, kept, days, forever, don’t keep";

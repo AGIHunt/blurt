@@ -1,4 +1,4 @@
-// The snap's markup tools (v1.0.24; the rules and the key decision: BlurtCore Ink.swift's header, InkMarks.swift).
+// The snap's markup tools (v1.0.23; the rules and the key decision: BlurtCore Ink.swift's header, InkMarks.swift).
 //
 //  • InkToolStrip — the compact row attached to the frozen selection (InkStage places it: BlurtCore StripDock, under
 //    it right-aligned, never over the note bubble): pen · box · ellipse · arrow · text · mosaic, the colours (the brand

@@ -751,6 +751,7 @@
 "dictation.translate.target.auto" = "自动：%1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "自动：译成%@";
 "dictation.translate.target.auto_one.note" = "%@ 的文字会原样保留；要翻译它，请选一种语言";
+"dictation.translate.target.auto_others" = "其他语言译成%@";
 "dictation.translate.toast.learned" = "此后在%@中的听写将自动翻译";
 "dictation.translate.toast.undo" = "撤销";
 "dictation.translate.apps" = "自动翻译的 App";

@@ -1,4 +1,4 @@
-// Settings → Cards (v1.0.24: its own pane, named as the capability is everywhere; before, the Voice notes and Cards
+// Settings → Cards (v1.0.23: its own pane, named as the capability is everywhere; before, the Voice notes and Cards
 // boxes of General). Three boxes, in the order a card is made and used:
 //   Snaps           macOS's own screenshots as cards too (record.collect_system_shots), the shutter sound
 //                   (record.snap_sound, off).
@@ -12,7 +12,10 @@
 //                   in a terminal (record.agent_drag "paths", the default), or as the choice above ("same"), with the
 //                   list of those apps behind Agents…; the note as a .md file too (record.drag_note_file, off).
 //                   Pasting the note needs Accessibility: said in attention ink with Allow… only while that choice is
-//                   made and the permission is missing.
+//                   made and the permission is missing. Then History: how long cards dragged or pasted into other
+//                   apps stay on the Cards page — 7 days (the default, left out of the config), 30 days, Forever
+//                   (record.cards.history_days: 7 / 30 / -1; BlurtCore TakenCaptures). A shorter choice moves what is
+//                   past it to the Trash at once (Snapper.expireTaken), as dictation's history does.
 // Where new snaps and voice notes are filed is with the projects (Settings → Projects), which belong to Recording &
 // Items. The pane is there only while the Cards capability is on (SettingsCatalog.paneShown); links to these rows'
 // old ids in General land here (SettingsCatalog.movedRows).
@@ -46,6 +49,7 @@ final class CardsModel: ObservableObject {
     @Published var cardDrag = CardDragMode.paste
     @Published var agentPaths = true
     @Published var dragNoteFile = false
+    @Published var historyDays = TakenCaptures.defaultDays
 
     init() { reload() }
 
@@ -56,6 +60,7 @@ final class CardsModel: ObservableObject {
         cardDrag = CardDragMode.current
         agentPaths = AgentProbe.getsPaths
         dragNoteFile = CardExport.attachNoteFile
+        historyDays = Snapper.historyDays
     }
 
     func setCollect(_ v: Bool) {
@@ -72,6 +77,20 @@ final class CardsModel: ObservableObject {
         emit(["event": "agent_drag_mode", "mode": v ? "paths" : "same"])
     }
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
+    func setHistoryDays(_ d: Int) {
+        historyDays = d
+        setRecordConfig("cards.history_days", TakenCaptures.configValue(d))
+        emit(["event": "cards_history_days", "days": d])
+        // what is past the new days goes now; the page (and its "Kept for …") reads them again either way
+        if snapper.expireTaken() == 0 {
+            NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": snapper.recentlyTaken.count])
+        }
+    }
+
+    /// "7 days", "30 days", "Forever".
+    static func historyTitle(_ d: Int) -> String {
+        d < 0 ? T("settings.cards.history.forever") : T("settings.cards.history.days", d)
+    }
 }
 
 struct CardsPane: View {
@@ -124,6 +143,11 @@ struct CardsPane: View {
                 .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_AGENT_APPS_SHEET"] == "1" { agentApps = true } }
                 .sheet(isPresented: $agentApps) { AgentAppsSheet { agentApps = false }.buttonStyle(.automatic) }
                 SettingToggle("cards.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
+                SettingRow("cards.history") {
+                    ChoicePopup(label: T("settings.cards.history"),
+                                choices: TakenCaptures.choices.map { ($0, CardsModel.historyTitle($0)) },
+                                selection: Binding(get: { m.historyDays }, set: { m.setHistoryDays($0) }))
+                }
             }
         }
         .onAppear { m.reload(); perms.start() }

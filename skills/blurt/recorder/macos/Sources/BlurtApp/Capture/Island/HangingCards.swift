@@ -19,8 +19,8 @@
 //    trackpad's swipe or the wheel over the row, the keyboard bringing its card in — and the window's edges fade
 //    where more cards wait beyond them (`rowLayer`'s mask); each time the cards come down (or a capture is caught)
 //    the newest is back at the left. A snap's card takes its picture's shape (BlurtCore CardShape: 84 pt high,
-//    84–150 wide; a toolbar or a sidebar shown whole). The overview of every card (CardsOverview.swift) is in the
-//    open island. Nothing pages or rotates: the order is always the time they were taken. The
+//    84–150 wide; a toolbar or a sidebar shown whole). Every card at once is the main window's Cards page (the open
+//    island's cards row, ⌥H). Nothing pages or rotates: the order is always the time they were taken. The
 //    threads come out of the island's bottom edge straight above their cards; a row wider than the island hangs from
 //    the island's lip, each card straight down from it (`origin`, `stepLip`) — never a fan, never a diagram.
 //  • the cards hang from the island's bottom edge and move with it, rigidly, on the island's own spring (carry): when
@@ -221,7 +221,7 @@ final class HangingCard {
     var tether: (end: CGPoint, snapped: CFTimeInterval?, from: CGPoint)?
     /// assigned while still in the air: pulled into the island right after the catch
     var pullAfterCatch = false
-    /// older than the newest CardRow.maxHung: it doesn't hang (the overview has it)
+    /// older than the newest CardRow.maxHung: it doesn't hang (the Cards page has it)
     var piled = false
     /// the card cuts its note short (the hover note then shows all of it)
     var truncated = false
@@ -548,7 +548,7 @@ final class HangingCards: NSObject {
     static func surface(dark: Bool) -> NSColor {
         dark ? NSColor(calibratedWhite: 0.2, alpha: 0.98) : NSColor(calibratedWhite: 0.985, alpha: 0.99)
     }
-    /// The overview's tiles' surface: opaque, a step quieter than a card's in dark.
+    /// The Cards page's tiles' surface: opaque, a step quieter than a card's in dark.
     static func tileSurface(dark: Bool) -> NSColor {
         dark ? NSColor(calibratedWhite: 0.145, alpha: 1) : NSColor(calibratedWhite: 0.985, alpha: 1)
     }
@@ -634,13 +634,13 @@ final class HangingCards: NSObject {
             // its type, when the note gave it one (CardKindMark)
             CardKindMark.voice(on: c.card, mic: c.card.sublayers?.first { $0.name == HangingCards.voiceMicName }, shot: s, dark: dark)
         } else {
-            // the card's own opaque surface, as the "+N" tile and the overview tiles: a picture shown whole (a toolbar,
+            // the card's own opaque surface, as the Cards page's tiles: a picture shown whole (a toolbar,
             // a sidebar) is letterboxed on it — a translucent grey picked up the wallpaper, half blue and half grey
             c.card.backgroundColor = HangingCards.surface(dark: dark).cgColor
-            // a picture that fills is cut from its top-left corner, as its overview tile is (OverviewTile.topLeading):
+            // a picture that fills is cut from its top-left corner, as its tile on the Cards page is (CardTile.topLeading):
             // the card and its tile show the same slice (the centre crop showed "kout" where the tile said "heckout")
             if let t = s.markedThumb ?? s.thumb, HangingCards.shotFit(s).fills, c.face.bounds.width > 0, c.face.bounds.height > 0 {
-                c.face.contents = OverviewTile.topLeading(t, box: c.face.bounds.size)
+                c.face.contents = CardTile.topLeading(t, box: c.face.bounds.size)
                 c.face.contentsGravity = .resize
             } else {
                 c.face.contents = s.markedThumb ?? s.thumb
@@ -1280,7 +1280,6 @@ final class HangingCards: NSObject {
 
     private func changed() {
         island.cardsChanged(cards.filter { $0.shot.isCard }.count)
-        CardsOverview.shared.reload()
     }
 
     /// The note bubble (or a drag) keeps the cards down.
@@ -1390,7 +1389,7 @@ final class HangingCards: NSObject {
         emit(["event": "cards_keyboard", "on": true, "key": p.isKeyWindow])
     }
 
-    /// The keyboard back to the app the user was in (`restore`; false: another of our panels takes it — the overview).
+    /// The keyboard back to the app the user was in (`restore`; false: another of our windows takes it — the Cards page).
     /// Brought down by ⌥H, they now go up like any time the pointer isn't on them.
     private func endKeyboard(restore: Bool = true) {
         let had = keyboardOn
@@ -1410,7 +1409,7 @@ final class HangingCards: NSObject {
         wake()
     }
 
-    /// Something else took the keyboard (a click in another app, the overview): the same as handing it back.
+    /// Something else took the keyboard (a click in another app, the Cards page): the same as handing it back.
     @objc private func panelResignedKey() {
         panel?.keyable = false
         if focus != nil { setFocus(nil) }
@@ -1832,7 +1831,7 @@ final class HangingCards: NSObject {
             if over { visited = true }
             if cards.isEmpty || !CardReveal.staysDown(visited: visited, pointerIn: pointerIn, sinceReveal: now - revealedAt) { sticky = false }
         }
-        holdEsc(CardReveal.holdsEsc(sticky: sticky, pointerIn: pointerIn, keyboard: keyboard || CardsOverview.shared.hasKeyboard,
+        holdEsc(CardReveal.holdsEsc(sticky: sticky, pointerIn: pointerIn, keyboard: keyboard,
                                     visited: visited, sinceReveal: now - revealedAt))
         // gone CardReveal.away after the pointer has left the whole region
         if over || inRegion || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
@@ -1887,13 +1886,11 @@ final class HangingCards: NSObject {
         return CGRect(x: l, y: r.minY, width: max(0, rr - l), height: r.height)
     }
 
-    /// Every card at once, in the overview — the newest first, with the same actions as on their threads
-    /// (CardsOverview.swift; tests). `keyboard`: the overview takes the keyboard, on its first card.
-    func openOverview(keyboard: Bool = false) {
-        guard cards.count > 0 else { return }
-        emit(["event": "cards_overview", "count": cards.count, "keyboard": keyboard])
-        if keyboard { endKeyboard(restore: false) }
-        CardsOverview.shared.show(keyboard: keyboard)
+    /// Every card at once: the main window on the Cards page (the open island's cards row; tests).
+    func openCardsPage() {
+        emit(["event": "cards_page_open", "count": cards.count])
+        endKeyboard(restore: false)
+        AppEnvironment.mainWindow?.showCards()
     }
 
     private func card(at p: NSPoint) -> HangingCard? {
@@ -1935,7 +1932,7 @@ final class HangingCards: NSObject {
         cardsUsed ? nil : Loc.t("capture.card.tip_hint", table: "Capture")
     }
 
-    /// The keyboard is on this card: the note ends with the keys (the same keycaps as the overview's footer).
+    /// The keyboard is on this card: the note ends with the keys (the same keycaps as the preview's footer).
     private func tipShowsKeys(_ c: HangingCard) -> Bool { focus != nil && focusCard === c }
 
     private func positionTip(_ now: CFTimeInterval) {
@@ -2498,7 +2495,7 @@ final class HangingCards: NSObject {
     /// Tests (`cards …`, beside show / reveal / dismiss / all / hover): `row` = which cards hang (newest first) and how
     /// far the row is scrolled, the Esc hotkey, the keyboard; `focus` = the keyboard's stops without taking the keyboard from the
     /// app in front; `key left|right|tab|return|delete|esc|x` = that key with the keyboard on the cards; `click N [2]` =
-    /// a click (or a double-click) on card N; `overview …` = CardsOverview.testCommand.
+    /// a click (or a double-click) on card N.
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "" {
@@ -2518,7 +2515,6 @@ final class HangingCards: NSObject {
                 clicked(c, count: 1, command: false)
                 if a.count > 2, a[2] == "2" { clicked(c, count: 2, command: false) }
             }
-        case "overview": CardsOverview.shared.testCommand(a.dropFirst().joined(separator: " "))
         case "row", "older", "all": break
         default: return
         }

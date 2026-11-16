@@ -1,5 +1,5 @@
 // The source list (the Mac's SidebarController), by capability (docs/design/capabilities.md): Home, then a page per
-// capability that is on — Dictation, Cards, Phone —, then Recording & Items' two groups: Items (Inbox, In Progress,
+// capability that is on — Dictation, Cards, Text & Translation (where the build has it), Phone —, then Recording & Items' two groups: Items (Inbox, In Progress,
 // Unassigned, All Items) and the projects; with Recording off neither group (nor + Open Folder…) shows. The projects: the folders opened in Blurt in the one project order (pinned, then the most recently used), with
 // "+ Open Folder…" at the bottom. A count is the Inbox's mint pill (what's new for you) or quiet digits; a project's
 // count is what needs you there. The current project carries the scope mark after its name. A project renames in place
@@ -38,12 +38,15 @@ export function Sidebar({
   fresh,
   onDropAt,
   off,
+  screenText = false,
   cards = 0,
   phoneAlert,
 }: {
   place: Place;
   /** the capabilities that are off: their places aren't listed */
   off: Off;
+  /** this build has Text & Translation (Windows, Linux): its page's row */
+  screenText?: boolean;
   /** cards at the top of the screen (the Cards row's count) */
   cards?: number;
   /** a paired phone can't do anything here (the Phone row's mark) */
@@ -157,6 +160,7 @@ export function Sidebar({
         {row('home', t('home.title'), <Icon name="home" size={16} />, 0, { testId: 'nav-home' })}
         {!off.has('dictation') && row('dictation', t('dictation.history.sidebar'), <Icon name="character-cursor" size={16} />, 0, { ax: t('main.sidebar.dictation.ax'), testId: 'nav-dictation' })}
         {!off.has('cards') && row('cards', t('cards.title'), <Icon name="cards" size={16} />, cards, { testId: 'nav-cards' })}
+        {screenText && !off.has('screen_text') && row('screen_text', t('feature.screen_text'), <Icon name="text-viewfinder" size={16} />, 0, { testId: 'nav-screen-text' })}
         {!off.has('phone') && row('phone', t('feature.phone'), <Icon name="phone" size={16} />, 0, { testId: 'nav-phone', alert: phoneAlert })}
         {recording && <div className="mw-side-head">{t('main.sidebar.items')}</div>}
         {recording && row('inbox', t('main.place.inbox'), <Icon name="inbox" size={16} />, s?.inbox ?? 0, { mint: true, ax: t('main.sidebar.inbox.ax'), testId: 'nav-inbox' })}

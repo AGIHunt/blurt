@@ -5,7 +5,7 @@
 
 "feature.dictation" = "Dictation";
 "feature.cards" = "Cards";
-"feature.screen_text" = "Screen Text";
+"feature.screen_text" = "Text & Translation";
 "feature.recording" = "Recording & Items";
 "feature.phone" = "Phone";
 
@@ -62,3 +62,19 @@
 "home.try.screen_text" = "Press %@ to copy text from the screen";
 "home.try.recording" = "Press %@ to start recording";
 "home.try.phone" = "Install Blurt on your phone and scan the code to pair";
+
+/* Text & Translation page (ScreenTextPage.swift) */
+"home.all.screen_text" = "Show All Text from Screen";
+"home.screen_text.summary" = "%1$ld saved · deleted after %2$@";
+"home.screen_text.summary.forever" = "%ld saved · kept until you delete them";
+"home.screen_text.summary.off" = "History is off";
+"home.screen_text.settings" = "Settings…";
+"home.screen_text.search" = "Search";
+"home.screen_text.clear_search" = "Clear Search";
+"home.screen_text.empty" = "Nothing yet. Press %1$@ to copy text from an area of the screen, %2$@ to translate it.";
+"home.screen_text.empty.off" = "History is off. You can change this in Settings.";
+"home.screen_text.none_found" = "No matches";
+"home.screen_text.original" = "Original";
+"home.screen_text.copy_original" = "Copy Original";
+"home.screen_text.delete" = "Delete";
+"home.screen_text.selected" = "%ld selected";

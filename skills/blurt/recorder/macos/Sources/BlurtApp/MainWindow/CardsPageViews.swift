@@ -1,33 +1,14 @@
-// The Cards page's views (CardsPage.swift): what lets the Cards panel's tile and preview live in the main window too
-// (OverviewTileHost, CardPreviewHost), the board that lays the tiles out in two sections, and the AppKit pieces the
-// SwiftUI page hosts.
+// The Cards page's views (CardsPage.swift): what the big preview reports to (CardPreviewHost), the board that lays the
+// tiles (Capture/Island/CardTile.swift) out in two sections, and the AppKit pieces the SwiftUI page hosts.
 import AppKit
 import BlurtCore
 import SwiftUI
-
-/// Who a card's tile (OverviewTile, CardsOverview.swift) reports to: the Cards panel by the notch, or the main
-/// window's Cards page — one tile, one look, wherever a set of cards is shown.
-protocol OverviewTileHost: AnyObject {
-    /// the pointer came onto the tile, or left it
-    func pointed(_ t: OverviewTile, _ on: Bool)
-    func clicked(_ t: OverviewTile, count: Int)
-    /// the tile's Copy chip, its VoiceOver press, its menu's copies
-    func copy(_ t: OverviewTile, _ what: HangingCards.Copy)
-    /// right-click and "···"
-    func menu(for t: OverviewTile) -> NSMenu
-    /// the eye chip
-    func openPreview(_ t: OverviewTile, via: String)
-    func dragStarted()
-    func dragEnded()
-}
 
 /// Who the big preview (CardPreview.swift) asks for the card before / after, and tells that it was closed.
 protocol CardPreviewHost: AnyObject {
     func previewStep(_ d: Int)
     func closePreview()
 }
-
-extension CardsOverview: OverviewTileHost, CardPreviewHost {}
 
 /// The page's own view: the SwiftUI page fills it, and it is what holds the keyboard for the grid (the main window
 /// focuses a page's view when it goes there: MainWindowController.focusList) — the arrows, Space, ↩, ⌫ and Edit ▸ Copy
@@ -41,18 +22,26 @@ final class CardsPageView: NSView, NSMenuItemValidation {
     override func keyDown(with e: NSEvent) { if page?.key(e) != true { super.keyDown(with: e) } }
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); page?.windowChanged() }
 
-    /// Edit ▸ Copy (⌘C) with the keyboard on a card.
+    /// Edit ▸ Copy (⌘C) with the keyboard on a card: the selected cards.
     @objc func copy(_ sender: Any?) { page?.copyFocused() }
+    /// Edit ▸ Select All (⌘A): every card of the focused card's section.
+    @objc override func selectAll(_ sender: Any?) { page?.selectAllInSection() }
+    /// Edit ▸ Delete: the selected cards.
+    @objc func delete(_ sender: Any?) { page?.deleteFocused() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        item.action == #selector(copy(_:)) ? page?.hasFocusedCard ?? false : true
+        switch item.action {
+        case #selector(copy(_:)), #selector(delete(_:)): return page?.hasFocusedCard ?? false
+        case #selector(selectAll(_:)): return page?.hasCards ?? false
+        default: return true
+        }
     }
 
     override func isAccessibilityElement() -> Bool { false }
 }
 
-/// Current and History, one under the other: each a heading with its count, then its tiles — the Cards panel's own
-/// tile — in rows of as many as fit at the panel's size, each widened so a row fills the column (BlurtCore
-/// CardsPageRules.tile), 12 pt apart. A row is as tall as its tallest caption, as in the panel. Flipped; it says how
+/// Current and History, one under the other: each a heading with its count, then its tiles (CardTile) in rows of as
+/// many as fit at 148 × 100, each widened so a row fills the column (BlurtCore CardsPageRules.tile), 12 pt apart. A
+/// row is as tall as its tallest caption. Flipped; it says how
 /// tall it is at a width (the page scrolls it).
 final class CardsBoardView: NSView {
     /// room for a tile's wash on either side: the board is this much wider than the page's column, so the pictures'
@@ -69,16 +58,16 @@ final class CardsBoardView: NSView {
         let accessory: NSView?
         /// an empty section's one line (what will show here)
         let hint: NSTextField?
-        let tiles: [OverviewTile]
+        let tiles: [CardTile]
     }
     private var sections: [Section] = []
 
     /// every tile, Current's then History's: the order the keyboard walks
-    private(set) var tiles: [OverviewTile] = []
+    private(set) var tiles: [CardTile] = []
     /// how many tiles each section shows
     private(set) var counts: [Int] = [0, 0]
     /// the picture size the tiles showing were made at
-    private(set) var builtTile = CardsOverview.tile
+    private(set) var builtTile = CardTile.panelSize
     /// Laid out at a width whose tiles are another size than the ones showing: they are to be made again.
     var onTileSize: (() -> Void)?
 
@@ -112,7 +101,7 @@ final class CardsBoardView: NSView {
         var title: String
         var count: Int
         var note: String?
-        var tiles: [OverviewTile]
+        var tiles: [CardTile]
         var empty: String?
         /// at the end of the heading's row, while the section shows a tile
         var accessory: NSView?
@@ -277,20 +266,15 @@ struct CardsKeyedLabel: View {
     }
 }
 
-/// "Show Under the Notch ⌥H" at the end of Current's heading: the Cards panel by the notch, the place to use the
-/// cards while working in another app.
+/// "Show under the notch" at the end of Current's heading: the cards come down under the notch and stay until the
+/// pointer has come and gone (HangingCards.reveal) — where they are dragged from while working in another app.
 struct CardsNotchButton: View {
     @ObservedObject var page: CardsPage
 
     var body: some View {
-        Button { page.showUnderNotch() } label: {
-            HStack(spacing: 5) {
-                Text(Look.menuCase(T("cards.action.show_notch")))
-                if !hk(.cards).isEmpty { KeyCaps(KeyCaps.split(hk(.cards)), size: 10).accessibilityHidden(true) }
-            }
-        }
-        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-        .help(T("cards.action.show_notch.tip"))
-        .fixedSize()
+        Button { page.showUnderNotch() } label: { Text(Look.menuCase(T("cards.action.show_notch"))) }
+            .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+            .help(T("cards.action.show_notch.tip"))
+            .fixedSize()
     }
 }

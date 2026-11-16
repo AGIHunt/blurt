@@ -42,7 +42,7 @@
 // a click on its line does, and only its button runs its action — ToastQueue.bodyClick).
 // Right-click (on the count, anywhere on it): Show N Hanging Cards · Copy All · Organize All · Delete All
 // (TakenPanel.islandMenu; cards used in other apps are the Cards panel's History, ⌥H).
-// Capabilities (v1.0.24, BlurtCore IslandHome): the island shows only what is switched on. Recording & Items off — no
+// Capabilities (v1.0.23, BlurtCore IslandHome): the island shows only what is switched on. Recording & Items off — no
 // project, no switcher, no jobs, no Organize, no Inbox count or "+n" (the index isn't even read); Cards off — no snap
 // or voice button, no cards and no count (the cards stay stored and come back with the switch), nothing taken from
 // another app's drag; neither — it doesn't open at all: the notch, its ears for what is live, and its toasts.
@@ -1554,7 +1554,12 @@ final class Island: NSObject, IslandHosting {
             && !t.text.contains("\n") && !t.text.contains(" · ")
             && (t.text as NSString).size(withAttributes: [.font: EarSlot.font]).width <= Island.earMomentMaxText
         emit(["event": "island_toast", "text": t.text, "key": t.key ?? NSNull(), "passive": t.passive, "ear": ear])
-        if ear, earMoment(t.text, lead: nil) { return }
+        // the done line replaces its own "…ing" line also when it goes to the ears ("Translating…" stayed its 30 s
+        // beside the finished translation)
+        if ear, earMoment(t.text, lead: nil) {
+            if let k = t.key { dropToasts(key: k) }
+            return
+        }
         let e = ToastQueue<Toast>.Entry(t, text: t.text, key: t.key, kind: t.passive ? .passive : .reply, seconds: t.seconds,
                                         actionable: t.action != nil, question: t.isQuestion)
         let shown = toastQ.current?.order

@@ -1,4 +1,4 @@
-// Settings → Recording & Items (v1.0.24: its own pane, named as the capability is everywhere; before, the Recording
+// Settings → Recording & Items (v1.0.23: its own pane, named as the capability is everywhere; before, the Recording
 // box of General). Two boxes, in the order of a recording:
 //   Recording   the countdown before it starts (record.countdown), system audio (record.system_audio), "Don't record
 //               the notch" (record.hide_notch: a take running now follows at once).

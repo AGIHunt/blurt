@@ -153,4 +153,13 @@ final class HomeFeedTests: XCTestCase {
         XCTAssertNil(walk.keep(nil))
         XCTAssertNil(HomeFeed.Walk(on: []).keep(.entry("x")))
     }
+
+    func testScreenTextRowsJoinTheTimelineInTheCapabilitiesOrder() {
+        let st = HomeFeed.Entry(kind: .screenText, key: "s1", time: at(1), source: "Screen Text", text: "hello")
+        let f = HomeFeed.merge(dictations: [d("d1", 1)], cards: [c("c1", 1)], screenTexts: [st], items: [i("i1", 1)])
+        XCTAssertEqual(f.entries.map(\.kind), [.dictation, .card, .screenText, .item])
+        XCTAssertEqual(f.kinds, [.dictation, .card, .screenText, .item])
+        let off = HomeFeed.merge(dictations: [], cards: [], screenTexts: [st], items: [], off: [.screenText])
+        XCTAssertTrue(off.isEmpty)
+    }
 }

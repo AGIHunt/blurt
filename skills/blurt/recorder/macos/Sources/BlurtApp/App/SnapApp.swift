@@ -3,7 +3,7 @@
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
 //     menudump [FILE]         the ⌥B menu as text rows (also written to FILE), without opening it
-//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥H) / Esc / "+N" clicked / as if the
+//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (the ear's count) / Esc / the Cards page (the island's cards row) / as if the
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
@@ -24,12 +24,10 @@
 //                             window=same|other, secure=1): test builds read no Accessibility (DragNoteFollowUp)
 //     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
 //                             for, when a drag decides what to hand over (CardDrag.swift)
-//     taken list|show|hide|rows|expire|menu   used cards (Recently Taken): the captures ("taken" events), the Cards
-//                             panel on History, its tiles ("taken_row": n + the picture's rect, global top-left),
+//     taken list|expire|menu  used cards (History): the captures ("taken" events, with how many days they are kept),
 //                             housekeeping now, the island's right-click menu as text ("island_menu_dump")
 //     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a used card's actions
-//     taken hover [N]         History's tile of capture N as if pointed at (its wash and actions); no N: none
-//     clock SECONDS           move Recently Taken's clock (Snapper.clockOffset) to see 7 days pass
+//     clock SECONDS           move History's clock (Snapper.clockOffset) to see its days pass
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
@@ -149,11 +147,11 @@ extension App {
             emit(["event": "capabilities_state", "off": Capability.off.map(\.rawValue).sorted()])
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
-            if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count (⌥H opens the Cards panel)
+            if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
-            if arg == "older" || arg == "all" { hanging.openOverview() }   // = the open island's cards row
+            if arg == "older" || arg == "all" { hanging.openCardsPage() }  // = the open island's cards row: the Cards page
             if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
-            hanging.testCommand(arg)                                // row | focus | key K | click N [2] | overview …
+            hanging.testCommand(arg)                                // row | focus | key K | click N [2]
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
@@ -318,9 +316,6 @@ extension App {
             let a = arg.split(separator: " ").map(String.init)
             let find = { (i: Int) -> Shot? in a.count > i ? Int(a[i]).flatMap { n in snapper.recentlyTaken.first { $0.n == n } } : nil }
             switch a.first ?? "list" {
-            case "show": TakenPanel.shared.show()
-            case "hide": TakenPanel.shared.hide()
-            case "hover": CardsOverview.shared.testCommand("hover " + (a.count > 1 ? a[1] : ""))    // hover N: as if pointed at
             case "expire": emit(["event": "taken_expire", "trashed": snapper.expireTaken()])
             case "putback": if let s = find(1) { snapper.putBack(s) }
             case "copy": if let s = find(1) { TakenPanel.copy(s, HangingCards.Copy(rawValue: a.count > 2 ? a[2] : "click") ?? .click) }
@@ -332,19 +327,12 @@ extension App {
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])
                 }
-            case "rows":                                // the Used segment's tiles (their pictures, screen rects)
-                if TakenPanel.shared.isOpen {
-                    for (n, r) in CardsOverview.shared.tileFrames {
-                        let f = toCG(r)
-                        emit(["event": "taken_row", "n": n, "rect": [f.minX, f.minY, f.width, f.height]])
-                    }
-                }
             case "menu": emit(["event": "island_menu_dump", "rows": menuDumpLines(TakenPanel.islandMenu())])
             default: break
             }
             emit(["event": "taken", "now": Snapper.now, "captures": snapper.recentlyTaken.map { s -> [String: Any] in
                 ["n": s.n, "session": s.batch?.dir.path ?? "", "taken": s.taken ?? 0, "note": s.words ?? NSNull(), "kind": s.kind.rawValue]
-            }, "panel": TakenPanel.shared.isOpen])
+            }, "days": Snapper.historyDays])
         case "hotkey":                                  // hotkey ACTION: the same path as pressing its keys
             if let act = HotAction(rawValue: arg) { Hotkeys.shared.simulate(act, released: false) }
         case "assign":                                  // assign N PROJECT: = dropping card N (with its ⌘-click selection) there
@@ -637,6 +625,8 @@ extension App {
         case "live": LiveTranscript.shared.testCommand(arg)          // live state | caret X,Y,W,H | caret - | set on|off
         case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
         case "phonepage": PhonePage.testCommand(arg)   // phonepage fake none|paired|connected|… | ax | relay | add | cancel | state (PhonePage.swift)
+        case "screentextpage":                          // screentextpage state|select id,…|key down|up|shift-down|all|copy|delete|query T (ScreenTextPage.swift)
+            MainActor.assumeIsolated { ScreenTextPageModel.shared.testCommand(arg.isEmpty ? "state" : arg) }
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
@@ -654,15 +644,14 @@ extension App {
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
         case .dictationEsc: Dictation.shared.escFromHotkey()
         case .project: if resident, Capability.projectsShown { island.toggleSwitcher() }       // (projects: Recording & Items')
-        // ⌥H: the Cards panel with the keyboard — Hanging, or Used when nothing hangs; open already, it closes
-        case .cards: if resident { CardsOverview.shared.toggle(via: "hotkey") }
+        // ⌥H: the main window in front on the Cards page; in front on it already, away again (toggleCards)
+        case .cards: if resident { AppEnvironment.mainWindow?.toggleCards(via: "hotkey") }
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥L (dictation-styles.md)
         case .text: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey") }           // ⌥C (ScreenTextCopy.swift)
         case .translateText: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey", translate: true) }    // ⌥T
         case .translateEsc: ScreenTextCard.shared.close(why: "esc")                      // Esc while ⌥T's card shows
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
-        case .overviewEsc: CardsOverview.shared.escape()        // Esc while the pointer is on the Cards panel
         default: break
         }
     }
@@ -692,8 +681,8 @@ extension App {
         if cards { item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice) }
     }
 
-    /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards panel) while a card
-    /// hangs or one was used in the last 7 days, Dictation History. Counts are the rows' badges (macOS 14+), never part
+    /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards page) while a card
+    /// hangs or one is in History, Dictation History. Counts are the rows' badges (macOS 14+), never part
     /// of their titles.
     func addWaitingMenuItems(_ menu: NSMenu) {
         if Capability.cards.isOn, hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
@@ -753,8 +742,8 @@ extension App {
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
-    /// "Show Cards" (⌥H's row): the Cards panel, as ⌥H opens it.
-    @objc func mShowCards() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if !CardsOverview.shared.isOpen { CardsOverview.shared.toggle(via: "menu") } } }
+    /// "Show Cards" (⌥H's row): the main window on the Cards page.
+    @objc func mShowCards() { AppEnvironment.mainWindow?.showCards() }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
 }
 

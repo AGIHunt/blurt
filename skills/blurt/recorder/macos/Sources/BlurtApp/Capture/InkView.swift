@@ -1,6 +1,6 @@
 // The pen (v0.9-next): one set of rules for a snap and for a recording (BlurtCore Ink.swift).
 //
-//  • a plain drag draws freehand, ⇧-drag a box, ⌥-drag an ellipse, ⇧⌥-drag an arrow (v1.0.24; its head solid in the
+//  • a plain drag draws freehand, ⇧-drag a box, ⌥-drag an ellipse, ⇧⌥-drag an arrow (v1.0.23; its head solid in the
 //    app, outlined by old readers) (the modifiers are read on every move, so ⇧ pressed
 //    mid-drag turns the stroke into a box); holding still ~0.5 s at the end of a freehand stroke snaps a rough line,
 //    box or ellipse to a clean one (InkFit — plain geometry). While recording the same modifiers go with the pen key:
@@ -571,7 +571,7 @@ final class InkView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     /// BA-65: the recorder's panel is made `isFloatingPanel` after its level is set, and that puts it back at .floating
-    /// (3) — under any floating panel ordered after it (Recently Taken, the cards overview, the permission helper, the
+    /// (3) — under any floating panel ordered after it (a card's preview, the permission helper, the
     /// command palette, other apps' floating windows), which then took the pen's drag. The level is set again here, once
     /// the view is in its window (the panel is configured by then): .statusBar, under the island (+1) and the note bubble.
     override func viewDidMoveToWindow() {

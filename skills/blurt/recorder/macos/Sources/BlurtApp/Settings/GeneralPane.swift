@@ -12,7 +12,7 @@
 //   About        one quiet line under the boxes: Blurt and its version, Check for Updates…, User Guide, Setup
 //                Assistant… as brand-ink text buttons; a skill / app contract mismatch is said above it in attention
 //                ink, with How to Update, for as long as it lasts.
-// Each capability's own settings are on its pane (v1.0.24: before, Recording, Voice notes and Cards were boxes here —
+// Each capability's own settings are on its pane (v1.0.23: before, Recording, Voice notes and Cards were boxes here —
 // CardsPane.swift, RecordingPane.swift; the projects have ProjectsPane.swift; the Dictation Lab is under Dictation's
 // Advanced). Rows and their descriptions come from SettingsCatalog; longer explanations are behind each row's ⓘ.
 // Every pop-up is the same width (SettingsMetrics.controlWidth), so the controls share one column.

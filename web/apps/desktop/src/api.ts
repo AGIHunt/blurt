@@ -385,6 +385,28 @@ export interface VocabTerm {
   /** ISO 8601 */
   added?: string;
 }
+/** One result of Alt+Shift+C / Alt+Shift+T (screen_text/history.rs; the Mac's ScreenTextEntry). `time` epoch seconds;
+ *  a translation's `text` is the translation and `source` what was on the screen. */
+export interface ScreenTextEntry {
+  id: string;
+  time: number;
+  translated: boolean;
+  text: string;
+  source?: string | null;
+  /** the language asked for ("zh", "auto:zh|en") */
+  target?: string | null;
+  /** the app in front then */
+  app?: string | null;
+  /** pasted | unconfirmed | copied */
+  outcome?: string | null;
+}
+/** The Text & Translation page's list, newest first; `days` record.screen_text.history_days (7, 30, -1 forever, 0 off). */
+export interface ScreenTextHistory {
+  entries: ScreenTextEntry[];
+  days: number;
+  count: number;
+}
+
 export interface DictationHistory {
   entries: DictationEntry[];
   retention_days: number;
@@ -447,6 +469,12 @@ export const api = {
   /** Linux: GNOME's screenshot question for Copy Text from Screen, asked with Blurt in front */
   screenTextAllow: () => invoke<{ ok: boolean; code?: string; error?: string }>('screen_text_allow'),
   screenTextAllowed: () => invoke<boolean>('screen_text_allowed'),
+  /** Auto's pair on this computer (Blurt's language, else the system's; screen_text/direction.rs `Pair::of`) */
+  translateAutoPair: () => invoke<{ home: string; other: string | null }>('translate_auto_pair'),
+  /** what Alt+Shift+C / Alt+Shift+T read, pruned to what Settings keeps (`screen-text://changed` follows a change) */
+  screenTextHistory: () => invoke<ScreenTextHistory>('screen_text_history'),
+  screenTextHistoryDelete: (ids: string[]) => invoke<void>('screen_text_history_delete', { ids }),
+  screenTextHistoryClear: () => invoke<void>('screen_text_history_clear'),
   /** dictation on Model Studio with this measured speech model (null: Qwen3-ASR Flash) */
   dictationDashscopeModel: (model: string | null) => invoke<void>('dictation_dashscope_model', { model }),
   /** the dictation key pressed in Blurt's own window: the key hook doesn't hear those (engine.rs `forward_key`) */

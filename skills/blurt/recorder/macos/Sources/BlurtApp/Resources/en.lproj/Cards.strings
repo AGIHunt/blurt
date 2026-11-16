@@ -8,7 +8,7 @@
 "cards.action.voice" = "Voice note";
 "cards.action.voice.tip" = "Record a voice note as a card";
 "cards.action.show_notch" = "Show under the notch";
-"cards.action.show_notch.tip" = "Open the Cards panel under the notch, above other apps";
+"cards.action.show_notch.tip" = "Bring the cards down under the notch, to drag them into other apps";
 
 "cards.search.placeholder" = "Search cards";
 "cards.search.tip" = "Search notes (⌘F or /)";
@@ -17,10 +17,21 @@
 
 "cards.section.current" = "Current";
 "cards.section.history" = "History";
-"cards.history.kept" = "Kept for 7 days";
+"cards.history.kept" = "Kept for %d days";
+"cards.history.kept_forever" = "Kept until you delete them";
 "cards.current.none" = "No cards under the notch.";
-"cards.history.none" = "Cards you drag or paste into other apps are kept here for 7 days.";
-"cards.history.expired" = "No cards used in the last 7 days. Older cards are in the Trash.";
+"cards.history.none" = "Cards you drag or paste into other apps are kept here for %d days.";
+"cards.history.none_forever" = "Cards you drag or paste into other apps are kept here until you delete them.";
+"cards.history.expired" = "No cards used in the last %d days. Older cards are in the Trash.";
+
+/* Several cards selected (⌘-click, ⇧-click, ⌘A): the row above the cards, and a selected card's menu. */
+"cards.selection.count" = "%d cards";
+"cards.selection.copy" = "Copy";
+"cards.selection.copy.tip" = "Copy the selected cards: pictures and notes";
+"cards.selection.delete" = "Delete";
+"cards.selection.delete.tip" = "Delete the selected cards (Undo under the notch)";
+"cards.menu.copy_n" = "Copy %d Cards";
+"cards.menu.delete_n" = "Delete %d Cards";
 
 "cards.empty.title" = "No cards yet";
 "cards.empty.message" = "Press %@ to snap an area and add a note. The card appears under the notch; drag it into any app.";

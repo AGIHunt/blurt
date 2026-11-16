@@ -64,6 +64,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case .home: p = HomePage()
         case .cards: p = CardsPage()
         case .phone: p = PhonePage()
+        case .screenText: p = ScreenTextPage()
         default: return nil
         }
         fullPages[s] = p
@@ -279,6 +280,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func showHome() {
         show()
         go(.home)
+    }
+
+    /// The app the user was in when ⌥H brought the window forward, and whether the window was showing then: ⌥H again
+    /// hands the keyboard back to that app and, if ⌥H opened the window, closes it again.
+    private var cardsCameFrom: (app: NSRunningApplication?, opened: Bool)?
+
+    /// The Cards page (the menu bar's Show Cards, the island's cards row, Home): the window forward on it.
+    func showCards() {
+        show()
+        go(.cards)
+        focusList()
+    }
+
+    /// ⌥H: the window forward on the Cards page — or, when it is in front on that page already, away again, the
+    /// keyboard back in the app the user was in (BlurtCore CardsPageRules.hotkey).
+    func toggleCards(via: String) { toggleCards(via: via, assumeKey: nil) }
+
+    /// `assumeKey`: tests, the window counted as in front (a scripted run can't take the keyboard from the user's app).
+    func toggleCards(via: String, assumeKey: Bool?) {
+        let key = assumeKey ?? (window?.isKeyWindow == true && NSApp.isActive)
+        let act = CardsPageRules.hotkey(windowKey: key, onCards: model.scope == .cards)
+        switch act {
+        case .open:
+            let front = NSWorkspace.shared.frontmostApplication
+            let other = front.flatMap { $0.processIdentifier == getpid() ? nil : $0 }
+            cardsCameFrom = (other, window?.isVisible != true)
+            showCards()
+        case .hide:
+            let from = cardsCameFrom
+            cardsCameFrom = nil
+            // opened by ⌥H (or nothing known of how it came): it closes, as the window's close button would; it was
+            // showing already: it stays where it was, behind the app the keyboard goes back to
+            if from?.opened ?? true { window?.close() }
+            if let app = from?.app, !app.isTerminated { app.activate() }
+        }
+        emit(["event": "cards_hotkey", "via": via, "action": act == .open ? "open" : "hide", "was_key": key,
+              "visible": window?.isVisible == true, "scope": "\(model.scope)"])
     }
 
     /// The columns follow the scope: the Dictation page in place of the items and their detail (each list with its own
@@ -1999,7 +2037,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         /// before 0.9: one filter for the whole window (read once, for the place it was saved in)
         var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
-        /// the window has opened on Home once (v1.0.24: an install from before Home lands there the first time,
+        /// the window has opened on Home once (v1.0.23: an install from before Home lands there the first time,
         /// then where it was left, as ever)
         var homeSeen: Bool?
         /// ⌘Q's "Blurt is still in the menu bar" was shown

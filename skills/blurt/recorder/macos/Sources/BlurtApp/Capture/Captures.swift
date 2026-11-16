@@ -30,7 +30,7 @@
 //    "Move to X", a drop on the island, the note's "Goes to" chip, Organize — is refused before anything is written
 //    (`keepAsCards`); captures.py refuses too (folder_missing) and never makes the old folder again. The island
 //    offers Locate… (MissingFolder), and the same project found again takes the cards kept back from it.
-//  • Recording & Items off (v1.0.24, BlurtCore Capabilities): projects and items are its — so every capture is a
+//  • Recording & Items off (v1.0.23, BlurtCore Capabilities): projects and items are its — so every capture is a
 //    card, kept in the Unassigned store (`target`), whatever project was current before; nothing is filed, moved or
 //    organized (`settled`, `assign`, `handToAI`, `retarget` do nothing), and nothing about a project is ever asked or
 //    said. Cards off: the cards stay in their batches here and just don't hang (HangingCards.refresh).
@@ -884,7 +884,7 @@ final class Snapper {
     /// is offered join it (BlurtCore CardUndo): "Deleted N cards · Undo" brings back every one of them.
     func delete(_ s: Shot) { delete([s]) }
 
-    /// "Delete All N Cards" (the island's menu, the overview): every hanging card, one Undo for all of them.
+    /// "Delete All N Cards" (the island's menu): every hanging card, one Undo for all of them.
     func deleteAllCards() {
         NoteBubble.shared.cancel()
         delete(cards)
@@ -895,7 +895,8 @@ final class Snapper {
     private var undoable = CardUndo<Shot>()
     private var trashedFiles: [ObjectIdentifier: [URL: URL]] = [:]
 
-    private func delete(_ shots: [Shot]) {
+    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them.
+    func delete(_ shots: [Shot]) {
         for s in shots where NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         // (a fresh shot's bubble discards it itself, with its own Undo)
         let gone = shots.filter { !$0.deleted && $0.batch != nil }
@@ -947,8 +948,8 @@ final class Snapper {
     // MARK: taken — dragged out and dropped in another app (v0.8.1)
 
     /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — but it is "taken",
-    /// not discarded: its files stay where they are (the app may read them late) and it is in the Cards panel's
-    /// History (⌥H) for 7 days, where it can be copied, dragged out again or put back;
+    /// not discarded: its files stay where they are (the app may read them late) and it is in the Cards page's
+    /// History (⌥H) as long as Settings → Cards → History says, where it can be copied, dragged out again or put back;
     /// then housekeeping trashes it (expireTaken).
     /// `delivered`: the kind of app whose payload the drop got (nil: not sure); `noteFile`: the .md went with it;
     /// `landed` / `at`: the app it was dropped into and where (a screen point). A chat app (a browser, an Electron
@@ -1113,10 +1114,9 @@ final class Snapper {
         if !cardBatches.contains(where: { $0 === b }) { b.onChange = { hanging.refresh() }; cardBatches.append(b) }
         hanging.catchCapture(s, from: from)
         takenChanged()
-        TakenPanel.shared.makeRoomForCards()        // the card hangs where the panel may be
     }
 
-    /// ⌘↩ in a fresh snap's note (BlurtCore NoteKeys .copyAndFinish, v1.0.24): the picture (marked) and its note on the
+    /// ⌘↩ in a fresh snap's note (BlurtCore NoteKeys .copyAndFinish, v1.0.23): the picture (marked) and its note on the
     /// clipboard — the items a card's click-copy puts there (CardExport.copy, armed for smart paste) — and no card: one
     /// that would have hung is used at once, so the Cards panel's History has it (the drag-out's `take`). One filed into
     /// a project is filed as ever and copied all the same. Spoken words still coming are waited for, then copied.
@@ -1136,27 +1136,32 @@ final class Snapper {
         if s.needsWords { fetchWords(s) { _ in copy() } } else { copy() }
     }
 
-    /// Recently Taken: captures dragged out in the last 7 days, newest first.
+    /// How long History keeps a used card: Settings → Cards → History (record.cards.history_days: 7, 30, -1 = until
+    /// deleted; BlurtCore TakenCaptures).
+    static var historyDays: Int { TakenCaptures.days(record: recordConfig()) }
+
+    /// Recently Taken (the Cards page's History): captures dragged out or pasted within History's days, newest first.
     var recentlyTaken: [Shot] {
-        let now = Snapper.now
-        return cardBatches.flatMap { $0.live.filter { s in s.taken.map { TakenCaptures.isRecent(taken: $0, now: now) } ?? false } }
+        let now = Snapper.now, days = Snapper.historyDays
+        return cardBatches.flatMap { $0.live.filter { s in s.taken.map { TakenCaptures.isRecent(taken: $0, now: now, days: days) } ?? false } }
             .sorted { ($0.taken ?? 0, $0.n) > ($1.taken ?? 0, $1.n) }
     }
 
-    /// Something used has gone after its 7 days (or was deleted from History): it is in the Trash — the empty
-    /// History segment of the Cards panel says so.
+    /// Something used has gone after its days (or was deleted from History): it is in the Trash — the empty History
+    /// section of the Cards page says so.
     var takenExpiredAny: Bool { cardBatches.contains { $0.shots.contains { $0.deleted && $0.taken != nil } } }
 
-    /// Housekeeping: a capture taken 7+ days ago goes to the Trash (files, its out/ folder; `{"n","deleted":true}`).
+    /// Housekeeping: a capture used longer ago than History keeps them (7 days by default; never with Forever) goes to
+    /// the Trash (files, its out/ folder; `{"n","deleted":true}`).
     /// Test runs (a scratch BLURT_HOME) never fill the user's own Trash: the files go to $BLURT_HOME/trash.
     @discardableResult
     func expireTaken() -> Int {
-        let now = Snapper.now
+        let now = Snapper.now, days = Snapper.historyDays
         var n = 0
         let env = ProcessInfo.processInfo.environment
         let scratchTrash: URL? = env["BLURT_TEST_COMMANDS"] == "1" ? BlurtPaths.home.appendingPathComponent("trash") : nil
         for b in cardBatches {
-            for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now) }) ?? false {
+            for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now, days: days) }) ?? false {
                 b.delete(s, into: scratchTrash)
                 emit(["event": "taken_expired", "n": s.n, "session": b.dir.path])
                 n += 1
@@ -1168,10 +1173,9 @@ final class Snapper {
 
     private func takenChanged() {
         NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": recentlyTaken.count])
-        TakenPanel.shared.reload()
     }
 
-    /// Now (seconds since 1970) — scripted checks move the clock (test command `clock SECONDS`) to see 7 days pass.
+    /// Now (seconds since 1970) — scripted checks move the clock (test command `clock SECONDS`) to see History's days pass.
     static var now: Double { Date().timeIntervalSince1970 + clockOffset }
     static var clockOffset: Double = 0
     private var expiryTimer: Timer?

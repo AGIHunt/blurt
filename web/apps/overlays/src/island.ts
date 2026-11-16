@@ -289,6 +289,14 @@ function postToast(tt: Toast) {
   render();
 }
 
+/** A done line that goes to the ears replaces its own "…ing" line too (the Mac's Island.toast, 2026-11-16:
+ *  "Translating…" stayed its 30 s beside the finished translation). Only a line that names its key. */
+function dropToasts(key?: string) {
+  if (!key) return;
+  for (let i = toastWait.length - 1; i >= 0; i--) if (toastWait[i].key === key) toastWait.splice(i, 1);
+  if (toastNow?.key === key) dismissToast();
+}
+
 function dismissToast() {
   toastNow = null;
   // stale ones go: a reply that waited over 10 s describes something that is over
@@ -1257,6 +1265,7 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
         // 130 px here, as Windows' key names are longer than ⌘V)
         // one " · " is allowed: the hint after it is said in the moment's secondary white ("✓ 已复制 · Ctrl+V 粘贴")
         if (op.mark === 'check' && !op.action && !op.second && text.split(' · ').length <= 2 && !text.includes('\n') && earTextW(text) <= EAR_MOMENT_MAX) {
+          dropToasts(op.key);
           return earMoment(text);
         }
         return postToast({ key: op.key ?? 'dictation', text, mark: op.mark, src: 'dictation', project: op.project, action: op.action, second: op.second, ms: op.ms, passive: op.passive });

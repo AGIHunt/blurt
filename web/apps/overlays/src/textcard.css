@@ -1,6 +1,6 @@
-/* ⌥T's translation under the island (the Mac's ScreenTextCard; system.md §3.2 "Live-text panel"): the island's lower
-   half — its black, the live panel's corners — the translation in one size (14 px, 92 % white, 20 px lines; up to
-   eight, then it scrolls, the last line fading while there is more), Copy under it on the right. */
+/* ⌥C's text or ⌥T's translation under the island (the Mac's ScreenTextCard; system.md §3.2 "Live-text panel"): the
+   island's lower half — its black, the live panel's corners — the text in one size (14 px, 92 % white, 20 px lines; up
+   to eight, then it scrolls, the last line fading while there is more), × under it on the left and Copy on the right. */
 /* the window has room for the shadow on every side (flow.rs SHADOW_ROOM; the Mac's panelMargin): never a hard edge */
 .card {
   position: relative;
@@ -40,10 +40,12 @@
   -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
   mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
 }
-/* Copy: its own row on the right; on the last line's row when that line leaves room (a one-liner is one row) */
+/* × and Copy: their own row (× on the left, Copy on the right); on the last line's row, side by side, when that line
+   leaves room (a one-liner is one row) */
 .row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 8px;
 }
 .card.inline .row {
@@ -51,6 +53,7 @@
   right: 12px;
   top: 11px;
   margin: 0;
+  gap: 4px;
 }
 .card.inline .text {
   padding-right: var(--cw);
@@ -76,4 +79,24 @@
 }
 .copy .ic {
   color: var(--ok);
+}
+/* ×: quiet, the card goes now */
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -4px;
+  padding: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+.card.inline .close {
+  margin-left: 0;
+}
+.close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
 }

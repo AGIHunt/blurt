@@ -1185,8 +1185,13 @@ impl Engine {
         let target = cfg().get("translate_target").and_then(Value::as_str).unwrap_or("auto").to_string();
         let into = target.split('|').next().unwrap_or("auto");
         if into == "auto" {
-            // polish.py's Auto: Chinese ↔ English (the other one of the pair)
-            say(&self.app, "dictation.translate.toast.on.auto", json!({"a": language_name("zh"), "b": language_name("en"), "press": press}), keys::STYLE, 3000, None, false);
+            // Auto: the user's own language ↔ the other one (screen_text::direction::Pair, the Mac's TranslateAutoPair);
+            // without a pair, into the user's language
+            let p = crate::screen_text::direction::pair();
+            match &p.other {
+                Some(o) => say(&self.app, "dictation.translate.toast.on.auto", json!({"a": language_name(&p.home), "b": language_name(o), "press": press}), keys::STYLE, 3000, None, false),
+                None => say(&self.app, "dictation.translate.toast.on.into", json!({"lang": language_name(&p.home), "press": press}), keys::STYLE, 3000, None, false),
+            }
         } else {
             say(&self.app, "dictation.translate.toast.on.into", json!({"lang": language_name(into), "press": press}), keys::STYLE, 3000, None, false);
         }
@@ -3555,14 +3560,19 @@ fn polish_full(
     }
     if translate && !skipped() {
         if let Some(c) = &tcloud {
-            let target = cfg()
-                .get("translate_target")
-                .and_then(Value::as_str)
-                .unwrap_or("auto")
-                .to_string();
+            // the setting ("auto", "en" …; an older build's "zh-Hans" or "X|Y": its first part), and the direction from what
+            // was said (screen_text::direction, the same rules as Alt+Shift+T's and the Mac's): Auto = your language → the
+            // other one, any other language → yours, not sure → the pair's request; a fixed X said in X is typed as said
+            let setting = cfg().get("translate_target").and_then(Value::as_str).unwrap_or("auto").split('|').next().unwrap_or("auto").to_string();
+            let setting = if setting == "zh-Hans" { "zh".to_string() } else { setting };
+            use crate::screen_text::direction;
+            let target = match direction::plan(&setting, &direction::language(&text), &direction::pair()) {
+                direction::Plan::Send(t) => Some(t),
+                direction::Plan::Already(_) => None,
+            };
             // `check`: polish.py's guard looks at the answer and says why it fell back (the Mac's request)
             let req = json!({"cmd": "translate", "text": text, "target": target, "cloud": c, "spoken": true, "vocab": vocab(), "check": true});
-            match server::call(server::POLISH, &req, Duration::from_secs(20), give_up) {
+            match target.and_then(|_| server::call(server::POLISH, &req, Duration::from_secs(20), give_up)) {
                 Some(v) if v["ok"] == json!(true) && v["fell_back"] != json!(true) => {
                     if let Some(t) = v["text"].as_str().filter(|t| !t.trim().is_empty()) {
                         if t != text {
@@ -3575,7 +3585,7 @@ fn polish_full(
                     let why = v["cloud_error"].as_str().or(v["reason"].as_str()).or(v["code"].as_str()).unwrap_or("error");
                     out.translate_error = Some(why.trim_start_matches("cloud_").to_string());
                 }
-                None if skipped() => {}
+                None if skipped() || req["target"].is_null() => {}
                 None => out.translate_error = Some("timeout".into()),
             }
         } else {

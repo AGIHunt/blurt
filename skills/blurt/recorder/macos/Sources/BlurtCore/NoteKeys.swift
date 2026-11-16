@@ -26,7 +26,7 @@
 //    a snap is a card, nothing is filed and nothing has a type. Tab still takes the grey words (and ends Edit Note's
 //    re-record); with none to take it does nothing. ⌘0–⌘4 do nothing either: they stay the bubble's while it has the
 //    keyboard, so the main window behind a frozen snap never changes page under it.
-//  • ⌘↩ (v1.0.24, the founder: "after a snap I don't want it hung as a card, straight onto the clipboard"): a fresh
+//  • ⌘↩ (v1.0.23, the founder: "after a snap I don't want it hung as a card, straight onto the clipboard"): a fresh
 //    snap's note is saved as ↩ saves it, then the picture (marked) and the note go to the clipboard — the same items a
 //    card's click-copy puts there — and it is done: no card under the notch; it is in the Cards panel's History (used)
 //    so it can be found again. Only a fresh snap of its own (State.canCopy): a snap into a recording, Edit Note and a

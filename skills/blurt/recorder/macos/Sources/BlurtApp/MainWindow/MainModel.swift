@@ -28,6 +28,8 @@ enum Scope: Hashable {
     case cards
     /// the phones paired with this Mac (PhonePage.swift)
     case phone
+    /// what ⌥C and ⌥T read and translated (ScreenTextPage.swift)
+    case screenText
     case project(String)
     case session(String)
 
@@ -41,6 +43,7 @@ enum Scope: Hashable {
         case .home: return "home"
         case .cards: return "cards"
         case .phone: return "phone"
+        case .screenText: return "screen_text"
         case .project(let p): return "project:" + p
         case .session(let s): return "session:" + s
         }
@@ -56,6 +59,7 @@ enum Scope: Hashable {
         case "home": self = .home
         case "cards": self = .cards
         case "phone": self = .phone
+        case "screen_text": self = .screenText
         default:
             if key.hasPrefix("project:") { self = .project(String(key.dropFirst(8))) }
             else if key.hasPrefix("session:") { self = .session(String(key.dropFirst(8))) }
@@ -66,7 +70,7 @@ enum Scope: Hashable {
     /// A page of its own in place of the items' list and detail: nothing of the items (rows, filters, the Item menu)
     /// applies there.
     var isPage: Bool {
-        switch self { case .dictation, .home, .cards, .phone: return true; default: return false }
+        switch self { case .dictation, .home, .cards, .phone, .screenText: return true; default: return false }
     }
     /// The capability a place belongs to (nil: Home, always there): with it off the place is not in the sidebar, and
     /// a window that remembers being there opens on Home.
@@ -76,6 +80,7 @@ enum Scope: Hashable {
         case .dictation: return .dictation
         case .cards: return .cards
         case .phone: return .phone
+        case .screenText: return .screenText
         default: return .recording
         }
     }
@@ -330,7 +335,7 @@ final class MainModel {
         case .unassigned: q.project = "inbox"; q.bySuggestion = true     // each suggested project's items together
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
-        case .all, .dictation, .home, .cards, .phone: break
+        case .all, .dictation, .home, .cards, .phone, .screenText: break
         }
         return q
     }
@@ -527,6 +532,7 @@ final class MainModel {
         case .home: return T("home.title")
         case .cards: return T("cards.title")
         case .phone: return T("phone.title")
+        case .screenText: return T("feature.screen_text")
         case .project(let p): return project(id: p)?.name ?? ProjectStore.shared.project(id: p)?.name ?? T("main.place.project")
         case .session(let s): return sessionRow(id: s).map(MainModel.title(of:)) ?? T("main.place.session")
         }

@@ -751,6 +751,7 @@
 "dictation.translate.target.auto" = "Auto: %1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "Auto: into %@";
 "dictation.translate.target.auto_one.note" = "Text in %@ stays as it is; pick a language to translate it into";
+"dictation.translate.target.auto_others" = "Other languages into %@";
 "dictation.translate.toast.learned" = "Dictation in %@ will be translated from now on";
 "dictation.translate.toast.undo" = "Undo";
 "dictation.translate.apps" = "Apps with Translate on";

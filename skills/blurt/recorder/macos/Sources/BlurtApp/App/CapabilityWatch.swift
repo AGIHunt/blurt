@@ -43,8 +43,6 @@ final class CapabilityWatch {
             }
             if flipped.contains(.phone) { RemoteServer.shared.capabilityChanged() }
         }
-        // what belongs to a capability just turned off and is on screen now steps aside
-        if now.contains(.cards), CardsOverview.shared.isOpen { CardsOverview.shared.hide() }
         appDelegate?.refreshStatus()
     }
 }

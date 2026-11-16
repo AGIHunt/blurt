@@ -4,14 +4,14 @@
 // here and in InkMarks.swift, so it can be tested (InkTests, InkMarksTests).
 //
 //  • InkTool / InkModifiers — the same modifiers for a snap and for the recording pen: a plain drag = freehand,
-//    ⇧ = box, ⌥ = ellipse, ⇧⌥ = arrow (v1.0.24: before, ⇧ won and ⇧⌥ was a box). A snap needs no key (the frozen
+//    ⇧ = box, ⌥ = ellipse, ⇧⌥ = arrow (v1.0.23: before, ⇧ won and ⇧⌥ was a box). A snap needs no key (the frozen
 //    picture takes the drag); while recording the pen key (⌃ by default, record.draw_key) is held as well: ⌃-drag
 //    freehand, ⌃⇧ box, ⌃⌥ ellipse, ⌃⇧⌥ arrow. With ⌥ as the pen key the ellipse is ⌃⌥ (the pen key and ⌃) and the
 //    arrow ⌥⇧⌃. ⌘ never draws (it is a shortcut). Only the keys held count, never the order they went down in (BA-59):
 //    ⌃ then ⇧, ⇧ then ⌃ and both at once are all a box (`recordingTool(pen:held:)`; while dragging `dragTool`).
 //    PenArm: the pen turns on once such a set has been held a moment (a quick ⌃-shortcut never shows it).
 //    Text and mosaic are a snap's only (they need a picture to bake into; the recording pen's ink is the video's).
-//  • The markup tools on a snap (v1.0.24, the founder: "WeChat's screenshot tools, all of them") — InkPick, chosen on
+//  • The markup tools on a snap (v1.0.23, the founder: "WeChat's screenshot tools, all of them") — InkPick, chosen on
 //    the tool strip under the frozen selection (InkStage): pen, box, ellipse, arrow, text, mosaic, and a colour
 //    (InkColor, the brand markup colour first). The zero-click default stays: the strip opens on the pen, so a plain
 //    drag draws freehand and ⇧ / ⌥ / ⇧⌥ make a box / ellipse / arrow without touching the strip. With box, ellipse or

@@ -36,7 +36,7 @@
 //    bubble docks beside it (BlurtCore BubbleDock: never over it, flipped near the screen's edges, the selection's
 //    display), its caret pointing at it. A plain drag draws, ⇧ a box, ⌥ an ellipse, holding still snaps a rough shape
 //    clean, ⌘Z (or the undo arrow by the chip, shown while the pointer is over the bubble) takes the last stroke
-//    back (InkView.swift). v1.0.24: the tool strip under the picture (InkStage / InkTools.swift) — arrow, text, mosaic,
+//    back (InkView.swift). v1.0.23: the tool strip under the picture (InkStage / InkTools.swift) — arrow, text, mosaic,
 //    colours; ⌘P ⌘R ⌘O ⌘L ⌘T ⌘M choose a tool from here (bare letters type the note), ⇧⌘Z redoes a mark; a text box
 //    being typed has the keys. ⌘↩ (NoteKeys): saved, copied, done — no card (Snapper.copyAndDone; the footer and
 //    the strip's copy button say it). Done (⏎, the "Done ↩" button, a click outside): the

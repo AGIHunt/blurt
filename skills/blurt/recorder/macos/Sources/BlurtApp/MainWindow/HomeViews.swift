@@ -267,8 +267,8 @@ struct HomeRecent: View {
     }
 }
 
-/// A row of the timeline, one grammar for the three kinds: the mark (the app dictated into, the snap or voice-note
-/// glyph, the item's kind), a quiet line saying where it is from, what was made in up to two lines, a card's picture,
+/// A row of the timeline, one grammar for every kind: the mark (the app dictated into, the snap or voice-note glyph, the
+/// read or translate glyph, the item's kind), a quiet line saying where it is from, what was made in up to two lines, a card's picture,
 /// and the time — under the pointer the row's button instead (Copy, or Open for an item; a check for 1.2 s once copied).
 struct HomeEntryRow: View {
     @ObservedObject var m: HomeModel
@@ -354,6 +354,7 @@ struct HomeEntryRow: View {
         switch e.kind {
         case .dictation: return ("all.dictation", T("home.all.dictation"))
         case .card: return ("all.cards", T("home.all.cards"))
+        case .screenText: return ("all.screen_text", T("home.all.screen_text"))
         case .item: return ("all.items", T("home.all.items"))
         }
     }
@@ -366,6 +367,8 @@ struct HomeEntryRow: View {
             Image(nsImage: (m.shots[e.key]?.kind == .voice ? BlurtIcon.mic : BlurtIcon.snap).image(size: 15))
                 .renderingMode(.template).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
+        case .screenText:
+            ScreenTextMark(translated: m.screenTexts[e.key]?.translated ?? false)
         case .item:
             Image(nsImage: Look.kindImage(m.items[e.key]?.kind ?? "note", size: 16)).accessibilityHidden(true)
         }

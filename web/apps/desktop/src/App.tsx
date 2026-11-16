@@ -13,7 +13,7 @@ import { Icon } from '@blurt/icons';
 import { applyPlatform, applyTheme, menuCase, targetOf, type Action, type State } from '@blurt/ui';
 import { KindIcon, StatusRing } from '@blurt/ui/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { api, inTauri, invoke, listen, type AppStatus, type AttachResult, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
+import { api, builds, inTauri, invoke, listen, type AppStatus, type AttachResult, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
 import { codeUrl, hostFor, type HostCallbacks } from './host';
 import type { ReviewHandle } from './review';
 import { errText, i18n, plural, setLang, t } from './i18n';
@@ -72,6 +72,7 @@ import { Welcome } from './components/Welcome';
 import { HomePage } from './components/HomePage';
 import { CardsPage } from './components/CardsPage';
 import { PhonePage } from './components/PhonePage';
+import { ScreenTextPage } from './components/ScreenTextPage';
 import { useOff } from './components/useCapabilities';
 import { useRemoteStatus } from './settings/phone';
 import { phoneNeedsAttention, placeShown } from './capabilities';
@@ -121,7 +122,7 @@ function startPlace(sv: string | null | undefined): { place?: Place; screen?: Sc
   if (sv.startsWith('review:')) return { session: sv.slice(7) };
   if (sv.startsWith('project:')) return { place: sv as Place };
   if (sv === 'settings') return { screen: { kind: 'settings' } };
-  if (['home', 'cards', 'phone', 'inbox', 'all', 'dictation', 'progress', 'unassigned'].includes(sv)) return { place: sv as Place };
+  if (['home', 'cards', 'screen_text', 'phone', 'inbox', 'all', 'dictation', 'progress', 'unassigned'].includes(sv)) return { place: sv as Place };
   if (sv === 'items') return { place: 'all' };
   return {};
 }
@@ -305,7 +306,7 @@ export default function App() {
         if (p.ev === 'error' && p.code) showToast(t(`error.${p.code}`) === `error.${p.code}` ? t('error.unknown') : t(`error.${p.code}`));
       }),
       listen<{ view?: string; item?: string; session?: string; job?: string | null; project?: string }>('nav', (p) => {
-        if (p.view === 'inbox' || p.view === 'dictation' || p.view === 'home' || p.view === 'cards' || p.view === 'phone') live.current.go(p.view);
+        if (p.view === 'inbox' || p.view === 'dictation' || p.view === 'home' || p.view === 'cards' || p.view === 'screen_text' || p.view === 'phone') live.current.go(p.view);
         else if (p.view === 'settings') setScreen({ kind: 'settings' }); // the tray's Settings… (the pane: SettingsView)
         else if (p.view === 'welcome') api.onboarding().then((o) => setWelcome({ onb: o, firstRun: o.needed }), () => {}); // blurt://onboarding
         else if (p.job) live.current.openJob(p.job);
@@ -1253,7 +1254,7 @@ export default function App() {
   // ---------------------------------------------------------------- the heading
   const scopeTitle = place === 'inbox' ? t('main.place.inbox') : place === 'progress' ? t('main.place.progress') : place === 'unassigned' ? t('project.inbox')
     : place === 'all' ? t('main.place.all') : place === 'dictation' ? t('dictation.history.sidebar') : place === 'home' ? t('home.title')
-      : place === 'cards' ? t('cards.title') : place === 'phone' ? t('feature.phone') : shownProject?.name ?? t('main.place.project');
+      : place === 'cards' ? t('cards.title') : place === 'screen_text' ? t('feature.screen_text') : place === 'phone' ? t('feature.phone') : shownProject?.name ?? t('main.place.project');
   const headTitle = searching ? t('main.search.title', { a: text.trim() }) : scopeTitle;
   const counts = (() => {
     if (!loaded || missing || !rows.length) return '';
@@ -1651,6 +1652,7 @@ export default function App() {
       { id: 'go:home', title: t('home.title'), icon: ic('home'), keys: 'Ctrl+0', section: 'go', pinned: true, run: () => go('home') },
       ...(on('dictation') ? [{ id: 'go:dictation', title: t('dictation.history.menu'), icon: ic('character-cursor'), keys: 'Ctrl+Alt+D', section: 'go', pinned: true, run: () => go('dictation') } as PaletteEntry] : []),
       ...(on('cards') ? [{ id: 'go:cards', title: t('cards.title'), icon: ic('cards'), section: 'go', run: () => go('cards') } as PaletteEntry] : []),
+      ...(on('screen_text') && status && builds(status).screenText ? [{ id: 'go:screen_text', title: t('feature.screen_text'), icon: ic('text-viewfinder'), section: 'go', run: () => go('screen_text') } as PaletteEntry] : []),
       ...(on('phone') ? [{ id: 'go:phone', title: t('feature.phone'), icon: ic('phone'), section: 'go', run: () => go('phone') } as PaletteEntry] : []),
       ...(rec
         ? ([
@@ -1780,6 +1782,7 @@ export default function App() {
               onOpenFolder={openFolder}
               onSettings={() => setScreen({ kind: 'settings' })}
               off={off}
+              screenText={!!status && builds(status).screenText}
               cards={cardsWaiting}
               phoneAlert={!!remote && phoneNeedsAttention(remote)}
               onProjectMenu={(p, at) => menu.open(projectMenu(p), at, p.name)}
@@ -1798,7 +1801,7 @@ export default function App() {
       {screen.kind === 'settings' && status && (
         <main className="mw-wide content">
           <section className="pad st-host">
-            <SettingsView status={status} onToast={(m) => showToast(m)} onBack={() => setScreen({ kind: 'main' })} onWelcome={() => api.onboarding().then((o) => setWelcome({ onb: o, firstRun: false }), fail)} onLang={(l) => (l === 'auto' ? api.status().then((s) => relang(s.lang)) : relang(l))} />
+            <SettingsView status={status} onToast={(m) => showToast(m)} onBack={() => setScreen({ kind: 'main' })} onGo={(p) => (setScreen({ kind: 'main' }), go(p))} onWelcome={() => api.onboarding().then((o) => setWelcome({ onb: o, firstRun: false }), fail)} onLang={(l) => (l === 'auto' ? api.status().then((s) => relang(s.lang)) : relang(l))} />
           </section>
         </main>
       )}
@@ -1817,6 +1820,11 @@ export default function App() {
       {pageShown && place === 'cards' && (
         <main className="mw-wide content">
           <CardsPage hotkeys={hotkeys} platform={platform} onSnap={snap} onToast={(m, undo) => showToast(m, undo ? { undo } : {})} />
+        </main>
+      )}
+      {pageShown && place === 'screen_text' && (
+        <main className="mw-wide content">
+          <ScreenTextPage hotkeys={hotkeys} onToast={(m) => showToast(m)} onSettings={() => (setScreen({ kind: 'settings' }), goSettingsPane('screentext'))} />
         </main>
       )}
       {pageShown && place === 'phone' && status && (

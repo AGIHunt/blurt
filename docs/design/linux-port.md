@@ -239,7 +239,7 @@ Terminal (paths typed), into Chrome's upload box, into Blurt's main window (file
 drag (it comes back); Ctrl+V in the main window with files copied in Files, a screenshot, a LibreOffice copy; the
 passive note doesn't take the keyboard.
 
-## Capabilities (v1.0.24, 2026-11-16)
+## Capabilities (v1.0.23, 2026-11-16)
 
 The five switches of docs/design/capabilities.md hold on Linux as on Windows (`src-tauri/src/capabilities.rs`, the same
 config.json keys). Linux-specific: the GlobalShortcuts portal binds once per launch, so a capability turned off later

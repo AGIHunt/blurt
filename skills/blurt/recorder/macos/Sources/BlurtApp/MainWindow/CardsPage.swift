@@ -1,25 +1,29 @@
-// Cards (docs/design/capabilities.md, v1.0.24): the cards' home in the main window — every card on one page, to browse
-// and to find. The Cards panel by the notch (Capture/Island/CardsOverview.swift, ⌥H) stays the place to use a card
-// mid-work: it floats over the app in front. People who took snaps couldn't find them anywhere in the main window, and
-// History had no search; this page is both.
+// Cards (docs/design/capabilities.md, v1.0.23): the cards' home in the main window — every card on one page, to browse,
+// find and use. ⌥H ("Show Cards", the menu bar's row, the island's cards row) brings the window forward on this page;
+// ⌥H again while it is in front hides it, the keyboard back in the app the user was in (MainWindowController.toggleCards).
+// The cards under the notch (HangingCards) stay where cards are dragged from mid-work.
 //
-// One column (FullPageFrame): a row with the search field and, trailing, Show Under the Notch ⌥H (while cards hang),
-// Voice Note ⌥V and Snap ⌥A (the user's own keys as keycaps); then two sections —
-//   Current N    the cards under the notch, newest first (Snapper.cards)
-//   History N    used in the last 7 days, the last one used first (Snapper.recentlyTaken); "Kept for 7 days" once,
-//                quietly; a card on its last day says so in attention ink
-// — the Cards panel's own tile (OverviewTile, through OverviewTileHost: one look for a set of cards across the app) in
-// rows of as many as fit, widened so a row fills the column. With no card at all: the app's one empty state, saying the one next thing, with the two
-// buttons. A search that finds nothing says so.
+// One column (FullPageFrame): a row with the search field and, trailing, Voice Note ⌥V and Snap ⌥A (the user's own keys
+// as keycaps) — with several cards selected, "3 cards" and Copy / Delete in their place; then two sections —
+//   Current N    the cards under the notch, newest first (Snapper.cards), with Show Under the Notch at the heading's end
+//   History N    used in other apps, the last one used first (Snapper.recentlyTaken); how long they are kept
+//                (Settings → Cards → History: 7 days, 30 days, until deleted) once, quietly; a card on its last day
+//                says so in attention ink
+// — a CardTile each, in rows of as many as fit, widened so a row fills the column. With no card at all: the app's one
+// empty state, saying the one next thing, with the two buttons. A search that finds nothing says so.
 //
-// What a tile does (the panel's, except that a click selects: this page stays, so nothing is copied on the way):
-//   click = select · double-click = edit the note (Current) / the big preview (History) · right-click or "···" = the
-//   card's menu (HangingCards.cardMenu / TakenPanel.menu, Preview first) · the eye chip or Space = the big preview
-//   (CardPreview) · the Copy chip, ↩ or ⌘C = copy (picture and note, "✓ Copied" for 1.2 s) · ⌫ = delete (Undo in the
-//   island) · drag = out into any app (CardDrag), a current one also onto a project.
-// The keyboard (BlurtCore CardsPageRules, the one key map): the arrows walk both sections as one grid, ↑ from the top
-// row goes back to the search field; ⌘F or / focuses the search, typing with the keyboard on the grid starts one, ↓ or
-// ↩ in it goes into the grid, Esc clears it (then lets go of the selected card).
+// What a tile does (a click selects: this page stays, so nothing is copied on the way):
+//   click = select · ⌘-click = in or out of the selection · ⇧-click = a range from the last one clicked (BlurtCore
+//   CardSelection) · double-click = edit the note (Current) / the big preview (History) · right-click or "···" = the
+//   card's menu (HangingCards.cardMenu / TakenPanel.menu, Preview first; on a selection of several: Copy N Cards,
+//   Delete N Cards) · the eye chip or Space = the big preview (CardPreview; with several selected it steps through
+//   them) · the Copy chip, ↩ or ⌘C = copy (every selected card: pictures and notes as one copy, "✓ Copied" on each) ·
+//   ⌫ = delete (every selected card, one Undo in the island) · drag = out into any app (CardDrag; a selected tile takes
+//   the whole selection), a current one also onto a project.
+// The keyboard (BlurtCore CardsPageRules, the one key map): the arrows walk both sections as one grid, with ⇧ they
+// extend the selection, ↑ from the top row goes back to the search field; ⌘A selects the focused card's section; ⌘F or
+// / focuses the search, typing with the keyboard on the grid starts one, ↓ or ↩ in it goes into the grid, Esc clears
+// it (then lets go of the selection).
 //
 // Live: it follows .blurtCardsChanged and .blurtTakenChanged while it shows and reads again when it comes on show;
 // nothing runs while it is hidden (no timers at all: a tile says no relative time).
@@ -27,14 +31,14 @@ import AppKit
 import BlurtCore
 import SwiftUI
 
-final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, CardPreviewHost, NSSearchFieldDelegate {
+final class CardsPage: NSObject, FullPage, ObservableObject, CardTileHost, CardPreviewHost, NSSearchFieldDelegate {
     /// The search field (⌘F; MainWindowController.searchField can hand it to Find).
     let search = NSSearchField()
     let board = CardsBoardView()
     private let root = CardsPageView()
     private let preview = CardPreview()
 
-    /// every card under the notch / used in the last 7 days, whatever the search shows
+    /// every card under the notch / in History, whatever the search shows
     @Published private(set) var hangingCount = 0
     @Published private(set) var usedCount = 0
     /// tiles showing
@@ -44,6 +48,8 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
     @Published private(set) var revision = 0
     /// the shortcuts changed (Settings → Shortcuts): the keycaps again
     @Published private(set) var keysRevision = 0
+    /// how many cards are selected (the row above the board says it from 2)
+    @Published private(set) var selectedCount = 0
     private lazy var notchButton: NSView = {
         let v = NSHostingView(rootView: CardsNotchButton(page: self))
         v.frame.size = v.fittingSize
@@ -53,10 +59,15 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
     var isEmpty: Bool { hangingCount == 0 && usedCount == 0 }
     var searching: Bool { !CardsPageRules.terms(query).isEmpty }
     var hasFocusedCard: Bool { selected != nil }
+    var hasCards: Bool { !tiles.isEmpty }
 
-    private var tiles: [OverviewTile] { board.tiles }
-    private var selected: Int?
-    private weak var hovered: OverviewTile?
+    private var tiles: [CardTile] { board.tiles }
+    /// the selection (BlurtCore CardSelection: indices through both sections in order) and the keyboard's card in it
+    private var selection = CardSelection()
+    private var selected: Int? { selection.focus }
+    /// the selected tiles, in the order they show
+    private var selectedTiles: [CardTile] { selection.picked.compactMap { $0 < tiles.count ? tiles[$0] : nil } }
+    private weak var hovered: CardTile?
     private var shown = false
     /// the keyboard is on the grid (the page's view is the window's first responder)
     private var gridFocused = false
@@ -84,7 +95,7 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
     override init() {
         super.init()
         root.page = self
-        preview.overview = self
+        preview.host = self
         // the column got another width (the window, the sidebar): the tiles at the size that fills it — once per
         // pass, and never while SwiftUI is laying the board out
         board.onTileSize = { [weak self] in self?.reloadSoon() }
@@ -157,8 +168,8 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
     func reload(keepPlace: Bool = true) {
         if dragging { reloadLater = true; return }
         reloadLater = false
-        let was = selected.flatMap { $0 < tiles.count ? tiles[$0].shot : nil }
-        let before = tiles.count
+        let old = tiles.map(\.shot)
+        let before = old.count
         let hangingShots = Array(snapper.cards.reversed()), usedShots = snapper.recentlyTaken
         let q = query, finding = searching
         let size = board.tile
@@ -168,13 +179,18 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         board.show([
             .init(title: T("cards.section.current"), count: current.count, note: nil, tiles: current,
                   empty: finding ? nil : T("cards.current.none"), accessory: notchButton),
-            .init(title: T("cards.section.history"), count: history.count, note: history.isEmpty ? nil : T("cards.history.kept"), tiles: history,
-                  empty: finding ? nil : T(snapper.takenExpiredAny ? "cards.history.expired" : "cards.history.none")),
+            .init(title: T("cards.section.history"), count: history.count, note: history.isEmpty ? nil : CardsPage.keptNote(), tiles: history,
+                  empty: finding ? nil : CardsPage.historyEmpty(expired: snapper.takenExpiredAny)),
         ], tile: size)
-        let old = selected
-        selected = was.flatMap { s in tiles.firstIndex { $0.shot === s } }
-        if selected == nil, keepPlace, let o = old, !tiles.isEmpty {
-            selected = min(CardsPageRules.focusAfterDelete(o, count: before) ?? 0, tiles.count - 1)
+        // the selection follows its cards; when they are all gone, the card that took the first one's place
+        let now = tiles.map(\.shot)
+        let was = selection
+        selection = was.remapped { i in i < old.count ? now.firstIndex { $0 === old[i] } : nil }
+        if selection.isEmpty, keepPlace, !was.isEmpty, !now.isEmpty {
+            let gone = was.picked.filter { i in i < old.count && !now.contains { $0 === old[i] } }
+            if let f = CardsPageRules.focusAfterDelete(gone.isEmpty ? was.picked : gone, count: before) {
+                selection.click(min(f, now.count - 1))
+            }
         }
         restate()
         if let s = preview.shot, !tiles.contains(where: { $0.shot === s }) { closePreview() }
@@ -191,38 +207,69 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
                                                s.ref.map { ($0 as NSString).lastPathComponent }])
     }
 
-    private func tile(_ s: Shot, used: Bool, size: CGSize) -> OverviewTile {
-        let t = OverviewTile(s, overview: self, used: used, size: size)
+    /// History's heading note: how long its cards are kept (Settings → Cards → History).
+    static func keptNote() -> String {
+        let d = Snapper.historyDays
+        return d < 0 ? T("cards.history.kept_forever") : T("cards.history.kept", d)
+    }
+
+    /// History's line while it has no card.
+    static func historyEmpty(expired: Bool) -> String {
+        let d = Snapper.historyDays
+        if d < 0 { return T("cards.history.none_forever") }
+        return expired ? T("cards.history.expired", d) : T("cards.history.none", d)
+    }
+
+    private func tile(_ s: Shot, used: Bool, size: CGSize) -> CardTile {
+        let t = CardTile(s, host: self, used: used, size: size)
         t.setAccessibilityLabel(CardsPage.spoken(s, used: used))
         t.setAccessibilityHelp(T(used ? "cards.ax.help_history" : "cards.ax.help_current"))
-        t.toolTip = OverviewTile.footerLine(s, used: used).string        // the whole note, and when
+        t.toolTip = CardTile.footerLine(s, used: used).string        // the whole note, and when
         return t
     }
 
     /// VoiceOver: "Snap, the checkout button stays grey, 19:05" — what it is, its note, when (History: when it was used).
     static func spoken(_ s: Shot, used: Bool) -> String {
-        let when = used ? OverviewTile.usedWhen(s).string : s.takenAt
+        let when = used ? CardTile.usedWhen(s).string : s.takenAt
         let note = s.words?.replacingOccurrences(of: "\n", with: " ")
         return [T(s.kind == .voice ? "cards.ax.voice" : "cards.ax.snap"), note, when].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
-    private func index(of t: OverviewTile) -> Int? { tiles.firstIndex { $0 === t } }
+    private func index(of t: CardTile) -> Int? { tiles.firstIndex { $0 === t } }
 
-    /// The tiles' states: the selected one's wash, and with the keyboard on the grid its accent ring and actions.
+    /// The tiles' states: the selected ones' wash, and with the keyboard on the grid their accent ring and the
+    /// keyboard's card's actions.
     private func restate() {
         let keyboard = testKeyboard || (gridFocused && root.window?.isKeyWindow == true)
         for (i, t) in tiles.enumerated() {
-            t.selected = i == selected
+            t.selected = selection.contains(i)
+            t.focused = i == selection.focus
             t.keyboard = keyboard
         }
+        if selectedCount != selection.count { selectedCount = selection.count }
     }
 
-    private func select(_ i: Int?, scroll: Bool = true) {
-        selected = tiles.isEmpty ? nil : i.map { min(max($0, 0), tiles.count - 1) }
+    /// Card `i` alone (nil: none) — a click, a plain arrow; `extend`: from the anchor to it (⇧-click, ⇧-arrow);
+    /// `toggle`: in or out of the selection (⌘-click).
+    private func select(_ i: Int?, scroll: Bool = true, extend: Bool = false, toggle: Bool = false) {
+        guard !tiles.isEmpty, let i = i.map({ min(max($0, 0), tiles.count - 1) }) else {
+            selection.clear()
+            return restate()
+        }
+        if toggle { selection.toggle(i) } else if extend { selection.extend(to: i) } else { selection.click(i) }
         restate()
-        guard let i = selected else { return }
-        if scroll { tiles[i].scrollToVisible(tiles[i].bounds.insetBy(dx: -8, dy: -28)) }
-        NSAccessibility.post(element: tiles[i], notification: .focusedUIElementChanged)
+        guard let f = selection.focus else { return }
+        if scroll { tiles[f].scrollToVisible(tiles[f].bounds.insetBy(dx: -8, dy: -28)) }
+        NSAccessibility.post(element: tiles[f], notification: .focusedUIElementChanged)
+    }
+
+    /// ⌘A (Edit ▸ Select All with the keyboard on the grid): every card of the focused card's section — of the first
+    /// section with a card when none is focused.
+    func selectAllInSection() {
+        guard let r = CardsPageRules.section(of: selected, sections: board.counts) else { return }
+        selection.selectAll(r)
+        restate()
+        emit(["event": "cards_page_select_all", "count": selection.count])
     }
 
     // MARK: focus and the search
@@ -265,7 +312,7 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         guard down || esc else { return false }
         if esc, !search.stringValue.isEmpty { setQuery("") }
         focusGrid()
-        if selected == nil, !tiles.isEmpty { select(0) }
+        if selection.isEmpty, !tiles.isEmpty { select(0) }
         return true
     }
 
@@ -284,27 +331,35 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
 
     // MARK: the keyboard on the grid
 
-    /// A key with the keyboard on the grid (BlurtCore CardsPageRules.action); false: not one of the page's.
+    /// A key with the keyboard on the grid (BlurtCore CardsPageRules.action; ⇧ with an arrow extends the selection);
+    /// false: not one of the page's.
     func key(_ e: NSEvent) -> Bool {
         let mods = e.modifierFlags.intersection([.command, .option, .control])
-        guard mods.isEmpty, let k = CardsOverview.panelKey(e) else { return typeToSearch(e) }
-        return act(k)
+        let cmdC = mods == .command && e.keyCode == 8
+        guard mods.isEmpty || cmdC, let k = CardPreview.panelKey(e) else { return typeToSearch(e) }
+        return act(k, extend: e.modifierFlags.contains(.shift))
     }
 
     @discardableResult
-    private func act(_ k: CardsPanelKey) -> Bool {
+    private func act(_ k: CardsPanelKey, extend: Bool = false) -> Bool {
         let pointed = hovered.flatMap { index(of: $0) }
         switch CardsPageRules.action(k, focus: selected, sections: board.counts, columns: board.columns, pointed: pointed, searching: !query.isEmpty) {
-        case .focus(let i): select(i)
+        case .focus(let i): select(i, extend: extend)
         case .search: focusSearch()
         case .preview(let i): openPreview(tiles[i], via: "space")
-        case .copy(let i): copy(tiles[i], .click)
-        case .delete(let i): delete(tiles[i])
+        case .copy(let i): copyCards(acted(on: tiles[i]), via: "key")
+        case .delete(let i): deleteCards(acted(on: tiles[i]))
         case .clearSearch: clearSearch()
         case .deselect: select(nil)
         case .none: return false
         }
         return true
+    }
+
+    /// What acting on `t` takes: the selection when `t` is part of it, else `t` alone.
+    private func acted(on t: CardTile) -> [CardTile] {
+        guard let i = index(of: t) else { return [t] }
+        return selection.acted(on: i).compactMap { $0 < tiles.count ? tiles[$0] : nil }
     }
 
     /// A letter or a digit typed with the keyboard on the grid starts a search with it ("/" only goes to the field).
@@ -319,16 +374,25 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
 
     /// Edit ▸ Copy.
     func copyFocused() { act(.copy) }
+    /// Edit ▸ Delete.
+    func deleteFocused() { act(.delete) }
 
-    // MARK: OverviewTileHost
+    // MARK: CardTileHost
 
-    func pointed(_ t: OverviewTile, _ on: Bool) {
+    func pointed(_ t: CardTile, _ on: Bool) {
         if on { hovered = t } else if hovered === t { hovered = nil }
     }
 
-    /// A click selects (and brings the keyboard to the grid); two: the note to edit (Current), the big preview (History).
-    func clicked(_ t: OverviewTile, count: Int) {
+    /// A click selects that card alone (and brings the keyboard to the grid), ⌘ toggles it in the selection, ⇧ selects
+    /// the range from the last one clicked; two: the note to edit (Current), the big preview (History).
+    func clicked(_ t: CardTile, count: Int, modifiers: NSEvent.ModifierFlags) {
         focusGrid()
+        let cmd = modifiers.contains(.command), shift = modifiers.contains(.shift)
+        if cmd || shift {
+            select(index(of: t), scroll: false, extend: shift && !cmd, toggle: cmd)
+            emit(["event": "cards_page_selection", "via": cmd ? "cmd_click" : "shift_click", "picked": selectedTiles.map(\.shot.n)])
+            return
+        }
         select(index(of: t), scroll: false)
         guard count == 2 else { return }
         if t.used {
@@ -348,15 +412,37 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         })
     }
 
-    func copy(_ t: OverviewTile, _ what: HangingCards.Copy) {
+    func copy(_ t: CardTile, _ what: HangingCards.Copy) {
+        // the Copy chip on a tile of a selection of several: the selection
+        if what == .click, acted(on: t).count > 1 { return copyCards(acted(on: t), via: "chip") }
         let ok = HangingCards.copyShot(t.shot, what)
         emit(["event": t.used ? "taken_copied" : "card_copied", "n": t.shot.n, "what": what.rawValue, "from": "page", "ok": ok])
         if ok { t.flashCopied() }
     }
 
-    /// The card's menu, the panel's: Preview first, then Current's (HangingCards.cardMenu) or History's (TakenPanel.menu).
-    func menu(for t: OverviewTile) -> NSMenu {
+    /// `ts` on the clipboard as one copy — pictures and notes, in the order they show (as a ⌘-click selection under
+    /// the notch is copied) — and "✓ Copied" on each.
+    private func copyCards(_ ts: [CardTile], via: String) {
+        guard let first = ts.first else { return }
+        if ts.count == 1 { return copy(first, .click) }
+        let items = CardExport.copy(ts.map(\.shot))
+        emit(["event": "card_copied", "n": ts.map(\.shot.n), "what": "selection", "from": "page", "via": via, "ok": items != nil,
+              "items": (items ?? []).map { $0.types.map(\.rawValue) }])
+        if items != nil { ts.forEach { $0.flashCopied() } }
+    }
+
+    /// The card's menu: Preview first, then Current's (HangingCards.cardMenu) or History's (TakenPanel.menu). On a tile
+    /// of a selection of several: what concerns them all — Copy N Cards, Delete N Cards.
+    func menu(for t: CardTile) -> NSMenu {
         focusGrid()
+        let group = acted(on: t)
+        if group.count > 1 {
+            let m = NSMenu()
+            m.addItem(ClosureMenuItem(T("cards.menu.copy_n", group.count)) { [weak self] in self?.copyCards(group, via: "menu") })
+            m.addItem(.separator())
+            m.addItem(ClosureMenuItem(T("cards.menu.delete_n", group.count)) { [weak self] in self?.deleteCards(group) })
+            return m
+        }
         select(index(of: t), scroll: false)
         let copy: (HangingCards.Copy) -> Void = { [weak self, weak t] what in if let t { self?.copy(t, what) } }
         let m = t.used ? TakenPanel.menu(t.shot, from: { [weak t] in t?.faceOnScreen }, copy: copy)
@@ -375,12 +461,18 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         return m
     }
 
-    /// Delete (⌫): no question first — "Deleted · Undo" in the island, as everywhere a card is deleted.
-    private func delete(_ t: OverviewTile) {
-        let used = t.used
-        snapper.delete(t.shot)
+    /// Delete (⌫, the menu): no question first — "Deleted · Undo" in the island (one Undo for all of them), as
+    /// everywhere a card is deleted.
+    private func deleteCards(_ ts: [CardTile]) {
+        guard !ts.isEmpty else { return }
+        let used = ts.contains(where: \.used)
+        emit(["event": "cards_page_delete", "n": ts.map(\.shot.n)])
+        snapper.delete(ts.map(\.shot))
         if used { NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": snapper.recentlyTaken.count]) }
     }
+
+    /// A drag of `t`: the selection it is part of (in the order they show), else `t` alone.
+    func dragGroup(for t: CardTile) -> [CardTile] { acted(on: t) }
 
     func dragStarted() { dragging = true }
 
@@ -391,12 +483,16 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
 
     // MARK: the big preview
 
-    func openPreview(_ t: OverviewTile, via: String) {
+    func openPreview(_ t: CardTile, via: String) {
         guard let i = index(of: t) else { return }
-        select(i)
-        // "2 / 6": its place among the cards of its own section
+        // with several selected, the preview steps through them (as Quick Look does): "2 / 3" among the selection;
+        // else "2 / 6", its place among the cards of its own section
+        let several = selection.count > 1 && selection.contains(i)
+        if several { selection.moveFocus(to: i) } else { select(i) }
+        restate()
         let first = t.used ? board.counts[0] : 0
-        preview.show(t.shot, used: t.used, index: i - first, of: board.counts[t.used ? 1 : 0], on: root.window?.screen, keyboard: !testKeyboard)
+        let place = several ? (selection.picked.firstIndex(of: i) ?? 0, selection.count) : (i - first, board.counts[t.used ? 1 : 0])
+        preview.show(t.shot, used: t.used, index: place.0, of: place.1, on: root.window?.screen, keyboard: !testKeyboard)
         watchPreview(true)
         emit(["event": "card_preview", "n": t.shot.n, "open": true, "via": via, "from": "page"])
     }
@@ -411,9 +507,15 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         emit(["event": "card_preview", "open": false, "from": "page"])
     }
 
-    /// ← / → in the preview: the card before / after it, through both sections.
+    /// ← / → in the preview: the card before / after it, through both sections — or through the selection, when
+    /// several are selected.
     func previewStep(_ d: Int) {
         guard let cur = selected ?? preview.shot.flatMap({ s in tiles.firstIndex { $0.shot === s } }), !tiles.isEmpty else { return }
+        if selection.count > 1, let k = selection.picked.firstIndex(of: cur) {
+            let j = selection.picked[min(max(k + d, 0), selection.count - 1)]
+            guard j != cur else { return }
+            return openPreview(tiles[j], via: "arrow")
+        }
         let i = min(max(cur + d, 0), tiles.count - 1)
         guard i != cur || preview.shot !== tiles[i].shot else { return }
         openPreview(tiles[i], via: "arrow")
@@ -437,19 +539,26 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
     /// Snap: the toolbar's own (the picker comes up over whatever is on screen).
     func snap() { MainWindowController.shared.snap() }
     func voiceNote() { VoiceInput.shared.toggle() }
-    /// The Cards panel under the notch, on Current (it floats: the next click outside it closes it).
-    func showUnderNotch() { CardsOverview.shared.show(keyboard: false, segment: .hanging, focusFirst: false) }
+    /// The cards come down under the notch and stay until the pointer has come and gone (HangingCards.reveal).
+    func showUnderNotch() { hanging.reveal(via: "cards_page") }
+
+    /// The row's Copy and Delete while several cards are selected.
+    func copySelection() { copyCards(selectedTiles, via: "button") }
+    func deleteSelection() { deleteCards(selectedTiles) }
 
     // MARK: tests
 
     /// `cardspage …` (BLURT_TEST_COMMANDS): state · reload · query [TEXT] · focus on|off (the grid drawn with the
     /// keyboard on it) · find (⌘F) · searchkey down|return|esc · key left|right|up|down|space|return|delete|esc|copy ·
-    /// type TEXT (typed with the keyboard on the grid) · post KEYCODE [cmd] [CHARS] (a real key event to the window) · editcopy (Edit ▸ Copy) · select N · click N · double N · hover [N] · copy N · copied N ·
-    /// menu N · delete N · preview [N] · previewclose · previewstep ±1 — N is a capture's number. Every one ends
-    /// with a "cards_page" event: what shows, in order.
+    /// `key … shift` (an arrow with ⇧) · type TEXT (typed with the keyboard on the grid) · post KEYCODE [cmd|shift]
+    /// [CHARS] (a real key event to the window) · editcopy / editall / editdelete (Edit ▸ Copy / Select All / Delete) ·
+    /// select N · click N · cmd N (⌘-click) · shift N (⇧-click) · all (⌘A) · toggle [key] (⌥H) · keep 7|30|-1 (Settings → Cards → History) · double N · hover [N] · copy N · copied N ·
+    /// copysel · deletesel (the row's buttons) · drag N PASTEBOARD [CLASS] (what dragging tile N out carries) · menu N ·
+    /// delete N · preview [N] · previewclose · previewstep ±1 — N is a capture's number. Every one ends with a
+    /// "cards_page" event: what shows, in order, and what is selected.
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
-        let tile = { (i: Int) -> OverviewTile? in a.count > i ? Int(a[i]).flatMap { n in self.tiles.first { $0.shot.n == n } } : nil }
+        let tile = { (i: Int) -> CardTile? in a.count > i ? Int(a[i]).flatMap { n in self.tiles.first { $0.shot.n == n } } : nil }
         switch a.first ?? "" {
         case "reload": reload()
         case "query": setQuery(a.dropFirst().joined(separator: " "))
@@ -471,7 +580,7 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
                     case .none: break
                     }
                 } else {
-                    act(k)
+                    act(k, extend: a.contains("shift"))
                     restate()
                 }
             }
@@ -484,9 +593,10 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
             if a.count > 1, let code = UInt16(a[1]), let w = root.window {
                 // the characters a keyboard sends with that key (an event without any is dropped on its way to the responder)
                 let named: [UInt16: String] = [123: "\u{F702}", 124: "\u{F703}", 125: "\u{F701}", 126: "\u{F700}", 36: "\r", 49: " ", 51: "\u{7F}", 53: "\u{1B}"]
-                let chars = a.dropFirst(2).first { $0 != "cmd" } ?? named[code] ?? ""
+                let chars = a.dropFirst(2).first { $0 != "cmd" && $0 != "shift" } ?? named[code] ?? ""
                 let arrow: NSEvent.ModifierFlags = (123...126).contains(code) ? [.numericPad, .function] : []
-                if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: a.contains("cmd") ? [.command] : arrow,
+                let mods: NSEvent.ModifierFlags = (a.contains("cmd") ? [.command] : arrow).union(a.contains("shift") ? [.shift] : [])
+                if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods,
                                             timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber, context: nil,
                                             characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
                     NSApp.postEvent(e, atStart: false)
@@ -499,14 +609,37 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
             emit(["event": "cards_page_editcopy", "responder": first.map { String(describing: type(of: $0)) } ?? "",
                   "enabled": item.map { root.validateMenuItem($0) } ?? false,
                   "performed": first?.tryToPerform(#selector(NSText.copy(_:)), with: item) ?? false])
+        case "editall", "editdelete":                   // = Edit ▸ Select All / Delete, from the window's first responder
+            let sel = a[0] == "editall" ? #selector(NSResponder.selectAll(_:)) : #selector(NSText.delete(_:))
+            emit(["event": "cards_page_edit", "action": a[0], "performed": root.window?.firstResponder?.tryToPerform(sel, with: nil) ?? false])
         case "select": select(tile(1).flatMap { index(of: $0) })
-        case "click": if let t = tile(1) { clicked(t, count: 1) }
-        case "double": if let t = tile(1) { clicked(t, count: 1); clicked(t, count: 2) }
+        case "click": if let t = tile(1) { clicked(t, count: 1, modifiers: []) }
+        case "cmd": if let t = tile(1) { clicked(t, count: 1, modifiers: .command) }
+        case "shift": if let t = tile(1) { clicked(t, count: 1, modifiers: .shift) }
+        case "all": focusGrid(); selectAllInSection()
+        case "keep":                                    // keep 7|30|-1: Settings → Cards → History, as its popup sets it
+            if a.count > 1, let d = Int(a[1]) { MainActor.assumeIsolated { CardsModel().setHistoryDays(d) } }
+        case "toggle":                                  // toggle [key]: ⌥H, with the window counted as in front (key) or not
+            MainWindowController.shared.toggleCards(via: "test", assumeKey: a.contains("key"))
+        case "copysel": copySelection()
+        case "deletesel": deleteSelection()
+        case "drag":                                    // drag N PASTEBOARD [CLASS]: what dragging tile N out carries
+            if let t = tile(1), a.count > 2 {
+                let ss = dragGroup(for: t).map(\.shot)
+                let drag = CardDrag(ss)
+                let items = drag.layout(DragLanding(cls: a.count > 3 ? DropClass(legacy: a[3]) ?? DropTargets.classify(bundleID: a[3]) : .chat))
+                let pb = NSPasteboard(name: .init(a[2]))
+                pb.clearContents()
+                pb.writeObjects(CardExport.pasteboardItems(items, rich: drag.rich, copy: false, tag: drag.tag))
+                emit(["event": "cards_page_drag", "n": ss.map(\.n), "items": items.count,
+                      "types": (pb.pasteboardItems ?? []).map { $0.types.map(\.rawValue) }])
+            }
+        case "double": if let t = tile(1) { clicked(t, count: 1, modifiers: []); clicked(t, count: 2, modifiers: []) }
         case "hover": for t in tiles { t.hovering = t === tile(1) }
         case "copy": if let t = tile(1) { copy(t, .click) }
         case "copied": tile(1)?.flashCopied()
         case "menu": if let t = tile(1) { emit(["event": "cards_page_menu", "n": t.shot.n, "items": menu(for: t).items.filter { !$0.isSeparatorItem }.map(\.title)]) }
-        case "delete": if let t = tile(1) { delete(t) }
+        case "delete": if let t = tile(1) { deleteCards([t]) }
         case "preview": testKeyboard = true; if let t = tile(1) ?? tiles.first { openPreview(t, via: "test") }
         case "previewclose": closePreview()
         case "previewstep": previewStep(a.count > 1 ? Int(a[1]) ?? 1 : 1)
@@ -514,7 +647,8 @@ final class CardsPage: NSObject, FullPage, ObservableObject, OverviewTileHost, C
         }
         let n0 = board.counts.first ?? 0
         emit(["event": "cards_page", "shown": shown, "current": tiles.prefix(n0).map(\.shot.n), "history": tiles.dropFirst(n0).map(\.shot.n),
-              "hanging": hangingCount, "used": usedCount, "selected": selected.map { tiles[$0].shot.n } ?? -1, "columns": board.columns,
+              "hanging": hangingCount, "used": usedCount, "selected": selected.map { tiles[$0].shot.n } ?? -1,
+              "picked": selectedTiles.map(\.shot.n), "columns": board.columns, "kept": hangingCount + usedCount > 0 ? CardsPage.keptNote() : "",
               "query": query, "grid_focus": gridFocused, "search_focus": root.window?.firstResponder === search.currentEditor() && search.currentEditor() != nil,
               "preview": preview.shot?.n ?? -1, "labels": tiles.map { $0.accessibilityLabel() ?? "" },
               "board": [board.frame.width, board.frame.height]])
@@ -539,12 +673,26 @@ struct CardsPageContent: View {
                 .padding(.top, 36)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    // the search and, at the grid's right edge, the two ways to make a card
+                    // the search and, at the grid's right edge, the two ways to make a card — or, with several cards
+                    // selected, how many and what to do with all of them
                     HStack(spacing: 8) {
                         CardsSearchField(field: page.search).frame(minWidth: 120, maxWidth: 280)
                         Spacer(minLength: 4)
-                        voiceButton
-                        snapButton(primary: false)
+                        if page.selectedCount > 1 {
+                            Text(T("cards.selection.count", page.selectedCount))
+                                .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .accessibilityAddTraits(.updatesFrequently)
+                            Button { page.copySelection() } label: { CardsKeyedLabel(title: Look.menuCase(T("cards.selection.copy")), key: "⌘C") }
+                                .buttonStyle(SettingsOutlinedButtonStyle())
+                                .help(T("cards.selection.copy.tip"))
+                            Button { page.deleteSelection() } label: { CardsKeyedLabel(title: Look.menuCase(T("cards.selection.delete")), key: "⌫") }
+                                .buttonStyle(SettingsOutlinedButtonStyle())
+                                .help(T("cards.selection.delete.tip"))
+                        } else {
+                            voiceButton
+                            snapButton(primary: false)
+                        }
                     }
                     if page.shownCount == 0, page.searching {
                         VStack(spacing: 10) {

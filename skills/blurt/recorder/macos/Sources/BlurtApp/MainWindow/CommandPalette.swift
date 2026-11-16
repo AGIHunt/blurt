@@ -327,6 +327,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             out.append(e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D", kind: .place, section: .go, pinned: true) { c.showDictation() })
         }
         if cards { out.append(e(T("cards.title"), "rectangle.stack", kind: .place, section: .go, pinned: true) { c.go(.cards) }) }
+        if Capability.screenText.isOn { out.append(e(T("feature.screen_text"), "text.viewfinder", kind: .place, section: .go, pinned: true) { c.go(.screenText) }) }
         if Capability.phone.isOn { out.append(e(T("phone.title"), "iphone", kind: .place, section: .go, pinned: true) { c.go(.phone) }) }
         if recording {
             out += [

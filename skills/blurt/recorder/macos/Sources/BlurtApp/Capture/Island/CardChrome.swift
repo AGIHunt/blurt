@@ -1,13 +1,13 @@
-// The cards' small shared parts (v0.9.2, docs/design/system.md §3.2) — one family for the hanging row's hover note and
-// the Cards panel (Hanging and Used, CardsOverview.swift) with its preview (CardPreview.swift), so the same thing never
-// looks two ways:
+// The cards' small shared parts (v0.9.2, docs/design/system.md §3.2) — one family for the hanging row's hover note,
+// the Cards page's tiles (CardTile.swift) and the big preview (CardPreview.swift), so the same thing never looks two
+// ways:
 //   • CardTime: one relative time ("Just now", "1 min ago" / "刚刚", "1 分钟前"), never a live count of seconds.
 //   • KeyHint: the keys as drawn keycaps (KeyCap, Capture/KeyCaps.swift: the app's one keycap) with one verb each ("← → Choose · ↩ Copy · ⌫ Delete · esc Close") — the
-//     row's hover note and the panels' footers use the same items and the same words.
+//     row's hover note and the preview's footer use the same items and the same words.
 //   • CardActions: a card's actions in one cluster, [preview chip][··· chip][Copy chip], the same order, size and "···"
 //     everywhere; shown on hover and on keyboard focus only.
 //   • PanelHeader: a panel's one header row — its title left-aligned (13 semibold) with the count in secondary (or a
-//     control after it: the Cards panel's Hanging | Used segments), an accessory on the right ("···") and a real × that
+//     control after it), an accessory on the right ("···") and a real × that
 //     closes it (never a grey traffic light that reads as an inactive window).
 
 import AppKit
@@ -30,17 +30,10 @@ enum CardTime {
 enum KeyHint {
     typealias Item = (keys: [String], verb: String)
 
-    /// The cards' keys (the row with the keyboard, the overview with the keyboard): the same words in both.
+    /// The cards' keys (the row with the keyboard).
     static var cards: [Item] {
         [(["←", "→"], Loc.t("capture.keys.choose", table: "Capture")), (["↩"], Loc.t("capture.keys.copy", table: "Capture")),
          (["⌫"], Loc.t("capture.keys.delete", table: "Capture")), (["esc"], Loc.t("capture.keys.close", table: "Capture"))]
-    }
-
-    /// The Cards panel's keys: the cards' own, with Space for the big preview.
-    static var overview: [Item] {
-        var k = cards
-        k.insert((["space"], Loc.t("capture.keys.preview", table: "Capture")), at: 2)
-        return k
     }
 
     /// The preview's keys: the arrows go to the card before / after it, Space (or Esc) closes it.

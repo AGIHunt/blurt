@@ -122,12 +122,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 day ago</string><key>other</key><string>%d days ago</string></dict>
   </dict>
-  <key>capture.cards.overview_title</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Card</string><key>other</key><string>Cards (%d)</string></dict>
-  </dict>
   <key>capture.card.move_n</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

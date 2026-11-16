@@ -1544,6 +1544,17 @@ class Engine:
 TRANSLATE_TARGETS = {"en": "English", "zh": "Simplified Chinese", "zh-Hant": "Traditional Chinese", "ja": "Japanese",
                      "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese",
                      "it": "Italian", "ru": "Russian"}
+# Each language in its own words. A one-language request names it both ways and says "the whole answer, even a single
+# word" (2026-11-16): asked "into Japanese" for short Chinese UI words (翻译, 显示, 粘贴), the local Gemma 4 E2B wrote
+# English for 5 of 16; with this, 16 of 16 were Japanese, and the zh / en / ko cases came out as before.
+TRANSLATE_ENDONYMS = {"zh": "简体中文", "zh-Hant": "繁體中文", "ja": "日本語", "ko": "한국어", "fr": "français",
+                      "de": "Deutsch", "es": "español", "pt": "português", "it": "italiano", "ru": "русский"}
+
+
+def _named(code: str) -> str:
+    """"Japanese (日本語)"; English and unknown codes as they are."""
+    name = TRANSLATE_TARGETS.get(code, code)
+    return f"{name} ({TRANSLATE_ENDONYMS[code]})" if code in TRANSLATE_ENDONYMS else name
 # A target is "auto:H|O" (2026-10-30, global-first: H the user's own language, O the other one — text in H goes into O,
 # anything else into H; the model picks the direction), "auto" (the same with Chinese and English: the app before
 # that, still understood), a language ("ja"), "X|keep" (a fixed language, 2026-10-30: into X, and a text already in X
@@ -1570,10 +1581,12 @@ def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"),
     a, b = (TRANSLATE_TARGETS.get(x, x) for x in (auto or pair))
     into, _, also = target.partition("|")
     x, y = TRANSLATE_TARGETS.get(into, into), TRANSLATE_TARGETS.get(also, also)
+    only = f" Write the whole answer in {x}, never in another language, even for a single word."
     rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if auto
-            else f"Translate it into {x}; if it is already in {x}, reply with it exactly as it is." if also == "keep"
+            else f"Translate it into {_named(into)}; if it is already in {x}, reply with it exactly as it is. Otherwise"
+                 f" write the whole answer in {x}, never in another language, even for a single word." if also == "keep"
             else f"Translate it into {x}; if it is already in {x}, translate it into {y}." if also
-            else f"Translate it into {x}.")
+            else f"Translate it into {_named(into)}." + only)
     return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
             "only: no preface, no notes, no quotes, no Markdown the text didn't have. Keep its layout: the same line "
             "breaks (one line of the text is one line of the translation, never joined), list markers, tabs and "

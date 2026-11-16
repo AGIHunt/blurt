@@ -1,5 +1,5 @@
 // The hanging cards' rules that don't need AppKit (BlurtApp Capture/Island/HangingCards.swift draws them,
-// CardsOverview.swift lists them all): which cards hang and where, where their threads come out of the island, when they
+// the main window's Cards page lists them all): which cards hang and where, where their threads come out of the island, when they
 // come down and go back up, the keyboard's stops, what the hover note adds, the deferred click, the first-card hint and
 // the Undo window of a delete.
 //

@@ -1,6 +1,6 @@
 // The Settings window (⌘, from the menu; blurt://settings/<pane>[/<row>]): one resizable window, a sidebar and a page.
 //   Sidebar  the search field on top (⌘F focuses it, Esc clears it, ↓ / ↑ walk the results, ↩ opens one), then the
-//            panes in three small groups, by capability (v1.0.24; BlurtCore Capabilities.swift) — Features: Dictation,
+//            panes in three small groups, by capability (v1.0.23; BlurtCore Capabilities.swift) — Features: Dictation,
 //            Cards, Screen Text, Recording & Items, Projects, Phone, named and drawn as in the main window's sidebar ·
 //            App: General, Models, Shortcuts, Agents · This Mac: Privacy, Storage (SettingsCatalog.panes) — in an
 //            NSOutlineView like the main window's sidebar: the brand-tint selection (BrandRowView), ↑ / ↓ move between

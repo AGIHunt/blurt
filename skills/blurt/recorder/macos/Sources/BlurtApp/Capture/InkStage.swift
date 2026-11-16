@@ -17,7 +17,7 @@
 //  • finishing: the stage drops below the flight and fades while the marked picture flies from the selection to the
 //    notch and becomes the card (HangingCards.catchCapture; Reduce Motion: it fades in at the card instead). Discarded
 //    (Esc), it just fades. The unmarked picture stays as shots/NNN.png; the strokes stay editable (Edit Note).
-//  • the tool strip (v1.0.24, InkTools.swift InkToolStrip): attached to the picture — under it, right-aligned, else above
+//  • the tool strip (v1.0.23, InkTools.swift InkToolStrip): attached to the picture — under it, right-aligned, else above
 //    (BlurtCore StripDock), never over the bubble (the bubble tells where it docked: `placeStrip(avoiding:)`). Pen, box,
 //    ellipse, arrow, text, mosaic; the colours (the last one chosen is remembered, record.ink_color; the tool starts on
 //    the pen every snap — zero clicks to draw); undo; copy-and-done (⌘↩, not for a snap going into a recording).

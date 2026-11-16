@@ -8,7 +8,7 @@
 "cards.action.voice" = "语音备注";
 "cards.action.voice.tip" = "录一条语音备注，保存为卡片";
 "cards.action.show_notch" = "在刘海下显示";
-"cards.action.show_notch.tip" = "在刘海下方打开卡片面板，面板显示在其他 App 之上";
+"cards.action.show_notch.tip" = "让卡片在刘海下方放下来，方便拖进其他 App";
 
 "cards.search.placeholder" = "搜索卡片";
 "cards.search.tip" = "搜索备注（⌘F 或 /）";
@@ -17,10 +17,21 @@
 
 "cards.section.current" = "当前";
 "cards.section.history" = "历史";
-"cards.history.kept" = "保留 7 天";
+"cards.history.kept" = "保留 %d 天";
+"cards.history.kept_forever" = "一直保留";
 "cards.current.none" = "刘海下方暂无卡片。";
-"cards.history.none" = "拖入或粘贴到其他 App 的卡片会在此保留 7 天。";
-"cards.history.expired" = "最近 7 天没有用过的卡片。更早的卡片在废纸篓中。";
+"cards.history.none" = "拖入或粘贴到其他 App 的卡片会在此保留 %d 天。";
+"cards.history.none_forever" = "拖入或粘贴到其他 App 的卡片会一直保留在这里，直到你删除。";
+"cards.history.expired" = "最近 %d 天没有拖入或粘贴过卡片。更早的卡片在废纸篓中。";
+
+/* 选中了多张卡片（⌘-点按、⇧-点按、⌘A）：卡片上方那一行，和选中卡片的菜单。 */
+"cards.selection.count" = "%d 张卡片";
+"cards.selection.copy" = "复制";
+"cards.selection.copy.tip" = "复制选中的卡片：图片和备注";
+"cards.selection.delete" = "删除";
+"cards.selection.delete.tip" = "删除选中的卡片（可在刘海处撤销）";
+"cards.menu.copy_n" = "复制 %d 张卡片";
+"cards.menu.delete_n" = "删除 %d 张卡片";
 
 "cards.empty.title" = "还没有卡片";
 "cards.empty.message" = "按 %@ 截图并说一句备注。卡片显示在刘海下方，可拖入任何 App。";

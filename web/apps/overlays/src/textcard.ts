@@ -1,8 +1,10 @@
-// ⌥T's translation card (the Mac's ScreenTextCard): the whole translation under the island, to read and to copy again.
-// It goes by itself 10 s after it shows — not while the pointer is over it (then 10 s after it leaves); Esc closes it
+// The card under the island (the Mac's ScreenTextCard): ⌥C's text or ⌥T's translation, whole, to read and to copy
+// again — only when it went nowhere but the clipboard (flow.rs, paste_policy::screen_text::shows_card). × on the left
+// closes it now, Copy on the right. It goes by itself 10 s after it shows — not while the pointer is over it (then 10 s after it leaves); Esc closes it
 // only while the pointer is over it (Rust holds Esc then, never otherwise: an Esc meant for the app in front is never
 // taken). The window never takes the focus. Params: text, lang. → `blurt://action` textcard.size {h} / .pointer
-// {inside} / .copy / .close {why}; ← `blurt://note` {op: 'text', text} (a new translation in its place), {op: 'close'}.
+// {inside} / .copy / .close {why: esc | close_button | timeout}; ← `blurt://note` {op: 'text', text} (a new text in its
+// place), {op: 'close'}.
 import { iconSvg } from '@blurt/icons/core';
 import { EV, connect, params, ready, t } from './host';
 
@@ -10,6 +12,8 @@ const host = await connect('textcard');
 const card = document.querySelector<HTMLElement>('.card')!;
 const text = document.querySelector<HTMLElement>('.text')!;
 const copy = document.querySelector<HTMLButtonElement>('.copy')!;
+const closeButton = document.querySelector<HTMLButtonElement>('.close')!;
+const row = document.querySelector<HTMLElement>('.row')!;
 const SECONDS = 10;
 let inside = false;
 let timer = 0;
@@ -28,8 +32,9 @@ function set(s: string) {
   text.textContent = s.trim().replace(/\n[ \t]*(\n[ \t]*)+/g, '\n');
   text.scrollTop = 0;
   resetButton();
-  // a one-line translation is one row: Copy at that line's end (the text keeps room for it); longer: Copy's own row
-  card.style.setProperty('--cw', `${copy.offsetWidth + 12}px`);
+  // a one-line text is one row: × and Copy at that line's end (the text keeps room for them); longer: their own row,
+  // × on the left, Copy on the right
+  card.style.setProperty('--cw', `${row.offsetWidth + 12}px`);
   card.classList.add('inline');
   if (text.scrollHeight > 22 + 1) card.classList.remove('inline');
   fade();
@@ -74,6 +79,10 @@ copy.addEventListener('click', () => {
   clearTimeout(copiedTimer);
   copiedTimer = window.setTimeout(resetButton, 1600);
 });
+closeButton.innerHTML = iconSvg('x', { size: 14 });
+closeButton.title = t('capture.text.card.close');
+closeButton.setAttribute('aria-label', t('capture.text.card.close'));
+closeButton.addEventListener('click', () => close('close_button'));
 card.setAttribute('aria-label', t('capture.text.card.ax'));
 void host.on<{ op: string; text?: string; x?: number; y?: number }>(EV.note, (op) => {
   // the pointer as Rust sees it (the window gets no pointer events before a click on Windows)

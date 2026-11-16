@@ -3,7 +3,9 @@
 //   Dictation       the switch, the key, how it starts and stops, the sounds · the style (Verbatim / Light) · what
 //                   double-tap Ctrl translates into and the model that translates · the history (how long, clear)
 //                   and the models dictation runs on (chosen in Models)
-//   Copy Text …     what Alt+Shift+T translates into (its own target, not dictation's) and the model that translates
+//   Text & Trans…   what Alt+Shift+T translates into (its own target, not dictation's; under Auto, where other
+//                   languages go) and the model that translates; how long the history keeps what was read, Open
+//                   History… (the Text & Translation page) and Clear History…
 //   Models          the recommended download while it is missing · the cloud models you connected (the key in
 //                   Windows Credential Manager, never in a file; Add Cloud Model… is a sheet with Test) · the model
 //                   each job uses · every speech model on this PC
@@ -21,13 +23,32 @@ import { detectKey, endpointOf, hostOf, isCustom, isRegional, systemRegion, TEXT
 
 type Save = (patch: Record<string, unknown>) => Promise<void>;
 
-/** The translate targets (the Mac's DictationTranslateTarget), each by its own name. Auto is the pair Windows' polish
- * server uses for "auto": Chinese ↔ English. */
+/** The translate targets (the Mac's DictationTranslateTarget), each by its own name. */
 const TARGETS: [string, string][] = [
   ['en', 'English'], ['zh', '简体中文'], ['zh-Hant', '繁體中文'], ['ja', '日本語'], ['ko', '한국어'], ['fr', 'Français'],
   ['de', 'Deutsch'], ['es', 'Español'], ['pt', 'Português'], ['it', 'Italiano'], ['ru', 'Русский'],
 ];
-const targetChoices = (): [string, string][] => [['auto', S('dictation.translate.target.auto', '简体中文', 'English')], ...TARGETS];
+const endonym = (code: string) => TARGETS.find(([k]) => k === code)?.[1] ?? code;
+/** Auto: the user's own language ↔ the other one (screen_text/direction.rs `Pair::of`, the Mac's TranslateAutoPair:
+ *  Blurt's language when picked, else the system's; the other is English, or for an English user their next system
+ *  language, or none). Read again when Blurt's language changes. */
+export type AutoPair = { home: string; other: string | null };
+function useAutoPair(lang: unknown): AutoPair {
+  const [p, setP] = useState<AutoPair>({ home: 'en', other: null });
+  useEffect(() => {
+    api.translateAutoPair().then(setP, () => {});
+  }, [String(lang ?? '')]);
+  return p;
+}
+/** "Auto: 简体中文 ↔ English" / "Auto: into English" (the Mac's auto_one: a key ending in _one reads as a plural form here), then every language by its own name. */
+const targetChoices = (p: AutoPair): [string, string][] => [
+  ['auto', p.other ? S('dictation.translate.target.auto', endonym(p.home), endonym(p.other)) : S('dictation.translate.target.auto_into', endonym(p.home))],
+  ...TARGETS,
+];
+/** The row's line under Auto: without a pair, how to translate text in your own language; with one (Alt+Shift+T's
+ *  row only), where other languages go. */
+const autoNote = (target: string, p: AutoPair) => (target === 'auto' && !p.other ? S('dictation.translate.target.auto_one.note', endonym(p.home)) : undefined);
+const autoOthers = (target: string, p: AutoPair) => (target === 'auto' && p.other ? S('dictation.translate.target.auto_others', endonym(p.home)) : undefined);
 /** what an older Windows build wrote ("zh-Hans") in the Mac's words */
 const normTarget = (v: unknown) => (v === 'zh-Hans' ? 'zh' : typeof v === 'string' && [...TARGETS.map(([k]) => k), 'auto'].includes(v) ? v : 'auto');
 
@@ -79,6 +100,7 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
   portalKey?: string | null;
 }) {
   const d = cfg.record?.dictation ?? {};
+  const pair = useAutoPair(cfg.lang);
   const set = (patch: Record<string, unknown>) => save({ record: { dictation: { ...d, ...patch } } });
   // record.dictation.* as dictation/prefs.rs reads it (the Mac's keys; the engine reloads them when the file changes)
   const key = d.key === 'either_option' ? 'either_option' : 'right_option';
@@ -265,8 +287,8 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
 
       <Group id="dictation.translation">
         <div className={`st-set ${on ? '' : 'off'}`} inert={!on}>
-          <Row id="dictation.translate">
-            <Popup label={S('dictation.translate.settings.title')} value={normTarget(d.translate_target)} wide dividers={[1]} choices={targetChoices()}
+          <Row id="dictation.translate" detail={autoNote(normTarget(d.translate_target), pair)}>
+            <Popup label={S('dictation.translate.settings.title')} value={normTarget(d.translate_target)} wide dividers={[1]} choices={targetChoices(pair)}
               onChange={(v) => set({ translate_target: v === 'auto' ? undefined : v })} />
           </Row>
         </div>
@@ -431,10 +453,26 @@ function VoiceprintSheet({ ready, onClose, onLearned }: { ready: boolean; onClos
   );
 }
 
-// ------------------------------------------------------------------ Copy Text from Screen
+// ------------------------------------------------------------------ Text & Translation
 
-export function ScreenTextPane({ cfg, save, goTranslate, linux = false }: { cfg: Record<string, any>; save: Save; goTranslate: () => void; linux?: boolean }) {
+export function ScreenTextPane({ cfg, save, goTranslate, openHistory, linux = false }: { cfg: Record<string, any>; save: Save; goTranslate: () => void; openHistory?: () => void; linux?: boolean }) {
   const st = cfg.record?.screen_text ?? {};
+  const pair = useAutoPair(cfg.lang);
+  // the history (screen_text/history.rs): how long (record.screen_text.history_days: 7, 30 — the default, no key —,
+  // -1 forever, 0 not kept), how many; reading it prunes it to what is kept
+  const days: number = typeof st.history_days === 'number' ? st.history_days : 30;
+  const [count, setCount] = useState<number | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const loadCount = () => api.screenTextHistory().then((h) => setCount(h.count), () => setCount(0));
+  useEffect(() => {
+    void loadCount();
+    return listen('screen-text://changed', () => void loadCount());
+  }, [days]);
+  const setDays = (d: number) => {
+    const { history_days: _, ...rest } = st;
+    void save({ record: { screen_text: { ...rest, ...(d === 30 ? {} : { history_days: d }) } } });
+  };
+  const CLEAR = -9;
   // Linux: GNOME asks once before Blurt may take screenshots, and only with Blurt in front — so it is asked here
   // (screen_text_allow; the island's "Allow…" opens this row)
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -487,14 +525,45 @@ export function ScreenTextPane({ cfg, save, goTranslate, linux = false }: { cfg:
         </Row>
       </Group>
       <Group id="screentext.translation">
-        <Row id="screentext.translate">
-          {/* the same 240 px as dictation's target (the Mac's TranslateTargets.popupWidth): "Auto: 简体中文 ⇄ English" whole */}
-          <Popup label={S('settings.screen_text.translate', '')} value={normTarget(tr.target)} wide dividers={[1]} choices={targetChoices()}
+        <Row id="screentext.translate" detail={autoNote(normTarget(tr.target), pair) ?? autoOthers(normTarget(tr.target), pair)}>
+          {/* the same 240 px as dictation's target (the Mac's TranslateTargets.popupWidth): "Auto: 简体中文 ↔ English" whole */}
+          <Popup label={S('settings.screen_text.translate', '')} value={normTarget(tr.target)} wide dividers={[1]} choices={targetChoices(pair)}
             onChange={(v) => save({ record: { screen_text: { ...st, translate: { cloud: tr.cloud ?? true, ...(v === 'auto' ? {} : { target: v }) } } } })} />
         </Row>
         <Row id="screentext.translate_model" detail={uses(sum, 'translate', curated)}>
           <button onClick={goTranslate}>{S('models.uses.change')}</button>
         </Row>
+      </Group>
+      <Group id="screentext.history_section">
+        <Row id="screentext.history"
+          detail={days === 0 ? S('settings.screen_text.history.summary.off') : count === null ? undefined
+            : days < 0 ? S('settings.screen_text.history.summary.forever', count) : S('settings.screen_text.history.summary', count, S('dictation.history.days', days))}>
+          {openHistory && days !== 0 && <button onClick={openHistory}>{S('settings.screen_text.history.open')}</button>}
+          {/* how long, and — under a line, last — Clear History… (as dictation's history row: never a destructive
+              button at rest) */}
+          <Popup label={S('settings.screen_text.history.keep')} value={days} dividers={count ? [3, 4] : [3]}
+            choices={[[7, S('dictation.history.days', 7)] as [number, string], [30, S('dictation.history.days', 30)] as [number, string],
+              [-1, S('settings.screen_text.history.forever')] as [number, string], [0, S('dictation.history.dont_keep')] as [number, string],
+              ...(count ? [[CLEAR, S('settings.screen_text.history.clear')] as [number, string]] : [])]}
+            onChange={(v) => (v === CLEAR ? setConfirmClear(true) : setDays(v))} />
+        </Row>
+        {confirmClear && (
+          <div className="overlay" onClick={() => setConfirmClear(false)}>
+            <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.key === 'Escape' && setConfirmClear(false)}>
+              <h3>{S('settings.screen_text.history.clear.title')}</h3>
+              <p>{S('settings.screen_text.history.clear.message', count ?? 0)}</p>
+              <div className="dict-confirm-foot">
+                <button autoFocus className="dict-confirm-cancel" onClick={() => setConfirmClear(false)}>{S('settings.screen_text.history.cancel')}</button>
+                <button className="dict-danger-tint" onClick={async () => {
+                  setConfirmClear(false);
+                  await api.screenTextHistoryClear().catch(() => {});
+                  void loadCount();
+                }}>{S('settings.screen_text.history.clear.confirm')}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </Group>
     </Page>
   );

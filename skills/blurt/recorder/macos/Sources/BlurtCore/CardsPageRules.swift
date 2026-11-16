@@ -1,7 +1,10 @@
 // The Cards page's rules (BlurtApp MainWindow/CardsPage.swift; docs/design/capabilities.md): the main window's page
-// of every card — Current (under the notch) then History (used in the last 7 days) — as one grid in two sections.
+// of every card — Current (under the notch) then History (used in other apps) — as one grid in two sections.
 // Kept here, without AppKit, so they are tested: how many columns fit, what each key does with the keyboard on the
 // grid, and which cards a search shows.
+//
+// With ⇧ the arrows extend the selection (CardSelection); ↩, ⌘C and ⌫ act on every selected card; ⌘A selects the
+// focused card's section (`section`). ⌥H in the window's terms: `hotkey`.
 //
 //   ← / →         the card before / after, across the two sections (no card focused: → goes to the first).
 //   ↓             the card under it; from a section's last row, the next section's first row in the same column
@@ -110,6 +113,40 @@ public enum CardsPageRules {
     /// it was the last, none when it was the only one.
     public static func focusAfterDelete(_ i: Int, count: Int) -> Int? {
         count <= 1 ? nil : min(i, count - 2)
+    }
+
+    /// Where the keyboard is after the cards at `deleted` (of `count`) went: the card that took the first one's place,
+    /// the last one left when they were the last, none when nothing is left.
+    public static func focusAfterDelete(_ deleted: [Int], count: Int) -> Int? {
+        let gone = Set(deleted.filter { (0..<count).contains($0) })
+        guard let first = gone.min() else { return nil }
+        let left = count - gone.count
+        return left <= 0 ? nil : min(first, left - 1)
+    }
+
+    /// The cards of the section card `i` is in (indices counted through the sections in order); no card: the first
+    /// section that shows one. ⌘A selects these.
+    public static func section(of i: Int?, sections: [Int]) -> Range<Int>? {
+        var start = 0
+        var firstShown: Range<Int>?
+        for n in sections {
+            let r = start..<(start + n)
+            if let i, r.contains(i) { return r }
+            if firstShown == nil, n > 0 { firstShown = r }
+            start += n
+        }
+        return i == nil ? firstShown : nil
+    }
+
+    /// ⌥H, in the main window's terms: the window is key and on the Cards page — hide it again (the keyboard back to
+    /// the app the user was in); anywhere else — bring it forward on the Cards page.
+    public enum Hotkey: Equatable {
+        case open
+        case hide
+    }
+
+    public static func hotkey(windowKey: Bool, onCards: Bool) -> Hotkey {
+        windowKey && onCards ? .hide : .open
     }
 
     /// The search as typed, in words: letter case, accents and full-width forms don't count.

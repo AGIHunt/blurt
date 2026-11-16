@@ -146,6 +146,13 @@ function mockSetCapability(id: string, on: boolean) {
   emit('hotkeys://changed', hotkeyRows());
 }
 
+// the Text & Translation page (screen_text_history): what Alt+Shift+C copied and Alt+Shift+T translated; ?screen_text=0 for none
+let mockScreenText = param('screen_text') === '0' ? [] : [
+  { id: 's-1', time: now - 600, translated: true, text: L('The export to CSV fails when the file name has spaces.', '文件名带空格时导出 CSV 会失败。'), source: L('文件名带空格时导出 CSV 会失败。', 'The export to CSV fails when the file name has spaces.'), target: L('en', 'zh'), app: 'Microsoft Edge', outcome: 'pasted' },
+  { id: 's-2', time: now - 3600, translated: false, text: 'npm ERR! code ERESOLVE\nnpm ERR! Could not resolve dependency: peer react@"^18" from @blurt/ui', app: 'Windows Terminal', outcome: 'copied' },
+  { id: 's-3', time: now - 90000, translated: true, text: L('Thanks, I’ll take a look tomorrow morning.', '谢谢，我明天上午看一下。'), source: L('ありがとう、明日の朝見てみます。', 'ありがとう、明日の朝見てみます。'), target: L('en', 'zh'), app: 'Slack', outcome: 'copied' },
+];
+
 // the Cards page (cards_list): pictures drawn here as small app screens, a voice note, one used yesterday; ?cards=0 for none
 const shotSvg = (title: string, accent: string, lines: string[]) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" font-family="Segoe UI, sans-serif">
@@ -471,6 +478,24 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r(undefined);
     }
     case 'cards_reveal':
+      return r(undefined);
+    case 'translate_auto_pair': {
+      // ?pair=ja (a Japanese user), ?pair=en (English only: no pair); else the page's language
+      const home = param('pair') ?? (zh() ? 'zh' : 'en');
+      return r({ home, other: home === 'en' ? null : 'en' });
+    }
+    case 'screen_text_history': {
+      const days = Number(mockCfg.record?.screen_text?.history_days ?? 30);
+      const entries = days === 0 ? [] : mockScreenText.filter((e) => days < 0 || e.time > now - days * 86400);
+      return r({ entries: JSON.parse(JSON.stringify(entries)), days, count: entries.length });
+    }
+    case 'screen_text_history_delete':
+      mockScreenText = mockScreenText.filter((e) => !(args.ids as string[]).includes(e.id));
+      emit('screen-text://changed', {});
+      return r(undefined);
+    case 'screen_text_history_clear':
+      mockScreenText = [];
+      emit('screen-text://changed', {});
       return r(undefined);
     case 'projects_list':
       return r({ current, projects: projects(), inbox: inbox() });

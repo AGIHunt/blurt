@@ -9,7 +9,7 @@
 // can land on; `generated` rows come out of a ForEach over an enum (the shortcuts, the dictation app categories, the
 // speech purposes, General's capability switches); `fold` names the row whose disclosure hides the entry until a
 // search jumps there, or whose menu holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
-// Capabilities (Capabilities.swift, v1.0.24): the panes are arranged by them, and one that is turned off takes its
+// Capabilities (Capabilities.swift, v1.0.23): the panes are arranged by them, and one that is turned off takes its
 // pane, its rows elsewhere (its shortcuts) and its search results with it — `paneShown`, `rowShown`, `results(_:off:)`
 // — while its switch in General ("general.feature.<id>") stays, and is where a link to anything of it lands (`landing`).
 // Search: every word of the query has to appear in the entry's title, description, keywords or section — in the UI
@@ -77,7 +77,7 @@ public struct SettingsResultGroup: Hashable {
 public enum SettingsCatalog {
     // MARK: panes
 
-    /// The sidebar's groups, in order: (id, title). v1.0.24: by capability (Capabilities.swift) — Features: one pane per
+    /// The sidebar's groups, in order: (id, title). v1.0.23: by capability (Capabilities.swift) — Features: one pane per
     /// thing Blurt does, named and drawn as in the main window's sidebar, each there only while its capability is on
     /// (`paneShown`) · App: what every feature shares (General with the five switches, Models, Shortcuts, Agents) ·
     /// This Mac: Privacy, Storage. Before, Preferences / Work / This Mac, with the recording, voice-note and card
@@ -91,11 +91,11 @@ public enum SettingsCatalog {
     public static let panes: [SettingsPaneInfo] = [
         // a capability's pane is named as the capability is everywhere (feature.<id>, Home.strings)
         pane("dictation", "feature.dictation", "Home", "character.cursor.ibeam", "features"),
-        // snaps, voice notes and what a dragged card carries (v1.0.24: before, two boxes in General)
+        // snaps, voice notes and what a dragged card carries (v1.0.23: before, two boxes in General)
         pane("cards", "feature.cards", "Home", "rectangle.stack", "features"),
         // ⌥C and ⌥T (2026-10-30: its own page; before, a box in General)
         pane("screentext", "feature.screen_text", "Home", "text.viewfinder", "features"),
-        // a recording and what becomes of it (v1.0.24: before, a box in General); its projects follow
+        // a recording and what becomes of it (v1.0.23: before, a box in General); its projects follow
         pane("recording", "feature.recording", "Home", "record.circle", "features"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "features"),
         pane("remote", "feature.phone", "Home", "iphone", "features"),
@@ -180,7 +180,7 @@ public enum SettingsCatalog {
         "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
         "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
         "general.smart_paste": "cards.card_drag", "general.drag_caption": "cards.card_drag", "general.drag_copy_note": "cards.card_drag",
-        // v1.0.24: Settings by capability — General's Voice notes and Cards boxes are the Cards pane, its Recording
+        // v1.0.23: Settings by capability — General's Voice notes and Cards boxes are the Cards pane, its Recording
         // box the Recording & Items pane (the words under the notch stay in General: dictation shows them too)
         "general.collect": "cards.collect", "general.snap_sound": "cards.snap_sound",
         "general.voice_end_on_pause": "cards.voice_end_on_pause",
@@ -242,6 +242,7 @@ public enum SettingsCatalog {
         // Copy Text from Screen: ⌥C's reading, then ⌥T's translation
         sec("screentext.copy", "settings.screen_text.section.copy"),
         sec("screentext.translation", "settings.screen_text.section.translate"),
+        sec("screentext.history_section", "settings.screen_text.section.history"),
 
         // iPhone: the phones, and what the Mac shows while one drives it
         sec("remote.phones", "settings.remote.section.phones"),
@@ -323,6 +324,8 @@ public enum SettingsCatalog {
             row("cards.card_drag", "cards.drag", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
             row("cards.agent_drag", "cards.drag", "settings.general.agent_drag", more: S("settings.general.agent_drag.hint")),
             row("cards.drag_note_file", "cards.drag", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
+            // how long History (cards used in other apps) keeps them: record.cards.history_days (BlurtCore TakenCaptures)
+            row("cards.history", "cards.drag", "settings.cards.history", detail: S("settings.cards.history.detail")),
 
             // Recording & Items
             row("recording.countdown", "recording.capture", SettingsText("app.menu.countdown", "Main")),
@@ -382,6 +385,9 @@ public enum SettingsCatalog {
             row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
                 more: S("settings.screen_text.translate.hint")),
             row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
+            row("screentext.history", "screentext.history_section", "settings.screen_text.history",
+                detail: S("settings.screen_text.history.detail")),
+            row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep", fold: "screentext.history"),
 
             // iPhone
             row("remote.add", "remote.phones", "settings.remote.app", detail: S("settings.remote.add.detail")),
