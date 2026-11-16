@@ -72,4 +72,6 @@ final class MainWindowHost: MainWindowHosting {
     func reveal(job: String) { MainWindowController.shared.reveal(job: job) }
     func reveal(project: String) { MainWindowController.shared.reveal(project: project) }
     func showInbox() { MainWindowController.shared.showInbox() }
+    func showCards() { MainWindowController.shared.showCards() }
+    func toggleCards(via: String) { MainWindowController.shared.toggleCards(via: via) }
 }

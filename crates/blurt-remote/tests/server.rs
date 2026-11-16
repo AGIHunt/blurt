@@ -297,3 +297,24 @@ async fn the_yes_is_for_the_digits_shown_and_survives_the_pane_closing() {
 }
 
 use blurt_remote::pairing::Pairing;
+
+/// The app's Phone capability off: nothing listens, a code can't be shown, and on again it listens as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn off_means_not_listening() {
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host(&dir, Lines::default(), Lines::default());
+    h.show_pairing(true);
+    until(|| h.status().pairing.map(|_| ())).await;
+    assert!(h.status().listening);
+    h.set_off(true);
+    assert!(!h.status().listening && h.status().pairing.is_none());
+    h.show_pairing(true);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!h.status().listening && h.status().pairing.is_none(), "no code while off");
+    h.set_off(false);
+    h.show_pairing(true);
+    until(|| h.status().pairing.map(|_| ())).await;
+    assert!(h.status().listening);
+    h.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}

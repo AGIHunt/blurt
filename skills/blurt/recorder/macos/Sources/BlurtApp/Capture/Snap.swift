@@ -9,12 +9,12 @@
 //  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
-// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project","kind"} — later lines for
+// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","marks","project","kind"} — later lines for
 // the same n win key by key ("kind": the type chosen in the note bubble, issue | idea | note | task, null = undecided:
 // BlurtCore NoteKind; its item takes it); {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
 // remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one, a Structured voice note has
 // "structure": true and, once its words are in, "said" = the structured text and "said_raw" = the transcript,
-// {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
+// {"n","taken":<wall>} marks a card dragged out and taken by another app (kept in History as Settings says, BlurtCore TakenCaptures; put
 // back: {"n","taken":null}). What a card hands out as files (the picture with its note inside, the note as .md) is
 // written to out/<NNN>/ next to shots/ (CardExport.swift) and goes with the capture.
 
@@ -196,6 +196,9 @@ final class Shot {
     var structure = false        // Structured (⇧ while the voice note listened): its words get the structuring pass
     var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
+    /// every mark on the picture (v1.0.23, BlurtCore InkMark: pen, arrow, text, mosaic, with their colours) — shots.jsonl
+    /// "marks"; "strokes" keeps the lines of them for older readers. An older line has none: its strokes are pen marks.
+    var marks: [InkMark] = []
     /// a file card's file (v1.0.23, shots.jsonl "ref"): an absolute path the card only refers to — a PDF, a video…
     /// dropped on the island. `file` is then its thumbnail. Never moved, written or trashed by Blurt.
     var ref: String?
@@ -218,7 +221,7 @@ final class Shot {
     /// the type chosen in the note bubble (⌘1–⌘4, the type chip): its item's kind; nil = undecided (BlurtCore NoteKind)
     var itemKind: NoteKind?
     var deleted = false
-    /// dragged out and taken by another app (seconds since 1970): off its thread, in "Recently Taken" for 7 days
+    /// dragged out and taken by another app (seconds since 1970): off its thread, in History (the Cards page) as long as Settings → Cards → History keeps it
     var taken: Double?
     /// how many times it was deleted: a delayed recycle only goes ahead for the deletion that scheduled it
     var deletions = 0
@@ -286,6 +289,7 @@ final class Shot {
                                 "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull(),
                                 "kind": itemKind?.rawValue ?? NSNull()]
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
+        if kind == .shot { o["marks"] = marks.map(\.json) }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if structure { o["structure"] = true }
         if let r = saidRaw { o["said_raw"] = r }
@@ -534,6 +538,7 @@ final class ShotBatch {
             s.structure = o["structure"] as? Bool ?? false
             s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
+            s.marks = InkMark.parse(o["marks"]) ?? InkMark.fromStrokes(s.strokes)
             if let r = o["ref"] as? String { s.ref = r }
             if let b = o["ref_bookmark"] as? String { s.refBookmark = b }
             s.itemKind = NoteKind.parse(o["kind"])

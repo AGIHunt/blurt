@@ -246,7 +246,8 @@ export interface HotkeyRow {
   label: string;
   default: string;
   active: boolean;
-  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual';
+  /** disabled: its capability is off (the key stays set, but isn't held) */
+  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual' | 'disabled';
   of?: string;
   name?: string;
   hint_url?: string;
@@ -315,6 +316,8 @@ export interface Onboarding {
   /** setup.rs is still to start the first model download */
   first_download_pending: boolean;
   dictation: { available: boolean; key: string; mode: 'auto' | 'tap' | 'hold' | string; enabled: boolean };
+  /** the capabilities turned off (the first step's switches) */
+  off?: string[];
 }
 export interface MicState {
   supported: boolean;
@@ -382,6 +385,28 @@ export interface VocabTerm {
   /** ISO 8601 */
   added?: string;
 }
+/** One result of Alt+Shift+C / Alt+Shift+T (screen_text/history.rs; the Mac's ScreenTextEntry). `time` epoch seconds;
+ *  a translation's `text` is the translation and `source` what was on the screen. */
+export interface ScreenTextEntry {
+  id: string;
+  time: number;
+  translated: boolean;
+  text: string;
+  source?: string | null;
+  /** the language asked for ("zh", "auto:zh|en") */
+  target?: string | null;
+  /** the app in front then */
+  app?: string | null;
+  /** pasted | unconfirmed | copied */
+  outcome?: string | null;
+}
+/** The Text & Translation page's list, newest first; `days` record.screen_text.history_days (7, 30, -1 forever, 0 off). */
+export interface ScreenTextHistory {
+  entries: ScreenTextEntry[];
+  days: number;
+  count: number;
+}
+
 export interface DictationHistory {
   entries: DictationEntry[];
   retention_days: number;
@@ -444,6 +469,12 @@ export const api = {
   /** Linux: GNOME's screenshot question for Copy Text from Screen, asked with Blurt in front */
   screenTextAllow: () => invoke<{ ok: boolean; code?: string; error?: string }>('screen_text_allow'),
   screenTextAllowed: () => invoke<boolean>('screen_text_allowed'),
+  /** Auto's pair on this computer (Blurt's language, else the system's; screen_text/direction.rs `Pair::of`) */
+  translateAutoPair: () => invoke<{ home: string; other: string | null }>('translate_auto_pair'),
+  /** what Alt+Shift+C / Alt+Shift+T read, pruned to what Settings keeps (`screen-text://changed` follows a change) */
+  screenTextHistory: () => invoke<ScreenTextHistory>('screen_text_history'),
+  screenTextHistoryDelete: (ids: string[]) => invoke<void>('screen_text_history_delete', { ids }),
+  screenTextHistoryClear: () => invoke<void>('screen_text_history_clear'),
   /** dictation on Model Studio with this measured speech model (null: Qwen3-ASR Flash) */
   dictationDashscopeModel: (model: string | null) => invoke<void>('dictation_dashscope_model', { model }),
   /** the dictation key pressed in Blurt's own window: the key hook doesn't hear those (engine.rs `forward_key`) */
@@ -585,7 +616,34 @@ export const api = {
   /** Windows Firewall keeps phones out (`firewall: 'blocked'`): its rule, through Windows' own administrator prompt; answers
    *  once that's done or declined (declined: still 'blocked', no error) */
   remoteAllowFirewall: () => invoke<RemoteStatus>('remote_allow_firewall'),
+  // the five capabilities (src-tauri/src/capabilities.rs, docs/design/capabilities.md): which are off; every change —
+  // from here, Settings → Dictation's own switch or config.json edited by hand — also comes as 'capabilities://changed'
+  capabilities: () => invoke<{ off: string[] }>('capabilities_get'),
+  setCapability: (id: string, on: boolean) => invoke<{ off: string[] }>('capability_set', { id, on }),
+  /** the Cards page: the cards at the top of the screen now, and those used in other apps in the last 7 days */
+  cardsList: () => invoke<{ current: CardInfo[]; history: CardInfo[] }>('cards_list'),
+  /** what the Cards panel does to one card, done from the main window */
+  cardAction: (action: 'copy' | 'copy_text' | 'remove' | 'restore' | 'reveal' | 'putback', session: string, n: number) =>
+    invoke<void>('card_action', { action, session, n }),
 };
+
+export const onCapabilities = (cb: (p: { off: string[] }) => void) => listen<{ off: string[] }>('capabilities://changed', cb);
+
+/** A card as the island shows it (blurt-capture overlay::Card + when): `src` the picture's URL ("" for a voice or text
+ *  card), `wall` when it was taken, `taken` when it was used in another app (History). Times are epoch seconds. */
+export interface CardInfo {
+  n: number;
+  src: string;
+  text?: string | null;
+  file?: string | null;
+  kind: 'shot' | 'voice' | string;
+  session?: string | null;
+  ref?: string;
+  textCard?: boolean;
+  missing?: boolean;
+  wall?: number | null;
+  taken?: number | null;
+}
 
 /** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
 export interface RemoteStatus {

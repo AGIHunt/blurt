@@ -30,7 +30,7 @@
 /* What you can do from a state: the verb, and one line saying what it does */
 "action.keep" = "Accept";
 "action.keep.hint" = "Moves it out of the inbox as To do";
-"action.hand_off" = "Hand off to agent…";
+"action.hand_off" = "Copy instruction for agent";
 "action.hand_off.hint" = "Copy an instruction to paste into Claude Code, Codex or any agent";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";

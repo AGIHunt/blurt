@@ -157,9 +157,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Hand Off %ld Item to Your Agent</string>
+			<string>Copy Instruction for %ld Item</string>
 			<key>other</key>
-			<string>Hand Off %ld Items to Your Agent</string>
+			<string>Copy Instruction for %ld Items</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>

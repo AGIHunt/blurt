@@ -13,6 +13,10 @@ protocol MainWindowHosting: AnyObject {
     func reveal(job: String)
     func reveal(project: String)
     func showInbox()
+    /// The Cards page, the window in front.
+    func showCards()
+    /// ⌥H: the Cards page in front, or — in front on it already — away again (MainWindowController.toggleCards).
+    func toggleCards(via: String)
 }
 
 protocol SettingsHosting: AnyObject {
@@ -43,6 +47,8 @@ extension Notification.Name {
     static let blurtCardsChanged = Notification.Name("dev.blurt.cards-changed")
     /// Recently Taken changed — a card dragged out, put back, expired (userInfo "count").
     static let blurtTakenChanged = Notification.Name("dev.blurt.taken-changed")
+    /// The screen-text history changed (a new reading, a delete, its retention).
+    static let blurtScreenTextChanged = Notification.Name("dev.blurt.screen-text-changed")
 }
 
 enum AppEnvironment {

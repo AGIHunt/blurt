@@ -2398,3 +2398,11 @@ body.mw-resizing * {
   text-overflow: ellipsis;
   box-shadow: var(--shadow-pop);
 }
+
+/* a paired phone can't do anything here: the Phone row's mark, in the attention colour (capabilities.md) */
+.mw-side-alert {
+  display: inline-flex;
+  color: var(--attn);
+  margin-left: 6px;
+  flex: none;
+}

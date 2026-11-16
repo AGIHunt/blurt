@@ -33,6 +33,14 @@ enum TranslateTargets {
         return DictationTranslateTarget.allCases.map { ($0, $0 == .auto ? autoLabel(p) : $0.endonym) }
     }
 
+    /// The row's line under Auto with a pair: where text in neither language goes ("Other languages into 简体中文").
+    /// nil otherwise.
+    static func autoOthers(_ t: DictationTranslateTarget) -> String? {
+        let p = pair
+        guard t == .auto, p.other != nil else { return nil }
+        return Loc.t("dictation.translate.target.auto_others", table: "Dictation", p.home.endonym)
+    }
+
     /// The row's line under Auto when it has no pair: pick a language for English text. nil otherwise.
     static func autoNote(_ t: DictationTranslateTarget) -> String? {
         let p = pair

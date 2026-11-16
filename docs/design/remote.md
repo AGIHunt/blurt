@@ -214,6 +214,52 @@ while a phone is connected.
 If a session goes quiet for 2 s, the Mac lets go of everything held, including the dictation key. A background phone sends
 `releaseAll` first.
 
+### What the pad says (2026-11-16)
+
+The founder, using it from the sofa: when the connection dropped, was coming back or hadn't come up, the words saying so were too small to
+read. They were: "Connecting to *name*…" at 12 pt, white 42 %, in the pad's top corner (the same line that names the computer when all is
+well), and "Can't reach *name*. Check…" at 15 pt regular, white 66 %, with no mark and nothing to tap. Now:
+
+- **Connected and working, the pad says nothing**: the computer's name stays where it was, small (12 pt, "*name* · Internet" over a relay).
+- **Anything else is one card in the middle of the pad**, where the thumb and the eye already are: a mark, a strong line that names the
+  state (17 pt semibold; medium on Android), at most one line with the one thing to do (15 pt), at most one button for it. A slab like the
+  keys (`slab` on the pad's glass, a hairline), so it reads over the computer's picture too. Contrast on the slab: the strong line 13 : 1,
+  the second line 10 : 1, the amber mark 8 : 1 (`attn`, docs/design/system.md), always with its triangle, never colour alone. The app is
+  dark only.
+- The words follow the system's text size (Dynamic Type; Android's font scale) up to about one and a half times, where the card still
+  fits a phone's pad; longer words wrap, they are never shrunk or cut. Only the card's buttons take touches: the pad under the words is
+  still the pad.
+
+| State | Mark | Strong line | Second line | Button |
+|---|---|---|---|---|
+| Connecting (app opened, come back to, another computer chosen) | spinner | Connecting to *name*… 正在连接 *name*… | | |
+| A session went while in use | spinner | Reconnecting to *name*… 正在重新连接 *name*… | | |
+| Nothing answers for 8 s, no relay | amber triangle | Can't reach *name* 连不上 *name* | Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt's Settings → Phone on the computer. 确认 Blurt 在运行，手机和电脑连着同一个网络。不在同一网络时，先在电脑的 设置 → 手机 里设置中转。 (the same network is only needed without a relay, so the line names the relay, 中转, as the way to connect from anywhere; a pairing that can't reach the computer says the same, in the same order) | Retry 重试; Try Another Computer below it when there is one |
+| The same, the computer has a relay | amber triangle | Can't reach *name* | Check that the computer isn't asleep and Blurt is running. 确认电脑没有进入睡眠，Blurt 在运行。 | the same |
+| The computer has forgotten this phone | amber triangle | Needs pairing again 需要重新配对 | *name* no longer knows this iPhone. | Scan Code |
+| Another phone took it | phone | Another phone is connected 另一台设备已连接 | Touch to take over. 轻点以接管。 | (a touch anywhere) |
+| No computer yet | code | Pair with your computer 与电脑配对 | On your computer, open Blurt's Settings and choose Phone. | Scan Code |
+| The computer is asking its owner | spinner | Waiting for your computer 等待电脑确认 | Allow this iPhone in Blurt's Settings… Check that it shows *digits*. | |
+| A pairing didn't take (8 s) | amber triangle | Pairing didn't work 配对没有成功 | why, in Link's sentence | what the state under it has |
+| Connected, can't control | amber triangle | Can't control *name* 无法控制 *name* | what to allow, per kind of computer | |
+| Connected, the screen can't be shown | amber triangle | Can't show the screen 无法显示屏幕 | permission, or off in Settings | |
+
+Which lines a state gets is one pure table on each phone, with the same tests: `Model/LinkStatus.swift` (`StatusBanner.of`) and Android's
+`core/LinkStatus.kt`. The card is `Pad/StatusCard.swift` and `pad/StatusCard.kt`. Retry (`Link.tryAgain`) starts the same attempts over at
+once and the card says "connecting" again: Link was already trying every 3 s, the button is for the moment the user has just woken the
+computer. Nothing on the wire changed.
+
+A drop is told apart from a first connection by following the states (`StatusFollower`): only a session that went while the app was in
+front is one. Then the thumb feels it go (the "let go" tap) and come back (the "took hold" tap), VoiceOver and TalkBack say what the card
+says when it changes, and "Connected to *name*" when it's back. Opening the app or choosing another computer taps nothing.
+
+Settings → Computers: the computer in hand, when it isn't connected, says so at 15 pt medium with the same mark (a spinner, the amber
+triangle), not as a 13 pt caption.
+
+Seen on the iPhone 17 simulator and the `blurt_phone` emulator against the fake host (started, stopped, started again), English and
+Chinese, portrait and landscape, and at an accessibility text size: promo/cases/capabilities-2026-11-16/phone-status. Not on a real phone
+yet, and not with VoiceOver or TalkBack listening.
+
 ## Screen
 
 A test build of showing the Mac's screen on the phone, off unless asked for; while off nothing is captured or sent. ScreenCaptureKit →

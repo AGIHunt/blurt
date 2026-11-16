@@ -42,6 +42,10 @@
 // a click on its line does, and only its button runs its action — ToastQueue.bodyClick).
 // Right-click (on the count, anywhere on it): Show N Hanging Cards · Copy All · Organize All · Delete All
 // (TakenPanel.islandMenu; cards used in other apps are the Cards panel's History, ⌥H).
+// Capabilities (v1.0.23, BlurtCore IslandHome): the island shows only what is switched on. Recording & Items off — no
+// project, no switcher, no jobs, no Organize, no Inbox count or "+n" (the index isn't even read); Cards off — no snap
+// or voice button, no cards and no count (the cards stay stored and come back with the switch), nothing taken from
+// another app's drag; neither — it doesn't open at all: the notch, its ears for what is live, and its toasts.
 //
 // Motion: the shape is three springs (width, height, corner) — response 0.42 s, damping 0.78 — so it can be
 // interrupted at any point; a bump (1.04 → 1, 0.25 s) when it swallows a capture; Reduce Motion = 0.2 s cross-fades.
@@ -327,7 +331,7 @@ final class Island: NSObject, IslandHosting {
     /// coordinates): the left ear, or the right one while Peep or its news holds the left — nil when it isn't showing
     /// (no cards, recording, voice input, or the open island's content has taken the ears row).
     private var cardsEarRect: CGRect? {
-        guard cardCount > 0, !isRecording, !VoiceInput.shared.active, ears.opacity > 0.3 else { return nil }
+        guard cardCount > 0, Capability.cards.isOn, !isRecording, !VoiceInput.shared.active, ears.opacity > 0.3 else { return nil }
         if case .cards = left.content, left.layer.opacity > 0.5 {
             if geo.notch { return CGRect(x: geo.cx - geo.notchW / 2 - earNeed.left, y: geo.top, width: earNeed.left, height: geo.row) }
             return CGRect(x: shapeMinX, y: geo.top, width: left.width + 28, height: geo.row)
@@ -365,6 +369,10 @@ final class Island: NSObject, IslandHosting {
             self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
         }
         ProjectStore.shared.onChange = { [weak self] in self?.refresh() }
+        // a capability switched on or off (Home, Settings, config.json): what is its goes from the island, or comes back
+        NotificationCenter.default.addObserver(forName: Capability.didChange, object: nil, queue: .main) { [weak self] _ in
+            self?.capabilitiesChanged()
+        }
         refreshReviewCount()
         // often enough that captures landing are news while they are new ("+3" in the ear)
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refreshReviewCount() }
@@ -431,6 +439,33 @@ final class Island: NSObject, IslandHosting {
         emit(["event": "island_hello", "wall": Date().timeIntervalSince1970])
         refresh()
     }
+
+    /// The capability switches changed (BlurtCore IslandHome has the rules): with Recording & Items off the switcher
+    /// closes and the Inbox's count and news are forgotten; with Cards off the cards under the notch are put away
+    /// (they stay stored: HangingCards.refresh) and a drag from another app is let go; with neither, the island
+    /// closes — its home has nothing on it.
+    private func capabilitiesChanged() {
+        let off = Capability.off
+        if off.contains(.recording) {
+            if drawer == .switcher { closeSwitcher() }
+            reviewCount = 0
+            reviewLoaded = false
+            newsCount = 0
+            newsUntil = 0
+        }
+        if !IslandHome.drop(off: off).hang, external != nil { endExternal() }
+        // (a card being dragged over the drawer: without projects there is nothing left in it to drop on)
+        if drawer == .drop, external == nil, !IslandHome.drop(off: off).projects { drawer = nil }
+        if open, !canOpen { setOpen(false) }
+        hanging.refresh(quiet: true)
+        emit(["event": "island_capabilities", "off": off.map(\.rawValue).sorted(), "opens": canOpen, "cards": cardCount])
+        refreshReviewCount()
+        refresh()
+    }
+
+    /// The open island has something on it: its home (a project, buttons, rows — IslandHome.opens), or what is live
+    /// (a take, a voice note).
+    private var canOpen: Bool { IslandHome.opens() || isRecording || VoiceInput.shared.active }
 
     var screenUnderPointer: NSScreen { screenWithPointer() }
     func moveTo(_ s: NSScreen) { if s != screen { ensurePanel(on: s) } }
@@ -608,7 +643,7 @@ final class Island: NSObject, IslandHosting {
     }
 
     /// "+n" in the right ear: captures landed in the inbox in the last few seconds.
-    private var inboxNews: Bool { newsCount > 0 && CACurrentMediaTime() < newsUntil }
+    private var inboxNews: Bool { newsCount > 0 && CACurrentMediaTime() < newsUntil && Capability.recording.isOn }
 
     /// The shape's left edge in the panel (its centre is the notch's, moved by `dx` while one ear shows).
     private var shapeMinX: CGFloat { geo.cx + dx.value - w.value / 2 }
@@ -977,7 +1012,7 @@ final class Island: NSObject, IslandHosting {
                 default: break
                 }
             }
-            let cardCount = quiet ? 0 : self.cardCount
+            let cardCount = quiet || !Capability.cards.isOn ? 0 : self.cardCount
             // the cards' count is one thing — their stack and the number together, never the stack on one side of
             // the notch and a bare "5" on the other. Peep and its news keep the left ear (where Peep talks and
             // listens): the count sits left when nothing else is there, else on the right
@@ -1101,7 +1136,8 @@ final class Island: NSObject, IslandHosting {
             // a toast under the pointer holds (its clock stops, its button stays) — for a moment only: resting on the
             // island longer is asking for the island, so the toast goes and it opens (a toast held until it was clicked
             // left the island unusable, v1.0.4 report)
-            if !open, drawer == nil, !Dictation.shared.busy, now - hoverSince! >= dwell {
+            // (with nothing to open — IslandHome.opens — a toast under the pointer just holds, as long as it is there)
+            if !open, drawer == nil, !Dictation.shared.busy, canOpen, now - hoverSince! >= dwell {
                 if toastNow == nil {
                     setOpen(true)
                 } else if now - hoverSince! >= dwell + Island.toastHoverHold {
@@ -1147,6 +1183,8 @@ final class Island: NSObject, IslandHosting {
     }
 
     func setOpen(_ on: Bool, sticky: Bool = false) {
+        // nothing to open: neither Recording & Items nor Cards is on (IslandHome) — the notch stays the notch
+        if on, !open, !canOpen { return }
         self.sticky = on && sticky
         if on { hanging.islandAttention() }    // opening it drops the cards too
         guard on != open else { return }
@@ -1202,6 +1240,7 @@ final class Island: NSObject, IslandHosting {
     private(set) var pick: Pick?
 
     func showPicker(_ p: Pick) {
+        guard Capability.projectsShown else { return }
         showSwitcher()
         pick = p
         content.rebuild()
@@ -1213,6 +1252,7 @@ final class Island: NSObject, IslandHosting {
     var dropCount: Int { hanging.dragging.map { hanging.withSelection($0.shot).count } ?? cardCount }
 
     func showSwitcher() {
+        guard Capability.projectsShown else { return }       // projects are Recording & Items': no switcher without it
         ensurePanel(on: screenWithPointer())
         pick = nil
         drawer = .switcher
@@ -1275,7 +1315,8 @@ final class Island: NSObject, IslandHosting {
             return
         }
         externalUpAt = nil
-        guard pb.changeCount != idleDragCount, !dragActive, hanging.dragging == nil, panel != nil else { return }
+        // (with Cards off the notch takes nothing from other apps: what is dropped there hangs as cards)
+        guard pb.changeCount != idleDragCount, !dragActive, hanging.dragging == nil, panel != nil, IslandHome.drop().hang else { return }
         if !catcher.isVisible {
             guard let types = pb.types, !DropIn.isOurs(pb), !Set(types).isDisjoint(with: DropIn.types) else { return }
             placeCatcher()
@@ -1356,9 +1397,10 @@ final class Island: NSObject, IslandHosting {
         let target = drawer == .drop ? islandPoint(s).flatMap { content.highlight(at: $0) } ?? externalTarget : externalTarget
         let pb = s.draggingPasteboard
         let into: String?
+        guard IslandHome.drop().hang else { endExternal(); return false }       // Cards off: nothing hangs
         switch target {
-        case .project(let id)?: into = id
-        case .inbox?: into = "inbox"
+        case .project(let id)? where Capability.projectsShown: into = id
+        case .inbox? where Capability.projectsShown: into = "inbox"
         case .locate?, .openFolder?, .more?: return false
         default: into = nil                                   // .hang, or the notch itself
         }
@@ -1376,7 +1418,8 @@ final class Island: NSObject, IslandHosting {
         guard let p = panel else { return }
         let local = NSPoint(x: s.x - p.frame.minX, y: p.frame.maxY - s.y)
         let zone = drawer == .drop ? islandRect(margin: 24) : islandRect(margin: 70)
-        if zone.contains(local) {
+        // a card is only ever dropped on a project, Unassigned or Organize: without Recording & Items, no drawer
+        if zone.contains(local), IslandHome.drop().projects {
             if drawer != .drop { drawer = .drop; content.rebuild(); wake() }
             if p.ignoresMouseEvents { p.ignoresMouseEvents = false }
             content.highlight(at: view.convert(local, to: content))
@@ -1452,6 +1495,7 @@ final class Island: NSObject, IslandHosting {
     func closeIfSticky() { if open && sticky { setOpen(false) } }
 
     func revealCards() {
+        guard Capability.cards.isOn else { return }
         guard cardCount > 0 else { hanging.reveal(via: "main_window"); return }    // (says there are none)
         setOpen(true, sticky: true)
         hanging.reveal(via: "main_window")
@@ -1510,7 +1554,12 @@ final class Island: NSObject, IslandHosting {
             && !t.text.contains("\n") && !t.text.contains(" · ")
             && (t.text as NSString).size(withAttributes: [.font: EarSlot.font]).width <= Island.earMomentMaxText
         emit(["event": "island_toast", "text": t.text, "key": t.key ?? NSNull(), "passive": t.passive, "ear": ear])
-        if ear, earMoment(t.text, lead: nil) { return }
+        // the done line replaces its own "…ing" line also when it goes to the ears ("Translating…" stayed its 30 s
+        // beside the finished translation)
+        if ear, earMoment(t.text, lead: nil) {
+            if let k = t.key { dropToasts(key: k) }
+            return
+        }
         let e = ToastQueue<Toast>.Entry(t, text: t.text, key: t.key, kind: t.passive ? .passive : .reply, seconds: t.seconds,
                                         actionable: t.action != nil, question: t.isQuestion)
         let shown = toastQ.current?.order
@@ -1631,14 +1680,17 @@ final class Island: NSObject, IslandHosting {
         refresh()
     }
 
-    var activeJobs: [Job] { Array(JobStore.shared.active.prefix(3)) }
-    var toReview: Int { reviewCount }
+    /// The jobs at work — recordings being organized, cards being made into items: Recording & Items'.
+    var activeJobs: [Job] { Capability.recording.isOn ? Array(JobStore.shared.active.prefix(3)) : [] }
+    var toReview: Int { Capability.recording.isOn ? reviewCount : 0 }
 
     private func refreshReviewCount() {
+        // items are Recording & Items': with it off the index isn't read at all (the 5 s timer does nothing)
+        guard Capability.recording.isOn else { return }
         DispatchQueue.global(qos: .utility).async {
             let n = (try? IndexReader().count(ItemQuery(inbox: true, limit: 0))) ?? 0
             DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
+                guard let self = self, Capability.recording.isOn else { return }
                 defer { self.reviewLoaded = true }
                 guard n != self.reviewCount else { return }
                 // more than before (not the first count at launch): that many just landed — said for a moment
@@ -1651,7 +1703,7 @@ final class Island: NSObject, IslandHosting {
 
     /// "+n" with the tray in the right ear for a few seconds (a second batch within them adds to it): the inbox grew.
     func announceInbox(_ n: Int) {
-        guard n > 0 else { return }
+        guard n > 0, Capability.recording.isOn else { return }
         newsCount = inboxNews ? newsCount + n : n
         newsUntil = CACurrentMediaTime() + Island.newsSeconds
         emit(["event": "island_inbox_news", "n": newsCount])

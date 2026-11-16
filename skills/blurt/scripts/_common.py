@@ -794,7 +794,7 @@ def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
 STATES = ("new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded")
 INBOX_STATES = ("new", "to_verify")                         # "needs you": every inbox count in every app
 OPEN_STATES = ("new", "todo", "handed_off", "in_progress")  # MCP open_items, the backlog
-ACTIVE_STATES = ("handed_off", "in_progress", "to_verify")
+ACTIVE_STATES = ("todo", "handed_off", "in_progress")
 CLOSED_STATES = ("done", "wontfix")
 WORK_KEYS = ("to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")  # `work`: hand-off details
 WORK_BY = ("user", "agent", "app")

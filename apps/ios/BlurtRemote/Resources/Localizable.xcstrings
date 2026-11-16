@@ -196,7 +196,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在电脑上 Blurt 的设置中允许这台 iPhone，并确认显示的数字为 %@。"
+            "value" : "在电脑上 Blurt 的设置里允许这台 iPhone，确认两边的数字都是 %@。"
           }
         }
       }
@@ -211,12 +211,12 @@
         }
       }
     },
-    "Another phone is connected. Touch to take over." : {
+    "Another phone is connected" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另一台设备已连接。轻点以接管。"
+            "value" : "另一台手机已连接"
           }
         }
       }
@@ -226,7 +226,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另一台设备正在使用"
+            "value" : "另一台手机正在用"
           }
         }
       }
@@ -387,26 +387,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消"
-          }
-        }
-      }
-    },
-    "Can’t reach %@. Check that Blurt is running and both are on the same network." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法连接 %@。请检查 Blurt 是否在运行，以及两台设备是否在同一网络。"
-          }
-        }
-      }
-    },
-    "Can’t reach %@. Check that it’s awake and Blurt is running." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连不上 %@。请确认 Mac 没有休眠，Blurt 正在运行。"
           }
         }
       }
@@ -667,16 +647,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "终端里复制"
-          }
-        }
-      }
-    },
-    "Couldn’t reach %@. Put this iPhone on the same network, or set a relay on that computer first." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连不上 %@。请让 iPhone 和它在同一网络，或先在那台电脑上设置中转。"
           }
         }
       }
@@ -1426,7 +1396,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 Mac 上为 Blurt 开启辅助功能。"
+            "value" : "在 Mac 的系统设置里给 Blurt 打开辅助功能。"
           }
         }
       }
@@ -1436,7 +1406,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 Mac 上为 Blurt 开启屏幕录制。"
+            "value" : "在 Mac 的系统设置里给 Blurt 打开屏幕录制。"
           }
         }
       }
@@ -1446,7 +1416,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上打开 Blurt 设置，选择“手机”。"
+            "value" : "在电脑上打开 Blurt 的设置，选「手机」。"
           }
         }
       }
@@ -2576,7 +2546,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音便签"
+            "value" : "语音备注"
           }
         }
       }
@@ -2771,6 +2741,116 @@
         }
       }
     },
+    "Can’t control %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法控制 %@"
+          }
+        }
+      }
+    },
+    "Can’t reach %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上 %@"
+          }
+        }
+      }
+    },
+    "Can’t show the screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示屏幕"
+          }
+        }
+      }
+    },
+    "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认 Blurt 在运行，两台设备在同一网络。\n要在外面连，先在电脑上设置中转。"
+          }
+        }
+      }
+    },
+    "Check that the computer isn’t asleep and Blurt is running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认电脑没有进入睡眠，Blurt 在运行。"
+          }
+        }
+      }
+    },
+    "Connected to %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接 %@"
+          }
+        }
+      }
+    },
+    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上 %@。确认两台设备在同一网络；要在外面连，先在电脑上设置中转。"
+          }
+        }
+      }
+    },
+    "Pair with your computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与电脑配对"
+          }
+        }
+      }
+    },
+    "Pairing didn’t work" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对没有成功"
+          }
+        }
+      }
+    },
+    "Reconnecting to %@…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新连接 %@…"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
     "Slide here to move the pointer" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2787,6 +2867,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点 %@ 显示屏幕"
+          }
+        }
+      }
+    },
+    "Touch to take over." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点这里，换成这台手机。"
+          }
+        }
+      }
+    },
+    "Waiting for your computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待电脑确认"
           }
         }
       }

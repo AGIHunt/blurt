@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun onResume() {
         super.onResume()
         immersive()
+        screen.inFront = true
         Remote.link.foreground()
     }
 
@@ -138,6 +139,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
 
     override fun onStop() {
         super.onStop()
+        screen.inFront = false
         Remote.link.background()
     }
 

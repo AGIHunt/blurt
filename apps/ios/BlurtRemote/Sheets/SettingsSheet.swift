@@ -124,7 +124,19 @@ struct SettingsSheet: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(m.title).foregroundStyle(.primary)
                         // with computers of more than one kind, each says which it is
-                        Text(kinds ? "\(m.host.kindName) · \(String(localized: state(of: m)))" : String(localized: state(of: m))).font(.footnote).foregroundStyle(.secondary)
+                        let words = kinds ? "\(m.host.kindName) · \(String(localized: state(of: m)))" : String(localized: state(of: m))
+                        // the one in hand, not connected: said at reading size with a mark, not as a caption (as the pad's card does)
+                        if m.id == l.current?.id, l.state != .connected {
+                            HStack(spacing: 6) {
+                                if l.state == .connecting { ProgressView().controlSize(.small) }
+                                else { Image(systemName: l.state == .replaced ? "iphone" : "exclamationmark.triangle.fill").foregroundStyle(l.state == .replaced ? Color.primary : Color(Theme.attn)) }
+                                Text(words)
+                            }
+                            .font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                            .accessibilityElement(children: .combine)
+                        } else {
+                            Text(words).font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer(minLength: 0)
                 }

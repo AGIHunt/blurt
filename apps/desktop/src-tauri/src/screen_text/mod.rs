@@ -1,8 +1,11 @@
 //! Copy Text from Screen on Windows / Linux (the Mac's ScreenText + ScreenTextCopy; docs/design/screen-text.md):
 //! `rules` is the Mac's geometry, ported; `grab` the picture of the area (`ocr_win`: GDI and Windows' own OCR;
-//! `grab_linux`: GNOME's Screenshot portal); `flow` is the key's whole path.
+//! `grab_linux`: GNOME's Screenshot portal); `flow` is the key's whole path; `direction` which way Alt+Shift+T
+//! translates; `history` what was read (the Text & Translation page).
 
+pub mod direction;
 pub mod grab;
+pub mod history;
 pub mod rules;
 
 #[cfg(any(windows, target_os = "linux"))]

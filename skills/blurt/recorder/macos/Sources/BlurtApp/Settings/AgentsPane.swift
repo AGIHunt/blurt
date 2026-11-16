@@ -16,6 +16,8 @@
 // from Details… or a double-click), whose pop-ups say the inherited value one way: "Default (Haiku)". The sheet also
 // has the agent's sign-in (Sign In… next to "Not signed in"), the blurt skill + MCP (Connect: agents.py install, a
 // --dry-run preview first, applied only after the user confirms), a test run, and in its header the version.
+// Other agent apps (agents.manual: WorkBuddy, Cursor… — no headless mode) organize when asked in their chat: a row
+// with the skill connected says so ("Organizes in its chat"), and the section's footnote has the request to copy.
 // "Ask your agent" (agents.ask) is the page's closing footnote with Examples… (a popover of
 // three requests, copy on hover): sending items anywhere is the agent's job with its own tools; this is where the old
 // Export pane's links land (SettingsCatalog.moved).
@@ -61,6 +63,10 @@ final class AgentsModel: ObservableObject {
     /// Their skill + MCP are in place (agents.py install --dry-run would change nothing): no Connect button. nil = not
     /// checked yet.
     @Published var connected: [String: Bool] = [:]
+
+    /// An installed agent app Blurt doesn't run in the background (WorkBuddy, Cursor…) that this pane found connected:
+    /// it organizes when asked in its chat. nil when none is known (the pane hasn't checked yet this run).
+    var chatAgentName: String? { rows.first { !$0.headless && $0.installed && connected[$0.id] == true }?.name }
 
     /// The pane opens at once: before the first check, the registry's agents in the saved order, each "Checking…";
     /// then the quick look (no sign-in probe), then the full one. Later opens show what the last check found.
@@ -356,7 +362,7 @@ struct AgentsPane: View {
             organizeSection
 
             if !apps.isEmpty {
-                SettingsGroup("agents.manual", footer: AL("agents.manual.footer")) {
+                SettingsGroup("agents.manual", note: AnyView(OrganizeInChatNote())) {
                     ForEach(apps) { a in agentRow(a, ordered: false) }
                 }
             }
@@ -497,7 +503,7 @@ struct AgentsPane: View {
     /// version after it, and a ⓘ when the state needs explaining.
     @ViewBuilder
     func stateLabel(_ a: CoreAgent) -> some View {
-        let state = Text(AgentFix.shortState(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+        let state = Text(AgentFix.shortState(a, connected: m.connected[a.id] == true)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
             .lineLimit(1)
         HStack(spacing: 4) {
             state
@@ -507,7 +513,7 @@ struct AgentsPane: View {
                     .padding(.leading, 2)
                     .help(AL("agents.details.version", v))
             }
-            if let h = AgentFix.stateHelp(a) { InfoButton(title: a.name, text: h) }
+            if let h = AgentFix.stateHelp(a, connected: m.connected[a.id] == true) { InfoButton(title: a.name, text: h) }
         }
         .fixedSize()            // the state never truncates: the name gives way first
     }
@@ -705,6 +711,26 @@ struct FlashWashAt: View {
     var id: String
     @ObservedObject private var flash = SettingsFlash.shared
     var body: some View { FlashWash(on: flash.row == id) }
+}
+
+/// The "Other agent apps" footnote: how they organize (asked in their chat, the request copyable) and how items reach
+/// them (Copy Instruction for Agent).
+struct OrganizeInChatNote: View {
+    @State private var copied = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(AL("agents.manual.footer")).fixedSize(horizontal: false, vertical: true)
+            InkLink(AL(copied ? "agents.request.copied" : "agents.request.copy")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AL("agents.request"), forType: .string)
+                copied = true
+                emit(["event": "agents_request_copied"])
+            }
+            .fixedSize()
+            Spacer(minLength: 0)
+        }
+    }
 }
 
 /// The three example requests, each copyable (the copy button shows on the line under the pointer), and how items
@@ -949,8 +975,9 @@ enum AgentFix {
     }
 
     /// The state in a word or two, for the row's right end (Signed in, Not signed in, Can't check sign-in, Installed).
-    static func shortState(_ a: CoreAgent) -> String {
-        if !a.headless { return AL(a.installed ? "agents.state.installed" : "agents.state.not_installed") }
+    /// An agent app with the skill in place says how it is used: it organizes in its chat.
+    static func shortState(_ a: CoreAgent, connected: Bool = false) -> String {
+        if !a.headless { return AL(!a.installed ? "agents.state.not_installed" : connected ? "agents.state.chat" : "agents.state.installed") }
         switch a.state {
         case "unknown", "configured": return AL("agents.state.unchecked")
         default: return stateText(a)
@@ -958,9 +985,9 @@ enum AgentFix {
     }
 
     /// What the short state leaves out, for its ⓘ: why a sign-in can't be checked, or how an app of its own gets blurt.
-    static func stateHelp(_ a: CoreAgent) -> String? {
+    static func stateHelp(_ a: CoreAgent, connected: Bool = false) -> String? {
         guard a.installed else { return nil }
-        if !a.headless { return AL("agents.state.manual.help") }
+        if !a.headless { return AL(connected ? "agents.state.chat.help" : "agents.state.manual.help", a.name) }
         switch a.state {
         case "unknown", "configured": return AL("agents.state.unchecked.help")
         default: return nil

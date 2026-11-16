@@ -44,6 +44,9 @@ png = "0.17"
 # Blurt on the phone (remote.rs): the host — protocol, pairing, sessions, each OS's screen and input — and the pairing QR code
 blurt-remote = { path = "../../../crates/blurt-remote" }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+# Alt+Shift+T's direction (screen_text/direction.rs): the text's language identified first (a statistical model over
+# trigrams and scripts, not word lists), so the model is asked for one language
+whatlang = "0.18"
 
 [target.'cfg(windows)'.dependencies]
 # Dictation (src/dictation): the low-level keyboard hook, SendInput, the clipboard, PlaySound; the mic through WASAPI

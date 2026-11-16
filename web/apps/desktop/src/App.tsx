@@ -4,15 +4,16 @@
 // (places, projects, + Open Folder…, the Settings gear), the list (its heading with the order, the filter, + New and
 // the search field; the running jobs; the grouped rows) and the detail (the item in the review component, several
 // items' summary, a job, or nothing). Every write goes through the CLIs; each undoable one is on the window's undo
-// stack (Ctrl+Z, the toast's Undo). Settings takes the list and detail columns when opened; the Dictation page takes
-// both, as on the Mac.
+// stack (Ctrl+Z, the toast's Undo). Settings takes the list and detail columns when opened; so do the pages — Home,
+// Dictation, Cards, Phone —, as on the Mac. Everything follows the capability switches (docs/design/capabilities.md):
+// an off capability has no place in the sidebar, the palette, the toolbar or the keys; the first open lands on Home.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '@blurt/icons';
 import { applyPlatform, applyTheme, menuCase, targetOf, type Action, type State } from '@blurt/ui';
 import { KindIcon, StatusRing } from '@blurt/ui/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { api, inTauri, invoke, listen, type AppStatus, type AttachResult, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
+import { api, builds, inTauri, invoke, listen, type AppStatus, type AttachResult, type HotkeyRow, type ItemRow, type Job, type Onboarding, type ProjectList, type ProjectRow, type Summary } from './api';
 import { codeUrl, hostFor, type HostCallbacks } from './host';
 import type { ReviewHandle } from './review';
 import { errText, i18n, plural, setLang, t } from './i18n';
@@ -29,6 +30,7 @@ import {
   group,
   grouping as groupingOf,
   handOffBlock,
+  isPage,
   isProject,
   LIVE_STATES,
   NO_FILTER,
@@ -67,6 +69,13 @@ import { Shortcuts } from './components/Shortcuts';
 import { AgentSetupAsk } from './components/AgentSetupAsk';
 import { Sidebar, webview } from './components/Sidebar';
 import { Welcome } from './components/Welcome';
+import { HomePage } from './components/HomePage';
+import { CardsPage } from './components/CardsPage';
+import { PhonePage } from './components/PhonePage';
+import { ScreenTextPage } from './components/ScreenTextPage';
+import { useOff } from './components/useCapabilities';
+import { useRemoteStatus } from './settings/phone';
+import { phoneNeedsAttention, placeShown } from './capabilities';
 import './components/main-window.css';
 
 const LIMIT = 20_000;
@@ -84,6 +93,8 @@ interface Saved {
   detail?: boolean;
   sideW?: number;
   listW?: number;
+  /** Home has been shown once: the first open (an upgrade's too) lands there, later ones where the window was left */
+  homeSeen?: boolean;
 }
 const loadSaved = (): Saved => {
   try {
@@ -111,7 +122,7 @@ function startPlace(sv: string | null | undefined): { place?: Place; screen?: Sc
   if (sv.startsWith('review:')) return { session: sv.slice(7) };
   if (sv.startsWith('project:')) return { place: sv as Place };
   if (sv === 'settings') return { screen: { kind: 'settings' } };
-  if (['inbox', 'all', 'dictation', 'progress', 'unassigned'].includes(sv)) return { place: sv as Place };
+  if (['home', 'cards', 'screen_text', 'phone', 'inbox', 'all', 'dictation', 'progress', 'unassigned'].includes(sv)) return { place: sv as Place };
   if (sv === 'items') return { place: 'all' };
   return {};
 }
@@ -131,7 +142,10 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectList | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [place, setPlace] = useState<Place>(saved.place ?? 'inbox');
+  const [place, setPlace] = useState<Place>(saved.homeSeen ? saved.place ?? 'home' : 'home');
+  const { off, known: offKnown } = useOff();
+  const recordingOn = !off.has('recording');
+  const remote = useRemoteStatus();
   const [cardsWaiting, setCardsWaiting] = useState(0);
   const [screen, setScreen] = useState<Screen>({ kind: 'main' });
   const [filters, setFilters] = useState<Record<string, PlaceFilter>>(saved.filters ?? {});
@@ -292,7 +306,7 @@ export default function App() {
         if (p.ev === 'error' && p.code) showToast(t(`error.${p.code}`) === `error.${p.code}` ? t('error.unknown') : t(`error.${p.code}`));
       }),
       listen<{ view?: string; item?: string; session?: string; job?: string | null; project?: string }>('nav', (p) => {
-        if (p.view === 'inbox' || p.view === 'dictation') live.current.go(p.view);
+        if (p.view === 'inbox' || p.view === 'dictation' || p.view === 'home' || p.view === 'cards' || p.view === 'screen_text' || p.view === 'phone') live.current.go(p.view);
         else if (p.view === 'settings') setScreen({ kind: 'settings' }); // the tray's Settings… (the pane: SettingsView)
         else if (p.view === 'welcome') api.onboarding().then((o) => setWelcome({ onb: o, firstRun: o.needed }), () => {}); // blurt://onboarding
         else if (p.job) live.current.openJob(p.job);
@@ -325,7 +339,7 @@ export default function App() {
   useEffect(() => {
     const h = setTimeout(() => {
       try {
-        const s: Saved = { place, sort, ascending, filters, selected: [...selected].slice(0, 200), sidebar: sideHidden, detail: detailHidden, sideW, listW };
+        const s: Saved = { place, sort, ascending, filters, selected: [...selected].slice(0, 200), sidebar: sideHidden, detail: detailHidden, sideW, listW, homeSeen: true };
         localStorage.setItem(STORE, JSON.stringify(s));
       } catch {
         /* a private window: nothing kept */
@@ -348,7 +362,7 @@ export default function App() {
   const kindsOn = filter.kinds.length > 0 || (showsState(place) && !!filter.state);
   const filtered = kindsOn || searching;
   useEffect(() => {
-    if (place === 'dictation') return;
+    if (isPage(place)) return;
     let alive = true;
     api.items(query).then(
       (r) => {
@@ -367,7 +381,7 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [query, tick, place === 'dictation']);
+  }, [query, tick, isPage(place)]);
 
   const how = groupingOf(place, searching);
   const grouped = useMemo(() => {
@@ -380,7 +394,7 @@ export default function App() {
   const placeEmpty = loaded && !missing && rows.length === 0 && !filtered;
   const emptyWorld = !!summary && !summary.missing && summary.items === 0 && (summary.discarded ?? 0) === 0;
   const quietDetail = emptyWorld || missing || rows.length === 0;
-  const fold = place !== 'dictation' && !detail && (placeEmpty || missing);
+  const fold = !isPage(place) && !detail && (placeEmpty || missing);
 
   // the selection follows the rows: kept by uid; one that left the list hands its place to the next row (Mail)
   const lastIndex = useRef(0);
@@ -443,9 +457,14 @@ export default function App() {
       lastIndex.current = 0;
       setPlace(p);
     }
-    if (p !== 'dictation' && opts?.focusList !== false)
+    if (!isPage(p) && opts?.focusList !== false)
       requestAnimationFrame(() => !document.activeElement?.closest('.mw-rename') && listRef.current?.focus({ preventScroll: true }));
   };
+
+  // the place on show belongs to a capability just turned off (here, in Settings, by hand in config.json): Home
+  useEffect(() => {
+    if (offKnown && !placeShown(place, off)) go('home', { focusList: false });
+  }, [off, offKnown, place]);
 
   /** An item from a link, a notification, a job or the palette: the place on show if it lists it, else its project —
       with the search and the kinds cleared, Discarded where it is discarded. */
@@ -811,7 +830,7 @@ export default function App() {
   /** The detail's zone: the item on show (a drop or a paste adds to it); none while it shows a batch, a job, several
       items or nothing. */
   const detailZone = (): Extract<Zone, { kind: 'item' }> | null =>
-    current1 && !detail && screen.kind === 'main' && place !== 'dictation'
+    current1 && !detail && screen.kind === 'main' && !isPage(place)
       ? { kind: 'item', uid: current1.uid, title: current1.title || current1.item_id || t('main.item.untitled') }
       : null;
   /** The list's zones: an item's row adds to it; anything else in the list (the band, the empty area, an empty
@@ -1181,14 +1200,15 @@ export default function App() {
     }, () => {});
   };
   const moreMenu = (): MenuEntry[] => tidy([
-    { label: t('main.new_item.menu'), icon: <Icon name="plus" size={14} />, keys: 'Ctrl+N', disabled: place === 'dictation', run: () => setNewItem(true) },
-    { label: t('project.open_folder'), icon: <Icon name="folder-plus" size={14} />, keys: 'Ctrl+O', run: openFolder },
-    registered.length > 0 && { label: t('menu.open_recent'), icon: <Icon name="folder" size={14} />, submenu: registered.slice(0, 10).map((p): MenuEntry => ({ label: p.name, icon: <ProjectGlyph id={p.id} size={14} />, tip: p.path, run: () => go(`project:${p.id}`) })) },
-    { label: t('menu.rescan'), icon: <Icon name="refresh" size={14} />, run: () => api.rescan().catch(fail) },
+    // items and projects are Recording & Items': with it off, none of these
+    recordingOn && { label: t('main.new_item.menu'), icon: <Icon name="plus" size={14} />, keys: 'Ctrl+N', disabled: isPage(place), run: () => setNewItem(true) },
+    recordingOn && { label: t('project.open_folder'), icon: <Icon name="folder-plus" size={14} />, keys: 'Ctrl+O', run: openFolder },
+    recordingOn && registered.length > 0 && { label: t('menu.open_recent'), icon: <Icon name="folder" size={14} />, submenu: registered.slice(0, 10).map((p): MenuEntry => ({ label: p.name, icon: <ProjectGlyph id={p.id} size={14} />, tip: p.path, run: () => go(`project:${p.id}`) })) },
+    recordingOn && { label: t('menu.rescan'), icon: <Icon name="refresh" size={14} />, run: () => api.rescan().catch(fail) },
     { kind: 'separator' },
     // the Mac's View menu words: what the item does now, not "Show or Hide"
     { label: t(sideOff ? 'menu.show_sidebar' : 'menu.hide_sidebar'), icon: <SidebarGlyph size={14} />, keys: 'Ctrl+Shift+S', run: toggleSide },
-    { label: t(detailHidden ? 'menu.show_detail' : 'menu.hide_detail'), icon: <SidebarGlyph right size={14} />, keys: 'Ctrl+Alt+I', disabled: place === 'dictation', run: () => setDetailHidden((h) => !h) },
+    { label: t(detailHidden ? 'menu.show_detail' : 'menu.hide_detail'), icon: <SidebarGlyph right size={14} />, keys: 'Ctrl+Alt+I', disabled: isPage(place), run: () => setDetailHidden((h) => !h) },
     { kind: 'separator' },
     { label: t('menu.palette'), icon: <Icon name="search" size={14} />, keys: 'Ctrl+K', run: () => setPalette(true) },
     { label: t('menu.shortcuts'), icon: <Icon name="keyboard" size={14} />, keys: 'Ctrl+/', run: () => setKeysOpen(true) },
@@ -1233,7 +1253,8 @@ export default function App() {
 
   // ---------------------------------------------------------------- the heading
   const scopeTitle = place === 'inbox' ? t('main.place.inbox') : place === 'progress' ? t('main.place.progress') : place === 'unassigned' ? t('project.inbox')
-    : place === 'all' ? t('main.place.all') : place === 'dictation' ? t('dictation.history.sidebar') : shownProject?.name ?? t('main.place.project');
+    : place === 'all' ? t('main.place.all') : place === 'dictation' ? t('dictation.history.sidebar') : place === 'home' ? t('home.title')
+      : place === 'cards' ? t('cards.title') : place === 'screen_text' ? t('feature.screen_text') : place === 'phone' ? t('feature.phone') : shownProject?.name ?? t('main.place.project');
   const headTitle = searching ? t('main.search.title', { a: text.trim() }) : scopeTitle;
   const counts = (() => {
     if (!loaded || missing || !rows.length) return '';
@@ -1472,17 +1493,19 @@ export default function App() {
       const n = /^[1-9]$/.test(key) ? Number(key) : 0;
       if (key === 'k') return stop(() => setPalette((p) => !p));
       if (key === 'f') return stop(focusSearch);
-      if (key === 'o') return stop(openFolder);
-      if (key === 'n' && place !== 'dictation') return stop(() => setNewItem(true));
+      if (key === 'o' && recordingOn) return stop(openFolder);
+      if (key === 'n' && recordingOn && !isPage(place)) return stop(() => setNewItem(true));
       if (key === ',') return stop(() => setScreen({ kind: 'settings' }));
       if (key === '/') return stop(() => setKeysOpen(true));
       // the window's own close (Blurt stays in the notification area)
       if (key === 'w' && inTauri) return stop(() => void getCurrentWindow().close().catch(() => {}));
       if (key === 'i' && shownProject) return stop(() => setSettingsFor(shownProject));
-      if (n >= 1 && n <= 4) return stop(() => go((['inbox', 'progress', 'unassigned', 'all'] as Place[])[n - 1]));
-      if (n >= 5) return stop(() => registered[n - 5] && go(`project:${registered[n - 5].id}`));
+      // Ctrl+0 Home; Ctrl+1–4 the items' places and Ctrl+5–9 the projects, while Recording & Items is on
+      if (key === '0') return stop(() => go('home'));
+      if (n >= 1 && n <= 4 && recordingOn) return stop(() => go((['inbox', 'progress', 'unassigned', 'all'] as Place[])[n - 1]));
+      if (n >= 5 && recordingOn) return stop(() => registered[n - 5] && go(`project:${registered[n - 5].id}`));
     }
-    if (ctrl && e.altKey && !e.shiftKey && !overlay && key === 'd') return stop(() => go('dictation'));
+    if (ctrl && e.altKey && !e.shiftKey && !overlay && key === 'd' && !off.has('dictation')) return stop(() => go('dictation'));
     if (ctrl && e.altKey && !e.shiftKey && !overlay && key === 'i') return stop(() => setDetailHidden((h) => !h));
     if (ctrl && e.shiftKey && !e.altKey && !overlay && key === 's') return stop(toggleSide);
     if (ctrl && e.shiftKey && !overlay && key === 'r' && selectedRows.length) return stop(() => revealItems(selectedRows));
@@ -1495,7 +1518,7 @@ export default function App() {
       if (inDetail && !field) return stop(focusList);
       return;
     }
-    if (overlay || field || inDetail || renaming || (menu.isOpen && stateMenu) || screen.kind !== 'main' || place === 'dictation') return;
+    if (overlay || field || inDetail || renaming || (menu.isOpen && stateMenu) || screen.kind !== 'main' || isPage(place)) return;
     const sel = selectedRows;
     // Hand Off: Ctrl+Enter, and Ctrl+Shift+C (Copy Instruction's key before it was the one hand-off)
     if ((ctrl && e.key === 'Enter') || (ctrl && e.shiftKey && key === 'c')) return stop(() => sel.length && void handOff(sel.map((i) => i.uid)));
@@ -1570,7 +1593,7 @@ export default function App() {
     const field = inField(el);
     const item = detailZone();
     const types = [...(e.clipboardData?.types ?? [])];
-    const to = pasteTarget({ field, detail: !!el?.closest?.('.mw-detail'), item: !!item, files: types.includes('Files'), main: screen.kind === 'main' && place !== 'dictation' });
+    const to = pasteTarget({ field, detail: !!el?.closest?.('.mw-detail'), item: !!item, files: types.includes('Files'), main: screen.kind === 'main' && !isPage(place) });
     if (to === 'page' || to === 'none') return;
     const sync = { files: [...(e.clipboardData?.files ?? [])], text: e.clipboardData?.getData('text/plain') ?? '', field: field ? el : null };
     e.preventDefault();
@@ -1620,24 +1643,35 @@ export default function App() {
         { id: 'enrich', title: t('main.menu.enrich'), icon: ic('text-plus'), section: 'selected', run: () => enrich(items) },
       );
     }
+    // only what the capabilities that are on can do (an off one's places and actions aren't offered)
+    const rec = recordingOn;
+    const on = (c: Parameters<typeof off.has>[0]) => !off.has(c);
     out.push(
-      { id: 'record', title: t('main.action.record'), icon: ic('record'), keys: hotkeyOf('record') || undefined, hint: t('main.toolbar.record.tip', { a: '' }).trim(), section: 'capture', pinned: true, run: record },
-      { id: 'snap', title: t('main.action.snap'), icon: ic('screenshot'), keys: hotkeyOf('snap') || undefined, hint: t('main.toolbar.snap.tip', { a: '' }).trim(), section: 'capture', pinned: true, run: snap },
-      { id: 'go:inbox', title: t('main.place.inbox'), icon: ic('inbox'), keys: 'Ctrl+1', section: 'go', pinned: true, run: () => go('inbox') },
-      { id: 'go:progress', title: t('main.place.progress'), icon: <ProgressGlyph size={15} />, keys: 'Ctrl+2', section: 'go', pinned: true, run: () => go('progress') },
-      { id: 'go:unassigned', title: t('project.inbox'), icon: <Icon name="tray-2" size={15} />, keys: 'Ctrl+3', section: 'go', run: () => go('unassigned') },
-      { id: 'go:all', title: t('main.place.all'), icon: ic('list-box'), keys: 'Ctrl+4', section: 'go', pinned: true, run: () => go('all') },
-      { id: 'go:dictation', title: t('dictation.history.menu'), icon: ic('character-cursor'), keys: 'Ctrl+Alt+D', section: 'go', pinned: true, run: () => go('dictation') },
-      { id: 'new_item', title: t('main.new_item.menu'), icon: ic('plus'), keys: 'Ctrl+N', run: () => setNewItem(true) },
-      { id: 'open_folder', title: t('project.open_folder'), icon: ic('folder-plus'), keys: 'Ctrl+O', run: openFolder },
-      ...(kindsOn ? [{ id: 'clear_filters', title: t('main.empty.clear_filters'), icon: <FilterGlyph size={15} />, run: () => setFilter(NO_FILTER) }] : []),
-      { id: 'rescan', title: t('menu.rescan'), icon: ic('refresh'), run: () => api.rescan().catch(fail) },
+      ...(rec ? [{ id: 'record', title: t('main.action.record'), icon: ic('record'), keys: hotkeyOf('record') || undefined, hint: t('main.toolbar.record.tip', { a: '' }).trim(), section: 'capture', pinned: true, run: record } as PaletteEntry] : []),
+      ...(on('cards') ? [{ id: 'snap', title: t('main.action.snap'), icon: ic('screenshot'), keys: hotkeyOf('snap') || undefined, hint: t('main.toolbar.snap.tip', { a: '' }).trim(), section: 'capture', pinned: true, run: snap } as PaletteEntry] : []),
+      { id: 'go:home', title: t('home.title'), icon: ic('home'), keys: 'Ctrl+0', section: 'go', pinned: true, run: () => go('home') },
+      ...(on('dictation') ? [{ id: 'go:dictation', title: t('dictation.history.menu'), icon: ic('character-cursor'), keys: 'Ctrl+Alt+D', section: 'go', pinned: true, run: () => go('dictation') } as PaletteEntry] : []),
+      ...(on('cards') ? [{ id: 'go:cards', title: t('cards.title'), icon: ic('cards'), section: 'go', run: () => go('cards') } as PaletteEntry] : []),
+      ...(on('screen_text') && status && builds(status).screenText ? [{ id: 'go:screen_text', title: t('feature.screen_text'), icon: ic('text-viewfinder'), section: 'go', run: () => go('screen_text') } as PaletteEntry] : []),
+      ...(on('phone') ? [{ id: 'go:phone', title: t('feature.phone'), icon: ic('phone'), section: 'go', run: () => go('phone') } as PaletteEntry] : []),
+      ...(rec
+        ? ([
+            { id: 'go:inbox', title: t('main.place.inbox'), icon: ic('inbox'), keys: 'Ctrl+1', section: 'go', pinned: true, run: () => go('inbox') },
+            { id: 'go:progress', title: t('main.place.progress'), icon: <ProgressGlyph size={15} />, keys: 'Ctrl+2', section: 'go', pinned: true, run: () => go('progress') },
+            { id: 'go:unassigned', title: t('project.inbox'), icon: <Icon name="tray-2" size={15} />, keys: 'Ctrl+3', section: 'go', run: () => go('unassigned') },
+            { id: 'go:all', title: t('main.place.all'), icon: ic('list-box'), keys: 'Ctrl+4', section: 'go', pinned: true, run: () => go('all') },
+            { id: 'new_item', title: t('main.new_item.menu'), icon: ic('plus'), keys: 'Ctrl+N', run: () => setNewItem(true) },
+            { id: 'open_folder', title: t('project.open_folder'), icon: ic('folder-plus'), keys: 'Ctrl+O', run: openFolder },
+            ...(kindsOn ? [{ id: 'clear_filters', title: t('main.empty.clear_filters'), icon: <FilterGlyph size={15} />, run: () => setFilter(NO_FILTER) }] : []),
+            { id: 'rescan', title: t('menu.rescan'), icon: ic('refresh'), run: () => api.rescan().catch(fail) },
+          ] as PaletteEntry[])
+        : []),
       { id: 'shortcuts', title: t('menu.shortcuts'), icon: ic('keyboard'), keys: '?', run: () => setKeysOpen(true) },
-      ...KINDS.map((k): PaletteEntry => ({ id: `only:${k}`, title: t('main.palette.only_kind', { a: t(`kind.${k}`) }), icon: <KindIcon kind={k} size={15} />, run: () => setFilter({ ...filter, kinds: [k] }) })),
-      ...jobs.filter((j) => j.state === 'running' || j.state === 'queued').map((j): PaletteEntry => ({ id: `job:${j.id}`, title: jobTitle(j), icon: ic('spark'), run: () => openJob(j) })),
+      ...(rec ? KINDS.map((k): PaletteEntry => ({ id: `only:${k}`, title: t('main.palette.only_kind', { a: t(`kind.${k}`) }), icon: <KindIcon kind={k} size={15} />, run: () => setFilter({ ...filter, kinds: [k] }) })) : []),
+      ...(rec ? jobs.filter((j) => j.state === 'running' || j.state === 'queued').map((j): PaletteEntry => ({ id: `job:${j.id}`, title: jobTitle(j), icon: ic('spark'), run: () => openJob(j) })) : []),
       { id: 'settings', title: t('mw.settings_menu'), icon: ic('settings'), keys: 'Ctrl+,', run: () => setScreen({ kind: 'settings' }) },
     );
-    for (const p of registered) {
+    for (const p of rec ? registered : []) {
       out.push({ id: `project:${p.id}`, title: p.name, icon: <ProjectGlyph id={p.id} size={15} />, hint: p.id === current ? t('main.project.current_count', { a: p.path }) : t('main.palette.project', { a: p.path }), run: () => go(`project:${p.id}`) });
       // a move target is a project the items aren't all in already, whose folder is there; it carries its own folder
       if (items.length && p.exists && !items.every((i) => i.project_id === p.id))
@@ -1682,17 +1716,19 @@ export default function App() {
 
   const mainScreen = screen.kind === 'main';
   const dictationPage = mainScreen && place === 'dictation';
+  /** a page of its own (Home, Dictation, Cards, Phone): it takes the list and the detail columns */
+  const pageShown = mainScreen && isPage(place);
   // a narrow window with the sidebar shown on demand: sidebar and list, the detail comes back once a place is picked
   // the sidebar shown on demand in a narrow window lies over the list (Windows 11 NavigationView's overlay pane):
   // nothing under it reflows, the open item stays open; a click outside, Esc or a pick folds it back (windows-parity
   // main-window.md 12.1 / 14.4)
   const peek = narrow && sidePeek && screen.kind !== 'settings';
-  const showDetail = mainScreen && !dictationPage && !detailHidden && !fold;
+  const showDetail = mainScreen && !pageShown && !detailHidden && !fold;
   const sideFit = narrow ? sideW : Math.max(190, Math.min(sideW, winW - 330 - 380));
   const sideIn = sideOff || peek ? 0 : sideFit;
   const listFit = Math.max(330, Math.min(listW, winW - sideIn - 380));
-  const cols = [`${sideIn}px`, !mainScreen || dictationPage ? '1fr' : showDetail ? `${listFit}px` : '1fr', showDetail ? `minmax(${winW < 710 ? 0 : 380}px, 1fr)` : '0px'].join(' ');
-  const empty = mainScreen && !dictationPage ? emptyView() : null;
+  const cols = [`${sideIn}px`, !mainScreen || pageShown ? '1fr' : showDetail ? `${listFit}px` : '1fr', showDetail ? `minmax(${winW < 710 ? 0 : 380}px, 1fr)` : '0px'].join(' ');
+  const empty = mainScreen && !pageShown ? emptyView() : null;
   // a toast sits under the column it is about — the detail's when there is one, else the content's — never across a
   // pane divider (it straddled the list and the detail when centred on the window)
   const toastAt = (() => {
@@ -1710,13 +1746,18 @@ export default function App() {
         <span className="grow" />
         {!dictationPage && (
           <>
-            {/* icon-only, as the Mac's toolbar: the words and the user's key are the tooltip */}
-            <button className="mw-tool sq" onClick={record} aria-label={t('main.action.record')} title={t('main.toolbar.record.tip', { a: hotkeyOf('record') }).trim()} data-testid="record">
-              <Icon name="record" size={16} />
-            </button>
-            <button className="mw-tool sq" onClick={snap} aria-label={t('main.action.snap')} title={t('main.toolbar.snap.tip', { a: hotkeyOf('snap') }).trim()} data-testid="snap">
-              <Icon name="screenshot" size={16} />
-            </button>
+            {/* icon-only, as the Mac's toolbar: the words and the user's key are the tooltip; each only while its
+                capability is on */}
+            {recordingOn && (
+              <button className="mw-tool sq" onClick={record} aria-label={t('main.action.record')} title={t('main.toolbar.record.tip', { a: hotkeyOf('record') }).trim()} data-testid="record">
+                <Icon name="record" size={16} />
+              </button>
+            )}
+            {!off.has('cards') && (
+              <button className="mw-tool sq" onClick={snap} aria-label={t('main.action.snap')} title={t('main.toolbar.snap.tip', { a: hotkeyOf('snap') }).trim()} data-testid="snap">
+                <Icon name="screenshot" size={16} />
+              </button>
+            )}
           </>
         )}
         <button className="mw-tool" onClick={(e) => menu.open(moreMenu(), { x: 0, y: 0, anchor: e.currentTarget }, t('mw.more'))} aria-label={t('mw.more')} title={t('mw.more')} aria-haspopup="menu" data-testid="more">
@@ -1740,6 +1781,10 @@ export default function App() {
               onDropAt={(e, p, phase) => sidebarDrop(e, p ?? listTarget, phase)}
               onOpenFolder={openFolder}
               onSettings={() => setScreen({ kind: 'settings' })}
+              off={off}
+              screenText={!!status && builds(status).screenText}
+              cards={cardsWaiting}
+              phoneAlert={!!remote && phoneNeedsAttention(remote)}
               onProjectMenu={(p, at) => menu.open(projectMenu(p), at, p.name)}
               renaming={renamingProject}
               onRename={(id) => setRenamingProject(id)}
@@ -1756,7 +1801,7 @@ export default function App() {
       {screen.kind === 'settings' && status && (
         <main className="mw-wide content">
           <section className="pad st-host">
-            <SettingsView status={status} onToast={(m) => showToast(m)} onBack={() => setScreen({ kind: 'main' })} onWelcome={() => api.onboarding().then((o) => setWelcome({ onb: o, firstRun: false }), fail)} onLang={(l) => (l === 'auto' ? api.status().then((s) => relang(s.lang)) : relang(l))} />
+            <SettingsView status={status} onToast={(m) => showToast(m)} onBack={() => setScreen({ kind: 'main' })} onGo={(p) => (setScreen({ kind: 'main' }), go(p))} onWelcome={() => api.onboarding().then((o) => setWelcome({ onb: o, firstRun: false }), fail)} onLang={(l) => (l === 'auto' ? api.status().then((s) => relang(s.lang)) : relang(l))} />
           </section>
         </main>
       )}
@@ -1766,7 +1811,29 @@ export default function App() {
         </main>
       )}
 
-      {mainScreen && !dictationPage && (
+      {pageShown && place === 'home' && status && (
+        <main className="mw-wide content">
+          <HomePage status={status} hotkeys={hotkeys} summary={summary} cardsWaiting={cardsWaiting} onGo={go} onReveal={(uid) => void reveal(uid)} onToast={(m) => showToast(m)}
+            onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} tick={tick} />
+        </main>
+      )}
+      {pageShown && place === 'cards' && (
+        <main className="mw-wide content">
+          <CardsPage hotkeys={hotkeys} platform={platform} onSnap={snap} onToast={(m, undo) => showToast(m, undo ? { undo } : {})} />
+        </main>
+      )}
+      {pageShown && place === 'screen_text' && (
+        <main className="mw-wide content">
+          <ScreenTextPage hotkeys={hotkeys} onToast={(m) => showToast(m)} onSettings={() => (setScreen({ kind: 'settings' }), goSettingsPane('screentext'))} />
+        </main>
+      )}
+      {pageShown && place === 'phone' && status && (
+        <main className="mw-wide content">
+          <PhonePage status={status} onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} />
+        </main>
+      )}
+
+      {mainScreen && !pageShown && (
         <section
           className="mw-list"
           ref={listRef}

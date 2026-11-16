@@ -65,13 +65,14 @@ items your agent can work on.
 
 - `⌥⇧R` starts and stops a recording of an area, a window or the full screen. Hold `⌃` and drag to circle something;
   the ink fades after 3 s. (`README.md` §How it feels)
-- Your coding agent splits the recording into items (issues, ideas, notes, tasks), picks a frame for each, marks the
+- Your agent splits the recording into items (issues, ideas, notes, tasks), picks a frame for each, marks the
   spot, and writes actual vs. expected, repro steps and suspected code. (`README.md`)
 - You review each item with the keyboard (`A` keep, `X` discard, `J/K` next and previous), then export to
   Markdown/CSV or a hand-off bundle (`.zip`), have your agent file them wherever your team works (GitHub, Linear,
   Feishu/Lark, Slack…) with its own tools, or let the agent fix them. (`README.md`, `skills/blurt/reference/export-other.md`)
-- **Copy instruction** gives your own agent one line that points at a hand-off note with the items, what you said,
-  steps, suspected code and screenshots. Blurt doesn't run agents in a window of its own. Agents report back through
+- **Copy Instruction for Agent** (`⌘↩`) puts one line on the clipboard for your own agent (Claude Code, Codex,
+  WorkBuddy, Cursor…), pointing at a hand-off note with the items, what you said, steps, suspected code and
+  screenshots. You paste it; Blurt doesn't start or pick an agent for this. Agents report back through
   Blurt's MCP; "fixed" from an agent always means *to verify*. (`docs/guide.md` §5, `skills/blurt/SKILL.md` §7)
 - Teammates without the code can record with the app and send the video; the developer's agent processes it with the
   code at hand. (`README.md` §Solo or team)
@@ -142,7 +143,7 @@ What polish keeps (Blurt, synthetic eval sets):
 | Custom words | Words (a list of names and terms), learned from your corrections (with Undo), plus the text around the cursor; words are hints, never replacements | Personal dictionary | Dictionary | Vocabulary and replacements | Personal dictionary (Pro) |
 | Snap and voice-note cards for agents | Yes | No | No | No | No |
 | Screen recording → items with frames and code pointers | Yes | No | No | No | No |
-| Hand-off to coding agents, status back through MCP | Yes (Claude Code, Codex; Kimi Code, OpenCode, Gemini CLI for processing) | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
+| Hand-off to coding agents, status back through MCP | Yes (any agent you paste the instruction into; it reports back through the MCP) | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
 
 ---
 
@@ -213,9 +214,10 @@ the capital letter was kept ("I think The new layout is fine").
   screenshots, relative paths only) that the agent or you send wherever the team is. There is no Feishu exporter
   and no export settings; "Bundle the checkout issues and post them to #web in Slack" is a request to your agent.
   (`skills/blurt/SKILL.md` §6, `export_local.py bundle`, MCP `bundle_items`)
-- **No agent of its own.** Recordings are processed by the first coding agent you have installed and signed in:
-  Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. Your agent gets better on its own schedule, and Blurt
-  works with the next one too.
+- **No agent of its own.** Any agent with the Blurt skill organizes recordings when you ask in its chat ("process
+  my Blurt recordings"), GUI apps like WorkBuddy, Cursor and CodeBuddy included. The app also organizes in the
+  background with the first agent CLI you have installed and signed in: Claude Code, then Codex, Kimi Code, OpenCode,
+  Gemini CLI, Grok. Your agent gets better on its own schedule, and Blurt works with the next one too.
 - **No cloud service.** There is no Blurt server and no account. Speech is transcribed on your computer. The only
   network traffic is the model downloads, update checks, a cloud speech key if you add one, and whatever your own
   agent sends to its provider.

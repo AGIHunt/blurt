@@ -52,12 +52,12 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 
 - `⌥⇧R` 开始、再按一次结束，可以录一块区域、一个窗口或全屏。按住 `⌃` 拖动可以在屏幕上圈出来，笔迹 3 秒后消失。
   （`README.zh-CN.md` §用起来是什么样）
-- 你的 coding agent 把录屏拆成事项（问题、想法、笔记、待办），给每个事项挑一帧截图、框出位置，写好实际效果和预期效果、复现步骤、
+- 你的 Agent 把录屏拆成事项（问题、想法、笔记、待办），给每个事项挑一帧截图、框出位置，写好实际效果和预期效果、复现步骤、
   可能有关的代码。（`README.zh-CN.md`）
 - 用键盘一条条过（`A` 要做、`X` 丢弃、`J/K` 下一条/上一条），然后导出成 Markdown/CSV 或交接包（`.zip`），让 Agent 用它自己的工具
   建到团队在用的地方（GitHub、Linear、飞书、Slack……），或者让 Agent 去改。（`README.zh-CN.md`、`skills/blurt/reference/export-other.md`）
-- 「复制指令」给你自己的 Agent 一行指令，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。口喷鸡不在自己的窗口里运行
-  Agent。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/SKILL.md` §7）
+- 「复制指令给 Agent」（`⌘↩`）把一行指令复制到剪贴板，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。由你粘贴给
+  自己的 Agent（Claude Code、Codex、WorkBuddy、Cursor……），口喷鸡不为此启动或挑选 Agent。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/SKILL.md` §7）
 - 没有代码的同事也能用 App 录屏，把视频发过来，开发这边的 Agent 结合代码处理。（`README.zh-CN.md`）
 
 ---
@@ -124,7 +124,7 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 | 自定义词 | 词库，会从你的修改里学（可撤销），也参考光标前后的文字；词只作提示，从不替换 | 个人词典 | 词典 | 词汇和替换规则 | 个人词典（Pro） |
 | 截图、语音备注卡片，交给 Agent | 有 | 没有 | 没有 | 没有 | 没有 |
 | 录屏整理成带截图和代码定位的事项 | 有 | 没有 | 没有 | 没有 | 没有 |
-| 交给 coding agent，并通过 MCP 回报状态 | 有（Claude Code、Codex；整理录屏还支持 Kimi Code、OpenCode、Gemini CLI） | 没有 | 没有 | 没有 | 免费版列出了「MCP/CLI」，没有细看 |
+| 交给 coding agent，并通过 MCP 回报状态 | 有（指令粘贴到哪个 Agent 都行；它通过 MCP 回报） | 没有 | 没有 | 没有 | 免费版列出了「MCP/CLI」，没有细看 |
 
 ---
 
@@ -182,8 +182,9 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
   录屏送进 Agent，投递交给 Agent。口喷鸡自己只写文件：Markdown、CSV，以及交接包（一个 `.zip`，有概要、每一条和它的截图，只用相对
   路径），由 Agent 或你发到团队在用的地方。没有飞书导出，也没有导出设置；「把 A 模块的问题打包发给飞书群里的张三」是对 Agent 说的话。
   （`skills/blurt/SKILL.md` §6、`export_local.py bundle`、MCP `bundle_items`）
-- **不做自己的 Agent。** 录屏由你已经安装并登录的第一个 coding agent 处理：先 Claude Code，然后 Codex、Kimi Code、OpenCode、
-  Gemini CLI。Agent 自己会变强，下一个新 Agent 出来，口喷鸡也能配合。
+- **不做自己的 Agent。** 装了口喷鸡 skill 的 Agent 都能整理录屏：在对话里说「处理我录的视频」，WorkBuddy、Cursor、CodeBuddy 这类
+  App 也行。口喷鸡 App 也能在后台整理，用你已经安装并登录的第一个命令行 Agent：先 Claude Code，然后 Codex、Kimi Code、OpenCode、
+  Gemini CLI、Grok。Agent 自己会变强，下一个新 Agent 出来，口喷鸡也能配合。
 - **不做云服务。** 没有口喷鸡的服务器，也不用注册账号。语音在你的电脑上转写。联网只有这几种情况：下载模型、检查更新、你自己加的云端语音密钥、
   你的 Agent 发给它的服务商的内容。
 - **听写不改写。** 不概括、不翻译、不回答、不改语气。想要更整齐的版本，按 `⇧` 或 `⌥⇧L`。

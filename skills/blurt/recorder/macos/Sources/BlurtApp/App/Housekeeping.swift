@@ -11,7 +11,7 @@
 //                            quiet line in the island offers Settings → Speech — pending until it was seen (a launch
 //                            whose one line went to something else offers it again), dropped once the model is in
 //   the skill's contract     a mismatch also stays in the menu-bar menu and Settings → General while it lasts
-//   Snapper.expireTaken      captures dragged out into another app 7+ days ago (Recently Taken) go to the Trash —
+//   Snapper.expireTaken      captures used in another app longer ago than History keeps them go to the Trash —
 //                            also hourly while the app runs
 //                            (BlurtCore TakenCaptures; the app's own, no script)
 //   videos                   only when the user turned it on (Settings → Storage, record.delete_videos_after_days):
@@ -150,6 +150,7 @@ enum Housekeeping {
     /// v0.6's bound repo became the current project in the migration, which nobody chose here: ask once, in the
     /// island, whether captures should keep going there. Either answer is recorded (current_by "user").
     static func askAboutCarriedOverProject() {
+        guard Capability.projectsShown else { return }      // no projects with Recording & Items off
         let store = ProjectStore.shared
         guard store.currentBy == "migrate", let p = store.current else { return }
         emit(["event": "ask_current_project", "project": p.id])

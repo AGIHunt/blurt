@@ -367,8 +367,9 @@ impl Index {
             "new": n(&format!("SELECT COUNT(*) {live} AND state = 'new'"))?,
             "to_verify": n(&format!("SELECT COUNT(*) {live} AND state = 'to_verify'"))?,
             "active": n(&format!("SELECT COUNT(*) {live} AND state IN ('handed_off', 'in_progress')"))?,
-            // the In Progress place (the Mac's IndexCounts.active): with an agent, and what it says is finished
-            "progress": n(&format!("SELECT COUNT(*) {live} AND state IN ('handed_off', 'in_progress', 'to_verify')"))?,
+            // the In Progress place (the Mac's IndexCounts.active): what you took on and haven't checked off — to do, handed
+            // off, with an agent. To verify is the Inbox's (it needs you), so every open item is counted in one place.
+            "progress": n(&format!("SELECT COUNT(*) {live} AND state IN ('todo', 'handed_off', 'in_progress')"))?,
             "discarded": n("SELECT COUNT(*) FROM items WHERE state = 'discarded'")?,
             "open": n(&format!("SELECT COUNT(*) {live} AND state IN ({})", sql_set(&OPEN)))?,
             "unassigned": n(&format!("SELECT COUNT(*) {live} AND project_id = 'inbox'"))?,

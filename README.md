@@ -35,11 +35,11 @@ cut is left out, wrapped list items are one line again, tables keep their tabs a
 macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
 (720 MB) or your own cloud model fixes misread symbols in code and paths.
 
-**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
+**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
 that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
 5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
-hand them to an agent, or pack them into one `.zip` for a teammate.
+copy an instruction for your agent (`⌘↩`), or pack them into one `.zip` for a teammate.
 
 **Blurt on your phone.** When you sit back from a big screen, your phone becomes the computer's trackpad, keys and
 microphone, and can show its screen. It works with a Mac, Windows or Linux computer, from an iPhone, iPad (including the
@@ -96,14 +96,16 @@ Blurt gets your words, pictures and recordings into an agent. The agent does the
 | **Dictation and cards** | Text and pictures go into any chat box or terminal, so they work with every agent. |
 | **Skill** | The `blurt` skill lets your agent record, transcribe, write items, open the review page and export. |
 | **MCP server** | `blurt` gives agents `search_items`, `get_item` (with screenshots), `get_transcript`, `update_item`, `mark_fixed` and `bundle_items`. *Settings → Agents → Connect…* installs the skill and the MCP server into an agent, after showing what it changes. |
-| **Copy instruction** | One line to paste into the agent you use, pointing to a hand-off note with every detail and screenshot. Blurt doesn't run agents in a window of its own. |
+| **Copy Instruction for Agent** (`⌘↩`) | One line on the clipboard to paste into the agent you use (Claude Code, Codex, WorkBuddy, Cursor…), pointing to a hand-off note with every detail and screenshot. The items show as *Handed off*. Blurt doesn't start an agent for this. |
 | **Hand-off bundle** | One `.zip` with a summary, every item and its screenshots, for a person rather than an agent. |
 
 Agents report back through the MCP server: an item moves to *In progress*, then *To verify*. "Fixed" from an agent
 always means *to verify* until you mark it done.
 
-Recordings are organized by the first agent that is installed and signed in: Claude Code, then Codex, Kimi Code,
-OpenCode, Gemini CLI and Grok. You can change the order in *Settings → Agents*.
+Any agent with the Blurt skill can organize recordings into items, GUI apps like WorkBuddy, Cursor and CodeBuddy
+included: say "process my Blurt recordings" in its chat. The app can also do it in the background as soon as you stop,
+with the first of these that is installed and signed in: Claude Code, Codex, Kimi Code, OpenCode, Gemini CLI, Grok.
+You can change the order in *Settings → Agents*.
 
 **No connectors, by design.** Your agent already has tools for Slack, Linear, GitHub, Notion, Jira and Feishu/Lark.
 Blurt writes files (Markdown, CSV and the hand-off bundle) and leaves delivery to the agent. To send items somewhere,
@@ -177,7 +179,7 @@ languages.
 - No account. Network use is limited to downloads of models and the Python runtime, update checks, a cloud speech key if you add one (Groq, OpenAI
   or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
   to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
-  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, your phone's connection away from home (through your own relay, end-to-end
+  reading in Screen Text if you choose it (the picture of the area you dragged over), what your agent sends to its provider, your phone's connection away from home (through your own relay, end-to-end
   encrypted), and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
@@ -225,7 +227,7 @@ spoke. The app is in English and Simplified Chinese.
 **Does it run on Windows and Linux?** Yes, as test builds on [GitHub Releases](https://github.com/AGIHunt/blurt/releases): Windows 10 (1903 or later)
 and 11, and Linux (Ubuntu 24.04 or later, Debian 13 or later; tested on Ubuntu with GNOME on Wayland). They dictate
 (Right Alt on Windows; on Linux a shortcut you pick the first time), take voice notes and record, with speech
-recognized locally on the CPU (about 1 GB to download). Windows also has snaps and Copy Text from Screen; on Linux
+recognized locally on the CPU (about 1 GB to download). Windows also has snaps and Screen Text; on Linux
 they aren't done yet. Polish needs a cloud key, the notch is a small capsule, and you update by downloading the next
 build. The Windows installer isn't signed yet: SmartScreen asks first (More info → Run anyway).
 Without the app, the skill's recording scripts (recording, local transcription, the review page, exports) also run

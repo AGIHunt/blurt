@@ -12,7 +12,6 @@ import android.os.SystemClock
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -35,7 +34,9 @@ import dev.blurt.remote.app.talk.TalkBar
 import dev.blurt.remote.core.Deck
 import dev.blurt.remote.core.KeyAction
 import dev.blurt.remote.core.KeySlot
+import dev.blurt.remote.core.LinkPhase
 import dev.blurt.remote.core.LinkRoute
+import dev.blurt.remote.core.LinkStatus
 import dev.blurt.remote.core.PadHaptic
 import dev.blurt.remote.core.RemoteBlurtCommand
 import dev.blurt.remote.core.RemoteChord
@@ -44,6 +45,11 @@ import dev.blurt.remote.core.RemoteHost
 import dev.blurt.remote.core.RemoteModifiers
 import dev.blurt.remote.core.RemotePointerCurve
 import dev.blurt.remote.core.RemoteSystemMove
+import dev.blurt.remote.core.StatusAction
+import dev.blurt.remote.core.StatusBanner
+import dev.blurt.remote.core.StatusCue
+import dev.blurt.remote.core.StatusFollower
+import dev.blurt.remote.core.StatusLine
 import dev.blurt.remote.core.ToMac
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -91,8 +97,13 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private val displayButton = DisplayButton(c)
     private val header = TextView(c)
     private val liveText = TextView(c)
-    private val message = TextView(c)
-    private val action = TextView(c)
+    /** what the pad says when the connection isn't simply there (StatusCard.kt) */
+    private val card = StatusCard(c, onAction = { cardAction(second = false) }, onSecond = { cardAction(second = true) })
+    private var shownBanner: StatusBanner? = null
+    private var follower = StatusFollower()
+    /** the app is in front (MainActivity says): left and come back to, the connection starts again, and that's not a drop to tell the thumb */
+    var inFront = false
+        set(v) { field = v; if (!v) follower = StatusFollower() }
     private val edgeMark = View(c)
     private val dim = View(c)
     val field = TypeField(c)
@@ -118,7 +129,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         isMotionEventSplittingEnabled = true
         clipChildren = false
         pad.addView(stage, 0)
-        for (v in listOf(header, liveText, message, action, edgeMark, cursor)) pad.addView(v)
+        for (v in listOf(header, liveText, edgeMark, cursor, card)) pad.addView(v)
         Remote.screen.attach(stage, cursor)
         addView(pad)
         addView(pad2)
@@ -130,15 +141,6 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.argb(184, 0, 0, 0)); cornerRadius = 12.dp }
             setPadding(10.dp.toInt(), 6.dp.toInt(), 10.dp.toInt(), 6.dp.toInt())
             visibility = GONE
-        }
-        message.apply { textSize = 15f; setTextColor(Theme.caption); gravity = Gravity.CENTER; setLineSpacing(0f, 1.15f) }
-        action.apply {
-            textSize = 15f
-            setTextColor(Theme.mark)
-            typeface = Fonts.medium
-            gravity = Gravity.CENTER
-            isClickable = true
-            setOnClickListener { primaryAction() }
         }
         edgeMark.background = android.graphics.drawable.GradientDrawable().apply { setColor(Theme.hairline); cornerRadius = 1.5f.dp }
         for (p in listOf(pad, pad2)) {
@@ -275,58 +277,61 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         requestLayout()
     }
 
-    /** What the pad says, in the few states where it should say anything. */
+    /**
+     * What the pad says, in the few states where it should say anything: which words for which state is core's LinkStatus, the same on
+     * the iPhone. Connected and working it's the computer's name, small, in the corner; anything else is the card in the middle.
+     */
     private fun status() {
         val l = Remote.link
         val c = context
-        var text: String? = null
-        var button: String? = null
         val name = l.current.value?.title ?: ""
-        when (l.state.value) {
-            Link.State.UNPAIRED -> { text = c.getString(R.string.status_unpaired); button = c.getString(R.string.scan_code) }
-            Link.State.FORGOTTEN -> { text = c.getString(R.string.status_forgotten, name); button = c.getString(R.string.scan_code) }
-            Link.State.UNREACHABLE -> {
-                text = if (l.current.value?.relayAddress == null) c.getString(R.string.status_unreachable_local, name) else c.getString(R.string.status_unreachable_relay, name)
-                if (l.macs.value.size > 1) button = c.getString(R.string.try_another)
-            }
-            Link.State.CONNECTING -> {}
-            Link.State.REPLACED -> text = c.getString(R.string.status_replaced)
-            Link.State.CONNECTED -> {
-                if (!l.canControl.value) text = c.getString(if (host == RemoteHost.MAC) R.string.status_accessibility else R.string.status_control)
-                when (l.screenError.value) {
-                    "permission" -> text = c.getString(if (host == RemoteHost.MAC) R.string.status_screen_permission else R.string.status_screen_permission_pc)
-                    "off" -> text = c.getString(R.string.status_screen_off)
-                }
-            }
+        val phase = when (l.state.value) {
+            Link.State.UNPAIRED -> LinkPhase.UNPAIRED
+            Link.State.CONNECTING -> LinkPhase.CONNECTING
+            Link.State.UNREACHABLE -> LinkPhase.UNREACHABLE
+            Link.State.CONNECTED -> LinkPhase.CONNECTED
+            Link.State.FORGOTTEN -> LinkPhase.FORGOTTEN
+            Link.State.REPLACED -> LinkPhase.REPLACED
         }
-        if (l.waitingForMac.value) {
-            text = c.getString(R.string.status_waiting, l.pairCheck ?: "")
-            button = null
+        val cue = follower.see(phase, l.current.value?.id, inFront)
+        val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,
+            otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value,
+            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null))
+        shownBanner = banner
+        fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value)
+        card.show(banner?.mark, banner?.let { b ->
+            StatusCard.Words(say(b.title), b.detail?.let(::say), b.action?.let { StatusCard.text(c, it) }, b.second?.let { StatusCard.text(c, it) })
+        })
+        // the thumb and TalkBack hear of it too: the connection went, or it's back (the card is a live region: TalkBack reads what it says)
+        when (cue) {
+            StatusCue.DROPPED -> Haptics.release()
+            StatusCue.BACK -> {
+                Haptics.grab()
+                @Suppress("DEPRECATION")
+                announceForAccessibility(c.getString(R.string.connected_to, name.ifEmpty { c.getString(R.string.the_computer) }))
+            }
+            null -> {}
         }
-        l.pairFailed.value?.let { text = it }
-        message.text = text
-        message.visibility = if (text == null) GONE else VISIBLE
-        action.text = button
-        action.visibility = if (button == null) GONE else VISIBLE
         val via = when (l.route.value) {
             LinkRoute.RELAY -> c.getString(R.string.via_internet, name)
             LinkRoute.DIRECT -> c.getString(R.string.via_direct, name)
             LinkRoute.LOCAL -> name
         }
-        header.text = when {
-            showing && l.state.value == Link.State.CONNECTED -> null
-            l.state.value == Link.State.CONNECTED -> via
-            l.state.value == Link.State.CONNECTING && name.isNotEmpty() -> c.getString(R.string.connecting_to, name)
-            else -> null
-        }
+        header.text = if (l.state.value == Link.State.CONNECTED && !showing) via else null
         val ready = l.state.value == Link.State.CONNECTED
         talk.alpha = if (ready) 1f else 0.35f
         if (cycleKey == null) allCells.forEach { it.alpha = if (ready) 1f else 0.35f }
         requestLayout()
     }
 
-    private fun primaryAction() {
-        if (Remote.link.state.value == Link.State.UNREACHABLE) sheets.switchMac() else sheets.pairing()
+    private fun cardAction(second: Boolean) {
+        val a = (if (second) shownBanner?.second else shownBanner?.action) ?: return
+        Haptics.tick()
+        when (a) {
+            StatusAction.RETRY -> Remote.link.tryAgain()
+            StatusAction.SCAN -> sheets.pairing()
+            StatusAction.ANOTHER -> sheets.switchMac()
+        }
     }
 
     // MARK: the computer's screen
@@ -563,14 +568,15 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val lh = liveText.measuredHeight / d
         place(liveText, Frame(pw / 2 - wordsW / 2, chipsTop - 6 - lh, pw / 2 + wordsW / 2, chipsTop - 6))
         show(liveText, !liveText.text.isNullOrEmpty())
-        val inset = Frame(16f, 12f, pw - 16, ph - 12)
-        message.measure(MeasureSpec.makeMeasureSpec(((inset.width - 16) * d).toInt(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-        val mh = message.measuredHeight / d
-        val my = ph / 2 - mh / 2 - 20
-        place(message, Frame(inset.left + 8, my, inset.right - 8, my + mh))
-        show(message, !message.text.isNullOrEmpty())
-        place(action, Frame(inset.left, my + mh + 8, inset.right, my + mh + 52))
-        show(action, !action.text.isNullOrEmpty())
+        // the card: in the middle of the pad, a little above it as the eye expects; a pad too short for it keeps its top
+        if (card.words != null) {
+            val inset = Frame(16f, 12f, pw - 16, ph - 12)
+            val cw = min(inset.width, StatusCard.MAX_WIDTH)
+            card.measure(MeasureSpec.makeMeasureSpec((cw * d).toInt(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec((inset.height * d).toInt(), MeasureSpec.AT_MOST))
+            val chh = card.measuredHeight / d
+            val cy = max(inset.top, ph / 2 - chh / 2 - min(20f, (inset.height - chh) / 2))
+            place(card, Frame(pw / 2 - cw / 2, cy, pw / 2 + cw / 2, cy + chh))
+        }
 
         exclusions = l.exclusions.map { r -> Rect((r.left * d).toInt(), (r.top * d).toInt(), (r.right * d).toInt(), (r.bottom * d).toInt()) }
         if (android.os.Build.VERSION.SDK_INT >= 29) systemGestureExclusionRects = exclusions

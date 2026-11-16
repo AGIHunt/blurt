@@ -192,4 +192,74 @@ final class NoteKeysTests: XCTestCase {
         XCTAssertFalse(S(mode: .fresh, voice: .words, typed: "x").wordsShowing)
         XCTAssertFalse(S(mode: .fresh, voice: .listening).wordsShowing)
     }
+
+    // MARK: Recording & Items off — no place chip, no type chip (State.filing false)
+
+    func testWithoutFilingTabNeverOpensThePlaces() {
+        for s in [S(mode: .fresh, voice: .listening, filing: false), S(mode: .fresh, filing: false),
+                  S(mode: .fresh, typed: "typed", filing: false), S(mode: .fresh, voice: .words, typed: "my own words", filing: false),
+                  S(mode: .edit, typed: "a note", filing: false), S(mode: .edit, voice: .listening, filing: false)] {
+            XCTAssertEqual(NoteKeys.action(.tab, s), .ignore, "\(s)")
+        }
+    }
+
+    func testWithoutFilingTabStillTakesTheWords() {
+        XCTAssertEqual(NoteKeys.action(.tab, S(mode: .fresh, voice: .words, filing: false)), .takeWords(newLine: false))
+        XCTAssertEqual(NoteKeys.action(.tab, S(mode: .edit, voice: .words, filing: false)), .takeWords(newLine: false),
+                       "Edit Note's re-record still ends, kept")
+        XCTAssertEqual(NoteKeys.action(.shiftReturn, S(mode: .fresh, voice: .words, filing: false)), .takeWords(newLine: true))
+    }
+
+    func testWithoutFilingCommandDigitsSetNoType() {
+        for m: NoteKeys.Mode in [.fresh, .edit, .recording] {
+            // swallowed, not passed on: the main menu's ⌘0–⌘4 would change the main window's page behind the note
+            for d in 0...4 { XCTAssertEqual(NoteKeys.action(.command(d), S(mode: m, filing: false)), .ignore, "\(m) ⌘\(d)") }
+            for d in 5...9 { XCTAssertEqual(NoteKeys.action(.command(d), S(mode: m, filing: false)), .pass, "\(m) ⌘\(d)") }
+        }
+        XCTAssertEqual(NoteKeys.action(.command(1), S(mode: .fresh, composing: true, filing: false)), .pass)
+    }
+
+    func testWithoutFilingTheOtherKeysAreAsEver() {
+        let on = S(mode: .fresh, voice: .words), off = S(mode: .fresh, voice: .words, filing: false)
+        for k: NoteKeys.Key in [.returnKey, .shiftReturn, .escape, .typing, .up, .down] {
+            XCTAssertEqual(NoteKeys.action(k, off), NoteKeys.action(k, on), "\(k)")
+        }
+        XCTAssertEqual(NoteKeys.action(.escape, S(mode: .fresh, typed: "x", filing: false)), .clearText)
+        XCTAssertEqual(NoteKeys.action(.escape, S(mode: .fresh, filing: false)), .close)
+        XCTAssertEqual(NoteKeys.action(.returnKey, S(mode: .edit, typed: "x", filing: false)), .commit)
+    }
+
+    func testWithoutFilingAListLeftOpenTakesNoKeys() {
+        // (a switch flipped while a list was open: the lists are gone, their keys are the note's again)
+        XCTAssertEqual(NoteKeys.action(.returnKey, S(mode: .fresh, pickingKind: true, filing: false)), .commit)
+        XCTAssertEqual(NoteKeys.action(.returnKey, S(mode: .fresh, picking: true, filing: false)), .commit)
+        XCTAssertEqual(NoteKeys.action(.escape, S(mode: .fresh, picking: true, filing: false)), .close)
+    }
+
+    // MARK: ⌘↩ copy and done (v1.0.23)
+
+    func testCommandReturnCopiesAFreshSnapAndFinishes() {
+        for v: NoteKeys.Voice in [.none, .listening, .words] {
+            XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, voice: v, canCopy: true)), .copyAndFinish, "\(v)")
+            XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, voice: v, typed: "x", canCopy: true)), .copyAndFinish)
+        }
+        // ↩ is still the card, ⇧↩ still the line break
+        XCTAssertEqual(NoteKeys.action(.returnKey, S(mode: .fresh, canCopy: true)), .commit)
+        XCTAssertEqual(NoteKeys.action(.shiftReturn, S(mode: .fresh, typed: "x", canCopy: true)), .newLine)
+    }
+
+    func testCommandReturnIsOnlyAFreshSnapsOwn() {
+        // a snap into a recording (it goes with the take), Edit Note, a recording's note: nothing
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, canCopy: false)), .ignore)
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .edit, canCopy: true)), .ignore)
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .recording, canCopy: true)), .ignore)
+    }
+
+    func testCommandReturnWaitsForAListAndAnInputMethod() {
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, picking: true, canCopy: true)), .ignore)
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, pickingKind: true, canCopy: true)), .ignore)
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, composing: true, canCopy: true)), .pass)
+        // without filing there are no lists: a list flag left over doesn't hold it
+        XCTAssertEqual(NoteKeys.action(.commandReturn, S(mode: .fresh, picking: true, filing: false, canCopy: true)), .copyAndFinish)
+    }
 }

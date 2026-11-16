@@ -97,6 +97,8 @@ pub fn onboarding_get(app: AppHandle) -> Value {
         "uv": uv,
         "uv_state": uv_state,
         "first_download_pending": uv && first_download_pending(&cfg, uv_failed),
+        // the capabilities turned off (capabilities.rs ids): the first step's switches, and whether dictation's steps show
+        "off": crate::capabilities::ids(&crate::capabilities::off(&cfg)),
         "dictation": {
             "available": cfg!(windows),
             "key": d.get("key").and_then(Value::as_str).unwrap_or("right_option"),

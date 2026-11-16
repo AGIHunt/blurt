@@ -1,0 +1,78 @@
+/* 主页（MainWindow/HomePage.swift、HomeViews.swift）和各项能力的名字（BlurtCore/Capabilities.swift）：口喷鸡做的五件事，
+   在侧栏、主页、设置、菜单栏菜单和引导里都叫同一个名字。 */
+
+"home.title" = "主页";
+
+"feature.dictation" = "听写";
+"feature.cards" = "卡片";
+"feature.screen_text" = "取字与翻译";
+"feature.recording" = "录屏与事项";
+"feature.phone" = "手机";
+
+/* 每项能力一句话：它做什么，带句号（设置 > 通用里也当说明用）。主页上每行名字下面的那一行，要在窗口最窄时也放得下。%@ 是听写键的短名（Dictation.keyShort：
+   「 Fn」「右 Option」，Fn 自带前面的空格） */
+"feature.dictation.what" = "按 %@ 说话，文字输入到光标处。";
+"feature.cards.what" = "截图和语音备注保存为刘海下方的卡片，可拖入任何 App。";
+"feature.screen_text.what" = "框选屏幕上的文字，复制或翻译。";
+"feature.recording.what" = "边录屏边讲解，由 Agent 整理成事项，按项目归类。";
+"feature.phone.what" = "将手机用作 Mac 的触控板、键盘和麦克风。";
+
+/* 一行能力：点这一行去它的页面；右键菜单打开它的设置；开关的提示按当前状态写 */
+"home.row.open" = "前往「%@」";
+"home.row.settings" = "%@设置…";
+"home.switch.tip.on" = "关闭后，%@的快捷键、菜单项和设置会隐藏。";
+"home.switch.tip.off" = "打开后，%@的快捷键、菜单项和设置会恢复。";
+
+/* 挡住一项能力的事，写在它那一行，后面跟一个按钮。%@ 是快捷键（⌥A；多个时「⌥A 和 ⌥V」） */
+"home.keys.taken" = "%@ 已被占用";
+"home.keys.taken_many" = "%@ 已被占用";
+"home.keys.and" = "%1$@ 和 %2$@";
+"home.keys.change" = "更改…";
+"home.dictation.downloading" = "正在下载语音模型 · %1$@ / %2$@";
+"home.dictation.better_downloading" = "正在下载更准确的语音模型 · %1$@ / %2$@";
+"home.dictation.better_offer" = "下载更准确的语音模型 · %@";
+"home.recording.no_agent" = "在 Agent 对话中说「处理我录的视频」即可整理";
+"home.recording.set_up_agent" = "设置 Agent…";
+"home.phone.needs_access" = "手机暂无法控制 Mac";
+"home.phone.look" = "查看";
+
+/* 框下面的两行：等你处理的事项（数字在薄荷色圆点里，后面接这几个字）、刘海下的卡片 */
+"home.waiting.new" = "条新的";
+"home.waiting.open_inbox" = "打开待处理";
+"home.waiting.show" = "显示";
+
+/* 最近：听写、卡片、事项按时间排在一起 */
+"home.recent" = "最近";
+"home.entry.snap" = "截图";
+"home.entry.voice" = "语音备注";
+"home.entry.file" = "文件";
+"home.entry.open" = "打开";
+"home.entry.copy_title" = "复制标题";
+"home.all.dictation" = "查看全部听写";
+"home.all.cards" = "查看全部卡片";
+"home.all.items" = "查看全部事项";
+
+/* 还什么都没做过：每项打开的能力一句话，%@ 的位置画它的键 */
+"home.empty.title" = "暂无最近记录";
+"home.empty.all_off" = "所有功能均已关闭。打开任一功能即可使用。";
+"home.try.dictation" = "按 %@ 开始听写";
+"home.try.cards" = "按 %@ 截图，卡片可拖入任何 App";
+"home.try.screen_text" = "按 %@ 框选屏幕上的文字";
+"home.try.recording" = "按 %@ 开始录屏";
+"home.try.phone" = "在手机上安装口喷鸡，扫码配对";
+
+/* 取字与翻译页（ScreenTextPage.swift） */
+"home.all.screen_text" = "查看全部取字记录";
+"home.screen_text.summary" = "已存 %1$ld 条 · %2$@后删除";
+"home.screen_text.summary.forever" = "已存 %ld 条 · 一直保留";
+"home.screen_text.summary.off" = "不保存记录";
+"home.screen_text.settings" = "设置…";
+"home.screen_text.search" = "搜索";
+"home.screen_text.clear_search" = "清除搜索";
+"home.screen_text.empty" = "还没有记录。按 %1$@ 框选屏幕上的文字并复制，按 %2$@ 框选并翻译。";
+"home.screen_text.empty.off" = "不保存记录。可在设置中更改。";
+"home.screen_text.none_found" = "没有匹配的记录";
+"home.screen_text.original" = "原文";
+"home.screen_text.copy_original" = "复制原文";
+"home.screen_text.delete" = "删除";
+"home.screen_text.selected" = "已选 %ld 条";

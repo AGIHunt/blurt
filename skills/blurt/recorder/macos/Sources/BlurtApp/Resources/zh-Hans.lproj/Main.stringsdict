@@ -139,7 +139,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 个交给你的 Agent</string>
+			<string>复制这 %ld 个事项的指令给 Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>
@@ -339,7 +339,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>复制一段指令，把这 %ld 个交给你自己的 Agent（⌘↩）</string>
+			<string>复制一段指令，粘贴到任意 Agent，让它处理这 %ld 个事项（⌘↩）</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>

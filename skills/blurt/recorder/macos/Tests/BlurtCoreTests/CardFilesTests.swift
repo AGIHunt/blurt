@@ -193,6 +193,33 @@ final class CardFilesTests: XCTestCase {
         XCTAssertTrue(TakenCaptures.showsDaysLeft(1))
     }
 
+    func testTakenKeptAsSettingsSays() {
+        let t = 1_792_766_412.0
+        XCTAssertTrue(TakenCaptures.isRecent(taken: t, now: t + 29 * 86400, days: 30))
+        XCTAssertTrue(TakenCaptures.isExpired(taken: t, now: t + 30 * 86400, days: 30))
+        XCTAssertEqual(TakenCaptures.daysLeft(taken: t, now: t, days: 30), 30)
+        // forever: never expires, never counts down
+        XCTAssertTrue(TakenCaptures.isRecent(taken: t, now: t + 5000 * 86400, days: TakenCaptures.forever))
+        XCTAssertFalse(TakenCaptures.isExpired(taken: t, now: t + 5000 * 86400, days: -1))
+        XCTAssertNil(TakenCaptures.daysLeft(taken: t, now: t, days: -1))
+        XCTAssertFalse(TakenCaptures.showsDaysLeft(nil))
+    }
+
+    func testTakenDaysFromTheConfig() {
+        XCTAssertEqual(TakenCaptures.days(record: [:]), 7)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": 30]]), 30)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": -1]]), -1)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": 30.0]]), 30)
+        // anything else is the default (0 would mean "don't keep" elsewhere: History never offers it)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": 0]]), 7)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": 12]]), 7)
+        XCTAssertEqual(TakenCaptures.days(record: ["cards": ["history_days": "30"]]), 7)
+        // 7 is left out of the config
+        XCTAssertNil(TakenCaptures.configValue(7))
+        XCTAssertEqual(TakenCaptures.configValue(30), 30)
+        XCTAssertEqual(TakenCaptures.configValue(-1), -1)
+    }
+
     // MARK: when it was taken (review of v0.9-fix2: a fixed "HH:mm", no day, ignored a 12-hour Mac)
 
     func testCaptureTimeFollowsTheLocaleAndSaysTheDayBeforeToday() {

@@ -261,15 +261,18 @@ def test_brand_effects_stay_restrained():
 
 
 def test_cards_have_one_look():
-    """docs/design/system.md §3.2 (v1.0.7, BA-62): every set of cards is the Cards panel — Current and History are one
-    grid of the same tiles (OverviewTile, the picture 148 × 100) with the cards' one action cluster ([eye][···][Copy],
+    """docs/design/system.md §3.2 (v1.0.7, BA-62; v1.0.23 the Cards page): every set of cards is one grid of the same
+    tiles (CardTile, the picture at least 148 × 100) with the cards' one action cluster ([eye][···][Copy],
     CardChrome.CardActions — no gradient button on a tile) and one preview (CardPreview). The old Recently Dragged Out
-    rows (56 × 40 CaptureThumb tiles, TakenRow) are gone; done toasts carry the ok check."""
+    rows (56 × 40 CaptureThumb tiles, TakenRow) and ⌥H's floating Cards panel (CardsOverview) are gone; done toasts
+    carry the ok check."""
     app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
-    overview = (app / "Capture/Island/CardsOverview.swift").read_text()
+    tile = (app / "Capture/Island/CardTile.swift").read_text()
+    page = (app / "MainWindow/CardsPage.swift").read_text()
     taken = (app / "Capture/TakenPanel.swift").read_text()
-    assert "CardActions(" in overview and "preview:" in overview and "BrandButton(" not in overview
-    assert "OverviewTile($0, overview: self, used: used)" in overview
+    assert "CardActions(" in tile and "preview:" in tile and "BrandButton(" not in tile
+    assert "CardTile(s, host: self, used: used, size: size)" in page
+    assert not (app / "Capture/Island/CardsOverview.swift").exists()
     assert "class TakenRow" not in taken and "class TakenThumb" not in taken and "CaptureThumb" not in taken
     assert not (app / "Capture/CaptureThumb.swift").exists()
     assert (app / "Capture/Island/CardPreview.swift").exists()

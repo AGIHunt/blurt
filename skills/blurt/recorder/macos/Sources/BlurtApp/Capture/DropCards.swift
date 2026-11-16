@@ -17,6 +17,7 @@ extension Snapper {
     /// Hang what `d` brought as cards (Unassigned, whatever the current project: "hang it" is what was asked);
     /// `project`: filed straight into that project instead (dropped on a project of the island's drawer).
     func hang(_ d: DropIn, into project: String? = nil) {
+        guard Capability.cards.isOn else { return }          // no cards with Cards off: nothing hangs
         let inbox = ProjectStore.shared.inbox
         let b = openBatch(for: inbox)
         var made: [Shot] = []

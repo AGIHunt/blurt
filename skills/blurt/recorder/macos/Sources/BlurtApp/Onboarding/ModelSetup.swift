@@ -222,6 +222,8 @@ final class ModelSetup: ObservableObject {
     /// The assistant closed while the set downloads: one line says it carries on, and where to see it.
     func closedWhileDownloading() {
         guard downloading, !App.terminating else { return }      // a quit stops the downloads: nothing carries on
+        // the first run's batch said so as it started (ModelDownloads.announceStart): nothing more until it is in
+        guard ModelDownloadNotice.saysCarryOn(startSaid: dl.startSaid) else { return }
         let left = modelSize(dl.remainingMB)       // what came down of the running model isn't counted again
         var t = Island.Toast(text: T("app.models.background", left), actionTitle: T("app.models.show")) { ModelDownloads.showProgress() }
         t.seconds = 6

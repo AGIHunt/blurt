@@ -43,13 +43,18 @@
 "agents.state.installed" = "Installed";
 "agents.state.unchecked" = "Can’t check sign-in";
 "agents.state.unchecked.help" = "Sign-in can’t be checked without spending tokens. It’s checked the first time it organizes something; if it isn’t signed in, Blurt uses the next agent and says so here.";
-"agents.state.manual.help" = "It’s a separate app, so Blurt doesn’t hand items to it automatically. Import blurt in its Settings → Skills / MCP, or click Connect… to see the steps.";
-"agents.manual.footer" = "Blurt can’t run these. Copy Instruction hands items to them.";
+"agents.state.manual.help" = "A separate app. Connect… installs the blurt skill and MCP in %@ (changes are listed first), or import them in its settings under Skills / MCP. Then say “Process my Blurt recordings” in its chat to organize recordings.";
+"agents.manual.footer" = "Say “Process my Blurt recordings” in their chat to organize recordings. Send items with Copy Instruction for Agent.";
+"agents.state.chat" = "Organizes in chat";
+"agents.state.chat.help" = "Say “Process my Blurt recordings” in %@ to organize recordings into items. To work on items, use Copy Instruction for Agent.";
+"agents.request" = "Process my Blurt recordings";
+"agents.request.copy" = "Copy";
+"agents.request.copied" = "Copied";
 "agents.move_up" = "Move Up";
 "agents.connected.help" = "Connected: it can find, read and update your items.";
 "agents.not_connected.help" = "Not connected yet. Connect shows what changes first.";
 "agents.ask.header" = "Ask your agent";
-"agents.ask.footer" = "Blurt gives it the items, and a hand-off bundle (one .zip with the screenshots) when someone else needs to see them.";
+"agents.ask.footer" = "Your agent reads items through the Blurt MCP, and packs a hand-off bundle (a .zip with the screenshots) when someone else needs them.";
 "agents.ask.copy" = "Copy";
 
 /* Install sheet */

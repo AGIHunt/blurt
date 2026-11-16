@@ -221,7 +221,7 @@ final class Link: ObservableObject {
         waitingForMac = false
         Keychain.remove(account: j.mac.deviceID)
         pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
-            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone on the same network, or set a relay on that computer first.")
+            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first.")
             : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that computer.")
         let t = pairFailed
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }
@@ -319,6 +319,16 @@ final class Link: ObservableObject {
     /// The user reached for this phone while another had the Mac: take it back.
     func touched() {
         guard state == .replaced else { return }
+        connect()
+    }
+
+    /// The pad's Retry, when nothing has answered for a while: the same attempts, started over now, and the pad says "connecting" again
+    /// while they run. It was already trying every 3 s; this is for the moment the user has just woken the computer or started Blurt.
+    func tryAgain() {
+        guard active, current != nil, state == .unreachable else { return }
+        firstAttempt = nil
+        state = .connecting
+        cancelAttempts()
         connect()
     }
 

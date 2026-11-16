@@ -17,14 +17,22 @@
 //  • finishing: the stage drops below the flight and fades while the marked picture flies from the selection to the
 //    notch and becomes the card (HangingCards.catchCapture; Reduce Motion: it fades in at the card instead). Discarded
 //    (Esc), it just fades. The unmarked picture stays as shots/NNN.png; the strokes stay editable (Edit Note).
-//  • its window is never in Blurt's own captures (left out by window; chromeSharing) and never takes the keys (the bubble has them).
-// Tests: the bubble's `noteink` command draws here while the stage is up; `stage` reports it (SnapApp).
+//  • the tool strip (v1.0.23, InkTools.swift InkToolStrip): attached to the picture — under it, right-aligned, else above
+//    (BlurtCore StripDock), never over the bubble (the bubble tells where it docked: `placeStrip(avoiding:)`). Pen, box,
+//    ellipse, arrow, text, mosaic; the colours (the last one chosen is remembered, record.ink_color; the tool starts on
+//    the pen every snap — zero clicks to draw); undo; copy-and-done (⌘↩, not for a snap going into a recording).
+//  • its window is never in Blurt's own captures (left out by window; chromeSharing) and never takes the keys (the bubble
+//    has them) — except while a text box on the picture is typed in (StagePanel.allowsKey), then the note has them again.
+// Tests: the bubble's `noteink` command draws here while the stage is up; `notetool` chooses a tool or a colour, clicks
+// the strip, or types a text box; `stage` reports it (SnapApp).
 import AppKit
 import BlurtCore
 
-/// Takes the pointer, never the keys: the note bubble stays key while the user draws.
+/// Takes the pointer, never the keys: the note bubble stays key while the user draws — but for a text box being typed
+/// on the picture (`allowsKey`).
 final class StagePanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var allowsKey = false
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 }
 
@@ -102,6 +110,11 @@ final class InkStage {
     /// the pen on the frozen picture, at the selection's size (1:1)
     let canvas = InkCanvas(frame: .zero, corner: 0)
     private let outline = FrozenEdge()
+    /// the tools, attached to the picture
+    let strip = InkToolStrip(frame: .zero)
+    /// the strip's copy button: ⌘↩ (the bubble's); its undo: the bubble's ⌘Z
+    var onCopy: (() -> Void)?
+    var onUndo: (() -> Void)?
     private let hint = NSView()                 // the pill
     private let hintLabel = NSTextField(labelWithString: "")
     /// the frozen selection, global AppKit points
@@ -151,12 +164,22 @@ final class InkStage {
         canvas.frame = local
         canvas.image = image
         canvas.lineWidth = inkWidth(for: scr)
-        canvas.strokes = s.strokes
+        canvas.marks = s.marks
+        canvas.pictureScale = CGFloat(image.width) / max(1, sel.width)
         canvas.editable = true
+        canvas.pick = .pen
+        canvas.color = InkColor(rawValue: recordConfig()["ink_color"] as? String ?? "") ?? .markup
+        canvas.onToolChange = { [weak self] in self?.syncStrip() }
+        canvas.onTextBegan = { [weak self] in self?.textBegan() }
+        strip.canCopy = s.batch?.inRecording == false
+        strip.isHidden = false
+        syncStrip()
+        placeStrip(avoiding: nil)
         outline.frame = view.bounds
         outline.update(local)
         placeHint(local)
         p.orderFrontRegardless()
+        p.allowsKey = false
         emit(["event": "ink_stage", "open": true, "n": s.n, "selection": [sel.minX, sel.minY, sel.width, sel.height],
               "screen": [scr.frame.minX, scr.frame.minY, scr.frame.width, scr.frame.height],
               "line_width": Double(canvas.lineWidth), "hint": !hint.isHidden])
@@ -176,6 +199,16 @@ final class InkStage {
         p.contentView = view
         view.addSubview(outline)               // (under the picture: its lift shadow)
         view.addSubview(canvas)
+        strip.onPick = { [weak self] t in self?.canvas.pick = t }
+        strip.onColor = { [weak self] c in
+            self?.canvas.color = c
+            setRecordConfig("ink_color", c.rawValue)
+        }
+        strip.onUndo = { [weak self] in
+            if let u = self?.onUndo { u() } else { self?.canvas.undo() }       // the bubble's undo: ⇧⌘Z redoes it
+        }
+        strip.onCopy = { [weak self] in self?.onCopy?() }
+        view.addSubview(strip)
         // faint: quieter than the picture and the bubble — a soft glass tint, regular weight (never a banner)
         hintLabel.font = .systemFont(ofSize: 12, weight: .regular)
         hintLabel.textColor = NSColor(white: 1, alpha: 0.65)
@@ -187,6 +220,29 @@ final class InkStage {
         view.addSubview(hint)
         return p
     }
+
+    /// The strip shows the canvas's tool, colour and whether there is something to undo.
+    func syncStrip() {
+        strip.show(tool: canvas.pick, color: canvas.color, canUndo: !canvas.marks.isEmpty)
+    }
+
+    /// The strip under the picture (BlurtCore StripDock), off `bubble` (global AppKit points: where the note docked).
+    func placeStrip(avoiding bubble: NSRect?) {
+        guard isOpen, let scr = screen else { return }
+        let o = StripDock.place(strip: strip.frame.size, selection: selection, screen: scr.frame, avoid: bubble)
+        strip.frame.origin = NSPoint(x: o.x - scr.frame.minX, y: o.y - scr.frame.minY)
+    }
+
+    /// A text box opened on the picture: this panel takes the keys while it is typed in (the canvas hands them back
+    /// through the bubble when it ends: NoteBubble's onTextEnded).
+    private func textBegan() {
+        guard let p = panel else { return }
+        p.allowsKey = true
+        p.makeKey()
+    }
+
+    /// The text box ended: the panel lets the keys go again.
+    func textEnded() { panel?.allowsKey = false }
 
     /// The faint hint, the first few times: above the picture, else below it, else just inside its top.
     private func placeHint(_ local: NSRect) {
@@ -201,7 +257,7 @@ final class InkStage {
         let w = hintLabel.frame.width + 24, h: CGFloat = 22
         hintLabel.frame.origin = NSPoint(x: 12, y: (h - hintLabel.frame.height) / 2)
         var y = local.maxY + 10
-        if y + h > view.bounds.height - 30 { y = local.minY - 10 - h }         // the menu bar's side: below it
+        if y + h > view.bounds.height - 30 { y = local.minY - 10 - h - InkToolStrip.height - 8 }   // the menu bar's side: below it (and the strip)
         if y < 8 { y = local.maxY - h - 10 }                                   // no room outside: inside, at the top
         let x = min(max(8, local.midX - w / 2), view.bounds.width - w - 8)
         hint.frame = NSRect(x: x, y: y, width: w, height: h)
@@ -241,9 +297,15 @@ final class InkStage {
         let n = shot?.n ?? 0
         shot = nil
         onClickOutside = nil
+        onCopy = nil
+        onUndo = nil
         view.onClickOutside = nil
         canvas.flush()
         canvas.editable = false
+        canvas.onToolChange = nil
+        canvas.onTextBegan = nil
+        p.allowsKey = false
+        strip.isHidden = true
         generation += 1
         let g = generation
         if flying {
@@ -270,6 +332,9 @@ final class InkStage {
         ["open": isOpen, "visible": panel?.isVisible == true, "n": shot?.n ?? NSNull(),
          "selection": [selection.minX, selection.minY, selection.width, selection.height],
          "strokes": canvas.strokes.count, "drawing": canvas.isDrawing, "hint": !hint.isHidden,
-         "line_width": Double(canvas.lineWidth), "window": panel?.windowNumber ?? 0, "dim": Double(view.dimAlpha)]
+         "line_width": Double(canvas.lineWidth), "window": panel?.windowNumber ?? 0, "dim": Double(view.dimAlpha),
+         "tool": canvas.pick.rawValue, "color": canvas.color.rawValue, "marks": canvas.marks.map(\.json),
+         "editing_text": canvas.isEditingText, "can_redo": canvas.canRedo, "strip_copy": strip.canCopy,
+         "strip": strip.isHidden ? [] : panel.map { p in let r = p.convertToScreen(strip.convert(strip.bounds, to: nil)); return [r.minX, r.minY, r.width, r.height] } ?? []]
     }
 }

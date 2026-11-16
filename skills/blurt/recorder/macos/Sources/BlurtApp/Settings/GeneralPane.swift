@@ -1,85 +1,57 @@
-// Settings → General: the app's everyday choices on one short page, four boxes and a closing line.
-//   App          open at login (LoginItem: the assistant's switch too, so a test build never registers itself),
-//                language (the running app keeps the one it opened with: Relaunch Now next to it).
-//   Recording    what happens after one, the countdown, system audio, "Don't record the notch".
-//   Voice notes  how one ends — one choice, press the key again or a 1.5 s pause (record.voice.end_on_pause, off:
-//                Capture/VoiceInput.swift) —, the words while you talk (record.live_text, on: Capture/LiveTranscript.swift).
-//   Cards        macOS's own screenshots as cards (record.collect_system_shots); what a card dragged into an app
-//                carries — one choice over three settings: "picture, then the note" (record.smart_paste, on:
-//                Capture/SmartPaste.swift), "picture with the note under it" (record.drag_caption), "picture only";
-//                with either of the first two, a note that couldn't go in goes on the clipboard (record.drag_copy_note,
-//                on), with picture only it doesn't —; into an agent (Codex, Claude Code, WorkBuddy, Cursor…: BlurtCore
-//                AgentWindow) the picture's path and the note, as in a terminal (record.agent_drag "paths", the default),
-//                or as the choice above ("same"); the note as a .md file too (record.drag_note_file, off). Pasting
-//                the note needs Accessibility: said in attention ink with Allow… only while that choice is made and
-//                the permission is missing.
+// Settings → General: what every feature shares, on one short page — two boxes and a closing line.
+//   Features     the five things Blurt does (BlurtCore Capabilities.swift), each with its switch: its glyph and name as
+//                in the main window's sidebar, one line on what it does (Home.strings). Off means gone — its
+//                shortcuts are given back, and it is not in the menus, the main window or Settings (its pane leaves
+//                the sidebar at once; the footnote says so). The switch stays here, so it is one click from back.
+//                Dictation's is the same switch as Settings → Dictation's own (SettingsFeatures.set). A link to
+//                something of an off capability lands on its row here (SettingsCatalog.landing).
+//   App          open at login (LoginItem: the assistant's switch too, so a test build never registers itself), the
+//                menu-bar icon, the notch at rest, the words under the notch while you speak (record.live_text, on:
+//                Capture/LiveTranscript.swift — dictation's and the voice note's alike, so it is the app's; not shown
+//                with both off), language (the running app keeps the one it opened with: Relaunch Now next to it).
 //   About        one quiet line under the boxes: Blurt and its version, Check for Updates…, User Guide, Setup
 //                Assistant… as brand-ink text buttons; a skill / app contract mismatch is said above it in attention
 //                ink, with How to Update, for as long as it lasts.
-// The projects have their own pane (ProjectsPane.swift); the Dictation Lab is under Dictation's Advanced. Rows and
-// their descriptions come from SettingsCatalog; longer explanations are behind each row's ⓘ. Every pop-up is the same
-// width (SettingsMetrics.controlWidth), so the controls share one column.
+// Each capability's own settings are on its pane (v1.0.23: before, Recording, Voice notes and Cards were boxes here —
+// CardsPane.swift, RecordingPane.swift; the projects have ProjectsPane.swift; the Dictation Lab is under Dictation's
+// Advanced). Rows and their descriptions come from SettingsCatalog; longer explanations are behind each row's ⓘ.
+// Every pop-up is the same width (SettingsMetrics.controlWidth), so the controls share one column.
 import AppKit
+import Combine
 import ServiceManagement
 import SwiftUI
 import BlurtCore
-
-/// What a card dragged into another app carries (the Cards box's one choice).
-enum CardDragMode: String, CaseIterable {
-    case paste, caption, picture
-
-    /// From the three settings it stands for: the note burned in wins, then smart paste, else the picture alone.
-    static var current: CardDragMode { CardExport.burnCaption ? .caption : SmartPaste.enabled ? .paste : .picture }
-
-    /// Writes the three settings; each one left at its default where it can be (smart paste and the clipboard
-    /// fallback on, the caption off).
-    func apply() {
-        setRecordConfig("smart_paste", self == .paste ? nil : false)
-        setRecordConfig("drag_caption", self == .caption ? true : nil)
-        setRecordConfig("drag_copy_note", self == .picture ? false : nil)
-        if self != .paste { SmartPaste.shared.disarm("off") }
-        emit(["event": "card_drag_mode", "mode": rawValue])
-    }
-}
 
 @MainActor
 final class GeneralModel: ObservableObject {
     @Published var openAtLogin = false
     @Published var loginError: String?
     @Published var language = "auto"
-    @Published var processMode = "auto"
-    @Published var countdown = 3
-    @Published var systemAudio = false
-    @Published var hideNotch = false
-    @Published var collect = false
-    @Published var cardDrag = CardDragMode.paste
-    @Published var snapSound = false
-    @Published var dragNoteFile = false
-    @Published var agentPaths = true
-    @Published var voiceEndOnPause = false
     @Published var liveText = true
     @Published var menuBarIcon = true
     @Published var islandIdle = true
+    /// the dictation key, as the Dictation switch's line names it ("Press Fn and talk…")
+    @Published var dictationKey = ""
+    private var keyWatch: AnyCancellable?
 
-    init() { reload() }
+    init() {
+        reload()
+        // the key was changed in Settings → Dictation while this page is kept
+        keyWatch = NotificationCenter.default.publisher(for: Dictation.settingsChanged).receive(on: RunLoop.main).sink { [weak self] _ in
+            let k = Dictation.keyShort(Dictation.key)
+            if self?.dictationKey != k { self?.dictationKey = k }
+        }
+    }
 
     func reload() {
         openAtLogin = LoginItem.enabled
         let l = Config.shared["lang"] as? String ?? "auto"
         language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
-        processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
-        countdown = recordConfig()["countdown"] as? Int ?? 3
-        systemAudio = recordConfig()["system_audio"] as? Bool ?? false
-        hideNotch = OwnWindows.hideNotch
-        collect = snapper.collecting
-        cardDrag = CardDragMode.current
-        snapSound = recordConfig()["snap_sound"] as? Bool ?? false
-        dragNoteFile = CardExport.attachNoteFile
-        agentPaths = AgentProbe.getsPaths
-        voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
         menuBarIcon = App.showsMenuBarIcon
         islandIdle = Island.showsAtRest
+        dictationKey = Dictation.keyShort(Dictation.key)
+        SettingsFeatures.shared.look()
     }
 
     func setMenuBarIcon(_ v: Bool) { (NSApp.delegate as? App)?.setMenuBarIcon(v); menuBarIcon = v }
@@ -94,50 +66,33 @@ final class GeneralModel: ObservableObject {
         Config.shared.set("lang", v == "auto" ? nil : v)
         language = v
     }
-    func setProcess(_ v: String) { setRecordConfig("process", v); processMode = v }
-    func setCountdown(_ v: Int) { setRecordConfig("countdown", v); countdown = v }
-    func setSystemAudio(_ v: Bool) { setRecordConfig("system_audio", v); systemAudio = v }
-    /// "Don't record the notch" (record.hide_notch): a take running now follows at once.
-    func setHideNotch(_ v: Bool) {
-        setRecordConfig(CaptureExclusion.hideNotchKey, v ? true : nil)
-        hideNotch = v
-        (NSApp.delegate as? App)?.rec?.updateFilter()
-    }
-    func setCollect(_ v: Bool) {
-        setRecordConfig("collect_system_shots", v)
-        snapper.syncCollector()
-        collect = snapper.collecting
-    }
-    func setCardDrag(_ v: CardDragMode) { v.apply(); cardDrag = CardDragMode.current }
-    func setSnapSound(_ v: Bool) { setRecordConfig("snap_sound", v ? true : nil); snapSound = v }
-    func setAgentPaths(_ v: Bool) {
-        setRecordConfig("agent_drag", v ? nil : "same")
-        agentPaths = v
-        emit(["event": "agent_drag_mode", "mode": v ? "paths" : "same"])
-    }
-    func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
-    func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
 }
 
 struct GeneralPane: View {
     @StateObject var m = GeneralModel()
-    @StateObject var perms = Permissions()
-    @State private var agentApps = false
+    @ObservedObject private var features = SettingsFeatures.shared
 
     static var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         return v.isEmpty ? "—" : v
     }
 
-
     var body: some View {
         SettingsPage(.general) {
+            SettingsGroup("general.features", footer: T("settings.general.features.footer")) {
+                ForEach(Capability.allCases, id: \.self) { c in featureRow(c) }
+            }
+
             SettingsGroup("general.app") {
                 SettingToggle("general.login", isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }),
                               detail: m.loginError)
                 SettingToggle("general.menu_bar_icon", isOn: Binding(get: { m.menuBarIcon }, set: { m.setMenuBarIcon($0) }))
                 SettingToggle("general.island_idle", isOn: Binding(get: { m.islandIdle }, set: { m.setIslandIdle($0) }))
+                // dictation's and the voice note's: with both off there are no words to show
+                if SettingsCatalog.rowShown("general.live_text", off: features.off) {
+                    SettingToggle("general.live_text", isOn: Binding(get: { m.liveText }, set: { m.setLiveText($0) }))
+                }
                 // the running app keeps the language it opened with: say so, and offer to reopen it now
                 let pendingLanguage = Loc.normalize(m.language) != Loc.language
                 SettingRow("general.language", detail: pendingLanguage ? T("settings.general.language.restart") : nil) {
@@ -152,68 +107,18 @@ struct GeneralPane: View {
                 }
             }
 
-            SettingsGroup("general.recording") {
-                SettingRow("general.after_recording") {
-                    ChoicePopup(label: T("settings.general.after_recording"),
-                                choices: [("auto", T("app.menu.after.organize")), ("off", T("app.menu.after.keep"))],
-                                selection: Binding(get: { m.processMode }, set: { m.setProcess($0) }))
-                }
-                SettingRow("general.countdown") {
-                    ChoicePopup(label: T("app.menu.countdown"),
-                                choices: [(0, T("app.menu.countdown.none")), (3, T("app.menu.countdown.seconds", 3)), (5, T("app.menu.countdown.seconds", 5))],
-                                selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }))
-                }
-                SettingToggle("general.system_audio", isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
-                SettingToggle("general.hide_notch", isOn: Binding(get: { m.hideNotch }, set: { m.setHideNotch($0) }))
-            }
-
-            SettingsGroup("general.voice") {
-                SettingRow("general.voice_end_on_pause") {
-                    ChoicePopup(label: T("settings.general.voice_end_on_pause"),
-                                choices: [(false, T("settings.general.voice_end.key")), (true, T("settings.general.voice_end.pause"))],
-                                selection: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }))
-                }
-                SettingToggle("general.live_text", isOn: Binding(get: { m.liveText }, set: { m.setLiveText($0) }))
-            }
-
-            SettingsGroup("general.cards") {
-                SettingToggle("general.collect", isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
-                SettingToggle("general.snap_sound", isOn: Binding(get: { m.snapSound }, set: { m.setSnapSound($0) }))
-                // pasting the note in needs Accessibility: said only while that choice is made and it is missing
-                let needsAccess = m.cardDrag == .paste && perms.accessibility != .granted
-                SettingRow("general.card_drag", detail: needsAccess ? T("settings.general.card_drag.needs_ax") : nil,
-                           detailColor: needsAccess ? Color.brandAttnInk : nil) {
-                    HStack(spacing: 8) {
-                        if needsAccess {
-                            Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .general) }
-                                .buttonStyle(SettingsOutlinedButtonStyle())
-                                .fixedSize()
-                        }
-                        ChoicePopup(label: T("settings.general.card_drag"),
-                                    choices: CardDragMode.allCases.map { ($0, T("settings.general.card_drag.\($0.rawValue)")) },
-                                    selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }))
-                    }
-                }
-                SettingRow("general.agent_drag") {
-                    HStack(spacing: 8) {
-                        Button(T("settings.general.agent_apps.open")) { agentApps = true }
-                            .buttonStyle(SettingsOutlinedButtonStyle())
-                            .fixedSize()
-                        ChoicePopup(label: T("settings.general.agent_drag"),
-                                    choices: [(true, T("settings.general.agent_drag.paths")), (false, T("settings.general.agent_drag.same"))],
-                                    selection: Binding(get: { m.agentPaths }, set: { m.setAgentPaths($0) }))
-                    }
-                }
-                // screenshots: open the list with the page
-                .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_AGENT_APPS_SHEET"] == "1" { agentApps = true } }
-                .sheet(isPresented: $agentApps) { AgentAppsSheet { agentApps = false }.buttonStyle(.automatic) }
-                SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
-            }
-
             SettingsGroup("general.about", boxed: false) { aboutLine }
         }
-        .onAppear { m.reload(); perms.start() }
-        .onDisappear { perms.stop() }
+        .onAppear { m.reload() }
+    }
+
+    /// A capability and its switch: the glyph and the name it has in the sidebars, what it does in one line (the
+    /// dictation one names the key), the switch. The rows are SettingsCatalog's "general.feature.<id>" (one per
+    /// Capability case), so a search for "turn off", a capability's name or a link to an off pane lands on them.
+    func featureRow(_ c: Capability) -> some View {
+        SettingToggle(SettingsCatalog.featureRow(c), isOn: Binding(get: { !features.off.contains(c) }, set: { features.set(c, on: $0) }),
+                      detail: c == .dictation ? T("feature.dictation.what", m.dictationKey) : nil,
+                      icon: SettingsCatalog.pane(of: c)?.symbol)
     }
 
     /// About, as one quiet line at the text column: the version, then the rarely needed ways on as quiet text buttons

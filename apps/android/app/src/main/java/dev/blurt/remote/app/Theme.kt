@@ -22,6 +22,8 @@ object Theme {
     val mark = Color.argb(230, 255, 255, 255)
     val caption = Color.argb(168, 255, 255, 255)
     val faint = Color.argb(107, 255, 255, 255)
+    /** needs you: the mark on a connection that isn't there (docs/design/system.md `attn`, dark). Always with a shape, never colour alone */
+    val attn = Color.rgb(0xF5, 0xA5, 0x24)
     val talkRest = Color.rgb(33, 51, 47)
     /** the sheets' accent: Blurt's teal, a shade deeper than mint so it never reads as "listening" */
     val accent = Color.rgb(26, 164, 135)

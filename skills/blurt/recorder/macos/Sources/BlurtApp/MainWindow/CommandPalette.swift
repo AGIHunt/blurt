@@ -313,25 +313,47 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 e(T("main.menu.rename"), "pencil", "E", section: .selected) { c.renameSelection() },
             ]
         }
-        out += [
-            e(T("main.action.record"), "record.circle", hk(.toggleRecord), hint: tip("main.toolbar.record.tip"), section: .capture, pinned: true) { c.record() },
-            e(T("main.action.snap"), "camera.viewfinder", hk(.snap), hint: tip("main.toolbar.snap.tip"), section: .capture, pinned: true) { c.snap() },
-            e(T("main.place.inbox"), "tray", "⌘1", kind: .place, section: .go, pinned: true) { c.go(.inbox) },
-            e(T("main.place.progress"), "circle.righthalf.filled", "⌘2", kind: .place, section: .go, pinned: true) { c.go(.inProgress) },
-            e(T("project.inbox"), "tray.2", "⌘3", kind: .place, section: .go) { c.go(.unassigned) },
-            e(T("main.place.all"), "list.bullet.rectangle", "⌘4", kind: .place, section: .go, pinned: true) { c.go(.all) },
-            e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D", kind: .place, section: .go, pinned: true) { c.showDictation() },
-            e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
-            e(T("main.palette.switch_project"), "arrow.left.arrow.right", hk(.project)) { AppEnvironment.island?.showSwitcher() },
-            e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
-            e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
-            e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
-        ]
-        if DictationLabModel.enabled { out.append(e(T("dictation.lab.menu"), "waveform", "⌥⌘L", kind: .place) { c.showDictationLab() }) }
-        for k in KindStyle.builtIn {
-            out.append(Entry(T("main.palette.only_kind", Look.kindName(k)), image: Look.kindImage(k, size: KindStyle.smallSize)) {
-                c.model.kinds = [k]; c.model.reload()
-            })
+        // every capability's commands and places while it is on (BlurtCore Capabilities.swift), in the sidebar's order;
+        // Settings' panes by name, so "phone" or "shortcuts" typed here goes straight there
+        let recording = Capability.recording.isOn, cards = Capability.cards.isOn, dictation = Capability.dictation.isOn
+        if recording {
+            out.append(e(T("main.action.record"), "record.circle", hk(.toggleRecord), hint: tip("main.toolbar.record.tip"), section: .capture, pinned: true) { c.record() })
+        }
+        if cards {
+            out.append(e(T("main.action.snap"), "camera.viewfinder", hk(.snap), hint: tip("main.toolbar.snap.tip"), section: .capture, pinned: true) { c.snap() })
+        }
+        out.append(e(T("home.title"), "house", "⌘0", kind: .place, section: .go, pinned: true) { c.go(.home) })
+        if dictation {
+            out.append(e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D", kind: .place, section: .go, pinned: true) { c.showDictation() })
+        }
+        if cards { out.append(e(T("cards.title"), "rectangle.stack", kind: .place, section: .go, pinned: true) { c.go(.cards) }) }
+        if Capability.screenText.isOn { out.append(e(T("feature.screen_text"), "text.viewfinder", kind: .place, section: .go, pinned: true) { c.go(.screenText) }) }
+        if Capability.phone.isOn { out.append(e(T("phone.title"), "iphone", kind: .place, section: .go, pinned: true) { c.go(.phone) }) }
+        if recording {
+            out += [
+                e(T("main.place.inbox"), "tray", "⌘1", kind: .place, section: .go, pinned: true) { c.go(.inbox) },
+                e(T("main.place.progress"), "circle.righthalf.filled", "⌘2", kind: .place, section: .go, pinned: true) { c.go(.inProgress) },
+                e(T("project.inbox"), "tray.2", "⌘3", kind: .place, section: .go) { c.go(.unassigned) },
+                e(T("main.place.all"), "list.bullet.rectangle", "⌘4", kind: .place, section: .go, pinned: true) { c.go(.all) },
+                e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
+                e(T("main.palette.switch_project"), "arrow.left.arrow.right", hk(.project)) { AppEnvironment.island?.showSwitcher() },
+                e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
+                e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
+            ]
+        }
+        out.append(e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() })
+        if dictation, DictationLabModel.enabled { out.append(e(T("dictation.lab.menu"), "waveform", "⌥⌘L", kind: .place) { c.showDictationLab() }) }
+        if recording, !c.model.scope.isPage {
+            for k in KindStyle.builtIn {
+                out.append(Entry(T("main.palette.only_kind", Look.kindName(k)), image: Look.kindImage(k, size: KindStyle.smallSize)) {
+                    c.model.kinds = [k]; c.model.reload()
+                })
+            }
+        }
+        if AppEnvironment.settings != nil {
+            for p in SettingsCatalog.panes where SettingsCatalog.paneShown(p.id) {
+                out.append(e(T("main.palette.settings_pane", Loc.string(p.title.key, table: p.title.table)), p.symbol) { AppEnvironment.settings?.show(pane: p.id) })
+            }
         }
         // what's running (organising): its progress
         for j in JobStore.shared.active {
@@ -339,7 +361,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         }
         if AppEnvironment.settings != nil { out.append(e(T("menu.settings"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
         let current = ProjectStore.shared.currentID
-        for p in c.model.projects where p.registered {
+        for p in c.model.projects where p.registered && recording {
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath
             out.append(e(p.name, "folder", hint: p.id == current ? T("main.project.current_count", path) : T("main.palette.project", path),
                          kind: .place) { c.reveal(project: p.id) })
@@ -353,7 +375,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 out.append(e(T("main.palette.use_project", p.name), "scope", hint: T("main.project.use.tip"), mutates: true) { c.useProject(p.id) })
             }
         }
-        if current != nil {
+        if current != nil, recording {
             out.append(e(T("main.palette.use_none"), "tray.2", hint: T("app.menu.project.none_tip"), mutates: true) { c.useProject(nil) })
         }
         return out.filter(\.enabled)

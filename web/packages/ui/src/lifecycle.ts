@@ -10,7 +10,7 @@ export const INBOX_STATES: readonly State[] = ["new", "to_verify"];
 /** not finished (MCP open_items, the backlog) */
 export const OPEN_STATES: readonly State[] = ["new", "todo", "handed_off", "in_progress"];
 /** with an agent, or back from one */
-export const ACTIVE_STATES: readonly State[] = ["handed_off", "in_progress", "to_verify"];
+export const ACTIVE_STATES: readonly State[] = ["todo", "handed_off", "in_progress"];
 export const CLOSED_STATES: readonly State[] = ["done", "wontfix"];
 
 export const ACTIONS = ["keep", "hand_off", "done", "send_back", "take_back", "reopen", "restore", "wontfix", "discard"] as const;

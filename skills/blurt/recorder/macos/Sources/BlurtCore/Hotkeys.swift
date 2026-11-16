@@ -370,6 +370,10 @@ public final class HotkeyCenter {
     public var suspended = false { didSet { apply() } }
     /// Actions that should not be offered or registered here (e.g. openMain before there is a main window).
     public var disabled: Set<Action> = []
+    /// Actions whose keys are set and fine but not held as global keys right now: the recording's own (Pause, Draw,
+    /// Finish) while nothing is being recorded, so ⌥P / ⌥D / ⌥S stay the front app's (Capability.whileRecording).
+    /// They keep their place in the checks (a duplicate of one is still a duplicate) and read as set everywhere.
+    public var standby: Set<Action> = []
 
     public var onFire: ((Action) -> Void)?
     /// The keys of an action were let go (only voice input cares: push-to-talk)
@@ -493,6 +497,7 @@ public final class HotkeyCenter {
             // where the app shows its keys, never registered (the Blurt in use keeps its own)
             if HotkeyCenter.testKeysFree { states[a] = system.contains(s) ? .system : .ok; continue }
             if let o = others.first(where: { $0.keys.contains(s) }) { states[a] = .taken(o.pid); continue }
+            if standby.contains(a) { states[a] = system.contains(s) ? .system : .ok; continue }
             let st = registerRaw(a.carbonID, code: s.code, mods: s.mods)
             if st != noErr { states[a] = .failed(st); continue }
             states[a] = system.contains(s) ? .system : .ok

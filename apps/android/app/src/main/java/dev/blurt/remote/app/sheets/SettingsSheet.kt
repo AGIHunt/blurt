@@ -2,6 +2,7 @@
 // gesture written out.
 package dev.blurt.remote.app.sheets
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,9 +36,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.blurt.remote.app.BuildConfig
@@ -88,7 +99,7 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
             Section(stringResource(R.string.computers), if (macs.size > 1) stringResource(R.string.computers_footer) else null) {
                 for (m in macs) {
-                    MacRow(m, m.id == cur?.id, stateOf(m, cur, state, route, nearby), onPick = { if (m.id != cur?.id) { l.choose(m); onClose() } }, onInfo = { onDetails(m) })
+                    MacRow(m, m.id == cur?.id, stateOf(m, cur, state, route, nearby), if (m.id == cur?.id) state else null, onPick = { if (m.id != cur?.id) { l.choose(m); onClose() } }, onInfo = { onDetails(m) })
                     Divider()
                 }
                 Row2(stringResource(R.string.add_computer), modifier = Modifier.clickable(onClick = onPair)) { Sym("add", color = MaterialTheme.colorScheme.primary) }
@@ -158,14 +169,42 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
 }
 
 @Composable
-private fun MacRow(m: PairedMac, current: Boolean, state: String, onPick: () -> Unit, onInfo: () -> Unit) {
+private fun MacRow(m: PairedMac, current: Boolean, state: String, link: Link.State?, onPick: () -> Unit, onInfo: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onPick).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.foundation.layout.Box(Modifier.width(28.dp)) { if (current) Sym("check", 18.sp, MaterialTheme.colorScheme.primary) }
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text(m.title, style = MaterialTheme.typography.bodyLarge)
-            Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // the one in hand, not connected: said at reading size with a mark, not as a caption (as the pad's card does)
+            if (link != null && link != Link.State.CONNECTED) {
+                Row(Modifier.padding(top = 2.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+                    when (link) {
+                        Link.State.CONNECTING -> CircularProgressIndicator(Modifier.size(14.dp), color = MaterialTheme.colorScheme.onSurface, strokeWidth = 2.dp)
+                        Link.State.REPLACED -> Sym("info", 16.sp, MaterialTheme.colorScheme.onSurface)
+                        else -> ProblemMark(Modifier.size(16.dp))
+                    }
+                    Text(state, Modifier.padding(start = 6.dp), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                }
+            } else {
+                Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         IconButton(onInfo) { Sym("info", 22.sp, MaterialTheme.colorScheme.primary) }
+    }
+}
+
+/** The pad card's amber triangle (StatusCard.kt), drawn: the icon font is cut down to the keys' own symbols. */
+@Composable
+private fun ProblemMark(modifier: Modifier) {
+    val cut = MaterialTheme.colorScheme.surface
+    Canvas(modifier) {
+        val u = size.width / 30f
+        val tri = Path().apply { moveTo(15 * u, 3.5f * u); lineTo(28 * u, 26 * u); lineTo(2 * u, 26 * u); close() }
+        drawIntoCanvas { c ->
+            val p = Paint().apply { color = Color(dev.blurt.remote.app.Theme.attn); pathEffect = PathEffect.cornerPathEffect(3 * u) }
+            c.drawPath(tri, p)
+        }
+        drawLine(cut, Offset(15 * u, 11.5f * u), Offset(15 * u, 18 * u), strokeWidth = 2.6f * u, cap = StrokeCap.Round)
+        drawCircle(cut, 1.6f * u, Offset(15 * u, 22.2f * u))
     }
 }
 

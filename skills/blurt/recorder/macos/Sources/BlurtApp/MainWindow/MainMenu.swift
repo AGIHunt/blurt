@@ -71,29 +71,47 @@ enum MainMenu {
         rec.showHotkey(.toggleRecord)
         let sn = item(T("main.action.snap"), #selector(MainWindowController.snap))
         sn.showHotkey(.snap)
-        _ = menu(T("menu.file"), [item(T("main.new_item.menu"), #selector(MainWindowController.newItem as (MainWindowController) -> () -> Void), "n"),
-                                  item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(),
-                                  rec, sn, .separator(),
-                                  item(T("menu.rescan"), #selector(MainWindowController.mRescan)), .separator(),
-                                  item(T("menu.close"), #selector(NSWindow.performClose(_:)), "w", target: nil)])
+        // each capability's commands only while it is on (BlurtCore Capabilities.swift): the items and the projects
+        // are Recording's, Snap is Cards'
+        let recording = Capability.recording.isOn
+        var file: [NSMenuItem] = []
+        if recording {
+            file += [item(T("main.new_item.menu"), #selector(MainWindowController.newItem as (MainWindowController) -> () -> Void), "n"),
+                     item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(), rec]
+        }
+        if Capability.cards.isOn { file.append(sn) }
+        if !file.isEmpty { file.append(.separator()) }
+        if recording { file += [item(T("menu.rescan"), #selector(MainWindowController.mRescan)), .separator()] }
+        file.append(item(T("menu.close"), #selector(NSWindow.performClose(_:)), "w", target: nil))
+        _ = menu(T("menu.file"), file)
         _ = menu(T("menu.edit"), [item(T("menu.undo"), Selector(("undo:")), "z", target: nil),
                                   item(T("menu.redo"), Selector(("redo:")), "z", [.command, .shift], target: nil), .separator(),
                                   item(T("menu.cut"), #selector(NSText.cut(_:)), "x", target: nil), item(T("menu.copy"), #selector(NSText.copy(_:)), "c", target: nil),
                                   item(T("menu.paste"), #selector(NSText.paste(_:)), "v", target: nil),
                                   item(T("menu.select_all"), #selector(NSText.selectAll(_:)), "a", target: nil)])
+        // the sidebar's places, in its order: Home, the capabilities' pages, the items' places, the projects
         var go = [item(T("menu.palette"), #selector(MainWindowController.showPalette), "k"),
                   item(T("menu.find"), #selector(MainWindowController.mFind), "f"), .separator(),
-                  item(T("main.place.inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),
-                  item(T("main.place.progress"), #selector(MainWindowController.mGo(_:)), "2", obj: "progress"),
-                  item(T("project.inbox"), #selector(MainWindowController.mGo(_:)), "3", obj: "unassigned"),
-                  item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all"),
-                  item(T("dictation.history.sidebar"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option])]
-        if DictationLabModel.enabled {
-            go.append(item(T("dictation.lab.menu"), #selector(MainWindowController.mDictationLab), "l", [.command, .option]))
+                  item(T("home.title"), #selector(MainWindowController.mGo(_:)), "0", obj: "home")]
+        if Capability.dictation.isOn {
+            go.append(item(T("dictation.history.sidebar"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option]))
+            if DictationLabModel.enabled {
+                go.append(item(T("dictation.lab.menu"), #selector(MainWindowController.mDictationLab), "l", [.command, .option]))
+            }
         }
-        // ⌘5–⌘9: the same five projects the key handler goes to (MainWindowController.shortcutProjects)
-        for (k, p) in c.shortcutProjects.enumerated() {
-            go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
+        if Capability.cards.isOn { go.append(item(T("cards.title"), #selector(MainWindowController.mGo(_:)), obj: "cards")) }
+        if Capability.screenText.isOn { go.append(item(T("feature.screen_text"), #selector(MainWindowController.mGo(_:)), obj: "screen_text")) }
+        if Capability.phone.isOn { go.append(item(T("phone.title"), #selector(MainWindowController.mGo(_:)), obj: "phone")) }
+        if recording {
+            go += [.separator(),
+                   item(T("main.place.inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),
+                   item(T("main.place.progress"), #selector(MainWindowController.mGo(_:)), "2", obj: "progress"),
+                   item(T("project.inbox"), #selector(MainWindowController.mGo(_:)), "3", obj: "unassigned"),
+                   item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all")]
+            // ⌘5–⌘9: the same five projects the key handler goes to (MainWindowController.shortcutProjects)
+            for (k, p) in c.shortcutProjects.enumerated() {
+                go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
+            }
         }
         _ = menu(T("menu.go"), go)
         // View: the columns, the sort (the same menu as the list heading's sort button) and the filters
@@ -145,6 +163,10 @@ enum MainMenu {
                                         + (Updater.shared.available ? [.separator()] + updates() : []))
         NSApp.helpMenu = help
         NSApp.windowsMenu = main.items.first { $0.title == T("menu.window") }?.submenu
+        // no items and no projects with Recording off: their two menus go with them
+        if !recording {
+            for t in [T("menu.item"), T("menu.project")] { main.items.first { $0.title == t }.map(main.removeItem) }
+        }
         return main
     }
 }
@@ -268,9 +290,11 @@ enum ShortcutsSheet {
                 Row(label: T("main.keys.previous"), keys: [["K"], ["↑"]]),
                 Row(label: T("main.keys.open"), keys: [["↩"]]),
                 Row(label: T("main.keys.back_to_list"), keys: [["esc"], ["⇧⇥"]]),
+                Row(label: T("home.title"), keys: [["⌘0"]]),
+            ] + (Capability.recording.isOn ? [
                 Row(label: T("main.keys.places"), keys: [["⌘1", "–", "⌘4"]]),
                 Row(label: T("main.keys.projects"), keys: [["⌘5", "–", "⌘9"]]),
-            ]),
+            ] : [])),
             (T("main.keys.section.triage"), [
                 Row(label: T("state.menu"), keys: [["S"]]),
                 Row(label: T("action.keep"), note: T("main.keys.keep.note"), keys: [["A"]]),

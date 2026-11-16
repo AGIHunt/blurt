@@ -11,6 +11,7 @@
 // every word ("hotkey") does. Actions (Restore Defaults) are found by their own words only.
 import { CATALOGS } from '../i18n';
 import type { IconName } from '@blurt/icons';
+import { CAPS } from '../capabilities';
 
 export type Lang = 'en' | 'zh-Hans';
 /** a string key in the settings catalogs (without the "st." prefix) */
@@ -20,9 +21,9 @@ export interface PaneInfo {
   id: PaneId;
   title: Key;
   icon: IconName;
-  group: 'preferences' | 'work' | 'mac';
+  group: 'features' | 'app' | 'mac';
 }
-export type PaneId = 'general' | 'dictation' | 'screentext' | 'speech' | 'shortcuts' | 'phone' | 'projects' | 'agents' | 'privacy' | 'storage';
+export type PaneId = 'general' | 'dictation' | 'cards' | 'screentext' | 'recording' | 'speech' | 'shortcuts' | 'phone' | 'projects' | 'agents' | 'privacy' | 'storage';
 
 export interface Entry {
   id: string;
@@ -33,22 +34,29 @@ export interface Entry {
   more?: Key;
 }
 
+/** The sidebar's groups (v1.0.23, the Mac's SettingsCatalog.groups): Features — one pane per capability, named as the
+ *  capability is everywhere, each there only while it is on (capabilities.ts `paneShown`) · App — what every feature
+ *  shares · This PC. Before: Preferences / Work / This PC, with the recording, voice-note and card settings in General. */
 export const GROUPS: { id: PaneInfo['group']; title: Key }[] = [
-  { id: 'preferences', title: 'settings.group.preferences' },
-  { id: 'work', title: 'settings.group.work' },
+  { id: 'features', title: 'settings.group.features' },
+  { id: 'app', title: 'settings.group.app' },
   { id: 'mac', title: 'settings.group.mac' },
 ];
 
 export const PANES: PaneInfo[] = [
-  { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'preferences' },
-  { id: 'dictation', title: 'dictation.settings.tab', icon: 'character-cursor', group: 'preferences' },
-  { id: 'screentext', title: 'settings.kit.screen_text', icon: 'text-viewfinder', group: 'preferences' },
-  { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'preferences' },
-  { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'preferences' },
+  { id: 'dictation', title: 'feature.dictation', icon: 'character-cursor', group: 'features' },
+  // snaps, voice notes and what a dragged card carries (v1.0.23: before, two boxes in General)
+  { id: 'cards', title: 'feature.cards', icon: 'cards', group: 'features' },
+  { id: 'screentext', title: 'feature.screen_text', icon: 'text-viewfinder', group: 'features' },
+  // a recording and what becomes of it (v1.0.23: before, a box in General); its projects follow
+  { id: 'recording', title: 'feature.recording', icon: 'record', group: 'features' },
+  { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'features' },
   // the Mac's iPhone pane ("remote"), for any phone: Settings → Phone (PhonePane.tsx)
-  { id: 'phone', title: 'phone.pane', icon: 'phone', group: 'preferences' },
-  { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'work' },
-  { id: 'agents', title: 'settings.kit.agents', icon: 'terminal', group: 'work' },
+  { id: 'phone', title: 'feature.phone', icon: 'phone', group: 'features' },
+  { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'app' },
+  { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'app' },
+  { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'app' },
+  { id: 'agents', title: 'settings.kit.agents', icon: 'terminal', group: 'app' },
   { id: 'privacy', title: 'settings.kit.privacy', icon: 'hand', group: 'mac' },
   { id: 'storage', title: 'settings.kit.storage', icon: 'drive', group: 'mac' },
 ];
@@ -56,15 +64,38 @@ export const pane = (id: string) => PANES.find((p) => p.id === id);
 
 /** Old links (blurt://settings/<pane>, a remembered last pane) and where they land now. */
 export const MOVED: Record<string, string> = { export: 'agents', cloud: 'speech', 'speech.cloud': 'speech', remote: 'phone' };
-/** a link to Export's old place lands at Ask your agent (SettingsCatalog.moved: export → agents/agents.ask) */
-export const MOVED_ROW: Record<string, string> = { export: 'agents.ask' };
+/** Rows that moved (old row → new row): Export's old place lands at Ask your agent; v1.0.23 moved General's Voice notes
+ *  and Cards boxes to the Cards pane and its Recording box to Recording & Items (the Mac's SettingsCatalog.movedRows). */
+export const MOVED_ROW: Record<string, string> = {
+  export: 'agents.ask',
+  'general.collect': 'cards.collect', 'general.snap_sound': 'cards.snap_sound', 'general.voice_end_on_pause': 'cards.voice_end_on_pause',
+  'general.card_drag': 'cards.card_drag', 'general.agent_drag': 'cards.agent_drag', 'general.drag_note_file': 'cards.drag_note_file',
+  'general.cards': 'cards.snaps', 'general.voice': 'cards.voice',
+  'general.after_recording': 'recording.after_recording', 'general.countdown': 'recording.countdown',
+  'general.system_audio': 'recording.system_audio', 'general.recording': 'recording.capture',
+};
+/** "general/general.collect" (or "general/collect") → "cards/cards.collect"; a moved pane → its new place; else as it is. */
+export function redirect(link: string): string {
+  const [p, rest] = link.split('/');
+  if (MOVED[p] && !rest) return MOVED[p];
+  if (!rest) return link;
+  const row = rest.includes('.') ? rest : `${p}.${rest}`;
+  const to = MOVED_ROW[row];
+  return to ? `${to.split('.')[0]}/${to}` : link;
+}
 
 export const SECTIONS: Record<string, Key> = {
+  // General: the five capabilities' switches, then the app's own choices
+  'general.features': 'settings.general.features',
   'general.app': 'settings.general.app',
-  'general.recording': 'settings.general.recording',
-  'general.voice': 'settings.general.section.voice',
-  'general.cards': 'settings.general.section.cards',
   'general.about': 'settings.general.about',
+  // Cards, in the order a card is made and used: taking a snap, the voice note, dragging the card out
+  'cards.snaps': 'settings.cards.section.snaps',
+  'cards.voice': 'settings.general.section.voice',
+  'cards.drag': 'settings.cards.section.drag',
+  // Recording & Items: the recording itself, then what becomes of it
+  'recording.capture': 'settings.general.recording',
+  'recording.items': 'settings.recording.section.items',
   'projects.list': 'main.sidebar.projects',
   'projects.capture': 'settings.projects.capture_heading',
   'dictation.main': 'dictation.settings.section',
@@ -73,6 +104,7 @@ export const SECTIONS: Record<string, Key> = {
   'dictation.data': 'dictation.data.section',
   'screentext.copy': 'settings.screen_text.section.copy',
   'screentext.translation': 'settings.screen_text.section.translate',
+  'screentext.history_section': 'settings.screen_text.section.history',
   'speech.services': 'models.section.services',
   'speech.jobs': 'speech.section.jobs',
   'speech.models': 'speech.section.models',
@@ -112,25 +144,31 @@ const whole = (id: string, detail?: Key): Entry => ({ id, kind: 'section', secti
 
 export const ENTRIES: Entry[] = (() => {
   const e: Entry[] = [
-    // General
+    // General: the capabilities' switches (found by "features", "功能"; each by its capability's name and "turn off"),
+    // then the app's own rows
+    whole('general.features', 'settings.general.features.footer'),
+    ...CAPS.map((c) => row(`general.feature.${c}`, 'general.features', `feature.${c}`, { detail: `feature.${c}.what` })),
     row('general.login', 'general.app', 'settings.general.login', { detail: 'settings.general.login.detail' }),
-    row('general.language', 'general.app', 'settings.general.language'),
-    // Windows' own notifications (Blurt posts them while it isn't in front; the Mac says it in the island instead)
-    row('general.notify_done', 'general.app', 'settings.notify.done', { more: 'win.general.notify.hint' }),
     // the Mac's "Show the notch when idle" (app.island_idle); off by default here (island.rs shows_at_rest)
     row('general.island_idle', 'general.app', 'settings.general.island_idle', { detail: 'settings.general.island_idle.detail' }),
-    row('general.after_recording', 'general.recording', 'settings.general.after_recording'),
-    row('general.countdown', 'general.recording', 'app.menu.countdown'),
-    row('general.system_audio', 'general.recording', 'settings.general.system_audio'),
-    row('general.voice_end_on_pause', 'general.voice', 'settings.general.voice_end_on_pause', { more: 'settings.general.voice_end_on_pause.hint' }),
-    row('general.live_text', 'general.voice', 'settings.general.live_text', { more: 'settings.general.live_text.hint' }),
-    row('general.collect', 'general.cards', 'settings.general.collect', { more: 'settings.general.collect.hint' }),
-    row('general.snap_sound', 'general.cards', 'settings.general.snap_sound'),
-    row('general.card_drag', 'general.cards', 'settings.general.card_drag', { more: 'settings.general.card_drag.hint' }),
-    // what an agent app gets (card_drop.rs AGENTS + the user's list): the picture's path and the note, as a terminal
-    row('general.agent_drag', 'general.cards', 'settings.general.agent_drag', { more: 'settings.general.agent_drag.hint' }),
-    row('general.drag_note_file', 'general.cards', 'settings.general.drag_note_file', { more: 'settings.general.drag_note_file.hint' }),
+    // dictation's and the voice note's alike (record.live_text): the app's, not one capability's
+    row('general.live_text', 'general.app', 'settings.general.live_text', { detail: 'settings.general.live_text.detail', more: 'settings.general.live_text.hint' }),
+    // Windows' own notifications (Blurt posts them while it isn't in front; the Mac says it in the island instead)
+    row('general.notify_done', 'general.app', 'settings.notify.done', { more: 'win.general.notify.hint' }),
+    row('general.language', 'general.app', 'settings.general.language'),
     whole('general.about'),
+    // Cards (the strings keep their settings.general.* keys from when these rows were in General)
+    row('cards.collect', 'cards.snaps', 'settings.general.collect', { more: 'settings.general.collect.hint' }),
+    row('cards.snap_sound', 'cards.snaps', 'settings.general.snap_sound'),
+    row('cards.voice_end_on_pause', 'cards.voice', 'settings.general.voice_end_on_pause', { more: 'settings.general.voice_end_on_pause.hint' }),
+    row('cards.card_drag', 'cards.drag', 'settings.general.card_drag', { more: 'settings.general.card_drag.hint' }),
+    // what an agent app gets (card_drop.rs AGENTS + the user's list): the picture's path and the note, as a terminal
+    row('cards.agent_drag', 'cards.drag', 'settings.general.agent_drag', { more: 'settings.general.agent_drag.hint' }),
+    row('cards.drag_note_file', 'cards.drag', 'settings.general.drag_note_file', { more: 'settings.general.drag_note_file.hint' }),
+    // Recording & Items
+    row('recording.countdown', 'recording.capture', 'app.menu.countdown'),
+    row('recording.system_audio', 'recording.capture', 'settings.general.system_audio'),
+    row('recording.after_recording', 'recording.items', 'settings.general.after_recording'),
     // Projects
     row('projects.capture_into', 'projects.capture', 'settings.projects.capture_row'),
     whole('projects.list', 'settings.general.projects.hint'),
@@ -159,11 +197,13 @@ export const ENTRIES: Entry[] = (() => {
     row('dictation.history_saved', 'dictation.data', 'dictation.history.saved', { detail: 'dictation.history.saved.detail' }),
     row('dictation.keep_audio', 'dictation.data', 'dictation.history.keep_audio', { detail: 'dictation.history.keep_audio.detail' }),
     row('dictation.models', 'dictation.data', 'dictation.models.section', { detail: 'dictation.models.detail' }),
-    // Copy Text from Screen
+    // Text & Translation
     row('screentext.allow', 'screentext.copy', 'screentext.allow', { detail: 'screentext.allow.detail' }),
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
     row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
+    // how long the history keeps what was read (record.screen_text.history_days), Open History…, Clear History…
+    row('screentext.history', 'screentext.history_section', 'settings.screen_text.history', { detail: 'settings.screen_text.history.detail' }),
     // Models
     whole('speech.services', 'models.services.detail'),
     row('speech.batch', 'speech.jobs', 'speech.purpose.batch', { detail: 'speech.purpose.batch.detail' }),

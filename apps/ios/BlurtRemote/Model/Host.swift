@@ -39,6 +39,42 @@ enum Words {
     /// Before any computer: where its code is. Blurt calls the pane iPhone on a Mac, Phone on Windows and Linux.
     static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Settings and choose Phone.") }
 
+    /// The pad's card, line by line (LinkStatus.swift has which lines a state gets). `name`: the computer in hand; `check`: the digits a
+    /// pairing shows on both; `failed`: Link's sentence for a pairing that didn't take.
+    static func status(_ line: StatusBanner.Line, host h: RemoteHost, name: String?, check: String? = nil, failed: String? = nil) -> String {
+        let n = name ?? String(localized: "the computer")
+        switch line {
+        case .connecting: return String(localized: "Connecting to \(n)…")
+        case .reconnecting: return String(localized: "Reconnecting to \(n)…")
+        case .cantReach: return String(localized: "Can’t reach \(n)")
+        case .checkNetwork: return String(localized: "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer.")
+        case .checkAwake: return String(localized: "Check that the computer isn’t asleep and Blurt is running.")
+        case .needsPairing: return String(localized: "Needs pairing again")
+        case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) no longer knows this iPhone.")
+        case .otherPhone: return String(localized: "Another phone is connected")
+        case .touchToTakeOver: return String(localized: "Touch to take over.")
+        case .pairFirst: return String(localized: "Pair with your computer")
+        case .whereTheCodeIs: return whereTheCodeIs
+        case .waiting: return String(localized: "Waiting for your computer")
+        case .allowOnComputer: return String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@."), check ?? "")
+        case .pairingFailed: return String(localized: "Pairing didn’t work")
+        case .whyPairingFailed: return failed ?? ""
+        case .cantControl: return String(localized: "Can’t control \(n)")
+        case .howToAllowControl: return cantControl(h, n)
+        case .cantShowScreen: return String(localized: "Can’t show the screen")
+        case .allowScreen: return noScreenPermission(h, n)
+        case .screenIsOff: return screenOff(h, n)
+        }
+    }
+
+    static func status(_ a: StatusBanner.Action) -> String {
+        switch a {
+        case .retry: String(localized: "Retry")
+        case .scan: String(localized: "Scan Code")
+        case .another: String(localized: "Try Another Computer")
+        }
+    }
+
     /// The cycle keys, as the settings' list of gestures names them.
     static func cycleKeys(_ h: RemoteHost) -> String {
         switch h {

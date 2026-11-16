@@ -303,7 +303,10 @@ pub fn state(app: &AppHandle) -> Value {
     let reg = Registry::load();
     let summary = st.index().summary().unwrap_or_else(|_| json!({}));
     let cap = st.capture.state();
-    let active = jobs::list(true, 40);
+    // capabilities.rs: with Recording off there are no items, jobs or projects here (no counts, no chip, no switcher)
+    let off = crate::capabilities::off_now();
+    let recording_on = !off.contains(&crate::capabilities::Capability::Recording);
+    let active = if recording_on { jobs::list(true, 40) } else { vec![] };
     let short = |p: &Value| {
         let exists = p["path"].as_str().is_some_and(|x| std::path::Path::new(x).is_dir());
         json!({"id": p["id"], "name": p["name"], "key": p["key"], "exists": exists})
@@ -316,10 +319,12 @@ pub fn state(app: &AppHandle) -> Value {
         .collect();
     let now = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
     json!({"op": "state", "state": {
-        "project": reg.current_project().map(short),
+        "project": if recording_on { reg.current_project().map(short) } else { None },
         // every project, a missing folder's too (said so, dimmed; choosing it asks where it is now: MissingFolder)
-        "projects": reg.projects.iter().map(short).collect::<Vec<_>>(),
-        "toReview": summary["inbox"].as_i64().unwrap_or(0), // K3 "needs you": new + to verify
+        "projects": if recording_on { reg.projects.iter().map(short).collect::<Vec<_>>() } else { vec![] },
+        "toReview": if recording_on { summary["inbox"].as_i64().unwrap_or(0) } else { 0 }, // K3 "needs you": new + to verify
+        // the capabilities that are off: their buttons and hints don't show
+        "off": crate::capabilities::ids(&off),
         // the 3-2-1 isn't recording yet (the Mac's island takes the take once it rolls: recording.md §3.7)
         "recording": if cap["recording"] == true && cap["countdown"] != true {
             json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "pen": cap["pen"], "at": now})
@@ -362,7 +367,8 @@ pub fn refresh(app: &AppHandle) {
 }
 
 pub fn refresh_cards(app: &AppHandle) {
-    let cards = capture::load_card_values();
+    // Cards off (capabilities.rs): none show anywhere, and the main window's counts say none
+    let cards = if crate::capabilities::on_now(crate::capabilities::Capability::Cards) { capture::load_card_values() } else { vec![] };
     // the main window's Inbox notice ("3 captures are waiting for a project") follows the count
     let _ = app.emit("cards://changed", json!({"count": cards.len()}));
     send(app, json!({"op": "cards", "cards": cards}));
@@ -631,6 +637,16 @@ fn copy_cards(app: &AppHandle, cards: &[(PathBuf, u64)]) {
 pub fn on_action(app: &AppHandle, v: &Value) {
     let st = app.state::<AppState>();
     let action = v["action"].as_str().unwrap_or("");
+    // the island's own capture buttons and switcher follow the capabilities as the keys do
+    let gate = match action {
+        "voice" => Some("voice"),
+        "project.use" | "project.open" | "project.locate" => Some("project"),
+        a @ ("record" | "snap") => Some(a),
+        _ => None,
+    };
+    if gate.is_some_and(|a| !crate::capabilities::allows(a, &crate::capabilities::off_now(), st.capture.recording())) {
+        return;
+    }
     match action {
         "record" => capture::toggle(app),
         "pause" | "resume" | "stop" | "discard" => {

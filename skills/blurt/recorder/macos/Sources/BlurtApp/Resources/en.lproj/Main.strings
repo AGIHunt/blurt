@@ -64,7 +64,7 @@
 "app.record.reason.display_gone" = "The recorded display was disconnected";
 "app.record.reason.interrupted" = "Interrupted by sleep or the lock screen";
 "app.record.reason.writer" = "Couldn’t write the video file";
-"app.record.recovered" = "Recording saved · resumed after a write error";
+"app.record.recovered" = "Recording saved · Recovered from a write error";
 "app.record.recovered_lost" = "Recording saved · about %@ s missing after a write error";
 "app.record.recovered_parts" = "Recording saved in parts after a write error";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
@@ -83,7 +83,7 @@
 "app.url.no_item" = "Can’t find that item. It may have been deleted or moved.";
 "app.url.no_session" = "Can’t find that recording or snap. It may have been deleted or moved.";
 
-"main.action.record" = "Record";
+"main.action.record" = "Start Recording";
 "main.action.snap" = "Snap";
 
 "main.banner.agent" = "an agent";
@@ -141,7 +141,7 @@
 "main.empty.no_scripts" = "The blurt skill’s scripts are missing";
 "main.empty.no_scripts.detail" = "Blurt’s scripts are missing. Reinstall Blurt from blurt.work, then reopen this window.";
 "main.empty.nothing_in_progress" = "Nothing in progress";
-"main.empty.nothing_in_progress.detail" = "Items you hand off to an agent stay here until you verify them.";
+"main.empty.nothing_in_progress.detail" = "Items you’ve kept or handed off appear here until they’re done.";
 "main.empty.outdated" = "Updating your items…";
 "main.empty.outdated.detail" = "This takes a moment after an update. Nothing is lost.";
 "main.empty.project" = "Nothing in this project yet";
@@ -216,9 +216,9 @@
 "main.job.error.network" = "The network connection was lost.";
 "main.job.error.quota" = "The agent ran out of quota.";
 "main.job.error.quota.named" = "%@ ran out of quota.";
-"main.job.hint.no_agent" = "No coding agent is ready. Install or sign in to one in Settings, under Agents.";
+"main.job.hint.no_agent" = "Organizing in the background needs an agent CLI. Install or sign in to one in Settings > Agents. Or say “Process my Blurt recordings” in an agent with the Blurt skill.";
 "main.job.capture" = "A capture";
-"main.job.no_agent" = "No coding agent is ready: %@.";
+"main.job.no_agent" = "No agent can organize in the background: %@. Or say “Process my Blurt recordings” in an agent with the Blurt skill.";
 "main.job.no_agent.sep" = "; ";
 "main.job.organized_by" = "Organized by %1$@ (%2$@)";
 "main.job.error.agent_exit" = "The agent stopped before it finished.";
@@ -297,7 +297,7 @@
 "main.menu.quick_look" = "Quick Look";
 "main.menu.rename" = "Rename";
 "main.menu.review_batch" = "Review the Whole Capture";
-"main.menu.start_session" = "Hand Off to Your Agent";
+"main.menu.start_session" = "Copy Instruction for Agent";
 
 "main.misc.by_codex" = "Fixed by Codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
@@ -319,6 +319,7 @@
 "main.palette.only_kind" = "Show Only %@";
 "main.palette.placeholder" = "Type a command, a project or an item…";
 "main.palette.project" = "Project · %@";
+"main.palette.settings_pane" = "Settings · %@";
 
 "main.place.all" = "All Items";
 "main.place.inbox" = "Inbox";
@@ -372,8 +373,9 @@
 "main.missing.other" = "That folder is “%1$@”, not “%2$@”";
 "main.sidebar.not_opened" = "not opened as a project";
 "main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
-"main.sidebar.progress.ax" = "In progress: items handed off to an agent, and running jobs";
+"main.sidebar.progress.ax" = "In progress: items to do, items with an agent, and running jobs";
 "main.sidebar.projects" = "Projects";
+"main.sidebar.items" = "Items";
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
 "main.state.ax" = "State: %@. Click to change it.";
@@ -383,7 +385,7 @@
 "main.speech.recommended" = "Recommended speech model · %@";
 "main.speech.recommended.action" = "Review";
 
-"main.toolbar.handoff" = "Hand Off";
+"main.toolbar.handoff" = "Copy for Agent";
 "main.toolbar.handoff.own" = "For Your Own Agent";
 "main.toolbar.handoff.tip" = "Copy an instruction for your own agent to work on these items";
 "main.toolbar.move" = "Move";
@@ -539,6 +541,7 @@
 "app.models.show" = "Show";
 "app.models.menu_unpacking" = "Unpacking speech models…";
 "app.models.stop" = "Stop";
+"app.models.started" = "Downloading speech models in the background (%@)";
 "app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";
 "app.toast.welcome_no_model.action" = "Download";
@@ -622,7 +625,6 @@
 "main.filter.kind_plural.task" = "tasks";
 "main.toolbar.filter" = "Filter";
 "main.toolbar.filter.tip" = "Show only some kinds or states";
-"main.toolbar.title" = "Title";
 "main.sidebar.project_tip" = "%@ · its ids start with %@";
 "main.palette.section.selected" = "Selected Item";
 "main.palette.section.selected_n" = "Selected Items";
@@ -641,7 +643,7 @@
 "main.palette.hint.copy_full" = "Copy the whole item as text";
 
 /* several items selected (SelectionView) */
-"main.selection.hand_off" = "Hand Off";
+"main.selection.hand_off" = "Copy for Agent";
 "main.selection.move" = "Move to Project…";
 "main.selection.more" = "More Actions";
 "main.selection.remove" = "Remove from Selection";

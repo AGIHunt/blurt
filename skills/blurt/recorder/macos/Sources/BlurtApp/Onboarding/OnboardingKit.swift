@@ -4,8 +4,10 @@
 // footer and the notice that stands in for a step's content when something blocks it.
 //
 //   OnbMetrics            the column, the glyph slot, the row height
-//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch)
-//   StepDots              the step count as four dots; the current one is a wider brand-ink capsule (a shape twin)
+//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch); `muted`
+//                         for a capability switched off on the first step
+//   StepDots              the step count as dots (four; none when the assistant is one step); the current one is a
+//                         wider brand-ink capsule (a shape twin)
 //   StateLabel            one trailing state: a status dot and its word
 //   OnbNotice             a blocked step: an icon, a title, one line, an optional bar — the action is the footer's
 import AppKit
@@ -50,14 +52,16 @@ struct OnbRow<Trailing: View>: View {
     var detailColor: Color?
     var first = false
     var help: String?
+    /// what the row is about is switched off (a capability on the first step): its glyph and name step back
+    var muted = false
     @ViewBuilder var trailing: Trailing
     @Environment(\.displayScale) private var scale
 
     var body: some View {
         HStack(alignment: .center, spacing: OnbMetrics.rowGap) {
-            if let i = image { GlyphTile(image: i) }
+            if let i = image { GlyphTile(image: i).opacity(muted ? 0.45 : 1) }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(muted ? .secondary : .primary)
                 if let d = detail, !d.isEmpty {
                     Text(d).font(.system(size: 12)).foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true)

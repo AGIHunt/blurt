@@ -279,7 +279,8 @@
   "capture.text.try_again": "再试一次",
   "capture.text.card.copy": "复制",
   "capture.text.card.copied": "已复制",
-  "capture.text.card.ax": "译文",
+  "capture.text.card.ax": "取到的文字",
+  "capture.text.card.close": "关闭",
   "rec.countdown.ready": "准备开始",
   "rec.countdown.pause": "暂停",
   "rec.countdown.finish": "完成",
@@ -446,6 +447,7 @@
   "island.ext.text": "文字",
   "island.ext.and": "、",
   "island.drop.nothing": "拖来的东西没能变成卡片",
+  "island.dictation.copied_last": "已复制上一条听写",
   "island.card.file": "文件 · {name}",
   "island.card.text": "文字",
   "island.card.missing": "找不到原文件"

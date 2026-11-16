@@ -84,7 +84,7 @@
 "models.key.custom" = "这是 %@ 的 Key，请在「自定义模型」中添加。";
 
 "models.job.translate" = "翻译";
-"models.job.translate.detail" = "听写翻译（⌘）和屏幕翻译（⌥T）。";
+"models.job.translate.detail" = "听写翻译（⌘）和截图翻译（⌥T）。";
 "models.job.vision" = "截图取字";
 "models.job.vision.detail" = "提高截图取字（⌥C）的准确度。";
 "models.job.goes.text" = "文字由 %@ 处理。";

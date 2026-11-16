@@ -279,7 +279,8 @@
   "capture.text.try_again": "Try again",
   "capture.text.card.copy": "Copy",
   "capture.text.card.copied": "Copied",
-  "capture.text.card.ax": "Translation",
+  "capture.text.card.ax": "Text from Screen",
+  "capture.text.card.close": "Close",
   "rec.countdown.ready": "Get ready",
   "rec.countdown.pause": "Pause",
   "rec.countdown.finish": "Finish",
@@ -446,6 +447,7 @@
   "island.ext.text": "Text",
   "island.ext.and": ", ",
   "island.drop.nothing": "Nothing here could become a card",
+  "island.dictation.copied_last": "Last dictation copied",
   "island.card.file": "File · {name}",
   "island.card.text": "Text",
   "island.card.missing": "Original file not found"

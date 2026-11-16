@@ -1,7 +1,9 @@
 // The first-run Welcome on Windows / Linux (the Mac's Onboarding/Onboarding.swift; onboarding.rs): a view over the
 // whole main window, shown once (config app.onboarded) and again from Settings → General. Four steps on Windows,
 // every one skippable:
-//   1. welcome — what Blurt does: each use with what it makes and its key as keycaps;
+//   1. welcome — what do you want to use: the five capabilities (docs/design/capabilities.md), each with what it does,
+//      its keys as keycaps and its switch, all on until one is turned off (the Mac's OnboardingFlow step 0). With
+//      Dictation off, its three steps below don't come (and setup's first model download stops);
 //   2. dictation — the key (right Alt; a "press it" check from the hook's own events) and the microphone (the
 //      default input, Windows' privacy switches, Open Settings… while they are off);
 //   3. speech model — the recommended model and its one download (setup.rs starts it at the first launch: that one is
@@ -17,7 +19,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Icon, Mascot, type IconName } from '@blurt/icons';
 import { api, listen, type CloudSummary, type HotkeyRow, type LoginItem, type MicState, type Onboarding } from '../api';
 import { i18n, t } from '../i18n';
-import { Popup } from '../settings/kit';
+import { keyInText } from '../util';
+import { Popup, Switch } from '../settings/kit';
+import { CAPS, SHOWN_KEYS, type Capability } from '../capabilities';
+import { CAP_ICON } from './SettingsView';
+import { setCapability, useOff } from './useCapabilities';
 import { AddCloudModel, AddSpeechCloud, dictateInCloud, speechOffers, useCurated } from './DictationSettings';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 
@@ -46,9 +52,9 @@ function KeyCaps({ keys }: { keys: string[] }) {
   );
 }
 
-function Row({ icon, title, detail, first, children, testid }: { icon: IconName; title: string; detail?: ReactNode; first?: boolean; children?: ReactNode; testid?: string }) {
+function Row({ icon, title, detail, first, children, testid, muted }: { icon: IconName; title: string; detail?: ReactNode; first?: boolean; children?: ReactNode; testid?: string; muted?: boolean }) {
   return (
-    <div className={`wl-row${first ? ' first' : ''}`} data-testid={testid}>
+    <div className={`wl-row${first ? ' first' : ''}${muted ? ' muted' : ''}`} data-testid={testid}>
       <span className="wl-glyph"><Icon name={icon} size={18} /></span>
       <span className="wl-txt">
         <span className="wl-title">{title}</span>
@@ -103,8 +109,11 @@ interface Props {
 
 export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }: Props) {
   const [onb, setOnb] = useState(initial);
-  const steps = stepsFor(onb.dictation.available);
-  const [ix, setIx] = useState(() => Math.min(firstRun ? initial.step : 0, steps.length - 1));
+  const { off } = useOff();
+  // dictation's three steps only while it is built here and switched on (the first step's switch)
+  const steps = stepsFor(onb.dictation.available && !off.has('dictation'));
+  const [ixRaw, setIx] = useState(() => Math.min(firstRun ? initial.step : 0, stepsFor(initial.dictation.available && !(initial.off ?? []).includes('dictation')).length - 1));
+  const ix = Math.min(ixRaw, steps.length - 1);
   const step = steps[ix];
   const last = ix === steps.length - 1;
   const [hotkeys, setHotkeys] = useState<HotkeyRow[]>([]);
@@ -306,7 +315,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
   const heading = (() => {
     switch (step) {
       case 'welcome':
-        return [t('welcome.welcome'), t('welcome.subtitle')];
+        return [t('welcome.welcome'), t('welcome.features')];
       case 'dictation':
         // only what was checked: the key heard, the microphone allowed (not that speech was heard)
         return [t('welcome.dictation.title'), t(heard ? (mic?.device && mic.access !== 'denied' ? 'welcome.dictation.detail_done' : 'welcome.dictation.detail_key') : 'welcome.dictation.detail')];
@@ -318,27 +327,24 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
   })();
 
   const hk = (a: string) => hotkeys.find((h) => h.action === a);
-  const hkCaps = (a: string) => {
-    const h = hk(a);
-    return h && h.result === 'ok' && h.label ? caps(h.label) : [];
-  };
 
   // ---- steps
+  // what do you want to use: the five capabilities, each with its keys and its switch (off: the glyph, the name and the
+  // keys step back, the line stays readable)
+  const capKeys = (c: Capability): string[][] =>
+    c === 'dictation' ? [keyCaps] : SHOWN_KEYS[c].map((a) => { const h = hk(a); return h && h.spec !== 'off' && h.label ? caps(h.label) : []; }).filter((k) => k.length);
+  const capWhat = (c: Capability) => (c === 'dictation' ? t('feature.dictation.what', { a: keyInText(keyName, i18n().lang) }) : c === 'phone' ? t('welcome.use.phone.detail') : t(`feature.${c}.what`));
   const welcome = (
     <div className="wl-rows">
-      {(
-        [
-          ...(win ? [['text-cursor', 'dictation', keyCaps] as const] : []),
-          ['snap', 'snap', hkCaps('snap')] as const,
-          ...(win ? [['copy', 'text', hkCaps('text')] as const, ['languages', 'translate', hkCaps('translate')] as const] : []),
-          ['mic', 'voice', hkCaps('voice')] as const,
-          ['record', 'record', hkCaps('record')] as const,
-        ] as const
-      ).map(([icon, use, keys], i) => (
-        <Row key={use} icon={icon} first={i === 0} title={t(`welcome.use.${use}`)} detail={use === 'dictation' ? t(`welcome.gesture.${mode}`) : t(`welcome.use.${use}.detail`)} testid={`welcome-use-${use}`}>
-          {keys.length ? <KeyCaps keys={[...keys]} /> : <span className="dim small">{t('welcome.not_set')}</span>}
-        </Row>
-      ))}
+      {CAPS.filter((c) => (c !== 'dictation' || onb.dictation.available) && (c !== 'screen_text' || win || onb.dictation.available)).map((c, i) => {
+        const on = !off.has(c);
+        return (
+          <Row key={c} icon={CAP_ICON[c] === 'character-cursor' ? 'text-cursor' : CAP_ICON[c]} first={i === 0} title={t(`feature.${c}`)} detail={capWhat(c)} testid={`welcome-use-${c}`} muted={!on}>
+            <span className="wl-capkeys">{capKeys(c).map((k, j) => <KeyCaps key={j} keys={k} />)}</span>
+            <Switch on={on} label={t(`feature.${c}`)} set={(v) => void setCapability(c, v).catch((e) => onToast(String(e)))} />
+          </Row>
+        );
+      })}
       {onSettings ? (
         <p className="wl-foot"><button type="button" className="wl-link" onClick={() => onSettings('shortcuts')}>{t('welcome.use.change')}</button></p>
       ) : null}

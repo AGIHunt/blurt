@@ -54,10 +54,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return p
     }
     var dictationIfLoaded: DictationPage? { page }
+    /// The pages that take the whole content area (the detail column steps aside): Home, Cards, Phone — each made on
+    /// first use (HomePage.swift, CardsPage.swift, PhonePage.swift).
+    private var fullPages: [Scope: FullPage] = [:]
+    func fullPage(_ s: Scope) -> FullPage? {
+        if let p = fullPages[s] { return p }
+        let p: FullPage
+        switch s {
+        case .home: p = HomePage()
+        case .cards: p = CardsPage()
+        case .phone: p = PhonePage()
+        case .screenText: p = ScreenTextPage()
+        default: return nil
+        }
+        fullPages[s] = p
+        return p
+    }
+    private var shownFullPage: FullPage?
     private var entriesWatch: AnyCancellable?
     /// The search field of the list on show: the items' (their heading's) or the Dictation history's.
     var searchField: NSSearchField? {
-        model.scope == .dictation ? (dictation.model.tab == .history ? dictation.search : nil) : list.heading.search
+        if model.scope == .dictation { return dictation.model.tab == .history ? dictation.search : nil }
+        if model.scope == .cards { return (fullPage(.cards) as? CardsPage)?.search }
+        return model.scope.isPage ? nil : list.heading.search
     }
     var watcher: IndexWatcher?
     var watchedRoots: [String] = []
@@ -90,8 +109,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         w.tabbingMode = .disallowed
         w.titlebarSeparatorStyle = .automatic
         w.toolbarStyle = .unified
-        // the place's name is ours: the list's heading (ListHeading), which keeps its weight in a window that isn't
-        // key — the title still names the window (Window menu, Mission Control); the Dictation page's is a bar item
+        // the place's name is ours: the list's heading (ListHeading, DictationPageHeader) or the page's own, which keep
+        // their weight in a window that isn't key — the title still names the window (Window menu, Mission Control)
         w.titleVisibility = .hidden
         w.collectionBehavior.insert(.fullScreenPrimary)
         w.delegate = self
@@ -177,6 +196,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.saveState(open: self?.window?.isVisible == true)
         }
+        // the Cards place's count is the cards hanging under the notch
+        NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.restored == true { self?.sidebar.rebuild() } }
+        }
+        // a capability turned on or off (Home's tiles, Settings → General): its place comes or goes in the sidebar, the
+        // toolbar and the menus follow, and a window standing in a place that just went away goes Home
+        NotificationCenter.default.addObserver(forName: Capability.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.capabilitiesChanged() }
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -186,7 +214,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// window that finds no index starts reading one by itself — there is nothing to ask.
     func syncIndexChrome() {
         let f = list.heading.search
-        guard model.scope != .dictation else { return }
+        guard !model.scope.isPage else { return }
         let ready = !model.nothingListed
         if f.isEnabled != ready {
             if !ready, window?.firstResponder === f.currentEditor() { window?.makeFirstResponder(list.table) }
@@ -204,6 +232,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
         if model.scope == .dictation { dictation.didShow() }
+        shownFullPage?.didShow()
         if window?.firstResponder == nil || window?.firstResponder === window { focusList() }
     }
 
@@ -231,30 +260,91 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                     self.window?.makeFirstResponder(t)
                 }
             }
+        } else if let p = shownFullPage, model.scope.isPage {
+            window?.makeFirstResponder(p.viewController.view)
         } else {
             window?.makeFirstResponder(list.table)
         }
     }
 
+    func capabilitiesChanged() {
+        guard restored else { return }
+        if let c = model.scope.capability, !c.isOn { go(.home) }
+        sidebar.rebuild()
+        sidebar.select(model.scope)
+        syncToolbar(for: model.scope)
+        if NSApp.activationPolicy() == .regular { NSApp.mainMenu = MainMenu.build() }
+    }
+
+    /// Home (⌘0, the Go menu, the palette, a capability turned off under the place on show).
+    func showHome() {
+        show()
+        go(.home)
+    }
+
+    /// The app the user was in when ⌥H brought the window forward, and whether the window was showing then: ⌥H again
+    /// hands the keyboard back to that app and, if ⌥H opened the window, closes it again.
+    private var cardsCameFrom: (app: NSRunningApplication?, opened: Bool)?
+
+    /// The Cards page (the menu bar's Show Cards, the island's cards row, Home): the window forward on it.
+    func showCards() {
+        show()
+        go(.cards)
+        focusList()
+    }
+
+    /// ⌥H: the window forward on the Cards page — or, when it is in front on that page already, away again, the
+    /// keyboard back in the app the user was in (BlurtCore CardsPageRules.hotkey).
+    func toggleCards(via: String) { toggleCards(via: via, assumeKey: nil) }
+
+    /// `assumeKey`: tests, the window counted as in front (a scripted run can't take the keyboard from the user's app).
+    func toggleCards(via: String, assumeKey: Bool?) {
+        let key = assumeKey ?? (window?.isKeyWindow == true && NSApp.isActive)
+        let act = CardsPageRules.hotkey(windowKey: key, onCards: model.scope == .cards)
+        switch act {
+        case .open:
+            let front = NSWorkspace.shared.frontmostApplication
+            let other = front.flatMap { $0.processIdentifier == getpid() ? nil : $0 }
+            cardsCameFrom = (other, window?.isVisible != true)
+            showCards()
+        case .hide:
+            let from = cardsCameFrom
+            cardsCameFrom = nil
+            // opened by ⌥H (or nothing known of how it came): it closes, as the window's close button would; it was
+            // showing already: it stays where it was, behind the app the keyboard goes back to
+            if from?.opened ?? true { window?.close() }
+            if let app = from?.app, !app.isTerminated { app.activate() }
+        }
+        emit(["event": "cards_hotkey", "via": via, "action": act == .open ? "open" : "hide", "was_key": key,
+              "visible": window?.isVisible == true, "scope": "\(model.scope)"])
+    }
+
     /// The columns follow the scope: the Dictation page in place of the items and their detail (each list with its own
     /// search field), and the toolbar without the items' actions there.
     func syncPage() {
-        let on = model.scope == .dictation
-        let showing = listColumn.current !== list
-        guard on != showing else { return }
-        syncToolbar(dictation: on)
-        if on {
+        let scope = model.scope
+        let full = fullPage(scope)
+        let want: NSViewController = scope == .dictation ? dictation.list : full?.viewController ?? list
+        guard listColumn.current !== want else { return }
+        if listColumn.current === page?.list { page?.didHide() }
+        shownFullPage?.didHide()
+        shownFullPage = full
+        syncToolbar(for: scope)
+        if scope == .dictation {
             let p = dictation
             p.search.delegate = self
             listColumn.show(p.list)
             detailColumn.show(p.detail)
             p.didShow()
-            if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
+        } else if let f = full {
+            listColumn.show(f.viewController)
+            detailColumn.show(detail)
+            f.didShow()
         } else {
-            page?.didHide()
             listColumn.show(list)
             detailColumn.show(detail)
         }
+        if scope.isPage, QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
     }
 
     /// Tests and the search field: the Dictation page's search.
@@ -466,6 +556,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             focusList()
             return
         }
+        if s.isPage {
+            list.table.deselectAll(nil)
+            focusList()
+            return
+        }
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
         list.scrollToStart()
         listSelectionChanged()
@@ -488,7 +583,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func updateTitle() {
         defer {
-            titleView.set(title: window?.title ?? "", subtitle: window?.subtitle ?? "")
             list.heading.set(title: window?.title ?? "", counts: window?.subtitle ?? "")
             // a session's page lists what one recording made: items are added in a place, not into a recording
             if case .session = model.scope { list.heading.add.isHidden = true } else { list.heading.add.isHidden = false }
@@ -496,9 +590,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         let q = model.text.trimmingCharacters(in: .whitespaces)
         // a search is a mode of its own: the heading says what it looks for, the counts how much of the place it found
-        window?.title = q.isEmpty || model.scope == .dictation ? model.scopeTitle : T("main.search.title", q)
+        window?.title = q.isEmpty || model.scope.isPage ? model.scopeTitle : T("main.search.title", q)
         if model.scope == .dictation {
             window?.subtitle = page?.subtitle ?? ""          // the page's one count, following its tab and search
+            return
+        }
+        if model.scope.isPage {
+            window?.subtitle = ""
             return
         }
         window?.subtitle = listSubtitle
@@ -533,7 +631,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let items = split.splitViewItems
         guard items.count == 3 else { return }
         let d = items[2]
-        let fold = model.scope != .dictation && shownJob == nil && (model.placeIsEmpty || model.nothingListed)
+        // a full page (Home, Cards, Phone) has the whole content area; the items' empty states too
+        let fold = model.scope != .dictation && (model.scope.isPage || (shownJob == nil && (model.placeIsEmpty || model.nothingListed)))
         if fold, !d.isCollapsed {
             detailWidthBeforeFold = Double(d.viewController.view.frame.width)
             foldedForEmpty = true
@@ -549,7 +648,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var quietDetail: Bool { model.isEmptyWorld || model.nothingListed || model.rowCount == 0 }
 
     /// The Dictation page's title in the toolbar (the item places have the list's heading instead).
-    let titleView = ToolbarTitle()
 
     /// The inbox's subtitle (K3): "3 new · 2 to verify" under the title "Inbox" — the same words as the menu bar
     /// menu's rows; a zero part left out; nothing when both are zero (the empty state says it).
@@ -1361,7 +1459,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return m
     }
 
-    /// The first group of the context menu and the menu bar's Item menu: Hand Off to Your Agent (copies the
+    /// The first group of the context menu and the menu bar's Item menu: Copy Instruction for Agent (copies the
     /// instruction). `items` nil: the menu bar.
     func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
@@ -1619,10 +1717,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return shownProject != nil
         case #selector(mSort(_:)):
             item.state = item.representedObject as? String == model.sort ? .on : .off
-            return model.scope != .dictation
+            return !model.scope.isPage
         case #selector(mSortDirection(_:)):
             item.state = item.representedObject as? Bool == model.ascending ? .on : .off
-            return model.scope != .dictation
+            return !model.scope.isPage
         case #selector(mClearFilters):
             return model.filtered
         case #selector(mEnrich):
@@ -1703,14 +1801,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             switch ch {
             case "k": palette.toggle(); return true
             case "f": focusSearch(); return true
-            case "o": openFolder(); return true
-            case "1": go(.inbox); return true
-            case "2": go(.inProgress); return true
-            case "3": go(.unassigned); return true
-            case "4": go(.all); return true
+            case "0": go(.home); return true
             default: break
             }
-            if let n = Int(ch), n >= 5, n <= 9 {
+            // the items' places and the projects exist with Recording on (Capabilities.swift)
+            if Capability.recording.isOn {
+                switch ch {
+                case "o": openFolder(); return true
+                case "1": go(.inbox); return true
+                case "2": go(.inProgress); return true
+                case "3": go(.unassigned); return true
+                case "4": go(.all); return true
+                default: break
+                }
+            }
+            if Capability.recording.isOn, let n = Int(ch), n >= 5, n <= 9 {
                 let ps = shortcutProjects
                 if n - 5 < ps.count { go(.project(ps[n - 5].id)) } else { NSSound.beep() }
                 return true
@@ -1726,23 +1831,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: toolbar
 
     static let recordID = NSToolbarItem.Identifier("record"), snapID = NSToolbarItem.Identifier("snap")
-    static let titleID = NSToolbarItem.Identifier("title")
 
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(dictation: false) }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(for: .inbox) }
 
     /// The items' toolbar: Record and Snap (the capture pair, the window's own actions); the place's name, its order,
     /// Filter and search are the list's (ListHeading), so they sit on the list, not over the detail. Moving and handing
     /// off act on the selection, so they live with it (the detail, the Item and context menus, M / ⌘↩, ⌘K) — not twice
-    /// on screen. The Dictation page has its own: its title (its history's search is on its list).
-    static func toolbarItems(dictation: Bool) -> [NSToolbarItem.Identifier] {
-        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, titleID]
-                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID]
+    /// on screen. A page (Dictation, Home, Cards, Phone) names itself in its own heading and has its actions on the
+    /// page: only the sidebar button. Record and Snap show while their capabilities are on. No page has a title item.
+    static func toolbarItems(for scope: Scope) -> [NSToolbarItem.Identifier] {
+        if scope.isPage { return [.toggleSidebar, .sidebarTrackingSeparator] }
+        return [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace]
+            + (Capability.recording.isOn ? [recordID] : []) + (Capability.cards.isOn ? [snapID] : [])
     }
 
     /// Swap the toolbar's items for the page's (the sidebar button stays as it is).
-    func syncToolbar(dictation: Bool) {
+    func syncToolbar(for scope: Scope) {
         guard let tb = window?.toolbar else { return }
-        let want = Self.toolbarItems(dictation: dictation)
+        let want = Self.toolbarItems(for: scope)
         for (n, it) in tb.items.enumerated().reversed() where !want.contains(it.itemIdentifier) { tb.removeItem(at: n) }
         for (n, id) in want.enumerated() where n >= tb.items.count || tb.items[n].itemIdentifier != id {
             tb.insertItem(withItemIdentifier: id, at: n)
@@ -1767,14 +1873,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return button(T("main.action.record"), "record.circle", #selector(record), tip: T("main.toolbar.record.tip", hk(.toggleRecord)))
         case Self.snapID:
             return button(T("main.action.snap"), "camera.viewfinder", #selector(snap), tip: T("main.toolbar.snap.tip", hk(.snap)))
-        case Self.titleID:
-            let i = NSToolbarItem(itemIdentifier: id)
-            i.view = titleView
-            i.label = T("main.toolbar.title")
-            i.paletteLabel = i.label
-            i.isBordered = false
-            i.visibilityPriority = .high
-            return i
         default: return nil
         }
     }
@@ -1939,6 +2037,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         /// before 0.9: one filter for the whole window (read once, for the place it was saved in)
         var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
+        /// the window has opened on Home once (v1.0.23: an install from before Home lands there the first time,
+        /// then where it was left, as ever)
+        var homeSeen: Bool?
         /// ⌘Q's "Blurt is still in the menu bar" was shown
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
@@ -1962,6 +2063,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.sidebarCollapsed = items[0].isCollapsed
         s.detail = foldedForEmpty ? detailWidthBeforeFold : Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
+        s.homeSeen = true
         s.filters = model.allFilters
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
@@ -1975,8 +2077,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         _ = list.view; _ = sidebar.view; _ = detail.view
         let s = Self.loadState()
         if let f = s?.frame { w.setFrame(from: f) } else { w.center() }
-        if let sc = s?.scope.flatMap(Scope.init(key:)) { model.scope = sc }
-        if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .inbox }
+        // Home the first time (a new install, or the first launch with a Home); then where the window was left
+        model.scope = s?.homeSeen == true ? s?.scope.flatMap(Scope.init(key:)) ?? .home : .home
+        if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .home }
+        if let c = model.scope.capability, !c.isOn { model.scope = .home }     // its capability was turned off since
         var filters = s?.filters ?? PlaceFilters()
         if s?.filters == nil, let old = s, old.kinds?.isEmpty == false || old.state != nil {
             filters.set(PlaceFilter(kinds: old.kinds ?? [], state: old.state), for: model.scope.key)   // never a state the place can't show
@@ -2064,55 +2168,3 @@ final class ColumnController: NSViewController {
     }
 }
 
-/// The Dictation page's toolbar title: its name in 17 pt semibold (system.md §7, window titles 17–20), its count under
-/// it in 11 pt secondary (the item places name themselves in the list's heading, ListHeading).
-final class ToolbarTitle: NSView {
-    /// a label drawn as itself over the toolbar's material (not the vibrant, washed-out text of a bar item)
-    final class Label: NSTextField {
-        override var allowsVibrancy: Bool { false }
-    }
-    let title = Label(labelWithString: "")
-    let subtitle = Label(labelWithString: "")
-    override var allowsVibrancy: Bool { false }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
-        title.textColor = .labelColor
-        subtitle.font = .systemFont(ofSize: 11)
-        subtitle.textColor = .secondaryLabelColor
-        for t in [title, subtitle] {
-            t.lineBreakMode = .byTruncatingTail
-            t.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            t.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(t)
-        }
-        NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: -1),
-        ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    private var centred: NSLayoutConstraint?
-    func set(title t: String, subtitle s: String) {
-        title.stringValue = t
-        subtitle.stringValue = s
-        subtitle.isHidden = s.isEmpty
-        // without counts the title sits in the middle on its own
-        centred?.isActive = false
-        centred = title.centerYAnchor.constraint(equalTo: centerYAnchor, constant: s.isEmpty ? 0 : -7)
-        centred?.isActive = true
-        setAccessibilityLabel([t, s].filter { !$0.isEmpty }.joined(separator: ", "))
-        invalidateIntrinsicContentSize()
-    }
-    override var intrinsicContentSize: NSSize {
-        let w = max(title.intrinsicContentSize.width, subtitle.isHidden ? 0 : subtitle.intrinsicContentSize.width) + 8
-        return NSSize(width: min(320, ceil(w)), height: 38)
-    }
-}

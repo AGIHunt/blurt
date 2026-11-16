@@ -171,7 +171,8 @@ final class IndexReaderTests: XCTestCase {
         XCTAssertEqual(c.inbox, try r.count(ItemQuery(inbox: true)))
         XCTAssertEqual(c.inbox, c.new + c.toVerify)
         XCTAssertEqual(c.unassigned, try r.count(ItemQuery(project: "inbox")))
-        XCTAssertEqual(c.active, try r.count(ItemQuery(states: ["handed_off", "in_progress", "to_verify"])))
+        XCTAssertEqual(c.active, try r.count(ItemQuery(states: ["todo", "handed_off", "in_progress"])))
+        XCTAssertEqual(c.open, c.new + c.active)          // every open item in exactly one of the Inbox and In Progress
         XCTAssertEqual(c.open, try r.count(ItemQuery(states: ["new", "todo", "handed_off", "in_progress"])))
         XCTAssertEqual(c.discarded, try r.count(ItemQuery(states: ["discarded"])))
         XCTAssertGreaterThan(c.discarded, 0)

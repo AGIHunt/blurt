@@ -206,6 +206,10 @@
       the uninstaller's firewall cleanup; Quick Sync and AMF untested
 - [ ] Linux on a desktop with a GPU (VA encode), KDE, X11, several monitors; the AppImage (exclude bundled GStreamer/PipeWire)
 - [ ] Phone apps in the App Store / Play (or signed APK releases); Android launcher icon rendered from the Peep source
+- [ ] **Getting the phone app to people** (founder, 2026-11-16; route not settled yet): today it has to be built from
+      source, which stops every non-developer at "Get the phone app" (persona walkthrough, docs/design/capabilities.md §3).
+      Two things to do: ship it (App Store / Play, or signed builds), and decide the route — the founder's current
+      thinking is that the phone app is the paid part. Until then the Phone page says plainly that it must be built.
 
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and

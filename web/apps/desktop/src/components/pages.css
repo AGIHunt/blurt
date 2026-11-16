@@ -1,0 +1,657 @@
+/* The main window's pages of their own — Home, Cards, Phone (HomePage.tsx, CardsPage.tsx, PhonePage.tsx): one column
+   as Settings' (its width, its title), boxes in the raised surface with hairlines between rows, the platform's own
+   radius and type (tokens.css data-platform win / gnome). */
+
+.pg {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.pg-col {
+  max-width: 760px;
+  padding: 22px 32px 40px 40px;
+}
+.pg-col.wide {
+  max-width: 980px;
+}
+.pg-title {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  margin: 0;
+}
+.pg-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.pg-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.pg-sub {
+  color: var(--mute);
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+.pg-head-acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+.pg-head-acts button {
+  gap: 6px;
+}
+.pg-h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin: 26px 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pg-h2-n,
+.pg-h2-note {
+  font-weight: 400;
+  color: var(--mute);
+  font-size: 12px;
+}
+.pg-box {
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.pg-box > * + * {
+  border-top: 1px solid var(--line);
+}
+.pg-box.ph-head > * + * {
+  border-top: none;
+}
+.pg-caps {
+  display: inline-flex;
+  gap: 3px;
+}
+.app .pg-caps kbd {
+  font: 500 11.5px var(--font);
+  color: var(--ink-2);
+  background: var(--chip);
+  border: none;
+  border-radius: 4px;
+  padding: 1px 6px;
+  min-width: 20px;
+  text-align: center;
+  line-height: 18px;
+}
+.app button.pg-link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0 2px;
+  min-height: 0;
+  color: var(--brand-ink);
+  font-size: inherit;
+  cursor: pointer;
+}
+.app button.pg-link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+.app button.pg-small {
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.pg-quiet {
+  color: var(--mute);
+  font-size: 12.5px;
+  padding: 2px 0 6px;
+}
+
+/* a plain line in a box: glyph, title and detail, its buttons at the end */
+.pg-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+.pg-line-ic {
+  width: 18px;
+  flex: none;
+  display: flex;
+  justify-content: center;
+  color: var(--mute);
+}
+.pg-line-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pg-line-detail {
+  font-size: 12px;
+  color: var(--mute);
+  text-wrap: pretty;
+}
+
+/* the empty states */
+.pg-empty {
+  padding: 18px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.pg-empty.big {
+  align-items: center;
+  text-align: center;
+  padding: 64px 24px;
+}
+.pg-empty-ic {
+  color: var(--faint);
+}
+.pg-empty-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.pg-empty-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mute);
+  font-size: 13px;
+}
+.pg-empty-line.center {
+  max-width: 440px;
+  justify-content: center;
+}
+.pg-empty-line > svg,
+.pg-empty-line > .ico {
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- Home */
+.hm-caps {
+  margin-top: 16px;
+}
+.hm-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px 12px 14px;
+  min-height: 62px;
+  box-sizing: border-box;
+}
+.hm-row.link {
+  cursor: pointer;
+}
+.hm-row.link:hover {
+  background: var(--hover);
+}
+.hm-ic {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+.hm-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hm-name {
+  font-weight: 600;
+}
+.hm-what {
+  font-size: 12.5px;
+  color: var(--mute);
+  text-wrap: pretty;
+}
+.hm-state {
+  color: var(--ink-2);
+}
+.hm-keys {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.hm-switch {
+  flex: none;
+  display: flex;
+}
+/* off: the glyph, the name and the keys step back; the line stays readable */
+.hm-row.off .hm-ic {
+  background: var(--chip);
+  color: var(--faint);
+}
+.hm-row.off .hm-name {
+  color: var(--mute);
+}
+.hm-row.off .hm-keys {
+  opacity: 0.4;
+}
+.hm-fix {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.hm-fix > svg,
+.hm-fix > .ico {
+  color: var(--attn);
+  flex: none;
+}
+.hm-fix.quiet {
+  color: var(--mute);
+}
+.hm-fix .mprog {
+  flex: 1;
+}
+
+/* what waits for you, under the box */
+.pg-waits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 0 4px;
+}
+.pg-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.pg-wait > svg,
+.pg-wait > .ico {
+  color: var(--mute);
+}
+.pg-pill {
+  min-width: 18px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font: 600 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+/* Recent */
+.hm-day + .hm-day {
+  margin-top: 14px;
+}
+.hm-day-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mute);
+  margin: 0 0 6px 2px;
+}
+.app button.hm-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  text-align: start;
+  min-height: 0;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+.app button.hm-entry:hover:not(:disabled) {
+  background: var(--hover);
+}
+.app button.hm-entry:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+.hm-entry-ic {
+  width: 18px;
+  flex: none;
+  display: flex;
+  justify-content: center;
+  color: var(--mute);
+  padding-top: 1px;
+}
+.hm-entry-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hm-entry-src {
+  font-size: 11.5px;
+  color: var(--mute);
+}
+.hm-entry-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.hm-entry-body.none {
+  color: var(--faint);
+}
+.hm-entry-time {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+.hm-all {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 0 2px;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- Cards */
+.pg-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+  max-width: 340px;
+}
+.pg-search > svg,
+.pg-search > .ico {
+  position: absolute;
+  left: 10px;
+  color: var(--mute);
+  pointer-events: none;
+}
+.app .pg-search input {
+  width: 100%;
+  padding-left: 30px;
+}
+.cd-sections {
+  outline: none;
+}
+.cd-sec .pg-h2 {
+  margin-top: 22px;
+}
+.cd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+  gap: 12px;
+}
+.app button.cd-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--raise);
+  box-shadow: none;
+  overflow: hidden;
+  text-align: start;
+  white-space: normal;
+  font: inherit;
+  color: var(--ink);
+  cursor: default;
+}
+.app button.cd-tile:hover:not(:disabled) {
+  background: var(--raise);
+  border-color: var(--line-2);
+}
+.app button.cd-tile.sel {
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 1px var(--brand-ink);
+}
+.cd-pic,
+.cd-face {
+  aspect-ratio: 16 / 10;
+  display: block;
+  background: var(--chip);
+  border-bottom: 1px solid var(--line);
+}
+.cd-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cd-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--brand-ink);
+  background: var(--brand-tint);
+}
+.cd-file {
+  font-size: 12px;
+  color: var(--ink-2);
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px 10px;
+}
+.cd-note {
+  font-size: 12.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.8em;
+}
+.cd-note.none {
+  color: var(--faint);
+}
+.cd-note.warn {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--ink-2);
+}
+.cd-note.warn > svg,
+.cd-note.warn > .ico {
+  color: var(--attn);
+}
+.cd-when {
+  font-size: 11.5px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- Phone */
+.ph-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.ph-glyph {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r);
+  background: var(--chip);
+  color: var(--mute);
+}
+.ph-head.connected .ph-glyph {
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+.ph-glyph .ph-dot {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  box-shadow: 0 0 0 2px var(--raise);
+}
+.ph-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  display: inline-block;
+}
+.ph-head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ph-head-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.ph-head-detail {
+  font-size: 12.5px;
+  color: var(--mute);
+  text-wrap: pretty;
+}
+.ph-pair {
+  margin-top: 10px;
+  padding: 4px 14px;
+}
+.ph-check.good .pg-line-ic {
+  color: var(--ok);
+}
+.ph-check.bad .pg-line-ic {
+  color: var(--attn);
+}
+.ph-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-tips {
+  margin: 0;
+  padding: 6px 14px 6px 34px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ph-tips li {
+  padding: 6px 0;
+  line-height: 1.45;
+}
+.pg-box.ph-tips > * + * {
+  border-top: none;
+}
+.ph-tips .pg-link {
+  margin-inline-start: 6px;
+}
+
+/* ---------------------------------------------------------------- Text & Translation (ScreenTextPage.tsx) */
+.sx-head-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 6px;
+}
+.sx-head-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sx-selected {
+  align-self: center;
+  color: var(--mute);
+  font-size: 12.5px;
+}
+.sx-list {
+  margin-top: 18px;
+  outline: none;
+}
+.sx-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+}
+.sx-row:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+/* the selection is the fill alone, as the item list's (main-window.css .mw-row.sel) */
+.sx-row.sel {
+  background: var(--brand-tint);
+}
+.sx-row-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.sx-row-orig {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mute);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.sx-row-orig-k {
+  color: var(--faint);
+}
+.sx-row-end {
+  flex: none;
+  display: grid;
+  justify-items: end;
+}
+/* the time, and Copy in its place under the pointer */
+.sx-row-end > * {
+  grid-area: 1 / 1;
+}
+.app button.sx-row-copy {
+  visibility: hidden;
+  margin-top: -3px;
+}
+.sx-row:hover .sx-row-copy {
+  visibility: visible;
+}
+.sx-row:hover .hm-entry-time {
+  visibility: hidden;
+}

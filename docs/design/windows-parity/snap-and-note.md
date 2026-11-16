@@ -100,6 +100,17 @@ InkFit / InkStyle / InkHint / BubbleDock）、`CaptureRules.swift`（NoteEsc / N
 | 6.1 | ⌥C / ⌥T：只有十字光标，一拖一放，不暗屏、不点窗口、没有工具栏；拖的区域薄荷 10 % 底 + 2 pt 线 | 和截图一样的暗屏 + 工具栏 + 确认 | 对齐 | 已对齐（选择器 `purpose=text|translate` 走十字光标模式） |
 | 6.2 | 结果直接粘进前台的输入框（按听写的规则），剪贴板也留一份；灵动岛只说结果（Pasted / Copied · ⌘V to paste / Copied） | 只复制 + 提示 | 对齐 | 已对齐：`flow.rs` `deliver`——paste_policy::screen_text 决定（UIA 读焦点：文本框 / 读不出 = 粘；密码框 / 明显不是输入框 / Blurt 自己 = 只复制），Ctrl+V 后读回输入框确认落地（最多 1.5 s）；灵动岛说 Pasted / Copied · Ctrl+V to paste / Copied（Mac 原文）。第二遍读（ScreenTextRefine）：record.screen_text.refine 开 + 接了能看图的云模型时 `screen_text.py read --stdin` 合并，剪贴板还是草稿才替换；Mac 的本地读图模型是 MLX，Windows 没有（系统能力差异） |
 | 6.3 | 翻译结果在灵动岛下的卡片里（ScreenTextCard：可复制、10 s 后消失、指针在上面不消失、Esc 只在指针在上面时关） | live 文字 6 s | 对齐 | 已对齐：新窗口 `textcard.html`（Kind::TextCard，不抢焦点）在灵动岛下方 live 面板的位置，14 px / 20 px 行、最多 8 行后滚动、最后一行渐隐、Copy → Copied（勾）；指针离开 10 s 后消失；指针在上面时才注册全局 Esc（global-shortcut），离开就放掉；下一次 Alt+Shift+C/T 换掉它。「Translating…」、已是目标语言、翻译失败（Key / 额度 / 连不上 / 其他 + Try Again）用 Mac 原文；没有云模型时说 translate_needs_model（Windows 只有云端翻译）。位置用 `island::below_cards`：挂着卡片时在卡片下面 |
+| 6.4 | 取字与翻译（screen-text.md §1g，2026-11-16）：⌥T 的方向由 App 先判语种、模型只收一种目标语言；⌥C / ⌥T 一样：粘进了输入框只有一行字，只进了剪贴板才挂卡片（× + 复制）；记录 `~/.blurt/screen-text/history.jsonl`；主窗口「取字与翻译」页、主页时间线；设置页改名并加「记录」组、自动下面一行「其他语言译成简体中文」 | 方向交给模型（`auto` / `X|keep`）；翻译总挂卡片；没有记录 | 对齐 | 已对齐，见下 |
+
+6.4 的细节（Windows / Linux）：
+
+- 方向：`screen_text/direction.rs`，语种用 whatlang（文字系统 + 三元组统计，不是词表）。whatlang 的 confidence 是「领先第二名的幅度 / 这么长的文字算确定的幅度」，不是概率：一句普通英文常是 0.35–0.5。实测 30 句（10 种拉丁字母语言 + 西里尔 + 其他）：≥ 0.6 没有判错，判错的最高 0.32（一句英文判成法文）。所以 `SURE = 0.6` 照用，另加一条「肯定不是」：文字里每个字母的文字系统（whatlang 自己的表）都不写某种语言，就肯定不是它——英文、泰文肯定不是中文，这样「自动」的英文都直接发 `zh`。whatlang 只看字母最多的那种文字系统，「用 Claude Code 跑一下测试」被读成罗马尼亚文：拉丁字母的答案、但别的文字系统占 ≥ 10 % 字母时不算数，交给模型（`auto:zh|en`，和以前一样）。日文的假名 + 汉字照常判成日文。
+- 「自动」按用户自己的语言（`direction::Pair::of`，照 Mac 的 `TranslateAutoPair.of`）：home = 口喷鸡里选的界面语言，否则系统首选语言里第一个在列表里的（都没有就 English）；other = home 不是英语时是 English，是英语时是系统里下一个在列表里的语言，没有就没有配对（「自动：译成English」，行下面说「English 的文字会原样保留；要翻译它，请选一种语言」）。系统语言用 sys-locale 读：Windows 是 GetUserPreferredUILanguages，Linux 是 LANGUAGE / LC_ALL / LC_MESSAGES / LANG。设置里的标签由 `translate_auto_pair` 给出（「自动：简体中文 ↔ English」「Auto: English ↔ 日本語」），⌥T 行下面「其他语言译成{home}」。听写的「自动」（engine.rs）用同一个配对和同一个 `plan`：语种用 whatlang 读识别出的文字（Windows 的语音模型不报语种），说的已经是固定目标语言就按原话输入；Ctrl 打开翻译时的提示也说这对语言。测试：日本用户 ja ↔ en（韩文 → ja，日文 → en）、只有英语的用户没有配对。
+- 卡片的规则：`paste_policy::screen_text::shows_card`（只在 `Copied` 时）。卡片左下 ×（`textcard.close {why: close_button}`），右下「复制」；一行的卡片 × 和「复制」并排在行尾。
+- 「正在翻译…」挂 30 秒的 bug：Windows 的取字 / 翻译那一行走 `kind: capture`，从不进 ear，同 key 的完成行直接替换它，所以没有这个 bug。听写那条路（短的完成行进 ear）有同样的缺口，补了：进 ear 时去掉同 key 的提示（`island.ts dropToasts`）。
+- 记录：`screen_text/history.rs`，和 Mac 同一个文件格式（键排序、`t` 毫秒 UTC、`/` 转成 `\/`，测试里拿 Mac 写的一行读回再写出逐字节相同），0600；保留 `record.screen_text.history_days`，读的时候（页面、主页、设置）先按它清理。`bundle` 存 exe 名。
+- 页面：`ScreenTextPage.tsx`（逻辑在 `screentext.ts`，有测试）：两个快捷键和保留时长、设置…；搜索；按天；点选 / Ctrl 点选 / Shift 点选、↑↓ / Shift+↑↓、Ctrl+A；双击或 Enter 复制，Ctrl+C 复制所选（空一行），Delete 删除；右键 复制 / 复制原文 / 删除；指针移上去时间变「复制」。
+- 没在真 Windows / Linux 上验证：真实 ⌥C / ⌥T 后记录里的 App 名、粘贴后不挂卡片、卡片 × 在不抢焦点的窗口上点得到、精确识别改写后记录跟着改。
 
 ## 7. 录屏中的截图
 

@@ -4,14 +4,20 @@
 import { ACTIONS, canDo, TRANSITIONS, type Action, type State } from '@blurt/ui';
 import type { ItemQuery, ItemRow, Job, ProjectRow } from './api';
 
-/** inbox · progress · unassigned · all · dictation · project:<id> (the Mac's Scope keys) */
-export type Place = 'inbox' | 'progress' | 'unassigned' | 'all' | 'dictation' | `project:${string}`;
+/** home · dictation · cards · screen_text · phone (pages of their own) · inbox · progress · unassigned · all ·
+ *  project:<id> (the Mac's Scope keys; capabilities.md) */
+export type Place = 'home' | 'dictation' | 'cards' | 'screen_text' | 'phone' | 'inbox' | 'progress' | 'unassigned' | 'all' | `project:${string}`;
+
+/** A page that takes the list and the detail columns (the Mac's FullPage): Home, Dictation, Cards, Text & Translation,
+ *  Phone. */
+export const PAGES: readonly Place[] = ['home', 'dictation', 'cards', 'screen_text', 'phone'];
+export const isPage = (p: Place) => PAGES.includes(p);
 
 export const isProject = (p: Place): p is `project:${string}` => p.startsWith('project:');
 export const projectOf = (p: Place): string | null => (isProject(p) ? p.slice(8) : p === 'unassigned' ? 'inbox' : null);
 
 /** K3: what the In Progress place lists (Lifecycle.active) */
-export const ACTIVE: readonly State[] = ['handed_off', 'in_progress', 'to_verify'];
+export const ACTIVE: readonly State[] = ['todo', 'handed_off', 'in_progress'];
 export const CLOSED: readonly State[] = ['done', 'wontfix'];
 const LIVE: readonly State[] = ['new', 'todo', 'handed_off', 'in_progress', 'to_verify', 'done', 'wontfix'];
 /** the State filter's values, in the menu's order */
@@ -24,7 +30,7 @@ export interface PlaceFilter {
 }
 export const NO_FILTER: PlaceFilter = { kinds: [], state: null };
 /** The State control shows everywhere but the Inbox (which is a state group itself) and Dictation. */
-export const showsState = (p: Place) => p !== 'inbox' && p !== 'dictation';
+export const showsState = (p: Place) => p !== 'inbox' && !isPage(p);
 
 export type Grouping = 'none' | 'project' | 'state';
 /** The Inbox groups by project; In Progress, All Items and a project by state; a search is one ranked list. */

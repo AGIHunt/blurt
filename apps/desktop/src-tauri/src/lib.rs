@@ -8,6 +8,7 @@
 //! web/apps/overlays (the island, picker and note bubble).
 
 pub mod agents;
+pub mod capabilities;
 pub mod capture;
 pub mod control;
 pub mod dictation;
@@ -90,6 +91,11 @@ pub fn retitle(app: &AppHandle) {
 pub fn dispatch(app: &AppHandle, action: &str) {
     let st = app.state::<AppState>();
     let recording = st.capture.recording();
+    // an action of a capability that is off does nothing, whoever asks: a key, the tray, a deep link, a paired phone
+    // (capabilities.rs) — also on Wayland, where the portal's shortcuts stay bound until the next launch
+    if !capabilities::allows(action, &capabilities::off_now(), recording) {
+        return;
+    }
     let res = match action {
         "record" => {
             capture::toggle(app);
@@ -185,7 +191,8 @@ pub fn handle_url(app: &AppHandle, raw: &str) {
         "record" | "snap"
             if cfg!(windows)
                 && !app.get_webview_window("main").and_then(|w| w.is_focused().ok()).unwrap_or(false)
-                && !app.state::<AppState>().capture.recording() =>
+                && !app.state::<AppState>().capture.recording()
+                && capabilities::allows(&host, &capabilities::off_now(), false) =>
         {
             capture::confirm_from_url(app, &host)
         }
@@ -538,6 +545,28 @@ fn split_picked(picked: &[std::path::PathBuf]) -> (Vec<String>, Vec<String>) {
     (frames, files)
 }
 
+/// The main window's Cards page: the cards at the top of the screen now (`current`) and the ones used in other apps
+/// in the last 7 days (`history`), as the Cards panel shows them (capture.rs). Each card's `src` is an asset URL the
+/// main window loads as it is (the same scope as the island's). Nothing while Cards is off.
+#[tauri::command(async)]
+fn cards_list() -> Value {
+    if !capabilities::on_now(capabilities::Capability::Cards) {
+        return json!({"current": [], "history": []});
+    }
+    json!({"current": capture::load_card_values(), "history": capture::load_history()})
+}
+
+/// A card's action from the Cards page, as the Cards panel does it (island.rs on_action): copy | copy_text | remove |
+/// restore | reveal | putback. `cards://changed` follows a change.
+#[tauri::command]
+fn card_action(app: AppHandle, action: String, session: String, n: u64) -> R<()> {
+    if !["copy", "copy_text", "remove", "restore", "reveal", "putback"].contains(&action.as_str()) {
+        return Err(format!("unknown card action {action}"));
+    }
+    island::on_action(&app, &serde_json::json!({"action": format!("card.{action}"), "session": session, "n": n}));
+    Ok(())
+}
+
 /// The island cards of the drag under way (`[{session, n}]`), if it is one: the list asks as a drag of files enters.
 #[tauri::command(async)]
 fn cards_dragging() -> Option<Value> {
@@ -698,6 +727,10 @@ fn settings_set(app: AppHandle, patch: Value) -> R<Value> {
     }
     if patch.pointer("/app/island_idle").is_some() {
         island::refresh(&app); // the resting pill goes or comes back at once
+    }
+    // a capability's switch (Settings' own dictation switch writes record.dictation.enabled): the app follows now
+    if patch.pointer("/record/dictation/enabled").is_some() || patch.pointer("/app/capabilities").is_some() || patch.get("app").is_some_and(Value::is_null) {
+        capabilities::changed(&app);
     }
     if patch.get("lang").is_some() {
         retitle(&app);
@@ -1053,7 +1086,8 @@ pub fn run() {
                     eprintln!("blurt: dictation key not available: {e}");
                 }
             }
-            remote::start(&handle); // Blurt on the phone: idle until a code shows or a phone is paired
+            remote::start(&handle); // Blurt on the phone: idle until a code shows or a phone is paired (and off with Phone off)
+            capabilities::watch(&handle); // the switches, whoever writes them (capabilities.rs)
             housekeeping::start(&handle); // launch messages, housekeeping, the update check
             control::start(&handle); // Set Up with Agent…'s endpoint (agent-setup.md; run/control.json)
             test_channel(&handle);
@@ -1091,6 +1125,10 @@ pub fn run() {
             dictation::commands::dictation_dashscope_model,
             screen_text_allow,
             screen_text_allowed,
+            screen_text::history::screen_text_history,
+            screen_text::direction::translate_auto_pair,
+            screen_text::history::screen_text_history_delete,
+            screen_text::history::screen_text_history_clear,
             dictation::commands::dictation_key_forward,
             dictation::commands::dictation_words,
             dictation::commands::dictation_words_edit,
@@ -1113,6 +1151,10 @@ pub fn run() {
             onboarding::login_item_get,
             onboarding::login_item_set,
             app_status,
+            capabilities::capabilities_get,
+            capabilities::capability_set,
+            cards_list,
+            card_action,
             index_query,
             index_item,
             index_sessions,

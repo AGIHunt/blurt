@@ -6,6 +6,12 @@
 // pen row's second line, a menu), Dictation (its key, set in Settings → Dictation, where its row's link leads; reformat)
 // and Open and switch (project, cards, the menu-bar menu, the main window). Restore Defaults closes the page.
 //
+// A capability that is turned off (BlurtCore Capabilities.swift) has no keys: its rows are not drawn
+// (SettingsCatalog.rowShown — the catalogue keeps every action's entry, search leaves the off ones out the same way),
+// and a section left with no row goes with them; the page follows a switch flipped while it is open (SettingsFeatures).
+// The three keys of While recording are held as global keys only while a recording runs (HotkeyCenter.standby): the
+// section's footnote says so once.
+//
 // One cause is said once: keys another running Blurt holds (HotkeyResult.taken — every one of them, when the user's
 // own Blurt is running beside this one) are one notice above the first section, with how many, where that copy runs
 // from and Quit Other Copy; the rows it touches show the small "!" before their keycaps (the tooltip says why) and no
@@ -700,25 +706,40 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
 
 struct ShortcutsPane: View {
     @ObservedObject var m = HotkeySettings.shared
+    @ObservedObject private var features = SettingsFeatures.shared
+
+    /// The actions of a section whose capability is on (the menu-bar menu's and the main window's keys are nobody's:
+    /// always there).
+    private func shown(_ actions: [HotAction]) -> [HotAction] {
+        actions.filter { SettingsCatalog.rowShown("shortcuts.\($0.rawValue)", off: features.off) }
+    }
 
     var body: some View {
-        SettingsPage(.shortcuts) {
+        let capture = shown([.toggleRecord, .snap, .text, .translateText, .voice])
+        let recording = shown([.pause, .pen, .finish])
+        let open = shown([.project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]))
+        return SettingsPage(.shortcuts) {
             if m.takenCount > 0 { banner.padding(.top, SettingsMetrics.groupGap) }
 
-            SettingsGroup("shortcuts.capture") {
-                ForEach([HotAction.toggleRecord, .snap, .text, .translateText, .voice], id: \.self) { row($0) }
+            if !capture.isEmpty {
+                SettingsGroup("shortcuts.capture") {
+                    ForEach(capture, id: \.self) { row($0) }
+                }
             }
-            SettingsGroup("shortcuts.recording") {
-                ForEach([HotAction.pause, .pen, .finish], id: \.self) { row($0) }
+            if !recording.isEmpty {
+                // held only while a recording runs: ⌥P, ⌥D and ⌥S are the front app's the rest of the time
+                SettingsGroup("shortcuts.recording", footer: T("settings.shortcuts.recording.footer")) {
+                    ForEach(recording, id: \.self) { row($0) }
+                }
             }
-            if AppEnvironment.settings != nil {
+            if AppEnvironment.settings != nil, SettingsCatalog.rowShown("shortcuts.dictation_key", off: features.off) {
                 SettingsGroup("shortcuts.dictation") {
                     dictationRow
                     row(.reformat)          // ⌥L: the last dictation in another style
                 }
             }
             SettingsGroup("shortcuts.open") {
-                ForEach([HotAction.project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]), id: \.self) { row($0) }
+                ForEach(open, id: \.self) { row($0) }
             }
 
             SettingsPageButton("shortcuts.restore", title: Loc.t("capture.keys.restore", table: "Capture"),
