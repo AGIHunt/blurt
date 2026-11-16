@@ -289,8 +289,14 @@ struct HomeEntryRow: View {
                 } else {
                     Text(e.source).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
                         .frame(minHeight: 16)
-                    Text(e.text).font(.system(size: 13)).lineLimit(2).truncationMode(.tail)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if isFailed {
+                        // not recognised, recording kept: said in the attention ink, Retry is the row's action
+                        Text(m.retrying.contains(e.key) ? T("home.entry.retrying") : e.text).font(.system(size: 13))
+                            .foregroundStyle(Color.brandAttnInk).lineLimit(1)
+                    } else {
+                        Text(e.text).font(.system(size: 13)).lineLimit(2).truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             Spacer(minLength: 12)
@@ -337,7 +343,7 @@ struct HomeEntryRow: View {
             if inside { m.pointed = stop } else if m.pointed == stop { m.pointed = nil }
         }
         .contextMenu {
-            Button(e.kind == .item ? T("home.entry.open") : T("dictation.history.copy")) { m.select(stop, keyboard: false); m.primary(e.id) }
+            Button(action) { m.select(stop, keyboard: false); m.primary(e.id) }
             if e.kind == .item { Button(T("home.entry.copy_title")) { m.copy(e.id) } }
             Divider()
             Button(all.title) { m.link(all.id) }
@@ -345,10 +351,14 @@ struct HomeEntryRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { m.primary(e.id) }
-        .accessibilityAction(named: T("dictation.history.copy")) { m.copy(e.id) }
+        .accessibilityAction(named: action) { m.copy(e.id) }
     }
 
-    private var action: String { e.kind == .item ? T("home.entry.open") : T("dictation.history.copy") }
+    private var isFailed: Bool { e.kind == .dictation && m.failed.contains(e.key) }
+
+    private var action: String {
+        isFailed ? T("home.entry.retry") : e.kind == .item ? T("home.entry.open") : T("dictation.history.copy")
+    }
 
     private var all: (id: String, title: String) {
         switch e.kind {

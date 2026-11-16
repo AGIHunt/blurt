@@ -76,3 +76,8 @@
 "home.screen_text.copy_original" = "复制原文";
 "home.screen_text.delete" = "删除";
 "home.screen_text.selected" = "已选 %ld 条";
+
+/* 主页时间线里没能识别的听写 */
+"home.entry.failed" = "没能识别 · 录音 %@";
+"home.entry.retry" = "重试";
+"home.entry.retrying" = "正在识别…";

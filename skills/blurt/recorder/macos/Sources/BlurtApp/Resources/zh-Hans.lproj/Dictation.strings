@@ -784,3 +784,8 @@
 "dictation.speed.polish" = "润色 %@";
 "dictation.speed.structure" = "结构化 %@";
 "dictation.speed.translate" = "翻译 %@";
+
+/* 没能识别的听写：菜单栏重试上一条、第一次失败时的提示（DictationRetry） */
+"dictation.menu.retry_last" = "重试上一条听写";
+"dictation.menu.retry_last.subtitle" = "没能识别 · %1$@ · %2$@";
+"dictation.toast.retry_later" = "之后可在菜单栏重试";

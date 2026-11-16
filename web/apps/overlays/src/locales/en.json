@@ -75,6 +75,7 @@
   "dictation.toast.no_model": "Speech model not installed",
   "dictation.toast.no_model.get": "Download…",
   "dictation.toast.asr_failed": "Couldn’t recognize · recording kept",
+  "dictation.toast.retry_later": "You can retry it later from the tray menu",
   "dictation.toast.slow.asr": "Still recognizing… · {cancel} to cancel",
   "dictation.toast.recording_busy": "Dictation is off during screen recording",
   "dictation.toast.mic": "Microphone unavailable",

@@ -124,7 +124,7 @@ export type IslandOp =
   /** a dictation line: `msg` a catalog key, `vars` its values, `action` one button (sent back as `data-a`); `key` what
    *  it is about (a newer line with the same key replaces it; dictation/flow.rs `toast_keys`), `passive` a tip or a
    *  reminder that never covers another line, `mark` the ok check for a done line */
-  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; vars?: Record<string, string>; extra?: Record<string, unknown> }; second?: { a: string; label: string; vars?: Record<string, string> }; ms?: number; key?: string; passive?: boolean; mark?: 'mic' | 'check' | 'warning' | 'spinner' | 'folder'; moment?: 'keyboard'; project?: string }
+  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; /** a catalog key said on a second line ("You can retry it later from the tray menu") */ more?: string; action?: { a: string; label: string; vars?: Record<string, string>; extra?: Record<string, unknown> }; second?: { a: string; label: string; vars?: Record<string, string> }; ms?: number; key?: string; passive?: boolean; mark?: 'mic' | 'check' | 'warning' | 'spinner' | 'folder'; moment?: 'keyboard'; project?: string }
   /** dictation: what the island says under these keys is over */
   | { op: 'toast_drop'; keys: string[] }
   | { op: 'switcher'; open: boolean }

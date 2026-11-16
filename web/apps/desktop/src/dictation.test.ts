@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DictationEntry } from './api';
-import { appName, byDay, changes, exception, marked, matches, preview, stats, units } from './dictation';
+import { appName, byDay, CANCELLED_REASON, changes, exception, failedNotCancelled, marked, matches, onHome, preview, stats, units } from './dictation';
 import EN from './locales/en.json';
 import ZH from './locales/zh-Hans.json';
 import { checkCatalogs } from '@blurt/i18n';
@@ -16,6 +16,22 @@ describe('dictation page rules', () => {
     expect(exception(e({ insert: 'copied' }))).toBe('copied');
     expect(exception(e({ insert: 'copied', fell_back: true }))).toBe('copied_raw');
     expect(exception(e({ fell_back: true }))).toBe('fell_back');
+  });
+
+  it('a failed take is one the user did not cancel, and Home lists it while it can be retried', () => {
+    const failed = e({ raw: '', polished: null, text: '', reason: 'asr_failed:timeout', insert: 'none', audio: 'audio/d-1.wav' });
+    const cancelled = e({ ...failed, reason: CANCELLED_REASON });
+    expect(failedNotCancelled(failed)).toBe(true);
+    expect(failedNotCancelled(e({ ...failed, reason: 'asr_failed:interrupted' }))).toBe(true);
+    expect(failedNotCancelled(cancelled)).toBe(false);
+    expect(failedNotCancelled(e({}))).toBe(false);
+    expect(onHome(e({}), false)).toBe(true);
+    expect(onHome(failed, true)).toBe(true);
+    // its recording gone, or no Retry on this system
+    expect(onHome(failed, false)).toBe(false);
+    // a cancelled take was meant: never on Home
+    expect(onHome(cancelled, true)).toBe(false);
+    expect(onHome(e({ text: '  ', raw: '' }), true)).toBe(false);
   });
 
   it('names Windows apps by what people call them', () => {
