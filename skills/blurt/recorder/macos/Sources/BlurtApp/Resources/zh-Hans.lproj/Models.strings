@@ -56,7 +56,7 @@
 "models.cancel" = "取消";
 "models.remove.button" = "移除";
 "models.remove.title" = "移除 %@？";
-"models.remove.message" = "Key 会从钥匙串中删除，使用它的功能将改用本机模型。";
+"models.remove.message" = "Key 会从钥匙串中删除。使用它的功能会改用其他已连接的服务或本机模型。";
 "models.remove.confirm" = "移除";
 
 "models.check.ok" = "连接成功 · %@ 毫秒";
@@ -81,7 +81,7 @@
 "models.token.invalid" = "Access Token 含有无效字符，请重新粘贴。";
 "models.key.spaces" = "API Key 不能包含空格。";
 "models.key.characters" = "API Key 含有无效字符，请重新粘贴。";
-"models.key.custom" = "这是 %@ 的 Key，请在「自定义模型」中添加。";
+"models.key.custom" = "这是 %@ 的 Key。%@ 已添加，可点它的「编辑…」更换 Key。";
 
 "models.job.translate" = "翻译";
 "models.job.translate.detail" = "听写翻译（⌘）和截图翻译（⌥T）。";
@@ -137,3 +137,15 @@
 "models.agent.step.verifying" = "正在测试听写…";
 "models.agent.step.verified" = "听写测试通过";
 "models.agent.step.verify_failed" = "听写测试未通过";
+
+/* 云端模型一行写明用于哪些功能；能识别语音的服务可一键用于听写（先确认） */
+"models.service.uses" = "用于%@";
+"models.service.unused" = "未使用";
+"models.service.use_dictation" = "用于听写";
+"models.speech.ask.title" = "听写改用%@识别？";
+"models.speech.ask.message" = "录音会发给%@，不再在本机识别。之后可在本页改回。";
+"models.speech.ask.use" = "改用";
+"models.speech.ask.later" = "暂不";
+"models.sheet.use_for" = "用于";
+"models.check.job_failed" = "%1$@：%2$@";
+"models.sheet.note.other" = "口喷鸡没有测试过这个服务，连接前会用所选功能各试一次。API Key 保存在钥匙串中。";

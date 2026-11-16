@@ -220,16 +220,32 @@ const mockShots = { allowed: param('shots') === '1' };
 let mdl: { id: string; done: number } | null = null;
 // ?cloud=1: DeepSeek connected, polish and translate on it (the API id "deepseek-flash": Settings names it)
 /** services connected in this mock session (cloud_connect) */
-const mockServices: { id: string; preset: string; has_key: boolean; region?: string; base_url?: string; name?: string }[] = param('dashscope') === '1' ? [{ id: 'dashscope', preset: 'dashscope', has_key: true }] : [];
+const mockServices: { id: string; preset: string; has_key: boolean; region?: string; base_url?: string; name?: string }[] = [
+  ...(param('dashscope') === '1' ? [{ id: 'dashscope', preset: 'dashscope', has_key: true }] : []),
+  ...(param('volc') === '1' ? [{ id: 'volcengine-speech', preset: 'volcengine-speech', has_key: true }] : []),
+];
 /** jobs put on a model in this mock session (cloud_job_set, cloud_custom_connect); null: Automatic */
 const mockJobs: Record<string, { service: string; model: string } | null> = {};
 /** record.cloud.jobs as Settings reads it back (the pop-up's value) */
 const syncJobs = () => (mockCfg.record.cloud = { v: 2, jobs: Object.fromEntries(Object.entries(mockJobs).filter(([, x]) => x)) });
+/** curated.json as the mock serves it */
+const MOCK_CURATED: Record<string, { service: string; model: string; name: string }[]> = {
+  polish: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
+  translate: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
+  vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
+  speech: [{ service: 'dashscope', model: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash' }, { service: 'dashscope', model: 'qwen-audio-3.1-asr-flash', name: 'Qwen Audio 3.1 ASR' }, { service: 'volcengine-speech', model: 'volcengine-seedasr', name: 'Doubao Seed-ASR 2.0' }],
+};
 const cloudSum = () => {
   const base = param('cloud') === '1'
     ? { services: [{ id: 'deepseek', preset: 'deepseek', has_key: true }, ...mockServices], routes: { polish: { service: 'deepseek', model: 'deepseek-flash' }, translate: null, vision: null } as Record<string, { service: string; model: string } | null> }
     : { services: [...mockServices], routes: { polish: null, translate: null, vision: null } as Record<string, { service: string; model: string } | null> };
   for (const [j, r] of Object.entries(mockJobs)) if (r) base.routes[j] = r;
+  // a job left on Automatic runs on the first connected service Blurt measured for it (cloud.rs `route`)
+  for (const j of ['polish', 'translate', 'vision']) {
+    if (base.routes[j] || mockJobs[j] || (j === 'translate' && base.routes.polish)) continue; // translate follows polish
+    const o = MOCK_CURATED[j].map((x) => ({ x, s: base.services.find((s) => s.preset === x.service && s.has_key) })).find((y) => y.s);
+    if (o) base.routes[j] = { service: o.s!.id, model: o.x.model };
+  }
   return base;
 };
 function mockDownload(id: string) {
@@ -679,13 +695,20 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       // ?dashscope=1 (or connected here): Model Studio's recogniser is a dictation choice (dictation_dashscope_model);
       // ?weak=1: a PC the CPU rules give SenseVoice (dictation_models `weak`); ?localasr=1: cloud recognition not allowed
       const weak = param('weak') === '1';
+      // ?volc=1 (or connected here): Volcengine Speech's Seed-ASR likewise (dictation_use)
       const ds = mockServices.some((s) => s.preset === 'dashscope');
+      const volc = mockServices.some((s) => s.preset === 'volcengine-speech');
       const rec = weak ? 'sensevoice-small' : 'fun-asr-nano-onnx';
+      const clouds = [...(ds ? ['qwen3-asr-flash'] : []), ...(volc ? ['volcengine-seedasr'] : [])];
+      // a cloud recogniser whose service was removed: back on the local model
+      if (mockDict.use && ['qwen3-asr-flash', 'volcengine-seedasr'].includes(mockDict.use) && !clouds.includes(mockDict.use)) mockDict.use = null;
       const sel = mockDict.use ?? [rec, 'fun-asr-nano-onnx', 'sensevoice-small'].find((m) => modelsIn.has(m)) ?? rec;
-      return r({ recommended: rec, selected: sel, selected_cloud: sel === 'qwen3-asr-flash', weak, cloud_allowed: param('localasr') !== '1',
-        ready: modelsIn.has(rec) || sel === 'qwen3-asr-flash', downloading: mdl?.id ?? null, dashscope_model: mockDict.ds,
+      const onCloud = clouds.includes(sel);
+      return r({ recommended: rec, selected: sel, selected_cloud: onCloud, weak, cloud_allowed: param('localasr') !== '1',
+        ready: modelsIn.has(rec) || onCloud, downloading: mdl?.id ?? null, dashscope_model: mockDict.ds,
         models: [{ id: 'fun-asr-nano-onnx', name: 'Fun-ASR-Nano (CPU)', size_mb: 950, installed: modelsIn.has('fun-asr-nano-onnx'), recommended: rec === 'fun-asr-nano-onnx' }, { id: 'sensevoice-small', name: 'SenseVoice Small', size_mb: 228, installed: modelsIn.has('sensevoice-small'), recommended: rec === 'sensevoice-small' },
-          ...(ds ? [{ id: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash', size_mb: 0, installed: true, recommended: false }] : [])] });
+          ...(ds ? [{ id: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash', size_mb: 0, installed: true, recommended: false }] : []),
+          ...(volc ? [{ id: 'volcengine-seedasr', name: 'Doubao Seed-ASR 2.0', size_mb: 0, installed: true, recommended: false }] : [])] });
     }
     case 'dictation_use':
       mockDict.use = args.id ?? null;
@@ -765,6 +788,13 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r(undefined);
     case 'cloud_summary':
       return r(cloudSum());
+    case 'cloud_disconnect': {
+      const i = mockServices.findIndex((x) => x.id === args.id);
+      if (i >= 0) mockServices.splice(i, 1);
+      for (const [j, x] of Object.entries(mockJobs)) if (x?.service === args.id) mockJobs[j] = null;
+      syncJobs();
+      return r(cloudSum());
+    }
     case 'update_check':
       return r({ configured: false });
     // Settings' backends (housekeeping.rs)
@@ -824,10 +854,7 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r({ ok: true, folder: to, bytes: total });
     }
     case 'cloud_curated':
-      return r({ jobs: { polish: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
-        translate: [{ service: 'dashscope', model: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
-        vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }],
-        speech: [{ service: 'dashscope', model: 'qwen3-asr-flash', name: 'Qwen3-ASR Flash' }, { service: 'dashscope', model: 'qwen-audio-3.1-asr-flash', name: 'Qwen Audio 3.1 ASR' }] } });
+      return r({ jobs: MOCK_CURATED });
     case 'cloud_job_set':
       mockJobs[args.job] = args.service ? { service: args.service, model: args.model ?? '' } : null;
       syncJobs();
@@ -893,13 +920,17 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       if (String(args.key).length < 8) return r({ ok: false, code: 'auth' });
       if (!mockServices.some((s) => s.preset === args.preset)) mockServices.push({ id: args.preset, preset: args.preset, has_key: true });
       return r({ ok: true, summary: cloudSum() });
-    // Advanced → Custom Model…: a key under 8 characters is refused, a model id with "nope" in it isn't found
+    // Advanced → Custom Model… and Add Cloud Model's other services (`jobs`, checked in turn): a key under 8 characters
+    // is refused, a model id with "nope" in it isn't found, one with "text" in it reads no pictures (Copy Text fails)
     case 'cloud_custom_connect': {
       await new Promise((ok) => setTimeout(ok, 900));
       const own = mockServices.find((x) => x.id === args.service);
       if (!own && !args.service && String(args.preset).startsWith('custom') && !/^https:\/\//.test(String(args.baseUrl ?? ''))) return r({ ok: false, code: 'address' });
+      if (!String(args.model).trim()) return r({ ok: false, code: 'model_id' });
       if (!args.service && String(args.key).trim().length < 8) return r({ ok: false, code: String(args.key).trim() ? 'auth' : 'no_key' });
-      if (/nope/.test(String(args.model))) return r({ ok: false, code: 'model' });
+      const jobs: string[] = args.jobs ?? [args.job];
+      if (/nope/.test(String(args.model))) return r({ ok: false, code: 'model', ...(args.jobs ? { job: jobs[0] } : {}) });
+      if (/text/.test(String(args.model)) && jobs.includes('vision')) return r({ ok: false, code: 'vision', ...(args.jobs ? { job: 'vision' } : {}) });
       let id = args.service as string | null;
       if (!id) {
         const custom = String(args.preset).startsWith('custom');
@@ -908,13 +939,15 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         for (let n = 2; taken.has(id!); n++) id = custom ? `custom-${n}` : `${args.preset}-${n}`;
         mockServices.push({ id: id!, preset: args.preset, has_key: true, ...(args.region ? { region: args.region } : {}), ...(args.baseUrl ? { base_url: args.baseUrl } : {}), ...(args.name ? { name: args.name } : {}) });
       }
-      mockJobs[args.job] = { service: id!, model: String(args.model).trim() };
+      for (const j of jobs) mockJobs[j] = { service: id!, model: String(args.model).trim() };
       syncJobs();
       return r({ ok: true, ms: 820, service: id, summary: cloudSum() });
     }
     case 'cloud_connect_speech':
       await new Promise((ok) => setTimeout(ok, 600));
-      return r(String(args.token).length < 8 ? { ok: false, code: 'auth' } : { ok: true, ms: 480, summary: { services: [{ id: 'volcengine-speech', preset: 'volcengine-speech', has_key: true }], routes: {} } });
+      if (String(args.token).length < 8) return r({ ok: false, code: 'auth' });
+      if (!mockServices.some((s) => s.preset === 'volcengine-speech')) mockServices.push({ id: 'volcengine-speech', preset: 'volcengine-speech', has_key: true });
+      return r({ ok: true, ms: 480, summary: cloudSum() });
     case 'cloud_speech_app_id':
       return r(null);
     case 'model_download_cancel':

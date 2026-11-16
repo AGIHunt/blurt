@@ -24,7 +24,7 @@ import { Popup, Switch } from '../settings/kit';
 import { CAPS, SHOWN_KEYS, type Capability } from '../capabilities';
 import { CAP_ICON } from './SettingsView';
 import { setCapability, useOff } from './useCapabilities';
-import { AddCloudModel, AddSpeechCloud, dictateInCloud, speechOffers, useCurated } from './DictationSettings';
+import { AddCloudModel, AddSpeechCloud, dictateInCloud, presetName, speechOffers, useCurated } from './DictationSettings';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 
 export type StepId = 'welcome' | 'dictation' | 'models' | 'try';
@@ -468,7 +468,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
           load();
         }} />}
       <Row icon="cloud" first={!rec} title={t('welcome.cloud.title')}
-        detail={cloudOn ? `${t('welcome.cloud.detail')} ${t('welcome.cloud.on', { name: t(`cloud.preset.${cloudOn.preset}`) })}` : t('welcome.cloud.detail')}
+        detail={cloudOn ? `${t('welcome.cloud.detail')} ${t('welcome.cloud.on', { name: presetName(cloudOn.preset) })}` : t('welcome.cloud.detail')}
         testid="welcome-cloud">
         <button onClick={() => setCloudOpen(true)}>
           {t(cloudOn ? 'welcome.cloud.change' : 'welcome.cloud.add')}

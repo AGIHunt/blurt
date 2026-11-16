@@ -1498,6 +1498,24 @@
 .cs-get {
   font-size: 12px;
 }
+/* Add Cloud Model's 用于: one checkbox per job, stacked beside the label */
+.cs-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-form > .cs-jobs-l {
+  align-self: start;
+}
+.cs-job {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.cs-job input {
+  margin: 0;
+}
 
 /* Projects: the row's actions behind ⋯ on hover (and a right-click), as the Mac's ProjectsPane */
 .st-proj .st-more {

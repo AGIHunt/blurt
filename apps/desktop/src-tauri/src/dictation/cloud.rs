@@ -13,6 +13,29 @@ use serde_json::{json, Value};
 use crate::settings;
 
 pub const JOBS: [&str; 3] = ["polish", "translate", "vision"];
+
+/// The jobs one Custom Model save puts on its model: `jobs` when given (Add Cloud Model's 用于 boxes for a service Blurt
+/// never measured), else the one `job` (a job row's Advanced → Custom Model…). Each a known job, each once, in the
+/// order given; none is an error.
+pub fn job_list(job: Option<&str>, jobs: Option<&[String]>) -> Result<Vec<String>, String> {
+    let given: Vec<&str> = match jobs {
+        Some(js) => js.iter().map(String::as_str).collect(),
+        None => job.into_iter().collect(),
+    };
+    let mut out: Vec<String> = Vec::new();
+    for j in given {
+        if !JOBS.contains(&j) {
+            return Err(format!("unknown job {j}"));
+        }
+        if !out.iter().any(|x| x == j) {
+            out.push(j.to_string());
+        }
+    }
+    if out.is_empty() {
+        return Err("give a job".into());
+    }
+    Ok(out)
+}
 #[cfg(windows)]
 const TARGET: &str = "Blurt Cloud Polish";
 
@@ -491,6 +514,17 @@ fn delete_key(_id: &str) {}
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    #[test]
+    fn one_save_puts_each_checked_job_once() {
+        let v = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(super::job_list(Some("vision"), None).unwrap(), v(&["vision"]));
+        // the boxes win over the single job, in their order, each once
+        assert_eq!(super::job_list(Some("vision"), Some(&v(&["polish", "translate", "polish"]))).unwrap(), v(&["polish", "translate"]));
+        assert!(super::job_list(None, Some(&v(&["polish", "speech"]))).is_err());
+        assert!(super::job_list(None, Some(&[])).is_err());
+        assert!(super::job_list(None, None).is_err());
+    }
 
     #[test]
     fn the_presets_addresses_by_region() {
