@@ -43,6 +43,15 @@
 | 12 | 权限：输入监控 / 辅助功能引导，岛上每天提醒 | 无 | 保留不同：低级键盘钩子不需要权限，装不上只记日志 | 不变 |
 | 13 | 两个口喷鸡同时运行时只有一个听键 | 未查 | 未做（Windows 版是否允许多开没查） | 待查 |
 
+**单按 Alt 进菜单（2026-11-17，用户反馈）。** 现象：光标已在输入框里，按 Alt 开始听写，录音一开始输入框的光标就没了，识别出的字贴不进去，
+只能自己粘贴。原因：Windows 上单独按下再松开 Alt 会让前台 App 进入菜单栏（Electron / Chromium 的 App 也是），焦点离开输入框；到贴字时
+焦点是菜单，`insert_win` 判成「没有输入框」，只留下「复制」。钩子本来就会在这个键单独用时吞掉松开、垫一个菜单掩码键（VK 0xE8）再补发，但
+只对右 Alt 做；设成「任一 Alt」后左 Alt 同样能开始听写，它的松开却原样到了 App。现在掩码跟着设置的键走（`trigger.rs` 的 `AltAlone`，
+`keys_win::EITHER_ALT`；Linux 的 F24 掩码同样）：「任一 Alt」时左右都掩，只用右 Alt 时左 Alt 仍是 App 自己的。`AltAlone` 的测试在 Mac 上跑
+（单按、长按重复、Alt+A、Alt+Tab、两个 Alt 同按）；`keys_win.rs` 和 `trigger.rs` 单独拿出来对 `x86_64-pc-windows-msvc` 做过 `cargo check`
+（windows 0.62.2，通过）。没验证的：整个 App 的 Windows 构建（这台 Mac 编不了 ring / sqlite 的 C 部分，等 CI），以及在 Windows 上实按一次；
+反馈的用户用的是不是「任一 Alt」+ 左 Alt 也没确认，默认的右 Alt 本来就有掩码。
+
 ## 收音
 
 | # | Mac | Windows 之前 | 处理 | 结果 |

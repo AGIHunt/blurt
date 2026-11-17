@@ -2891,6 +2891,26 @@ def print_summary(data: dict, files: list[str], **extra) -> None:
                      ensure_ascii=False, indent=2))
 
 
+LEVEL_QUIET = 0.08      # a take whose loudest moments stay under this (≈ −22 dBFS) is quiet: an ordinary take's are ~0.18
+LEVEL_PEAK = 0.25       # where a quiet take's loudest moments are brought to (≈ −12 dBFS)
+LEVEL_MAX_GAIN = 32.0   # +30 dB at most: below that it is a muted or dead input, not a quiet voice
+
+
+def level_up(samples: np.ndarray) -> np.ndarray:
+    """Quiet audio brought up to a speaking level before the VAD and the model hear it. Someone speaking softly, or
+    further from the microphone, records 10–30 dB under a normal take, and the VAD and the models hear that worse than
+    the same words at a normal level: whole sentences go missing (docs/design/dictation.md §Quiet speech). Only a take
+    that is quiet is touched — audio at a usual level is returned as it is, and nothing is ever turned down. The
+    loudest moments set the gain (the 99.9th percentile, so one click doesn't), and only where the VAD then decides
+    whether there is speech at all — a room's hiss made louder is still not handed to a model as words."""
+    if len(samples) == 0:
+        return samples
+    peak = float(np.percentile(np.abs(samples), 99.9))
+    if peak <= 0 or peak >= LEVEL_QUIET:
+        return samples
+    return (samples * min(LEVEL_MAX_GAIN, LEVEL_PEAK / peak)).astype(samples.dtype, copy=False)
+
+
 def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, label: str | None = None,
                      quiet: bool = False):
     """VAD → chunks → backend. Returns ([(start, end, text, label[, language])], speech s, s that decoded to nothing).
@@ -2911,10 +2931,13 @@ def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, labe
         # Only the ONNX build (Windows / Linux) is gated: the Mac's MLX model keeps its measured path, with no VAD pass
         if 0 < dur <= backend.max_chunk:
             gate = getattr(backend, "vad_gate", False)
+            if gate:
+                samples = level_up(samples)     # with the VAD deciding: a quiet voice at a usual level for both
             chunks = [(0.0, dur)] if not gate or vad_segments(samples, max_speech=min(25, backend.max_chunk)) else []
         else:
             chunks = pause_spans(samples, backend.max_chunk)
     else:
+        samples = level_up(samples)
         segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
         chunks = group_chunks(segs, backend.max_chunk)
     sp = sum(e - s for s, e in chunks)

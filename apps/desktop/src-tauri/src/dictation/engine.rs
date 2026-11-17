@@ -783,6 +783,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
     let prefs = Prefs::from_json(&cfg());
     let t = make_trigger(&prefs);
     keys_win::CANCEL_MODS.store(cancel_mods(&prefs), SeqCst);
+    keys_win::EITHER_ALT.store(prefs.key == Key::EitherAlt, SeqCst);
     let mut e = Engine {
         app: app.clone(),
         tx: tx.clone(),
@@ -1003,6 +1004,7 @@ impl Engine {
         let key_changed = new.key != self.prefs.key;
         self.prefs = new;
         keys_win::CANCEL_MODS.store(cancel_mods(&self.prefs), SeqCst);
+        keys_win::EITHER_ALT.store(self.prefs.key == Key::EitherAlt, SeqCst);
         if rebuild {
             if self.take.is_some() && key_changed {
                 self.trigger.reset(false, false);

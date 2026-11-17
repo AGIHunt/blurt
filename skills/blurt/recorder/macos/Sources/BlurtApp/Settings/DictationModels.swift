@@ -159,8 +159,8 @@ final class DictationModels: ObservableObject {
 
     func load() async {
         loaded = true
-        async let a = SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 120)
-        async let p = SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
+        async let a = SkillCLI.shared.read("transcribe.py", ["dictation-models"], timeout: 120)
+        async let p = SkillCLI.shared.read("polish.py", ["models"], timeout: 60)
         var timedOut = false, detail = ""
         do {
             let r = try await a

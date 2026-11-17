@@ -170,6 +170,22 @@ sensing, so a hard press is just this hold). That's how a screenshot area gets s
 fingers scroll / tap right click / pinch zoom; three fingers change
 desktop (left, right), all windows (up), app windows (down). A touch that stops a coast never clicks. A resting thumb never clicks (tap under 220 ms).
 
+**Pinch for the computer's zoom (⌘+ / ⌘−), sized by where the fingers started (2026-11-17).** A MacBook + iPhone user: pinching in zoomed out, spreading
+apart to zoom in "is very hard to trigger". Nothing treated the two directions differently; the distances were fixed, and the two gestures don't start
+alike. A pinch-in starts with the fingers wide, a spread with them close and often with the thumb held still:
+
+- A pinch was recognised after 25 pt of change and then stepped every 36 pt, counted from where it was recognised: 61 pt before the first step. From
+  250 pt apart that is a quarter of the way in; from 60 pt apart it is doubling the spread, and 60 → 85 did nothing at all.
+- Two fingers were a scroll as soon as their middle had moved 6 pt. With one finger still, the middle moves half as far as the fingers come apart, so a
+  spread hit 6 pt (at 12 pt of spread) long before 25 pt: it became a scroll, for good — and lifted with a fling, which swallowed the next try for 2 s.
+
+Now (`PadEngine.pinchLock`, `pinchStride`; the same in Kotlin): recognised after a fifth of the starting spread (10–25 pt), a step for every 30% wider
+(18–36 pt) or the same step back, counted from the start. Two fingers are a scroll only when their middle has moved further than they have come
+apart, and a scroll whose fingers come apart further than it has travelled turns into the pinch it was. The tests feed whole gestures in 12 ms moves:
+thumb still and finger out, 60 ↔ 150 pt both ways (as many steps each way), 60 → 85 (one step), a spread after 8 pt of hand drift, a 300 pt scroll
+with 30 pt of finger drift (no zoom), a wobbly two-finger tap (still a right click). On the old engine four of them fail, the first as a scroll.
+Not checked on a phone in the hand here: the tests are the engine's, the reporter's fingers are theirs.
+
 Pointer gain rises smoothly from 1× for a slow finger to 5.5× for a fast one, because the glass is a tenth of a trackpad and
 the target may be 4K; reviews of other apps single out steep curves and bad slow-speed precision. Scrolling is
 continuous-phase CGEvents so apps rubber-band as with a trackpad; the coast runs on the Mac at 120 Hz.

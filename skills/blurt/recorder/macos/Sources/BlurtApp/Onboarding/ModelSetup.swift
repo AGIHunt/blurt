@@ -112,8 +112,8 @@ final class ModelSetup: ObservableObject {
         loading = true
         defer { loading = false }
         prepareSystem()
-        async let d = try? SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 180)
-        async let p = try? SkillCLI.shared.run("polish.py", ["models"], timeout: 120)
+        async let d = try? SkillCLI.shared.read("transcribe.py", ["dictation-models"], timeout: 180)
+        async let p = try? SkillCLI.shared.read("polish.py", ["models"], timeout: 120)
         await SpeechModel.shared.load()
         let asr = (await d)?.decode(DictationASRState.self)
         let polish = (await p)?.decode(PolishState.self)
