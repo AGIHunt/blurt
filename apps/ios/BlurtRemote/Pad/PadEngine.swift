@@ -63,6 +63,13 @@ final class PadEngine {
     /// how far fingers moving the view must come apart or together before it's a pinch
     static let pinchRatio: CGFloat = 0.14
 
+    /// How far two fingers must come apart or together to count as a pinch for the Mac, and then for each zoom step. Both follow how far
+    /// apart the fingers started: a spread starts with them close and a pinch with them wide, so fixed distances asked a spread to nearly
+    /// double before anything happened while a pinch-in needed a tenth.
+    static func pinchLock(_ spread: CGFloat) -> CGFloat { min(pinchStep * 0.7, max(10, spread * 0.2)) }
+    /// a step apart is 30% wider, and a step together takes the same step back: the same gesture either way is as many steps
+    static func pinchStride(_ spread: CGFloat, apart: Bool) -> CGFloat { min(pinchStep, max(18, spread * (apart ? 0.3 : 0.3 / 1.3))) }
+
     private enum State {
         case idle
         case one(start: CGPoint, last: CGPoint, at: Double)     // may yet be a tap
@@ -90,6 +97,8 @@ final class PadEngine {
     private var samples: [(t: Double, dx: CGFloat, dy: CGFloat)] = []
     /// how far apart two scrolling fingers started
     private var scrollSpread: CGFloat = 0
+    /// how far a two-finger scroll has travelled since its fingers landed
+    private var scrollTravel: CGFloat = 0
 
     var curve = RemotePointerCurve()
     var pinchZoomsView = false
@@ -232,28 +241,42 @@ final class PadEngine {
                 break
             }
             let dx = p.x - last.x, dy = p.y - last.y
+            scrollTravel += hypot(dx, dy)
+            // fingers that drifted before they spread started as a scroll: once they have come apart further than the scroll has gone,
+            // it was a pinch (a real scroll has travelled much further than its fingers drift)
+            if two, !pinchZoomsView, touches.count >= 2, scrollSpread > 0,
+               abs(spread - scrollSpread) > max(Self.pinchStride(scrollSpread, apart: spread > scrollSpread), scrollTravel) {
+                out.append(.scroll(0, 0, .ended))
+                state = .pinch(spread: scrollSpread)
+                break
+            }
             samples.append((now, dx, dy))
             samples.removeAll { now - $0.t > 0.09 }
             out.append(.scroll(Float(dx * scrollGain), Float(dy * scrollGain), .changed))
             state = .scrolling(last: p, two: two)
         case let .two(start, s, _):
             guard touches.count >= 2 else { break }
-            if pinchZoomsView, abs(spread - s) > Self.pinchStep * 0.35 {
+            let apart = abs(spread - s), moved = dist(p, start)
+            if pinchZoomsView, apart > Self.pinchStep * 0.35 {
                 state = .view(spread: spread, center: p, from: spread, zooming: true)
-            } else if !pinchZoomsView, abs(spread - s) > Self.pinchStep * 0.7 {
-                state = .pinch(spread: spread)
-            } else if dist(p, start) > Self.slop {
+            } else if !pinchZoomsView, apart > Self.pinchLock(s), apart > moved {
+                // counted from where the fingers started, so the first step comes as soon as the next ones
+                state = .pinch(spread: s)
+            } else if moved > Self.slop, pinchZoomsView || apart < moved {
+                // one finger held still while the other spreads moves the middle half as far as the fingers come apart: that is a
+                // pinch still making up its mind, not a scroll, which moves the middle and leaves the spread alone
                 // zoomed or not, two fingers scroll the Mac, as on its own trackpad: what's under the pointer scrolls. With the picture
                 // showing, that's what's under the fingers, the same as a tap
                 samples = []
                 scrollSpread = spread
+                scrollTravel = moved       // what it took to be a scroll counts as scrolled
                 if touchMode { out.append(.pointAt(start)) }
                 out.append(.scroll(0, 0, .began))
                 state = .scrolling(last: p, two: true)
             }
         case let .pinch(s):
             guard touches.count >= 2 else { break }
-            if abs(spread - s) > Self.pinchStep {
+            if abs(spread - s) > Self.pinchStride(s, apart: spread > s) {
                 out += [.system(spread > s ? .zoomIn : .zoomOut), .haptic(.step)]
                 state = .pinch(spread: spread)
             }

@@ -247,7 +247,7 @@ final class SpeechModel: ObservableObject {
         loading = true
         defer { loading = false }
         do {
-            let r = try await SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
+            let r = try await SkillCLI.shared.read("transcribe.py", ["models"], timeout: 180)
             guard r.ok, let s = r.decode(ASRState.self) else { failed(stderr: r.stderr.isEmpty ? r.errorText : r.stderr); return }
             // a finished download: the suggestion folds away and the jobs show their new model
             let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || state == nil
@@ -509,7 +509,8 @@ struct SpeechPane: View {
     /// the one place the choices are weighed; the rows under it stay as they were.
     var lead: SettingsLead {
         _ = cloud.tick
-        let text = m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
+        // a read that failed says so on its own line below: "Checking this Mac…" beside it never ended
+        let text = m.error != nil && m.state == nil ? "" : m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
         return SettingsLead(text: Text(text), accessory: AnyView(
             Button(S("speech.compare.open")) { compare = true }
                 .buttonStyle(.plain).foregroundStyle(Color.brandInk)

@@ -316,4 +316,37 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertEqual(CardPasteSequence.arm(enabled: false, steps: both, accessibility: true), .skip("off"))
         XCTAssertEqual(CardPasteSequence.arm(enabled: true, steps: [.text("note")], accessibility: false), .skip("one_thing"))
     }
+
+    // MARK: DictationHeard — a dictation take the endpointer heard nothing in
+
+    func testAQuietDictationTakeGoesToTheModel() {
+        XCTAssertTrue(DictationHeard.worthHearing(heardSpeech: true, seconds: 0.6, soundSeconds: 0))
+        // lasted, and held a sound above the room: the model decides
+        XCTAssertTrue(DictationHeard.worthHearing(heardSpeech: false, seconds: 4, soundSeconds: 0.7))
+        // a slip of the key, and the room alone, are still dropped where they are
+        XCTAssertFalse(DictationHeard.worthHearing(heardSpeech: false, seconds: 0.8, soundSeconds: 0.6))
+        XCTAssertFalse(DictationHeard.worthHearing(heardSpeech: false, seconds: 9, soundSeconds: 0))
+        XCTAssertFalse(DictationHeard.worthHearing(heardSpeech: false, seconds: 9, soundSeconds: 0.2))
+    }
+
+    func testASoftVoiceTheEndpointerMissesIsWorthHearing() {
+        // a room at −50 dBFS and a voice a little over it (soft, or further from the microphone): under the endpointer's
+        // test, so no speech start — but a held sound, unlike the room alone
+        typealias N = NoteEndpointerTests
+        func take(_ voice: Float?) -> (heard: Bool, seconds: Double, sound: Double) {
+            var e = NoteEndpointer()
+            e.silenceToEnd = .infinity; e.noSpeechTimeout = .infinity; e.maxLength = 300
+            var x = N.noise(5, db: -50)
+            if let v = voice { for (i, s) in N.talk(3.5, db: v).enumerated() { x[Int(1.0 * N.sr) + i] += s } }
+            let heard = e.feed(x).contains(.speechStarted)
+            return (heard, e.heard, e.soundSeconds)
+        }
+        let room = take(nil), usual = take(-25)
+        // somewhere under a usual voice is one the endpointer misses and the model should still hear
+        let soft = stride(from: Float(-40), through: -50, by: -1).map { take($0) }.filter { !$0.heard }
+        XCTAssertTrue(soft.contains { DictationHeard.worthHearing(heardSpeech: $0.heard, seconds: $0.seconds, soundSeconds: $0.sound) }, "\(soft)")
+        XCTAssertFalse(DictationHeard.worthHearing(heardSpeech: room.heard, seconds: room.seconds, soundSeconds: room.sound), "\(room)")
+        XCTAssertTrue(usual.heard)
+    }
+
 }

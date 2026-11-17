@@ -1,12 +1,13 @@
 //! The dictation key on Windows (TODO.md §Dictation, Windows): a low-level keyboard hook (`WH_KEYBOARD_LL`) on a
 //! thread of its own with a message loop, read like the Mac's DictationKeys reads its event tap. The key is right
-//! Alt (`VK_RMENU`) used alone. What the hook sees goes to the trigger (trigger.rs) as events stamped with their own
+//! Alt (`VK_RMENU`) used alone, or either Alt (`record.dictation.key`, `DICTATION_KEY`). What the hook sees goes to the trigger (trigger.rs) as events stamped with their own
 //! time (the hook's `time`, ms since boot), never the time we got round to them.
 //!
 //! * AltGr layouts send a fake left Ctrl (scan code 0x21D) before right Alt: ignored, so AltGr+key stays a shortcut.
-//! * Alt pressed and let go alone opens the menu bar of the app in front. When the key was used alone its release is
-//!   swallowed and sent again behind the menu mask key (VK 0xE8, unassigned — AutoHotkey's `#MenuMaskKey`), so the app
-//!   sees "Alt + something" and keeps its menu shut.
+//! * Alt pressed and let go alone opens the menu bar of the app in front, and the caret leaves the field the words are
+//!   for. When the dictation key was used alone its release is swallowed and sent again behind the menu mask key (VK
+//!   0xE8, unassigned — AutoHotkey's `#MenuMaskKey`), so the app sees "Alt + something" and keeps its menu shut. That
+//!   is every key the setting names (trigger.rs `AltAlone`): with "either Alt", the left one too.
 //! * Our own injected input (the mask, Ctrl+V, Return) is marked with `INJECT_TAG` and never read back.
 //! * Every other key is reported, never eaten: the trigger reads Esc, Shift and Ctrl inside a take. Esc alone is
 //!   reported and kept from the app in front while a dictation listens (`ESC_DICTATION`) or in a voice note's first
@@ -20,6 +21,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_LCONTROL, VK_RMENU,
 };
+
+use super::trigger::{AltAlone, Key};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
     KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
@@ -48,9 +51,10 @@ struct Hook {
 }
 
 static HOOK: OnceLock<Hook> = OnceLock::new();
-/// the dictation key is down and nothing else was pressed with it (its release is then masked)
-static ALONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-static RHELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// a dictation key is down and nothing else was pressed with it (its release is then masked)
+static ALONE: std::sync::Mutex<AltAlone> = std::sync::Mutex::new(AltAlone { alone: None, held: [false; 2] });
+/// The dictation key is either Alt (record.dictation.key), not right Alt only: the left one is then masked too.
+pub static EITHER_ALT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Esc is Blurt's (a voice note's first seconds, voice.rs): it is reported but never reaches the app in front
 pub static ESC_TAKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Esc is Blurt's while a dictation listens (the Mac's Esc hotkey, held from the start to the stop): it cancels the
@@ -117,16 +121,8 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             let up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
             if down || up {
                 use std::sync::atomic::Ordering::SeqCst;
-                let rmenu = k.vkCode == VK_RMENU.0 as u32;
-                if down && rmenu {
-                    if !RHELD.swap(true, SeqCst) {
-                        ALONE.store(true, SeqCst); // a fresh press (not a key repeat) starts alone
-                    }
-                } else if down {
-                    ALONE.store(false, SeqCst);
-                } else if rmenu {
-                    RHELD.store(false, SeqCst);
-                }
+                let key = if EITHER_ALT.load(SeqCst) { Key::EitherAlt } else { Key::RightAlt };
+                let lone_release = ALONE.lock().map(|mut a| a.key(key, k.vkCode, down)).unwrap_or(false);
                 if let Some(h) = HOOK.get() {
                     let _ = h.tx.send(KeyEvent {
                         code: k.vkCode,
@@ -134,12 +130,13 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         tick_ms: k.time,
                     });
                 }
-                if rmenu && up && ALONE.swap(false, SeqCst) {
-                    // swallow this release and send mask + release again, so no menu bar opens
+                if lone_release {
+                    // swallow this release and send mask + release again, so no menu bar opens (right Alt is an extended
+                    // key, left Alt is not)
                     send_keys(&[
                         (VK_MASK, false, false),
                         (VK_MASK, true, false),
-                        (VK_RMENU.0, true, true),
+                        (k.vkCode as u16, true, k.vkCode == VK_RMENU.0 as u32),
                     ]);
                     return LRESULT(1);
                 }

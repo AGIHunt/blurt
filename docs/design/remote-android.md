@@ -202,7 +202,8 @@ class PadEngine {
     fun ended(ids: List<Int>, now: Double): List<PadOutput>; fun tick(now: Double): List<PadOutput>; val needsTicks: Boolean; fun cancel(): List<PadOutput>
     var curve: RemotePointerCurve; var pinchZoomsView: Boolean; var touchMode: Boolean; var scrollEdge: ClosedFloatingPointRange<Double>?; var scrollGain: Double
     companion { SLOP = 6.0, TAP_TIME = 0.22, DOUBLE_WINDOW = 0.30, DOUBLE_REACH = 44.0, HOLD_TIME = 0.40, DRAG_GRACE = 0.45, HOLD_LIMIT = 1.2,
-        COAST_TIME = 2.0, PINCH_STEP = 36.0, SWIPE_TRIP = 40.0, PINCH_RATIO = 0.14 }
+        COAST_TIME = 2.0, PINCH_STEP = 36.0, SWIPE_TRIP = 40.0, PINCH_RATIO = 0.14;
+        fun pinchLock(spread): Double; fun pinchStride(spread, apart): Double }   // docs/design/remote.md: pinch sized by the starting spread
 }
 class ViewPort { val zoom: Double; val rect: PadRect; val isWhole: Boolean; val visible: PadRect; val crop: RemoteCrop
     fun reshape(s: Double, alignY: Double); fun change(scale: Double, move: PadPoint, anchor: PadPoint); fun settle(); fun follow(p: PadPoint): Boolean

@@ -31,6 +31,8 @@ pub static ESC_TAKEN: AtomicBool = AtomicBool::new(false);
 pub static ESC_DICTATION: AtomicBool = AtomicBool::new(false);
 /// The cancel key's modifier (record.dictation.cancel_key): 0 Esc alone, 1 Ctrl+Esc, 2 Shift+Esc.
 pub static CANCEL_MODS: AtomicU8 = AtomicU8::new(0);
+/// The dictation key is either Alt (record.dictation.key), not right Alt only: the left one is then masked too.
+pub static EITHER_ALT: AtomicBool = AtomicBool::new(false);
 
 static TX: OnceLock<Mutex<Sender<KeyEvent>>> = OnceLock::new();
 /// "evdev" | "portal"
@@ -218,7 +220,8 @@ fn read_device(mut f: File) {
             }
             let down = value == 1;
             set_held(code, down);
-            if code == 100 && down {
+            // right Alt, and left Alt (56) when either one is the dictation key
+            if down && (code == 100 || (code == 56 && EITHER_ALT.load(SeqCst))) {
                 super::insert_linux::mask_alt();
             }
             send(to_vk(code), down);

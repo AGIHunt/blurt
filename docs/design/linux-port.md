@@ -64,7 +64,9 @@ evdev, measured: without the `input` group the user can't open any keyboard; wit
 read < 1 ms after the kernel's timestamp. Devices come and go (USB, Bluetooth, our own uinput rig), so the reader has
 to watch for new ones. It only reads — the key still reaches the app in front. **A lone right-Alt tap opens Firefox's
 menu bar** (checked), the same problem Windows had; the fix is the same idea: when the key is used alone, send a
-harmless key through the RemoteDesktop session while Alt is still down so the app sees "Alt + something".
+harmless key through the RemoteDesktop session while Alt is still down so the app sees "Alt + something". With
+"either Alt" as the dictation key the left Alt gets the same (`EITHER_ALT`; it was the right one only, on Windows too:
+docs/design/windows-parity/dictation.md).
 
 **Decision.**
 - Default: a portal shortcut, tap or hold, through the same `DictationTrigger` as the Mac/Windows. Suggested key:

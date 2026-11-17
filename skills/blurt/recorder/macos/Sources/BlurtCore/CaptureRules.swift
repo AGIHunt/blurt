@@ -193,6 +193,18 @@ public enum MicWatchdog {
     }
 }
 
+/// Whether a dictation take the user ended goes to the speech model. The endpointer hearing speech always did; a take
+/// it heard none in was deleted there and then ("Didn't catch anything", no Retry) — and its test, a sound 10 dB over
+/// the room for most of a quarter second, is one a soft voice or a microphone further away doesn't pass (24 real takes
+/// with the voice 12 dB quieter in the same room: 4 dropped, docs/design/dictation.md §Quiet speech). So, as a voice
+/// note is kept (VoiceKeep): a take that lasted and held a sound above the room is heard by the model, which decides —
+/// no words still ends in "Didn't catch anything". A slip of the key and a room alone stay the endpointer's to drop.
+public enum DictationHeard {
+    public static func worthHearing(heardSpeech: Bool, seconds: Double, soundSeconds: Double) -> Bool {
+        heardSpeech || (seconds >= VoiceKeep.minUserSeconds && soundSeconds >= VoiceKeep.minSoundSeconds)
+    }
+}
+
 // MARK: - After a quit or a crash
 
 public enum CaptureRestore {

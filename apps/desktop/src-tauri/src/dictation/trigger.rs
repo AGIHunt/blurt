@@ -157,6 +157,40 @@ impl Key {
     }
 }
 
+/// Which Alt releases the hook layer hides from the app in front. An Alt pressed and let go alone puts a Windows app into
+/// its menu bar (and some Linux apps), which takes the caret out of the field the dictation is for — so the release of a
+/// dictation key used alone is masked. Every key the setting names counts: with "either Alt", the left one too (it was
+/// the right one only, so a left-Alt tap started the take and sent the app into its menu).
+#[derive(Default)]
+pub struct AltAlone {
+    /// the dictation Alt that is down with nothing else pressed since, if any
+    pub alone: Option<u32>,
+    pub held: [bool; 2],
+}
+
+impl AltAlone {
+    /// One key down or up as the hook saw it. True when it is the release of a dictation key that was used alone: the
+    /// app must not see it bare.
+    pub fn key(&mut self, key: Key, code: u32, down: bool) -> bool {
+        let side = (code == vk::RMENU) as usize;
+        if !key.codes().contains(&code) {
+            if down {
+                self.alone = None;
+            }
+            return false;
+        }
+        if down {
+            // a fresh press (not a key repeat) starts alone; the other Alt joining it ends that
+            if !std::mem::replace(&mut self.held[side], true) {
+                self.alone = if self.held[1 - side] { None } else { Some(code) };
+            }
+            return false;
+        }
+        self.held[side] = false;
+        self.alone.take() == Some(code)
+    }
+}
+
 /// auto (the default): a tap is hands-free, a hold is push-to-talk; tap: tap / tap; hold: push-to-talk only
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Mode {
@@ -1127,6 +1161,40 @@ mod tests {
         assert_eq!(run("shift-down@0 ralt-down@20 ralt-up@90 shift-up@120"), []); // Shift held first
         assert_eq!(run("ctrl-down@0 ralt-down@20 ralt-up@90 ctrl-up@120"), []);
         assert_eq!(run("ralt-down@0 click@50 ralt-up@100"), [Arm]); // Alt-click
+    }
+
+    #[test]
+    fn a_lone_dictation_alt_is_masked_on_either_side() {
+        let (l, r) = (vk::LMENU, vk::RMENU);
+        // right Alt only: left Alt is the app's own, its menu still opens
+        let mut a = AltAlone::default();
+        assert!(!a.key(Key::RightAlt, r, true));
+        assert!(!a.key(Key::RightAlt, r, true), "key repeat");
+        assert!(a.key(Key::RightAlt, r, false));
+        assert!(!a.key(Key::RightAlt, l, true));
+        assert!(!a.key(Key::RightAlt, l, false));
+        // either Alt: a lone left Alt starts a take, so it is masked too
+        let mut a = AltAlone::default();
+        assert!(!a.key(Key::EitherAlt, l, true));
+        assert!(a.key(Key::EitherAlt, l, false));
+        assert!(!a.key(Key::EitherAlt, r, true));
+        assert!(a.key(Key::EitherAlt, r, false));
+        // Alt as a modifier is left alone: Alt+A, Alt+Tab, both Alts
+        for other in [0x41, 0x09] {
+            let mut a = AltAlone::default();
+            assert!(!a.key(Key::EitherAlt, l, true));
+            assert!(!a.key(Key::EitherAlt, other, true));
+            assert!(!a.key(Key::EitherAlt, other, false));
+            assert!(!a.key(Key::EitherAlt, l, false));
+        }
+        let mut a = AltAlone::default();
+        assert!(!a.key(Key::EitherAlt, l, true));
+        assert!(!a.key(Key::EitherAlt, r, true));
+        assert!(!a.key(Key::EitherAlt, r, false));
+        assert!(!a.key(Key::EitherAlt, l, false));
+        // and the next lone tap counts again
+        assert!(!a.key(Key::EitherAlt, l, true));
+        assert!(a.key(Key::EitherAlt, l, false));
     }
 
     #[test]

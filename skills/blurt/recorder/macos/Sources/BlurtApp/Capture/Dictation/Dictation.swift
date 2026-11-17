@@ -1477,14 +1477,20 @@ final class Dictation {
         guard let v = voice, let url = wav, let s = stream else { return }
         let keyUp = CACurrentMediaTime()
         let duration = v.elapsed
-        if !ended { v.stop(keep: heardSpeech) }
+        // quiet speech the endpointer missed still goes to the speech model (BlurtCore DictationHeard)
+        let heard = DictationHeard.worthHearing(heardSpeech: heardSpeech, seconds: duration, soundSeconds: v.soundSeconds)
+        if heard, !heardSpeech {
+            emit(["event": "dictation_quiet_take", "id": entryID, "seconds": (duration * 100).rounded() / 100,
+                  "sound": (v.soundSeconds * 100).rounded() / 100, "peak_db": Double((v.peakDB * 10).rounded() / 10)])
+        }
+        if !ended { v.stop(keep: heard) }
         DictationSound.stop.play()      // after the mic closed: the peck isn't in the take
         voice = nil
         stream = nil
         micLive = false
         listening = false
         releaseEsc()
-        guard heardSpeech else {
+        guard heard else {
             s.cancel()
             try? FileManager.default.removeItem(at: url)
             LiveTranscript.shared.end(session: liveSession)

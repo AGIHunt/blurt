@@ -423,6 +423,59 @@ class Limits(unittest.TestCase):
 
 
 # ------------------------------------------------------------------ voice notes
+class QuietSpeech(unittest.TestCase):
+    """level_up: quiet audio is brought to a usual level before the VAD and the model; nothing is turned down, and the
+    backends that get the audio whole with no VAD deciding (a cloud service, macOS's recogniser) get it as recorded."""
+
+    def tone(self, peak, seconds=2.0):
+        t = np.arange(int(seconds * SR)) / SR
+        return (peak * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+
+    def test_quiet_audio_comes_up_and_loud_audio_is_left(self):
+        up = T.level_up(self.tone(0.02))
+        self.assertAlmostEqual(float(np.percentile(np.abs(up), 99.9)), T.LEVEL_PEAK, places=2)
+        self.assertEqual(up.dtype, np.float32)
+        for peak in (0.1, 0.4):                       # a usual take, a loud one: as recorded
+            usual = self.tone(peak)
+            self.assertIs(T.level_up(usual), usual)
+        self.assertEqual(len(T.level_up(np.zeros(0, np.float32))), 0)
+        silent = np.zeros(SR, np.float32)
+        self.assertIs(T.level_up(silent), silent)
+
+    def test_the_gain_has_a_ceiling_and_one_click_does_not_set_it(self):
+        dead = self.tone(0.0005)                      # a muted input's hiss: +30 dB at most, not up to a voice
+        self.assertAlmostEqual(float(np.abs(T.level_up(dead)).max()), 0.0005 * T.LEVEL_MAX_GAIN, places=4)
+        x = self.tone(0.02)
+        x[100] = 0.9                                  # one click in a quiet take
+        self.assertGreater(float(np.percentile(np.abs(T.level_up(x)), 99)), 0.2)
+
+    def test_the_vad_and_the_model_hear_the_levelled_audio(self):
+        heard = {}
+
+        class Loud(FakeBackend):
+            def transcribe(self, x):
+                heard["model"] = float(np.abs(x).max())
+                return [(0.0, len(x) / SR, "ok", "en")]
+
+        def vad(x, max_speech=25):
+            heard["vad"] = float(np.abs(x).max())
+            return [(0.0, len(x) / SR)]
+
+        old = T.vad_segments
+        T.vad_segments = vad
+        try:
+            T.transcribe_track(self.tone(0.02), Loud(), "fake", 1, quiet=True)
+            self.assertAlmostEqual(heard["vad"], T.LEVEL_PEAK, places=2)
+            self.assertAlmostEqual(heard["model"], T.LEVEL_PEAK, places=2)
+
+            class Whole(Loud):
+                no_vad = True
+            T.transcribe_track(self.tone(0.02), Whole(), "fake", 1, quiet=True)
+            self.assertAlmostEqual(heard["model"], 0.02, places=3)      # as recorded: nothing decides there is speech
+        finally:
+            T.vad_segments = old
+
+
 class Notes(unittest.TestCase):
     def setUp(self):
         self.patches = {"BACKENDS": T.BACKENDS, "vad_segments": T.vad_segments}

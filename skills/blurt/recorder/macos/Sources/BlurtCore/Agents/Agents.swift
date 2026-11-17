@@ -114,6 +114,21 @@ public final class SkillCLI {
         }
     }
 
+    /// A read that needs nothing from the network (the model lists Settings and the first run show): offline first.
+    /// `uv run` asks PyPI about the script's packages again whenever its index cache has expired, and from a network
+    /// where PyPI is slow or a proxy hangs that took the whole timeout — "Reading the speech models took too long" on a
+    /// Mac where everything was already installed. With UV_OFFLINE=1 the cached packages are used as they are (0.2 s);
+    /// only when that fails (nothing cached yet: the first use ever) does it run again online, as before.
+    public func read(_ script: String, _ args: [String], timeout: TimeInterval = 60) async throws -> CLIResult {
+        let env = ScriptRunner.extraEnvironment().merging(["BLURT_LANG": Loc.language.hasPrefix("zh") ? "zh" : "en",
+                                                           "UV_OFFLINE": "1"]) { _, mine in mine }
+        if let r = try? await run(script, args, env: env, timeout: min(timeout, SkillCLI.offlineReadTimeout)), r.ok { return r }
+        return try await run(script, args, timeout: timeout)
+    }
+
+    /// How long the offline try of `read` may take: it touches no network, so longer than this is a stuck tool.
+    public static var offlineReadTimeout: TimeInterval = 30
+
     /// A long-running script: stdout and stderr lines (on the main queue), then the exit status (main queue).
     @discardableResult
     public func spawn(_ script: String, _ args: [String], with packages: [String] = [], env extra: [String: String] = [:],

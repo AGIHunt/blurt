@@ -170,6 +170,66 @@ final class PadEngineTests: XCTestCase {
         XCTAssertEqual(e.moved([t(1, 40, 300), t(2, 260, 300)], at: 0.1), [.system(.zoomIn), .haptic(.step)])
     }
 
+    /// every zoom step a two-finger gesture sends, fed as a straight path in small moves like a real finger's
+    private func zooms(_ e: PadEngine = PadEngine(), from a: (CGPoint, CGPoint), to b: (CGPoint, CGPoint), steps n: Int = 30) -> [PadOutput] {
+        var out = e.began([t(1, a.0.x, a.0.y), t(2, a.1.x, a.1.y)], at: 0)
+        for i in 1...n {
+            let f = CGFloat(i) / CGFloat(n)
+            out += e.moved([t(1, a.0.x + (b.0.x - a.0.x) * f, a.0.y + (b.0.y - a.0.y) * f),
+                            t(2, a.1.x + (b.1.x - a.1.x) * f, a.1.y + (b.1.y - a.1.y) * f)], at: Double(i) * 0.012)
+        }
+        return out + e.ended([1, 2], at: Double(n) * 0.012 + 0.05)
+    }
+
+    private func count(_ m: RemoteSystemMove, in o: [PadOutput]) -> Int { o.filter { $0 == .system(m) }.count }
+
+    func testASpreadWithTheThumbHeldStillZoomsIn() {
+        // thumb and finger start close, the thumb stays put and the finger goes out: the middle moves half as far as they come apart
+        let o = zooms(from: (CGPoint(x: 150, y: 400), CGPoint(x: 190, y: 360)), to: (CGPoint(x: 150, y: 400), CGPoint(x: 250, y: 300)))
+        XCTAssertGreaterThanOrEqual(count(.zoomIn, in: o), 2, "\(o)")
+        XCTAssertFalse(o.contains { if case .scroll = $0 { true } else { false } }, "never a scroll: \(o)")
+        XCTAssertEqual(count(.zoomOut, in: o), 0)
+    }
+
+    func testASpreadFromCloseZoomsAsReadilyAsAPinchFromWide() {
+        // the same ratio either way, 60 ↔ 150 apart: as many steps out as in
+        let a = (CGPoint(x: 170, y: 300), CGPoint(x: 230, y: 300)), b = (CGPoint(x: 125, y: 300), CGPoint(x: 275, y: 300))
+        let out = count(.zoomIn, in: zooms(from: a, to: b)), back = count(.zoomOut, in: zooms(from: b, to: a))
+        XCTAssertGreaterThanOrEqual(out, 2)
+        XCTAssertEqual(out, back)
+    }
+
+    func testASmallSpreadFromCloseIsAZoomStep() {
+        // 60 → 85 apart was nothing before: it took 61 pt, twice the starting span, for the first step
+        let o = zooms(from: (CGPoint(x: 170, y: 300), CGPoint(x: 230, y: 300)), to: (CGPoint(x: 158, y: 300), CGPoint(x: 243, y: 300)))
+        XCTAssertEqual(count(.zoomIn, in: o), 1, "\(o)")
+    }
+
+    func testASpreadAfterTheHandDriftedStillZooms() {
+        // the hand was still settling when the fingers landed (8 pt of drift: a scroll), then they spread
+        let e = PadEngine()
+        _ = e.began([t(1, 150, 400), t(2, 190, 360)], at: 0)
+        var o = e.moved([t(1, 156, 405), t(2, 196, 365)], at: 0.02)
+        XCTAssertEqual(o, [.scroll(0, 0, .began)])
+        for i in 1...20 { o += e.moved([t(1, 156, 405), t(2, 196 + CGFloat(i) * 3, 365 - CGFloat(i) * 3)], at: 0.02 + Double(i) * 0.012) }
+        XCTAssertGreaterThanOrEqual(count(.zoomIn, in: o), 1, "\(o)")
+        XCTAssertEqual(e.ended([1, 2], at: 0.4), [], "and no fling of the scroll it started as")
+    }
+
+    func testAScrollWhoseFingersDriftNeverZooms() {
+        // a long scroll with the fingers coming 30 pt apart on the way
+        let o = zooms(from: (CGPoint(x: 150, y: 200), CGPoint(x: 200, y: 200)), to: (CGPoint(x: 140, y: 500), CGPoint(x: 220, y: 500)))
+        XCTAssertEqual(count(.zoomIn, in: o) + count(.zoomOut, in: o), 0, "\(o)")
+        XCTAssertTrue(o.contains(.scroll(0, 0, .began)))
+    }
+
+    func testATwoFingerTapWithAWobbleIsStillARightClick() {
+        let e = PadEngine()
+        _ = e.began([t(1, 150, 300), t(2, 200, 300)], at: 0)
+        _ = e.moved([t(1, 148, 301), t(2, 203, 299)], at: 0.05)
+        XCTAssertEqual(e.ended([1, 2], at: 0.12), [.click(.right), .haptic(.tap)])
+    }
+
     func testWithTheScreenShowingAPinchZoomsTheView() {
         let e = PadEngine()
         e.pinchZoomsView = true
