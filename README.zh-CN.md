@@ -215,9 +215,7 @@ Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待
 
 ## 交流群
 
-使用问题、反馈和新版本消息都在微信群「口喷鸡狂喷群」，用微信扫码加入。
-
-<p align="center"><img src="assets/community/wechat-group-qr.png" width="200" alt="扫码加入微信群「口喷鸡狂喷群」"></p>
+使用问题、反馈和新版本消息都在微信群「口喷鸡狂喷群」。在微信公众号「AGI Hunt」回复「口喷」即可进群。
 
 Bug 和功能建议也可以提 [GitHub Issue](https://github.com/AGIHunt/blurt/issues)。
 
