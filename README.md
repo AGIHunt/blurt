@@ -253,9 +253,8 @@ action, another app or macOS. The same setting works in `~/.blurt/config.json`, 
 
 ## Community
 
-Questions, feedback and new releases go to the Blurt users' group on WeChat. Scan the code with WeChat to join.
-
-<p align="center"><img src="assets/community/wechat-group-qr.png" width="200" alt="QR code to join the Blurt users' WeChat group"></p>
+Questions, feedback and new releases go to the Blurt users' group on WeChat. To join, reply 口喷 to the WeChat official
+account **AGI Hunt**.
 
 Bugs and feature requests are also welcome as [GitHub issues](https://github.com/AGIHunt/blurt/issues).
 
