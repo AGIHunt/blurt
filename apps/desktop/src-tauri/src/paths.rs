@@ -7,13 +7,12 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+/// The user's own folder. Linux and macOS: $HOME first so tests (and the Linux e2e) can relocate everything. Windows:
+/// the profile folder only, as Python's `Path.home()` — a HOME some other tool set (often on another drive) split
+/// Blurt's data between two places. Where the data lives is location.rs's (resolved once at startup).
 pub fn home() -> PathBuf {
-    // $HOME first so tests (and the Linux e2e) can relocate everything; dirs::home_dir is the platform answer.
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-        .or_else(dirs::home_dir)
-        .unwrap_or_else(|| PathBuf::from("."))
+    let env = if cfg!(windows) { None } else { std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from) };
+    env.or_else(dirs::home_dir).unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn blurt_home() -> PathBuf {
@@ -79,7 +78,7 @@ fn first_existing(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     cands.into_iter().find(|p| p.exists())
 }
 
-/// The skill's scripts (items.py, projects.py, sessions.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
+/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
 /// the repo checkout (dev builds) → the installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();

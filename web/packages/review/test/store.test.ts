@@ -267,18 +267,18 @@ describe("K3 state actions", () => {
     s.dispose();
     vi.useRealTimers();
   });
-  it("hand off opens the host's dispatch for new / to do items, and never sends a state op", async () => {
+  it("hand off copies the instruction for the user's own agent (handoff), and never sends a state op", async () => {
     vi.useFakeTimers();
     const m = memHost(doc(), true);
-    const dispatch = vi.fn();
-    m.host.dispatch = dispatch;
+    const handoff = vi.fn(async () => ({ id: "H-0001", path: "/h/H-0001.md", text: "Please handle I-001" }));
+    m.host.handoff = handoff;
     const s = new ReviewStore(m.host, { mode: "item", itemId: "I-001" });
     await s.load();
     expect(s.canHandOff).toBe(true);
     s.onKeyDown(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, cancelable: true }));
-    expect(dispatch).toHaveBeenCalledWith(["I-001"]);
+    expect(handoff).toHaveBeenCalledWith(["I-001"], "instruction");
     s.act([s.data.items[1]], "hand_off"); // to verify: not from there
-    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(handoff).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(500);
     expect(m.sent).toEqual([]);
     s.dispose();

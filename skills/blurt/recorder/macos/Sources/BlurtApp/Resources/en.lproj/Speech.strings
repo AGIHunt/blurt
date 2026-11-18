@@ -7,7 +7,16 @@
 "speech.section.models" = "All models";
 "speech.section.advanced" = "Advanced";
 "speech.loading" = "Checking your Mac…";
-"speech.error.read" = "Couldn’t read the speech models. Check that uv is installed (in Settings, under General).";
+"speech.error.read" = "Couldn’t read the speech models.";
+"speech.error.no_uv" = "Local models need uv (the tool that runs them), and it isn’t installed.";
+"speech.install_uv" = "Install uv";
+"speech.error.offline" = "Couldn’t read the speech models: this Mac is offline. Connect, then try again.";
+"speech.error.network" = "Couldn’t read the speech models: a network error while fetching their components.";
+"speech.error.timeout" = "Reading the speech models took too long.";
+"speech.error.build" = "Couldn’t install the speech components: %@ failed to build.";
+"speech.error.build_missing" = "Couldn’t install the speech components: %@ failed to build (%@ is missing).";
+"speech.error.copy" = "Copy Error";
+"speech.error.copied" = "Copied";
 "speech.cancel" = "Cancel";
 
 /* The machine (the page's subtitle) and its tier (asr_models.json tiers; the tests check every tier has a name) */
@@ -200,6 +209,7 @@
 "speech.cloud.check.network" = "Can’t connect. Check your network and the base URL.";
 "speech.cloud.check.quota" = "Too many requests or no quota left. Try again later.";
 "speech.cloud.check.privacy" = "Cloud recognition is turned off in Privacy";
+"speech.cloud.check.model" = "Model Studio returned no text for this model. The name may be wrong, or the model only works with live streaming or a file link. Check the name or pick one from the list.";
 "speech.cloud.check.other" = "The service returned an error. Check the base URL and the model name.";
 
 /* Dictation’s choices compared (Settings → Models: the lead line and Compare…; DictationCompare.swift). Numbers come
@@ -243,3 +253,6 @@
 "speech.compare.needs_apple" = "Needs Apple silicon";
 "speech.compare.needs_macos" = "Needs macOS 26";
 "speech.compare.add_key" = "Add Key…";
+
+/* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
+"speech.speed.reference" = "%1$@: recognition about %2$@ (reference figure)";

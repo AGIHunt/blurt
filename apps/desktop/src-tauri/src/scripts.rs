@@ -122,7 +122,7 @@ fn tail(s: &str, n: usize) -> String {
 }
 
 /// Wait with a deadline, reading both pipes on threads so a chatty child can't block on a full pipe. A daemon the
-/// child started (the tmux server) may inherit the pipes and keep them open: once the child has exited we wait for
+/// child started may inherit the pipes and keep them open: once the child has exited we wait for
 /// the rest of its output only briefly.
 pub fn wait(mut child: Child, timeout: Duration) -> Result<(Option<i32>, String, String), String> {
     fn pump(stream: Option<impl Read + Send + 'static>) -> std::sync::mpsc::Receiver<String> {
@@ -232,7 +232,7 @@ fn login_shell_path() -> Option<String> {
     (code == Some(0) && !out.trim().is_empty()).then(|| out.trim().to_string())
 }
 
-/// A long-lived helper (`uv run … sessions.py monitor`): in a process group of its own, so [`kill_tree`] also ends
+/// A long-lived helper (an organising agent, a warm server): in a process group of its own, so [`kill_tree`] also ends
 /// the Python that `uv run` starts under it.
 pub fn daemon_command(argv: &[String]) -> Command {
     let mut c = command(argv);

@@ -204,7 +204,7 @@
       } else { setLive(null); mode(k >= 2 ? "done" : "hello"); }
     },
     snap(s, p, k) {
-      // the note bubble listens from the moment it opens (k 3) until the pause saves it (k 9); the words are its own
+      // the note bubble listens from the moment it opens (k 3) until ⏎ saves it (k 9); the words are its own
       setLive(null);
       mode(k >= 10 ? "hello" : "idle");
       // ⌥A: the crosshair drags the selection out with the scroll, from the screen going dim (k 1) to the bubble (k 3)
@@ -261,6 +261,8 @@
       }
     },
     hand(s, p, k) {
+      // ⌘↩: the app's toast at the notch (the instruction is on the clipboard), then OR-21 to verify
+      if (k === 2 || k === 3) { note(s, s.toast); mode("done"); return; }
       setLive(null);
       mode(k === 4 || k === 5 ? "verify" : "hello");
     },
@@ -274,7 +276,7 @@
       clock: el.querySelector("[data-clock-out]"), lanes: [...el.querySelectorAll(".ln")],
       tick: el.querySelector(".tick"), count: el.querySelector("[data-count-out]"),
       bub: el.querySelector("[data-bub]"), bubN: -1, draw: [...el.querySelectorAll(".draw li")],
-      cjk: el.hasAttribute("data-cjk"), trans: el.dataset.trans || "",
+      cjk: el.hasAttribute("data-cjk"), trans: el.dataset.trans || "", toast: el.dataset.toast || "",
     };
   });
   const depthEls = [...document.querySelectorAll("[data-depth]")];

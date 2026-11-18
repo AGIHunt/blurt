@@ -1,14 +1,12 @@
 // Project Settings… (the Mac's ProjectSettingsSheet, from the project's sidebar menu or Ctrl+I): the project's name,
 // its key (the prefix of its item ids: editable while the project has no items, 2–5 letters or digits, a letter first,
-// never IN — Unassigned's), the description organizing uses to file unassigned captures into it, then Hand-off: the
-// agent its hand-offs start with (Default = the global one) and whether each hand-off gets its own branch (a git
-// worktree). Saved with `projects.py set`, which checks the key again.
-import { useEffect, useState } from 'react';
-import { api, type ProjectRow } from '../api';
+// never IN — Unassigned's), and the description organizing uses to file unassigned captures into it. Saved with
+// `projects.py set`, which checks the key again.
+import { useState } from 'react';
+import type { ProjectRow } from '../api';
 import { t } from '../i18n';
 import { isImeKey } from '../ime';
 import { Icon } from '@blurt/icons';
-import { PanelSwitch } from './HandoffKit';
 
 export const keyValid = (k: string) => /^[A-Z][A-Z0-9]{1,4}$/.test(k) && k !== 'IN';
 
@@ -20,20 +18,8 @@ export function ProjectSettingsSheet({ project, onSave, onClose }: {
   const [name, setName] = useState(project.name);
   const [key, setKey] = useState(project.key);
   const [desc, setDesc] = useState(project.description ?? '');
-  const [agent, setAgent] = useState<string>(project.default_agent ?? '');
-  const [worktree, setWorktree] = useState(project.worktree !== false);
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
-  const [fallback, setFallback] = useState<string | null>(null);
   // items already use the key (ItemRow ids are made with it): it stays
   const keyLocked = project.items > 0;
-  useEffect(() => {
-    Promise.all([api.detect().catch(() => null), api.settings().catch(() => null)]).then(([d, s]) => {
-      const list = (d?.agents ?? []).map((a) => ({ id: a.id, name: a.name }));
-      setAgents(list);
-      const def = (s?.config?.record?.default_agent as string | undefined) ?? d?.order?.[0];
-      setFallback(list.find((a) => a.id === def)?.name ?? null);
-    });
-  }, []);
   const keyOk = keyLocked || keyValid(key);
   const save = () => {
     if (!name.trim() || !keyOk) return;
@@ -41,8 +27,6 @@ export function ProjectSettingsSheet({ project, onSave, onClose }: {
     if (name.trim() !== project.name) patch.name = name.trim();
     if (!keyLocked && key !== project.key) patch.key = key;
     if (desc.trim() !== (project.description ?? '')) patch.description = desc.trim();
-    if ((agent || null) !== (project.default_agent ?? null)) patch.default_agent = agent || null;
-    if (project.kind === 'repo' && worktree !== (project.worktree !== false)) patch.worktree = worktree;
     onClose();
     if (Object.keys(patch).length) onSave(patch);
   };
@@ -87,27 +71,6 @@ export function ProjectSettingsSheet({ project, onSave, onClose }: {
               <span className="dim small mw-note">{t('main.project.description.note')}</span>
             </span>
           </label>
-        </div>
-        <h3 className="mw-sheet-sec">{t('main.project.section.handoff')}</h3>
-        <div className="mw-form">
-          <label className="mw-form-row">
-            <span>{t('main.project.agent')}</span>
-            <span className="mw-end">
-              <select className="mw-field mw-select" value={agent} onChange={(e) => setAgent(e.target.value)} data-testid="project-agent">
-                <option value="">{fallback ? t('main.project.agent.default_named', { a: fallback }) : t('main.project.agent.default')}</option>
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
-            </span>
-          </label>
-          <div className="mw-form-row mw-switch-row">
-            <span className="mw-switch-txt">
-              <span>{t('main.project.worktree')}</span>
-              <span className="dim small mw-note">{project.kind === 'repo' ? t('main.project.worktree.note') : t('main.project.worktree.no_git')}</span>
-            </span>
-            <PanelSwitch label={t('main.project.worktree')} on={project.kind === 'repo' && worktree} disabled={project.kind !== 'repo'} onChange={setWorktree} />
-          </div>
         </div>
         <div className="mw-sheet-foot">
           <span className="dim small mw-sheet-path" data-tip={project.path}>

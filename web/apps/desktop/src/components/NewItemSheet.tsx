@@ -1,10 +1,13 @@
 // New Item (the Mac's NewItemSheet): the list heading's "+ New" and Ctrl+N open this sheet over the window. A kind
 // (Issue / Idea / Task / Note), a title, optional details, pictures; Create writes it with `items.py add` into the place
 // on show — the project in view, else the current project, else Unassigned — and the list selects it. Pictures come
-// from Add Image… (they go in as the item's frames; items.py copies them into the store).
+// from Add Image… (they go in as the item's frames; items.py copies them into the store). Other files a drop brought
+// (a PDF, a video: drag-drop.md §4) are listed by name and referenced where they are (`attachments`; one in a
+// temporary place is copied: items.rs `attach`).
 import { useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { api, fileSrc } from '../api';
+import { baseName } from '../drops';
 import { errText, i18n, t } from '../i18n';
 import { isImeKey } from '../ime';
 
@@ -15,7 +18,13 @@ export interface Prefill {
   title: string;
   details: string;
   images: string[];
+  /** other files (absolute paths): the item's attachments */
+  files?: string[];
+  /** where it goes, when the drop said (a project in the sidebar); else the place on show */
+  target?: string;
 }
+
+const VIDEO = /\.(mp4|mov|m4v|webm|mkv|avi)$/i;
 
 /** Text: its first line the title (cut at 60), the rest the details. */
 export function prefillFromText(text: string): Prefill {
@@ -36,6 +45,7 @@ export function NewItemSheet({ target, targetName, prefill, onClose, onCreated }
   const [title, setTitle] = useState(prefill?.title ?? '');
   const [details, setDetails] = useState(prefill?.details ?? '');
   const [images, setImages] = useState<string[]>(prefill?.images ?? []);
+  const [files, setFiles] = useState<string[]>(prefill?.files ?? []);
   const [dropping, setDropping] = useState(false);
   /** pictures pasted or dropped on the sheet join the others (text pastes into the field as always) */
   const take = async (files: File[]) => {
@@ -45,7 +55,7 @@ export function NewItemSheet({ target, targetName, prefill, onClose, onCreated }
   };
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const can = (title.trim() || images.length) && !saving;
+  const can = (title.trim() || images.length || files.length) && !saving;
 
   const create = async () => {
     if (!can) return;
@@ -57,6 +67,7 @@ export function NewItemSheet({ target, targetName, prefill, onClose, onCreated }
     const item: Record<string, unknown> = { kind, title: tt };
     if (details.trim()) item.details = details.trim();
     if (images.length) item.frames = images.map((path) => ({ path }));
+    if (files.length) item.attachments = files;
     try {
       const r = await api.addItem(target, item);
       onCreated(r?.uid ?? r?.item?.uid ?? null);
@@ -115,6 +126,19 @@ export function NewItemSheet({ target, targetName, prefill, onClose, onCreated }
           onKeyDown={(e) => e.key === 'Enter' && !isImeKey(e) && create()}
         />
         <textarea className="mw-field mw-details" value={details} placeholder={t('main.new_item.details_placeholder')} onChange={(e) => setDetails(e.target.value)} />
+        {files.length > 0 && (
+          <ul className="mw-files" aria-label={t('main.new_item.files')}>
+            {files.map((p) => (
+              <li key={p} className="mw-file" title={p}>
+                <Icon name={VIDEO.test(p) ? 'film' : 'document'} size={15} />
+                <span className="mw-file-name">{baseName(p)}</span>
+                <button className="mw-pic-x static" aria-label={t('main.new_item.remove_file', { a: baseName(p) })} onClick={() => setFiles((l) => l.filter((x) => x !== p))}>
+                  <Icon name="x" size={9} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="mw-pics">
           {images.map((p) => (
             <span key={p} className="mw-pic">

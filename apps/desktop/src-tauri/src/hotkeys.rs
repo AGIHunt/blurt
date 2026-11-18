@@ -321,6 +321,41 @@ pub struct Hotkeys {
 }
 
 static MAIN: OnceLock<std::thread::ThreadId> = OnceLock::new();
+/// The dictation key the GlobalShortcuts portal bound ("Menu", "Ctrl+Alt+Space"…) — Linux without `/dev/input`; None
+/// elsewhere, or before the portal answered. Settings shows it in place of the right-Alt choice.
+pub static DICTATE_LABEL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// GNOME's trigger description ("Press <Shift><Alt>c", "<Control><Alt>space", "Menu") as the app writes keys
+/// ("Shift+Alt+C", "Ctrl+Alt+Space", "Menu"). Anything it doesn't recognise stays as GNOME said it.
+pub fn pretty_trigger(s: &str) -> String {
+    let t = s.trim();
+    let t = t.strip_prefix("Press ").unwrap_or(t).trim();
+    let mut parts: Vec<String> = vec![];
+    let mut rest = t;
+    while let Some(r) = rest.strip_prefix('<') {
+        let Some(end) = r.find('>') else { return s.trim().to_string() };
+        parts.push(match r[..end].to_ascii_lowercase().as_str() {
+            "shift" => "Shift".into(),
+            "alt" | "mod1" => "Alt".into(),
+            "control" | "ctrl" | "primary" => "Ctrl".into(),
+            "super" | "meta" | "mod4" => "Super".into(),
+            other => other.to_string(),
+        });
+        rest = &r[end + 1..];
+    }
+    let key = rest.trim();
+    if key.is_empty() {
+        return s.trim().to_string();
+    }
+    let mut cs = key.chars();
+    let first = cs.next().unwrap();
+    parts.push(if key.chars().count() == 1 { key.to_uppercase() } else { first.to_uppercase().collect::<String>() + cs.as_str() });
+    parts.join("+")
+}
+
+pub fn dictate_label() -> Option<String> {
+    DICTATE_LABEL.lock().unwrap().clone()
+}
 
 /// Called once from setup (which runs on the main thread).
 pub fn mark_main_thread() {
@@ -371,6 +406,8 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let rec = *h.recording.lock().unwrap();
     let cfg = settings::read_config();
     let combos = from_config(&cfg);
+    // a capability that is off holds none of its keys (capabilities.rs): they go back to the other apps
+    let disabled = crate::capabilities::disabled_hotkeys(&crate::capabilities::off(&cfg), rec);
     let gs = app.global_shortcut();
     // drop what we hold, then register again in action order (the first of two duplicates wins)
     let held: Vec<Shortcut> = h.registered.lock().unwrap().drain().map(|(_, s)| s).collect();
@@ -381,8 +418,10 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let wayland = is_wayland();
     if wayland && h.mode.lock().unwrap().is_empty() {
         *h.mode.lock().unwrap() = "portal-pending".into();
+        // the portal binds once per launch: an off capability's keys are left out then; one turned off later stays
+        // bound until the next launch, and `crate::dispatch` refuses it meanwhile
         #[cfg(target_os = "linux")]
-        portal::start(app.clone(), combos.clone());
+        portal::start(app.clone(), combos.iter().filter(|(a, _)| !disabled.contains(a)).cloned().collect());
     }
     if !wayland {
         *h.mode.lock().unwrap() = "plugin".into();
@@ -394,7 +433,8 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     // tray reads the rows there (hotkeys://changed → tray::menu → rows) — holding it across either deadlocks
     let mut fresh: Vec<(String, Value)> = Vec::new();
     for (a, c) in &combos {
-        let active = RESIDENT.contains(a) || rec;
+        let off = disabled.contains(a);
+        let active = (RESIDENT.contains(a) || rec) && !off;
         let mut row = json!({"action": a, "active": active, "default": format!("opt+shift+{}", default_key(a))});
         let Some(c) = c else {
             row["result"] = json!("off");
@@ -406,7 +446,10 @@ fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
         };
         row["spec"] = json!(c.spec());
         row["label"] = json!(c.label());
-        if let Some(first) = seen.get(&c.spec()) {
+        if off {
+            // its capability is off: not registered, its keys kept for when it is back (never a duplicate of another)
+            row["result"] = json!("disabled");
+        } else if let Some(first) = seen.get(&c.spec()) {
             row["result"] = json!("duplicate");
             row["of"] = json!(first);
         } else if let Some(name) = system_conflict(c) {
@@ -596,7 +639,13 @@ pub mod portal {
             "voice" => "Voice note",
             "project" => "Switch project",
             "dictate" => "Dictate (hold to talk, or tap to start and stop)",
-            _ => "Pen",
+            "text" => "Copy text from the screen",
+            "translate" => "Translate text on the screen",
+            "reformat" => "Reformat the last dictation",
+            "cards" => "Show cards",
+            "pen" => "Pen",
+            // an action added later without a name here: its id, never another action's name
+            a => Box::leak(a.to_string().into_boxed_str()),
         }
     }
 
@@ -638,13 +687,14 @@ pub mod portal {
                 let labels: HashMap<String, String> =
                     bound.shortcuts().iter().map(|s| (s.id().to_string(), s.trigger_description().to_string())).collect();
                 *app.state::<Hotkeys>().mode.lock().unwrap() = "portal".into();
+                *DICTATE_LABEL.lock().unwrap() = labels.get("dictate").map(|l| pretty_trigger(l));
                 {
                     let h = app.state::<Hotkeys>();
                     let mut st = h.status.lock().unwrap();
                     for (a, l) in &labels {
                         if let Some(r) = st.get_mut(a) {
                             r["result"] = json!("portal");
-                            r["label"] = json!(l);
+                            r["label"] = json!(pretty_trigger(l));
                         }
                     }
                 }
@@ -727,6 +777,15 @@ mod tests {
         assert_eq!(spec("off"), None);
         assert_eq!(spec("alt+R+T"), None);
         assert_eq!(spec("alt+F21"), None);
+    }
+
+    #[test]
+    fn gnome_triggers_read_as_keys() {
+        assert_eq!(super::pretty_trigger("Press <Shift><Alt>c"), "Shift+Alt+C");
+        assert_eq!(super::pretty_trigger("<Control><Alt>space"), "Ctrl+Alt+Space");
+        assert_eq!(super::pretty_trigger("Menu"), "Menu");
+        assert_eq!(super::pretty_trigger("Press <Primary>t"), "Ctrl+T");
+        assert_eq!(super::pretty_trigger("<odd"), "<odd");
     }
 
     #[test]

@@ -33,6 +33,46 @@ final class CardDropTargetTests: XCTestCase {
     }
 
     /// The engine only says how the note's paste finds its place after the picture.
+    func testACodingAgentsWindowIsATerminal() {
+        let code = AgentWindow.Facts(urls: ["file:///Applications/Claude.app/Contents/Resources/app.asar/.vite/renderer/main_window/index.html",
+                                            "https://claude.ai/epitaxy/local_2f383153"])
+        let chat = AgentWindow.Facts(urls: ["https://claude.ai/chat/0b1c", "https://claude.ai/new"])
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.claude, code))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.claude, chat))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.claude, .init(urls: ["https://evil.example/epitaxy/x"])))
+        let codex = AgentWindow.Facts(popUps: ["Usage", "Switch mode, current mode: Codex", "GPT-6.1 Sol High"])
+        let chatgpt = AgentWindow.Facts(popUps: ["Switch mode, current mode: ChatGPT", "gpt-5-codex"])
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.codex, codex))
+        XCTAssertTrue(AgentWindow.isAgent(bundleID: AgentWindow.codex, .init(popUps: ["切换模式，当前模式：Codex"])))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.codex, chatgpt), "a model named codex is not the mode")
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: AgentWindow.codex, .init()))
+        XCTAssertFalse(AgentWindow.isAgent(bundleID: "com.google.Chrome", codex))
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.codex, agent: true), .terminal)
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.codex), .chat)
+        XCTAssertEqual(DropTargets.classify(bundleID: AgentWindow.claude), .chat)
+        for id in ["com.tencent.workbuddy.mac", "com.qoder.work", "com.kimi.code.desktop", "com.work.pc.doubao", "com.qoder.ide",
+                   "com.todesktop.230313mzl4w4u92", "com.trae.app"] {
+            XCTAssertEqual(DropTargets.classify(bundleID: id, agent: true), .terminal, id)
+        }
+        // cloud chats and plain editors are not agents here
+        for id in ["com.moonshot.kimichat", "com.microsoft.VSCode", "com.apple.dt.Xcode"] {
+            XCTAssertFalse(AgentWindow.builtIn.contains(id), id)
+        }
+        // the user's changes: add any app, switch a built-in one off; a built-in app's own state is no change
+        let mine = AgentWindow.changing(AgentWindow.changing([:], "com.example.agent", on: true), "com.trae.app", on: false)
+        XCTAssertEqual(mine, ["com.example.agent": true, "com.trae.app": false])
+        XCTAssertTrue(AgentWindow.list(mine).contains("com.example.agent"))
+        XCTAssertFalse(AgentWindow.list(mine).contains("com.trae.app"))
+        XCTAssertTrue(AgentWindow.list(mine).contains(AgentWindow.codex))
+        XCTAssertEqual(AgentWindow.changing(mine, "com.trae.app", on: true), ["com.example.agent": true])
+        XCTAssertEqual(AgentWindow.changing(mine, "com.example.agent", on: false), ["com.trae.app": false])
+        XCTAssertTrue(AgentWindow.checksWindow(AgentWindow.claude))
+        XCTAssertFalse(AgentWindow.checksWindow("com.tencent.workbuddy.mac"))
+        XCTAssertTrue(AgentWindow.getsPaths(setting: nil))
+        XCTAssertTrue(AgentWindow.getsPaths(setting: "paths"))
+        XCTAssertFalse(AgentWindow.getsPaths(setting: "same"))
+    }
+
     func testTheComposerKind() {
         for id in ["com.google.Chrome", "com.apple.Safari", "com.anthropic.claudefordesktop", "com.electron.lark", "com.tinyspeck.slackmacgap"] {
             XCTAssertEqual(DropTargets.composer(bundleID: id, appURL: nil), .web, id)
@@ -130,13 +170,29 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertEqual(CardPasteboard.drag(for: .chat, card: CardPasteboard.Card(image: img, note: note), attachNote: true), [picture, inert])
     }
 
-    /// A terminal types the paths it gets: both files (Claude Code / Codex read the .md), and no text or rich text
-    /// anywhere — the note never reaches a shell. The option doesn't matter there.
-    func testATerminalGetsOnlyPaths() {
+    /// A terminal (Claude Code / Codex in it) gets one line of text: the picture's path, then its note — paired, so
+    /// several cards never get their notes mixed up. No file URL (the terminal would type its own copy of the path), no
+    /// .md, no picture bytes, no rich text; never a newline. The option doesn't matter there.
+    func testATerminalGetsThePathThenTheNoteAsOneLine() {
         for attach in [false, true] {
             let items = CardPasteboard.drag(for: .terminal, card: card, attachNote: attach)
-            XCTAssertEqual(items, [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(file: md)])
-            XCTAssertTrue(items.allSatisfy { $0.text == nil && $0.image == nil && !$0.rich })
+            XCTAssertEqual(items, [CardPasteboard.Item(text: "/s/out/003/截图-144012.png see the header the logo overlaps", tag: true), inert])
+            XCTAssertTrue(items.allSatisfy { $0.file == nil && $0.image == nil && !$0.rich })
+            XCTAssertFalse(items[0].text!.contains { $0.isNewline })
+        }
+        // a path that needs quoting
+        let spaced = URL(fileURLWithPath: "/Users/Ana Li/.blurt/sessions/s 1/out/003/Screenshot-144012.png")
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: spaced, note: "the logo"))[0].text,
+                       "'/Users/Ana Li/.blurt/sessions/s 1/out/003/Screenshot-144012.png' the logo")
+        // no note: the path alone, one item
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: img, note: nil, noteFile: md)),
+                       [CardPasteboard.Item(text: "/s/out/003/截图-144012.png", tag: true)])
+        // a voice card: its words, as a text drop everywhere (the " · " one line)
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: CardPasteboard.Card(image: nil, note: note)),
+                       [CardPasteboard.Item(text: "see the header · the logo overlaps", tag: true)])
+        // over a terminal the landing is the terminal's layout, whatever its composer kind
+        for k in ComposerKind.allCases {
+            XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .terminal, kind: k), card: card), CardPasteboard.drag(for: .terminal, card: card))
         }
     }
 
@@ -174,7 +230,7 @@ final class CardDropTargetTests: XCTestCase {
     /// The note goes on the clipboard only where it didn't go in.
     func testTheSafetyNetOnlyWhereItHelps() {
         XCTAssertFalse(DragReceipt.copiesNote(.both), "picture and note went in")
-        XCTAssertFalse(DragReceipt.copiesNote(.paths), "both paths went in; ⌘V would paste at a prompt")
+        XCTAssertFalse(DragReceipt.copiesNote(.paths), "path and note went in; ⌘V would paste at a prompt")
         XCTAssertFalse(DragReceipt.copiesNote(.files), "the Finder got the note's file")
         XCTAssertTrue(DragReceipt.copiesNote(.pictureOnly))
         XCTAssertTrue(DragReceipt.copiesNote(.unsure), "not sure what it got")
@@ -205,5 +261,95 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertEqual(ComposerPick.nearest([search, composer], to: CGPoint(x: 200, y: 90)), 0)
         XCTAssertEqual(ComposerPick.nearest([.zero, composer], to: CGPoint(x: 0, y: 0)), 1, "an empty frame is no composer")
         XCTAssertNil(ComposerPick.nearest([], to: .zero))
+    }
+}
+
+/// DropWindows: the window under a drag. The 1.0.22 report — every card dropped into Claude Code / Codex arrived as the
+/// picture alone: macOS 26.5's Notification Center window (full screen, transparent, layer 21) was taken for the app.
+final class DropWindowsTests: XCTestCase {
+    let full = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+    let me = 87047
+
+    func testNotificationCenterAndTheMenuBarAreNeverTheTarget() {
+        let ws: [DropWindows.Window] = [
+            .init(pid: 83774, ownerName: "Bartender 6", layer: 26, alpha: 0, bounds: CGRect(x: 0, y: -1, width: 1728, height: 34)),
+            .init(pid: 581, bundleID: "com.apple.controlcenter", layer: 25, bounds: CGRect(x: 1395, y: 0, width: 56, height: 33)),
+            .init(pid: 166, ownerName: "Window Server", layer: 24, bounds: CGRect(x: 0, y: 0, width: 1728, height: 33)),
+            .init(pid: 547, bundleID: "com.apple.notificationcenterui", layer: 21, bounds: full),
+            .init(pid: 23477, bundleID: "com.anthropic.claudefordesktop", bounds: CGRect(x: 0, y: 33, width: 1728, height: 1084)),
+        ]
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 800, y: 600), me: me), .app(23477))
+        // over the menu bar: nothing that takes a drop
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 1400, y: 10), me: me), .nothing)
+    }
+
+    func testAnOverlayProcessIsSkippedAtAnyLevel() {
+        let ws: [DropWindows.Window] = [
+            .init(pid: 547, bundleID: "com.apple.notificationcenterui", layer: 0, bounds: full),
+            .init(pid: 9, bundleID: "com.openai.codex", bounds: full),
+        ]
+        XCTAssertEqual(DropWindows.pick(ws, at: CGPoint(x: 5, y: 500), me: me), .app(9))
+    }
+
+    func testOurWindowsAreAnInAppDropUnlessMouseTransparent() {
+        let island = DropWindows.Window(pid: me, layer: 27, bounds: CGRect(x: 544, y: 0, width: 640, height: 470))
+        let cards = DropWindows.Window(pid: me, layer: 25, bounds: CGRect(x: 300, y: 0, width: 1100, height: 300), oursTakesMouse: false)
+        let main = DropWindows.Window(pid: me, bounds: CGRect(x: 205, y: 127, width: 1277, height: 889))
+        let app = DropWindows.Window(pid: 9, bundleID: "com.openai.codex", bounds: full)
+        XCTAssertEqual(DropWindows.pick([island, app], at: CGPoint(x: 600, y: 100), me: me), .ours)
+        XCTAssertEqual(DropWindows.pick([cards, app], at: CGPoint(x: 400, y: 100), me: me), .app(9), "the cards take no drops")
+        XCTAssertEqual(DropWindows.pick([cards, main, app], at: CGPoint(x: 400, y: 200), me: me), .ours, "the main window under the cards")
+        let dragImage = DropWindows.Window(pid: me, layer: 500, bounds: full)
+        XCTAssertEqual(DropWindows.pick([dragImage, app], at: CGPoint(x: 400, y: 600), me: me), .app(9))
+    }
+}
+
+/// Several cards dragged as one (v1.0.23), and file cards (a referenced PDF / video).
+final class MultiCardDragTests: XCTestCase {
+    let a = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/001.png"), note: "header overlaps")
+    let b = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/003.png"), note: "button\ntoo small")
+    let pdf = CardPasteboard.Card(image: URL(fileURLWithPath: "/s/shots/004.png"), note: "the spec",
+                                  ref: URL(fileURLWithPath: "/Users/me/Documents/spec v2.pdf"))
+    let words = CardPasteboard.Card(image: nil, note: "also check dark mode")
+
+    func testAnAgentGetsALinePerCardATerminalOneLine() {
+        let agent = CardPasteboard.drag(into: DragLanding(cls: .terminal, lines: true), cards: [a, b, pdf, words])
+        XCTAssertEqual(agent.first, .init(text: "/s/shots/001.png header overlaps\n/s/shots/003.png button too small\n'/Users/me/Documents/spec v2.pdf' the spec\nalso check dark mode", tag: true))
+        XCTAssertEqual(agent.count, 4, "one item per card: the count badge says 4")
+        XCTAssertTrue(agent.allSatisfy(\.tag), "every item names the cards (an in-app drop reads any of them)")
+        let term = CardPasteboard.drag(into: DragLanding(cls: .terminal), cards: [a, b])
+        XCTAssertEqual(term.first?.text, "/s/shots/001.png header overlaps  /s/shots/003.png button too small")
+        XCTAssertFalse(term.first?.text?.contains("\n") ?? true, "never a newline at a shell prompt")
+    }
+
+    func testAChatAppGetsEveryFileInOrderAndTheNotesAfter() {
+        let items = CardPasteboard.drag(into: DragLanding(cls: .chat, kind: .web), cards: [a, words, pdf])
+        XCTAssertEqual(items.map(\.file?.path), ["/s/shots/001.png", nil, "/Users/me/Documents/spec v2.pdf"])
+        XCTAssertEqual(items.map(\.image?.path), ["/s/shots/001.png", nil, nil], "a file card's thumbnail never goes out")
+        XCTAssertTrue(items.allSatisfy(\.tag))
+        XCTAssertEqual(CardTransfer.followUpNotes([a, words, pdf]), "1. header overlaps\n2. the spec\nalso check dark mode")
+        XCTAssertEqual(CardTransfer.followUpNotes([a, words]), "header overlaps\nalso check dark mode", "one picture: no numbers")
+    }
+
+    func testARichAppGetsOneRichItemAndTheFinderTheFiles() {
+        let rich = CardPasteboard.drag(into: DragLanding(cls: .rich), cards: [a, b])
+        XCTAssertEqual(rich.count, 2)
+        XCTAssertTrue(rich[0].rich)
+        XCTAssertEqual(rich[1], .init(tag: true))
+        let finder = CardPasteboard.drag(into: DragLanding(cls: .finder), cards: [a, pdf])
+        XCTAssertEqual(finder.map(\.file?.lastPathComponent), ["001.png", "spec v2.pdf"])
+    }
+
+    func testOneFileCardGoesOutAsItsFile() {
+        XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .terminal), card: pdf),
+                       [.init(text: "'/Users/me/Documents/spec v2.pdf' the spec", tag: true), .init(tag: true)])
+        XCTAssertEqual(CardPasteboard.drag(into: DragLanding(cls: .chat, kind: .web), card: pdf).first,
+                       .init(file: URL(fileURLWithPath: "/Users/me/Documents/spec v2.pdf"), tag: true))
+    }
+
+    func testTheItemCountIsTheCardCountForEveryApp() {
+        let landings: [DragLanding] = [.init(cls: .chat, kind: .web), .init(cls: .chat, kind: .qt), .init(cls: .rich), .init(cls: .finder),
+                                       .init(cls: .terminal), .init(cls: .terminal, lines: true)]
+        for l in landings { XCTAssertEqual(CardPasteboard.drag(into: l, cards: [a, words, pdf]).count, 3, "\(l)") }
     }
 }

@@ -56,6 +56,13 @@ export interface Card {
   kind?: 'shot' | 'voice';
   /** the shots batch it belongs to */
   session?: string | null;
+  /** a file card (something dropped on the island that isn't a picture): the file it refers to; `src` is only its face
+   *  — the file's thumbnail with its name on a band */
+  ref?: string | null;
+  /** a text card (text or a link dropped on the island): a voice card with no recording */
+  textCard?: boolean;
+  /** a file card whose file isn't where it was (moved, deleted): "Original file not found" */
+  missing?: boolean;
 }
 
 export interface ProjectRef {
@@ -75,24 +82,13 @@ export interface JobRow {
   progress?: number | null;
 }
 
-export interface SessionRow {
-  job: string;
-  /** agents.json id */
-  agent: string;
-  /** K5: waiting_input | turn_done | error */
-  status: string;
-  /** item ids the window works on */
-  items: string[];
-}
-
 /** What the app shows in the island (apps/desktop/src-tauri/src/island.rs `state`). Elapsed times are seconds at `at`
     (epoch seconds) and keep running while not paused. */
 export interface IslandState {
   project: ProjectRef | null;
   projects: ProjectRef[];
   toReview: number;
-  /** `spotted`: items live.py has drafted so far ("6 snaps · 4 items spotted") */
-  recording: { elapsed: number | null; paused: boolean; shots: number; spotted?: number; pen?: boolean; at: number } | null;
+  recording: { elapsed: number | null; paused: boolean; shots: number; pen?: boolean; at: number } | null;
   /** `structured`: the note's Structured chip (shown only when the app says); `limit`: its cap in seconds (the time
    *  left in its last minute) */
   voice: { elapsed: number; at: number; hold?: boolean; ends?: 'hold' | 'pause' | 'key'; structured?: boolean; limit?: number } | null;
@@ -101,11 +97,14 @@ export interface IslandState {
   /** process jobs under way: the hatching egg */
   hatching: number;
   jobs: JobRow[];
-  sessions: SessionRow[];
   hotkeys: Partial<Record<'record' | 'snap' | 'voice' | 'project' | 'pen', string>>;
   lang?: string;
   /** Settings → General → Cards: the shutter on a snap; what a dragged card carries (paste | caption | picture) */
   cardPrefs?: { snapSound?: boolean; drag?: 'paste' | 'caption' | 'picture' };
+  /** Settings → General → "Show the island when idle" (app.island_idle); false: nothing stands at rest */
+  idle?: boolean;
+  /** the capabilities turned off (apps/desktop/src-tauri/src/capabilities.rs ids): their buttons and hints don't show */
+  off?: string[];
   /** tests / demo: start expanded */
   expanded?: boolean;
 }
@@ -118,14 +117,14 @@ export type IslandOp =
   | { op: 'cards'; cards: Card[] }
   /** a new capture flies up and a thread catches it; pull = straight on into the island (a project is current) */
   /** `from`: where the capture was taken (the island page's CSS px; island.rs screen_to_css) — it flies from there */
-  | { op: 'card'; card: Card; pull: boolean; from?: CssRect | null }
+  | { op: 'card'; card: Card; pull: boolean; from?: CssRect | null; /** one thing dropped and hung: its note is offered (passive) */ offerNote?: boolean }
   | { op: 'toast'; kind: 'sorted' | 'failed' | 'error'; n?: number; job?: string; code?: string; type?: string }
   /** a card dragged into another app (island.rs): taken, Undo puts it back; `note`: its note went on the clipboard */
-  | { op: 'toast'; kind: 'taken'; cards: { n: number; session?: string | null }[]; what?: 'picture' | 'note' | 'text' | 'files' | 'files_note' }
+  | { op: 'toast'; kind: 'taken'; cards: { n: number; session?: string | null }[]; what?: 'picture' | 'note' | 'text' | 'files' | 'files_note' | 'paths' | 'words' }
   /** a dictation line: `msg` a catalog key, `vars` its values, `action` one button (sent back as `data-a`); `key` what
    *  it is about (a newer line with the same key replaces it; dictation/flow.rs `toast_keys`), `passive` a tip or a
    *  reminder that never covers another line, `mark` the ok check for a done line */
-  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; vars?: Record<string, string>; extra?: Record<string, unknown> }; second?: { a: string; label: string; vars?: Record<string, string> }; ms?: number; key?: string; passive?: boolean; mark?: 'mic' | 'check' | 'warning' | 'spinner' | 'folder'; moment?: 'keyboard'; project?: string }
+  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; /** a catalog key said on a second line ("You can retry it later from the tray menu") */ more?: string; action?: { a: string; label: string; vars?: Record<string, string>; extra?: Record<string, unknown> }; second?: { a: string; label: string; vars?: Record<string, string> }; ms?: number; key?: string; passive?: boolean; mark?: 'mic' | 'check' | 'warning' | 'spinner' | 'folder'; moment?: 'keyboard'; project?: string }
   /** dictation: what the island says under these keys is over */
   | { op: 'toast_drop'; keys: string[] }
   | { op: 'switcher'; open: boolean }
@@ -133,11 +132,13 @@ export type IslandOp =
   /** the pointer came over what the island draws, or left all of it (`out`) — the hit tester, ~30 Hz: a pointer that
    *  arrives or leaves in one jump and rests sends the page no mouse event; CSS px */
   | { op: 'hover'; x: number; y: number; out: boolean }
-  | { op: 'attention'; job: string; status: string }
   | { op: 'status'; line: StatusLine }
   | { op: 'level'; rms: number }
   /** the system's drag of a card ended: `dropped` in another app (taken), else `cancel` (it comes back) */
-  | { op: 'dragout'; n: number; session?: string | null; result: 'dropped' | 'cancel' }
+  | { op: 'dragout'; n: number; session?: string | null; cards?: { n: number; session?: string | null }[]; result: 'dropped' | 'cancel' }
+  /** another app's drag over the notch (island_drop_win.rs): `enter` with what it carries, `open` the drawer, `over`
+   *  the pointer (CSS px), `close` (it left), `end` (dropped or gone) */
+  | { op: 'ext'; phase: 'enter' | 'open' | 'over' | 'close' | 'end'; what?: { pictures: number; files: number; text: boolean; folders: number }; x?: number; y?: number }
   /** the cards come down and stay a while (a hotkey, the tray, the main window) */
   /** `open`: the island opens too (the main window's "Choose projects…"), until the pointer has come and gone */
   | { op: 'reveal'; open?: boolean }

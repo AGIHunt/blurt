@@ -3,7 +3,7 @@
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
 //     menudump [FILE]         the ⌥B menu as text rows (also written to FILE), without opening it
-//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥H) / Esc / "+N" clicked / as if the
+//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (the ear's count) / Esc / the Cards page (the island's cards row) / as if the
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
@@ -24,15 +24,15 @@
 //                             window=same|other, secure=1): test builds read no Accessibility (DragNoteFollowUp)
 //     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
 //                             for, when a drag decides what to hand over (CardDrag.swift)
-//     taken list|show|hide|rows|expire|menu   used cards (Recently Taken): the captures ("taken" events), the Cards
-//                             panel on History, its tiles ("taken_row": n + the picture's rect, global top-left),
+//     taken list|expire|menu  used cards (History): the captures ("taken" events, with how many days they are kept),
 //                             housekeeping now, the island's right-click menu as text ("island_menu_dump")
 //     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a used card's actions
-//     taken hover [N]         History's tile of capture N as if pointed at (its wash and actions); no N: none
-//     clock SECONDS           move Recently Taken's clock (Snapper.clockOffset) to see 7 days pass
+//     clock SECONDS           move History's clock (Snapper.clockOffset) to see its days pass
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
+//     capability ID on|off    a capability's switch, as Home's (dictation cards screen_text recording phone | all);
+//                             alone: which are off ("capabilities_state")
 //     island open|close|switcher|frame   open / close the island, ⌥O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥V pressed / released (a tap = down + up)
 //     voice keys SCRIPT | structure | earclick   key events while it listens ("shift-down@0 shift-up@120": a lone ⇧
@@ -53,6 +53,9 @@
 //     notekind open|close|click|row N|hover|unhover   the bubble's type chip and its list (notekey cmd-1…cmd-4, cmd-0,
 //                             up, down: its keys)
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
+//     notetool tool pen|box|ellipse|arrow|text|mosaic · color markup|yellow|blue|black|white · undo · copy · redo ·
+//                             text X,Y TEXT · textopen X,Y TEXT   the markup tools: the strip's controls (copy = ⌘↩), a text
+//                             box typed and ended with ↩ (textopen: left open); notekey cmd-return | cmd-shift-z | cmd-L…
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
 //     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
@@ -72,6 +75,7 @@
 //                             (Capture/Dictation/DictationTestHooks.swift)
 
 import AppKit
+import UniformTypeIdentifiers
 import Carbon.HIToolbox
 import WebKit
 import BlurtCore
@@ -133,13 +137,21 @@ extension App {
             else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
         case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
             ScreenTextCard.shared.testCommand(arg)
+        case "cardspage":                               // the main window's Cards page (CardsPage.testCommand: state, query, key, select…)
+            (MainWindowController.shared.fullPage(.cards) as? CardsPage)?.testCommand(arg)
+        case "capability":                              // capability ID on|off: its switch, as Home's (ID: dictation cards
+            let a = arg.split(separator: " ").map(String.init)      // screen_text recording phone | all); no args: which are off
+            if a.count == 2 {
+                for c in a[0] == "all" ? Capability.allCases : [Capability(rawValue: a[0])].compactMap({ $0 }) { Capability.set(c, on: a[1] != "off") }
+            }
+            emit(["event": "capabilities_state", "off": Capability.off.map(\.rawValue).sorted()])
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
-            if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count (⌥H opens the Cards panel)
+            if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
-            if arg == "older" || arg == "all" { hanging.openOverview() }   // = a click on the "+N" tile
+            if arg == "older" || arg == "all" { hanging.openCardsPage() }  // = the open island's cards row: the Cards page
             if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
-            hanging.testCommand(arg)                                // row | focus | key K | click N [2] | overview …
+            hanging.testCommand(arg)                                // row | focus | key K | click N [2]
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
@@ -151,6 +163,13 @@ extension App {
             case "close": island.setOpen(false); island.closeSwitcher()
             case "switcher": island.showSwitcher()
             case "hello": island.hello()                    // the launch hello again (Peep in the ear)
+            case let a where a.hasPrefix("dropin "):        // dropin PATH|PATH…: the drawer as another app's drag over the notch shows it
+                var d = DropIn()
+                for part in a.dropFirst(7).split(separator: "|") {
+                    let u = URL(fileURLWithPath: String(part))
+                    if UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { d.images.append(u) } else { d.files.append(u) }
+                }
+                island.testExternal(d)
             case "idle on", "idle off": Island.showsAtRest = arg == "idle on"   // Settings' "Show the notch when idle"
             case "reveal": island.testReveal()              // = the pointer resting on the top edge's centre (the hot zone)
             case "transcribing", "polishing":               // dictation's working ears, held 3 s for a look
@@ -229,6 +248,41 @@ extension App {
                 emit(["event": "card_drag", "n": n, "class": landing.cls.rawValue, "kind": landing.kind?.rawValue ?? NSNull(),
                       "words_withheld": landing.wordsWithheld, "types": types])
             }
+        case "carddragmany":                            // carddragmany N,M… PASTEBOARD CLASS[+lines]: a selection's drag (v1.0.23)
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count >= 3 {
+                let ns = a[0].split(separator: ",").compactMap { Int($0) }
+                let ss = ns.compactMap { n in snapper.cards.last { $0.n == n } }
+                let cls = testDropClass(a[2].replacingOccurrences(of: "+lines", with: ""))
+                let drag = CardDrag(ss)
+                let items = drag.layout(DragLanding(cls: cls, lines: a[2].hasSuffix("+lines")))
+                let pb = NSPasteboard(name: .init(a[1]))
+                pb.clearContents()
+                pb.writeObjects(CardExport.pasteboardItems(items, rich: drag.rich, copy: false, tag: drag.tag))
+                emit(["event": "card_drag_many", "n": ns, "class": cls.rawValue, "items": items.count,
+                      "types": (pb.pasteboardItems ?? []).map { $0.types.map(\.rawValue) },
+                      "text": pb.pasteboardItems?.first?.string(forType: .string) ?? NSNull(),
+                      "notes": CardTransfer.followUpNotes(drag.cards) ?? NSNull(),
+                      "tagged": Island.shots(from: pb).map(\.n)])
+            }
+        case "takeoutmany":                             // takeoutmany N,M… CLASS: a selection dragged out and taken
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count >= 2 {
+                let ss = a[0].split(separator: ",").compactMap { n in snapper.cards.last { $0.n == Int(n) } }
+                snapper.takeOut(ss, delivered: testDropClass(a[1]), noteFile: false, landed: nil, at: nil)
+            }
+        case "drophang":                                // drophang PATH|PATH… [| TEXT]: as if dropped on the island (v1.0.23)
+            var d = DropIn()
+            for part in arg.split(separator: "|").map({ $0.trimmingCharacters(in: .whitespaces) }) where !part.isEmpty {
+                let u = URL(fileURLWithPath: part)
+                if part.hasPrefix("/"), FileManager.default.fileExists(atPath: part) {
+                    if UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { d.images.append(u) } else { d.files.append(u) }
+                } else { d.text = part }
+            }
+            snapper.hang(d)
+        case "cardshift":                               // cardshift N: a ⇧-click on card N (a range from the last one picked)
+            hanging.testShift(n: Int(arg) ?? 0)
+            emit(["event": "card_selection", "n": hanging.pickedNs])
         case "takeout":                                 // takeout N [CLASS]: as if card N was dragged out and taken
             let a = arg.split(separator: " ").map(String.init)
             if let n = Int(a.first ?? ""), let s = snapper.cards.last(where: { $0.n == n }) {
@@ -262,9 +316,6 @@ extension App {
             let a = arg.split(separator: " ").map(String.init)
             let find = { (i: Int) -> Shot? in a.count > i ? Int(a[i]).flatMap { n in snapper.recentlyTaken.first { $0.n == n } } : nil }
             switch a.first ?? "list" {
-            case "show": TakenPanel.shared.show()
-            case "hide": TakenPanel.shared.hide()
-            case "hover": CardsOverview.shared.testCommand("hover " + (a.count > 1 ? a[1] : ""))    // hover N: as if pointed at
             case "expire": emit(["event": "taken_expire", "trashed": snapper.expireTaken()])
             case "putback": if let s = find(1) { snapper.putBack(s) }
             case "copy": if let s = find(1) { TakenPanel.copy(s, HangingCards.Copy(rawValue: a.count > 2 ? a[2] : "click") ?? .click) }
@@ -276,19 +327,12 @@ extension App {
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])
                 }
-            case "rows":                                // the Used segment's tiles (their pictures, screen rects)
-                if TakenPanel.shared.isOpen {
-                    for (n, r) in CardsOverview.shared.tileFrames {
-                        let f = toCG(r)
-                        emit(["event": "taken_row", "n": n, "rect": [f.minX, f.minY, f.width, f.height]])
-                    }
-                }
             case "menu": emit(["event": "island_menu_dump", "rows": menuDumpLines(TakenPanel.islandMenu())])
             default: break
             }
             emit(["event": "taken", "now": Snapper.now, "captures": snapper.recentlyTaken.map { s -> [String: Any] in
                 ["n": s.n, "session": s.batch?.dir.path ?? "", "taken": s.taken ?? 0, "note": s.words ?? NSNull(), "kind": s.kind.rawValue]
-            }, "panel": TakenPanel.shared.isOpen])
+            }, "days": Snapper.historyDays])
         case "hotkey":                                  // hotkey ACTION: the same path as pressing its keys
             if let act = HotAction(rawValue: arg) { Hotkeys.shared.simulate(act, released: false) }
         case "assign":                                  // assign N PROJECT: = dropping card N (with its ⌘-click selection) there
@@ -395,6 +439,7 @@ extension App {
             if a.contains("option") { mods.insert(.option) }
             NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5, mods: mods)
         case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
+        case "notetool": NoteBubble.shared.testTool(arg)                            // notetool tool|color NAME · undo · copy · redo · text X,Y TEXT
         case "notehover": NoteBubble.shared.testHover(arg != "off")                 // notehover [off]: the pointer on the bubble
         case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
         case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the mic stopped, the final words came in
@@ -475,6 +520,16 @@ extension App {
                 if parts[0] == "raise" { w.orderFrontRegardless() }
             }
             if parts[0] == "raise" { HotkeySettings.shared.shortcutsWindow?.orderFrontRegardless() }
+        case "mainpaste":                               // mainpaste PASTEBOARD: ⌘V in the main window, from that named pasteboard
+            MainWindowController.shared.paste(from: NSPasteboard(name: .init(arg)))
+        case "dragdest":                                // dragdest X Y (screen, y from the top): the views a drag there meets
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let w = MainWindowController.shared.window, let top = NSScreen.screens.first?.frame.maxY else { return }
+            let p = w.convertPoint(fromScreen: NSPoint(x: a[0], y: top - a[1]))
+            var chain: [String] = []
+            var v = w.contentView?.superview?.hitTest(p)
+            while let x = v { chain.append("\(type(of: x)):\(x.registeredDraggedTypes.count)"); v = x.superview }
+            emit(["event": "dragdest", "chain": chain])
         case "js":                                      // js CODE: run in the main window's review canvas
             MainWindowController.shared.detail.web?.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
         case "webjs":                                   // webjs CODE: run in every blurt-app:// canvas (main window detail)
@@ -566,8 +621,12 @@ extension App {
             }
             emit(["event": "ax", "elements": els])
         case "dictation": dictationCommand(arg)
+        case "home": HomePage.testCommand(arg)          // home state | show | toggle <capability> | key K | point STOP | … (HomePage.swift)
         case "live": LiveTranscript.shared.testCommand(arg)          // live state | caret X,Y,W,H | caret - | set on|off
         case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
+        case "phonepage": PhonePage.testCommand(arg)   // phonepage fake none|paired|connected|… | ax | relay | add | cancel | state (PhonePage.swift)
+        case "screentextpage":                          // screentextpage state|select id,…|key down|up|shift-down|all|copy|delete|query T (ScreenTextPage.swift)
+            MainActor.assumeIsolated { ScreenTextPageModel.shared.testCommand(arg.isEmpty ? "state" : arg) }
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
@@ -580,19 +639,19 @@ extension App {
         switch k {
         case .voice:
             VoiceInput.shared.pressed()
-            Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
+            // reaching for the voice: if dictation can't hear its key, say so (≈ daily) — while Dictation is on
+            if Capability.dictation.isOn { Dictation.shared.nudge("voice_key") }
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
         case .dictationEsc: Dictation.shared.escFromHotkey()
-        case .project: if resident { island.toggleSwitcher() }
-        // ⌥H: the Cards panel with the keyboard — Hanging, or Used when nothing hangs; open already, it closes
-        case .cards: if resident { CardsOverview.shared.toggle(via: "hotkey") }
+        case .project: if resident, Capability.projectsShown { island.toggleSwitcher() }       // (projects: Recording & Items')
+        // ⌥H: the main window in front on the Cards page; in front on it already, away again (toggleCards)
+        case .cards: if resident { AppEnvironment.mainWindow?.toggleCards(via: "hotkey") }
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥L (dictation-styles.md)
         case .text: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey") }           // ⌥C (ScreenTextCopy.swift)
         case .translateText: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey", translate: true) }    // ⌥T
         case .translateEsc: ScreenTextCard.shared.close(why: "esc")                      // Esc while ⌥T's card shows
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
-        case .overviewEsc: CardsOverview.shared.escape()        // Esc while the pointer is on the Cards panel
         default: break
         }
     }
@@ -612,17 +671,21 @@ extension App {
             item("capture.menu.live_caption", #selector(mLiveCaption), on: liveCaptionOn)
             return
         }
-        item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
-        item("capture.menu.text", #selector(mText)).showHotkey(.text)
-        item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
-        item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
+        // each capability's own rows, while it is on (BlurtCore Capabilities.swift)
+        let cards = Capability.cards.isOn
+        if cards { item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap) }
+        if Capability.screenText.isOn {
+            item("capture.menu.text", #selector(mText)).showHotkey(.text)
+            item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
+        }
+        if cards { item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice) }
     }
 
-    /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards panel) while a card
-    /// hangs or one was used in the last 7 days, Dictation History. Counts are the rows' badges (macOS 14+), never part
+    /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards page) while a card
+    /// hangs or one is in History, Dictation History. Counts are the rows' badges (macOS 14+), never part
     /// of their titles.
     func addWaitingMenuItems(_ menu: NSMenu) {
-        if hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
+        if Capability.cards.isOn, hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
             let cards: NSMenuItem
             if #available(macOS 14.0, *) {
                 cards = NSMenuItem(title: T("app.menu.cards"), action: #selector(mShowCards), keyEquivalent: "")
@@ -636,11 +699,67 @@ extension App {
             cards.showHotkey(.cards)
             menu.addItem(cards)
         }
-        let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
-        dict.target = self
-        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline) }
-        menu.addItem(dict)
+        if Dictation.enabled {
+            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere — or,
+            // when the last take wasn't recognised and its recording is kept, Retry (DictationRetry)
+            let entries = MainActor.assumeIsolated { DictationHistory.shared.load() }
+            switch DictationRetry.menuRow(entries, audioKept: Self.audioKept) {
+            case .copy(let id)?:
+                let last = entries.first { $0.id == id }!
+                let copy = NSMenuItem(title: Loc.t("dictation.menu.copy_last", table: "Dictation"), action: #selector(mCopyLastDictation), keyEquivalent: "")
+                copy.target = self
+                copy.toolTip = last.finalText
+                if #available(macOS 14.4, *) { copy.subtitle = MenuText.oneLine(last.finalText, limit: 44) }
+                menu.addItem(copy)
+            case .retry(let id)?:
+                let last = entries.first { $0.id == id }!
+                let retry = NSMenuItem(title: Loc.t("dictation.menu.retry_last", table: "Dictation"), action: #selector(mRetryLastDictation(_:)), keyEquivalent: "")
+                retry.target = self
+                retry.representedObject = id
+                let when = MainActor.assumeIsolated {
+                    Loc.t("dictation.menu.retry_last.subtitle", table: "Dictation", DictationHistoryModel.time(last.time),
+                          DictationHistoryModel.duration(last.duration))
+                }
+                retry.toolTip = when
+                if #available(macOS 14.4, *) { retry.subtitle = when }
+                menu.addItem(retry)
+            case nil: break
+            }
+            let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
+            dict.target = self
+            dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline)
+            menu.addItem(dict)
+        }
+        // the phone: whether one is connected, and the way to its page (pairing, what to do when it won't connect)
+        if Capability.phone.isOn, AppEnvironment.mainWindow != nil {
+            let phone = NSMenuItem(title: PhoneStatus.menuTitle, action: #selector(mPhone), keyEquivalent: "")
+            phone.target = self
+            menu.addItem(phone)
+        }
     }
+
+    /// A failed take's recording is still on disk.
+    static func audioKept(_ e: DictationEntry) -> Bool {
+        e.audio.map { FileManager.default.fileExists(atPath: DictationHistory.shared.resolve($0).path) } ?? false
+    }
+
+    @objc func mRetryLastDictation(_ i: NSMenuItem) {
+        guard let id = i.representedObject as? String else { return }
+        emit(["event": "dictation_history", "action": "retry_last", "id": id])
+        Dictation.shared.retry(id, via: "menu", copy: true)
+    }
+
+    @objc func mCopyLastDictation() {
+        MainActor.assumeIsolated {
+            guard let last = DictationHistory.shared.load().first(where: {
+                !$0.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }) else { return }
+            DictationInsert.copy(last.finalText)
+            emit(["event": "dictation_history", "action": "copy_last"])
+            island.toast(Loc.t("dictation.menu.copied_last", table: "Dictation"), key: "dictation-copy", icon: nil, seconds: 2, actionTitle: nil, action: nil)
+        }
+    }
+    @objc func mPhone() { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
 
 
     @objc func mSnap() {
@@ -653,8 +772,8 @@ extension App {
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
-    /// "Show Cards" (⌥H's row): the Cards panel, as ⌥H opens it.
-    @objc func mShowCards() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if !CardsOverview.shared.isOpen { CardsOverview.shared.toggle(via: "menu") } } }
+    /// "Show Cards" (⌥H's row): the main window on the Cards page.
+    @objc func mShowCards() { AppEnvironment.mainWindow?.showCards() }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
 }
 

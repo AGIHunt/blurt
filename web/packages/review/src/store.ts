@@ -234,6 +234,10 @@ export class ReviewStore {
     return this.missing && !!want && (this.data._unreadable || []).some((u) => u.uid === want || u.id === want);
   }
   keyOf = (i: Item) => this.key(i);
+  /** The item can't be changed from this page: the review is being handed back or was (nothing is saved after that),
+      or the doc marks the item (`_readonly`: a host showing one it won't write). Its fields still read; controls that
+      only change it (an attached file's Remove) are left out. */
+  readOnly = (i: Item) => this.confirming || this.confirmed || i._readonly === true;
   /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
   st = (i: Item) => statusOf(i);
   get stalled(): boolean {
@@ -298,9 +302,9 @@ export class ReviewStore {
   }
   stateOf = (i: Item): State => stateOf(i);
   restoreTo = (i: Item): State | undefined => migrate(i).restore_to;
-  /** the menu offers "Hand off to agent…" (dispatch in an app window, a copied instruction where review.py can write one) */
+  /** the menu offers Hand Off: the instruction for the user's own agent, copied (where the host can write a hand-off) */
   get canHandOff() {
-    return !!this.host.dispatch || this.canHandoff;
+    return this.canHandoff;
   }
 
   /** `restore`: where a discarded item goes back to (default: the state it leaves) */
@@ -314,14 +318,13 @@ export class ReviewStore {
     else this.discardedHere.delete(k);
   }
 
-  /** The user's state change (K3): optimistic here, one `state` op per item, undoable. Hand off opens the host's
-      panel (or copies an instruction) instead — the host writes that state. Items the action doesn't apply to are
+  /** The user's state change (K3): optimistic here, one `state` op per item, undoable. Hand off copies the instruction
+      instead — the host writes that state. Items the action doesn't apply to are
       left alone. Returns how many items changed. */
   act = (items: Item[], action: Action, opts: { toast?: boolean; note?: string } = {}): number => {
     if (action === "hand_off") {
       const ok = items.filter((i) => canDo("hand_off", this.stateOf(i)));
-      if (this.host.dispatch) this.dispatch(ok);
-      else void this.handoff(ok, "instruction");
+      void this.handoff(ok, "instruction");
       return 0;
     }
     const moves = items.map((i) => ({ i, from: this.stateOf(i), to: targetOf(action, i) })).filter((m): m is { i: Item; from: State; to: State } => !!m.to);
@@ -382,11 +385,6 @@ export class ReviewStore {
       this.showToast(this.t("handoff.failed"), false, "x");
     }
   };
-  dispatch = (items: Item[]) => {
-    const live = items.filter((i) => this.stateOf(i) !== "discarded");
-    if (this.host.dispatch && live.length) this.host.dispatch(live.map((i) => i.uid || i.id));
-  };
-  openSession = (job: string) => this.host.openSession?.(job);
 
   // ---------------------------------------------------------------- selection (list view)
   isSelected = (i: Item) => this.selected.has(this.key(i));

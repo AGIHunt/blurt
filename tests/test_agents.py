@@ -1,5 +1,5 @@
 """agents.py WP2 commands (contract C5): detect, command, install (--dry-run and real, into temp dirs only),
-repo-level order, and the K5 session commands. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
+repo-level order. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
 
   uv run --with pytest pytest tests/test_agents.py -q
 """
@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -29,16 +28,29 @@ FAKE = {
 case "$1" in
   --version) echo "2.1.259 (Claude Code)";;
   auth) echo '{"loggedIn": false, "authMethod": "none"}'; exit 1;;
-  mcp) if [ "$2" = get ]; then [ -f "$HOME/.claude-mcp-blurt" ] && exit 0 || exit 1; fi
-       shift 2; echo "$@" > "$HOME/.claude-mcp-blurt"; echo "Added stdio MCP server blurt";;
+  mcp) f="$HOME/.claude-mcp-blurt"
+       case "$2" in
+         get) [ -f "$f" ] && cat "$f" && exit 0 || exit 1;;
+         remove) rm -f "$f"; exit 0;;
+       esac
+       # like the real one: no add over an existing entry
+       if [ -f "$f" ]; then echo "MCP server blurt already exists in user config" >&2; exit 1; fi
+       shift 2; echo "$@" > "$f"; echo "Added stdio MCP server blurt";;
 esac""",
     # codex: logged in; `mcp add` writes into $CODEX_HOME (the regression: CODEX_HOME must reach it)
     "codex": """
 case "$1" in
   --version) echo "codex-cli 0.157.0";;
-  login) echo "Logged in using ChatGPT" >&2;;
-  mcp) if [ "$2" = get ]; then grep -q blurt "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null && exit 0 || exit 1; fi
-       mkdir -p "${CODEX_HOME:-$HOME/.codex}"; shift 2; echo "[mcp_servers.blurt] $*" >> "${CODEX_HOME:-$HOME/.codex}/config.toml"
+  login) if [ -f "$HOME/.codex-logged-out" ]; then echo "Not logged in"; exit 1; fi; echo "Logged in using ChatGPT" >&2;;
+  mcp) d="${CODEX_HOME:-$HOME/.codex}"
+       if [ "$2" = get ]; then  # --json like the real one: {"transport": {"command", "args"}} from the last add
+         [ -f "$d/blurt.json" ] || { echo "Error: No MCP server named 'blurt' found." >&2; exit 1; }
+         cat "$d/blurt.json"; exit 0
+       fi
+       mkdir -p "$d"; shift 4; cmd="$1"; shift  # mcp add blurt -- CMD ARGS… (overwrites, like the real one)
+       echo "[mcp_servers.blurt] $cmd $*" >> "$d/config.toml"
+       a=""; for x in "$@"; do a="$a${a:+, }\\"$x\\""; done
+       printf '{"name": "blurt", "transport": {"type": "stdio", "command": "%s", "args": [%s]}}\n' "$cmd" "$a" > "$d/blurt.json"
        echo "Added global MCP server 'blurt'.";;
 esac""",
     "kimi": """
@@ -95,7 +107,7 @@ def test_every_agent_has_the_c5_fields():
     assert ids[:3] == ["claude", "codex", "kimi"] and ids[-1] == "zcode"
     for a in reg["agents"]:
         assert {"id", "name", "bins", "verified"} <= set(a), a["id"]
-        assert agents.interactive_kind(a), a["id"]
+        assert "interactive" not in a, a["id"]  # Blurt starts no interactive agent: the user hands items to their own
         if agents.is_headless(a):
             assert "{prompt}" in a["run"] and a.get("events", {}).get("format"), a["id"]
             assert a.get("skill_dir") and a.get("mcp"), a["id"]
@@ -116,12 +128,8 @@ def test_detect_matches_fake_clis(env):
     assert rows["opencode"]["installed"] is False and rows["opencode"]["login"] == "n/a"
     assert out["pick"] == "codex"
     for r in out["agents"]:  # app-ux's check() keys stay, WP2 adds the rest
-        assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless",
-                "interactive", "session"} <= set(r)
-    # the hand-off panel offers the agents that run as a session (what sessions.py doctor says; the Windows app has
-    # no doctor call: it read a field detect never had and offered no agent at all)
-    assert rows["claude"]["session"] is True and rows["codex"]["session"] is True
-    assert rows["zcode"]["session"] is False
+        assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless"} <= set(r)
+        assert "interactive" not in r and "session" not in r
     fast = cli("detect", "--no-login", "--no-version", "--ids", "codex,claude")
     assert [r["id"] for r in fast["agents"]] == ["codex", "claude"] and fast["agents"][0]["version"] is None
 
@@ -161,7 +169,7 @@ def test_command_headless(env, tmp_path):
     # the blurt MCP server rides along, fully defined (-c on an unregistered server breaks codex) and pre-approved
     sets = [out["argv"][i + 1] for i, a in enumerate(out["argv"]) if a == "-c"]
     assert 'mcp_servers.blurt.default_tools_approval_mode="approve"' in sets
-    assert 'mcp_servers.blurt.command="uv"' in sets and any(str(agents.MCP_SERVER) in x for x in sets)
+    assert f"mcp_servers.blurt.command={json.dumps(agents.uv_path())}" in sets and any(str(agents.MCP_SERVER) in x for x in sets)
     assert any(x.startswith("mcp_servers.blurt.env_vars=") and "BLURT_HOME" in x and "BLURT_RUN_ID" in x for x in sets)
     import tomllib
     for x in sets:  # each -c value is valid TOML
@@ -172,7 +180,7 @@ def test_command_headless(env, tmp_path):
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
         "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
     assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
-    # unattended on recording-derived text: never full access; a plain run (routing, drafts) writes only its cwd
+    # unattended on recording-derived text: never full access; a plain run (routing) writes only its cwd
     a = out["argv"]
     assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
     assert "--add-dir" not in a
@@ -257,19 +265,17 @@ def test_grok(env, tmp_path):
     assert agents._toml_top(gh / "config.toml", "model") == "x"
 
 
-def test_command_interactive(env, tmp_path):
-    u = cli("command", "claude", "interactive", "--prompt", "修 登录 & bug", "--repo", tmp_path)
-    q = parse_qs(urlparse(u["url"]).query)
-    assert u["url"].startswith("claude-cli://open?") and q["q"] == ["修 登录 & bug"] and q["cwd"] == [str(tmp_path.resolve())]
-    long = cli("command", "claude", "interactive", "--prompt", "x" * 6000, "--repo", tmp_path)
-    assert long["prompt_file"] and Path(long["prompt_file"]).read_text() == "x" * 6000
-    assert len(parse_qs(urlparse(long["url"]).query)["q"][0]) < 5000
-    t = cli("command", "codex", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert t["terminal"] and t["argv"][1:] == ["hello"]
-    k = cli("command", "kimi", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert k["terminal"] and k["argv"][1:] == [] and k["clipboard"] == "hello"
-    z = cli("command", "zcode", "interactive", "--prompt", "hello", "--repo", tmp_path)
-    assert z["clipboard"] == "hello" and z["argv"] is None
+def test_command_is_headless_only(env, tmp_path):
+    r = subprocess.run([sys.executable, str(SCRIPTS / "agents.py"), "command", "claude", "interactive", "--prompt", "p",
+                        "--repo", str(tmp_path)], capture_output=True, text=True, env=os.environ.copy())
+    assert r.returncode != 0 and "invalid choice" in r.stderr
+    with pytest.raises(ValueError):
+        agents.command("claude", "interactive", "p", tmp_path)
+    with pytest.raises(ValueError):
+        agents.command("zcode", "headless", "p", tmp_path)  # connect only
+    h = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path)
+    assert h["mode"] == "headless" and h["argv"][1:3] == ["-p", "p"]
+    assert not {"url", "terminal", "clipboard", "open_app", "prompt_file"} & set(h)
 
 
 def test_install_dry_run_and_real(env, tmp_path):
@@ -313,18 +319,18 @@ def test_install_kimi_json_merge(env):
     assert cli("install", "kimi", "--mcp")["changes"][0]["action"] == "exists"
 
 
-@pytest.mark.parametrize("agent, skill_dir, mcp_json, abs_uv", [
-    ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json", True),    # a desktop app: uv by its full path
-    ("cursor", ".agents/skills", ".cursor/mcp.json", True),
-    ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json", False),   # a CLI, started from the shell
+@pytest.mark.parametrize("agent, skill_dir, mcp_json", [
+    ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json"),
+    ("cursor", ".agents/skills", ".cursor/mcp.json"),
+    ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json"),
 ])
-def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, abs_uv):
+def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json):
     """CodeBuddy Code, WorkBuddy and Cursor: connect only (skill + MCP), never run unattended."""
     uv = env["tmp"] / "bin" / "uv"
     uv.write_text("#!/bin/sh\n")
     uv.chmod(0o755)
     d = agents.definitions({})[agent]
-    assert not agents.is_headless(d) and agents.interactive_kind(d)
+    assert not agents.is_headless(d)
     path = env["home"] / mcp_json
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"mcpServers": {"other": {"url": "https://example.com/mcp", "disabled": True}}}))
@@ -336,7 +342,7 @@ def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, 
     assert (env["home"] / skill_dir / "blurt").resolve() == agents.SKILL_ROOT.resolve()
     data = json.loads(path.read_text())
     assert data["mcpServers"]["other"] == {"url": "https://example.com/mcp", "disabled": True}
-    assert data["mcpServers"]["blurt"] == {"command": str(uv) if abs_uv else "uv",
+    assert data["mcpServers"]["blurt"] == {"command": str(uv),  # uv by its full path: the agent starts the server
                                            "args": ["run", "--script", str(agents.MCP_SERVER)]}
     assert {c["action"] for c in cli("install", agent)["changes"]} == {"exists"}
 
@@ -352,68 +358,128 @@ def test_install_never_overwrites_another_skill(env, tmp_path):
     assert link.resolve() == other.resolve()
 
 
-def test_session_command(env, tmp_path):
-    """K5: interactive sessions get per-session hooks; the blurt MCP server only when it isn't installed."""
+def _fake_uv(env) -> Path:
+    uv = env["tmp"] / "bin" / "uv"
+    uv.write_text("#!/bin/sh\n")
+    uv.chmod(0o755)
+    return uv
+
+
+def test_codex_on_another_model_provider_is_configured(env):
+    """Codex pointed at a third-party provider in $CODEX_HOME/config.toml (cc-switch & co.) has no ChatGPT login:
+    `codex login status` says "Not logged in", but it runs. It is usable ("configured"), not "log in first"."""
+    (env["home"] / ".codex-logged-out").write_text("")
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    cfg = codex_home / "config.toml"
+    state = lambda: {r["id"]: r for r in cli("detect", "--ids", "codex")["agents"]}["codex"]  # noqa: E731
+    assert state()["state"] == "logged_out" and "codex login" in state()["fix"]   # no config: the login is it
+    cfg.write_text('model_provider = "deepseek"\nmodel = "deepseek-chat"\n\n'
+                   '[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\n'
+                   'env_key = "DEEPSEEK_API_KEY"\n')
+    r = state()
+    assert r["state"] == "configured" and r["fix"] == "" and cli("detect", "--ids", "codex")["pick"] == "codex"
+    cfg.write_text('model_provider = "openai"\n')                                 # OpenAI's own: the login counts
+    assert state()["state"] == "logged_out"
+    # a profile's own model_provider wins over the top-level one (codex's rule)
+    cfg.write_text('profile = "work"\nmodel_provider = "openai"\n\n[profiles.work]\nmodel_provider = "kimi"\n')
+    assert state()["state"] == "configured"
+    cfg.write_text('profile = "home"\nmodel_provider = "kimi"\n\n[profiles.home]\nmodel_provider = "openai"\n')
+    assert state()["state"] == "logged_out"
+    cfg.write_text("model_provider = 'litellm'\n")                                # a TOML literal string
+    assert state()["state"] == "configured"
+    cfg.write_text('model_provider = "x\n')                                       # not TOML: nothing to go on
+    assert state()["state"] == "logged_out"
+    # only under $CODEX_HOME, never the user's ~/.codex when CODEX_HOME points elsewhere
+    codex = next(d for d in agents.registry()["agents"] if d["id"] == "codex")
+    cfg.write_text('model_provider = "deepseek"\n')
+    assert agents.other_provider(codex, {"CODEX_HOME": str(codex_home)}, env["home"]) == "deepseek"
+    assert agents.other_provider(codex, {}, env["home"]) is None
+
+
+def test_codex_on_another_provider_keeps_its_own_model(env, tmp_path):
+    """models_cache.json lists OpenAI's models: on another provider a cards run must not pass OpenAI's cheap one."""
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    (codex_home / "models_cache.json").write_text(json.dumps({"models": [
+        {"slug": "gpt-big", "priority": 1, "description": "Frontier"},
+        {"slug": "gpt-mini", "priority": 2, "description": "Smaller, cheaper, fast"}]}))
+    (codex_home / "config.toml").write_text('model = "gpt-big"\n')
+    assert cli("models", "codex")["cheapest"] == "gpt-mini"
+    (codex_home / "config.toml").write_text('model_provider = "deepseek"\nmodel = "deepseek-chat"\n')
+    m = cli("models", "codex")
+    assert m["models"] == [] and m["cheapest"] is None and m["cli_default"] == "deepseek-chat"
+    p = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--processing", "cards")["argv"]
+    assert "-m" not in p
+
+
+def test_every_mcp_entry_starts_uv_by_its_full_path(env, tmp_path):
+    """Every agent starts the blurt MCP server itself, often without our PATH (Windows / Linux: the app's uv is in
+    $BLURT_HOME/bin, on no one else's PATH): no entry may say a bare `uv`."""
+    for d in agents.registry()["agents"]:
+        m = d.get("mcp") or {}
+        text = json.dumps(m.get("args") or (m.get("json") or {}).get("value") or [])
+        assert '"uv"' not in text, d["id"]
+        assert '"uv"' not in json.dumps(d.get("headless_mcp") or {}) and '\\"uv\\"' not in json.dumps(d.get("headless_mcp") or {})
+    # no uv on PATH: the app's own copy in $BLURT_HOME/bin
+    assert agents.uv_path({"PATH": "/nonexistent"}) == "uv"
+    (env["bh"] / "bin").mkdir()
+    own = env["bh"] / "bin" / "uv"
+    own.write_text("#!/bin/sh\n")
+    own.chmod(0o755)
+    assert agents.uv_path({"PATH": "/nonexistent"}) == str(own)
+    run = next(c for c in cli("install", "codex", "--mcp", "--dry-run")["changes"] if c["action"] == "run")
+    assert run["argv"][run["argv"].index("--") + 1] == str(own)
+    a = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path)["argv"]
+    assert f"mcp_servers.blurt.command={json.dumps(str(own))}" in a
+    # a Windows path in codex's -c: valid TOML, backslashes kept
     import tomllib
-    st = tmp_path / "j-1.claude-settings.json"
-    c = agents.session_command("claude", "Read H-0001.md", tmp_path, job="j-1", settings=st, mcp=False)
-    assert c["argv"][0].endswith("/claude") and c["argv"][1:] == ["--settings", str(st), "--", "Read H-0001.md"]
-    assert c["hooks"] == "claude" and c["paste"] is None
-    hooks = json.loads(st.read_text())["hooks"]
-    assert list(hooks) == list(agents.CLAUDE_HOOKS) and hooks["PostToolUse"][0]["matcher"] == "*"
-    cmd = hooks["Stop"][0]["hooks"][0]
-    assert cmd["type"] == "command" and cmd["timeout"] == 5
-    assert cmd["command"].endswith(f"'{agents.SESSIONS_PY}' hook --job j-1 --agent claude")
-    # the hand-off note lives in $BLURT_HOME/handoff, outside the session's folder: reading it must not stop on
-    # "Read outside the working directories?" (Windows dogfood WW45)
-    import handoff
-    assert json.loads(st.read_text())["permissions"]["additionalDirectories"] == [str(handoff.handoff_dir())]
-    # not installed (the fake's `mcp get blurt` fails) → --mcp-config with the whole server
-    c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
-    i = c["argv"].index("--mcp-config")
-    assert json.loads(c["argv"][i + 1])["mcpServers"]["blurt"]["args"][-1] == str(agents.MCP_SERVER)
-    assert c["argv"][-2:] == ["--", "p"]  # --mcp-config takes several values: the prompt must not become one
-    x = agents.session_command("codex", "p", tmp_path, job="j-2", mcp=True)
-    sets = [x["argv"][i + 1] for i, a in enumerate(x["argv"]) if a == "-c"]
-    for v in sets:
-        tomllib.loads(v)  # every -c value is valid TOML
-    notify = tomllib.loads(sets[0])["notify"]
-    assert notify[1:] == [str(agents.SESSIONS_PY), "hook", "--job", "j-2", "--agent", "codex"]
-    hk = {k: v for v in sets if v.startswith("hooks.") for k, v in tomllib.loads(v)["hooks"].items()}
-    assert list(hk) == list(agents.CODEX_HOOKS)
-    # the same command for every session (Codex asks the user to trust each distinct hook once): job from $BLURT_JOB
-    assert {h["hooks"][0]["command"] for g in hk.values() for h in g} == {agents.hook_command("codex", None)}
-    assert any(v.startswith("mcp_servers.blurt.command") for v in sets) and x["argv"][-1] == "p"
-    plain = agents.session_command("codex", "p", tmp_path, job="j-3", mcp=False)["argv"]
-    # notify + 6 hooks + no update check at startup (its update screen drained input while the terminal attached)
-    assert x["patterns"] and plain.count("-c") == 8 and plain[-3:] == ["-c", "check_for_update_on_startup=false", "p"]
-    k = agents.session_command("kimi", "long prompt", tmp_path, job="j-4", mcp=False)
-    assert k["argv"][1:] == [] and k["paste"] == "long prompt" and k["hooks"] is None
-    for bad in ("zcode", "opencode", "nope"):  # no session / not installed / unknown
-        with pytest.raises(ValueError):
-            agents.session_command(bad, "p", tmp_path, job="j-5")
+    win = "C:\\Users\\Ann Lee\\.blurt\\bin\\uv.exe"
+    hm = next(d for d in agents.registry()["agents"] if d["id"] == "codex")["headless_mcp"]["args"]
+    filled = agents._fill(hm, {"uv_json": json.dumps(win), "mcp_server_json": json.dumps("C:\\s\\mcp_server.py")})
+    assert tomllib.loads(filled[1])["mcp_servers"]["blurt"]["command"] == win
 
 
-def test_hook_python_is_not_a_cache_venv():
-    assert Path(agents.hook_python()).exists()
+def test_install_rewrites_a_stale_mcp_entry(env):
+    """An entry registered before (a bare `uv`, which Windows can't start) is written again with uv's full path;
+    one that already says what we'd write is left alone. Codex `mcp add` overwrites; claude needs `mcp remove` first."""
+    uv = _fake_uv(env)
+    codex_home = Path(os.environ["CODEX_HOME"])
+    codex_home.mkdir()
+    (codex_home / "blurt.json").write_text(json.dumps(
+        {"name": "blurt", "transport": {"command": "uv", "args": ["run", "--script", str(agents.MCP_SERVER)]}}))
+    dry = cli("install", "codex", "--mcp", "--dry-run")["changes"]
+    assert [c["action"] for c in dry] == ["run"] and dry[0]["replaces"] == "stale"
+    out = cli("install", "codex", "--mcp")
+    assert out["applied"] and json.loads((codex_home / "blurt.json").read_text())["transport"]["command"] == str(uv)
+    assert [c["action"] for c in cli("install", "codex", "--mcp")["changes"]] == ["exists"]
+    (env["home"] / ".claude-mcp-blurt").write_text(f"--scope user blurt -- uv run --script {agents.MCP_SERVER}\n")
+    out = cli("install", "claude", "--mcp")
+    assert out["applied"] and out["changes"][0]["replaces"] == "stale"
+    assert str(uv) in (env["home"] / ".claude-mcp-blurt").read_text()
+    assert [c["action"] for c in cli("install", "claude", "--mcp")["changes"]] == ["exists"]
+    assert agents._names_all('{"transport": {"command": "C:\\\\b\\\\uv.exe", "args": ["run"]}}', ["C:\\b\\uv.exe"])
+    assert not agents._names_all('{"transport": {"command": "uv"}}', ["/x/uv"])
+    assert agents._names_all("Command: /x/uv\nArgs: run --script /s/m.py", ["/x/uv", "/s/m.py"])
 
 
-@pytest.mark.skipif(os.name == "nt", reason="the sh shim is macOS / Linux")
-def test_codex_hook_command_never_changes_with_the_interpreter(env, tmp_path):
-    """dogfood-2 W41: the hook command embedded whichever python ran sessions.py, so every interpreter upgrade (or
-    a moved skill) brought Codex's "Hooks need review" screen back. Now it names only $BLURT_HOME/bin/blurt-hook,
-    which is rewritten to exec today's interpreter and script."""
-    a = agents.hook_command("codex", None, "/opt/old/python3.12")
-    b = agents.hook_command("codex", None, "/opt/new/python3.14")
-    shim = env["bh"] / "bin" / "blurt-hook"
-    assert a == b == f"'{shim}' --agent codex" and "python" not in a
-    body = shim.read_text()
-    assert "/opt/new/python3.14" in body and str(agents.SESSIONS_PY) in body and os.access(shim, os.X_OK)
-    # it runs: the hook subcommand with the agent's arguments (a bad job id answers, never hangs)
-    agents.hook_command("codex", None, sys.executable)
-    r = subprocess.run([str(shim), "--agent", "codex"], input="{}", capture_output=True, text=True, timeout=30,
-                       env={**os.environ, "BLURT_JOB": ""})
-    assert r.returncode in (0, 1, 2)
+def test_install_skill_copy_fallback(env, tmp_path, monkeypatch):
+    """Where neither a symlink nor a junction can be made (Windows without one): a marked copy, which the next install
+    brings up to date and reports as there — never a copy of something else."""
+    target = tmp_path / "skills" / "blurt"
+    target.parent.mkdir()
+    assert agents._link_dir(target, agents.SKILL_ROOT, copy=True) == "copy"
+    assert (target / "SKILL.md").read_bytes() == (agents.SKILL_ROOT / "SKILL.md").read_bytes()
+    assert not list(target.rglob("__pycache__")) and agents._our_copy(target)
+    (target / "SKILL.md").write_text("old")
+    cfg = {"record": {"agent_defs": {"t": {"skill_dir": str(target.parent)}}}}
+    dry = agents.install("t", mcp=False, dry_run=True, cfg=cfg)["changes"][0]
+    assert dry["action"] == "exists" and dry["kind"] == "copy" and (target / "SKILL.md").read_text() == "old"
+    ch = agents.install("t", mcp=False, cfg=cfg)
+    assert ch["applied"] and ch["changes"][0]["refreshed"] is True
+    assert (target / "SKILL.md").read_bytes() == (agents.SKILL_ROOT / "SKILL.md").read_bytes()
+    (target / agents.COPY_MARK).write_text("/somewhere/else")                     # a copy of another skill: not ours
+    assert agents.install("t", mcp=False, cfg=cfg)["changes"][0]["action"] == "conflict"
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("codex"), reason="codex's own macOS seatbelt")
@@ -443,3 +509,40 @@ def test_codex_sandbox_keeps_blurt_home_read_only(tmp_path, monkeypatch):
                        cwd=session, capture_output=True, text=True, timeout=60)
     got = dict(line.split("=") for line in p.stdout.split() if "=" in line)
     assert got == {"session": "w", "inbox": "w", "store": "w", "uv": "w", "config": "r", "hooks": "r", "home": "r", "code": "r"}, p.stderr
+
+
+def test_shim_target_is_the_native_program_not_node():
+    """npm .cmd shims (texts from a Windows VM, npm 10 / Node 22): Claude Code's runs its claude.exe; Codex's runs
+    codex.js with the node.exe next to it when there is one (portable Node, nvm-windows). That node.exe is not codex."""
+    head = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n"
+    claude = head + '"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\r\n'
+    codex = head + ('\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n'
+                    '  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & '
+                    '"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n')
+    assert agents.shim_target(claude) == "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"
+    assert agents.shim_target(codex) is None
+
+
+def test_probe_timeout_kills_the_tree_and_returns():
+    """A probe that times out returns at once, even when a grandchild holds the pipes (Windows: cmd.exe → node.exe;
+    here sh → sleep): subprocess.run(timeout=) would wait for the grandchild."""
+    import time
+    t = time.monotonic()
+    code, out, _ = agents.probe(["sh", "-c", "echo started; sleep 30 & sleep 30"], dict(os.environ), 1)
+    assert code is None and time.monotonic() - t < 6
+
+
+def test_detect_probes_agents_side_by_side(tmp_path):
+    """detect() checks every agent at once: three CLIs taking 2 s each finish in about 2 s, not 6, in the asked order."""
+    import time
+    bins = tmp_path / "bin"
+    bins.mkdir()
+    for name in ("claude", "codex", "kimi"):
+        f = bins / name
+        f.write_text("#!/bin/sh\nsleep 2\necho '1.0'\n")
+        f.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bins}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    t = time.monotonic()
+    d = agents.detect(["kimi", "claude", "codex"], login=False, version=True, env=env)
+    assert [r["id"] for r in d["agents"]] == ["kimi", "claude", "codex"]
+    assert time.monotonic() - t < 5

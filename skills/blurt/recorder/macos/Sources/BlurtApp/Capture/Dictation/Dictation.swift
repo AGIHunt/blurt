@@ -72,6 +72,7 @@
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
 import BlurtCore
+import BlurtRemoteKit
 import Carbon.HIToolbox
 
 final class Dictation {
@@ -81,7 +82,10 @@ final class Dictation {
     /// What the island shows: listening while a take listens, else the stage of the oldest take still on its way.
     private(set) var phase: Phase = .idle {
         didSet {
-            if phase != oldValue { island.dictationChanged() }
+            if phase != oldValue {
+                island.dictationChanged()
+                RemoteServer.shared.dictationChanged(remotePhase)
+            }
         }
     }
     private(set) var levels: [Float] = []
@@ -991,6 +995,28 @@ final class Dictation {
         }
     }
 
+    // MARK: the iPhone remote
+
+    /// The phone's talk key: this Mac's dictation key, with the same rules (tap, hold, double tap), by the same trigger.
+    /// The take listens with the phone's mic if the phone asked for that.
+    func remoteKey(down: Bool) {
+        if down { remotePress = true }
+        handle(Dictation.key.event(down: down, time: CACurrentMediaTime()))
+        if !down { remotePress = false }
+    }
+    /// the press in hand came from the phone: a take it starts listens through the phone
+    private var remotePress = false
+    /// the take in hand listens through this phone's microphone (its name; "" unknown): "nothing heard" names it, not the Mac's
+    private var phoneMic: String?
+    var remotePhase: RemoteDictationPhase {
+        // the permissions `needsSetup` is about are for hearing the Mac's own key: a press from the phone needs none of them
+        if !Dictation.enabled { return .unavailable }
+        return RemoteDictationPhase(rawValue: phase.rawValue) ?? .idle
+    }
+    func remoteToggleStyle() { if listening { toggleStyle(via: .island) } }
+    func remoteToggleTranslate() { if listening { toggleTranslate(via: "remote") } }
+    func remoteSend() { if listening { cancel(quietly: true) }; send(after: "remote") }
+
     // MARK: start / stop / cancel
 
     /// Also the menu's "Start Dictation" (and the test hook): the same as a tap.
@@ -1026,6 +1052,8 @@ final class Dictation {
         let v = NoteVoice(url: url)
         let env = ProcessInfo.processInfo.environment
         v.inject = testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]
+        if remotePress, RemoteMicFeed.shared.pressed { v.phoneFeed = RemoteMicFeed.shared }
+        phoneMic = v.phoneFeed == nil ? nil : (RemoteServer.shared.phoneName ?? "")
         // tests: the wav is the world's sound since the key went down — what the "mic" missed while starting is lost
         if DictationInsert.testMode, env["BLURT_TEST_MIC_CLOCK"] == "keydown" { v.injectClock = armedAt }
         v.builtInMic = Dictation.useBuiltInMic
@@ -1036,6 +1064,7 @@ final class Dictation {
             guard let self = self else { return }
             self.levels.append(l)
             if self.levels.count > 120 { self.levels.removeFirst(self.levels.count - 120) }
+            RemoteServer.shared.level(l)
         }
         v.onSpeech = { [weak self] in self?.heardSpeech = true }
         v.onFirstAudio = { [weak self] in self?.micStarted(v) }
@@ -1116,6 +1145,7 @@ final class Dictation {
         // mode): its words would flash and vanish (v0.9 dogfood); they show as soon as it starts
         s.onLive = { [weak self] committed, pending in
             guard let self = self, self.liveSession == live else { return }
+            RemoteServer.shared.live(committed: committed, pending: pending)
             if self.listening { LiveTranscript.shared.update(committed, pending: pending, session: live) } else { self.heldLive = (committed, pending) }
         }
         voice = v
@@ -1142,10 +1172,10 @@ final class Dictation {
         micLive = true
         let ms = Int((CACurrentMediaTime() - armedAt) * 1000)
         emit(["event": "dictation_mic_live", "id": entryID, "from_key_ms": ms, "from_open_ms": Int((v.firstAudioAfter ?? 0) * 1000),
-              "precaptured": precaptured, "builtin_mic": v.builtInMic])
+              "precaptured": precaptured, "builtin_mic": v.builtInMic, "phone_mic": v.phoneFeed != nil])
         if listening {
             island.dictationChanged()
-            DictationSound.start.play()
+            if DictationSound.start.play() { v.cueStarted() }
         }
     }
 
@@ -1234,7 +1264,7 @@ final class Dictation {
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
               "style_source": styleDecision?.source.rawValue ?? "default", "category": styleDecision?.category.rawValue ?? "other"])
-        if micLive { DictationSound.start.play() }
+        if micLive, DictationSound.start.play() { voice?.cueStarted() }
     }
 
     /// The text around the cursor, read while the user talks (Accessibility calls can take a moment). Test builds read
@@ -1274,9 +1304,10 @@ final class Dictation {
         finish(ended: false)
     }
 
-    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept) — or, when none
-    /// listens, throws away the takes still on their way (never pasted, a queued Return dropped). A paste already
-    /// under way (the 0.6 s of ⌘V) can't be taken back.
+    /// Esc, a double tap's second tap, the menu: ends a take that is listening — or, when none listens, throws away
+    /// the takes still on their way (never pasted, a queued Return dropped). A paste already under way (the 0.6 s of
+    /// ⌘V) can't be taken back. A listening take that heard speech keeps its recording in the history, with Retry,
+    /// while the history keeps recordings (`DictationHistory.keepsCancelled`); otherwise nothing is kept.
     /// `quietly`: the double tap's own cancel (it sends right after); otherwise the island says "Cancelled".
     func cancel(quietly: Bool = false) {
         guard listening else {
@@ -1286,7 +1317,17 @@ final class Dictation {
             return
         }
         trigger.reset(active: false)
-        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
+        var kept = false
+        if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
+                                           retentionDays: Dictation.retentionDays), let v = voice, let url = wav {
+            let duration = v.elapsed
+            v.stop(keep: true)
+            voice = nil         // discard() below ends the rest: the stream, the live text — not this recording
+            appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
+                                reason: DictationHistory.cancelledReason, wav: url)
+            kept = true
+        }
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept])
         discard(quietly: true)
         if !quietly { DictationSound.cancel.play() }
         if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
@@ -1402,10 +1443,10 @@ final class Dictation {
 
     /// "Didn't catch anything (AirPods) · Change Mic…" / "No sound from AirPods" (BlurtCore NothingHeard): the mic it
     /// listened with, and the way to another — Settings → Dictation's microphone.
-    func toastNothing(levels: [Float]? = nil) {
+    func toastNothing(levels: [Float]? = nil, mic: String?? = nil) {
         let levels = levels ?? self.levels
         let why = NothingHeard.why(levels: levels)
-        let name = micName
+        let name = mic ?? micName
         emit(["event": "dictation_nothing", "why": why.rawValue, "mic": name ?? NSNull(),
               "peak": Double(levels.max() ?? 0)])
         // about the last take (Dictation.toastKey): the next take's start drops it
@@ -1415,9 +1456,10 @@ final class Dictation {
         }
     }
 
-    /// The microphone dictation listens with: the Mac's own (when it uses it) or the default input; a test build's
-    /// stand-in wav by its file name. nil = not known.
+    /// The microphone dictation listens with: the phone's (the take listens through it), the Mac's own (when it uses
+    /// it) or the default input; a test build's stand-in wav by its file name. nil = not known.
     var micName: String? {
+        if let p = phoneMic { return p.isEmpty ? nil : p }
         if DictationInsert.testMode {
             let env = ProcessInfo.processInfo.environment
             return (testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]).map { URL(fileURLWithPath: $0).lastPathComponent }
@@ -1435,14 +1477,20 @@ final class Dictation {
         guard let v = voice, let url = wav, let s = stream else { return }
         let keyUp = CACurrentMediaTime()
         let duration = v.elapsed
-        if !ended { v.stop(keep: heardSpeech) }
+        // quiet speech the endpointer missed still goes to the speech model (BlurtCore DictationHeard)
+        let heard = DictationHeard.worthHearing(heardSpeech: heardSpeech, seconds: duration, soundSeconds: v.soundSeconds)
+        if heard, !heardSpeech {
+            emit(["event": "dictation_quiet_take", "id": entryID, "seconds": (duration * 100).rounded() / 100,
+                  "sound": (v.soundSeconds * 100).rounded() / 100, "peak_db": Double((v.peakDB * 10).rounded() / 10)])
+        }
+        if !ended { v.stop(keep: heard) }
         DictationSound.stop.play()      // after the mic closed: the peck isn't in the take
         voice = nil
         stream = nil
         micLive = false
         listening = false
         releaseEsc()
-        guard heardSpeech else {
+        guard heard else {
             s.cancel()
             try? FileManager.default.removeItem(at: url)
             LiveTranscript.shared.end(session: liveSession)
@@ -1458,6 +1506,7 @@ final class Dictation {
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
+        take.mic = micName
         take.switches = switches
         take.translate = translateJob(style: styleDecision?.style ?? .light)
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
@@ -1646,7 +1695,8 @@ final class Dictation {
     /// The warm polish server's structuring pass (Structured): the whole take, its self-corrections resolved and what
     /// was enumerated laid out — or nil (no server: Light's text is typed). Blocking: off the main thread.
     static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]],
-                          cloud: [String: Any]? = nil, localFallback: Bool = true) -> [String: Any]? {
+                          cloud: [String: Any]? = nil, localFallback: Bool = true, light: Bool = false,
+                          context: [String: Any]? = nil, variant: String? = nil) -> [String: Any]? {
         if DictationStitch.nothingToPolish(text) {
             return ["ok": true, "raw": text, "text": text, "fell_back": false, "reason": "short", "list": false, "ms": 0]
         }
@@ -1656,6 +1706,9 @@ final class Dictation {
         var req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
         if let c = cloud { req["cloud"] = c }
         if !localFallback { req["local_fallback"] = false }
+        if light { req["light"] = true }      // the take's end skipped Light: this call does its job too
+        if let c = context { req["context"] = c }
+        if let v = variant { req["variant"] = v }
         let extra = cloud == nil ? 0 : timeout + DictationCloud.requestBudget(chars: text.count)
         guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra), r["ok"] as? Bool == true else { return nil }
         return r

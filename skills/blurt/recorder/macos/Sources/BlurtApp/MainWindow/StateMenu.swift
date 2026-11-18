@@ -12,7 +12,7 @@
 //
 // Several items selected: an action shows when it is valid for at least one of them and applies to those ("(2)" after
 // the verb when that is not all of them). Writes go through `items.py state … --action A --by user` (Scripts.state);
-// hand off opens the dispatch panel instead (MainWindowController.dispatch).
+// hand off copies the instruction for your own agent instead (MainWindowController.handOff).
 import AppKit
 import BlurtCore
 

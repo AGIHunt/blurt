@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn offsets_between_chars_and_utf16() {
-        let s = "a你😀b";
+        let s = "a你\u{1F600}b";
         assert_eq!(u16_of(s, 0), 0);
         assert_eq!(u16_of(s, 2), 2);
         assert_eq!(u16_of(s, 3), 4); // the emoji is two units

@@ -182,6 +182,12 @@ final class SpeechModel: ObservableObject {
     @Published var models: [ASRModel] = []
     @Published var loading = false
     @Published var error: String?
+    /// why the models couldn't be read (nil: they could): the error line's action follows it
+    @Published var failure: SpeechSetup.ReadFailure?
+    /// the end of what the failed read printed, for Copy Error
+    var errorDetail = ""
+    @Published var copied = false
+    @Published var installingUV = false
     @Published var benching: Set<String> = []
     @Published var bench: [String: BenchResult] = [:]                                      // model id → last run
     @Published var language = "auto"
@@ -197,6 +203,27 @@ final class SpeechModel: ObservableObject {
         mirror = ModelBundle.mirror
         // downloads are the app's one manager's (App/ModelDownloads.swift): its progress shows in these rows
         sub = ModelDownloads.shared.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // uv arrived (here, the setup assistant or the launch's quiet install): the models can be read now
+        uvObserver = NotificationCenter.default.addObserver(forName: UVSetup.finished, object: nil, queue: .main) { [weak self] n in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.installingUV = false
+                if n.object != nil || self.failure == .noUV { Task { await self.load() } }
+            }
+        }
+    }
+    private var uvObserver: NSObjectProtocol?
+
+    /// Install uv from the error line: UVSetup's quiet install (nothing when a usable one is there); its
+    /// notification reloads. A uv already there answers without one, so look again shortly.
+    func installUV() {
+        installingUV = true
+        UVSetup.ensure(via: "settings")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self = self, self.installingUV, !UVSetup.installing else { return }
+            self.installingUV = false
+            Task { await self.load() }
+        }
     }
 
     /// A model's download as its bar shows it: the running one's "N of M", "Queued" while it waits; nil otherwise.
@@ -220,8 +247,8 @@ final class SpeechModel: ObservableObject {
         loading = true
         defer { loading = false }
         do {
-            let r = try await SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
-            guard r.ok, let s = r.decode(ASRState.self) else { error = S("speech.error.read"); return }
+            let r = try await SkillCLI.shared.read("transcribe.py", ["models"], timeout: 180)
+            guard r.ok, let s = r.decode(ASRState.self) else { failed(stderr: r.stderr.isEmpty ? r.errorText : r.stderr); return }
             // a finished download: the suggestion folds away and the jobs show their new model
             let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || state == nil
             withAnimation(calm ? nil : .easeInOut(duration: 0.25)) {
@@ -229,7 +256,38 @@ final class SpeechModel: ObservableObject {
                 models = s.models.filter { $0.role == "asr" }  // not the VAD every local model uses
             }
             error = nil
-        } catch { self.error = S("speech.error.read") }
+            failure = nil
+        } catch ScriptError.timeout {
+            failed(stderr: "", timedOut: true)
+        } catch { failed(stderr: "\(error)") }
+    }
+
+    /// The models couldn't be read: the line says why, and offers what can help — Install uv, Try Again (offline, a
+    /// network error, a timeout), or for a package that can't be built its name and Copy Error (trying again would
+    /// fail the same way).
+    private func failed(stderr: String, timedOut: Bool = false) {
+        let f = SpeechSetup.readFailure(uv: ScriptRunner.shared.uvPath != nil, timedOut: timedOut,
+                                        online: NetworkWatch.shared.isOnline, stderr: stderr)
+        failure = f
+        errorDetail = SpeechSetup.errorTail(stderr)
+        copied = false
+        switch f {
+        case .noUV: error = S("speech.error.no_uv")
+        case .offline: error = S("speech.error.offline")
+        case .network: error = S("speech.error.network")
+        case .timeout: error = S("speech.error.timeout")
+        case .broken(let p?, let tool?): error = S("speech.error.build_missing", p, tool)
+        case .broken(let p?, nil): error = S("speech.error.build", p)
+        case .broken(nil, _): error = S("speech.error.read")
+        }
+        emit(["event": "speech_read_failed", "failure": "\(f)", "detail": String(errorDetail.suffix(2000))])
+    }
+
+    /// Copy Error: the end of what the failed read printed, for an issue report.
+    func copyError() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(error.map { "\($0)\n\n\(errorDetail)" } ?? errorDetail, forType: .string)
+        copied = true
     }
 
     /// Re-pick for this Mac (auto) and reload.
@@ -412,6 +470,8 @@ struct SpeechPane: View {
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
     @ObservedObject private var cloud = CloudModelsUI.shared
+    /// the capabilities turned off (General's switches): a job that only they have is dimmed and says so
+    @ObservedObject private var features = SettingsFeatures.shared
     @State private var library = false
     /// dictation's choices side by side (DictationCompare.swift)
     @State private var compare = false
@@ -449,7 +509,8 @@ struct SpeechPane: View {
     /// the one place the choices are weighed; the rows under it stay as they were.
     var lead: SettingsLead {
         _ = cloud.tick
-        let text = m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
+        // a read that failed says so on its own line below: "Checking this Mac…" beside it never ended
+        let text = m.error != nil && m.state == nil ? "" : m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
         return SettingsLead(text: Text(text), accessory: AnyView(
             Button(S("speech.compare.open")) { compare = true }
                 .buttonStyle(.plain).foregroundStyle(Color.brandInk)
@@ -482,8 +543,21 @@ struct SpeechPane: View {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
-                    Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 12) {
+                        Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if m.installingUV || m.loading {
+                            BrandSpinnerView(size: 10)
+                        } else if m.failure == .noUV {
+                            Button(S("speech.install_uv")) { m.installUV() }.help(UVSetup.installCommand)
+                        } else if m.failure?.retries == true {
+                            Button(S("speech.rec.retry")) { Task { await m.load() } }
+                        } else if !m.errorDetail.isEmpty {
+                            // the same failure every time: no Try Again, the error for a report
+                            Button(S(m.copied ? "speech.error.copied" : "speech.error.copy")) { m.copyError() }
+                        }
+                    }
                 }
             }
             recommendation
@@ -505,19 +579,31 @@ struct SpeechPane: View {
                 dictationRow
             }
             CloudObserving {
-                SettingRow("speech.polish", detail: d.polish?.supported == false && CloudStore.connected.isEmpty
-                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish), icon: "wand.and.stars") {
+                SettingRow("speech.polish", detail: unused(.dictation) ?? (d.polish?.supported == false && CloudStore.connected.isEmpty
+                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish)), icon: "wand.and.stars") {
                     JobModelControl(job: .polish) { library = true }
                 }
-                SettingRow("speech.translate", detail: CloudText.line(.translate), icon: CloudJob.translate.symbol) {
+                .disabled(unused(.dictation) != nil)
+                SettingRow("speech.translate", detail: unused(.dictation, .screenText) ?? CloudText.line(.translate), icon: CloudJob.translate.symbol) {
                     JobModelControl(job: .translate) { library = true }
                 }
-                SettingRow("speech.vision", detail: CloudText.line(.vision), icon: CloudJob.vision.symbol) {
+                .disabled(unused(.dictation, .screenText) != nil)
+                SettingRow("speech.vision", detail: unused(.screenText) ?? CloudText.line(.vision), icon: CloudJob.vision.symbol) {
                     JobModelControl(job: .vision) { library = true }
                 }
+                .disabled(unused(.screenText) != nil)
             }
         }
     }
+
+    /// "Feature is off" for a job that only capabilities turned off have (General's switches; translating is
+    /// dictation's and Screen Text's, the one recognition model dictation's, the voice note's and the recording's): its
+    /// row stays where it is, dimmed, with that line in place of its model's — and nothing is recommended for it.
+    func unused(_ caps: Capability...) -> String? {
+        caps.allSatisfy(features.off.contains) ? T("settings.feature.off") : nil
+    }
+    /// The capability a speech job is for: the recording's two, the voice note's.
+    func capability(_ p: ASRPurpose) -> Capability { p == .note ? .cards : .recording }
 
     // the one recommendation
 
@@ -533,11 +619,13 @@ struct SpeechPane: View {
             } else { out.append(Pick(job: j, uses: [use])) }
         }
         if m.auto && m.state != nil {
-            for p in ASRPurpose.allCases {
+            for p in ASRPurpose.allCases where unused(capability(p)) == nil {
                 guard let r = m.recommended(p), !r.installed, r.local, r.runsHere ?? true else { continue }
                 add(.init(id: r.id, kind: .note, name: r.title, sizeMB: r.sizeMB), p.title)
             }
         }
+        // dictation turned off: its pair isn't asked for
+        guard unused(.dictation) == nil else { return out }
         let dictation = S("speech.purpose.dictation")
         if let a = d.recommendedASR, !a.installed, a.files != true {
             add(.init(id: a.id, kind: .dictation, name: a.name ?? d.asrName(a.id), sizeMB: a.sizeMB), dictation)
@@ -607,6 +695,11 @@ struct SpeechPane: View {
                                 Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+                            // what the dictation model would be like: the published figure, said as not this Mac's
+                            if let r = DictationSpeedText.reference(ps.filter { $0.uses.contains(S("speech.purpose.dictation")) }.map(\.job.id)) {
+                                Text(r).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if failed {
                                 Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
                                     .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -651,7 +744,7 @@ struct SpeechPane: View {
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", detail: m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p)),
+        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)) ?? (m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p))),
                    icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
@@ -662,6 +755,7 @@ struct SpeechPane: View {
                 }
             }
         }
+        .disabled(unused(capability(p)) != nil)
     }
 
     /// Every job on one model (Chinese and English on Apple silicon, by default): one row, its pop-up the models every
@@ -669,7 +763,8 @@ struct SpeechPane: View {
     func recognitionRow(_ one: ASRModel) -> some View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
-        return SettingRow("speech.recognition", detail: autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)),
+        let off = unused(.dictation, .cards, .recording)
+        return SettingRow("speech.recognition", detail: off ?? DictationSpeedText.withMeasured(autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)), model: d.asr?.selected),
                           icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
                        auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
@@ -677,6 +772,7 @@ struct SpeechPane: View {
                 if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
+        .disabled(off != nil)
     }
 
     /// What a purpose runs on: the model's name once it is on this Mac; "· downloading" while it comes down, "none
@@ -695,7 +791,7 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", detail: d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) },
+        SettingRow("speech.dictation", detail: unused(.dictation) ?? DictationSpeedText.withMeasured(d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) }, model: d.asr?.selected),
                    icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 // a model whose own files are in can be chosen (its setup then fetches only the VAD)
@@ -709,6 +805,7 @@ struct SpeechPane: View {
                 BrandSpinnerView(size: 12)
             }
         }
+        .disabled(unused(.dictation) != nil)
     }
 
     func dictationValue(_ a: DictationASRState) -> String {
@@ -807,11 +904,13 @@ struct SpeechPane: View {
             }
             if s.hardware.gpu.kind == "apple" {
                 // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
+                // typed apart: inline, the compiler gives up type-checking the call
+                let memory: [(Int, String)] = stride(from: 10, through: 50, by: 5).map { (pct: Int) -> (Int, String) in
+                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
+                }
                 SettingRow("speech.memory") {
                     ChoicePopup(label: S("speech.limits.memory"),
-                                choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
-                                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
-                                },
+                                choices: memory,
                                 selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
                                                    set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }

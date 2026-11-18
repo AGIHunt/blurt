@@ -64,7 +64,9 @@ evdev, measured: without the `input` group the user can't open any keyboard; wit
 read < 1 ms after the kernel's timestamp. Devices come and go (USB, Bluetooth, our own uinput rig), so the reader has
 to watch for new ones. It only reads — the key still reaches the app in front. **A lone right-Alt tap opens Firefox's
 menu bar** (checked), the same problem Windows had; the fix is the same idea: when the key is used alone, send a
-harmless key through the RemoteDesktop session while Alt is still down so the app sees "Alt + something".
+harmless key through the RemoteDesktop session while Alt is still down so the app sees "Alt + something". With
+"either Alt" as the dictation key the left Alt gets the same (`EITHER_ALT`; it was the right one only, on Windows too:
+docs/design/windows-parity/dictation.md).
 
 **Decision.**
 - Default: a portal shortcut, tap or hold, through the same `DictationTrigger` as the Mac/Windows. Suggested key:
@@ -172,10 +174,81 @@ On Linux (and, to decide separately, Windows) the island shows only while someth
 recording, a voice note, cards just captured. Then it goes away. What it shows at rest (project, jobs, sessions that
 need you, the review count) lives in the tray menu and the main window.
 
+**Windows too, and a switch (2026-11-11).** A Windows user kept clicking the cards' count ("□ 2") and the top edge's
+6 px hot strip while reaching for a maximized browser's tabs. Windows and Linux now share one setting, General →
+"Show the island at the top when idle" (`app.island_idle`, the Mac's key; island.rs `shows_at_rest`), off by default
+there (the Mac keeps it on: its top is the menu bar). Off: the cards' count and Peep thinking over an organize stay
+out of the ears; the top strip takes no clicks and the pointer at the top edge brings nothing out (overlay.rs
+`set_peek`, island.ts `quietAtRest`). Live things still show: recording, dictation, a voice note, a card flying in,
+a done moment, a toast. Hanging cards: the tray's Show cards, the cards key and the main window's notice. On: as
+before.
+
 **Decision.** `GDK_BACKEND=x11` for the whole app on GNOME Wayland, set before GTK starts (lib.rs, next to the
 DMA-BUF workaround). The island appears only for activity now, but that pill and the cards still need a fixed
 position and keep-above, which only XWayland gives. Portals, AT-SPI and PipeWire don't care which backend the window uses. Risk to check: XWayland
 windows are blurry at fractional scaling (125 %/150 %) unless mutter's `xwayland-native-scaling` is on.
+
+**Drag and drop (2026-11-15, docs/design/drag-drop.md §5).** The island page is shared, so Ctrl-click / Shift-click
+selection, the pick numbers (1, 2, 3), the one copy 0.6 s after the last pick and the minute the selection outlives
+the cards going up work here as on Windows. A card still can't be dragged out of the island on Linux (XWayland, no
+global pointer; no drag-out at all), and the island takes no drops from other apps (Windows has a drop catcher over the
+notch, `island_drop_win.rs`; on Linux the island page is built for it — the drawer's Hang row, file and text cards — but
+nothing catches the drag: XWayland gives no global pointer to tell a drag is coming, XDND to an input region is next). The main
+window (WebKitGTK, same React code as Windows) now takes any files, not just pictures: pictures become frames, other
+files are referenced by path (copied when they sit in /tmp or /var/tmp), text after the details; on an item's row
+they are added to it (with Undo), on the "Drop for a new item" band, the list or a sidebar project they open New
+Item. A page gets no file paths, so Linux reads them from the drop's `text/uri-list` (`file://` URIs, matched to the
+files by name) and asks Rust which are folders (`drop_paths`); a picture without a path is read as bytes, any other
+file without one is left out and the toast says so. Folders dropped on the sidebar now go the same way, so they may
+open as projects on Linux too (before, only Windows could). None of this has run on Ubuntu yet: whether WebKitGTK
+exposes `text/uri-list` for a drop from Files is the first thing to check.
+
+**Drag and drop, second round (2026-11-15 night).** What was missing on Linux, what is built now, and what isn't possible:
+
+- *Drags into the island.* Windows has a catcher window that appears when another app's drag nears the notch; it
+  needs the global pointer and button state, which an XWayland client doesn't get (the pointer reaches an X client only
+  over its own windows; Wayland gives no app a global pointer at all, and no portal announces "a drag is under way").
+  What is possible: the island's own window is an XDND target wherever its input region is — mutter honours the X
+  input shape for an XWayland window, and bridges Wayland sources (Files, GNOME apps, Firefox, Chrome on Wayland) to
+  XDND targets. So the island page takes the drop itself (island.ts "Linux"; Tauri's drop handler is off for the
+  island, so WebKitGTK delivers HTML5 drag events): over the notch, the hot strip at the top and hanging cards that are
+  down, it plays the catcher's part (enter → drawer after 250 ms → row lit → drop), widens its input region to the
+  island + drawer + 24 px while the drag is on, reads paths from `text/uri-list`, pictures without a path as bytes, text
+  otherwise, and Rust hangs or files them (`ext.drop` → `drop_in::hang`). Limits: with "show the island at rest" off
+  there is no hot strip, so there is nothing to drop on until something shows; no system thumbnails (a file card's face
+  is the plain sheet, the page writes the name on its band); gif / webp / heic stay file cards (no decoder here).
+- *Cards dragged out of the island.* Built: when the page hands a card over (`card.dragout`, the same point as on
+  Windows), Rust clears the island's input region at once (else the island, under the pointer everywhere during an
+  inside drag, is the target the drag finds) and starts a GTK drag from the island's window with the button still
+  held (`blurt_capture::linux_dnd`, `gtk_drag_begin_with_coordinates`, no event: the press's implicit X grab is ours,
+  so GTK's grab is granted). It offers `text/uri-list` (the files) and text (`'path' note`, one line); the target
+  picks. GTK doesn't say which app the target is, so there are no per-app payloads as on the Mac and Windows: after a
+  drop in another app the notes go on the clipboard (`record.drag_copy_note`), the cards are taken (one Undo); dropped
+  on Blurt's main window (its GDK toplevel), that window files them (`cards_dragging`). Not possible: a "copy drag"
+  with Alt (GTK DnD gives the source no modifier state at the drop).
+- *Main window, Ctrl+V:* arboard over XWayland's clipboard (`file_list` = text/uri-list, image, text, HTML). arboard
+  can't ask whether RTF is there, so "text + HTML + a picture" together counts as a document's copy (its text).
+- *Passive note after a single drop:* the same code as Windows (a note window with accept-focus off until the
+  pointer comes onto it).
+
+Checked here: `linux_dnd.rs` and the arboard calls compile for `x86_64-unknown-linux-gnu` in a scratch crate (fake
+pkg-config, `--ignore-rust-version`); the desktop crate itself still can't be checked for Linux on this Mac —
+libspa-sys (PipeWire, through blurt-remote) runs bindgen on PipeWire's headers. The island's Linux drop ran in the
+browser mock (`island.html?platform=gnome`) twice in a row with synthetic DragEvents. To check on Ubuntu 26.04: drag a
+PDF and a picture from Files onto the notch / hot strip (drawer opens, Hang / a project row work, a second drag right
+after works); Firefox / Chrome image drag (bytes, no path); a card dragged into Files (copied), into Ptyxis / GNOME
+Terminal (paths typed), into Chrome's upload box, into Blurt's main window (filed, not duplicated); Esc during a card
+drag (it comes back); Ctrl+V in the main window with files copied in Files, a screenshot, a LibreOffice copy; the
+passive note doesn't take the keyboard.
+
+## Capabilities (v1.0.23, 2026-11-16)
+
+The five switches of docs/design/capabilities.md hold on Linux as on Windows (`src-tauri/src/capabilities.rs`, the same
+config.json keys). Linux-specific: the GlobalShortcuts portal binds once per launch, so a capability turned off later
+keeps its GNOME binding until the next launch, and the app refuses the action meanwhile; one off at launch isn't bound
+at all. The tray now also shows Copy text / Translate text from screen and the dictation rows on Linux (they were gated
+on Windows only). Home's Screen Text row says when GNOME hasn't allowed screenshots yet, with Allow…. Not run on the
+26.04 VM yet: the switches, the tray and the Phone page were checked in the browser with the mock only.
 
 ## Onboarding on Linux
 
@@ -233,6 +306,11 @@ Tested on the VM (GNOME 50.1 Wayland, a virtual mic playing a recorded take, uin
 | Rust tests | 244 pass (`cargo test --lib`; `tests/session.rs` doesn't compile on main either) |
 | .deb on a fresh 26.04 desktop VM | `apt install ./Blurt_1.0.12_amd64.deb` 22 s (pulled ffmpeg, libportaudio2; the rest is on the desktop); Welcome; uv + Python fetched on first run; SenseVoice for the first minutes; first take copied + dialog over the island; allowed; next take typed into gedit |
 
+**Which Linux (2026-11-09): Ubuntu 24.04 or later, Debian 13 or later** (Fedora 40 or later for the rpm). The packages are
+built on ubuntu-24.04 (desktop.yml), because Blurt Remote's PipeWire crates don't build against 22.04's PipeWire 0.3.48. So
+they need glibc 2.39: the deb depends on `libc6 (>= 2.39)` and the rpm on `libc.so.6(GLIBC_2.39)(64bit)`. The AppImage needs
+the same, unchecked. Details in [remote-linux.md](remote-linux.md) §Which Linux.
+
 Packages: `Blurt_1.0.12_amd64.deb` 8.1 MB, `Blurt_1.0.12_amd64.AppImage` 94 MB (built on the VM with the Tauri CLI;
 the AppImage wasn't run — it has no system desktop file, so the portal dialogs won't name Blurt).
 
@@ -242,11 +320,63 @@ AT-SPI), `dictation/secret_linux.rs` (Secret Service), `capture/portal_linux.rs`
 
 ## Not done or not measured yet
 
-- Snaps and Copy Text through the Screenshot portal (the still for the picker; `screen_text` is still Windows-only).
+- **Snaps through the Screenshot portal (2026-11-11, run on a 26.04.1 GNOME 50.1 VM):**
+  - **The picture is taken before the picker opens.** Every area picker on Linux first takes a picture of the whole
+    desktop through the portal. That is `snap::monitor_still` → `grab_linux::picker_still`, the hook Windows and the
+    Mac already use for the loupe. It has to come first because GNOME can't leave Blurt's overlays out of a
+    screenshot, so a picture taken after the pick would contain the frozen picker or the snap's stage.
+  - **The area is cut from that picture.** A snap's area (`grab_linux::cut`) goes to `tk_recorder.py shot --image`,
+    which numbers it and writes its line. Copy Text's area (`grab_linux::grab`) comes from the same picture, so it
+    needs no second portal call.
+  - **When GNOME refuses,** a snap falls back to x11grab, and Copy Text says "needs screenshot access" without asking
+    a second time.
+  - **The picker and the stage now cover GNOME's work area** (`overlay::cover`). GNOME keeps undecorated X11 windows
+    below the top bar and right of the dock, so the stage, asked for at (0, 0), landed at (67, 32). Its frozen
+    picture was drawn that far from where it was taken.
+  - **On the VM:**
+    - The first Shift+Alt+A brought up "Allow Blurt to Take Screenshots?".
+    - A snap of gedit, a native Wayland window, has gedit's pixels. With x11grab it came out black.
+    - The stage shows the picture exactly where it was taken, at 100% and at 125% (fractional scaling with
+      `xwayland-native-scaling`).
+    - At 125% the saved picture is the dragged area in physical pixels (552×83). The region stored is in X pixels,
+      1.6× those.
+    - The picture before the picker took 0.8–1.1 s in the debug build: portal plus PNG decoding.
+  - **Left as is:**
+    - If GNOME's question goes unanswered for 2 minutes, Blurt stops waiting and opens the picker without a picture.
+      GNOME's dialog stays up until answered.
+    - In the debug build the stage's page took about 2 s to draw over the frozen picker.
+- **Copy Text from Screen (2026-11-11, built and run on a 26.04.1 GNOME 50.1 VM):** `screen_text/grab_linux.rs` takes
+  the whole desktop through the Screenshot portal (non-interactive, parented to the island), removes the portal's PNG
+  (none left in ~/Pictures/Screenshots), and cuts the picked area out (scaled by the picture's size over the monitors'
+  box: `grab::crop`, unit-tested with a 2x picture and a monitor left of 0); RapidOCR (`screen_ocr.py`) reads it, with
+  no fall-back reader (the first use installs it: ~40 s); the rest of the flow (rules, paste, translation card) is
+  shared with Windows. On the VM the first ⌥C brought GNOME's "Allow Blurt to Take Screenshots?" up over the picked
+  area; after Allow the three gedit lines came back and were on the clipboard (not typed: Remote Desktop access wasn't
+  given yet); a later ⌥C took ~3 s from letting go to the text, the reader cold. If GNOME refuses to ask (the design
+  VM did while Blurt wasn't focused), the island says "Copy Text needs screenshot access · Allow…", which opens
+  Settings → Copy Text from Screen → Screenshot access (`screen_text_allow`, the main window as the parent). Seen on
+  the run: the reader (PP-OCRv4, 2×) on gedit's monospace dropped the final 。, read CSV as csv and "Claude Code" as
+  "Claude e Code" — the reader's, as on Windows, not the grab's. Fixed the same day: the reader is PP-OCRv6 tiny at 1×
+  (windows-models.md §Copy Text's reader), which reads those lines right but for "claude". Checked again on 11-11 with the new reader:
+  - **100%:** gedit's three lines came back right except "claude".
+  - **125% fractional scaling:** the area was cut right and all three lines were exact.
+  - **Translation card:** tested against a stand-in OpenAI-compatible service on the VM, since no real key goes on a
+    test machine. "Translation copied" showed, the card appeared under the island, and Esc with the pointer on the
+    card closed it.
+- **Settings on the VM:** the Dictation pane shows GNOME's key ("Menu", the portal's label read again when Settings
+  opens or the shortcuts change — app_status was read once at launch, before the user answered GNOME's dialog), and
+  the portal's "Press <Shift><Alt>c" reads "Shift+Alt+C" everywhere (`hotkeys::pretty_trigger`). GNOME's own list of
+  Blurt's shortcuts named Copy Text, Translate, Reformat and Cards "Pen" (`describe`'s fall-back): named now.
+- **Settings (2026-11-11):** the Dictation pane and the Models page's dictation / polish / translate rows now show on
+  Linux — they went by `platform === 'win'`; now by `app_status.features` (`dictation`: `cfg(dict)`, `screen_text`:
+  Windows). With the portal key (`dictation_keys: "portal"`) the key row shows GNOME's shortcut (`dictation_key`, the
+  label the portal bound) and where to change it, and the Esc / Shift / Ctrl rows are hidden (the portal gives no other
+  keys). Key storage reads "the system keyring" (strings' `.linux` variants). Checked in the browser mock only; the
+  Linux-only branch of `app_status` (`evdev_available`) was not compiled here.
 - Evdev mode end to end in the app (measured standalone; the app was tested in portal mode), the right-Alt opt-in step
   in Settings, Esc during a take in portal mode.
 - Onboarding: the Remote Desktop / Screenshot steps in the Welcome (today: "Allow typing" on the first take).
-- Shortcut labels show the portal's raw text ("Press <Shift><Alt>a"); the Welcome shows "Not set" in portal mode;
+- The Welcome shows "Not set" in portal mode (shortcut labels themselves read "Shift+Alt+A" since 2026-11-11);
   GNOME's "Add Keyboard Shortcuts" dialog opens behind the Welcome (parent it to the main window).
 - The island's toast button by mouse under XWayland: hovering the toast can open the island before the click lands
   (seen with the test rig's pointer; "Allow typing" is also asked by itself, so dictation doesn't depend on it).

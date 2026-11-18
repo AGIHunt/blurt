@@ -9,7 +9,8 @@ import ScreenCaptureKit
 
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var picker: PickerController?
-    var rec: Recorder?
+    /// The recording under way. Its own shortcuts (Pause, Draw, Finish) are global keys only while it is.
+    var rec: Recorder? { didSet { if (rec == nil) != (oldValue == nil) { applyCapabilityHotkeys() } } }
     var countdownWin: NSWindow?
     var statusItem: NSStatusItem?
     var busy = false                 // picking / counting down / recording
@@ -57,8 +58,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
         Hotkeys.shared.resident = resident      // record / menu only in the menu-bar app
-        Hotkeys.shared.disabled = AppEnvironment.mainWindow == nil ? [.openMain] : []
-        Hotkeys.shared.apply()
+        applyCapabilityHotkeys()
+        if resident { CapabilityWatch.shared.start() }
         if resident {
             startResident()
             return
@@ -82,6 +83,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Which shortcuts are held now: none of a capability that is off (BlurtCore Capabilities.swift), and the
+    /// recording's own only while one runs. A recording started from the chat (not the menu-bar app) was asked for
+    /// by name: the switches are the menu-bar app's.
+    func applyCapabilityHotkeys() {
+        let hk = Hotkeys.shared
+        let off = resident ? Capability.off : []
+        hk.disabled = Capability.disabledHotkeys(off: off, recording: rec != nil).union(AppEnvironment.mainWindow == nil ? [.openMain] : [])
+        hk.standby = Capability.standbyHotkeys(recording: rec != nil)
+        hk.apply()
+    }
+
     func hotkey(_ k: HK) {
         switch k {
         case .pause: command("toggle")
@@ -95,7 +107,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .overviewEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
@@ -254,6 +266,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
+        RemoteServer.shared.install()   // the iPhone remote: listens once a phone is paired
         // the setup assistant greets a first run itself: no second hello next to it
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
@@ -275,7 +288,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // v1.0.5: the default shortcuts lost their ⇧ (⌥A, ⌥C, ⌥V…). Someone who used the ⌥⇧ ones is told once; a new
         // user never knew them
         if recordConfig()["hotkeys_v2"] == nil {
-            if recordConfig()["welcomed"] == nil || assisted {
+            // (it names ⌥A, ⌥C and ⌥V: only said while Cards and Screen Text are on, else just marked as told)
+            if recordConfig()["welcomed"] == nil || assisted || !Capability.cards.isOn || !Capability.screenText.isOn {
                 setRecordConfig("hotkeys_v2", true)
             } else {
                 var t = Island.Toast(text: T("app.toast.hotkeys_v2", hk(.snap), hk(.text), hk(.voice)),
@@ -304,15 +318,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// registered, and a shortcut that doesn't work named on the same line. Marked welcomed once it was seen.
     func postWelcome() {
         Task { @MainActor in
-            await DictationModels.shared.load()         // has dictation a speech model?
+            // only the keys of what is switched on (BlurtCore Capabilities, WelcomeLine): with Dictation off nothing of
+            // it is read or said
+            let off = Capability.off
+            if !off.contains(.dictation) { await DictationModels.shared.load() }         // has dictation a speech model?
             let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
                 : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
             // counted as Settings → Shortcuts counts them: the dictation key another copy listens to is one of them
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
-                + (HotkeySettings.shared.dictationTaken ? [Dictation.keyShort.trimmingCharacters(in: .whitespaces)] : [])
+                + (HotkeySettings.shared.dictationTaken && !off.contains(.dictation) ? [Dictation.keyShort.trimmingCharacters(in: .whitespaces)] : [])
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
-                                           record: working(.toggleRecord), conflicts: conflicts)
+                                           record: working(.toggleRecord), conflicts: conflicts, off: off)
             let text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
             // one line, one button: with a more urgent button (turn dictation on, download its model) the shortcut
             // conflicts aren't squeezed in — those keys aren't advertised, and their own line comes at a later launch
@@ -390,6 +407,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard Config.shared.checkReadable() else { return }
             if Hotkeys.shared.reloadIfChanged() { emit(["event": "hotkeys_reloaded", "via": via, "taken": Hotkeys.shared.conflicts.map(\.rawValue)]) }
             Dictation.shared.reloadIfChanged()
+            CapabilityWatch.shared.look()          // a switch flipped in the file by hand, or by an agent
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in look("activate") }
         let t = Timer(timeInterval: 2, repeats: true) { _ in look("timer") }
@@ -499,7 +517,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         App.terminating = true
         guard resident else { return }
         stopOrganisers()
-        Housekeeping.atQuit()
         MainActor.assumeIsolated { ModelDownloads.shared.atQuit() }   // the setup ends now; the next launch carries on
         Hotkeys.shared.unpublish()
         let f = blurtHome.appendingPathComponent("app.json")
@@ -849,7 +866,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             title = badge.count > 0
                 ? NSAttributedString(string: Loc.number(badge.count), attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                    .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
+                    .foregroundColor: NSColor.labelColor])
                 : NSAttributedString(string: "")
             tip = badge.tooltip
             ax = badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name")
@@ -901,7 +918,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// out and the beak shut, 18 pt, a monochrome template image like every other menu-bar icon: macOS tints it for light,
     /// dark and highlighted bars, with pixels drawn for @1x and @2x. MenuGlyph moves it.
     static func makeMenuIcon() -> NSImage {
-        let img = MenuGlyph.shared.frame(.idle, 0) ?? BlurtIcon.blurt.image(size: 18)
+        let img = MenuGlyph.shared.frame(.idle, 0) ?? MenuGlyph.fallback(18)
         img.isTemplate = true
         img.accessibilityDescription = T("app.name")
         return img
@@ -982,9 +999,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // what waits for you (Open Blurt with the inbox's counts as its badge and subtitle, the cards, Recently Dragged
         // Out, Dictation History, running jobs), where new captures go, then the app (Settings, updates; Quit apart).
         // After-recording, the agent order, countdown, system audio, open at login, shortcuts and help live in Settings.
-        let record = add(T("app.menu.record"), #selector(mStart))
+        // …and only of the capabilities that are on (BlurtCore Capabilities.swift): one that is off has no row here
+        let recording = Capability.recording.isOn
+        let record = recording ? add(T("app.menu.record"), #selector(mStart)) : NSMenuItem()
         record.showHotkey(.toggleRecord)
-        if lastRegionFromConfig() != nil {
+        if recording, lastRegionFromConfig() != nil {
             // ⌥ turns the row into "Record the Last Area". AppKit only folds an alternate into the row above when both
             // have the same key equivalent, so it shares the record key and differs in the modifiers (⌥ alone).
             let last = add(T("app.menu.record_last"), #selector(mStartLast))
@@ -994,20 +1013,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             last.isAlternate = true
         }
         addSnapMenuItems(menu, recording: false)
-        menu.addItem(.separator())
+        if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
 
         // what waits for you, and what is running — each opens the main window there (nothing opens by itself). One
         // row opens Blurt: with new items or items to verify it opens the inbox, the new count as its badge and the
         // verify count under it ("6 to verify") — never a second row that opens the same window.
         if AppEnvironment.mainWindow != nil {
             let badge = MenuBadge.shared
-            let waiting = badge.new > 0 || badge.verify > 0
+            let waiting = recording && (badge.new > 0 || badge.verify > 0)
             let open = add(T("app.menu.open"), waiting ? #selector(mOpenInbox) : #selector(mOpenMain))
             open.showHotkey(.openMain)
             open.image = App.menuSymbol("macwindow")
             if #available(macOS 14.4, *) {
-                if badge.new > 0 { open.badge = NSMenuItemBadge(string: T("main.inbox.new", badge.new)) }     // the window's own words ("9 new"), not the system's
-                if badge.verify > 0 { open.subtitle = T("main.inbox.verify", badge.verify) }
+                if waiting, badge.new > 0 { open.badge = NSMenuItemBadge(string: T("main.inbox.new", badge.new)) }     // the window's own words ("9 new"), not the system's
+                if waiting, badge.verify > 0 { open.subtitle = T("main.inbox.verify", badge.verify) }
             } else if waiting {
                 // (macOS 13–14.3: no subtitle) the counts in the title, as the window's subtitle says them
                 let counts = (badge.new > 0 ? [T("main.inbox.new", badge.new)] : []) + (badge.verify > 0 ? [T("main.inbox.verify", badge.verify)] : [])
@@ -1015,10 +1034,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         addWaitingMenuItems(menu)
-        if AppEnvironment.mainWindow != nil {
+        if AppEnvironment.mainWindow != nil, recording {
             for j in JobStore.shared.active.prefix(5) {
                 let i = add("\(JobLook.title(j)) · \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
-                i.image = App.menuSymbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j))
+                i.image = App.menuSymbol(JobLook.symbol(j))
             }
         }
         menu.addItem(.separator())
@@ -1026,9 +1045,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the current project (K2): where new captures go — the user's pick (recently used first), or none. The row
         // is the project itself (its folder, or Unassigned's tray) under a small "Project" heading; Unassigned leads
         // its submenu, then the projects, then the two ways to more.
+        // (the projects are where items are filed: with Recording off there are none, and no section here)
         let store = ProjectStore.shared
         let current = store.current
         let pItem: NSMenuItem
+        if recording {
         if #available(macOS 14.0, *) {
             menu.addItem(NSMenuItem.sectionHeader(title: T("app.menu.project_header")))
             pItem = NSMenuItem(title: current?.name ?? T("project.inbox"), action: nil, keyEquivalent: "")
@@ -1055,6 +1076,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pItem.submenu = pMenu
         menu.addItem(pItem)
         menu.addItem(.separator())
+        }
 
         // without the Settings window (a stripped-down build) the shortcuts window is the only place left for ⌘,
         if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
@@ -1081,6 +1103,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "mVideoOnly": "film", "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
             "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
+            "mCopyLastDictation": "doc.on.doc", "mPhone": "iphone",
             "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",

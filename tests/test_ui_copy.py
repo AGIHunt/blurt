@@ -1,7 +1,7 @@
 """The main window's copy follows the shared glossary (area D2): the macOS Main and Common tables and the review page's
 catalogs (web/packages/review, web/packages/i18n common) say one thing.
 
-  • the hand-off is one verb: "Hand Off to Agent" / "交给 Agent", its state "Handed off" / "已交给 Agent" — never
+  • the hand-off is one verb: "Copy instruction for agent" / "复制指令给 Agent", its state "Handed off" / "已交给 Agent" — never
     "Start in Blurt", "With …", 交出 / 已交出;
   • zh writes "Agent" capitalised, and never 捕获, 拷贝, 刘海岛 or 语音输入;
   • no arrow glyphs as menu paths in the copy ("Settings → Agents"): say "in Settings, under Agents";
@@ -74,15 +74,16 @@ class Glossary(unittest.TestCase):
             for k, v in t.items():
                 self.assertNotIn("Start in Blurt", v, f"{name} {k}")
                 self.assertFalse(v.startswith("With "), f"{name} {k}: {v!r}")
-        self.assertEqual(en["Main.strings"]["main.menu.start_session"], "Hand Off to Agent")
-        self.assertEqual(zh["Main.strings"]["main.menu.start_session"], "交给 Agent")
-        self.assertEqual(en["review"]["handoff.dispatch"], "Hand Off to Agent")
-        self.assertEqual(zh["review"]["handoff.dispatch"], "交给 Agent")
+        # the Mac's menu item and the review page's button say the same thing, where both are still there (the
+        # in-app sessions they used to open are gone; the wording is the apps' to choose, once)
+        for main, review in ((en["Main.strings"], en["review"]), (zh["Main.strings"], zh["review"])):
+            if "main.menu.start_session" in main and "handoff.dispatch" in review:
+                self.assertEqual(main["main.menu.start_session"], review["handoff.dispatch"])
         for c in (zh["Common.strings"], zh["common"]):
             self.assertEqual(c["state.handed_off"], "已交给 Agent")
-            self.assertEqual(c["action.hand_off"], "交给 Agent…")
+            self.assertEqual(c["action.hand_off"], "复制指令给 Agent")   # it copies; you paste it into any agent
         for c in (en["Common.strings"], en["common"]):
-            self.assertEqual(c["action.hand_off"], "Hand off to agent…")  # menus title-case it: "Hand Off to Agent…"
+            self.assertEqual(c["action.hand_off"], "Copy instruction for agent")  # menus title-case it
         self.assertEqual(en["review"]["keys.hand_off"], en["common"]["action.hand_off"])
         self.assertEqual(en["Common.strings"]["state.handed_off.session"], "Handed off to %@")
         self.assertEqual(en["common"]["state.handed_off.session"], "Handed off to {agent}")
@@ -103,28 +104,35 @@ class Glossary(unittest.TestCase):
             island = plural_forms(RES / f"{lang}.lproj" / "Capture.stringsdict", "capture.island.to_review")
             self.assertTrue(all("review" not in f for f in island), island)
 
-    def test_used_cards_are_the_cards_panels_history_only(self):
+    def test_used_cards_are_the_cards_pages_history_only(self):
         # v1.0.7: "Recently Dragged Out" (its own panel, menu-bar row, island menu row, main-window row and notice) is
-        # gone; cards used in other apps are the Cards panel's History segment, reached by ⌥H — and the two segments
-        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的")
+        # gone; cards used in other apps are the Cards page's History section, reached by ⌥H — and the two sections
+        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的"). v1.0.23: ⌥H's floating
+        # Cards panel is gone too (the page is the one place for every card); how long History keeps a card follows
+        # Settings → Cards → History, never a "7 days" written into the copy
         for lang in ("en", "zh-Hans"):
             main = strings(RES / f"{lang}.lproj" / "Main.strings")
             cap = strings(RES / f"{lang}.lproj" / "Capture.strings")
+            cards = strings(RES / f"{lang}.lproj" / "Cards.strings")
             for k in ("main.captures.taken", "main.captures.taken.show", "main.captures.taken.tip", "main.sidebar.taken"):
                 self.assertNotIn(k, main, (lang, k))
             for k in ("capture.taken.title", "capture.taken.menu", "capture.taken.show_all", "capture.taken.hint",
-                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again"):
+                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again",
+                      "capture.cards.seg_current", "capture.cards.seg_history", "capture.cards.overview_heading",
+                      "capture.cards.panel_keys", "capture.cards.history_hint"):
                 self.assertNotIn(k, cap, (lang, k))
-            for t in (main, cap):
+            for t in (main, cap, cards):
                 for k, v in t.items():
-                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”"):
+                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”",
+                                 "Cards panel", "卡片面板", "7 days", "7 天"):
                         self.assertNotIn(gone, v, (lang, k))
-        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_current"], "Current %@")
-        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_history"], "History %@")
-        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_current"], "当前 %@")
-        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_history"], "历史 %@")
+            self.assertIn("%d", cards["cards.history.kept"], lang)
+        self.assertEqual(strings(RES / "en.lproj" / "Cards.strings")["cards.section.current"], "Current")
+        self.assertEqual(strings(RES / "en.lproj" / "Cards.strings")["cards.section.history"], "History")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Cards.strings")["cards.section.current"], "当前")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Cards.strings")["cards.section.history"], "历史")
         src = "\n".join(p.read_text() for p in (RES.parent).rglob("*.swift"))
-        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu"):
+        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu", "CardsOverview", "overviewEsc"):
             self.assertNotIn(gone, src, gone)
 
 
@@ -173,3 +181,87 @@ class ShellCopy(unittest.TestCase):
         self.assertNotIn("Button(nextTitle) { advance() }\n                Button(a.title)", footer)
         self.assertNotIn(".pickerStyle(.menu)", src, "the dictation key is a ChoicePopup, as the language row")
         self.assertNotIn("GlyphTile.symbol(", src, "one glyph family on every step: the line glyphs")
+
+
+class OneWordPerConcept(unittest.TestCase):
+    """docs/design/system.md §9a: one zh and one en word per concept on every surface — the Mac's tables, the Tauri
+    app's catalogs, the review page and the phone apps. These hold the variants that lost (founder, 2026-11-16)."""
+
+    DESKTOP = ROOT / "web" / "apps" / "desktop" / "src" / "locales"
+
+    def every(self, lang):
+        """{table: {key: value}} on every surface in one language"""
+        out = {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
+        for p in (RES / f"{lang}.lproj").glob("*.stringsdict"):
+            out[p.name] = {k: json.dumps(v, ensure_ascii=False) for k, v in plistlib.loads(p.read_bytes()).items()}
+        for name in (f"{lang}.json", f"settings.{lang}.json"):
+            out["desktop/" + name] = json.loads((self.DESKTOP / name).read_text(encoding="utf-8"))
+        out.update({n: t for n, t in tables(lang).items() if n in ("review", "common")})
+        return out
+
+    def words(self, lang):
+        for name, t in self.every(lang).items():
+            for k, v in t.items():
+                if ".kw." not in k and not k.startswith(("settings.kw", "st.settings.kw")):  # search words keep synonyms
+                    yield name, k, v
+
+    def test_recording_is_luping_and_its_action_one_name(self):
+        zh, en = self.every("zh-Hans"), self.every("en")
+        for t, k in (("Main.strings", "app.menu.record"), ("Main.strings", "main.action.record"),
+                     ("Capture.strings", "capture.action.record"), ("Capture.strings", "capture.picker.start"),
+                     ("desktop/zh-Hans.json", "main.action.record")):
+            self.assertEqual(zh[t][k], "开始录屏", k)
+        self.assertEqual(en["Main.strings"]["main.action.record"], en["Main.strings"]["app.menu.record"])
+        # 录制 is for sound only (a voiceprint, a Lab take, system audio) and macOS's own 屏幕录制 permission
+        sound = {"settings.general.system_audio", "st.settings.general.system_audio", "capture.note.record",
+                 "capture.note.ph_voice_busy", "settings.storage.detail.lab", "st.settings.storage.detail.lab",
+                 "st.win.keys.app.game_bar_record"}
+        for name, k, v in self.words("zh-Hans"):
+            if "录制" in v.replace("屏幕录制", "") and k not in sound and not k.startswith(("dictation.", "st.dictation.")):
+                self.fail(f"{name} {k}: 录屏, not 录制 ({v})")
+
+    def test_an_items_kind_is_zhonglei(self):
+        # 类型 is the review page's separate issue *type* field and dictation's "kind of app"; an item's kind is 种类
+        cap = self.every("zh-Hans")["Capture.strings"]
+        for k in ("capture.note.kind_chip", "capture.note.kind_tip", "capture.note.kind_ax", "capture.note.kind_none_tip"):
+            self.assertIn("种类", cap[k], k)
+        self.assertEqual(self.every("en")["Capture.strings"]["capture.note.kind_chip"], "Kind")
+        for name, k, v in self.words("zh-Hans"):
+            if "类型" in v and name != "review" and "by_app" not in k:
+                self.fail(f"{name} {k}: 种类, not 类型 ({v})")
+        for lang in ("zh-Hans", "en"):
+            self.assertEqual(self.every(lang)["Common.strings"]["kind.task"], {"zh-Hans": "待办", "en": "Task"}[lang])
+        self.assertNotIn("笔记、任务", (ROOT / "README.zh-CN.md").read_text(encoding="utf-8"))
+
+    def test_the_variants_that_lost(self):
+        zh_lost = {"语音便签": "语音备注", "截屏": "截图", "截取": "截图", "屏幕翻译": "截图翻译", "复制屏幕文字": "截图取字",
+                   "翻译屏幕文字": "截图翻译", "听写快捷键": "听写键", "挂在": "留在", "交出": "复制指令给 Agent", "首页": "主页",
+                   "中继": "中转", "收件箱": "待处理", "未分类": "未归类"}
+        for name, k, v in self.words("zh-Hans"):
+            for lost, word in zh_lost.items():
+                self.assertNotIn(lost, v, f"{name} {k}: {word}, not {lost}")
+        for name, k, v in self.words("en"):
+            self.assertNotRegex(v, r"(?i:voice memo)|Away from Home|under Copy Text from Screen|\bhangs\b",
+                                f"{name} {k}")
+        # the phone apps' deck says 语音备注 too
+        ios = (ROOT / "apps/ios/BlurtRemote/Resources/Localizable.xcstrings").read_text(encoding="utf-8")
+        android = (ROOT / "apps/android/app/src/main/java/dev/blurt/remote/app/keys/DeckText.kt").read_text(encoding="utf-8")
+        for src in (ios, android):
+            self.assertNotIn("语音便签", src)
+
+    def test_screen_text_is_the_capabilitys_name_wherever_the_feature_is_meant(self):
+        for lang in ("zh-Hans", "en"):
+            t = self.every(lang)
+            name = t["Home.strings"]["feature.screen_text"]
+            # the capability (its pane, its page) is 取字与翻译 / Text & Translation; the model job serves ⌥C only, so it
+            # carries ⌥C's own name (2026-11-16)
+            self.assertEqual(t["Settings.strings"]["settings.kit.screen_text"], name, lang)
+            self.assertEqual(t["Models.strings"]["models.job.vision"], t["Capture.strings"]["capture.menu.text"], lang)
+            self.assertIn(name, t["Capture.strings"]["capture.action.translate.detail"], lang)
+
+    def test_an_agents_field_has_a_label_not_its_key(self):
+        # an idea's next step written as `next` read "Next" in the Chinese detail (persona walkthrough)
+        for lang in ("zh-Hans", "en"):
+            review = self.every(lang)["review"]
+            for k in ("field.next", "field.next_step", "field.next_steps"):
+                self.assertEqual(review[k], review["field.next_steps"], (lang, k))

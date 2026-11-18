@@ -1,0 +1,8 @@
+{
+  "name": "blurt-remote-relay",
+  "private": true,
+  "description": "Passes sealed bytes between a paired iPhone and Mac",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test.mjs" },
+  "dependencies": { "ws": "8.18.0" }
+}

@@ -1,0 +1,78 @@
+name: remote
+
+# Blurt Remote's wire, checked by every implementation against the same golden vectors (tests/remote-vectors/vectors.json,
+# written by RemoteVectorsTests.swift; docs/design/remote-protocol.md):
+#   macos-15:      BlurtRemoteKit (the Mac host and the iPhone app) — swift test --filter BlurtRemoteKitTests; and the Rust
+#                  host's protocol, crypto, server and pure backend parts (crates/blurt-remote; no OS backend on the Mac)
+#   ubuntu-latest: the Android app's core (apps/android/core, Kotlin/JVM, JDK 17) — gradle test
+# The Rust host's Windows and Linux backends are built and tested in desktop.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/remote-vectors/**"
+      - "crates/blurt-remote/**"
+      - "skills/blurt/recorder/macos/Package.swift"
+      - "skills/blurt/recorder/macos/Sources/BlurtRemoteKit/**"
+      - "skills/blurt/recorder/macos/Tests/BlurtRemoteKitTests/**"
+      - "apps/android/core/**"
+      - "apps/android/gradle/wrapper/**"
+      - ".github/workflows/remote.yml"
+  pull_request:
+    paths:
+      - "tests/remote-vectors/**"
+      - "crates/blurt-remote/**"
+      - "skills/blurt/recorder/macos/Package.swift"
+      - "skills/blurt/recorder/macos/Sources/BlurtRemoteKit/**"
+      - "skills/blurt/recorder/macos/Tests/BlurtRemoteKitTests/**"
+      - "apps/android/core/**"
+      - "apps/android/gradle/wrapper/**"
+      - ".github/workflows/remote.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remote-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-rust:
+    name: Swift + Rust (macOS)
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: BlurtRemoteKit (Swift)
+        working-directory: skills/blurt/recorder/macos
+        run: swift test --filter BlurtRemoteKitTests
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/blurt-remote
+      - name: crates/blurt-remote (Rust)
+        working-directory: crates/blurt-remote
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+  kotlin:
+    name: Android core (Kotlin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # core is a build of its own (the app includes it); the app's wrapper pins Gradle
+      - name: apps/android/core
+        working-directory: apps/android
+        run: ./gradlew -p core test --console=plain

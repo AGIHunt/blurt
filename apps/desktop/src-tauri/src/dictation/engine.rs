@@ -43,6 +43,7 @@ use tauri::{AppHandle, Manager};
 
 use super::apps;
 use super::context::Context;
+use super::cue_eraser::{self, CueEraser};
 use super::flow::{
     self, nothing_heard, toast_keys as keys, AsrFailure, Clash, ClashMoment, CopiedGuard, DeliveredLine, KeptText,
     Runaway, RunawayNotice, SendRule, SendVerdict, TakeDeadline, Tip,
@@ -95,7 +96,37 @@ enum Msg {
     ModelFailed,
     /// Alt+Shift+L: reformat the last take (hotkeys.rs → lib.rs `dispatch`)
     Reformat,
+    /// Blurt on the phone (remote.rs): its talk key and its dictation commands
+    Remote(Remote),
 }
+
+// ---- Blurt on the phone (remote.rs; the Mac's Dictation.remoteKey / remoteToggleStyle / remoteSend) ----
+
+/// What the phone asks of dictation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Remote {
+    /// the talk key: this computer's dictation key, through the same trigger. `phone_mic`: a take it starts listens through
+    /// the phone (mic.rs `Mic::phone`)
+    Key { down: bool, phone_mic: bool },
+    Cancel,
+    Structured,
+    Translate,
+    /// a double tap's send: a take listening is dropped quietly, then Return
+    Send,
+    /// the phone left: a take listening through it stops (what was said is typed)
+    Gone,
+}
+
+pub fn remote_key(down: bool, phone_mic: bool) {
+    remote_command(Remote::Key { down, phone_mic });
+}
+
+pub fn remote_command(r: Remote) {
+    if let Some(tx) = INBOX.get() {
+        let _ = tx.send(Msg::Remote(r));
+    }
+}
+// ---- end Blurt on the phone
 
 /// The speech model came in: the newest take that failed for want of it gets Retry (the Mac's `modelArrived`).
 pub fn model_arrived() {
@@ -258,6 +289,8 @@ struct Take {
     runaway: Runaway,
     context: Option<Context>,
     duration: f64,
+    /// takes the start's peep back out of what the mic records (cue_eraser.rs): armed when `sound("start")` played
+    cue: Option<CueEraser>,
 }
 
 impl Take {
@@ -422,6 +455,10 @@ struct Engine {
     last_take_in: HashMap<String, Instant>,
     /// Alt+Shift+L came while this take was on its way: it runs once that take is in (and goes with it otherwise)
     reformat_after: Option<String>,
+    /// Blurt on the phone: the press in hand came from it, its take listens through it, the mic open is the phone's
+    remote_press: bool,
+    remote_mic: bool,
+    mic_is_phone: bool,
 }
 
 fn cfg() -> Value {
@@ -541,34 +578,68 @@ fn reformat_key() -> Option<String> {
         .map(|c| c.label())
 }
 
-fn sound(app: &AppHandle, name: &str, on: bool) {
+/// What the start cue's eraser did, once a take (the Mac's `note_voice_cue`).
+fn log_cue(c: &CueEraser) {
+    match c.result() {
+        Some(r) => eprintln!(
+            "dictation: start cue found at {} ms, match {:.2}, {:.0} → {:.0} dB, muted {}",
+            r.offset * 1000 / SR,
+            r.matched,
+            r.before_db,
+            r.after_db,
+            r.muted
+        ),
+        None => eprintln!("dictation: start cue not in the take"),
+    }
+}
+
+/// A bundled clip (`sounds/<name>.wav`): the installed resource, else the source tree's (a dev build).
+fn sound_path(app: &AppHandle, name: &str) -> Option<PathBuf> {
+    let p = app.path().resource_dir().ok()?.join("sounds").join(format!("{name}.wav"));
+    if p.is_file() {
+        return Some(p);
+    }
+    Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sounds").join(format!("{name}.wav")))
+}
+
+/// The start's peep as the mic's samples are (16 kHz mono), for CueEraser; None when the clip can't be read.
+fn start_clip(app: &AppHandle) -> Option<&'static [f32]> {
+    static CLIP: OnceLock<Option<Vec<f32>>> = OnceLock::new();
+    CLIP.get_or_init(|| {
+        let bytes = std::fs::read(sound_path(app, "start")?).ok()?;
+        cue_eraser::clip_from_wav(&bytes, mic::SR)
+    })
+    .as_deref()
+}
+
+/// Plays a cue when its switch is on and nothing is being recorded. True when it was started (the start's: the take
+/// then takes it back out of what the mic records).
+fn sound(app: &AppHandle, name: &str, on: bool) -> bool {
     if !on || app.state::<AppState>().capture.recording() {
-        return;
+        return false;
     }
-    let Ok(res) = app.path().resource_dir() else {
-        return;
+    let Some(p) = sound_path(app, name) else {
+        return false;
     };
-    let mut p = res.join("sounds").join(format!("{name}.wav"));
-    if !p.is_file() {
-        p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("sounds")
-            .join(format!("{name}.wav"));
-    }
-    #[cfg(target_os = "linux")]
-    {
-        // PipeWire's player (pipewire-bin, on every Ubuntu desktop), else PulseAudio's; never waited for
-        let p2 = p.clone();
-        std::thread::spawn(move || {
-            for player in ["pw-play", "paplay"] {
-                if let Ok(mut c) = std::process::Command::new(player).arg(&p2).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
-                    let _ = c.wait();
-                    return;
-                }
+    play(p)
+}
+
+/// Linux: PipeWire's player (pipewire-bin, on every Ubuntu desktop), else PulseAudio's; never waited for.
+#[cfg(target_os = "linux")]
+fn play(p: PathBuf) -> bool {
+    std::thread::spawn(move || {
+        for player in ["pw-play", "paplay"] {
+            if let Ok(mut c) = std::process::Command::new(player).arg(&p).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+                let _ = c.wait();
+                return;
             }
-        });
-    }
-    #[cfg(windows)]
-    {
+        }
+    });
+    true
+}
+
+#[cfg(windows)]
+fn play(p: PathBuf) -> bool {
     use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
     let w: Vec<u16> = p
         .to_string_lossy()
@@ -576,12 +647,12 @@ fn sound(app: &AppHandle, name: &str, on: bool) {
         .chain(std::iter::once(0))
         .collect();
     unsafe {
-        let _ = PlaySoundW(
+        PlaySoundW(
             windows::core::PCWSTR(w.as_ptr()),
             None,
             SND_ASYNC | SND_FILENAME | SND_NODEFAULT,
-        );
-    }
+        )
+        .as_bool()
     }
 }
 
@@ -603,6 +674,25 @@ fn say(app: &AppHandle, msg: &str, vars: Value, key: &str, ms: u64, action: Opti
     *LAST_TOAST.lock().unwrap() = Some((Instant::now(), ms));
     island::send(app, op);
 }
+
+/// `say` with a second line under the first (`more`, a catalog key: the island puts it after a line break).
+fn say_more(app: &AppHandle, msg: &str, more: Option<&str>, key: &str, ms: u64, action: Option<(String, &str)>) {
+    let mut op = json!({"op": "toast", "kind": "dictation", "msg": msg, "key": key, "ms": ms});
+    if let Some(m) = keys::mark(msg) {
+        op["mark"] = json!(m);
+    }
+    if let Some((a, label)) = action {
+        op["action"] = json!({"a": a, "label": label});
+    }
+    if let Some(m) = more {
+        op["more"] = json!(m);
+    }
+    *LAST_TOAST.lock().unwrap() = Some((Instant::now(), ms));
+    island::send(app, op);
+}
+
+/// The first failed take of this run said where Retry is afterwards.
+static RETRY_LATER_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// "Sent" (a double tap's Return went in): the ears' moment — keyboard on the left, ✓ and the word on the right for
 /// 1.6 s (the Mac's island.dictationSent → earMoment(lead: .keyboard)), not a line.
@@ -693,6 +783,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
     let prefs = Prefs::from_json(&cfg());
     let t = make_trigger(&prefs);
     keys_win::CANCEL_MODS.store(cancel_mods(&prefs), SeqCst);
+    keys_win::EITHER_ALT.store(prefs.key == Key::EitherAlt, SeqCst);
     let mut e = Engine {
         app: app.clone(),
         tx: tx.clone(),
@@ -726,6 +817,9 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
         no_model_take: None,
         last_take_in: HashMap::new(),
         reformat_after: None,
+        remote_press: false,
+        remote_mic: false,
+        mic_is_phone: false,
     };
     {
         let runner = app.state::<AppState>().runner();
@@ -875,6 +969,7 @@ impl Engine {
                 Ok(Msg::ModelFailed) => say(&self.app, "dictation.toast.model_failed", json!({}), keys::MODEL, 8000,
                     Some(("dictation.download".to_string(), "dictation.toast.retry")), false),
                 Ok(Msg::Reformat) => self.reformat_last(),
+                Ok(Msg::Remote(r)) => self.remote(r),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
@@ -909,6 +1004,7 @@ impl Engine {
         let key_changed = new.key != self.prefs.key;
         self.prefs = new;
         keys_win::CANCEL_MODS.store(cancel_mods(&self.prefs), SeqCst);
+        keys_win::EITHER_ALT.store(self.prefs.key == Key::EitherAlt, SeqCst);
         if rebuild {
             if self.take.is_some() && key_changed {
                 self.trigger.reset(false, false);
@@ -1110,8 +1206,13 @@ impl Engine {
         let target = cfg().get("translate_target").and_then(Value::as_str).unwrap_or("auto").to_string();
         let into = target.split('|').next().unwrap_or("auto");
         if into == "auto" {
-            // polish.py's Auto: Chinese ↔ English (the other one of the pair)
-            say(&self.app, "dictation.translate.toast.on.auto", json!({"a": language_name("zh"), "b": language_name("en"), "press": press}), keys::STYLE, 3000, None, false);
+            // Auto: the user's own language ↔ the other one (screen_text::direction::Pair, the Mac's TranslateAutoPair);
+            // without a pair, into the user's language
+            let p = crate::screen_text::direction::pair();
+            match &p.other {
+                Some(o) => say(&self.app, "dictation.translate.toast.on.auto", json!({"a": language_name(&p.home), "b": language_name(o), "press": press}), keys::STYLE, 3000, None, false),
+                None => say(&self.app, "dictation.translate.toast.on.into", json!({"lang": language_name(&p.home), "press": press}), keys::STYLE, 3000, None, false),
+            }
         } else {
             say(&self.app, "dictation.translate.toast.on.into", json!({"lang": language_name(into), "press": press}), keys::STYLE, 3000, None, false);
         }
@@ -1127,7 +1228,10 @@ impl Engine {
             return true;
         }
         let (ftx, frx) = channel::<Vec<f32>>();
-        match Mic::open_named(ftx, self.prefs.mic.as_deref()) {
+        // Blurt on the phone: a press from it that wants its microphone hears through the phone (none connected: this mic)
+        let phone = if self.remote_press && self.remote_mic { Mic::phone(ftx.clone()) } else { None };
+        self.mic_is_phone = phone.is_some();
+        match phone.map(Ok).unwrap_or_else(|| Mic::open_named(ftx, self.prefs.mic.as_deref())) {
             Ok(m) => {
                 self.mic_name = m.device.clone();
                 self.mic = Some(m);
@@ -1150,7 +1254,56 @@ impl Engine {
 
     fn close_mic(&mut self) {
         self.mic = None; // dropping the stream ends it (and the forwarder with it)
+        self.mic_is_phone = false;
         self.pre.clear();
+    }
+
+    /// Blurt on the phone (remote.rs): the talk key goes through the trigger as this computer's own key would; the commands
+    /// are the island's and the trigger's own moves.
+    fn remote(&mut self, r: Remote) {
+        match r {
+            Remote::Key { down, phone_mic } => {
+                if !self.prefs.enabled {
+                    return;
+                }
+                if down {
+                    self.remote_press = true;
+                    self.remote_mic = phone_mic;
+                }
+                let codes = self.trigger.key.codes();
+                let code = codes[codes.len() - 1];
+                self.key_down = down;
+                let out = self.trigger.handle(Event::Key { code, down, time: keys_win::now() });
+                self.apply(out);
+                self.missed();
+                if !down {
+                    self.remote_press = false;
+                }
+            }
+            Remote::Cancel => {
+                if self.take.is_some() || !self.flight.is_empty() || line().lock().unwrap().busy() {
+                    self.trigger.reset(false, false);
+                    self.cancel(false);
+                }
+            }
+            Remote::Structured if self.take.is_some() => self.apply(vec![Output::Style]),
+            Remote::Translate if self.take.is_some() => self.apply(vec![Output::Translate]),
+            Remote::Structured | Remote::Translate => {}
+            Remote::Send => {
+                if self.take.is_some() {
+                    self.trigger.reset(false, false);
+                    self.cancel(true);
+                }
+                self.send();
+            }
+            Remote::Gone => {
+                self.remote_press = false;
+                if self.mic_is_phone && self.take.is_some() {
+                    self.trigger.reset(false, false);
+                    self.stop();
+                }
+            }
+        }
     }
 
     fn arm(&mut self) {
@@ -1252,6 +1405,7 @@ impl Engine {
             runaway: Runaway::new(),
             context: None,
             duration: 0.0,
+            cue: start_clip(&self.app).map(|c| CueEraser::new(c.to_vec(), SR as f64)),
         });
         // Esc is Blurt's while the take listens
         keys_win::ESC_DICTATION.store(true, SeqCst);
@@ -1281,7 +1435,6 @@ impl Engine {
     fn frame(&mut self, f: Vec<f32>) {
         let lvl = mic::level(&f);
         let push_to_talk = self.trigger.push_to_talk();
-        let rehear = self.prefs.rehear;
         let Some(t) = &mut self.take else {
             // armed: keep the last half second
             self.pre.extend(f);
@@ -1291,15 +1444,67 @@ impl Engine {
             return;
         };
         t.peak = t.peak.max(lvl);
-        if let Some(s) = &t.stream {
-            let _ = s.send(StreamMsg::Pcm(f.clone()));
-        }
-        if t.frames == 0 {
-            sound(&self.app, "start", self.prefs.start_sound);
+        // on speakers the mic records the peep: what it hears next waits for it to be found and taken out
+        if t.frames == 0 && sound(&self.app, "start", self.prefs.start_sound) {
+            if let Some(c) = &mut t.cue {
+                c.arm();
+            }
         }
         t.frames += 1;
-        t.audio.extend_from_slice(&f);
-        let cuts = t.seg.feed(&f);
+        // while the peep may still be coming in, the samples are held (≈ 0.85 s, once a take) and come out without
+        // it; the island's level below is the raw frame's, at once
+        let f = match &mut t.cue {
+            Some(c) => {
+                let held = c.is_holding();
+                let f = c.process(f);
+                if held && !c.is_holding() {
+                    log_cue(c);
+                }
+                f
+            }
+            None => f,
+        };
+        self.heard_samples(&f);
+        let Some(t) = &mut self.take else { return };
+        // the runaway take: talking now is the last speech under half a second ago
+        let elapsed = t.started.elapsed().as_secs_f64();
+        let notice = t.runaway.feed(elapsed, t.seg.quiet_seconds() < 0.5, !push_to_talk);
+        match notice {
+            Some(RunawayNotice::StillListening) => say(
+                &self.app,
+                "dictation.toast.still_listening",
+                json!({"key": key_label(self.trigger.key), "cancel": self.prefs.cancel_key.label()}),
+                keys::LISTENING,
+                4000,
+                None,
+                true,
+            ),
+            Some(RunawayNotice::EndsSoon) => {
+                say(&self.app, "dictation.toast.ends_soon", json!({}), keys::LISTENING, 3000, None, true);
+                self.show();
+            }
+            None => {}
+        }
+        if self.level_at.elapsed() > Duration::from_millis(60) {
+            self.level_at = Instant::now();
+            island::send(&self.app, json!({"op": "level", "rms": lvl * 0.12}));
+            crate::remote::level(lvl); // Blurt on the phone: its talk bar's meter
+        }
+    }
+
+    /// The take's samples (the mic's, the start's peep taken out): to the stream, the recording, the segmenter and its
+    /// pieces. Nothing while the cue eraser holds them.
+    fn heard_samples(&mut self, f: &[f32]) {
+        let rehear = self.prefs.rehear;
+        let Some(t) = &mut self.take else { return };
+        if f.is_empty() {
+            return;
+        }
+        if let Some(s) = &t.stream {
+            let _ = s.send(StreamMsg::Pcm(f.to_vec()));
+        }
+        t.audio.extend_from_slice(f);
+        let cuts = t.seg.feed(f);
         t.spoke |= t.seg.piece_has_speech();
         let mut jobs: Vec<(Slot, usize, usize, usize)> = vec![];
         // a cloud model hears the whole take at key-up: no pieces (the segmenter still tells speech from quiet)
@@ -1321,32 +1526,24 @@ impl Engine {
                 }
             }
         }
-        // the runaway take: talking now is the last speech under half a second ago
-        let elapsed = t.started.elapsed().as_secs_f64();
-        let notice = t.runaway.feed(elapsed, t.seg.quiet_seconds() < 0.5, !push_to_talk);
         let n = t.n;
         for (slot, s, e, first) in jobs {
             self.queue_job(n, slot, s, e, first);
         }
-        match notice {
-            Some(RunawayNotice::StillListening) => say(
-                &self.app,
-                "dictation.toast.still_listening",
-                json!({"key": key_label(self.trigger.key), "cancel": self.prefs.cancel_key.label()}),
-                keys::LISTENING,
-                4000,
-                None,
-                true,
-            ),
-            Some(RunawayNotice::EndsSoon) => {
-                say(&self.app, "dictation.toast.ends_soon", json!({}), keys::LISTENING, 3000, None, true);
-                self.show();
-            }
-            None => {}
-        }
-        if self.level_at.elapsed() > Duration::from_millis(60) {
-            self.level_at = Instant::now();
-            island::send(&self.app, json!({"op": "level", "rms": lvl * 0.12}));
+    }
+
+    /// The take ends while the cue eraser still holds samples (a take shorter than ≈ 0.85 s): they go out now, the
+    /// peep taken out if it is in them. `pieces`: to the segmenter and the speech worker too (a stop), else only into
+    /// the recording (a cancel keeps it for the history).
+    fn flush_cue(&mut self, pieces: bool) {
+        let Some(t) = &mut self.take else { return };
+        let Some(c) = t.cue.as_mut().filter(|c| c.is_holding()) else { return };
+        let rest = c.flush();
+        log_cue(c);
+        if pieces {
+            self.heard_samples(&rest);
+        } else {
+            t.audio.extend_from_slice(&rest);
         }
     }
 
@@ -1381,6 +1578,7 @@ impl Engine {
     }
 
     fn stop(&mut self) {
+        self.flush_cue(true);
         let Some(mut t) = self.take.take() else {
             return;
         };
@@ -1449,14 +1647,25 @@ impl Engine {
         }
     }
 
-    /// Esc, a double tap's second tap: ends a take that is listening (nothing kept) — or, when none listens, stops
-    /// the takes still on their way (never typed, a queued Return dropped), with Undo. `quiet`: the double tap's own
-    /// cancel (it sends right after), or a shortcut that joined push-to-talk in its first second.
+    /// Esc, a double tap's second tap: ends a take that is listening — or, when none listens, stops the takes still
+    /// on their way (never typed, a queued Return dropped), with Undo. A listening take that heard speech keeps its
+    /// recording in the history, with Retry, while the history keeps recordings (the Mac's
+    /// `DictationHistory.keepsCancelled`, #54); otherwise nothing is kept. `quiet`: the double tap's own cancel (it
+    /// sends right after), or a shortcut that joined push-to-talk in its first second.
     fn cancel(&mut self, quiet: bool) {
-        if let Some(t) = self.take.take() {
+        self.flush_cue(false);
+        if let Some(mut t) = self.take.take() {
             let esc = self.last_key == vk::ESCAPE;
             let quiet = quiet
                 || DictationTrigger::joined_early(esc, true, t.started.elapsed().as_secs_f64(), t.pieces.len());
+            // keep_audio is already off under "Don't keep" (retention 0: prefs.rs)
+            if !quiet && t.spoke && self.prefs.keep_audio {
+                t.duration = t.audio.len() as f64 / SR as f64;
+                let _ = std::fs::create_dir_all(audio_dir());
+                if mic::write_wav(&t.wav(), &t.audio).is_ok() {
+                    failed_history(&t, "cancelled");
+                }
+            }
             drop_take(t.n);
             self.close_mic();
             self.listening_ended();
@@ -1633,6 +1842,7 @@ impl Engine {
         }
         if listening {
             let live = t.live();
+            crate::remote::live(&live); // Blurt on the phone: the words so far
             island::send(&self.app, json!({"op": "live", "text": live}));
         }
         self.finish_ready();
@@ -1758,7 +1968,10 @@ impl Engine {
         } else {
             ("dictation.settings".to_string(), "dictation.toast.asr_cloud_key.action")
         };
-        say(&self.app, l.key(), json!({}), &keys::failed(&t.id), 8000, Some(action), false);
+        // the first failure of a run says where Retry is once this line has gone (the tray's Retry last dictation,
+        // Home's row): a second line under it
+        let later = l.retry_helps() && super::history::CAN_RETRY && !RETRY_LATER_SAID.swap(true, SeqCst);
+        say_more(&self.app, l.key(), later.then_some("dictation.toast.retry_later"), &keys::failed(&t.id), 8000, Some(action));
     }
 
     /// Hear a take's whole recording again (Retry, Undo) and type it like any take — into the app in front then.
@@ -1804,6 +2017,7 @@ impl Engine {
             runaway: Runaway::new(),
             context: None,
             duration: m.duration,
+            cue: None,
         };
         let _ = self.asr.send(Job { n, slot: Slot::Whole, wav, prior: String::new(), before: AsrCtx::default(), temp: false });
         self.flight.push_back(t);
@@ -2620,6 +2834,7 @@ fn deliver(app: &AppHandle, d: Done) -> Delivered {
     // takes it: the line that keeps the text says so instead)
     if !no_field {
         island::send(app, json!({"op": "live", "text": text, "typed": true}));
+        crate::remote::typed(&text); // Blurt on the phone: what the take typed
     }
     let result: &str = match decision {
         Decision::Paste { confirmed: c } => {
@@ -3369,14 +3584,19 @@ fn polish_full(
     }
     if translate && !skipped() {
         if let Some(c) = &tcloud {
-            let target = cfg()
-                .get("translate_target")
-                .and_then(Value::as_str)
-                .unwrap_or("auto")
-                .to_string();
+            // the setting ("auto", "en" …; an older build's "zh-Hans" or "X|Y": its first part), and the direction from what
+            // was said (screen_text::direction, the same rules as Alt+Shift+T's and the Mac's): Auto = your language → the
+            // other one, any other language → yours, not sure → the pair's request; a fixed X said in X is typed as said
+            let setting = cfg().get("translate_target").and_then(Value::as_str).unwrap_or("auto").split('|').next().unwrap_or("auto").to_string();
+            let setting = if setting == "zh-Hans" { "zh".to_string() } else { setting };
+            use crate::screen_text::direction;
+            let target = match direction::plan(&setting, &direction::language(&text), &direction::pair()) {
+                direction::Plan::Send(t) => Some(t),
+                direction::Plan::Already(_) => None,
+            };
             // `check`: polish.py's guard looks at the answer and says why it fell back (the Mac's request)
             let req = json!({"cmd": "translate", "text": text, "target": target, "cloud": c, "spoken": true, "vocab": vocab(), "check": true});
-            match server::call(server::POLISH, &req, Duration::from_secs(20), give_up) {
+            match target.and_then(|_| server::call(server::POLISH, &req, Duration::from_secs(20), give_up)) {
                 Some(v) if v["ok"] == json!(true) && v["fell_back"] != json!(true) => {
                     if let Some(t) = v["text"].as_str().filter(|t| !t.trim().is_empty()) {
                         if t != text {
@@ -3389,7 +3609,7 @@ fn polish_full(
                     let why = v["cloud_error"].as_str().or(v["reason"].as_str()).or(v["code"].as_str()).unwrap_or("error");
                     out.translate_error = Some(why.trim_start_matches("cloud_").to_string());
                 }
-                None if skipped() => {}
+                None if skipped() || req["target"].is_null() => {}
                 None => out.translate_error = Some("timeout".into()),
             }
         } else {

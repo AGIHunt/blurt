@@ -47,7 +47,6 @@
 "app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
-
 "app.record.failed" = "Recording not saved";
 "app.record.failed.disk_full" = "The disk is full, so the recording wasn’t saved. Free up some space, then record again.";
 "app.record.failed.permission" = "Blurt doesn’t have permission to record the screen. Turn on Screen Recording for Blurt in System Settings.";
@@ -65,7 +64,7 @@
 "app.record.reason.display_gone" = "The recorded display was disconnected";
 "app.record.reason.interrupted" = "Interrupted by sleep or the lock screen";
 "app.record.reason.writer" = "Couldn’t write the video file";
-"app.record.recovered" = "Recording saved · resumed after a write error";
+"app.record.recovered" = "Recording saved · Recovered from a write error";
 "app.record.recovered_lost" = "Recording saved · about %@ s missing after a write error";
 "app.record.recovered_parts" = "Recording saved in parts after a write error";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
@@ -84,13 +83,12 @@
 "app.url.no_item" = "Can’t find that item. It may have been deleted or moved.";
 "app.url.no_session" = "Can’t find that recording or snap. It may have been deleted or moved.";
 
-"main.action.record" = "Record";
+"main.action.record" = "Start Recording";
 "main.action.snap" = "Snap";
 
 "main.banner.agent" = "an agent";
 "main.banner.ended" = "Session ended without the agent reporting back";
 "main.banner.external" = "Copied for your agent. Mark it done here when it’s finished.";
-"main.banner.open_session" = "Open Session";
 "main.banner.organizing" = "Organizing · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
@@ -123,12 +121,7 @@
 "main.skipped.found.many" = "%d files couldn’t be added to the list. Details are in the log.";
 "main.scan.failed" = "Couldn’t refresh the list.";
 
-"main.dispatch.needs_project" = "Move these items to a project first";
-"main.dispatch.one_project" = "Choose items from one project";
 "main.dispatch.discarded" = "Discarded items can’t be handed off.";
-"main.dispatch.reopen_first" = "This item is %@. Reopen it to hand it off again.";
-"main.dispatch.with_session" = "%@ is already in a session.";
-"main.dispatch.open_session" = "Open Session";
 
 "main.empty.all_filed" = "Everything is filed";
 "main.empty.all_filed.detail" = "Items without a project show up here.";
@@ -148,7 +141,7 @@
 "main.empty.no_scripts" = "The blurt skill’s scripts are missing";
 "main.empty.no_scripts.detail" = "Blurt’s scripts are missing. Reinstall Blurt from blurt.work, then reopen this window.";
 "main.empty.nothing_in_progress" = "Nothing in progress";
-"main.empty.nothing_in_progress.detail" = "Items you hand off to an agent stay here until you verify them.";
+"main.empty.nothing_in_progress.detail" = "Items you’ve kept or handed off appear here until they’re done.";
 "main.empty.outdated" = "Updating your items…";
 "main.empty.outdated.detail" = "This takes a moment after an update. Nothing is lost.";
 "main.empty.project" = "Nothing in this project yet";
@@ -223,10 +216,9 @@
 "main.job.error.network" = "The network connection was lost.";
 "main.job.error.quota" = "The agent ran out of quota.";
 "main.job.error.quota.named" = "%@ ran out of quota.";
-"main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
-"main.job.hint.no_agent" = "No coding agent is ready. Install or sign in to one in Settings, under Agents.";
+"main.job.hint.no_agent" = "Organizing in the background needs an agent CLI. Install or sign in to one in Settings > Agents. Or say “Process my Blurt recordings” in an agent with the Blurt skill.";
 "main.job.capture" = "A capture";
-"main.job.no_agent" = "No coding agent is ready: %@.";
+"main.job.no_agent" = "No agent can organize in the background: %@. Or say “Process my Blurt recordings” in an agent with the Blurt skill.";
 "main.job.no_agent.sep" = "; ";
 "main.job.organized_by" = "Organized by %1$@ (%2$@)";
 "main.job.error.agent_exit" = "The agent stopped before it finished.";
@@ -238,8 +230,6 @@
 "main.job.error.unknown" = "It stopped before it finished. Retry; if it keeps failing, the details are in the log.";
 "main.job.error.unknown.named" = "%@ stopped before it finished. Retry; if it keeps failing, the details are in the log.";
 "main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
-"main.job.no_terminal" = "The terminal isn’t available";
-"main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
 "main.job.show_log" = "Show Log";
 "main.job.skipped" = "Skipped";
 "main.job.step_state.done" = "done";
@@ -307,8 +297,7 @@
 "main.menu.quick_look" = "Quick Look";
 "main.menu.rename" = "Rename";
 "main.menu.review_batch" = "Review the Whole Capture";
-"main.menu.start_session" = "Hand Off to Agent";
-"main.menu.open_session" = "Open Session";
+"main.menu.start_session" = "Copy Instruction for Agent";
 
 "main.misc.by_codex" = "Fixed by Codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
@@ -330,6 +319,7 @@
 "main.palette.only_kind" = "Show Only %@";
 "main.palette.placeholder" = "Type a command, a project or an item…";
 "main.palette.project" = "Project · %@";
+"main.palette.settings_pane" = "Settings · %@";
 
 "main.place.all" = "All Items";
 "main.place.inbox" = "Inbox";
@@ -337,8 +327,6 @@
 "main.place.project" = "Project";
 "main.place.session" = "Capture";
 
-"main.project.agent" = "Agent";
-"main.project.agent.default" = "Default";
 "main.project.description" = "Description";
 "main.project.description.note" = "Used to file unassigned snaps and recordings into this project.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
@@ -359,13 +347,8 @@
 "main.project.settings" = "Project Settings…";
 "main.project.use" = "Make Current Project";
 "main.project.use.tip" = "New recordings, snaps and voice notes go to the current project";
-"main.project.worktree" = "Separate branch for each hand-off";
-"main.project.worktree.no_git" = "Not a git repository, so agents edit the folder directly.";
-"main.project.worktree.note" = "Changes go to a git worktree; you merge, open a PR or discard.";
-"main.project.agent.default_named" = "Default (%@)";
 "main.project.description.keys" = "Return adds a line; ⌘Return saves.";
 "main.project.key.taken" = "IN is used by Unassigned.";
-"main.project.section.handoff" = "Hand-off";
 "main.project.section.project" = "Project";
 "main.project.settings.subtitle" = "Project settings";
 
@@ -390,20 +373,21 @@
 "main.missing.other" = "That folder is “%1$@”, not “%2$@”";
 "main.sidebar.not_opened" = "not opened as a project";
 "main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
-"main.sidebar.progress.ax" = "In progress: items handed off to an agent, and running jobs";
+"main.sidebar.progress.ax" = "In progress: items to do, items with an agent, and running jobs";
 "main.sidebar.projects" = "Projects";
+"main.sidebar.items" = "Items";
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
 "main.state.ax" = "State: %@. Click to change it.";
 "main.toast.download_failed" = "Couldn’t save it to Downloads.";
 "main.toast.downloaded" = "Saved to Downloads: %@";
-"main.toast.session_gone" = "This session has ended and its record was cleared.";
+"main.toast.session_gone" = "Can’t find that job. Its record was cleared.";
 "main.speech.recommended" = "Recommended speech model · %@";
 "main.speech.recommended.action" = "Review";
 
-"main.toolbar.handoff" = "Hand Off";
+"main.toolbar.handoff" = "Copy for Agent";
 "main.toolbar.handoff.own" = "For Your Own Agent";
-"main.toolbar.handoff.tip" = "Hand the selected items to an agent in Blurt, or copy an instruction for your own";
+"main.toolbar.handoff.tip" = "Copy an instruction for your own agent to work on these items";
 "main.toolbar.move" = "Move";
 "main.toolbar.move.tip" = "Move the selected items to a project";
 "main.toolbar.record.tip" = "Record your screen and voice %@";
@@ -471,7 +455,6 @@
 "menu.window" = "Window";
 
 "menu.zoom" = "Zoom";
-
 
 "notify.done.generic" = "Organized";
 "notify.done.recording" = "Recording organized";
@@ -558,6 +541,7 @@
 "app.models.show" = "Show";
 "app.models.menu_unpacking" = "Unpacking speech models…";
 "app.models.stop" = "Stop";
+"app.models.started" = "Downloading speech models in the background (%@)";
 "app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";
 "app.toast.welcome_no_model.action" = "Download";
@@ -571,15 +555,9 @@
 "app.url.ask_snap" = "A link wants to take a snap";
 "app.url.snap" = "Snap";
 
-/* Sessions that end without the work (v0.9 dogfood) */
-"main.dispatch.move_first" = "Move to Project…";
+/* Organizing that ended without its work (v0.9 dogfood) */
 "main.job.dismiss" = "Dismiss";
 "main.job.hint.stopped_at_quit" = "Blurt stopped organizing when it quit. Try again to organize it.";
-"main.banner.failed_start" = "%1$@ couldn’t start: %2$@";
-"main.banner.failed" = "%1$@ stopped with an error: %2$@";
-"main.banner.review" = "Review Changes…";
-"main.banner.restart" = "Restart Session";
-"main.banner.ended_review" = "Session ended, ready to review";
 "app.quit.organizing.title" = "Blurt is still organizing “%@”.";
 "app.quit.organizing.title_at" = "Blurt is still organizing what you captured %@.";
 "app.quit.organizing.title_n" = "Blurt is still organizing %ld batches.";
@@ -587,12 +565,6 @@
 "app.quit.organizing.quit" = "Quit Anyway";
 
 // dogfood v0.9 review
-"main.banner.no_response" = "No response for a minute";
-"main.banner.more" = "More";
-// the agent's desktop app (Claude)
-"main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
-"main.banner.desktop.no_mcp" = "In the %@ desktop app · progress isn’t shown here; mark it done when finished";
-"main.banner.go_desktop" = "Go to %@";
 "app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
 "app.toast.welcome_not_set_up.action" = "Set Up…";
 "app.config.show" = "Show File";
@@ -653,7 +625,6 @@
 "main.filter.kind_plural.task" = "tasks";
 "main.toolbar.filter" = "Filter";
 "main.toolbar.filter.tip" = "Show only some kinds or states";
-"main.toolbar.title" = "Title";
 "main.sidebar.project_tip" = "%@ · its ids start with %@";
 "main.palette.section.selected" = "Selected Item";
 "main.palette.section.selected_n" = "Selected Items";
@@ -672,16 +643,12 @@
 "main.palette.hint.copy_full" = "Copy the whole item as text";
 
 /* several items selected (SelectionView) */
-"main.selection.hand_off" = "Hand Off…";
-"main.selection.hand_off_to" = "Hand Off to %@…";
+"main.selection.hand_off" = "Copy for Agent";
 "main.selection.move" = "Move to Project…";
 "main.selection.more" = "More Actions";
 "main.selection.remove" = "Remove from Selection";
 "main.selection.list" = "Selected items";
 "main.cmd.copy_instruction.tip" = "Copies a prompt that lists these items, to paste into your own agent app";
-"main.selection.blocked.mixed" = "Hand off works on one project at a time: move these to one first";
-"main.selection.blocked.needs_project" = "Hand off needs a project: move these to one first";
-"main.selection.blocked.finished" = "Only new and to-do items can be handed off";
 "main.job.stop" = "Stop";
 "main.job.stop.tip" = "Stop organizing (⌘.)";
 "main.job.more" = "More";
@@ -748,16 +715,29 @@
 
 "main.dictation.multi.more" = "+%ld more";
 
-"main.job.error.stopped_trust" = "%@ quit at its “Trust this folder?” question, so nothing was started.";
-
 /* The running section heading */
 "main.jobs.title" = "Running";
 "main.jobs.title.failed" = "Failed";
 
 /* An item whose session ended without reporting back */
 "main.row.session_ended" = "Session ended";
-"main.row.session_ended.help" = "Its agent session ended without reporting the work as done. Open the item to restart it or take it back.";
+"main.row.session_ended.help" = "It went to an agent session in an older version of Blurt, which ended without reporting the work as done. Mark it done or take it back.";
 
 /* A folder opened as a new project */
 "main.open.added" = "Added %1$@ · items start at %2$@-1";
 "main.open.rename" = "Rename";
+"main.drop.text" = "text";
+"main.drop.and" = ", ";
+"main.drop.new_item" = "Drop for a new item";
+"main.drop.new_item_in" = "New item in “%@”";
+"main.drop.add_to" = "Add to “%@”";
+"main.drop.file_to" = "File to “%@”";
+"main.drop.read_only" = "Read-only item — drop on the band above for a new one";
+"main.drop.folders" = "Folders open as projects — drop on the sidebar";
+"main.drop.folders_skipped" = "%@ · folder skipped";
+"main.drop.added" = "Added to “%@” · %@";
+"main.drop.added_undo" = "Add to “%@”";
+"main.drop.add_failed" = "Couldn’t add to the item";
+"main.new_item.remove_file" = "Remove %@";
+"main.drop.pick_add" = "Add";
+"main.drop.pick_message" = "Add pictures or files to “%@”";

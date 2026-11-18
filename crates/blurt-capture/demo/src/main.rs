@@ -42,7 +42,7 @@ fn svg_card(n: u32, hue: u32, text: Option<&str>) -> Card {
         .bytes()
         .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") })
         .collect();
-    Card { n, src: format!("data:image/svg+xml,{enc}"), text: text.map(str::to_string), file: None, kind: "shot".into(), session: None }
+    Card { n, src: format!("data:image/svg+xml,{enc}"), text: text.map(str::to_string), file: None, kind: "shot".into(), session: None, reference: None, text_card: false, missing: false }
 }
 
 fn rect_of(app: &AppHandle<Wry>, k: Kind) -> Option<[i64; 4]> {

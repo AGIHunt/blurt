@@ -65,6 +65,8 @@
 /* 菜单 */
 "dictation.menu.history" = "听写历史…";
 "dictation.menu.history.tip" = "在任意 App 里按一下%@开始听写";
+"dictation.menu.copy_last" = "复制上一条听写";
+"dictation.menu.copied_last" = "已复制上一条听写";
 "dictation.menu.turn_on" = "开启听写…";
 "dictation.menu.turn_on.tip" = "使用%@听写需要「辅助功能」或「输入监控」权限。";
 "dictation.menu.turn_on.subtitle" = "设置权限后可使用%@";
@@ -531,6 +533,7 @@
 "dictation.toast.asr_slow" = "语音模型无响应，录音已保留";
 "dictation.toast.asr_cloud_key" = "云端识别 Key 无效，录音已保留";
 "dictation.toast.asr_cloud_key.action" = "设置…";
+"dictation.toast.asr_cloud_model" = "百炼无法用这个模型识别，录音已保留";
 "dictation.toast.asr_cloud_offline" = "无法连接云端识别服务，录音已保留";
 "dictation.toast.asr_cloud_quota" = "云端识别额度已用完或请求过于频繁，录音已保留";
 "dictation.toast.slow.asr" = "还在识别… %@ 取消";
@@ -556,6 +559,7 @@
 "dictation.history.failed" = "没能识别";
 "dictation.history.failed.no_model" = "无法识别：没有语音模型";
 "dictation.history.failed.interrupted" = "未输入：处理完成前 App 已退出";
+"dictation.history.failed.cancelled" = "已取消：录音已保留";
 "dictation.history.retry" = "重试";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
@@ -715,6 +719,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "准确度较低，不推荐";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "常返回空结果，不推荐";
 "dictation.cloud.model.note.speech.qwen3_asr" = "准确，约 0.7 秒";
+"dictation.cloud.model.note.speech.qwen_audio_31" = "最准，约 1.1 秒";
 "dictation.cloud.model.note.speech.seedasr" = "准确，约 0.5 秒";
 "dictation.cloud.key" = "API Key";
 "dictation.cloud.key.placeholder" = "粘贴 API Key";
@@ -746,6 +751,7 @@
 "dictation.translate.target.auto" = "自动：%1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "自动：译成%@";
 "dictation.translate.target.auto_one.note" = "%@ 的文字会原样保留；要翻译它，请选一种语言";
+"dictation.translate.target.auto_others" = "其他语言译成%@";
 "dictation.translate.toast.learned" = "此后在%@中的听写将自动翻译";
 "dictation.translate.toast.undo" = "撤销";
 "dictation.translate.apps" = "自动翻译的 App";
@@ -761,3 +767,25 @@
 "dictation.settings.cancel_key" = "取消听写";
 "dictation.settings.cancel_key.default" = "%@（默认）";
 "dictation.settings.cancel_key.detail" = "在 Claude Code 等终端中，Esc 会中断正在运行的任务。改为 ⌃Esc 或 ⇧Esc 后，单独按 Esc 不会取消听写。";
+
+/* How fast dictation is (DictationSpeed, DictationSpeedText.swift): the page's first day heading, an entry's details, Settings */
+"dictation.speed.label" = "速度";
+"dictation.speed.seconds" = "%@ 秒";
+"dictation.speed.under" = "0.1 秒内";
+"dictation.speed.after" = "用时 %@";
+"dictation.speed.usual" = "通常用时 %@";
+"dictation.speed.usual.tip" = "最近 %1$@ 条听写的中位数，从松开听写键到文字出现在光标处。";
+"dictation.speed.usual.long" = "30 秒以上的听写：通常 %@。";
+"dictation.speed.here" = "本机通常用时 %@";
+"dictation.speed.here.asr" = "本机通常用时 %1$@（识别 %2$@）";
+"dictation.speed.parts.tip" = "只计停止说话后的等待。说话时已完成的处理不计入，各项之和可能小于总用时。";
+"dictation.speed.load" = "模型加载 %@";
+"dictation.speed.asr" = "识别 %@";
+"dictation.speed.polish" = "润色 %@";
+"dictation.speed.structure" = "结构化 %@";
+"dictation.speed.translate" = "翻译 %@";
+
+/* 没能识别的听写：菜单栏重试上一条、第一次失败时的提示（DictationRetry） */
+"dictation.menu.retry_last" = "重试上一条听写";
+"dictation.menu.retry_last.subtitle" = "没能识别 · %1$@ · %2$@";
+"dictation.toast.retry_later" = "之后可在菜单栏重试";

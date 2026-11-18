@@ -172,11 +172,6 @@ function SelectionBar() {
           <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
         </button>
       )}
-      {s.host.dispatch && live.length > 0 && (
-        <button className="btn sm primary" id="selDispatch" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch(live)}>
-          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
-        </button>
-      )}
       <span className="sp" />
       <button className="btn sm ghost" onClick={s.selectAll}>
         {s.t("select.all")}

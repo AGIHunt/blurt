@@ -1,0 +1,1030 @@
+{
+  "date": "2026-11-07",
+  "dataset": "speaker-01-tech-zh90-v1",
+  "verified_training_clips": 40,
+  "seconds": 122.434828,
+  "validation_clips": 0,
+  "test_clips": 0,
+  "scope": "Development diagnostics only; no independent validation or test. Full videos, adapters and hypotheses remain in local Application Support.",
+  "cloud_spend_usd": 0,
+  "checks": [
+    "16 existing dataset and metric tests passed",
+    "Saved adapter reload produced identical first development hypothesis",
+    "Fit-media evaluation rejected before decoding"
+  ],
+  "runs": [
+    {
+      "file": "stock-english-train-diagnostic-v1.json",
+      "sha256": "c568f5ec868302c7e316bd0964903001626b9cb3823b13f510261509373992d8",
+      "scope": "Offline prompted pilot; English checkpoint; no audio or LLM cleanup",
+      "summary": [
+        {
+          "split": "train",
+          "language": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "failures": 0,
+          "errors": 6,
+          "reference_tokens": 7,
+          "word_error_rate": 0.8571428571428571,
+          "exact_match_rate": 0.0,
+          "inference_median_seconds": 0.785855875001289,
+          "inference_p95_seconds": 0.785855875001289
+        },
+        {
+          "split": "train",
+          "language": "en",
+          "mode": "silent",
+          "clips": 1,
+          "failures": 0,
+          "errors": 9,
+          "reference_tokens": 7,
+          "word_error_rate": 1.2857142857142858,
+          "exact_match_rate": 0.0,
+          "inference_median_seconds": 0.6175556659582071,
+          "inference_p95_seconds": 0.6175556659582071
+        },
+        {
+          "split": "train",
+          "language": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "failures": 0,
+          "errors": 6,
+          "reference_tokens": 7,
+          "word_error_rate": 0.8571428571428571,
+          "exact_match_rate": 0.0,
+          "inference_median_seconds": 0.356504124996718,
+          "inference_p95_seconds": 0.356504124996718
+        },
+        {
+          "split": "train",
+          "language": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "failures": 0,
+          "errors": 5,
+          "reference_tokens": 7,
+          "word_error_rate": 0.7142857142857143,
+          "exact_match_rate": 0.0,
+          "inference_median_seconds": 0.5070794579805806,
+          "inference_p95_seconds": 0.5070794579805806
+        }
+      ]
+    },
+    {
+      "file": "english-mediapipe-diagnostic-v1.json",
+      "sha256": "53c805b9cb04009a7415e0c87854a89e6491047e009d8e93e42226f4913896cb",
+      "scope": "Training-phrase preprocessing comparison only"
+    },
+    {
+      "file": "known-command-native-v1.json",
+      "sha256": "1a92a2378a8847b3500ae1b9acb8ce4d2f4f51806ea40a4e91f77fa5c3e7035e",
+      "scope": "Same-session known-command retrieval with one voiced video template per phrase; NOT free-form dictation or independent validation",
+      "summary": [
+        {
+          "mode": "exaggerated_silent",
+          "queries": 10,
+          "correct": 4,
+          "duration_baseline_correct": 1
+        },
+        {
+          "mode": "silent",
+          "queries": 10,
+          "correct": 2,
+          "duration_baseline_correct": 1
+        },
+        {
+          "mode": "whisper",
+          "queries": 10,
+          "correct": 7,
+          "duration_baseline_correct": 2
+        }
+      ],
+      "crop_folder": "prepared",
+      "checkpoint_sha256": "e740cef369abeabd0ba2c18e37a0661342e1d94d432d6caa77755a11821d8fe3"
+    },
+    {
+      "file": "known-command-mediapipe-v1.json",
+      "sha256": "ec160487e75aa8938b00b5af75c39bc42d7aa6c5e7b82cd5b6a28e90de8a5702",
+      "scope": "Same-session known-command retrieval with one voiced video template per phrase; NOT free-form dictation or independent validation",
+      "summary": [
+        {
+          "mode": "exaggerated_silent",
+          "queries": 10,
+          "correct": 6,
+          "duration_baseline_correct": 1
+        },
+        {
+          "mode": "silent",
+          "queries": 10,
+          "correct": 2,
+          "duration_baseline_correct": 1
+        },
+        {
+          "mode": "whisper",
+          "queries": 10,
+          "correct": 7,
+          "duration_baseline_correct": 2
+        }
+      ],
+      "crop_folder": "prepared-mediapipe",
+      "checkpoint_sha256": "e740cef369abeabd0ba2c18e37a0661342e1d94d432d6caa77755a11821d8fe3"
+    },
+    {
+      "file": "cmlr-native-v1.json",
+      "sha256": "e2f2fcc3a737b34353a11e76ec0481f4952e88e5aa243593e80b7a7c41c0e0f1",
+      "scope": "Unadapted visual-only diagnostic; no audio, prompt hints or LLM cleanup",
+      "backend": "cmlr",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.2048192771084338,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.1325301204819278,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9879518072289156,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9759036144578314,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "crop_folder": "prepared",
+      "beam": 10,
+      "checkpoint_sha256": "b6e8238522d709ea9234dc680ce03b77b202ff3ce2179bc34eb364988bae4737"
+    },
+    {
+      "file": "cmlr-mediapipe-v1.json",
+      "sha256": "81826ef654ba682c00e56a4aa452d4d4d47a6168fa7c1c39392791edd6174c75",
+      "scope": "Unadapted visual-only diagnostic; no audio, prompt hints or LLM cleanup",
+      "backend": "cmlr",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.2771084337349397,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.1204819277108433,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.0481927710843373,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9759036144578314,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "crop_folder": "prepared-mediapipe",
+      "beam": 10,
+      "checkpoint_sha256": "b6e8238522d709ea9234dc680ce03b77b202ff3ce2179bc34eb364988bae4737"
+    },
+    {
+      "file": "cmlr-native-lm-v1.json",
+      "sha256": "fb5e99664e28375ea2a77a3d083284a3cdaafff8d54800e15268a404e6225cd7",
+      "scope": "Unadapted visual-only diagnostic; no audio, prompt hints or LLM cleanup",
+      "backend": "cmlr",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.0963855421686748,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.108433734939759,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 1.0120481927710843,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9879518072289156,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "crop_folder": "prepared",
+      "beam": 20,
+      "checkpoint_sha256": "b6e8238522d709ea9234dc680ce03b77b202ff3ce2179bc34eb364988bae4737"
+    },
+    {
+      "file": "visper-mediapipe-v1.json",
+      "sha256": "834b156ad2f5e743cd6c47a5b1b34bbf5758214dcdf84853ab88a9c3a4555197",
+      "scope": "Unadapted visual-only diagnostic; no audio, prompt hints or LLM cleanup",
+      "backend": "visper",
+      "summary": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.857142857142857,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.4285714285714284,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.7142857142857142,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8192771084337349,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9036144578313253,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9759036144578314,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9156626506024096,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.1794871794871795,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0256410256410255,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.9230769230769231,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "crop_folder": "prepared-mediapipe",
+      "beam": 10,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608"
+    },
+    {
+      "file": "visper-adapt-development-v1.json",
+      "sha256": "c72617a83e144bb3abcd033f36ecf7bad806265c5ac9a05a1ed5ea235d0603be",
+      "scope": "Research-only same-session phrase-held-out diagnostic, NOT independent validation/test",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.48148148148148145,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.8518518518518519,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.5185185185185185,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.8518518518518519,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "training_seconds": 29.192024625022896,
+      "selected_epoch": 3,
+      "history": [
+        {
+          "epoch": 0,
+          "development_loss": 44.757845878601074
+        },
+        {
+          "epoch": 1,
+          "fit_loss": 52.62307941913605,
+          "development_loss": 37.70724058151245
+        },
+        {
+          "epoch": 2,
+          "fit_loss": 46.74369302392006,
+          "development_loss": 33.31761193275452
+        },
+        {
+          "epoch": 3,
+          "fit_loss": 41.179729014635086,
+          "development_loss": 32.28543621301651
+        }
+      ],
+      "trainable_parameters": 25780928,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608",
+      "adapter_sha256": "03d1615c09061dd4ff54fb5f9ff632b23af2d71f90343fb2b6fd733da2d7d761"
+    },
+    {
+      "file": "visper-adapt-development-v2.json",
+      "sha256": "f5a842b2d5c773ca5665a6ebce03ca51c4986f6df399aebe8674a8f7b9dc6638",
+      "scope": "Research-only same-session phrase-held-out diagnostic, NOT independent validation/test",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.5185185185185185,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.7777777777777778,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.5185185185185185,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.9259259259259259,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "training_seconds": 60.73359874996822,
+      "selected_epoch": 3,
+      "history": [
+        {
+          "epoch": 0,
+          "development_loss": 44.757845878601074
+        },
+        {
+          "epoch": 1,
+          "fit_loss": 51.837183237075806,
+          "development_loss": 32.68647289276123
+        },
+        {
+          "epoch": 2,
+          "fit_loss": 45.49379616975784,
+          "development_loss": 33.56309163570404
+        },
+        {
+          "epoch": 3,
+          "fit_loss": 40.491006314754486,
+          "development_loss": 32.214439392089844
+        },
+        {
+          "epoch": 4,
+          "fit_loss": 38.35040491819382,
+          "development_loss": 32.228750348091125
+        },
+        {
+          "epoch": 5,
+          "fit_loss": 36.485603883862495,
+          "development_loss": 33.654033064842224
+        },
+        {
+          "epoch": 6,
+          "fit_loss": 33.870860517024994,
+          "development_loss": 33.25458812713623
+        },
+        {
+          "epoch": 7,
+          "fit_loss": 32.76436343789101,
+          "development_loss": 33.315131068229675
+        },
+        {
+          "epoch": 8,
+          "fit_loss": 31.26952137798071,
+          "development_loss": 33.97920334339142
+        },
+        {
+          "epoch": 9,
+          "fit_loss": 29.891201317310333,
+          "development_loss": 34.36281943321228
+        },
+        {
+          "epoch": 10,
+          "fit_loss": 29.013661570847034,
+          "development_loss": 34.87341070175171
+        }
+      ],
+      "trainable_parameters": 25780928,
+      "crop_folder": "prepared-mediapipe",
+      "beam": 10,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608",
+      "adapter_sha256": "f48f0953a929d2b623b0e2ac676567243351db7287be16756abb636f80a0ac46"
+    },
+    {
+      "file": "visper-adapt-silent-development-v1.json",
+      "sha256": "b61ad77c8473a733f99c965f2830a8e0a57d7e6b20297818a48383952c77faad",
+      "scope": "Research-only same-session phrase-held-out diagnostic, NOT independent validation/test",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.5925925925925926,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.8148148148148148,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.6666666666666666,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 2,
+          "metric": "CER",
+          "error_rate": 0.8518518518518519,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "training_seconds": 34.358955792034976,
+      "selected_epoch": 2,
+      "history": [
+        {
+          "epoch": 0,
+          "development_loss": 44.757845878601074
+        },
+        {
+          "epoch": 1,
+          "fit_loss": 44.978668212890625,
+          "development_loss": 45.31659233570099
+        },
+        {
+          "epoch": 2,
+          "fit_loss": 42.42970323562622,
+          "development_loss": 34.69550406932831
+        },
+        {
+          "epoch": 3,
+          "fit_loss": 36.458322286605835,
+          "development_loss": 35.02968072891235
+        },
+        {
+          "epoch": 4,
+          "fit_loss": 33.00271666049957,
+          "development_loss": 36.177459597587585
+        },
+        {
+          "epoch": 5,
+          "fit_loss": 31.567074060440063,
+          "development_loss": 36.28280508518219
+        },
+        {
+          "epoch": 6,
+          "fit_loss": 29.850648194551468,
+          "development_loss": 36.26416885852814
+        },
+        {
+          "epoch": 7,
+          "fit_loss": 28.09936162829399,
+          "development_loss": 36.30596113204956
+        },
+        {
+          "epoch": 8,
+          "fit_loss": 27.235624626278877,
+          "development_loss": 37.14174699783325
+        },
+        {
+          "epoch": 9,
+          "fit_loss": 26.032362073659897,
+          "development_loss": 37.16147971153259
+        },
+        {
+          "epoch": 10,
+          "fit_loss": 24.66804750263691,
+          "development_loss": 37.266857862472534
+        }
+      ],
+      "trainable_parameters": 25780928,
+      "crop_folder": "prepared-mediapipe",
+      "beam": 10,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608",
+      "adapter_sha256": "6c11d21aa11ea58858774132759145257450382df5b7e70501b390acaf30d8b3"
+    },
+    {
+      "file": "visper-adapt-development-v2-comparison.json",
+      "sha256": "dbc67c555dc5908f18fdd1f4c83367ef7be91e1d9b7121d3d26f42a9f0f347fd",
+      "scope": "Descriptive development comparison, NOT independent test accuracy",
+      "scores": {
+        "baseline": {
+          "strict": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 1.0,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9629629629629629,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ],
+          "script_normalized": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8148148148148148,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.7777777777777778,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9629629629629629,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ]
+        },
+        "adapted": {
+          "strict": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5185185185185185,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.7777777777777778,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5185185185185185,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ],
+          "script_normalized": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5185185185185185,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.7777777777777778,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5185185185185185,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "visper-adapt-silent-development-v1-comparison.json",
+      "sha256": "9a68a16c7eb1257a61f93177816e5fdb742b45c19d6e164c777234da0f59d59e",
+      "scope": "Descriptive development comparison, NOT independent test accuracy",
+      "scores": {
+        "baseline": {
+          "strict": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 1.0,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9629629629629629,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ],
+          "script_normalized": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8148148148148148,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.7777777777777778,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9629629629629629,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.9259259259259259,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ]
+        },
+        "adapted": {
+          "strict": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5925925925925926,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8148148148148148,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.6666666666666666,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8518518518518519,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ],
+          "script_normalized": [
+            {
+              "language_profile": "zh",
+              "mode": "exaggerated_silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.5925925925925926,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "silent",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8148148148148148,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "voiced",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.6666666666666666,
+              "exact_matches": 0,
+              "failures": 0
+            },
+            {
+              "language_profile": "zh",
+              "mode": "whisper",
+              "clips": 2,
+              "metric": "CER",
+              "error_rate": 0.8518518518518519,
+              "exact_matches": 0,
+              "failures": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "visper-warm-timing-v1.json",
+      "sha256": "2eec56402ddafb58b12139b0d421c35a47dc7752276ba60337abd13db2afb6fc",
+      "scope": "Small warm offline ViSpeR latency probe; excludes capture, cropping and insertion.",
+      "beam": 10,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608"
+    },
+    {
+      "file": "visper-adapter-reload-check-v1.json",
+      "sha256": "cb7acf3ffb4b8f801496d672bb768298e95d9bfadba3e15d4861ae34d6a5a05d",
+      "scope": "Visual-only diagnostic; no audio, prompt hints or LLM cleanup; independence requires protocol review",
+      "backend": "visper",
+      "summary": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "CER",
+          "error_rate": 0.46153846153846156,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "crop_folder": "prepared-mediapipe",
+      "beam": 10,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608",
+      "adapter_sha256": "f48f0953a929d2b623b0e2ac676567243351db7287be16756abb636f80a0ac46"
+    }
+  ]
+}

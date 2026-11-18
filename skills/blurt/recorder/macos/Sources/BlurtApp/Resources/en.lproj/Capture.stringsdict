@@ -80,12 +80,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 snap</string><key>other</key><string>%d snaps</string></dict>
   </dict>
-  <key>capture.rec.spotted</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 item spotted</string><key>other</key><string>%d items spotted</string></dict>
-  </dict>
   <key>capture.smart_paste.done_n</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -98,11 +92,11 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Deleted</string><key>other</key><string>Deleted %d cards</string></dict>
   </dict>
-  <key>capture.cards.more_ax</key>
+  <key>capture.taken_out_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the card</string><key>other</key><string>Show all %d cards</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Dragged out %d card</string><key>other</key><string>Dragged out %d cards</string></dict>
   </dict>
   <key>capture.cards.selected</key>
   <dict>
@@ -127,12 +121,6 @@
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 day ago</string><key>other</key><string>%d days ago</string></dict>
-  </dict>
-  <key>capture.cards.overview_title</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Card</string><key>other</key><string>Cards (%d)</string></dict>
   </dict>
   <key>capture.card.move_n</key>
   <dict>
@@ -170,5 +158,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt are using one of these shortcuts</string><key>other</key><string>Other copies of Blurt are using %d of these shortcuts</string></dict>
   </dict>
+	<key>capture.drawer.hang_sub</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>As a card, add a note any time</string><key>other</key><string>As %d cards</string></dict>
+	</dict>
 </dict>
 </plist>

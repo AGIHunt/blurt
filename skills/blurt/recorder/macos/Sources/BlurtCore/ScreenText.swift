@@ -29,7 +29,11 @@ public enum ScreenText {
         public var text: String
         public var box: CGRect
         public var chars: [CGRect?]
-        public init(text: String, box: CGRect, chars: [CGRect?] = []) { self.text = text; self.box = box; self.chars = chars }
+        /// Vision's confidence in the line (0…1; it says 0.3 of lines it read right too — only compared between readings)
+        public var confidence: Float
+        public init(text: String, box: CGRect, chars: [CGRect?] = [], confidence: Float = 1) {
+            self.text = text; self.box = box; self.chars = chars; self.confidence = confidence
+        }
     }
 
     /// The picture's pixels as grey levels, for the edge tests (which pixels are ink, which are the background).
@@ -77,18 +81,29 @@ public enum ScreenText {
     // MARK: - Reading
 
     /// Vision's lines in `image`, best first-candidate each, with character boxes. Chinese (simplified, then
-    /// traditional) and English; `words` are the user's own terms (Settings → Dictation's word list) for its language
+    /// traditional) and English — the reading every measurement here was made with; `detect`: Vision picks the
+    /// language itself (Japanese, Korean, Cyrillic, accents), the second reading `text(in:)` asks for when the first
+    /// one plainly missed text. `words` are the user's own terms (Settings → Dictation's word list) for its language
     /// correction.
-    public static func read(_ image: CGImage, words: [String] = []) throws -> [Piece] {
+    /// `enlarge`: Vision reads the picture twice the size with a margin of its background (a selection of a few
+    /// characters: on an 82 × 54 px crop of 「、貼り」 it read 「，貼」, enlarged 「、貼り」); boxes come back in the picture's own pixels.
+    /// `languages`: the list Vision is given, the first one weighing most (the first reading's: Chinese and English).
+    public static func read(_ image: CGImage, words: [String] = [], languages: [String] = ScreenText.firstLanguages,
+                            detect: Bool = false, enlarge: Bool = false) throws -> [Piece] {
         let req = VNRecognizeTextRequest()
         req.recognitionLevel = .accurate
         req.usesLanguageCorrection = true
+        req.automaticallyDetectsLanguage = detect
         let supported = (try? req.supportedRecognitionLanguages()) ?? []
-        req.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.isEmpty || supported.contains($0) }
+        req.recognitionLanguages = languages.filter { supported.isEmpty || supported.contains($0) }
         if !words.isEmpty { req.customWords = Array(words.prefix(200)) }
-        try VNImageRequestHandler(cgImage: image).perform([req])
-        let W = CGFloat(image.width), H = CGFloat(image.height)
-        func px(_ r: CGRect) -> CGRect { CGRect(x: r.minX * W, y: (1 - r.maxY) * H, width: r.width * W, height: r.height * H) }
+        let scale: CGFloat = enlarge ? 2 : 1, pad: CGFloat = enlarge ? 16 : 0
+        let seen = enlarge ? (enlarged(image, scale: Int(scale), pad: Int(pad)) ?? image) : image
+        try VNImageRequestHandler(cgImage: seen).perform([req])
+        let W = CGFloat(seen.width), H = CGFloat(seen.height)
+        func px(_ r: CGRect) -> CGRect {
+            CGRect(x: r.minX * W / scale - pad, y: (1 - r.maxY) * H / scale - pad, width: r.width * W / scale, height: r.height * H / scale)
+        }
         return (req.results ?? []).compactMap { o in
             guard let c = o.topCandidates(1).first, !c.string.isEmpty else { return nil }
             let s = c.string
@@ -100,17 +115,141 @@ public enum ScreenText {
                 chars.append(b.map(px).flatMap { $0.width > 0 ? $0 : nil })
                 i = j
             }
-            return Piece(text: s, box: px(o.boundingBox), chars: chars)
+            return Piece(text: s, box: px(o.boundingBox), chars: chars, confidence: c.confidence)
         }
     }
 
-    /// The whole fast path: read, then lay out. ms = Vision's time.
-    public static func text(in image: CGImage, words: [String] = []) throws -> (text: String, pieces: [Piece], ms: Int) {
+    /// `image` `scale` times the size inside a `pad`-pixel margin (unscaled) of its own background.
+    static func enlarged(_ image: CGImage, scale: Int, pad: Int) -> CGImage? {
+        guard let g = Gray(image) else { return nil }
+        let w = (image.width + 2 * pad) * scale, h = (image.height + 2 * pad) * scale
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let bg = CGFloat(g.background) / 255
+        ctx.setFillColor(CGColor(red: bg, green: bg, blue: bg, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: pad * scale, y: pad * scale, width: image.width * scale, height: image.height * scale))
+        return ctx.makeImage()
+    }
+
+    public static let firstLanguages = ["zh-Hans", "zh-Hant", "en-US"]
+
+    /// The other readings, when the first missed text or the selection is small: Vision detecting the language, and
+    /// Japanese or Korean first (on a tight crop of 「貼り」 detection read nothing and Japanese first read it at every
+    /// size; with Chinese first, Japanese kana and Korean are read as nothing or as look-alikes, "G9").
+    static let otherReadings: [(languages: [String], detect: Bool)] = [
+        (firstLanguages, true), (["ja-JP", "zh-Hans", "en-US"], false), (["ko-KR", "en-US"], false),
+    ]
+
+    /// A selection this small (its shorter side, pixels) gets the other readings whatever the first found — a few
+    /// characters read wrongly cover the ink as well as right ones — and one of them enlarged.
+    static let smallSide = 160
+
+    // MARK: - A second reading (2026-11-16)
+    //
+    // With Chinese and English asked for, Vision returns nothing for a line of Japanese kana or Korean (⌥T on
+    // 「はい、そうです」 said "no text"), only the kanji of a mixed Japanese line (会議は明日の… → 会議 明日の…), and look-alikes
+    // for a few characters ("G9" for 「貼り」). Other readings — Vision detecting the language, Japanese first, Korean first
+    // — read them, but each costs a pass (98 → 177 ms on the fixture set for one), and detection changed one Chinese
+    // comma after an English word to ", ". So the tuned reading goes first, and the others only when the first plainly
+    // missed text — geometry, as the rest of this file: a line of ink, away from the edges, with less than 85 % of its ink
+    // columns under what was read; nothing left at all; or a small selection, where wrong characters cover the ink as
+    // well as right ones. Another reading wins when it covers clearly more, or as much with clearly more confidence.
+    // (Cyrillic and Vietnamese on a large selection still come back as Latin look-alikes: nothing says so.)
+
+    /// One band of rows with ink: its rows and the x-extent of its ink (pixels).
+    struct Band: Equatable { var y0: Int, y1: Int, x0: Int, x1: Int }
+
+    /// The picture's bands of ink rows taller than `minH` (rules and underlines are thinner).
+    static func bands(_ g: Gray, minH: Int = 6) -> [Band] {
+        var rows: [(Int, Int)?] = []
+        for y in 0..<g.height {
+            var a = -1, b = -1, n = 0
+            for x in 0..<g.width where g.ink(x, y) { n += 1; if a < 0 { a = x }; b = x }
+            rows.append(n >= 2 ? (a, b) : nil)
+        }
+        var out: [Band] = []
+        var cur: Band?
+        for (y, r) in rows.enumerated() {
+            if let (a, b) = r {
+                if var c = cur { c.y1 = y; c.x0 = min(c.x0, a); c.x1 = max(c.x1, b); cur = c } else { cur = Band(y0: y, y1: y, x0: a, x1: b) }
+            } else if let c = cur {
+                if c.y1 - c.y0 + 1 >= minH { out.append(c) }
+                cur = nil
+            }
+        }
+        if let c = cur, c.y1 - c.y0 + 1 >= minH { out.append(c) }
+        return out
+    }
+
+    /// Per band, the share of its ink columns (columns with ink in the band's rows: a table's gaps don't count) under
+    /// the lines that overlap it vertically by a third of the band or more.
+    static func coverage(_ pieces: [Piece], _ bands: [Band], _ g: Gray) -> [Double] {
+        bands.map { b in
+            let h = CGFloat(b.y1 - b.y0 + 1)
+            let over = pieces.filter { p in min(p.box.maxY, CGFloat(b.y1 + 1)) - max(p.box.minY, CGFloat(b.y0)) >= h / 3 }.map(\.box)
+            var ink = 0, covered = 0
+            for x in b.x0...b.x1 where (b.y0...b.y1).contains(where: { g.ink(x, $0) }) {
+                ink += 1
+                if over.contains(where: { CGFloat(x) >= $0.minX - 1 && CGFloat(x) <= $0.maxX + 1 }) { covered += 1 }
+            }
+            return ink == 0 ? 1 : Double(covered) / Double(ink)
+        }
+    }
+
+    /// The first reading plainly missed text: a band of ink, away from the top and bottom edges (a line the edge cut is
+    /// left out on purpose), with less than 85 % of its ink under a line. (Vision's confidence says nothing here: it
+    /// gives 0.3 to lines it read right.)
+    static func missed(_ bands: [Band], coverage: [Double], height: Int) -> Bool {
+        zip(bands, coverage).contains { b, c in b.y0 > 0 && b.y1 < height - 1 && c < 0.85 }
+    }
+
+    /// Keep another reading over the one so far? It covers clearly more of the ink, or as much with clearly more
+    /// confidence (a few characters read as look-alikes cover the ink too: 「貼り」 → "G9").
+    static func prefers(_ b: (coverage: [Double], pieces: [Piece]), over a: (coverage: [Double], pieces: [Piece])) -> Bool {
+        let ca = a.coverage.reduce(0, +), cb = b.coverage.reduce(0, +)
+        if cb > ca + 0.1 { return true }
+        guard cb >= ca - 0.1, !b.pieces.isEmpty else { return false }
+        let fa = a.pieces.map(\.confidence).min() ?? 0, fb = b.pieces.map(\.confidence).min() ?? 0
+        return fb > fa + 0.2
+    }
+
+    /// The whole fast path: read (a second time with Vision detecting the language when the first plainly missed
+    /// text), then lay out. ms = Vision's time; `second`: the second reading ran / was kept.
+    public static func text(in image: CGImage, words: [String] = []) throws
+        -> (text: String, pieces: [Piece], ms: Int, second: (ran: Bool, kept: Bool)) {
         let t0 = Date()
-        let pieces = try read(image, words: words)
+        var pieces = try read(image, words: words)
+        guard let gray = Gray(image) else {
+            return (pieces.map(\.text).joined(separator: "\n"), pieces, Int(Date().timeIntervalSince(t0) * 1000), (false, false))
+        }
+        let bs = bands(gray)
+        let cov = coverage(pieces, bs, gray)
+        var second = (ran: false, kept: false)
+        var out = layout(pieces, gray)
+        // also when nothing at all is left of the first reading: a selection drawn tight around a line touches the
+        // edges, and the edge rule above skips it (⌥T on 「、貼り」 said "no text")
+        let small = min(image.width, image.height) <= smallSide
+        if !bs.isEmpty && (small || missed(bs, coverage: cov, height: gray.height) || out.isEmpty) {
+            second.ran = true
+            var best = (coverage: cov, pieces: pieces, text: out)
+            var tries = otherReadings.map { (languages: $0.languages, detect: $0.detect, enlarge: false) }
+            if small { tries.append((firstLanguages, true, true)) }
+            for t in tries {
+                let again = try read(image, words: words, languages: t.languages, detect: t.detect, enlarge: t.enlarge)
+                let c = coverage(again, bs, gray), text2 = layout(again, gray)
+                if text2.isEmpty { continue }
+                if prefers((c, again), over: (best.coverage, best.pieces)) || best.text.isEmpty { best = (c, again, text2) }
+            }
+            if best.text != out || best.pieces != pieces {
+                pieces = best.pieces
+                out = best.text
+                second.kept = true
+            }
+        }
         let ms = Int(Date().timeIntervalSince(t0) * 1000)
-        guard let gray = Gray(image) else { return (pieces.map(\.text).joined(separator: "\n"), pieces, ms) }
-        return (layout(pieces, gray), pieces, ms)
+        return (out, pieces, ms, second)
     }
 
     // MARK: - Layout

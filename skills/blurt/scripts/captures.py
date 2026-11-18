@@ -105,20 +105,30 @@ def note_of(line: dict) -> str:
 def fields_for(n: int, line: dict, lang: str) -> dict:
     """The items.py `add` fields for one capture."""
     voice = line.get("type") == "voice"
+    # v1.0.23: cards dropped on the island — a text card (a voice card with no recording), a file card ("ref": a file
+    # the card only refers to; its picture is a thumbnail): the item refers to the file in `attachments`
+    text_card = voice and not line.get("voice")
+    ref = line.get("ref") if isinstance(line.get("ref"), str) and line.get("ref") else None
     note = note_of(line)
     if note:
         title = first_sentence(note)
+    elif ref:
+        title = Path(ref).name
     else:
         wall = line.get("wall") if isinstance(line.get("wall"), (int, float)) else time.time()
         title = f"{LABELS[lang]['voice' if voice else 'shot']} {time.strftime('%H:%M', time.localtime(wall))}"
+    kind = "text" if text_card else "file" if ref else "voice" if voice else "snap"
     # the type the user gave the snap in its note bubble wins; undecided, the keyword guess (AI fill-in can do better)
     f: dict = {"id": f"C-{n:03d}", "kind": items.chosen_kind(line) or guess_kind(note), "title": title,
-               "source": {"type": "voice" if voice else "snap", "shot": n}, "enrich": "pending"}
+               "source": {"type": kind, "shot": n}, "enrich": "pending"}
     if note:
         f["quote"] = note
-    frames = [{"path": p} for p in (line.get("marked"), line.get("file")) if isinstance(p, str) and p]
-    if frames:
-        f["frames"] = frames
+    if ref:
+        f["attachments"] = [ref]
+    else:
+        frames = [{"path": p} for p in (line.get("marked"), line.get("file")) if isinstance(p, str) and p]
+        if frames:
+            f["frames"] = frames
     return f
 
 

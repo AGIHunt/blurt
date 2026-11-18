@@ -1,18 +1,14 @@
 // The review component's host in the main window (protocol v3, contract K1 + "审核组件宿主协议 v3"): the canvas's
 // own tauri host (items_doc / items_poll / items_ops / handoff_create by scope, files through the asset protocol)
-// plus the shell's navigation — dispatch opens the hand-off sheet, openSession the agent's terminal, openCode the
-// editor. In a plain browser (mock data) the same calls go to ./mock.
+// plus the shell's navigation — openCode the editor. Hand Off is the copied note for the user's own agent (handoff).
+// In a plain browser (mock data) the same calls go to ./mock.
 
-import { api, fileSrc, inTauri, invoke } from './api';
+import { api, fileSrc, inTauri, invoke, type AttachResult } from './api';
 import { createTauriHost, type BlurtHost, type HandoffResult, type Scope, type UserOp } from './review';
 
 export interface HostCallbacks {
-  onDispatch?: (uids: string[]) => void;
-  onOpenSession?: (job: string) => void;
   onHandoff?: (r: HandoffResult, what: 'instruction' | 'full') => void;
   onError?: (e: unknown) => void;
-  /** the verify card's ⋯ Review Changes…: the session, with its review sheet */
-  onReviewChanges?: (job: string) => void;
   /** Esc on the page with nothing left to cancel, ⇧Tab from its first control: back to the list */
   onFocusList?: () => void;
   /** the page's toast, shown as the window's (one place for the main window's toasts): "undo" when its Undo was
@@ -24,6 +20,8 @@ export interface HostCallbacks {
   onUndone?: (uid: string) => void;
   /** a file the page saved to Downloads ("" = it couldn't) */
   onDownloaded?: (name: string) => void;
+  /** Add Image or File… attached what was picked to this item (the toast, the undo step) */
+  onAddedFiles?: (uid: string, r: AttachResult) => void;
 }
 
 /** a path from the doc → absolute (v3 docs are; a v2 session's are relative to it) */
@@ -70,19 +68,21 @@ export function hostFor(scope: Scope, projectPath: string | null, cb: HostCallba
     ...base,
     inApp: true,
     sendOps: (ops, confirm) => base.sendOps(ops, confirm).catch(fail),
-    reveal: (p: string) => void api.reveal(abs(p)).catch(cb.onError),
-    // Space / the stage's look button: Windows has no Quick Look — the system's own viewer (as Space in the list)
-    quickLook: (p: string) => void api.openPath(abs(p)).catch(cb.onError),
+    // only files the page was served (review_file: in Blurt's stores, or named by a doc it loaded — an item's attached
+    // PDF anywhere on disk), never any path a page asks for
+    reveal: (p: string) => void api.reviewFile(abs(p), false).catch(cb.onError),
+    // Space / the stage's look button / an attached file's row: Windows and Linux have no Quick Look — the file opens
+    // in its default app (as Space in the list); a program or a script is shown in its folder instead, never run
+    quickLook: (p: string) => void api.reviewFile(abs(p), true).catch(cb.onError),
+    // the item detail's "Add image or file…": the Open dialog, then attached as a drop is; the page polls the change
+    addFiles: (uid: string) => void api.addFiles(uid).then((r) => r && cb.onAddedFiles?.(uid, r), cb.onError),
     download: (p: string) => void api.saveToDownloads(abs(p)).then((n) => cb.onDownloaded?.(n), () => cb.onDownloaded?.('')),
-    reviewChanges: cb.onReviewChanges,
     focusList: cb.onFocusList,
     toast: cb.onToast,
     registerUndo: cb.onRegisterUndo,
     windowUndo: cb.onRegisterUndo ? cb.onWindowUndo : undefined,
     undone: cb.onUndone,
     openCode: projectPath ? (ref: string) => void api.openUrl(codeUrl(projectPath, ref, editor)).catch(cb.onError) : undefined,
-    dispatch: cb.onDispatch,
-    openSession: cb.onOpenSession,
     handoff: base.handoff
       ? async (uids, what) => {
           const r = await base.handoff!(uids, what).catch(fail);

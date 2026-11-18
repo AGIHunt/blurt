@@ -1,4 +1,4 @@
-// BlurtCore/CardRow.swift: the hanging cards' row (newest first, at most 5, a "+N" tile), their threads, when they come
+// BlurtCore/CardRow.swift: the hanging cards' row (newest first, every card, scrolling sideways when long), their threads, when they come
 // down and go up, Esc, the keyboard's stops, the hover note, the deferred click and the Undo window of a delete.
 import XCTest
 @testable import BlurtCore
@@ -6,34 +6,53 @@ import XCTest
 final class CardRowTests: XCTestCase {
     let shot: CGFloat = 112, voice: CGFloat = 168, gap: CGFloat = 12
 
-    func layout(_ widths: [CGFloat], centre: CGFloat = 720, screen: CGFloat = 1440) -> CardRow.Layout {
-        CardRow.layout(widths: widths, tile: shot, gap: gap, centre: centre, bounds: 12...(screen - 12))
+    func layout(_ widths: [CGFloat], centre: CGFloat = 720, screen: CGFloat = 1440, scroll: CGFloat = 0) -> CardRow.Layout {
+        CardRow.layout(widths: widths, gap: gap, centre: centre, bounds: 12...(screen - 12), scroll: scroll)
     }
 
     func testNewestFirstLeftToRight() {
         let l = layout([shot, shot, shot])
         XCTAssertEqual(l.shown, [2, 1, 0], "the newest card hangs on the left")
-        XCTAssertEqual(l.more, 0)
-        XCTAssertNil(l.tileX)
+        XCTAssertNil(l.viewport, "three cards fit: nothing scrolls")
+        XCTAssertEqual(l.maxScroll, 0)
         XCTAssertEqual(l.centres, l.centres.sorted())
         XCTAssertEqual((l.span.lowerBound + l.span.upperBound) / 2, 720, accuracy: 0.01, "centred under the island")
     }
 
-    /// The audit's 16 cards: the 5 newest hang, the other 11 wait behind "+11" — no rotating pages, nothing mixed.
-    func testManyCardsShowTheNewestFiveAndACount() {
+    /// The audit's 16 cards: every one hangs, newest first — nothing folded behind a count; the row scrolls instead.
+    func testManyCardsAllHangAndTheRowScrolls() {
         let l = layout(Array(repeating: shot, count: 16))
-        XCTAssertEqual(l.shown, [15, 14, 13, 12, 11])
-        XCTAssertEqual(l.more, 11)
-        XCTAssertNotNil(l.tileX)
-        XCTAssertGreaterThan(l.tileX!, l.centres.last!, "the tile closes the row, after the oldest card that hangs")
-        XCTAssertLessThanOrEqual(l.span.upperBound - l.span.lowerBound, CardRow.maxWidth, "no curtain across the screen")
+        XCTAssertEqual(l.shown, Array((0..<16).reversed()))
+        let v = l.viewport!
+        XCTAssertEqual(v.upperBound - v.lowerBound, CardRow.maxWidth, "a window, not a curtain across the screen")
+        XCTAssertEqual((v.lowerBound + v.upperBound) / 2, 720, accuracy: 0.01, "the window is centred under the island")
+        XCTAssertEqual(l.centres.first! - shot / 2, v.lowerBound, accuracy: 0.01, "the newest card at the window's left edge")
+        XCTAssertEqual(l.maxScroll, 16 * shot + 15 * gap - CardRow.maxWidth, accuracy: 0.01)
+        let end = layout(Array(repeating: shot, count: 16), scroll: 1e6)
+        XCTAssertEqual(end.scroll, end.maxScroll, "scrolling stops at the oldest card")
+        XCTAssertEqual(end.centres.last! + shot / 2, v.upperBound, accuracy: 0.01, "the oldest card at the window's right edge")
+        XCTAssertEqual(layout(Array(repeating: shot, count: 16), scroll: -40).scroll, 0)
     }
 
-    func testVoiceCardsAreWiderSoFewerHang() {
-        let l = layout(Array(repeating: voice, count: 8))
-        XCTAssertLessThan(l.shown.count, CardRow.maxShown)
-        XCTAssertLessThanOrEqual(l.span.upperBound - l.span.lowerBound, CardRow.maxWidth)
-        XCTAssertEqual(l.shown.count + l.more, 8)
+    func testAtMostMaxHungCardsHang() {
+        let l = layout(Array(repeating: shot, count: CardRow.maxHung + 20))
+        XCTAssertEqual(l.shown.count, CardRow.maxHung)
+        XCTAssertEqual(l.shown.first, CardRow.maxHung + 19, "the newest ones")
+    }
+
+    func testRevealBringsAFocusedCardIntoTheWindow() {
+        let widths = Array(repeating: shot, count: 16)
+        let l = layout(widths)
+        let v = l.viewport!
+        // the 10th card is beyond the window's right edge: scrolling brings it in, `fade` inside the edge
+        let x = l.centres[9]
+        XCTAssertGreaterThan(x + shot / 2, v.upperBound)
+        let s = CardRow.reveal(left: x - shot / 2, right: x + shot / 2, in: l)
+        let after = layout(widths, scroll: s)
+        XCTAssertEqual(after.centres[9] + shot / 2, v.upperBound - CardRow.fade, accuracy: 0.01)
+        XCTAssertEqual(CardRow.reveal(left: l.centres[0] - shot / 2, right: l.centres[0] + shot / 2, in: l), 0, "a shown card: unchanged")
+        XCTAssertEqual(CardRow.visible(left: x - shot / 2, right: x + shot / 2, in: l), 0)
+        XCTAssertEqual(CardRow.visible(left: l.centres[0] - shot / 2, right: l.centres[0] + shot / 2, in: l), 1)
     }
 
     func testNeverOffTheScreen() {
@@ -41,7 +60,8 @@ final class CardRowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(l.span.lowerBound, 12)
         let narrow = layout(Array(repeating: voice, count: 6), centre: 300, screen: 600)
         XCTAssertLessThanOrEqual(narrow.span.upperBound, 588)
-        XCTAssertGreaterThanOrEqual(narrow.shown.count, 1)
+        XCTAssertEqual(narrow.viewport, 12...588, "a narrow screen: the window is the screen less its margins")
+        XCTAssertEqual(narrow.shown.count, 6)
     }
 
     func testEmpty() {
@@ -73,7 +93,7 @@ final class CardRowTests: XCTestCase {
 
     func testSteppingAsideMovesEveryItemOnEachSide() {
         XCTAssertEqual(CardRow.stepAside(items: 5, lifted: nil, by: 8), [0, 0, 0, 0, 0])
-        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: 1, by: 8), [-8, 0, 8, 8, 8], "the tile (last) moves with the cards")
+        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: 1, by: 8), [-8, 0, 8, 8, 8])
         XCTAssertEqual(CardRow.stepAside(items: 3, lifted: 7, by: 8), [0, 0, 0])
         // the lifted card grows 5 % (150 pt: 3.75 a side); the gap beside it never drops under the row's 12
         let gap: CGFloat = 12, grow: CGFloat = 150 * 0.05 / 2
@@ -164,14 +184,13 @@ final class CardRowTests: XCTestCase {
     }
 
     func testKeyboardStops() {
-        XCTAssertEqual(CardFocus.move(nil, by: 1, cards: 3, tile: true), 0, "starts on the newest card")
-        XCTAssertEqual(CardFocus.move(0, by: 1, cards: 3, tile: true), 1)
-        XCTAssertEqual(CardFocus.move(2, by: 1, cards: 3, tile: true), 3, "then the +N tile")
-        XCTAssertEqual(CardFocus.move(3, by: 1, cards: 3, tile: true), 3, "stays at the end")
-        XCTAssertEqual(CardFocus.move(0, by: -1, cards: 3, tile: false), 0)
-        XCTAssertNil(CardFocus.move(nil, by: 1, cards: 0, tile: false))
-        XCTAssertEqual(CardFocus.clamp(3, cards: 2, tile: false), 1, "the last card was deleted: the one before it")
-        XCTAssertNil(CardFocus.clamp(0, cards: 0, tile: false))
+        XCTAssertEqual(CardFocus.move(nil, by: 1, cards: 3), 0, "starts on the newest card")
+        XCTAssertEqual(CardFocus.move(0, by: 1, cards: 3), 1)
+        XCTAssertEqual(CardFocus.move(2, by: 1, cards: 3), 2, "stays at the end")
+        XCTAssertEqual(CardFocus.move(0, by: -1, cards: 3), 0)
+        XCTAssertNil(CardFocus.move(nil, by: 1, cards: 0))
+        XCTAssertEqual(CardFocus.clamp(3, cards: 2), 1, "the last card was deleted: the one before it")
+        XCTAssertNil(CardFocus.clamp(0, cards: 0))
     }
 
     func testHoverNoteOnlyAddsWhatTheCardCannotShow() {
@@ -219,17 +238,15 @@ final class CardRowTests: XCTestCase {
         XCTAssertGreaterThan(CardDelete.recycleAfter, CardDelete.undoSeconds)
         XCTAssertGreaterThanOrEqual(CardDelete.undoSeconds, 3)
     }
-    /// Five 150 pt snaps are 798 pt, just over 780: the row showed four and a "+1" the size of the card it hid.
-    func testNoPlusOneTileForACardThatFits() {
-        let l = layout(Array(repeating: 150, count: 5))
-        XCTAssertEqual(l.shown.count, 5)
-        XCTAssertEqual(l.more, 0)
-        XCTAssertNil(l.tileX)
-        // more than five still wait behind the tile, and a narrow screen still gets the tile
-        XCTAssertGreaterThan(layout(Array(repeating: 150, count: 6)).more, 1, "two or more wait behind the tile")
+    /// Six wide snaps fit the window side by side; a narrow screen scrolls them instead of hiding any.
+    func testWideSnapsFitOrScrollNeverHide() {
+        let l = layout(Array(repeating: 150, count: 6))
+        XCTAssertEqual(l.shown.count, 6)
+        XCTAssertNil(l.viewport, "6 × 150 + 5 × 12 = 960: fits the window")
         let narrow = layout(Array(repeating: 150, count: 5), centre: 400, screen: 800)
-        XCTAssertLessThanOrEqual(narrow.span.upperBound - narrow.span.lowerBound, 776)
-        XCTAssertEqual(narrow.shown.count + narrow.more, 5)
+        XCTAssertEqual(narrow.shown.count, 5)
+        XCTAssertEqual(narrow.span.upperBound - narrow.span.lowerBound, 776, "the screen less its margins")
+        XCTAssertGreaterThan(narrow.maxScroll, 0)
     }
 
     /// Put Back re-hung a card over Recently Dragged Out: panels under the cards open below the strip they hang in.

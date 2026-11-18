@@ -1,10 +1,11 @@
-//! Jobs — everything that is happening (contract K4): recordings, snaps, voice notes, sorting, filing, agent sessions.
+//! Jobs — everything that is happening (contract K4): recordings, snaps, voice notes, sorting, filing.
 //! `$BLURT_HOME/jobs/<id>.json` is written only by the job's owner; anyone else appends to `<id>.events.jsonl`, and
 //! every reader folds those events over the json the same way (here, `jobs.py`, and the macOS JobStore), so a job's
 //! state is current even while its owner isn't running.
 //!
-//! The app owns record / snap / voice / process jobs ([`JobWriter`]); sessions.py owns agent jobs, projects.py route
-//! jobs. [`transitions`] turns two snapshots into what deserves a word to the user (the K4 reminder rules are applied
+//! The app owns record / snap / voice / process jobs ([`JobWriter`]); projects.py owns route jobs. Agent jobs older
+//! versions left behind (in-app agent sessions, gone) aren't listed.
+//! [`transitions`] turns two snapshots into what deserves a word to the user (the K4 reminder rules are applied
 //! by the caller: never open anything, system notifications only when Blurt isn't in front).
 
 use std::collections::{BTreeSet, HashMap};
@@ -42,8 +43,8 @@ pub fn id_of(p: &Path) -> Option<String> {
     name.starts_with("j-").then(|| name.split('.').next().unwrap_or("").to_string()).filter(|s| !s.is_empty())
 }
 
-/// K4's fold: events in order; a step replaces the one with its id, `status` goes to agent.status / status_at /
-/// status_source, `state` and `progress` replace, `items` are added to the set.
+/// K4's fold: events in order; a step replaces the one with its id, `state` and `progress` replace, `items` are added
+/// to the set.
 pub fn fold(mut job: Value, events: &str) -> Value {
     for line in events.lines() {
         let Ok(e) = serde_json::from_str::<Value>(line.trim()) else { continue };
@@ -63,14 +64,6 @@ pub fn fold(mut job: Value, events: &str) -> Value {
                 },
                 None => job["steps"] = json!([step]),
             }
-        }
-        if let Some(st) = e.get("status") {
-            if !job.get("agent").is_some_and(Value::is_object) {
-                job["agent"] = json!({});
-            }
-            job["agent"]["status"] = st.clone();
-            job["agent"]["status_at"] = t.clone();
-            job["agent"]["status_source"] = e.get("source").cloned().unwrap_or(Value::Null);
         }
         if let Some(s) = e.get("state") {
             job["state"] = s.clone();
@@ -127,7 +120,11 @@ pub fn list(active_only: bool, limit: usize) -> Vec<Value> {
         .filter_map(|p| id_of(&p))
         .collect();
     ids.sort_unstable_by(|a, b| b.cmp(a));
-    ids.iter().filter_map(|id| load(id)).filter(|j| !active_only || is_active(j)).take(limit).collect()
+    ids.iter()
+        .filter_map(|id| load(id))
+        .filter(|j| j["type"] != "agent" && (!active_only || is_active(j)))
+        .take(limit)
+        .collect()
 }
 
 /// A job the app owns (record / snap / voice / process). Every change rewrites `<id>.json` atomically, after
@@ -255,8 +252,6 @@ pub enum Notice {
     /// a sorting job finished: n items wait for review
     Sorted { job: String, title: Option<String>, items: usize, long: bool },
     Failed { job: String, kind: String, code: String, long: bool },
-    /// an agent session asks for the user / finished a turn / exited
-    Agent { job: String, agent: String, status: String, items: Vec<String> },
 }
 
 fn secs_between(a: &Value, b: &Value) -> f64 {
@@ -293,47 +288,8 @@ pub fn transitions(prev: &HashMap<String, Value>, now: &[Value]) -> Vec<Notice> 
                 _ => {}
             }
         }
-        if kind == "agent" {
-            // SessionNotifier: what the session is now — its live status, else how it ended (error / exited)
-            let st = session_status(j);
-            let was = session_status(before);
-            // the user ended it after a finished turn: nothing to tell
-            let user_ended = st == "exited" && was == "turn_done" && state == "cancelled";
-            if st != was && matches!(st, "waiting_input" | "turn_done" | "exited" | "error") && !user_ended {
-                out.push(Notice::Agent {
-                    job: id.clone(),
-                    agent: j.pointer("/agent/id").and_then(Value::as_str).unwrap_or("agent").to_string(),
-                    status: st.to_string(),
-                    items: window_items(j),
-                });
-            }
-        }
     }
     out
-}
-
-/// An agent job's status as its notifications see it (the Mac's SessionNotifier): live → the agent's status; ended →
-/// error when it failed, else exited.
-pub fn session_status(j: &Value) -> &'static str {
-    let st = j.pointer("/agent/status").and_then(Value::as_str).unwrap_or("");
-    if is_active(j) {
-        return match st {
-            "waiting_input" => "waiting_input",
-            "turn_done" => "turn_done",
-            "exited" => "exited",
-            "error" => "error",
-            _ => "running",
-        };
-    }
-    if j["state"] == "failed" || st == "error" { "error" } else { "exited" }
-}
-
-/// The item ids an agent window works on (its tmux window name, `BA-12,BA-13`), for notices and the island.
-pub fn window_items(j: &Value) -> Vec<String> {
-    j.pointer("/agent/tmux/name")
-        .and_then(Value::as_str)
-        .map(|n| n.split(',').map(str::to_owned).collect())
-        .unwrap_or_default()
 }
 
 /// Ids of jobs whose files changed (the watcher's paths).
@@ -357,18 +313,15 @@ mod tests {
 
     #[test]
     fn fold_follows_k4() {
-        let job = json!({"id": "j", "type": "agent", "state": "running", "items": ["u1"],
-            "steps": [{"id": "launch", "state": "done"}, {"id": "work", "state": "pending"}], "agent": {"status": "running"}});
+        let job = json!({"id": "j", "type": "process", "state": "running", "items": ["u1"],
+            "steps": [{"id": "prepare", "state": "done"}, {"id": "work", "state": "pending"}]});
         let ev = [
-            r#"{"t":"2026-10-22T10:00:01+08:00","source":"hook","event":"Notification","status":"waiting_input"}"#,
             r#"{"t":"2026-10-22T10:00:02+08:00","source":"items","event":"step","step":{"id":"work","state":"running","progress":0.5},"items":["u2","u1"]}"#,
             "not json",
-            r#"{"t":"2026-10-22T10:00:03+08:00","source":"tmux","event":"pane-dead","status":"exited","state":"done","progress":1}"#,
+            r#"{"t":"2026-10-22T10:00:03+08:00","source":"items","event":"done","state":"done","progress":1}"#,
         ]
         .join("\n");
         let f = fold(job, &ev);
-        assert_eq!(f["agent"]["status"], "exited");
-        assert_eq!(f["agent"]["status_source"], "tmux");
         assert_eq!(f["state"], "done");
         assert_eq!(f["progress"], 1);
         assert_eq!(f["items"], json!(["u1", "u2"]));
@@ -380,37 +333,21 @@ mod tests {
     fn notices() {
         let before: HashMap<String, Value> = [
             ("p".to_string(), json!({"id": "p", "type": "process", "state": "running"})),
-            ("a".to_string(), json!({"id": "a", "type": "agent", "state": "running", "agent": {"status": "running"}})),
             ("r".to_string(), json!({"id": "r", "type": "record", "state": "running"})),
             ("f".to_string(), json!({"id": "f", "type": "process", "state": "running", "filed": true})),
         ]
         .into();
         let now = vec![
             json!({"id": "p", "type": "process", "state": "done", "items": ["u1", "u2"], "started": "2026-10-22T10:00:00+08:00", "ended": "2026-10-22T10:00:30+08:00"}),
-            json!({"id": "a", "type": "agent", "state": "running", "agent": {"id": "claude", "status": "waiting_input", "tmux": {"name": "BA-12,BA-13"}}}),
             json!({"id": "r", "type": "record", "state": "failed", "error": {"code": "io"}}),
             json!({"id": "new", "type": "process", "state": "done"}),
             // filed by captures.py: the island said "Filed to X" already
             json!({"id": "f", "type": "process", "state": "done", "filed": true, "items": ["u3"]}),
         ];
         let n = transitions(&before, &now);
-        assert_eq!(n.len(), 3, "{n:?}");
+        assert_eq!(n.len(), 2, "{n:?}");
         assert_eq!(n[0], Notice::Sorted { job: "p".into(), title: None, items: 2, long: true });
-        assert!(matches!(&n[1], Notice::Agent { status, items, .. } if status == "waiting_input" && items == &["BA-12", "BA-13"]));
-        assert!(matches!(&n[2], Notice::Failed { code, long: false, .. } if code == "io"));
-        // an ended or failed session is news too; a session the user ended after its turn is not
-        let before: HashMap<String, Value> = [
-            ("x".to_string(), json!({"id": "x", "type": "agent", "state": "running", "agent": {"status": "running"}})),
-            ("y".to_string(), json!({"id": "y", "type": "agent", "state": "running", "agent": {"status": "turn_done"}})),
-        ]
-        .into();
-        let now = vec![
-            json!({"id": "x", "type": "agent", "state": "failed", "agent": {"status": "error"}}),
-            json!({"id": "y", "type": "agent", "state": "cancelled", "agent": {"status": "exited"}}),
-        ];
-        let n = transitions(&before, &now);
-        assert!(n.iter().any(|x| matches!(x, Notice::Agent { job, status, .. } if job == "x" && status == "error")), "{n:?}");
-        assert!(!n.iter().any(|x| matches!(x, Notice::Agent { job, .. } if job == "y")), "{n:?}");
+        assert!(matches!(&n[1], Notice::Failed { code, long: false, .. } if code == "io"));
     }
 
     #[test]

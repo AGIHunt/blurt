@@ -1,0 +1,76 @@
+/* 手机页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
+
+"phone.title" = "手机";
+"phone.settings" = "手机设置…";
+"phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
+/* 没有报上名字的手机 */
+"phone.unnamed" = "手机";
+
+/* 菜单栏菜单里的一行（SnapApp.addWaitingMenuItems）：打开手机页 */
+"phone.menu.connected" = "手机：%@ 已连接";
+"phone.menu.paired" = "手机：未连接";
+"phone.menu.add" = "添加手机…";
+"phone.menu.needs_access" = "手机：无法控制 Mac";
+
+/* 主页上手机那一格的状态（PhoneStatus.line） */
+"phone.line.connected" = "%@ 已连接";
+"phone.line.not_connected" = "未连接";
+
+/* 页面最上面的一句话 */
+"phone.head.none" = "还没有配对的手机";
+"phone.head.none.detail" = "配对后，手机或平板可用作 Mac 的触控板、键盘和麦克风，并可查看屏幕。";
+"phone.head.not_connected" = "未连接";
+"phone.head.not_connected.detail" = "在手机上打开口喷鸡即可自动连接。";
+"phone.head.connected" = "%@ 已连接";
+"phone.head.local" = "与 Mac 在同一网络，直接连接。";
+"phone.head.relay" = "在其他网络，经中转连接。";
+
+"phone.add" = "添加手机…";
+"phone.add.tip" = "显示配对二维码，用手机扫描";
+"phone.remove" = "移除…";
+"phone.remove.named" = "移除 %@";
+
+/* 这台 Mac：只列出挡住手机的事，都没问题时只有一行 */
+"phone.mac" = "本机";
+"phone.mac.ok" = "手机可以控制 Mac";
+"phone.mac.ok.keys" = "指针和按键";
+"phone.mac.ok.screen" = "屏幕画面";
+"phone.mac.ok.relay" = "外出时经中转连接";
+"phone.mac.ok.relay_checking" = "正在检查中转…";
+"phone.mac.accessibility" = "辅助功能未开启";
+"phone.mac.accessibility.detail" = "开启前，手机可以连接，但无法移动指针或按键。";
+"phone.mac.screen" = "屏幕录制未开启";
+"phone.mac.screen.detail" = "开启前，手机上无法显示屏幕。指针和按键不受影响。";
+"phone.mac.deaf" = "无法开始等待手机连接";
+"phone.mac.deaf.detail" = "macOS 返回：%@";
+"phone.mac.deaf.retry" = "重试";
+"phone.mac.relay" = "中转无响应";
+"phone.mac.relay.detail" = "其他网络中的手机无法连接；同一 Wi-Fi 下不受影响。";
+"phone.mac.relay.again" = "再检查一次";
+"phone.relay_settings" = "中转设置…";
+/* 旁白读一行状态时，在标题后面说的词 */
+"phone.ax.ok" = "正常";
+"phone.ax.needs_you" = "需要处理";
+
+"phone.paired" = "已配对的手机";
+
+/* 手机版从哪里来 */
+"phone.app" = "手机上的口喷鸡";
+"phone.app.where" = "尚未上架应用商店，需从源码构建。";
+"phone.app.ios" = "iPhone 和 iPad";
+"phone.app.android" = "Android";
+
+/* 连不上时：按顺序试 */
+"phone.tips" = "连不上时";
+"phone.tips.network" = "让手机和 Mac 连接同一个 Wi-Fi。";
+"phone.tips.open" = "在手机上打开口喷鸡，并确认 Mac 没有进入睡眠。";
+"phone.tips.vpn" = "关闭手机和 Mac 上的 VPN。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
+"phone.tips.vpn.local" = "关闭手机和 Mac 上的 VPN，并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
+"phone.tips.away.none" = "不在同一网络时（如外出），手机需经你自己的中转连接，目前未设置。";
+"phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
+
+/* 设置 → 手机（Settings/RemotePane.swift）里指向这一页和配对前的提醒 */
+"phone.pane.before" = "请先开启辅助功能，否则配对后的手机无法移动指针或按键。";
+"phone.pane.see_page" = "连接状态和排查方法见主窗口的「手机」页。";
+"phone.pane.open_page" = "打开";
+"phone.pane.build.tip" = "手机版尚未上架应用商店，需从源码构建";

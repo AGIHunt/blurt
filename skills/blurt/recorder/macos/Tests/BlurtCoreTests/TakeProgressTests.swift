@@ -1,4 +1,4 @@
-// BlurtCore TakeProgress: the recording island's plain counts and where the items go (BA-64), and how long organizing
+// BlurtCore TakeProgress: the recording island's snap count and where the items go (BA-64), and how long organizing
 // usually takes on this Mac, measured from its own past runs (BA-61).
 import XCTest
 @testable import BlurtCore
@@ -6,19 +6,14 @@ import XCTest
 final class TakeLineTests: XCTestCase {
     override func tearDown() { Loc.setting = nil }
 
-    func testPartsLeaveOutZeroesInAFixedOrder() {
-        XCTAssertEqual(TakeLine.parts(snaps: 0, items: 0), [])
-        XCTAssertEqual(TakeLine.parts(snaps: 6, items: 4), [.snaps(6), .items(4)])
-        XCTAssertEqual(TakeLine.parts(snaps: 0, items: 1), [.items(1)])
-    }
-
-    func testTheLineSaysSnapsAndItemsInPlainWords() {
+    func testTheLineSaysTheSnapsInPlainWords() {
         Loc.setting = "zh-Hans"
-        XCTAssertEqual(TakeLine.text(snaps: 6, items: 4), "截图 6 张 · 已识别 4 个事项")
+        XCTAssertEqual(TakeLine.text(snaps: 6), "截图 6 张")
         XCTAssertEqual(TakeLine.whereTo(project: "Atlas Web", organizes: true, anything: true), "点完成后整理到 Atlas Web")
         Loc.setting = "en"
-        XCTAssertEqual(TakeLine.text(snaps: 1, items: 4), "1 snap · 4 items spotted")
-        XCTAssertEqual(TakeLine.text(snaps: 0, items: 0), "")
+        XCTAssertEqual(TakeLine.text(snaps: 1), "1 snap")
+        XCTAssertEqual(TakeLine.text(snaps: 3), "3 snaps")
+        XCTAssertEqual(TakeLine.text(snaps: 0), "")
         XCTAssertEqual(TakeLine.whereTo(project: "Atlas Web", organizes: true, anything: true), "Organized into Atlas Web when you finish")
     }
 

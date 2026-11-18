@@ -5,6 +5,7 @@ import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
+import type { CardRef } from './drops';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -35,6 +36,19 @@ export function fileSrc(abs: string | null | undefined): string {
 // ---- rows
 
 /** ItemRow v3 (K1; one K3 `state`) + what the list shows besides. Times are epoch seconds. */
+/** A row of Settings → General → Cards → Agents…: `id` is the program's executable stem ("cursor"). */
+export interface AgentApp {
+  id: string;
+  builtin: boolean;
+  on: boolean;
+}
+
+/** items.py attach's answer: what the item had (the Undo puts it back) and what was added */
+export interface AttachResult {
+  before?: unknown;
+  added?: { frames?: string[]; attachments?: string[]; details?: string };
+}
+
 export interface ItemRow {
   uid: string;
   project_id: string;
@@ -87,8 +101,6 @@ export interface ProjectRow {
   kind: 'repo' | 'folder' | 'inbox';
   exists: boolean;
   description?: string;
-  default_agent?: string | null;
-  worktree?: boolean;
   pinned?: boolean;
   last_used?: string;
   /** K3 counts over items that aren't discarded: open = new … in progress; inbox = new + to verify */
@@ -151,7 +163,7 @@ export interface JobStep {
 /** K4 job, effective state. */
 export interface Job {
   id: string;
-  type: 'record' | 'snap' | 'voice' | 'process' | 'route' | 'agent';
+  type: 'record' | 'snap' | 'voice' | 'process' | 'route';
   state: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   project: string | null;
   session: string | null;
@@ -163,119 +175,6 @@ export interface Job {
   started: string | null;
   ended: string | null;
   error: { code: string; message: string } | null;
-  /** an agent session's items as its hand-off note names them (jobs_list) */
-  labels?: { id: string; title: string }[];
-  agent?: {
-    id: string;
-    mode: string;
-    runner: 'tmux' | 'app';
-    status: AgentStatus;
-    tmux?: { name: string } | null;
-    cwd: string;
-    worktree?: { path: string; branch: string; base: string } | null;
-    exit?: number | null;
-  };
-}
-
-export type AgentStatus = 'running' | 'waiting_input' | 'turn_done' | 'exited' | 'error';
-
-/** `sessions.py list` row (K5). */
-export interface AgentSession {
-  job: string;
-  project: string;
-  agent: string;
-  items: string[];
-  window: string | null;
-  status: AgentStatus;
-  status_at: string | null;
-  worktree: string | null;
-  branch: string | null;
-  cwd: string;
-  started: string | null;
-  ended: string | null;
-  exit: number | null;
-  attached?: boolean;
-}
-
-/** An agent job as the sessions pane reads it (`sessions_rows`): the K4 job, its whole `agent` object, and what the
-    page can't read itself — the hand-off sheet's item labels, a worktree folder that's gone, the log, the app runner. */
-export interface SessionJob extends Omit<Job, 'agent'> {
-  updated?: string | null;
-  agent: {
-    id: string;
-    mode?: string;
-    runner?: 'tmux' | 'app' | 'desktop' | string;
-    status: AgentStatus;
-    status_at?: string | null;
-    status_source?: string | null;
-    status_message?: string | null;
-    tmux?: { name?: string | null; session?: string; window?: string } | null;
-    cwd?: string;
-    worktree?: { path: string; branch: string; base?: string } | null;
-    exit?: number | null;
-    handoff?: string | null;
-    finish?: { action: string; result?: Record<string, any> | null } | null;
-    last_output?: string[];
-    changes?: { ahead?: number; dirty?: number } | null;
-    started?: boolean;
-    model?: string | null;
-    stopped_at?: string | null;
-    waiting_hint?: string | null;
-    continued?: { from?: string } | null;
-    desktop?: { mcp?: boolean } | null;
-    agent_session_id?: string | null;
-  };
-  error: (Job['error'] & { fix?: string; reason?: string; reason_i18n?: Record<string, string> }) | null;
-  labels: { id: string; title: string }[];
-  folder_gone: boolean;
-  log: string | null;
-  handoff_path: string | null;
-  owned: boolean;
-  output: boolean;
-}
-
-export interface DesktopApp {
-  name: string;
-  available: boolean;
-  /** a running session can continue there (claude --desktop --resume) */
-  continue: boolean;
-}
-
-export interface SessionRows {
-  jobs: SessionJob[];
-  panes: Record<string, string> | null;
-  terminals: { id: string; name: string }[];
-  preferred_terminal: string | null;
-  font_size: number | null;
-  desktop?: Record<string, DesktopApp>;
-}
-
-export interface DispatchWarning {
-  code: 'concurrent_edit' | 'no_git' | 'no_tmux' | 'draft_confirmed' | string;
-  jobs?: string[];
-  items?: string[];
-}
-
-export interface DispatchResult {
-  ok: boolean;
-  jobs: { id: string; project: string; window: string | null; worktree?: string; branch?: string; cwd: string; items: string[]; url?: string }[];
-  warnings: DispatchWarning[];
-  /** a desktop dry run: is the blurt MCP installed for the agent (false = items need marking by hand) */
-  mcp?: boolean | null;
-}
-
-export interface DispatchOpts {
-  /** the panel just probed the agent's sign-in: sessions.py needn't check again */
-  force?: boolean;
-  /** "desktop": the agent's desktop app (Claude) — its claude:// link opens there */
-  runner?: 'desktop';
-  items: string[];
-  agent?: string;
-  mode?: 'together' | 'parallel';
-  worktree?: 'on' | 'off' | 'auto';
-  dryRun?: boolean;
-  /** the agent's model (agentModels); undefined = the CLI's own setting */
-  model?: string;
 }
 
 /** `agents.py models ID` */
@@ -299,10 +198,26 @@ export interface AppStatus {
   index_ready: boolean;
   scripts: string | null;
   uv: string | null;
-  tmux: boolean;
   capture: { recording: boolean; paused: boolean; session: string | null; voice: unknown };
   hotkey_mode: string;
   start_view?: string | null;
+  /** what this build has: dictation (Windows, Linux), Copy Text from Screen (Windows) */
+  features?: { dictation: boolean; screen_text: boolean };
+  /** the dictation key the GNOME portal bound ("Menu"), when the keyboard can't be read directly */
+  dictation_key?: string | null;
+  /** hook (Windows) · evdev (Linux, the input group) · portal (Linux, one GNOME shortcut) */
+  dictation_keys?: 'hook' | 'evdev' | 'portal';
+}
+
+/** What Settings shows for this build: older backends had no `features`, and only Windows had dictation then. */
+export function builds(s: AppStatus) {
+  const win = s.platform === 'win';
+  return {
+    dictation: s.features?.dictation ?? win,
+    screenText: s.features?.screen_text ?? win,
+    /** the dictation key is one GNOME shortcut: no right / either Alt choice, no Esc or Shift / Ctrl taps in a take */
+    portalKey: s.dictation_keys === 'portal' ? s.dictation_key ?? '' : null,
+  };
 }
 
 export interface AgentInfo {
@@ -317,7 +232,6 @@ export interface AgentInfo {
   login: 'ok' | 'logged_out' | 'unknown' | 'n/a';
   headless: boolean;
   interactive: string | null;
-  session?: boolean;
 }
 
 export interface Detect {
@@ -332,7 +246,8 @@ export interface HotkeyRow {
   label: string;
   default: string;
   active: boolean;
-  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual';
+  /** disabled: its capability is off (the key stays set, but isn't held) */
+  result: 'ok' | 'off' | 'duplicate' | 'system' | 'taken' | 'idle' | 'unsupported' | 'invalid' | 'portal' | 'pending' | 'manual' | 'disabled';
   of?: string;
   name?: string;
   hint_url?: string;
@@ -369,6 +284,14 @@ export interface DictationModels {
   ready: boolean;
   models: DictationModel[];
   downloading?: string | null;
+  /** Model Studio's speech model under qwen3-asr-flash (asr.cloud["qwen3-asr-flash"].model); null: Qwen3-ASR Flash */
+  dashscope_model?: string | null;
+  /** dictation goes to a cloud service now */
+  selected_cloud?: boolean;
+  /** a PC the CPU rules give the fast, less accurate model: cloud recognition is offered first */
+  weak?: boolean;
+  /** cloud recognition may be offered (Privacy: recognition not kept on this computer) */
+  cloud_allowed?: boolean;
 }
 export interface ModelDownload {
   id: string;
@@ -377,7 +300,8 @@ export interface ModelDownload {
   total_mb: number;
 }
 export interface CloudSummary {
-  services: { id: string; preset: string; has_key: boolean }[];
+  /** record.cloud.services: `region` for a preset with two addresses, `base_url` / `name` for the user's own */
+  services: { id: string; preset: string; has_key: boolean; region?: string; base_url?: string; name?: string }[];
   routes: Record<string, { service: string; model: string } | null>;
 }
 
@@ -392,6 +316,8 @@ export interface Onboarding {
   /** setup.rs is still to start the first model download */
   first_download_pending: boolean;
   dictation: { available: boolean; key: string; mode: 'auto' | 'tap' | 'hold' | string; enabled: boolean };
+  /** the capabilities turned off (the first step's switches) */
+  off?: string[];
 }
 export interface MicState {
   supported: boolean;
@@ -459,6 +385,28 @@ export interface VocabTerm {
   /** ISO 8601 */
   added?: string;
 }
+/** One result of Alt+Shift+C / Alt+Shift+T (screen_text/history.rs; the Mac's ScreenTextEntry). `time` epoch seconds;
+ *  a translation's `text` is the translation and `source` what was on the screen. */
+export interface ScreenTextEntry {
+  id: string;
+  time: number;
+  translated: boolean;
+  text: string;
+  source?: string | null;
+  /** the language asked for ("zh", "auto:zh|en") */
+  target?: string | null;
+  /** the app in front then */
+  app?: string | null;
+  /** pasted | unconfirmed | copied */
+  outcome?: string | null;
+}
+/** The Text & Translation page's list, newest first; `days` record.screen_text.history_days (7, 30, -1 forever, 0 off). */
+export interface ScreenTextHistory {
+  entries: ScreenTextEntry[];
+  days: number;
+  count: number;
+}
+
 export interface DictationHistory {
   entries: DictationEntry[];
   retention_days: number;
@@ -493,41 +441,17 @@ export const api = {
   openFolder: () => invoke<void>('projects_open_folder', { makeCurrent: false }),
   /** Locate… a project whose folder is gone: only its own folder is taken (pick "same") */
   locateProject: (id: string, title: string, near: string) => invoke<{ pick: 'same' | 'other' | 'empty' | 'cancel' }>('projects_locate', { id, title, near }),
-  /** the user's K3 action on items (keep, done, send back, discard, …); hand off goes through dispatch / handoff */
+  /** the user's K3 action on items (keep, done, send back, discard, …); hand off goes through handoff */
   state: (uids: string[], action: Action, note?: string) => invoke('items_state', { uids, action, note }),
   move: (uids: string[], project: string) => invoke('items_move', { uids, project }),
-  jobs: (active = false) => invoke<Job[]>('jobs_list', { active }),
+  /** the K4 jobs; agent-session jobs an older Blurt left in the jobs folder are not shown */
+  jobs: (active = false) => invoke<(Job | { type: 'agent' })[]>('jobs_list', { active }).then((js) => js.filter((j): j is Job => j.type !== 'agent')),
   /** `login` false: no sign-in probes (fast); `ids`: only these agents */
   detect: (o: { login?: boolean; ids?: string[] } = {}) => invoke<Detect>('agents_detect', o),
   models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),
-  dispatch: (opts: DispatchOpts) => invoke<DispatchResult>('sessions_dispatch', { opts }),
-  sessions: (all = false) => invoke<{ sessions: AgentSession[]; owned?: string[] }>('sessions_list', { all }),
-  /** `expect` (merge / pr): the diff's `reviewed` token — a worktree that changed since is refused (code changed) */
-  finish: (job: string, action: 'diff' | 'merge' | 'pr' | 'discard' | 'keep', expect?: string | null) =>
-    invoke<Record<string, any>>('sessions_finish', { job, action, expect: expect ?? null }),
-  stopSession: (job: string, kill = false) => invoke('sessions_stop', { job, kill }),
-  openExternal: (job: string, terminal?: string | null) => invoke('sessions_open_external', { job, terminal: terminal ?? null }),
-  /** ptyId null with ended: what an app-runner session that ended left on screen (Show Output, read only) */
-  ptyOpen: (job: string, cols: number, rows: number) =>
-    invoke<{ ptyId: number | null; replay: string | null; owned: boolean; ended?: boolean }>('pty_open', { job, cols, rows }),
-  /** the sessions pane's agent jobs (SessionsModel) and its memory (ui/terminal.json) */
-  sessionRows: () => invoke<SessionRows>('sessions_rows'),
-  /** the pane shows this session now; `forget`: Remove Session */
-  sessionMemory: (job: string, pane: string | null, forget = false) => invoke<void>('sessions_memory', { job, pane, forget }),
-  restartSession: (job: string) => invoke<DispatchResult>('sessions_restart', { job }),
-  takeBack: (job: string) => invoke<{ taken_back: string[]; has_changes?: unknown }>('sessions_take_back', { job }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   /** a copy in the user's Downloads (the detail's ⤓); answers the file's name there */
   saveToDownloads: (path: string) => invoke<string>('save_to_downloads', { path }),
-  /** the agents' desktop apps (Claude) and whether each is installed here */
-  desktopApps: () => invoke<Record<string, DesktopApp>>('sessions_desktop_apps'),
-  /** Go to Claude */
-  goDesktop: (agent: string) => invoke<void>('sessions_go_desktop', { agent }),
-  desktopCheck: (agent: string) => invoke<{ available: boolean; reason: string | null; version: string | null; mcp: boolean | null }>('sessions_desktop_check', { agent }),
-  continueDesktop: (job: string, withoutMcp = false) => invoke<Record<string, any>>('sessions_continue_desktop', { job, withoutMcp }),
-  ptyWrite: (ptyId: number, data: string) => invoke<void>('pty_write', { ptyId, data }),
-  ptyResize: (ptyId: number, cols: number, rows: number) => invoke<void>('pty_resize', { ptyId, cols, rows }),
-  ptyClose: (ptyId: number) => invoke<void>('pty_close', { ptyId }),
   handoff: (uids: string[], full: boolean) => invoke<{ id: string; path: string; text: string }>('handoff_create', { uids, full }),
   settings: () => invoke<Settings>('settings_get'),
   setSettings: (patch: Record<string, unknown>) => invoke<Record<string, any>>('settings_set', { patch }),
@@ -542,6 +466,17 @@ export const api = {
   dictationModels: () => invoke<DictationModels>('dictation_models'),
   modelDownload: (id: string) => invoke<void>('model_download', { id }),
   dictationUse: (id: string | null) => invoke<void>('dictation_use', { id }),
+  /** Linux: GNOME's screenshot question for Copy Text from Screen, asked with Blurt in front */
+  screenTextAllow: () => invoke<{ ok: boolean; code?: string; error?: string }>('screen_text_allow'),
+  screenTextAllowed: () => invoke<boolean>('screen_text_allowed'),
+  /** Auto's pair on this computer (Blurt's language, else the system's; screen_text/direction.rs `Pair::of`) */
+  translateAutoPair: () => invoke<{ home: string; other: string | null }>('translate_auto_pair'),
+  /** what Alt+Shift+C / Alt+Shift+T read, pruned to what Settings keeps (`screen-text://changed` follows a change) */
+  screenTextHistory: () => invoke<ScreenTextHistory>('screen_text_history'),
+  screenTextHistoryDelete: (ids: string[]) => invoke<void>('screen_text_history_delete', { ids }),
+  screenTextHistoryClear: () => invoke<void>('screen_text_history_clear'),
+  /** dictation on Model Studio with this measured speech model (null: Qwen3-ASR Flash) */
+  dictationDashscopeModel: (model: string | null) => invoke<void>('dictation_dashscope_model', { model }),
   /** the dictation key pressed in Blurt's own window: the key hook doesn't hear those (engine.rs `forward_key`) */
   dictationKey: (code: string, down: boolean) => invoke<void>('dictation_key_forward', { code, down }),
   dictationHistory: () => invoke<DictationHistory>('dictation_history'),
@@ -554,6 +489,14 @@ export const api = {
   cloudConnect: (preset: string, key: string) =>
     invoke<{ ok: boolean; ms?: number; code?: string; error?: string; summary?: CloudSummary }>('cloud_connect', { preset, key, baseUrl: null }),
   cloudDisconnect: (id: string) => invoke<CloudSummary>('cloud_disconnect', { id }),
+  /** Advanced → Custom Model… (dictation/commands.rs `cloud_custom_connect`): the job is tested on the model first; only
+   *  then is the service saved and the job put on it. `service`: a connected one's id (its key kept unless one is typed);
+   *  else a new one of `preset`. `jobs` (Add Cloud Model's 用于 boxes): each is checked in turn, nothing saved unless all
+   *  pass, then each is put on the model; a failure names its `job`. */
+  cloudCustomConnect: (a: { job?: string; jobs?: string[]; service?: string | null; preset?: string | null; region?: string | null; baseUrl?: string | null; name?: string | null; key: string; model: string }) =>
+    invoke<{ ok: boolean; ms?: number; code?: string; job?: string; service?: string; summary?: CloudSummary }>('cloud_custom_connect', {
+      job: a.job ?? null, jobs: a.jobs ?? null, service: a.service ?? null, preset: a.preset ?? null, region: a.region ?? null, baseUrl: a.baseUrl ?? null, name: a.name ?? null, key: a.key, model: a.model,
+    }),
   onboarding: () => invoke<Onboarding>('onboarding_get'),
   onboardingStep: (step: number) => invoke<void>('onboarding_step', { step }),
   onboardingFinish: (login: boolean | null) => invoke<LoginItem>('onboarding_finish', { login }),
@@ -570,6 +513,28 @@ export const api = {
   // the main window's writes (docs/design/windows-parity/main-window.md)
   undoState: (uids: string[], to: State) => invoke('items_undo_state', { uids, to }),
   addItem: (project: string, item: Record<string, unknown>) => invoke<{ uid?: string; item?: { uid?: string } } | null>('items_add', { project, item }),
+  /** something dropped on an item (drag-drop.md §4): pictures as frames, files referenced, text after the details;
+   *  `restore`: the `before` an earlier call returned (the Undo) */
+  attachItem: (uid: string, frames: string[], files: string[], text: string | null, restore?: unknown) =>
+    invoke<AttachResult>('items_attach', { uid, frames, files, text, restore: restore ?? null }),
+  /** the island cards of the drag under way, if it is one (Windows: their own drag; elsewhere none) */
+  cardsDragging: () => invoke<CardRef[] | null>('cards_dragging'),
+  /** island cards dropped on a project (or a project's list): filed there ("inbox": Unassigned) */
+  cardsFile: (cards: CardRef[], project: string) => invoke<void>('cards_file', { cards, project }),
+  /** island cards dropped on an item: added to it, then taken; Undo: attachItem(restore) + cardsPutBack */
+  cardsAttach: (cards: CardRef[], uid: string) => invoke<AttachResult>('cards_attach', { cards, uid }),
+  cardsPutBack: (cards: CardRef[]) => invoke<void>('cards_put_back', { cards }),
+  /** Ctrl+V: what the system clipboard holds, read natively (pictures and files by path, else the text; Blurt's own
+   *  copies and a document's picture of itself left out) */
+  clipboardThings: () => invoke<{ images: string[]; files: string[]; text: string | null; rich?: boolean; ours?: boolean }>('clipboard_things'),
+  /** a drop or paste event for the drag log (BLURT_HOME/logs/card-drag.log; never words) */
+  dragLog: (event: Record<string, unknown>) => invoke<void>('drag_log', { event }),
+  /** the review page's Show in folder / open of a file it was served (review_file: only files a loaded doc names) */
+  reviewFile: (path: string, open: boolean) => invoke<string>('review_file', { path, open }),
+  /** the item detail's Add Image or File…: the Open dialog, then attached as a drop is (null: cancelled) */
+  addFiles: (uid: string) => invoke<AttachResult | null>('items_add_files', { uid }),
+  /** dropped files' paths (Linux: from text/uri-list): which are folders; the files may show as thumbnails */
+  dropPaths: (paths: string[]) => invoke<{ path: string; dir: boolean }[]>('drop_paths', { paths }),
   exportBundle: (uids: string[], name: string, lang: string) => invoke<{ path?: string } | null>('items_export_bundle', { uids, name, lang }),
   pickImages: () => invoke<string[]>('pick_images'),
   removeProject: (id: string) => invoke<Record<string, unknown>>('projects_remove', { id }),
@@ -591,6 +556,18 @@ export const api = {
   appContractHelp: () => invoke<void>('app_contract_help'),
   storageScan: () => invoke<StorageScan>('storage_scan'),
   storageTrash: (paths: string[]) => invoke<string[]>('storage_trash', { files: paths }),
+  // Storage → Data location (location.rs): where the data is, the folder dialog + its check, the move (then a restart)
+  storageLocation: () => invoke<StorageLocation>('storage_location'),
+  storageLocationPick: (title: string) => invoke<LocationCheck>('storage_location_pick', { title }),
+  // Settings → General → Cards → Agents… (island.rs; card_drop.rs AGENTS): the agent apps a card goes into as the
+  // picture's path + its note — the built-ins, each switched on or off, then the programs the user added
+  agentApps: () => invoke<AgentApp[]>('agent_apps_get'),
+  /** a built-in switched on / off, a program added (on) or removed (off) → the rows */
+  setAgentApp: (id: string, on: boolean) => invoke<AgentApp[]>('agent_apps_set', { id, on }),
+  /** Add Program…: the Open dialog for programs → their ids (executable stems), or cancel */
+  pickAgentApps: (title: string) => invoke<{ ids?: string[]; cancel?: boolean }>('agent_apps_pick', { title }),
+  storageLocationCheck: (folder: string | null) => invoke<LocationCheck>('storage_location_check', { folder }),
+  storageLocationMove: (folder: string | null) => invoke<LocationCheck>('storage_location_move', { folder }),
   videosTrash: (days: number | null) => invoke<{ count: number; bytes: number }>('videos_trash', { days }),
   videosAutoSet: (days: number | null) => invoke<{ auto_days: number | null }>('videos_auto_set', { days }),
   cloudCurated: () => invoke<{ jobs: Record<string, CuratedOption[]> }>('cloud_curated'),
@@ -621,10 +598,76 @@ export const api = {
   // Set Up with Agent… (control.rs): the instruction, and the live list of what the agent did ('agent-setup://changed')
   agentSetupInstruction: () => invoke<{ guide: string; setup: string }>('agent_setup_instruction'),
   agentSetupState: () => invoke<AgentSetupState>('agent_setup_state'),
-  agentSetupStart: (agent: string) => invoke<AgentSetupState>('agent_setup_start', { agent }),
   agentSetupStop: () => invoke<AgentSetupState>('agent_setup_stop'),
   agentSetupDismiss: () => invoke<AgentSetupState>('agent_setup_dismiss'),
+  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Phone.
+  // Every change also comes as 'remote://status' (onRemoteStatus).
+  remoteStatus: () => invoke<RemoteStatus>('remote_status'),
+  /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
+  remoteShowPairing: (on: boolean) => invoke<RemoteStatus>('remote_show_pairing', { on }),
+  /** the yes or no for the phone in `asking` */
+  remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
+  remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),
+  /** "" clears it; rejects with the reason when it doesn't parse */
+  remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),
+  remoteCheckRelay: (address: string) => invoke<boolean>('remote_check_relay', { address }),
+  remoteSetScreenAllowed: (on: boolean) => invoke<RemoteStatus>('remote_set_screen_allowed', { on }),
+  /** the prompt for Claude Code or Codex that sets up a relay */
+  remoteRelayInstructions: () => invoke<string>('remote_relay_instructions'),
+  /** Windows Firewall keeps phones out (`firewall: 'blocked'`): its rule, through Windows' own administrator prompt; answers
+   *  once that's done or declined (declined: still 'blocked', no error) */
+  remoteAllowFirewall: () => invoke<RemoteStatus>('remote_allow_firewall'),
+  // the five capabilities (src-tauri/src/capabilities.rs, docs/design/capabilities.md): which are off; every change —
+  // from here, Settings → Dictation's own switch or config.json edited by hand — also comes as 'capabilities://changed'
+  capabilities: () => invoke<{ off: string[] }>('capabilities_get'),
+  setCapability: (id: string, on: boolean) => invoke<{ off: string[] }>('capability_set', { id, on }),
+  /** the Cards page: the cards at the top of the screen now, and those used in other apps in the last 7 days */
+  cardsList: () => invoke<{ current: CardInfo[]; history: CardInfo[] }>('cards_list'),
+  /** what the Cards panel does to one card, done from the main window */
+  cardAction: (action: 'copy' | 'copy_text' | 'remove' | 'restore' | 'reveal' | 'putback', session: string, n: number) =>
+    invoke<void>('card_action', { action, session, n }),
 };
+
+export const onCapabilities = (cb: (p: { off: string[] }) => void) => listen<{ off: string[] }>('capabilities://changed', cb);
+
+/** A card as the island shows it (blurt-capture overlay::Card + when): `src` the picture's URL ("" for a voice or text
+ *  card), `wall` when it was taken, `taken` when it was used in another app (History). Times are epoch seconds. */
+export interface CardInfo {
+  n: number;
+  src: string;
+  text?: string | null;
+  file?: string | null;
+  kind: 'shot' | 'voice' | string;
+  session?: string | null;
+  ref?: string;
+  textCard?: boolean;
+  missing?: boolean;
+  wall?: number | null;
+  taken?: number | null;
+}
+
+/** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
+export interface RemoteStatus {
+  listening: boolean;
+  /** the code on screen; qrSvg is a complete <svg> the host draws */
+  pairing: null | { url: string; qrSvg: string; expiresAt: number };
+  /** a new phone waits for a yes; the yes is for the phone showing the same digits */
+  asking: null | { device: string; digits: string; viaRelay: boolean };
+  devices: { id: string; name: string; lastSeen: number | null }[];
+  connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  screenAllowed: boolean;
+  /** false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows */
+  canControl: boolean;
+  /** a sentence for the user, localised */
+  problem: string | null;
+  /** Windows Firewall: 'blocked' keeps phones out on this network (remoteAllowFirewall); always 'ok' off Windows */
+  firewall: RemoteFirewall;
+}
+export type RemoteFirewall = 'ok' | 'blocked' | 'unknown';
+export type RemoteRoute = 'local' | 'direct' | 'relay';
+
+export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
 
 export interface VoiceprintStatus {
   enrolled: boolean;
@@ -651,7 +694,6 @@ export interface AgentSetupStep {
 export interface AgentSetupState {
   active: boolean;
   agent: string | null;
-  job: string | null;
   steps: AgentSetupStep[];
 }
 
@@ -664,6 +706,41 @@ export interface StorageScan {
   /** free space on Blurt's disk (bytes) */
   available?: number | null;
 }
+/** Where Blurt keeps its data now (location.rs `storage_location`). */
+export interface StorageLocation {
+  home: string;
+  workspace: string;
+  /** a folder the user chose (null: the default, ~/.blurt and ~/Blurt) */
+  custom: boolean;
+  folder: string | null;
+  profile: string;
+  /** BLURT_HOME / BLURT_WORKSPACE set outside Blurt: the location can't be changed here */
+  fixed_by: string | null;
+  /** an earlier move's old folders are still being deleted */
+  cleanup: boolean;
+  moving: boolean;
+}
+/** Can the data go there (and, from storage_location_move, it is on its way)? `cancel`: the dialog was closed. */
+export interface LocationCheck {
+  cancel?: boolean;
+  ok?: boolean;
+  /** same | inside_current | contains_current | has_data | not_writable | no_space | env | moving | busy_recording |
+   * busy_dictation | busy_download | busy_job */
+  error?: string;
+  var?: string;
+  /** copy_failed: what went wrong */
+  detail?: string;
+  folder?: string | null;
+  home?: string;
+  workspace?: string;
+  bytes?: number;
+  free?: number | null;
+  /** Python and its packages are downloaded again at the new place */
+  redownload?: boolean;
+}
+/** `storage://move` while the data is copied. */
+export type MoveProgress = { phase: 'copy'; done: number; total: number } | { phase: 'restart' } | { phase: 'error'; error: string; detail?: string };
+export const onStorageMove = (cb: (p: MoveProgress) => void) => listen<MoveProgress>('storage://move', cb);
 export interface CuratedOption {
   service: string;
   model: string;

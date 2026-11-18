@@ -1,0 +1,16 @@
+{
+  "audio_read": false,
+  "camera_started": false,
+  "frames": 193,
+  "frames_with_lips": 193,
+  "frames_with_multiple_faces": 0,
+  "height": 360,
+  "mouth_width_pixels_p50": 61.44868519795864,
+  "probe": "Apple Vision VNDetectFaceLandmarksRequest, offline, no text recognition",
+  "source_frame_gap_ms_p50": 40.000000000000036,
+  "total_wall_seconds": 0.8547569513320923,
+  "vision_first_frame_ms": 49.84700679779053,
+  "vision_warm_p50_ms": 3.8340091705322266,
+  "vision_warm_p95_ms": 4.948973655700684,
+  "width": 640
+}

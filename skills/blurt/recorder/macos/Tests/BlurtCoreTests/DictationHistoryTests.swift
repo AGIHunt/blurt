@@ -288,6 +288,22 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertEqual(h.load().count, 1)
     }
 
+    /// Esc while listening keeps what was said for Retry (#54) — never when nothing was said, never for the double
+    /// tap's own cancel, never when the history keeps no recordings ("Don't keep", Keep Recordings off).
+    func testCancelKeepsWhatWasSaidOnlyWhereRecordingsAreKept() {
+        XCTAssertTrue(DictationHistory.keepsCancelled(heardSpeech: true, quietly: false, keepAudio: true, retentionDays: 30))
+        XCTAssertFalse(DictationHistory.keepsCancelled(heardSpeech: false, quietly: false, keepAudio: true, retentionDays: 30))
+        XCTAssertFalse(DictationHistory.keepsCancelled(heardSpeech: true, quietly: true, keepAudio: true, retentionDays: 30))
+        XCTAssertFalse(DictationHistory.keepsCancelled(heardSpeech: true, quietly: false, keepAudio: false, retentionDays: 30))
+        XCTAssertFalse(DictationHistory.keepsCancelled(heardSpeech: true, quietly: false, keepAudio: true, retentionDays: 0))
+        // the row it leaves is one awaiting Retry, like a failed take
+        let e = DictationEntry(id: "c", time: Date(), app: nil, bundle: nil, duration: 3, raw: "", polished: nil, text: "",
+                               model: nil, fellBack: false, reason: DictationHistory.cancelledReason, insert: "none",
+                               audio: "audio/c.wav")
+        XCTAssertTrue(DictationHistory.awaitsRetry(e))
+        XCTAssertTrue(DictationHistory.cancelledReason.hasPrefix("asr_failed"))
+    }
+
     /// Dogfood: a 213 s take with one window fallen back was labelled "typed as spoken" although most was polished.
     func testSomeWindowsFallingBackIsPartsNotTheWholeTake() {
         XCTAssertTrue(DictationWindowFallback.of([true, true]).all)

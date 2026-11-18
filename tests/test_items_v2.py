@@ -672,3 +672,43 @@ class Reindex(Base):
 if __name__ == "__main__":
     import unittest
     unittest.main()
+
+
+class Attach(Base):
+    """v1.0.23: something dropped on an item in the main window — pictures copied in as frames, other files referenced
+    by path (never copied), text after the details; the user's own edit; --restore undoes it."""
+    def test_attach_and_undo(self):
+        self.ok("ingest", self.s)
+        pic = self.tmp / "shot.png"
+        pic.write_bytes(b"png")
+        pdf = self.tmp / "spec v2.pdf"
+        pdf.write_bytes(b"%PDF")
+        out = self.ok("attach", "WA-1", "--frame", str(pic), "--file", str(pdf), "--text", "see page 3")
+        a = self.item("WA-1")
+        self.assertEqual(len(a["frames"]), 1)
+        self.assertTrue(a["frames"][0]["path"].endswith(".png"))
+        self.assertEqual(Path(a["frames"][0]["path"]).read_bytes(), b"png")
+        self.assertEqual(a["attachments"], [str(pdf)])
+        self.assertTrue(a["details"].endswith("see page 3"))
+        self.assertTrue(pdf.exists(), "the referenced file stays where it is")
+        self.assertEqual(set(a["_user"]) >= {"frames", "attachments", "details"}, True)
+        # the same file again: not twice
+        self.ok("attach", "WA-1", "--file", str(pdf))
+        self.assertEqual(self.item("WA-1")["attachments"], [str(pdf)])
+        # undo
+        self.ok("attach", "WA-1", "--restore", json.dumps(out["before"]))
+        b = self.item("WA-1")
+        self.assertEqual(b.get("frames"), None)
+        self.assertNotIn("attachments", b)
+
+    def test_attach_keeps_a_copy_of_a_temporary_file(self):
+        self.ok("ingest", self.s)
+        tmp = self.tmp / "cache" / "report.pdf"
+        tmp.parent.mkdir()
+        tmp.write_bytes(b"%PDF")
+        self.ok("attach", "WA-1", "--keep", str(tmp))
+        a = self.item("WA-1")
+        self.assertEqual(len(a["attachments"]), 1)
+        kept = Path(a["attachments"][0])
+        self.assertEqual((kept.name, kept.read_bytes()), ("report.pdf", b"%PDF"))
+        self.assertIn("assets", kept.parts)

@@ -1,6 +1,6 @@
 //! The island on Windows / Linux (contract K7): a top-centre floating pill — the same component as the macOS notch
-//! island, with lighter motion. It shows the current project, recording / voice / sorting state, the jobs under way,
-//! agent sessions that need you and the review count, and holds the unfiled captures as cards under it.
+//! island, with lighter motion. It shows the current project, recording / voice / sorting state, the jobs under way
+//! and the review count, and holds the unfiled captures as cards under it.
 //!
 //! The window and its click-through live in `blurt_capture::overlay::island`; this module feeds it (`state` and
 //! `cards` ops) and acts on what the user does there. It also applies K4's reminder rules: never open anything by
@@ -22,12 +22,19 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::capture::{self, Control};
 
+#[path = "card_drop.rs"]
+mod card_drop;
 #[cfg(windows)]
 #[path = "card_drag_win.rs"]
 mod card_drag_win;
+#[path = "drop_in.rs"]
+pub(crate) mod drop_in;
+#[cfg(windows)]
+#[path = "island_drop_win.rs"]
+mod island_drop_win;
 use crate::jobs::{self, Notice};
 use crate::projects::{self, Registry};
-use crate::{hotkeys, l10n, paths, sessions, settings, AppState};
+use crate::{agents, hotkeys, l10n, paths, settings, AppState};
 
 #[derive(Default)]
 pub struct Hub {
@@ -53,6 +60,9 @@ pub fn init(app: &AppHandle) {
             let a2 = app.clone();
             i.on_action(move |v| on_action(&a2, &v));
             *app.state::<Hub>().island.lock().unwrap() = Some(i);
+            // drops from other apps come in through a small window of their own over the notch (drag-drop.md §3)
+            #[cfg(windows)]
+            island_drop_win::start(&app);
             refresh(&app);
             refresh_cards(&app);
             refresh_history(&app);
@@ -95,6 +105,15 @@ fn launch_nudge(app: &AppHandle) {
 #[cfg(not(dict))]
 fn launch_nudge(_: &AppHandle) {}
 
+/// Settings → General → "Show the island when idle" (`app.island_idle`, the Mac's key). Off by default here, unlike the
+/// Mac: the top of a Windows or GNOME screen is the apps' own (a maximized browser's tabs), not a menu bar, so a
+/// resting pill there gets clicked by mistake. Off: what stands at rest (the cards' count, Peep thinking over an
+/// organize) stays hidden and the top edge brings nothing out; the live things (a recording, dictation, a voice note,
+/// a done moment, a toast) still show. The cards stay a click away in the tray's Show Cards and the main window.
+pub fn shows_at_rest() -> bool {
+    settings::read_config().pointer("/app/island_idle").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// A `record.*` switch of Settings → General → Cards (the Mac's keys, same defaults).
 fn record_flag(key: &str, default: bool) -> bool {
     settings::read_config().pointer(&format!("/record/{key}")).and_then(Value::as_bool).unwrap_or(default)
@@ -110,6 +129,59 @@ fn card_drag_mode() -> &'static str {
     } else {
         "picture"
     }
+}
+
+/// Settings → General → Cards → Agents…: the sheet's rows, `[{id, builtin, on}]` — every built-in agent app (on unless
+/// switched off), then the programs the user added (card_drop::listing; ids are executable stems).
+fn agent_rows(cfg: &Value) -> Value {
+    let rows = card_drop::listing(cfg.pointer("/record/agent_apps").and_then(Value::as_object));
+    json!(rows.into_iter().map(|(id, builtin, on)| json!({"id": id, "builtin": builtin, "on": on})).collect::<Vec<_>>())
+}
+
+#[tauri::command]
+pub fn agent_apps_get() -> Value {
+    agent_rows(&settings::read_config())
+}
+
+/// A built-in switched on or off, a program added (`on`) or removed: record.agent_apps keeps only the changes to the
+/// built-in list (card_drop::changing; none left: the key goes) → the sheet's rows.
+#[tauri::command]
+pub fn agent_apps_set(id: String, on: bool) -> Result<Value, String> {
+    let cfg = settings::update(|cfg| {
+        if !cfg.is_object() {
+            *cfg = json!({});
+        }
+        let rec = cfg.as_object_mut().unwrap().entry("record").or_insert_with(|| json!({}));
+        if !rec.is_object() {
+            *rec = json!({});
+        }
+        let rec = rec.as_object_mut().unwrap();
+        let changes = card_drop::changing(rec.get("agent_apps").and_then(Value::as_object).unwrap_or(&Default::default()), &id, on);
+        if changes.is_empty() {
+            rec.remove("agent_apps");
+        } else {
+            rec.insert("agent_apps".into(), Value::Object(changes));
+        }
+    })?;
+    Ok(agent_rows(&cfg))
+}
+
+/// Add Program…: the system's Open dialog for programs (.exe; a shortcut is followed to its program by the dialog)
+/// → `{ids: [stem…]}` (card_drop::program_id), or `{cancel: true}`. The caller adds them (agent_apps_set).
+#[tauri::command(async)]
+pub fn agent_apps_pick(app: AppHandle, title: String) -> Value {
+    let mut d = folder_dialog(&app).set_title(title).add_filter("Programs", &["exe", "lnk"]);
+    // where per-user installs go (Cursor, Trae, Kiro, Windsurf…: %LOCALAPPDATA%\Programs)
+    if let Some(dir) = dirs::data_local_dir().map(|d| d.join("Programs")).filter(|d| d.is_dir()) {
+        d = d.set_directory(dir);
+    }
+    let Some(picked) = d.blocking_pick_files() else { return json!({"cancel": true}) };
+    let mut ids: Vec<String> = picked.into_iter().filter_map(|f| f.into_path().ok()).filter_map(|p| card_drop::program_id(&p)).collect();
+    ids.dedup();
+    if ids.is_empty() {
+        return json!({"cancel": true});
+    }
+    json!({"ids": ids})
 }
 
 /// The shutter as a snap is taken (record.snap_sound, off): the island plays it. The snap flow calls this the moment
@@ -231,7 +303,10 @@ pub fn state(app: &AppHandle) -> Value {
     let reg = Registry::load();
     let summary = st.index().summary().unwrap_or_else(|_| json!({}));
     let cap = st.capture.state();
-    let active = jobs::list(true, 40);
+    // capabilities.rs: with Recording off there are no items, jobs or projects here (no counts, no chip, no switcher)
+    let off = crate::capabilities::off_now();
+    let recording_on = !off.contains(&crate::capabilities::Capability::Recording);
+    let active = if recording_on { jobs::list(true, 40) } else { vec![] };
     let short = |p: &Value| {
         let exists = p["path"].as_str().is_some_and(|x| std::path::Path::new(x).is_dir());
         json!({"id": p["id"], "name": p["name"], "key": p["key"], "exists": exists})
@@ -242,20 +317,17 @@ pub fn state(app: &AppHandle) -> Value {
         .take(3)
         .map(|j| json!({"id": j["id"], "type": j["type"], "title": j["title"], "step": current_step(j), "progress": j["progress"]}))
         .collect();
-    let sessions_view: Vec<Value> = active
-        .iter()
-        .filter(|j| j["type"] == "agent" && matches!(j.pointer("/agent/status").and_then(Value::as_str), Some("waiting_input" | "turn_done" | "error")))
-        .map(|j| json!({"job": j["id"], "agent": j.pointer("/agent/id"), "status": j.pointer("/agent/status"), "items": jobs::window_items(j)}))
-        .collect();
     let now = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
     json!({"op": "state", "state": {
-        "project": reg.current_project().map(short),
+        "project": if recording_on { reg.current_project().map(short) } else { None },
         // every project, a missing folder's too (said so, dimmed; choosing it asks where it is now: MissingFolder)
-        "projects": reg.projects.iter().map(short).collect::<Vec<_>>(),
-        "toReview": summary["inbox"].as_i64().unwrap_or(0), // K3 "needs you": new + to verify
+        "projects": if recording_on { reg.projects.iter().map(short).collect::<Vec<_>>() } else { vec![] },
+        "toReview": if recording_on { summary["inbox"].as_i64().unwrap_or(0) } else { 0 }, // K3 "needs you": new + to verify
+        // the capabilities that are off: their buttons and hints don't show
+        "off": crate::capabilities::ids(&off),
         // the 3-2-1 isn't recording yet (the Mac's island takes the take once it rolls: recording.md §3.7)
         "recording": if cap["recording"] == true && cap["countdown"] != true {
-            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "spotted": cap["spotted"], "pen": cap["pen"], "at": now})
+            json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "pen": cap["pen"], "at": now})
         } else { Value::Null },
         // how it ends (held, at a pause, by the key / Done) for the island's hint; whatever else the voice note says
         // about itself (Structured, its cap) rides along
@@ -267,10 +339,10 @@ pub fn state(app: &AppHandle) -> Value {
         "dictation": dictation_state(),
         "hatching": active.iter().filter(|j| j["type"] == "process").count(),
         "jobs": jobs_view,
-        "sessions": sessions_view,
         "hotkeys": hotkey_labels(app),
         // Settings → General → Cards, as the island needs them (the shutter on a recording's snaps, a drag's caption)
         "cardPrefs": {"snapSound": record_flag("snap_sound", false), "drag": card_drag_mode()},
+        "idle": shows_at_rest(),
         "lang": l10n::lang(),
     }})
 }
@@ -286,14 +358,17 @@ fn dictation_state() -> Value {
 }
 
 pub fn refresh(app: &AppHandle) {
-    if island(app).is_some() {
+    if let Some(i) = island(app) {
+        i.set_peek(shows_at_rest());
         send(app, state(app));
     }
     update_tray(app);
+    crate::remote::dictation_changed(); // Blurt on the phone: dictation's phase, when it changed
 }
 
 pub fn refresh_cards(app: &AppHandle) {
-    let cards = capture::load_card_values();
+    // Cards off (capabilities.rs): none show anywhere, and the main window's counts say none
+    let cards = if crate::capabilities::on_now(crate::capabilities::Capability::Cards) { capture::load_card_values() } else { vec![] };
     // the main window's Inbox notice ("3 captures are waiting for a project") follows the count
     let _ = app.emit("cards://changed", json!({"count": cards.len()}));
     send(app, json!({"op": "cards", "cards": cards}));
@@ -368,22 +443,9 @@ pub fn notices(app: &AppHandle, list: Vec<Notice>) {
                     continue; // K4: nothing while recording
                 }
                 send(app, json!({"op": "toast", "kind": "failed", "code": code, "job": job, "type": kind}));
-                // an agent session's failure is SessionNotifier's (Notice::Agent, status error)
-                if !in_front(app) && kind != "agent" {
+                if !in_front(app) {
                     let title = l10n::tf("notify.failed", &[("title", l10n::t(&format!("job.type.{kind}")))]);
                     system_notify(app, "failed", &title, &l10n::t(&format!("error.{}", if code == "auth" { "no_agent" } else { "unknown" })));
-                }
-            }
-            Notice::Agent { job, status, .. } => {
-                send(app, json!({"op": "attention", "job": job, "status": status}));
-                // SessionNotifier (sessions.rs): "Needs your input · project" / "SF-9 · title", the same kind within 10 s
-                // merged into one; never a sound
-                if !recording && !in_front(app) && on("agent") {
-                    if let Some(j) = jobs::load(&job) {
-                        let (title, body, line) = sessions::notify_text(&j, &status);
-                        let (title, body) = sessions::merge_recent(&status, title, body, line);
-                        sessions::show_notification(app, &title, &body, &job);
-                    }
                 }
             }
         }
@@ -426,7 +488,7 @@ fn file_cards(app: &AppHandle, batches: Vec<(PathBuf, Vec<u64>)>, project: Optio
     let app = app.clone();
     std::thread::spawn(move || {
         for (session, ns) in batches {
-            if let Err(code) = sessions::process(&app, &session, Some(ns), project.clone(), by, None) {
+            if let Err(code) = agents::process(&app, &session, Some(ns), project.clone(), by, None) {
                 send(&app, json!({"op": "toast", "kind": "error", "code": code}));
                 break;
             }
@@ -434,6 +496,60 @@ fn file_cards(app: &AppHandle, batches: Vec<(PathBuf, Vec<u64>)>, project: Optio
         refresh_cards(&app);
         refresh(&app);
     });
+}
+
+/// Hanging cards dropped on Blurt's main window (drag-drop.md §4), filed into `project` ("inbox": Unassigned) as the
+/// user's choice — the sidebar's project row, or the list of a project: the same as dropping them on the island's
+/// project row. `cards`: `[{session, n}]`.
+pub fn cards_into_project(app: &AppHandle, cards: &[Value], project: &str) {
+    let refs: Vec<(PathBuf, u64)> = cards.iter().flat_map(cards_of_action).collect();
+    if refs.is_empty() {
+        return refresh_cards(app);
+    }
+    file_cards(app, by_session(refs), Some(project.to_string()), Some("user"));
+    refresh_cards(app);
+}
+
+/// Hanging cards dropped on an item of the main window's list: added to it (`items.py attach`: each card's picture
+/// as a frame — copied — its note after the item's details), then the cards are taken (they leave their thread,
+/// History keeps them). Returns the attach's result ({before, added}: the Undo restores `before` and puts the cards
+/// back, `cards_put_back`).
+pub fn cards_into_item(app: &AppHandle, runner: &crate::scripts::Runner, cards: &[Value], uid: &str) -> Result<Value, String> {
+    let refs: Vec<(PathBuf, u64)> = cards.iter().flat_map(cards_of_action).collect();
+    let mut frames = Vec::new();
+    let mut files = Vec::new();
+    let mut notes = Vec::new();
+    for (session, n) in &refs {
+        let Some(c) = capture::card_lines(session).into_iter().map(|l| l.card).find(|c| u64::from(c.n) == *n) else { continue };
+        // a file card adds its file (the item's attachments), never its face
+        match (handed(session, &c), c.reference.is_some()) {
+            (Some(f), true) => files.push(f.to_string_lossy().into_owned()),
+            (Some(f), false) => frames.push(f.to_string_lossy().into_owned()),
+            _ => {}
+        }
+        if let Some(t) = card_drop::clean(c.text.as_deref()) {
+            notes.push(t);
+        }
+    }
+    let text = (!notes.is_empty()).then(|| notes.join("\n\n"));
+    let r = crate::items::attach(runner, uid, &frames, &files, text.as_deref(), None);
+    if r.is_ok() {
+        for (session, n) in &refs {
+            capture::take_card(session, *n);
+        }
+    }
+    refresh_cards(app);
+    refresh_history(app);
+    r
+}
+
+/// Undo of `cards_into_item`: the cards hang again.
+pub fn cards_put_back(app: &AppHandle, cards: &[Value]) {
+    for (session, n) in cards.iter().flat_map(cards_of_action) {
+        capture::put_back_card(&session, n);
+    }
+    refresh_cards(app);
+    refresh_history(app);
 }
 
 /// A rect of the island page (CSS px) on the screen (physical px).
@@ -481,30 +597,56 @@ fn find_card(v: &Value) -> Option<(PathBuf, overlay::Card)> {
     Some((session, card))
 }
 
-/// Several cards on the clipboard as one item, newest first (the Mac's Copy All): their pictures and notes as HTML,
-/// the notes alone as the plain text.
+/// What a card hands over (a drag, a copy's path line, Show in File Explorer, added to an item): a file card's own file
+/// (shots.jsonl "ref" — never moved: drags are copies only), else its picture. None: a voice or text card, or a file
+/// that is gone.
+fn handed(session: &std::path::Path, c: &overlay::Card) -> Option<PathBuf> {
+    match &c.reference {
+        Some(r) => Some(PathBuf::from(r)).filter(|p| p.exists()),
+        None => c.file.as_ref().map(|f| crate::paths::normalize(&session.join(f))).filter(|p| p.is_file()),
+    }
+}
+
+/// Several cards on the clipboard as one item, in the order given (Copy All: newest first, as the row; a selection:
+/// the order picked): their pictures and notes as HTML; the plain text — what a terminal pastes, Windows having no
+/// smart paste — is a `"<path>" <note>` line per card when any has a picture (card_drop::copy_text, the Mac's
+/// CardTransfer.terminalLines: Claude Code or Codex read each picture from its path, next to its own words), else
+/// the notes.
 fn copy_cards(app: &AppHandle, cards: &[(PathBuf, u64)]) {
     let mut html = String::new();
     let mut text = Vec::new();
+    let mut lines = Vec::new();
     for (session, n) in cards {
         let Some(c) = capture::card_lines(session).into_iter().map(|l| l.card).find(|c| u64::from(c.n) == *n) else { continue };
-        if let Some(f) = &c.file {
-            let path = crate::paths::normalize(&session.join(f));
-            let url = tauri::Url::from_file_path(&path).map(|u| u.to_string()).unwrap_or_default();
+        let face = c.file.as_ref().map(|f| crate::paths::normalize(&session.join(f)));
+        if let Some(path) = &face {
+            let url = tauri::Url::from_file_path(path).map(|u| u.to_string()).unwrap_or_default();
             html.push_str(&format!("<p><img src=\"{url}\"></p>"));
         }
+        lines.push(card_drop::DragCard { file: handed(session, &c).or(face), note: c.text.clone() });
         if let Some(t) = c.text.filter(|t| !t.trim().is_empty()) {
             html.push_str(&format!("<p>{}</p>", t.replace('&', "&amp;").replace('<', "&lt;").replace('\n', "<br>")));
             text.push(t);
         }
     }
-    let _ = app.clipboard().write_html(html, Some(text.join("\n\n")));
+    let plain = card_drop::copy_text(&lines).unwrap_or_else(|| text.join("\n\n"));
+    let _ = app.clipboard().write_html(html, Some(plain));
 }
 
 /// What the user did in the island.
 pub fn on_action(app: &AppHandle, v: &Value) {
     let st = app.state::<AppState>();
     let action = v["action"].as_str().unwrap_or("");
+    // the island's own capture buttons and switcher follow the capabilities as the keys do
+    let gate = match action {
+        "voice" => Some("voice"),
+        "project.use" | "project.open" | "project.locate" => Some("project"),
+        a @ ("record" | "snap") => Some(a),
+        _ => None,
+    };
+    if gate.is_some_and(|a| !crate::capabilities::allows(a, &crate::capabilities::off_now(), st.capture.recording())) {
+        return;
+    }
     match action {
         "record" => capture::toggle(app),
         "pause" | "resume" | "stop" | "discard" => {
@@ -516,8 +658,13 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         // "Snap discarded · Undo" (Esc in a snap's note)
         "snap.undo" => capture::snap_undo(app),
         // a failed translation's Try Again (Copy Text from Screen)
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         "text.retry" => crate::screen_text::flow::retry(app),
+        // Linux: GNOME asks about screenshots only with Blurt in front — Settings → Copy Text from Screen asks
+        "text.allow" => {
+            crate::show_main(app);
+            let _ = app.emit("nav", json!({"view": "settings", "pane": "screentext/screentext.allow"}));
+        }
         "voice" => capture::voice_start(app, false),
         "voice.stop" => capture::voice_stop(app, false),
         "voice.cancel" => capture::voice_stop(app, true),
@@ -550,6 +697,37 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         "project.open" => open_folder(app, true),
         "project.locate" => locate(app, v["id"].as_str().unwrap_or(""), v["use"] == true),
         "cards.history" => refresh_history(app),
+        // the cards came down: a file card's file may have moved or gone since (its "Original file not found")
+        "cards.check" => refresh_cards(app),
+        // where the notch (and the open drawer) is, for the drop catcher; the drawer's row under another app's drag
+        "drop.zone" => drop_in::zone_reported(app, v),
+        "ext.row" => drop_in::row_reported(v),
+        // Linux: the island page took another app's drop itself (WebKitGTK over what the island draws; island.ts
+        // `linuxDrop`): what it read, and the drawer's row it was let go on
+        "ext.drop" => {
+            let d: drop_in::PageDrop = serde_json::from_value(v.clone()).unwrap_or_default();
+            let landing = drop_in::landing(d.row.as_deref());
+            let read = drop_in::page_drop(&d, |p| p.is_dir(), |p| std::fs::read_to_string(p).ok());
+            crate::draglog::log(json!({"event": "drop_external", "via": "page", "row": d.row, "what": read.summary(),
+                "taken": landing != drop_in::Landing::Refuse && !read.is_empty()}));
+            let project = match landing {
+                drop_in::Landing::Refuse => return,
+                drop_in::Landing::Hang => None,
+                drop_in::Landing::Project(p) => Some(p),
+            };
+            if read.is_empty() {
+                return send(app, json!({"op": "toast", "kind": "line", "msg": "island.drop.nothing", "mark": "warning"}));
+            }
+            let app = app.clone();
+            std::thread::spawn(move || {
+                // no codecs or thumbnails of the system's here: png / jpg pictures as they are, others as file cards; a
+                // file card's face is the plain sheet (the page writes the file's name on it)
+                let faces = drop_in::Faces { decode: &|_| None, face: &|_| None, temporary: &drop_in::is_temporary };
+                drop_in::hang(&app, &read, project, &faces);
+            });
+        }
+        // the page's own drag events worth keeping (Linux: the island's drop, entered / left), never their words
+        "ext.log" => crate::draglog::log(v.get("log").cloned().unwrap_or(Value::Null)),
         "cards.edge" => {
             if let Some(b) = v["bottom"].as_f64() {
                 *app.state::<Hub>().below.lock().unwrap() = b;
@@ -573,7 +751,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
                     }
                 }
                 for (s, ns) in by_session {
-                    if let Err(code) = sessions::process(&app, &s, Some(ns), project.clone(), None, None) {
+                    if let Err(code) = agents::process(&app, &s, Some(ns), project.clone(), None, None) {
                         send(&app, json!({"op": "toast", "kind": "error", "code": code}));
                         break;
                     }
@@ -606,9 +784,19 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         }
         "card.copy" => {
             let Some((session, c)) = find_card(v) else { return };
+            // a file card: its file's path (and the note), as a terminal or an agent reads it — the face is no picture
+            if let Some(r) = &c.reference {
+                let _ = app.clipboard().write_text(card_drop::terminal_line(std::path::Path::new(r), c.text.as_deref()));
+                return;
+            }
             let img = c.file.as_ref().and_then(|f| tauri::image::Image::from_path(session.join(f)).ok());
             let _ = match img {
-                Some(i) => app.clipboard().write_image(&i),
+                Some(i) => {
+                    let r = app.clipboard().write_image(&i);
+                    // the main window's Ctrl+V never pastes this back as a new picture (drag-drop.md §0.6)
+                    drop_in::mark_ours(clipboard_seq(), (i.width(), i.height()));
+                    r
+                }
                 None => app.clipboard().write_text(c.text.unwrap_or_default()),
             };
         }
@@ -619,8 +807,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         }
         "card.copy_all" => copy_cards(app, &cards_of_action(v)),
         "card.reveal" => {
-            if let Some((session, Some(f))) = find_card(v).map(|(s, c)| (s.clone(), c.file)) {
-                let path = crate::paths::normalize(&session.join(f));
+            if let Some(path) = find_card(v).and_then(|(s, c)| handed(&s, &c)) {
                 let _ = app.opener().reveal_item_in_dir(path);
             }
         }
@@ -642,8 +829,10 @@ pub fn on_action(app: &AppHandle, v: &Value) {
         // and its note — which a file drop can't carry — goes on the clipboard; cancelled, it comes back. The page
         // always gets an answer (`dragout`), also when the drag can't start here.
         "card.dragout" => {
-            let (n, sess) = (v["n"].clone(), v["session"].clone());
-            let answer = move |app: &AppHandle, result: &str| send(app, json!({"op": "dragout", "n": n.clone(), "session": sess.clone(), "result": result}));
+            let (n, sess, cards) = (v["n"].clone(), v["session"].clone(), v["cards"].clone());
+            let answer = move |app: &AppHandle, result: &str| {
+                send(app, json!({"op": "dragout", "n": n.clone(), "session": sess.clone(), "cards": cards.clone(), "result": result}))
+            };
             if !drag_out(app, v, answer.clone()) {
                 answer(app, "cancel");
             }
@@ -658,13 +847,22 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             let app = app.clone();
             // under that card, as the Mac's NoteBubble opens from it (the page's rect, CSS px of the island window)
             let under = v.get("rect").and_then(|r| css_to_screen(&app, r));
-            std::thread::spawn(move || capture::edit_note(&app, &session, n, under));
+            // offered after a drop (`passive`): it opens without the keyboard and folds away untouched (note.ts)
+            let passive = v["passive"] == true;
+            // never over a note that is up (a snap's, another card's): an offer only replaces nothing
+            if passive && app.get_webview_window(overlay::Kind::Note.label()).is_some() {
+                return;
+            }
+            if passive {
+                crate::draglog::log(json!({"event": "note_offer", "n": n}));
+            }
+            std::thread::spawn(move || capture::edit_note(&app, &session, n, under, passive));
         }
         "open.inbox" => {
             crate::show_main(app);
             let _ = app.emit("nav", json!({"view": "inbox"}));
         }
-        "open.session" => {
+        "open.job" => {
             crate::show_main(app);
             let _ = app.emit("nav", json!({"job": v["job"]}));
         }
@@ -683,7 +881,7 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             let project = j["project"].as_str().map(str::to_owned);
             let app = app.clone();
             std::thread::spawn(move || {
-                let _ = sessions::process(&app, &session, captures, project, None, None);
+                let _ = agents::process(&app, &session, captures, project, None, None);
                 refresh(&app);
             });
         }
@@ -702,20 +900,23 @@ pub fn on_action(app: &AppHandle, v: &Value) {
 /// What goes with a card's picture into another app (Settings → General → Cards): the picture itself — or a copy
 /// with the note under it, drawn by the island (`caption`, a PNG data URL) — and with record.drag_note_file the note
 /// as a small Markdown file. Returns the files, whether the picture carries the note, and whether the .md went too.
+/// The copy and the .md are written next to the session, `<session>/out/<NNN>/` (card_drop::out_dir, as on the Mac):
+/// an app or an agent may read them long after the drop (so an earlier drag's files stay too); housekeeping trashes
+/// the folder with the card. Named by when the picture was taken ("截图-153012").
 #[cfg_attr(not(windows), allow(dead_code))]
-fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> (Vec<PathBuf>, bool, bool) {
+fn drag_files(session: &std::path::Path, card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> (Vec<PathBuf>, bool, bool) {
     let note = card.text.clone().filter(|t| !t.trim().is_empty());
-    let dir = std::env::temp_dir().join("blurt-drag");
-    let _ = std::fs::create_dir_all(&dir);
-    let stamp = chrono::Local::now().format("%H%M%S").to_string();
+    let dir = card_drop::out_dir(session, card.n);
+    let taken = std::fs::metadata(&picture).and_then(|m| m.modified()).map(chrono::DateTime::<chrono::Local>::from).unwrap_or_else(|_| chrono::Local::now());
+    let stamp = taken.format("%H%M%S").to_string();
     let zh = l10n::lang().starts_with("zh");
     let mut files = vec![picture];
     let mut captioned = false;
     if let (Some(data), Some(_)) = (caption.and_then(|c| c.strip_prefix("data:image/png;base64,")), note.as_ref()) {
         use base64::Engine as _;
         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) {
-            let f = dir.join(format!("{}-{stamp}.png", if zh { "截图" } else { "Screenshot" }));
-            if std::fs::write(&f, bytes).is_ok() {
+            let f = dir.join(format!("{}.png", card_drop::stem(zh, &stamp)));
+            if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&f, bytes).is_ok() {
                 files[0] = f;
                 captioned = true;
             }
@@ -723,8 +924,8 @@ fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> 
     }
     let mut note_file = false;
     if let (true, Some(t)) = (record_flag("drag_note_file", false), note.as_ref()) {
-        let f = dir.join(if zh { format!("截图-{stamp}-备注.md") } else { format!("Screenshot-{stamp}-note.md") });
-        if std::fs::write(&f, t).is_ok() {
+        let f = dir.join(card_drop::note_name(zh, &stamp));
+        if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&f, t).is_ok() {
             files.push(f);
             note_file = true;
         }
@@ -732,57 +933,127 @@ fn drag_files(card: &overlay::Card, picture: PathBuf, caption: Option<&str>) -> 
     (files, captioned, note_file)
 }
 
-/// Starts the system's drag of a card (our own OLE drag, card_drag_win.rs): a snap's picture as a file (with the
-/// .md, or the captioned copy, per Settings → General → Cards), a voice card's words as text; the drag image is the
-/// card as the island drew it (`image`, a PNG data URL; `ox`/`oy` where the pointer holds it, physical px). False when
-/// it can't start (not Windows, nothing to drag).
+/// The cards a drag carries, while it is under way (Windows' own drag of island cards): Blurt's main window asks
+/// (`cards_dragging`) as a drag of files enters it, so it can say what a drop will do before the drop tells it.
+static DRAGGING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+
+/// The cards of the drag under way (`[{session, n}]`), if it is one of ours.
+pub fn dragging_cards() -> Option<Value> {
+    DRAGGING.lock().unwrap().clone()
+}
+
+/// Starts the system's drag of a card — or of the selection it is part of (`cards`, in the order picked) — with our
+/// own OLE drag (card_drag_win.rs): pictures as files (one card: with the .md, or the captioned copy, per Settings →
+/// General → Cards) — over a terminal or an agent app text instead, each picture's path then its note
+/// (card_drop::terminal_text) — and voice cards' words as text; the drag image is the card as the island drew it
+/// (`image`, a PNG data URL; `ox`/`oy` where the pointer holds it, physical px). Every drag carries which cards it
+/// is, for Blurt's own main window. False when it can't start (not Windows, nothing to drag).
 #[cfg(windows)]
 fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clone + Send + 'static) -> bool {
-    use card_drag_win::Payload;
-    let Some((session, card)) = find_card(v) else { return false };
+    use card_drag_win::{Landed, Lines, Payload};
+    // the cards in the drag's order: the selection's (the order picked), else the one grabbed
+    let cards: Vec<(PathBuf, overlay::Card)> = cards_of_action(v)
+        .into_iter()
+        .filter_map(|(s, n)| {
+            let c = capture::card_lines(&s).into_iter().map(|l| l.card).find(|c| u64::from(c.n) == n)?;
+            Some((s, c))
+        })
+        .collect();
+    let Some((session, card)) = cards.first().cloned() else { return false };
+    let several = cards.len() > 1;
     let mode = card_drag_mode();
-    let (payload, captioned, note_file) = match card.file.clone() {
-        Some(file) => {
-            let path = crate::paths::normalize(&session.join(file));
-            if !path.is_file() {
-                return false;
-            }
-            let (files, captioned, note_file) = drag_files(&card, path, v["caption"].as_str().filter(|_| mode == "caption"));
-            (Payload::Files(files), captioned, note_file)
+    let picked: Vec<card_drop::DragCard> = cards
+        .iter()
+        .map(|(s, c)| card_drop::DragCard { file: handed(s, c), note: c.text.clone() })
+        .collect();
+    let (payload, captioned, note_file) = if several {
+        // several: every picture; a terminal one line, an agent's composer a line per card; no .md, no caption
+        let files: Vec<PathBuf> = picked.iter().filter_map(|c| c.file.clone()).collect();
+        let terminal = card_drop::terminal_text(&picked, false).zip(card_drop::terminal_text(&picked, true)).map(|(line, lines)| Lines { line, lines });
+        match (files.is_empty(), terminal) {
+            (false, terminal) => (Payload::Files { files, terminal }, false, false),
+            // only voice cards: their words, a line each (one line at a shell prompt)
+            (true, Some(t)) => (Payload::Text { text: t.lines.clone(), terminal: Some(t) }, true, false),
+            (true, None) => return false,
         }
-        // a voice card is its words (not ready yet: it stays, as on the Mac)
-        None => match card.text.as_deref().map(card_drag_win::drag_text).filter(|t| !t.is_empty()) {
-            Some(t) => (Payload::Text(t), true, false),
-            None => return false,
-        },
+    } else {
+        match picked[0].file.clone() {
+            // a file card: the file itself (never moved: the drag only offers a copy), its path and note to a terminal
+            Some(path) if card.reference.is_some() => {
+                let line = card_drop::terminal_line(&path, card.text.as_deref());
+                (Payload::Files { files: vec![path], terminal: Some(Lines { line: line.clone(), lines: line }) }, false, false)
+            }
+            Some(path) => {
+                let (files, captioned, note_file) = drag_files(&session, &card, path, v["caption"].as_str().filter(|_| mode == "caption"));
+                // a terminal: the picture's path (the captioned copy when there is one) and the note, paired on one line
+                let line = card_drop::terminal_line(&files[0], card.text.as_deref());
+                (Payload::Files { files, terminal: Some(Lines { line: line.clone(), lines: line }) }, captioned, note_file)
+            }
+            // a voice card is its words (not ready yet: it stays, as on the Mac)
+            None if card.file.is_some() => return false,
+            None => match card.text.as_deref().map(card_drop::one_line).filter(|t| !t.is_empty()) {
+                Some(t) => (Payload::Text { text: t, terminal: None }, true, false),
+                None => return false,
+            },
+        }
     };
-    let voice = matches!(payload, Payload::Text(_));
+    let voice = matches!(payload, Payload::Text { .. });
+    let refs: Vec<(String, u64)> = cards.iter().map(|(s, c)| (s.to_string_lossy().into_owned(), u64::from(c.n))).collect();
+    let cards_json = card_drop::cards_json(&refs);
     let image = v["image"].as_str().and_then(|d| d.strip_prefix("data:image/png;base64,")).and_then(|d| {
         use base64::Engine as _;
         base64::engine::general_purpose::STANDARD.decode(d).ok()
     });
     let offset = (v["ox"].as_f64().unwrap_or(0.0) as i32, v["oy"].as_f64().unwrap_or(0.0) as i32);
-    let (app2, n) = (app.clone(), u64::from(card.n));
+    let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         // click-through for the whole drag: the island (as big as the work area) must not be the window under the
         // pointer that the system asks to take the drop (it took all of the mouse while the card was dragged inside)
         if let Some(i) = island(&app2) {
             let _ = i.window().set_ignore_cursor_events(true);
         }
-        if !card_drag_win::drag(&payload, image.as_deref(), offset) {
+        let list: Value = serde_json::from_str(&cards_json).unwrap_or_default();
+        *DRAGGING.lock().unwrap() = Some(list.clone());
+        let dropped = card_drag_win::drag(&payload, Some(&cards_json), image.as_deref(), offset);
+        *DRAGGING.lock().unwrap() = None;
+        let Some(dropped) = dropped else {
             return answer(&app2, "cancel");
+        };
+        // Blurt's main window took them: it read which cards they are and files them, or adds them to an item
+        // (`cards_into`), and refreshes the cards when done — nothing is taken or copied here
+        if dropped.landed == Landed::Ours {
+            answer(&app2, "dropped");
+            let app3 = app2.clone();
+            // in case the page never got as far as filing them: what still hangs comes back
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                refresh_cards(&app3);
+            });
+            return;
         }
-        // taken: it leaves its thread (its files stay, History keeps it 7 days)
-        capture::take_card(&session, n);
+        // a terminal (or an agent app) got the pictures' paths and the notes as text: nothing more to do
+        let terminal = dropped.landed == Landed::Terminal;
         // a note that couldn't go in goes on the clipboard (record.drag_copy_note, on; never with picture only): a file
-        // drop can't paste it after the picture here
-        let note = card.text.clone().filter(|t| !t.trim().is_empty());
-        let copy = !voice && note.is_some() && !captioned && mode != "picture" && record_flag("drag_copy_note", true);
+        // drop can't paste it after the picture here. Several cards: the notes numbered by file (follow_up_notes).
+        let note = if several { card_drop::follow_up_notes(&picked) } else { card.text.clone().filter(|t| !t.trim().is_empty()) };
+        let copy = !voice && !terminal && note.is_some() && !captioned && mode != "picture" && record_flag("drag_copy_note", true);
         if let (true, Some(t)) = (copy, &note) {
             let _ = app2.clipboard().write_text(t.clone());
         }
+        // Alt held as it was let go: a copy drag — the cards stay on their thread (the same group can go to a second
+        // agent)
+        if dropped.alt {
+            return answer(&app2, "cancel");
+        }
+        // taken: they leave their thread together (their files stay, History keeps them 7 days); one Undo puts back all
+        for (s, n) in &refs {
+            capture::take_card(std::path::Path::new(s), *n);
+        }
         let what = match (voice, captioned, note_file, copy) {
+            _ if several && terminal => "paths",
+            _ if several => if copy { "note" } else { "picture" },
             (true, ..) => "words",
+            _ if terminal => if note.is_some() { "paths" } else { "picture" },
             (_, true, ..) => "text",
             (_, _, true, true) => "files_note",
             (_, _, true, false) => "files",
@@ -790,16 +1061,138 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
             _ => "picture",
         };
         answer(&app2, "dropped");
-        send(&app2, json!({"op": "toast", "kind": "taken", "what": what, "cards": [{"n": n, "session": session.to_string_lossy()}]}));
+        send(&app2, json!({"op": "toast", "kind": "taken", "what": what, "cards": list}));
         refresh_cards(&app2);
         refresh_history(&app2);
     });
     true
 }
 
-#[cfg(not(windows))]
+/// Linux: the cards' files as GTK's own drag (blurt_capture::linux_dnd, X11 DnD that mutter carries on to Wayland
+/// apps): `text/uri-list` and their `'path' note` line, whichever the target takes. GTK doesn't say which app it is,
+/// so there is no per-app payload: the notes go on the clipboard after a drop (record.drag_copy_note, as for Windows'
+/// chat apps), unless it was a text-only drag. Dropped on Blurt's main window: that window files them (it read
+/// which cards they are from `dragging_cards`).
+#[cfg(target_os = "linux")]
+fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clone + Send + 'static) -> bool {
+    use blurt_capture::linux_dnd;
+    let cards: Vec<(PathBuf, overlay::Card)> = cards_of_action(v)
+        .into_iter()
+        .filter_map(|(s, n)| {
+            let c = capture::card_lines(&s).into_iter().map(|l| l.card).find(|c| u64::from(c.n) == n)?;
+            Some((s, c))
+        })
+        .collect();
+    let Some((_, first)) = cards.first().cloned() else { return false };
+    let several = cards.len() > 1;
+    let picked: Vec<card_drop::DragCard> = cards.iter().map(|(s, c)| card_drop::DragCard { file: handed(s, c), note: c.text.clone() }).collect();
+    let files: Vec<PathBuf> = picked.iter().filter_map(|c| c.file.clone()).collect();
+    let text = card_drop::terminal_text(&picked, false)
+        .or_else(|| first.text.as_deref().map(card_drop::one_line).filter(|t| !t.is_empty()))
+        .unwrap_or_default();
+    if files.is_empty() && text.is_empty() {
+        return false;
+    }
+    let Some(isl) = island(app) else { return false };
+    let note = if several { card_drop::follow_up_notes(&picked) } else { first.text.clone().filter(|t| !t.trim().is_empty()) };
+    let icon = cards.iter().find_map(|(s, c)| c.file.as_ref().map(|f| s.join(f)).filter(|p| p.is_file()));
+    let refs: Vec<(String, u64)> = cards.iter().map(|(s, c)| (s.to_string_lossy().into_owned(), u64::from(c.n))).collect();
+    let list: Value = serde_json::from_str(&card_drop::cards_json(&refs)).unwrap_or_default();
+    // the island takes no pointer from now on: under the pointer everywhere a moment ago, it would be the window the
+    // drag finds to drop on
+    isl.passthrough();
+    *DRAGGING.lock().unwrap() = Some(list.clone());
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let ours = app2.get_webview_window("main").and_then(|w| w.gtk_window().ok());
+        let Ok(source) = isl.window().gtk_window() else {
+            *DRAGGING.lock().unwrap() = None;
+            return answer(&app2, "cancel");
+        };
+        let app3 = app2.clone();
+        let answer2 = answer.clone();
+        let payload = linux_dnd::Payload { files: files.clone(), text, icon };
+        let started = linux_dnd::drag(&source, payload, ours.as_ref(), move |end| {
+            *DRAGGING.lock().unwrap() = None;
+            if !end.taken {
+                return answer2(&app3, "cancel");
+            }
+            answer2(&app3, "dropped");
+            if end.ours {
+                // the main window files them or adds them to an item (`cards_into`); what still hangs comes back
+                let app4 = app3.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    refresh_cards(&app4);
+                });
+                return;
+            }
+            let copy = !files.is_empty() && note.is_some() && record_flag("drag_copy_note", true);
+            if let (true, Some(t)) = (copy, &note) {
+                let _ = app3.clipboard().write_text(t.clone());
+            }
+            for (s, n) in &refs {
+                capture::take_card(std::path::Path::new(s), *n);
+            }
+            let what = if files.is_empty() { "words" } else if copy { "note" } else { "picture" };
+            send(&app3, json!({"op": "toast", "kind": "taken", "what": what, "cards": list}));
+            refresh_cards(&app3);
+            refresh_history(&app3);
+        });
+        if !started {
+            *DRAGGING.lock().unwrap() = None;
+            answer(&app2, "cancel");
+        }
+    });
+    true
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn drag_out(_: &AppHandle, _: &Value, _: impl Fn(&AppHandle, &str) + Clone + Send + 'static) -> bool {
     false
+}
+
+/// The clipboard's sequence number (Windows: changes with every copy, by anyone); 0 where there is none.
+#[cfg(windows)]
+fn clipboard_seq() -> u32 {
+    unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
+}
+#[cfg(not(windows))]
+fn clipboard_seq() -> u32 {
+    0
+}
+
+/// What the system clipboard holds, read for the main window's Ctrl+V (drag-drop.md §0.6): files copied in Explorer /
+/// Files, a picture, the text; whether it is a document's copy (rich text) or Blurt's own picture.
+pub fn clipboard_read() -> drop_in::ClipRead {
+    #[cfg(windows)]
+    {
+        island_drop_win::clipboard()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        clipboard_linux()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        drop_in::ClipRead::default()
+    }
+}
+
+/// Linux: XWayland's clipboard (GNOME keeps it in step with the Wayland one) through arboard: the files a file manager
+/// copied (text/uri-list), a picture, the text, the HTML. arboard can't ask for RTF: a copy that has text, HTML and a
+/// picture together is a document's (LibreOffice, a web page's selection with its images) — its text is what was meant.
+#[cfg(target_os = "linux")]
+fn clipboard_linux() -> drop_in::ClipRead {
+    let Ok(mut cb) = arboard::Clipboard::new() else { return drop_in::ClipRead::default() };
+    let paths = cb.get().file_list().unwrap_or_default();
+    let text = cb.get_text().ok().filter(|t| !t.trim().is_empty());
+    let html = cb.get().html().ok().filter(|h| !h.trim().is_empty());
+    let image = if paths.is_empty() { cb.get_image().ok() } else { None };
+    let size = image.as_ref().map(|i| (i.width as u32, i.height as u32));
+    let png = image.as_ref().and_then(|i| drop_in::png(i.width as u32, i.height as u32, &i.bytes));
+    let ours = drop_in::is_ours(*drop_in::OURS.lock().unwrap(), 0, size);
+    drop_in::ClipRead { paths, png, rich: text.is_some() && html.is_some() && size.is_some(), text, ours }
 }
 
 /// Locate… (the Mac's MissingFolder.locate): where is the folder of project `id` now? Only a folder holding this

@@ -1,15 +1,40 @@
 // The pen's rules (v0.9-next, in-place markup): what a drag draws, the clean shape a rough one snaps to, how wide the
 // line is, the first-times hint and where the note bubble docks beside a frozen selection.
-// BlurtApp draws (InkCanvas on a snap, InkView while recording, renderMarked into NNN.marked.png); what it decides is
-// here, so it can be tested (InkTests).
+// BlurtApp draws (InkCanvas on a snap, InkView while recording, renderMarks into NNN.marked.png); what it decides is
+// here and in InkMarks.swift, so it can be tested (InkTests, InkMarksTests).
 //
 //  • InkTool / InkModifiers — the same modifiers for a snap and for the recording pen: a plain drag = freehand,
-//    ⇧ = box, ⌥ = ellipse. A snap needs no key (the frozen picture takes the drag); while recording the pen key (⌃ by
-//    default, record.draw_key) is held as well: ⌃-drag freehand, ⌃⇧ box, ⌃⌥ ellipse. With ⌥ as the pen key the
-//    ellipse is ⌃⌥ (the pen key and ⌃). ⌘ never draws (it is a shortcut). Only the keys held count, never the order
-//    they went down in (BA-59): ⌃ then ⇧, ⇧ then ⌃ and both at once are all a box (`recordingTool(pen:held:)`; while
-//    dragging `dragTool`). PenArm: the pen turns on once such a set has been held a moment (a quick ⌃-shortcut never
-//    shows it).
+//    ⇧ = box, ⌥ = ellipse, ⇧⌥ = arrow (v1.0.23: before, ⇧ won and ⇧⌥ was a box). A snap needs no key (the frozen
+//    picture takes the drag); while recording the pen key (⌃ by default, record.draw_key) is held as well: ⌃-drag
+//    freehand, ⌃⇧ box, ⌃⌥ ellipse, ⌃⇧⌥ arrow. With ⌥ as the pen key the ellipse is ⌃⌥ (the pen key and ⌃) and the
+//    arrow ⌥⇧⌃. ⌘ never draws (it is a shortcut). Only the keys held count, never the order they went down in (BA-59):
+//    ⌃ then ⇧, ⇧ then ⌃ and both at once are all a box (`recordingTool(pen:held:)`; while dragging `dragTool`).
+//    PenArm: the pen turns on once such a set has been held a moment (a quick ⌃-shortcut never shows it).
+//    Text and mosaic are a snap's only (they need a picture to bake into; the recording pen's ink is the video's).
+//  • The markup tools on a snap (v1.0.23, the founder: "WeChat's screenshot tools, all of them") — InkPick, chosen on
+//    the tool strip under the frozen selection (InkStage): pen, box, ellipse, arrow, text, mosaic, and a colour
+//    (InkColor, the brand markup colour first). The zero-click default stays: the strip opens on the pen, so a plain
+//    drag draws freehand and ⇧ / ⌥ / ⇧⌥ make a box / ellipse / arrow without touching the strip. With box, ellipse or
+//    arrow chosen a plain drag draws that and ⇧ keeps it square / round / on 45°; mosaic paints a rectangle (⇧: a
+//    freehand brush); text places a text box where it is clicked (InkSnapDrag).
+//    THE KEYS (decided): the note's field has the keyboard the whole time the snap is frozen (the bubble listens and
+//    takes typing at once), so a bare letter always types into the note — never a tool. A tool is chosen by a click
+//    on the strip or with ⌘ and its letter: ⌘P pen, ⌘R box (rectangle), ⌘O ellipse (oval), ⌘L arrow (a line with a
+//    head; ⌘A stays Select All in the note), ⌘T text, ⌘M mosaic (InkPick.forCommandKey). None of them is a text
+//    field's own ⌘-key (⌘A ⌘C ⌘V ⌘X ⌘Z stay the note's); ⌘0–⌘4 stay the type (NoteKeys); the bubble takes the tool
+//    keys before the main menu. Each tool's tooltip names its key. ⌘Z / ⇧⌘Z undo / redo the marks (InkHistory) when
+//    drawing was the last thing done, else the note's typing.
+//  • Text (InkText): a click places an editable box on the picture — the UI's font, semibold, sized to the picture
+//    (InkText.fontSize), in the chosen colour with a contrast outline; ↩ ends it, ⇧↩ breaks the line, Esc drops it, a
+//    click elsewhere ends it. While it is being edited it has the keyboard (the note's keys don't fire), then the note
+//    has it again. The box stays inside the picture (InkText.box).
+//  • Mosaic (InkMosaic): the original pixels averaged into blocks (12 pt at the picture's scale, never finer than
+//    1/64 of its short side) — baked into NNN.marked.png, which is what a copy or a drag hands out: the covered pixels
+//    never leave the Mac in it. The unmarked NNN.png stays as it was (on this Mac). Mosaics are drawn under the ink.
+//  • InkMark (InkMarks.swift) — every mark, kept in shots.jsonl "marks" (kind, colour, 0–1 points, text, size). The
+//    old "strokes" (point lists) are still written for what is a line: pen, box, ellipse and the arrow (its shaft and
+//    head as one point list: old readers — frames.py --crop stroke, the review page — draw it as an outlined arrow).
+//    Text and mosaic exist only in "marks" and in the marked PNG.
 //  • InkStroke — the stroke being drawn (both views): the freehand path keeps following the pointer while a modifier
 //    shows a box / ellipse, so letting go of it mid-drag carries on from where the pointer is.
 //  • InkFit — holding still ~0.5 s (InkHold) at the end of a freehand stroke snaps it to a clean straight line,
@@ -17,11 +42,15 @@
 //    bounding box's edges or its inscribed ellipse for a closed loop); anything else stays freehand.
 //  • InkFit.points — every stroke is still a point list in shots.jsonl / events.jsonl (0–1 of the picture): a box's
 //    corners are doubled so the smoothing every renderer applies (quadratic curves through the midpoints) keeps them
-//    sharp; an ellipse is 72 points; a line two. Old readers (frames.py --crop stroke, the review page) need nothing new.
-//  • InkStyle — one markup colour (BrandColor.markup) with a soft dark shadow; the line is wider on a bigger display.
+//    sharp; an ellipse is 72 points; a line two; an arrow its tail, then tip, head corners and tip again, doubled
+//    (InkArrow: filled in the app, outlined by old readers).
+//  • InkStyle — the markup colour (BrandColor.markup, or the one chosen) with a soft dark shadow; the line is wider on
+//    a bigger display.
 //  • InkHint — "Drag to draw · ⇧ box · ⌥ ellipse" the first `times` times only.
 //  • BubbleDock — the note bubble sits beside the frozen selection, never over it: right, else left (it flips near the
 //    screen's edges), else below, else above; only a selection that fills the screen gets it inside, in a corner.
+//    StripDock — the tool strip under the selection, right-aligned (WeChat's place), else above it, never over the
+//    bubble.
 //  (The bubble's "Goes to X" chip lists projects through Projects/Assignment.swift ProjectPick.choices, like every
 //  other project picker.)
 import CoreGraphics
@@ -30,16 +59,16 @@ import Foundation
 // MARK: - Tools and modifiers
 
 public enum InkTool: String, Equatable {
-    case free, box, ellipse
+    case free, box, ellipse, arrow
 }
 
 public enum InkModifiers {
     /// The recording pen's key (record.draw_key).
     public enum PenKey: String { case control, option, fn }
 
-    /// A snap's markup: ⇧ box, ⌥ ellipse (⇧ wins when both are down), else freehand.
+    /// A snap's markup: ⇧ box, ⌥ ellipse, both an arrow, else freehand.
     public static func snapTool(shift: Bool, option: Bool) -> InkTool {
-        shift ? .box : option ? .ellipse : .free
+        shift && option ? .arrow : shift ? .box : option ? .ellipse : .free
     }
 
     /// The modifier that makes an ellipse while recording: ⌥, or ⌃ when ⌥ is the pen key itself.
@@ -67,7 +96,7 @@ public enum InkModifiers {
         for k in [PenKey.control, .option, .fn] where held.contains(Held.key(k)) && Held.key(k) != Held.key(pen) && Held.key(k) != ell {
             return nil
         }
-        if held.contains(.shift) { return .box }
+        if held.contains(.shift) { return held.contains(ell) ? .arrow : .box }
         if held.contains(ell) { return .ellipse }
         return .free
     }
@@ -102,13 +131,16 @@ public final class InkStroke {
     public private(set) var shape: [CGPoint]?
     /// how it snapped (held still): "line" | "rect" | "ellipse"
     public private(set) var snappedAs: String?
+    /// the line's width where it is drawn (an arrow's head is sized from it)
+    public let lineWidth: CGFloat
     private var restAt: CGPoint
     private var restSince: Double
 
-    public init(at p: CGPoint, tool: InkTool, now: Double = ProcessInfo.processInfo.systemUptime) {
+    public init(at p: CGPoint, tool: InkTool, lineWidth: CGFloat = 4, now: Double = ProcessInfo.processInfo.systemUptime) {
         start = p
         pts = [p]
         self.tool = tool
+        self.lineWidth = lineWidth
         restAt = p
         restSince = now
     }
@@ -120,9 +152,11 @@ public final class InkStroke {
     /// for the event log
     public var kind: String { snappedAs ?? tool.rawValue }
 
-    /// The pen moved (with these modifiers down): true when what is shown changed.
+    /// The pen moved (with these modifiers down): true when what is shown changed. `constrained`: a chosen box /
+    /// ellipse / arrow with ⇧ — square, round, on 45°.
     @discardableResult
-    public func move(to p: CGPoint, tool t: InkTool, now: Double = ProcessInfo.processInfo.systemUptime) -> Bool {
+    public func move(to p: CGPoint, tool t: InkTool, constrained: Bool = false,
+                     now: Double = ProcessInfo.processInfo.systemUptime) -> Bool {
         if hypot(p.x - restAt.x, p.y - restAt.y) > InkHold.radius * (snappedAs != nil ? 2 : 1) {
             restAt = p
             restSince = now
@@ -135,7 +169,8 @@ public final class InkStroke {
         if let last = pts.last, hypot(p.x - last.x, p.y - last.y) >= 1.5 { pts.append(p); added = true }
         if t != .free {
             snappedAs = nil
-            shape = InkFit.shape(t, from: start, to: p).map(InkFit.points)
+            shape = InkFit.shape(t, from: start, to: constrained ? InkFit.constrain(t, from: start, to: p) : p,
+                                 width: lineWidth).map(InkFit.points)
             return true
         }
         if snappedAs == nil {
@@ -155,6 +190,7 @@ public final class InkStroke {
         case .line: snappedAs = "line"
         case .rect: snappedAs = "rect"
         case .ellipse: snappedAs = "ellipse"
+        case .arrow: snappedAs = "arrow"
         }
         return true
     }
@@ -200,6 +236,8 @@ public enum InkShape: Equatable {
     case line(CGPoint, CGPoint)
     case rect(CGRect)
     case ellipse(CGRect)
+    /// from its tail to its tip, the head sized for a line `width` wide (InkArrow)
+    case arrow(CGPoint, CGPoint, width: CGFloat)
 }
 
 /// Holding still at the end of a freehand stroke: how long, and how far the pointer may wander meanwhile.
@@ -243,21 +281,41 @@ public enum InkFit {
         return rectErr <= ellErr ? .rect(box) : .ellipse(box)
     }
 
-    /// A ⇧ / ⌥ drag from `a` to `b`: the box or the ellipse it spans (nil while it is still a dot).
-    public static func shape(_ tool: InkTool, from a: CGPoint, to b: CGPoint) -> InkShape? {
+    /// A ⇧ / ⌥ / ⇧⌥ drag from `a` to `b`: the box, the ellipse or the arrow it spans (nil while it is still a dot).
+    public static func shape(_ tool: InkTool, from a: CGPoint, to b: CGPoint, width: CGFloat = 4) -> InkShape? {
         let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
         guard max(r.width, r.height) >= 4 else { return nil }
         switch tool {
         case .box: return .rect(r)
         case .ellipse: return .ellipse(r)
+        case .arrow: return .arrow(a, b, width: width)
         case .free: return nil
         }
     }
 
+    /// ⇧ with a chosen shape: a box or an ellipse as wide as it is high (the longer side wins), an arrow on the nearest
+    /// 45°.
+    public static func constrain(_ tool: InkTool, from a: CGPoint, to b: CGPoint) -> CGPoint {
+        let dx = b.x - a.x, dy = b.y - a.y
+        switch tool {
+        case .box, .ellipse:
+            let side = max(abs(dx), abs(dy))
+            return CGPoint(x: a.x + (dx < 0 ? -side : side), y: a.y + (dy < 0 ? -side : side))
+        case .arrow:
+            let len = hypot(dx, dy)
+            let ang = (atan2(dy, dx) / (.pi / 4)).rounded() * (.pi / 4)
+            return CGPoint(x: a.x + len * cos(ang), y: a.y + len * sin(ang))
+        case .free:
+            return b
+        }
+    }
+
     /// The point list a shape is stored as (and drawn from): a box's corners doubled (the midpoint smoothing keeps them
-    /// sharp), an ellipse as 72 points round, a line as its two ends.
+    /// sharp), an ellipse as 72 points round, a line as its two ends, an arrow as InkArrow.points.
     public static func points(_ s: InkShape) -> [CGPoint] {
         switch s {
+        case .arrow(let a, let b, let w):
+            return InkArrow.points(tail: a, tip: b, width: w)
         case .line(let a, let b):
             return [a, b]
         case .rect(let r):

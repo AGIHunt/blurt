@@ -3,6 +3,7 @@
 
 pub mod apps;
 pub mod context;
+pub mod cue_eraser;
 pub mod fit;
 pub mod flow;
 pub mod learn;

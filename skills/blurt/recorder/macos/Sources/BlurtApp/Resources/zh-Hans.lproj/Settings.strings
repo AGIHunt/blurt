@@ -15,9 +15,7 @@
 
 "onboarding.skip_setup" = "跳过设置";
 
-
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
-
 
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
@@ -33,18 +31,18 @@
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和事项保留）";
 "settings.general.system_audio" = "录制系统声音";
 "settings.general.hide_notch" = "录屏时不录刘海";
-"settings.general.hide_notch.detail" = "口喷鸡的其他窗口照常录制。";
+"settings.general.hide_notch.detail" = "口喷鸡的其他窗口照常出现在录屏里。";
 "settings.general.snap_sound" = "截图时播放快门声";
 "settings.general.collect" = "将 macOS 截图添加为卡片";
-"settings.general.collect.hint" = "使用 macOS 快捷键（⇧⌘3、⇧⌘4、⇧⌘5）截取的图片也会添加为卡片。";
+"settings.general.collect.hint" = "用 macOS 快捷键（⇧⌘3、⇧⌘4、⇧⌘5）截的图也会添加为卡片。";
 "settings.general.drag_copy_note" = "拖进去后备注没贴上时，复制到剪贴板";
 "settings.general.drag_copy_note.hint" = "口喷鸡没法把备注贴在图片后面时（没有「辅助功能」权限、上面的开关关了、App 没到前台，或者拖进了访达），备注会放进剪贴板，⌘V 就能贴上。会替换剪贴板里原来的内容；点刘海下方的「撤销」可以还原。";
-"settings.general.drag_note_file.hint" = "拖进聊天 App 或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端总会拿到这个文件的路径，方便 Claude Code、Codex 读到备注。";
+"settings.general.drag_note_file.hint" = "拖进聊天 App 或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端用不到它：终端拿到的是图片路径，备注跟在同一行后面。";
 "settings.general.drag_note_file" = "同时附上备注的 Markdown 文件";
 "settings.general.drag_caption" = "拖出图片时把备注印在图片下方";
 "settings.general.drag_caption.hint" = "打开后，拖出去的是一份在下方加了备注条的副本，给只收一张图片的 App 用；原来的截图不变。";
 "settings.general.smart_paste" = "聊天 App：先放图片，再贴备注";
-"settings.general.smart_paste.hint" = "浏览器、Claude、ChatGPT、Slack、飞书、微信这类聊天 App，拖入或粘贴的内容里只要有图片，就只收图片。打开后，把卡片拖进去时先放下图片，口喷鸡接着把备注贴进同一个输入框；点卡片复制后的 2 分钟内，在这些 App 里按 ⌘V 会先贴图片、再贴备注（多张卡片就一张图一段备注依次贴上），之后剪贴板里还是这份卡片，可以再贴。备忘录、邮件、文本编辑这类 App 一次就能连图带字收下；终端和访达保持原样。需要「辅助功能」权限。";
+"settings.general.smart_paste.hint" = "浏览器、Claude、ChatGPT、Slack、飞书、微信这类聊天 App，拖入或粘贴的内容里只要有图片，就只收图片。打开后，把卡片拖进去时先放下图片，口喷鸡接着把备注贴进同一个输入框；点卡片复制后的 2 分钟内，在这些 App 里按 ⌘V 会先贴图片、再贴备注（多张卡片就一张图一段备注依次贴上），之后剪贴板里还是这份卡片，可以再贴。备忘录、邮件、文本编辑这类 App 一次就能连图带字收下。在终端里按 ⌘V，每张卡片贴一行：图片路径，后面跟它的备注，Claude Code、Codex 拿到的每张图都带着自己的那段话。访达保持原样。需要「辅助功能」权限。";
 "settings.general.about" = "关于";
 "settings.general.version" = "版本";
 "settings.general.help" = "使用指南";
@@ -119,7 +117,7 @@
 "settings.general.live_text" = "实时显示识别文字";
 "settings.general.live_text.hint" = "语音备注或听写进行时，已识别的文字显示在刘海下方的面板中。面板不会抢占焦点，会避开输入位置，也不会被录入录屏。";
 
-"onboarding.subtitle" = "四个快捷键，可在任何 App 中使用。";
+"onboarding.subtitle" = "口喷鸡有以下五项功能。不需要的可以关闭，之后可在主页更改。";
 "onboarding.use.dictation" = "听写";
 "onboarding.use.snap" = "截图";
 "onboarding.use.voice" = "语音备注";
@@ -140,6 +138,8 @@
 "onboarding.models.retry" = "重试";
 "onboarding.models.small" = "先下载小模型（%@）";
 "onboarding.models.stop" = "停止";
+"onboarding.background_download" = "正在后台下载语音模型 · %1$@ / %2$@";
+"onboarding.background_download.why" = "完成后识别更准确，并使用你的词库。现在已可开始听写。";
 "onboarding.models.failed_toast" = "模型下载已中断";
 "onboarding.models.failed_open" = "重试…";
 "onboarding.models.later" = "之后可在「设置 > 模型」中更改。";
@@ -150,6 +150,7 @@
 "onboarding.try.works" = "听写已就绪。";
 "onboarding.try.needs_permissions" = "听写缺少权限";
 "onboarding.login.detail" = "听写键可随时使用。";
+"onboarding.login.detail_keys" = "快捷键随时可用。";
 "onboarding.try.asr_downloading" = "语音模型正在下载";
 "onboarding.try.no_model" = "听写需要语音模型";
 "onboarding.try.polish_coming" = "听写已就绪。润色模型下载完成后自动启用（还剩 %@）。";
@@ -206,9 +207,34 @@
 /* 设置窗口：侧栏分组、搜索、每行下面较短的说明（长说明放在这一行的提示里），以及每行（settings.kw.<id>）和每个面板
    （settings.kw.pane.<pane>）的搜索关键词：逗号分隔，两种语言都会匹配（SettingsCatalog）。 */
 "settings.window.title" = "设置";
-"settings.group.preferences" = "偏好";
-"settings.group.work" = "工作";
+"settings.group.features" = "功能";
+"settings.group.app" = "应用";
 "settings.group.mac" = "本机";
+/* 设置按功能排（v1.0.23）：「通用」里的五个开关，「卡片」「录屏与事项」两页，「快捷键」里录屏专用键的说明 */
+"settings.general.features" = "功能";
+"settings.general.features.footer" = "关闭的功能不占用快捷键，也不会出现在菜单、主窗口和设置中。";
+"settings.cards.section.snaps" = "截图";
+"settings.cards.section.drag" = "拖动卡片";
+"settings.cards.history" = "历史记录";
+"settings.cards.history.detail" = "拖入或粘贴到其他 App 的卡片在卡片页保留多久。";
+"settings.cards.history.days" = "%d 天";
+"settings.cards.history.forever" = "永久";
+"settings.kw.cards.history" = "历史, 历史记录, 用过的卡片, 保留, 天, 永久, 废纸篓, 删除";
+"settings.recording.section.items" = "事项";
+"settings.recording.agent" = "整理用的 Agent";
+"settings.recording.agent.detail" = "使用 Agent 列表中第一个可用的 Agent，模型和思考强度也在那里设置。";
+"settings.recording.agent.open" = "Agent 设置…";
+"settings.shortcuts.recording.footer" = "仅在录屏时生效，其余时间不占用这些按键。";
+"settings.feature.off" = "功能已关闭";
+"settings.kw.pane.cards" = "卡片, 截图, 语音备注, 拖动, 刘海";
+"settings.kw.pane.recording" = "录屏, 录制, 视频, 事项, 整理";
+"settings.kw.general.features" = "功能, 开关, 关闭功能, 打开功能, 隐藏功能, 用不到, 精简";
+"settings.kw.general.feature.dictation" = "关闭这项功能, 打开这项功能, 停用这项功能, 隐藏这项功能, 开关";
+"settings.kw.general.feature.cards" = "关闭这项功能, 打开这项功能, 停用这项功能, 隐藏这项功能, 开关, 截图, 语音备注";
+"settings.kw.general.feature.screen_text" = "关闭这项功能, 打开这项功能, 停用这项功能, 隐藏这项功能, 开关, OCR, 取字, 翻译";
+"settings.kw.general.feature.recording" = "关闭这项功能, 打开这项功能, 停用这项功能, 隐藏这项功能, 开关, 录屏, 事项, 项目";
+"settings.kw.general.feature.phone" = "关闭这项功能, 打开这项功能, 停用这项功能, 隐藏这项功能, 开关, 遥控, iPhone, 安卓";
+"settings.kw.cards.snap_sound" = "快门, 声音, 提示音, 静音";
 "settings.search.placeholder" = "搜索设置";
 "settings.search.title" = "搜索结果";
 "settings.search.count.one" = "「%@」的 1 条结果";
@@ -232,12 +258,12 @@
 "settings.general.section.cards" = "卡片";
 "settings.general.section.developer" = "高级";
 "settings.general.login.detail" = "听写和快捷键需在口喷鸡运行时使用。";
-"settings.general.island_idle.detail" = "关闭后，只在录屏、听写或录语音便签时出现。鼠标移到屏幕顶部中间，即可展开它和卡片。";
+"settings.general.island_idle.detail" = "关闭后，仅在录屏、听写或录语音备注时显示。将指针移到屏幕顶部中间可展开刘海和卡片。";
 "settings.general.island_idle" = "空闲时显示刘海";
 "settings.general.menu_bar_icon.detail" = "隐藏后，从「聚焦搜索」或「访达」再次打开口喷鸡，即可打开主窗口和设置。";
 "settings.general.menu_bar_icon" = "在菜单栏显示";
 "settings.general.voice_end_on_pause.detail" = "关闭时，语音备注录到再次按下快捷键或点按「完成」为止；打开后，静音 1.5 秒自动结束。";
-"settings.general.live_text.detail" = "已识别的文字显示在刘海下方，不会录入录屏。";
+"settings.general.live_text.detail" = "听写或录语音备注时，已识别的文字显示在刘海下方。";
 "settings.general.smart_paste.detail" = "卡片拖入聊天 App 时先放入图片，再粘贴备注。需要「辅助功能」权限。";
 "settings.general.drag_copy_note.detail" = "备注无法跟在图片后时会放入剪贴板，按 ⌘V 粘贴。";
 "settings.general.drag_note_file.detail" = "拖进聊天 App 或访达时附上。";
@@ -258,19 +284,19 @@
 "settings.kw.general.capture_into" = "项目, 文件夹, 待处理, 归到哪里, 未归类, 当前项目";
 "settings.kw.general.projects" = "文件夹, 仓库, 添加项目, 移除项目, 未归类";
 "settings.kw.general.login" = "开机启动, 自动启动, 登录项, 开机";
-"settings.kw.general.island_idle" = "刘海, 灵动岛, 隐藏, 空闲, 菜单栏, 外接显示器";
+"settings.kw.general.island_idle" = "刘海, 隐藏, 空闲, 菜单栏, 外接显示器";
 "settings.kw.general.menu_bar_icon" = "菜单栏, 状态栏, 图标, 隐藏";
 "settings.kw.general.language" = "英文, 中文, 界面语言, 翻译";
-"settings.kw.general.after_recording" = "整理, 处理, 事项, 录完";
-"settings.kw.general.countdown" = "倒计时, 延迟, 3 秒";
-"settings.kw.general.system_audio" = "声音, 系统声音, 电脑声音, 内录";
-"settings.kw.general.hide_notch" = "刘海, 隐藏, 不录, 视频, 录屏";
-"settings.kw.general.collect" = "截图, 系统截图, ⌘⇧3, ⌘⇧4";
-"settings.kw.general.voice_end_on_pause" = "停顿, 安静, 结束, 语音备注";
-"settings.kw.general.live_text" = "实时字幕, 文字, 面板, 转写";
+"settings.kw.recording.after_recording" = "整理, 处理, 事项, 录完";
+"settings.kw.recording.countdown" = "倒计时, 延迟, 3 秒";
+"settings.kw.recording.system_audio" = "声音, 系统声音, 电脑声音, 内录";
+"settings.kw.recording.hide_notch" = "刘海, 隐藏, 不录, 视频, 录屏";
+"settings.kw.cards.collect" = "截图, 系统截图, ⌘⇧3, ⌘⇧4";
+"settings.kw.cards.voice_end_on_pause" = "停顿, 安静, 结束, 语音备注";
+"settings.kw.general.live_text" = "实时字幕, 文字, 面板, 转写, 听写, 语音备注";
 "settings.kw.general.smart_paste" = "粘贴, 聊天, 微信, Slack, 飞书, 图片和备注";
 "settings.kw.general.drag_copy_note" = "剪贴板, 复制, 拖动, 备注";
-"settings.kw.general.drag_note_file" = "Markdown, md 文件, 附件, 备注文件";
+"settings.kw.cards.drag_note_file" = "Markdown, md 文件, 附件, 备注文件";
 "settings.kw.general.drag_caption" = "备注条, 印在图片上, 图片下方, 说明文字";
 "settings.kw.general.dictation_lab" = "测试台, 开发者, 调试";
 "settings.kw.general.version" = "关于, 更新, 检查更新, 版本号";
@@ -317,7 +343,6 @@
 "settings.kw.speech.mirror" = "镜像, Hugging Face, 国内, 下载速度, hf-mirror";
 "settings.kw.shortcuts.restore" = "重置, 默认, 恢复";
 "settings.kw.agents.list" = "顺序, 整理, 模型, 思考强度, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
-"settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
 "settings.kw.privacy.permissions" = "录屏, 麦克风, 辅助功能, 输入监控, 允许, 屏幕录制";
 "settings.kw.privacy.local_asr" = "本地, 离线, 端侧, 云端, 自动, 语音识别";
@@ -349,7 +374,7 @@
 "settings.storage.model.unused" = "当前版本不再使用";
 "settings.general.login_failed" = "无法更改，请在「系统设置」的「登录项」中修改。";
 "onboarding.step_of" = "第 %ld 步，共 %ld 步";
-"onboarding.use.snap.detail" = "截取屏幕区域，保存为卡片";
+"onboarding.use.snap.detail" = "截图并保存为卡片";
 "onboarding.use.voice.detail" = "录一段语音备注，保存为卡片";
 "onboarding.use.record.detail" = "录屏并讲解，整理成事项交给 Agent";
 "onboarding.use.text" = "截图取字";
@@ -357,6 +382,7 @@
 "onboarding.use.translate" = "截图翻译";
 "onboarding.use.translate.detail" = "框选文字，获取译文";
 "onboarding.use.change" = "在设置里修改快捷键…";
+"onboarding.use.phone.detail" = "将手机用作 Mac 的触控板、键盘和麦克风。安装手机 App 后，在「手机」页配对。";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";
 "onboarding.dictation.detail" = "选择听写键，并开启所需权限。";
@@ -390,6 +416,8 @@
 "onboarding.try.subtitle" = "听写可在任何 App 中使用，可先在此试用。";
 "onboarding.try.how" = "按一下，说句话，再按一下。";
 "onboarding.try.how.hold" = "按住，说句话，松开。";
+"onboarding.try.card.title" = "试一下卡片";
+"onboarding.try.card.detail" = "截一张图，卡片会显示在刘海下方，然后拖入聊天窗口。";
 "onboarding.try.needs_permissions.detail" = "请开启%@。";
 "onboarding.try.asr_downloading.detail" = "下载完成后即可在此试用。";
 "onboarding.try.no_model.detail" = "下载在后台进行，你可以先完成设置。";
@@ -418,6 +446,20 @@
 "settings.general.card_drag.picture" = "只放图片";
 "settings.general.card_drag.hint" = "先放图片，再贴备注：在聊天 App（浏览器、Claude、ChatGPT、Slack、飞书、微信）中，先放入图片，再将备注粘贴到同一输入框；复制卡片后 2 分钟内，在这些 App 中按 ⌘V 效果相同。需要「辅助功能」权限。图片下方印上备注：拖出的是在下方加了备注条的副本，适用于只接收一张图片的 App，原截图不变。以上两种方式中，备注无法粘贴时会放入剪贴板，可按 ⌘V 粘贴；点按刘海下方的「撤销」可还原剪贴板。只放图片：仅拖出图片。";
 "settings.general.card_drag.needs_ax" = "粘贴备注需要「辅助功能」权限。";
+"settings.general.agent_drag" = "把卡片拖进 Agent";
+"settings.general.agent_drag.paths" = "图片路径 + 备注";
+"settings.general.agent_drag.same" = "和其他 App 一样";
+"settings.general.agent_drag.hint" = "指能直接读这台 Mac 上文件的 Agent：Codex、Claude Code、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae 等；点「Agent 列表…」查看，也可以自己加 App。图片路径 + 备注：每张卡片是一行，先是图片路径，后面跟它的备注，Agent 按路径打开图片；拖进几张卡片，每张图都和自己的备注挨在一起。复制卡片后按 ⌘V 也一样。和其他 App 一样：按上面那一项来。终端始终是路径 + 备注。";
+"settings.general.agent_apps.open" = "Agent 列表…";
+"settings.general.agent_apps.title" = "Agent 列表";
+"settings.general.agent_apps.note" = "这些 App 里的 Agent 能打开这台 Mac 上的文件，卡片拖进去是图片路径 + 备注。列表里没有的可以自己加；关掉某个，它就改收图片。";
+"settings.general.agent_apps.codex_note" = "只在 Codex 模式下";
+"settings.general.agent_apps.claude_note" = "只在 Code 标签页里";
+"settings.general.agent_apps.not_installed" = "未安装";
+"settings.general.agent_apps.add" = "添加 App…";
+"settings.general.agent_apps.add_prompt" = "添加";
+"settings.general.agent_apps.remove" = "移除";
+"settings.general.agent_apps.done" = "完成";
 "settings.general.about.version" = "口喷鸡 %@";
 "settings.general.assistant.link" = "设置助手…";
 "settings.projects.add" = "添加项目文件夹…";
@@ -428,7 +470,8 @@
 "settings.kw.projects.capture_into" = "项目, 文件夹, 归到哪里, 未归类, 当前项目, 截图, 语音备注";
 "settings.kw.projects.list" = "文件夹, 仓库, 添加项目, 移除项目, 未归类, 编号";
 "settings.kw.pane.projects" = "文件夹, 仓库, 项目";
-"settings.kw.general.card_drag" = "拖动, 粘贴, 聊天, 微信, Slack, 飞书, 图片和备注, 备注条, 剪贴板, 复制";
+"settings.kw.cards.card_drag" ="拖动, 粘贴, 聊天, 微信, Slack, 飞书, 图片和备注, 备注条, 剪贴板, 复制";
+"settings.kw.cards.agent_drag" ="Agent, 拖动, 路径, 文件路径, 图片路径, 备注";
 "settings.kw.general.about" = "关于, 版本, 更新, 检查更新, 指南, 帮助, 设置助手, 引导";
 "settings.kw.dictation.lab" = "测试台, 开发者, 调试, 对比模型";
 "settings.projects.make_current" = "新截图归到这里";
@@ -470,7 +513,7 @@
 "settings.general.screen_text.detail.download" = "需下载 %@";
 "settings.general.screen_text.detail.downloading" = "正在下载… %@";
 "settings.general.screen_text.download" = "下载";
-"settings.kit.screen_text" = "截图取字";
+"settings.kit.screen_text" = "取字与翻译";
 "settings.kw.pane.screentext" = "OCR, 截图文字, 取字, 复制文字, 截图翻译, 翻译, 屏幕";
 "settings.screen_text.section.copy" = "取字（⌥C）";
 "settings.screen_text.section.translate" = "翻译（⌥T）";
@@ -518,3 +561,64 @@
 "onboarding.key.compare" = "%1$@约 %2$@，录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";
+
+/* Settings → Phone */
+"settings.kit.remote" = "手机";
+"settings.kw.pane.remote" = "手机, iPhone, iPad, 安卓, Android, 遥控, 触摸板, 键盘, 鼠标, 光标";
+"settings.remote.section.phones" = "手机";
+"settings.remote.section.options" = "连接时";
+"settings.remote.add" = "添加手机…";
+"settings.remote.add.detail" = "将手机或平板用作触控板、键盘和麦克风。手机版尚未上架应用商店，需自行构建。";
+"settings.kw.remote.add" = "配对, 二维码, 连接, 触摸板";
+"settings.remote.scan" = "用手机扫描";
+"settings.remote.scan.detail" = "在手机上打开口喷鸡扫描此二维码，或使用相机 App，然后在此处允许。二维码会自动更新。一台手机可以配对多台电脑，每台扫一次即可。";
+"settings.remote.connected" = "已连接";
+"settings.remote.not_connected" = "未连接";
+"settings.remote.remove" = "移除";
+"settings.remote.needs_access" = "辅助功能未开启";
+"settings.remote.needs_access.detail" = "开启后，手机才能移动指针和按键。";
+"settings.remote.hud" = "在屏幕上显示按键";
+"settings.remote.hud.detail" = "显示手机上按下的快捷键。";
+"settings.kw.remote.hud" = "提示, 浮层, 反馈";
+"settings.remote.app" = "手机版口喷鸡";
+"settings.remote.get_app" = "构建步骤";
+"settings.remote.cancel" = "取消";
+"settings.remote.section.relay" = "外出连接";
+"settings.remote.relay" = "中转地址";
+"settings.remote.relay.address.detail" = "填你自己的中转服务，手机就能在任何网络下连接这台 Mac（Mac 需保持唤醒）。一个地址可供你所有的电脑使用，已知道地址的手机配对时会自动填到这里。内容全程加密。";
+"settings.kw.remote.relay.address" = "中转, 公网, 外网, 远程, 外出, 域名, 服务器";
+"settings.remote.relay.checking" = "正在检查…";
+"settings.remote.relay.from_phone" = "这个地址由手机填入，检查可用。不想用可以清空。";
+"settings.remote.ask.title" = "允许 %@ 控制你的 Mac？";
+"settings.remote.ask.detail" = "手机上显示 %@ 时才允许。";
+"settings.remote.ask.yes" = "允许";
+"settings.remote.ask.no" = "不允许";
+"settings.remote.last_used" = "上次使用：%@";
+"settings.remote.remove.title" = "移除 %@？";
+"settings.remote.remove.detail" = "移除后，它要重新扫码才能连接。";
+"settings.remote.relay.ok" = "中转可用。手机下次连接时会自动记住地址。";
+"settings.remote.relay.failed" = "这个地址没有响应。";
+"settings.remote.relay.invalid" = "这不是中转地址，格式类似 wss://relay.example.com。";
+"settings.remote.relay.help" = "搭建中转";
+"settings.remote.relay.help.detail" = "Blurt 不提供中转服务。把这段说明交给 Claude Code 或 Codex，它会用你自己的域名或服务器搭好。";
+"settings.kw.remote.relay.help" = "中转, cloudflare, 域名, 服务器";
+"settings.remote.relay.copy" = "复制说明";
+"settings.remote.relay.copied" = "已复制";
+"settings.remote.screen" = "在手机上显示 Mac 屏幕";
+"settings.remote.screen.detail" = "仅在已配对的手机上开启时显示。";
+"settings.kw.remote.screen" = "屏幕, 投屏, 画面, 远程";
+/* 取字与翻译 → 记录 */
+"settings.screen_text.section.history" = "记录";
+"settings.screen_text.history" = "取字记录";
+"settings.screen_text.history.detail" = "保存 ⌥C 取到的文字和 ⌥T 的译文。";
+"settings.screen_text.history.keep" = "取字记录保留";
+"settings.screen_text.history.forever" = "永久";
+"settings.screen_text.history.summary.off" = "不保存 · 复制后不留记录";
+"settings.screen_text.history.open" = "打开记录…";
+"settings.screen_text.history.clear" = "清空记录…";
+"settings.screen_text.history.clear.title" = "清空取字记录？";
+"settings.screen_text.history.clear.message" = "将删除 %ld 条记录，删除后无法恢复。";
+"settings.screen_text.history.clear.confirm" = "清空";
+"settings.screen_text.history.cancel" = "取消";
+"settings.kw.screentext.history" = "历史, 记录, 保留, 天数, 永久, 不保存, 清空, 隐私";
+"settings.kw.screentext.history_keep" = "历史, 记录, 保留, 天数, 永久, 不保存";

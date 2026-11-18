@@ -63,7 +63,7 @@ Derive the list from the code, not from memory. It must include:
 - the main window views (lists, item detail, Dictation page, Lab, empty states, banners);
 - the island and toast states, hanging cards and their overview;
 - the note bubble, the picker, the recording chrome;
-- the panels (dispatch, finish, Recently Dragged Out, palette, project switcher, keyboard shortcuts);
+- the panels (Recently Dragged Out, palette, project switcher, keyboard shortcuts);
 - onboarding steps and the permission guide;
 - the menu-bar menu (render it through test hooks if possible);
 - alerts.

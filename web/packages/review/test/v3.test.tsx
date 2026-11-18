@@ -250,27 +250,24 @@ describe("v3 UI", () => {
     return { s, el, ...h, done: () => (act(() => root.unmount()), s.dispose()) };
   }
 
-  it("work panel: one Open Session per item — the host's banner has it while the item is with the agent", async () => {
-    const openSession = vi.fn();
+  it("work panel: no session controls; under the host's banner a card that would only repeat it is left out", async () => {
     const at = (s: ReviewStore, id: string) => s.data.items.findIndex((i) => i.id === id);
     for (const banner of [false, true]) {
-      const { el, s, done } = await mount(<Inspector />, { openSession, sessionBanner: banner });
-      await act(async () => s.go(at(s, "BA-15"))); // in progress, with a session
-      expect(el.querySelector("#workSession") === null).toBe(banner);
+      const { el, s, done } = await mount(<Inspector />, { sessionBanner: banner });
+      await act(async () => s.go(at(s, "BA-15"))); // in progress (an old session's)
+      expect(el.querySelector("#workSession")).toBeNull();
       // under the banner a card with only "By Codex" would repeat it: no card (dogfood v0.9)
       expect(el.querySelector("#workRow") === null).toBe(banner);
-      await act(async () => s.go(at(s, "BA-12"))); // to verify: no banner above it, so the panel has the button
-      expect(el.querySelector("#workSession")).not.toBeNull();
-      await act(async () => (el.querySelector("#workSession") as HTMLButtonElement).click());
-      expect(openSession).toHaveBeenLastCalledWith("j-20261022-101500-ab12");
+      await act(async () => s.go(at(s, "BA-12"))); // to verify: the card asks, still without a session button
+      expect(el.querySelector("#workRow")).not.toBeNull();
+      expect(el.querySelector("#workSession")).toBeNull();
       done();
     }
   });
 
   it("inspector: project picker, state pill, work panel with Mark as done, provenance, handoff buttons", async () => {
     const handoff = vi.fn(async () => ({ id: "H-0013", path: "/h/H-0013.md", text: "Please handle BA-12 …" }));
-    const dispatch = vi.fn();
-    const { el, s, done } = await mount(<Inspector />, { handoff, dispatch, openSession: vi.fn() });
+    const { el, s, done } = await mount(<Inspector />, { handoff });
     await act(async () => s.go(0)); // the review opens on the first new item; this one is waiting to be verified
     expect((el.querySelector("#projectPick") as HTMLSelectElement).value).toBe("p-blurt");
     const pill = el.querySelector("#statePill") as HTMLButtonElement;
@@ -279,7 +276,7 @@ describe("v3 UI", () => {
     expect(pill.getAttribute("aria-haspopup")).toBe("menu");
     expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
-    expect(el.querySelector("#workSession")).not.toBeNull();
+    expect(el.querySelector("#workSession")).toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     // one footer line (how · when · who); captured in its own project says nothing the breadcrumb doesn't: not repeated
     expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/^Screen recording at 0:12·.+·by max$/);
@@ -300,12 +297,12 @@ describe("v3 UI", () => {
     await act(async () => (el.querySelector("#copyInstruction") as HTMLButtonElement).click());
     expect(handoff).toHaveBeenCalledWith([U(0)], "instruction");
     expect(s.toast?.msg).toBe("Instruction copied · H-0013");
-    await act(async () => (el.querySelector("#dispatchBtn") as HTMLButtonElement).click());
-    expect(dispatch).toHaveBeenCalledWith([U(0)]);
+    expect(el.querySelector("#dispatchBtn")).toBeNull(); // one Hand Off: the copy
     await act(async () => pill.click());
     expect(document.querySelector('.smenu [data-action="hand_off"]')).not.toBeNull();
     await act(async () => document.querySelector<HTMLElement>('.smenu [data-action="hand_off"]')!.click());
-    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(handoff).toHaveBeenCalledTimes(2);
+    expect(handoff).toHaveBeenLastCalledWith([U(0)], "instruction");
     done();
   });
 
@@ -345,8 +342,7 @@ describe("v3 UI", () => {
   });
 
   it("to verify: one card that asks — one brand primary, Send Back… with a note, the rest under ⋯, no amber elsewhere", async () => {
-    const reviewChanges = vi.fn();
-    const { el, s, done } = await mount(<Inspector />, { openSession: vi.fn(), reviewChanges });
+    const { el, s, done } = await mount(<Inspector />);
     document.body.appendChild(el);
     await act(async () => s.go(0)); // BA-12: Claude says it's fixed, with a session and a commit
     const card = el.querySelector("#workRow")!;
@@ -360,15 +356,9 @@ describe("v3 UI", () => {
     expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
     expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
     expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
-    // ⋯: Review Changes… (a session) and Won't Do
+    // ⋯: Won't Do (no Review Changes: no in-app sessions)
     const more = [...(card.querySelector("#workMore") as HTMLSelectElement).options].slice(1).map((o) => o.value);
-    expect(more).toEqual(["review", "wontfix"]);
-    await act(async () => {
-      const m = card.querySelector("#workMore") as HTMLSelectElement;
-      m.value = "review";
-      m.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(reviewChanges).toHaveBeenCalledWith("j-20261022-101500-ab12");
+    expect(more).toEqual(["wontfix"]);
     // severity is neutral (bars), never the attention hue
     expect(el.querySelector("#sevChip")?.parentElement?.querySelector(".sevbars")).not.toBeNull();
     // the history's two entries and the provenance sit in one Activity disclosure at the end

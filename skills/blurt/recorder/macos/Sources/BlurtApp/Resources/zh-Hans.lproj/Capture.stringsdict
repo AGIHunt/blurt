@@ -80,12 +80,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张截图</string></dict>
   </dict>
-  <key>capture.rec.spotted</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已识别 %d 个事项</string></dict>
-  </dict>
   <key>capture.smart_paste.done_n</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -98,11 +92,11 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已删除 %d 张卡片</string></dict>
   </dict>
-  <key>capture.cards.more_ax</key>
+  <key>capture.taken_out_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示全部 %d 张卡片</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已拖走 %d 张</string></dict>
   </dict>
   <key>capture.cards.selected</key>
   <dict>
@@ -127,12 +121,6 @@
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 天前</string></dict>
-  </dict>
-  <key>capture.cards.overview_title</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>卡片（%d）</string></dict>
   </dict>
   <key>capture.card.move_n</key>
   <dict>
@@ -170,5 +158,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>其他口喷鸡正在使用其中 %d 个快捷键</string><key>other</key><string>其他口喷鸡正在使用其中 %d 个快捷键</string></dict>
   </dict>
+	<key>capture.drawer.hang_sub</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>变成 %d 张卡片，之后可以加备注</string></dict>
+	</dict>
 </dict>
 </plist>

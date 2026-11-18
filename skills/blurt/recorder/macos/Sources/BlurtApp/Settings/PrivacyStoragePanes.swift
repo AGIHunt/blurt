@@ -486,9 +486,9 @@ final class StorageModel: ObservableObject {
     func annotateModels() async {
         checkingModels = true
         defer { checkingModels = false }
-        async let asrRun = try? SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
-        async let dictationRun = try? SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 180)
-        async let polishRun = try? SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
+        async let asrRun = try? SkillCLI.shared.read("transcribe.py", ["models"], timeout: 180)
+        async let dictationRun = try? SkillCLI.shared.read("transcribe.py", ["dictation-models"], timeout: 180)
+        async let polishRun = try? SkillCLI.shared.read("polish.py", ["models"], timeout: 60)
         let (asr, dictation, polish) = await (asrRun?.json, dictationRun?.json, polishRun?.json)
         let known = ModelUsage.merge(asr: asr, dictation: dictation, polish: polish)
         guard !known.isEmpty else { return }

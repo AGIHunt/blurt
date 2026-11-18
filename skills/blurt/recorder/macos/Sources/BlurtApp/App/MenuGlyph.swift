@@ -195,9 +195,18 @@ final class MenuGlyph {
         return img.representations.isEmpty ? nil : img
     }
 
+    /// Only if Resources/Peep is missing from the bundle: the system's bird, a template image `height` pt tall.
+    static func fallback(_ height: CGFloat) -> NSImage {
+        let cfg = NSImage.SymbolConfiguration(pointSize: (height * 0.8).rounded(), weight: .regular)
+        let img = NSImage(systemSymbolName: "bird", accessibilityDescription: nil)?.withSymbolConfiguration(cfg)
+            ?? NSImage(size: NSSize(width: height, height: height))
+        img.isTemplate = true
+        return img
+    }
+
     /// The rest glyph (idle, frame 0), in one colour, `height` pt tall (the island's toasts lead with it in white).
     static func tinted(_ color: NSColor, size height: CGFloat) -> NSImage {
-        let base = image(.idle, 0) ?? BlurtIcon.blurt.image(size: size.height)
+        let base = image(.idle, 0) ?? MenuGlyph.fallback(size.height)
         let img = NSImage(size: NSSize(width: (height * size.width / size.height).rounded(), height: height), flipped: false) { r in
             base.draw(in: r)
             color.set()

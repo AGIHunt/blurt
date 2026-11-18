@@ -14,7 +14,7 @@ set -eu
 URL=https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
 
 if [ "$(uname -s)" != Darwin ]; then
-  echo "Blurt is Mac only for now. Windows and Linux are coming: https://blurt.work" >&2
+  echo "This installer is for macOS. Windows and Linux test builds: https://github.com/AGIHunt/blurt/releases" >&2
   exit 1
 fi
 major=$(sw_vers -productVersion | cut -d. -f1)

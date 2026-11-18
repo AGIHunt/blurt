@@ -93,9 +93,9 @@ enum LayoutCheck {
             if LayoutLint.titled.contains(role), !listy { n.truncated = titleClipped(o, frame: frame, label: label) }
             nodes.append(n)
             let me = nodes.count - 1
-            // web content is its own world (and another process); a terminal's lines are its own scrolling
+            // web content is its own world (and another process)
             let cls = String(describing: type(of: o))
-            if cls.contains("WKWebView") || cls.contains("TerminalView") { return }
+            if cls.contains("WKWebView") { return }
             var inner = clip
             if role == "AXScrollArea" { inner = clip.map { $0.intersection(frame) } ?? frame }
             for c in o.accessibilityChildren?() ?? [] { walk(c, parent: me, clip: inner, inList: listy, depth: depth + 1) }

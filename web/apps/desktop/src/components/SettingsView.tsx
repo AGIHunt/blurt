@@ -1,27 +1,33 @@
 // Settings (the Mac's Settings window: Settings/SettingsWindow.swift, SettingsSearch.swift and the panes): a sidebar
-// with the search field on top and the panes in three groups — Preferences: General, Dictation, Copy Text from Screen,
-// Models, Shortcuts · Work: Projects, Agents · This PC: Privacy, Storage —, and the page: the pane, or the search
-// results while there is a query. Ctrl+F focuses the search (the Mac's ⌘F), Esc clears it, ↓ / ↑ walk the results,
+// with the search field on top and the panes in three groups, by capability (v1.0.23, docs/design/capabilities.md) —
+// Features: Dictation, Cards, Screen Text, Recording & Items, Projects, Phone, each only while its capability is on ·
+// App: General (with the five switches), Models, Shortcuts, Agents · This PC: Privacy, Storage —, and the page: the
+// pane, or the search results while there is a query. A link into an off capability lands on its switch in General. Ctrl+F focuses the search (the Mac's ⌘F), Esc clears it, ↓ / ↑ walk the results,
 // Enter opens one. The last pane is remembered (app.settings_pane). On Windows the page lives in the main window (as
 // Windows 11 apps keep their settings) instead of a window of its own; the tray's Settings… opens it.
 // What each pane has and what it leaves out on Windows: docs/design/windows-parity/settings.md.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
-import { api, listen, type AppStatus, type HotkeyResult, type HotkeyRow, type LoginItem, type MicState, type ProjectList, type Settings } from '../api';
+import { api, builds, listen, type AppStatus, type HotkeyResult, type HotkeyRow, type LoginItem, type MicState, type ProjectList, type Settings } from '../api';
 import { i18n, t } from '../i18n';
-import { comboFromEvent, comboLabel } from '../util';
+import { comboFromEvent, comboLabel, keyInText } from '../util';
 import {
-  ACTIONS, ENTRIES, GROUPS, MOVED, PANES, pane, paneOf, paneReason, reason, results, SECTIONS, setArguments, SHORTCUT_SECTIONS, shortcutTitle,
+  ACTIONS, ENTRIES, GROUPS, PANES, pane, paneOf, paneReason, reason, redirect, results, SECTIONS, setArguments, SHORTCUT_SECTIONS, shortcutTitle,
   SUGGESTIONS, textIn, type Entry, type Key, type PaneId, type ResultGroup,
 } from '../settings/catalog';
-import { Group, Line, Page, Popup, requestFlash, Row, S, TextLink, Toggle, lang } from '../settings/kit';
+import { CAPS, landing, owner, paneShown, rowShown, type Capability, type Off } from '../capabilities';
+import type { Place } from '../places';
+import { setCapability, useOff } from './useCapabilities';
+import { Group, Line, Page, Popup, requestFlash, Row, S, Switch, TextLink, Toggle, lang, setPlatform } from '../settings/kit';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { ProjectGlyph } from './glyphs';
 import { OkMark } from './Welcome';
 import '../settings/settings.css';
+import { AgentAppsSheet } from './AgentAppsSheet';
 import { AgentsPane } from './AgentsSettings';
 import { DictationPane, ModelsPane, ScreenTextPane } from './DictationSettings';
 import { StoragePane } from './StorageSettings';
+import { PhonePane } from '../settings/PhonePane';
 
 const REPO = 'https://github.com/AGIHunt/blurt';
 const guideURL = () => `${REPO}/blob/main/docs/guide.md#${lang() === 'zh-Hans' ? encodeURIComponent('中文') : 'english'}`;
@@ -41,18 +47,26 @@ export function goSettingsPane(pane: string) {
   navListener?.(pendingNav);
 }
 
-/** "speech" or "speech/speech.dictation" (a pane, then a row) → [pane, row]; a pane that moved goes where it went;
- *  a name that isn't a pane: General. */
-function resolveLink(link: string | undefined | null, last: string | undefined): [PaneId, string | null] {
-  const [p0, row] = (link ?? '').split('/');
-  const p = MOVED[p0] ?? p0;
-  if (p && pane(p)) return [p as PaneId, row ? (row.includes('.') ? row : `${p}.${row}`) : null];
-  if (p) return ['general', null];
-  const l = MOVED[last ?? ''] ?? last;
-  return [l && pane(l) ? (l as PaneId) : 'general', null];
+/** "speech" or "speech/speech.dictation" (a pane, then a row) → [pane, row]; a pane or row that moved goes where it
+ *  went; one of a capability that is off lands on its switch in General; a name that isn't a pane: General. */
+export function resolveLink(link: string | undefined | null, last: string | undefined, off: Off): [PaneId, string | null] {
+  const go = (l: string): [PaneId, string | null] => {
+    const [p, row] = landing(redirect(l), off).split('/');
+    if (p && pane(p)) return [p as PaneId, row ? (row.includes('.') ? row : `${p}.${row}`) : null];
+    return ['general', null];
+  };
+  if (link) return go(link);
+  const [p] = last ? go(last) : ['general' as PaneId];
+  return [p, null];
 }
 
-export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void }) {
+export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack, onGo }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void; onWelcome?: () => void; onBack?: () => void; onGo?: (p: Place) => void }) {
+  // read again when Settings opens and whenever the shortcuts change: GNOME binds the dictation key (the portal's
+  // dialog) after the app started, and app_status says which key it bound
+  const [status, setStatus] = useState(given);
+  useEffect(() => setStatus(given), [given]);
+  const { off } = useOff();
+  setPlatform(status.platform);        // the strings' .linux variants (kit S)
   const [s, setS] = useState<Settings | null>(null);
   const [cur, setCur] = useState<PaneId>('general');
   const [query, setQuery] = useState('');
@@ -62,7 +76,11 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
   const reload = useCallback(() => api.settings().then(setS, (e) => onToast(String(e))), [onToast]);
   useEffect(() => {
     reload();
-    return listen<HotkeyRow[]>('hotkeys://changed', (rows) => setS((x) => (x ? { ...x, hotkeys: rows } : x)));
+    api.status().then(setStatus, () => {});
+    return listen<HotkeyRow[]>('hotkeys://changed', (rows) => {
+      setS((x) => (x ? { ...x, hotkeys: rows } : x));
+      api.status().then(setStatus, () => {});
+    });
   }, [reload]);
 
   // the pane to open: a nav (tray, link), else the last one
@@ -76,7 +94,7 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
   useEffect(() => {
     if (!s || opened.current) return;
     opened.current = true;
-    const [p, row] = resolveLink(pendingNav?.pane, s.config?.app?.settings_pane);
+    const [p, row] = resolveLink(pendingNav?.pane, s.config?.app?.settings_pane, off);
     if (pendingNav?.check_updates) setCheckUpdates((n) => n + 1);
     pendingNav = null;
     setCur(p);
@@ -86,7 +104,7 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
   }, [s]);
   useEffect(() => {
     navListener = (n) => {
-      const [p, row] = resolveLink(n.pane, cur);
+      const [p, row] = resolveLink(n.pane, cur, off);
       pendingNav = null;
       setQuery('');
       setCur(p);
@@ -96,7 +114,15 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
     return () => {
       navListener = null;
     };
-  }, [cur]);
+  }, [cur, off]);
+  // the pane on show belongs to a capability just turned off (its own switch, Home, a hand edit): General, at that
+  // capability's switch — one click from having it back
+  useEffect(() => {
+    if (paneShown(cur, off)) return;
+    const [p, row] = resolveLink(cur, undefined, off);
+    setCur(p);
+    if (row) requestFlash(row);
+  }, [off, cur]);
 
   // Ctrl+F: the search field (the Mac's ⌘F)
   useEffect(() => {
@@ -113,27 +139,40 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
 
   // titles that name a hotkey ("Alt+Shift+T translates into"): the user's key, else the action's name
   const hk = useCallback((a: string) => s?.hotkeys.find((r) => r.action === a && r.spec !== 'off')?.label ?? '', [s]);
+  // the dictation key's name, for Dictation's line in General ("Press Right Alt and speak…")
+  const dictKeyName = dictationKeyName(status, s?.config);
   useEffect(() => {
-    setArguments((k) => {
+    setArguments((k): Record<string, string> | undefined => {
       if (k === 'settings.screen_text.translate' || k === 'settings.screen_text.section.translate') return { '1': hk('translate') || S('capture.action.translate') };
       // Copy Text from Screen's Copy section names its own key, as Translate does (the Mac's "Copy (⌥C)")
       if (k === 'settings.screen_text.section.copy') return { '1': hk('text') || S('capture.action.text') };
+      if (k === 'feature.dictation.what') return { a: keyInText(dictKeyName, lang()) };
       return undefined;
     });
-  }, [hk]);
+  }, [hk, dictKeyName]);
 
-  /** what this build shows: Linux has no dictation, no Copy Text from Screen and no login item here */
+  /** what this build shows (app_status `features`): dictation on Windows and Linux, Copy Text from Screen and the
+   *  Windows screenshot cards on Windows; with GNOME's portal key, no Esc / Shift / Ctrl taps inside a take */
   const win = status.platform === 'win';
+  const { dictation, screenText, portalKey } = builds(status);
+  const portal = portalKey !== null;
   const shown = useCallback(
     (e: Entry) => {
       const p = paneOf(e.id);
-      if (!win && (p === 'dictation' || p === 'screentext' || e.section === 'general.cards' || e.id === 'shortcuts.dictation_key' || e.id === 'shortcuts.text' || e.id === 'shortcuts.translate')) return false;
-      if (!win && (e.id === 'speech.dictation' || e.id === 'speech.polish' || e.id === 'speech.translate')) return false;
-      return true;
+      if (!dictation && (p === 'dictation' || e.id === 'shortcuts.dictation_key' || e.id === 'speech.dictation' || e.id === 'speech.polish' || e.id === 'speech.translate')) return false;
+      if (!screenText && (p === 'screentext' || e.id === 'shortcuts.text' || e.id === 'shortcuts.translate' || e.id === 'speech.vision')) return false;
+      // the screenshot cards' and the card drag's settings are Windows' (island_drop_win, card_drag_win)
+      if (!win && (e.section === 'cards.snaps' || e.section === 'cards.drag')) return false;
+      if (portal && (e.id === 'dictation.cancel_key' || e.id === 'dictation.modifier_tap')) return false;
+      if (status.platform !== 'gnome' && e.id === 'screentext.allow') return false;
+      // a capability that isn't built here has no switch either
+      if ((!dictation && e.id === 'general.feature.dictation') || (!screenText && e.id === 'general.feature.screen_text')) return false;
+      // a capability that is off: its pane, its rows elsewhere (its shortcuts) and its results go with it
+      return rowShown(e.id, off) && (e.kind !== 'section' || rowShown(e.section ?? e.id, off));
     },
-    [win],
+    [win, dictation, screenText, portal, status.platform, off],
   );
-  const panes = PANES.filter((p) => win || (p.id !== 'dictation' && p.id !== 'screentext'));
+  const panes = PANES.filter((p) => (dictation || p.id !== 'dictation') && (screenText || p.id !== 'screentext') && paneShown(p.id, off));
   const groups = useMemo(() => (query.trim() ? results(query, lang(), shown) : []), [query, shown]);
   const counts = useMemo(() => new Map(groups.map((g) => [g.pane, g.paneHit ? ENTRIES.filter((e) => paneOf(e.id) === g.pane && shown(e) && !ACTIONS.has(e.id)).length : g.hits.length])), [groups, shown]);
   const searching = !!query.trim();
@@ -209,21 +248,27 @@ export function SettingsView({ status, onToast, onLang, onWelcome, onBack }: { s
       </nav>
       {searching ? (
         <SearchResults query={query} groups={groups} stops={stops} sel={sel} setSel={setSel} open={open} clear={() => setQuery('')} setQuery={setQuery} hotkeys={s.hotkeys}
-          counts={counts} dictKey={S(`dictation.key.${s.config.record?.dictation?.key === 'either_option' ? 'either_option' : 'right_option'}`)} />
+          counts={counts} dictKey={portal ? portalKey || S('dictation.key.portal.unset') : S(`dictation.key.${s.config.record?.dictation?.key === 'either_option' ? 'either_option' : 'right_option'}`)} />
       ) : cur === 'general' ? (
-        <GeneralPane status={status} cfg={cfg} save={save} onToast={onToast} onLang={onLang} onWelcome={onWelcome} checkUpdates={checkUpdates} />
+        <GeneralPane status={status} cfg={cfg} save={save} onToast={onToast} onLang={onLang} onWelcome={onWelcome} checkUpdates={checkUpdates} off={off} shown={shown} />
+      ) : cur === 'cards' ? (
+        <CardsPane cfg={cfg} save={save} win={win} />
+      ) : cur === 'recording' ? (
+        <RecordingPane cfg={cfg} save={save} />
       ) : cur === 'dictation' ? (
-        <DictationPane cfg={cfg} save={save} goModels={() => go('speech', 'speech.dictation')} goTranslate={() => go('speech', 'speech.translate')} keyOf={hk} />
+        <DictationPane cfg={cfg} save={save} goModels={() => go('speech', 'speech.dictation')} goTranslate={() => go('speech', 'speech.translate')} keyOf={hk} portalKey={portalKey} />
       ) : cur === 'screentext' ? (
-        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} />
+        <ScreenTextPane cfg={cfg} save={save} goTranslate={() => go('speech', 'speech.translate')} openHistory={onGo && (() => onGo('screen_text'))} linux={status.platform === 'gnome'} />
       ) : cur === 'speech' ? (
         <ModelsPane status={status} onToast={onToast} />
       ) : cur === 'shortcuts' ? (
-        <ShortcutsPane s={s} status={status} reload={reload} goDictation={() => go('dictation', 'dictation.key')} />
+        <ShortcutsPane s={s} status={status} reload={reload} goDictation={() => go('dictation', 'dictation.key')} off={off} />
+      ) : cur === 'phone' ? (
+        <PhonePane status={status} />
       ) : cur === 'projects' ? (
         <ProjectsPane onToast={onToast} />
       ) : cur === 'agents' ? (
-        <AgentsPane cfg={cfg} save={save} status={status} onToast={onToast} />
+        <AgentsPane cfg={cfg} save={save} onToast={onToast} />
       ) : cur === 'privacy' ? (
         <PrivacyPane go={go} />
       ) : (
@@ -355,7 +400,23 @@ function SearchResults({ query, groups, stops, sel, setSel, open, clear, setQuer
 
 // ------------------------------------------------------------------ General
 
-function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdates }: {
+/** The dictation key's short name as Settings and Home write it ("Right Alt"; GNOME's own shortcut when it bound one). */
+export function dictationKeyName(status: AppStatus, cfg: Record<string, any> | undefined): string {
+  const { portalKey } = builds(status);
+  if (portalKey !== null) return portalKey || S('dictation.key.portal.unset');
+  return S(`dictation.key.${cfg?.record?.dictation?.key === 'either_option' ? 'either_option' : 'right_option'}`);
+}
+
+/** A capability's glyph (the sidebar's, Home's, the Welcome's). */
+export const CAP_ICON: Record<Capability, 'character-cursor' | 'cards' | 'text-viewfinder' | 'record' | 'phone'> = {
+  dictation: 'character-cursor',
+  cards: 'cards',
+  screen_text: 'text-viewfinder',
+  recording: 'record',
+  phone: 'phone',
+};
+
+function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdates, off, shown }: {
   status: AppStatus;
   cfg: Record<string, any>;
   save: (patch: Record<string, unknown>) => Promise<void>;
@@ -363,6 +424,8 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
   onLang: (lang: string) => void;
   onWelcome?: () => void;
   checkUpdates: number;
+  off: Off;
+  shown: (e: Entry) => boolean;
 }) {
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [loginErr, setLoginErr] = useState(false);
@@ -391,16 +454,20 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
   }, [checkUpdates, check]);
 
   const language = cfg.lang === 'zh' ? 'zh-Hans' : ['en', 'zh-Hans'].includes(cfg.lang) ? cfg.lang : 'auto';
-  const notify = (k: 'done' | 'agent') => cfg.notify?.[k] !== false;
   const rec = cfg.record ?? {};
-  const voice = rec.voice ?? {};
   const liveText = rec.live_text !== false;
-  // what a card dragged into an app carries: one choice over three settings (GeneralPane.swift's CardDragMode)
-  const cardDrag = rec.drag_caption === true ? 'caption' : rec.smart_paste === false ? 'picture' : 'paste';
-  const setCardDrag = (m: string) =>
-    save({ record: { smart_paste: m === 'paste' ? null : false, drag_caption: m === 'caption' ? true : null, drag_copy_note: m === 'picture' ? false : null } });
+  const has = (id: string) => shown(ENTRIES.find((e) => e.id === id)!);
   return (
     <Page id="general">
+      {/* the five capabilities, each with its switch: an off one is one click from back (capabilities.md) */}
+      <Group id="general.features" footer={S('settings.general.features.footer')}>
+        {CAPS.filter((c) => has(`general.feature.${c}`)).map((c) => (
+          <Row key={c} id={`general.feature.${c}`} icon={CAP_ICON[c]}>
+            <Switch on={!off.has(c)} label={S(`feature.${c}`)} set={(v) => void setCapability(c, v).catch((e) => onToast(String(e)))} />
+          </Row>
+        ))}
+      </Group>
+
       <Group id="general.app">
         {login?.supported && (
           <Toggle id="general.login" on={login.enabled} detail={loginErr ? S('settings.general.login_failed') : undefined} warn={loginErr}
@@ -414,45 +481,11 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
               onLang(v);
             }} />
         </Row>
-        {(['done', 'agent'] as const).map((k) => (
-          <Toggle key={k} id={`general.notify_${k}`} on={notify(k)} set={(v) => save({ notify: { ...(cfg.notify ?? {}), [k]: v } })} />
-        ))}
+        {/* the words at the top of the screen while you speak: dictation's and the voice note's alike */}
+        {has('general.live_text') && <Toggle id="general.live_text" on={liveText} set={(v) => save({ record: { live_text: v ? null : false } })} />}
+        <Toggle id="general.island_idle" on={cfg.app?.island_idle === true} set={(v) => save({ app: { ...(cfg.app ?? {}), island_idle: v ? true : null } })} />
+        <Toggle id="general.notify_done" on={cfg.notify?.done !== false} set={(v) => save({ notify: { ...(cfg.notify ?? {}), done: v } })} />
       </Group>
-
-      {/* record.process / countdown / system_audio, as the Mac writes them (capture reads them at the next recording) */}
-      <Group id="general.recording">
-        <Row id="general.after_recording">
-          <Popup label={S('settings.general.after_recording')} value={rec.process === 'off' ? 'off' : 'auto'}
-            choices={[['auto', S('app.menu.after.organize')], ['off', S('app.menu.after.keep')]]} onChange={(v) => save({ record: { process: v } })} />
-        </Row>
-        <Row id="general.countdown">
-          <Popup label={S('app.menu.countdown')} value={[0, 3, 5].includes(rec.countdown) ? rec.countdown : 3}
-            choices={[[0, S('app.menu.countdown.none')], [3, S('app.menu.countdown.seconds', 3)], [5, S('app.menu.countdown.seconds', 5)]]}
-            onChange={(v) => save({ record: { countdown: v } })} />
-        </Row>
-        <Toggle id="general.system_audio" on={rec.system_audio === true} set={(v) => save({ record: { system_audio: v } })} />
-      </Group>
-
-      <Group id="general.voice">
-        <Row id="general.voice_end_on_pause">
-          <Popup label={S('settings.general.voice_end_on_pause')} value={voice.end_on_pause === true}
-            choices={[[false, S('settings.general.voice_end.key')], [true, S('settings.general.voice_end.pause')]]}
-            onChange={(v) => save({ record: { voice: { ...voice, end_on_pause: v ? true : undefined } } })} />
-        </Row>
-        <Toggle id="general.live_text" on={liveText} set={(v) => save({ record: { live_text: v ? null : false } })} />
-      </Group>
-
-      {status.platform === 'win' && (
-        <Group id="general.cards">
-          <Toggle id="general.collect" on={rec.collect_system_shots === true} set={(v) => save({ record: { collect_system_shots: v ? true : null } })} />
-          <Toggle id="general.snap_sound" on={rec.snap_sound === true} set={(v) => save({ record: { snap_sound: v ? true : null } })} />
-          <Row id="general.card_drag">
-            <Popup label={S('settings.general.card_drag')} value={cardDrag} choices={(['paste', 'caption', 'picture'] as const).map((m) => [m, S(`settings.general.card_drag.${m}`)] as [string, string])}
-              onChange={setCardDrag} />
-          </Row>
-          <Toggle id="general.drag_note_file" on={rec.drag_note_file === true} set={(v) => save({ record: { drag_note_file: v ? true : null } })} />
-        </Group>
-      )}
 
       {/* About, as one quiet line: the version, then the rarely needed ways on; a skill / app mismatch above it */}
       <div className="st-about st-about-line" data-setting="general.about" data-kind="section">
@@ -483,6 +516,80 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
           </>
         )}
       </div>
+    </Page>
+  );
+}
+
+// ------------------------------------------------------------------ Cards, Recording & Items
+
+/** Settings → Cards (v1.0.23: before, General's Voice notes and Cards boxes): taking a snap, the voice note, what a
+ *  dragged card carries. The snap and drag rows are Windows' (its screenshot cards and card drag). */
+function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void>; win: boolean }) {
+  const [agentApps, setAgentApps] = useState(false);
+  const closeAgentApps = useCallback(() => setAgentApps(false), []);
+  const rec = cfg.record ?? {};
+  const voice = rec.voice ?? {};
+  // what a card dragged into an app carries: one choice over three settings (GeneralPane.swift's CardDragMode)
+  const cardDrag = rec.drag_caption === true ? 'caption' : rec.smart_paste === false ? 'picture' : 'paste';
+  const setCardDrag = (m: string) =>
+    save({ record: { smart_paste: m === 'paste' ? null : false, drag_caption: m === 'caption' ? true : null, drag_copy_note: m === 'picture' ? false : null } });
+  return (
+    <Page id="cards">
+      {win && (
+        <Group id="cards.snaps">
+          <Toggle id="cards.collect" on={rec.collect_system_shots === true} set={(v) => save({ record: { collect_system_shots: v ? true : null } })} />
+          <Toggle id="cards.snap_sound" on={rec.snap_sound === true} set={(v) => save({ record: { snap_sound: v ? true : null } })} />
+        </Group>
+      )}
+      <Group id="cards.voice">
+        <Row id="cards.voice_end_on_pause">
+          <Popup label={S('settings.general.voice_end_on_pause')} value={voice.end_on_pause === true}
+            choices={[[false, S('settings.general.voice_end.key')], [true, S('settings.general.voice_end.pause')]]}
+            onChange={(v) => save({ record: { voice: { ...voice, end_on_pause: v ? true : undefined } } })} />
+        </Row>
+      </Group>
+      {win && (
+        <Group id="cards.drag">
+          <Row id="cards.card_drag">
+            <Popup label={S('settings.general.card_drag')} value={cardDrag} choices={(['paste', 'caption', 'picture'] as const).map((m) => [m, S(`settings.general.card_drag.${m}`)] as [string, string])}
+              onChange={setCardDrag} />
+          </Row>
+          {/* an agent app (Codex, Cursor, WorkBuddy…: card_drop.rs AGENTS + the user's list) gets the picture's path and
+              the note, as a terminal does (record.agent_drag "paths", the default), or what the row above says ("same") */}
+          <Row id="cards.agent_drag">
+            <button onClick={() => setAgentApps(true)}>{S('settings.general.agent_apps.open')}</button>
+            <Popup label={S('settings.general.agent_drag')} value={rec.agent_drag === 'same' ? 'same' : 'paths'}
+              choices={(['paths', 'same'] as const).map((m) => [m, S(`settings.general.agent_drag.${m}`)] as [string, string])}
+              onChange={(m) => save({ record: { agent_drag: m === 'same' ? 'same' : null } })} />
+          </Row>
+          <Toggle id="cards.drag_note_file" on={rec.drag_note_file === true} set={(v) => save({ record: { drag_note_file: v ? true : null } })} />
+        </Group>
+      )}
+      {agentApps && <AgentAppsSheet close={closeAgentApps} />}
+    </Page>
+  );
+}
+
+/** Settings → Recording & Items (v1.0.23: before, General's Recording box): the recording itself, then what becomes of
+ *  it — record.countdown / system_audio / process, as the Mac writes them (capture reads them at the next recording). */
+function RecordingPane({ cfg, save }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void> }) {
+  const rec = cfg.record ?? {};
+  return (
+    <Page id="recording">
+      <Group id="recording.capture">
+        <Row id="recording.countdown">
+          <Popup label={S('app.menu.countdown')} value={[0, 3, 5].includes(rec.countdown) ? rec.countdown : 3}
+            choices={[[0, S('app.menu.countdown.none')], [3, S('app.menu.countdown.seconds', 3)], [5, S('app.menu.countdown.seconds', 5)]]}
+            onChange={(v) => save({ record: { countdown: v } })} />
+        </Row>
+        <Toggle id="recording.system_audio" on={rec.system_audio === true} set={(v) => save({ record: { system_audio: v } })} />
+      </Group>
+      <Group id="recording.items">
+        <Row id="recording.after_recording">
+          <Popup label={S('settings.general.after_recording')} value={rec.process === 'off' ? 'off' : 'auto'}
+            choices={[['auto', S('app.menu.after.organize')], ['off', S('app.menu.after.keep')]]} onChange={(v) => save({ record: { process: v } })} />
+        </Row>
+      </Group>
     </Page>
   );
 }
@@ -586,7 +693,7 @@ function KeyField({ row, pending, refused, onSet, onAsk, onRecording }: {
   );
 }
 
-function ShortcutsPane({ s, status, reload, goDictation }: { s: Settings; status: AppStatus; reload: () => Promise<unknown>; goDictation: () => void }) {
+function ShortcutsPane({ s, status, reload, goDictation, off }: { s: Settings; status: AppStatus; reload: () => Promise<unknown>; goDictation: () => void; off: Off }) {
   const [ask, setAsk] = useState<{ action: string; r: HotkeyResult; combo: string } | null>(null);
   // a refused key stays in its field for a moment (the Mac's), then the field is back to its own keys
   const [refused, setRefused] = useState<{ action: string; label: string } | null>(null);
@@ -630,18 +737,20 @@ function ShortcutsPane({ s, status, reload, goDictation }: { s: Settings; status
   const d = s.config.record?.dictation ?? {};
   const dkey = d.key === 'either_option' ? 'either_option' : 'right_option';
   const win = status.platform === 'win';
+  const { dictation, screenText, portalKey } = builds(status);
   return (
     <Page id="shortcuts" lead={<span>{S('capture.keys.field_help')}</span>}>
       {s.wayland && s.hotkey_mode === 'portal' && <p className="st-lead">{S('win.keys.portal_note')}</p>}
       {SHORTCUT_SECTIONS.map((sec) => {
-        const actions = sec.actions.filter((a) => rows.has(a) && (win || (a !== 'text' && a !== 'translate')));
-        if (sec.section === 'shortcuts.dictation' && !win) return null;
+        // an off capability's keys aren't held, so they aren't listed (Open Blurt is nobody's: always there)
+        const actions = sec.actions.filter((a) => rows.has(a) && (screenText || (a !== 'text' && a !== 'translate')) && !off.has(owner(a)!));
+        if (sec.section === 'shortcuts.dictation' && (!dictation || off.has('dictation'))) return null;
         if (!actions.length && sec.section !== 'shortcuts.dictation') return null;
         return (
           <Group key={sec.section} id={sec.section}>
             {sec.section === 'shortcuts.dictation' && (
               <Row id="shortcuts.dictation_key" detail={<TextLink ink onClick={goDictation}>{S('win.keys.dictation')}</TextLink>}>
-                <span className="st-key static"><KeyCaps label={S(`dictation.key.${dkey}`)} /></span>
+                <span className="st-key static"><KeyCaps label={portalKey !== null ? portalKey || S('dictation.key.portal.unset') : S(`dictation.key.${dkey}`)} /></span>
               </Row>
             )}
             {actions.map((a) => {

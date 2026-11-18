@@ -3,8 +3,8 @@
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
 // v0.8.5: a rich app (Notes, TextEdit, Mail…) gets the rich item (picture file + PNG + HTML + RTFD + RTF + the note as
 // one line); every chat app (browsers, Electron apps, WeChat, QQ, anything else) and the Finder the picture alone —
-// the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal both paths. The .md rides as the
-// second item only for a terminal, or with record.drag_note_file on.
+// the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal one line of text, the picture's
+// path then the note. The .md rides as the second item only with record.drag_note_file on (chat apps, the Finder).
 // v0.8.6: a voice card (its words, one item) over a chat app's window — BlurtCore VoiceCardDrop — gets our own hint
 // drawn under the card in the drag image ("松手粘贴到 Claude": the app shows none for text) and doesn't fly back when
 // the app refuses the drop; the caller (HangingCards / TakenPanel) then has the words pasted into that window's
@@ -66,33 +66,56 @@ enum DropProbe {
 
     static func target(pid: pid_t) -> DropTarget {
         if testMode, let id = testMap[pid] ?? testFixed {
-            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id),
+            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id, agent: AgentProbe.isAgent(pid: pid, bundleID: id)),
                               kind: DropTargets.composer(bundleID: id, appURL: nil))
         }
-        if let t = cache[pid] { return t }
-        let app = NSRunningApplication(processIdentifier: pid)
-        let t = DropTarget(pid: pid, bundleID: app?.bundleIdentifier, cls: DropTargets.classify(bundleID: app?.bundleIdentifier),
-                           kind: DropTargets.composer(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
-        cache[pid] = t
-        return t
+        let base: DropTarget
+        if let t = cache[pid] { base = t } else {
+            let app = NSRunningApplication(processIdentifier: pid)
+            base = DropTarget(pid: pid, bundleID: app?.bundleIdentifier, cls: DropTargets.classify(bundleID: app?.bundleIdentifier),
+                              kind: DropTargets.composer(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
+            cache[pid] = base
+        }
+        // an agent's window gets a terminal's payload while agents get paths (AgentWindow, record.agent_drag)
+        guard let id = base.bundleID, AgentProbe.isAgent(pid: pid, bundleID: id) else { return base }
+        return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id, agent: true), kind: base.kind)
     }
 
-    /// The owner of the frontmost window under `p`, front to back in CGWindowList order: not ours, not the Window
-    /// Server's, not invisible, not above the dragging level (the drag image, the cursor).
+    /// The owner of the frontmost window under `p` that can take a drop (BlurtCore DropWindows: not Notification
+    /// Center's transparent full-screen window or another system overlay, nothing above the Dock's level, not the
+    /// cards' panel during a drag); nil over one of our own windows or nothing.
     static func ownerPID(at p: NSPoint) -> pid_t? {
+        if case .app(let pid) = pick(at: p) { return pid_t(pid) }
+        return nil
+    }
+
+    private static var bundles: [Int: String] = [:]
+
+    /// What is under `p`: another app's window, one of ours (an in-app drop: the main window, the island), or nothing.
+    static func pick(at p: NSPoint) -> DropWindows.Pick {
         let top = NSScreen.screens.first?.frame.maxY ?? 0
         let q = CGPoint(x: p.x, y: top - p.y)
         let me = Int(getpid())
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-        for w in list {
+        let ours = Dictionary(NSApp.windows.map { ($0.windowNumber, $0) }, uniquingKeysWith: { a, _ in a })
+        let ws: [DropWindows.Window] = list.compactMap { w in
+            guard let b = w[kCGWindowBounds as String] as? [String: Double] else { return nil }
             let pid = w[kCGWindowOwnerPID as String] as? Int ?? 0
-            guard pid != me, (w[kCGWindowLayer as String] as? Int ?? 0) < 500, (w[kCGWindowAlpha as String] as? Double ?? 1) > 0.01,
-                  (w[kCGWindowOwnerName as String] as? String) != "Window Server",
-                  let b = w[kCGWindowBounds as String] as? [String: Double] else { continue }
             let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
-            if r.contains(q) { return pid_t(pid) }
+            guard r.contains(q) else { return nil }
+            var id: String?
+            if pid != me {
+                if let c = bundles[pid] { id = c } else {
+                    id = NSRunningApplication(processIdentifier: pid_t(pid))?.bundleIdentifier
+                    bundles[pid] = id ?? ""
+                }
+            }
+            let num = w[kCGWindowNumber as String] as? Int ?? 0
+            return DropWindows.Window(pid: pid, bundleID: id?.isEmpty == true ? nil : id, ownerName: w[kCGWindowOwnerName as String] as? String,
+                                      layer: w[kCGWindowLayer as String] as? Int ?? 0, alpha: w[kCGWindowAlpha as String] as? Double ?? 1,
+                                      bounds: r, oursTakesMouse: pid == me ? !(ours[num]?.ignoresMouseEvents ?? false) : true)
         }
-        return nil
+        return DropWindows.pick(ws, at: q, me: me)
     }
 
     private static var names: [pid_t: String] = [:]
@@ -121,13 +144,141 @@ enum DropProbe {
                 if kv.count == 2, let pid = pid_t(kv[0]) { testMap[pid] = kv[1] }
             }
         case "fixed": testFixed = a.count > 1 ? a[1] : nil
-        case "clear": testMap = [:]; testFixed = nil
+        case "agent":
+            if a.count > 2, let pid = pid_t(a[1]) { AgentProbe.testAgent[pid] = a[2] == "on" }
+        case "clear": testMap = [:]; testFixed = nil; AgentProbe.testAgent = [:]
         default: break
         }
         cache = [:]
         names = [:]
         emit(["event": "droptarget", "map": Dictionary(uniqueKeysWithValues: testMap.map { ("\($0.key)", $0.value) }),
               "fixed": testFixed ?? NSNull()])
+    }
+}
+
+/// Whether app `pid` shows an agent that gets paths (BlurtCore AgentWindow; record.agent_drag, "paths" by default):
+/// an agent app throughout; the Codex app or the Claude app when its front window is an agent's — what
+/// Accessibility shows of it — its web pages' addresses, its pop-up buttons' labels — within a short walk (a few
+/// hundred elements, ~50 ms: the mode switch and the page sit near the top). The answer is kept for two seconds, so a drag's
+/// moves and the pasteboard's questions don't walk the tree again; the first look at an app also asks it to show its
+/// web content (AXManualAccessibility), and an answer found before that has settled isn't kept.
+enum AgentProbe {
+    /// the last answer per app (main thread): kept across drags, refreshed in the background once it is 2 s old
+    private static var kept: [pid_t: (agent: Bool, at: CFTimeInterval)] = [:]
+    private static var woken: [pid_t: CFTimeInterval] = [:]
+    private static var probing: Set<pid_t> = []
+    private static let queue = DispatchQueue(label: "blurt.agent-probe", qos: .userInitiated)
+    /// an answer that changed: the drag under way writes its pasteboard again (CardDrag.agentAnswered)
+    static var onAnswer: ((pid_t) -> Void)?
+    /// tests: stand-in pid → is an agent window (`droptarget agent PID on|off`)
+    static var testAgent: [pid_t: Bool] = [:]
+
+    static var getsPaths: Bool { AgentWindow.getsPaths(setting: recordConfig()["agent_drag"] as? String) }
+    /// record.agent_apps: the user's changes to the built-in list
+    static var changes: [String: Bool] { recordConfig()["agent_apps"] as? [String: Bool] ?? [:] }
+    /// the agents' apps while agents get paths, else none
+    static var list: Set<String> { getsPaths ? AgentWindow.list(changes) : [] }
+
+    /// v1.0.23 — never waits. The Accessibility walk of a Claude / Codex window ran on the main thread during the
+    /// drag: the drag image froze for about a second as the pointer crossed the (full-screen) Claude window, and the
+    /// first look at a just-woken Electron tree said "not an agent" for ~1.5 s — a quick drop into Claude Code got the
+    /// chat layout (the picture as a file, the note pasted after it; user report 2026-11-15). Now the answer is the
+    /// last one known for that app (a Code tab stays a Code tab between drags), the walk runs on a queue of its own,
+    /// and a changed answer rewrites the drag at once.
+    static func isAgent(pid: pid_t, bundleID: String) -> Bool {
+        guard list.contains(bundleID) else { return false }
+        if !AgentWindow.checksWindow(bundleID) { return true }
+        if DropProbe.testMode { return testAgent[pid] ?? false }
+        guard let k = kept[pid] else {
+            // never looked at (no cards came down since it started): one look now, on the spot — a Chromium-based app
+            // reads the whole drag as the pointer enters it (Codex took the picture file 76 ms before the rewrite to
+            // path + note reached it, 2026-11-15), so a guess of "chat" here can't be taken back later
+            guard AXIsProcessTrusted() else { return false }
+            let app = AXUIElementCreateApplication(pid)
+            if woken[pid] == nil {
+                AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                woken[pid] = CACurrentMediaTime()
+            }
+            let agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
+            kept[pid] = (agent, CACurrentMediaTime() - (agent ? 0 : 2))     // not an agent yet: looked at again behind
+            if !agent { probe(pid: pid, bundleID: bundleID) }
+            return agent
+        }
+        if CACurrentMediaTime() - k.at > 2 { probe(pid: pid, bundleID: bundleID) }
+        return k.agent
+    }
+
+    /// Look at the running Claude / Codex apps now (the cards came down, a drag began): the answer is in before the
+    /// pointer gets there.
+    static func prewarm() {
+        guard !DropProbe.testMode, getsPaths else { return }
+        let ids = list.filter(AgentWindow.checksWindow)
+        for app in NSWorkspace.shared.runningApplications {
+            guard let id = app.bundleIdentifier, ids.contains(id) else { continue }
+            let k = kept[app.processIdentifier]
+            if k == nil || CACurrentMediaTime() - k!.at > 2 { probe(pid: app.processIdentifier, bundleID: id) }
+        }
+    }
+
+    private static func probe(pid: pid_t, bundleID: String) {
+        guard AXIsProcessTrusted(), !probing.contains(pid) else { return }
+        probing.insert(pid)
+        let wake = woken[pid].map { CACurrentMediaTime() - $0 < 1.5 } ?? true
+        if woken[pid] == nil { woken[pid] = CACurrentMediaTime() }
+        queue.async {
+            let app = AXUIElementCreateApplication(pid)
+            var agent = false
+            if wake {
+                // Electron builds its tree only once asked (AXManualAccessibility): look again until it shows an
+                // agent's page or 1.5 s have passed
+                AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                let until = CACurrentMediaTime() + 1.5
+                repeat {
+                    agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
+                    if agent { break }
+                    Thread.sleep(forTimeInterval: 0.15)
+                } while CACurrentMediaTime() < until
+            } else {
+                agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
+            }
+            DispatchQueue.main.async {
+                probing.remove(pid)
+                let before = kept[pid]?.agent
+                kept[pid] = (agent, CACurrentMediaTime())
+                emit(["event": "agent_probe", "pid": Int(pid), "bundle": bundleID, "agent": agent])
+                if before != agent { onAnswer?(pid) }
+            }
+        }
+    }
+
+    /// The facts of the app's focused (else main, else first) window.
+    static func facts(_ app: AXUIElement) -> AgentWindow.Facts {
+        func attr(_ e: AXUIElement, _ n: String) -> AnyObject? {
+            var v: AnyObject?
+            return AXUIElementCopyAttributeValue(e, n as CFString, &v) == .success ? v : nil
+        }
+        AXUIElementSetMessagingTimeout(app, 0.25)
+        let win = (attr(app, kAXFocusedWindowAttribute) ?? attr(app, kAXMainWindowAttribute)
+                   ?? (attr(app, kAXWindowsAttribute) as? [AnyObject])?.first)
+        guard let w = win, CFGetTypeID(w) == AXUIElementGetTypeID() else { return .init() }
+        var f = AgentWindow.Facts()
+        var queue: [AXUIElement] = [w as! AXUIElement]
+        var seen = 0
+        while !queue.isEmpty, seen < 400 {
+            let e = queue.removeFirst()
+            seen += 1
+            switch attr(e, kAXRoleAttribute) as? String {
+            case "AXWebArea":
+                if let u = attr(e, "AXURL") { f.urls.append((u as? URL)?.absoluteString ?? "\(u)") }
+            case "AXPopUpButton":
+                for n in [kAXDescriptionAttribute, kAXTitleAttribute] {
+                    if let s = attr(e, n) as? String, !s.isEmpty { f.popUps.append(s) }
+                }
+            default: break
+            }
+            if let kids = attr(e, kAXChildrenAttribute) as? [AXUIElement] { queue += kids }
+        }
+        return f
     }
 }
 
@@ -147,13 +298,38 @@ enum WebAXWake {
     @discardableResult
     static func wake(_ pid: pid_t) -> CFTimeInterval {
         let now = CACurrentMediaTime()
-        if let t = asked[pid] { return max(0, settle - (now - t)) }
-        guard !DictationInsert.testMode, AXIsProcessTrusted(), let app = NSRunningApplication(processIdentifier: pid),
-              DictationField.isElectron(app) else { return 0 }
+        if let t = asked[pid] { return max(0, (feishu.contains(pid) ? feishuSettle : settle) - (now - t)) }
+        guard !DictationInsert.testMode, AXIsProcessTrusted(), let app = NSRunningApplication(processIdentifier: pid) else { return 0 }
+        if DropTargets.isFeishu(app.bundleIdentifier) { return wakeFeishu(app, now) }
+        guard DictationField.isElectron(app) else { return 0 }
         DictationField.wakeWebAccessibility(app)
         asked[pid] = now
         emit(["event": "drag_web_ax", "pid": Int(pid), "bundle": app.bundleIdentifier ?? NSNull()])
         return settle
+    }
+
+    /// Feishu / Lark (Chromium, not Electron) shows its message box to Accessibility only once a screen reader's
+    /// flag is set on it (AXEnhancedUserInterface; the call answers "not implemented" and works all the same —
+    /// measured 2026-11-15: 263 elements and no text area before, 1071 with the composer after). Without it the
+    /// note's paste found no text box and the note only went to the clipboard ("only the picture arrived"). The flag
+    /// is taken back a few seconds later (it slows the app's window animations); what it woke stays.
+    private static var feishu = Set<pid_t>()
+    static let feishuSettle: CFTimeInterval = 0.6
+    /// how long the follow-up keeps looking for Feishu's text box while its tree builds (s)
+    static let feishuPatience: CFTimeInterval = 2.0
+
+    private static func wakeFeishu(_ app: NSRunningApplication, _ now: CFTimeInterval) -> CFTimeInterval {
+        let pid = app.processIdentifier
+        let el = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(el, 0.25)
+        let r = AXUIElementSetAttributeValue(el, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        asked[pid] = now
+        feishu.insert(pid)
+        emit(["event": "drag_web_ax", "pid": Int(pid), "bundle": app.bundleIdentifier ?? NSNull(), "flag": "enhanced", "code": Int(r.rawValue)])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            AXUIElementSetAttributeValue(el, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
+        }
+        return feishuSettle
     }
 }
 
@@ -162,11 +338,17 @@ enum WebAXWake {
 /// (ItemListController: the item's first frame, its text, its .md; CardPasteboard.itemDrag): the same per-app layout,
 /// written lazily and again as the pointer crosses into another kind of app.
 final class CardDrag: NSObject, NSPasteboardItemDataProvider {
+    /// the first (or only) card
     let card: CardPasteboard.Card
+    /// every card of the drag, in order (v1.0.23: a ⌘-click selection dragged as one); one for a single card or a row
+    let cards: [CardPasteboard.Card]
     /// the rich flavours (HTML, RTFD, RTF), built the first time an app asks for one
     let rich: CardRich
-    /// the capture's own type (a drop on a project in the island); nil for a list row
+    /// the captures' own type (a drop on a project in the island or the main window): "<batch dir>\n<n>" per card, one
+    /// after the other (Island.shots(from:)); nil for a list row
     let tag: String?
+    /// the captures it carries (empty for a list row)
+    let shots: [Shot]
     /// types the first item carries as they are, through every rewrite — a list row's uid (.blurtItems: the sidebar's
     /// move, the list's own drops keep working)
     let extra: [NSPasteboard.PasteboardType: String]
@@ -188,9 +370,14 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     private var lastProbe: (at: NSPoint, time: CFTimeInterval) = (.zero, 0)
 
     /// A hanging card or a Recently Taken thumb (its files written again: the note may have changed).
-    convenience init(_ s: Shot) {
-        let (c, part) = CardExport.card(s)
-        self.init(card: c, rich: CardRich([part]), tag: CardExport.tag(s), voice: s.kind == .voice, who: ["n": s.n])
+    convenience init(_ s: Shot) { self.init([s]) }
+
+    /// Several cards dragged as one (a ⌘-click selection), in this order; one card is init(_ s:).
+    convenience init(_ ss: [Shot]) {
+        let parts = ss.map(CardExport.card)
+        let tags = ss.compactMap(CardExport.tag)
+        self.init(cards: parts.map(\.0), rich: CardRich(parts.map(\.1)), tag: tags.isEmpty ? nil : tags.joined(separator: "\n"),
+                  voice: ss.count == 1 && ss[0].kind == .voice, who: ["n": ss.count == 1 ? ss[0].n as Any : ss.map(\.n) as Any], shots: ss)
     }
 
     /// One row of the main window's list (BA-22): its first frame as the picture, `text` (its title and words:
@@ -211,9 +398,16 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
                   item: true, who: ["uid": it.uid])
     }
 
-    init(card: CardPasteboard.Card, rich: CardRich, tag: String?, extra: [NSPasteboard.PasteboardType: String] = [:],
-         voice: Bool = false, item: Bool = false, who: [String: Any]) {
-        self.card = card
+    convenience init(card: CardPasteboard.Card, rich: CardRich, tag: String?, extra: [NSPasteboard.PasteboardType: String] = [:],
+                     voice: Bool = false, item: Bool = false, who: [String: Any]) {
+        self.init(cards: [card], rich: rich, tag: tag, extra: extra, voice: voice, item: item, who: who, shots: [])
+    }
+
+    init(cards: [CardPasteboard.Card], rich: CardRich, tag: String?, extra: [NSPasteboard.PasteboardType: String] = [:],
+         voice: Bool = false, item: Bool = false, who: [String: Any], shots: [Shot]) {
+        card = cards.first ?? CardPasteboard.Card(image: nil, note: nil)
+        self.cards = cards
+        self.shots = shots
         self.rich = rich
         self.tag = tag
         self.extra = extra
@@ -225,6 +419,25 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         super.init()
         written = landing(target)
         report("card_drag_target")
+        AgentProbe.prewarm()
+        CardDrag.current = self
+        AgentProbe.onAnswer = { pid in CardDrag.current?.agentAnswered(pid) }
+    }
+
+    /// the drag under way (an agent probe's answer rewrites it)
+    private static weak var current: CardDrag?
+
+    /// The Claude / Codex app under the pointer turned out to show an agent (or stopped showing one): the layout
+    /// for it, written now — not at the next move of the pointer, which may be the drop.
+    func agentAnswered(_ pid: pid_t) {
+        guard session != nil, let t = target, t.pid == pid else { return }
+        let fresh = DropProbe.target(pid: pid)
+        target = fresh
+        let l = landing(fresh)
+        guard layout(l) != layout(written), let pb = session?.draggingPasteboard else { written = l; return }
+        written = l
+        pb.clearContents()
+        report("card_drag_target", ["rewritten": pb.writeObjects(pasteboardItems()), "agent_answer": true])
     }
 
     /// What a drag over `t` is written for: its class and composer, and for a voice card whether Blurt pastes the words
@@ -233,13 +446,19 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         guard let t else { return DragLanding(cls: .chat) }
         return DragLanding(cls: t.cls, kind: t.kind,
                            wordsWithheld: isVoice && VoiceCardDrop.withholdsWords(bundleID: t.bundleID, cls: t.cls, kind: t.kind,
-                                                                                  canPaste: SmartPaste.enabled && SmartPaste.accessibility))
+                                                                                  canPaste: SmartPaste.enabled && SmartPaste.accessibility),
+                           lines: t.cls == .terminal && (t.bundleID.map(AgentWindow.composers.contains) ?? false))
     }
 
     func layout(_ l: DragLanding) -> [CardPasteboard.Item] {
-        isItem ? CardPasteboard.itemDrag(into: l, card: card, attachNote: attachNote)
-               : CardPasteboard.drag(into: l, card: card, attachNote: attachNote)
+        if isItem { return CardPasteboard.itemDrag(into: l, card: card, attachNote: attachNote) }
+        if cards.count > 1 { return CardPasteboard.drag(into: l, cards: cards, attachNote: attachNote) }
+        return CardPasteboard.drag(into: l, card: card, attachNote: attachNote)
     }
+
+
+    /// several cards
+    var isMany: Bool { cards.count > 1 }
 
     /// The items for `written`, every type lazily provided, `extra` on the first as it is; at least one (the capture's
     /// tag, or `extra`) so a drag can start. Without a tag an inert item would carry nothing: it is left out.
@@ -247,7 +466,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         index = [:]
         var items: [NSPasteboardItem] = []
         for (i, it) in layout(written).enumerated() {
-            let types = CardDrag.types(it, tag: tag != nil)
+            var types = CardDrag.types(it, tag: tag != nil)
+            if i == 0 { types += standby(types) }
             guard !types.isEmpty else { continue }
             let p = NSPasteboardItem()
             p.setDataProvider(self, forTypes: types)
@@ -264,8 +484,27 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return items
     }
 
+    /// v1.0.23 — the types the first item also declares, for an app the pasteboard wasn't written for yet: a
+    /// Chromium-based app (Codex, the Claude app) reads the whole drag the moment the pointer enters it, and can ask
+    /// only for declared types — Codex entered with the chat layout declared took the picture file and never saw the
+    /// rewrite to path + note 76 ms later (2026-11-15). So the picture's layout also declares text, and an agent's
+    /// layout the picture's types; what each type gives is still decided when it is asked for, by the app asking
+    /// (pasteboard(_:item:provideDataForType:) answers only what that app's own layout has, nothing for the rest).
+    /// Not for a real terminal (it reads at the drop and might take an empty file URL over the text), not for voice
+    /// cards or list rows (their layouts differ in count).
+    private func standby(_ have: [NSPasteboard.PasteboardType]) -> [NSPasteboard.PasteboardType] {
+        guard !isVoice, !isItem, card.image != nil || cards.contains(where: { $0.file != nil }) else { return [] }
+        var extra: [NSPasteboard.PasteboardType] = []
+        switch written.cls {
+        case .chat where written.kind != .qt, .finder: extra = [.string]
+        case .terminal where written.lines: extra = [.png, .fileURL]
+        default: break
+        }
+        return extra.filter { !have.contains($0) }
+    }
+
     /// The drag began with one writer of ours (a table row: NSTableView takes one per row): the session's pasteboard
-    /// gets every item of the layout written for (a terminal's .md path, a chat app's .md with record.drag_note_file).
+    /// gets every item of the layout written for (a chat app's .md with record.drag_note_file).
     func began(_ s: NSDraggingSession) {
         session = s
         guard live.count > 1 else { return }
@@ -299,7 +538,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
                 return VoiceCardDrop.hint(cls: t.cls, kind: t.kind, app: DropProbe.appName(t), enabled: SmartPaste.enabled,
                                           accessibility: SmartPaste.accessibility)
             }
-            guard t.cls == .chat, card.image != nil, card.note != nil else { return nil }      // (no app name looked up)
+            guard t.cls == .chat, !isMany, card.image != nil, card.note != nil else { return nil }      // (no app name looked up)
             return DragFollowUp.noteHint(cls: t.cls, kind: t.kind, app: DropProbe.appName(t), card: card, enabled: SmartPaste.enabled,
                                          accessibility: SmartPaste.accessibility, copiesNote: CardExport.copyNoteAfterDrag)
         }
@@ -361,9 +600,11 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         let dt = now - lastProbe.time
         guard dt > 0.25 || (dt >= 0.03 && hypot(p.x - lastProbe.at.x, p.y - lastProbe.at.y) >= 3) else { return }
         lastProbe = (p, now)
-        let under = DropProbe.target(at: p)
+        let pick = DropProbe.pick(at: p)
+        let under: DropTarget? = { if case .app(let pid) = pick { return DropProbe.target(pid: pid_t(pid)) }; return nil }()
         updateHint(under)
-        guard let t = under else { return }     // over our own windows: as it was
+        if pick == .ours { return overOurs() }
+        guard let t = under else { return }     // over nothing: as it was
         let changedApp = t.pid != target?.pid
         // an Electron app's composer becomes findable for the note's paste after the drop (WebAXWake, BA-54)
         if changedApp, t.kind == .web { WebAXWake.wake(t.pid) }
@@ -379,6 +620,18 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         pb.clearContents()
         let ok = pb.writeObjects(pasteboardItems())
         report("card_drag_target", ["rewritten": ok])
+    }
+
+    /// Over one of our own windows (the main window's sidebar or list, the island's projects, a note): the layout
+    /// whose first item carries the capture's tag (the chat one), so an in-app drop finds which card it is. (The
+    /// layout used to stay the one of the app last passed over, and a terminal's or an agent's has no tag on its first
+    /// item: a card dropped on a project in the main window did nothing.)
+    private func overOurs() {
+        let l = DragLanding(cls: .chat)
+        guard layout(l) != layout(written), let pb = session?.draggingPasteboard else { written = l; return }
+        written = l
+        pb.clearContents()
+        report("card_drag_target", ["rewritten": pb.writeObjects(pasteboardItems()), "ours": true])
     }
 
     /// The drag ended at `p` over another app: the class of what it got, if we know it (nil: it read the pasteboard
@@ -408,7 +661,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// The .md is in what an app of class `c` got (the layout last written, when it was written for that class).
     func noteFile(_ c: DropClass) -> Bool {
         let l = written.cls == c ? written : DragLanding(cls: c)
-        return card.noteFile.map { f in layout(l).contains { $0.file == f } } ?? false
+        let files = layout(l).compactMap(\.file)
+        return cards.contains { c in c.noteFile.map(files.contains) ?? false }
     }
 
     private func report(_ event: String, _ more: [String: Any] = [:]) {

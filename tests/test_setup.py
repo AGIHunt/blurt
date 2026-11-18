@@ -2,7 +2,7 @@
 socket — keys only on stdin (never an argument, never printed), the session token passed along, every command's
 request, the app-not-running answers (status and recommend still work from config), the plan for typical Macs and
 answers, the socket path rule shared with the app (tests/fixtures/agent_setup_socket.jsonl), the key pages kept equal
-to the app's presets, sessions.py setup-session's prompt — and the MCP tools (setup_*) over stdio.
+to the app's presets — and the MCP tools (setup_*) over stdio.
 
   uv run --with pytest pytest tests/test_setup.py -q
 """
@@ -291,22 +291,6 @@ def test_the_key_pages_are_the_apps():
     for preset, pages in setup_cli.KEY_PAGES.items():
         for url in pages.values():
             assert f'key: "{url}"' in swift, (preset, url)
-
-
-# ------------------------------------------------------------------ sessions.py setup-session
-
-
-def test_the_setup_session_prompt_points_at_the_guide_and_the_cli(home):
-    import sessions
-    for lang in ("en", "zh"):
-        title, prompt = sessions.setup_prompt(lang)
-        assert prompt.startswith(title)
-        assert str(SCRIPTS.parent / "reference" / "setup-models.md") in prompt
-        assert str(SCRIPTS / "setup.py") in prompt
-    assert (SCRIPTS.parent / "reference" / "setup-models.md").is_file()
-    with pytest.raises(sessions.SessionError) as e:
-        sessions.setup_session("nope", dry_run=True)
-    assert e.value.code == "bad_agent"
 
 
 # ------------------------------------------------------------------ MCP

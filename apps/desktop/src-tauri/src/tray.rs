@@ -9,7 +9,8 @@
 //!               Pause / Resume · Start over · Discard recording — Snap · Live caption ✓   (no Quit, as on the Mac)
 //!   idle        [**Download speech model for dictation…** | Speech model · x / y MB ▸] — Start recording · Snap ·
 //!               Copy text from screen · Translate text from screen · Voice note (each with its key) — Open Blurt ·
-//!               counts · Show cards · n · Dictation history… · running jobs — Project (greyed header) · X ▸
+//!               counts · Show cards · n · [Copy last dictation | Retry last dictation · 14:02 · 0:12] · Dictation
+//!               history… · running jobs — Project (greyed header) · X ▸
 //!               (Unassigned and the projects as one checked group, Switch project…, Add project folder…) — Settings… ·
 //!               [Check for updates… —] Quit Blurt
 //!
@@ -129,7 +130,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let _ = app.run_on_main_thread(win_popup::take_right_click);
     *app.state::<TrayState>().live.lock().unwrap() = Some(Live { shape: shape(&rows), rows, handles, menu });
     // what the menu shows changed
-    for ev in ["projects://changed", "jobs://changed", "index://changed", "hotkeys://changed"] {
+    for ev in ["projects://changed", "jobs://changed", "index://changed", "hotkeys://changed", "remote://status", "capabilities://changed", "cards://changed", "dictation://changed"] {
         let h = app.clone();
         app.listen_any(ev, move |_| refresh_soon(&h));
     }
@@ -606,38 +607,22 @@ fn size(mb: f64) -> String {
 }
 
 fn job_line(j: &Value) -> String {
-    let agent = j.pointer("/agent/id").and_then(Value::as_str);
-    let what = match agent {
-        Some(a) => island_agent_name(a),
-        None => l10n::t(&format!("job.type.{}", j["type"].as_str().unwrap_or("process"))),
-    };
+    let what = l10n::t(&format!("job.type.{}", j["type"].as_str().unwrap_or("process")));
     let title = match j["title"].as_str().filter(|t| !t.is_empty()) {
         Some(t) => format!("{what} · {t}"),
         None => what,
     };
-    let status = if let Some(s) = j.pointer("/agent/status").and_then(Value::as_str) {
-        l10n::t(&format!("tray.session.{s}"))
-    } else if j["state"] == "failed" {
+    let status = if j["state"] == "failed" {
         l10n::t("tray.job.failed")
     } else {
         let steps = j["steps"].as_array().cloned().unwrap_or_default();
         let step = steps.iter().find(|s| s["state"] == "running").or_else(|| steps.iter().find(|s| s["state"] == "pending"));
         match step.and_then(|s| s["id"].as_str()) {
             Some(id) => l10n::t(&format!("job.step.{id}")),
-            None => l10n::t("tray.session.running"),
+            None => l10n::t("tray.job.running"),
         }
     };
     format!("{title} · {status}")
-}
-
-fn island_agent_name(id: &str) -> String {
-    match id {
-        "claude" => "Claude Code".into(),
-        "codex" => "Codex".into(),
-        "kimi" => "Kimi Code".into(),
-        "opencode" => "OpenCode".into(),
-        other => other.to_string(),
-    }
 }
 
 /// The menu as it should be now (worked out off the main thread).
@@ -653,7 +638,11 @@ fn plan(app: &AppHandle) -> Vec<Node> {
         };
         Node::Item { id: id.into(), text, enabled: true, key }
     };
-    let dictation = cfg!(windows);
+    // only the rows of the capabilities that are on (capabilities.rs; the Mac's menuNeedsUpdate)
+    let off = crate::capabilities::off_now();
+    let on = |c: crate::capabilities::Capability| !off.contains(&c);
+    use crate::capabilities::Capability as C;
+    let dictation = cfg!(dict) && on(C::Dictation);
 
     if cap["recording"] == true {
         // a take is rolling. First a greyed line with its state and time — the Mac shows "● 1:23" beside its menu-bar
@@ -711,18 +700,28 @@ fn plan(app: &AppHandle) -> Vec<Node> {
             rows.push(item("contract", l10n::t(&format!("tray.contract.{m}")), None));
             rows.push(Node::Sep);
         }
-        // the capture verbs, each with its key
-        rows.push(item("record", l10n::t("tray.record"), Some("record")));
-        rows.push(item("snap", l10n::t("tray.snap"), Some("snap")));
-        if cfg!(windows) {
+        // the capture verbs, each with its key — of the capabilities that are on
+        let recording = on(C::Recording);
+        if recording {
+            rows.push(item("record", l10n::t("tray.record"), Some("record")));
+        }
+        if on(C::Cards) {
+            rows.push(item("snap", l10n::t("tray.snap"), Some("snap")));
+        }
+        if cfg!(any(windows, target_os = "linux")) && on(C::ScreenText) {
             rows.push(item("text", l10n::t("tray.text"), Some("text")));
             rows.push(item("translate", l10n::t("tray.translate"), Some("translate")));
         }
-        rows.push(item("voice", l10n::t("tray.voice"), Some("voice")));
-        rows.push(Node::Sep);
+        if on(C::Cards) {
+            rows.push(item("voice", l10n::t("tray.voice"), Some("voice")));
+        }
+        if !matches!(rows.last(), None | Some(Node::Sep)) {
+            rows.push(Node::Sep);
+        }
 
-        // what waits for you: one row opens Blurt — at the inbox, with its counts, when something needs you
-        let summary = st.index().summary().unwrap_or_else(|_| json!({}));
+        // what waits for you: one row opens Blurt — at the inbox, with its counts, when something needs you (items are
+        // Recording's: with it off, just the window)
+        let summary = if recording { st.index().summary().unwrap_or_else(|_| json!({})) } else { json!({}) };
         let (fresh, verify) = (summary["new"].as_i64().unwrap_or(0), summary["to_verify"].as_i64().unwrap_or(0));
         // "Open Blurt · 10 new, 2 to verify": one dot between the verb and its status, the counts joined as one
         let mut counts = Vec::new();
@@ -740,39 +739,76 @@ fn plan(app: &AppHandle) -> Vec<Node> {
         rows.push(item("open", open, None));
         // Show Cards (the island's cards come down), while any hang, with how many (the Mac's badge, written in the
         // title the way Open Blurt's counts are)
-        let cards = crate::capture::load_cards().len();
-        if cards > 0 {
-            rows.push(item("cards", format!("{} · {cards}", l10n::t("tray.cards")), None));
+        // (and while one was used in the last 7 days: the Cards panel opens on History, as the Mac's row stays)
+        if on(C::Cards) {
+            let cards = crate::capture::load_cards().len();
+            if cards > 0 {
+                rows.push(item("cards", format!("{} · {cards}", l10n::t("tray.cards")), None));
+            } else if !crate::capture::load_history().is_empty() {
+                rows.push(item("cards", l10n::t("tray.cards"), None));
+            }
         }
         if dictation {
+            // the last thing dictated, back on the clipboard: for when it went into the wrong window, or nowhere — or,
+            // when the last take wasn't recognised and its recording is kept, Retry (history::menu_row; the Mac's
+            // DictationRetry): when and how long in the title, as Windows menus have no subtitles
+            use crate::dictation::history::{self as dh, MenuRow};
+            match dh::menu_row_now() {
+                Some(MenuRow::Copy(_)) => rows.push(item("copy_last_dictation", l10n::t("tray.copy_last_dictation"), None)),
+                Some(MenuRow::Retry(e)) => {
+                    let when = dh::when_and_length(&e, chrono::Local::now(), l10n::lang() == "zh-Hans");
+                    let id = format!("retry_last_dictation:{}", e["id"].as_str().unwrap_or(""));
+                    rows.push(item(&id, l10n::tf("tray.retry_last_dictation", &[("when", when)]), None));
+                }
+                None => {}
+            }
             rows.push(item("dictation_history", l10n::t("tray.dictation_history"), None));
         }
-        for j in jobs::list(true, 40).iter().take(5) {
-            let id = format!("job:{}", j["id"].as_str().unwrap_or(""));
-            rows.push(item(&id, job_line(j), None));
+        // the phone: whether one is connected, and the way to its page (pairing, what to do when it won't connect)
+        if on(C::Phone) {
+            let (paired, connected, control) = crate::remote::summary();
+            let text = match connected {
+                Some(name) => {
+                    let name = if name.trim().is_empty() { l10n::t("tray.phone.unnamed") } else { name };
+                    l10n::tf("tray.phone.connected", &[("name", name)])
+                }
+                None if paired == 0 => l10n::t("tray.phone.add"),
+                None if !control => l10n::t("tray.phone.needs_access"),
+                None => l10n::t("tray.phone.not_connected"),
+            };
+            rows.push(item("phone", text, None));
+        }
+        if recording {
+            for j in jobs::list(true, 40).iter().take(5) {
+                let id = format!("job:{}", j["id"].as_str().unwrap_or(""));
+                rows.push(item(&id, job_line(j), None));
+            }
         }
         rows.push(Node::Sep);
 
-        // the current project: where new captures go — Unassigned first, then the projects (recently used first)
-        // (the Mac's menu: a greyed "Project" heading, then the row with the project's name and its submenu; in the
-        // submenu Unassigned is the first choice of one checked group, then the two actions)
-        let reg = Registry::load();
-        let current = reg.current_project().and_then(|p| p["name"].as_str()).map(str::to_owned);
-        let mut sub = vec![Node::Check { id: "project:".into(), text: l10n::t("tray.project.inbox"), checked: current.is_none() }];
-        let mut projects = reg.projects.clone();
-        projects.sort_by(|a, b| b["last_used"].as_str().unwrap_or("").cmp(a["last_used"].as_str().unwrap_or("")));
-        for p in projects.iter().take(12) {
-            let id = p["id"].as_str().unwrap_or("");
-            let on = reg.current.as_deref() == Some(id);
-            sub.push(Node::Check { id: format!("project:{id}"), text: p["name"].as_str().unwrap_or(id).to_string(), checked: on });
+        // the current project: where new captures go — Unassigned first, then the projects (recently used first).
+        // Projects are where items are filed: with Recording off there are none, and no section here
+        if recording {
+            // (the Mac's menu: a greyed "Project" heading, then the row with the project's name and its submenu; in the
+            // submenu Unassigned is the first choice of one checked group, then the two actions)
+            let reg = Registry::load();
+            let current = reg.current_project().and_then(|p| p["name"].as_str()).map(str::to_owned);
+            let mut sub = vec![Node::Check { id: "project:".into(), text: l10n::t("tray.project.inbox"), checked: current.is_none() }];
+            let mut projects = reg.projects.clone();
+            projects.sort_by(|a, b| b["last_used"].as_str().unwrap_or("").cmp(a["last_used"].as_str().unwrap_or("")));
+            for p in projects.iter().take(12) {
+                let id = p["id"].as_str().unwrap_or("");
+                let on = reg.current.as_deref() == Some(id);
+                sub.push(Node::Check { id: format!("project:{id}"), text: p["name"].as_str().unwrap_or(id).to_string(), checked: on });
+            }
+            sub.push(Node::Sep);
+            sub.push(item("switch_project", l10n::t("tray.switch_project"), None));
+            sub.push(item("open_folder", l10n::t("tray.open_folder"), None));
+            let name = current.unwrap_or_else(|| l10n::t("tray.project.inbox"));
+            rows.push(Node::Item { id: "project_head".into(), text: l10n::t("tray.project.header"), enabled: false, key: None });
+            rows.push(Node::Sub { id: "sub:project".into(), text: name, kids: sub });
+            rows.push(Node::Sep);
         }
-        sub.push(Node::Sep);
-        sub.push(item("switch_project", l10n::t("tray.switch_project"), None));
-        sub.push(item("open_folder", l10n::t("tray.open_folder"), None));
-        let name = current.unwrap_or_else(|| l10n::t("tray.project.inbox"));
-        rows.push(Node::Item { id: "project_head".into(), text: l10n::t("tray.project.header"), enabled: false, key: None });
-        rows.push(Node::Sub { id: "sub:project".into(), text: name, kids: sub });
-        rows.push(Node::Sep);
 
         // the app: Settings, updates (only where this build can update itself). With no updater row, Settings and Quit
         // close the menu as one group (a Windows tray menu's usual end); with it, the Mac's split.
@@ -820,14 +856,28 @@ fn chose(app: &AppHandle, id: &str) {
         "quit" => app.exit(0),
         "open" => {
             let s = app.state::<AppState>().index().summary().unwrap_or_else(|_| json!({}));
-            if s["new"].as_i64().unwrap_or(0) + s["to_verify"].as_i64().unwrap_or(0) > 0 {
+            let items = crate::capabilities::on_now(crate::capabilities::Capability::Recording);
+            if items && s["new"].as_i64().unwrap_or(0) + s["to_verify"].as_i64().unwrap_or(0) > 0 {
                 open_at(app, json!({"view": "inbox"}))
             } else {
                 show_main(app)
             }
         }
         "inbox" => open_at(app, json!({"view": "inbox"})),
+        "home" => open_at(app, json!({"view": "home"})),
+        "phone" => open_at(app, json!({"view": "phone"})),
+        "copy_last_dictation" => {
+            if let Some(text) = crate::dictation::history::last_text() {
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                let _ = app.clipboard().write_text(text);
+                island::send(app, json!({"op": "toast", "kind": "line", "msg": "island.dictation.copied_last", "mark": "check"}));
+            }
+        }
         "dictation_history" => open_at(app, json!({"view": "dictation"})),
+        _ if id.starts_with("retry_last_dictation:") => {
+            let (h, take) = (app.clone(), id["retry_last_dictation:".len()..].to_string());
+            std::thread::spawn(move || crate::dictation::history::retry_from_tray(&h, take));
+        }
         "settings" => open_at(app, json!({"view": "settings"})),
         "updates" => open_at(app, json!({"view": "settings", "pane": "general", "check_updates": true})),
         "update_now" => crate::housekeeping::install_update(app.clone()),

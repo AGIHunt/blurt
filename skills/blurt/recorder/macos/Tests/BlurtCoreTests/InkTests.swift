@@ -16,7 +16,7 @@ final class InkTests: XCTestCase {
         XCTAssertEqual(InkModifiers.snapTool(shift: false, option: false), .free)
         XCTAssertEqual(InkModifiers.snapTool(shift: true, option: false), .box)
         XCTAssertEqual(InkModifiers.snapTool(shift: false, option: true), .ellipse)
-        XCTAssertEqual(InkModifiers.snapTool(shift: true, option: true), .box)
+        XCTAssertEqual(InkModifiers.snapTool(shift: true, option: true), .arrow, "⇧⌥: an arrow (v1.0.23)")
     }
 
     func testTheRecordingPenUsesTheSameModifiersUnderItsKey() {
@@ -36,6 +36,8 @@ final class InkTests: XCTestCase {
         XCTAssertEqual(t(.option, opt: true, sh: true), .box)
         // fn: ⌥ ellipse, ⌃ means nothing here
         XCTAssertEqual(t(.fn, opt: true, fn: true), .ellipse)
+        XCTAssertEqual(t(.control, ctl: true, opt: true, sh: true), .arrow, "⌃⇧⌥: an arrow")
+        XCTAssertEqual(t(.fn, opt: true, sh: true, fn: true), .arrow)
         XCTAssertNil(t(.fn, ctl: true, fn: true))
     }
 
@@ -181,7 +183,7 @@ final class InkTests: XCTestCase {
 
     private func p(_ id: String, _ name: String, key: String, used: TimeInterval, inbox: Bool = false) -> Project {
         Project(id: id, name: name, key: key, slug: id, description: "", path: URL(fileURLWithPath: "/tmp/\(id)"),
-                store: URL(fileURLWithPath: "/tmp/\(id)/.blurt"), isInbox: inbox, isGitRepo: false, worktree: false, defaultAgent: nil,
+                store: URL(fileURLWithPath: "/tmp/\(id)/.blurt"), isInbox: inbox, isGitRepo: false,
                 modules: [], lastUsed: Date(timeIntervalSince1970: used), pinned: false)
     }
 
@@ -203,7 +205,7 @@ final class InkTests: XCTestCase {
     func testEveryPickerListsTheSameRowsUnassignedLast() {
         var pinned = p("d", "Docs", key: "DO", used: 0)
         pinned = Project(id: pinned.id, name: pinned.name, key: pinned.key, slug: pinned.slug, description: "", path: pinned.path,
-                         store: pinned.store, isInbox: false, isGitRepo: false, worktree: false, defaultAgent: nil, modules: [],
+                         store: pinned.store, isInbox: false, isGitRepo: false, modules: [],
                          lastUsed: pinned.lastUsed, pinned: true)
         let all = [p("a", "Atlas Web", key: "AW", used: 1), p("b", "billing-api", key: "BA", used: 3), pinned]
         XCTAssertEqual(ProjectPick.recent(all).map(\.id), ["d", "b", "a"], "pinned, then recently used")
@@ -265,13 +267,13 @@ final class InkTests: XCTestCase {
             (.control, [c], .free),
             (.control, [c, sh], .box),                 // ⌃ then ⇧, ⇧ then ⌃, ⌃⇧ together: a box (the founder's case)
             (.control, [c, o], .ellipse),              // ⌥ first or together too
-            (.control, [c, sh, o], .box),              // ⇧ wins when both shape keys are down, as on a snap
+            (.control, [c, sh, o], .arrow),            // both shape keys: an arrow, as on a snap (v1.0.23)
             (.control, [c, cmd], nil),                 // ⌃⌘ is a shortcut in any order
             (.control, [c, sh, cmd], nil),
             (.control, [sh, o], nil),                  // no pen key: never the pen
             (.option, [o, sh], .box),                  // ⌥ as the pen key: ⌃ is the ellipse
             (.option, [o, c], .ellipse),
-            (.option, [o, c, sh], .box),
+            (.option, [o, c, sh], .arrow),
             (.fn, [f, sh], .box),
             (.fn, [f, o], .ellipse),
             (.fn, [f, c], nil),                        // ⌃ means nothing with fn as the pen key

@@ -9,11 +9,12 @@ const REVIEW = ["check", "x", "chevron-up", "chevron-down", "download", "folder"
   "keyboard", "languages", "play", "film", "video", "help-circle", "quote", "merge", "undo", "external-link", "pencil",
   "search", "git-commit"];
 // Brand glyphs the apps use in place of emoji.
-const BRAND = ["chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "peck", "bug", "spark",
-  "document", "checkbox", "lightbulb", "tag", "mic", "waveform", "snap", "agent", "agent-run", "mcp", "ink"];
+const BRAND = ["bug", "spark", "document", "checkbox", "lightbulb", "tag", "mic", "waveform", "snap", "agent", "agent-run", "mcp", "ink"];
 
 it("has every name the review canvas and the apps use", () => {
   for (const n of [...REVIEW, ...BRAND]) expect(ICON_NAMES).toContain(n);
+  // Peep replaced the old chick: its line glyphs are gone from the family.
+  for (const n of ["chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "peck"]) expect(ICON_NAMES).not.toContain(n);
 });
 
 it("has the K8 kind icons and the v0.7 set; kind names resolve to them", () => {
@@ -50,12 +51,12 @@ it("<Icon> renders the same markup contract as the canvas stand-in", () => {
 });
 
 it("fill layers paint with currentColor", () => {
-  expect(renderToStaticMarkup(<Icon name="egg-fill" />)).toContain('fill="currentColor"');
+  expect(renderToStaticMarkup(<Icon name="record-fill" />)).toContain('fill="currentColor"');
   expect(iconSvg("record-fill")).toContain('fill="currentColor" stroke="none"');
 });
 
 it("string helpers", () => {
-  expect(iconSvg("chicken", { size: 14, title: "Process" })).toMatch(/^<svg class="ico" width="14" height="14" viewBox="0 0 24 24".*<title>Process<\/title><path /);
+  expect(iconSvg("spark", { size: 14, title: "Process" })).toMatch(/^<svg class="ico" width="14" height="14" viewBox="0 0 24 24".*<title>Process<\/title><path /);
   expect(useIconSvg("pen")).toContain('href="#bi-pencil"');
   for (const n of ICON_NAMES) expect(SPRITE).toContain(`<symbol id="bi-${n}"`);
   expect(SPRITE).not.toContain('id="egg-');

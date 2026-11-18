@@ -2,10 +2,10 @@
 // the login-shell environment. Nothing here builds an agent command line itself — agents.json is the one source.
 //
 //   Agents.shared.detect()                 → agents.py detect: order, pick, per-agent state / why / fix
-//   Agents.shared.command(id, mode, …)     → agents.py command: argv | url | terminal | clipboard
+//   Agents.shared.command(id, mode, …)     → agents.py command: argv (headless)
 //   Agents.shared.install(id, dryRun:)     → agents.py install [--dry-run] (always with the caller's full environment:
 //                                            CODEX_HOME / CLAUDE_CONFIG_DIR / KIMI_CODE_HOME decide which config is written)
-// Handing items to an agent is an interactive tmux session now (BlurtCore/Sessions, sessions.py — K5); the background
+// Handing items to an agent is copying a hand-off instruction into the user's own agent (handoff.py); the background
 // `-p` fix runs are gone. Headless commands remain for processing recordings (AgentHub) and the Settings test run.
 // The app sets `SkillCLI.shared.environment` (its agentEnvironment()) at launch.
 import Foundation
@@ -114,6 +114,21 @@ public final class SkillCLI {
         }
     }
 
+    /// A read that needs nothing from the network (the model lists Settings and the first run show): offline first.
+    /// `uv run` asks PyPI about the script's packages again whenever its index cache has expired, and from a network
+    /// where PyPI is slow or a proxy hangs that took the whole timeout — "Reading the speech models took too long" on a
+    /// Mac where everything was already installed. With UV_OFFLINE=1 the cached packages are used as they are (0.2 s);
+    /// only when that fails (nothing cached yet: the first use ever) does it run again online, as before.
+    public func read(_ script: String, _ args: [String], timeout: TimeInterval = 60) async throws -> CLIResult {
+        let env = ScriptRunner.extraEnvironment().merging(["BLURT_LANG": Loc.language.hasPrefix("zh") ? "zh" : "en",
+                                                           "UV_OFFLINE": "1"]) { _, mine in mine }
+        if let r = try? await run(script, args, env: env, timeout: min(timeout, SkillCLI.offlineReadTimeout)), r.ok { return r }
+        return try await run(script, args, timeout: timeout)
+    }
+
+    /// How long the offline try of `read` may take: it touches no network, so longer than this is a stuck tool.
+    public static var offlineReadTimeout: TimeInterval = 30
+
     /// A long-running script: stdout and stderr lines (on the main queue), then the exit status (main queue).
     @discardableResult
     public func spawn(_ script: String, _ args: [String], with packages: [String] = [], env extra: [String: String] = [:],
@@ -174,9 +189,8 @@ public struct AgentStatus: Decodable, Hashable, Identifiable {
     public var why: String
     public var fix: String
     public var headless: Bool
-    public var interactive: String?   // url | terminal | copy | nil
 
-    enum CodingKeys: String, CodingKey { case id, name, installed, version, login, path, state, why, fix, headless, interactive }
+    enum CodingKeys: String, CodingKey { case id, name, installed, version, login, path, state, why, fix, headless }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -189,11 +203,10 @@ public struct AgentStatus: Decodable, Hashable, Identifiable {
         why = try c.decodeIfPresent(String.self, forKey: .why) ?? ""
         fix = try c.decodeIfPresent(String.self, forKey: .fix) ?? ""
         headless = try c.decodeIfPresent(Bool.self, forKey: .headless) ?? true
-        interactive = try c.decodeIfPresent(String.self, forKey: .interactive)
     }
     public init(id: String, name: String, installed: Bool, state: String) {
         self.id = id; self.name = name; self.installed = installed; self.state = state
-        version = nil; login = "unknown"; path = nil; why = ""; fix = ""; headless = true; interactive = nil
+        version = nil; login = "unknown"; path = nil; why = ""; fix = ""; headless = true
     }
     /// can run (or at least be tried) headless
     public var usable: Bool { headless && ["ready", "configured", "unknown"].contains(state) }
@@ -240,17 +253,12 @@ public struct AgentCommand: Decodable {
     public var argv: [String]?
     public var cwd: String
     public var env: [String: String]
-    public var url: String?
     public var events: String?
-    public var terminal: Bool
-    public var clipboard: String?
-    public var openApp: String?
     public var retryExit: Int?
-    public var promptFile: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, mode, argv, cwd, env, url, events, terminal, clipboard
-        case openApp = "open_app", retryExit = "retry_exit", promptFile = "prompt_file"
+        case id, mode, argv, cwd, env, events
+        case retryExit = "retry_exit"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -259,13 +267,8 @@ public struct AgentCommand: Decodable {
         argv = try c.decodeIfPresent([String].self, forKey: .argv)
         cwd = try c.decodeIfPresent(String.self, forKey: .cwd) ?? ""
         env = try c.decodeIfPresent([String: String].self, forKey: .env) ?? [:]
-        url = try c.decodeIfPresent(String.self, forKey: .url)
         events = try c.decodeIfPresent(String.self, forKey: .events)
-        terminal = try c.decodeIfPresent(Bool.self, forKey: .terminal) ?? false
-        clipboard = try c.decodeIfPresent(String.self, forKey: .clipboard)
-        openApp = try c.decodeIfPresent(String.self, forKey: .openApp)
         retryExit = try c.decodeIfPresent(Int.self, forKey: .retryExit)
-        promptFile = try c.decodeIfPresent(String.self, forKey: .promptFile)
     }
 }
 

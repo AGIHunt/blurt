@@ -5,9 +5,10 @@
 //     notification only when the app isn't frontmost, the job ran 20 s or more and notify.done is on (default); never
 //     a sound.
 //   • Nothing at all while recording (the counts still update).
-//   • Agent sessions are Terminal/SessionNotifier's (P3): nothing here for type agent, so nothing arrives twice.
 //   • Failures: a line with the reason, a notification when not frontmost.
 //   • The same kind of notification within 10 s collapses into one.
+//   • Jobs and items are Recording & Items' (BlurtCore Capabilities): with it off nothing is said — no line, no
+//     notification — and the badge is empty; its 2 s timer doesn't read the index.
 import AppKit
 import BlurtCore
 import UserNotifications
@@ -34,7 +35,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         MenuBadge.shared.refresh()
     }
 
-    static func signature(_ j: Job) -> String { "\(j.state.rawValue)/\(j.agent?.status.rawValue ?? "")" }
+    static func signature(_ j: Job) -> String { j.state.rawValue }
 
     func changed(_ jobs: [Job]) {
         MenuBadge.shared.refresh()
@@ -53,9 +54,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     func setting(_ key: String) -> Bool { Config.shared["notify.\(key)"] as? Bool ?? true }
 
     private func event(_ j: Job, before: String?) {
-        // a session that stopped at its agent's login screen: the next dispatch panel knows without asking again
-        if j.type == .agent, j.error?.code == "auth", let a = j.agent?.agent { AgentHub.shared.invalidate(a, as: .loggedOut) }
-        guard !recording, j.type != .agent else { return }
+        guard !recording, Capability.recording.isOn else { return }
         let ran = (j.ended ?? Date()).timeIntervalSince(j.started ?? j.created)
         switch (j.type, j.state) {
         case (.process, .done), (.route, .done):
@@ -158,25 +157,23 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-/// The number next to the menu-bar icon: what needs you (K3's inbox = new + to verify) + agent sessions waiting for
-/// an answer. Read from index.db (only when its data_version moves) and the job store.
+/// The number next to the menu-bar icon: what needs you (K3's inbox = new + to verify). Read from index.db (only when
+/// its data_version moves).
 final class MenuBadge {
     static let shared = MenuBadge()
-    private(set) var new = 0, verify = 0, waiting = 0
+    private(set) var new = 0, verify = 0
     private var reader: IndexReader?
     private var version = -1
     private var timer: Timer?
 
-    var count: Int { testCount ?? new + verify + waiting }
+    var count: Int { testCount ?? (Capability.recording.isOn ? new + verify : 0) }
     /// Tests only (the `menuglyph` self-test): a stand-in count, to render the status button with a number.
     var testCount: Int?
-    /// An agent is waiting for an answer: the number takes the attention colour.
-    var urgent: Bool { waiting > 0 }
     var tooltip: String {
         var parts: [String] = []
+        guard Capability.recording.isOn else { return T("app.name") }
         if new > 0 { parts.append(TP("app.menu.new", new)) }
         if verify > 0 { parts.append(TP("app.menu.to_verify", verify)) }
-        if waiting > 0 { parts.append(TP("app.badge.waiting", waiting)) }
         return parts.isEmpty ? T("app.name") : parts.joined(separator: " · ")
     }
 
@@ -185,6 +182,11 @@ final class MenuBadge {
     }
 
     func refresh() {
+        // items are Recording & Items': off, nothing is counted (and read again from scratch when it comes back)
+        guard Capability.recording.isOn else {
+            if version != -1 { version = -1; new = 0; verify = 0 }
+            return
+        }
         if reader == nil { reader = try? IndexReader(url: BlurtPaths.indexDB) }
         if let r = reader {
             let v = r.dataVersion
@@ -194,6 +196,5 @@ final class MenuBadge {
                 verify = c.toVerify
             }
         }
-        waiting = JobStore.shared.active.filter { $0.agent?.status == .waitingInput }.count
     }
 }

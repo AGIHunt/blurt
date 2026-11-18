@@ -140,6 +140,11 @@ public enum ScreenTextPaste {
         return seen ? .pasted : .unconfirmed
     }
 
+    /// The card under the island with the whole text (ScreenTextCard), for ⌥C and ⌥T alike (2026-11-16, the founder:
+    /// "if it went into a field, a card pinned under the notch is only in the way"): only when the text went nowhere
+    /// but the clipboard. Pasted — confirmed or not — the text is where the user wanted it; the island's line says so.
+    public static func showsCard(_ o: Outcome) -> Bool { o == .copied }
+
     /// The island's line (a Capture.strings key) for what happened to ⌥C's text or ⌥T's translation.
     public static func lineKey(_ o: Outcome, translate: Bool) -> String {
         switch o {

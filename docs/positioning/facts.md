@@ -54,7 +54,7 @@ you drag or paste it into any app.
   circle the spot. `⌥⇧V` voice note: talk for up to 10 minutes. (`docs/guide.md` §1)
 - Drag a card into Claude, ChatGPT, Slack, Notion, Feishu/Lark or WeChat: the picture goes in as an attachment, then
   Blurt pastes the note into the same message box. Drop it into Terminal, iTerm2, Ghostty or Warp: Claude Code or Codex
-  gets the paths of the picture and of a Markdown file with the note. (`docs/guide.md` §3)
+  gets one line, the picture's path and then the note, so each picture keeps its own words. (`docs/guide.md` §3)
 - Click a card to copy it, then `⌘V`. `⌘`-click several cards to copy them as one. `⌥⇧H` brings the cards down for the
   keyboard. (`docs/guide.md` §3)
 - Cards you dragged out stay findable for 7 days. A deleted card can be brought back with Undo for 5 seconds.
@@ -65,15 +65,15 @@ items your agent can work on.
 
 - `⌥⇧R` starts and stops a recording of an area, a window or the full screen. Hold `⌃` and drag to circle something;
   the ink fades after 3 s. (`README.md` §How it feels)
-- Your coding agent splits the recording into items (issues, ideas, notes, tasks), picks a frame for each, marks the
+- Your agent splits the recording into items (issues, ideas, notes, tasks), picks a frame for each, marks the
   spot, and writes actual vs. expected, repro steps and suspected code. (`README.md`)
 - You review each item with the keyboard (`A` keep, `X` discard, `J/K` next and previous), then export to
   Markdown/CSV or a hand-off bundle (`.zip`), have your agent file them wherever your team works (GitHub, Linear,
   Feishu/Lark, Slack…) with its own tools, or let the agent fix them. (`README.md`, `skills/blurt/reference/export-other.md`)
-- **Hand Off to Agent** (`⌘↩`) starts Claude Code or Codex inside Blurt, in the project folder, optionally one git
-  worktree per item. **Copy instruction** gives your own agent one line that points at a hand-off note with the
-  items, what you said, steps, suspected code and screenshots. Agents report back through Blurt's MCP; "fixed" from an
-  agent always means *to verify*. (`docs/guide.md` §5, `skills/blurt/reference/sessions.md`)
+- **Copy Instruction for Agent** (`⌘↩`) puts one line on the clipboard for your own agent (Claude Code, Codex,
+  WorkBuddy, Cursor…), pointing at a hand-off note with the items, what you said, steps, suspected code and
+  screenshots. You paste it; Blurt doesn't start or pick an agent for this. Agents report back through
+  Blurt's MCP; "fixed" from an agent always means *to verify*. (`docs/guide.md` §5, `skills/blurt/SKILL.md` §7)
 - Teammates without the code can record with the app and send the video; the developer's agent processes it with the
   code at hand. (`README.md` §Solo or team)
 
@@ -143,7 +143,7 @@ What polish keeps (Blurt, synthetic eval sets):
 | Custom words | Words (a list of names and terms), learned from your corrections (with Undo), plus the text around the cursor; words are hints, never replacements | Personal dictionary | Dictionary | Vocabulary and replacements | Personal dictionary (Pro) |
 | Snap and voice-note cards for agents | Yes | No | No | No | No |
 | Screen recording → items with frames and code pointers | Yes | No | No | No | No |
-| Hand-off to coding agents, status back through MCP | Yes (Claude Code, Codex; Kimi Code, OpenCode, Gemini CLI for processing) | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
+| Hand-off to coding agents, status back through MCP | Yes (any agent you paste the instruction into; it reports back through the MCP) | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
 
 ---
 
@@ -185,22 +185,23 @@ Each moment comes with the number or file that backs it.
    「我知道你就是从老家回来的。」. (dogfood D23)
 5. **A snap card dragged into Claude.** `⌥⇧A`, circle the broken button, say one sentence, drag the card into the
    Claude desktop app: the picture goes in, then the note in the same message box.
-6. **The same card dropped into a terminal.** Claude Code gets the picture path and a Markdown note, and nothing runs
-   in the shell.
+6. **The same card dropped into a terminal.** Claude Code gets the picture's path with the note on the same line, and
+   nothing runs in the shell.
 7. **A recording turned into items.** A 5-minute, 12-item session was ready for review 51 s after Finish; a 14-minute
    recording was transcribed locally in 12 s and became 23 items for about $2.6 of agent tokens. (`README.md` FAQ)
    A teammate's 5-minute walkthrough became 52 items, each with the quote and timestamp (the earlier site's hero,
    commit `926168db`; time to review not measured for that session). Recordings made with the app are transcribed
    while they record, which is why review is ready soon after Finish (`skills/blurt/SKILL.md` §2).
-8. **Items handed to an agent and back.** `⌘↩` on an item starts Codex in a worktree; when the agent calls
-   `mark_fixed`, the item shows *To verify* within 0.5 s. (`promo/cases/v0.9-dogfood/work/timeline.md`)
+8. **Items handed to an agent and back.** Copy an item's instruction into Codex; when the agent calls `mark_fixed`,
+   the item shows *To verify* within 0.5 s. (`promo/cases/v0.9-dogfood/work/timeline.md`, measured with the in-app
+   sessions since removed: film it again this way)
 9. **A teammate's recording, your agent.** A designer records with the app and sends the video on Slack; you tell your
    agent "process this video". The hand-off note holds local file paths, so for now the video is what you share.
 10. **Pull the network cable.** Dictation keeps working (models are local). Check this on camera before you claim it:
     it hasn't been tested with the network off.
 
 Before filming, check these issues found in the October dogfood runs (`promo/cases/v0.9-dogfood/*/timeline.md`;
-some may be fixed since): Codex in a worktree asked for approval before committing; in English mid-sentence inserts
+some may be fixed since): in English mid-sentence inserts
 the capital letter was kept ("I think The new layout is fine").
 
 ---
@@ -213,9 +214,10 @@ the capital letter was kept ("I think The new layout is fine").
   screenshots, relative paths only) that the agent or you send wherever the team is. There is no Feishu exporter
   and no export settings; "Bundle the checkout issues and post them to #web in Slack" is a request to your agent.
   (`skills/blurt/SKILL.md` §6, `export_local.py bundle`, MCP `bundle_items`)
-- **No agent of its own.** Recordings are processed by the first coding agent you have installed and signed in:
-  Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. Your agent gets better on its own schedule, and Blurt
-  works with the next one too.
+- **No agent of its own.** Any agent with the Blurt skill organizes recordings when you ask in its chat ("process
+  my Blurt recordings"), GUI apps like WorkBuddy, Cursor and CodeBuddy included. The app also organizes in the
+  background with the first agent CLI you have installed and signed in: Claude Code, then Codex, Kimi Code, OpenCode,
+  Gemini CLI, Grok. Your agent gets better on its own schedule, and Blurt works with the next one too.
 - **No cloud service.** There is no Blurt server and no account. Speech is transcribed on your computer. The only
   network traffic is the model downloads, update checks, a cloud speech key if you add one, and whatever your own
   agent sends to its provider.

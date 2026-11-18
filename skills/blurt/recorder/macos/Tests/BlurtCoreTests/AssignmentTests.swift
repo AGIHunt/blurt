@@ -152,7 +152,7 @@ final class AssignmentTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         func project(_ id: String, at u: URL, inbox: Bool = false) -> Project {
             Project(id: id, name: id, key: id.uppercased(), slug: id, description: "", path: u, store: u.appendingPathComponent(".blurt"),
-                    isInbox: inbox, isGitRepo: false, worktree: false, defaultAgent: nil, modules: [], lastUsed: nil, pinned: false)
+                    isInbox: inbox, isGitRepo: false, modules: [], lastUsed: nil, pinned: false)
         }
         let inbox = project("inbox", at: dir.appendingPathComponent("inbox"), inbox: true)
         let here = project("ba", at: dir)

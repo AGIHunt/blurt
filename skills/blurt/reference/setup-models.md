@@ -16,9 +16,8 @@ Run every command as `uv run <skill-dir>/scripts/setup.py …` (below: `setup.py
   command line, never into a file, never printed, never repeated back. Don't ask the user to paste it into the chat.
   Read a file that holds secrets (a `.env`, another tool's config) only with the user's OK, and pipe out just that
   one value without showing it.
-- **Blurt asks before changes.** A session started from Blurt (Settings → Models → Set Up with Agent…) is already
-  allowed. Otherwise the first change makes Blurt ask the user (Allow / Don't Allow); `"code": "denied"` means they
-  said no or didn't answer — ask them, then retry.
+- **Blurt asks before changes.** The first change makes Blurt ask the user (Allow / Don't Allow); `"code": "denied"`
+  means they said no or didn't answer — ask them, then retry.
 - **Blurt must be running.** `"code": "app_not_running"`: ask the user to open Blurt (`open -a Blurt`; run it yourself
   only if they agree). `"code": "sandboxed"`: Blurt is running but your sandbox blocks its socket — run setup.py
   outside the sandbox (Codex: ask for approval to run it unsandboxed), never ask the user to open Blurt again.
@@ -107,8 +106,7 @@ whom; the cost; that everything can be changed in Settings → Models. No keys, 
 - **Claude Code**: run the commands with Bash; with Claude in Chrome or computer use, open the key page in the
   browser and stop at sign-in. **Codex**: its sandbox blocks the socket to Blurt (setup.py answers
   `"code": "sandboxed"`), so run every setup.py command outside the sandbox, with the user's approval. If this session
-  may not ask for that, ask the user to choose `/permissions` → Ask for approval, then retry (a session Blurt starts
-  already asks). **Gemini CLI, Kimi, OpenCode, others**: any shell tool works.
+  may not ask for that, ask the user to choose `/permissions` → Ask for approval, then retry. **Gemini CLI, Kimi, OpenCode, others**: any shell tool works.
 - MCP: the same operations are the blurt MCP server's `setup_status`, `setup_recommend`, `setup_connect` (key as a
   parameter — prefer the CLI with the key on stdin, so it stays out of the conversation), `setup_test`, `setup_use`,
   `setup_download`, `setup_verify`.

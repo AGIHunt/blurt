@@ -4,7 +4,9 @@
 // the models, an offline first run, that dictation isn't set up yet, with Set Up…); the snap / record keys only when they are
 // registered. A shortcut macOS or another app holds is named as not working in that same line (with Change…), in
 // place of the keys — the island's row has room for one clause beside a button. Every variant fits the island in
-// both languages (WelcomeLineWidthTests). Unit-tested in Tests/BlurtCoreTests/WelcomeLineTests. Strings: Main table.
+// both languages (WelcomeLineWidthTests). Only keys of capabilities that are on (Capabilities.swift): with Cards off
+// no snap key is named, with Recording & Items off no record key, with Dictation off nothing about dictation — its
+// key, its setup or its model. Unit-tested in Tests/BlurtCoreTests/WelcomeLineTests. Strings: Main table.
 import Foundation
 
 public enum WelcomeLine {
@@ -23,9 +25,13 @@ public enum WelcomeLine {
     }
 
     /// `snap` / `record`: the key's label when it works, nil when it is off or doesn't work. `conflicts`: the labels
-    /// of shortcuts that don't work.
+    /// of shortcuts that don't work. `off`: the capabilities switched off — nothing of theirs is named, whatever the
+    /// other arguments say.
     public static func compose(dictation: Dictation, dictationKey: String, snap: String?, record: String?,
-                               conflicts: [String]) -> Line {
+                               conflicts: [String], off: Set<Capability> = []) -> Line {
+        let dictation = off.contains(.dictation) ? .off : dictation
+        let snap = off.contains(.cards) ? nil : snap
+        let record = off.contains(.recording) ? nil : record
         var line: Line
         switch dictation {
         case .works:

@@ -40,7 +40,7 @@ class RecorderE2E(unittest.TestCase):
         home, sess = tmp / "home", tmp / "session"
         home.mkdir()
         (home / "models").symlink_to(MODELS)
-        (home / "config.json").write_text(json.dumps({"record": {"install_app": False, "live_drafts": False},
+        (home / "config.json").write_text(json.dumps({"record": {"install_app": False},
                                                       "asr": {"backend": "sensevoice"}}))
         aiff, wav = tmp / "say.aiff", tmp / "mic.wav"
         subprocess.run(["say", "-v", "Tingting", "-o", str(aiff), "保存按钮的颜色太浅了，几乎看不清。"], check=True)
@@ -49,7 +49,7 @@ class RecorderE2E(unittest.TestCase):
         with wave.open(str(wav), "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(48000)
             w.writeframes(b"\0\0" * int(LEAD * 48000) + raw + b"\0\0" * 48000 * 2)
-        env = dict(os.environ, BLURT_HOME=str(home), BLURT_TEST_MIC_WAV=str(wav), BLURT_HOTKEY_MODS="ctrl+opt+shift+cmd")
+        env = dict(os.environ, BLURT_HOME=str(home), BLURT_TEST_MIC_WAV=str(wav), BLURT_HOTKEY_MODS="ctrl+opt+shift+cmd", BLURT_TEST_HOOKS="1")
         uv = shutil.which("uv")
         build = subprocess.run([uv, "run", "-q", str(SCRIPTS / "record.py"), "build"], env=env, capture_output=True, text=True)
         self.assertIn('"native": "', build.stdout, build.stderr[-2000:])

@@ -1,0 +1,61 @@
+{
+  "scope": "Offline prerecorded video; no audio, no personalization, no LLM cleanup; not silent-mouthing validation",
+  "platform": "macOS-26.5-arm64-arm-64bit",
+  "torch": "2.14.1",
+  "checkout_commit": "e37453b1e1e125ca7130e4abf2635117635f6e0b",
+  "model_sha256": "e740cef369abeabd0ba2c18e37a0661342e1d94d432d6caa77755a11821d8fe3",
+  "encoder_device": "mps",
+  "decoder_device": "cpu",
+  "cpu_threads": 4,
+  "beam": 10,
+  "language_model": true,
+  "model_parameters": 250383410,
+  "input_frames": 193,
+  "model_frames": 193,
+  "model_fps": 25,
+  "face_fraction": null,
+  "video": null,
+  "precomputed_rois": "/private/tmp/blurt-vsr-research/native-rois.npy",
+  "preprocessing_note": "ROI loading only; upstream tracking/alignment excluded",
+  "start": 0,
+  "end": null,
+  "preprocessing_seconds": 0.00032041699159890413,
+  "model_load_seconds": 0.7813967919792049,
+  "first_inference": {
+    "encoder_seconds": 1.5015612079878338,
+    "decoder_seconds": 1.0968475000117905,
+    "inference_seconds": 2.5984087079996243,
+    "hypothesis": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE IN ONE THOUSAND NINE HUNDRED THREE"
+  },
+  "warm_runs": [
+    {
+      "encoder_seconds": 0.05063420801889151,
+      "decoder_seconds": 1.0176697080023587,
+      "inference_seconds": 1.0683039160212502,
+      "hypothesis": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE IN ONE THOUSAND NINE HUNDRED THREE"
+    },
+    {
+      "encoder_seconds": 0.06699612498050556,
+      "decoder_seconds": 0.9908260420197621,
+      "inference_seconds": 1.0578221670002677,
+      "hypothesis": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE IN ONE THOUSAND NINE HUNDRED THREE"
+    },
+    {
+      "encoder_seconds": 0.04922724998323247,
+      "decoder_seconds": 1.0387925410177559,
+      "inference_seconds": 1.0880197910009883,
+      "hypothesis": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE IN ONE THOUSAND NINE HUNDRED THREE"
+    }
+  ],
+  "warm_median_seconds": 1.0683039160212502,
+  "peak_process_rss_bytes": 2315452416,
+  "warm_real_time_factor": 0.13838133627218266,
+  "reference": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE",
+  "fixture_score_not_validated_wer": {
+    "unit": "word",
+    "errors": 6,
+    "reference_tokens": 16,
+    "rate": 0.375
+  },
+  "accuracy_warning": "Fixture reference may truncate the sentence; full published sentence continues with in 1943. Do not treat this fixture score as validated WER."
+}

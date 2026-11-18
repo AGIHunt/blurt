@@ -17,7 +17,7 @@ for app in ["aqua", "darkAqua"] {
             png(i.image(size: 48, color: app == "aqua" ? .black : .white), px: 96, "\(app)-\(i.rawValue).png")
             png(i.image(size: 48, color: .labelColor), px: 96, "label-\(app)-\(i.rawValue).png")
         }
-        for i in [BlurtIcon.check, .pause, .search, .trash, .warning, .x, .chicken] {
+        for i in [BlurtIcon.check, .pause, .search, .trash, .warning, .x, .spark] {
             png(i.symbolImage(pointSize: 36), px: 96, "\(app)-sf-\(i.rawValue).png")
         }
     }
@@ -36,7 +36,7 @@ for app in ["aqua", "darkAqua"] {
         BlurtIcon.recordFill.label("0:04  listening — pause to save", font: s, color: .secondaryLabelColor, iconColor: .systemRed),
         BlurtIcon.check.label("Saved", font: s, color: .systemGreen, preferSymbol: true),
         BlurtIcon.warning.label("⌥⇧A is taken by another app", font: s, color: .systemOrange, preferSymbol: true),
-        BlurtIcon.chicken.label("blurt is running", font: .systemFont(ofSize: 13, weight: .medium)),
+        BlurtIcon.spark.label("blurt is running", font: .systemFont(ofSize: 13, weight: .medium)),
         BlurtIcon.snap.label("Drag an area, release to snap", font: .systemFont(ofSize: 13, weight: .medium)),
     ]
     let W = 420, H = lines.count * 26 + 12
@@ -54,9 +54,9 @@ for app in ["aqua", "darkAqua"] {
     try! rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("text-\(app).png"))
 }
 
-precondition(BlurtIcon.chicken.image(size: 16).isTemplate)
-precondition(BlurtIcon(named: "close") == .x && BlurtIcon(named: "process") == .chicken)
-let s = BlurtIcon.chicken.label("整理 3 张", font: .systemFont(ofSize: 13), color: .white)
+precondition(BlurtIcon.spark.image(size: 16).isTemplate)
+precondition(BlurtIcon(named: "close") == .x && BlurtIcon(named: "chicken") == nil)
+let s = BlurtIcon.spark.label("整理 3 张", font: .systemFont(ofSize: 13), color: .white)
 precondition(s.length > 3)
 precondition(BlurtIcon.mic.cgImage(size: 12, scale: 2, color: CGColor(gray: 1, alpha: 1))?.width == 24)
 print("ok", BlurtIcon.allCases.count)

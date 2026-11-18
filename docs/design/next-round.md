@@ -1,5 +1,7 @@
 # 下一轮方案（v0.7，待 review）
 
+> 2026-11 更新：内嵌终端、tmux 会话（K5、`sessions.py`）、worktree、查看改动 / 合并、Claude 桌面端都已删除。口喷鸡只在后台无人值守地跑 Agent（整理、AI 补全、草稿）；事项交给用户自己的 Agent（`handoff.py` 交接说明 + blurt MCP）。下文里和会话有关的部分只是历史记录。
+
 2026-10-22，根据 v0.6 试用反馈和两轮讨论整理。各工作包按文末「v0.7 契约」实现（它和「决定」一起优先于正文）。
 
 ## 决定（2026-10-22 review 后定稿，优先于下文）
@@ -95,6 +97,8 @@ Claude Code、Codex 是「干活的」：一个文件夹里跑各种会话。口
 ---
 
 ## 2. 在口喷鸡里做：内嵌终端 + tmux 会话
+
+> 2026-11 更新：内嵌终端、tmux 会话（K5、`sessions.py`）、worktree、查看改动 / 合并、Claude 桌面端都已删除。口喷鸡只在后台无人值守地跑 Agent（整理、AI 补全、草稿）；事项交给用户自己的 Agent（`handoff.py` 交接说明 + blurt MCP）。下文里和会话有关的部分只是历史记录。
 
 - **会话**：每次派发（一条或勾选一批）= 一个 tmux 会话 `blurt-<项目>-<编号>`，里面跑**交互式**的 Claude Code 或 Codex（不是后台 `-p`），初始提示词已经填好。你随时能接手打字。
 - **内嵌终端**：
@@ -587,7 +591,7 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 | 动作 | 从 | 到 | 快捷键 | en | zh-Hans |
 |---|---|---|---|---|---|
 | `keep` | new | todo | A（审核模式还有 ↩） | Accept — leaves the inbox as To do | 放进要做 — 移出待处理，记为要做 |
-| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — run it in Blurt, or copy the instruction | 交给 Agent… — 在口喷鸡里运行，或复制指令 |
+| `hand_off` | new, todo | handed_off | ⌘↩ | Copy instruction for agent — paste it into Claude Code, Codex or any agent | 复制指令给 Agent — 粘贴到 Claude Code、Codex 或任何 Agent |
 | `done` | new, todo, handed_off, in_progress, to_verify（new：不用先接受，BA-56，2026-10-30） | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
@@ -697,6 +701,8 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
 - `gc` 判断不了哪些 tmux 窗口还在（没有 tmux 之外的错误）时，agent 任务一律保留。
 
 ### K5 · agent 会话（tmux）
+
+> 2026-11 更新：内嵌终端、tmux 会话（K5、`sessions.py`）、worktree、查看改动 / 合并、Claude 桌面端都已删除。口喷鸡只在后台无人值守地跑 Agent（整理、AI 补全、草稿）；事项交给用户自己的 Agent（`handoff.py` 交接说明 + blurt MCP）。下文里和会话有关的部分只是历史记录。
 
 - **tmux**：私有 socket `tmux -L $BLURT_TMUX_SOCKET`（默认 `blurt`），绝不碰用户默认的 tmux 服务。服务启动时用 `-f $BLURT_HOME/tmux.conf`
   （sessions.py 生成）：`status off`、`mouse on`、`history-limit 50000`、`escape-time 10`、`focus-events on`、`set-clipboard on`、

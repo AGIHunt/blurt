@@ -34,12 +34,27 @@ class Service(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        j = json.loads(body) if self.headers.get("Content-Type") == "application/json" else {}
         Service.seen.append({"path": self.path, "auth": self.headers.get("Authorization"), "size": len(body),
-                             "model": json.loads(body).get("model") if self.path.endswith("completions") else None})
+                             "model": j.get("model"), "body": j})
         if self.headers.get("Authorization") != f"Bearer {KEY}":
             code, out = 401, {"error": {"code": "invalid_api_key"}}
         elif Service.status != 200:
-            code, out = Service.status, {"error": {"message": "rate"}}
+            code, out = Service.status, {"error": {"message": "rate" if Service.status == 429 else "refused"}}
+        elif self.path.endswith("/multimodal-generation/generation"):     # Model Studio's own API, as measured
+            m = j.get("model", "")
+            if "realtime" in m:
+                code, out = 200, {"output": {}}
+            elif m.startswith(("qwen-audio", "fun-asr-flash")):
+                code, out = 200, {"output": {"text": "Testing, one, two, three.", "sentence": {}}, "usage": {"duration": 2}}
+            else:
+                code, out = 400, {"code": "InvalidParameter", "message": "url error, please check url！"}
+        elif self.path.endswith("/chat/completions") and "realtime" in j.get("model", ""):
+            code, out = 500, {"error": {"code": "internal_error"}}
+        elif self.path.endswith("/chat/completions") and (not j.get("model", "").startswith("qwen3-asr-flash")
+                                                          or "filetrans" in j.get("model", "")):
+            code, out = 404, {"error": {"message": f"Unsupported model `{j.get('model')}` for OpenAI compatibility mode.",
+                                        "code": "model_not_supported"}}
         elif self.path.endswith("/chat/completions"):
             code, out = 200, {"choices": [{"message": {"content": "Testing, one, two, three."}}]}
         else:
@@ -141,13 +156,102 @@ class CloudCheck(unittest.TestCase):
         self.assertEqual(r["code"], "privacy")
         self.assertEqual(Service.seen, [])
 
+    # 2026-11-11: qwen-audio-3.1-asr-flash (千问音频 3.1) typed under Custom… went to chat/completions, which it isn't
+    # served on; the 404 read "can't connect". Now the own API is asked next, and serves the model from then on.
+    def test_qwen_audio_goes_to_model_studios_own_api(self):
+        T._DASHSCOPE_OWN_API.discard("qwen-audio-3.1-asr-flash")      # as for any model not known to take only it
+        r = T.cloud_check("qwen3-asr-flash", {"key": KEY, "base_url": self.base + "/compatible-mode/v1",
+                                              "model": "qwen-audio-3.1-asr-flash"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["text"], "Testing, one, two, three.")
+        self.assertEqual(Service.seen[0]["path"], "/v1/compatible-mode/v1/chat/completions")      # refused: 404
+        s = Service.seen[1]
+        self.assertEqual(s["path"], "/v1/api/v1/services/aigc/multimodal-generation/generation")
+        self.assertEqual(s["model"], "qwen-audio-3.1-asr-flash")
+        self.assertEqual(s["body"]["parameters"], {"format": "wav", "sample_rate": "16000"})
+        audio = s["body"]["input"]["messages"][-1]["content"][0]
+        self.assertEqual(audio["type"], "input_audio")
+        self.assertTrue(audio["input_audio"]["data"].startswith("data:audio/wav;base64,"))
+
+    def test_native_request_carries_words_field_and_language(self):
+        T._DASHSCOPE_OWN_API.add("qwen-audio-3.1-asr-flash")
+        os.environ["DASHSCOPE_API_KEY"] = KEY
+        os.environ["DASHSCOPE_BASE_URL"] = self.base + "/compatible-mode/v1"
+        b = T.DashScope(type("A", (), {"model": "qwen-audio-3.1-asr-flash", "prompt": None, "language": "zh"})())
+        b.speed = 1
+        b.set_vocab([{"term": "Blurt"}, {"term": "口喷鸡"}])
+        b.set_field("x" * 500 + "我刚截了")
+        self.assertEqual(b.transcribe(T.np.zeros(1600, T.np.float32))[0][2], "Testing, one, two, three.")
+        self.assertEqual(len(Service.seen), 1)        # known from the test before: straight to the own API
+        body = Service.seen[0]["body"]
+        self.assertEqual(body["parameters"]["vocabulary"], {"Blurt": 50, "口喷鸡": 50})
+        self.assertEqual(body["parameters"]["language_hints"], ["zh"])
+        ctx = body["input"]["messages"][0]
+        self.assertEqual(ctx["role"], "user")
+        self.assertEqual(len(ctx["content"][0]["text"]), 400)              # the service's limit: the end kept
+        self.assertTrue(ctx["content"][0]["text"].endswith("我刚截了"))
+
+    def test_any_model_that_works_on_either_api_is_used_none_blocked_by_name(self):
+        T._DASHSCOPE_OWN_API.discard("qwen-audio-3.1-asr-flash")
+        for m in ("qwen3-asr-flash", "qwen3-asr-flash-2025-09-08", "qwen-audio-3.1-asr-flash", "qwen-audio-3.0-asr-flash",
+                  "fun-asr-flash-2026-06-15"):
+            r = T.cloud_check("qwen3-asr-flash", {"key": KEY, "base_url": self.base, "model": m})
+            self.assertTrue(r["ok"], (m, r))
+
+    def test_super_hot_words_stop_at_50(self):
+        T._DASHSCOPE_OWN_API.add("qwen-audio-3.1-asr-flash")
+        os.environ["DASHSCOPE_API_KEY"] = KEY
+        os.environ["DASHSCOPE_BASE_URL"] = self.base + "/compatible-mode/v1"
+        b = T.DashScope(type("A", (), {"model": "qwen-audio-3.1-asr-flash", "prompt": None, "language": None})())
+        b.speed = 1
+        b.set_vocab([{"term": f"w{i}"} for i in range(60)])
+        b.transcribe(T.np.zeros(1600, T.np.float32))
+        v = Service.seen[0]["body"]["parameters"]["vocabulary"]
+        self.assertEqual(sum(1 for w in v.values() if w == 50), 50)
+        self.assertEqual(v["w59"], 5)
+
+    def test_a_measured_own_api_model_goes_there_first(self):
+        T._DASHSCOPE_OWN_API.add("qwen-audio-3.1-asr-flash")
+        r = T.cloud_check("qwen3-asr-flash", {"key": KEY, "base_url": self.base, "model": "qwen-audio-3.1-asr-flash"})
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([s["path"] for s in Service.seen], ["/api/v1/services/aigc/multimodal-generation/generation"])
+
+    def test_models_that_only_stream_or_read_urls_say_so(self):
+        # the answers measured 2026-11-11: realtime 500 on compatible, 200 without text on its own; URL-only 404 / 400
+        for m in ("qwen3-asr-flash-realtime", "fun-asr-realtime", "qwen3-asr-flash-filetrans", "paraformer-v2", "fun-asr"):
+            Service.seen = []
+            r = T.cloud_check("qwen3-asr-flash", {"key": KEY, "base_url": self.base, "model": m})
+            self.assertEqual((r["ok"], r["code"]), (False, "model"), m)
+            self.assertEqual(len(Service.seen), 2, m)        # one try on each API
+        self.assertNotIn("qwen3-asr-flash-realtime", T._DASHSCOPE_OWN_API)
+
+    def test_a_refused_request_is_not_a_connection_problem(self):
+        for status in (400, 404):
+            Service.status = status
+            r = T.cloud_check("openai-compatible", {"key": KEY, "base_url": self.base, "model": "whisper-9"})
+            self.assertEqual((r["ok"], r["code"]), (False, "bad_response"), status)
+        Service.status = 503
+        r = T.cloud_check("qwen3-asr-flash", {"key": KEY, "base_url": self.base})
+        self.assertEqual(r["code"], "network")
+        # an address that isn't …/compatible-mode/v1: the same host's own API
+        self.assertEqual(Service.seen[-1]["path"], "/api/v1/services/aigc/multimodal-generation/generation")
+
+    def test_native_url_from_any_base(self):
+        u = T.dashscope_native_url
+        self.assertEqual(u("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                         "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+        self.assertEqual(u("https://ws1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/"),
+                         "https://ws1.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation")
+        self.assertEqual(u("https://proxy.example.com/v1"),
+                         "https://proxy.example.com/api/v1/services/aigc/multimodal-generation/generation")
+
     def test_answer_without_transcript_is_bad_response(self):
         with mock.patch.object(T, "_post", return_value={"output": {}}):
             os.environ["DASHSCOPE_API_KEY"] = KEY
             b = T.DashScope(type("A", (), {"model": None, "prompt": None, "language": None})())
             with self.assertRaises(T.Fail) as c:
                 b.transcribe(T.np.zeros(1600, T.np.float32))
-        self.assertEqual(c.exception.code, "bad_response")
+        self.assertEqual(c.exception.code, "model")       # no text from either API: the model, not the network
 
 
 if __name__ == "__main__":

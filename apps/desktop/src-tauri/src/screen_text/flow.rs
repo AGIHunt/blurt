@@ -1,15 +1,24 @@
-//! Copy Text from Screen (Alt+Shift+C) and its translation (Alt+Shift+T) on Windows — the Mac's ScreenTextCopy,
+//! Copy Text from Screen (Alt+Shift+C) and its translation (Alt+Shift+T) on Windows and Linux — the Mac's ScreenTextCopy,
 //! ScreenTextCard and ScreenTextRefine (⌥C / ⌥T; docs/design/screen-text.md, windows-parity/snap-and-note.md §6):
 //!
 //!  • a crosshair and one drag (the picker's text mode: no dim, no toolbar); the area is read on this PC (RapidOCR
-//!    through screen_ocr.py's warm server, Windows' OCR while it isn't there; rules.rs lays the lines out);
+//!    through screen_ocr.py's warm server, Windows' OCR while it isn't there; rules.rs lays the lines out). On Linux
+//!    the picture comes from GNOME's Screenshot portal (grab_linux); the first time, GNOME has to ask, and only does so
+//!    with Blurt in front — the island says so and opens Settings, where the question is asked;
 //!  • the text (or its translation) goes on the clipboard, and is Ctrl+V'd into the app in front when dictation's paste
 //!    rules say so (paste_policy::screen_text: a text field, or one UI Automation can't read; never a password field,
 //!    Blurt itself, or a focus that is clearly no field); the island's one line says what became of it, true to what
 //!    happened — "Pasted" only once the field, read back, shows it;
-//!  • the translation: "Translating…", then the whole of it in a card under the island (Copy; gone 10 s after the
-//!    pointer leaves it; Esc closes it only while the pointer is on it); a text already in a fixed target language is
-//!    copied as it is and the island says so; a failed translation copies the original, with Try Again;
+//!  • the translation: "Translating…", then the line; the direction is decided here from the text's language
+//!    (direction.rs: Auto = your language ↔ the other one, any other language into yours; the model gets one language — asked
+//!    to pick the direction, the Mac's local model gave English back as English); a text already in a fixed target
+//!    language is copied as it is (not sent) and the island says so; a failed translation copies the original, with
+//!    Try Again;
+//!  • Alt+Shift+C and Alt+Shift+T end the same way (2026-11-16, paste_policy::screen_text::shows_card): pasted into a
+//!    field, the island's line says so and nothing else shows; only on the clipboard, the whole text is in a card under
+//!    the island too (×, Copy; gone 10 s after the pointer leaves it; Esc closes it only while the pointer is on it);
+//!  • every result goes into the history (history.rs: the Text & Translation page, Home's timeline) for as long as
+//!    Settings → Text & Translation keeps it; no picture is kept;
 //!  • the second reading (record.screen_text.refine on): the same picture read again by the connected cloud model that
 //!    reads images (`screen_text.py read --stdin`), merged into the draft; the merge replaces the draft on the clipboard
 //!    while the clipboard still holds the draft. (The Mac's local reader is an MLX model: not on Windows.)
@@ -21,6 +30,10 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use super::grab::{write_bmp, write_png, Grab};
+use super::history::{self, Entry};
+use super::direction;
+#[cfg(windows)]
 use super::ocr_win;
 use crate::dictation::paste_policy::{self, screen_text::Outcome, Situation};
 use crate::dictation::{cloud, insert as ins, server};
@@ -46,7 +59,7 @@ fn mark_of(msg: &str) -> Option<&'static str> {
     match k {
         "translating" => None,
         "none" => Some("peep"),
-        k if k == "failed" || k.starts_with("translate_") => Some("warning"),
+        k if k == "failed" || k == "allow" || k.starts_with("translate_") => Some("warning"),
         _ => Some("check"),
     }
 }
@@ -54,12 +67,14 @@ fn mark_of(msg: &str) -> Option<&'static str> {
 const OCR: &str = "screen-ocr";
 
 /// The picture read by screen_ocr.py's warm server: one word per line (its whole text and box), in the grab's pixels.
-fn rapid(g: &ocr_win::Grab) -> Option<Vec<super::rules::Line>> {
-    if !server::wait_ready(OCR, Duration::from_secs(25)) {
+fn rapid(g: &Grab) -> Option<Vec<super::rules::Line>> {
+    // Linux has no other reader to fall back on: the first use may still be installing it (RapidOCR and its models, ~150 MB)
+    let wait = if cfg!(windows) { 25 } else { 120 };
+    if !server::wait_ready(OCR, Duration::from_secs(wait)) {
         return None;
     }
     let path = std::env::temp_dir().join(format!("blurt-screen-{}.bmp", std::process::id()));
-    ocr_win::write_bmp(&path, g).ok()?;
+    write_bmp(&path, g).ok()?;
     let v = server::call(
         OCR,
         &json!({"cmd": "ocr", "image": path.to_string_lossy()}),
@@ -112,9 +127,22 @@ pub fn start(app: &AppHandle, translate: bool) {
         island::send(&app, json!({"op": "working", "on": true}));
         // the picker's window is gone; give the screen a frame to repaint without it
         std::thread::sleep(Duration::from_millis(60));
+        #[cfg(windows)]
         let grab = match ocr_win::grab(r.x, r.y, r.w, r.h) {
             Ok(g) => g,
             Err(e) => {
+                eprintln!("screen text: {e}");
+                return line(&app, "capture.text.failed", json!({}), 4000, None);
+            }
+        };
+        #[cfg(target_os = "linux")]
+        let grab = match super::grab_linux::grab(&app, r.x, r.y, r.w, r.h) {
+            Ok(g) => g,
+            // GNOME asks first, and only with Blurt in front: Settings asks (its Allow…)
+            Err(super::grab_linux::Failure::Permission) => {
+                return line(&app, "capture.text.allow", json!({}), 10_000, Some(("text.allow", "capture.text.allow_action")));
+            }
+            Err(super::grab_linux::Failure::Other(e)) => {
                 eprintln!("screen text: {e}");
                 return line(&app, "capture.text.failed", json!({}), 4000, None);
             }
@@ -128,6 +156,7 @@ pub fn start(app: &AppHandle, translate: bool) {
                 }
                 super::compose_lines(lines, &grab)
             }
+            #[cfg(windows)]
             None => match ocr_win::read(&grab) {
                 Ok(lines) => {
                     if debug {
@@ -140,6 +169,11 @@ pub fn start(app: &AppHandle, translate: bool) {
                     return line(&app, "capture.text.failed", json!({}), 4000, None);
                 }
             },
+            #[cfg(not(windows))]
+            None => {
+                eprintln!("screen text: the reader (screen_ocr.py) didn't answer");
+                return line(&app, "capture.text.failed", json!({}), 4000, None);
+            }
         };
         if debug {
             eprintln!("screen text: {text:?}");
@@ -164,15 +198,19 @@ pub fn retry(app: &AppHandle) {
 
 // ------------------------------------------------------------------ copy (and the second reading)
 
-fn copy(app: &AppHandle, draft: &str, grab: &ocr_win::Grab) {
+fn copy(app: &AppHandle, draft: &str, grab: &Grab) {
     let o = deliver(draft, true);
     let key = paste_policy::screen_text::line_key(o, false);
     line(app, key, json!({}), if o == Outcome::Unconfirmed { 5000 } else { 2000 }, None);
+    if paste_policy::screen_text::shows_card(o) {
+        show_card(app, draft);
+    }
+    let entry = remember(app, Entry { outcome: Some(o.as_str().into()), ..Entry::new(false, draft) });
     // the second reading: over the draft on the clipboard, never over something the user copied since
     let refine_on = crate::settings::read_config()
         .pointer("/record/screen_text/refine")
         .is_some_and(|v| v == &json!("on") || v == &json!(true));
-    let Some(c) = refine_on.then(|| cloud::payload("screen_text")).flatten() else { return };
+    let Some(c) = refine_on.then(|| cloud::payload("vision")).flatten() else { return };
     let seq = ins::sequence();
     let png = std::env::temp_dir().join(format!("blurt-screen-{}-{}.png", std::process::id(), seq));
     if write_png(&png, grab).is_err() {
@@ -185,6 +223,15 @@ fn copy(app: &AppHandle, draft: &str, grab: &ocr_win::Grab) {
     let Some(t) = r.ok().and_then(|v| v["text"].as_str().map(str::to_owned)).filter(|t| !t.trim().is_empty() && t != draft) else { return };
     if ins::sequence() == seq {
         ins::set_text(&t);
+        // the card still showing the draft shows what is on the clipboard now; so does the history
+        let on_card = CARD.lock().unwrap().as_ref().is_some_and(|c| c.text.trim() == draft.trim());
+        if on_card {
+            show_card(app, &t);
+        }
+        if let Some(id) = entry {
+            history::shared().update(&id, &t);
+            let _ = app.emit(history::CHANGED, json!({}));
+        }
     } else {
         eprintln!("screen text: refine not applied (the clipboard changed)");
     }
@@ -235,31 +282,29 @@ fn landed_lines(before: &str, now: &str, text: &str) -> bool {
     t.contains('\n') && n != b && n.contains(t.trim_end())
 }
 
-fn write_png(path: &std::path::Path, g: &ocr_win::Grab) -> Result<(), String> {
-    let mut rgba = Vec::with_capacity(g.bgra.len());
-    for p in g.bgra.chunks_exact(4) {
-        rgba.extend_from_slice(&[p[2], p[1], p[0], 255]);
-    }
-    let f = std::fs::File::create(path).map_err(|e| e.to_string())?;
-    let mut e = png::Encoder::new(std::io::BufWriter::new(f), g.w, g.h);
-    e.set_color(png::ColorType::Rgba);
-    e.set_depth(png::BitDepth::Eight);
-    e.write_header().and_then(|mut w| w.write_image_data(&rgba)).map_err(|e| e.to_string())
-}
-
 // ------------------------------------------------------------------ translate
 
 fn translate_text(app: &AppHandle, text: &str) {
     *LAST.lock().unwrap() = Some(text.to_string());
-    line(app, "capture.text.translating", json!({}), 30_000, None);
-    // ⌥T's own target (Settings → Copy Text from Screen, record.screen_text.translate.target — as the Mac's
-    // ScreenTranslateConfig, not dictation's): Auto, or a language that text already in it keeps ("X|keep")
-    let fixed = crate::settings::read_config()
+    // ⌥T's own target (Settings → Text & Translation, record.screen_text.translate.target — as the Mac's
+    // ScreenTranslateConfig, not dictation's): Auto, or a language. The direction is decided here from the text's
+    // language (direction.rs); the model gets one language
+    let setting = crate::settings::read_config()
         .pointer("/record/screen_text/translate/target")
         .and_then(|v| v.as_str())
-        .filter(|t| !t.is_empty() && *t != "auto")
-        .map(str::to_owned);
-    let target = fixed.as_ref().map_or_else(|| "auto".to_string(), |t| format!("{t}|keep"));
+        .map(|t| if t == "zh-Hans" { "zh" } else { t })
+        .filter(|t| !t.is_empty())
+        .unwrap_or("auto")
+        .to_owned();
+    let detected = direction::language(text);
+    if std::env::var_os("BLURT_DEBUG_KEYS").is_some() {
+        eprintln!("screen text: translate {setting:?}, the text reads as {detected:?}");
+    }
+    let target = match direction::plan(&setting, &detected, &direction::pair()) {
+        direction::Plan::Already(lang) => return already_in(app, text, &lang),
+        direction::Plan::Send(t) => t,
+    };
+    line(app, "capture.text.translating", json!({}), 30_000, None);
     // Windows polishes and translates in the cloud only (no local polish model here): without one, say what it takes
     let Some(c) = cloud::payload("translate").or_else(|| cloud::payload("polish")) else {
         ins::set_text(text);
@@ -276,15 +321,35 @@ fn translate_text(app: &AppHandle, text: &str) {
         let code = r.as_ref().and_then(|v| v["code"].as_str()).unwrap_or("").to_string();
         return failed(app, text, &code);
     }
-    // a fixed language the text is in already: the original, copied as it is (not pasted: it isn't a translation)
-    if let Some(lang) = fixed.as_deref().filter(|_| out == text.trim()) {
-        deliver(text, false);
-        return line(app, "capture.text.already", json!({"lang": language_name(lang)}), 5000, None);
+    // a fixed language the text was in already, which the identifier wasn't sure of ("X|keep" given back as it was)
+    if let Some(lang) = target.strip_suffix("|keep").filter(|_| out == text.trim()) {
+        return already_in(app, text, lang);
     }
-    // the card under the island shows the whole translation, with Copy; the island's one line says what became of it
-    show_card(app, &out);
+    // the translation is on the clipboard (and pasted by dictation's rules), the island's one line says what became of
+    // it, and when it went nowhere else the card under the island shows it whole, with Copy
     let o = deliver(&out, true);
     line(app, paste_policy::screen_text::line_key(o, true), json!({}), 5000, None);
+    if paste_policy::screen_text::shows_card(o) {
+        show_card(app, &out);
+    }
+    remember(app, Entry { source: Some(text.to_string()), target: Some(target), outcome: Some(o.as_str().into()), ..Entry::new(true, &out) });
+}
+
+/// A fixed language the text is in already: the original, copied as it is (not pasted: it isn't a translation), and
+/// the island says so — "Already in English · original copied". No card: the text is on the screen.
+fn already_in(app: &AppHandle, text: &str, lang: &str) {
+    let o = deliver(text, false);
+    line(app, "capture.text.already", json!({"lang": language_name(lang)}), 5000, None);
+    remember(app, Entry { outcome: Some(o.as_str().into()), ..Entry::new(false, text) });
+}
+
+/// The result into the history with the app in front now (never Blurt itself) → its id (None: nothing is kept).
+fn remember(app: &AppHandle, mut e: Entry) -> Option<String> {
+    if let Some(f) = ins::front().filter(|f| f.pid != std::process::id()) {
+        e.app = ins::app_name(&f).filter(|n| !n.is_empty()).or_else(|| (!f.exe.is_empty()).then(|| f.exe.clone()));
+        e.bundle = (!f.exe.is_empty()).then(|| f.exe.clone());
+    }
+    history::remember(app, e)
 }
 
 /// The translation failed: the original is copied (never pasted), the line says why, with Try Again.
@@ -314,11 +379,13 @@ fn language_name(code: &str) -> String {
         ("de", "German", "德文"),
         ("es", "Spanish", "西班牙文"),
         ("ru", "Russian", "俄文"),
+        ("pt", "Portuguese", "葡萄牙文"),
+        ("it", "Italian", "意大利文"),
     ];
     names.iter().find(|(c, _, _)| *c == code).map_or(code.to_string(), |(_, en, z)| if zh { z } else { en }.to_string())
 }
 
-// ------------------------------------------------------------------ the translation card (the Mac's ScreenTextCard)
+// ------------------------------------------------------------------ the card (the Mac's ScreenTextCard): ⌥C's text or ⌥T's translation
 
 /// The card's text (Copy puts it on the clipboard again) and whether it holds Esc now.
 static CARD: Mutex<Option<CardState>> = Mutex::new(None);
@@ -335,7 +402,8 @@ const CARD_W: f64 = 400.0;
 /// room for the card's shadow left and right of it (textcard.css margin): the window is wider than the card
 const SHADOW_ROOM: f64 = 24.0;
 
-/// Under the island, in the live panel's width and place; a card already up takes the new text.
+/// Under the island, in the live panel's width and place; a card already up takes the new text. Only for a text that
+/// went nowhere but the clipboard (`shows_card`).
 fn show_card(app: &AppHandle, text: &str) {
     let label = Kind::TextCard.label();
     if let Some(c) = CARD.lock().unwrap().as_mut() {

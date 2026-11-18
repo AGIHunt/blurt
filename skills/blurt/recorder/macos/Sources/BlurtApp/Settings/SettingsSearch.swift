@@ -1,6 +1,7 @@
 // Where the Settings window is and the search across all of it.
 //   SettingsNavigator   the pane showing, the query and its results (SettingsCatalog.results: titles, descriptions and
-//                       keywords, English and Chinese, grouped by pane), the stop chosen with ↑ / ↓ or the pointer.
+//                       keywords, English and Chinese, grouped by pane — without the panes and rows of capabilities
+//                       that are off), the stop chosen with ↑ / ↓ or the pointer.
 //   SettingsFlash       the row to scroll to — a hit opened, a link (show(pane: "speech/dictation")), a test hook — and
 //                       the row flashing there in the brand tint; a row folded away (Dictation's By kind of app) is
 //                       unfolded by its pane first. Apart from the navigator so that the rows of every kept page, which
@@ -86,7 +87,7 @@ final class SettingsNavigator: ObservableObject {
             MainActor.assumeIsolated {
                 let hw = SpeechModel.shared.state?.hardware
                 switch key {
-                case "dictation.settings.double_tap": return [Dictation.keyShort(Dictation.key)]
+                case "dictation.settings.double_tap", "feature.dictation.what": return [Dictation.keyShort(Dictation.key)]
                 case "speech.limits.threads.detail": return hw.map { [Loc.number($0.perfCores + $0.effCores)] }
                 case "speech.limits.memory.detail":
                     guard let h = hw, let f = SpeechModel.shared.state?.limits.maxMemoryFraction else { return nil }
@@ -152,6 +153,20 @@ final class SettingsNavigator: ObservableObject {
         emit(["event": "settings_search_clear"])
     }
 
+    /// A capability was turned on or off (SettingsFeatures): the results are searched again — what is off is not
+    /// found —, and when the pane showing is one that just went away the window goes to General: at that capability's
+    /// switch, flashed, so the click that made the pane go is seen to have landed (`visible` false, the window closed:
+    /// General, without a row waiting to flash at the next open). A search in progress stays.
+    func capabilitiesChanged(visible: Bool) {
+        if !pane.shown {
+            let gone = SettingsCatalog.capability(ofPane: pane.rawValue)
+            if searching || !visible { pane = .general }
+            else if let c = gone { reveal(SettingsCatalog.featureRow(c)) }
+            else { go(.general) }
+        }
+        if searching { refresh() }
+    }
+
     /// Show a pane (the sidebar, a link): the search ends.
     func go(_ p: SettingsPane) {
         if !query.isEmpty { query = "" }
@@ -163,7 +178,7 @@ final class SettingsNavigator: ObservableObject {
         let req = SettingsFlash.Request(id: id)
         guard let p = SettingsPane(rawValue: req.pane) else { return }
         go(p)
-        SettingsFlash.shared.request = req
+        SettingsFlash.shared.ask(req)
         emit(["event": "settings_reveal", "id": id])
     }
 
@@ -235,6 +250,16 @@ final class SettingsFlash: ObservableObject {
 
     @Published var request: Request?
     @Published private(set) var row: String?
+
+    /// Ask for a row. A page that comes on screen for it reads `request` as it appears; a page already showing is
+    /// told by `$request`, which speaks before the value is in (@Published) — so the page read the request before
+    /// this one, found none, and a link to a row of the pane on show ("general/general.language" with General open,
+    /// a link to an off capability's pane while General shows) neither scrolled nor flashed. Said once more on the
+    /// next turn of the run loop, when it is in; a page that has already taken it only scrolls where it is.
+    func ask(_ r: Request) {
+        request = r
+        DispatchQueue.main.async { [self] in if request == r { request = r } }
+    }
 
     /// The landing row's wash, briefly.
     func flash(_ id: String) {

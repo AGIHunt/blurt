@@ -1,0 +1,44 @@
+/* The Cards page (MainWindow/CardsPage.swift): the main window's page of every card, Current and History. */
+
+"cards.title" = "Cards";
+"cards.subtitle" = "Snaps and voice notes. Drag them into any app.";
+
+"cards.action.snap" = "Snap";
+"cards.action.snap.tip" = "Snap an area of the screen and add a note";
+"cards.action.voice" = "Voice note";
+"cards.action.voice.tip" = "Record a voice note as a card";
+"cards.action.show_notch" = "Show under the notch";
+"cards.action.show_notch.tip" = "Bring the cards down under the notch, to drag them into other apps";
+
+"cards.search.placeholder" = "Search cards";
+"cards.search.tip" = "Search notes (⌘F or /)";
+"cards.search.none" = "No cards match “%@”";
+"cards.search.clear" = "Clear search";
+
+"cards.section.current" = "Current";
+"cards.section.history" = "History";
+"cards.history.kept" = "Kept for %d days";
+"cards.history.kept_forever" = "Kept until you delete them";
+"cards.current.none" = "No cards under the notch.";
+"cards.history.none" = "Cards you drag or paste into other apps are kept here for %d days.";
+"cards.history.none_forever" = "Cards you drag or paste into other apps are kept here until you delete them.";
+"cards.history.expired" = "No cards used in the last %d days. Older cards are in the Trash.";
+
+/* Several cards selected (⌘-click, ⇧-click, ⌘A): the row above the cards, and a selected card's menu. */
+"cards.selection.count" = "%d cards";
+"cards.selection.copy" = "Copy";
+"cards.selection.copy.tip" = "Copy the selected cards: pictures and notes";
+"cards.selection.delete" = "Delete";
+"cards.selection.delete.tip" = "Delete the selected cards (Undo under the notch)";
+"cards.menu.copy_n" = "Copy %d Cards";
+"cards.menu.delete_n" = "Delete %d Cards";
+
+"cards.empty.title" = "No cards yet";
+"cards.empty.message" = "Press %@ to snap an area and add a note. The card appears under the notch; drag it into any app.";
+"cards.empty.message_nokey" = "Snap an area and add a note. The card appears under the notch; drag it into any app.";
+
+/* VoiceOver: a tile is "Snap, <note>, <when>". */
+"cards.ax.snap" = "Snap";
+"cards.ax.voice" = "Voice note";
+"cards.ax.help_current" = "Return copies, Space previews, Delete deletes; double-click to edit the note";
+"cards.ax.help_history" = "Return copies, Space previews, Delete deletes; drag into an app to use it again";

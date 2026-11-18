@@ -1,0 +1,369 @@
+[
+ {
+  "id": "selftest",
+  "title": "自检（不用人）",
+  "intro": "不用做任何事",
+  "rounds": 1,
+  "lead": 0.5,
+  "secs": 4,
+  "rest": 2,
+  "shuffle": false,
+  "trials": [
+   {
+    "label": "still",
+    "prompt": "自检 1"
+   },
+   {
+    "label": "still",
+    "prompt": "自检 2"
+   }
+  ]
+ },
+ {
+  "id": "hand",
+  "title": "1 手的对照（约 2.5 分钟）",
+  "intro": "先确认系统能看见动作。脸离屏幕约一臂，按提示动手，别的地方不动。",
+  "rounds": 6,
+  "lead": 1.5,
+  "secs": 5,
+  "rest": 1.2,
+  "trials": [
+   {
+    "label": "still",
+    "prompt": "手放腿上，别动"
+   },
+   {
+    "label": "hand_big",
+    "prompt": "手伸到屏幕前约 30 cm，前后慢慢推拉",
+    "rate": 1
+   },
+   {
+    "label": "hand_fingers",
+    "prompt": "手伸到屏幕前约 30 cm，手掌不动，只动手指",
+    "rate": 2
+   }
+  ]
+ },
+ {
+  "id": "mouth",
+  "title": "2 嘴动 vs 不动（约 5 分钟）",
+  "intro": "脸离屏幕约 45 cm，头尽量不动。圆圈跳一下，嘴开合一次。不要出声。",
+  "rounds": 7,
+  "lead": 1.5,
+  "secs": 4,
+  "rest": 1.8,
+  "trials": [
+   {
+    "label": "still",
+    "prompt": "闭嘴，不动"
+   },
+   {
+    "label": "mouth_big",
+    "prompt": "大幅张嘴闭嘴",
+    "rate": 1.5
+   },
+   {
+    "label": "mouth_small",
+    "prompt": "小幅张嘴闭嘴，开一条缝",
+    "rate": 1.5
+   },
+   {
+    "label": "mouth_silent",
+    "prompt": "不出声念 ba ba ba，和平时默念一样大小",
+    "rate": 2
+   },
+   {
+    "label": "blink_brow",
+    "prompt": "嘴不动，眨眼、抬眉",
+    "rate": 1.5
+   },
+   {
+    "label": "breath",
+    "prompt": "嘴不动，深呼吸"
+   }
+  ]
+ },
+ {
+  "id": "head",
+  "title": "3 嘴动 vs 头动（约 5 分钟）",
+  "intro": "脸离屏幕约 45 cm。这一段判断头和身体的动作会不会被当成说话。不要出声。",
+  "rounds": 7,
+  "lead": 1.5,
+  "secs": 4,
+  "rest": 1.8,
+  "trials": [
+   {
+    "label": "mouth_silent",
+    "prompt": "头不动，不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "nod",
+    "prompt": "嘴不动，轻轻点头",
+    "rate": 1
+   },
+   {
+    "label": "shake",
+    "prompt": "嘴不动，轻轻左右转头",
+    "rate": 1
+   },
+   {
+    "label": "sway",
+    "prompt": "嘴不动，身体前后轻轻晃",
+    "rate": 0.7
+   },
+   {
+    "label": "mouth_plus_head",
+    "prompt": "一边轻轻点头，一边不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "still",
+    "prompt": "闭嘴，不动"
+   }
+  ]
+ },
+ {
+  "id": "headpods",
+  "title": "3b 嘴动 vs 头动，戴 AirPods（约 5 分钟）",
+  "intro": "两只 AirPods 都戴好（不用放音乐）。脸离屏幕约 45 cm。这一段判断头和身体的动作会不会被当成说话。不要出声。",
+  "rounds": 7,
+  "lead": 1.5,
+  "secs": 4,
+  "rest": 1.8,
+  "trials": [
+   {
+    "label": "mouth_silent",
+    "prompt": "头不动，不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "nod",
+    "prompt": "嘴不动，轻轻点头",
+    "rate": 1
+   },
+   {
+    "label": "shake",
+    "prompt": "嘴不动，轻轻左右转头",
+    "rate": 1
+   },
+   {
+    "label": "sway",
+    "prompt": "嘴不动，身体前后轻轻晃",
+    "rate": 0.7
+   },
+   {
+    "label": "mouth_plus_head",
+    "prompt": "一边轻轻点头，一边不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "still",
+    "prompt": "闭嘴，不动"
+   }
+  ]
+ },
+ {
+  "id": "range",
+  "title": "4 距离（约 4 分钟）",
+  "intro": "每次先坐到提示的距离，再按空格。不用很准，头不动，不出声。",
+  "rounds": 1,
+  "lead": 1,
+  "secs": 4,
+  "rest": 1,
+  "shuffle": false,
+  "trials": [
+   {
+    "label": "d30_setup",
+    "prompt": "脸靠近到屏幕约 30 cm",
+    "wait": true,
+    "secs": 0.2
+   },
+   {
+    "label": "d30_still",
+    "prompt": "30 cm：闭嘴，不动"
+   },
+   {
+    "label": "d30_mouth",
+    "prompt": "30 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d30_still",
+    "prompt": "30 cm：闭嘴，不动"
+   },
+   {
+    "label": "d30_mouth",
+    "prompt": "30 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d30_still",
+    "prompt": "30 cm：闭嘴，不动"
+   },
+   {
+    "label": "d30_mouth",
+    "prompt": "30 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d45_setup",
+    "prompt": "脸退到屏幕约 45 cm",
+    "wait": true,
+    "secs": 0.2
+   },
+   {
+    "label": "d45_still",
+    "prompt": "45 cm：闭嘴，不动"
+   },
+   {
+    "label": "d45_mouth",
+    "prompt": "45 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d45_still",
+    "prompt": "45 cm：闭嘴，不动"
+   },
+   {
+    "label": "d45_mouth",
+    "prompt": "45 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d45_still",
+    "prompt": "45 cm：闭嘴，不动"
+   },
+   {
+    "label": "d45_mouth",
+    "prompt": "45 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d60_setup",
+    "prompt": "脸退到屏幕约 60 cm",
+    "wait": true,
+    "secs": 0.2
+   },
+   {
+    "label": "d60_still",
+    "prompt": "60 cm：闭嘴，不动"
+   },
+   {
+    "label": "d60_mouth",
+    "prompt": "60 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d60_still",
+    "prompt": "60 cm：闭嘴，不动"
+   },
+   {
+    "label": "d60_mouth",
+    "prompt": "60 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d60_still",
+    "prompt": "60 cm：闭嘴，不动"
+   },
+   {
+    "label": "d60_mouth",
+    "prompt": "60 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d80_setup",
+    "prompt": "脸退到屏幕约 80 cm",
+    "wait": true,
+    "secs": 0.2
+   },
+   {
+    "label": "d80_still",
+    "prompt": "80 cm：闭嘴，不动"
+   },
+   {
+    "label": "d80_mouth",
+    "prompt": "80 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d80_still",
+    "prompt": "80 cm：闭嘴，不动"
+   },
+   {
+    "label": "d80_mouth",
+    "prompt": "80 cm：不出声念 ba ba ba",
+    "rate": 2
+   },
+   {
+    "label": "d80_still",
+    "prompt": "80 cm：闭嘴，不动"
+   },
+   {
+    "label": "d80_mouth",
+    "prompt": "80 cm：不出声念 ba ba ba",
+    "rate": 2
+   }
+  ]
+ },
+ {
+  "id": "syll",
+  "title": "5 口型相近的音节（约 4.5 分钟）",
+  "intro": "脸离屏幕约 45 cm，头不动。圆圈跳时不出声念一次，大小和平时默念一样。",
+  "rounds": 12,
+  "lead": 0.9,
+  "secs": 1.1,
+  "rest": 0.5,
+  "trials": [
+   {
+    "label": "ba",
+    "prompt": "ba  八",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "ma",
+    "prompt": "ma  妈",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "da",
+    "prompt": "da  搭",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "la",
+    "prompt": "la  拉",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "ga",
+    "prompt": "ga  嘎",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "ha",
+    "prompt": "ha  哈",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "za",
+    "prompt": "za  匝",
+    "rate": 1.5,
+    "beats": 1
+   },
+   {
+    "label": "zha",
+    "prompt": "zha 渣",
+    "rate": 1.5,
+    "beats": 1
+   }
+  ]
+ }
+]

@@ -16,8 +16,7 @@
 //   verify            a spoken clip (macOS `say`) through the recogniser and the polish a take uses — no microphone,
 //                     no field, nothing pasted: what it heard, the polished text, the timings
 //
-// Changes need a grant (BlurtCore AgentSetupGrant): the token of the session "Set Up with Agent…" started, or the
-// user's Allow — Blurt asks, naming the agent it finds among the requesting process's ancestors. A key is only ever
+// Changes need a grant (BlurtCore AgentSetupGrant): the user's Allow — Blurt asks, naming the agent it finds among the requesting process's ancestors. A key is only ever
 // read from a `connect` request, handed to the test on stdin and to the Keychain; it is never logged, written to a
 // file or sent back. Tests (BLURT_TEST_COMMANDS=1) answer the Allow question from BLURT_TEST_SETUP_ALLOW (1 | 0)
 // instead of showing it, and keep keys in memory (CloudStore.Key.testBuild).
@@ -48,9 +47,6 @@ enum AgentSetupServer {
 
     // MARK: grants
 
-    /// A token for a session the app starts.
-    static func issueToken() -> String { lock.lock(); defer { lock.unlock() }; return grant.issue() }
-    static func revoke(_ token: String) { lock.lock(); grant.revoke(token); lock.unlock() }
     /// Stop: nothing may change things any more until asked again.
     static func revokeAll() { lock.lock(); grant.revokeAll(); lock.unlock() }
 

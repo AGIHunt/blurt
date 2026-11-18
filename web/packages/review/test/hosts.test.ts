@@ -58,18 +58,15 @@ describe("macos host (WKWebView bridge, protocol v3)", () => {
     expect(h.fileUrl("/Users/me/p/.blurt/assets/U/1.png")).toBe("blurt-app://file/%2FUsers%2Fme%2Fp%2F.blurt%2Fassets%2FU%2F1.png");
     h.reveal!("/Users/me/p/.blurt/sessions/s");
     expect(sent[2]).toEqual({ id: 0, method: "reveal", params: { path: "/Users/me/p/.blurt/sessions/s" } });
-    h.dispatch!(["01JB", "01JC"]);
-    expect(sent[3]).toEqual({ id: 0, method: "dispatch", params: { uids: ["01JB", "01JC"] } });
+    // Hand Off is the copy for the user's own agent: `handoff {uids, what}` (no in-app sessions, no dispatch)
     const ho = h.handoff!(["01JB"], "instruction");
-    expect(sent[4]).toMatchObject({ method: "handoff", params: { uids: ["01JB"], what: "instruction" } });
-    (win as unknown as Reply).__blurtReply(sent[4].id, { id: "H-0012", path: "/h/H-0012.md", text: "Please handle BA-12 …" });
+    expect(sent[3]).toMatchObject({ method: "handoff", params: { uids: ["01JB"], what: "instruction" } });
+    (win as unknown as Reply).__blurtReply(sent[3].id, { id: "H-0012", path: "/h/H-0012.md", text: "Please handle BA-12 …" });
     await expect(ho).resolves.toMatchObject({ id: "H-0012" });
-    h.openSession!("j-20261022-101500-ab12");
-    // the exact payload WebHostController reads (ReviewHostParams.job; Swift WorkSessionTests.testOpenSessionPayload)
-    expect(sent[5]).toEqual({ id: 0, method: "openSession", params: { job: "j-20261022-101500-ab12" } });
+    expect("dispatch" in h || "openSession" in h || "reviewChanges" in h).toBe(false);
     expect(h.sessionBanner).toBeUndefined();
   });
-  it("sessionBanner: the native banner has the item's Open Session", () => {
+  it("sessionBanner: the native banner says who has the item", () => {
     const post = { postMessage: () => {} };
     const h = createMacosHost(fakeWindow({ webkit: { messageHandlers: { blurt: post } }, blurtHostInfo: { sessionBanner: true } }) as never);
     expect(h.sessionBanner).toBe(true);
@@ -116,7 +113,7 @@ describe("macos host (WKWebView bridge, protocol v3)", () => {
     expect(h.quickLook).toBeTypeOf("function");
     expect(h.handoff).toBeTypeOf("function");
     expect(h.reveal).toBeUndefined();
-    expect(h.dispatch).toBeUndefined();
+    expect(h.download).toBeUndefined();
   });
   it("is detected from blurt-app://", () => {
     const win = fakeWindow({ webkit: { messageHandlers: { blurt: { postMessage: () => {} } } } }, "blurt-app://ui/index.html?session=%2Fx");

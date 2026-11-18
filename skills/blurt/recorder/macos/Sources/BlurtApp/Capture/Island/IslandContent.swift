@@ -8,7 +8,7 @@
 //               the tray is only ever the Inbox) · record / snap / voice — quiet glyph buttons, a fill only under the
 //               pointer, one stroke (record is a ring and a dot drawn at the family's stroke) · up to 3 jobs in
 //               progress (a row on the grid: the spinner in the icon column, the title and its step, a 2 pt progress
-//               line under the text column) · agent sessions that need you (click = their terminal) · the cards
+//               line under the text column) · the cards
 //               waiting ("2 cards"), with "Organize" (the sparkle: the view's one filled button) · the Inbox row (its
 //               count as a quiet accessory, a chevron: the backlog lives here, not beside the notch)
 //   recording   on one grid with the ears (they ride out to the open shape's corners, 14 pt in): pause (paused: the
@@ -20,8 +20,8 @@
 //               snaps — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
-//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps ·
-//               4 items spotted") and, under it, where it goes ("Organized into Atlas Web when you finish": BA-64)
+//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps")
+//               and, under it, where it goes ("Organized into Atlas Web when you finish": BA-64)
 //   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): Peep
 //               listening (eye wide, swelling with the voice), the live waveform and Done (with the key held there is no Done:
 //               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
@@ -531,7 +531,7 @@ final class IslandContent: NSView {
 
     /// `locate`: a project whose folder is gone — choosing it asks where the folder is now (never files into it: that
     /// recreated the old folder with a fresh store, and its ids clashed with the moved project's).
-    enum Target: Equatable { case project(String), inbox, organize, none, openFolder, more, locate(String) }
+    enum Target: Equatable { case project(String), inbox, organize, none, openFolder, more, locate(String), hang }
 
     private var rows: [IslandRow] = []
     private var selected: Int?
@@ -543,7 +543,7 @@ final class IslandContent: NSView {
     private weak var voiceText: NSTextField?
     /// the voice note's Structured chip (tests: its frame)
     private(set) weak var structuredChip: IslandButton?
-    private weak var spotted: NSTextField?
+    private weak var takeLine: NSTextField?
     private weak var pauseBtn: IslandButton?
     /// the recording row's ··· (its menu: the pen, Discard or Start Over…)
     private(set) weak var moreBtn: IslandButton?
@@ -683,14 +683,19 @@ final class IslandContent: NSView {
         let fresh = homePeep.superview !== self
         if fresh { addSubview(homePeep) }
         if fresh || homePeep.mascot.clip != mood { homePeep.play(mood) }
-        place(chip(w), x: IslandContent.chipX, y: rowY)
+        // what is on (BlurtCore IslandHome): the project and Record are Recording & Items', Snap and Voice Note are
+        // Cards' — a capability switched off leaves nothing of its own here
+        let home = IslandHome.rows(jobs: i.activeJobs.count, cards: i.cardCount, review: i.toReview)
+        if home.projectChip { place(chip(w), x: IslandContent.chipX, y: rowY) }
         // the brand actions in one stroke: record a ring and a dot drawn at the family's weight (the family's record
         // fills a heavy dot), the snap frame, the mic (the mic that starts a voice note is the mic on its card)
-        let buttons: [(BlurtIcon?, IslandGlyph?, String, HotAction, () -> Void)] = [
-            (nil, .record, "capture.island.record", .toggleRecord, { (NSApp.delegate as? App)?.startRecording(useLast: false) }),
-            (.snap, nil, "capture.island.snap", .snap, { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } }),
-            (.mic, nil, "capture.island.voice", .voice, { VoiceInput.shared.toggle() }),
-        ]
+        let buttons: [(BlurtIcon?, IslandGlyph?, String, HotAction, () -> Void)] = home.buttons.map { b in
+            switch b {
+            case .record: return (nil, .record, "capture.island.record", .toggleRecord, { (NSApp.delegate as? App)?.startRecording(useLast: false) })
+            case .snap: return (.snap, nil, "capture.island.snap", .snap, { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } })
+            case .voice: return (.mic, nil, "capture.island.voice", .voice, { VoiceInput.shared.toggle() })
+            }
+        }
         var bx = w - 12
         for (ic, dr, key, act, f) in buttons.reversed() {
             let b = IslandButton(icon: ic, tip: tip(key, act)) { [weak i] in i?.setOpen(false); f() }
@@ -720,28 +725,21 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         }
-        for j in i.sessionsNeedingYou {
-            guard let a = j.agent else { continue }
-            let st = a.status
-            // what it is about first ("Sign-in button does nothing"), then which item, its state and the agent
-            let ids = a.windowName?.replacingOccurrences(of: ",", with: ", ")
-            let r = IslandRow(icon: nil, title: j.title ?? ids ?? Loc.t("job.type.agent"),
-                              subtitle: [j.title == nil ? nil : ids, Loc.t("session.\(st.rawValue)"), AgentNames.name(a.agent)]
-                                  .compactMap { $0 }.joined(separator: " · "), height: 44) { [weak i] in
-                i?.setOpen(false)
-                AppEnvironment.mainWindow?.reveal(job: j.id)
-            }
-            r.dot = st == .waitingInput ? BrandColor.Island.attn : st == .error ? BrandColor.Island.err
-                : st == .running ? BrandColor.Island.fill : BrandColor.Island.ok
-            place(r, x: 0, y: y, w: w, h: 44)
-            y += 44
-        }
-        let review = i.toReview, cards = i.cardCount
-        if cards > 0 {
+        let review = home.inbox, cards = home.cards
+        if cards > 0, !home.organize {
+            // Recording & Items off: the cards are cards — nothing organizes them into items. The row alone: their
+            // count, and a click (or ⌥H) for the Cards page
+            let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
+                              height: 36) { hanging.openCardsPage() }
+            r.toolTip = tip("capture.action.cards", .cards)
+            r.disclosure = true
+            place(r, x: 0, y: y, w: w, h: 36)
+            y += 36
+        } else if cards > 0 {
             // the cards waiting ("2 cards" — one noun; the Inbox is the row under it), and the view's one filled button,
             // the sparkle: with a current project they are organised into it; with none, into Unassigned, each item
-            // with the project the run suggests (one agent run for all). A click on the row opens the Cards panel (as
-            // ⌥H does); its tooltip names ⌥H and the panel's keys once.
+            // with the project the run suggests (one agent run for all). A click on the row opens the Cards page (as
+            // ⌥H does); its tooltip names ⌥H.
             let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
             let b = cur.map { p in
                 IslandButton(icon: .spark, title: Loc.t("capture.island.organize", table: "Capture"),
@@ -751,8 +749,8 @@ final class IslandContent: NSView {
                               tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
                               gradient: BrandGradient.buttonStops) { snapper.handToAI() }
             let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
-                              height: 36) { CardsOverview.shared.show(segment: .hanging) }
-            r.toolTip = tip("capture.action.cards", .cards) + "\n" + Loc.t("capture.cards.panel_keys", table: "Capture")
+                              height: 36) { hanging.openCardsPage() }
+            r.toolTip = tip("capture.action.cards", .cards)
             r.trailingReserve = b.frame.width + 4
             place(r, x: 0, y: y, w: w, h: 36)
             b.frame.origin = NSPoint(x: w - 18 - b.frame.width, y: ((36 - b.frame.height) / 2).rounded())   // the rows' trailing edge
@@ -772,10 +770,16 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         }
-        if jobs.isEmpty && i.sessionsNeedingYou.isEmpty && review == 0 && cards == 0 {
-            // nothing going on: what the keys do, on the text column
-            let hint = [hkHint(.snap, "capture.island.snap"), hkHint(.voice, "capture.island.voice"), hkHint(.project, "capture.island.switch_project")]
-                .compactMap { $0 }.joined(separator: "   ·   ")
+        if home.isIdle {
+            // nothing going on: what the keys do, on the text column (the keys of what is on)
+            let hint = home.hints.map { h -> String? in
+                switch h {
+                case .record: return hkHint(.toggleRecord, "capture.island.record")
+                case .snap: return hkHint(.snap, "capture.island.snap")
+                case .voice: return hkHint(.voice, "capture.island.voice")
+                case .project: return hkHint(.project, "capture.island.switch_project")
+                }
+            }.compactMap { $0 }.joined(separator: "   ·   ")
             let l = label(hint, size: 11.5, color: ink3)
             place(l, x: IslandLayout.textColumn - 2, y: y + 4, w: w - IslandLayout.textColumn - 16)
             y += 26
@@ -806,7 +810,7 @@ final class IslandContent: NSView {
     /// becomes Resume in the same place and size — the play glyph in `attn` on its tint, the lead — and Finish quiets
     /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
     /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
-    /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen,
+    /// pen hint for the first three takes, the snaps taken). The rare things are in the ··· menu: the pen,
     /// where the take goes (Change…), Discard or Start Over… (the question below).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
@@ -838,7 +842,7 @@ final class IslandContent: NSView {
         level = nil
         var bottom = y + 30
 
-        // the quiet line: the pen's state or its keys (first takes only), then what live.py spotted
+        // the quiet line: the pen's state or its keys (first takes only), then the snaps taken
         penShown = rec.penSticky || rec.inkOn
         let lineY = bottom + 10
         var any = false
@@ -863,15 +867,14 @@ final class IslandContent: NSView {
             any = true
         }
         if any { bottom = lineY + 24 }
-        // BA-64: what the take holds so far, in plain words ("6 snaps · 4 items spotted" — each snap is also a card on
-        // the thread), then where it all goes once it is finished ("Organized into Atlas Web when you finish")
-        let said = spottedText(rec)
+        // BA-64: what the take holds so far, in plain words ("6 snaps" — each snap is also a card on the thread), then where it all goes once it is finished ("Organized into Atlas Web when you finish")
+        let said = takeText(rec)
         if !said.isEmpty {
             let room = w - 2 * inset + 4
             let y2 = any ? bottom + 2 : lineY
             let sp = label(said, size: 11.5, color: ink2)
             place(sp, x: inset - 2, y: y2 + (20 - sp.frame.height) / 2, w: min(sp.frame.width + 8, room))
-            spotted = sp
+            takeLine = sp
             bottom = y2 + 20
             if let goes = whereText(rec) {
                 let wl = label(goes, size: 11.5, color: ink3)
@@ -880,21 +883,21 @@ final class IslandContent: NSView {
                 bottom += 18
             }
         } else {
-            spotted = nil
+            takeLine = nil
         }
         return bottom + inset
     }
 
-    /// What the take holds so far ("6 snaps · 4 items spotted"; BlurtCore TakeLine).
-    private func spottedText(_ rec: Recorder) -> String {
-        TakeLine.text(snaps: rec.snaps?.count ?? 0, items: island?.spottedCount ?? 0)
+    /// What the take holds so far ("6 snaps"; BlurtCore TakeLine).
+    private func takeText(_ rec: Recorder) -> String {
+        TakeLine.text(snaps: rec.snaps?.count ?? 0)
     }
 
     /// Where the take's items will be: "Organized into Atlas Web when you finish" (nothing when takes are only saved).
     private func whereText(_ rec: Recorder) -> String? {
         let app = NSApp.delegate as? App
         return TakeLine.whereTo(project: app?.takeProject?.name ?? Loc.t("project.inbox"), organizes: app?.autoProcess ?? true,
-                                anything: !spottedText(rec).isEmpty)
+                                anything: !takeText(rec).isEmpty)
     }
 
     /// The ··· menu: the rare things, each with its key as the menu's own right-aligned key equivalent. Dark, as the
@@ -1065,7 +1068,8 @@ final class IslandContent: NSView {
         place(tx, x: hx, y: y + (24 - tx.frame.height) / 2, w: hintW)
         voiceText = tx
         // its right edge on the body's (a label's cell keeps 2 pt inside its frame)
-        if destW > 40 { place(d, x: R + 2 - destW, y: y + (24 - d.frame.height) / 2, w: destW) }
+        // (without Recording & Items a voice note is a card, always: "Stays as a card" would hint at a choice)
+        if destW > 40, Capability.projectsShown { place(d, x: R + 2 - destW, y: y + (24 - d.frame.height) / 2, w: destW) }
         y += 24
         return y + 12
     }
@@ -1082,7 +1086,13 @@ final class IslandContent: NSView {
         // placeholder or what was typed on the text column, the caret after it), what this is across the notch
         let row = firstRow
         let pick = d == .switcher ? island?.pick : nil
-        let headText = d == .drop ? Loc.t("capture.drawer.drop_title", table: "Capture")
+        let ext = d == .drop ? island?.external : nil
+        // what is on (BlurtCore IslandHome.drop): the projects, Unassigned and Organize are Recording & Items'; "Hang"
+        // is Cards'. Without projects the drop drawer is that one row: what another app's drag becomes here
+        let takes = IslandHome.drop()
+        // (the header sits beside the notch: short; what is being dragged is said on the Hang row)
+        let headText = d == .drop ? Loc.t(ext == nil ? "capture.drawer.drop_title" : takes.projects ? "capture.drawer.drop_in_title"
+                                          : "capture.drawer.drop_here_title", table: "Capture")
             : pick?.title ?? Loc.t("capture.drawer.switch_title", table: "Capture")
         let head = label(headText, size: 12, weight: .medium, color: ink3)
         head.alignment = .right
@@ -1107,6 +1117,16 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: r.frame.height)
             y += r.frame.height
         }
+        // v1.0.23: another app's files, pictures or text: first of all, hang them under the island (what letting go on
+        // the notch itself does too); the projects below file them straight in
+        if let e = ext, takes.hang {
+            let n = e.pictureCount + e.files.count + (e.text == nil ? 0 : 1)
+            add(IslandRow(icon: IslandContent.lineIcon(.cards, color: BrandColor.Island.fill),
+                          title: Loc.t("capture.drawer.hang", table: "Capture"),
+                          subtitle: Loc.t(n > 1 ? "capture.drawer.hang_many" : "capture.drawer.hang_one", table: "Capture", e.summary),
+                          height: 44), .hang)
+        }
+        guard takes.projects else { return y + 8 }
         // what is checked: the current project (nil = none), or where the thing being re-filed went
         let checkedID: String? = pick.map { $0.current } ?? (store.currentID ?? "inbox")
         // the rows every project picker shows (ProjectPick.choices): recent projects, then Unassigned last
@@ -1173,8 +1193,8 @@ final class IslandContent: NSView {
             add(un, .inbox)
             // with no current project: one run for the cards, into Unassigned with a suggested project each
             let n = island?.dropCount ?? 1
-            add(IslandRow(icon: IslandContent.lineIcon(.spark, color: BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
-                          subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize)
+            if ext == nil { add(IslandRow(icon: IslandContent.lineIcon(.spark, color: BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
+                          subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize) }
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
         return y + 8
@@ -1201,8 +1221,11 @@ final class IslandContent: NSView {
 
     /// A card dropped on a target: that card — or the ⌘-click selection it is part of — goes there (Organize: those
     /// cards, organized into Unassigned with suggestions; from the island itself, every card).
-    func perform(_ t: Target, shot: Shot?) {
-        let shots = shot.map { hanging.withSelection($0) }
+    func perform(_ t: Target, shot: Shot?) { perform(t, shots: shot.map { hanging.withSelection($0) } ?? []) }
+
+    /// File `ss` (a card, a selection dragged as one) where `t` says.
+    func perform(_ t: Target, shots ss: [Shot]) {
+        let shots: [Shot]? = ss.isEmpty ? nil : ss
         switch t {
         case .project(let id): if let s = shots { snapper.assign(s, to: id) }
         case .inbox: if let s = shots { snapper.assign(s, to: "inbox") }
@@ -1232,6 +1255,7 @@ final class IslandContent: NSView {
             MissingFolder.use(id, via: "switch")
         case .inbox, .organize:
             perform(t, shot: nil)
+        case .hang: break                 // only ever a drop target (another app's drag)
         case .locate(let id):
             guard let p = ProjectStore.shared.project(id: id) else { return }
             let pick = island?.pick
@@ -1492,13 +1516,14 @@ final class IslandContent: NSView {
         openHint?.hover = i.pointerInside
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
-            let mic: Float = rec.isPaused ? 0 : rec.micLevel   // split up: one expression made Swift 6.3's type-checker time out
-            level?.values = (0..<5).map { k in Float(k + 1) / 6 <= mic ? Float(0.35 + 0.13 * Double(k)) : 0 }
+            // five bars lit up to the mic level (typed apart: inline, the compiler gives up type-checking it)
+            let v: Float = rec.isPaused ? 0 : rec.micLevel
+            level?.values = (0..<5).map { (k: Int) -> Float in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 }
             // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
-            let said = spottedText(rec)
-            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (spotted == nil) != said.isEmpty {
+            let said = takeText(rec)
+            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (takeLine == nil) != said.isEmpty {
                 rebuild()
-            } else if let sp = spotted, sp.stringValue != said {
+            } else if let sp = takeLine, sp.stringValue != said {
                 sp.stringValue = said
                 sp.frame.size.width = min(ceil(sp.intrinsicContentSize.width) + 8, bounds.width - 2 * IslandLayout.earInset + 4)
             }

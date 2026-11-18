@@ -37,7 +37,7 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
 
 export function inField(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
-  return !!el?.closest?.('input, textarea, select, [contenteditable="true"], .xterm');
+  return !!el?.closest?.('input, textarea, select, [contenteditable="true"]');
 }
 
 /** Selection with Shift-ranges over the list order. */
@@ -54,4 +54,12 @@ export function nextSelection(order: string[], cur: Set<string>, anchor: string 
   if (a < 0 || b < 0) return new Set([uid]);
   const [lo, hi] = a < b ? [a, b] : [b, a];
   return new Set(order.slice(lo, hi + 1));
+}
+
+/** A key's name set into Chinese running text ("按{a}说话"): a space only where it meets Latin letters or digits —
+ *  "按右 Alt 说话", "按 Menu 说话" (system.md's CJK–Latin spacing). Elsewhere as it is. */
+export function keyInText(label: string, lang: string): string {
+  if (!lang.startsWith('zh') || !label) return label;
+  const latin = (c: string | undefined) => !!c && /[A-Za-z0-9]/.test(c);
+  return `${latin(label[0]) ? ' ' : ''}${label}${latin(label[label.length - 1]) ? ' ' : ''}`;
 }

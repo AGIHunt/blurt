@@ -17,6 +17,7 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   patch      REF | SESSION ID --set key=VALUE … [--unset key …] [--force]
              VALUE is JSON if it parses (list, object, number, true/false, "quoted"), else a plain string
   set-frames REF | SESSION ID PATH[@T][#CAPTION] … [--append]     PATH relative to SESSION, or absolute
+  attach REF [--frame PATH]… [--file PATH]… [--text T] [--restore JSON]   the user's drop on an item (Undo: --restore)
   done       SESSION                                   processing finished (the page stops saying "still working")
   get        REF | SESSION ID                          → {"item": {…}, "session": …}; every path absolute
   list       [SESSION] [--project P|inbox] [--kind K]… [--state S]…     (--status / --work / --fix-state: old names)
@@ -34,8 +35,7 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   doc        SESSION | --project P|inbox [--state S]… [--kind K]… [--item REF]   what the review page shows; --item:
              that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too);
              when its file can't be read it is listed in `_unreadable` [{uid, id, title, path}] instead (the page says
-             so, never "gone"). The doc also carries `agents` {id: {name, desktop}} (names people know, never ids)
-             and, on items with a session in the agent's desktop app, `_work_runner: "desktop"`
+             so, never "gone"). The doc also carries `agents` {id: {name}} (names people know, never ids)
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
   migrate    [--all [--no-projects] | SESSION … | --root DIR] [--dry-run]     v1/v2 sessions → items; --all also
@@ -208,7 +208,23 @@ def present(item: dict, path: Path, s: Store | None = None, names: dict | None =
 
 
 def _abs(s: Store, p: str) -> str:
-    return p if os.path.isabs(p) else str(s.root / p)
+    return str(media_path(s.root, p))
+
+
+def media_path(root: Path, ref: str) -> Path:
+    """Resolve a persisted attachment inside its store, including symlinks. Missing files may still be shown."""
+    base = real(root)
+    p = real(Path(ref) if os.path.isabs(ref) else base / ref)
+    if not p.is_relative_to(base):
+        fail(f"{ref}: media path is outside its store or session", "bad_media_path")
+    return p
+
+
+def _asset_dir(root: Path, uid: str) -> Path:
+    assets = media_path(root, "assets")
+    if not isinstance(uid, str) or not UID_RE.fullmatch(uid):
+        fail("invalid item uid for media", "bad_media_path")
+    return media_path(assets, uid)
 
 
 _NAMES: dict | None = None
@@ -330,7 +346,8 @@ def touch_batch(item: dict) -> None:
             save_batch(Path(session), b)
 
 
-def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Path | None, root: Path) -> dict:
+def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Path | None, root: Path,
+                 *, allow_external_media: bool = False) -> dict:
     user = item.get("_user") or {}
     written, kept = [], []
     for k, v in sets.items():
@@ -352,7 +369,7 @@ def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Pa
             kept.append(k)
             continue
         if k in ("frames", "clip"):
-            v = import_media(item, k, v, ctx, root)
+            v = import_media(item, k, v, ctx, root, allow_external=allow_external_media)
         item[k] = v
         written.append(k)
     for k in unsets:
@@ -366,7 +383,8 @@ def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Pa
     return {"written": written, **({"kept_user": kept} if kept else {})}
 
 
-def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | None) -> dict:
+def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | None,
+          *, allow_external_media: bool = True) -> dict:
     try:
         check_item_fields(sets, unsets, f"{path.stem.split('-', 2)[0]}: ")
     except InvalidEdit as e:
@@ -376,7 +394,8 @@ def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | No
 
     def fn(item):
         out = {"ok": True, "id": item.get("id"), "uid": item.get("uid"),
-               **apply_fields(item, sets, unsets, force, ctx or _session_of(item), root)}
+               **apply_fields(item, sets, unsets, force, ctx or _session_of(item), root,
+                              allow_external_media=allow_external_media)}
         if item.get("state") == "discarded":
             out["note"] = "the user discarded this item — no need to spend more work on it"
         if not out["written"]:
@@ -405,23 +424,44 @@ def _asset_name(adir: Path, src: Path, clip: bool = False) -> Path:
     return adir / f"{n}{marked}{ext}"
 
 
-def import_media(item: dict, key: str, value, ctx: Path | None, root: Path):
+def import_media(item: dict, key: str, value, ctx: Path | None, root: Path, *, allow_external: bool = False,
+                 own_assets: bool = False):
     """frames / clip given relative to the session (or absolute) → copied into assets/<uid>/, stored relative to the
-    store root. Paths already in this store's assets are kept; files that don't exist are kept as given."""
+    store root. Only explicit CLI imports may read outside the store or the supplied session; a session's own
+    metadata cannot grant that access. Paths already in assets are kept; missing references remain confined.
+    """
+    owned = _asset_dir(root, item["uid"]) if own_assets else None
+
+    def stored(p: Path) -> str:
+        if owned is not None:
+            return (Path("assets") / item["uid"] / p.relative_to(owned)).as_posix()
+        return os.path.relpath(p, root).replace(os.sep, "/")
+
     def one(p, clip=False):
         if not isinstance(p, str) or not p:
             return p
-        if not os.path.isabs(p) and p.startswith("assets/") and (root / p).is_file():
-            return p
+        if not own_assets and not os.path.isabs(p) and p.startswith("assets/"):
+            asset = media_path(root, p)
+            if asset.is_file():
+                return os.path.relpath(asset, root).replace(os.sep, "/")
         src = Path(p) if os.path.isabs(p) else (ctx / p if ctx else root / p)
-        if not src.is_file():
-            return str(src) if ctx and not os.path.isabs(p) else p
         src = real(src)
-        if (root / "assets") in src.parents:
-            return os.path.relpath(src, root).replace(os.sep, "/")
-        dst = _asset_name(root / "assets" / item["uid"], src, clip)
+        if not allow_external and not any(src.is_relative_to(real(r)) for r in (root, ctx) if r is not None):
+            fail(f"{p}: media path is outside its store or session", "bad_media_path")
+        if not src.is_file():
+            if owned is not None:
+                return stored(_asset_name(owned, src, clip))
+            if src.is_relative_to(real(root)):
+                return os.path.relpath(src, root).replace(os.sep, "/")
+            # An unfinished/legacy session can name a frame before it is written. Keep a missing assets reference;
+            # a later ingest will copy the real frame, without authorizing future reads outside the store.
+            return os.path.relpath(_asset_dir(root, item["uid"]) / src.name, root).replace(os.sep, "/")
+        assets = media_path(root, "assets")
+        if assets in src.parents and (owned is None or src.is_relative_to(owned)):
+            return stored(src)
+        dst = media_path(root, str(_asset_name(_asset_dir(root, item["uid"]), src, clip)))
         st.link_or_copy(src, dst)
-        return os.path.relpath(dst, root).replace(os.sep, "/")
+        return stored(dst)
     if key == "clip":
         return one(value, clip=True)
     if not isinstance(value, list):
@@ -437,6 +477,80 @@ def parse_frame(spec: str) -> dict:
     if caption:
         f["caption"] = caption
     return f
+
+
+def attach(ref: str, frames: list[str], files: list[str], text: str | None, restore: dict | None = None,
+           keep: list[str] | None = None) -> dict:
+    """The user added to an item by dropping something on it (v1.0.23, the main window): pictures become frames
+    (copied into assets/<uid>/), other files are referenced by absolute path in `attachments` (never copied: a PDF,
+    a video), text goes after its details. All of it is the user's own edit (_user). `restore`: the "before" an
+    earlier call returned — the Undo. Returns {"before": {frames, attachments, details}, "added": {...}}."""
+    import time  # noqa: PLC0415
+    path, _uid, into = locate(None, ref)
+    if path is None or into is not None:
+        fail(f"no item {ref}", "not_found")
+    keep = keep or []
+    for f in frames + keep:
+        if not os.path.isabs(f) or not Path(f).is_file():
+            fail(f"{f}: no such file", "not_found")
+    root = st.store_of_item(path).root
+    # the user's own pictures are copied, never hard-linked (link_or_copy would share the file with the original)
+    import tempfile  # noqa: PLC0415
+    tmp = Path(tempfile.mkdtemp(prefix="blurt-attach-"))
+    copies = []
+    for i, f in enumerate(frames):
+        c = tmp / f"{i}-{Path(f).name}"
+        shutil.copyfile(f, c)
+        copies.append(str(c))
+    now = round(time.time(), 1)
+
+    def fn(it):
+        before = {k: it.get(k) for k in ("frames", "attachments", "details")}
+        user = it.setdefault("_user", {})
+        if restore is not None:
+            for k in ("frames", "attachments", "details"):
+                if restore.get(k) is None:
+                    it.pop(k, None)
+                else:
+                    it[k] = restore[k]
+                user[k] = now
+            return {"ok": True, "id": it["id"], "uid": it["uid"], "restored": True, "before": before}
+        added = {}
+        if frames:
+            have = it.get("frames") or []
+            new = import_media(it, "frames", [{"path": f} for f in copies], None, root, allow_external=True)
+            known = {f.get("path") for f in have if isinstance(f, dict)}
+            new = [f for f in new if f["path"] not in known]
+            it["frames"] = have + new
+            user["frames"] = now
+            added["frames"] = [f["path"] for f in new]
+        kept = []
+        for f in keep:  # a file in a temporary place (a chat app's cache, /var/folders): a copy in assets/<uid>/
+            adir = media_path(root, str(_asset_dir(root, it["uid"]).relative_to(root)))
+            adir.mkdir(parents=True, exist_ok=True)
+            dst, n = adir / Path(f).name, 2
+            while dst.exists():  # its own name kept (the agent and the user read it), numbered if taken
+                dst, n = adir / f"{Path(f).stem}-{n}{Path(f).suffix}", n + 1
+            shutil.copyfile(f, dst)
+            kept.append(str(dst))
+        if files or kept:
+            have = [a for a in (it.get("attachments") or []) if isinstance(a, str)]
+            new = [a for a in [os.path.abspath(f) for f in files] + kept if a not in have]
+            it["attachments"] = have + new
+            user["attachments"] = now
+            added["attachments"] = new
+        if text and text.strip():
+            d = (it.get("details") or "").rstrip()
+            it["details"] = (d + "\n\n" if d else "") + text.strip()
+            user["details"] = now
+            added["details"] = text.strip()
+        if not added:
+            return {"ok": True, "id": it["id"], "uid": it["uid"], "added": {}, "before": before, "_write": False}
+        return {"ok": True, "id": it["id"], "uid": it["uid"], "added": added, "before": before}
+    try:
+        return mutate(path, fn)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def set_frames(session: Path | None, ref: str, frames: list[dict], append: bool, force: bool) -> dict:
@@ -460,7 +574,7 @@ def set_frames(session: Path | None, ref: str, frames: list[dict], append: bool,
             fail(f"{p}: no such file" + (f" in {ctx}" if ctx else ""), "not_found")
 
     def fn(it):
-        new = import_media(it, "frames", frames, ctx, st.store_of_item(path).root)
+        new = import_media(it, "frames", frames, ctx, st.store_of_item(path).root, allow_external=True)
         if append:
             have = {f.get("path") for f in it.get("frames") or []}
             new = (it.get("frames") or []) + [f for f in new if f["path"] not in have]
@@ -527,7 +641,7 @@ def chosen_kind(line: dict | None) -> str | None:
 
 def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: str, session: Path | None,
                meta: dict, local: str | None, language: str | None, shot: int | None,
-               shots: dict[int, dict] | None = None) -> dict:
+               shots: dict[int, dict] | None = None, allow_external_media: bool = False) -> dict:
     """A new item for store s from v2-shaped fields (an items.json entry, add --json, a page's add op). The caller
     holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/. An item made from a snap the
     user gave a type keeps that type, whatever the fields say, and records it as the user's (`_user`), so a later
@@ -571,9 +685,11 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
         item["_user"] = {**(item.get("_user") if isinstance(item.get("_user"), dict) else {}),
                          "kind": round(to_epoch(now_iso()) or 0, 1)}
     if fields.get("frames") is not None:
-        item["frames"] = import_media(item, "frames", fields["frames"], session, s.root)
+        item["frames"] = import_media(item, "frames", fields["frames"], session, s.root,
+                                      allow_external=allow_external_media)
     if fields.get("clip"):
-        item["clip"] = import_media(item, "clip", fields["clip"], session, s.root)
+        item["clip"] = import_media(item, "clip", fields["clip"], session, s.root,
+                                    allow_external=allow_external_media)
     return item
 
 
@@ -668,7 +784,7 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
             if path is not None:  # the agent rewrote items.json after an earlier ingest: patch, keep the user's edits
                 sets = {k: v for k, v in it.items() if k not in PROTECTED and k != "status"
                         and not (k == "title" and not str(v or "").strip())}
-                patch(path, sets, [], False, session)
+                patch(path, sets, [], False, session, allow_external_media=False)
                 h = st.read_header(path)
                 results.append({"local": lid, "uid": uid, "id": h.get("id"), "path": str(path),
                                 "project": h.get("project")})
@@ -747,7 +863,8 @@ def add(session: Path | None, project: str | None, fields: dict, after: str | No
             meta = load_json(session / "meta.json", {}) or {}
             with target.lock():
                 item = build_item(fields, uid, target, project_by="capture", created=now_iso(), session=session,
-                                  meta=meta, local=lid, language=b.get("language"), shot=_shot_of(fields))
+                                  meta=meta, local=lid, language=b.get("language"), shot=_shot_of(fields),
+                                  allow_external_media=True)
                 path = write_new(target, item)
             if lid:
                 b.setdefault("local", {})[lid] = uid
@@ -769,7 +886,7 @@ def add(session: Path | None, project: str | None, fields: dict, after: str | No
     with target.lock():
         item = build_item(fields, uid, target, project_by="user" if os.environ.get("BLURT_BY") == "user" else "capture",
                           created=now_iso(), session=None, meta={}, local=None, language=fields.get("language"),
-                          shot=None)
+                          shot=None, allow_external_media=True)
         path = write_new(target, item)
     return {"ok": True, "id": item["id"], "uid": uid, "path": str(path)}
 
@@ -958,6 +1075,7 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
             for s in locks:
                 stack.enter_context(s.lock())
             item = load(path)
+            shown = present(item, path, src)  # validate references before assets can be copied to another store
             old = item.get("id")
             if by == "user":
                 item.setdefault("_user", {})["project"] = round(to_epoch(now_iso()) or 0, 1)
@@ -971,12 +1089,17 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
                 moved.append({"uid": item["uid"], "from": src.project_id, "to": dst.project_id, "id": old,
                               "path": str(path)})
                 continue
+            # Make valid absolute paths and links to other files in this store self-contained before moving.
+            # Only the item's own assets travel; links outside that directory must not become external reads later.
+            for key in ("frames", "clip"):
+                if key in item:
+                    item[key] = import_media(item, key, shown.get(key), None, src.root, own_assets=True)
             aliases = list(item.get("aliases") or [])
             back = _former_id(aliases, dst)
             item["id"] = back or dst.next_id()
             item["project"] = dst.project_id
             item["aliases"] = [*(a for a in aliases if a != back), *([old] if old else [])]
-            a_src, a_dst = src.asset_dir(item["uid"]), dst.asset_dir(item["uid"])
+            a_src, a_dst = _asset_dir(src.root, item["uid"]), _asset_dir(dst.root, item["uid"])
             if a_src.is_dir():
                 a_dst.parent.mkdir(parents=True, exist_ok=True)
                 if a_dst.exists():
@@ -984,7 +1107,7 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
                 try:
                     os.rename(a_src, a_dst)
                 except OSError:  # another volume
-                    shutil.copytree(a_src, a_dst)
+                    shutil.copytree(a_src, a_dst, symlinks=True)  # do not dereference unreferenced external links
                     shutil.rmtree(a_src)
             item["updated"] = now_iso()
             new_path = write_new(dst, item)
@@ -1141,10 +1264,6 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
         doc = {"schema": st.SCHEMA, "scope": sc, "title": meta.get("name"), "digest": None,
                "language": None, "processing": False, "reviewed": False, "agent_at": None, "source_video": None,
                "_video": False, "project": pid}
-    for it in items:  # handed to the agent's desktop app: the page names that app, not the CLI
-        jid = (it.get("work") or {}).get("job") if state_of(it) in ("handed_off", "in_progress") else None
-        if jid and _job_runner(jid) == "desktop":
-            it["_work_runner"] = "desktop"
     doc["items"] = items
     doc["_removed"] = removed
     doc["agents"] = _agent_names()
@@ -1156,21 +1275,13 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
 
 
 def _agent_names() -> dict:
-    """agent id → {name, desktop}: the names people know (agents.json plus their own agent_defs), never the ids."""
+    """agent id → {name}: the names people know (agents.json plus their own agent_defs), never the ids."""
     try:
         import agents  # noqa: PLC0415
-        return {k: {"name": d.get("name") or k, "desktop": (agents.desktop_spec(d) or {}).get("name")}
+        return {k: {"name": d.get("name") or k}
                 for k, d in agents.definitions(agents.config(None)).items()}
     except Exception:  # noqa: BLE001 — names are a nicety: the page falls back to "Agent"
         return {}
-
-
-def _job_runner(jid: str) -> str | None:
-    try:
-        o = json.loads((blurt_home() / "jobs" / f"{jid}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return ((o.get("agent") or {}) if isinstance(o, dict) else {}).get("runner")
 
 
 def doc_etag(doc: dict) -> str:
@@ -1254,8 +1365,8 @@ def _user_set(item: dict, sets: dict, unsets: list, now: float, root: Path, uid_
 def _relativize(v, root: Path):
     """A page sends back the absolute paths the doc gave it: inside the store they become relative again."""
     def one(p):
-        if isinstance(p, str) and os.path.isabs(p) and real(p).is_relative_to(root):
-            return os.path.relpath(real(p), root).replace(os.sep, "/")
+        if isinstance(p, str) and p:
+            return os.path.relpath(media_path(root, p), root).replace(os.sep, "/")
         return p
     if isinstance(v, list):
         return [{**f, "path": one(f.get("path"))} if isinstance(f, dict) else f for f in v]
@@ -1470,9 +1581,9 @@ def dangling_work(con=None) -> list[tuple[Path, str]]:
 
 
 def repair_work(dry_run: bool = False) -> list[str]:
-    """Once per dangling reference (items.py migrate --all, at every app launch; idempotent): forget the session id
-    so nothing offers to open it. The item keeps its state — the app says the session ended without reporting back,
-    and the user takes it back or marks it done. A v0.6 run was a session Blurt started, so `to` says so."""
+    """Once per dangling reference (items.py migrate --all, at every app launch; idempotent): forget a job id whose
+    job file is gone (jobs.py gc; the removed agent sessions' jobs) so nothing offers to open it. The item keeps its
+    state, and the user takes it back or marks it done. A v0.6 run was a session Blurt started, so `to` says so."""
     fixed = []
     for path, job in dangling_work():
         if not path.is_file():
@@ -1565,6 +1676,14 @@ def build_parser() -> Parser:
     s.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     s.add_argument("--unset", action="append", default=[], metavar="KEY")
     s.add_argument("--force", action="store_true", help="overwrite fields the user edited (only if they asked)")
+    s = sub.add_parser("attach", help="the user added pictures / files / text to an item (a drop in the main window)")
+    s.add_argument("ref")
+    s.add_argument("--frame", action="append", default=[], metavar="PATH", help="a picture (absolute path): copied in")
+    s.add_argument("--file", action="append", default=[], metavar="PATH", help="any file: referenced, never copied")
+    s.add_argument("--text")
+    s.add_argument("--keep", action="append", default=[], metavar="PATH",
+                   help="a file in a temporary place: copied into the item's assets, then referenced")
+    s.add_argument("--restore", metavar="JSON", help="undo: the 'before' a previous attach returned")
     s = sub.add_parser("set-frames")
     s.add_argument("target", nargs="+", metavar="REF | SESSION ID, then PATH[@T][#CAPTION] …")
     s.add_argument("--append", action="store_true")
@@ -1685,6 +1804,8 @@ def run(a) -> dict:
         out = patch(path, sets, a.unset, a.force, session)
         touch_batch(st.read_header(path))
         return out
+    if a.cmd == "attach":
+        return attach(a.ref, a.frame, a.file, a.text, json.loads(a.restore) if a.restore else None, a.keep)
     if a.cmd == "set-frames":
         session, rest = target_of(a.target)
         if session is not None:

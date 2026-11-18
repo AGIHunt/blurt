@@ -197,23 +197,23 @@ for (const theme of ["light", "dark"] as const)
     });
 
 test.describe("in the macOS main window (macos host over the bridge, a project, embedded)", () => {
-  test.use({ scope: { project: "p-blurt" }, query: "?host=macos&project=p-blurt&lang=zh-Hans", bridge: ["reveal", "dispatch", "handoff", "openSession"] });
-  test("project scope, no chrome of its own, dispatch / handoff / open session go to the host", async ({ page, server }, info) => {
+  test.use({ scope: { project: "p-blurt" }, query: "?host=macos&project=p-blurt&lang=zh-Hans", bridge: ["reveal", "handoff"] });
+  test("project scope, no chrome of its own, hand off is the host's handoff (the copy for your own agent)", async ({ page, server }, info) => {
     await expect(page.locator(".qi")).toHaveCount(5);
     await expect(page.locator(".brand")).toHaveCount(0);
     await expect(page.locator("#langBtn")).toHaveCount(0);
     await expect(page.locator("#finishBtn")).toHaveCount(0); // a project, not a session's batch
     expect(server.calls[0]).toEqual({ method: "load", params: { scope: { project: "p-blurt" } } });
-    await expect(page.locator("#workSession")).toBeVisible();
-    await page.locator("#workSession").click();
-    await expect(page.locator("#dispatchBtn")).toHaveCount(0); // to verify: answer it first
+    await expect(page.locator("#workSession")).toHaveCount(0); // no in-app sessions
+    await expect(page.locator("#dispatchBtn")).toHaveCount(0);
+    await expect(page.locator("#handoffRow")).toHaveCount(0); // to verify: answer it first
     await page.locator("#workBack").click(); // Send Back… opens the note field; sending it → to do: now it can be handed off
     await page.locator("#workBackSend").click();
     await until(() => item(server, 0).state === "todo");
-    await page.locator("#dispatchBtn").click();
-    await until(() => server.calls.some((c) => c.method === "dispatch"));
-    expect(server.calls.find((c) => c.method === "dispatch")!.params).toEqual({ uids: [U(0)] });
-    expect(server.calls.find((c) => c.method === "openSession")!.params).toEqual({ job: "j-20261022-101500-ab12" });
+    await page.locator("#copyInstruction").click();
+    await until(() => server.calls.some((c) => c.method === "handoff"));
+    expect(server.calls.find((c) => c.method === "handoff")!.params).toEqual({ uids: [U(0)], what: "instruction" });
+    expect(server.calls.some((c) => c.method === "dispatch" || c.method === "openSession")).toBe(false);
     await shot(page, "embedded-project-zh", info);
     // moving an item away takes it out of this project's list
     await page.locator("#projectPick").selectOption("inbox");

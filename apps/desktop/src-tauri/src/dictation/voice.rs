@@ -229,7 +229,8 @@ impl Note {
 pub fn run(app: &AppHandle, session: &Path, project: Option<&str>, hold: bool) -> End {
     let (tx, rx) = channel::<Ev>();
     let (ftx, frx) = channel::<Vec<f32>>();
-    let m = match Mic::open(ftx) {
+    // Blurt on the phone: its microphone when the note was started from it
+    let m = match Mic::for_note(ftx) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("voice note: mic: {e}");

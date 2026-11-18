@@ -187,7 +187,16 @@ export function Attachment() {
   const look = h.quickLook && m.kind === "img" ? () => h.quickLook!(rel) : m.kind === "img" ? () => s.openLightbox(m.src) : null;
   const at = m.kind === "img" && /^\d+:\d\d/.test(m.label) ? m.label : null;
   const reveal = s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal");
-  const tools = m.kind !== "wait" && (h.quickLook || h.reveal || h.download || h.downloadUrl);
+  // the picture on show can be taken off the item (one undoable edit; its file stays where it is)
+  const frames = i.frames || [];
+  const removable = m.kind === "img" && k < frames.length && !s.readOnly(i);
+  const remove = () => {
+    s.beginEdit(i, "frames");
+    s.setField(i, "frames", frames.filter((_, n) => n !== k));
+    s.endEdit(i);
+    s.showToast(s.t("media.removed"), true);
+  };
+  const tools = m.kind !== "wait" && (h.quickLook || h.reveal || h.download || h.downloadUrl || removable);
   return (
     <section ref={ref} className="attach" id="attachment" aria-label={s.t("media.title")}>
       <div className="att-card">
@@ -226,6 +235,11 @@ export function Attachment() {
                 <Icon name="download" size={15} />
               </button>
             ) : null}
+            {removable && (
+              <button className="dl rm" id="mediaRemove" onClick={remove} title={s.t("media.remove")} aria-label={s.t("media.remove")}>
+                <Icon name="x" size={15} />
+              </button>
+            )}
           </div>
         )}
       </div>

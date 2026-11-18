@@ -1,0 +1,753 @@
+// Ported one for one from apps/ios/BlurtRemoteTests/PadEngineTests.swift (PadEngineTests, ScreenPlanTests, ViewPortTests).
+package dev.blurt.remote.core
+
+import dev.blurt.remote.core.PadOutput.Button
+import dev.blurt.remote.core.PadOutput.Click
+import dev.blurt.remote.core.PadOutput.DragTo
+import dev.blurt.remote.core.PadOutput.Haptic
+import dev.blurt.remote.core.PadOutput.PointAt
+import dev.blurt.remote.core.PadOutput.Scroll
+import kotlin.math.abs
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.test.fail
+
+class PadEngineTest {
+    private fun t(id: Int, x: Double, y: Double) = PadTouch(id, x, y)
+    private fun t(id: Int, x: Int, y: Int) = PadTouch(id, x.toDouble(), y.toDouble())
+    private val left = RemoteMouseButton.LEFT
+    private val right = RemoteMouseButton.RIGHT
+    private val tap = Haptic(PadHaptic.TAP)
+    private val grab = Haptic(PadHaptic.GRAB)
+    private val release = Haptic(PadHaptic.RELEASE)
+    private fun pt(x: Int, y: Int) = PadPoint(x.toDouble(), y.toDouble())
+    private fun scroll(phase: RemoteScrollPhase) = Scroll(0f, 0f, phase)
+    private val began = RemoteScrollPhase.BEGAN
+    private val ended = RemoteScrollPhase.ENDED
+
+    @Test fun tapClicks() {
+        val e = PadEngine()
+        assertEquals(listOf(), e.began(listOf(t(1, 100, 100)), 0.0))
+        assertEquals(listOf(Click(left), tap), e.ended(listOf(1), 0.1))
+    }
+
+    @Test fun restingThumbNeverClicks() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(), e.ended(listOf(1), 0.3))
+    }
+
+    @Test fun moveHasNoClick() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.05)
+        val o = e.moved(listOf(t(1, 120, 100)), 0.06)
+        assertIs<PadOutput.Move>(o.firstOrNull(), "$o")
+        assertEquals(listOf(), e.ended(listOf(1), 0.1))
+    }
+
+    @Test fun doubleTapIsTwoClicks() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.ended(listOf(1), 0.08)
+        e.began(listOf(t(1, 102, 100)), 0.2)
+        assertEquals(listOf(Click(left), tap), e.ended(listOf(1), 0.26))
+    }
+
+    @Test fun tapThenMoveDragsAndSurvivesALift() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.ended(listOf(1), 0.08)
+        e.began(listOf(t(1, 100, 100)), 0.2)
+        assertEquals(listOf(Button(left, true), grab), e.moved(listOf(t(1, 120, 100)), 0.25))
+        assertEquals(listOf(), e.ended(listOf(1), 0.4))
+        e.began(listOf(t(1, 50, 50)), 0.6)    // a new stroke, still dragging
+        assertIs<PadOutput.Move>(e.moved(listOf(t(1, 60, 50)), 0.62).firstOrNull())
+        assertEquals(listOf(), e.ended(listOf(1), 0.7))
+        assertEquals(listOf(Button(left, false), release), e.tick(1.2))
+    }
+
+    @Test fun holdThenLiftIsRightClick() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(grab), e.tick(0.45))
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(1), 0.6))
+    }
+
+    @Test fun aPalmStartsNothing() {
+        val e = PadEngine()
+        assertEquals(listOf(), e.began(listOf(), 0.0))
+        e.began(listOf(t(1, 100, 100)), 0.1)
+        assertEquals(listOf(), e.moved(listOf(t(1, 200, 100)), 0.2), "no three-finger swipe from nowhere")
+    }
+
+    @Test fun liftingOneOfThreeFingersSwipesNothing() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 0, 300), t(2, 100, 300), t(3, 300, 300)), 0.0)
+        e.ended(listOf(3), 0.1)
+        assertEquals(listOf(), e.moved(listOf(t(1, 0, 300), t(2, 100, 300)), 0.2))
+    }
+
+    @Test fun restingThumbNeverRightClicks() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.tick(0.45)
+        assertEquals(listOf(), e.ended(listOf(1), 2.0))
+    }
+
+    @Test fun aTouchLongAfterAFlingClicks() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 300), t(2, 160, 300)), 0.0)
+        var y = 300.0
+        for (i in 0..6) {
+            y -= 20
+            e.moved(listOf(t(1, 100.0, y), t(2, 160.0, y)), 0.02 + i * 0.016)
+        }
+        e.ended(listOf(1, 2), 0.13)
+        assertEquals(listOf(), e.began(listOf(t(1, 100, 100)), 5.0))
+        assertEquals(listOf(Click(left), tap), e.ended(listOf(1), 5.05))
+    }
+
+    @Test fun holdThenMoveDrags() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(grab), e.tick(0.45))
+        assertEquals(listOf(Button(left, true)), e.moved(listOf(t(1, 100, 120)), 0.5))
+        assertIs<PadOutput.Move>(e.moved(listOf(t(1, 100, 130)), 0.52).firstOrNull())
+        assertEquals(listOf(), e.ended(listOf(1), 0.6))
+        assertEquals(listOf(Button(left, false), release), e.tick(1.1), "a long drag can take a new stroke first")
+    }
+
+    @Test fun oneFingerAlongTheEdgeScrolls() {
+        val e = PadEngine()
+        e.scrollEdge = 374.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        assertEquals(listOf(scroll(began), PadOutput.EdgeScroll(true)), e.moved(listOf(t(1, 390, 120)), 0.05))
+        val o = e.moved(listOf(t(1, 390, 130)), 0.07).firstOrNull()
+        assertTrue(o is Scroll && o.phase == RemoteScrollPhase.CHANGED, "$o")
+        assertEquals(listOf(scroll(ended), PadOutput.EdgeScroll(false)), e.ended(listOf(1), 0.5), "the edge's mark hears it end")
+    }
+
+    @Test fun twoFingersScrollingIsNoEdgeScroll() {
+        val e = PadEngine()
+        e.scrollEdge = 374.0..400.0
+        e.began(listOf(t(1, 300, 300), t(2, 390, 300)), 0.0)
+        val o = e.moved(listOf(t(1, 300, 320), t(2, 390, 320)), 0.05) + e.moved(listOf(t(1, 300, 340), t(2, 390, 340)), 0.08) +
+            e.ended(listOf(1, 2), 0.5)
+        assertTrue(scroll(began) in o, "$o")
+        assertFalse(o.any { it is PadOutput.EdgeScroll }, "$o")
+    }
+
+    @Test fun anEdgeScrollCancelledEnds() {
+        val e = PadEngine()
+        e.scrollEdge = 374.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        e.moved(listOf(t(1, 390, 120)), 0.05)
+        assertEquals(listOf(scroll(ended), PadOutput.EdgeScroll(false)), e.cancel())
+    }
+
+    @Test fun acrossTheEdgeIsThePointer() {
+        val e = PadEngine()
+        e.scrollEdge = 374.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        e.moved(listOf(t(1, 370, 102)), 0.05)
+        assertIs<PadOutput.Move>(e.moved(listOf(t(1, 360, 104)), 0.07).firstOrNull())
+    }
+
+    @Test fun aTapOnTheEdgeStillClicks() {
+        val e = PadEngine()
+        e.scrollEdge = 374.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        assertEquals(listOf(Click(left), tap), e.ended(listOf(1), 0.08))
+    }
+
+    @Test fun twoFingerTapRightClicks() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100), t(2, 160, 100)), 0.0)
+        e.ended(listOf(1), 0.08)
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(2), 0.1))
+    }
+
+    @Test fun twoFingerScrollFlingsAndATouchStopsIt() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 300), t(2, 160, 300)), 0.0)
+        assertEquals(listOf(scroll(began)), e.moved(listOf(t(1, 100, 290), t(2, 160, 290)), 0.02))
+        var y = 290.0
+        for (i in 1..6) {
+            y -= 20
+            e.moved(listOf(t(1, 100.0, y), t(2, 160.0, y)), 0.02 + i * 0.016)
+        }
+        val o = e.ended(listOf(1, 2), 0.13)
+        assertEquals(scroll(ended), o.first())
+        assertIs<PadOutput.Fling>(o.last(), "$o")
+        assertEquals(listOf(PadOutput.ScrollStop), e.began(listOf(t(1, 100, 100)), 0.3))
+        assertEquals(listOf(), e.ended(listOf(1), 0.35), "the touch that stopped it isn't a click")
+    }
+
+    @Test fun threeFingerSwipes() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 300), t(2, 150, 300), t(3, 200, 300)), 0.0)
+        val o = e.moved(listOf(t(1, 100, 200), t(2, 150, 200), t(3, 200, 200)), 0.1)
+        assertEquals(listOf(PadOutput.System(RemoteSystemMove.MISSION_CONTROL), grab), o)
+        assertEquals(listOf(), e.moved(listOf(t(1, 100, 100), t(2, 150, 100), t(3, 200, 100)), 0.2), "once per swipe")
+    }
+
+    @Test fun thirdFingerLandingLateStillSwipes() {
+        for (wobble in listOf(10.0, 40.0)) {   // two fingers that scrolled, or spread, a little first
+            val e = PadEngine()
+            e.began(listOf(t(1, 100, 300), t(2, 160, 300)), 0.0)
+            e.moved(listOf(t(1, 100 - wobble, 300.0), t(2, 160 + wobble, 300 + wobble)), 0.02)
+            e.began(listOf(t(3, 220, 300)), 0.04)
+            val o = e.moved(listOf(t(1, 40, 300), t(2, 100, 300), t(3, 160, 300)), 0.1)
+            assertEquals(PadOutput.System(RemoteSystemMove.SPACE_RIGHT), o.firstOrNull(), "$o")
+        }
+    }
+
+    @Test fun pinchZooms() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 70, 300), t(2, 230, 300)), 0.05)
+        assertEquals(listOf(PadOutput.System(RemoteSystemMove.ZOOM_IN), Haptic(PadHaptic.STEP)), e.moved(listOf(t(1, 40, 300), t(2, 260, 300)), 0.1))
+    }
+
+    /** every zoom step a two-finger gesture sends, fed as a straight path in small moves like a real finger's */
+    private fun zooms(a: Pair<PadPoint, PadPoint>, b: Pair<PadPoint, PadPoint>, e: PadEngine = PadEngine(), n: Int = 30): List<PadOutput> {
+        val out = e.began(listOf(t(1, a.first.x, a.first.y), t(2, a.second.x, a.second.y)), 0.0).toMutableList()
+        for (i in 1..n) {
+            val f = i.toDouble() / n
+            out += e.moved(
+                listOf(
+                    t(1, a.first.x + (b.first.x - a.first.x) * f, a.first.y + (b.first.y - a.first.y) * f),
+                    t(2, a.second.x + (b.second.x - a.second.x) * f, a.second.y + (b.second.y - a.second.y) * f),
+                ),
+                i * 0.012,
+            )
+        }
+        return out + e.ended(listOf(1, 2), n * 0.012 + 0.05)
+    }
+
+    private fun count(m: RemoteSystemMove, o: List<PadOutput>) = o.count { it == PadOutput.System(m) }
+
+    @Test fun aSpreadWithTheThumbHeldStillZoomsIn() {
+        // thumb and finger start close, the thumb stays put and the finger goes out: the middle moves half as far as they come apart
+        val o = zooms(pt(150, 400) to pt(190, 360), pt(150, 400) to pt(250, 300))
+        assertTrue(count(RemoteSystemMove.ZOOM_IN, o) >= 2, "$o")
+        assertFalse(o.any { it is Scroll }, "never a scroll: $o")
+        assertEquals(0, count(RemoteSystemMove.ZOOM_OUT, o))
+    }
+
+    @Test fun aSpreadFromCloseZoomsAsReadilyAsAPinchFromWide() {
+        // the same ratio either way, 60 ↔ 150 apart: as many steps out as in
+        val a = pt(170, 300) to pt(230, 300)
+        val b = pt(125, 300) to pt(275, 300)
+        val out = count(RemoteSystemMove.ZOOM_IN, zooms(a, b))
+        val back = count(RemoteSystemMove.ZOOM_OUT, zooms(b, a))
+        assertTrue(out >= 2)
+        assertEquals(out, back)
+    }
+
+    @Test fun aSmallSpreadFromCloseIsAZoomStep() {
+        // 60 → 85 apart was nothing before: it took 61 pt, twice the starting span, for the first step
+        val o = zooms(pt(170, 300) to pt(230, 300), pt(158, 300) to pt(243, 300))
+        assertEquals(1, count(RemoteSystemMove.ZOOM_IN, o), "$o")
+    }
+
+    @Test fun aSpreadAfterTheHandDriftedStillZooms() {
+        // the hand was still settling when the fingers landed (8 pt of drift: a scroll), then they spread
+        val e = PadEngine()
+        e.began(listOf(t(1, 150, 400), t(2, 190, 360)), 0.0)
+        val o = e.moved(listOf(t(1, 156, 405), t(2, 196, 365)), 0.02).toMutableList()
+        assertEquals(listOf<PadOutput>(scroll(began)), o)
+        for (i in 1..20) o += e.moved(listOf(t(1, 156, 405), t(2, 196 + i * 3, 365 - i * 3)), 0.02 + i * 0.012)
+        assertTrue(count(RemoteSystemMove.ZOOM_IN, o) >= 1, "$o")
+        assertEquals(emptyList(), e.ended(listOf(1, 2), 0.4), "and no fling of the scroll it started as")
+    }
+
+    @Test fun aScrollWhoseFingersDriftNeverZooms() {
+        // a long scroll with the fingers coming 30 pt apart on the way
+        val o = zooms(pt(150, 200) to pt(200, 200), pt(140, 500) to pt(220, 500))
+        assertEquals(0, count(RemoteSystemMove.ZOOM_IN, o) + count(RemoteSystemMove.ZOOM_OUT, o), "$o")
+        assertTrue(scroll(began) in o)
+    }
+
+    @Test fun aTwoFingerTapWithAWobbleIsStillARightClick() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 150, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 148, 301), t(2, 203, 299)), 0.05)
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(1, 2), 0.12))
+    }
+
+    private fun view(o: List<PadOutput>): PadOutput.View = o.firstOrNull() as? PadOutput.View ?: fail("$o")
+
+    @Test fun withTheScreenShowingAPinchZoomsTheView() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 80, 300), t(2, 220, 300)), 0.05)     // 100 → 140 apart: past the threshold
+        val v = view(e.moved(listOf(t(1, 60, 300), t(2, 240, 300)), 0.1))
+        assertEquals(180.0 / 140, v.scale, 0.001)
+        assertEquals(0.0, v.dx)
+        assertEquals(0.0, v.dy)
+        assertEquals(pt(150, 300), v.at)
+        assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1, 2), 0.2))
+    }
+
+    @Test fun withThePictureTwoFingersScrollTheMacUnderThem() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        assertEquals(listOf(PointAt(pt(150, 300)), scroll(began)), e.moved(listOf(t(1, 100, 320), t(2, 200, 320)), 0.05))
+        val o = e.moved(listOf(t(1, 100, 340), t(2, 200, 340)), 0.08).firstOrNull()
+        assertTrue(o is Scroll && o.phase == RemoteScrollPhase.CHANGED && o.dy > 0, "$o")
+    }
+
+    @Test fun sideways() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 120, 300), t(2, 220, 300)), 0.05)
+        val o = e.moved(listOf(t(1, 140, 300), t(2, 240, 300)), 0.08).firstOrNull()
+        assertTrue(o is Scroll && o.phase == RemoteScrollPhase.CHANGED && o.dx > 0 && o.dy == 0f, "$o")
+    }
+
+    @Test fun withThePictureAndTheZoomModifierHeldAPinchZoomsTheComputer() {
+        // ⌘ (Ctrl elsewhere) held: the same pinch as with the picture off, in the same steps, and the picture stays as it is
+        var held = true
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { held }
+        val o = zooms(pt(170, 300) to pt(230, 300), pt(125, 300) to pt(275, 300), e)
+        val off = zooms(pt(170, 300) to pt(230, 300), pt(125, 300) to pt(275, 300))
+        assertTrue(count(RemoteSystemMove.ZOOM_IN, o) >= 2, "$o")
+        assertEquals(count(RemoteSystemMove.ZOOM_IN, off), count(RemoteSystemMove.ZOOM_IN, o))
+        assertFalse(o.any { it is PadOutput.View || it == PadOutput.ViewEnd }, "nothing for the picture: $o")
+        // a once-held modifier used up by the first step: the pinch already decided goes on zooming the computer
+        val e2 = PadEngine().apply { pinchZoomsView = true; computerZoomHeld = { held } }
+        val o2 = e2.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0).toMutableList()
+        for (i in 1..20) {
+            o2 += e2.moved(listOf(t(1, 100 - i * 4, 300), t(2, 200 + i * 4, 300)), i * 0.012)
+            if (count(RemoteSystemMove.ZOOM_IN, o2) > 0) held = false
+        }
+        assertTrue(count(RemoteSystemMove.ZOOM_IN, o2) >= 2, "$o2")
+        assertFalse(o2.any { it is PadOutput.View }, "$o2")
+    }
+
+    @Test fun withThePictureAndNoModifierAPinchStillZoomsThePicture() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { false }
+        val o = zooms(pt(170, 300) to pt(230, 300), pt(125, 300) to pt(275, 300), e)
+        assertTrue(o.any { it is PadOutput.View && it.scale > 1 }, "$o")
+        assertEquals(0, count(RemoteSystemMove.ZOOM_IN, o) + count(RemoteSystemMove.ZOOM_OUT, o), "$o")
+        assertEquals(PadOutput.ViewEnd, o.last())
+    }
+
+    @Test fun withThePictureAndTheModifierHeldAScrollThatSpreadsZoomsTheComputer() {
+        // fingers that drifted into a scroll and then spread: the computer's zoom, as with the picture off
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { true }
+        e.began(listOf(t(1, 150, 400), t(2, 190, 360)), 0.0)
+        val o = e.moved(listOf(t(1, 156, 405), t(2, 196, 365)), 0.02).toMutableList()
+        assertEquals(listOf<PadOutput>(scroll(began)), o)
+        for (i in 1..20) o += e.moved(listOf(t(1, 156, 405), t(2, 196 + i * 3, 365 - i * 3)), 0.02 + i * 0.012)
+        assertTrue(count(RemoteSystemMove.ZOOM_IN, o) >= 1, "$o")
+        assertFalse(o.any { it is PadOutput.View }, "$o")
+    }
+
+    @Test fun aScrollThatClearlyPinchesZoomsThePicture() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 100, 320), t(2, 200, 320)), 0.05)
+        assertEquals(listOf(scroll(ended)), e.moved(listOf(t(1, 70, 330), t(2, 230, 330)), 0.1))
+        assertEquals(180.0 / 160, view(e.moved(listOf(t(1, 60, 330), t(2, 240, 330)), 0.12)).scale, 0.001)
+    }
+
+    @Test fun notZoomedTwoFingersStillScroll() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        assertEquals(listOf(scroll(began)), e.moved(listOf(t(1, 100, 320), t(2, 200, 320)), 0.05))
+    }
+
+    @Test fun aFingerLiftedMidPinchDoesntJump() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 60, 300), t(2, 240, 300)), 0.05)
+        assertEquals(listOf(), e.ended(listOf(2), 0.1))
+        assertEquals(listOf(), e.moved(listOf(t(1, 50, 300)), 0.12))
+        e.began(listOf(t(3, 300, 300)), 0.2)
+        assertEquals(260.0 / 250, view(e.moved(listOf(t(3, 310, 300)), 0.22)).scale, 0.001)
+    }
+
+    // zoomed in, the picture is a photo under one finger
+
+    private fun zoomed() = PadEngine().apply {
+        pinchZoomsView = true
+        touchMode = true
+        panView = true
+    }
+
+    @Test fun zoomedInOneFingerMovesThePicture() {
+        val e = zoomed()
+        assertEquals(listOf(), e.began(listOf(t(1, 100, 100)), 0.0))
+        assertEquals(listOf(), e.moved(listOf(t(1, 110, 100)), 0.02), "past the slop: it's a move from here")
+        assertEquals(listOf(PadOutput.View(1.0, 15.0, 4.0, pt(125, 104))), e.moved(listOf(t(1, 125, 104)), 0.04))
+        assertEquals(listOf(PadOutput.View(1.0, 0.0, 0.0, pt(125, 104))), e.moved(listOf(t(1, 125, 104)), 0.4))
+        assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1), 0.6), "let go at rest: it stays; no click, no pointer")
+    }
+
+    @Test fun aPauseWhileMovingThePictureIsStillMovingIt() {
+        // a hold is the computer's press only when the finger hasn't moved yet: stop a while mid-move and go on, and it is one move
+        // of the picture throughout, never a press and never a selection
+        val e = zoomed()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.moved(listOf(t(1, 140, 100)), 0.05)
+        assertFalse(e.needsTicks)
+        assertEquals(listOf(), e.tick(0.6))
+        assertEquals(listOf(), e.tick(2.0), "resting mid-move: nothing is pressed")
+        assertEquals(listOf(PadOutput.View(1.0, 20.0, 20.0, pt(160, 120))), e.moved(listOf(t(1, 160, 120)), 2.1))
+        assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1), 3.0))
+    }
+
+    @Test fun aFlickSendsThePictureCoasting() {
+        val e = zoomed()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.01)
+        e.moved(listOf(t(1, 130, 100)), 0.02)
+        e.moved(listOf(t(1, 150, 100)), 0.03)
+        val o = e.ended(listOf(1), 0.035)
+        assertEquals(2, o.size, "$o")
+        assertEquals(PadOutput.ViewEnd, o[0])
+        val c = o[1] as? PadOutput.ViewCoast ?: fail("$o")
+        assertTrue(c.vx > 1000, "$o")
+        assertEquals(0.0, c.vy)
+    }
+
+    @Test fun aTouchThatStopsACoastIsNoClickAndMayMoveOn() {
+        val e = zoomed()
+        e.viewCoasting = true
+        assertEquals(listOf(), e.began(listOf(t(1, 100, 100)), 0.0))
+        assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1), 0.05), "a tap would have clicked")
+        e.viewCoasting = true
+        e.began(listOf(t(1, 100, 100)), 1.0)
+        assertEquals(listOf(PadOutput.View(1.0, 3.0, 0.0, pt(103, 100))), e.moved(listOf(t(1, 103, 100)), 1.01), "no slop to cross: it has the picture")
+    }
+
+    @Test fun zoomedInATapStillClicksThereAndAHoldStillDrags() {
+        val e = zoomed()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(PointAt(pt(100, 100)), Click(left), tap), e.ended(listOf(1), 0.1))
+        e.began(listOf(t(1, 200, 200)), 2.0)
+        assertEquals(listOf(PointAt(pt(200, 200)), grab), e.tick(2.45))
+        assertEquals(listOf(Button(left, true)), e.moved(listOf(t(1, 220, 200)), 2.5))
+        assertEquals(listOf(DragTo(pt(240, 200))), e.moved(listOf(t(1, 240, 200)), 2.55))
+    }
+
+    @Test fun aSecondFingerOnAMovingPictureZoomsItAndOneLeftMovesItOn() {
+        val e = zoomed()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.moved(listOf(t(1, 120, 100)), 0.04)
+        assertEquals(listOf(), e.began(listOf(t(2, 220, 100)), 0.1))
+        // together: still moving it
+        assertEquals(listOf(PadOutput.View(1.0, 10.0, 0.0, pt(180, 100))), e.moved(listOf(t(1, 130, 100), t(2, 230, 100)), 0.12))
+        // apart: closer
+        assertEquals(1.0, view(e.moved(listOf(t(1, 100, 100), t(2, 260, 100)), 0.14)).scale, "the moment it becomes a pinch it starts from here")
+        assertTrue(view(e.moved(listOf(t(1, 90, 100), t(2, 270, 100)), 0.16)).scale > 1)
+        assertEquals(listOf(), e.ended(listOf(2), 0.2))
+        assertEquals(listOf(PadOutput.View(1.0, 5.0, 10.0, pt(95, 110))), e.moved(listOf(t(1, 95, 110)), 0.22))
+        assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1), 0.5))
+    }
+
+    @Test fun notZoomedOneFingerIsStillThePointerAndTwoStillScroll() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.02)
+        assertIs<PadOutput.Move>(e.moved(listOf(t(1, 120, 100)), 0.04).firstOrNull())
+        e.ended(listOf(1), 0.3)
+        // zoomed in, two fingers are still the computer's scroll, under them
+        val z = zoomed()
+        z.began(listOf(t(1, 100, 100), t(2, 160, 100)), 1.0)
+        assertEquals(listOf(PointAt(pt(130, 100)), scroll(began)), z.moved(listOf(t(1, 100, 110), t(2, 160, 110)), 1.02))
+    }
+
+    @Test fun threeFingersEndAMoveOfThePicture() {
+        val e = zoomed()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.began(listOf(t(2, 160, 100)), 0.03)
+        assertEquals(listOf(PadOutput.ViewEnd), e.began(listOf(t(3, 220, 100)), 0.04))
+    }
+
+    @Test fun zoomedATwoFingerTapStillRightClicks() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(1, 2), 0.1))
+    }
+
+    @Test fun aSecondFingerDoesntJumpADrag() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.tick(0.45)
+        e.moved(listOf(t(1, 100, 120)), 0.5)
+        e.began(listOf(t(2, 300, 120)), 0.55)
+        val m = e.moved(listOf(t(1, 101, 120), t(2, 301, 120)), 0.6).firstOrNull() as? PadOutput.Move ?: fail()
+        assertTrue(abs(m.dx) < 6)
+        assertEquals(listOf(), e.ended(listOf(2), 0.65))
+        assertEquals(listOf(), e.moved(listOf(t(1, 101, 120)), 0.7), "no jump back when it lifts")
+    }
+
+    @Test fun unevenFingersScrollingDontZoom() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 110, 310), t(2, 212, 306)), 0.05)
+        for (i in 1..6) {
+            val y = 310.0 + i * 12
+            assertIs<Scroll>(e.moved(listOf(t(1, 110.0, y), t(2, 212.0 + (i % 2) * 6, y + 3)), 0.05 + i * 0.02).firstOrNull())
+        }
+    }
+
+    @Test fun fingersClearlyPinchingWhileZoomedDoZoom() {
+        val e = PadEngine()
+        e.pinchZoomsView = true
+        e.began(listOf(t(1, 100, 300), t(2, 200, 300)), 0.0)
+        e.moved(listOf(t(1, 95, 300), t(2, 205, 300)), 0.05)
+        e.moved(listOf(t(1, 85, 300), t(2, 215, 300)), 0.1)      // past the line: nothing jumps
+        assertEquals(150.0 / 130, view(e.moved(listOf(t(1, 75, 300), t(2, 225, 300)), 0.15)).scale, 0.001)
+    }
+
+    @Test fun withTouchModeATapLandsUnderTheFinger() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 200)), 0.0)
+        assertEquals(listOf(PointAt(pt(100, 200)), Click(left), tap), e.ended(listOf(1), 0.08))
+        e.began(listOf(t(1, 102, 203)), 0.2)
+        assertEquals(listOf(Click(left), tap), e.ended(listOf(1), 0.26), "the second of a double click stays put")
+    }
+
+    @Test fun withTouchModeMovingAFingerIsStillThePointer() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 200)), 0.0)
+        e.moved(listOf(t(1, 110, 200)), 0.05)
+        assertIs<PadOutput.Move>(e.moved(listOf(t(1, 120, 200)), 0.07).firstOrNull())
+        assertEquals(listOf(), e.ended(listOf(1), 0.2))
+    }
+
+    @Test fun withTouchModeADragFollowsTheFinger() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 200)), 0.0)
+        assertEquals(listOf(PointAt(pt(100, 200)), grab), e.tick(0.45))
+        assertEquals(listOf(Button(left, true)), e.moved(listOf(t(1, 100, 220)), 0.5))
+        assertEquals(listOf(DragTo(pt(130, 260))), e.moved(listOf(t(1, 130, 260)), 0.55))
+        e.began(listOf(t(2, 300, 300)), 0.6)
+        assertEquals(listOf(DragTo(pt(135, 262))), e.moved(listOf(t(1, 135, 262), t(2, 310, 300)), 0.65), "the finger that started it")
+        e.ended(listOf(2), 0.7)
+        assertEquals(listOf(Button(left, false), release), e.ended(listOf(1), 0.75), "up at once: nothing to wait for")
+    }
+
+    @Test fun withTouchModeHoldAndLiftRightClicksThere() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.began(listOf(t(1, 100, 200)), 0.0)
+        e.tick(0.45)
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(1), 0.6))
+    }
+
+    @Test fun cancelLetsGoOfADrag() {
+        val e = PadEngine()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.ended(listOf(1), 0.08)
+        e.began(listOf(t(1, 100, 100)), 0.2)
+        e.moved(listOf(t(1, 120, 100)), 0.25)
+        assertEquals(listOf(Button(left, false)), e.cancel())
+    }
+
+    @Test fun needsTicksWhileSomethingCanStillHappen() {
+        val e = PadEngine()
+        assertFalse(e.needsTicks)
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertTrue(e.needsTicks, "may become a hold")
+        e.moved(listOf(t(1, 130, 100)), 0.05)
+        assertFalse(e.needsTicks)
+    }
+}
+
+class ScreenPlanTest {
+    private val native = PadSize(1320.0, 2868.0)
+    private fun plan(q: ScreenQuality, r: LinkRoute, cellular: Boolean = false, lowData: Boolean = false) = ScreenPlan(q, r, cellular, lowData, native)
+
+    @Test fun autoSpendsWhereItsFree() {
+        assertEquals(12_000_000, plan(ScreenQuality.AUTO, LinkRoute.LOCAL).bitrate)
+        assertEquals(2868, plan(ScreenQuality.AUTO, LinkRoute.LOCAL).width)
+        assertEquals(60, plan(ScreenQuality.AUTO, LinkRoute.LOCAL).fps)
+        assertTrue(plan(ScreenQuality.AUTO, LinkRoute.LOCAL, cellular = true).bitrate < 12_000_000, "a public address on mobile data isn't home")
+        assertTrue(plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true).bitrate < plan(ScreenQuality.AUTO, LinkRoute.RELAY).bitrate, "mobile data costs money")
+        assertTrue(plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true, lowData = true).bitrate < plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true).bitrate, "and the user said so")
+    }
+
+    @Test fun atHomeFramesComeAtThePanelsRate() {
+        val pro = ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 120)
+        assertEquals(120, pro.fps, "a 120 Hz panel")
+        assertEquals(12_000_000, pro.bitrate, "no more data for it")
+        assertEquals(90, ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 90).fps)
+        assertEquals(30, ScreenPlan(ScreenQuality.AUTO, LinkRoute.RELAY, false, false, native, panel = 120).fps, "away, motion is what gives")
+        assertEquals(120, ScreenPlan(ScreenQuality.AUTO, LinkRoute.LOCAL, false, false, native, panel = 240).fps)
+    }
+
+    @Test fun theTableInRemoteMd() {
+        assertEquals(ScreenPlan(1800, 1100, 4_000_000, 30), plan(ScreenQuality.AUTO, LinkRoute.DIRECT), "Wi-Fi elsewhere")
+        assertEquals(ScreenPlan(1440, 900, 2_000_000, 24), plan(ScreenQuality.AUTO, LinkRoute.RELAY, cellular = true), "mobile data")
+        assertEquals(ScreenPlan(1280, 800, 1_000_000, 15), plan(ScreenQuality.AUTO, LinkRoute.LOCAL, lowData = true), "Data Saver, even at home")
+        assertEquals(ScreenPlan(2868, 1320, 8_000_000, 30), plan(ScreenQuality.SHARP, LinkRoute.RELAY))
+        assertEquals(ScreenPlan(1800, 1100, 4_000_000, 30), plan(ScreenQuality.BALANCED, LinkRoute.LOCAL))
+        // away on Wi-Fi a big screen gets its own pixels: 1800 across was the picture stretched there
+        val tablet = PadSize(2560.0, 1600.0)
+        assertEquals(ScreenPlan(2560, 1564, 8_000_000, 30), ScreenPlan(ScreenQuality.AUTO, LinkRoute.RELAY, false, false, tablet, scale = 2.0))
+        assertEquals(ScreenPlan(1800, 1100, 4_000_000, 30), ScreenPlan(ScreenQuality.AUTO, LinkRoute.RELAY, false, false, native, scale = 3.0), "a phone is already two pixels a dp")
+        assertEquals(1440, ScreenPlan(ScreenQuality.AUTO, LinkRoute.RELAY, true, false, tablet, scale = 2.0).width, "mobile data stays light")
+        assertEquals(1800, ScreenPlan(ScreenQuality.BALANCED, LinkRoute.RELAY, false, false, tablet, scale = 2.0).width, "a choice is kept")
+    }
+
+    @Test fun aChoiceIsKept() {
+        assertEquals(1_000_000, plan(ScreenQuality.SAVER, LinkRoute.LOCAL).bitrate, "even at home")
+        assertEquals(2868, plan(ScreenQuality.SHARP, LinkRoute.RELAY, cellular = true).width)
+        assertTrue(plan(ScreenQuality.SHARP, LinkRoute.RELAY, cellular = true).bitrate > plan(ScreenQuality.BALANCED, LinkRoute.RELAY).bitrate)
+        for (q in ScreenQuality.entries) for (r in LinkRoute.entries) {
+            val p = plan(q, r)
+            assertEquals(0, p.width % 2 + p.height % 2)
+            assertTrue(p.width <= 2868)
+        }
+    }
+}
+
+class ViewPortTest {
+    private fun close(a: PadRect, b: PadRect) {
+        for ((x, y) in listOf(a.minX to b.minX, a.minY to b.minY, a.width to b.width, a.height to b.height)) assertEquals(y, x, 0.0001, "$a vs $b")
+    }
+    private fun p(x: Double, y: Double) = PadPoint(x, y)
+
+    @Test fun thePointBetweenTheFingersStaysPut() {
+        val v = ViewPort()
+        v.change(2.0, PadPoint.ZERO, p(0.25, 0.5))
+        close(v.rect, PadRect(0.125, 0.25, 0.5, 0.5))
+        v.change(2.0, PadPoint.ZERO, p(0.5, 0.5))
+        close(v.rect, PadRect(0.25, 0.375, 0.25, 0.25))
+    }
+
+    @Test fun aMoveStopsAtTheEdge() {
+        val v = ViewPort()
+        v.change(2.0, PadPoint.ZERO, p(0.5, 0.5))
+        v.change(1.0, p(0.25, 0.0), PadPoint.ZERO)     // the picture goes right: the view goes left
+        close(v.rect, PadRect(0.125, 0.25, 0.5, 0.5))
+        v.change(1.0, p(5.0, -5.0), PadPoint.ZERO)
+        close(v.rect, PadRect(0.0, 0.5, 0.5, 0.5))
+    }
+
+    @Test fun aPinchOutStretchesThenSpringsBack() {
+        val v = ViewPort()
+        v.change(0.5, PadPoint.ZERO, p(0.5, 0.5))
+        assertEquals(ViewPort.STRETCH, v.zoom)
+        close(v.rect, PadRect(-0.125, -0.125, 1.25, 1.25))
+        v.settle()
+        assertEquals(1.0, v.zoom)
+        close(v.rect, PadRect(0.0, 0.0, 1.0, 1.0))
+    }
+
+    @Test fun onATallerStageThePictureSitsAtTheBottomAndFillsItAsItZooms() {
+        val v = ViewPort()
+        v.reshape(0.5, alignY = 1.0)       // twice the picture's height
+        close(v.rect, PadRect(0.0, -1.0, 1.0, 2.0))
+        assertEquals(RemoteCrop.WHOLE, v.crop)
+        v.change(2.0, PadPoint.ZERO, p(0.5, 0.75))
+        close(v.rect, PadRect(0.25, 0.0, 0.5, 1.0))
+        assertEquals(RemoteCrop.WHOLE, v.crop, "all of the height is in view: the picture must be whole top to bottom")
+        v.change(2.0, PadPoint.ZERO, p(0.5, 0.5))
+        assertEquals(0.5, v.crop.w.toDouble(), 0.0001, "the screen's shape, around a taller view")
+        assertEquals(0.5, v.crop.h.toDouble(), 0.0001)
+    }
+
+    @Test fun aTallStageMovesAroundBothWays() {
+        val v = ViewPort()
+        v.reshape(0.5, alignY = 1.0)
+        v.change(4.0, PadPoint.ZERO, p(0.5, 0.75))
+        val was = v.rect
+        v.change(1.0, p(0.1, 0.1), PadPoint.ZERO)
+        assertTrue(v.rect.minX < was.minX)
+        assertTrue(v.rect.minY < was.minY)
+    }
+
+    @Test fun notQuiteZoomedIsTheWholeScreen() {
+        val v = ViewPort()
+        v.change(1.05, PadPoint.ZERO, PadPoint.ZERO)
+        v.settle()
+        assertTrue(v.isWhole)
+        assertEquals(RemoteCrop.WHOLE, v.crop)
+    }
+
+    @Test fun thePointerPushesTheView() {
+        val v = ViewPort()
+        v.change(2.0, PadPoint.ZERO, p(0.5, 0.5))
+        assertFalse(v.follow(p(0.5, 0.5)))
+        assertTrue(v.follow(p(0.76, 0.5)))
+        assertEquals(0.82, v.rect.maxX, 0.001)
+    }
+
+    @Test fun aMovingViewAsksForWhereItWillBe() {
+        val v = ViewPort()
+        v.change(4.0, PadPoint.ZERO, p(0.5, 0.5))
+        val here = v.crop
+        assertEquals(here, v.crop(0.0, 0.0))
+        val on = v.crop(0.03, 0.0)
+        assertEquals(0.03, (on.x - here.x).toDouble(), 0.0001)
+        assertEquals(here.y, on.y)
+        assertEquals(here.w, on.w, "the same size: only where")
+        // a guess past a quarter of what's in view is a guess: no further
+        assertEquals(0.25 / 4, (v.crop(0.5, -0.5).x - here.x).toDouble(), 0.0001)
+        assertEquals(0.25 / 4, (here.y - v.crop(0.5, -0.5).y).toDouble(), 0.0001)
+        // nor past the screen's edge
+        v.change(1.0, p(-4.0, 0.0), p(0.5, 0.5))
+        assertEquals(0.75, v.crop(0.1, 0.0).x.toDouble(), 0.0001)
+        assertEquals(RemoteCrop.WHOLE, ViewPort().crop(0.1, 0.0))
+    }
+
+    @Test fun noFurtherThanEight() {
+        val v = ViewPort()
+        v.change(100.0, PadPoint.ZERO, PadPoint.ZERO)
+        assertEquals(ViewPort.CLOSEST, v.zoom)
+    }
+}
+
+class PointerCurveTest {
+    @Test fun slowIsPreciseFastCrosses() {
+        val c = RemotePointerCurve()
+        assertEquals(1f, c.gain(10f))
+        assertEquals(5.5f, c.gain(5000f))
+        assertTrue(c.gain(480f) > 1f && c.gain(480f) < 5.5f)
+        assertEquals(2f to 0f, c.apply(2f, 0f, 1f), "2 pt in a second is slow")
+        assertEquals(2f, c.scaled(2f).gain(10f))
+    }
+
+    @Test fun subpixelsAddUp() {
+        val s = RemoteSubpixel()
+        var x = 0
+        var y = 0
+        repeat(10) { val (a, b) = s.whole(0.25f, -0.25f); x += a; y += b }
+        assertEquals(2, x)
+        assertEquals(-2, y)
+        s.reset()
+        assertEquals(0 to 0, s.whole(0.5f, 0.5f))
+    }
+}

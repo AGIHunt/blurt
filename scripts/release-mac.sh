@@ -99,7 +99,7 @@ fi
 say "build $VERSION ($BUILD): universal + Sparkle"
 mkdir -p "$WORK/home"
 echo '{"record": {"install_app": false}}' > "$WORK/home/config.json"
-BLURT_HOME=$WORK/home BLURT_WORKSPACE=$WORK/ws BLURT_UNIVERSAL=1 BLURT_SPARKLE=1 \
+BLURT_HOME=$WORK/home BLURT_WORKSPACE=$WORK/ws BLURT_UNIVERSAL=1 BLURT_SPARKLE=1 BLURT_TEST_HOOKS= \
   uv run -q "$ROOT/skills/blurt/scripts/record.py" build >/dev/null
 APP=$OUT/Blurt.app
 ditto "$WORK/home/Blurt.app" "$APP"

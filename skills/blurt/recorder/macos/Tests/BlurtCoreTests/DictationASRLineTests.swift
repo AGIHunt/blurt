@@ -18,6 +18,16 @@ final class DictationASRLineTests: XCTestCase {
         XCTAssertTrue(DictationASRFailure(code: "quota").line.retryHelps)
     }
 
+    /// 2026-11-11: a Model Studio model Blurt can't call (one that only streams, or reads a file by URL) said "couldn't
+    /// connect"; now it says the model, and Settings instead of Retry
+    func testUnsupportedCloudModelSaysSoAndOffersSettings() {
+        let l = DictationASRFailure(code: "model").line
+        XCTAssertEqual(l, .cloudModel)
+        XCTAssertFalse(l.retryHelps)
+        XCTAssertEqual(CloudSpeechCheck.sentence("model"), "speech.cloud.check.model")
+        XCTAssertEqual(CloudSpeechCheck.sentence("bad_response"), "speech.cloud.check.other")
+    }
+
     func testEverythingElseKeepsTheOldLines() {
         XCTAssertEqual(DictationASRFailure(code: "error").line, .failed)
         XCTAssertEqual(DictationASRFailure(code: nil).line, .failed)
@@ -27,7 +37,7 @@ final class DictationASRLineTests: XCTestCase {
     }
 
     func testDefiniteAnswersSkipTheCLIRerun() {
-        for c in ["model_missing", "auth", "privacy"] { XCTAssertTrue(DictationASRFailure.definite(c), c) }
+        for c in ["model_missing", "auth", "privacy", "model"] { XCTAssertTrue(DictationASRFailure.definite(c), c) }
         for c in ["error", "network", "quota", "restarting", "interrupted", ""] { XCTAssertFalse(DictationASRFailure.definite(c), c) }
         XCTAssertFalse(DictationASRFailure.definite(nil))
     }
@@ -37,11 +47,11 @@ final class DictationASRLineTests: XCTestCase {
             .appendingPathComponent("Sources/BlurtApp/Resources")
         for lang in ["en", "zh-Hans"] {
             let d = try XCTUnwrap(NSDictionary(contentsOf: res.appendingPathComponent("\(lang).lproj/Dictation.strings")))
-            let lines: [DictationASRFailure.Line] = [.failed, .slow, .cloudKey, .cloudOffline, .cloudQuota]
+            let lines: [DictationASRFailure.Line] = [.failed, .slow, .cloudKey, .cloudOffline, .cloudQuota, .cloudModel]
             for l in lines { XCTAssertNotNil(d[l.key], "\(lang) \(l.key)") }
             XCTAssertNotNil(d["dictation.toast.asr_cloud_key.action"])
             let s = try XCTUnwrap(NSDictionary(contentsOf: res.appendingPathComponent("\(lang).lproj/Speech.strings")))
-            for code in ["auth", "network", "quota", "privacy", "no_key", "bad_key", "anything"] {
+            for code in ["auth", "network", "quota", "privacy", "no_key", "bad_key", "model", "anything"] {
                 XCTAssertNotNil(s[CloudSpeechCheck.sentence(code)], "\(lang) \(code)")
             }
             XCTAssertNotNil(s["speech.cloud.check.ok_silent"])

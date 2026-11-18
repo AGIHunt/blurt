@@ -6,7 +6,8 @@
 
 Also the Windows / Linux desktop app's capture helpers outside a recording (v0.7 contract K7), run as a script:
 
-  tk_recorder.py shot SESSION --region x,y,w,h [--project ID|inbox]
+  tk_recorder.py shot SESSION --region x,y,w,h [--project ID|inbox] [--image PNG]
+      (--image: the picture already taken — Linux takes it through GNOME's Screenshot portal — copied in, not grabbed)
       one frame of the region → SESSION/shots/NNN.png + its shots.jsonl line → {"ok", "n", "file", "line"}
   tk_recorder.py voice SESSION [--project ID|inbox] [--max 120] [--silence-ms 1500] [--hold]
       a voice note → SESSION/shots/NNN.wav + a `type: voice` line. Prints JSON lines: {"ev": "started", "n"},
@@ -34,6 +35,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -811,14 +813,20 @@ def _owner_fields(project: str | None) -> dict:
     return {"project": project, "assigned_by": "capture"} if project else {"project": None}
 
 
-def cli_shot(session: Path, region: list[int], project: str | None) -> dict:
+def cli_shot(session: Path, region: list[int], project: str | None, image: Path | None = None) -> dict:
     session.mkdir(parents=True, exist_ok=True)
     (session / "shots").mkdir(exist_ok=True)
     n = next_shot_n(session)
     out = session / "shots" / f"{n:03d}.png"
-    r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
-    if r.returncode or not out.exists():
-        return {"ok": False, "error": (r.stderr or b"").decode("utf-8", "replace")[-300:] or "no frame", "code": "snap"}
+    if image is not None:
+        try:
+            shutil.copyfile(image, out)
+        except OSError as e:
+            return {"ok": False, "error": str(e)[-300:], "code": "snap"}
+    else:
+        r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+        if r.returncode or not out.exists():
+            return {"ok": False, "error": (r.stderr or b"").decode("utf-8", "replace")[-300:] or "no frame", "code": "snap"}
     line = {**shot_line(n, None, region), "type": "shot", **_owner_fields(project)}
     _append_line(session, line)
     return {"ok": True, "n": n, "file": line["file"], "line": line}
@@ -936,6 +944,7 @@ def main() -> int:
     s.add_argument("session")
     s.add_argument("--region", required=True)
     s.add_argument("--project")
+    s.add_argument("--image", type=Path)
     v = sub.add_parser("voice", help="a voice note into a shots batch")
     v.add_argument("session")
     v.add_argument("--project")
@@ -950,7 +959,7 @@ def main() -> int:
         except (ValueError, AssertionError):
             print(json.dumps({"ok": False, "error": "--region is x,y,w,h", "code": "bad_args"}))
             return 1
-        r = cli_shot(Path(a.session), region, a.project)
+        r = cli_shot(Path(a.session), region, a.project, a.image)
         print(json.dumps(r, ensure_ascii=False))
         return 0 if r["ok"] else 1
     return cli_voice(Path(a.session), a.project, a.max, a.silence_ms, a.hold)

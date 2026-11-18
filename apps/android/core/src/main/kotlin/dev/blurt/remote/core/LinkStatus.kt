@@ -1,0 +1,115 @@
+// What the pad says about the connection, worked out apart from the views so it can be tested, and so both phones say the same thing in the
+// same order (iOS: apps/ios/BlurtRemote/Model/LinkStatus.swift, the same table). docs/design/remote.md §Connection, "What the pad says".
+//
+// The rule: connected and working, the pad says nothing (the computer's name, small, in its corner). In every other state one card in the
+// middle of the pad says it at reading size: a mark, a strong line that names the state, at most one line with the one thing to do, and at
+// most one button for it.
+package dev.blurt.remote.core
+
+enum class LinkPhase { UNPAIRED, CONNECTING, UNREACHABLE, CONNECTED, FORGOTTEN, REPLACED }
+
+/** The connection as the pad needs to know it. Nothing here comes from the wire that Link doesn't already publish. */
+data class LinkStatus(
+    val phase: LinkPhase,
+    /** a session was up and went while the app was in use: it's coming back, not starting (StatusFollower) */
+    val dropped: Boolean = false,
+    /** the computer in hand has a relay: it can be anywhere, so "the same network" isn't the thing to check */
+    val hasRelay: Boolean = false,
+    /** more than one computer is paired: there's another to try */
+    val otherComputers: Boolean = false,
+    val canControl: Boolean = true,
+    /** "permission", "off": why the computer won't show its screen */
+    val screenError: String? = null,
+    /** the computer is asking its owner about this phone's code */
+    val waiting: Boolean = false,
+    /** a pairing just didn't take; Link has the sentence */
+    val pairFailed: Boolean = false,
+)
+
+/** what's drawn beside the words: a state is never told by colour alone */
+enum class StatusMark { BUSY, PROBLEM, PHONE, CODE }
+
+enum class StatusLine {
+    CONNECTING, RECONNECTING,
+    CANT_REACH, CHECK_NETWORK, CHECK_AWAKE,
+    NEEDS_PAIRING, FORGOTTEN,
+    OTHER_PHONE, TOUCH_TO_TAKE_OVER,
+    PAIR_FIRST, WHERE_THE_CODE_IS,
+    WAITING, ALLOW_ON_COMPUTER,
+    PAIRING_FAILED, WHY_PAIRING_FAILED,
+    CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
+    CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF,
+}
+
+enum class StatusAction { RETRY, SCAN, ANOTHER }
+
+data class StatusBanner(
+    val mark: StatusMark,
+    val title: StatusLine,
+    val detail: StatusLine? = null,
+    val action: StatusAction? = null,
+    val second: StatusAction? = null,
+) {
+    companion object {
+        /** null: connected and working, nothing to say. */
+        fun of(s: LinkStatus): StatusBanner? {
+            var b: StatusBanner? = when (s.phase) {
+                LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
+                LinkPhase.CONNECTING -> StatusBanner(StatusMark.BUSY, if (s.dropped) StatusLine.RECONNECTING else StatusLine.CONNECTING)
+                LinkPhase.UNREACHABLE -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.hasRelay) StatusLine.CHECK_AWAKE else StatusLine.CHECK_NETWORK,
+                    StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
+                LinkPhase.FORGOTTEN -> StatusBanner(StatusMark.PROBLEM, StatusLine.NEEDS_PAIRING, StatusLine.FORGOTTEN, StatusAction.SCAN)
+                LinkPhase.REPLACED -> StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, StatusLine.TOUCH_TO_TAKE_OVER)
+                LinkPhase.CONNECTED -> when {
+                    s.screenError == "off" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.SCREEN_IS_OFF)
+                    s.screenError == "permission" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.ALLOW_SCREEN)
+                    !s.canControl -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_CONTROL, StatusLine.HOW_TO_ALLOW_CONTROL)
+                    else -> null
+                }
+            }
+            // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing
+            if (s.waiting) b = StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER)
+            if (s.pairFailed) {
+                // what there was to do about the computer in hand is still there to do
+                b = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED,
+                    if (s.waiting) null else b?.action, if (s.waiting) null else b?.second)
+            }
+            return b
+        }
+    }
+}
+
+/** What the thumb should feel, and TalkBack say, when the connection goes and comes back while the phone is in use. */
+enum class StatusCue { DROPPED, BACK }
+
+/**
+ * Follows the phases, to tell a drop from a first connection. Opening the app, coming back to it and choosing another computer are all
+ * first connections: only a session that went while the app was in front is a drop.
+ */
+class StatusFollower {
+    var dropped = false
+        private set
+    private var last: LinkPhase? = null
+    private var computer: String? = null
+
+    /** `computer`: the id of the one in hand. `inUse`: the app is in front. */
+    fun see(p: LinkPhase, computer: String?, inUse: Boolean): StatusCue? {
+        val was = last
+        val same = computer == this.computer
+        last = p
+        this.computer = computer
+        if (!inUse || !same) { dropped = false; return null }
+        val away = p == LinkPhase.CONNECTING || p == LinkPhase.UNREACHABLE
+        if (was == LinkPhase.CONNECTED && away) {
+            dropped = true
+            return StatusCue.DROPPED
+        }
+        if (p == LinkPhase.CONNECTED && dropped) {
+            dropped = false
+            return StatusCue.BACK
+        }
+        // forgotten, taken by another phone: no longer a drop that's coming back
+        if (!away) dropped = false
+        return null
+    }
+}

@@ -4,8 +4,8 @@
 // "2" on the drag badge, but only the picture arrived. A web app's drop handler gets `dataTransfer.files` and a
 // separate `getData('text/plain')`; when there are files it attaches them and ignores the loose text. The note then
 // travelled as a .md file next to the picture — until v0.8.5, when the note is pasted into the composer after the
-// picture instead (CardDropTarget.swift has the table) and the .md is an option (record.drag_note_file, off) and
-// what a terminal gets:
+// picture instead (CardDropTarget.swift has the table) and the .md is an option (record.drag_note_file, off). A
+// terminal gets one line of text, the picture's path and then the note (CardTransfer.terminalLine). The files:
 //   • <stem>.png        the picture (inked if marked) — its note also in the PNG's own "Description" (an iTXt chunk:
 //                       UTF-8, what Preview / exiftool / an image pipeline read); never relied on, it just doesn't hurt.
 //   • <stem>-备注.md     the note and nothing else — line breaks kept, no heading, no image line (v0.8.2: the image line
@@ -164,9 +164,14 @@ public enum CardPasteboard {
         public var image: URL?
         public var note: String?
         public var noteFile: URL?
-        public init(image: URL?, note: String?, noteFile: URL? = nil) {
-            self.image = image; self.note = note; self.noteFile = noteFile
+        /// a file card's file (v1.0.23: a PDF, a video… dropped on the island and only referenced): what goes out instead
+        /// of `image`, which is then only its thumbnail
+        public var ref: URL?
+        public init(image: URL?, note: String?, noteFile: URL? = nil, ref: URL? = nil) {
+            self.image = image; self.note = note; self.noteFile = noteFile; self.ref = ref
         }
+        /// what an app that takes files gets: the referenced file, else the picture
+        public var file: URL? { ref ?? image }
     }
 
     public struct Item: Equatable {
@@ -194,25 +199,72 @@ public enum CardPasteboard {
     ///    bytes) — no HTML, no RTFD, no text, so every composer ends up with the picture and nothing else; the note is
     ///    pasted after the drop (CardSmartPaste.swift). Then the note's .md only with `attachNote`
     ///    (record.drag_note_file), else an inert item. (WeChat / QQ get the rich item: drag(into:).)
-    ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell; Claude Code and
-    ///    Codex read the .md).
+    ///  • terminal: one plain-text item, `'<picture path>' <note>` (CardTransfer.terminalLine: the note on the same line,
+    ///    never a newline — nothing runs at a shell prompt) — no file URL (the terminal would type its own copy of the
+    ///    path) and no .md: Claude Code and Codex read the picture from its path, and its own words are right after it.
     /// The number of items is fixed when the drag starts (the badge counts them), so a shot with a note always has two
     /// — the second inert where it carries nothing. A voice card: its words (one line), nothing else, for every app.
     public static func drag(for target: DropClass, card: Card, attachNote: Bool = false) -> [Item] {
         let text = CardTransfer.dragText(card.note)
+        if let ref = card.ref { return fileCard(target, ref: ref, card: card, text: text, attachNote: attachNote) }
         guard let img = card.image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
         let first: Item
         switch target {
-        case .terminal: first = Item(file: img, tag: true)
+        case .terminal: first = Item(text: CardTransfer.terminalLine(image: img, note: card.note), tag: true)
         case .chat, .finder: first = Item(file: img, image: img, tag: true)
         case .rich: first = Item(file: img, image: img, rich: true, text: text, tag: true)
         }
         guard text != nil else { return [first] }
         let md = card.noteFile.map { Item(file: $0) }
         switch target {
-        case .terminal: return [first, md ?? Item(tag: true)]
+        case .terminal: return [first, Item(tag: true)]
         case .chat, .finder: return [first, attachNote ? md ?? Item(tag: true) : Item(tag: true)]
         case .rich: return [first, Item(tag: true)]
+        }
+    }
+
+    /// A file card (a referenced PDF, video…): the file itself where files go (no picture bytes: its thumbnail is only
+    /// how the card looks), its path then its note in a terminal or an agent; a rich app the file and the note as text.
+    static func fileCard(_ target: DropClass, ref: URL, card: Card, text: String?, attachNote: Bool) -> [Item] {
+        let first: Item
+        switch target {
+        case .terminal: first = Item(text: CardTransfer.terminalLine(image: ref, note: card.note), tag: true)
+        case .chat, .finder: first = Item(file: ref, tag: true)
+        case .rich: first = Item(file: ref, text: text, tag: true)
+        }
+        guard text != nil else { return [first] }
+        if target == .chat || target == .finder, attachNote, let md = card.noteFile { return [first, Item(file: md)] }
+        return [first, Item(tag: true)]
+    }
+
+    /// Several cards dragged as one (v1.0.23: a ⌘-click selection dragged together), in the selection's order. Always
+    /// one item per card, every item carrying the capture tag (an in-app drop finds every card from any item; the
+    /// count badge the system draws says how many cards, and stays put while the layout follows the app):
+    ///  • terminal: item 1 is one line, every card's `'<path>' <note>` after the other (two spaces between them: a
+    ///    newline at a shell prompt would run the line); an agent's own composer (`landing.lines`: the Claude app's
+    ///    Code tab, the Codex app, WorkBuddy…) one such line per card.
+    ///  • rich: item 1 is one rich item with every picture and note (the copy's), the notes as one line of text.
+    ///  • chat, the Finder, WeChat / QQ: item i is card i's file (picture or referenced file) — the notes are pasted
+    ///    after the drop as one text (CardTransfer.followUpNotes: numbered by file). A card with no file (voice, text)
+    ///    rides in that text. No file at all: the words as one line on item 1. No .md for several cards.
+    /// A single card is drag(into:card:).
+    public static func drag(into landing: DragLanding, cards: [Card], attachNote: Bool = false) -> [Item] {
+        if cards.count == 1, let c = cards.first { return drag(into: landing, card: c, attachNote: attachNote) }
+        let rest = Array(repeating: Item(tag: true), count: max(0, cards.count - 1))
+        switch landing.cls {
+        case .terminal:
+            let lines = cards.compactMap { CardTransfer.terminalLine(image: $0.file, note: $0.note) }
+            return [Item(text: lines.isEmpty ? nil : lines.joined(separator: landing.lines ? "\n" : "  "), tag: true)] + rest
+        case .rich:
+            let imgs = cards.compactMap(\.image)
+            let text = CardTransfer.dragText(cards.compactMap { CardNote.clean($0.note) }.joined(separator: "\n"))
+            return [Item(file: imgs.first, image: imgs.first, rich: true, text: text, tag: true)] + rest
+        case .chat, .finder:
+            if !cards.contains(where: { $0.file != nil }) {
+                let words = CardTransfer.dragText(cards.compactMap { CardNote.clean($0.note) }.joined(separator: "\n"))
+                return [Item(text: words, tag: true)] + rest
+            }
+            return cards.map { c in Item(file: c.file, image: c.ref == nil ? c.image : nil, tag: true) }
         }
     }
 
@@ -232,9 +284,9 @@ public enum CardPasteboard {
     /// its writer was a fixed file URL plus the title). An item is a card whose note is its text (title, then its
     /// words) and whose note file is its own .md:
     ///  • with a picture (its first frame): the card's layout, drag(into:) — the picture, then the text pasted after
-    ///    the drop in a chat app; the rich item in a rich app, WeChat and QQ; both paths in a terminal — but the
-    ///    Finder always gets the .md next to the picture (a copy of the item, as its two files; nothing goes on the
-    ///    clipboard behind a drop into a folder).
+    ///    the drop in a chat app; the rich item in a rich app, WeChat and QQ; its path and text as one line in a
+    ///    terminal — but the Finder always gets the .md next to the picture (a copy of the item, as its two files;
+    ///    nothing goes on the clipboard behind a drop into a folder).
     ///  • without one (a voice or typed item): a rich app and a chat app get its text as the rich item — HTML, RTFD
     ///    and RTF with its line breaks, the plain text as one line (a web composer drops loose text when a file is
     ///    there, so no .md rides along); a terminal and the Finder its .md (Claude Code reads it; the Finder copies
@@ -308,18 +360,41 @@ public enum CardPasteboard {
     public static let htmlPNGLimit = 3 << 20
 }
 
-/// A card dragged out into another app, and taken there: off its thread, but not gone — kept `keepDays`, then trashed.
+/// A card dragged out into another app, and taken there: off its thread, but not gone — kept in the Cards page's
+/// History for `days` (Settings → Cards → History, record.cards.history_days: 7, the default and left out of the
+/// config; 30; -1 = until you delete it), then trashed.
 public enum TakenCaptures {
-    public static let keepDays: Double = 7
-    static var keep: Double { keepDays * 86400 }
+    /// the default, and what an unknown value in the config means
+    public static let defaultDays = 7
+    /// "Forever": kept until deleted
+    public static let forever = -1
+    /// the choices Settings offers, in its order
+    public static let choices = [7, 30, forever]
 
-    /// Still in "Recently Taken" (`taken` and `now`: seconds since 1970).
-    public static func isRecent(taken: Double, now: Double) -> Bool { now - taken < keep }
-    /// Past its days: housekeeping moves its files to the Trash.
-    public static func isExpired(taken: Double, now: Double) -> Bool { !isRecent(taken: taken, now: now) }
-    /// Days left before it goes (rounded up; 0 when expired).
-    public static func daysLeft(taken: Double, now: Double) -> Int { max(0, Int(ceil((keep - (now - taken)) / 86400))) }
-    /// A row says how long it is kept only on its last day (in attention ink): the panel's footer says "7 days" once
-    /// for all of them — "kept 7 more days" on every row repeated it.
-    public static func showsDaysLeft(_ days: Int) -> Bool { days <= 1 }
+    /// record.cards.history_days as read from the config's `record` section (anything else: 7).
+    public static func days(record: [String: Any]) -> Int {
+        let raw = (record["cards"] as? [String: Any])?["history_days"]
+        let d = (raw as? Int) ?? (raw as? Double).map { Int($0) } ?? defaultDays
+        return choices.contains(d) ? d : defaultDays
+    }
+
+    /// What to write for `days`: nothing for the default (the key is left out), else the number.
+    public static func configValue(_ days: Int) -> Int? { days == defaultDays ? nil : days }
+
+    /// Still in History (`taken` and `now`: seconds since 1970).
+    public static func isRecent(taken: Double, now: Double, days: Int = defaultDays) -> Bool {
+        days < 0 || now - taken < Double(days) * 86400
+    }
+    /// Past its days: housekeeping moves its files to the Trash. Kept forever: never.
+    public static func isExpired(taken: Double, now: Double, days: Int = defaultDays) -> Bool {
+        !isRecent(taken: taken, now: now, days: days)
+    }
+    /// Days left before it goes (rounded up; 0 when expired; nil when it is kept forever).
+    public static func daysLeft(taken: Double, now: Double, days: Int = defaultDays) -> Int? {
+        guard days >= 0 else { return nil }
+        return max(0, Int(ceil((Double(days) * 86400 - (now - taken)) / 86400)))
+    }
+    /// A tile says how long it is kept only on its last day (in attention ink): History's heading says "Kept for 7
+    /// days" once for all of them — "kept 7 more days" on every tile repeated it.
+    public static func showsDaysLeft(_ days: Int?) -> Bool { days.map { $0 <= 1 } ?? false }
 }

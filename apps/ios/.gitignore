@@ -1,0 +1,4 @@
+*.xcodeproj
+DerivedData/
+build/
+build-device/

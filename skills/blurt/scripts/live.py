@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "sherpa-onnx==1.13.8", "truststore==0.10.5", "opencc-python-reimplemented==0.1.7"]
 # ///
-"""Live pipeline while a recording runs: transcript (L1) and rolling item drafts (L2). docs/design/snap-and-live.md §4.
+"""Live transcript while a recording runs (L1), so it is ready when the take ends. docs/design/snap-and-live.md §4.
 
   live.py run <session> [--watch-pid PID]     started by the recorder when recording begins; exits by itself
   live.py simulate <audio> <session> [--speed N] [--run]
@@ -17,28 +17,20 @@ backend as soon as it closes, and appends live/transcript.jsonl. When live/stop 
 <session>/transcript.json + transcript.txt — the same document `transcribe.py run` makes from the whole file (it then
 returns instantly). Chunks are cut exactly where a whole-file run cuts them, so the text is the same.
 
-Drafts: every ≥60 s of new speech (at a ≥3 s pause) or 3 min, a small model (claude -p --model claude-haiku-5-5, or
-codex exec) gets the transcript so far + the current drafts and returns add/update/drop ops → live/drafts.jsonl.
-A starting outline only. Config ($BLURT_HOME/config.json → record): live (default true), live_drafts (default true when
-an agent CLI is installed), live_drafts_agent ("claude" | "codex"; else the first logged-in one in record.agents — the
-order the app processes recordings with, see agents.py), live_drafts_model. Env BLURT_LIVE_DRAFTS_CMD = a
-command that reads the prompt on stdin and prints the JSON answer (tests / other agents).
+Config ($BLURT_HOME/config.json → record): live (default true). No model drafts items while recording: the agent
+that organizes the take reads the finished transcript.
 
-Files in <session>/live/: audio.pcm, stop (recorder) · transcript.jsonl, drafts.jsonl, status.json,
-drafts.log (per-call latency / cost). Our stderr goes to <session>/live.log (kept across restarts).
+Files in <session>/live/: audio.pcm, stop (recorder) · transcript.jsonl, status.json. Our stderr goes to
+<session>/live.log (kept across restarts).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import re
-import shlex
-import shutil
 import signal
 import subprocess
 import sys
-import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -47,15 +39,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import BLURT_HOME, IS_WIN, die, ffmpeg_bin, global_config, load_json, save_json  # noqa: E402
+from _common import IS_WIN, die, ffmpeg_bin, global_config, load_json, save_json  # noqa: E402
 
 SR = 16000
 BPS = SR * 2                    # bytes per second of audio.pcm
-KINDS = ("issue", "idea", "note", "task")
-DRAFT_MIN_SPEECH = 60           # s of new speech …
-DRAFT_PAUSE = 3                 # … then at a pause this long
-DRAFT_EVERY = 180               # or this long since the last call
-DRAFT_TIMEOUT = 60
 CLOSE_MARGIN = 1.0              # see LiveChunker
 
 
@@ -154,353 +141,6 @@ class LiveChunker:
         return out
 
 
-# ------------------------------------------------------------------ drafts (L2)
-SYSTEM = """You keep a live outline of what a user says while recording their screen (product feedback, QA, ideas).
-Kinds: issue = something in the product to fix or polish (bug, UI/UX, copy, perf). idea = something to build, change
-or borrow. note = an observation or fact worth keeping. task = an action item that is not a product issue.
-One item = one thing: merge revisits, drop retracted remarks, split compounds; pure narration is not an item.
-Answer with JSON only: {"ops":[...]} where an op is
-{"op":"add","kind":K,"title":T,"t":SECONDS,"confidence":"high"|"low"} |
-{"op":"update","id":ID, any of kind/title/t/confidence} | {"op":"drop","id":ID}.
-t = when it is said (seconds, from the transcript). Titles: short (<= 12 words), in the language the user speaks.
-Change only what the new speech changes; {"ops":[]} if nothing."""
-
-STRIP_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SIMPLE", "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
-             "CLAUDE_CODE_OAUTH_SCOPES", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_EXECPATH",
-             "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN")
-
-
-def agent_env() -> dict:
-    """The env of a host agent session (Claude Code / desktop) must not leak into a nested `claude -p`."""
-    hosted = any(k in os.environ for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"))
-    env = {k: v for k, v in os.environ.items()
-           if k not in STRIP_ENV and not k.startswith("CLAUDE_AGENT_SDK")
-           and not (k.startswith("USE_") and k.endswith("_OAUTH"))
-           and not (hosted and k == "ANTHROPIC_BASE_URL")}
-    return env
-
-
-def fmt_t(t: float) -> str:
-    return f"{int(t // 60):02d}:{t % 60:04.1f}"
-
-
-def extract_json(text: str):
-    text = (text or "").strip()
-    m = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
-    if m:
-        text = m.group(1).strip()
-    a, b = text.find("{"), text.rfind("}")
-    if a < 0 or b <= a:
-        raise ValueError("no JSON object in the answer")
-    return json.loads(text[a:b + 1])
-
-
-def apply_ops(drafts: dict, answer, duration: float, next_id: int) -> tuple[list[dict], list[str], int]:
-    """Validate the model's ops against the current drafts. Returns (drafts.jsonl lines, problems, next id).
-    Mutates `drafts` ({id: {id, kind, title, t, confidence}}). New ids are ours (d1, d2, …), never the model's."""
-    lines, problems = [], []
-    ops = answer.get("ops") if isinstance(answer, dict) else answer if isinstance(answer, list) else None
-    if not isinstance(ops, list):
-        return [], ["answer has no ops list"], next_id
-
-    def clean_t(v, default):
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            return default
-        return round(min(max(0.0, v), max(duration, 0.0)), 1) if v == v else default
-
-    def clean_title(v):
-        return re.sub(r"\s+", " ", v).strip()[:120] if isinstance(v, str) else ""
-
-    for i, op in enumerate(ops[:30]):
-        if not isinstance(op, dict) or op.get("op") not in ("add", "update", "drop"):
-            problems.append(f"op {i}: not an add/update/drop object")
-            continue
-        kind = op.get("kind")
-        conf = op.get("confidence")
-        if op["op"] == "add":
-            title = clean_title(op.get("title"))
-            if kind not in KINDS or not title:
-                problems.append(f"op {i}: add needs kind in {KINDS} and a title")
-                continue
-            d = {"id": f"d{next_id}", "kind": kind, "title": title, "t": clean_t(op.get("t"), round(duration, 1)),
-                 "confidence": conf if conf in ("high", "low") else "high"}
-            next_id += 1
-            drafts[d["id"]] = d
-            lines.append({"op": "add", **d})
-            continue
-        did = str(op.get("id", ""))
-        if did not in drafts:
-            problems.append(f"op {i}: unknown id {did!r}")
-            continue
-        d = drafts[did]
-        if op["op"] == "drop":
-            drafts.pop(did)
-            lines.append({"op": "drop", **d})
-            continue
-        upd = dict(d)
-        if kind is not None:
-            if kind not in KINDS:
-                problems.append(f"op {i}: bad kind {kind!r}")
-                continue
-            upd["kind"] = kind
-        if op.get("title") is not None and clean_title(op.get("title")):
-            upd["title"] = clean_title(op["title"])
-        if op.get("t") is not None:
-            upd["t"] = clean_t(op["t"], d["t"])
-        if conf in ("high", "low"):
-            upd["confidence"] = conf
-        if upd != d:
-            drafts[did] = upd
-            lines.append({"op": "update", **upd})
-    # contract field order: {"id","op","kind","title","t","confidence"}
-    order = ("id", "op", "kind", "title", "t", "confidence")
-    return [{k: ln[k] for k in order} for ln in lines], problems, next_id
-
-
-def build_prompt(drafts: dict, segments: list[dict], sent_upto: float, budget: int = 6000) -> str:
-    cur = "\n".join(f"- {d['id']} [{d['kind']}] t={d['t']:.0f} {d['title']}" for d in drafts.values()) or "(none yet)"
-    lines = [f"[{s['start']:.0f}] {s['text']}" for s in segments]
-    text = "\n".join(lines)
-    if len(text) > budget:  # long recording: the drafts stand in for the old part; send the new part + 60 s context
-        keep = [f"[{s['start']:.0f}] {s['text']}" for s in segments if s["end"] >= sent_upto - 60]
-        text = "(earlier speech is covered by the drafts)\n" + "\n".join(keep)[-budget:]
-    return f"Current drafts:\n{cur}\n\nTranscript so far ([seconds] text):\n{text}\n"
-
-
-class Drafter:
-    def __init__(self, live: Path, enabled: bool | None = None):
-        self.live = live
-        cfg = global_config().get("record", {})
-        self.cmd_env = os.environ.get("BLURT_LIVE_DRAFTS_CMD")
-        self.agents = [] if self.cmd_env else self._agents(cfg)
-        want = cfg.get("live_drafts")
-        self.enabled = (want is not False) and bool(self.cmd_env or self.agents) if enabled is None else enabled
-        self.model = cfg.get("live_drafts_model")
-        self.state = "running" if self.enabled else "off"
-        self.note = "" if self.enabled else ("disabled (record.live_drafts)" if want is False else "no agent CLI found")
-        self.reset()
-        self.ready = threading.Event()
-        if self.enabled and self.agents:  # which CLIs are logged in: checked once, in the background
-            threading.Thread(target=self._check_logins, daemon=True).start()
-        else:
-            self.ready.set()
-
-    def _check_logins(self) -> None:
-        ok, why = [], []
-        for name, path in self.agents:
-            try:
-                if name == "claude":
-                    p = subprocess.run([path, "auth", "status", "--json"], capture_output=True, text=True,
-                                       encoding="utf-8", errors="replace", timeout=20, env=agent_env(),
-                                       stdin=subprocess.DEVNULL)
-                    try:
-                        good = bool(json.loads(p.stdout).get("loggedIn"))
-                    except (json.JSONDecodeError, AttributeError):  # older CLI without --json
-                        good = p.returncode == 0 and "not logged in" not in (p.stdout + p.stderr).lower()
-                else:
-                    p = subprocess.run([path, "login", "status"], capture_output=True, text=True, encoding="utf-8",
-                                       errors="replace", timeout=20, env=agent_env(), stdin=subprocess.DEVNULL)
-                    good = p.returncode == 0 and "logged in" in (p.stdout + p.stderr).lower() \
-                        and "not logged in" not in (p.stdout + p.stderr).lower()
-            except (OSError, subprocess.TimeoutExpired):
-                good = False
-            (ok if good else why).append((name, path) if good else f"{name}: not logged in")
-        self.agents = ok
-        if not ok:
-            self.enabled, self.state = False, "off"
-            self.note = "no logged-in agent CLI (" + "; ".join(why) + ")"
-        else:
-            self.note = f"via {ok[0][0]}"
-        log(f"drafts: {self.note}")
-        self.ready.set()
-
-    def model_for(self, agent: str) -> str | None:
-        m = self.model
-        if agent == "claude":
-            return m if m and m.startswith(("claude", "haiku", "sonnet", "opus")) else "claude-haiku-5-5"
-        if m and not m.startswith(("claude", "haiku", "sonnet", "opus")):
-            return m
-        return codex_small_model()
-
-    def reset(self):
-        self.drafts: dict = {}
-        self.next_id = 1
-        self.sent_upto = 0.0
-        self.last_call = time.time()
-        self.thread: threading.Thread | None = None
-        self.calls = 0
-        self.gen = getattr(self, "gen", 0) + 1
-
-    @staticmethod
-    def _agents(cfg) -> list[tuple[str, str]]:
-        """Installed draft-capable CLIs in the order the app processes recordings with (record.agents, agents.py),
-        live_drafts_agent first. Login is checked later (_check_logins), so the first logged-in one wins."""
-        from agents import agent_order, definitions
-        full = {"record": cfg}
-        defs = definitions(full)
-        order = [cfg.get("live_drafts_agent"), *agent_order(full)]
-        out = []
-        for name in dict.fromkeys(n for n in order if n in ("claude", "codex") and defs.get(n, {}).get("drafts")):
-            path = shutil.which(name)
-            if path:
-                out.append((name, path))
-        return out
-
-    def busy(self) -> bool:
-        return bool(self.thread and self.thread.is_alive())
-
-    def maybe(self, segments: list[dict], pos: float, in_speech: bool, last_speech_end: float) -> None:
-        if not self.enabled or not self.ready.is_set() or self.busy() or not segments:
-            return
-        new = [s for s in segments if s["end"] > self.sent_upto]
-        if not new:
-            return
-        new_speech = sum(s["end"] - max(s["start"], self.sent_upto) for s in new)
-        paused = not in_speech and pos - max(last_speech_end, new[-1]["end"]) >= DRAFT_PAUSE
-        if (new_speech >= DRAFT_MIN_SPEECH and paused) or time.time() - self.last_call >= DRAFT_EVERY:
-            self.start(list(segments), pos)
-
-    def start(self, segments: list[dict], pos: float) -> None:
-        prompt = build_prompt(self.drafts, segments, self.sent_upto)
-        upto = segments[-1]["end"]
-        self.last_call = time.time()
-        gen = self.gen
-        self.thread = threading.Thread(target=self._call, args=(prompt, upto, pos, gen), daemon=True)
-        self.thread.start()
-
-    def _call(self, prompt: str, upto: float, pos: float, gen: int) -> None:
-        t0 = time.time()
-        rec = {"at": round(t0, 1), "upto": round(upto, 1), "prompt_chars": len(prompt)}
-        try:
-            text, meta = self._ask(prompt)
-            rec.update(meta)
-            answer = extract_json(text)
-            if gen != self.gen:
-                return  # the take was restarted meanwhile
-            lines, problems, self.next_id = apply_ops(self.drafts, answer, pos, self.next_id)
-            with open(self.live / "drafts.jsonl", "a", encoding="utf-8") as fh:
-                for ln in lines:
-                    fh.write(json.dumps(ln, ensure_ascii=False) + "\n")
-            self.sent_upto = max(self.sent_upto, upto)
-            self.calls += 1
-            self.state, self.note = "running", f"{len(self.drafts)} drafts"
-            rec.update(ops=len(lines), problems=problems[:5])
-        except Exception as e:  # never let drafts disturb the transcript
-            self.state, self.note = "error", f"drafts call failed: {str(e)[:200]}"
-            rec["error"] = str(e)[:500]
-            log(self.note)
-        finally:
-            rec["seconds"] = round(time.time() - t0, 1)
-            try:
-                if self.live.exists():
-                    with open(self.live / "drafts.log", "a", encoding="utf-8") as fh:
-                        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            except OSError:
-                pass
-
-    def _ask(self, prompt: str) -> tuple[str, dict]:
-        cwd = BLURT_HOME / "tmp"  # outside the project: no CLAUDE.md / AGENTS.md pulled into a tiny call
-        cwd.mkdir(parents=True, exist_ok=True)
-        if self.cmd_env:
-            p = subprocess.run(shlex.split(self.cmd_env), input=SYSTEM + "\n\n" + prompt, capture_output=True, text=True,
-                               encoding="utf-8", timeout=DRAFT_TIMEOUT, cwd=cwd)
-            if p.returncode:
-                raise RuntimeError(f"exit {p.returncode}: {p.stderr[-300:]}")
-            return p.stdout, {"agent": "cmd"}
-        last = None
-        for name, path in list(self.agents):
-            try:
-                out = self._claude(path, prompt, cwd) if name == "claude" else self._codex(path, prompt, cwd)
-                if self.agents[0][0] != name:  # remember what works
-                    self.agents.sort(key=lambda a: a[0] != name)
-                return out
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(f"{name}: no answer in {DRAFT_TIMEOUT}s")
-            except AuthError as e:
-                last = e
-                self.agents = [a for a in self.agents if a[0] != name]  # not logged in: don't retry every call
-                log(f"{name}: {e} — trying the next agent CLI")
-        if not self.agents:
-            self.enabled, self.state = False, "error"
-        raise RuntimeError(str(last) if last else "no agent CLI")
-
-    def _claude(self, path: str, prompt: str, cwd: Path) -> tuple[str, dict]:
-        cmd = [path, "-p", "--model", self.model_for("claude"), "--output-format", "json",
-               "--system-prompt", SYSTEM, "--tools", "", "--strict-mcp-config", "--no-session-persistence",
-               "--disable-slash-commands", prompt]
-        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           stdin=subprocess.DEVNULL, timeout=DRAFT_TIMEOUT, cwd=cwd, env=agent_env())
-        try:
-            env = json.loads(p.stdout)
-        except json.JSONDecodeError:
-            if "login" in (p.stdout + p.stderr).lower():
-                raise AuthError("claude is not logged in")
-            raise RuntimeError(f"claude exit {p.returncode}: {(p.stderr or p.stdout)[-300:]}")
-        if env.get("is_error"):
-            msg = str(env.get("result") or env.get("subtype"))
-            if "log in" in msg.lower() or "login" in msg.lower() or "logged in" in msg.lower():
-                raise AuthError(f"claude: {msg}")
-            raise RuntimeError(f"claude: {msg[:300]}")
-        u = env.get("usage") or {}
-        return env.get("result") or "", {"agent": "claude", "cost_usd": env.get("total_cost_usd"),
-                                         "input_tokens": (u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
-                                         + (u.get("cache_creation_input_tokens") or 0),
-                                         "output_tokens": u.get("output_tokens"), "api_ms": env.get("duration_api_ms")}
-
-    def _codex(self, path: str, prompt: str, cwd: Path) -> tuple[str, dict]:
-        outf = cwd / f"codex-{os.getpid()}.txt"
-        outf.unlink(missing_ok=True)
-        # --ignore-user-config: no MCP servers / notify hooks / personal model defaults for a tiny call (~17 s vs ~30 s)
-        cmd = [path, "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--json",
-               "--ignore-user-config", "--ignore-rules", "-c", 'model_reasoning_effort="low"', "-o", str(outf)]
-        if self.model_for("codex"):
-            cmd += ["-m", self.model_for("codex")]
-        p = subprocess.run(cmd + ["-"], input=SYSTEM + "\n\n" + prompt, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=DRAFT_TIMEOUT, cwd=cwd, env=agent_env())
-        text = outf.read_text(encoding="utf-8") if outf.exists() else ""
-        outf.unlink(missing_ok=True)
-        if p.returncode or not text:
-            blob = (p.stderr + p.stdout)[-400:]
-            if "login" in blob.lower() or "unauthorized" in blob.lower():
-                raise AuthError("codex is not logged in")
-            raise RuntimeError(f"codex exit {p.returncode}: {blob}")
-        meta = {"agent": "codex"}
-        for line in p.stdout.splitlines():  # turn.completed carries token usage
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            u = ev.get("usage") if isinstance(ev, dict) else None
-            if isinstance(u, dict):
-                meta.update(input_tokens=u.get("input_tokens"), cached_tokens=u.get("cached_input_tokens"),
-                            output_tokens=u.get("output_tokens"))
-        return text, meta
-
-
-class AuthError(RuntimeError):
-    pass
-
-
-def codex_small_model() -> str | None:
-    """Codex has no stable 'small' alias: pick the listed fast/affordable model from its own model cache."""
-    cache = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "models_cache.json"
-    try:
-        d = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    models = d.get("models", []) if isinstance(d, dict) else d if isinstance(d, list) else []
-    for m in models:
-        if not isinstance(m, dict) or m.get("visibility") not in (None, "list"):
-            continue
-        desc = f"{m.get('slug', '')} {m.get('description', '')}".lower()
-        if ("fast" in desc and ("affordable" in desc or "easier" in desc)) or "mini" in desc:
-            if "older" not in desc and "previous" not in desc:
-                return m.get("slug")
-    return None
-
-
 # ------------------------------------------------------------------ the live run
 class Discarded(Exception):
     pass
@@ -508,27 +148,24 @@ class Discarded(Exception):
 
 class LiveRun:
     def __init__(self, session: Path, watch_pid: int | None = None, backend=None, make_vad=None, name: str | None = None,
-                 drafter: Drafter | None = None, workers: int | None = None):
+                 workers: int | None = None):
         self.session, self.live = session, session / "live"
         self.pcm, self.stop_file = self.live / "audio.pcm", self.live / "stop"
         self.watch_pid = watch_pid
         self.backend, self.name, self._make_vad = backend, name, make_vad
-        self.drafter = drafter
         self.workers = workers
         self.asr, self.note = "running", ""
         self.last_status = 0.0
         self.decode_seconds = 0.0
 
-    # --- status.json: {"asr","drafts","updated","note"} (+ audio_seconds, pid)
+    # --- status.json: {"asr","updated","note"} (+ audio_seconds, pid)
     def status(self, force: bool = False) -> None:
         if not force and time.time() - self.last_status < 1:
             return
         self.last_status = time.time()
         if not self.live.is_dir():
             return  # discarded: never recreate the folder
-        d = self.drafter
-        st = {"asr": self.asr, "drafts": d.state if d else "off", "updated": round(time.time(), 2),
-              "note": "; ".join(x for x in (self.note, f"drafts: {d.note}" if d and d.note else "") if x),
+        st = {"asr": self.asr, "updated": round(time.time(), 2), "note": self.note,
               "audio_seconds": round(getattr(self, "offset", 0) / BPS, 1), "pid": os.getpid()}
         try:
             save_json(self.live / "status.json", st)
@@ -542,12 +179,8 @@ class LiveRun:
         self.speech = self.blank = 0.0
         self.chunker = LiveChunker(self._make_vad or make_vad, self.backend.max_chunk)
         self.pending: deque = deque()
-        for f in ("transcript.jsonl", "drafts.jsonl"):
-            p = self.live / f
-            if self.live.is_dir():
-                p.write_text("", encoding="utf-8")
-        if self.drafter:
-            self.drafter.reset()
+        if self.live.is_dir():
+            (self.live / "transcript.jsonl").write_text("", encoding="utf-8")
 
     def read_slice(self, s: float, e: float) -> np.ndarray:
         a, b = int(s * SR), int(e * SR)
@@ -636,9 +269,6 @@ class LiveRun:
             try:
                 got = self.pull()
                 self.commit()
-                if self.drafter:
-                    self.drafter.maybe(self.segments, self.chunker.pos, self.chunker.in_speech(),
-                                       self.chunker.last_speech_end)
                 self.status()
                 if self.stop_file.exists():
                     self.pull()
@@ -677,13 +307,6 @@ class LiveRun:
         self.asr, self.note = "done", f"{len(data['segments'])} segments, {duration:.0f}s"
         self.status(force=True)
         log(f"transcript written: {files[0]} ({len(data['segments'])} segments)")
-        d = self.drafter
-        if d and d.busy():
-            d.thread.join(DRAFT_TIMEOUT + 5)
-        if d:
-            d.state = "off" if d.state != "error" else "error"
-            d.note = d.note or "recording finished"
-        self.status(force=True)
         self.pool.shutdown(wait=False)
         return 0
 
@@ -737,8 +360,7 @@ def cmd_run(a) -> int:
         (live / "audio.pcm").unlink(missing_ok=True)
         return 0
     run.backend, run.name, run.workers = backend, name, workers
-    run.drafter = Drafter(live)
-    log(f"live: {name}, drafts {run.drafter.state}")
+    log(f"live: {name}")
     try:
         return run.run()
     except Exception as e:
@@ -753,7 +375,7 @@ def cmd_simulate(a) -> int:
         die(f"{src} not found")
     live = session / "live"
     live.mkdir(parents=True, exist_ok=True)
-    for f in ("stop", "status.json", "transcript.jsonl", "drafts.jsonl"):
+    for f in ("stop", "status.json", "transcript.jsonl"):
         (live / f).unlink(missing_ok=True)
     (session / "transcript.json").unlink(missing_ok=True)
     raw = subprocess.run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-i", str(src), "-ac", "1", "-ar", str(SR),
@@ -780,7 +402,7 @@ def cmd_simulate(a) -> int:
             time.sleep(0.05)
         out["stop_to_transcript_seconds"] = round(time.time() - t_stop, 2)
         out["transcript"] = str(session / "transcript.json") if (session / "transcript.json").exists() else None
-        proc.wait(timeout=DRAFT_TIMEOUT + 30)
+        proc.wait(timeout=60)
         out["exit"] = proc.returncode
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0

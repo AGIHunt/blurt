@@ -22,12 +22,24 @@
 //    bubble takes those keys first while it has the keyboard). ⌘5–⌘9 aren't the bubble's. The type list (the type
 //    chip's, opened with a click) takes ↑↓ ↩ while it is open; Esc or Tab close it, back to the note; typing goes on
 //    into the note (the bubble closes the list). ↑↓ are otherwise the field's.
+//  • Recording & Items off (Capabilities.swift; `State.filing` false): the bubble has no place chip and no type chip —
+//    a snap is a card, nothing is filed and nothing has a type. Tab still takes the grey words (and ends Edit Note's
+//    re-record); with none to take it does nothing. ⌘0–⌘4 do nothing either: they stay the bubble's while it has the
+//    keyboard, so the main window behind a frozen snap never changes page under it.
+//  • ⌘↩ (v1.0.23, the founder: "after a snap I don't want it hung as a card, straight onto the clipboard"): a fresh
+//    snap's note is saved as ↩ saves it, then the picture (marked) and the note go to the clipboard — the same items a
+//    card's click-copy puts there — and it is done: no card under the notch; it is in the Cards panel's History (used)
+//    so it can be found again. Only a fresh snap of its own (State.canCopy): a snap into a recording, Edit Note and a
+//    recording's note ignore it; with a list open it is ignored (the list has ↩), an IME keeps it. ⇧↩ stays the line
+//    break.
 
 import Foundation
 
 public enum NoteKeys {
     public enum Key: Equatable {
         case returnKey, shiftReturn, tab, escape
+        /// ⌘↩
+        case commandReturn
         /// the first committed character typed into the field (not an IME composition: NoteTyping)
         case typing
         /// ↑ / ↓ (no modifiers)
@@ -67,15 +79,22 @@ public enum NoteKeys {
         public var picking: Bool
         /// the type list (the type chip's) is open
         public var pickingKind: Bool
+        /// the bubble has its place chip and its type chip (Capability.projectsShown): false with Recording & Items
+        /// off — no place list, no types
+        public var filing: Bool
+        /// ⌘↩ may copy it and finish: a fresh snap in place, not one going into a recording
+        public var canCopy: Bool
 
         public init(mode: Mode, voice: Voice = .none, typed: String = "", composing: Bool = false, picking: Bool = false,
-                    pickingKind: Bool = false) {
+                    pickingKind: Bool = false, filing: Bool = true, canCopy: Bool = false) {
             self.mode = mode
             self.voice = voice
             self.typed = typed
             self.composing = composing
             self.picking = picking
             self.pickingKind = pickingKind
+            self.filing = filing
+            self.canCopy = canCopy
         }
 
         /// the grey words are showing in the field's place
@@ -87,6 +106,8 @@ public enum NoteKeys {
     public enum Action: Equatable {
         /// save the note (↩ / Done): with the grey words as they are, typed text, or nothing
         case commit
+        /// ⌘↩: save it as ↩ does, copy the picture and the note, and finish without a card (History has it)
+        case copyAndFinish
         /// a line break at the caret
         case newLine
         /// take the grey words into the field (black, the caret at their end), stop listening — and break the line
@@ -115,13 +136,28 @@ public enum NoteKeys {
         case pass
     }
 
+    /// ⌘Z is the bubble's, before the Edit menu's Undo. ⇧⌘Z stays the menu's Redo.
+    ///
+    /// The menu's Undo runs the field editor's typing undo on the main thread. A snap frozen in
+    /// place eats every click until that thread gets back, so a ⌘Z the menu takes — and a typing
+    /// undo that never returns — leaves the whole screen stuck. The panel claims ⌘Z in
+    /// `performKeyEquivalent` (key equivalents run before `sendEvent`) and only then decides
+    /// stroke versus text.
+    public static func takesCommandZBeforeTheMenu(shift: Bool, charactersIgnoringModifiers: String?) -> Bool {
+        !shift && charactersIgnoringModifiers == "z"
+    }
+
     public static func action(_ key: Key, _ s: State) -> Action {
         if s.composing { return .pass }
         if case .command(let d) = key {
             guard let k = NoteKind.forDigit(d) else { return .pass }
-            return .setKind(k)
+            return s.filing ? .setKind(k) : .ignore
         }
-        if s.pickingKind {
+        if key == .commandReturn {
+            if (s.picking || s.pickingKind) && s.filing { return .ignore }
+            return s.mode == .fresh && s.canCopy ? .copyAndFinish : .ignore
+        }
+        if s.pickingKind, s.filing {
             switch key {
             case .escape, .tab: return .closeKinds
             case .returnKey: return .pickKind
@@ -131,9 +167,9 @@ public enum NoteKeys {
             default: break                  // typing: as below (the bubble closes the list)
             }
         }
-        if s.picking { return key == .escape ? .closePlaces : .pass }
+        if s.picking, s.filing { return key == .escape ? .closePlaces : .pass }
         switch key {
-        case .up, .down, .command:
+        case .up, .down, .command, .commandReturn:
             return .pass
         case .returnKey:
             return .commit
@@ -146,8 +182,8 @@ public enum NoteKeys {
         case .tab:
             switch s.mode {
             case .recording: return .pass
-            case .edit: return s.voice == .words ? .takeWords(newLine: false) : .openPlaces
-            case .fresh: return s.wordsShowing ? .takeWords(newLine: false) : .openPlaces
+            case .edit: return s.voice == .words ? .takeWords(newLine: false) : s.filing ? .openPlaces : .ignore
+            case .fresh: return s.wordsShowing ? .takeWords(newLine: false) : s.filing ? .openPlaces : .ignore
             }
         case .typing:
             guard s.mode == .fresh else { return .pass }

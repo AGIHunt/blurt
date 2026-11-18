@@ -1,0 +1,12 @@
+{
+  "checked_at": "2026-11-06",
+  "credential_kind": "existing gcloud user authentication and local ADC",
+  "credential_values_logged": false,
+  "compute_api_enabled": false,
+  "gpu_quota_verified": false,
+  "resources_created": false,
+  "cloud_training_started": false,
+  "cloud_training_spend_usd_this_task": 0,
+  "next_candidate": "One L4 24 GB, contingent on representative memory/throughput measurement and data/model readiness",
+  "blocking_dependency": "Mandarin and code-switch capable model plus verified training data"
+}

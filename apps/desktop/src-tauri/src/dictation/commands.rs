@@ -1,7 +1,8 @@
 //! What Settings → Dictation and Settings → Cloud call (the Mac's Settings/DictationModels.swift, CloudServices
 //! pane): dictation's speech models (`transcribe.py dictation-models`), one download at a time with its progress
 //! (`transcribe.py setup --model-id`; stderr's "N/M MB" lines become `model-download` events), the model in use, and
-//! the cloud services (cloud.rs) with a Test that makes one tiny request (`polish.py serve`'s `cloud_check`).
+//! the cloud services (cloud.rs) with a Test that makes one tiny request (`polish.py serve`'s `cloud_check`), and a
+//! Custom Model's Save that runs the job itself first (`polish_cloud.py check`).
 
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
@@ -108,7 +109,33 @@ pub fn dictation_models(state: tauri::State<'_, AppState>) -> R<Value> {
         .map_err(String::from)?;
     remember_models(&v);
     v["downloading"] = json!(DOWNLOADING.lock().unwrap().clone());
+    v["dashscope_model"] = json!(cloud::dashscope_speech_model());
     Ok(v)
+}
+
+/// Which Model Studio speech model its recogniser (qwen3-asr-flash) uses — None: Qwen3-ASR Flash — and dictation on
+/// it; the Mac's CloudSpeech.saveDashScope. The speech server holds the model it started with: it restarts.
+#[tauri::command]
+pub fn dictation_dashscope_model(model: Option<String>) -> R<()> {
+    let m = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty() && m != "qwen3-asr-flash");
+    settings::update(|cfg| {
+        if cfg.get("asr").and_then(Value::as_object).is_none() {
+            cfg["asr"] = json!({});
+        }
+        if cfg["asr"].get("cloud").and_then(Value::as_object).is_none() {
+            cfg["asr"]["cloud"] = json!({});
+        }
+        let all = cfg["asr"]["cloud"].as_object_mut().expect("an object");
+        match &m {
+            Some(m) => {
+                all.insert("qwen3-asr-flash".into(), json!({"model": m}));
+            }
+            None => {
+                all.remove("qwen3-asr-flash");
+            }
+        }
+    })?;
+    dictation_use(Some("qwen3-asr-flash".into()))
 }
 
 /// Start downloading a speech model; progress arrives as `model-download` events {id, done_mb, total_mb, state}.
@@ -290,6 +317,96 @@ pub fn cloud_disconnect(id: String) -> R<Value> {
     cloud::disconnect(&id)?;
     restart_asr();
     Ok(cloud::summary())
+}
+
+/// Advanced → Custom Model… in a text job's pop-up (the Mac's CustomModelModel.save): any service's model for one job,
+/// by its id — on a connected service (`service`: its id, its saved key unless a new one is typed) or a new one
+/// (`preset`, `region` for a preset with two addresses, `base_url` for the user's own address, `name`). What can be
+/// checked here goes first (the address, the model id, the key), then the job itself (`polish_cloud.py check` with the
+/// job: one short sentence, or a small picture with text for Copy Text from Screen); only when that passes is the
+/// service saved and the job put on the model. `jobs` (Add Cloud Model's 用于 boxes, for a service Blurt never
+/// measured): each is checked in turn and nothing is saved unless all pass; then each is put on the model.
+/// {"ok", "ms", "service", "summary"} or {"ok": false, "code", "job"?}: address | model_id | no_key | key_spaces |
+/// key_characters | auth | network | timeout | rate_limited | model | vision | empty | … (`job`: the one that failed)
+#[tauri::command(async)]
+#[allow(clippy::too_many_arguments)]
+pub fn cloud_custom_connect(
+    app: AppHandle,
+    job: Option<String>,
+    jobs: Option<Vec<String>>,
+    service: Option<String>,
+    preset: Option<String>,
+    region: Option<String>,
+    base_url: Option<String>,
+    name: Option<String>,
+    key: String,
+    model: String,
+) -> R<Value> {
+    let jobs = cloud::job_list(job.as_deref(), jobs.as_deref())?;
+    let services: Vec<Value> = cloud::setup()["services"].as_array().cloned().unwrap_or_default();
+    let existing = match service.as_deref().filter(|s| !s.is_empty()) {
+        Some(id) => Some(services.iter().find(|x| x["id"] == json!(id)).cloned().ok_or("no such service")?),
+        None => None,
+    };
+    let svc = match &existing {
+        Some(s) => s.clone(),
+        None => {
+            let pid = preset.as_deref().ok_or("give a preset")?;
+            let p = cloud::preset(pid).ok_or_else(|| format!("unknown preset {pid}"))?;
+            let taken: Vec<String> = services.iter().filter_map(|x| x["id"].as_str().map(String::from)).collect();
+            let mut s = json!({"id": cloud::new_id(pid, &taken), "preset": pid});
+            let r = region.as_deref().filter(|r| ["china", "global"].contains(r));
+            if p.regional() {
+                s["region"] = json!(r.unwrap_or("global"));
+            }
+            // the preset's own address is kept as none (it follows the region)
+            let b = base_url.as_deref().map(str::trim).unwrap_or("");
+            if !b.is_empty() && Some(b) != p.base(s["region"].as_str()) {
+                s["base_url"] = json!(b);
+            }
+            if let Some(n) = name.as_deref().map(str::trim).filter(|n| p.custom() && !n.is_empty()) {
+                s["name"] = json!(n);
+            }
+            s
+        }
+    };
+    let id = svc["id"].as_str().unwrap_or("").to_string();
+    let typed = key.trim().to_string();
+    let saved = existing.as_ref().and_then(|_| cloud::key(&id));
+    let m = model.trim().to_string();
+    if let Some(code) = cloud::custom_problem(&cloud::address(&svc).0, &m, &typed, saved.is_some()) {
+        return Ok(json!({"ok": false, "code": code}));
+    }
+    let k = if typed.is_empty() { saved.unwrap_or_default() } else { typed.clone() };
+    let runner = app.state::<AppState>().runner();
+    let mut ms = Value::Null;
+    for job in &jobs {
+        // the key on stdin, never on the command line
+        let body = json!({"cloud": cloud::request(&svc, &m, &k), "job": job}).to_string();
+        let v = match runner.run("polish_cloud.py", &["check".to_string()], Some(body.as_bytes()), Duration::from_secs(45)) {
+            Ok(v) => v,
+            Err(e) => e
+                .stdout
+                .lines()
+                .rev()
+                .find_map(|l| serde_json::from_str::<Value>(l.trim()).ok())
+                .unwrap_or_else(|| json!({"ok": false, "code": "error"})),
+        };
+        if v["ok"] != json!(true) {
+            let code = v["code"].as_str().filter(|c| !c.is_empty()).unwrap_or("error");
+            return Ok(json!({"ok": false, "code": code, "job": job}));
+        }
+        ms = v["ms"].clone();
+    }
+    if existing.is_none() || !typed.is_empty() {
+        cloud::connect_service(svc, Some(&typed))?;
+        // a key that also recognises speech (OpenAI, Model Studio): the next take's speech server has it
+        restart_asr();
+    }
+    for job in &jobs {
+        cloud::set_job(job, &id, &m)?;
+    }
+    Ok(json!({"ok": true, "ms": ms, "service": id, "summary": cloud::summary()}))
 }
 
 pub(crate) fn cloud_check(app: &AppHandle, preset: &str, key: &str, base_url: Option<&str>) -> R<Value> {

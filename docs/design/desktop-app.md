@@ -4,7 +4,12 @@
 · 基于 `feat/live-snap`（v0.6）
 
 目标：把「菜单栏小工具 + 浏览器审核页 + Python 脚本」升级成一个给 vibe coder 用的**想法/bug 管理器**：
-跨项目管理录屏和截图批次，浏览历史条目，在应用内审核，一键交给 coding agent 去修，修完后状态回传到应用。
+跨项目管理录屏和截图批次，浏览历史条目，在应用内审核，交给 coding agent 去修，修完后状态回传到应用。
+
+> 2026-11 现状：交给 Agent = 复制一行指令（「复制指令给 Agent」，`⌘↩`），指向一份交接说明，由用户粘贴到自己用的 Agent
+> （Claude Code、Codex、WorkBuddy、Cursor……）；口喷鸡不为此启动或挑选 Agent。口喷鸡只在后台无人值守地跑 Agent 做整理和 AI 补全；
+> 整理也可以在任何装了 blurt skill 的 Agent 对话里做（「处理我录的视频」）。下文 2026-10 方案里的应用拉起 Agent 修复、
+> 交互式修复 deep link、「Agent 运行」页和每次运行的费用都没有做或已删除（`next-round.md` 开头的说明）。
 
 总原则不变：
 - **录制中绝不打断**；
@@ -41,7 +46,8 @@
 4. **Agent 集成分三层，都基于标准机制**：
    - SKILL.md：Claude Code、Codex、Kimi Code、ZCode 都能读；
    - 本地 MCP：四家都支持；
-   - 应用直接拉起运行：headless 用 `claude -p` / `codex exec --json` / `kimi --print`；交互式用 `claude-cli://open` deep link 或终端。
+   - 应用在后台拉起 headless 运行，只用于整理和 AI 补全：`claude -p` / `codex exec --json` / `kimi -p`……；
+     交给 Agent 修是复制一行指令，用户粘贴到自己的 Agent（2026-11；原方案的交互式 deep link 已删除）。
 
    agent 调用 `mark_fixed` 后，应用里小鸡把虫子啄掉。ZCode 目前没有 CLI 或 headless 模式，只接 skill 和 MCP 两层。
 5. **不再排周期，直接并行开工**：8 个工作包分别在独立 worktree 里由 agent 同时推进（§6）。
@@ -157,6 +163,10 @@ Windows/Linux: Blurt（Tauri 2）
 
 ### 2.1 主窗口（macOS：原生外壳 + Web 画布；Tauri：React 实现同样的布局）
 
+> **v1.0.23 起（macOS）**：主窗口按能力组织，详见 [capabilities.md](capabilities.md)。侧栏 = 主页 / 听写 / 卡片 / 手机，然后
+> 「事项」组（待处理、进行中、未归类、全部事项）和「项目」组；关掉的能力不出现。第一次打开落在主页。下面的草图是事项那一组的布局。
+
+
 ```
 ┌ Blurt ─────────────────────────────────────────────────────────── ⌘K 搜索 ─┐
 │ ● 录制 ⌥⇧R   📸 截图 ⌥⇧A          项目: [ my-saas ▾ ]            🥚 整理中 1 │
@@ -164,11 +174,11 @@ Windows/Linux: Blurt（Tauri 2）
 │ 收件箱    3  │ 事项  [issue ✓][idea][note][task]     │ (WKWebView 画布)      │
 │ 全部事项  128│ 状态: 待处理 ▾  项目: 全部 ▾  时间 ▾  │ I-014 · issue · P1    │
 │ 会话         │ ──────────────────────────────────── │ ┌──────────────────┐ │
-│ Agent 运行 ● │ 🐞 登录按钮点击无响应    my-saas  2h  │ │  frame #1 (红框)  │ │
+│              │ 🐞 登录按钮点击无响应    my-saas  2h  │ │  frame #1 (红框)  │ │
 │ 导出         │ 🐞 价格页移动端溢出      my-saas  2h  │ └──────────────────┘ │
 │ ── 项目 ──   │ 💡 学 Linear 的空状态    ideas    1d  │ ◀ 1/3 ▶  ▶ 片段 0:14 │
 │  my-saas     │ ✓ 🐞 头像上传 500  → 已修 #a1c3   3d  │ "这个登录按钮点了…"   │
-│  ~/Blurt     │ (NSTableView，右键菜单、拖拽、空格 QL)  │ [让 Claude 修 ⌘↩]     │
+│  ~/Blurt     │ (NSTableView，右键菜单、拖拽、空格 QL)  │ [复制指令给 Agent ⌘↩] │
 │ ⚙ 设置       │                                      │ 历史: 创建→确认→已修   │
 └──────────────┴──────────────────────────────────────┴──────────────────────┘
 ```
@@ -199,7 +209,8 @@ Windows/Linux: Blurt（Tauri 2）
 - **会话**：时间线；详情页是视频加字幕滚动（点字幕跳到对应时刻），条目在时间轴上打点，旁边是 digest。
 - **事项详情**：帧（带框）、片段、原话、lens 字段、`code_refs`（用 `vscode://`、`cursor://`、`zed://` 在编辑器打开）、问答、事件历史和修复记录。
 - **审核模式**（`R`）：同一个组件的全屏 triage 模式，键位不变：A / X / J / K / Z / G / V。
-- **Agent 运行**：每次运行一行，显示 agent、项目、条目、状态、耗时和费用（`claude -p --output-format json` 里有 `total_cost_usd` [S21]），可以展开看流式日志。
+- **正在运行**：整理任务列在事项列表上方，失败的带「重试」和「忽略」（`guide.md` §5）。交给 Agent 的事项不在这里：口喷鸡不替它们跑 Agent，
+  也不显示每条的费用（2026-10 方案里单独一页「Agent 运行」、带费用和流式日志，现在没有这一页）。
 - **菜单栏和托盘**：录制、截图、显示鸡舍、切换项目、最近会话（带状态蛋）、打开 Blurt（⌥⇧B）。
 - **浮层**：选区、倒计时、HUD、墨迹、鸡舍、气泡。macOS 继续用原生实现；Win/Linux 用透明 WebView 窗口重写同样的动效
   （弹簧参数照搬 `Perch.swift`）。GNOME Wayland 上没法置顶，鸡舍降级成窗口内的托盘加系统通知 [S16]。
@@ -269,6 +280,11 @@ Windows/Linux: Blurt（Tauri 2）
 听写、语音备注、整理都照常，只有写设置会被拒：`update_global_config` 抛 `ConfigUnreadable`（CLI 报 JSON `config_unreadable`，没有
 traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`last_region`、`skill_dir`、下载完「用它」）走 `save_config_if_readable`，
 跳过并在结果里带 `"saved": false`——模型照样算下好了。NaN / Infinity 两边都不认（Python 的 json 认、JSONSerialization 不认）。
+
+**后台下载让人看见**（v1.0.23，`BlurtCore/ModelDownloadNotice.swift`）：首次的推荐模型下载不问，但下载开始时刘海说一次「正在后台下载
+语音模型（5.9 GB）· 停止」，引导除模型那一步外每一步底部一行进度和「停止」，主页听写那行显示进度和「停止」；「停止」立刻写进
+`model-downloads.json`，下次启动不再自己继续（退出或崩溃仍会续传），主页改成「下载更准的语音模型 · 5.9 GB」。引导第 1 步关掉
+听写就不下载；之后在主页或设置关掉听写，正在下的停止。
 
 **模型下载**（macOS `App/ModelDownloads.swift`，规则在 `BlurtCore/ModelDownloadQueue.swift`）：App 里所有模型下载都走这一个
 管理器——引导的「下载推荐模型」、设置 → 语音（听写的识别和润色模型、录屏和语音备注的模型）、听写键的「还没有语音模型 · 下载」。
@@ -396,7 +412,7 @@ traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`la
 | `/` | 搜索 |
 | `J` / `K` | 下一条 / 上一条 |
 | `↩` | 打开 |
-| `⌘↩` | 交给 agent |
+| `⌘↩` | 复制指令给 Agent（用户粘贴到自己的 Agent） |
 | `E` | 就地改标题（在列表行里；↩ / Tab / 点别处保存，Esc 恢复，空标题不保存）|
 | `1`–`4` | 改 kind（列表和详情页一样；严重程度在详情的标签菜单里）|
 | `S` | 改状态 |
@@ -483,12 +499,12 @@ v0.9 补充（主窗口）：
   - 一个 `SessionEnd` hook，会话结束时执行 `index.py update --workspace ${CLAUDE_PROJECT_DIR}`（`Stop` 每轮都触发，太频繁）。
 - **MCP**：工具定义见 C4。
 - **应用拉起 agent**：
-  - **后台整理**和**后台修复**：从 `agents.py command <id> headless` 拿到 argv 后执行，解析 stream-json 显示进度；
-    沿用 v0.6 的登录 shell 环境，不用 bare 模式，因为 bare 模式不读 OAuth 登录状态 [S21]。
-  - **交互式修复**：Claude 用 `open "claude-cli://open?cwd=<repo>&q=<prompt>"`；Codex 和 Kimi 在用户的终端里打开
-    `codex "<prompt>"` 或 `kimi`；ZCode 复制提示词并引导用户粘贴。
-  - **选哪个 agent**：项目设置 → 全局默认 → 已登录的那个（Claude → Codex → Kimi）→ 「复制提示词」兜底。
-  - 后台修复不会提交，也不会推送，只把 `fix.state` 改成 `fixing` / `fixed`，由用户验收。
+  - **后台整理**（和 AI 补全）：从 `agents.py command <id> headless` 拿到 argv 后执行，解析 stream-json 显示进度；
+    沿用 v0.6 的登录 shell 环境，不用 bare 模式，因为 bare 模式不读 OAuth 登录状态 [S21]。用「设置 → Agent」顺序里第一个能用的
+    命令行 Agent；一个都没有时，整理在装了 skill 的 Agent 对话里做（「处理我录的视频」，WorkBuddy、Cursor 这类 App 也行）。
+  - **交给 Agent 修**：「复制指令给 Agent」复制一行指令（指向交接说明），用户粘贴到自己用的 Agent，事项变成「已交给 Agent」；
+    Agent 通过 MCP 或 `items.py` 回报，「修好了」只到「待验证」，由用户验收。口喷鸡不为此启动或挑选 Agent。
+    （2026-10 方案里的后台修复、交互式修复 deep link、按项目选 Agent 都已删除或没有做。）
 - **以后再做**：ACP 对话面板、Codex app-server 内嵌、其他 CLI（Gemini、OpenCode、Qwen Code…）。后者在 `agents.json` 里加一条即可。
 
 ---
@@ -678,34 +694,34 @@ Swift、Rust、live.py 不各自拼命令。
                                          // 输入来自屏幕和语音，所以权限最小。cwd 是会话文件夹（AI 补全：$BLURT_HOME/tmp/<job>），
                                          // 不是项目；prompt 写明项目代码的路径，只读。codex 只能写 cwd 和 {writable}（每个一条
                                          // --add-dir：收件箱、各项目现存的 .blurt、它自己的 uv 缓存 $BLURT_HOME/sandbox/uv-cache；
-                                         // env UV_CACHE_DIR + BLURT_NO_INDEX），$BLURT_HOME（config.json、任务和它们的 hook 设置、
+                                         // env UV_CACHE_DIR + BLURT_NO_INDEX），$BLURT_HOME（config.json、任务、
                                          // index.db）和共用的 uv 缓存都不可写——沙箱里写下的东西不会在沙箱外被执行；网络开着给 uv
                                          // 解析依赖。claude / gemini 只能改 cwd 里的文件（acceptEdits / auto_edit），命令只放行整理
                                          // 要用的几个脚本，按绝对路径钉死（"Bash(uv run {scripts}/items.py:*)"，{scripts} = skill 的
                                          // scripts 目录，prompt 里写同一路径），别的命令、别的脚本都不行。kimi / opencode 用各自默认
-                                         // （参数未验证）。用户自己发起的交给 Agent 走 interactive.session，权限不变。
+                                         // （参数未验证）。
                                          // 没选项目的内容：提示词里附上候选项目（projects.py candidates），整理只写
                                          // suggested_project，不移动、不多调模型（v0.9，K2）；索引和任务的条目由 App 在
                                          // 结束后补（沙箱里写不了）。用哪个模型分两种：录屏（CLI 自己的模型、低思考强度）和
                                          // 卡片（最省的模型），agents.json processing.{recording,cards}，用户在设置 → Agent 改
                                          // （config record.agent_processing.<id>.<kind>）。
-    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
+    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, // "drafts" 标记已随录制中草稿删除（2026-11-09）
     // WP2 加的字段
     "version": ["--version"],
     "events": { "args": ["--json"], "format": "codex-jsonl" },   // 追加在 run 后面，得到可解析的进度流
-    "interactive": { "terminal": ["{prompt}"] },   // 或 {"url": "claude-cli://open?cwd={repo_q}&q={prompt_q}", "max_prompt": 5000}
-                                                   // 或 {"terminal": [], "paste_prompt": true}（kimi）或 {"copy_prompt": true}（zcode）
     "skill_dir": "~/.agents/skills",
     "mcp": { "args": ["mcp", "add", "blurt", "--", "uv", "run", "--script", "{mcp_server}"],
              "check": ["mcp", "get", "blurt"], "verified": "run" } },
          // 或 {"json": {"path": "${KIMI_CODE_HOME:-~/.kimi-code}/mcp.json", "key": ["mcpServers", "blurt"], "value": {…}}}
   { "id": "zcode", "name": "ZCode", "bins": [], "app": { "macos": "/Applications/ZCode.app" },
-    "headless": false, "interactive": { "copy_prompt": true }, … }
+    "headless": false, … }                 // 只能「连接」（skill + MCP），从不无人值守地跑
 ], "failures": [ … ] }                     // app-ux：skill | model | auth | quota | network，classify() 用
 ```
 
-路径支持 `~` 和 `${VAR:-default}`；占位符：`{prompt}`、`{repo}`、`{repo_q}` / `{prompt_q}`（URL 编码）、`{mcp_server}`（mcp_server.py
-的绝对路径）、`--var k=v` 给的任意 `{k}`。
+路径支持 `~` 和 `${VAR:-default}`；占位符：`{prompt}`、`{repo}`、`{mcp_server}`（mcp_server.py 的绝对路径）、`--var k=v` 给的任意 `{k}`。
+
+（2026-11）`interactive` 字段删了：Blurt 不再在自己的终端里启动 Agent，也没有交给 Agent 的会话。用户把事项交给自己的 Agent
+（复制交接单，`handoff.py`），Agent 用 blurt MCP 或 `items.py state` 报告进度。
 
 **顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
 没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。`"headless": false` 的条目（zcode）永远不进 order（默认顺序和 `record.agents` 都一样，Python `agent_order()` 和 Swift `AgentHub.order()` 同一规则）。
@@ -725,12 +741,11 @@ agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang zh
      "agents": [{id, name, path, state, why, fix,                     // 与 status 的行完全相同
                  installed: bool, version: str|null,
                  login: "ok"|"logged_out"|"unknown"|"n/a",          // ready→ok，configured/unknown→unknown，not_installed→n/a
-                 headless: bool, interactive: "url"|"terminal"|"copy"|null}]}
-     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供「复制提示词」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
-agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
-  → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
-     "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
-     "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
+                 headless: bool}]}
+     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供设置 → Agent 的「连接」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
+agents.py command ID headless (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
+  → {"id", "mode", "argv": [abs bin, …], "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
+     "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null, "retry_exit": null|n}
      headless：argv = bin + run + headless_mcp.args（--no-mcp 不加）+ events.args（--no-events 不加）；prompt 永远是单独一个
      argv 元素，不经过 shell。
      **headless_mcp**（codex，实测）：`codex exec` 的审批策略是 never，没批准过的 MCP 调用一律失败（"MCP tool call requires
@@ -742,8 +757,6 @@ agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --re
      claude 的 `run` 在 `--allowedTools` 里加了 `mcp__blurt`（-p 模式下没放行的工具会被拒；未实跑 ⚠）。
      **应用要用 `command` 的 argv**：Agents.swift 现在直接拿 `run` 拼命令，拿不到 headless_mcp，要么改成调 `agents.py command`，
      要么照同样规则把 headless_mcp.args（替换 `{mcp_server_json}`）追加上。
-     interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
-     或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
      --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
 agents.py install ID [--skill] [--mcp] [--dry-run]     （两个都不给 = 都做）
   → {"changes": [{"action": "symlink", "path", "target"} | {"action": "exists", "path"|"argv"} |
@@ -896,11 +909,10 @@ Sources/BlurtCore/      (library; everything the app uses from it is public — 
                       func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect
                       func detectAll(login:) async throws -> AgentDetect        // every registry id, configured order first
                       var order: [String]?                                      // record.agents
-                      func command(_ id:, mode: "headless"|"interactive", prompt:, repo:, vars:, events:) async throws -> AgentCommand
+                      func command(_ id:, mode: "headless", prompt:, repo:, vars:, events:) async throws -> AgentCommand
                       func install(_ id:, skill:, mcp:, dryRun: Bool) async throws -> InstallPlan   // full login env, never scrubbed
                       func fixPrompt(_ uids: [String], repo: URL? = nil) async throws -> FixPrompt
-                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun       // headless; parses the event stream
-                      func interactive(_ id:, prompt:, repo:) async throws -> AgentCommand }        // the app opens url / Terminal / clipboard
+                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun }     // headless; parses the event stream
                     public final class AgentRun { id, agent, items, repo, lines, costUSD, exitStatus; onLine, onProgress, onExit; cancel() }
 Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged; one module)
    Capture/    Recorder, Picker, HUD, HUDLive, InkView, Snap, Perch, Rope, NoteBubble, Eggs, LiveAudio   (the existing capture code)
@@ -925,6 +937,8 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
 - Info.plist 是文件 `recorder/macos/Info.plist`，由 WP4 维护，`record.py build` 拷进包里；已带 `CFBundleURLTypes`（`blurt`、`blurt-app`）、
   `NSServices`（"Add to Blurt"，`NSMessage` = `addToBlurt`）、`SUFeedURL`、`SUPublicEDKey`（仓库里为空，由 `release-mac.sh` 写入；
   为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
+- 测试钩子（`BLURT_TEST_*` 环境变量）只在测试构建（`BLURT_TEST_HOOKS=1 record.py build`，加 `-DBLURT_TEST_HOOKS`）和 debug 构建里有效；其他构建在启动时把它们清掉（`main.swift`），
+  免得别的程序带着它们启动 Blurt，跳过需要用户确认的步骤，或借用 Blurt 的录屏、麦克风、辅助功能权限（2026-11-08 安全审查）。
 - 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
   `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
 - Sparkle（2.10.0，校验和固定）只进发布构建：`BLURT_SPARKLE=1` 时链接，`record.py build` 把 `Sparkle.framework` 放进
@@ -946,7 +960,7 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   `mainWindow`（`show()` 后 `reveal(uid:)` / `reveal(session:)`），没有主窗口时打开该会话的审核窗口。
 - **Agent 运行记录**：每次后台运行写 `$BLURT_HOME/runs/<run_id>.json`
   `{id, agent, repo, items: [uid], state: running|done|failed|cancelled, started, ended?, exit?, cost_usd?, summary?, log}`，
-  原始事件流在同目录的 `<run_id>.log`。主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
+  原始事件流在同目录的 `<run_id>.log`。（2026-11：主窗口没有「Agent 运行」页，后台修复也已删除，后台只跑整理和 AI 补全；本条其余是 2026-10 的方案。）主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
   `items.py fix SESSION UID --state fixing --agent ID --run-id R`，agent 自己收尾时（mark_fixed）沿用这个 run_id（C1 规则）。
 - **「修好了」**：应用用 FSEvents 监听所有工作区的会话目录，任何来源把某个条目的 `fix.state` 改成 `fixed`（应用拉起的 agent、
   终端里的交互式会话、同事同步过来的文件）都会触发啄虫动画和系统通知；第一次看到的文件只记基线，不补放旧的。
@@ -1229,7 +1243,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
 1. `uv run --with pytest pytest tests/`
    （动了窗口或面板的版面：再跑 `BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s`）
 2. `pnpm -C web test && pnpm -C web build`
-3. `record.py build` 后启动 Blurt.app，跑一次截图闭环：⌥⇧A → 鸡舍 → 整理 → 主窗口出现条目 → 审核 → 「让 Claude 修」→ 收到 `mark_fixed` → 播放啄虫动画
+3. `record.py build` 后启动 Blurt.app，跑一次截图闭环：⌥⇧A → 鸡舍 → 整理 → 主窗口出现条目 → 审核 → 「复制指令给 Agent」→ 粘贴到 Agent → 收到 `mark_fixed` → 播放啄虫动画
 4. CI 上 desktop 的构建矩阵全绿
 
 ### 主要风险

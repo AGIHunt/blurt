@@ -1,10 +1,10 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Hand items to an agent: one Markdown note with everything it needs (contract K6), in $BLURT_HOME/handoff/.
-Sessions in Blurt (sessions.py dispatch) and "copy to your own agent" use the same note.
+"""Hand items to the user's own agent: one Markdown note with everything it needs (contract K6), in
+$BLURT_HOME/handoff/. The app copies the one-line instruction; the user pastes it into their agent.
 
-  handoff.py create --items REF … [--lang en|zh] [--to external|session] [--mark]
+  handoff.py create --items REF … [--lang en|zh] [--to external] [--mark]
         → {"ok","id","path","instruction","full","items":[uid]}
         --mark (the app calls it once the user has copied): items → handed_off, to external, handoff H-….
   handoff.py get H-0012          → the same fields
@@ -126,16 +126,10 @@ T = {
                "\"wontfix\", plus a short note).",
         "nomcp": "Without the MCP: `{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`.",
         "verify": "The user confirms each item before it counts as done.",
-        "rule_worktree": "Don't push. You're on your own branch, {branch}, in a separate worktree: commit your work "
-                         "there.",
-        "rule_worktree_sandboxed": "Don't push, and leave your changes uncommitted: you're on your own branch, {branch}, "
-                                   "in a separate worktree, and Blurt commits them when the user merges.",
-        "rule_direct": "Don't push, and don't commit — you're working directly in the project folder and the user "
-                       "reviews the changes first.",
         "rule_external": "Don't push, and don't commit unless the user asks you to.",
         "said": "They said", "summary": "Summary", "why": "Why", "inspired_by": "Inspired by", "actual": "Actual",
         "expected": "Expected", "steps": "Steps", "details": "Details", "next_steps": "Next steps",
-        "open_questions": "Open questions", "answer": "Their answer", "code": "Suspected code", "frame": "Frame",
+        "open_questions": "Open questions", "answer": "Their answer", "code": "Suspected code", "frame": "Frame", "files": "Files", "missing": "not found",
         "module": "module", "project": "project",
         "kind": {"issue": "issue", "idea": "idea", "note": "note", "task": "task"},
         "severity": {},
@@ -150,13 +144,10 @@ T = {
         "mcp": "每做完一条，用它的 uid 调用 blurt MCP 工具 `mark_fixed`（state 填 \"fixed\" 或 \"wontfix\"，附一句说明）。",
         "nomcp": "没有 MCP 时：`{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`。",
         "verify": "每一条都要用户确认后才算完成。",
-        "rule_worktree": "不要推送。你在单独的 worktree 和自己的分支 {branch} 上，改完在这个分支上提交。",
-        "rule_worktree_sandboxed": "不要推送，改动也不用提交：你在单独的 worktree 和自己的分支 {branch} 上，用户合并时由 Blurt 提交。",
-        "rule_direct": "不要推送，也不要提交：你直接在项目文件夹里改，用户会先看改动。",
         "rule_external": "不要推送；除非用户要求，也不要提交。",
         "said": "原话", "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "actual": "实际效果",
         "expected": "预期效果", "steps": "复现步骤", "details": "详情", "next_steps": "下一步", "open_questions": "待定问题",
-        "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "module": "模块", "project": "项目",
+        "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "files": "文件", "missing": "找不到", "module": "模块", "project": "项目",
         "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
         "severity": {"critical": "严重", "high": "高", "medium": "中", "low": "低"},
         "instr_one": "请处理 {id}，详情和截图见 {path}。做完后如果有 blurt MCP，调用 mark_fixed。",
@@ -244,6 +235,10 @@ def render_item(n: int, it: dict, lang: str, show_project: bool = False) -> str:
     refs = [r for r in (it.get("code_refs") or []) if _text(r)] if isinstance(it.get("code_refs"), list) else []
     if refs:
         parts.append(f"**{t['code']}** " + ", ".join(f"`{_text(r)}`" for r in refs))
+    # v1.0.23: files the user dropped on the item (a PDF, a video…), referenced where they are
+    files = [a for a in (it.get("attachments") or []) if isinstance(a, str) and a] if isinstance(it.get("attachments"), list) else []
+    if files:
+        parts.append(f"**{t['files']}**\n" + "\n".join(f"- `{a}`" + ("" if Path(a).exists() else f" ({t['missing']})") for a in files))
     for i, (p, f) in enumerate(frames_of(it), 1):
         label = f"{t['frame']} {i}"
         if _mmss(f.get("t")) is not None:
@@ -255,17 +250,7 @@ def render_item(n: int, it: dict, lang: str, show_project: bool = False) -> str:
     return "\n\n".join(parts)
 
 
-def rule_text(t: dict, to: str, worktree: bool | None, branch: str | None, sandboxed: bool = False) -> str:
-    """The commit / push rule of a hand-off. A sandboxed agent (Codex) in a worktree can't write the repository's
-    .git (a linked worktree's index and refs live outside it), so it leaves its changes uncommitted and
-    `sessions.py finish` commits them; the sandbox is never widened to .git."""
-    if to == "session" and worktree:
-        return t["rule_worktree_sandboxed" if sandboxed else "rule_worktree"].format(branch=branch or "")
-    return t["rule_direct"] if to == "session" else t["rule_external"]
-
-
-def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: str, to: str,
-           branch: str | None = None, worktree: bool | None = None, sandboxed: bool = False) -> str:
+def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: str, to: str = "external") -> str:
     t = T[lang]
     same = proj is not None
     pname = (proj or {}).get("name") or ""
@@ -278,11 +263,8 @@ def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: s
     fm_project = {"id": proj.get("id"), "name": pname, "path": proj.get("path")} if same else None
     fm = ["---", f"handoff: {hid}", f"created: {json.dumps(created)}",
           f"project: {json.dumps(fm_project, ensure_ascii=False)}",
-          f"items: {json.dumps([i['uid'] for i in items])}", f"to: {to}", f"lang: {lang}"]
-    if branch:
-        fm.append(f"branch: {json.dumps(branch)}")
-    fm.append("---")
-    rule = rule_text(t, to, worktree, branch, sandboxed)
+          f"items: {json.dumps([i['uid'] for i in items])}", f"to: {to}", f"lang: {lang}", "---"]
+    rule = t["rule_external"]
     intro = []
     if same and proj.get("id") != "inbox" and proj.get("path"):
         intro.append(t["folder"].format(path=proj["path"]))
@@ -292,11 +274,24 @@ def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: s
     return "\n".join(fm) + "\n" + "\n\n".join(body) + "\n"
 
 
+def _q(s: str) -> str:
+    """Quote a path for the agent's shell."""
+    if os.name == "nt":
+        return '"' + s.replace('"', '\\"') + '"'
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def _python() -> str:
+    """This interpreter, minus any venv (`uv run --script` puts scripts in a cache env that can disappear; items.py
+    only needs the standard library)."""
+    base = getattr(sys, "_base_executable", None)
+    return base if base and os.path.exists(base) else sys.executable
+
+
 def items_command() -> str:
     """How an agent runs items.py without the MCP server: this interpreter (outside any venv), not `uv run` — a
     sandboxed agent (Codex) has to ask before it may touch uv's cache."""
-    import agents
-    return f"{agents._q(agents.hook_python())} {agents._q(str(ITEMS_PY))}"
+    return f"{_q(_python())} {_q(str(ITEMS_PY))}"
 
 
 def handoff_dir() -> Path:
@@ -347,10 +342,8 @@ def front_matter(text: str) -> dict:
 
 
 def create(refs: list[str], lang: str | None = None, to: str = "external", mark: bool = False,
-           branch: str | None = None, worktree: bool | None = None, items: list[dict] | None = None,
-           sandboxed: bool = False) -> dict:
-    """Write a note for these items. `items` = already-fetched items (sessions.py), else each REF is looked up.
-    sandboxed = the session's agent can't commit in its worktree (rule_text)."""
+           items: list[dict] | None = None) -> dict:
+    """Write a note for these items. `items` = already-fetched items, else each REF is looked up."""
     lang = ui_lang(lang)
     its = items if items is not None else [item(r) for r in refs]
     if not its:
@@ -371,7 +364,7 @@ def create(refs: list[str], lang: str | None = None, to: str = "external", mark:
             it["_project"] = rows.get(it.get("project")) or {"name": it.get("project")}
     hid = next_id()
     note = handoff_dir() / f"{hid}.md"
-    text = render(hid, jobs.now_iso(), uniq, proj, lang, to, branch=branch, worktree=worktree, sandboxed=sandboxed)
+    text = render(hid, jobs.now_iso(), uniq, proj, lang, to)
     tmp = note.with_name(f".{note.name}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, note)
@@ -422,15 +415,13 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("create")
     s.add_argument("--items", nargs="+", required=True, metavar="REF")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
-    s.add_argument("--to", choices=["external", "session"], default="external")
+    s.add_argument("--to", choices=["external"], default="external", help="(the only one; accepted for old callers)")
     s.add_argument("--mark", action="store_true")
     s = sub.add_parser("get")
     s.add_argument("id")
     a = p.parse_args(argv)
     try:
         if a.cmd == "create":
-            if a.mark and a.to != "external":
-                fail("bad_args", "--mark is for --to external")
             emit(create(a.items, a.lang, a.to, a.mark))
         else:
             if not re.fullmatch(r"H-\d{4,}", a.id):

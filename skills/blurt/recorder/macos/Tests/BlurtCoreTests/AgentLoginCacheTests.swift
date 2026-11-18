@@ -1,6 +1,6 @@
-// Dogfood (work): the Hand Off panel opened on a signed-out Claude Code and switched to Codex seconds later, because only
-// a 10 s sweep knew who was signed in. Agents.LoginCache keeps the last sign-in check per agent (merged as single-agent
-// probes come back), and sessions.py's outdated refusal carries the version, the minimum and the update command.
+// Dogfood (work): a panel opened on a signed-out Claude Code and switched to Codex seconds later, because only a 10 s
+// sweep knew who was signed in. Agents.LoginCache keeps the last sign-in check per agent (merged as single-agent probes
+// come back).
 import Foundation
 import XCTest
 @testable import BlurtCore
@@ -31,14 +31,5 @@ final class AgentLoginCacheTests: XCTestCase {
         XCTAssertNil(c.fix["claude"])
         XCTAssertEqual(c.states["codex"], "ready")
         XCTAssertEqual(c.at, t1)
-    }
-
-    func testOutdatedRefusalCarriesVersions() {
-        let e = SessionsError(json: ["ok": false, "code": "outdated", "error": "Codex 0.157.0 is too old", "agent": "codex",
-                                     "version": "0.157.0", "need": "0.164.0", "fix": "npm i -g @openai/codex"], fallback: "failed")
-        XCTAssertEqual(e.code, "outdated")
-        XCTAssertEqual(e.version, "0.157.0")
-        XCTAssertEqual(e.need, "0.164.0")
-        XCTAssertEqual(e.fix, "npm i -g @openai/codex")
     }
 }

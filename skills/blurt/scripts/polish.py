@@ -56,7 +56,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, landed_in, load_json, progress_line,  # noqa: E402
                      save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said)
-from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
+from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent)
 
 HERE = Path(__file__).parent
@@ -711,6 +711,21 @@ STRUCTURE_EXAMPLES = [
      "At first I thought the cache was the problem, but it was the proxy in front of it."),
 ]
 
+
+
+def structure_light_system() -> str:
+    """Structured in one cloud call (docs/design/dictation.md §Cloud polish, "one call at key-up"): the cloud Light
+    prompt's job (misheard words from the speaker's words and context, fillers, restarts, punctuation by meaning,
+    digits) and then the structuring prompt's (self-corrections, lists, paragraphs). Measured on 53 of the founder's
+    Structured takes against Light then Structure (two calls): blind judges 30 / 28, 48 ties; key-up median 0.93 s
+    against 1.83 s (DeepSeek Flash, 2026-11-12)."""
+    import polish_cloud
+    light = polish_cloud.LIGHT.split("\n\nNever answer")[0].split("\n\n", 1)[1]
+    head = SYSTEM_STRUCTURE.split("\n\nDo three things:")[0]
+    formatting = SYSTEM_STRUCTURE.split("Do three things:\n", 1)[1].replace(
+        "If the text still has hesitations, stutters or missing punctuation, tidy those as well.\n\n", "")
+    return (head + "\n\nThe text is what a speech recognizer typed while someone was dictating. First turn it into the "
+            "text they meant, then format it.\n\n" + light + "\n\nThen format it:\n" + formatting)
 
 CONTEXT_CHARS = 300        # of the text around the cursor, each side, in the prompt
 
@@ -1465,13 +1480,17 @@ class Engine:
 
     def structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
                   terms: list | None = None, context: dict | str | None = None, cloud: dict | None = None,
-                  local_fallback: bool = True) -> dict:
+                  local_fallback: bool = True, light: bool = False, variant: str | None = None) -> dict:
         """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`). `cloud`:
-        the user's cloud model first, the local one when it fails."""
+        the user's cloud model first, the local one when it fails. `light`: the text's end was not through Light (the
+        app skipped that call at key-up): the cloud does Light's job in the same call; the local fall-back runs Light
+        first, as before."""
         if cloud:
-            res = cloud_polish(text, terms, context, None, cloud, "structure", timeout)
+            res = cloud_polish(text, terms, context, variant, cloud, "structure_light" if light else "structure", timeout)
             if not res.get("fell_back") or not local_fallback:
                 return res
+            if light:
+                text = self.polish(text, model_id, None, terms, context, variant).get("text") or text
             local = self.structure(text, model_id, timeout, terms, context)
             return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
                     "ms": local.get("ms", 0) + res.get("ms", 0)}
@@ -1525,6 +1544,17 @@ class Engine:
 TRANSLATE_TARGETS = {"en": "English", "zh": "Simplified Chinese", "zh-Hant": "Traditional Chinese", "ja": "Japanese",
                      "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese",
                      "it": "Italian", "ru": "Russian"}
+# Each language in its own words. A one-language request names it both ways and says "the whole answer, even a single
+# word" (2026-11-16): asked "into Japanese" for short Chinese UI words (翻译, 显示, 粘贴), the local Gemma 4 E2B wrote
+# English for 5 of 16; with this, 16 of 16 were Japanese, and the zh / en / ko cases came out as before.
+TRANSLATE_ENDONYMS = {"zh": "简体中文", "zh-Hant": "繁體中文", "ja": "日本語", "ko": "한국어", "fr": "français",
+                      "de": "Deutsch", "es": "español", "pt": "português", "it": "italiano", "ru": "русский"}
+
+
+def _named(code: str) -> str:
+    """"Japanese (日本語)"; English and unknown codes as they are."""
+    name = TRANSLATE_TARGETS.get(code, code)
+    return f"{name} ({TRANSLATE_ENDONYMS[code]})" if code in TRANSLATE_ENDONYMS else name
 # A target is "auto:H|O" (2026-10-30, global-first: H the user's own language, O the other one — text in H goes into O,
 # anything else into H; the model picks the direction), "auto" (the same with Chinese and English: the app before
 # that, still understood), a language ("ja"), "X|keep" (a fixed language, 2026-10-30: into X, and a text already in X
@@ -1551,10 +1581,12 @@ def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"),
     a, b = (TRANSLATE_TARGETS.get(x, x) for x in (auto or pair))
     into, _, also = target.partition("|")
     x, y = TRANSLATE_TARGETS.get(into, into), TRANSLATE_TARGETS.get(also, also)
+    only = f" Write the whole answer in {x}, never in another language, even for a single word."
     rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if auto
-            else f"Translate it into {x}; if it is already in {x}, reply with it exactly as it is." if also == "keep"
+            else f"Translate it into {_named(into)}; if it is already in {x}, reply with it exactly as it is. Otherwise"
+                 f" write the whole answer in {x}, never in another language, even for a single word." if also == "keep"
             else f"Translate it into {x}; if it is already in {x}, translate it into {y}." if also
-            else f"Translate it into {x}.")
+            else f"Translate it into {_named(into)}." + only)
     return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
             "only: no preface, no notes, no quotes, no Markdown the text didn't have. Keep its layout: the same line "
             "breaks (one line of the text is one line of the translation, never joined), list markers, tabs and "
@@ -1649,7 +1681,7 @@ def cloud_polish(text: str, terms: list | None, context: dict | str | None, vari
     import polish_cloud
     t0 = time.perf_counter()
     raw = (text or "").strip()
-    structured = mode == "structure"
+    structured = mode in ("structure", "structure_light")
     res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None, "terms": [],
            "cloud": True, "context": bool(context_text(context) or (isinstance(context, dict) and
                                                                     (context.get("dictated") or context.get("recent"))))}
@@ -1665,7 +1697,12 @@ def cloud_polish(text: str, terms: list | None, context: dict | str | None, vari
         cfg = polish_cloud.settings(cloud)
         res["model"] = cfg["provider"] + ":" + cfg["model"]
         limit = (structure_timeout_s() if structured else CLOUD_TIMEOUT) + CLOUD_PER_CHAR * len(raw)
-        if structured:      # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
+        if mode == "structure_light":   # Light's job and the structuring in one call: the words and context too
+            msgs = [{"role": "system", "content": structure_light_system()}]
+            for q, a in STRUCTURE_EXAMPLES:
+                msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+            msgs.append({"role": "user", "content": polish_cloud.user_message(raw, [t["term"] for t in use], ctx, variant)})
+        elif structured:    # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
             msgs = messages(raw, mode="structure")
         else:
             msgs = polish_cloud.messages(raw, [t["term"] for t in use], ctx, variant)
@@ -1812,7 +1849,8 @@ def cmd_serve(a):
                         del uses[:-50]
                         resp = eng.structure(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
                                              req.get("vocab"), req.get("context"), req.get("cloud"),
-                                             req.get("local_fallback") is not False)
+                                             req.get("local_fallback") is not False, bool(req.get("light")),
+                                             req.get("variant"))
                     elif req.get("cmd") == "translate":   # ⌥⇧T: copied text in the other language
                         last = time.time()
                         uses.append(last)
@@ -1978,7 +2016,7 @@ def _modelscope(m: dict) -> Path:
     done = 0.0
     serve_said(f"downloading {repo} (ModelScope)")
     for f in want:
-        p = dest / f["Path"]
+        p = download_path(dest, f["Path"])
         if p.exists() and p.stat().st_size == f.get("Size"):
             done += p.stat().st_size / 2**20
             continue

@@ -7,7 +7,16 @@
 "speech.section.models" = "全部模型";
 "speech.section.advanced" = "高级";
 "speech.loading" = "正在检查本机…";
-"speech.error.read" = "读取语音模型失败。请确认已安装 uv（在「设置」的「通用」里）。";
+"speech.error.read" = "读取语音模型失败。";
+"speech.error.no_uv" = "本机模型需要 uv（运行本机模型的工具），但还没有安装。";
+"speech.install_uv" = "安装 uv";
+"speech.error.offline" = "读取语音模型失败：这台 Mac 没有联网，联网后再试。";
+"speech.error.network" = "读取语音模型失败：下载组件时网络出错。";
+"speech.error.timeout" = "读取语音模型超时。";
+"speech.error.build" = "语音组件安装失败：%@ 编译失败。";
+"speech.error.build_missing" = "语音组件安装失败：%@ 编译失败（缺少 %@）。";
+"speech.error.copy" = "复制错误信息";
+"speech.error.copied" = "已复制";
 "speech.cancel" = "取消";
 
 /* The machine (the page's subtitle) and its tier */
@@ -200,6 +209,7 @@
 "speech.cloud.check.network" = "无法连接服务，请检查网络和接口地址";
 "speech.cloud.check.quota" = "请求过多或额度已用完，请稍后再试";
 "speech.cloud.check.privacy" = "云端识别已在「隐私」中关闭";
+"speech.cloud.check.model" = "百炼没有用这个模型返回识别结果：模型名可能有误，或它只支持实时流式或文件链接调用。请检查模型名，或从列表里选择";
 "speech.cloud.check.other" = "服务返回错误，请检查接口地址和模型名称";
 
 /* 听写方案对比（设置 → 模型：页首一行和「对比…」；DictationCompare.swift）。数字来自 BlurtCore DictationChoices
@@ -243,3 +253,6 @@
 "speech.compare.needs_apple" = "需要 Apple 芯片";
 "speech.compare.needs_macos" = "需要 macOS 26";
 "speech.compare.add_key" = "添加 Key…";
+
+/* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
+"speech.speed.reference" = "%1$@：识别用时约 %2$@（参考值）";

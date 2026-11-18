@@ -14,6 +14,10 @@
 //    The island says "图 + 文已粘贴". Without Accessibility nothing is armed (the ⌘V can't be caught; BlurtCore
 //    CardPasteSequence.arm): the copy pastes as it is, and the island says once a session that in a chat app only the
 //    picture goes in, with Allow… (v0.9: it armed anyway and the note was silently lost).
+//    In a terminal (a copy with a picture: SmartPasteArm.terminal) the ⌘V is kept the same way and one text step
+//    pastes instead — a line per card, `'<picture path>' <note>` — then the copy goes back. No toast: it is one paste.
+//    The same in a coding agent's window of the Codex app or the Claude app (BlurtCore AgentWindow, v1.0.21).
+//    A terminal with Secure Keyboard Entry on hides its keys from the tap: there the ⌘V pastes the copy's notes.
 //  • DragNoteFollowUp: a card dropped into a chat app brought its picture as the only file; the app is brought
 //    forward at the window it landed on (Accessibility: raise that window, make the app frontmost); the composer that
 //    received the drop gets the focus if it hasn't (the editable text under the drop point, else the nearest one in
@@ -194,20 +198,28 @@ final class PasteRunner {
 final class SmartPasteGate {
     private let lock = NSLock()
     private var armed = false
+    /// the kinds of app the armed copy takes ⌘V over (SmartPasteArm.classes: chat, terminal)
+    private var classes: Set<DropClass> = []
+    /// the agents' apps while armed (AgentProbe.list: read on the main thread, looked at on the tap's)
+    private var agents: Set<String> = []
     private var front: String?
     private var running = false
 
-    func set(armed a: Bool? = nil, front f: String?? = nil, running r: Bool? = nil) {
+    func set(armed a: Bool? = nil, classes c: Set<DropClass>? = nil, agents g: Set<String>? = nil, front f: String?? = nil,
+             running r: Bool? = nil) {
         lock.lock(); defer { lock.unlock() }
         if let a { armed = a }
+        if let g { agents = g }
+        if let c { classes = c }
         if let f { front = f }
         if let r { running = r }
     }
 
-    /// The tap's quick check: armed, a chat app in front (not Blurt), no sequence running.
+    /// The tap's quick check: armed, an app the copy takes ⌘V over in front (a chat app, a terminal; not Blurt), no
+    /// sequence running.
     func intercepts() -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return armed && !running && front != SmartPasteGate.me && SmartPastePolicy.sequences(frontBundle: front)
+        return armed && !running && front != SmartPasteGate.me && SmartPastePolicy.intercepts(frontBundle: front, classes: classes, agents: agents)
     }
     static let me = Bundle.main.bundleIdentifier
 }
@@ -240,7 +252,9 @@ final class SmartPaste {
     /// A card copy was written to the clipboard (`cards`, in order); `rewrite` writes it again.
     func armed(cards: [CardPasteboard.Card], rewrite: @escaping () -> Bool) {
         let steps = CardPasteSequence.steps(cards)
-        switch CardPasteSequence.arm(enabled: SmartPaste.enabled, steps: steps, accessibility: SmartPaste.accessibility) {
+        let terminal = CardPasteSequence.terminalText(cards)
+        switch CardPasteSequence.arm(enabled: SmartPaste.enabled, steps: steps, accessibility: SmartPaste.accessibility,
+                                     terminal: terminal) {
         case .skip(let why):
             disarm(why)
             return
@@ -259,12 +273,14 @@ final class SmartPaste {
             return
         case .arm: break
         }
-        arm = SmartPasteArm(changeCount: pasteboard.changeCount, steps: steps, now: SmartPaste.now)
+        let a = SmartPasteArm(changeCount: pasteboard.changeCount, steps: steps, terminal: terminal, now: SmartPaste.now)
+        arm = a
         self.rewrite = rewrite
         count = cards.count
-        gate.set(armed: true, front: .some(NSWorkspace.shared.frontmostApplication?.bundleIdentifier))
+        gate.set(armed: true, classes: a.classes, agents: AgentProbe.list, front: .some(NSWorkspace.shared.frontmostApplication?.bundleIdentifier))
         startWatching()
         emit(["event": "smart_paste_armed", "steps": steps.map(PasteRunner.describe), "seconds": SmartPasteArm.window,
+              "terminal_lines": terminal.map { $0.split(separator: "\n", omittingEmptySubsequences: false).count } ?? 0,
               "tap": tap != nil, "accessibility": SmartPaste.accessibility])
     }
 
@@ -342,21 +358,31 @@ final class SmartPaste {
         let decision = SmartPastePolicy.decide(.init(
             enabled: SmartPaste.enabled, arm: arm, now: SmartPaste.now, changeCount: pasteboard.changeCount, frontBundle: frontBundle,
             accessibility: SmartPaste.accessibility, secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(),
-            running: runner != nil, frontIsBlurt: frontPID == getpid()))
+            running: runner != nil, frontIsBlurt: frontPID == getpid(),
+            frontAgent: frontPID.map { DropProbe.target(pid: $0).cls == .terminal } ?? false))
         emit(["event": "smart_paste_key", "bundle": frontBundle ?? NSNull(), "decision": "\(decision)"])
-        guard decision == .sequence, let a = arm else {
+        // a chat app: picture, note, picture, note…; a terminal: one paste of a line per card (path, then note)
+        let steps: [PasteStep]?
+        switch (decision, arm) {
+        case (.sequence, let a?): steps = a.steps
+        case (.terminalLines, let a?): steps = a.terminal.map { [.text($0)] }
+        default: steps = nil
+        }
+        guard let steps else {
             PasteKeys.post(.paste, to: frontPID, pasteboard: pasteboard)       // the user's own paste, as it was
             return
         }
         gate.set(running: true)
-        let r = PasteRunner(steps: a.steps, pasteboard: pasteboard, pid: frontPID) { [weak self] in self?.putCopyBack() }
+        let r = PasteRunner(steps: steps, pasteboard: pasteboard, pid: frontPID) { [weak self] in self?.putCopyBack() }
         runner = r
         let n = count
+        let toast = decision == .sequence
         r.done = { [weak self] run in
             guard let self else { return }
             self.runner = nil
             self.gate.set(running: false)
             if run.state == .aborted { return self.disarm("clipboard_changed") }
+            guard toast else { return }
             island.toast(n > 1 ? Loc.plural("capture.smart_paste.done_n", table: "Capture", count: n)
                                : Loc.t("capture.smart_paste.done", table: "Capture"), actionTitle: nil, action: nil)
         }
@@ -393,6 +419,7 @@ final class SmartPaste {
             emit(["event": "drag_note_file_set", "on": CardExport.attachNoteFile])
         default:
             emit(["event": "smart_paste_state", "armed": arm != nil, "steps": arm?.steps.map(PasteRunner.describe) ?? [],
+                  "terminal": arm?.terminal ?? NSNull(),
                   "left": arm.map { max(0, $0.until - SmartPaste.now) } ?? 0,
                   "live": arm?.isLive(now: SmartPaste.now, changeCount: pasteboard.changeCount) ?? false,
                   "enabled": SmartPaste.enabled])
@@ -521,10 +548,17 @@ enum DragNoteFollowUp {
         // an Electron app shows its web content to Accessibility only once asked (BA-54: the composer wasn't found when
         // the pointer wasn't over it); asked only just now — not while the drag passed over it — its tree needs a moment
         let wait = t.kind == .web ? WebAXWake.wake(t.pid) : 0
-        guard wait <= 0 else {
-            return DispatchQueue.main.asyncAfter(deadline: .now() + wait) { probe(target: t, at: p, window: window, facts: f, then) }
+        // Feishu: its tree builds for a moment after the wake — look again until Accessibility names a focus
+        var tries = f.needsText ? Int(WebAXWake.feishuPatience / 0.2) : 0
+        func look() {
+            probe(target: t, at: p, window: window, facts: f) { g in
+                guard focusRole == "none", tries > 0 else { return then(g) }
+                tries -= 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: look)
+            }
         }
-        probe(target: t, at: p, window: window, facts: f, then)
+        guard wait <= 0 else { return DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: look) }
+        look()
     }
 
     /// focus(…)'s Accessibility part: read the focus, move it to the composer that received the drop if it isn't there.

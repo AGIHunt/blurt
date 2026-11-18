@@ -1,0 +1,85 @@
+/* Home (MainWindow/HomePage.swift, HomeViews.swift) and the capabilities' names (BlurtCore/Capabilities.swift): the
+   five things Blurt does, named the same in the sidebar, on Home, in Settings, the menu-bar menu and the onboarding. */
+
+"home.title" = "Home";
+
+"feature.dictation" = "Dictation";
+"feature.cards" = "Cards";
+"feature.screen_text" = "Text & Translation";
+"feature.recording" = "Recording & Items";
+"feature.phone" = "Phone";
+
+/* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — it has to fit at the window's
+   narrowest. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
+"feature.dictation.what" = "Press %@ and speak to type at the cursor.";
+"feature.cards.what" = "Snaps and voice notes saved as cards under the notch. Drag them into any app.";
+"feature.screen_text.what" = "Copy or translate text from anywhere on screen.";
+"feature.recording.what" = "Record your screen while you talk. Your agent turns it into items, filed by project.";
+"feature.phone.what" = "Use your phone as your Mac’s trackpad, keyboard and microphone.";
+
+/* a capability's row: a click goes to its place; the context menu opens its settings; the switch's tooltip is
+   written for its state */
+"home.row.open" = "Go to %@";
+"home.row.settings" = "%@ Settings…";
+"home.switch.tip.on" = "When off, %@ shortcuts, menu items and settings are hidden.";
+"home.switch.tip.off" = "When on, %@ shortcuts, menu items and settings are shown.";
+
+/* what stands in a capability's way, on its row, followed by one button. %@ is a shortcut (⌥A; several: "⌥A and ⌥V") */
+"home.keys.taken" = "%@ is taken";
+"home.keys.taken_many" = "%@ are taken";
+"home.keys.and" = "%1$@ and %2$@";
+"home.keys.change" = "Change…";
+"home.dictation.downloading" = "Downloading speech model · %1$@ of %2$@";
+"home.dictation.better_downloading" = "Downloading a more accurate speech model · %1$@ of %2$@";
+"home.dictation.better_offer" = "Download a more accurate speech model · %@";
+"home.recording.no_agent" = "Say “Process my Blurt recordings” to your agent to organize";
+"home.recording.set_up_agent" = "Set Up an Agent…";
+"home.phone.needs_access" = "Phone can’t control your Mac yet";
+"home.phone.look" = "Show";
+
+/* the two lines under the box: items waiting for you (the count sits in the mint pill, then this word), cards under
+   the notch */
+"home.waiting.new" = "new";
+"home.waiting.open_inbox" = "Open Inbox";
+"home.waiting.show" = "Show";
+
+/* Recent: dictations, cards and items in one timeline */
+"home.recent" = "Recent";
+"home.entry.snap" = "Snap";
+"home.entry.voice" = "Voice note";
+"home.entry.file" = "File";
+"home.entry.open" = "Open";
+"home.entry.copy_title" = "Copy Title";
+"home.all.dictation" = "Show All Dictation";
+"home.all.cards" = "Show All Cards";
+"home.all.items" = "Show All Items";
+
+/* nothing made yet: one sentence per capability that is on; its key is drawn where %@ is */
+"home.empty.title" = "No Recent Activity";
+"home.empty.all_off" = "All features are off. Turn one on to use it.";
+"home.try.dictation" = "Press %@ to dictate";
+"home.try.cards" = "Press %@ to snap; drag the card into any app";
+"home.try.screen_text" = "Press %@ to copy text from the screen";
+"home.try.recording" = "Press %@ to start recording";
+"home.try.phone" = "Install Blurt on your phone and scan the code to pair";
+
+/* Text & Translation page (ScreenTextPage.swift) */
+"home.all.screen_text" = "Show All Text from Screen";
+"home.screen_text.summary" = "%1$ld saved · deleted after %2$@";
+"home.screen_text.summary.forever" = "%ld saved · kept until you delete them";
+"home.screen_text.summary.off" = "History is off";
+"home.screen_text.settings" = "Settings…";
+"home.screen_text.search" = "Search";
+"home.screen_text.clear_search" = "Clear Search";
+"home.screen_text.empty" = "Nothing yet. Press %1$@ to copy text from an area of the screen, %2$@ to translate it.";
+"home.screen_text.empty.off" = "History is off. You can change this in Settings.";
+"home.screen_text.none_found" = "No matches";
+"home.screen_text.original" = "Original";
+"home.screen_text.copy_original" = "Copy Original";
+"home.screen_text.delete" = "Delete";
+"home.screen_text.selected" = "%ld selected";
+
+/* Home's timeline: a dictation that wasn't recognised */
+"home.entry.failed" = "Not recognized · recording %@";
+"home.entry.retry" = "Retry";
+"home.entry.retrying" = "Recognizing…";

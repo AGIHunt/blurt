@@ -14,13 +14,43 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
 IS_LINUX = sys.platform.startswith("linux")
 
-BLURT_HOME = Path(os.environ.get("BLURT_HOME", Path.home() / ".blurt"))
+
+def chosen_location() -> dict:
+    """The data folder chosen in the Windows / Linux app (Settings → Storage → Data location; the app's location.rs):
+    {"home", "workspace"} in %APPDATA%\\Blurt\\location.json or ~/.config/Blurt/location.json, {} when there is none.
+    The app passes BLURT_HOME / BLURT_WORKSPACE to what it runs; this is for scripts an agent runs on its own."""
+    if IS_MAC:
+        return {}
+    f = os.environ.get("BLURT_LOCATION_FILE")
+    if not f:
+        base = os.environ.get("APPDATA") if IS_WIN else (os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config"))
+        if not base:
+            return {}
+        f = os.path.join(base, "Blurt", "location.json")
+    try:
+        d = json.loads(Path(f).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: d[k] for k in ("home", "workspace") if isinstance(d, dict) and isinstance(d.get(k), str)
+            and os.path.isabs(d[k])}
+
+
+def blurt_home() -> Path:
+    return Path(os.environ.get("BLURT_HOME") or chosen_location().get("home") or Path.home() / ".blurt")
+
+
+def blurt_workspace() -> Path:
+    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
+    return Path(os.environ.get("BLURT_WORKSPACE") or chosen_location().get("workspace") or Path.home() / "Blurt")
+
+
+BLURT_HOME = blurt_home()
 MODELS_DIR = BLURT_HOME / "models"
 GLOBAL_CONFIG = BLURT_HOME / "config.json"
 STATE_FILE = BLURT_HOME / "recording.json"
@@ -472,15 +502,6 @@ def serve_exit_reason(loaded: bool, model_idle: float, server_idle: float, uses:
     return None
 
 
-def blurt_home() -> Path:
-    return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
-
-
-def blurt_workspace() -> Path:
-    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
-    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
-
-
 def real(p: Path | str) -> Path:
     return Path(os.path.realpath(os.path.expanduser(str(p))))
 
@@ -628,16 +649,40 @@ def folder_complete(d: Path, legacy=None) -> bool:
     man = load_json(d / DOWNLOAD_MANIFEST, None)
     if isinstance(man, list):
         for f in man:
-            p = d / f["path"]
+            try:
+                p = download_path(d, f["path"])
+            except (ValueError, TypeError, KeyError, OSError):
+                return False
             if not p.is_file() or (f.get("size") and p.stat().st_size != f["size"]):
                 return False
         return True
     return bool(legacy(d)) if legacy else False
 
 
+def download_path(d: Path, name: str) -> Path:
+    """A mirror manifest's POSIX path, confined to its model folder (including its resumable .part file).
+    This is for file-by-file mirror downloads, not HF snapshots with links into their sibling blobs folder.
+    """
+    if not isinstance(name, str) or not name or "\x00" in name or "\\" in name:
+        raise ValueError("invalid model file path")
+    rel = PurePosixPath(name)
+    if not rel.parts or rel.is_absolute() or ".." in rel.parts or PureWindowsPath(name).drive:
+        raise ValueError(f"invalid model file path: {name!r}")
+    p = d / name
+    try:
+        root = d.resolve()
+        if any(not f.resolve().is_relative_to(root) for f in (p, p.with_name(p.name + ".part"))):
+            raise ValueError(f"model file path escapes its folder: {name!r}")
+    except RuntimeError as e:  # a symlink loop is not a usable model path either
+        raise ValueError(f"invalid model file path: {name!r}") from e
+    return p
+
+
 def begin_download(d: Path, files: list[dict]) -> None:
     """Before the first file: the marker (the folder isn't a model until end_download) and the manifest
     ([{"path", "size"}])."""
+    for f in files:  # validate the whole response before any marker, manifest or model file is written
+        download_path(d, f["path"])
     d.mkdir(parents=True, exist_ok=True)
     (d / DOWNLOAD_MARKER).write_text(str(os.getpid()))
     write_text_atomic(d / DOWNLOAD_MANIFEST, json.dumps([{"path": f["path"], "size": f.get("size")} for f in files]))
@@ -749,7 +794,7 @@ def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
 STATES = ("new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded")
 INBOX_STATES = ("new", "to_verify")                         # "needs you": every inbox count in every app
 OPEN_STATES = ("new", "todo", "handed_off", "in_progress")  # MCP open_items, the backlog
-ACTIVE_STATES = ("handed_off", "in_progress", "to_verify")
+ACTIVE_STATES = ("todo", "handed_off", "in_progress")
 CLOSED_STATES = ("done", "wontfix")
 WORK_KEYS = ("to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")  # `work`: hand-off details
 WORK_BY = ("user", "agent", "app")

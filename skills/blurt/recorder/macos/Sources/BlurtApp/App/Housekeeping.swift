@@ -11,21 +11,18 @@
 //                            quiet line in the island offers Settings → Speech — pending until it was seen (a launch
 //                            whose one line went to something else offers it again), dropped once the model is in
 //   the skill's contract     a mismatch also stays in the menu-bar menu and Settings → General while it lasts
-//   Snapper.expireTaken      captures dragged out into another app 7+ days ago (Recently Taken) go to the Trash —
+//   Snapper.expireTaken      captures used in another app longer ago than History keeps them go to the Trash —
 //                            also hourly while the app runs
 //                            (BlurtCore TakenCaptures; the app's own, no script)
 //   videos                   only when the user turned it on (Settings → Storage, record.delete_videos_after_days):
 //                            organized recordings' videos older than that go to the Trash (BlurtCore VideoRetention) —
 //                            also daily while the app runs
 // Whatever wants a word in the island at launch goes through LaunchMessages: only one is shown.
-// and keeps one `sessions.py monitor` running while it lives (K5: tmux windows → session status; it takes its own lock,
-// so a second copy just exits). Any of them missing (an older skill) is skipped.
+// Any of them missing (an older skill) is skipped.
 import AppKit
 import BlurtCore
 
 enum Housekeeping {
-    private static var monitor: Process?
-
     static func atLaunch() {
         guard ProcessInfo.processInfo.environment["BLURT_NO_HOUSEKEEPING"] == nil else { return }
         let launched = Date()
@@ -40,7 +37,6 @@ enum Housekeeping {
             await MainActor.run {
                 ProjectStore.shared.reload()
                 Scripts.indexUpdate([ProjectStore.shared.inbox.store])
-                startMonitor()
                 snapper.expireTaken()
                 askAboutCarriedOverProject()
                 deleteOldVideos()
@@ -154,6 +150,7 @@ enum Housekeeping {
     /// v0.6's bound repo became the current project in the migration, which nobody chose here: ask once, in the
     /// island, whether captures should keep going there. Either answer is recorded (current_by "user").
     static func askAboutCarriedOverProject() {
+        guard Capability.projectsShown else { return }      // no projects with Recording & Items off
         let store = ProjectStore.shared
         guard store.currentBy == "migrate", let p = store.current else { return }
         emit(["event": "ask_current_project", "project": p.id])
@@ -177,23 +174,16 @@ enum Housekeeping {
         }
     }
 
-    static func startMonitor() {
-        guard monitor == nil, (try? ScriptRunner.shared.scriptURL("sessions.py")) != nil else { return }
-        // --parent: it ends with us, even when we don't get to atQuit (a crash, a kill, an update)
-        monitor = try? ScriptRunner.shared.spawn("sessions.py", ["monitor", "--parent", "\(getpid())"]) { _ in }
-    }
-
     /// Jobs the app owned (a recording, organizing, AI fill-in…) that were still running when it quit or crashed kept
     /// saying "running" — a spinner in the main window and the menu bar for good. They are marked failed here, with
     /// the step that was running failed and the rest skipped, so the job page explains it and offers Retry. A job is
     /// the previous app's when the process that wrote it is gone (app_pid), or, written by an older build without
-    /// one, when it is older than this launch. The app owns these files (K4), so it rewrites them; agent sessions are
-    /// sessions.py's and are left alone.
+    /// one, when it is older than this launch. The app owns these files (K4), so it rewrites them.
     static func finishInterruptedJobs(launchedAt: Date) async {
         let stale: [String] = await MainActor.run {
             JobStore.shared.rescan()
             return JobStore.shared.active.filter { j in
-                guard j.type != .agent, j.raw["owner"] as? String == "app" else { return false }
+                guard j.raw["owner"] as? String == "app" else { return false }
                 if let pid = (j.raw["app_pid"] as? NSNumber)?.int32Value { return pid != getpid() && kill(pid, 0) != 0 && errno == ESRCH }
                 return j.created < launchedAt.addingTimeInterval(-5)
             }.map(\.id)
@@ -229,10 +219,5 @@ enum Housekeeping {
             doc["error"] = ["code": "unknown", "message": "Blurt quit before this job finished", "hint_key": hint]
             doc["steps"] = JobFold.closeSteps(doc["steps"] as? [[String: Any]] ?? [], at: now)
         }
-    }
-
-    static func atQuit() {
-        if let m = monitor, m.isRunning { m.terminate() }
-        monitor = nil
     }
 }

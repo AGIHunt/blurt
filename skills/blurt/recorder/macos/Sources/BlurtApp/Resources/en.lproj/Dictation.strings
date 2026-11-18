@@ -65,6 +65,8 @@
 /* menus */
 "dictation.menu.history" = "Dictation History…";
 "dictation.menu.history.tip" = "Tap %@ in any app to dictate";
+"dictation.menu.copy_last" = "Copy Last Dictation";
+"dictation.menu.copied_last" = "Last dictation copied";
 "dictation.menu.turn_on" = "Turn On Dictation…";
 "dictation.menu.turn_on.tip" = "Dictating with %@ needs Accessibility or Input Monitoring.";
 "dictation.menu.turn_on.subtitle" = "Set up permissions to use %@";
@@ -507,7 +509,7 @@
 "dictation.words.source.suggested" = "From a correction";
 "dictation.words.info.used" = "Used in dictations";
 "dictation.words.info.used.value" = "%ld";
-"dictation.words.info.heard" = "Often recognized as";
+"dictation.words.info.heard" = "Often heard as";
 "dictation.words.info.added" = "Added";
 "dictation.settings.enable.detail" = "Speak, and the text is typed at the cursor.";
 "dictation.style.default" = "Style";
@@ -531,6 +533,7 @@
 "dictation.toast.asr_slow" = "The speech model didn’t respond — the recording is kept";
 "dictation.toast.asr_cloud_key" = "The cloud speech key isn’t valid — the recording is kept";
 "dictation.toast.asr_cloud_key.action" = "Settings…";
+"dictation.toast.asr_cloud_model" = "Model Studio can’t transcribe with this model — the recording is kept";
 "dictation.toast.asr_cloud_offline" = "Couldn’t connect to the cloud speech service — the recording is kept";
 "dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota — the recording is kept";
 "dictation.toast.slow.asr" = "Still recognizing… %@ to cancel";
@@ -556,6 +559,7 @@
 "dictation.history.failed" = "Not recognized";
 "dictation.history.failed.no_model" = "Not recognized: no speech model";
 "dictation.history.failed.interrupted" = "Not typed: the app quit before finishing";
+"dictation.history.failed.cancelled" = "Cancelled: recording kept";
 "dictation.history.retry" = "Retry";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
@@ -715,6 +719,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "Less accurate; not recommended";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "Often returns nothing; not recommended";
 "dictation.cloud.model.note.speech.qwen3_asr" = "Accurate, about 0.7 s";
+"dictation.cloud.model.note.speech.qwen_audio_31" = "Most accurate, about 1.1 s";
 "dictation.cloud.model.note.speech.seedasr" = "Accurate, about 0.5 s";
 "dictation.cloud.key" = "API key";
 "dictation.cloud.key.placeholder" = "Paste an API key";
@@ -746,6 +751,7 @@
 "dictation.translate.target.auto" = "Auto: %1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "Auto: into %@";
 "dictation.translate.target.auto_one.note" = "Text in %@ stays as it is; pick a language to translate it into";
+"dictation.translate.target.auto_others" = "Other languages into %@";
 "dictation.translate.toast.learned" = "Dictation in %@ will be translated from now on";
 "dictation.translate.toast.undo" = "Undo";
 "dictation.translate.apps" = "Apps with Translate on";
@@ -761,3 +767,25 @@
 "dictation.settings.cancel_key" = "Cancel dictation";
 "dictation.settings.cancel_key.default" = "%@ (default)";
 "dictation.settings.cancel_key.detail" = "In terminals like Claude Code, Esc stops the running task. With ⌃Esc or ⇧Esc, Esc alone never cancels dictation.";
+
+/* How fast dictation is (DictationSpeed, DictationSpeedText.swift): the page's first day heading, an entry's details, Settings */
+"dictation.speed.label" = "Speed";
+"dictation.speed.seconds" = "%@ s";
+"dictation.speed.under" = "under 0.1 s";
+"dictation.speed.after" = "Typed in %@";
+"dictation.speed.usual" = "Usually %@";
+"dictation.speed.usual.tip" = "Median of your last %1$@ dictations, from releasing the dictation key to the text at the cursor.";
+"dictation.speed.usual.long" = "Dictations over 30 s: usually %@.";
+"dictation.speed.here" = "Usually %@ on your Mac";
+"dictation.speed.here.asr" = "Usually %1$@ on your Mac (recognition %2$@)";
+"dictation.speed.parts.tip" = "Counts only the wait after you stop talking. Work done while you spoke isn’t included, so the parts can add up to less than the total.";
+"dictation.speed.load" = "Model loading %@";
+"dictation.speed.asr" = "Recognition %@";
+"dictation.speed.polish" = "Polish %@";
+"dictation.speed.structure" = "Structuring %@";
+"dictation.speed.translate" = "Translation %@";
+
+/* A dictation that wasn't recognised: Retry Last Dictation in the menu bar, the hint on the first failure (DictationRetry) */
+"dictation.menu.retry_last" = "Retry Last Dictation";
+"dictation.menu.retry_last.subtitle" = "Not recognized · %1$@ · %2$@";
+"dictation.toast.retry_later" = "You can retry it later from the menu bar";

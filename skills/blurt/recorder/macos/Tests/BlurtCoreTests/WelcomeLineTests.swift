@@ -58,6 +58,55 @@ final class WelcomeLineTests: XCTestCase {
         XCTAssertEqual(WelcomeLine.compose(dictation: .off, dictationKey: "Fn", snap: nil, record: nil, conflicts: []).key,
                        "app.toast.welcome_plain")
     }
+
+    // MARK: only the keys of capabilities that are on (Capabilities.swift)
+
+    func testCardsOffNamesNoSnapKey() {
+        let l = WelcomeLine.compose(dictation: .works, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [], off: [.cards])
+        XCTAssertEqual(l.key, "app.toast.welcome_dictation_only")
+        XCTAssertEqual(l.args, ["Fn"])
+        // …and without dictation there is no key left that the line has words for: where Blurt lives, nothing else
+        let plain = WelcomeLine.compose(dictation: .off, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [], off: [.cards])
+        XCTAssertEqual(plain.key, "app.toast.welcome_plain")
+        XCTAssertEqual(plain.args, [])
+    }
+
+    func testRecordingOffNamesNoRecordKey() {
+        let l = WelcomeLine.compose(dictation: .off, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [], off: [.recording])
+        XCTAssertEqual(l.key, "app.toast.welcome_snap_only")
+        XCTAssertEqual(l.args, ["⌥A"])
+    }
+
+    func testDictationOffSaysNothingAboutDictation() {
+        // switched off as a capability: no key, no "dictation is off · Turn On…", no model to download
+        for d in [WelcomeLine.Dictation.works, .needsSetup, .noModel, .unknown, .off] {
+            let l = WelcomeLine.compose(dictation: d, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [], off: [.dictation])
+            XCTAssertEqual(l.key, "app.toast.welcome_no_dictation", "\(d)")
+            XCTAssertEqual(l.args, ["⌥A", "⌥R"], "\(d)")
+            XCTAssertNil(l.action, "\(d)")
+        }
+    }
+
+    func testOnlyDictationOn() {
+        let l = WelcomeLine.compose(dictation: .works, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [],
+                                    off: [.cards, .screenText, .recording, .phone])
+        XCTAssertEqual(l.key, "app.toast.welcome_dictation_only")
+        XCTAssertEqual(l.args, ["Fn"])
+    }
+
+    func testEverythingOffIsThePlainLine() {
+        let l = WelcomeLine.compose(dictation: .works, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [],
+                                    off: Set(Capability.allCases))
+        XCTAssertEqual(l.key, "app.toast.welcome_plain")
+        XCTAssertEqual(l.args, [])
+        XCTAssertNil(l.action)
+    }
+
+    func testScreenTextAndPhoneChangeNothing() {
+        let all = WelcomeLine.compose(dictation: .works, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [])
+        XCTAssertEqual(WelcomeLine.compose(dictation: .works, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [],
+                                           off: [.screenText, .phone]), all)
+    }
 }
 
 /// Every welcome line, in both languages, fits on the island's one toast row with its button — it is the first sentence

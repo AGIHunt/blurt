@@ -2,20 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>app.badge.waiting</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>other</key>
-			<string>%ld 个会话等你回答</string>
-		</dict>
-	</dict>
 	<key>app.menu.new</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -153,7 +139,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 个交给 Agent</string>
+			<string>复制这 %ld 个事项的指令给 Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>
@@ -353,7 +339,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>在口喷鸡里开一个 Agent 会话，处理这 %ld 个（⌘↩）</string>
+			<string>复制一段指令，粘贴到任意 Agent，让它处理这 %ld 个事项（⌘↩）</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>
@@ -467,6 +453,27 @@
 			<key>other</key>
 			<string>其他位置有 %ld 个匹配项。</string>
 		</dict>
+	</dict>
+	<key>main.drop.pictures</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张图片</string></dict>
+	</dict>
+	<key>main.drop.files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 个文件</string></dict>
+	</dict>
+	<key>main.drop.cards</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张卡片</string></dict>
 	</dict>
 </dict>
 </plist>

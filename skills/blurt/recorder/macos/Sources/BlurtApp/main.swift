@@ -22,6 +22,19 @@ import ScreenCaptureKit
 import ServiceManagement
 import BlurtCore
 
+// Test hooks (BLURT_TEST_*: a command channel, automatic yeses, stand-in permissions…) work only in a build made for tests
+// (`BLURT_TEST_HOOKS=1 record.py build`) or a debug build. In any other they're gone before anything reads them: another
+// program launching Blurt with them could otherwise skip a question the user must answer, or borrow Blurt's Screen Recording,
+// microphone or Accessibility.
+// The same for the few test hooks with other names (a wav for the microphone, where agents are looked for, inspectable web views), and
+// for what a launcher could slip into the scripts and agents Blurt starts, which run with its permissions. The user's own settings for
+// those come from their login shell (ShellEnv), not from whoever launched the app.
+#if !(DEBUG || BLURT_TEST_HOOKS)
+private let launchOnly: Set<String> = ["BLURT_NOTE_WAV", "BLURT_AGENT_PATH", "BLURT_INSPECT", "BLURT_SCREEN_SNAP_DIR",
+                                       "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT", "NODE_OPTIONS", "NODE_PATH",
+                                       "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB", "BASH_ENV", "ENV", "LD_PRELOAD"]
+for k in ProcessInfo.processInfo.environment.keys where k.hasPrefix("BLURT_TEST_") || k.hasPrefix("DYLD_") || launchOnly.contains(k) { unsetenv(k) }
+#endif
 
 // macOS's speech recognition for transcribe.py's `apple` backend (Capture/AppleSpeech.swift): answers and exits.
 switch CommandLine.arguments.dropFirst().first {

@@ -37,6 +37,15 @@ protocol ItemListActions: AnyObject {
     func pickProject()                         // M: the Move popover at the selection
     /// New Item holding what came: ⌘V in the list, pictures dropped on it (BA-52)
     func newItemHolding(_ prefill: NewItemSheet.Prefill)
+    /// v1.0.23 (docs/design/drag-drop.md §4): where a new item from a drop goes — the project on show, else the current
+    /// project, else Unassigned ("inbox")
+    func dropTarget() -> String
+    /// what another app's drop brought, added to `item` (pictures as frames, files as attachments, text after details)
+    func add(_ drop: DropIn, to item: ItemRow)
+    /// hanging cards dropped on `item`: their pictures (or files) and notes added to it; the cards are used
+    func add(cards: [Shot], to item: ItemRow)
+    /// a New Item sheet holding what a drop brought, into `project`
+    func newItem(from drop: DropIn, in project: String)
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -47,6 +56,13 @@ extension NSPasteboard.PasteboardType {
 final class ItemTableView: NSTableView {
     weak var actions: ItemListActions?
     var quickLook: (() -> Void)?
+    /// a drag left the list or ended (the drop band and label go)
+    var dragGone: (() -> Void)?
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { super.draggingExited(sender); dragGone?() }
+    // (no super: NSTableView has no draggingEnded — calling it raised at the end of the first drag, and the window
+    // took no drag after that)
+    override func draggingEnded(_ sender: NSDraggingInfo) { dragGone?() }
 
     override func keyDown(with e: NSEvent) {
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -91,15 +107,8 @@ final class ItemTableView: NSTableView {
     }
 
     @objc func copy(_ sender: Any?) { actions?.copyPaths() }
-    /// ⌘V: a new item from the clipboard's picture or text (the sheet opens with it; nothing is written yet). Not
-    /// from rows copied here (⌘C puts their files on the clipboard: pasting them back would only duplicate).
-    @objc func paste(_ sender: Any?) {
-        let pb = NSPasteboard.general
-        let images = NewItemImages.files(from: pb).filter { !$0.path.contains("/.blurt/") && !$0.path.contains("/Blurt/inbox/") }
-        let text = images.isEmpty ? (pb.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
-        guard !images.isEmpty || !text.isEmpty else { NSSound.beep(); return }
-        actions?.newItemHolding(NewItemSheet.Prefill(text: text, images: images))
-    }
+    // (⌘V: no paste here — it goes up to the window, MainWindowController.paste: a new item from the clipboard,
+    // the same whether the list or the sidebar has the keys)
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let p = convert(event.locationInWindow, from: nil)
@@ -229,6 +238,13 @@ final class EmptyStateView: NSView {
     let link = NSButton()
     let spinner = TrackedSpinner(size: 22)          // the brand arc on a faint track: reads as busy, never as a stray "("
     var onButton: ((Int) -> Void)?
+    /// v1.0.23: drops on an empty list (a new item; cards into the project on show) — the list's own handling
+    var drops: (update: (NSDraggingInfo) -> NSDragOperation, perform: (NSDraggingInfo) -> Bool, gone: () -> Void)?
+    override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation { drops?.update(s) ?? [] }
+    override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { drops?.update(s) ?? [] }
+    override func draggingExited(_ s: NSDraggingInfo?) { drops?.gone() }
+    override func performDragOperation(_ s: NSDraggingInfo) -> Bool { drops?.perform(s) ?? false }
+    override func draggingEnded(_ s: NSDraggingInfo) { drops?.gone() }
     /// tags whose button only undoes a search or a filter: never the primary, never ↩
     static let secondaryTags: Set<Int> = [2, 9]
     private let stack = NSStackView()
@@ -882,6 +898,9 @@ final class FilterBar: NSView {
 }
 
 final class ItemListController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    /// what the last logged drag over the list would do (main_drop_over, once per change)
+    var dropSaid: String?
+    private var bandHide: DispatchWorkItem?
     let model: MainModel
     weak var actions: ItemListActions? { didSet { table.actions = actions } }
     let table = ItemTableView()
@@ -893,6 +912,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     /// the place's name and counts at the top of the list (ListHeading)
     let heading = ListHeading()
     let empty = EmptyStateView()
+    /// "Drop for a new item" at the top of the list while something is dragged over it (v1.0.23)
+    let band = DropBand()
+    /// what letting go will do, next to the pointer
+    let hint = DropHint()
     /// the item the empty state's "Show AW-11" goes to
     private(set) var elsewhereUID: String?
 
@@ -965,7 +988,21 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         // rows onto another project's section (BA-51), a hanging card the same way (BA-50)
         // …and pictures from other apps (a new item holding them, BA-52)
-        table.registerForDraggedTypes([.blurtItems, capturePasteboardType, .fileURL, .png, .tiff] + NSFilePromiseReceiver.readableDraggedTypes.map { .init($0) })
+        // …and anything from other apps: pictures, files, text (v1.0.23: a new item, or added to the item under it)
+        table.registerForDraggedTypes([.blurtItems, capturePasteboardType] + DropIn.types)
+        table.dragGone = { [weak self] in self?.endDrop() }
+        empty.registerForDraggedTypes([capturePasteboardType] + DropIn.types)
+        empty.drops = (update: { [weak self] info in
+                           guard let self else { return [] }
+                           return self.showDrop(self.listDrop(info, overEmpty: true), info)
+                       },
+                       perform: { [weak self] info in
+                           guard let self else { return false }
+                           return self.perform(self.listDrop(info, overEmpty: true), info.draggingPasteboard)
+                       },
+                       gone: { [weak self] in self?.endDrop() })
+        band.registerForDraggedTypes([capturePasteboardType] + DropIn.types)
+        band.drops = empty.drops
         header = table.headerView
         table.tableColumns.forEach { $0.resizingMask = $0.identifier.rawValue == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask }
         scroll.documentView = table
@@ -986,7 +1023,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let stack = NSStackView(views: [heading, captures, missing, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
-        for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        for v in [stack, scroll, empty, band] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        root.addSubview(hint)
+        NSLayoutConstraint.activate([
+            band.bottomAnchor.constraint(equalTo: stack.bottomAnchor, constant: -4),
+            band.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
+            band.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
+            band.heightAnchor.constraint(equalToConstant: DropBand.height),
+        ])
         NSLayoutConstraint.activate([
             heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
             captures.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -1376,12 +1420,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
-    /// Still with an agent session that is over and never said it was done (In Progress' stuck work), not one the
-    /// user already finished (merged, taken back…).
+    /// Still with an agent session of an older version (sessions in Blurt are gone): nothing will report it done, so
+    /// the row says so (In Progress' stuck work) until the user marks it done or takes it back.
     static func sessionEnded(_ it: ItemRow) -> Bool {
-        guard ["handed_off", "in_progress"].contains(it.state), it.workTo == "session" || it.workJob != nil,
-              let j = it.workJob.flatMap({ JobStore.shared.job($0) }), let a = j.agent else { return false }
-        return !j.isActive && a.finishAction == nil && !a.isDesktop
+        ["handed_off", "in_progress"].contains(it.state) && (it.workTo == "session" || it.workJob != nil)
     }
 
     var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }
@@ -1535,9 +1577,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // drag rows. One row goes out like a hanging card (BA-22: into WeChat it brought only its picture) — CardDrag: what
     // it carries follows the app under the pointer (the first frame; its text pasted in after it in a chat app, in the
-    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's and the .md's paths
-    // in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the list's own
-    // drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
+    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's path and its text
+    // as one line in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the
+    // list's own drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
     // Terminal pastes the paths).
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let it = model.item(at: row) else { return nil }
@@ -1691,63 +1733,148 @@ extension ItemListController {
         return (p, model.groupStart(at: row))
     }
 
-    /// Pictures from another app on the pasteboard (files, data, or a promise of files: a chat's drag).
-    func dropsPictures(_ pb: NSPasteboard) -> Bool {
-        guard pb.types?.contains(.blurtItems) != true, pb.types?.contains(capturePasteboardType) != true else { return false }
-        if pb.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil) { return true }
-        return !NewItemImages.files(from: pb).isEmpty
+    /// What letting go here does (v1.0.23, docs/design/drag-drop.md §4): add to the item under the pointer, a new item
+    /// (the band at the top, an empty place, an empty list), Blurt's cards filed into the project on show, or nothing.
+    enum ListDrop: Equatable {
+        case addTo(ItemRow)
+        case newItem(project: String)
+        case file(project: String)
+        case refused(String)
+        static func == (a: ListDrop, b: ListDrop) -> Bool {
+            switch (a, b) {
+            case (.addTo(let x), .addTo(let y)): return x.uid == y.uid
+            case (.newItem(let x), .newItem(let y)), (.file(let x), .file(let y)), (.refused(let x), .refused(let y)): return x == y
+            default: return false
+            }
+        }
+    }
+
+    /// The decision for a drag of cards or of another app's content at `info`'s point (`overEmpty`: the empty state).
+    func listDrop(_ info: NSDraggingInfo, overEmpty: Bool = false) -> (ListDrop, DropIn, [Shot])? {
+        let pb = info.draggingPasteboard
+        let shots = Island.shots(from: pb)
+        let drop = shots.isEmpty ? DropIn.read(pb, decode: false) : DropIn()
+        guard !shots.isEmpty || !drop.isEmpty || drop.folders > 0 else { return nil }
+        if shots.isEmpty, drop.isEmpty { return (.refused(T("main.drop.folders")), drop, shots) }
+        let p = table.convert(info.draggingLocation, from: nil)
+        if !overEmpty, case let at = table.row(at: p), at >= 0, let it = model.item(at: at) {
+            if it.readOnly { return (.refused(T("main.drop.read_only")), drop, shots) }
+            return (.addTo(it), drop, shots)
+        }
+        let project = (overEmpty ? nil : dropProject(info)?.project) ?? actions?.dropTarget() ?? "inbox"
+        return (shots.isEmpty ? .newItem(project: project) : .file(project: project), drop, shots)
+    }
+
+    /// The band, the row highlight and the label for `d` at `info`'s point; the operation to answer.
+    func showDrop(_ d: (ListDrop, DropIn, [Shot])?, _ info: NSDraggingInfo) -> NSDragOperation {
+        guard let (what, drop, shots) = d else { said("none", info); endDrop(); return [] }
+        said("\(what)".prefix(while: { $0 != "(" }).description, info)
+        bandHide?.cancel()
+        band.setText(T("main.drop.new_item"))
+        band.shown = true
+        let at = view.convert(info.draggingLocation, from: nil)
+        func name(_ id: String) -> String { MainWindowController.projectName(id) }
+        var text: String
+        var op: NSDragOperation
+        switch what {
+        case .addTo(let it):
+            band.active = false
+            table.setDropRow(model.row(of: it.uid) ?? -1, dropOperation: .on)
+            text = T("main.drop.add_to", ItemListController.shortTitle(it))
+            op = !shots.isEmpty ? .move
+                : (drop.pictureCount == 0 && drop.text == nil && info.draggingSourceOperationMask.contains(.link) ? .link : .copy)
+        case .newItem(let p):
+            band.active = true
+            table.setDropRow(-1, dropOperation: .on)
+            text = T("main.drop.new_item_in", name(p))
+            op = .copy
+        case .file(let p):
+            band.active = true
+            table.setDropRow(-1, dropOperation: .on)
+            text = T("main.drop.file_to", name(p))
+            op = .move
+        case .refused(let why):
+            band.active = false
+            hint.show(why, at: at, ok: false)
+            return []
+        }
+        if drop.folders > 0 { text = T("main.drop.folders_skipped", text) }
+        hint.show(text, at: at, ok: true)
+        return op
+    }
+
+    /// The log's line for what a drag over the list would do, once per change (card-drag.log: a drop that did
+    /// nothing leaves something to go on).
+    private func said(_ what: String, _ info: NSDraggingInfo) {
+        guard what != dropSaid else { return }
+        dropSaid = what
+        emit(["event": "main_drop_over", "would": what, "types": (info.draggingPasteboard.types ?? []).prefix(6).map(\.rawValue),
+              "mask": info.draggingSourceOperationMask.rawValue])
+    }
+
+    /// The drag left the list, or ended: no band, no label.
+    func endDrop() {
+        dropSaid = nil
+        band.active = false
+        hint.hide()
+        // the band goes a moment later: the pointer leaving the rows may be on its way into it
+        bandHide?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.band.shown = false }
+        bandHide = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: w)
+    }
+
+    /// An item's title for a label: its first 24 characters.
+    static func shortTitle(_ it: ItemRow) -> String {
+        let t = it.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.count > 24 ? String(t.prefix(23)) + "…" : (t.isEmpty ? it.itemID : t)
+    }
+
+    /// Carry out `d` (a drop on the list or the empty state).
+    func perform(_ d: (ListDrop, DropIn, [Shot])?, _ pb: NSPasteboard) -> Bool {
+        endDrop()
+        emit(["event": "main_drop", "did": d.map { "\($0.0)".prefix(while: { $0 != "(" }).description } ?? "none", "cards": d?.2.count ?? 0])
+        guard let (what, _, shots) = d else { return false }
+        if !shots.isEmpty { if case .refused = what {} else { HangingCards.takenInApp = CACurrentMediaTime() } }
+        switch what {
+        case .refused: return false
+        case .file(let p):
+            snapper.assign(shots, to: p)
+            return true
+        case .addTo(let it):
+            if !shots.isEmpty { actions?.add(cards: shots, to: it); return true }
+            DropIn.read(pb, decode: true).resolved { [weak self] got in self?.actions?.add(got, to: it) }
+            return true
+        case .newItem(let p):
+            DropIn.read(pb, decode: true).resolved { [weak self] got in
+                guard !got.isEmpty else { return NSSound.beep() }
+                self?.actions?.newItem(from: got, in: p)
+            }
+            return true
+        }
     }
 
     func tableView(_ t: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
         let pb = info.draggingPasteboard
-        if dropsPictures(pb) {
-            t.setDropRow(-1, dropOperation: .on)       // the whole list
-            return .copy
-        }
-        guard let d = dropProject(info) else { return [] }
+        // rows onto another project's section (BA-51)
         if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
-            // somewhere else than where they all are already
-            guard model.items(uids: uids).contains(where: { $0.projectID != d.project && !$0.readOnly }) else { return [] }
-        } else if pb.string(forType: capturePasteboardType) == nil {
-            return []
+            endDrop()
+            guard let d = dropProject(info),
+                  model.items(uids: uids).contains(where: { $0.projectID != d.project && !$0.readOnly }) else { return [] }
+            t.setDropRow(d.start, dropOperation: .on)       // the group's first row, where its header is
+            return .move
         }
-        t.setDropRow(d.start, dropOperation: .on)       // the group's first row, where its header is
-        return .move
+        return showDrop(listDrop(info), info)
     }
 
     func tableView(_ t: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         let pb = info.draggingPasteboard
-        if dropsPictures(pb) {
-            let now = NewItemImages.files(from: pb)
-            if !now.isEmpty { actions?.newItemHolding(NewItemSheet.Prefill(images: now)); return true }
-            // promised files: written into a temporary folder first, then the sheet
-            let promises = (pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver]) ?? []
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-new-item/\(UUID().uuidString)", isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let group = DispatchGroup()
-            var got: [URL] = []
-            for r in promises {
-                group.enter()
-                r.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: .main) { u, e in
-                    if e == nil, UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { got.append(u) }
-                    group.leave()
-                }
-            }
-            group.notify(queue: .main) { [weak self] in
-                if got.isEmpty { NSSound.beep() } else { self?.actions?.newItemHolding(NewItemSheet.Prefill(images: got)) }
-            }
-            return !promises.isEmpty
-        }
-        guard let d = dropProject(info) else { return false }
         if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
+            guard let d = dropProject(info) else { return false }
             actions?.move(uids: uids, to: d.project)
             return true
         }
-        if let raw = pb.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
-            snapper.assign(hanging.withSelection(shot), to: d.project)
-            return true
-        }
-        return false
+        return perform(listDrop(info), pb)
     }
 }

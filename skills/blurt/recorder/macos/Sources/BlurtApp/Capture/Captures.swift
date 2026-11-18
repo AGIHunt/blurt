@@ -30,6 +30,10 @@
 //    "Move to X", a drop on the island, the note's "Goes to" chip, Organize — is refused before anything is written
 //    (`keepAsCards`); captures.py refuses too (folder_missing) and never makes the old folder again. The island
 //    offers Locate… (MissingFolder), and the same project found again takes the cards kept back from it.
+//  • Recording & Items off (v1.0.23, BlurtCore Capabilities): projects and items are its — so every capture is a
+//    card, kept in the Unassigned store (`target`), whatever project was current before; nothing is filed, moved or
+//    organized (`settled`, `assign`, `handToAI`, `retarget` do nothing), and nothing about a project is ever asked or
+//    said. Cards off: the cards stay in their batches here and just don't hang (HangingCards.refresh).
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 //
 // ⌥A while recording (BA-60…66, 2026-10-31) is the same snap as everywhere else — the picker, the in-place note
@@ -182,7 +186,8 @@ final class Snapper {
 
     /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none — or when
     /// the current project's folder can't be found (moved, renamed): nothing is written there (MissingFolder).
-    var target: Project { ProjectStore.shared.captureTarget }
+    /// With Recording & Items off there are no projects: always the inbox store, as a card.
+    var target: Project { Capability.projectsShown ? ProjectStore.shared.captureTarget : ProjectStore.shared.inbox }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
     /// Kept by the store's path, not the project's id: a project relocated with Locate… keeps its id but has a new
@@ -264,7 +269,7 @@ final class Snapper {
                   "in_place": withNote])
             // the current project's folder is gone: said once the snap is a card (the island can't show it under an
             // in-place note — the note's chip says it meanwhile)
-            if p.isInbox, ProjectStore.shared.missingCurrent != nil {
+            if p.isInbox, Capability.projectsShown, ProjectStore.shared.missingCurrent != nil {
                 if withNote, let m = ProjectStore.shared.missingCurrent { self.warnWhenSettled(shot, missing: m) }
                 else { MissingFolder.warnIfCurrentMissing() }
             }
@@ -292,7 +297,7 @@ final class Snapper {
     /// The bubble's "Goes to X" chip: this capture goes to `project` instead (nil: it hangs as a card). The island's
     /// current project stays as it is.
     func retarget(_ s: Shot, to project: String?) {
-        guard let b = s.batch, !s.deleted else { return }
+        guard let b = s.batch, !s.deleted, Capability.projectsShown || project == nil else { return }
         let was = s.project
         if let p = project { b.assign(s, project: p, by: "capture") } else { b.release(s) }
         emit(["event": "retarget", "n": s.n, "from": was ?? NSNull(), "project": project ?? NSNull()])
@@ -509,7 +514,7 @@ final class Snapper {
         }
         let line = DictationASRFailure.failed(why ?? "").line
         switch line {
-        case .cloudKey:
+        case .cloudKey, .cloudModel:
             var t = Island.Toast(text: Loc.t(line.key, table: "Dictation"),
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
                 AppEnvironment.settings?.show(pane: "speech/speech.cloud")
@@ -627,6 +632,12 @@ final class Snapper {
         guard !s.deleted, let b = s.batch else { return }
         // a snap of a take goes with the recording (its organizing run makes the item): only its words are fetched
         if b.inRecording {
+            if s.needsWords { transcribe(s) { _ in } }
+            return
+        }
+        // Recording & Items off: nothing is filed — a card, its words fetched for it. (One left on its way into a
+        // project by an earlier quit waits as it is: `restore` picks it up again once the switch is back on.)
+        guard Capability.projectsShown else {
             if s.needsWords { transcribe(s) { _ in } }
             return
         }
@@ -777,6 +788,7 @@ final class Snapper {
     /// Cards — one, or a ⌘-click selection — onto a project (Move To ▸, a drop on the island): each batch's filed in
     /// one go, the user's own choice (assigned_by "user").
     func assign(_ shots: [Shot], to project: String) {
+        guard Capability.projectsShown else { return }
         if let gone = missingProject(project) { return keepAsCards(shots.filter(\.isCard), missing: gone, via: "assign") }
         var by: [ObjectIdentifier: (ShotBatch, [Shot])] = [:]
         var order: [ObjectIdentifier] = []
@@ -799,6 +811,7 @@ final class Snapper {
     /// per item (nothing moves — "Looks like X · Move" in the main window). `shots`: just these (a card's own
     /// "Organize", a drop on Organize); nil: every hanging card (the island's Organize, "Organize All Cards").
     func handToAI(project: String? = nil, shots: [Shot]? = nil) {
+        guard Capability.projectsShown else { return }          // Organize makes items: Recording & Items'
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
         // never into a project whose folder is gone: the cards stay, and the island offers Locate… (MissingFolder)
@@ -812,9 +825,24 @@ final class Snapper {
             guard let self = self else { return }
             guard ok else {
                 emit(["event": "organize_no_agent", "captures": all.map(\.n)])
-                var t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
+                // no agent CLI to run in the background: an agent app with the skill (WorkBuddy, Cursor…) organizes
+                // when asked in its chat — copy what to say there; none known to have it → Settings → Agents
+                var t: Island.Toast
+                if let chat = MainActor.assumeIsolated({ AgentsModel.shared.chatAgentName }) {
+                    t = Island.Toast(text: Loc.t("capture.sort.no_agent.chat", table: "Capture", chat),
+                                     actionTitle: Loc.t("capture.sort.copy_request", table: "Capture")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Loc.t("capture.sort.request", table: "Capture"), forType: .string)
+                        emit(["event": "organize_request_copied", "agent": chat])
+                        var done = Island.Toast(text: Loc.t("capture.sort.request_copied", table: "Capture", chat), actionTitle: nil, action: nil)
+                        done.icon = .check
+                        island.toast(done)
+                    }
+                } else {
+                    t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
                                      actionTitle: Loc.t("capture.sort.set_up", table: "Capture")) {
-                    AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
+                        AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
+                    }
                 }
                 t.icon = .warning           // a failure leads with the attention triangle (system.md §3.2)
                 t.seconds = 8
@@ -856,7 +884,7 @@ final class Snapper {
     /// is offered join it (BlurtCore CardUndo): "Deleted N cards · Undo" brings back every one of them.
     func delete(_ s: Shot) { delete([s]) }
 
-    /// "Delete All N Cards" (the island's menu, the overview): every hanging card, one Undo for all of them.
+    /// "Delete All N Cards" (the island's menu): every hanging card, one Undo for all of them.
     func deleteAllCards() {
         NoteBubble.shared.cancel()
         delete(cards)
@@ -867,7 +895,8 @@ final class Snapper {
     private var undoable = CardUndo<Shot>()
     private var trashedFiles: [ObjectIdentifier: [URL: URL]] = [:]
 
-    private func delete(_ shots: [Shot]) {
+    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them.
+    func delete(_ shots: [Shot]) {
         for s in shots where NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         // (a fresh shot's bubble discards it itself, with its own Undo)
         let gone = shots.filter { !$0.deleted && $0.batch != nil }
@@ -919,8 +948,8 @@ final class Snapper {
     // MARK: taken — dragged out and dropped in another app (v0.8.1)
 
     /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — but it is "taken",
-    /// not discarded: its files stay where they are (the app may read them late) and it is in the Cards panel's
-    /// History (⌥H) for 7 days, where it can be copied, dragged out again or put back;
+    /// not discarded: its files stay where they are (the app may read them late) and it is in the Cards page's
+    /// History (⌥H) as long as Settings → Cards → History says, where it can be copied, dragged out again or put back;
     /// then housekeeping trashes it (expireTaken).
     /// `delivered`: the kind of app whose payload the drop got (nil: not sure); `noteFile`: the .md went with it;
     /// `landed` / `at`: the app it was dropped into and where (a screen point). A chat app (a browser, an Electron
@@ -928,7 +957,7 @@ final class Snapper {
     /// record.smart_paste) — never in a code editor, whose focus may be source code. Where the note didn't go in after
     /// all (a code editor, the follow-up couldn't run, the app didn't read it, the Finder, not sure), the note goes on
     /// the clipboard (record.drag_copy_note; BlurtCore DragReceipt) and the
-    /// toast says "⌘V to paste"; a rich app (it took the note from the rich item) and a terminal (both paths) leave the
+    /// toast says "⌘V to paste"; a rich app (it took the note from the rich item) and a terminal (path and note) leave the
     /// clipboard alone. "Undo" in the toast puts the card back on its thread (and the clipboard as it was, if nothing
     /// was copied since). `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days
     /// start over).
@@ -944,6 +973,74 @@ final class Snapper {
                           noteFile: noteFile, landed: landed, at: p, who: ["n": s.n]) { [weak self] d in
             self?.tookOut(s, b, fromPanel: fromPanel, delivered: delivered, noteFile: noteFile, d)
         }
+    }
+
+    /// Several cards dragged out as one (a ⌘-click selection) and taken by another app: they all leave their threads;
+    /// in a chat app the notes are pasted after the files as one text, numbered by picture (CardTransfer.followUpNotes);
+    /// where they didn't go in, that text goes on the clipboard. One toast ("Dragged out 3 cards · …"), one Undo for all.
+    func takeOut(_ ss: [Shot], delivered: DropClass?, noteFile: Bool, landed: DropTarget?, at p: NSPoint?) {
+        let shots = ss.filter { $0.batch != nil && !$0.deleted }
+        if shots.count == 1 { return takeOut(shots[0], delivered: delivered, noteFile: noteFile, landed: landed, at: p) }
+        guard !shots.isEmpty else { return }
+        for s in shots {
+            if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+            hanging.takeAway(s)
+            s.batch?.take(s, at: Snapper.now)
+        }
+        takenChanged()
+        let cards = shots.map { CardExport.card($0).0 }
+        let lead = CardPasteboard.Card(image: cards.compactMap(\.file).first, note: CardTransfer.followUpNotes(cards))
+        DragOutEnd.finish(card: lead, delivered: delivered, noteFile: noteFile, landed: landed, at: p, who: ["n": shots.map(\.n)]) { [weak self] d in
+            let key = DragReceipt.toastKey(d.outcome, hasNote: d.hasNote, noteCopied: d.noteCopied, noteFile: noteFile,
+                                           noAccessibility: d.asksAccessibility)
+            let text = Snapper.many(Loc.plural("capture.taken_out_many", table: "Capture", count: shots.count), Loc.t(key, table: "Capture"))
+            emit(["event": "take_out", "n": shots.map(\.n), "note_copied": d.noteCopied, "delivered": delivered?.rawValue ?? NSNull(),
+                  "note_pasted": d.notePasted, "outcome": d.outcome.rawValue, "toast": key])
+            let saved = d.saved
+            island.toast(DragOutEnd.toast(d, text: text, undo: { [weak self] in
+                saved?.restore(capturePasteboard)
+                for s in shots { self?.putBack(s) }
+            }))
+        }
+    }
+
+    /// Cards dropped on an item in the main window (v1.0.23): they went into it — off their threads, in Recently Taken
+    /// (the item's Undo puts them back).
+    func usedInItem(_ ss: [Shot]) {
+        guard !ss.isEmpty else { return }
+        for s in ss where s.batch != nil && !s.deleted {
+            if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+            hanging.takeAway(s)
+            s.batch?.take(s, at: Snapper.now)
+        }
+        takenChanged()
+    }
+
+    /// ⌥-dragged out (v1.0.23): the cards stay on their threads, but what follows a drop still happens — the notes
+    /// pasted after the pictures in a chat app, or put on the clipboard where they didn't go in. No Undo: nothing left.
+    func copiedOut(_ ss: [Shot], delivered: DropClass?, noteFile: Bool, landed: DropTarget?, at p: NSPoint?) {
+        let shots = ss.filter { $0.batch != nil && !$0.deleted }
+        guard !shots.isEmpty else { return }
+        let cards = shots.map { CardExport.card($0).0 }
+        let lead = shots.count == 1 ? CardPasteboard.Card(image: shots[0].kind == .shot ? shots[0].bestURL : nil, note: shots[0].copyText)
+            : CardPasteboard.Card(image: cards.compactMap(\.file).first, note: CardTransfer.followUpNotes(cards))
+        DragOutEnd.finish(card: lead, delivered: delivered, noteFile: noteFile, landed: landed, at: p, who: ["n": shots.map(\.n), "kept": true]) { d in
+            let key = DragReceipt.toastKey(d.outcome, hasNote: d.hasNote, noteCopied: d.noteCopied, noteFile: noteFile,
+                                           noAccessibility: d.asksAccessibility)
+            let text = shots.count > 1 ? Snapper.many(Loc.plural("capture.taken_out_many", table: "Capture", count: shots.count),
+                                                      Loc.t(key, table: "Capture")) : Loc.t(key, table: "Capture")
+            emit(["event": "copied_out", "n": shots.map(\.n), "outcome": d.outcome.rawValue, "toast": key])
+            island.toast(DragOutEnd.toast(d, text: text, undo: nil))
+        }
+    }
+
+    /// A single card's toast said of several: "Dragged out 3 cards" in place of its first part ("Dragged out · picture
+    /// and note" → "Dragged out 3 cards · picture and note"), what follows kept.
+    static func many(_ head: String, _ single: String) -> String {
+        var lines = single.components(separatedBy: "\n")
+        let parts = lines[0].components(separatedBy: " · ")
+        lines[0] = ([head] + parts.dropFirst()).joined(separator: " · ")
+        return lines.joined(separator: "\n")
     }
 
     /// A voice card let go of over a chat app's window (VoiceCardDrop): the app took the drop (its message box), or
@@ -1017,30 +1114,54 @@ final class Snapper {
         if !cardBatches.contains(where: { $0 === b }) { b.onChange = { hanging.refresh() }; cardBatches.append(b) }
         hanging.catchCapture(s, from: from)
         takenChanged()
-        TakenPanel.shared.makeRoomForCards()        // the card hangs where the panel may be
     }
 
-    /// Recently Taken: captures dragged out in the last 7 days, newest first.
+    /// ⌘↩ in a fresh snap's note (BlurtCore NoteKeys .copyAndFinish, v1.0.23): the picture (marked) and its note on the
+    /// clipboard — the items a card's click-copy puts there (CardExport.copy, armed for smart paste) — and no card: one
+    /// that would have hung is used at once, so the Cards panel's History has it (the drag-out's `take`). One filed into
+    /// a project is filed as ever and copied all the same. Spoken words still coming are waited for, then copied.
+    func copyAndDone(_ s: Shot) {
+        guard let b = s.batch, !s.deleted else { return }
+        if s.isCard {
+            b.take(s, at: Snapper.now)
+            takenChanged()
+        }
+        let copy = {
+            guard !s.deleted else { return }
+            let items = CardExport.copy([s])
+            emit(["event": "snap_copied", "n": s.n, "ok": items != nil, "taken": s.taken != nil, "note": s.words ?? NSNull(),
+                  "types": (items?.first?.types ?? []).map(\.rawValue)])
+            if items != nil { island.toast(Loc.t("capture.card.copied", table: "Capture"), key: "snap_copied", icon: .check, seconds: 2) }
+        }
+        if s.needsWords { fetchWords(s) { _ in copy() } } else { copy() }
+    }
+
+    /// How long History keeps a used card: Settings → Cards → History (record.cards.history_days: 7, 30, -1 = until
+    /// deleted; BlurtCore TakenCaptures).
+    static var historyDays: Int { TakenCaptures.days(record: recordConfig()) }
+
+    /// Recently Taken (the Cards page's History): captures dragged out or pasted within History's days, newest first.
     var recentlyTaken: [Shot] {
-        let now = Snapper.now
-        return cardBatches.flatMap { $0.live.filter { s in s.taken.map { TakenCaptures.isRecent(taken: $0, now: now) } ?? false } }
+        let now = Snapper.now, days = Snapper.historyDays
+        return cardBatches.flatMap { $0.live.filter { s in s.taken.map { TakenCaptures.isRecent(taken: $0, now: now, days: days) } ?? false } }
             .sorted { ($0.taken ?? 0, $0.n) > ($1.taken ?? 0, $1.n) }
     }
 
-    /// Something used has gone after its 7 days (or was deleted from History): it is in the Trash — the empty
-    /// History segment of the Cards panel says so.
+    /// Something used has gone after its days (or was deleted from History): it is in the Trash — the empty History
+    /// section of the Cards page says so.
     var takenExpiredAny: Bool { cardBatches.contains { $0.shots.contains { $0.deleted && $0.taken != nil } } }
 
-    /// Housekeeping: a capture taken 7+ days ago goes to the Trash (files, its out/ folder; `{"n","deleted":true}`).
+    /// Housekeeping: a capture used longer ago than History keeps them (7 days by default; never with Forever) goes to
+    /// the Trash (files, its out/ folder; `{"n","deleted":true}`).
     /// Test runs (a scratch BLURT_HOME) never fill the user's own Trash: the files go to $BLURT_HOME/trash.
     @discardableResult
     func expireTaken() -> Int {
-        let now = Snapper.now
+        let now = Snapper.now, days = Snapper.historyDays
         var n = 0
         let env = ProcessInfo.processInfo.environment
         let scratchTrash: URL? = env["BLURT_TEST_COMMANDS"] == "1" ? BlurtPaths.home.appendingPathComponent("trash") : nil
         for b in cardBatches {
-            for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now) }) ?? false {
+            for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now, days: days) }) ?? false {
                 b.delete(s, into: scratchTrash)
                 emit(["event": "taken_expired", "n": s.n, "session": b.dir.path])
                 n += 1
@@ -1052,10 +1173,9 @@ final class Snapper {
 
     private func takenChanged() {
         NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": recentlyTaken.count])
-        TakenPanel.shared.reload()
     }
 
-    /// Now (seconds since 1970) — scripted checks move the clock (test command `clock SECONDS`) to see 7 days pass.
+    /// Now (seconds since 1970) — scripted checks move the clock (test command `clock SECONDS`) to see History's days pass.
     static var now: Double { Date().timeIntervalSince1970 + clockOffset }
     static var clockOffset: Double = 0
     private var expiryTimer: Timer?

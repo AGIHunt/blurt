@@ -130,7 +130,7 @@ Windows 的岛 = Mac 在**没有刘海的屏幕**上画的那个胶囊（`Island
 | 「编辑备注…」从那张卡片下面打开 | 总在岛下面 | `card.note` 带上卡片的位置，`island.rs css_to_screen` 换成屏幕坐标，`capture::edit_note(…, under)`（截图那位的函数，只加了一个参数） | 已做 |
 | 截图后卡片从截图的位置飞到它的位置 | 从下面飞上来 | `card` 动作可以带 `from`（岛页面的 CSS 坐标，`island::screen_to_css` 换算）；截图那边发的时候带上就行 | 页面已做，等截图那边带 `from` |
 | 翻译卡片等其他浮层：卡片落下时排在卡片下面 | — | 页面在卡片停稳后报告最下沿（`cards.edge`），`island::below_cards(app)` 给出屏幕 y | 已做（截图那边接） |
-| 录完一段：耳朵里「✓ 0:42」1.6 s；录屏中「6 张截图 · 已识别 4 个事项」 | — | `rec_done` 动作和 `recording.spotted` | 已做 |
+| 录完一段：耳朵里「✓ 0:42」1.6 s；录屏中「6 张截图」（2026-11-09 起不再有「已识别 N 个事项」） | — | `rec_done` 动作 | 已做 |
 | 录屏「笔」、只保存视频 | Windows 版录屏没有 | 归录屏那位 | 不变 |
 | 刘海、菜单栏 | Windows 没有 | 胶囊；积压数在托盘提示里 | 不变 |
 
@@ -143,7 +143,8 @@ Windows 的岛 = Mac 在**没有刘海的屏幕**上画的那个胶囊（`Island
 | 把 macOS 截图添加为卡片（`collect_system_shots`，关） | 同一个键：每 1.5 s 看一次系统截图文件夹（`图片\Screenshots`：Win+Shift+S 截图工具、Win+PrtScn 都存在这里；Linux 的 GNOME 也是），开关打开之后新出现的 png / jpg（大小稳定了才拿）复制进截图批次，和截图一样：有当前项目就归进去，没有就挂成卡片；录屏时不收；原文件不动 | 已做（`island.rs collect_system_shots`、`capture.rs import_system_shot`，有测试） |
 | 截图快门声（`snap_sound`，关） | 页面自己合成一声快门（两片噪声，不带声音文件）；录屏中的截图由状态行触发；框选截图要截图那边在帧落盘时调 `island::shutter(&app)` | 部分：录屏中已接；框选截图待截图那位接一行 |
 | 把卡片拖进 App：先图后备注 / 图下印备注 / 只图片（`smart_paste` 开、`drag_caption` 关、`drag_copy_note` 开） | 印备注：岛把图片和备注画成一张新 PNG（原图不动），拖的是这张；先图后备注：Windows 不能在落点自动粘贴，所以备注放进剪贴板，提示「已拖走 · 备注已复制，Ctrl+V 粘贴」（就是 Mac 粘不进去时的兜底）；只图片：只拖图，不动剪贴板 | 已做（系统拖放本身待 VM 验证） |
-| 附上备注 Markdown（`drag_note_file`，关） | 拖出时多带一个 `Screenshot-153012-note.md`（中文界面 `截图-153012-备注.md`，放在临时目录） | 已做 |
+| 附上备注 Markdown（`drag_note_file`，关） | 拖出时多带一个 `Screenshot-153012-note.md`（中文界面 `截图-153012-备注.md`）。和印备注的那张图一样写在会话旁边的 `<会话>/out/<NNN>/`（`card_drop::out_dir`，Mac 的 CardExport 同一个位置），不再放 %TEMP%：终端里的 Agent 可能过很久才读；卡片在历史里满 7 天后，housekeeping 连这个文件夹一起扔进回收站 | 已做 |
+| 拖进终端：一行「图片路径 + 备注」（Mac 同一规则：每张图带着自己的备注，Claude Code / Codex 从路径读图） | 落点是 Windows Terminal 或 mintty（Git Bash）：只给 CF_UNICODETEXT 一行 `"C:\…\shots\003.png" 备注`（换行变空格、去掉控制字符，不带回车），没有 CF_HDROP，备注不进剪贴板，岛上「已拖走 · 图片路径和备注」。数据对象在知道落点之前就要交给 `DoDragDrop`，所以 `card_drag_win.rs CardData` 包住系统的文件数据对象，每次被问（EnumFormatEtc / QueryGetData / GetData）时看指针下的窗口（WindowFromPoint → GA_ROOT → 进程 exe、窗口类，和 OLE 自己找落点用的是同一个窗口），在终端上就只答那一行文字（拖动图像的格式照常转给系统对象），别处原样转发——和 Mac 的 CardDrag 按指针下的 App 回答一样。老式控制台（ConsoleWindowClass，只收 WM_DROPFILES）和只收文件的终端（Alacritty、WezTerm、Hyper、Tabby、Warp…，还没见过它们收文字）照旧拿文件、备注进剪贴板：只给文字的话它们会拒收，卡片弹回 | 已做；交叉 `cargo check` / `clippy --target x86_64-pc-windows-msvc` 通过，**未在 Windows 验证**（Windows Terminal、mintty 收文字拖放，资源管理器 / Edge 经过包装后照常收文件） |
 
 ## 11. 第五轮（11-02 Windows 试用）
 
@@ -286,3 +287,61 @@ Windows 的岛 = Mac 在**没有刘海的屏幕**上画的那个胶囊（`Island
 - 翻译把列表合成一行、丢 €：改了提示词（见 snap-and-note §14 末尾）。
 - 仍未解决：语音备注「完成」后显示「已丢弃 · 撤销」（见 snap-and-note §14）；OCR 的空格和大小写（`POsT`、`50430.0S`，Windows.Media.Ocr 自己的结果，`rules.rs` 照 Mac 排版，没动）；翻译卡片比「已粘贴译文」晚一秒多出来（WebView2 第一次建窗口的时间，可以提前建好隐藏着，本轮没做）。
 - 没有重拍：VM 已释放。清单同 §12 末尾。
+
+## 14. 拖进、拖出、多选（2026-11-15，`docs/design/drag-drop.md` §2–§5 的 Windows / Linux 这一半）
+
+| 设计 | Windows | Linux | 结果 |
+|---|---|---|---|
+| 多选（§2）：Ctrl-点击加入 / 移出；Shift-点击从上一次点的那张到这张连成一段，按时间从早到晚加在后面；顺序 = 点选顺序，卡片角上写 1、2、3 | 同一页面代码（`island.ts` 的选择一节，规则在 `selection.ts`，`tests/selection.test.ts` 10 条）；原来右下角的勾换成数字（`island.css .card.picked[data-pick]`） | 同 Windows | 已做（浏览器 mock 里点过：Ctrl 点第 4、第 1 张，Shift 点第 6 张 → 2 3 4 1 5 6） |
+| 停手 0.6 s 后整组复制一次，不再每点一下就复制 | `card.copy_all` 按选择顺序；纯文本是每张一行 `"<路径>" <备注>`（`card_drop::copy_text`，Mac 的 terminalLines；Windows 没有智能粘贴，终端拿的就是纯文本），HTML 照旧是图 + 备注 | 同 | 已做 |
+| 卡片收起后选择保留 1 分钟；普通单击、拖出、归档、或 1 分钟后结束 | 同 | 同 | 已做 |
+| 拖选中的任意一张 = 拖整组（§2 的表） | 一个 OLE 数据对象：所有图片作为文件（Explorer、聊天应用）；终端（Windows Terminal、mintty）和 AI IDE（Cursor、Windsurf、Trae、Qoder、Antigravity、Kiro、用户自己加的）一行，卡与卡之间两个空格；有自己输入框的桌面 agent（`card_drop::COMPOSERS`：Codex、WorkBuddy、QoderWork、Kimi Code、DoubaoWork）每张一行（`Target::Composer`）；只有语音卡时是文字，同样按落点回答。聊天应用拿到文件后，备注按 `follow_up_notes` 放进剪贴板（两个以上文件时 `1. 备注`，序号 = 第几个文件）。拖动图像右上角画上张数 | 拖不出去（没有拖出实现，不变） | Windows 已做，**未在 Windows 上验证** |
+| 松手时按着 Alt = 卡片留在绳上 | `QueryContinueDrag` 说「放下」那一刻的键状态里有 `MK_ALT` → 不标记拿走、卡片弹回、照样复制备注 | — | 已做，未验证：Alt 在有的目标里会把效果改成「链接」，而我们只允许拷贝，那种目标可能直接拒收 |
+| 整组一起离开，一个提示一个撤销 | `take_card` 每张，提示「已拖走 3 张 · 路径和备注 / 备注已复制，Ctrl+V 粘贴 · 撤销」，撤销 = `card.putback` 放回全部 | — | 已做 |
+| 卡片拖进口喷鸡自己的主窗口（§0.2、§4） | 每次卡片拖动都带上是哪几张卡：`application/x-blurt-cards`（JSON `[{session, n}]`）写成 Chromium 的「Chromium Web Custom MIME Data Format」（base::Pickle，`card_drop::web_custom_data`，有布局测试），WebView2 的页面在 `dataTransfer.types` 里直接看到；另外注册了 `Blurt Cards` 格式；再加一层保险：拖动期间 Rust 记着这几张卡（`island::dragging_cards`），主窗口在文件拖进来时问一次（`cards_dragging`）。落在主窗口上（`Landed::Ours`：`WindowFromPoint` 是我们自己的进程）就什么都不拿、不复制，交给主窗口：侧栏项目 / 未归类 / 列表空白处 = 归入那个项目（`cards_file` → 和拖到岛的项目行同一条路），条目行上 = `items.py attach <uid> --frame 图… --text 备注` 后卡片标记拿走（`cards_attach`），撤销 = `attach --restore` + 放回卡片 | 拖不出去，不适用 | 已做，**未在 Windows 上验证**：Pickle 的格式名和布局是照 Chromium 源码写的（`ui/base/clipboard/custom_data_helper.cc`）；要是 WebView2 没认出来，`cards_dragging` 那一层仍然让主窗口认出卡片 |
+| 外部拖进刘海（§3） | **接收窗口**（`island_drop_win.rs`）：一个自己的小窗口，只盖刘海 + 40 px（抽屉打开后是抽屉 + 24 px），置顶、不激活、不进任务栏、alpha 1/255（看不见，但仍被命中测试——OLE 用 `WindowFromPoint` 找落点，alpha 0 或 `WS_EX_TRANSPARENT` 会被跳过）；只在别的 App 拖着东西靠近刘海时出现，松手后留 0.5 s 等放下（OLE 在源进程自己的循环里、按键抬起之后才交 Drop），然后撤掉。窗口、计时器和 `IDropTarget` 在同一个 STA 线程上（`OleInitialize` + 自己的消息循环），卡片在工作线程上做。岛本身绝不当落点：WebView2 的外部拖放对岛关掉（`lib.rs browser_ui_off`：`ICoreWebView2Controller4::SetAllowExternalDrop(false)`；wry 不给 handler 时它默认是开的）。**怎么知道别人在拖**：Windows 不通知旁观者，全局鼠标钩子不想要（每个输入事件都要经过我们，安全软件也会报），所以 30 Hz 计时器只看谁都能读的：主键按着（`GetAsyncKeyState`，左右键交换时看右键）、指针离按下处超过系统拖动距离（`SM_CXDRAG`）、按下处不是 Blurt 的窗口（`WindowFromPoint` 的进程）且没有 Blurt 自己的卡片拖动（`dragging_cards`）、指针在刘海附近——这只是「可能」，接收窗口出现后由 OLE 自己确认：真的拖放会 `DragEnter` 进来并带上数据对象。按着键却不是 OLE 拖放的（浏览器标签沿标签栏拖、拖窗口、选文字）永远不会进来：指针在窗口上移动 200 ms 仍没有 `DragEnter`，这次按键内就不再出现，不挡那个 App（规则在 `drop_in::Watch`，纯函数，有测试）。**读什么**：CF_HDROP 的路径（资源管理器和大多数 App；`.url` 当链接）、浏览器的虚拟文件（FileGroupDescriptorW + FileContents，Edge / Chrome 拖出的图）、图片数据（"PNG"、CF_DIBV5、CF_DIB → PNG）、文字和链接（UniformResourceLocatorW、CF_UNICODETEXT，只在没有别的东西时）；带 "Blurt Cards" 的是自己的拖动，拒收；文件夹不收。永远回答 `DROPEFFECT_COPY`。拖动图像照常显示（`IDropTargetHelper`）。**抽屉**：停 250 ms 打开（`ext` op：enter / open / over / close / end），第一行「挂到刘海下 / Hang under the island」，副标题说拖来的是什么（「1 张图片、2 个文件 · 每样一张卡片」，一样东西时「… · 挂上后可加备注」，`extdrop.ts`，有测试），标题「放到」，然后项目、更多…（不收）、未归类，没有「整理」；离开 300 ms 收起。Rust 把指针换成页面坐标发过去，页面点亮那一行并回报（`ext.row`），落点用最后点亮的那一行（Mac 的 externalTarget）；刘海本身或第一行 = 挂成卡片，项目行 = 直接归入，未归类 = 归入收件箱。页面在位置变化时报刘海和抽屉的位置（`drop.zone`；岛静止隐藏时报它会出现的位置），靠近时刘海变高 6 px、变宽到 150。**卡片**（`drop_in::make_cards`，Mac 的 DropCards）：图片（png/jpg 原样拷贝；gif/webp/bmp/heic/tiff 用 WIC 转 PNG，长边 ≤ 6000；解不开的成文件卡）→ 图片卡；其他文件 → 文件卡：shots.jsonl 一行和截图一样，另加 `"ref"`: 绝对路径，`shots/NNN.png` 是卡面——`IShellItemImageFactory` 的缩略图（没有就是图标，同一个调用）放在浅色底上，底部深色条上用 GDI 写文件名（中间省略，`DT_PATH_ELLIPSIS`），300×240；在临时位置的文件（%TEMP%、任何用户的 AppData\Local\Temp、INetCache、应用包目录、`.crdownload`/`.partial` 这类下载中的文件；浏览器的虚拟文件也算）先拷进 `<batch>/files/NNN/` 再引用那一份；文字 / 链接 → 文字卡（`"type":"voice"`、`"voice":null`、`"text"`）。都挂在未归类的当前批次（不管当前项目）。页面：文件卡的备注条移到上边（下边是文件名），文字卡没有麦克风。**出去**：文件卡拖出 = 引用的那个文件（只给拷贝），终端 / agent 拿到它的路径 + 备注；点击复制 = 路径 + 备注那一行；在资源管理器中显示 = 那个文件；拖到主窗口的条目上 = 进 `attachments`（不是截图帧）。删卡片只标记删除，不碰引用的文件 | 页面这一半（抽屉、文件卡、文字卡）同一份代码；没有接收窗口：XWayland 拿不到全局指针，判断不了有人在拖（设计说「尽力：XDND 到输入区域」，未做） | Windows 已做，**未在 Windows 上验证**（见下面） |
+
+主窗口这一半也记在这里（不另开 main-window.md 的小节）：
+
+- **外部拖进主窗口**（§4，Windows 和 Linux 同一套 React 代码，`web/apps/desktop/src/drops.ts` + `App.tsx` 的 drops 一节，`drops.test.ts` 9 条）：
+  - 任何文件，不只图片：图片 → 截图帧（`items.py` 拷贝），其他文件 → `attachments`（绝对路径引用；在临时位置的——%TEMP%、任何用户的
+    `AppData\Local\Temp`、/tmp、/var/tmp——用 `--keep` 拷进条目的 assets 再引用，`items::is_temporary`，有测试），文字 / 链接 → 文字。
+  - 区域：拖动时列表顶部钉一条 44 px「松手新建条目」，列表其他地方（空白处、空列表）同样是新建 → 新建条目表单（非图片文件一行一个「图标 +
+    文件名」，可以 ×；只有文件时标题预填第一个文件名去掉扩展名）；条目行上 → 那一行高亮，指针旁「加到「标题」」，松手直接加，提示「已加到
+    「标题」 · 2 张图 · 1 个文件 · 撤销」（`items_attach`，撤销 = `--restore`）；侧栏项目 / 未归类 → 那一行高亮，「在「X」新建条目」，打开新建
+    表单、项目选好。指针旁的小标签跟着指针走（`.mw-drop-tip`，直接改 transform，不重渲染整个窗口）。
+  - 文件夹：侧栏照旧（整个侧栏亮，松手打开为项目）；落在列表上提示「文件夹请拖到侧栏，打开为项目」（拖动中分不出文件夹和没有类型的文件，所以是
+    松手后说）。
+  - 路径：WebView2 的 `File` 没有路径。`folder_drop.rs` 原来只给侧栏的文件夹用 `postMessageWithAdditionalObjects`，现在多一个
+    `blurt-drop-files:<token>`，Rust 回 `mainwin://files-dropped {token, files: [{path, dir}]}`（顺序同 FileList），顺便让资产协议可以读这些文件
+    （表单里的缩略图）。WebView2 给不出路径的（浏览器里拖出来的图）→ 读字节写临时文件（`save_temp_image`，和以前一样）。
+  - Linux（WebKitGTK）：从 `text/uri-list` 里的 `file://` 按文件名对上路径，`drop_paths` 命令告诉页面哪些是文件夹（并允许缩略图）；没有路径的图片
+    读字节；没有路径的其他文件不加，提示「N 个文件没加：这里拿不到它们的位置」。
+  - 没做：右侧详情面板接拖放（§4 表的最后一行）；新建条目表单自己接非图片文件（它仍然只收图片）；「只读条目，不能添加」（Windows 这边没有只读条目）；
+    按项目分组时落到指针下那一组（现在是当前视图的项目）。
+
+外部拖进刘海这一轮（同日稍后）的验证：`cargo test --lib` 293 通过（`drop_in` 12 条：拖来的东西分类、`.url` 链接、FileGroupDescriptorW 的文件名（不让源给路径）、CF_DIB → RGBA、临时位置规则、落点、`Watch` 的显示 / 抽屉 / 宽限 / 「不是拖放就走开」/ 自己的拖动、文件卡卡面合成、shots.jsonl 的行：`ref`、文字卡、临时文件拷进 `files/NNN/`、删卡不碰原文件）；`cargo check` 和 `cargo clippy --target x86_64-pc-windows-msvc`（假 cc / ar / llvm-rc）通过，新代码没有警告；Linux 目标在这台机器上编不了（gio-sys 要 rustc 1.92），新代码除 `island_drop_win.rs` 外都不分平台，macOS 本机编过；overlays vitest 86（`extdrop.test.ts` 5 条）、desktop 72；浏览器 mock `island.html?demo=ext`（中英文）看过抽屉、文件卡、文字卡，`drop.zone` / `ext.row` 按预期发出。**要在真机上验证**：资源管理器拖 PDF / 视频 / 多选混合到刘海（停 250 ms 出抽屉、挂到刘海下 / 项目行 / 未归类）；Edge / Chrome 拖网页里的图（虚拟文件）和地址栏的链接；微信 / 飞书缓存里的文件被拷进 `files/NNN/`；拖动图像在接收窗口上是否照常显示；Chrome 标签沿标签栏拖过刘海时没有被挡（200 ms 规则）；以管理员身份运行的 App（UIPI：拖不过来，`GetAsyncKeyState` 也可能读不到）；缩略图慢的大视频（`GetImage` 没有超时，在工作线程上）；多显示器、125 % / 150 % 缩放下接收窗口和刘海对得上。没做：只拖来一样东西时挂上后自动打开备注气泡（Mac 有，不抢键盘）；原文件被挪走后卡片上写「找不到原文件」。
+
+验证：`cargo test --lib`（281 通过，含 `card_drop` 新增 4 条、`items` 1 条）；`cargo check` 和 `cargo clippy --target x86_64-pc-windows-msvc`（假
+cc / ar / llvm-rc）通过，没有新警告；`pnpm --filter @blurt/overlays test`、`pnpm --filter @blurt/desktop test` 通过；浏览器 mock 里用合成的
+DragEvent 走过：条目行高亮 +「加到「…」」、空白处「松手新建条目」、PDF 经 uri-list → 新建表单（标题「Q3 report」、文件一行）、侧栏项目行
+「在「storefront」新建条目」→ 表单的项目是 storefront、带 `application/x-blurt-cards` 的拖放落在条目上 →「已加到「…」」。
+
+**要在真机上验证的**（这一轮没有 Windows / Ubuntu 机器）：多张卡整组拖进 Windows Terminal（一行）、Codex / WorkBuddy（每张一行）、Explorer（所有
+文件）、微信 / 飞书 / Edge（所有图片 + 剪贴板里编号的备注）；Alt 拖；卡片拖进主窗口（WebView2 是否认出 Chromium 自定义数据；`Landed::Ours`
+在主窗口上是否成立——岛在拖动时是穿透的，`WindowFromPoint` 应该落到主窗口）；Explorer 拖 PDF / 视频 / 混合到条目上和列表上；Edge 里拖图片
+（没有路径，读字节）；%TEMP% 里的文件被拷贝；Ubuntu Files 拖文件进主窗口（WebKitGTK 是否给 `text/uri-list`）和拖文件夹到侧栏（现在走同一条路）。
+
+### 14.1 第二轮（2026-11-15 夜，`drag-drop.md` §0.4–§0.6 的 Windows / Linux 这一半）
+
+- **详情页接拖放**（`App.tsx` 的 `aside.mw-detail` + `drops.ts detailTakes`）：文件、图片、岛上的卡片加到正在看的事项，详情页亮一圈、指针旁「加到「标题」」；文字和链接不接（页面输入框自己的）。和列表、侧栏同一条路（`dropOn` → `addTo` / `dropCards`），提示「已加到「…」 · 2 张图 · 1 个文件 · 撤销」，**并进窗口的撤销栈**（新 `UndoStep` `attach`：Ctrl+Z = `attach --restore`，卡片放回；Ctrl+Y 用 `attachedAfter` 还原加之后的样子，带卡片的不重做）。没人接的文件 / 链接拖放在窗口里一律拒收（以前在详情页松手会让 WebView2 / WebKitGTK 导航到那个文件）。
+- **一次拖动一份状态**（`drops.ts DragState`，有测试）：`cards_dragging` 的回答带着拖动的序号，拖动结束后才回来的答案作废——以前「刚拖完卡片紧接着从资源管理器拖文件」会被当成卡片；窗口里自己开始的拖动（从详情页拖出一张图）不算外部的东西，到它的 dragend 或下一次按下为止。
+- **「松手新建」条**：Windows / Linux 的条本来就钉在列表区顶部 6–50 px（标题行上），第一行在搜索框下面，不会被盖；浏览器 mock 里真的派发 dragenter / dragover 量过（条 50–94 px，第一行 216 px 起）。没改。
+- **Ctrl+V**（`pasteTarget` + `pasteInto`，Rust `clipboard_things`）：见 `drag-drop.md` §5。页面自己的 `clipboardData` 只作后备（浏览器 mock、读失败）。
+- **附件行**：`host.reveal` / `host.quickLook` 改走 `review_file`——只接受页面载入过的文档里点名的路径（帧、录屏、`attachments`、`source.session`、条目文件；`items.rs DocCache.note_files`，标题和详情里的字不算）或资源协议本来就允许的；`open` 时程序 / 脚本 / 快捷方式（扩展名表 + Linux 可执行位）改成在文件夹中显示。选了「打开」当 Quick Look：Windows / Linux 没有 Quick Look，桌面 app 的 `quickLook` 原本就是用默认程序打开；附件行点一下 = 打开，旁边的按钮 = 在文件夹中显示。
+- **`host.addFiles`**：`tauri.ts` 和桌面 app 的 `hostFor` 都调 `items_add_files`（系统打开对话框，任意文件多选 → `items::attach`），桌面 app 再出「已加到…」提示、进撤销栈、让页面立刻 `pollNow`。`items_ops` 不过滤 op，页面删图的 `set frames` 原样给 `items.py user-ops`。
+- **岛：不抢键盘的备注气泡**：`drop_in::hang` 只挂上一张时给页面 `offerNote`；页面等卡片落稳（0.6 s），没有别的备注 / 拖动 / 卡片面板 / 录制时发 `card.note {passive}`；Rust 用 `passive=1` 开备注窗口——建成不可聚焦（`WS_EX_NOACTIVATE`，tao 的 `focusable(false)`），不调 `take_keys`；页面指针进入或按下 → `note.keys` → `take_keys`（先 `set_focusable(true)`）；6 s 没碰过 → 和 Esc 一样关（卡片不变）。已有备注窗口开着就不弹。浏览器 mock 里验过两条路（6 s 自己收、指针进来要键盘）。
+- **「找不到原文件」**：`Card.missing`（`capture::card_lines` 看 `ref` 还在不在），卡面图变淡、中间写「找不到原文件」，面板格子的备注行也这么写；卡片放下来时页面最多 5 s 要一次 `cards.check`（Rust 重读）。删卡片仍然只标记删除，不碰原文件（`drop_in` 测试里加了「挪走后变 missing」）。
+- **键盘多选**：在「卡片」面板（Alt+H）的「当前」页，见 `drag-drop.md` §5。
+- **验证**：`cargo test --lib` 300 过（新增：剪贴板规则、Blurt 自己的复制、自己的目录、Linux 页面拖放的解析、备注只给一样东西、`missing`、`DocCache.listed`、拖放日志不记文字）；`cargo clippy --target x86_64-pc-windows-msvc --lib`（假 cc / ar / llvm-rc）新代码无警告；desktop vitest 80、overlays 92、review 105，三个包 `tsc --noEmit` 过；浏览器 mock 里用合成事件走过：详情页拖文件 → 加到事项 + 日志、紧接着第二次拖到第一行、列表 Ctrl+V 文字 → 新建表单、详情页 Ctrl+V 图片 → 加到事项、岛（`platform=win`）不理 HTML5 拖放、缺文件卡片、`offerNote`。
+- **要在 Windows 真机上验证**：资源管理器拖 PDF / 图到详情页（WebView2 的 `postMessageWithAdditionalObjects` 给不给路径——和列表同一条路）；卡片拖进详情页；Ctrl+V：资源管理器复制的文件、截图（Win+Shift+S）、Edge「复制图片」、Word / Excel 复制的一段（应是文字）、岛上刚复制的卡片（不应贴成新图）、在详情的输入框里粘贴文字（不应被拦）；WebView2 的 `paste` 事件在列表 / 侧栏（非输入框）上是否发出；附件行打开 PDF、点 .exe 只显示；「添加图片或文件…」对话框；只拖一样东西到刘海后备注气泡不抢焦点（继续在原 app 打字），指针移上去能打字，6 s 自己收；PDF 挪走后卡片显示「找不到原文件」；Alt+H 面板里空格 / Shift+→ / Ctrl+A / Enter；`%USERPROFILE%\.blurt\logs\card-drag.log` 有这些事件。

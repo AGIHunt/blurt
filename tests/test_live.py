@@ -1,4 +1,4 @@
-"""Live pipeline (scripts/live.py): chunking, pcm → transcript equivalence with a whole-file run, drafts validation,
+"""Live pipeline (scripts/live.py): chunking, pcm → transcript equivalence with a whole-file run,
 shots voice notes, and the Tk recorder's pcm sidecar. No models, no network: a tiny energy VAD and a fake backend
 stand in for Silero / SenseVoice (an optional test uses the real ones when they are installed).
 
@@ -272,7 +272,7 @@ class LivePipeline(Patched):
         self.assertEqual(lines, [{k: s[k] for k in ("start", "end", "text")} for s in got["segments"]])
         st = json.loads((session / "live" / "status.json").read_text(encoding="utf-8"))
         self.assertEqual(st["asr"], "done")
-        self.assertTrue({"asr", "drafts", "updated", "note"} <= set(st))
+        self.assertTrue({"asr", "updated", "note"} <= set(st))
         txt = (session / "transcript.txt").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(txt), len(got["segments"]))
 
@@ -306,7 +306,7 @@ class LivePipeline(Patched):
                "duration": round(len(x) / SR, 2), "speech_seconds": 5.0, "elapsed_seconds": 0.1,
                "segments": [{"start": 0.4, "end": 2.0, "text": "made live"}]}
         transcribe.save_json(session / "transcript.json", doc)
-        transcribe.save_json(session / "live" / "status.json", {"asr": "done", "drafts": "off", "updated": time.time(), "note": ""})
+        transcribe.save_json(session / "live" / "status.json", {"asr": "done", "updated": time.time(), "note": ""})
         import subprocess
         p = subprocess.run([sys.executable, str(SCRIPTS / "transcribe.py"), "run", str(session / "recording.wav")],
                            capture_output=True, text=True, encoding="utf-8", timeout=60)
@@ -321,105 +321,6 @@ class LivePipeline(Patched):
         a = SimpleNamespace(force=False)
         self.assertIsNone(transcribe.live_transcript(session / "recording.wav", session, a, {}))
         self.assertIsNone(transcribe.live_transcript(session / "recording.wav", session, SimpleNamespace(force=True), {}))
-
-
-# ------------------------------------------------------------------ drafts
-class Drafts(unittest.TestCase):
-    def test_apply_ops_validates(self):
-        drafts: dict = {}
-        answer = {"ops": [
-            {"op": "add", "kind": "issue", "title": " 保存按钮  错位 ", "t": 12.3, "confidence": "high"},
-            {"op": "add", "kind": "idea", "title": "Borrow the onboarding", "t": 9999},
-            {"op": "add", "kind": "bogus", "title": "x", "t": 1},           # bad kind
-            {"op": "add", "kind": "note", "title": "", "t": 1},             # no title
-            {"op": "update", "id": "d9", "title": "nope"},                   # unknown id
-            "junk",
-        ]}
-        lines, problems, nxt = live.apply_ops(drafts, answer, duration=120.0, next_id=1)
-        self.assertEqual([l["id"] for l in lines], ["d1", "d2"])
-        self.assertEqual(lines[0], {"id": "d1", "op": "add", "kind": "issue", "title": "保存按钮 错位", "t": 12.3,
-                                    "confidence": "high"})
-        self.assertEqual(list(lines[0]), ["id", "op", "kind", "title", "t", "confidence"])
-        self.assertEqual(lines[1]["t"], 120.0)            # clamped to what was recorded
-        self.assertEqual(lines[1]["confidence"], "high")  # default
-        self.assertEqual(len(problems), 4)
-        self.assertEqual(nxt, 3)
-        lines, problems, nxt = live.apply_ops(drafts, {"ops": [
-            {"op": "update", "id": "d1", "kind": "task", "confidence": "low"},
-            {"op": "drop", "id": "d2"},
-            {"op": "update", "id": "d1", "kind": "issue2"},
-        ]}, 130.0, nxt)
-        self.assertEqual(lines[0], {"id": "d1", "op": "update", "kind": "task", "title": "保存按钮 错位", "t": 12.3,
-                                    "confidence": "low"})
-        self.assertEqual(lines[1]["op"], "drop")
-        self.assertEqual(lines[1]["title"], "Borrow the onboarding")
-        self.assertEqual(set(drafts), {"d1"})
-        self.assertEqual(len(problems), 1)
-
-    def test_extract_json(self):
-        self.assertEqual(live.extract_json('```json\n{"ops": []}\n```'), {"ops": []})
-        self.assertEqual(live.extract_json('Sure! {"ops": [{"op":"drop","id":"d1"}]} done'),
-                         {"ops": [{"op": "drop", "id": "d1"}]})
-        with self.assertRaises(ValueError):
-            live.extract_json("no json here")
-        _, problems, _ = live.apply_ops({}, {"nope": 1}, 10, 1)
-        self.assertTrue(problems)
-
-    def test_prompt_is_bounded(self):
-        segs = [{"start": i * 5.0, "end": i * 5.0 + 4, "text": "一句很长的话" * 10} for i in range(400)]
-        p = live.build_prompt({"d1": {"id": "d1", "kind": "issue", "title": "x", "t": 3.0, "confidence": "high"}},
-                              segs, sent_upto=1900)
-        self.assertLess(len(p), 7000)
-        self.assertIn("d1 [issue]", p)
-        self.assertIn("[1995]", p)  # the newest speech is always there
-
-    def test_drafter_triggers_and_appends(self):
-        tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, tmp, True)
-        fake = tmp / "agent.py"
-        fake.write_text('import sys, json\nsys.stdin.read()\nprint(json.dumps({"ops": [{"op": "add", "kind": "task", '
-                        '"title": "Send the test account", "t": 30}]}))\n', encoding="utf-8")
-        os.environ["BLURT_LIVE_DRAFTS_CMD"] = f'"{sys.executable}" "{fake}"'
-        self.addCleanup(os.environ.pop, "BLURT_LIVE_DRAFTS_CMD", None)
-        d = live.Drafter(tmp)
-        self.assertTrue(d.enabled)
-        segs = [{"start": i * 10.0, "end": i * 10.0 + 9, "text": f"s{i}"} for i in range(5)]  # 45 s of speech
-        d.maybe(segs, pos=60, in_speech=False, last_speech_end=49)
-        self.assertFalse(d.busy() or (tmp / "drafts.jsonl").exists())  # < 60 s of new speech
-        segs += [{"start": 50.0 + i * 10, "end": 59.0 + i * 10, "text": f"t{i}"} for i in range(3)]  # 72 s
-        d.maybe(segs, pos=79.5, in_speech=False, last_speech_end=79)
-        self.assertFalse(d.busy())  # no 3 s pause yet
-        d.maybe(segs, pos=83, in_speech=False, last_speech_end=79)
-        d.thread.join(30)
-        lines = [json.loads(l) for l in (tmp / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
-        self.assertEqual(lines, [{"id": "d1", "op": "add", "kind": "task", "title": "Send the test account", "t": 30.0,
-                                  "confidence": "high"}])
-        self.assertEqual(d.sent_upto, 79.0)
-        log = json.loads((tmp / "drafts.log").read_text(encoding="utf-8").splitlines()[0])
-        self.assertEqual(log["ops"], 1)
-
-    def test_drafter_failure_is_contained(self):
-        tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, tmp, True)
-        os.environ["BLURT_LIVE_DRAFTS_CMD"] = f'"{sys.executable}" -c "print(\'not json\')"'
-        self.addCleanup(os.environ.pop, "BLURT_LIVE_DRAFTS_CMD", None)
-        d = live.Drafter(tmp)
-        d.start([{"start": 0.0, "end": 5.0, "text": "x"}], 6)
-        d.thread.join(30)
-        self.assertEqual(d.state, "error")
-        self.assertFalse((tmp / "drafts.jsonl").exists())
-
-    def test_agent_env_strips_host_session(self):
-        os.environ["CLAUDECODE"] = "1"
-        os.environ["CLAUDE_CODE_SIMPLE"] = "1"
-        os.environ["USE_STAGING_OAUTH"] = "1"
-        try:
-            env = live.agent_env()
-        finally:
-            for k in ("CLAUDECODE", "CLAUDE_CODE_SIMPLE", "USE_STAGING_OAUTH"):
-                os.environ.pop(k, None)
-        self.assertFalse({"CLAUDECODE", "CLAUDE_CODE_SIMPLE", "USE_STAGING_OAUTH"} & set(env))
-        self.assertIn("PATH", env)
 
 
 # ------------------------------------------------------------------ shots

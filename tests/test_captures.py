@@ -1,6 +1,5 @@
 """v0.7 token diet: captures with a note become items without an agent (captures.py), the processing model and
-the token count of an unattended run (agents.py processing / parse_usage / command --processing), and the
-dispatch panel's model (sessions.py dispatch --model → the agent's model flag)."""
+the token count of an unattended run (agents.py processing / parse_usage / command --processing)."""
 from __future__ import annotations
 
 import json
@@ -52,6 +51,15 @@ class Heuristics(TmpCase):
         f = captures.fields_for(5, {"type": "shot", "file": "shots/005.png", "text": "Header looks off.",
                                     "said": "the logo overlaps the menu"}, "en")
         self.assertEqual((f["title"], f["quote"]), ("Header looks off", "Header looks off.\nthe logo overlaps the menu"))
+
+    def test_dropped_cards(self):
+        """v1.0.23: a file card refers to its file (attachments, no frames: its picture is only a thumbnail); a text
+        card is a voice card with no recording."""
+        f = captures.fields_for(7, {"type": "shot", "file": "shots/007.png", "ref": "/Users/me/Docs/spec v2.pdf", "text": None}, "en")
+        self.assertEqual((f["title"], f["attachments"], f["source"]["type"]), ("spec v2.pdf", ["/Users/me/Docs/spec v2.pdf"], "file"))
+        self.assertNotIn("frames", f)
+        t = captures.fields_for(8, {"type": "voice", "voice": None, "text": "https://example.com/a and check this"}, "en")
+        self.assertEqual(t["source"]["type"], "text")
 
     def test_first_sentence(self):
         f = captures.first_sentence
@@ -320,19 +328,3 @@ class Processing(TmpCase):
         off = len("old run\ntokens used\n99\n".encode())
         self.assertEqual(ok("agents.py", "usage", "codex", f, "--offset", off, env=self.e.env())["usage"], {"tokens": 19006})
 
-    def test_session_command_model(self):
-        stub = self.tmp / "bin"
-        stub.mkdir()
-        for b in ("codex", "claude", "kimi"):
-            (stub / b).write_text("#!/bin/sh\nexit 0\n")
-            (stub / b).chmod(0o755)
-        env = {"PATH": str(stub)}
-        c = agents.session_command("codex", "do it", self.tmp, job="j-1", mcp=False, model="luna", cfg=self.cfg(), env=env)
-        self.assertEqual(c["argv"][-5:], ["-m", "luna", "-c", "check_for_update_on_startup=false", "do it"])
-        c = agents.session_command("claude", "do it", self.tmp, job="j-1", mcp=False, model="sonnet", cfg=self.cfg(),
-                                   env=env, settings=self.tmp / "s.json")
-        self.assertEqual(c["argv"][-4:], ["--model", "sonnet", "--", "do it"])
-        c = agents.session_command("codex", "do it", self.tmp, job="j-1", mcp=False, model="default", cfg=self.cfg(), env=env)
-        self.assertNotIn("-m", c["argv"])
-        with self.assertRaisesRegex(ValueError, "can't be given a model"):
-            agents.session_command("kimi", "x", self.tmp, job="j-1", mcp=False, model="m", cfg=self.cfg(), env=env)

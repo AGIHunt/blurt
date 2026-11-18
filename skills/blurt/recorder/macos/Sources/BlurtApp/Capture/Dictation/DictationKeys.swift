@@ -289,6 +289,7 @@ final class DictationKeys {
     }
 
     private func received(_ e: NSEvent, otherApp: Bool) {
+        if let c = e.cgEvent, DictationKeys.fromPhone(c, keyDown: e.type == .keyDown) { return }
         // when it happened (monitors deliver asynchronously, on the main thread)
         let at = DictationTrigger.eventTime(seconds: e.timestamp, now: CACurrentMediaTime())
         switch e.type {
@@ -344,7 +345,16 @@ final class DictationKeys {
     }
 }
 
+extension DictationKeys {
+    /// The iPhone remote's own keys and clicks: not the user reaching for this Mac. Esc still counts.
+    static func fromPhone(_ e: CGEvent, keyDown: Bool) -> Bool {
+        e.getIntegerValueField(.eventSourceUserData) == RemoteInput.marker
+            && !(keyDown && e.getIntegerValueField(.keyboardEventKeycode) == Int64(DictationTrigger.escape))
+    }
+}
+
 private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    if DictationKeys.fromPhone(event, keyDown: type == .keyDown) { return Unmanaged.passUnretained(event) }
     if let r = refcon {
         Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
             .received(type, code: Int(event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags.rawValue,
@@ -355,7 +365,7 @@ private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, eve
 
 /// The Fn filter, on FilterThread: decide at once (drop an Fn change, pass everything else), handle on the main thread.
 private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-    guard let r = refcon else { return Unmanaged.passUnretained(event) }
+    guard let r = refcon, !DictationKeys.fromPhone(event, keyDown: type == .keyDown) else { return Unmanaged.passUnretained(event) }
     let keys = Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
     let now = DictationKeys.time(event)
     let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0

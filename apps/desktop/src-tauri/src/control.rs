@@ -10,15 +10,13 @@
 //! in, one per line out, then the connection closes; 64 KB at most a request.
 //!
 //! Consent, as on the Mac (AgentSetupGrant): `hello` and `status` answer anyone holding the secret; `connect`,
-//! `test`, `use`, `download` and `verify` need a grant — the session token Blurt hands the agent it starts
-//! (`token`, from `sessions.py setup-session`'s environment; 2 h) or the user's Allow in a Blurt dialog (30 min; no
-//! answer in 3 min = denied). One question at a time. A key arrives only in `connect`, goes to Credential Manager
+//! `test`, `use`, `download` and `verify` need a grant — the user's Allow in a Blurt dialog (30 min; no answer in
+//! 3 min = denied). One question at a time. A key arrives only in `connect`, goes to Credential Manager
 //! through the same test-then-save as the Add Cloud Model sheet (dictation::commands::cloud_connect), and is never
 //! logged, stored in a file or sent back.
 //!
 //! The live list (the Mac's AgentSetupProgress) is kept here and sent to Settings as `agent-setup://changed`.
 
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
@@ -30,10 +28,7 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 use crate::dictation::{cloud, commands};
 use crate::{paths, scripts, settings, AppState};
 
-type R<T> = Result<T, String>;
-
 pub const PROTOCOL: i64 = 1;
-const SESSION_TTL: Duration = Duration::from_secs(2 * 3600);
 const APPROVAL_TTL: Duration = Duration::from_secs(30 * 60);
 const ASK_WAIT: Duration = Duration::from_secs(180);
 const MAX_REQUEST: u64 = 64 * 1024;
@@ -56,15 +51,12 @@ fn base_url(preset: &str, region: Option<&str>) -> Option<&'static str> {
 
 #[derive(Default)]
 struct Grants {
-    sessions: HashMap<String, Instant>,
     approved_until: Option<Instant>,
 }
 
 impl Grants {
-    fn allows(&mut self, token: Option<&str>) -> bool {
-        let now = Instant::now();
-        self.sessions.retain(|_, until| *until > now);
-        token.is_some_and(|t| self.sessions.contains_key(t)) || self.approved_until.is_some_and(|u| u > now)
+    fn allows(&self) -> bool {
+        self.approved_until.is_some_and(|u| u > Instant::now())
     }
 }
 
@@ -73,7 +65,7 @@ pub struct Control {
     secret: Mutex<String>,
     grants: Mutex<Grants>,
     asking: Mutex<()>,
-    /// the live list and whose it is: {active, agent, job, token?, steps: [{kind, subject, state, name}]}
+    /// the live list: {active, steps: [{kind, subject, state, name}]}
     progress: Mutex<Value>,
 }
 
@@ -188,14 +180,13 @@ pub fn handle(app: &AppHandle, o: &Value) -> Value {
         return err("bad_auth", "the request didn't carry Blurt's run/control.json token");
     }
     let op = o["op"].as_str().unwrap_or("");
-    let token = o["token"].as_str();
     // what was asked, never what was sent with it
     eprintln!("blurt agent-setup: {op}{}", o["preset"].as_str().map(|p| format!(" {p}")).unwrap_or_default());
     let needs_grant = matches!(op, "connect" | "test" | "use" | "download" | "verify");
-    if needs_grant && !granted(app, token) {
+    if needs_grant && !granted(app) {
         return err("denied", "the user didn't allow changes in Blurt; ask them to click Allow, or to use Set Up with Agent… in Settings → Models");
     }
-    let granted_now = c.grants.lock().unwrap().allows(token);
+    let granted_now = c.grants.lock().unwrap().allows();
     match op {
         "hello" => json!({"ok": true, "app": "Blurt", "protocol": PROTOCOL, "pid": std::process::id(),
                           "version": app.package_info().version.to_string(), "granted": granted_now}),
@@ -211,24 +202,21 @@ pub fn handle(app: &AppHandle, o: &Value) -> Value {
 }
 
 /// A live grant, else the user's answer (asked once; requests waiting behind it get it).
-fn granted(app: &AppHandle, token: Option<&str>) -> bool {
+fn granted(app: &AppHandle) -> bool {
     let c = app.state::<Control>();
-    if c.grants.lock().unwrap().allows(token) {
+    if c.grants.lock().unwrap().allows() {
         return true;
     }
     let _one = c.asking.lock().unwrap();
-    if c.grants.lock().unwrap().allows(token) {
+    if c.grants.lock().unwrap().allows() {
         return true;
     }
     let ok = ask(app);
     if ok {
         c.grants.lock().unwrap().approved_until = Some(Instant::now() + APPROVAL_TTL);
         let mut p = c.progress.lock().unwrap();
-        if p["active"] != true || p["job"].is_null() {
-            if p["active"] != true {
-                *p = json!({"active": true, "agent": null, "job": null, "steps": []});
-            }
-            p["active"] = json!(true);
+        if p["active"] != true {
+            *p = json!({"active": true, "steps": []});
         }
         drop(p);
         changed(app);
@@ -237,11 +225,7 @@ fn granted(app: &AppHandle, token: Option<&str>) -> bool {
         std::thread::spawn(move || {
             std::thread::sleep(APPROVAL_TTL);
             let c = h.state::<Control>();
-            let mut p = c.progress.lock().unwrap();
-            if p["job"].is_null() {
-                p["active"] = json!(false);
-            }
-            drop(p);
+            c.progress.lock().unwrap()["active"] = json!(false);
             changed(&h);
         });
     }
@@ -326,11 +310,7 @@ fn changed(app: &AppHandle) {
 }
 
 fn state_view(app: &AppHandle) -> Value {
-    let mut p = app.state::<Control>().progress.lock().unwrap().clone();
-    if let Some(o) = p.as_object_mut() {
-        o.remove("token");
-    }
-    p
+    app.state::<Control>().progress.lock().unwrap().clone()
 }
 
 /// One thing done (the Mac's AgentSetupStep): connect / use / download / verify, running → done | failed.
@@ -788,7 +768,7 @@ fn verify(app: &AppHandle, o: &Value) -> Value {
 
 // ------------------------------------------------------------------ Settings' side
 
-/// The instruction to paste into the user's own agent (sessions.py SETUP_PROMPT's words, by absolute path).
+/// The instruction to paste into the user's own agent (the setup guide and setup.py, by absolute path).
 #[tauri::command]
 pub fn agent_setup_instruction(state: tauri::State<'_, AppState>) -> Value {
     let scripts = state.runner().scripts.unwrap_or_default();
@@ -801,63 +781,12 @@ pub fn agent_setup_state(app: AppHandle) -> Value {
     state_view(&app)
 }
 
-/// Open in Terminal: `sessions.py setup-session` — the agent in Blurt's terminal on the setup prompt, with a token
-/// for this endpoint in its environment (handed over on stdin, never on a command line) → {job}.
-#[tauri::command(async)]
-pub fn agent_setup_start(app: AppHandle, agent: String) -> R<Value> {
-    let c = app.state::<Control>();
-    let token = random_hex();
-    c.grants.lock().unwrap().sessions.insert(token.clone(), Instant::now() + SESSION_TTL);
-    let runner = app.state::<AppState>().runner();
-    let stdin = json!({"token": token}).to_string();
-    let runner_kind = if cfg!(windows) { "app" } else { "auto" };
-    let r = runner.run(
-        "sessions.py",
-        &["setup-session".into(), "--agent".into(), agent.clone(), "--runner".into(), runner_kind.into(), "--lang".into(), crate::l10n::short_lang().into()],
-        Some(stdin.as_bytes()),
-        Duration::from_secs(90),
-    );
-    let r = match r {
-        Ok(v) => v,
-        Err(e) => {
-            c.grants.lock().unwrap().sessions.remove(&token);
-            return Err(e.to_string());
-        }
-    };
-    crate::sessions::launch(&app, &r);
-    let job = r["job"].as_str().or_else(|| r["jobs"][0]["id"].as_str()).map(str::to_owned);
-    let name = crate::sessions::detect_with(&runner, false, Some(std::slice::from_ref(&agent)))
-        .ok()
-        .and_then(|d| d["agents"].as_array().and_then(|a| a.iter().find(|x| x["id"] == json!(agent)).and_then(|x| x["name"].as_str().map(str::to_owned))))
-        .unwrap_or(agent);
-    *c.progress.lock().unwrap() = json!({"active": true, "agent": name, "job": job, "token": token, "steps": []});
-    changed(&app);
-    Ok(json!({"job": job}))
-}
-
-/// Stop: the session ends and nothing may change things until asked again.
+/// Stop: nothing may change things until asked again.
 #[tauri::command(async)]
 pub fn agent_setup_stop(app: AppHandle) -> Value {
     let c = app.state::<Control>();
-    let (job, _) = {
-        let p = c.progress.lock().unwrap();
-        (p["job"].as_str().map(str::to_owned), ())
-    };
-    let mut stop_error = Value::Null;
-    if let Some(j) = &job {
-        if let Err(e) = crate::sessions::stop(&app, &app.state::<AppState>().runner(), j, false) {
-            stop_error = json!(e);
-        }
-    }
     *c.grants.lock().unwrap() = Grants::default();
-    {
-        let mut p = c.progress.lock().unwrap();
-        p["active"] = json!(false);
-        p["stop_error"] = stop_error;
-        if let Some(o) = p.as_object_mut() {
-            o.remove("token");
-        }
-    }
+    c.progress.lock().unwrap()["active"] = json!(false);
     changed(&app);
     state_view(&app)
 }
@@ -883,13 +812,13 @@ mod tests {
     }
 
     #[test]
-    fn grants_expire_and_tokens_differ() {
+    fn grants_expire_and_secrets_differ() {
         let mut g = Grants::default();
-        assert!(!g.allows(None));
-        g.sessions.insert("t".into(), Instant::now() + Duration::from_secs(60));
-        assert!(g.allows(Some("t")) && !g.allows(Some("u")));
+        assert!(!g.allows());
+        g.approved_until = Some(Instant::now() - Duration::from_secs(1));
+        assert!(!g.allows());
         g.approved_until = Some(Instant::now() + Duration::from_secs(60));
-        assert!(g.allows(None));
+        assert!(g.allows());
         let (a, b) = (random_hex(), random_hex());
         assert_eq!(a.len(), 64);
         assert_ne!(a, b);

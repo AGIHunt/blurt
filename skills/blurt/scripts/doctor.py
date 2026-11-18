@@ -16,7 +16,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import BLURT_HOME, CONTRACT, IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
-import sessions  # noqa: E402
 
 
 def recommend(info: dict) -> list[dict]:
@@ -149,7 +148,6 @@ def main():
                      ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "DASHSCOPE_API_KEY")},
         "asr_recommendations": recommend(info),
         "agent_cli": agent_clis(),
-        "tmux": sessions.tmux_info(),
         "tracked_stores": tracked_stores(),
         "todo": [],
     }
@@ -158,9 +156,6 @@ def main():
             fix = "run `claude` in a terminal and /login" if name == "claude" else "run `codex login` in a terminal"
             report["todo"].append(f"The `{name}` CLI ({a['path']}) is not logged in, so the Blurt app can't hand recordings "
                                   f"to it for background processing: {fix}")
-    if not report["tmux"] and not IS_WIN:
-        report["todo"].append("Agent sessions in Blurt run in tmux (3.2 or newer); without it they end when Blurt quits: "
-                              + ("brew install tmux" if IS_MAC else "sudo apt install tmux"))
     for t in report["tracked_stores"]:
         report["todo"].append(f"{t['project']}/.blurt has {t['files']} file(s) committed to git; Blurt keeps it out of "
                               f"git (.git/info/exclude). To stop tracking them: {t['fix']}")

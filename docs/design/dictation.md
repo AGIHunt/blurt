@@ -257,8 +257,110 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
      didn't register went unnoticed — they talked, pressed again to stop, and that press started the take. Silence
      after a press now says nothing started. The clips are the film's (`assets/sounds/build.py`: its synthesized peep, at
      1:34, and peck; the founder chose the peep over a recorded hen's cluck), level-matched (−24.4 / −24.5 LUFS). Replaces v0.9's optional Tink (`start_sound`, off).
+   - **Start cue out of the take** (2026-11-12, macOS; BlurtCore `CueEraser`, `NoteVoice.cueStarted`): the peep plays
+     while the mic already records, so on the Mac's speakers it was in the take — in 203 of the founder's last 300 kept
+     takes, 0.20 s in, around −30 dBFS (headphones: not there). Heard while reviewing pieces for personal ASR; it is
+     in every kept recording, in the audio a personal model is trained on, and in what the endpointer and voiceprint
+     hear. Now, when `DictationSound.start` played, NoteVoice holds the next ≈ 0.85 s (search window 0.6 s + the clip),
+     finds the clip by normalized cross-correlation (or, under speech, as a sharp peak of the raw correlation),
+     subtracts a 48-tap least-squares fit of it (speaker, room, mic), and turns the window down to ≈ −30 dB unless the
+     speaker is already talking there (left louder than −38 dBFS with talk in the 0.2 s after: then only subtracted).
+     No match (headphones, a phone as the mic) leaves the samples as they were. The island's level is fed at once; the
+     file, the stream and the endpointer get the held samples. On the same 300 takes (`CueEraserTests.testRealTakes`,
+     `BLURT_CUE_TAKES` / `BLURT_CUE_CLIP`): found in 279, all at 0.20 s but a handful; turned down in 218, the median
+     window 41 dB quieter; ≈ 3 ms a take (release). In the app (test dictation, a real take as the mic): the window
+     −28 → −76 dB, the speech after it unchanged (−23 dB). `note_voice_cue` logs `found`, `at_ms`, `match`,
+     `before_db`, `after_db`, `muted`.
+     Windows / Linux (2026-11-12; `dictation/cue_eraser.rs`, the same algorithm and thresholds, ported): `sound` says
+     whether the peep started (PlaySoundW's answer; Linux: the pw-play / paplay spawn), and the take's first frame arms
+     its eraser. The clip is `sounds/start.wav` (48 kHz), brought to the mic's 16 kHz by windowed-sinc resampling. The
+     engine's `frame` feeds the island and the phone's meter from the raw frame at once; the stream, the recording, the
+     segmenter and its pieces get the held samples (`heard_samples`). A stop flushes what is still held through the
+     same path; a cancel only into the recording. stderr logs `dictation: start cue found at … ms, match …, … → … dB,
+     muted …` (or `not in the take`). The Rust tests mirror the Swift ones, plus the bundled clip found in a synthetic
+     take. On the same Mac takes (`cue_eraser::tests::real_takes`, `BLURT_CUE_TAKES`): found in 280, turned down in
+     215, the median window 41 dB quieter, the cue at 0.20 s, which matches the Swift port. It costs ≈ 18 ms a take
+     (release, `opt-level = "s"`), once, on the engine thread, while the frames queue. Not yet measured on a Windows
+     or Linux machine's own speakers: PlaySoundW's and pw-play's latency should fall well inside the 0.6 s search
+     window, but that is untested.
 - Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
   (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
+
+## Quiet speech (2026-11-17)
+
+A user: "it needs a lot of volume. Speak a little softly, or with the microphone a little further away, and it
+recognises nothing." Nothing between the microphone and the model changes the level (no gain, no AGC; macOS's voice
+processing is off), and three things in a row judge it:
+
+1. **The endpointer's speech start** (Mac, `NoteEndpointer`): 8 of 12 frames more than 10 dB over the room's floor.
+   A take that never passes it was deleted at key-up — "Didn't catch anything", no Retry, the model never asked.
+   Windows and Linux have no such stop for a local model.
+2. **The VAD** (Silero, 0.45, in `transcribe.py`): no segment, nothing decoded.
+3. **The model**, on what the VAD kept.
+
+Measured on 24 of the founder's kept takes (3–12 s; room floor −52.5 dBFS, speech −24.6 dBFS at the medians), each
+turned down 12 / 18 / 24 / 30 dB two ways: the whole recording (**level**: a lower input gain), and the voice alone
+against the take's own room (**voice**: speaking softly, or further away — the take's quietest frames laid back under
+it at their recorded level). Scored against what the same model types for the take as recorded; "usable" = at most
+15% of characters wrong. Local Qwen3-ASR 1.7B, whole takes (`promo/cases/v1.0.25-quiet-speech/`: `exp.py`, `exp2.py`,
+`referee.py`; the endpointer there is a Python copy checked against the Swift one on all 216 clips, 0 differences):
+
+| Turned down | Endpointer hears speech | VAD finds speech | Usable as recorded | Usable brought up | Nothing typed: as recorded → brought up |
+|---|---:|---:|---:|---:|---:|
+| as recorded | 24 | 24 | 24 | 24 | 0 → 0 |
+| level −12 dB | 24 | 24 | 23 | 24 | 0 → 0 |
+| level −18 dB | 24 | 24 | 23 | 24 | 0 → 0 |
+| level −24 dB | 24 | 24 | 21 | 24 | 0 → 0 |
+| level −30 dB | 22 | 24 | 20 | 24 | 0 → 0 |
+| voice −12 dB | 20 | 23 | 19 | 22 | 1 → 0 |
+| voice −18 dB | 19 | 19 | 11 | 16 | 5 → 2 |
+| voice −24 dB | 17 | 15 | 3 | 11 | 10 → 9 |
+| voice −30 dB | 11 | 5 | 1 | 3 | 19 → 12 |
+
+(of 24; the last three columns are the model given every clip, whatever the endpointer said. The rooms alone, 6 s of
+each take's own room: words typed from no speech in 1 of 24 as recorded and 0 brought up; 12 dB quieter 0 and 0; 24 dB
+quieter 0 and 1.)
+
+What it says:
+
+- **Level alone breaks the model, not the gates.** Turned down 30 dB with nothing else changed, every take still
+  passes the endpointer (22 of 24) and the VAD (24), and 4 of 24 come out wrong. Brought back up before the VAD and the
+  model, all 24 are right again.
+- **A soft voice loses to all three**, the model first: at −18 dB, 19 of 24 pass the endpointer and 19 the VAD, but
+  only 11 are usable as recorded — 16 once brought up. Past −24 dB the words are under the room and nothing brings
+  them back.
+- **The founder's own quiet takes** (150 kept takes as recorded; 13 with their loudest moments under 0.08, where an
+  ordinary take's are 0.18; 5 of them type something else brought up): the one that needed 17.8× typed 「你先搞。」
+  as recorded and a whole sentence brought up — the sentence macOS's recogniser, which levels its own input, hears
+  too; two more got back a word macOS also hears (「来吧」, 「啊」); one is a homophone either way (一版 / 100); one is
+  wrong both ways. The other 137 are passed as they were.
+
+So:
+
+- **`level_up` (`transcribe.py`)**: a take whose loudest moments (99.9th percentile) stay under 0.08 is brought up to
+  0.25, by 30 dB at most, before the VAD and the model. Only quiet takes: a take at a usual level is passed as it was
+  (a first version brought every take up to 0.25, and 7 of 102 takes that were only a little under it changed a
+  character or two, with nothing to say they were better). Only
+  where the VAD then decides whether there is speech: a cloud service and macOS's recogniser get the audio as
+  recorded, and so does Fun-ASR-Nano on the Mac (no VAD pass; a room's hiss made louder would reach an LLM decoder as
+  it is). It is the one place every local model on the Mac, Windows and Linux shares.
+- **A quiet take is heard, not dropped (Mac, `DictationHeard`)**: a take the endpointer heard no speech in still goes
+  to the model when it lasted 1.5 s and held a sound 6 dB over the room for 0.4 s — the rule a voice note has been
+  kept by since v0.9 (`VoiceKeep`). At −12 dB that is 4 of 24 takes that were deleted before: 2 come out usable, 2
+  with words wrong. No words still ends in "Didn't catch anything"; a slip of the key and the room alone are dropped
+  where they were. `dictation_quiet_take` in the log counts them.
+- Left alone: the endpointer itself (its 10 dB also ends voice notes and times the "still listening" reminder), the
+  30 s without speech that ends a hands-free take (a soft voice the endpointer never hears still ends there), the
+  cloud path's own speech test on Windows, and the VAD's 0.45.
+
+In the app (an isolated test build, the clip as its microphone in real time, its own test pad): two voice −12 dB clips
+the endpointer hears no speech in (`dictation_quiet_take`: 0.42 s and 1.04 s of held sound) are typed, one word for
+word as the take at its own level; a level −30 dB clip is typed; a room alone still ends in "Didn't catch anything"
+(`results/app-e2e.jsonl`).
+
+Not measured: a real soft or far voice in a real room (the "voice" rows keep the take's own reverberation and
+spectrum; distance changes both), Fun-ASR-Nano (ONNX, the Windows and Linux default — it runs on neither this Mac
+nor its ARM build), and the user's own microphone.
 
 ## Permissions (the guide)
 
@@ -485,6 +587,36 @@ send pieces). Cloud polish on top of Flash's text gets names right (terms 83 →
 shipped prompt 2.42 % (whole-take replays of the eval's Flash output with the eval's macOS windows), the app's path in
 the Lab 2.62–2.72 % (macOS's pieces as the second transcript, the Lab's app context). Latency after key-up (eval §5,
 M5 Max, Beijing): Flash 0.52 s on ~5 s takes, 1.47 s on ~60 s ones, plus ~0.8–1.1 s of cloud polish.
+
+**Model Studio's other speech models (2026-11-11).** A user picked 千问音频 3.1 (`qwen-audio-3.1-asr-flash`) under
+Custom… and saw "can't connect". Model Studio serves only Qwen3-ASR Flash on its OpenAI-compatible chat/completions;
+the 3.1 model answers there `404 model_not_supported` and works on Model Studio's own API
+(`/api/v1/services/aigc/multimodal-generation/generation`: `input.messages` with an `input_audio` data URI and an
+optional `input_text` context turn, `parameters.format` / `sample_rate` / `language_hints` / `vocabulary`, the text in
+`output.text`). Probed live with a spoken clip: qwen-audio 3.0 / 3.1 ASR Flash and `fun-asr-flash-2026-06-15` work on
+the own API; `…-realtime` answer 500 on the compatible API and no text on the own one; `…-filetrans`, Paraformer and
+Fun-ASR answer 404 / `url error` (a public file URL only). So the protocol is learnt from the answers, not from the id
+(`DashScope._ask`): the compatible API first, a 4xx or 5xx there asked once on the own API, which then serves that model
+(3.1 is known and goes there directly); no text from either is a `model` failure ("the name may be wrong, or the model
+only streams or reads a file link"). A 4xx is `bad_response`, no longer `network`. Settings tests a model typed under
+Custom… before saving it. Windows offers the measured Model Studio speech models in dictation's pop-up (curated.json
+`speech`, the Mac's `asr.cloud["qwen3-asr-flash"].model`).
+
+The founder's 95 takes, whole take at 1×, words + field text, through the shipped `DashScope` backend, same day
+(raw: `~/blurt-eval-2026-10-31/raw/founder-2026-11-11-dashscope.jsonl`; Flash measured 2.00 / 2.02 / 2.15 % across
+three runs, so ±0.15 points is noise):
+
+| Recogniser | Error | 34 Lab cases | Names / terms | Blurt (of 9) | Short take, median / p90 |
+|---|---:|---:|---:|---:|---|
+| qwen-audio-3.1-asr-flash, hot words at 50 (shipped) | **1.60 %** | 2.44 % | **88 %** | 8 | 1.14 / 1.89 s |
+| … hot words at 4 / 5 | 1.89 / 1.87 % | 2.48 / 2.52 % | 81 / 83 % | 1 | |
+| … no words, no field | 1.80 % | 2.44 % | 81 % | 1 | |
+| qwen3-asr-flash, words + field (the default) | 2.15 % | 3.07 % | 82 % | 7 | 0.80 / 1.17 s |
+
+3.1 writes numbers as digits (K2, 0.6 where Flash wrote "K 二"), never typed the field text or the word list (neither net
+fired), keeps 呃 / 嗯 a little more often and leaves out the space between Chinese and Latin words more often (not
+scored). Hot words at 50 changed "Option M" to a listed "OpenAI" in one long take. Qwen3-ASR Flash stays the default
+(faster by ~0.3 s on short takes); 3.1 is listed as the most accurate.
 
 ### Cloud recognition streamed while you talk: Volcengine Seed-ASR 2.0 (2026-10-31)
 
@@ -958,8 +1090,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently; nothing is
-  kept — the take was in front of the user). A paste already under way (⌘V until it has landed) can't be taken back.
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently). Once
+  something was said, its recording stays in the history as "已取消：录音已保留" with Retry
+  (`DictationHistory.cancelledReason`, #54): an Esc meant for the app in front no longer costs what was said. Only
+  while the history keeps recordings (`keepsCancelled`): "Don't keep" or Keep Recordings off keeps nothing, nor does a
+  take that heard nothing or the double tap's own cancel. A paste already under way (⌘V until it has landed) can't be
+  taken back.
   Another key or a click in push-to-talk's first second, before anything was cut, is a shortcut (Fn+← is Home): the
   take goes without "已取消" (`DictationTrigger.joinedEarly`).
 - **Check before send.** After the stop the live panel shows the text actually typed — polished, structured — for
@@ -1211,6 +1347,18 @@ the server never started — leaves the same entry; the timings below now tell t
 - every history entry records `asr_ms`, `polish_ms` (what the user waited for after key-up), `load_ms` (model loads
   waited for), `total_ms` (key-up → paste) and `segments`.
 
+**The model lists read offline first too (2026-11-17).** A Mac user: "why does ASR always fail now?", with Settings →
+Models showing "Checking this Mac…" and, under On this Mac, "Reading the speech models took too long." That line is
+not about a model file: it is `uv run transcribe.py models` not answering in 180 s. The listing itself reads the
+registry, the config and which files exist — 0.2 s here, with or without the network — so the time went to `uv`
+asking PyPI about the script's packages, the one call the servers above had stopped making and the lists had not.
+Now `SkillCLI.read` runs the lists (`models`, `dictation-models`, `polish.py models`: Settings → Models, → Dictation,
+→ Storage and the first-run assistant) with `UV_OFFLINE=1` first, 30 s at most, and online as before only when that
+fails (nothing cached yet). A failed read no longer leaves "Checking this Mac…" beside its own error. Not known: why
+this user's dictation itself failed — they said another agent "fixed the download address and re-downloaded Qwen3
+0.6", which points at the model download (Hugging Face unreachable, the mirror not chosen) rather than the list;
+their log (`speech_read_failed`, `model_download`, `dictation_text`) would say, and a feedback report carries it.
+
 The fixed prompt prefix (rules + 4 examples) is prefilled once and its KV cache copied per request. Thinking is off
 (`enable_thinking=False`; `<think>` blocks are stripped anyway). Decoding is greedy, and max tokens = 1.6 × the input.
 `run` is the one-shot form (it uses the server when there is one).
@@ -1413,6 +1561,21 @@ polish above — stays the default everywhere and never restructures. Which styl
   measured, not kept: feeding the last piece to the structuring pass as heard (skipping its Light window) saved
   ~120 ms after key-up but resolved fewer corrections (25 vs 28 of 34 on one round) — the model had to tidy and
   structure at once.
+- **With cloud polish: one call at key-up** (2026-11-12; `DictationStream.lightInStructure`, `polish.py`
+  `structure_light_system`, cloud mode `structure_light`). In the cloud the two serial calls cost a second, not 120 ms:
+  on the founder's Structured takes in Claude (DeepSeek Flash), key-up waited for the last window's Light (~1 s) and
+  then the structuring call (~0.8 s), median 2.3 s from key-up to text, long takes 5–6 s. Now, in explicit Structured
+  with a cloud model, windows polished after key-up skip their Light call and the structuring call does Light's job
+  too (the cloud Light prompt's rules, then the structuring prompt's; the speaker's words, the app, the field and the
+  recent dictations go with it). Windows closed while talking still get Light then (out of sight). If the one call
+  fails, the skipped Light runs on the text as before; the local fall-back runs Light then structure. Auto is
+  unchanged (it may make no structure at all). Measured: 53 of the founder's Structured takes, same recognizer text,
+  key-up time median 1.83 → 0.93 s, p90 4.29 → 2.36 s (through the real path with the guard: 0.91 s, no fall-backs);
+  two blind Opus judges preferred one call 30 times, two calls 28, 48 ties. On the fixtures: self-corrections resolved
+  7 / 8 against 8 / 8 (`polish_eval.jsonl` structured cases; missed en-03), ordinary words kept 55 / 55 against
+  47 / 55 (`dictation_false_corrections.jsonl`: the two-call path turned 8 real "cloud" into Claude). In the app (test
+  build, a 36 s take): window 0 Light while talking, window 1 skipped, structuring with Light 835 ms, text 0.86 s
+  after key-up.
 - **At the cursor**: a list skips `DictationFit`'s trimming and starts on a line of its own when the text before the
   cursor doesn't end in a line break; a structured paragraph is fitted like Light.
 - **⇧ during the take / Fn+⇧ / the island** (§Trigger): `Dictation.toggleStyle` flips Structured ↔ the take's own

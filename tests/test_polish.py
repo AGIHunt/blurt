@@ -887,7 +887,8 @@ class Translate(unittest.TestCase):
     def test_speech_drops_fillers_only_when_asked(self):
         self.assertIn("hesitations", polish.translate_system("en", spoken=True))
         self.assertIn("Translate it into English.", polish.translate_system("en", spoken=True))
-        self.assertIn("Translate it into Simplified Chinese.", polish.translate_system("zh"))
+        self.assertIn("Translate it into Simplified Chinese (简体中文). Write the whole answer in Simplified Chinese", polish.translate_system("zh"))
+        self.assertIn("Translate it into Japanese (日本語).", polish.translate_system("ja"))
 
     def test_words_go_in_a_line_of_their_own(self):
         m = polish.translate_messages("用 tmux 跑一下", "en", ["tmux"])

@@ -14,7 +14,7 @@ out of the title bar's safe area, the window was sized without it). Screenshots 
   BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s          the whole run (builds the app, ~3-5 min)
   python3 tests/test_gui_layout.py [--app PATH] [--lang en,zh-Hans] [--only onboarding,settings] [--json OUT]
                                                                            the same as a script: a report, exit 1 on problems
-  BLURT_GUI_APP=/path/Blurt.app   use an app you already built (`record.py build` with a scratch BLURT_HOME) instead
+  BLURT_GUI_APP=/path/Blurt.app   use an app you already built (`BLURT_TEST_HOOKS=1 record.py build` with a scratch BLURT_HOME) instead
 
 Isolation: its own BLURT_HOME / BLURT_WORKSPACE under a temp dir (a small fixture world from make_fixture.py), a copy of
 the app re-signed as dev.blurt.recorder.layouttest, launched in the background through LaunchServices with test
@@ -40,9 +40,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
 MACOS = ROOT / "skills" / "blurt" / "recorder" / "macos"
 BUNDLE_ID = "dev.blurt.recorder.layouttest"
-SETTINGS_PANES = ["general", "projects", "dictation", "screentext", "speech", "shortcuts", "agents", "privacy", "storage"]
+SETTINGS_PANES = ["general", "dictation", "cards", "screentext", "recording", "projects", "remote", "speech", "shortcuts", "agents",
+                  "privacy", "storage"]
 ONBOARDING_STEPS = 4
-MAIN_SCOPES = ["inbox", "progress", "unassigned", "all", "dictation"]
+MAIN_SCOPES = ["home", "dictation", "cards", "phone", "inbox", "progress", "unassigned", "all"]
 EMPTY_STATES = ["first", "inbox_zero", "project", "no_results", "no_index", "failed", "missing", "scanning", "discarded"]
 
 
@@ -53,7 +54,7 @@ def build_app(tmp: Path) -> Path:
     home = tmp / "build-home"
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.json").write_text(json.dumps({"record": {"install_app": False}}))
-    env = dict(os.environ, BLURT_HOME=str(home), BLURT_WORKSPACE=str(tmp / "build-ws"))
+    env = dict(os.environ, BLURT_HOME=str(home), BLURT_WORKSPACE=str(tmp / "build-ws"), BLURT_TEST_HOOKS="1")   # the test hooks
     r = subprocess.run(["uv", "run", "-q", str(SCRIPTS / "record.py"), "build"], cwd=ROOT, env=env,
                        capture_output=True, text=True, timeout=1800)
     built = home / "Blurt.app"
@@ -103,7 +104,7 @@ class App:
                 w.setsampwidth(2)
                 w.setframerate(48000)
                 w.writeframes(b"\0\0" * 48000 * 6)
-        envs = {"BLURT_HOME": self.home, "BLURT_WORKSPACE": self.ws, "BLURT_TMUX_SOCKET": f"blurt-test-{self.channel}",
+        envs = {"BLURT_HOME": self.home, "BLURT_WORKSPACE": self.ws,
                 "BLURT_TEST_MIC_WAV": quiet,
                 "BLURT_NO_NOTIFICATIONS": 1, "BLURT_NO_ONBOARDING": 1, "BLURT_TEST_COMMANDS": 1,
                 "BLURT_TEST_CHANNEL": self.channel, "BLURT_SPOTLIGHT_DOMAIN": f"dev.blurt.test.{self.channel}",
@@ -212,8 +213,6 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     s.append(("panels", "command palette closed", [("wp6", "mainpalette close")]))
     s.append(("panels", "move popover", [("wp6", "main all"), ("wp6", "mainsel 0"), ("wp6", "mainmovepop open")]))
     s.append(("panels", "move popover closed", [("wp6", "mainmovepop close")]))
-    s.append(("panels", "dispatch panel", [("wp6", "main all"), ("wp6", "mainsel 0"), ("terminal", "dispatch @selected")]))
-    s.append(("panels", "sessions window", [("terminal", "window")]))
     s.append(("panels", "toast", [("wp6", "toastdone")]))
     s.append(("panels", "island", [("shell", "island open")]))
     s.append(("panels", "island switcher", [("shell", "island switcher")]))
@@ -225,20 +224,16 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     # the recording's countdown alone over an area (no take: nothing is captured)
     s.append(("panels", "countdown", [("shell", "countdown 3 300,200,700,460 hold")]))
     s.append(("panels", "countdown closed", [("shell", "countdown close")]))
-    # the Cards panel with nothing in it: History's empty state (no card yet)
-    s.append(("panels", "cards panel empty", [("shell", "taken show")]))
-    s.append(("panels", "cards panel empty closed", [("shell", "taken hide")]))
     # a snap (a PNG stands in for the screen: nothing is captured) → its note bubble, then the hanging cards
     still = ROOT / "assets" / "brand" / "legacy" / "logo-1.png"
     s.append(("panels", "snap note bubble", [("shell", f"snapregion 200,200,480,320 {still}")]))
     s.append(("panels", "snap note saved", [("shell", "commit")]))
     s.append(("panels", "hanging cards", [("shell", "cards show")]))
-    s.append(("panels", "cards overview", [("shell", "cards older")]))
-    s.append(("panels", "cards overview keys", [("shell", "cards overview open keyboard nofocus")]))
-    s.append(("panels", "cards preview", [("shell", "cards overview preview")]))
-    s.append(("panels", "cards preview closed", [("shell", "cards overview previewclose")]))
-    s.append(("panels", "cards history empty", [("shell", "cards overview segment used")]))
-    s.append(("panels", "cards overview closed", [("shell", "cards overview close")]))
+    # the island's cards row: the main window on the Cards page, then a card's big preview
+    s.append(("panels", "cards page", [("shell", "cards older")]))
+    s.append(("panels", "cards page keys", [("shell", "cardspage focus on")]))
+    s.append(("panels", "cards preview", [("shell", "cardspage preview")]))
+    s.append(("panels", "cards preview closed", [("shell", "cardspage previewclose")]))
     s.append(("panels", "cards dismissed", [("shell", "cards dismiss")]))
     return s
 

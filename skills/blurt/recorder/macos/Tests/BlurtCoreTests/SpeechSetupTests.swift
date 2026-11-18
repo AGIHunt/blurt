@@ -55,6 +55,32 @@ final class SpeechSetupTests: XCTestCase {
         XCTAssertTrue(SpeechSetup.refusesDictation(.error))
     }
 
+    func testModelsLineOffersTryAgainOnlyWhenItCanHelp() {
+        // BLU-1: uv picked Python 3.15, sherpa-onnx had no wheel for it, the build needed cmake
+        let build = """
+          × Failed to build `sherpa-onnx==1.13.8`
+          ├─▶ The build backend returned an error
+                 error: [Errno 2] No such file or directory: 'cmake'
+          hint: Build failures usually indicate a problem with the package or the build environment
+        """
+        let f = SpeechSetup.readFailure(uv: true, timedOut: false, online: true, stderr: build)
+        XCTAssertEqual(f, .broken(package: "sherpa-onnx", missing: "cmake"))
+        XCTAssertFalse(f.retries, "the same build fails the same way every time")
+        XCTAssertEqual(SpeechSetup.readFailure(uv: true, timedOut: false, online: nil, stderr: "error: Failed to build `numpy`"),
+                       .broken(package: "numpy", missing: nil))
+        XCTAssertEqual(SpeechSetup.readFailure(uv: true, timedOut: false, online: true, stderr: "Traceback …\nKeyError: 'x'"),
+                       .broken(package: nil, missing: nil))
+        XCTAssertEqual(SpeechSetup.readFailure(uv: false, timedOut: false, online: true, stderr: build), .noUV)
+        XCTAssertFalse(SpeechSetup.ReadFailure.noUV.retries)
+        for (f, why) in [(SpeechSetup.readFailure(uv: true, timedOut: true, online: true, stderr: ""), "timeout"),
+                         (SpeechSetup.readFailure(uv: true, timedOut: false, online: false, stderr: build), "offline"),
+                         (SpeechSetup.readFailure(uv: true, timedOut: false, online: true,
+                                                  stderr: "error: Failed to fetch: `https://pypi.org/simple/numpy/`"), "network")] {
+            XCTAssertTrue(f.retries, why)
+        }
+        XCTAssertEqual(SpeechSetup.errorTail((1...50).map(String.init).joined(separator: "\n"), lines: 3), "48\n49\n50")
+    }
+
     func testTryItNeverOffersADownloadThatDoesNothing() {
         XCTAssertEqual(SpeechSetup.tryState(dictationReady: false, dictationDownloading: false, step: .blocked, pendingDownloads: false), .blocked)
         // the list couldn't be read: no set to download, even if the step looks fine

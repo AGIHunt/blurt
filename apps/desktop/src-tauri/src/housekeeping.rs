@@ -269,10 +269,10 @@ fn check_contract(app: &AppHandle) {
 }
 
 /// Jobs the app owned that were still "running" when it quit (or crashed): failed, the running step failed and the
-/// rest skipped, so the job page explains it (Housekeeping.finishInterruptedJobs). Agent sessions are sessions.py's.
+/// rest skipped, so the job page explains it (Housekeeping.finishInterruptedJobs).
 fn finish_interrupted_jobs(launched: chrono::DateTime<chrono::Local>) {
     for j in jobs::list(true, 200) {
-        if j["type"] == "agent" || j["owner"] != "app" {
+        if j["owner"] != "app" {
             continue;
         }
         let created = j["created"].as_str().and_then(|c| chrono::DateTime::parse_from_rfc3339(c).ok());
@@ -746,6 +746,10 @@ pub fn storage_scan(app: AppHandle) -> Value {
         ("bench", "bench", true),
         ("tmp", "tmp", true),
         ("logs", "logs", false),
+        // in a data folder the user chose, uv's Pythons and caches and Hugging Face's are kept here too (location.rs)
+        ("python", "python", false),
+        ("uv_cache", "cache/uv", false),
+        ("hf_cache", "cache/huggingface", false),
     ]
     .iter()
     .filter_map(|(k, rel, rm)| {
@@ -761,7 +765,7 @@ pub fn storage_scan(app: AppHandle) -> Value {
 }
 
 /// Free space on the disk that holds `p` (Storage's lead line, the Mac's "%@ available"); None when it can't be read.
-fn free_bytes(p: &Path) -> Option<u64> {
+pub fn free_bytes(p: &Path) -> Option<u64> {
     let p = std::iter::successors(Some(p), |x| x.parent()).find(|x| x.exists())?;
     #[cfg(windows)]
     {

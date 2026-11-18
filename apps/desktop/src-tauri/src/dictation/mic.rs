@@ -110,6 +110,21 @@ impl Mic {
         })
     }
 
+    /// Blurt on the phone (remote.rs): the phone's microphone in this one's place, its 16 kHz pieces as frames, until the Mic
+    /// is dropped. None: no phone connected.
+    pub fn phone(tx: Sender<Vec<f32>>) -> Option<Mic> {
+        let (device, stop) = crate::remote::phone_mic(tx, false)?;
+        Some(Mic { stream: None, device, _stop: Some(stop) })
+    }
+
+    /// A voice note's mic: the phone's when a note started from it asked for that (remote.rs `voice_note`), else this one.
+    pub fn for_note(tx: Sender<Vec<f32>>) -> Result<Mic, String> {
+        if let Some((device, stop)) = crate::remote::phone_mic(tx.clone(), true) {
+            return Ok(Mic { stream: None, device, _stop: Some(stop) });
+        }
+        Self::open(tx)
+    }
+
     /// Tests (machines without a mic, the VM): a 16 kHz mono 16-bit wav played as the mic in real time, then silence,
     /// as the Mac's BLURT_TEST_MIC_WAV.
     fn test_wav(path: std::path::PathBuf, tx: Sender<Vec<f32>>) -> Result<Mic, String> {

@@ -1350,6 +1350,10 @@ button.chip:hover {
   color: var(--mute);
   font-weight: 500;
 }
+/* Add Field's neighbour, on the same line */
+.fields .addfile {
+  margin-left: 2px;
+}
 /* one heading style for every section of the body: what you said, each field, the history */
 .sec-h,
 .f label {
@@ -2743,20 +2747,10 @@ html.mode-item[data-host="macos"] body,
   border-top: 1px solid var(--line);
 }
 
-/* a narrow detail (an 880 px window): the header's buttons give up their words before the breadcrumb is cut — Copy to
-   its icon, Hand Off to Agent to "Hand Off" */
-.hl-short {
-  display: none;
-}
+/* a narrow detail (an 880 px window): the header's Copy gives up its word before the breadcrumb is cut */
 @container insp (max-width: 520px) {
   .idrow .hl-word {
     display: none;
-  }
-  .idrow .hl-long {
-    display: none;
-  }
-  .idrow .hl-short {
-    display: inline;
   }
 }
 /* a CJK title breaks into even lines (no two characters alone on the second) */
@@ -2800,6 +2794,124 @@ html.mode-item[data-host="macos"] body,
 .f .code > button:hover em,
 .f .code > button:focus-visible em {
   opacity: 1;
+}
+/* the item's attached files (a dropped PDF, a video, a document), one row a file: its kind's icon on a quiet tile, the
+   name, the folder it is in. A row hugs its words and shows its box on hover or focus, as a field does; Show in Finder
+   and Remove wait at its end with their room always kept, so nothing moves when they appear */
+.files {
+  margin: 18px 0 16px;
+}
+.files ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.file {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  max-width: calc(100% + 12px);
+  margin: 0 -6px;
+  padding-right: 5px;
+  border-radius: var(--r);
+  transition: background-color 0.15s;
+}
+.file + .file {
+  margin-top: 2px;
+}
+.file:hover,
+.file:has(:focus-visible) {
+  background: var(--hover);
+}
+.file-open {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px 5px 6px;
+  border-radius: inherit;
+  text-align: left;
+  line-height: 20px;
+}
+.file-ic {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: var(--chip);
+  color: var(--ink-2);
+}
+.file-ic .ico {
+  width: 18px;
+  height: 18px;
+}
+/* the name is cut in the middle: its first part gives way, its end (the extension) stays */
+/* the name never gives way to the folder (in WKWebView a share of a pixel taken from it was enough to cut
+   "spec-v2.pdf" to "spec-v2.p…"); a long one stops at 70 % of the row and is cut in its middle */
+.file-n {
+  flex: 0 0 auto;
+  max-width: 70%;
+  min-width: 0;
+  display: flex;
+  font-weight: 600;
+  white-space: pre;
+}
+.file-n > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-n > :nth-child(2) {
+  flex: none;
+}
+/* the folder gives way before the name does, and is cut from the left: the folder the file is in stays. Its words
+   keep their own direction (a leading ~ or / stays in front) */
+.file-d {
+  flex: 0 1000 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: 12px;
+  color: var(--mute);
+}
+.file-d > span {
+  unicode-bidi: plaintext;
+}
+.file-a {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.file:hover .file-a,
+.file:has(:focus-visible) .file-a {
+  opacity: 1;
+}
+@media (hover: none) {
+  .file-a {
+    opacity: 1;
+  }
+}
+.file-a button {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.file-a button:hover {
+  background: var(--press);
+  color: var(--ink);
+}
+.file-a .ico {
+  width: 15px;
+  height: 15px;
 }
 /* Windows: the card's secondary is the app's neutral filled button (no white box on the card's grey, which read as a
    second component next to the brand primary), and the card keeps to the text column instead of spanning a wide
