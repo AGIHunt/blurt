@@ -13,6 +13,7 @@
 pub mod engine;
 pub mod region;
 pub mod status;
+pub mod winver;
 
 #[cfg(feature = "overlay")]
 pub mod overlay;
