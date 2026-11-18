@@ -225,11 +225,17 @@ impl Capture {
 
     /// A still of `region` (desktop px) into the running take (record.py `snap-region`: its own numbering, the
     /// video time, events.jsonl): (n, "shots/NNN.png") once it is on disk, None after an error or 20 s.
-    pub fn shoot_in_take(&self, region: Region) -> Option<(u32, String)> {
+    pub fn shoot_in_take(&self, region: Region, image: Option<&Path>) -> Option<(u32, String)> {
         let h = self.handle.lock().unwrap().clone()?;
         let (tx, rx) = std::sync::mpsc::channel();
         self.snap_waits.lock().unwrap().push(tx);
-        let cmd = format!("snap-region:{},{},{},{}", region.x, region.y, region.w, region.h);
+        let mut cmd = format!("snap-region:{},{},{},{}", region.x, region.y, region.w, region.h);
+        // the picker's still cut to the area: record.py copies it in rather than grabbing the screen under the picker
+        // (the .cmd file is split at whitespace: the path's spaces go %-encoded)
+        if let Some(p) = image {
+            cmd.push('|');
+            cmd.push_str(&cmd_path(p));
+        }
         if h.lock().unwrap().send(&cmd).is_err() {
             self.snap_waits.lock().unwrap().pop();
             return None;
@@ -298,7 +304,10 @@ impl Capture {
         let cfg = overlay_config();
         let region = if pick && region.is_none() {
             let _ = app.emit("capture://status", json!({"ev": "picking"}));
-            match overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Record).map_err(|e| e.to_string())? {
+            let picked = overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Record).map_err(|e| e.to_string());
+            // a recording keeps no picture of its picker (only a snap and Copy Text cut theirs out of it): let it go
+            let _ = crate::screen_text::grab::take_still();
+            match picked? {
                 Some(r) => {
                     let _ = settings::merge(json!({"record": {"last_region_px": [r.x, r.y, r.w, r.h]}}));
                     Some(r)
@@ -795,6 +804,22 @@ pub fn snap_with_note(app: &AppHandle) {
     snap(app);
 }
 
+/// A path as one word of record.py's .cmd file: `%`, whitespace and `|` %-encoded (record.py unquotes it).
+fn cmd_path(p: &Path) -> String {
+    let mut out = String::new();
+    for c in p.to_string_lossy().chars() {
+        if c == '%' || c == '|' || c.is_whitespace() {
+            let mut b = [0u8; 4];
+            for byte in c.encode_utf8(&mut b).bytes() {
+                out.push_str(&format!("%{byte:02X}"));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// During a take (the Mac's ⌥A while recording; snap-and-note.md §11, recording.md §5.8): the snap flow — pick an
 /// area, its note, its card on the thread — with the still taken by record.py into the take (its number, the video
 /// time, events.jsonl). Nothing during the countdown.
@@ -802,7 +827,7 @@ fn snap_in_take(app: &AppHandle) {
     let cap = &app.state::<AppState>().capture;
     let Some((session, project)) = cap.take_for_snap() else { return };
     let a = app.clone();
-    let shoot = Box::new(move |r: Region| a.state::<AppState>().capture.shoot_in_take(r));
+    let shoot = Box::new(move |r: Region, image: Option<PathBuf>| a.state::<AppState>().capture.shoot_in_take(r, image.as_deref()));
     snap::run_in_take(app, snap::TakeSnap { session, project, shoot });
 }
 
@@ -1385,6 +1410,15 @@ fn picture_line(session: &Path, project: Option<&str>, n: u64, file: &str, sourc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_snap_image_path_is_one_word_of_the_cmd_file() {
+        let p = Path::new("C:\\Users\\Ann Lee\\.blurt\\run\\snap 100%|1.png");
+        let w = cmd_path(p);
+        assert_eq!(w, "C:\\Users\\Ann%20Lee\\.blurt\\run\\snap%20100%25%7C1.png");
+        assert_eq!(w.split_whitespace().count(), 1);
+        assert_eq!(cmd_path(Path::new("/home/me/.blurt/run/截图.png")), "/home/me/.blurt/run/截图.png");
+    }
 
     #[test]
     fn cards_from_shots_jsonl() {

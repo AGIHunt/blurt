@@ -2,8 +2,10 @@
 //! NoteBubble; docs/design/windows-parity/snap-and-note.md):
 //!
 //!  • the picker (letting go takes it; a click takes the window under the pointer) stays up, frozen, until the note's
-//!    stage covers the screen — no flicker; the picture is taken meanwhile (`tk_recorder.py shot`: the stage, like
-//!    every overlay, is left out of captures);
+//!    stage covers the screen — no flicker; the picture is the picker's still (taken before the picker showed), cut to
+//!    the area and handed to `tk_recorder.py shot --image` (in a take, to record.py) — the frozen picture the user
+//!    draws on, never a grab made while the picker and the stage are up (on Windows before 2004 those would be black
+//!    in it: blurt_capture::winver); without a still, the area is grabbed as before;
 //!  • the stage: the picture frozen where it was taken, the pen on it, the note bubble docked beside it — listening at
 //!    once (Windows: Blurt's mic and the warm speech server, dictation/snap_voice.rs), the words heard in grey;
 //!  • done (↩ / Done / a click outside / the window left for 3 s / Alt+Shift+A for the next one): its note, type,
@@ -73,9 +75,10 @@ pub struct TakeSnap {
     pub session: PathBuf,
     /// where the take goes (the note's chip says it; another project files this snap's item there)
     pub project: Option<String>,
-    /// takes the still of `region` (desktop px) into the take: (n, "shots/NNN.png") once its line is written, None if
-    /// it failed. Runs on a worker thread while the note opens.
-    pub shoot: Box<dyn FnOnce(Region) -> Option<(u32, String)> + Send>,
+    /// takes the still of `region` (desktop px) into the take — the picture given (the picker's still, cut), else a
+    /// grab: (n, "shots/NNN.png") once its line is written, None if it failed. Runs on a worker thread while the note
+    /// opens; the picture's file is removed after.
+    pub shoot: Box<dyn FnOnce(Region, Option<PathBuf>) -> Option<(u32, String)> + Send>,
 }
 
 /// Outside a recording.
@@ -133,10 +136,19 @@ fn flow(app: &AppHandle, take: Option<TakeSnap>) {
     {
         let (app, session, project) = (app.clone(), session.clone(), project.clone());
         std::thread::spawn(move || {
+            // the frozen picture the user draws on: the picker's still, cut to the area
+            let still = crate::screen_text::grab::cut(region);
+            let image = still.as_ref().and_then(|c| still_file(c, g));
             let r = match shoot_in_take {
-                Some(f) => f(region),
-                None => shoot(&app, &session, project.as_deref(), region),
+                Some(f) => f(region, image.clone()),
+                None => shoot(&app, &session, project.as_deref(), region, image.as_deref()),
             };
+            if let (Some((_, file)), Some(c)) = (&r, &still) {
+                safety_net(&session.join(file), image.as_deref(), c, region);
+            }
+            if let Some(p) = &image {
+                let _ = std::fs::remove_file(p);
+            }
             if let Some((n, _)) = &r {
                 set_noting(Some((&session, *n)));
             }
@@ -314,32 +326,57 @@ fn failed(app: &AppHandle, g: u64, w: Option<WebviewWindow>) {
     toast_error(app, "snap");
 }
 
-/// One frame of the region into the open shots batch → (n, "shots/NNN.png").
-fn shoot(app: &AppHandle, session: &Path, project: Option<&str>, region: Region) -> Option<(u32, String)> {
+/// The picker's still cut to a snap's area, as a PNG for the script to copy in ($BLURT_HOME/run; removed after).
+fn still_file(cut: &crate::screen_text::grab::Grab, g: u64) -> Option<PathBuf> {
+    let p = crate::paths::blurt_home().join("run").join(format!("snap-{}-{g}.png", std::process::id()));
+    let _ = std::fs::create_dir_all(p.parent()?);
+    crate::screen_text::grab::write_png(&p, cut).ok().map(|_| p)
+}
+
+/// The safety net under a snap's picture: one that came out near-uniform black while the still's cut of the area has
+/// content (a grab that saw our own window — Windows before 2004 — or nothing) is replaced by the cut, and the log says
+/// so with the Windows build. A plain copy of the cut (same size as the file given) isn't looked at again.
+fn safety_net(png: &Path, given: Option<&Path>, cut: &crate::screen_text::grab::Grab, region: Region) {
+    use crate::screen_text::grab;
+    let len = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    if given.is_some_and(|g| len(g).is_some() && len(g) == len(png)) {
+        return;
+    }
+    let Ok(shot) = grab::decode_png(png) else { return };
+    if grab::black_where_still_is_not(&shot, cut) {
+        eprintln!(
+            "blurt: snap came out black (Windows build {:?}, region {},{},{},{}): {} replaced by the picker's still ({}x{})",
+            blurt_capture::winver::windows_build(),
+            region.x,
+            region.y,
+            region.w,
+            region.h,
+            png.display(),
+            cut.w,
+            cut.h
+        );
+        if let Err(e) = grab::write_png(png, cut) {
+            eprintln!("blurt: snap: {e}");
+        }
+    }
+}
+
+/// One frame of the region into the open shots batch → (n, "shots/NNN.png"): `image`, the picker's still cut to the
+/// area, copied in; without one, grabbed now (ffmpeg).
+fn shoot(app: &AppHandle, session: &Path, project: Option<&str>, region: Region, image: Option<&Path>) -> Option<(u32, String)> {
     let runner = app.state::<AppState>().runner();
     let mut args = vec!["shot".to_string(), scripts::s(session), "--region".into(), format!("{},{},{},{}", region.x, region.y, region.w, region.h)];
     if let Some(p) = project {
         args.extend(["--project".into(), p.to_string()]);
     }
-    // Linux: the picker's picture, cut to the area (x11grab would see only XWayland windows; a portal picture taken now
-    // would hold the frozen picker); without one (GNOME refused), x11grab as before
-    #[cfg(target_os = "linux")]
-    let image = crate::screen_text::grab_linux::cut(region).and_then(|g| {
-        let p = crate::paths::blurt_home().join("run").join(format!("snap-{}.png", std::process::id()));
-        let _ = std::fs::create_dir_all(p.parent()?);
-        crate::screen_text::grab::write_png(&p, &g).ok().map(|_| p)
-    });
-    #[cfg(not(target_os = "linux"))]
-    let image: Option<PathBuf> = None;
-    if let Some(p) = &image {
+    // (Linux: x11grab would see only XWayland windows, a portal picture taken now the frozen picker; Windows: gdigrab
+    // sees the picker and the stage black before 2004)
+    if let Some(p) = image {
         args.extend(["--image".into(), scripts::s(p)]);
     }
     let job = JobWriter::new("snap", project, Some(session), None, None, &["capture"]);
     job.step("capture", "running", None);
     let ran = runner.run("tk_recorder.py", &args, None, Duration::from_secs(30));
-    if let Some(p) = &image {
-        let _ = std::fs::remove_file(p);
-    }
     match ran {
         Ok(r) => {
             let n = r["n"].as_u64().unwrap_or(0);
@@ -908,22 +945,59 @@ pub fn visible_windows() -> Option<Vec<Region>> {
     Some(v)
 }
 
-/// The loupe's still of a monitor (desktop px), a BMP under $BLURT_HOME/run (inside the asset protocol's scope) — a new
-/// name each time (the page's cache), the one before removed.
+/// The picker's still of a monitor (desktop px; GDI, physical px 1:1 whatever the scaling): kept for the pick
+/// (screen_text::grab `cut`: the snap's picture, Copy Text's), and as a BMP under $BLURT_HOME/run (inside the asset
+/// protocol's scope) for the loupe and the snap's stage — a new name each time (the page's cache), the one before
+/// removed. Taken before the picker shows: no overlay of ours is in it but the island, left out of captures (before
+/// Windows 10 2004 seen as itself, never black: blurt_capture::winver).
 #[cfg(windows)]
 pub fn monitor_still(r: Region) -> Option<PathBuf> {
-    keep_still(&crate::screen_text::ocr_win::grab(r.x, r.y, r.w, r.h).ok()?, r)
+    use crate::screen_text::grab::{keep_still, near_black, Still};
+    let g = match crate::screen_text::ocr_win::grab(r.x, r.y, r.w, r.h) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("blurt: picker still: {e}");
+            keep_still(Still::Failed);
+            forget_still();
+            return None;
+        }
+    };
+    if near_black(&g) {
+        eprintln!(
+            "blurt: picker still is black (Windows build {:?}, monitor {},{},{},{})",
+            blurt_capture::winver::windows_build(),
+            r.x,
+            r.y,
+            r.w,
+            r.h
+        );
+    }
+    let p = loupe_file(&g, r);
+    keep_still(Still::Taken(g, r));
+    p
 }
 
 /// Linux: the whole desktop through GNOME's Screenshot portal, kept for the pick (screen_text::grab_linux: the snap and
 /// Copy Text are cut out of it, since GNOME can't leave the picker out of a later picture).
 #[cfg(target_os = "linux")]
 pub fn monitor_still(r: Region) -> Option<PathBuf> {
-    keep_still(&crate::screen_text::grab_linux::picker_still(r)?, r)
+    let Some(g) = crate::screen_text::grab_linux::picker_still(r) else {
+        forget_still();
+        return None;
+    };
+    loupe_file(&g, r)
+}
+
+/// No still for this picker: the stage never paints an older one.
+#[cfg(any(windows, target_os = "linux"))]
+fn forget_still() {
+    if let Some(old) = STILL.lock().unwrap().take() {
+        let _ = std::fs::remove_file(old.0);
+    }
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-fn keep_still(g: &crate::screen_text::grab::Grab, r: Region) -> Option<PathBuf> {
+fn loupe_file(g: &crate::screen_text::grab::Grab, r: Region) -> Option<PathBuf> {
     static N: AtomicU64 = AtomicU64::new(0);
     let dir = crate::paths::blurt_home().join("run");
     let _ = std::fs::create_dir_all(&dir);

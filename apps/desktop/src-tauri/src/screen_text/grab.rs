@@ -1,5 +1,16 @@
 //! A grabbed area of the screen, whatever read it (Windows: GDI, ocr_win; Linux: GNOME's Screenshot portal,
 //! grab_linux): BGRA, top-down rows — what the reader (screen_ocr.py) and the rules' ink (rules::Gray) take.
+//!
+//! Also the picker's still (`keep_still` / `cut`): every area picker takes a picture of the screen before it opens
+//! (snap.rs `monitor_still`: Windows, the monitor through GDI; Linux, the desktop through the portal). A snap and Copy
+//! Text cut the picked area out of it, so the picture kept is the frozen one the user drew on, and never holds the
+//! picker, the snap's stage or another overlay — which on Linux would be seen, and on Windows before 2004 would come
+//! out black (blurt_capture::winver).
+
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use blurt_capture::Region;
 
 /// A grabbed area: BGRA, top-down rows.
 pub struct Grab {
@@ -99,6 +110,70 @@ pub fn crop(shot: &Grab, desk: (i32, i32, u32, u32), area: (i32, i32, u32, u32))
     Some(Grab { w, h, bgra })
 }
 
+/// The picture the open picker was shown over: the grab and the desktop area it shows (desktop px; the grab may be at
+/// another scale — GNOME's screenshot is in the monitors' own pixels), or why there is none.
+pub enum Still {
+    Taken(Grab, Region),
+    /// GNOME refused (Copy Text says so rather than asking a second time)
+    Refused,
+    Failed,
+}
+
+/// One picker's still; one pick uses it (`take_still`).
+static STILL: Mutex<Option<(Instant, Still)>> = Mutex::new(None);
+/// A picker left open longer than this (the user walked away) takes no stale picture: the area is shot again.
+const STILL_FOR: Duration = Duration::from_secs(120);
+
+/// Before a picker opens: its still replaces the last one (a failed one too: never an older picture).
+pub fn keep_still(s: Still) {
+    *STILL.lock().unwrap() = Some((Instant::now(), s));
+}
+
+/// The open picker's still, once (fresh only).
+pub fn take_still() -> Option<Still> {
+    STILL.lock().unwrap().take().filter(|(t, _)| t.elapsed() < STILL_FOR).map(|(_, s)| s)
+}
+
+/// The picked area (desktop px) out of its picker's still; None: no still (the caller grabs the screen itself).
+pub fn cut(r: Region) -> Option<Grab> {
+    match take_still()? {
+        Still::Taken(shot, desk) => cut_from(&shot, desk, r),
+        _ => None,
+    }
+}
+
+/// [`crop`] with regions.
+pub fn cut_from(shot: &Grab, desk: Region, r: Region) -> Option<Grab> {
+    crop(shot, (desk.x, desk.y, desk.w, desk.h), (r.x, r.y, r.w, r.h))
+}
+
+/// Near-uniform black: what a capture of a window Windows keeps out of pictures gives before 2004 (WDA_MONITOR), or
+/// a grab that failed quietly. At least 98 % of the pixels darker than 24 in every channel (a pointer drawn into a
+/// small area is not enough to make a black picture count as content).
+pub fn near_black(g: &Grab) -> bool {
+    let n = (g.w as usize * g.h as usize).min(g.bgra.len() / 4);
+    if n == 0 {
+        return false;
+    }
+    // every pixel of a small grab, a spread sample of a big one
+    let step = (n / 250_000).max(1);
+    let (mut seen, mut dark) = (0usize, 0usize);
+    for i in (0..n).step_by(step) {
+        let p = &g.bgra[i * 4..i * 4 + 3];
+        seen += 1;
+        if p[0] <= 24 && p[1] <= 24 && p[2] <= 24 {
+            dark += 1;
+        }
+    }
+    dark * 100 >= seen * 98
+}
+
+/// The safety net under a snap's picture: a shot that came out black while the still's cut of the same area has
+/// content is a capture that saw our own window (or nothing) — the cut is what the user saw.
+pub fn black_where_still_is_not(shot: &Grab, still_cut: &Grab) -> bool {
+    near_black(shot) && !near_black(still_cut)
+}
+
 /// file:///home/me/Pictures/Screenshots/Screenshot%20from….png → the path.
 pub fn file_path(uri: &str) -> Option<std::path::PathBuf> {
     let raw = uri.strip_prefix("file://")?;
@@ -155,6 +230,94 @@ mod tests {
         assert!(crop(&shot(100, 100), (0, 0, 100, 100), (150, 0, 10, 10)).is_none());
         let g = crop(&shot(100, 100), (0, 0, 100, 100), (90, 90, 30, 30)).unwrap();
         assert_eq!((g.w, g.h), (10, 10));
+    }
+
+    fn solid(w: u32, h: u32, v: u8) -> Grab {
+        Grab { w, h, bgra: [v, v, v, 255].repeat((w * h) as usize) }
+    }
+
+    #[test]
+    fn a_windows_monitor_left_of_and_above_the_primary_is_cut_one_to_one() {
+        // the still is the monitor in physical px (GDI, a per-monitor-aware process): 1:1 whatever its scaling —
+        // 150 % here (2880×1620 physical), placed left of and above the primary
+        let mon = Region::new(-2880, -300, 2880, 1620);
+        let still = shot(2880, 1620);
+        let g = cut_from(&still, mon, Region::new(-2870, -280, 100, 50)).unwrap();
+        assert_eq!((g.w, g.h), (100, 50));
+        // its first pixel is the still's (10, 20)
+        assert_eq!(&g.bgra[..2], &[10, 20]);
+        // and its last row is the still's row 69
+        let last = ((g.h - 1) * g.w * 4) as usize;
+        assert_eq!(&g.bgra[last..last + 2], &[10, 69]);
+    }
+
+    #[test]
+    fn dpi_scales_cut_at_their_physical_size() {
+        // 125 % and 225 %: the picker's region is physical px already (from_css × scale), so the cut is that size
+        for (mon, r) in [
+            (Region::new(0, 0, 2400, 1350), Region::new(1001, 333, 625, 375)),
+            (Region::new(2400, 0, 3240, 2160), Region::new(2400 + 450, 225, 1350, 900)),
+        ] {
+            let g = cut_from(&shot(mon.w, mon.h), mon, r).unwrap();
+            assert_eq!((g.w, g.h), (r.w, r.h));
+            assert_eq!(g.bgra[0], ((r.x - mon.x) % 256) as u8);
+            assert_eq!(g.bgra[1], ((r.y - mon.y) % 256) as u8);
+        }
+    }
+
+    #[test]
+    fn a_region_over_the_monitors_edge_is_clipped_to_the_still() {
+        let mon = Region::new(-1920, 0, 1920, 1080);
+        let g = cut_from(&shot(1920, 1080), mon, Region::new(-100, 1000, 300, 200)).unwrap();
+        assert_eq!((g.w, g.h), (100, 80));
+        assert!(cut_from(&shot(1920, 1080), mon, Region::new(10, 10, 50, 50)).is_none());
+    }
+
+    #[test]
+    fn a_still_is_cut_once() {
+        keep_still(Still::Taken(shot(200, 100), Region::new(-200, 0, 200, 100)));
+        let g = cut(Region::new(-190, 10, 20, 20)).unwrap();
+        assert_eq!((g.w, g.h, g.bgra[0], g.bgra[1]), (20, 20, 10, 10));
+        assert!(cut(Region::new(-190, 10, 20, 20)).is_none());
+        keep_still(Still::Failed);
+        assert!(cut(Region::new(-190, 10, 20, 20)).is_none());
+    }
+
+    #[test]
+    fn near_black_is_black_not_dark() {
+        assert!(near_black(&solid(64, 64, 0)));
+        assert!(near_black(&solid(64, 64, 12)));
+        // a dark theme's background is content
+        assert!(!near_black(&solid(64, 64, 30)));
+        assert!(!near_black(&solid(64, 64, 255)));
+        assert!(!near_black(&Grab { w: 0, h: 0, bgra: vec![] }));
+        // a black picture with a pointer drawn in it (gdigrab's -draw_mouse) is still black
+        let mut g = solid(200, 200, 0);
+        for y in 0..20 {
+            for x in 0..12 {
+                let i = ((y * 200 + x) * 4) as usize;
+                g.bgra[i..i + 3].copy_from_slice(&[255, 255, 255]);
+            }
+        }
+        assert!(near_black(&g));
+        // a black terminal with lines of text in it is not
+        let mut t = solid(200, 100, 0);
+        for y in (0..100).step_by(4) {
+            for x in 0..200 {
+                let i = ((y * 200 + x) * 4) as usize;
+                t.bgra[i..i + 3].copy_from_slice(&[200, 200, 200]);
+            }
+        }
+        assert!(!near_black(&t));
+    }
+
+    #[test]
+    fn the_safety_net_takes_the_still_only_when_the_shot_alone_is_black() {
+        let (black, picture) = (solid(40, 40, 0), shot(40, 40));
+        assert!(black_where_still_is_not(&black, &picture));
+        // a black area that really is black stays as shot
+        assert!(!black_where_still_is_not(&black, &solid(40, 40, 0)));
+        assert!(!black_where_still_is_not(&picture, &black));
     }
 
     #[test]
