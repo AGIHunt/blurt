@@ -176,8 +176,10 @@ site; the Windows app had no SKILL.md to link; an agent's own runs found neither
   is started for an app agent; the result is kept 10 min (`run/agents-apps.json`, Check Again looks again).
 - **Connected** = proof, not config: mcp_server.py notes `clientInfo.name` + time at initialize (and on the new
   `hello` tool) in `run/mcp-clients.json`; agents.json `mcp_clients` maps names to agents; runs the app started
-  (`via: app`) don't count. States: connected (「15:42 用过」) › set up (its skill folder / MCP file has blurt) › found
-  › not found; every row not found offers Connect anyway, which writes into its `home`.
+  (an organising run: BLURT_RUN_ID) go in the entry's `app_at`, never over the user's own `at` (else Codex fell back
+  from connected to set up after every organising run), and don't count. States: 「已连接 · 15:42 使用过」 › 「已添加，
+  未使用」 (its skill folder / MCP file has blurt) › 「未连接」 (found) › 「未安装」; every row not installed offers
+  「仍要连接…」, which writes into its `home`. After Connect, an agent's `after` is the sheet's next step 「还差一步：…」.
 - **WorkBuddy** is two entries: 「WorkBuddy」 国内版 (`~/.workbuddy`, codebuddy.cn/work) and 「WorkBuddy AI」 国际版
   (`~/.workbuddy-ai`, workbuddy.ai), each with `after`: 连接器 → blurt → 信任, then a new chat.
 - **Other Agent…** — `agents.py manual`: the skill folder (Copy / Open / Save as .zip), the `mcpServers` JSON and the
