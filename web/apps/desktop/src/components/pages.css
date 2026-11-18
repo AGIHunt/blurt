@@ -358,6 +358,10 @@
 .hm-entry-body.none {
   color: var(--faint);
 }
+/* a recording whose organising didn't finish: its state line in the attention ink */
+.hm-entry-src.attn {
+  color: var(--attn-ink);
+}
 /* a dictation that wasn't recognised: said in the attention ink, one line; Retry in the time's place under the pointer */
 .hm-entry-body.attn {
   color: var(--attn-ink);

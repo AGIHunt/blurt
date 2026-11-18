@@ -48,6 +48,30 @@ const inbox = () => ({ id: 'inbox', name: L('Unassigned', '未归类'), key: 'IN
 
 const S1 = `${H}/code/storefront/.blurt/sessions/20261022-093000`;
 const S2 = `${H}/Blurt/inbox/sessions/20261022-101500-shots`;
+// recordings (recordings_list): S1 organised; an Unassigned one whose organising failed (no agent), one saved as video
+// only, one never organised; a mobile-app one being organised. ?rec=none: none at all
+const R2 = `${H}/Blurt/inbox/sessions/20261022-110200`;
+const R3 = `${H}/Blurt/inbox/sessions/20261021-164000`;
+const R4 = `${H}/code/mobile-app/.blurt/sessions/20261022-114500`;
+const R5 = `${H}/Blurt/inbox/sessions/20261020-091500`;
+const recJobs: Record<string, any>[] = [
+  { id: 'j-20261022-110800-f4a1', type: 'process', state: 'failed', project: null, session: R2, title: null, items: [], steps: [{ id: 'prepare', state: 'failed' }], progress: null, created: '2026-10-22T11:08:00+02:00', started: '2026-10-22T11:08:00+02:00', ended: '2026-10-22T11:08:01+02:00', error: { code: 'no_agent', message: 'no coding agent is installed and logged in' } },
+  { id: 'j-20261022-115000-r7k2', type: 'process', state: 'running', project: 'p2', session: R4, title: null, items: [], steps: [{ id: 'prepare', state: 'done' }, { id: 'transcribe', state: 'running' }, { id: 'write', state: 'pending' }], progress: null, created: '2026-10-22T11:50:00+02:00', started: '2026-10-22T11:50:00+02:00', ended: null, error: null },
+];
+function mockRecordings() {
+  if (param('rec') === 'none') return [];
+  const rec = (dir: string, project_id: string, ago: number, duration: number, first: string | null, more: Record<string, unknown> = {}) => ({
+    id: `${project_id}:${dir.split('/').pop()}`, dir, project_id, project_name: project_id === 'inbox' ? inbox().name : pname(project_id).name, title: null, created: now - ago, duration,
+    item_count: 0, processed: 0, processing: 0, video: `${dir}/recording.mp4`, first_line: first, video_only: false, ...more,
+  });
+  return [
+    rec(R4, 'p2', 900, 74, L('On the settings screen the toggle flips back after a second', '设置页的开关点了一秒又弹回去')),
+    rec(R2, 'inbox', 1500, 192, L('The login page hangs after I tap Continue', '登录页点继续以后一直转圈')),
+    rec(S1, 'p1', 1800, 312, L('Let’s walk through checkout on Safari first', '先在 Safari 上走一遍结算流程'), { item_count: 3, processed: 1 }),
+    rec(R3, 'inbox', 86400 + 3600, 48, null, { video_only: true }),
+    rec(R5, 'inbox', 2 * 86400, 133, L('Notes for the onboarding copy review', '新手引导文案的修改意见'), { item_count: 2, processed: 1, video: null }),
+  ];
+}
 
 interface MItem {
   uid: string; id: string; project: string; kind: string; title: string; quote?: string; state: State; restore_to?: State; work_to?: string | null; work_agent?: string | null;
@@ -531,7 +555,24 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     case 'jobs_list':
       return r([
         { id: 'j-20261022-101800-p9x2', type: 'process', state: 'running', project: null, session: S2, title: L('Two screenshots and a voice note', '两张截图和一条语音'), items: [], steps: [{ id: 'prepare', state: 'done' }, { id: 'transcribe', state: 'done' }, { id: 'write', state: 'running', progress: 0.6 }, { id: 'frames', state: 'pending' }, { id: 'route', state: 'pending' }], progress: 0.6, created: '', started: '', ended: null, error: null },
+        ...recJobs.filter((j) => !(args.active && j.state === 'failed')),
       ]);
+    case 'recordings_list':
+      return r(mockRecordings());
+    case 'session_process': {
+      const was = recJobs.findIndex((j) => j.session === args.dir);
+      const job = { id: `j-mock-${recJobs.length}`, type: 'process', state: 'running', project: null, session: args.dir, title: null, items: [], steps: [{ id: 'prepare', state: 'running' }, { id: 'write', state: 'pending' }], progress: null, created: '2026-10-22T12:00:00+02:00', started: '2026-10-22T12:00:00+02:00', ended: null, error: null };
+      if (was >= 0) recJobs.splice(was, 1);
+      recJobs.push(job);
+      emit('jobs://changed', []);
+      return r(undefined);
+    }
+    case 'job_dismiss': {
+      const j = recJobs.find((x) => x.id === args.id);
+      if (j) j.dismissed = true;
+      emit('jobs://changed', []);
+      return r(undefined);
+    }
     case 'index_query': {
       const q = args.q ?? {};
       let list = items.filter((x) => (q.state?.length ? q.state.includes(x.state) : x.state !== 'discarded'));
@@ -667,6 +708,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       const order = want?.length ? want : all.map((a) => a.id);
       const ids: string[] = args.ids ?? order;
       const agents = all.filter((a) => ids.includes(a.id));
+      // ?agents=none: none can organise in the background (a Windows computer with no agent CLI)
+      if (param('agents') === 'none') return r({ order, pick: null, agents: agents.map((a) => ({ ...a, state: 'not_installed', installed: false, path: null })) });
       return r({ order, pick: order.find((id) => agents.some((a) => a.id === id && a.state === 'ready')) ?? null, agents });
     }
     case 'agents_models':

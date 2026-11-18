@@ -1,13 +1,14 @@
 // A job in the detail (the Mac's JobDetailView, the part Windows has the data for): what it does and when it started,
 // its steps in an inset group with each one's state, the items it wrote so far (a click shows one). An agent session's
 // detail is its terminal (the Sessions pane), not this.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '@blurt/icons';
 import { KindIcon } from '@blurt/ui/react';
 import { api, type ItemRow, type Job } from '../api';
 import { ago, plural, t } from '../i18n';
 
-export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title: string; onItem: (uid: string) => void; onSettings: (pane: string) => void }) {
+/** `actions`: the buttons beside Set Up an Agent… (a failed recording's Retry and Dismiss: App). */
+export function JobDetail({ job, title, onItem, onSettings, actions }: { job: Job; title: string; onItem: (uid: string) => void; onSettings: (pane: string) => void; actions?: ReactNode }) {
   const [rows, setRows] = useState<Record<string, ItemRow>>({});
   const key = job.items.slice(0, 20).join(',');
   useEffect(() => {
@@ -48,8 +49,11 @@ export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title:
       )}
       {job.error && <p className="mw-err">{t(`main.job.error.${job.error.code}`) === `main.job.error.${job.error.code}` ? t('main.job.error.unknown') : t(`main.job.error.${job.error.code}`)}</p>}
       {/* no agent to run it, or the one there isn't signed in: where that's fixed (the Home page's Set Up an Agent…) */}
-      {(job.error?.code === 'no_agent' || job.error?.code === 'auth') && (
-        <p><button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button></p>
+      {(job.error?.code === 'no_agent' || job.error?.code === 'auth' || actions) && (
+        <p className="mw-job-acts">
+          {(job.error?.code === 'no_agent' || job.error?.code === 'auth') && <button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button>}
+          {actions}
+        </p>
       )}
       {job.steps.length > 0 && (
         <>

@@ -2,7 +2,7 @@
 // page. The five capabilities, one row each — what it does, its keys, its switch, and when something stands in its way
 // one line with the one way to fix it —; what waits for you (new items, cards at the top of the screen); and Recent,
 // one timeline of what was made with the capabilities that are on (dictations, cards, text read or translated from the
-// screen, items), newest first by day.
+// screen, recordings with their state, items), newest first by day.
 // A row goes to its place; its right-click menu also opens its settings. Off: the name and keys step back, the line
 // stays readable, the switch brings it back.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -17,6 +17,8 @@ import type { Place } from '../places';
 import { useRemoteStatus } from '../settings/phone';
 import { Switch } from '../settings/kit';
 import { useMenu, type MenuEntry } from './Menu';
+import { inlineAction, recActions, type Recording } from '../recordings';
+import { actionLabel, recLength, recMenu, recStateText, recWhy, runRecAction, type RecHandlers } from './Recordings';
 import { screenTextSource } from './ScreenTextPage';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 import { CAP_ICON, dictationKeyName } from './SettingsView';
@@ -53,7 +55,7 @@ const PLACE: Record<Capability, Place | null> = { dictation: 'dictation', cards:
 /** Its Settings pane. */
 const PANE: Record<Capability, string> = { dictation: 'dictation', cards: 'cards', screen_text: 'screentext', recording: 'recording', phone: 'phone' };
 
-export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onReveal, onToast, onSettings, tick }: {
+export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onReveal, onToast, onSettings, tick, recordings, recAgent, recHandlers }: {
   status: AppStatus;
   hotkeys: HotkeyRow[];
   summary: Summary | null;
@@ -64,6 +66,11 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   onSettings: (pane: string) => void;
   /** the window's refresh tick (items changed) */
   tick: number;
+  /** the recordings with their state (App: recordings_list + the jobs) */
+  recordings: Recording[];
+  /** an agent can organise in the background (null: not known yet) */
+  recAgent: boolean | null;
+  recHandlers: RecHandlers;
 }) {
   const { off } = useOff();
   const remote = useRemoteStatus();
@@ -72,7 +79,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   const shownCaps = CAPS.filter((c) => (c !== 'dictation' || built.dictation) && (c !== 'screen_text' || built.screen_text));
   const [cfg, setCfg] = useState<Record<string, any> | null>(null);
   const dict = useDictationModels();
-  const [agentReady, setAgentReady] = useState<boolean | null>(null);
+  const agentReady = recAgent;
   const [shotsAllowed, setShotsAllowed] = useState(true);
   const [lists, setLists] = useState<{ dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts: FeedEntry[]; items: FeedEntry[] }>({ dictations: [], cards: [], screenTexts: [], items: [] });
   const [loaded, setLoaded] = useState(false);
@@ -87,11 +94,6 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   useEffect(() => listen('screen-text://changed', () => setCardsTick((n) => n + 1)), []);
   // a take landed, failed or was retried (a failed one is a row with Retry; once retried, a dictation like any other)
   useEffect(() => listen('dictation://changed', () => setCardsTick((n) => n + 1)), []);
-  // an agent that can organize recordings in the background: none means "say it to your agent" (capabilities.md §3.2)
-  useEffect(() => {
-    if (off.has('recording')) return;
-    api.detect({ login: false }).then((d) => setAgentReady(!!d.pick), () => setAgentReady(null));
-  }, [off.has('recording')]);
   useEffect(() => {
     if (status.platform === 'gnome' && !off.has('screen_text')) api.screenTextAllowed().then(setShotsAllowed, () => {});
   }, [status.platform, off.has('screen_text')]);
@@ -151,7 +153,17 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   useEffect(() => {
     void load();
   }, [load, tick, cardsTick]);
-  const feed = useMemo(() => mergeFeed(lists, off), [lists, off]);
+  // a recording: "Recording · 3:12 · 2 items" over the first thing said in it
+  const recByKey = useMemo(() => new Map(recordings.map((r) => [r.info.dir, r])), [recordings]);
+  const recEntries = useMemo((): FeedEntry[] => recordings.map((r) => ({
+    kind: 'recording',
+    key: r.info.dir,
+    time: r.info.created ?? 0,
+    source: [t('inbox.mode.video'), recLength(r), recStateText(r)].filter(Boolean).join(' · '),
+    text: r.info.first_line ?? '',
+    sub: r.state.kind,
+  })), [recordings]);
+  const feed = useMemo(() => mergeFeed({ ...lists, recordings: recEntries }, off), [lists, recEntries, off]);
 
   const hk = (a: string) => hotkeys.find((h) => h.action === a);
   const keyLabel = (a: string) => {
@@ -251,6 +263,12 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
     );
 
   const isFailed = (e: FeedEntry) => e.kind === 'dictation' && e.sub === 'failed';
+  const recOf = (e: FeedEntry) => (e.kind === 'recording' ? recByKey.get(e.key) ?? null : null);
+  /** a recording's one action on its row (under the pointer, in the time's place): only when it is the click's too */
+  const recAct = (r: Recording) => {
+    const a = inlineAction(r, agentReady);
+    return a && a === recActions(r, agentReady)[0] ? a : null;
+  };
   /** A failed dictation's Retry: the recording again, the text onto the clipboard (never pasted: the user is here). */
   const retry = async (e: FeedEntry) => {
     if (retrying.has(e.key)) return;
@@ -269,16 +287,21 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
       });
     }
   };
-  const primary = (e: FeedEntry) => (isFailed(e) ? void retry(e) : openEntry(e));
+  const primary = (e: FeedEntry) => {
+    const r = recOf(e);
+    if (r) return runRecAction(recActions(r, agentReady)[0], r, recHandlers);
+    return isFailed(e) ? void retry(e) : openEntry(e);
+  };
   const openEntry = (e: FeedEntry) => (e.kind === 'dictation' ? onGo('dictation') : e.kind === 'card' ? onGo('cards') : e.kind === 'screen_text' ? onGo('screen_text') : onReveal(e.key));
-  const entryMenu = (e: FeedEntry): MenuEntry[] => isFailed(e) ? [
+  const entryMenu = (e: FeedEntry): MenuEntry[] => recOf(e) ? recMenu(recOf(e)!, agentReady, recHandlers) : isFailed(e) ? [
     { label: t('home.entry.retry'), disabled: retrying.has(e.key), run: () => void retry(e) },
     { label: t('home.entry.open'), run: () => openEntry(e) },
   ] : [
     { label: t('home.entry.open'), run: () => openEntry(e) },
     ...(e.text ? [{ label: e.kind === 'item' ? t('home.entry.copy_title') : t('home.entry.copy'), run: () => void api.copyText(e.text).then(() => onToast(t('dictation_page.copied')), () => {}) }] : []),
   ];
-  const ALL: Record<FeedKind, { key: string; place: Place }> = {
+  // recordings have no page of their own: their link is the items'
+  const ALL: Partial<Record<FeedKind, { key: string; place: Place }>> = {
     dictation: { key: 'home.all.dictation', place: 'dictation' },
     card: { key: 'home.all.cards', place: 'cards' },
     screen_text: { key: 'home.all.screen_text', place: 'screen_text' },
@@ -353,6 +376,31 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
                 <h3 className="hm-day-title">{dayLabel(d.day)}</h3>
                 <div className="pg-box">
                   {d.rows.map((e) => {
+                    const rec = recOf(e);
+                    if (rec) {
+                      // a recording: its state in the quiet line (a failure in the attention ink), what was said in it,
+                      // its one action under the pointer
+                      const act = recAct(rec);
+                      const recFailed = rec.state.kind === 'failed';
+                      return (
+                        <button key={feedId(e)} className={`hm-entry ${act ? 'failed' : ''}`} onClick={() => primary(e)} data-testid={`home-entry-recording-${rec.state.kind}`}
+                          title={recWhy(rec) || undefined}
+                          onContextMenu={(ev) => {
+                            ev.preventDefault();
+                            menu.open(entryMenu(e), { x: ev.clientX, y: ev.clientY });
+                          }}>
+                          <span className="hm-entry-ic">{entryIcon(e)}</span>
+                          <span className="hm-entry-text">
+                            <span className={`hm-entry-src ${recFailed ? 'attn' : ''}`}>{e.source}</span>
+                            <span className={`hm-entry-body ${e.text ? '' : 'none'}`}>{e.text || rec.info.project_name}</span>
+                          </span>
+                          <span className="hm-entry-end">
+                            <span className="hm-entry-time">{clock(e.time)}</span>
+                            {act && <span className="hm-entry-act">{actionLabel(act)}</span>}
+                          </span>
+                        </button>
+                      );
+                    }
                     const failed = isFailed(e);
                     const busy = failed && retrying.has(e.key);
                     return (
@@ -383,8 +431,8 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
               </section>
             ))}
             <div className="hm-all">
-              {feed.kinds.map((k) => (
-                <button key={k} className="pg-link" onClick={() => onGo(ALL[k].place)}>{t(ALL[k].key)}</button>
+              {feed.kinds.filter((k) => ALL[k]).map((k) => (
+                <button key={k} className="pg-link" onClick={() => onGo(ALL[k]!.place)}>{t(ALL[k]!.key)}</button>
               ))}
             </div>
           </div>
@@ -426,6 +474,7 @@ function tryLine(key: string, label: string): ReactNode {
 
 function entryIcon(e: FeedEntry): ReactNode {
   if (e.kind === 'dictation') return <Icon name="character-cursor" size={15} />;
+  if (e.kind === 'recording') return <Icon name="video" size={15} />;
   if (e.kind === 'screen_text') return <Icon name={e.sub === 'translate' ? 'languages' : 'text-viewfinder'} size={15} />;
   if (e.kind === 'card') return <Icon name={e.sub === 'voice' ? 'mic' : e.sub === 'file' ? 'document' : e.sub === 'text' ? 'quote' : 'snap'} size={15} />;
   return <KindIcon kind={e.sub ?? 'note'} size={15} />;

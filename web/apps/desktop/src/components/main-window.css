@@ -583,6 +583,30 @@ body.mw-resizing * {
 .mw-job.failed .mw-c-ring {
   color: var(--attn-ink);
 }
+/* a recording's row (Recordings.tsx): its length in the id column, a failure's state in the attention ink, the first
+   line muted when nothing was said */
+/* the first line and the state share the title column: the state (what became of it) first, the line in what's left */
+.mw-rec .mw-tt {
+  flex: 1 1 0;
+  min-width: 2.5em;
+}
+.mw-rec .mw-hit {
+  flex: 0 1 auto;
+}
+.mw-rec .mw-hit.attn {
+  color: var(--attn-ink);
+}
+.mw-rec .mw-linkbtn {
+  flex: none;
+}
+.mw-rec .mw-tt.quiet {
+  color: var(--mute);
+}
+.mw-job-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* ------------------------------------------------------------ rows */
 /* the gutter is always kept (stable), so the rows' right edge, the times and the search field line up in every place
