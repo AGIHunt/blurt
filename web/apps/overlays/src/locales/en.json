@@ -455,8 +455,8 @@
   "rec.preparing": "Organizing…",
   "rec.saved_no_agent": "Recording saved · No agent can organize in the background\nOr say “Process my Blurt recordings” in an agent with the Blurt skill",
   "rec.set_up_agent": "Set Up an Agent…",
-  "rec.copy_request": "Copy Phrase",
-  "rec.request_copied": "Copied · Paste it into your agent’s chat",
+  "rec.copy_request": "Copy",
+  "rec.request_copied": "Copied. Paste it into your agent’s chat.",
   "rec.show_in_files": "Show in Files",
   "rec.fallback": "{why} — organizing with {agent} instead",
   "island.toast.organized_none": "No items found"

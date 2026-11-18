@@ -455,8 +455,8 @@
   "rec.preparing": "正在整理…",
   "rec.saved_no_agent": "录屏已保存 · 未找到可在后台整理的 Agent\n可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」",
   "rec.set_up_agent": "设置 Agent…",
-  "rec.copy_request": "复制说法",
-  "rec.request_copied": "已复制 · 粘贴到 Agent 的对话中",
+  "rec.copy_request": "复制",
+  "rec.request_copied": "已复制，请粘贴到 Agent 的对话中",
   "rec.show_in_files": "在“文件”中显示",
   "rec.fallback": "{why}，改用 {agent} 整理",
   "island.toast.organized_none": "没整理出事项"
