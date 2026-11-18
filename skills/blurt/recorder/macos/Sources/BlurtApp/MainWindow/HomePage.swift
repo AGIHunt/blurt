@@ -7,7 +7,8 @@
 //   waiting for you         one quiet line each: new items and items to verify (Recording on), cards hanging under the
 //                           notch (Cards on).
 //   recent                  one timeline of what was made with the capabilities that are on (BlurtCore HomeFeed):
-//                           dictations, cards, text from the screen (⌥C / ⌥T), items, newest first under their days. Nothing made yet: Peep and the
+//                           dictations, cards, text from the screen (⌥C / ⌥T), recordings with their state (BlurtCore
+//                           Recordings, RecordingViews), items, newest first under their days. Nothing made yet: Peep and the
 //                           one thing to try per capability.
 //
 // The facts in the rows are read from where the rest of the app reads them (SpeechSetup.menuRow as the menu-bar menu,
@@ -180,6 +181,8 @@ final class HomeModel: ObservableObject {
     private(set) var dictations: [String: DictationEntry] = [:]
     private(set) var shots: [String: Shot] = [:]
     private(set) var items: [String: ItemRow] = [:]
+    /// the recordings on the timeline, by folder
+    private(set) var recordings: [String: Recordings.Row] = [:]
     private(set) var screenTexts: [String: ScreenTextEntry] = [:]
     /// dictations that weren't recognised, recording kept (DictationRetry.onHome): the row offers Retry
     private(set) var failed: Set<String> = []
@@ -188,6 +191,8 @@ final class HomeModel: ObservableObject {
 
     /// a coding agent can take a recording (AgentHub's cached check; nil: not known yet — nothing is claimed)
     private var agentReady: Bool?
+    /// the same, for a recording's row (Organize, or Set Up an Agent…)
+    var recAgent: Bool? { agentReady }
     private var shown = false
     private var timer: Timer?
     private var watching = false
@@ -469,8 +474,8 @@ final class HomeModel: ObservableObject {
     static func cardKey(_ s: Shot) -> String { "\(s.batch?.dir.path ?? "")#\(s.n)" }
 
     private func reloadFeed() {
-        var ds: [HomeFeed.Entry] = [], cs: [HomeFeed.Entry] = [], sts: [HomeFeed.Entry] = [], its: [HomeFeed.Entry] = []
-        dictations = [:]; shots = [:]; items = [:]; screenTexts = [:]; failed = []; thumbs = [:]
+        var ds: [HomeFeed.Entry] = [], cs: [HomeFeed.Entry] = [], sts: [HomeFeed.Entry] = [], rs: [HomeFeed.Entry] = [], its: [HomeFeed.Entry] = []
+        dictations = [:]; shots = [:]; items = [:]; screenTexts = [:]; failed = []; thumbs = [:]; recordings = [:]
         if Capability.dictation.isOn {
             for e in DictationHistory.shared.load() where DictationRetry.onHome(e, audioKept: App.audioKept) {
                 dictations[e.id] = e
@@ -504,6 +509,12 @@ final class HomeModel: ObservableObject {
             var q = ItemQuery()
             q.sort = "created"
             q.limit = 10
+            // every recording, with its state: "Recording · 3:12 · 2 items" over the first thing said in it
+            for r in RecordingLook.rows(reader) {
+                recordings[r.facts.dir] = r
+                rs.append(.init(kind: .recording, key: r.facts.dir, time: Date(timeIntervalSince1970: r.facts.created ?? 0),
+                                source: RecordingLook.source(r), text: r.facts.firstLine ?? ""))
+            }
             for it in (try? reader.items(q)) ?? [] {
                 items[it.uid] = it
                 let project = it.projectID == "inbox" ? T("project.inbox") : it.projectName
@@ -513,7 +524,7 @@ final class HomeModel: ObservableObject {
         } else {
             indexVersion = 0
         }
-        let f = HomeFeed.merge(dictations: ds, cards: cs, screenTexts: sts, items: its, off: Capability.off)
+        let f = HomeFeed.merge(dictations: ds, cards: cs, screenTexts: sts, recordings: rs, items: its, off: Capability.off)
         if f != feed {
             feed = f
             days = HomeFeed.days(f.entries)
@@ -535,12 +546,14 @@ final class HomeModel: ObservableObject {
     }
 
     /// The links that close the timeline: one per kind that has anything ("Show all dictation").
+    /// Recordings have no page of their own: no link of theirs.
     var closing: [(id: String, title: String)] {
-        feed.kinds.map { k in
+        feed.kinds.compactMap { k in
             switch k {
             case .dictation: return ("all.dictation", T("home.all.dictation"))
             case .card: return ("all.cards", T("home.all.cards"))
             case .screenText: return ("all.screen_text", T("home.all.screen_text"))
+            case .recording: return nil
             case .item: return ("all.items", T("home.all.items"))
             }
         }
@@ -717,6 +730,10 @@ final class HomeModel: ObservableObject {
     func primary(_ id: String) {
         guard let e = entry(id) else { return }
         if failed.contains(e.key) { return retry(e.key) }
+        if e.kind == .recording, let r = recordings[e.key] {
+            if let a = Recordings.actions(r, agent: agentReady).first { RecordingLook.run(a, r) }
+            return
+        }
         if e.kind == .item {
             emit(["event": "home", "action": "open_item", "uid": e.key])
             MainWindowController.shared.reveal(uid: e.key)
@@ -748,6 +765,9 @@ final class HomeModel: ObservableObject {
         case .card: ok = shots[e.key].map { HangingCards.copyShot($0, .click) } ?? false
         case .screenText: DictationInsert.copy(screenTexts[e.key]?.text ?? e.text)
         case .item: DictationInsert.copy(items[e.key].map { $0.itemID.isEmpty ? $0.title : $0.itemID + " " + $0.title } ?? e.text)
+        case .recording:
+            guard !e.text.isEmpty else { return }
+            DictationInsert.copy(e.text)
         }
         emit(["event": "home", "action": "copy", "id": id, "ok": ok])
         guard ok else { return }

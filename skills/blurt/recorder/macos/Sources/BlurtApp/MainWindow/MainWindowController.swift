@@ -169,6 +169,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
         model.onJobs = { [weak self] in self?.list.reloadJobs() }
+        // whether an agent can organise decides a recording's action (Organize, or Set Up an Agent…)
+        RecordingLook.refresh { [weak self] in self?.list.reloadJobs() }
         model.onIndexState = { [weak self] in
             guard let self = self else { return }
             self.list.reload()
@@ -669,7 +671,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func listSelectionChanged() {
         let items = list.selectedItems
-        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil; if focusedBanner != nil { focusBanner(nil) } }
+        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil; list.recordings.selected = nil; if focusedBanner != nil { focusBanner(nil) } }
         if shownJob != nil { return }
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
@@ -781,7 +783,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if name != nil {
             list.table.deselectAll(nil)
             shownJob = nil
-            list.jobs.selected = nil
+            list.jobs.selected = nil; list.recordings.selected = nil
         }
         focusedBanner = name
         list.captures.selected = name == "captures"
@@ -793,6 +795,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         list.table.deselectAll(nil)
         shownJob = id
         list.jobs.selected = id
+        list.recordings.selected = id
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
         fitDetailToPlace()          // a job shown over an empty place brings the detail back
     }
@@ -1775,7 +1778,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             // a failure put away: it leaves the jobs section; the recording keeps its files
             JobFiles.rewrite(job.id) { $0["dismissed"] = true }
             JobStore.shared.rescan()
-            if shownJob == job.id { shownJob = nil; list.jobs.selected = nil; listSelectionChanged() }
+            if shownJob == job.id { shownJob = nil; list.jobs.selected = nil; list.recordings.selected = nil; listSelectionChanged() }
         case "items":
             if let first = job.items.first { reveal(uid: first) }
         case let a where a.hasPrefix("item:"):          // an item the job wrote, from its detail
