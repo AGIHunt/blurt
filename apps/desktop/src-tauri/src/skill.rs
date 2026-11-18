@@ -18,12 +18,22 @@ pub fn stamp(dir: &Path) -> Option<String> {
     std::fs::read_to_string(dir.join(STAMP)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// What a copy leaves alone: Python's caches and environments.
+fn skipped(name: &std::ffi::OsStr) -> bool {
+    name == "__pycache__" || name == ".venv"
+}
+
 fn copy_dir(src: &Path, dest: &Path) -> std::io::Result<()> {
+    copy_tree(src, dest, false)
+}
+
+/// `src` into `dest`; `no_stamp`: all but the top's stamp.
+fn copy_tree(src: &Path, dest: &Path, no_stamp: bool) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for e in std::fs::read_dir(src)? {
         let e = e?;
         let name = e.file_name();
-        if name == "__pycache__" || name == ".venv" {
+        if skipped(&name) || (no_stamp && name == STAMP) {
             continue;
         }
         let (from, to) = (e.path(), dest.join(&name));
@@ -34,6 +44,36 @@ fn copy_dir(src: &Path, dest: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Remove from `dest` what `src` doesn't have (a script the skill dropped). Best effort: a file a script holds open
+/// stays.
+fn prune(src: &Path, dest: &Path) {
+    for e in std::fs::read_dir(dest).into_iter().flatten().filter_map(Result::ok) {
+        let name = e.file_name();
+        if skipped(&name) || name == STAMP {
+            continue;
+        }
+        let (from, to) = (src.join(&name), e.path());
+        let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+        if is_dir && from.is_dir() {
+            prune(&from, &to);
+        } else if !from.exists() || is_dir != from.is_dir() {
+            let _ = if is_dir { std::fs::remove_dir_all(&to) } else { std::fs::remove_file(&to) };
+        }
+    }
+}
+
+/// The copy over the old one, in place (Windows, when a script holds a file of it open): its stamp goes first and
+/// comes back last, only once every file is copied — a copy that stopped halfway is made again at the next launch.
+fn copy_in_place(src: &Path, dest: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(dest.join(STAMP));
+    copy_tree(src, dest, true)?;
+    prune(src, dest);
+    match std::fs::copy(src.join(STAMP), dest.join(STAMP)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 /// Copies `src` to `dest` unless `dest` already is that copy (same stamp, a whole skill). → Ok(true) when copied.
@@ -56,7 +96,7 @@ pub fn sync(src: &Path, dest: &Path) -> std::io::Result<bool> {
     if had {
         // Windows: a folder whose file a script holds open can't be renamed; then copy over it in place
         if std::fs::rename(dest, &old).is_err() {
-            let r = copy_dir(&fresh, dest);
+            let r = copy_in_place(&fresh, dest);
             let _ = std::fs::remove_dir_all(&fresh);
             return r.map(|_| true);
         }
@@ -126,6 +166,42 @@ mod tests {
         sync(&src, &dest).unwrap();
         std::fs::remove_file(dest.join("SKILL.md")).unwrap();
         assert!(sync(&src, &dest).unwrap() && is_skill(&dest));
+    }
+
+    #[test]
+    fn in_place_the_stamp_comes_last_and_old_files_go() {
+        let d = tempfile::tempdir().unwrap();
+        let (src, dest) = (d.path().join("res/skill"), d.path().join("home/skill"));
+        skill(&dest, "1.0.26", "one");
+        std::fs::write(dest.join("scripts/stale.py"), "old").unwrap();
+        std::fs::create_dir_all(dest.join("gone/deep")).unwrap();
+        skill(&src, "1.0.27", "two");
+        std::fs::remove_dir_all(src.join("scripts/__pycache__")).unwrap();
+        copy_in_place(&src, &dest).unwrap();
+        assert_eq!(stamp(&dest).as_deref(), Some("1.0.27"));
+        assert_eq!(std::fs::read_to_string(dest.join("reference/asr.md")).unwrap(), "two");
+        assert!(!dest.join("scripts/stale.py").exists() && !dest.join("gone").exists(), "files the skill dropped are gone");
+        assert!(dest.join("scripts/__pycache__/x.pyc").exists(), "caches left alone");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn in_place_a_copy_that_stops_halfway_has_no_stamp() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let (src, dest) = (d.path().join("res/skill"), d.path().join("home/skill"));
+        skill(&dest, "1.0.26", "one");
+        skill(&src, "1.0.27", "two");
+        let locked = src.join("scripts/zz_locked.py");
+        std::fs::write(&locked, "x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&locked).is_ok() {
+            return; // root reads it anyway: nothing to show
+        }
+        assert!(copy_in_place(&src, &dest).is_err());
+        assert_eq!(stamp(&dest), None, "not stamped: the next launch copies it again");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(sync(&src, &dest).unwrap() && stamp(&dest).as_deref() == Some("1.0.27"));
     }
 
     #[test]
