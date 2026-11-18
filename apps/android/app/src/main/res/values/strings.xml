@@ -175,10 +175,15 @@
     <!-- the key editor -->
     <string name="editor_hint">Hold and drag a key to move it. Tap one to change it.</string>
     <string name="always_here">Always Here</string>
-    <string name="always_here_footer">With the keys put away in landscape, esc, return and space stay, or the keys in their places.</string>
+    <string name="always_here_footer">With the keys put away in landscape, esc, delete and return stay by the thumb.</string>
     <string name="rename">Rename</string>
     <string name="add_section">Add Section</string>
     <string name="delete_section">Delete Section</string>
+    <string name="template_empty">Empty</string>
+    <string name="template_writing">Writing</string>
+    <string name="template_design">Design</string>
+    <string name="template_presenting">Presenting</string>
+    <string name="template_spreadsheet">Spreadsheet</string>
     <string name="section_name">Section Name</string>
     <string name="ok">OK</string>
     <string name="restore_keys">Restore Default Keys</string>

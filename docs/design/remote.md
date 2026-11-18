@@ -161,6 +161,26 @@ as it passes, so what will happen shows before it's let go, and into the dock it
 icon, text or small line, or what it does; minus to remove, plus to add. Sections can be renamed, added and removed. The picker has the whole
 keyboard and about 90 actions with search, plus New Shortcut (tap modifiers, tap a key, optional hold-and-slide) and Text.
 
+**The keys round of 2026-11-18.** The founder, on an iPhone: in landscape with the keys put away there is a space bar by the thumb and no ⌫.
+Six user sketches (a terminal developer, a Chinese writer dictating, a lecturer at a projector, an iPad sofa reader, a Windows Excel analyst,
+a designer) on the landscape column, the dock and 常用. Four of six (and the founder) wanted ⌫ there: by voice a slip is mended with ⌫, and
+nobody presses space when dictation writes the spaces. The reader (play/pause) and the lecturer (next slide) wanted space; it's still in the
+keys, and the arrow key turns slides. Decided:
+- **Landscape column**: keys · ⌘Tab · esc · arrow key · ⌫ · ↩ · talk. ⌫ took space's place, so the column is no longer and the keys no smaller
+  (an eighth key would have made them 35 pt). esc and ↩ never side by side (one stops an agent, the other sends a half-written prompt); ⌫ not
+  against the talk key. The three are found in the dock by what they are (`Deck.thumbSlots`), so a rearranged dock keeps them by the thumb.
+- **Dock**: ⌃ ⌥ ⌘ ⇧ ⇥ space esc ⌫ ↩, then talk: ↩ by the talk key, where a phone's keyboard has return, and the same esc ⌫ ↩ order in portrait,
+  the landscape column and the iPad's right half (space esc ⌫ ↩ talk there; the split stays five and four).
+- **常用's last row**: Snap · Copy Text · Translate · Cards · ⌘R · ⇧Tab. ⇧Tab is a field back and Claude Code's next mode, two taps a time
+  before; reload three of six asked for. Record and Voice Note moved to 更多: hardly anyone reached for them from the first page. The other three
+  rows stay (on Windows, Snip leaves 更多 for the picker to keep it four rows; Blurt's Snap does the same): ⌘K, ⌃C and ⌘` are dead keys to the writer, designer and reader and daily ones to the developer, and no one set suits all.
+- **Pages to start from** (Edit Keys → … → Add Section): Writing (⇧⌘V, ⌥⌫, ⌘S, ⌘B, ⌘I, ⌘U), Design (⌘D, ⌘G, ⇧⌘G, ⌘S, ⇧1, ⇧0), Presenting
+  (⌥⌘P or F5 and ⇧F5, PgUp, PgDn, B, Home, End, zoom in, out, actual size, Win+P on Windows), Spreadsheet (F2, ⌦, save, sheet back and on,
+  fill). Each computer's own keys. What the lecturer needs is a dozen keys they would never add one by one.
+- Untouched decks take the new dock and 常用 (`Deck.modernise`); a dock or page its owner changed stays as it is.
+Left for later: on an iPad with the pages put away, back / close tab / next tab are out of reach; space in full screen for a video; the arrow
+key as two big ← → in landscape for slides. Not checked on a phone in the hand.
+
 ## Trackpad
 
 Raw touches into `PadEngine`, a pure state machine with tests (no gesture recognisers: they add delay). Tap click; tap, tap

@@ -22,7 +22,7 @@ struct KeyEditor: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Hold and drag a key to move it. Tap one to change it.").font(.footnote).foregroundStyle(.secondary)
                 heading("Always Here")
-                Text("With the keys put away in landscape, esc, return and space stay, or the keys in their places.").font(.footnote).foregroundStyle(.secondary)
+                Text("With the keys put away in landscape, esc, delete and return stay by the thumb.").font(.footnote).foregroundStyle(.secondary)
                 LazyVGrid(columns: columns, spacing: 5) {
                     ForEach(deck.dock) { tile($0, removable: false) }
                     Image(systemName: "mic.fill").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
@@ -34,7 +34,11 @@ struct KeyEditor: View {
                         Spacer()
                         Menu {
                             Button("Rename") { name = deck.sections[n].name; renaming = n }
-                            Button("Add Section") { addSection(after: n) }.disabled(deck.sections.count >= Deck.maxSections)
+                            Menu("Add Section") {
+                                Button("Empty") { addSection(after: n) }
+                                ForEach(KeyTemplate.allCases) { t in Button(t.name) { addSection(after: n, from: t) } }
+                            }
+                            .disabled(deck.sections.count >= Deck.maxSections)
                             Button("Delete Section", role: .destructive) { update { $0.sections.remove(at: n) } }.disabled(deck.sections.count <= 1)
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 28) }
                         .accessibilityLabel("More")
@@ -156,6 +160,11 @@ struct KeyEditor: View {
     private func update(_ f: (inout Deck) -> Void) {
         f(&deck)
         onChange(deck)
+    }
+
+    /// a page to start from, ready to change like any other
+    private func addSection(after n: Int, from t: KeyTemplate) {
+        update { $0.sections.insert(Deck.section(t, for: .shown), at: n + 1) }
     }
 
     private func addSection(after n: Int) {

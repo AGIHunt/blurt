@@ -2,6 +2,10 @@ package dev.blurt.remote.app
 
 import dev.blurt.remote.app.pad.Frame
 import dev.blurt.remote.app.pad.PadLayout
+import dev.blurt.remote.core.Deck
+import dev.blurt.remote.core.KeyAction
+import dev.blurt.remote.core.RemoteChord
+import dev.blurt.remote.core.RemoteHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -113,5 +117,37 @@ class PadLayoutTest {
         for (l in listOf(PadLayout(412f, 915f, 0f, 0f, 0f, 0f, false, true), PadLayout(915f, 412f, 0f, 0f, 0f, 0f, false, true))) {
             for (r in l.exclusions) assertTrue("200 dp a side at most", r.height <= 200.01f)
         }
+    }
+
+    @Test fun theThumbColumnHoldsEscDeleteAndReturnByWhatTheyDo() {
+        for (h in RemoteHost.entries) {
+            val dock = Deck.standard(h).dock
+            fun at(key: String) = dock.indexOfFirst { it.action == KeyAction.Chord(RemoteChord(0, key)) }
+            val t = PadLayout.thumbs(dock)
+            assertEquals(PadLayout.Thumbs(at("Escape"), at("Delete"), at("Return")), t)
+            val l = PadLayout(915f, 412f, 40f, 0f, 0f, 0f, lefty = false, drawerOpen = true, thumbs = t)
+            check(l, 915f, 412f)
+            val esc = l.dock[t.esc]
+            val del = l.dock[t.delete]
+            val ret = l.dock[t.enter]
+            // top to bottom: toggle, apps, esc, the arrow key, delete, return, talk, all in one column
+            assertEquals(listOf(l.drawerButton, l.appsKey, esc, l.arrowKey, del, ret, l.talk).map { it.top }.sorted(),
+                listOf(l.drawerButton, l.appsKey, esc, l.arrowKey, del, ret, l.talk).map { it.top })
+            for (r in listOf(esc, del, ret)) assertEquals(l.talk.left, r.left)
+            // the other six in the drawer's row, in dock order
+            val row = (0 until Deck.DOCK_COUNT).filter { !t.has(it) }
+            assertEquals(6, row.size)
+            assertEquals(row.map { l.dock[it].left }.sorted(), row.map { l.dock[it].left })
+            assertTrue(row.all { l.dock[it].top == l.dock[row[0]].top && !l.staysOut(it) })
+        }
+        // moved in the dock: found where they went
+        val d = Deck.standard().dock
+        val moved = listOf(d[8], d[7], d[6]) + d.subList(0, 6)
+        assertEquals(PadLayout.Thumbs(2, 1, 0), PadLayout.thumbs(moved))
+        // one swapped out of the dock: its place as shipped stands in, unless another of the three is there
+        val noEsc = d.toMutableList().also { it[6] = Deck.standard().sections[0].slots[0] }
+        assertEquals(PadLayout.Thumbs(6, 7, 8), PadLayout.thumbs(noEsc))
+        val crowded = listOf(d[7]) + d.subList(0, 5) + listOf(d[8], d[5], Deck.standard().sections[0].slots[0])
+        assertEquals("esc's place has return: the last free one", PadLayout.Thumbs(8, 0, 6), PadLayout.thumbs(crowded))
     }
 }

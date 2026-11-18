@@ -213,7 +213,13 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         touched()
     }
 
-    private fun loadDeck(h: RemoteHost) = Deck.restore(Remote.prefs.string(Deck.storeKey(h)), h)
+    /** Brought up to date if it was stored as an older version shipped, and kept that way. */
+    private fun loadDeck(h: RemoteHost): Deck {
+        val stored = Remote.prefs.string(Deck.storeKey(h))
+        val d = Deck.restore(stored, h)
+        if (stored != null && Deck.fromJson(stored) != d) Remote.prefs.putString(Deck.storeKey(h), d.toJson())
+        return d
+    }
 
     fun setDeck(d: Deck) {
         deck = d
@@ -555,7 +561,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val h = height / d
         val typing = imeHeight > 0
         val l = PadLayout(w, h, safe.left / d, safe.top / d, safe.right / d, safe.bottom / d, Remote.prefs.lefty, drawerOpen, fold,
-            displays = showing && Remote.link.displays.value.size >= 2)
+            displays = showing && Remote.link.displays.value.size >= 2, thumbs = PadLayout.thumbs(deck.dock))
         layout = l
         // full screen: the picture takes it all, inside the cutouts; a fold half open keeps its halves
         val fullNow = showing && Remote.prefs.fullScreen && !typing && fold == null
@@ -599,7 +605,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         list.arrange(l.keyW * d, l.keyH * d, PadLayout.GAP * d, if (l.landscape) 1.4f else null)
         for ((i, k) in dockCells.withIndex()) {
             place(k, l.dock[i])
-            show(k, keys && !typing && (keysOut || PadLayout.staysOut(i)))
+            show(k, keys && !typing && (keysOut || l.staysOut(i)))
         }
         show(arrowCell, keys && !typing)
         place(arrowCell, l.arrowKey)

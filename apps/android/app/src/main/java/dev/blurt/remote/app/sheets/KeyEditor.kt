@@ -74,6 +74,7 @@ import dev.blurt.remote.core.RemoteChord
 import dev.blurt.remote.core.RemoteHost
 import dev.blurt.remote.core.RemoteKey
 import dev.blurt.remote.core.RemoteModifiers
+import dev.blurt.remote.core.SectionTemplate
 import kotlin.math.roundToInt
 
 private sealed class Page {
@@ -108,6 +109,14 @@ fun KeyEditor(screen: PadScreen, onClose: () -> Unit, back: Boolean = false) {
         is Page.Chord -> ChordMaker(host, onBack = { page = Page.Pick(p.section, p.replacing) }) { picked(it, p.section, p.replacing) }
         is Page.Words -> TextMaker(onBack = { page = Page.Pick(p.section, p.replacing) }) { picked(it, p.section, p.replacing) }
     }
+}
+
+private fun templateName(t: SectionTemplate) = when (t) {
+    SectionTemplate.EMPTY -> R.string.template_empty
+    SectionTemplate.WRITING -> R.string.template_writing
+    SectionTemplate.DESIGN -> R.string.template_design
+    SectionTemplate.PRESENTING -> R.string.template_presenting
+    SectionTemplate.SPREADSHEET -> R.string.template_spreadsheet
 }
 
 /** every tile one height, captioned or not, so the rows line up as the keys do */
@@ -173,18 +182,29 @@ private fun Keys(deck: Deck, host: RemoteHost, update: (Deck) -> Unit, onClose: 
                         drag = { start, p -> if (start) { dragging = id; origin = p; at = p; lastTarget = null } else { at += p; over(at) } },
                         end = { dragging = null; lastTarget = null })
                 }
-                for (sec in deck.sections) key(sec.id) {
+                for ((n, sec) in deck.sections.withIndex()) key(sec.id) {
                     var more by remember { mutableStateOf(false) }
+                    // Add Section's own list, in place of the menu: what the new one starts with
+                    var adding by remember { mutableStateOf(false) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Heading(DeckText.tr(sec.name), Modifier.weight(1f))
                         Box {
                             IconButton({ more = true }) { Sym("more_horiz", 20.sp, MaterialTheme.colorScheme.onSurfaceVariant) }
-                            DropdownMenu(more, { more = false }) {
-                                DropdownMenuItem({ Text(stringResource(R.string.rename)) }, { more = false; name = DeckText.tr(sec.name); renaming = sec.id })
-                                DropdownMenuItem({ Text(stringResource(R.string.add_section)) }, { more = false; update(deck.addSection(DeckText.tr("New Section"))) },
-                                    enabled = deck.sections.size < Deck.MAX_SECTIONS)
-                                DropdownMenuItem({ Text(stringResource(R.string.delete_section), color = MaterialTheme.colorScheme.error) },
-                                    { more = false; update(deck.removeSection(sec.id)) }, enabled = deck.sections.size > 1)
+                            DropdownMenu(more, { more = false; adding = false }) {
+                                if (adding) {
+                                    for (t in SectionTemplate.entries) DropdownMenuItem({ Text(stringResource(templateName(t))) }, {
+                                        more = false; adding = false
+                                        val title = if (t == SectionTemplate.EMPTY) "New Section" else t.title
+                                        update(deck.addSection(DeckText.tr(title), Deck.template(t, host), after = n))
+                                    })
+                                } else {
+                                    DropdownMenuItem({ Text(stringResource(R.string.rename)) }, { more = false; name = DeckText.tr(sec.name); renaming = sec.id })
+                                    DropdownMenuItem({ Text(stringResource(R.string.add_section)) }, { adding = true },
+                                        enabled = deck.sections.size < Deck.MAX_SECTIONS,
+                                        trailingIcon = { Sym("keyboard_arrow_right", 20.sp, MaterialTheme.colorScheme.onSurfaceVariant) })
+                                    DropdownMenuItem({ Text(stringResource(R.string.delete_section), color = MaterialTheme.colorScheme.error) },
+                                        { more = false; update(deck.removeSection(sec.id)) }, enabled = deck.sections.size > 1)
+                                }
                             }
                         }
                     }

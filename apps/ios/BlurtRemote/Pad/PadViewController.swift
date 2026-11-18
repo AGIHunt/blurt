@@ -891,6 +891,9 @@ final class PadViewController: UIViewController {
         list.show(deck.sections)
         strip.show(names: deck.sections.map(\.name), page: list.section)
         for (i, c) in dockCells.enumerated() { c.slot = deck.dock[i] }
+        // esc, ⌫ and ↩ go by the thumb in landscape wherever this dock has them
+        PadLayout.thumbSlots = Deck.thumbSlots(deck.dock)
+        view.setNeedsLayout()
         status()
     }
 

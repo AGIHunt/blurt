@@ -167,10 +167,15 @@
 
     <string name="editor_hint">按住拖动调整位置，轻点修改按键。</string>
     <string name="always_here">常驻</string>
-    <string name="always_here_footer">横屏收起按键后，esc、return 和空格仍会显示，或放在这三个位置上的键。</string>
+    <string name="always_here_footer">横屏收起按键后，esc、删除和回车留在拇指边。</string>
     <string name="rename">重命名</string>
     <string name="add_section">添加分组</string>
     <string name="delete_section">删除分组</string>
+    <string name="template_empty">空白</string>
+    <string name="template_writing">写作</string>
+    <string name="template_design">设计</string>
+    <string name="template_presenting">演示</string>
+    <string name="template_spreadsheet">表格</string>
     <string name="section_name">分组名称</string>
     <string name="ok">好</string>
     <string name="restore_keys">恢复默认按键</string>

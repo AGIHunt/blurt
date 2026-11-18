@@ -137,6 +137,11 @@ data class KeySection(val id: String = KeySlot.newID(), val name: String, val sl
     }
 }
 
+/** What a new section can start with. `title` names it (the app localises). */
+enum class SectionTemplate(val title: String) {
+    EMPTY("Empty"), WRITING("Writing"), DESIGN("Design"), PRESENTING("Presenting"), SPREADSHEET("Spreadsheet"),
+}
+
 /** A group in the key picker. */
 data class KeyGroup(val group: String, val slots: List<KeySlot>)
 
@@ -185,8 +190,12 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
         if (s.id != section) s else s.copy(slots = s.slots.toMutableList().also { it.add((index ?: it.size).coerceIn(0, it.size), slot) })
     })
 
-    /** A new empty section at the end, while there's room for one (MAX_SECTIONS). */
-    fun addSection(name: String): Deck = if (sections.size >= MAX_SECTIONS) this else copy(sections = sections + KeySection(name, emptyList()))
+    /** A new section after the one at `after` (null: at the end), while there's room for one (MAX_SECTIONS). */
+    fun addSection(name: String, slots: List<KeySlot> = emptyList(), after: Int? = null): Deck {
+        if (sections.size >= MAX_SECTIONS) return this
+        val at = after?.let { (it + 1).coerceIn(0, sections.size) } ?: sections.size
+        return copy(sections = sections.toMutableList().also { it.add(at, KeySection(name, slots)) })
+    }
 
     fun renameSection(id: String, name: String): Deck = copy(sections = sections.map { if (it.id == id) it.copy(name = name) else it })
 
@@ -194,6 +203,31 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
     fun removeSection(id: String): Deck = if (sections.size <= 1) this else copy(sections = sections.filter { it.id != id })
 
     fun toJson(): String = J.obj("dock" to J.list(dock) { it.toJson() }, "sections" to J.list(sections) { it.toJson() }).toString()
+
+    /**
+     * Brought up to this version's defaults where it's still as it shipped, keeping the keys' own faces: a dock in the old order gets the new
+     * one, an untouched Main and More the new ones (Record and Voice Note move from Main to More). Anything the user changed stays as it is.
+     */
+    fun updated(host: RemoteHost): Deck {
+        val k = Keys(host)
+        fun same(a: List<KeySlot>, b: List<KeySlot>) = a.map { it.action } == b.map { it.action }
+        /** `want`'s keys in its order, each the one already here where there is one */
+        fun reuse(have: List<KeySlot>, want: List<KeySlot>) = want.map { w -> have.firstOrNull { it.action == w.action } ?: w }
+        var d = this
+        if (same(dock, k.oldDock())) d = d.copy(dock = reuse(dock, k.dock()))
+        val main = d.sections.indexOfFirst { same(it.slots, k.oldMain()) }
+        var moved = emptyList<KeySlot>()
+        if (main >= 0) {
+            val old = d.sections[main].slots
+            val new = reuse(old, k.main())
+            moved = old.filter { o -> new.none { it.action == o.action } }
+            d = d.copy(sections = d.sections.toMutableList().also { it[main] = it[main].copy(slots = new) })
+        }
+        // only with Main: a Main its owner changed may still have Record and Voice Note, and they mustn't be on two pages
+        val more = if (main >= 0) d.sections.indexOfFirst { same(it.slots, k.oldMore()) } else -1
+        if (more >= 0) d =d.copy(sections = d.sections.toMutableList().also { it[more] = it[more].copy(slots = reuse(it[more].slots + moved, k.more())) })
+        return d
+    }
 
     companion object {
         const val COLUMNS = 6
@@ -213,10 +247,10 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
             return Deck(J.list(o, "dock") { KeySlot.fromJson(it) } ?: return null, J.list(o, "sections") { KeySection.fromJson(it) } ?: return null)
         }
 
-        /** What was stored for this platform if it's whole, else the defaults. */
+        /** What was stored for this platform if it's whole, brought up to date where it's as it shipped (`updated`), else the defaults. */
         fun restore(json: String?, host: RemoteHost): Deck {
             val d = json?.let { fromJson(it) }
-            return if (d != null && d.sections.isNotEmpty() && d.dock.size == DOCK_COUNT) d else standard(host)
+            return if (d != null && d.sections.isNotEmpty() && d.dock.size == DOCK_COUNT) d.updated(host) else standard(host)
         }
 
         val spaceBar: KeySlot get() = KeySlot(KeyAction.Chord(RemoteChord(0, "Space")), glyph = "sf:space", caption = "", hint = "Space")
@@ -225,12 +259,15 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
         fun standard(host: RemoteHost = RemoteHost.MAC): Deck {
             val k = Keys(host)
             return Deck(k.dock(), listOf(
-                KeySection("Main", k.editKeys() + k.switchKeys() + k.actionKeys() + k.blurtKeys()),
+                KeySection("Main", k.main()),
                 KeySection("Letters", letterKeys(), columns = 10),
                 KeySection("Symbols", symbolKeys(), columns = 10),
-                KeySection("More", functionKeys() + k.systemKeys()),
+                KeySection("More", k.more()),
             ))
         }
+
+        /** A page to start from, for a kind of work: its keys, or none. */
+        fun template(t: SectionTemplate, host: RemoteHost = RemoteHost.MAC): List<KeySlot> = Keys(host).template(t)
 
         /** Everything the key picker offers, in groups. */
         fun catalogue(host: RemoteHost = RemoteHost.MAC): List<KeyGroup> {
@@ -272,11 +309,14 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
 
         private fun sticky(m: Int, name: String) = KeySlot(KeyAction.Sticky(m), hint = name)
 
-        private fun blurtKeys() = listOf(
-            blurt(RemoteBlurtCommand.SNAP, "camera.viewfinder", "Snap"), blurt(RemoteBlurtCommand.RECORD, "record.circle", "Record"),
-            blurt(RemoteBlurtCommand.VOICE_NOTE, "waveform", "Voice Note"), blurt(RemoteBlurtCommand.COPY_TEXT, "text.viewfinder", "Copy Text"),
-            blurt(RemoteBlurtCommand.TRANSLATE, "character.bubble", "Translate"), blurt(RemoteBlurtCommand.CARDS, "rectangle.stack", "Cards"),
-        )
+        private fun snap() = blurt(RemoteBlurtCommand.SNAP, "camera.viewfinder", "Snap")
+        private fun record() = blurt(RemoteBlurtCommand.RECORD, "record.circle", "Record")
+        private fun voiceNote() = blurt(RemoteBlurtCommand.VOICE_NOTE, "waveform", "Voice Note")
+        private fun copyText() = blurt(RemoteBlurtCommand.COPY_TEXT, "text.viewfinder", "Copy Text")
+        private fun translate() = blurt(RemoteBlurtCommand.TRANSLATE, "character.bubble", "Translate")
+        private fun cards() = blurt(RemoteBlurtCommand.CARDS, "rectangle.stack", "Cards")
+
+        private fun blurtKeys() = listOf(snap(), record(), voiceNote(), copyText(), translate(), cards())
 
         /** Only a computer has these: what a phone's keyboard can't type. */
         private fun functionKeys() = (1..12).map { chord(0, "F$it") } + listOf(
@@ -322,11 +362,58 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
             } else {
                 listOf(sticky(C, "Control"), sticky(W, logo), sticky(A, "Alt"), sticky(S, "Shift"))
             }
+            // space beside tab, so return is the one by the talk key and esc is never next to it
             return mods + listOf(
                 KeySlot(KeyAction.Chord(RemoteChord(0, "Tab")), glyph = "sf:arrow.right.to.line", caption = "", hint = "Complete"),
-                chord(0, "Escape", "Stop"), chord(0, "Delete", "Delete"), chord(0, "Return", "Send"), spaceBar,
+                spaceBar, chord(0, "Escape", "Stop"), chord(0, "Delete", "Delete"), chord(0, "Return", "Send"),
             )
         }
+
+        /** The dock as it first shipped, space last: one still like that gets the new order. */
+        fun oldDock(): List<KeySlot> = dock().let { d -> d.take(5) + d.drop(6) + d[5] }
+
+        fun main() = editKeys() + switchKeys() + actionKeys() + listOf(
+            snap(), copyText(), translate(), cards(),
+            chord(primary, "R", "Reload", icon = "arrow.clockwise"), chord(S, "Tab", "Back a Field", icon = "arrow.left.to.line"),
+        )
+
+        // Snip only in the picker on Windows: Snap does the same, and More stays one page
+        fun more() = functionKeys() + systemKeys().filter { it.action != KeyAction.Chord(RemoteChord(W or S, "S")) } + listOf(record(), voiceNote())
+
+        /** Main and More as they first shipped, Record and Voice Note on Main's last row. */
+        fun oldMain() = editKeys() + switchKeys() + actionKeys() + blurtKeys()
+        fun oldMore() = functionKeys() + systemKeys()
+
+        /** Bold, Group, Play and the like show the key's own name: no icon either phone has says them well enough. */
+        fun template(t: SectionTemplate): List<KeySlot> = when (t) {
+            SectionTemplate.EMPTY -> emptyList()
+            SectionTemplate.WRITING -> listOf(
+                chord(primary or S, "V", "Paste as Plain Text", icon = "doc.on.clipboard"),
+                chord(if (mac) A else C, "Delete", "Delete Word", icon = "delete.left"),
+                save(), chord(primary, "B", "Bold"), chord(primary, "I", "Italic"),
+                chord(primary, "U", "Underline"),
+            )
+            SectionTemplate.DESIGN -> listOf(
+                chord(primary, "D", "Duplicate"), chord(primary, "G", "Group"),
+                chord(primary or S, "G", "Ungroup"), save(),
+                chord(S, "1", "Zoom to Fit", glyph = "⇧1"), chord(S, "0", "Actual Size", glyph = "⇧0"),
+            )
+            SectionTemplate.PRESENTING -> (if (mac) listOf(chord(W or A, "P", "Play"))
+                else listOf(chord(0, "F5", "Play"), chord(S, "F5", "Play from Here"))) + listOf(
+                chord(0, "PageUp", glyph = "PgUp"), chord(0, "PageDown", glyph = "PgDn"), chord(0, "B", "Black Screen"),
+                chord(0, "Home", glyph = "Home"), chord(0, "End", glyph = "End"),
+                chord(primary, "=", "Zoom In", icon = "plus.magnifyingglass"), chord(primary, "-", "Zoom Out", icon = "minus.magnifyingglass"),
+                chord(primary, "0", "Actual Size"),
+            ) + if (host == RemoteHost.WINDOWS) listOf(chord(W, "P", "Project")) else emptyList()
+            SectionTemplate.SPREADSHEET -> listOf(
+                chord(0, "F2", "Edit Cell"), chord(0, "ForwardDelete", "Clear", icon = "delete.right"), save(),
+                if (mac) chord(A, "Left", "Previous Sheet") else chord(C, "PageUp", "Previous Sheet"),
+                if (mac) chord(A, "Right", "Next Sheet") else chord(C, "PageDown", "Next Sheet"),
+                chord(C, "Return", "Fill"),
+            )
+        }
+
+        private fun save() = chord(primary, "S", "Save", icon = "square.and.arrow.down")
 
         fun editKeys() = listOf(
             chord(primary, "C", "Copy", icon = "doc.on.doc"), chord(primary, "V", "Paste", icon = "clipboard"),
