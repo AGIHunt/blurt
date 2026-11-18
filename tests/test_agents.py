@@ -180,6 +180,12 @@ def test_command_headless(env, tmp_path):
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
         "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
     assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
+    # the app's spelling of the scripts folder (a symlink / junction above it): the allowlist uses that one, as its
+    # prompt does
+    linked = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path, "--var", "scripts=/link/skill/scripts")
+    assert linked["scripts"] == "/link/skill/scripts"
+    assert any("Bash(uv run /link/skill/scripts/items.py:*)" in x for x in linked["argv"]), linked["argv"]
+    assert not any(str(SCRIPTS) + "/items.py" in x for x in linked["argv"])
     # unattended on recording-derived text: never full access; a plain run (routing) writes only its cwd
     a = out["argv"]
     assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"

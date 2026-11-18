@@ -779,7 +779,8 @@ def mcp_clients_file() -> Path:
 def record_mcp_client(name: str | None, version: str | None = None, now: float | None = None,
                       via: str | None = None) -> None:
     """The blurt MCP server was started by an agent: its clientInfo.name and when (mcp_server.py, at initialize and
-    on hello). The proof that an agent really reads Blurt — not that a config file names it."""
+    on hello). The proof that an agent really reads Blurt — not that a config file names it. A run the app started
+    (via="app") goes in `app_at` beside the user's own `at`, never over it."""
     import time  # noqa: PLC0415
     name = " ".join(str(name or "").split())[:80]
     if not name:
@@ -794,9 +795,16 @@ def record_mcp_client(name: str | None, version: str | None = None, now: float |
             except (OSError, ValueError):
                 d = {}
             clients = d.get("clients") if isinstance(d, dict) and isinstance(d.get("clients"), dict) else {}
-            e = {"at": time.time() if now is None else now, "version": version or None}
-            if via:
-                e["via"] = via
+            t = time.time() if now is None else now
+            prev = clients.get(name) if isinstance(clients.get(name), dict) else {}
+            if via == "app":
+                e = {**prev, "app_at": t}
+                if prev.get("via") == "app":  # an older entry whose `at` was the app's run
+                    e.pop("at", None)
+                    e.pop("version", None)
+            else:
+                e = {**prev, "at": t, "version": version or None}
+            e.pop("via", None)
             clients[name] = e
             tmp = f.with_name(f.name + f".{os.getpid()}.tmp")
             tmp.write_text(json.dumps({"clients": clients}, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -823,8 +831,8 @@ def client_agent(client: str, defs: dict[str, dict]) -> str | None:
 
 
 def last_seen(defs: dict[str, dict], clients: dict[str, dict] | None = None) -> dict[str, float]:
-    """agent id → when its MCP client last started the blurt server (runs the app started don't count: those prove
-    the app's command line, not the user's agent)."""
+    """agent id → when its MCP client last started the blurt server (runs the app started — `app_at`, or an older
+    entry's via="app" — don't count: those prove the app's command line, not the user's agent)."""
     out: dict[str, float] = {}
     for name, e in (mcp_clients() if clients is None else clients).items():
         aid = client_agent(name, defs)
@@ -1012,9 +1020,12 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
            "retry_exit": d.get("retry_exit")}
     if not is_headless(d) or not bin_:
         raise ValueError(f"{agent} has no headless mode")
-    # {scripts}: claude / gemini may run only `uv run <scripts>/<name>.py` — the caller's prompt names that path
-    vals = {**vars, "prompt": prompt, "repo": repo, "scripts": str(SCRIPTS)}
-    out["scripts"] = str(SCRIPTS)
+    # {scripts}: claude / gemini may run only `uv run <scripts>/<name>.py` — the caller's prompt names that path. The
+    # caller's spelling of it (--var scripts=…) when given: the prompt and the allowlist must be one string, also when
+    # the folder sits under a symlink or a junction (this file's resolved path would differ)
+    scripts = str(vars.pop("scripts", None) or SCRIPTS)
+    vals = {**vars, "prompt": prompt, "repo": repo, "scripts": scripts}
+    out["scripts"] = scripts
     if "{writable}" in d["run"]:  # sandboxed: only an organizing run writes the item stores; the rest only cwd
         vals["writable"] = writable_dirs() if processing_run else []
         env_add.update(sandbox_env())

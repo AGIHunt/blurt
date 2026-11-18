@@ -194,6 +194,27 @@ def test_states_missing_found_linked_connected(home, monkeypatch, tmp_path):
     assert detect_one("codex")["last_seen"] is None
     agents.record_mcp_client("codex-mcp-client", "0.2", now=1_800_000_200)
     assert detect_one("codex")["last_seen"] == 1_800_000_200
+    # an organising run the app starts afterwards: Codex stays connected, used at the user's own time
+    agents.record_mcp_client("codex-mcp-client", "0.2", now=1_800_000_300, via="app")
+    r = detect_one("codex")
+    assert r["last_seen"] == 1_800_000_200
+    e = agents.mcp_clients()["codex-mcp-client"]
+    assert (e["at"], e["app_at"], e.get("via")) == (1_800_000_200, 1_800_000_300, None)
+    # and the user's next run doesn't forget the app's
+    agents.record_mcp_client("codex-mcp-client", "0.3", now=1_800_000_400)
+    e = agents.mcp_clients()["codex-mcp-client"]
+    assert (e["at"], e["app_at"], e["version"]) == (1_800_000_400, 1_800_000_300, "0.3")
+
+
+def test_an_older_app_entry_isnt_the_users(home):
+    f = agents.mcp_clients_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"clients": {"codex-mcp-client": {"at": 5, "version": "0.1", "via": "app"}}}), encoding="utf-8")
+    defs = agents.definitions({})
+    assert agents.last_seen(defs) == {}
+    agents.record_mcp_client("codex-mcp-client", "0.1", now=9, via="app")
+    assert agents.mcp_clients()["codex-mcp-client"] == {"app_at": 9}
+    assert agents.last_seen(defs) == {}
 
 
 def test_app_agent_found_by_its_app(home, monkeypatch):
