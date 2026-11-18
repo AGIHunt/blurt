@@ -166,6 +166,7 @@ pub fn agent_apps_set(id: String, on: Option<bool>, op: Option<String>) -> Resul
                 card_drop::add_program(rec, &reg, &id);
             }
             "remove" => {
+                card_drop::migrate(rec, &reg, card_drop::OS); // a v1.0.21 addition is a custom agent from here on
                 card_drop::remove_custom(rec, &id);
             }
             "off" => card_drop::set_on(rec, &reg, &id, false),

@@ -44,7 +44,6 @@
 "agents.state.unchecked" = "无法确认登录";
 "agents.state.unchecked.help" = "无法在不消耗 token 的情况下确认登录状态。首次用它整理时会确认；如未登录，口喷鸡会改用下一个 Agent，并在此提示。";
 "agents.state.manual.help" = "独立 App。点「连接…」为 %@ 安装 blurt skill 和 MCP（会先列出改动），或在它的设置中通过 Skills / MCP 导入。之后在对话中说「处理我录的视频」即可整理录屏。";
-"agents.manual.footer" = "在对话中说「处理我录的视频」即可整理录屏。事项可通过「复制指令给 Agent」交给它们处理。";
 "agents.state.chat" = "在对话中整理";
 "agents.state.chat.help" = "在 %@ 的对话中说「处理我录的视频」，即可将未整理的录屏整理成事项。处理事项请使用「复制指令给 Agent」。";
 "agents.request" = "处理我录的视频";
@@ -134,7 +133,7 @@
 "agents.ask.3" = "修好 BA-12，改完标成待验证";
 "agents.details" = "详细信息…";
 "agents.missing" = "未安装";
-"agents.organize.header" = "整理";
+"agents.organize.header" = "后台整理";
 "agents.organize.recording" = "录屏";
 "agents.organize.cards" = "截图和语音备注";
 "agents.organize.footer" = "强度越高越慢，花的 token 越多。";
@@ -146,7 +145,6 @@
 
 /* Settings → Agents: section headings */
 "agents.header" = "Agent";
-"agents.manual.header" = "其他 Agent 应用";
 
 /* Settings → Agents, v1.0.26: who organizes recordings, using Blurt in your agent, by hand, dragging cards */
 "agents.status.organizing" = "录屏由 %@ 整理";

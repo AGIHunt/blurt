@@ -44,7 +44,6 @@
 "agents.state.unchecked" = "Can’t check sign-in";
 "agents.state.unchecked.help" = "Sign-in can’t be checked without spending tokens. It’s checked the first time it organizes something; if it isn’t signed in, Blurt uses the next agent and says so here.";
 "agents.state.manual.help" = "A separate app. Connect… installs the blurt skill and MCP in %@ (changes are listed first), or import them in its settings under Skills / MCP. Then say “Process my Blurt recordings” in its chat to organize recordings.";
-"agents.manual.footer" = "Say “Process my Blurt recordings” in their chat to organize recordings. Send items with Copy Instruction for Agent.";
 "agents.state.chat" = "Organizes in chat";
 "agents.state.chat.help" = "Say “Process my Blurt recordings” in %@ to organize recordings into items. To work on items, use Copy Instruction for Agent.";
 "agents.request" = "Process my Blurt recordings";
@@ -134,7 +133,7 @@
 "agents.ask.3" = "Fix BA-12, then mark it for me to verify";
 "agents.details" = "Details…";
 "agents.missing" = "Not installed";
-"agents.organize.header" = "Organizing";
+"agents.organize.header" = "Background Organizing";
 "agents.organize.recording" = "Recordings";
 "agents.organize.cards" = "Snaps and voice notes";
 "agents.organize.footer" = "Higher effort is slower and uses more tokens.";
@@ -146,7 +145,6 @@
 
 /* Settings → Agents: section headings */
 "agents.header" = "Agents";
-"agents.manual.header" = "Other agent apps";
 
 /* Settings → Agents, v1.0.26: who organizes recordings, using Blurt in your agent, by hand, dragging cards */
 "agents.status.organizing" = "Recordings are organized by %@";

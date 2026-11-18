@@ -172,15 +172,23 @@ const mockCards = {
   ],
 };
 
-// card_drop.rs AGENTS: the built-in agent apps (executable stems)
-const MOCK_AGENTS = ['workbuddy', 'qoderwork', 'qoder', 'kimi code', 'doubaowork', 'cursor', 'windsurf', 'trae', 'trae cn', 'antigravity', 'kiro', 'codex'];
+// card_drop.rs drop_rows: the agents whose app gets a card's path and note (agents.json `drop`, Windows stems)
+const MOCK_DROPS: [string, string, string[], 'composer' | 'terminal'][] = [
+  ['codex', 'Codex', ['codex'], 'composer'], ['kimi', 'Kimi Code', ['kimi code'], 'composer'], ['workbuddy', 'WorkBuddy', ['workbuddy'], 'composer'],
+  ['workbuddy-ai', 'WorkBuddy AI', ['workbuddy ai', 'workbuddyai'], 'composer'], ['cursor', 'Cursor', ['cursor'], 'terminal'], ['qoder', 'Qoder', ['qoder'], 'terminal'],
+  ['qoderwork', 'QoderWork', ['qoderwork'], 'composer'], ['trae', 'Trae', ['trae'], 'terminal'], ['trae-cn', 'Trae CN', ['trae cn'], 'terminal'],
+  ['windsurf', 'Windsurf', ['windsurf'], 'terminal'], ['kiro', 'Kiro', ['kiro'], 'terminal'], ['antigravity', 'Antigravity', ['antigravity'], 'terminal'],
+  ['doubaowork', 'DoubaoWork', ['doubaowork'], 'composer'],
+];
 function mockAgentApps() {
-  const changes: Record<string, boolean> = mockCfg.record?.agent_apps ?? {};
+  const off: Record<string, boolean> = mockCfg.record?.agent_drop ?? {};
+  const mine: Record<string, any> = mockCfg.record?.agent_defs ?? {};
   return [
-    ...MOCK_AGENTS.map((id) => ({ id, builtin: true, on: changes[id] !== false })),
-    ...Object.keys(changes).filter((id) => changes[id] === true && !MOCK_AGENTS.includes(id)).sort().map((id) => ({ id, builtin: false, on: true })),
+    ...MOCK_DROPS.map(([id, name, ids, drop]) => ({ id, name, ids, drop, on: off[id] !== false, custom: false })),
+    ...Object.entries(mine).filter(([, d]) => d?.drop).map(([id, d]) => ({ id, name: d.name ?? id, ids: d.app?.windows ?? [id], drop: d.drop, on: off[id] !== false, custom: true })),
   ];
 }
+const mockStart = Date.now();
 // Settings' writes, kept in memory (the Rust merge: two levels deep)
 const mockHotkeys: Record<string, string> = {};
 const mockCfg: Record<string, any> = { record: { agents: ['claude', 'codex', 'kimi'] }, notify: {} };
@@ -656,17 +664,31 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
     case 'handoff_create':
       return r({ id: 'H-0032', path: `${H}/.blurt/handoff/H-0032.md`, text: 'Please handle SF-12 — details and screenshots are in …' });
     case 'agents_detect': {
-      // as agents.py detect: order = record.agents (else every headless agent); without ids only that order is listed
+      // as agents.py detect: order = record.agents (else every headless agent); without ids only that order is listed.
+      // ?agents=none: no command-line agent (the Windows user who reported "录屏之后啥也没有")
+      const noCli = param('agents') === 'none';
+      const t = Math.floor(Date.now() / 1000);
+      const cli = (id: string, name: string, version: string, conn: string, extra: Record<string, unknown> = {}) => noCli
+        ? { id, name, path: null, state: 'not_installed', why: '', fix: '', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal', conn: 'missing', connect: true, found: false, linked: false, last_seen: null }
+        : { id, name, path: `/usr/bin/${id}`, state: 'ready', why: '', fix: '', installed: true, version, login: 'ok', headless: true, interactive: 'terminal', conn, connect: true, found: true, linked: conn !== 'found', last_seen: conn === 'connected' ? t - 3600 : null, ...extra };
+      const app = (id: string, name: string, conn: string, extra: Record<string, unknown> = {}) => ({ id, name, path: conn === 'missing' ? null : `/opt/${name}/${id}`, state: conn === 'missing' ? 'not_installed' : 'unknown', why: '', fix: '', installed: conn !== 'missing', version: null, login: 'n/a', headless: false, interactive: null, conn, connect: true, found: conn !== 'missing', linked: conn === 'linked' || conn === 'connected', last_seen: conn === 'connected' ? t - 86400 * 2 : null, ...extra });
+      const custom = Object.entries(mockCfg.record?.agent_defs ?? {}).filter(([, d]: [string, any]) => d?.custom && d.connect !== false).map(([id, d]: [string, any]) => app(id, d.name ?? id, 'missing', { custom: true }));
       const all = [
-        { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'ready', why: '', fix: '', installed: true, version: '2.3.1', login: 'ok', headless: true, interactive: 'terminal' },
-        { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal' },
-        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal' },
+        cli('claude', 'Claude Code', '2.3.1', 'connected'),
+        cli('codex', 'Codex', '0.61.0', 'linked'),
+        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal', conn: 'missing', connect: true, found: false, linked: false, last_seen: null },
+        app('workbuddy', 'WorkBuddy', 'found', { edition: zh() ? '国内版' : 'China' }),
+        app('workbuddy-ai', 'WorkBuddy AI', 'missing', { edition: zh() ? '国际版' : 'International' }),
+        app('cursor', 'Cursor', 'connected'),
+        app('trae', 'Trae', 'linked'),
+        app('kiro', 'Kiro', 'missing'),
+        ...custom,
       ];
       if (args.login !== false) await new Promise((ok) => setTimeout(ok, 2500)); // the full check takes a while
       const want = mockCfg.record?.agents as string[] | null | undefined;
-      const order = want?.length ? want : all.map((a) => a.id);
+      const order = want?.length ? want : all.filter((a) => a.headless).map((a) => a.id);
       const ids: string[] = args.ids ?? order;
-      const agents = all.filter((a) => ids.includes(a.id));
+      const agents = all.filter((a) => ids.includes(a.id) || !a.headless);
       return r({ order, pick: order.find((id) => agents.some((a) => a.id === id && a.state === 'ready')) ?? null, agents });
     }
     case 'agents_models':
@@ -824,10 +846,13 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r(mockAgentApps());
     case 'agent_apps_set': {
       const id = String(args.id).trim().toLowerCase();
-      const changes: Record<string, boolean> = { ...(mockCfg.record?.agent_apps ?? {}) };
-      if (MOCK_AGENTS.includes(id) === !!args.on) delete changes[id];
-      else changes[id] = !!args.on;
-      mockMerge({ record: { agent_apps: Object.keys(changes).length ? changes : null } });
+      const off: Record<string, boolean> = { ...(mockCfg.record?.agent_drop ?? {}) };
+      const mine: Record<string, any> = { ...(mockCfg.record?.agent_defs ?? {}) };
+      if (args.op === 'off') off[id] = false;
+      else if (args.op === 'on') delete off[id];
+      else if (args.op === 'add') mine[id] = { name: id, bins: [], headless: false, custom: true, connect: false, app: { windows: [id] }, drop: 'terminal' };
+      else if (args.op === 'remove') delete mine[id];
+      mockMerge({ record: { agent_drop: Object.keys(off).length ? off : null, agent_defs: Object.keys(mine).length ? mine : null } });
       return r(mockAgentApps());
     }
     case 'agent_apps_pick':
@@ -868,12 +893,38 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         { id: 'claude', name: 'Claude Code', fix: { en: 'run `claude` in a terminal and /login', zh: '在终端运行 claude，然后输入 /login' }, install: { en: 'npm i -g @anthropic-ai/claude-code', zh: 'npm i -g @anthropic-ai/claude-code' }, processing: { recording: { model: 'default', effort: 'low' }, cards: { model: 'cheapest', effort: 'low' } } },
         { id: 'codex', name: 'Codex', fix: { en: 'run `codex login`', zh: '运行 codex login' }, install: { en: 'npm i -g @openai/codex', zh: 'npm i -g @openai/codex' } },
         { id: 'kimi', name: 'Kimi Code', install: { en: 'npm i -g kimi-code', zh: 'npm i -g kimi-code' } },
-        { id: 'cursor', name: 'Cursor', headless: false, install: { en: 'see cursor.com', zh: '见 cursor.com' } },
+        { id: 'workbuddy', name: 'WorkBuddy', headless: false, site: 'https://www.codebuddy.cn/work/', install: { en: 'see codebuddy.cn/work', zh: '见 codebuddy.cn/work' }, edition: { zh: '国内版', en: 'China' },
+          after: { zh: '在 WorkBuddy 里打开 连接器 → blurt，点「信任」，然后新开一个对话。', en: 'In WorkBuddy, open Connectors → blurt, click Trust, then start a new chat.' } },
+        { id: 'workbuddy-ai', name: 'WorkBuddy AI', headless: false, site: 'https://www.workbuddy.ai/', install: { en: 'see workbuddy.ai', zh: '见 workbuddy.ai' }, edition: { zh: '国际版', en: 'International' },
+          after: { zh: '在 WorkBuddy AI 里打开 连接器 → blurt，点「信任」，然后新开一个对话。', en: 'In WorkBuddy AI, open Connectors → blurt, click Trust, then start a new chat.' } },
+        { id: 'cursor', name: 'Cursor', headless: false, site: 'https://cursor.com', install: { en: 'see cursor.com', zh: '见 cursor.com' } },
+        { id: 'trae', name: 'Trae', headless: false, site: 'https://www.trae.ai', install: { en: 'see trae.ai', zh: '见 trae.ai' } },
+        { id: 'kiro', name: 'Kiro', headless: false, site: 'https://kiro.dev', install: { en: 'see kiro.dev', zh: '见 kiro.dev' } },
       ], failures: [{ id: 'auth', reason: { en: '{name} isn’t signed in: {fix}', zh: '{name} 没有登录：{fix}' } }] });
     case 'agents_install':
       return r(args.dryRun
         ? { ok: true, changes: args.id === 'claude' ? [{ action: 'exists', path: `${H}/.claude/skills/blurt` }, { action: 'exists', argv: ['claude', 'mcp', 'get', 'blurt'] }] : [{ action: 'symlink', path: `${H}/.codex/skills/blurt`, target: `${H}/.claude/skills/blurt` }, { action: 'run', argv: ['codex', 'mcp', 'add', 'blurt', '--', 'uv', 'run', 'mcp_server.py'] }] }
         : { ok: true, applied: true, changes: [{ action: 'symlink', ok: true, path: `${H}/.codex/skills/blurt`, target: `${H}/.claude/skills/blurt` }, { action: 'run', ok: true, argv: ['codex', 'mcp', 'add', 'blurt'] }] });
+    case 'agents_manual': {
+      const uv = `${H}/.blurt/bin/uv`, server = `${H}/.blurt/skill/scripts/mcp_server.py`, skill = `${H}/.blurt/skill`;
+      const args = ['run', '--script', server];
+      return r({ ok: true, skill, skill_ok: true, server, command: uv, args, mcp_json: JSON.stringify({ mcpServers: { blurt: { command: uv, args } } }, null, 2),
+        prompt: zh() ? `请为你自己装上口喷鸡（Blurt）。口喷鸡的 skill 是文件夹 ${skill}（里面有 SKILL.md）：把它链接或复制到你自己的 skills 文件夹，名字叫 blurt。再添加一个名为 blurt 的 MCP 服务器，命令是 ${uv}，参数是 run --script ${server}。两样都装好后，调用 blurt 的 MCP 工具 hello 检查连接，并告诉我你改了哪些设置。`
+          : `Set up Blurt for yourself. The Blurt skill is the folder ${skill} (SKILL.md is in it): link or copy it into your own skills folder under the name blurt. Then add an MCP server named blurt that runs ${uv} with the arguments run --script ${server}. When both are in place, call the blurt MCP tool hello to check the connection, and tell me what you changed.` });
+    }
+    case 'agents_custom': {
+      const mine: Record<string, any> = { ...(mockCfg.record?.agent_defs ?? {}) };
+      if (args.remove) delete mine[args.remove];
+      const id = args.remove ? undefined : String(args.name).trim().toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, '-');
+      if (id) mine[id] = { name: String(args.name).trim(), bins: [], headless: false, custom: true };
+      mockMerge({ record: { agent_defs: Object.keys(mine).length ? mine : null } });
+      return r({ ok: true, id });
+    }
+    case 'mcp_clients':
+      // ?hello=1: a new client said hello a few seconds after the sheet opened (Test turns to "Connected")
+      return r(param('hello') === '1' && Date.now() - mockStart > 4000 ? { 'my-agent': { at: Date.now() / 1000 } } : {});
+    case 'skill_zip':
+      return r({ path: `${H}/Downloads/blurt-skill.zip` });
     case 'agents_test':
       await new Promise((ok) => setTimeout(ok, 800));
       return r({ ok: true, secs: 3.2 });
