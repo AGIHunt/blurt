@@ -820,7 +820,7 @@ def model_path(m: dict) -> Path | None:
     """Where an installed model lives, or None when it is not installed."""
     inst = m.get("install") or {}
     if m["backend"] == "ming-asr":
-        directory = ming_asr.model_dir()
+        directory = ming_asr.model_dir(m["id"])
         return directory if directory and safetensors_complete(directory) else None
     if inst.get("files"):
         paths = [MODELS_DIR / f for f in inst["files"]]
@@ -934,7 +934,7 @@ def install_model(m: dict) -> Path:
     """Download a registry model (and the VAD every local backend needs). Progress on stderr. One download of a
     model at a time (download_lock): a second caller waits, then finds it installed."""
     if m["backend"] == "ming-asr" and model_path(m) is None:
-        raise Fail(ming_asr.SETUP_HINT, "model_missing")
+        raise Fail(ming_asr.setup_hint(m["id"]), "model_missing")
     download("silero_vad.onnx", aux="vad")      # its own named progress: not the model's (progress_line)
     if not m.get("local", True):
         return MODELS_DIR
@@ -2737,7 +2737,7 @@ def select(purpose: str, a=None) -> dict:
                                           "languages": "multi", "local": name in LOCAL}
     rec = recommend(purpose=purpose, cfg=cfg)
     order = ([chosen] if chosen else []) + [rec["pick"]["model"]] + [c["id"] for c in rec["candidates"]
-                                                                     if c["id"] != ming_asr.MODEL_ID and c["fits"]
+                                                                     if c["id"] not in ming_asr.MODEL_IDS and c["fits"]
                                                                      and len(c["speaks"]) == len(rec["languages"])]
     apple = entry(APPLE)
     apple_ok = bool(apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]))
@@ -2801,7 +2801,7 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
             f"no API key in the environment ({' / '.join(API_KEYS[name])})"
     m = entry(model_id) if model_id else entry_for(name)
     if name == "ming-asr" and (not m or not installed(m)):
-        return ming_asr.SETUP_HINT
+        return ming_asr.setup_hint(model_id or ming_asr.MODEL_ID)
     if m and m.get("install") and not installed(m):
         return f"{m['id']} is not downloaded (transcribe.py setup --model {m['id']})"
     return None
@@ -4168,7 +4168,7 @@ QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
 FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
 FUN_CPU = "fun-asr-nano-onnx"     # the same model on the CPU (sherpa-onnx int8): Windows and Linux
 DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, FUN_CPU, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE,
-                    ming_asr.MODEL_ID)   # the local ones dictation offers, best
+                    *ming_asr.MODEL_IDS)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
 # offered once their key is set (first-minute-speech.md §2.4; Volcengine: dictation-eval-2026-10-31.md §6.3 B′)
 DICTATION_CLOUD = ("qwen3-asr-flash", "volcengine-seedasr", "openai-compatible")

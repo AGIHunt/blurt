@@ -289,18 +289,18 @@ class Select(unittest.TestCase):
             self.assertTrue(T.is_auto(T.asr_config()))
 
     def test_ming_is_available_for_explicit_selection_only(self):
-        mid = T.ming_asr.MODEL_ID
-        fake_installed(mid)
+        fake_installed(*T.ming_asr.MODEL_IDS)
         with mock.patch.object(T, "probe", return_value=hw("windows", "x86_64", 64, {"kind": "nvidia"})), \
                 mock.patch.object(T, "platform_key", return_value="windows-x86_64"), \
                 mock.patch.object(T, "model_path", return_value=Path("snapshot")):
             with config({"asr": {"languages": ["zh", "en"]}}):
-                self.assertNotEqual(T.select("note")["id"], mid)
+                self.assertNotIn(T.select("note")["id"], T.ming_asr.MODEL_IDS)
                 models = T.dictation_models()
-                self.assertNotEqual(models["selected"], mid)
-                self.assertTrue(any(m["id"] == mid and m["installed"] for m in models["models"]))
-            with config({"record": {"dictation": {"asr_model": mid}}}):
-                self.assertEqual(T.dictation_models()["selected"], mid)
+                self.assertNotIn(models["selected"], T.ming_asr.MODEL_IDS)
+                self.assertTrue(set(T.ming_asr.MODEL_IDS) <= {m["id"] for m in models["models"] if m["installed"]})
+            for mid in T.ming_asr.MODEL_IDS:
+                with self.subTest(model=mid), config({"record": {"dictation": {"asr_model": mid}}}):
+                    self.assertEqual(T.dictation_models()["selected"], mid)
 
     def test_explicit_options_win(self):
         with config({"asr": {"auto": False, "models": {"batch": "whisper-large-v3-turbo-q4-mlx"}}}):
