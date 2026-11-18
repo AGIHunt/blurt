@@ -548,6 +548,10 @@ struct AgentsPane: View {
     }
 
     /// A folded line: its title and, while folded, the names in it.
+    /// A folded line's names, as a plain list ("Claude Code、Codex、Kimi Code" / "Claude Code, Codex, Kimi Code"): no
+    /// "and", no count.
+    static func plainList(_ names: [String]) -> String { CloudServiceUse.list(names, chinese: Loc.language.hasPrefix("zh")) }
+
     func foldLine(_ title: String, names: [String], open: Binding<Bool>) -> some View {
         SettingsLine {
             Button {
@@ -559,7 +563,7 @@ struct AgentsPane: View {
                         .frame(width: SettingsMetrics.iconSlot)
                     Text(title).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
                     if !open.wrappedValue {
-                        Text(Loc.list(names)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        Text(Self.plainList(names)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.tail)
                     }
                     Spacer(minLength: 0)
@@ -620,7 +624,7 @@ struct AgentsPane: View {
                         .gridProbe(.iconText, "not installed")
                     // the names while folded; open, the rows under it name them
                     if !m.showMissing {
-                        Text(Loc.list(missing.map(\.name))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        Text(Self.plainList(missing.map(\.name))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                             .lineLimit(1).truncationMode(.tail)
                     }
                     Spacer(minLength: 0)
@@ -1318,6 +1322,7 @@ struct InstallSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             list.padding(.top, 18)
+            if !afterStep.isEmpty { nextStep.padding(.top, 12) }
             if !technical.isEmpty { details.padding(.top, 14) }
             footer.padding(.top, 16)
         }
@@ -1398,6 +1403,22 @@ struct InstallSheet: View {
         }
     }
 
+    /// What the agent still needs after Connect (agents.json `after`: WorkBuddy's Connectors → blurt → Trust), once
+    /// Connect has run.
+    var afterStep: String { applied && !failed ? AgentHub.shared.def(agent.id)?.afterText ?? "" : "" }
+
+    /// The step left, in the sheet's body with the rows ("One more step: …"), not as a footnote by Done.
+    var nextStep: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "arrow.right.circle.fill").font(.system(size: 13)).foregroundStyle(Color.brandAttn)
+                .frame(width: 18, alignment: .center)
+                .accessibilityHidden(true)
+            Text(AL("install.after", afterStep)).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: Details: the exact commands and paths, on request
 
     var details: some View {
@@ -1422,10 +1443,11 @@ struct InstallSheet: View {
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             } else if applied && !failed {
                 // agents read their skills and MCP servers when a session starts: a session already open doesn't see them
-                // an agent with a step of its own after Connect says it (WorkBuddy: Connectors → blurt → Trust, a new chat)
-                let after = AgentHub.shared.def(agent.id)?.afterText ?? ""
-                Text(after.isEmpty ? AL("install.next", agent.name) : after).font(.system(size: 12)).foregroundStyle(.secondary)
-                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                // (an agent with a step of its own after Connect says it in the body: nextStep)
+                if afterStep.isEmpty {
+                    Text(AL("install.next", agent.name)).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 12)
             if applied || nothingToDo {
@@ -1589,6 +1611,14 @@ struct ManualAgentSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let i = info {
+                // the quick way first: the agent sets itself up from one prompt
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AL("agents.manual.prompt")).font(.system(size: 12, weight: .medium))
+                    Text(i.prompt).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(copied == "prompt" ? AL("agents.request.copied") : AL("agents.manual.copy_prompt")) { copy(i.prompt, "prompt") }
+                }
+                Divider()
                 block(AL("agents.manual.skill"), mono: i.skill, copyKey: "skill") {
                     Button(AL("agents.manual.open")) { NSWorkspace.shared.open(URL(fileURLWithPath: i.skill)) }
                     Button(AL("agents.manual.zip")) { saveZip(i.skill) }
@@ -1598,13 +1628,9 @@ struct ManualAgentSheet: View {
                     block(AL("agents.manual.command"), mono: i.command, copyKey: "command") { EmptyView() }
                     block(AL("agents.manual.args"), mono: i.args.joined(separator: " "), copyKey: "args") { EmptyView() }
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(AL("agents.manual.prompt")).font(.system(size: 12, weight: .medium))
-                    Text(i.prompt).font(.system(size: 12)).foregroundStyle(.secondary).textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button(copied == "prompt" ? AL("agents.request.copied") : AL("agents.manual.copy_prompt")) { copy(i.prompt, "prompt") }
-                }
                 Divider()
+                Text(AL("agents.manual.test.help")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {
                     Button(AL("agents.manual.test")) { Task { await test() } }.disabled(testing)
                     if testing {
@@ -1616,12 +1642,17 @@ struct ManualAgentSheet: View {
                     }
                     Spacer(minLength: 0)
                 }
-                HStack(spacing: 8) {
-                    TextField(AL("agents.manual.name"), text: $name).textFieldStyle(.roundedBorder).frame(width: 200)
-                    Button(AL("agents.manual.save")) { Task { await save() } }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || saved)
-                    if saved { Image(systemName: "checkmark").foregroundStyle(Color.brandOk).accessibilityHidden(true) }
-                    Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        TextField(AL("agents.manual.name"), text: $name, prompt: Text(AL("agents.manual.name.placeholder")))
+                            .textFieldStyle(.roundedBorder).frame(width: 200)
+                            .accessibilityLabel(AL("agents.manual.name"))
+                        Button(AL("agents.manual.save")) { Task { await save() } }
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || saved)
+                        if saved { Image(systemName: "checkmark").foregroundStyle(Color.brandOk).accessibilityHidden(true) }
+                        Spacer(minLength: 0)
+                    }
+                    Text(AL("agents.manual.name.help")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             } else if let e = error {
                 Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)

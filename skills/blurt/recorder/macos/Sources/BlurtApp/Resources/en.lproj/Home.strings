@@ -32,7 +32,7 @@
 "home.dictation.downloading" = "Downloading speech model · %1$@ of %2$@";
 "home.dictation.better_downloading" = "Downloading a more accurate speech model · %1$@ of %2$@";
 "home.dictation.better_offer" = "Download a more accurate speech model · %@";
-"home.recording.no_agent" = "Say “Process my Blurt recordings” to your agent to organize";
+"home.recording.no_agent" = "Say “Process my Blurt recordings” in your agent to organize.";
 "home.recording.set_up_agent" = "Set Up an Agent…";
 "home.phone.needs_access" = "Phone can’t control your Mac yet";
 "home.phone.look" = "Show";
