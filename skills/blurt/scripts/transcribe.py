@@ -822,7 +822,9 @@ def model_path(m: dict) -> Path | None:
     if inst.get("archive"):
         d = MODELS_DIR / inst["dir"]
         need = [d / k.rstrip("/") for k in inst.get("keep", [])]
-        return d if folder_complete(d, legacy=lambda _: all(p.exists() for p in need)) else None
+        if inst.get("modelscope"):
+            return d if folder_complete(d, legacy=lambda _: all(p.exists() for p in need)) else None
+        return d if d.is_dir() and all(p.exists() for p in need) else None
     if inst.get("hf"):
         own = MODELS_DIR / "asr" / inst["hf"].split("/")[-1]       # a ModelScope download (the mirror)
         if folder_complete(own, legacy=_own_legacy_complete):
@@ -961,11 +963,9 @@ def _install_unlocked(m: dict) -> Path:
         from huggingface_hub import snapshot_download
         if os.environ.get("BLURT_HF_MIRROR"):
             os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        mirror_repo = (inst.get("modelscope") or {}).get("repo")
-        if inst["hf"].startswith("mlx-community/"):     # ModelScope mirrors mlx-community
-            mirror_repo = mirror_repo or inst["hf"]
-        if mirror_repo and os.environ.get("BLURT_HF_MIRROR"):
-            _modelscope(mirror_repo, float(m["size_mb"]))
+        mirrored = inst["hf"].startswith("mlx-community/")      # ModelScope mirrors mlx-community (fast from China)
+        if mirrored and os.environ.get("BLURT_HF_MIRROR"):
+            _modelscope(inst["hf"], float(m["size_mb"]))
         else:
             print(f"downloading {inst['hf']}", file=sys.stderr, flush=True)
             stop = threading.Event()
@@ -978,10 +978,10 @@ def _install_unlocked(m: dict) -> Path:
                 write_text_atomic(_hf_record(inst["hf"]), json.dumps(
                     {"snapshot": snap.name, "files": sorted(str(f.relative_to(snap)) for f in snap.rglob("*") if f.is_file())}))
             except Exception as e:  # noqa: BLE001
-                if not mirror_repo:
+                if not mirrored:
                     raise Fail(f"could not download {inst['hf']}: {e}", "network")
                 print(f"  Hugging Face failed ({e}); trying ModelScope", file=sys.stderr, flush=True)
-                _modelscope(mirror_repo, float(m["size_mb"]))
+                _modelscope(inst["hf"], float(m["size_mb"]))
             finally:
                 stop.set()
     path = model_path(m)
@@ -990,18 +990,26 @@ def _install_unlocked(m: dict) -> Path:
     return path
 
 
-def _modelscope(repo: str, total_mb: float, *, dest: Path | None = None, files: dict[str, str] | None = None) -> Path:
-    """Download a ModelScope repo, or a local-path-to-repo-path subset. The manifest and marker come first, then
-    each file through <name>.part, continued where a cut-short download left it."""
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _modelscope(repo: str, total_mb: float, *, dest: Path | None = None,
+                files: dict[str, dict[str, str]] | None = None) -> Path:
+    """Download a ModelScope repo or a pinned subset, using the download marker and resumable .part files."""
     dest = dest if dest is not None else MODELS_DIR / "asr" / repo.split("/")[-1]
-    api = f"https://www.modelscope.cn/api/v1/models/{repo}/repo/files?Revision=master&Recursive=true"
+    api = f"https://modelscope.cn/api/v1/models/{repo}/repo/files?Recursive=true"
     try:
         with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "blurt"}), timeout=30) as r:
             listing = json.load(r)["Data"]["Files"]
     except Exception as e:  # noqa: BLE001
         raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
     blobs = {x["Path"]: x for x in listing if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))}
-    want = files if files is not None else {name: name for name in blobs}
+    want = {local: spec["path"] for local, spec in files.items()} if files is not None else {name: name for name in blobs}
     if not want or any(name not in blobs for name in want.values()):
         raise Fail(f"ModelScope is missing required files for {repo}", "network")
     try:
@@ -1013,12 +1021,13 @@ def _modelscope(repo: str, total_mb: float, *, dest: Path | None = None, files: 
     for local, remote in want.items():
         p = download_path(dest, local)
         size = blobs[remote].get("Size")
-        if p.exists() and p.stat().st_size == size:
-            done += p.stat().st_size / 2**20
+        expected = files[local]["sha256"] if files is not None else None
+        if p.is_file() and p.stat().st_size == size and (expected is None or _sha256(p) == expected):
+            done += size / 2**20
             continue
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_name(p.name + ".part")
-        url = f"https://www.modelscope.cn/models/{repo}/resolve/master/{urllib.parse.quote(remote)}"
+        url = f"https://modelscope.cn/models/{repo}/resolve/master/{urllib.parse.quote(remote)}"
         t0 = [time.time()]
 
         def progress(have: int, _total: int) -> None:
@@ -1037,6 +1046,9 @@ def _modelscope(repo: str, total_mb: float, *, dest: Path | None = None, files: 
                 break
             if attempt == 2:
                 raise Fail(f"could not download {repo} from ModelScope: {remote} came short", "network")
+        if expected is not None and _sha256(tmp) != expected:
+            tmp.unlink(missing_ok=True)
+            raise Fail(f"could not download {repo} from ModelScope: SHA-256 mismatch for {local}", "network")
         done += got / 2**20
         os.replace(tmp, p)
     end_download(dest)
