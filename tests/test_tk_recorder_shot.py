@@ -1,4 +1,4 @@
-"""tk_recorder.py shot --image: a picture already taken (Linux: GNOME's Screenshot portal) goes into the batch as
+"""tk_recorder.py shot --image: a picture already taken (the picker's still, cut to the area — Windows and Linux) goes into the batch as
 shots/NNN.png with its line, numbered after what is there."""
 import json
 import sys
@@ -24,3 +24,11 @@ def test_a_picture_already_taken_is_copied_in_and_numbered(tmp_path):
 def test_a_missing_picture_is_a_failed_snap(tmp_path):
     r = tk_recorder.cli_shot(tmp_path / "s", [0, 0, 10, 10], None, tmp_path / "gone.png")
     assert not r["ok"] and r["code"] == "snap"
+
+
+def test_the_bar_is_kept_out_of_captures_only_from_windows_10_2004():
+    # before build 19041 WDA_EXCLUDEFROMCAPTURE acts as WDA_MONITOR: the bar would be recorded black
+    assert not tk_recorder.excludes_from_capture(17763)
+    assert not tk_recorder.excludes_from_capture(18363)
+    assert tk_recorder.excludes_from_capture(19041)
+    assert tk_recorder.excludes_from_capture(22631)

@@ -203,3 +203,9 @@
   任务详情：重试、在文件资源管理器中显示、查看日志、忽略。
 - 要在 Windows VM 上看：没有 Agent 时结束一段录屏的那一句和三个按钮（宽度）、复制说法、设置 Agent… 打开设置的 Agent 页；装了
   Codex/Claude 的完整整理（cwd、SKILL.md 路径能读到、items 计数）；登录失效时换下一个；超时杀进程树（taskkill /T）。
+
+## 16. Windows 10 2004 之前（build < 19041）
+
+那里 `WDA_EXCLUDEFROMCAPTURE` 等于 `WDA_MONITOR`：开了 content protection 的窗口在视频里是黑块（整块录制框窗口、整个岛窗口）。
+所以 2004 之前浮层不开 protection（`blurt_capture::winver`），录得进视频；岛避开录制区域（`keep_clear_of`）。详见
+`snap-and-note.md` §15。上面表里「不进视频」的几行（3.6、4.1、5.9、7.2）只对 2004 及以后成立。

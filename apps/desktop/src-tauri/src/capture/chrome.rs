@@ -1,7 +1,9 @@
 //! The recording's chrome that isn't the island (the Mac's Chrome.swift; docs/design/windows-parity/recording.md
 //! §3–4): the 3-2-1 over the area about to be recorded and the frame around the recorded area. Both are pages of
 //! `overlays/rec.html`, in windows labelled `blurt-overlay-*` (the overlays capability), content-protected so the
-//! recording never sees them (Windows: WDA_EXCLUDEFROMCAPTURE). Created off the main thread (record.py's status lines).
+//! recording never sees them (Windows 10 2004+: WDA_EXCLUDEFROMCAPTURE; before 2004 that would make them black in the
+//! video, so they are left unprotected and seen — the frame lies outside the area, the countdown goes before the
+//! take). Created off the main thread (record.py's status lines).
 
 use std::collections::BTreeMap;
 
@@ -98,7 +100,8 @@ fn open_as(app: &AppHandle, label: &str, at: Region, params: BTreeMap<&str, Stri
         .skip_taskbar(true)
         .always_on_top(true)
         .visible_on_all_workspaces(true)
-        .content_protected(protected && !cfg.capturable)
+        // (not before Windows 10 2004: protection blackens a window in captures there — blurt_capture::winver)
+        .content_protected(protected && !cfg.capturable && !blurt_capture::winver::protection_blackens())
         .focusable(false)
         .focused(false)
         .position(at.x as f64 / scale, at.y as f64 / scale)

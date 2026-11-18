@@ -42,6 +42,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import wave
 from datetime import datetime
 from pathlib import Path
@@ -1415,9 +1416,10 @@ class FfmpegRecorder:
         self.log("resume")
         status("resumed", t=round(self.elapsed(), 3))
 
-    def snap(self, via: str, region: list[int] | None = None):
+    def snap(self, via: str, region: list[int] | None = None, image: Path | None = None):
         """A full-resolution still of the area now (ffmpeg grabs one frame), without pausing; works while paused.
-        `region`: another area of the screen than the recorded one (the host's snap flow)."""
+        `region`: another area of the screen than the recorded one (the host's snap flow); `image`: its picture,
+        already taken (the host's picker still, cut to the area: never the picker or the note over it), copied in."""
         self.shots += 1
         n, t, wall = self.shots, round(self.elapsed(), 3), time.time()
         area = region or self.region
@@ -1427,7 +1429,10 @@ class FfmpegRecorder:
             png = self.session / "shots" / f"{n:03d}.png"
             png.parent.mkdir(parents=True, exist_ok=True)
             try:
-                if FEED is not None:
+                if image is not None:
+                    shutil.copyfile(image, png)
+                    ok = png.exists()
+                elif FEED is not None:
                     ok = FEED.still(png, area)
                 else:
                     r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
@@ -1509,13 +1514,16 @@ class FfmpegRecorder:
                     self.snap("marker" if c == "marker" else "command")
                 elif c.startswith("snap-region:"):
                     # the host's snap flow during a take (an area the user picked, then its note): a still of that
-                    # area — desktop px, anywhere on screen — numbered and logged like ours (snap-and-note.md §11)
+                    # area — desktop px, anywhere on screen — numbered and logged like ours (snap-and-note.md §11);
+                    # "|<path>" (%-encoded): its picture, the picker's still cut to the area, copied in
+                    area, _, img = c[12:].partition("|")
                     try:
-                        x, y, w, h = (int(float(v)) for v in c[12:].split(","))
+                        x, y, w, h = (int(float(v)) for v in area.split(","))
                     except ValueError:
                         status("error", msg=f"bad {c}", code="snap", fatal=False)
                         continue
-                    self.snap("picker", region=[x, y, max(2, w), max(2, h)])
+                    self.snap("picker", region=[x, y, max(2, w), max(2, h)],
+                              image=Path(urllib.parse.unquote(img)) if img else None)
                 elif c.startswith("stroke:"):
                     # the host's pen drew a stroke over the area (recording.md §4.6; the Mac's InkView.end): its
                     # shape and points (0–1 of the area) at the video time it began; it stays 3 s after the last one

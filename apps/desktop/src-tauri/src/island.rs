@@ -278,9 +278,10 @@ pub fn rect(app: &AppHandle) -> Option<Region> {
     island(app).map(|i| i.rect())
 }
 
-/// Linux has no capture exclusion: while a take covers the top of the screen, the island sits just below it.
+/// No capture exclusion (Linux; Windows before 2004, blurt_capture::winver): while a take covers the top of the
+/// screen, the island sits just below it.
 pub fn keep_clear_of(app: &AppHandle, region: Option<Region>) {
-    if !cfg!(target_os = "linux") {
+    if blurt_capture::winver::capture_exclusion() {
         return;
     }
     let Some(i) = island(app) else { return };

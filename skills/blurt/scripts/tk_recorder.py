@@ -7,7 +7,7 @@
 Also the Windows / Linux desktop app's capture helpers outside a recording (v0.7 contract K7), run as a script:
 
   tk_recorder.py shot SESSION --region x,y,w,h [--project ID|inbox] [--image PNG]
-      (--image: the picture already taken — Linux takes it through GNOME's Screenshot portal — copied in, not grabbed)
+      (--image: the picture already taken — the app's picker still cut to the area, Windows and Linux — copied in, not grabbed)
       one frame of the region → SESSION/shots/NNN.png + its shots.jsonl line → {"ok", "n", "file", "line"}
   tk_recorder.py voice SESSION [--project ID|inbox] [--max 120] [--silence-ms 1500] [--hold]
       a voice note → SESSION/shots/NNN.wav + a `type: voice` line. Prints JSON lines: {"ev": "started", "n"},
@@ -20,8 +20,8 @@ Used on Windows (primary), Linux/X11, and on macOS when the native Swift recorde
 with ffmpeg (Windows: gdigrab region; Linux: x11grab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
 current video segment and drops audio; segments are aligned by wall clock and joined on stop.
 
-The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity) and always sits outside
-the recorded region when there is room.
+The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity; earlier builds would record it
+black, so there it is left as it is) and always sits outside the recorded region when there is room.
 
 Hotkeys (Windows): config record.hotkeys, same as the macOS app — {"pause": "alt+shift+P", "snap": "alt+shift+A",
 "marker": "alt+shift+M", "stop": "alt+shift+S"} are the defaults; "off" disables one.
@@ -71,11 +71,23 @@ def enable_dpi_awareness() -> None:
                 pass
 
 
+# WDA_EXCLUDEFROMCAPTURE leaves a window out of captures from Windows 10 2004 (build 19041); before it Windows treats it
+# as WDA_MONITOR and the window comes out black in the recording — worse than being seen, so it is left alone there
+# (the bar sits outside the recorded area when there is room). Same rule as the app's overlays (blurt-capture winver.rs).
+EXCLUDE_FROM_CAPTURE_BUILD = 19041
+
+
+def excludes_from_capture(build: int) -> bool:
+    return build >= EXCLUDE_FROM_CAPTURE_BUILD
+
+
 def exclude_from_capture(win) -> None:
-    """Hide a Tk window from screen capture (Windows 10 2004+)."""
+    """Hide a Tk window from screen capture (Windows 10 2004+; earlier builds would show it black)."""
     if not IS_WIN:
         return
     try:
+        if not excludes_from_capture(sys.getwindowsversion().build):
+            return
         import ctypes
         win.update_idletasks()
         hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()

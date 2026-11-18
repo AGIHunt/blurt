@@ -125,16 +125,30 @@ pub fn start(app: &AppHandle, translate: bool) {
         island::busy(&app, false);
         // at once: Peep thinks in the ear while it reads (Windows' OCR takes a second: never dead air after letting go)
         island::send(&app, json!({"op": "working", "on": true}));
-        // the picker's window is gone; give the screen a frame to repaint without it
-        std::thread::sleep(Duration::from_millis(60));
+        // Windows: the area out of the picker's still (what the loupe showed; no overlay of ours in it — a grab now
+        // could hold the island, black before Windows 10 2004); without one, grabbed now
         #[cfg(windows)]
-        let grab = match ocr_win::grab(r.x, r.y, r.w, r.h) {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("screen text: {e}");
-                return line(&app, "capture.text.failed", json!({}), 4000, None);
+        let grab = match super::grab::cut(r) {
+            Some(g) => g,
+            None => {
+                // the picker's window is gone; give the screen a frame to repaint without it
+                std::thread::sleep(Duration::from_millis(60));
+                match ocr_win::grab(r.x, r.y, r.w, r.h) {
+                    Ok(g) => {
+                        if super::grab::near_black(&g) {
+                            eprintln!("screen text: the grab is black (Windows build {:?})", blurt_capture::winver::windows_build());
+                        }
+                        g
+                    }
+                    Err(e) => {
+                        eprintln!("screen text: {e}");
+                        return line(&app, "capture.text.failed", json!({}), 4000, None);
+                    }
+                }
             }
         };
+        #[cfg(target_os = "linux")]
+        std::thread::sleep(Duration::from_millis(60));
         #[cfg(target_os = "linux")]
         let grab = match super::grab_linux::grab(&app, r.x, r.y, r.w, r.h) {
             Ok(g) => g,
