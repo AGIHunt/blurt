@@ -78,6 +78,13 @@ fn first_existing(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     cands.into_iter().find(|p| p.exists())
 }
 
+/// The whole skill the app runs and links agents to (SKILL.md, scripts/, reference/, assets/): `$BLURT_HOME/skill`, a copy
+/// of the one bundled with the app, refreshed at launch when its `.version` stamp changes — as the Mac's ~/.blurt/skill
+/// (BlurtCore BundledSkill). The path never changes, so what an agent was given keeps working after updates.
+pub fn skill_dir() -> PathBuf {
+    blurt_home().join("skill")
+}
+
 /// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
 /// the repo checkout (dev builds) → the installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
