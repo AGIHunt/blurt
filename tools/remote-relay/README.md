@@ -104,5 +104,7 @@ relay.example.com {
 }
 ```
 
-With no domain, set `HOST=0.0.0.0`, remove `TRUST_PROXY=1`, open the port in the firewall, and use `ws://<ip>:8787/<secret>`. What passes is sealed either way, but some mobile
-networks interfere with unencrypted WebSockets, so `wss://` on 443 is more dependable.
+With no domain, set `HOST=0.0.0.0`, remove `TRUST_PROXY=1`, open the port in the firewall, and use `ws://<ip>:8787/<secret>`. What your devices say to each other is sealed
+either way, but over `ws://` the secret path is in the clear: anyone on the same Wi-Fi or network path can see it, use your relay
+as a pipe and keep knocking your phone off it until you change the secret. Some mobile networks also interfere with unencrypted
+WebSockets. Use `wss://` on 443 unless the network between is yours.

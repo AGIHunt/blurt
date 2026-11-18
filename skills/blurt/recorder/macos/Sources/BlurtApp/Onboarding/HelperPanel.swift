@@ -313,7 +313,8 @@ struct HelperPanelView: View {
                 Text(T("settings.perm.restart_hint")).font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
-            if k == .screen {
+            // the switch is on and nothing happened (the 12 s that bring the restart hint): maybe an older version's row
+            if k == .screen && g.suggestRestart && !g.reauthorize {
                 Button(T("settings.perm.screen.readd_action")) { g.readdScreen() }
                     .buttonStyle(.borderless).font(.system(size: 11))
                     .padding(.top, 8)

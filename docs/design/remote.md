@@ -521,7 +521,10 @@ Three routes, tried together, best one kept:
   Each owner runs their own, a Cloudflare Worker with one hibernating Durable Object per paired phone or one Node process on a server
   (tools/remote-relay, same protocol), and pastes its address into Settings → Phone → Relay Address. Copy Instructions there gives a prompt
   for Claude Code or Codex that does the setup. The address is in the pairing code and reaches the phone again inside each sealed session, so the phone has nothing to configure.
-  `ws://` works too: what passes is sealed either way, and it needs no domain. The room is an HMAC of the pair's key. The relay has no key.
+  `ws://` works too and needs no domain. The frames are sealed either way, so nobody on the network reads or forges them, but over `ws://`
+  the address (the relay's secret), the room and the hello (the phone's device id) travel in the clear: whoever sees them can use the
+  relay as a pipe, keep replacing the phone in its room (the relay closes the older socket), and recognise the pair on other networks,
+  until the secret changes. `wss://` is the default; `ws://` is for a network the owner trusts. The room is an HMAC of the pair's key. The relay has no key.
 - **Several Macs, one relay:** a phone keeps a list of Macs, each with its own key and so its own room: one address serves them all. Pair each Mac once
   by its code, from any network if that Mac has a relay. A Mac with no relay takes the one a phone already uses for its other Macs, unless its owner
   cleared the field, and Settings says it came from the phone. A code used over the relay needs a yes on the Mac, in Settings: otherwise a photo of the

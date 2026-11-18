@@ -12,8 +12,8 @@ object RemoteRelay {
     fun room(key: ByteArray): String = RemoteCrypto.base64url(RemoteCrypto.hmac(key, "blurt-relay-room".toByteArray()))
 
     /**
-     * What someone typed, as the address to use: `relay.example.com` means wss://. null if it can't be one. `ws://` is allowed: what passes
-     * is sealed either way. No query or fragment; trailing slashes go.
+     * What someone typed, as the address to use: `relay.example.com` means wss://. null if it can't be one. `ws://` is allowed: the frames
+     * are sealed either way, though the address (with its secret) and the room travel in the clear. No query or fragment; trailing slashes go.
      */
     fun address(typed: String): String? {
         var t = typed.trim()
