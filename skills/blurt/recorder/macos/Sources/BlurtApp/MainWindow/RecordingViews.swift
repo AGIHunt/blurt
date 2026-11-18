@@ -1,4 +1,4 @@
-// A recording's row (BlurtCore Recordings; docs/design/capabilities.md §3.2): on Home's Recent (HomeViews) and at the
+// A recording's row (BlurtCore Recordings; docs/design/capabilities.md §4): on Home's Recent (HomeViews) and at the
 // top of an items' place, above the jobs section — where its organising job's row used to be (one recording, one row).
 // Its glyph, its length, the first thing said in it, its state (N 个事项 / 未整理 / 整理中 / 未完成 + why /
 // 仅保存视频), its time. The click and the menu do what fits the state: play the video, show it in Finder, organise or

@@ -1,4 +1,4 @@
-//! The recordings as the main window lists them (Home's Recent, the items' places; docs/design/capabilities.md §3.2):
+//! The recordings as the main window lists them (Home's Recent, the items' places; docs/design/capabilities.md §4):
 //! every video session the index knows, newest first, with what its folder says besides — whether recording.mp4 is
 //! still there (housekeeping deletes organised recordings' videos after a while), the first line said in it
 //! (live/transcript.jsonl, else transcript.json), and whether it was saved as video only. Which job organises it, and

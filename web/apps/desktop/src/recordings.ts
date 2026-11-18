@@ -1,4 +1,4 @@
-// A recording is always findable, with its state (docs/design/capabilities.md §3.2 "Where a recording is"; the Mac's
+// A recording is always findable, with its state (docs/design/capabilities.md §4; the Mac's
 // BlurtCore Recordings.swift): Home's Recent lists every recording, and the items' places list the ones that have
 // no items to be found by — at the top of the list, where the organising job's row used to be. One recording is one
 // row: its process job (running, failed) is drawn as that row, never as a job row beside it.

@@ -1,4 +1,4 @@
-// A recording's row, where it shows (recordings.ts; docs/design/capabilities.md §3.2): Home's Recent and the items'
+// A recording's row, where it shows (recordings.ts; docs/design/capabilities.md §4): Home's Recent and the items'
 // places. Kind glyph, length, the first thing said in it, its state (N 个事项 / 未整理 / 整理中 / 未完成 + why /
 // 仅保存视频), its time; the click and the right-click menu do what fits the state (play the video, show it in the
 // folder, organise or retry it — or, with no agent to do it, Set Up an Agent… / copy what to say to one —, its items,
