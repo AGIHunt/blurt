@@ -27,6 +27,7 @@ described (contract C5): the apps and live.py run what this returns instead of b
   agents.py manual [--lang L]      any other agent, by hand: {skill, server, command, args, mcp_json, prompt}
   agents.py custom NAME [--home DIR] | --remove ID   a user's own agent in record.agent_defs → {id, def}
   agents.py drop [--os macos|windows|linux]   the card-drag targets: [{agent, name, ids, drop, on, custom}]
+  agents.py zip-skill OUT.zip      the skill folder as a .zip (blurt/ at its top) → {path}
   agents.py prompt work --items REF … [--handoff H] [--lang en|zh]
                                    → {"ok","prompt","title","handoff","path","items"}: a short prompt for the user's
                                       own agent, pointing at the items' hand-off note (K6; written unless --handoff
@@ -1426,6 +1427,28 @@ def manual(lang: str = "en", env: dict | None = None) -> dict:
             "clients_file": str(mcp_clients_file())}
 
 
+def zip_skill(out: str | Path) -> dict:
+    """The skill folder as a .zip with `blurt/` at its top (for an agent that imports a skill from a file: WorkBuddy's
+    技能 → 导入技能), without caches. → {"path"}"""
+    import zipfile  # noqa: PLC0415
+    out = Path(out).expanduser()
+    if out.suffix.lower() != ".zip":
+        out = out.with_suffix(".zip")
+    if not has_skill(SKILL_ROOT):
+        raise ValueError(f"no SKILL.md in {SKILL_ROOT}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + f".{os.getpid()}.tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(SKILL_ROOT.rglob("*")):
+            rel = f.relative_to(SKILL_ROOT)
+            if f.is_dir() or any(p in ("__pycache__", ".venv", "recorder", "models") for p in rel.parts) \
+                    or f.suffix == ".pyc" or f.name == COPY_MARK:
+                continue
+            z.write(f, Path("blurt") / rel)
+    os.replace(tmp, out)
+    return {"path": str(out)}
+
+
 def custom_id(name: str, taken) -> str:
     """A custom agent's id from its name: "My Agent" → "my-agent" (letters / digits kept, any script), unique."""
     base = re.sub(r"[^\w]+", "-", name.strip().lower()).strip("-_") or "agent"
@@ -1642,6 +1665,8 @@ def main():
     s.add_argument("--remove", metavar="ID")
     s = sub.add_parser("drop")
     s.add_argument("--os", choices=["macos", "windows", "linux"])
+    s = sub.add_parser("zip-skill")
+    s.add_argument("out")
     s = sub.add_parser("command")
     s.add_argument("id")
     s.add_argument("mode", choices=["headless"])
@@ -1685,6 +1710,9 @@ def main():
                 _emit({"ok": remove_custom(a.remove)})
             else:
                 _emit({"ok": True, **add_custom(a.name or "", a.home)})
+            return
+        if a.cmd == "zip-skill":
+            _emit({"ok": True, **zip_skill(a.out)})
             return
         if a.cmd == "drop":
             _emit({"ok": True, "os": a.os or os_key(), "targets": drop_targets(osk=a.os)})

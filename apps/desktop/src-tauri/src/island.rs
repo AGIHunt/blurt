@@ -131,11 +131,14 @@ fn card_drag_mode() -> &'static str {
     }
 }
 
-/// Settings → General → Cards → Agents…: the sheet's rows, `[{id, builtin, on}]` — every built-in agent app (on unless
-/// switched off), then the programs the user added (card_drop::listing; ids are executable stems).
+/// Settings → Agents → Dragging Cards → Edit…: the sheet's rows, `[{id, name, ids, drop, on, custom}]` — every agent
+/// whose app gets the picture's path and the note (card_drop::drop_rows: agents.json's and the user's own).
 fn agent_rows(cfg: &Value) -> Value {
-    let rows = card_drop::listing(cfg.pointer("/record/agent_apps").and_then(Value::as_object));
-    json!(rows.into_iter().map(|(id, builtin, on)| json!({"id": id, "builtin": builtin, "on": on})).collect::<Vec<_>>())
+    let rows = card_drop::drop_rows(&card_drop::registry(), cfg.get("record"), card_drop::OS);
+    json!(rows
+        .into_iter()
+        .map(|r| json!({"id": r.agent, "name": r.name, "ids": r.ids, "drop": r.drop, "on": r.on, "custom": r.custom}))
+        .collect::<Vec<_>>())
 }
 
 #[tauri::command]
@@ -143,10 +146,12 @@ pub fn agent_apps_get() -> Value {
     agent_rows(&settings::read_config())
 }
 
-/// A built-in switched on or off, a program added (`on`) or removed: record.agent_apps keeps only the changes to the
-/// built-in list (card_drop::changing; none left: the key goes) → the sheet's rows.
+/// `op`: "on" / "off" (an agent switched: record.agent_drop), "add" (`id` = a program's stem: a custom agent), "remove"
+/// (a custom agent). A v1.0.21 record.agent_apps moves over first (card_drop::migrate) → the sheet's rows.
 #[tauri::command]
-pub fn agent_apps_set(id: String, on: bool) -> Result<Value, String> {
+pub fn agent_apps_set(id: String, on: Option<bool>, op: Option<String>) -> Result<Value, String> {
+    let reg = card_drop::registry();
+    let op = op.unwrap_or_else(|| if on == Some(false) { "off".into() } else { "on".into() });
     let cfg = settings::update(|cfg| {
         if !cfg.is_object() {
             *cfg = json!({});
@@ -156,18 +161,22 @@ pub fn agent_apps_set(id: String, on: bool) -> Result<Value, String> {
             *rec = json!({});
         }
         let rec = rec.as_object_mut().unwrap();
-        let changes = card_drop::changing(rec.get("agent_apps").and_then(Value::as_object).unwrap_or(&Default::default()), &id, on);
-        if changes.is_empty() {
-            rec.remove("agent_apps");
-        } else {
-            rec.insert("agent_apps".into(), Value::Object(changes));
+        match op.as_str() {
+            "add" => {
+                card_drop::add_program(rec, &reg, &id);
+            }
+            "remove" => {
+                card_drop::remove_custom(rec, &id);
+            }
+            "off" => card_drop::set_on(rec, &reg, &id, false),
+            _ => card_drop::set_on(rec, &reg, &id, true),
         }
     })?;
     Ok(agent_rows(&cfg))
 }
 
 /// Add Program…: the system's Open dialog for programs (.exe; a shortcut is followed to its program by the dialog)
-/// → `{ids: [stem…]}` (card_drop::program_id), or `{cancel: true}`. The caller adds them (agent_apps_set).
+/// → `{ids: [stem…]}` (card_drop::program_id), or `{cancel: true}`. The caller adds them (agent_apps_set "add").
 #[tauri::command(async)]
 pub fn agent_apps_pick(app: AppHandle, title: String) -> Value {
     let mut d = folder_dialog(&app).set_title(title).add_filter("Programs", &["exe", "lnk"]);

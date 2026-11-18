@@ -264,6 +264,15 @@ def test_manual(home):
     assert json.loads(win)["command"] == "C:\\Users\\u\\.blurt\\bin\\uv.exe"
 
 
+def test_zip_skill(tmp_path):
+    import zipfile
+    out = agents.zip_skill(tmp_path / "blurt-skill")["path"]
+    assert out.endswith(".zip")
+    names = zipfile.ZipFile(out).namelist()
+    assert "blurt/SKILL.md" in names and "blurt/scripts/agents.py" in names
+    assert not any("__pycache__" in n or n.startswith("blurt/recorder/") or n.startswith("blurt/models/") for n in names)
+
+
 def test_custom_agents(home):
     a = agents.add_custom("My Agent", home="~/.my-agent")
     assert a["id"] == "my-agent"

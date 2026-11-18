@@ -213,7 +213,7 @@ pub fn drag(payload: &Payload, cards: Option<&str>, image: Option<&[u8]>, offset
         return None;
     }
     // the agent apps a card goes into as path + note, once for the whole drag (Settings → General → Cards)
-    let agents = card_drop::agents(crate::settings::read_config().get("record"));
+    let agents = card_drop::agents(&card_drop::registry(), crate::settings::read_config().get("record"));
     let wrap = |inner: IDataObject, terminal: &Option<Lines>| -> IDataObject {
         match terminal {
             Some(lines) => CardData { inner, lines: lines.clone(), agents: agents.clone(), exes: Default::default() }.into(),

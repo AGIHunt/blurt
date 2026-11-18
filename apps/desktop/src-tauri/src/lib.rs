@@ -31,6 +31,7 @@ pub mod screen_text;
 pub mod scripts;
 pub mod settings;
 pub mod setup;
+pub mod skill;
 pub mod tray;
 pub mod watcher;
 
@@ -664,10 +665,11 @@ fn agents_models(state: tauri::State<'_, AppState>, agent: String) -> R<Value> {
     agents::models(&state.runner(), &agent)
 }
 
-/// `login` false: no sign-in probes (fast); `ids`: only these agents.
+/// `login` false: no sign-in probes (fast); `ids`: only these agents; `fresh`: look for the agents' apps again
+/// (Check Again; else what was found in the last 10 minutes).
 #[tauri::command(async)]
-fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Option<Vec<String>>) -> R<Value> {
-    agents::detect_with(&state.runner(), login.unwrap_or(true), ids.as_deref())
+fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Option<Vec<String>>, fresh: Option<bool>) -> R<Value> {
+    agents::detect_fresh(&state.runner(), login.unwrap_or(true), ids.as_deref(), fresh.unwrap_or(false))
 }
 
 /// K6: hand these items to the user's own agent — the sheet is written, the items are marked handed off, and the
@@ -1028,6 +1030,10 @@ pub fn run() {
             let handle = app.handle().clone();
             hotkeys::mark_main_thread(); // hotkeys::apply runs here, whoever calls it
             retitle(&handle);
+            // the skill to $BLURT_HOME/skill before anything runs a script (skill.rs), and what agent-started runs
+            // read to match ours (setup::write_agent_env)
+            skill::sync_at_launch(handle.path().resource_dir().ok());
+            setup::write_agent_env();
             app.manage(AppState {
                 runner: RwLock::new(Runner::new(&handle)),
                 capture: capture::Capture::default(),
@@ -1239,6 +1245,10 @@ pub fn run() {
             housekeeping::agents_registry,
             housekeeping::agents_install,
             housekeeping::agents_test,
+            housekeeping::agents_manual,
+            housekeeping::agents_custom,
+            housekeeping::mcp_clients,
+            housekeeping::skill_zip,
             housekeeping::feedback_send,
             control::agent_setup_instruction,
             control::agent_setup_state,
