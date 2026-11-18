@@ -170,3 +170,36 @@
 - 录屏结束 ✓ 那一刻：见 island.md §13。
 - 没有在 Windows 上重拍（VM 已释放）。
 
+
+## 15. 每段录屏都有交代，整理和 Mac 一样（2026-11-18）
+
+用户反馈：Windows 没装命令行 Agent，录完「啥也没有，还得手动去存储文件夹里找视频」；装了 Agent 的，整理时提示词缺 SKILL.md 路径、
+退出码 0 就算成功（0 个事项也算）、没有超时、cwd 可能是项目文件夹。
+
+- **一份提示词。** `skills/blurt/scripts/organize_prompt.json`：录屏 / 截图批、哪几张、无人值守的说明（写 items.json，按 SKILL.md
+  跑 items.py ingest）、SKILL.md 路径（Mac `~/.blurt/skill`，Windows/Linux `paths::skill_dir()`）、脚本用法（`uv run <scripts>/<name>.py`，
+  和 agents.json 的白名单同一形式）、项目代码（只读）、候选项目（`projects.py candidates`，只给没有项目的捕获）。Mac 运行时读
+  （app 包里一份，`record.py build` 拷进去；再退到 skill 那份），Rust 编译进去（`include_str!`）。`tests/organize-prompt/golden.json`
+  是两边都要对上的样例：Rust `agents::tests::prompt_matches_the_golden_cases`、Swift `OrganizerPromptTests`。改提示词 = 改这个
+  JSON + 重新生成 golden。AI 补全的脚本用法也改成同一句（以前 Windows 写 `uv run --script`，Claude/Gemini 的白名单不放行）。
+- **cwd 是 session 文件夹。** `agents.py command --repo <session>`（以前传项目路径，cwd 就成了项目），项目路径只在提示词里给。
+  `--processing recording|cards` 按 Mac 的 ProcessingSpec.kind 分。
+- **成功 = 这次写了事项。** 跑之前记下 batch.json / items.json / items.ingested.json 的修改时间和 batch 里已有的事项；跑完有文件
+  变了才算整理过，事项 = 它报给任务的 + batch 里新出现的。写了但没有事项：任务 done、items 为空，岛上「没整理出事项」（Mac 同）。
+  没写：`agents.py classify` 看这次的输出（agents.json failures，和 Mac 的 classify 同一套）；auth / quota / model 且后面还有能用的
+  Agent → 换下一个（岛上「Claude Code 登录失效，改用 Codex 整理」，任务记 `organizer`）；否则失败，代码是那一类，认不出是
+  `agent_exit`。纯函数 `agents::decide` / `filed_items` 有单测。
+- **超时。** 45 分钟，或视频长度的 3 倍，最多 4 小时；到了停掉整棵进程树，任务 `timeout`。Mac 没有超时（未改）。
+- **结束时马上说话。** 详细 detect 的结果缓存（就绪 10 分钟，否则 1 分钟，同 AgentHub）。有缓存说能用：马上「正在整理到 X」+
+  更改 + 在文件资源管理器中显示；没有：先「正在整理…」，检测完替换成上面那句，或 **「录屏已保存 · 未找到可在后台整理的 Agent\n
+  可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」」+ 设置 Agent… + 复制说法 + 在文件资源管理器中显示**（Linux：在“文件”中
+  显示）。没有 Agent 时不建任务（不再出一条失败任务，也不再说「还没有可用的编程 agent」）。只保存视频 / 整理关掉时的「录屏已保存」
+  也带显示按钮。岛的提示支持第三个按钮（`third`，Mac 的 Island.Toast.thirdTitle 同）。
+- **Mac 同样。** 宣布前先查 Agent（AgentHub 缓存里有能用的就不等），没有就说同一句、同三个按钮、不建任务；「正在整理到 X」多一个
+  「在访达中显示」；只保存视频（整理关）的「录屏已保存」带「在访达中显示」；0 个事项说「没整理出事项」。
+- **列表要的后端。** `jobs_list` 返回最新 100 条 + 一周内还在等的失败整理（`waiting: true`，规则同 BlurtCore JobFailures：没忽略、
+  没被同一录屏的新任务取代）和 `log`（任务输出）；`session_process(dir)`（马上整理 / 重试；上次失败的是部分截图就重试那几张；没有
+  Agent → Err("no_agent")，不建任务；同一录屏已在整理就返回那个任务）；`job_dismiss(id)`（任务文件记 `dismissed: true`）。
+  任务详情：重试、在文件资源管理器中显示、查看日志、忽略。
+- 要在 Windows VM 上看：没有 Agent 时结束一段录屏的那一句和三个按钮（宽度）、复制说法、设置 Agent… 打开设置的 Agent 页；装了
+  Codex/Claude 的完整整理（cwd、SKILL.md 路径能读到、items 计数）；登录失效时换下一个；超时杀进程树（taskkill /T）。
