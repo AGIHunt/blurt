@@ -61,7 +61,7 @@ class FakeModelScope:
         if "/api/v1/models/" in url:
             listing = [{"Type": "blob", "Path": p, "Size": len(b)} for p, b in self.files.items()]
             return FakeResponse(json.dumps({"Data": {"Files": listing + [{"Type": "blob", "Path": "README.md", "Size": 3}]}}).encode())
-        name = url.rsplit("/", 1)[-1]
+        name = url.split("/resolve/master/", 1)[-1] if "/resolve/master/" in url else url.rsplit("/", 1)[-1]
         self.opened.append((name, rng))
         if name == self.fail_on:
             raise urllib.error.URLError("connection reset")
@@ -117,6 +117,61 @@ class MirrorDownloadIsCompleteOrNotInstalled(unittest.TestCase):
         self.assertIsNone(T.model_path(asr_entry(self.name)))          # a shard is missing
         (self.dest / "model-00002-of-00002.safetensors").write_bytes(b"b")
         self.assertEqual(T.model_path(asr_entry(self.name)), self.dest)
+
+
+class ModelScopeRoutes(unittest.TestCase):
+    def test_qwen_cpu_uses_the_original_archive_when_the_mirror_is_off(self):
+        m = T.entry("qwen3-asr-0.6b-onnx")
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(T, "MODELS_DIR", Path(root)), \
+                mock.patch.dict(os.environ, {"BLURT_HF_MIRROR": ""}):
+            dest = Path(root) / m["install"]["dir"]
+
+            def install_archive(_):
+                (dest / "tokenizer").mkdir(parents=True)
+                for name in ("conv_frontend.onnx", "encoder.int8.onnx", "decoder.int8.onnx"):
+                    (dest / name).write_bytes(b"weights")
+
+            with mock.patch.object(T, "_install_archive", side_effect=install_archive) as archive, \
+                    mock.patch.object(T, "_modelscope") as mirror:
+                self.assertEqual(T._install_unlocked(m), dest)
+            archive.assert_called_once_with(m)
+            mirror.assert_not_called()
+
+    def test_qwen_cpu_mirror_keeps_the_archive_layout_and_checks_all_required_files(self):
+        m = T.entry("qwen3-asr-0.6b-onnx")
+        files = m["install"]["modelscope"]["files"]
+        weights = {name: name.encode() for name in files.values()}
+        missing = FakeModelScope({"model_0.6B/conv_frontend.onnx": b"weights"})
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(T, "MODELS_DIR", Path(root)), \
+                mock.patch.dict(os.environ, {"BLURT_HF_MIRROR": "1"}):
+            with mock.patch.object(urllib.request, "urlopen", missing):
+                with self.assertRaisesRegex(T.Fail, "missing required files"):
+                    T._install_unlocked(m)
+            self.assertEqual(missing.opened, [])
+            self.assertIsNone(T.model_path(m))
+
+            with mock.patch.object(urllib.request, "urlopen", FakeModelScope(weights)):
+                dest = T._install_unlocked(m)
+            self.assertEqual(dest, Path(root) / m["install"]["dir"])
+            self.assertEqual({name: (dest / name).read_bytes() for name in files}, {
+                local: weights[remote] for local, remote in files.items()
+            })
+            (dest / "tokenizer/vocab.json").unlink()
+            self.assertIsNone(T.model_path(m))
+
+    def test_whisper_mirror_prepares_the_runtime_and_does_not_call_hugging_face(self):
+        m = T.entry("whisper-large-v3-turbo-ct2")
+        hf = mock.Mock()
+        fake = FakeModelScope({"model.bin": b"weights", "config.json": b"{}", "tokenizer.json": b"{}"})
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(T, "MODELS_DIR", Path(root)), \
+                mock.patch.dict(os.environ, {"BLURT_HF_MIRROR": "1", "HF_HUB_CACHE": str(Path(root) / "hf")}), \
+                mock.patch.dict(sys.modules, {"huggingface_hub": hf}), \
+                mock.patch.object(T, "ensure_package") as ensure, mock.patch.object(urllib.request, "urlopen", fake):
+            dest = T._install_unlocked(m)
+            self.assertEqual(dest, T.model_path(m))
+            self.assertEqual((dest / "model.bin").read_bytes(), b"weights")
+        ensure.assert_called_once_with(m)
+        hf.snapshot_download.assert_not_called()
 
 
 class HuggingFaceSnapshotIsCompleteOrNotInstalled(unittest.TestCase):
