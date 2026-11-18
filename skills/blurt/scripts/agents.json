@@ -120,10 +120,10 @@
     {
       "id": "workbuddy", "name": "WorkBuddy", "bins": [], "verified": "local", "headless": false,
       "edition": {"zh": "国内版", "en": "China"},
-      "home": "~/.workbuddy", "app": {"macos": ["com.tencent.workbuddy.mac", "/Applications/WorkBuddy.app"], "windows": ["workbuddy"]},
+      "home": "~/.workbuddy", "app": {"macos": ["com.tencent.workbuddy.mac", "/Applications/WorkBuddy.app"], "windows": ["workbuddy"]}, "app_verified": {"windows": "local"},
       "drop": "composer", "site": "https://www.codebuddy.cn/work/",
       "install": {"zh": "见 codebuddy.cn/work", "en": "see codebuddy.cn/work"},
-      "after": {"zh": "在 WorkBuddy 里打开 连接器 → blurt，点「信任」，然后新开一个对话。", "en": "In WorkBuddy, open Connectors → blurt, click Trust, then start a new chat."},
+      "after": {"zh": "在 WorkBuddy 中打开「连接器」→「blurt」，点击「信任」，然后新建对话。", "en": "In WorkBuddy, open Connectors → blurt, click Trust, then start a new chat."},
       "skill_dir": "~/.workbuddy/skills",
       "mcp": {"json": {"path": "~/.workbuddy/mcp.json", "key": ["mcpServers", "blurt"],
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
