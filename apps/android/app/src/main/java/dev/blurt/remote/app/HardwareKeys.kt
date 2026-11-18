@@ -32,6 +32,13 @@ object HardwareKeys {
         KeyEvent.KEYCODE_META_LEFT to RemoteModifiers.COMMAND, KeyEvent.KEYCODE_META_RIGHT to RemoteModifiers.COMMAND,
     )
 
+    /** the modifiers held down on the keyboard right now (a pinch with ⌘ or Ctrl held zooms the computer) */
+    var held = 0
+        private set
+
+    /** The app left the screen: the key-ups won't come here. */
+    fun forget() { held = 0 }
+
     /** The key name for a key code, or null for one that stays the phone's. */
     fun name(code: Int): String? = names[code]
 
@@ -56,6 +63,7 @@ object HardwareKeys {
         if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return false
         modifiers[e.keyCode]?.let { bit ->
             if (down && e.repeatCount > 0) return true
+            held = if (down) held or bit else held and bit.inv()
             Remote.link.send(ToMac.Key(RemoteChord(bit, ""), down))
             return true
         }

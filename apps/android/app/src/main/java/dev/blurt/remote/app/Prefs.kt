@@ -41,6 +41,14 @@ class Prefs(c: Context) {
     var tapWhereTouched: Boolean
         get() = d.getBoolean("tapWhereTouched", true)
         set(v) { d.edit().putBoolean("tapWhereTouched", v).apply(); bump() }
+    /** with the picture showing it fills the screen: only the talk key and a way out stay. The picture off, the keys are back */
+    var fullScreen: Boolean
+        get() = d.getBoolean("fullScreen", false)
+        set(v) { d.edit().putBoolean("fullScreen", v).apply(); bump() }
+    /** the line over the picture the first time it showed (two fingers scroll, pinch with ⌘ held) */
+    var pictureHintShown: Boolean
+        get() = d.getBoolean("pictureHintShown", false)
+        set(v) { d.edit().putBoolean("pictureHintShown", v).apply() }
     var quality: ScreenQuality
         get() = runCatching { ScreenQuality.valueOf(d.getString("quality", null) ?: "AUTO") }.getOrDefault(ScreenQuality.AUTO)
         set(v) { d.edit().putString("quality", v.name).apply(); bump() }

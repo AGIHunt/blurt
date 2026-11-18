@@ -58,6 +58,10 @@
     <string name="displays">Displays</string>
     <string name="displays_hint">Tap a display to show it. Tapping the button steps to the next one on the right.</string>
     <string name="follow_pointer">Follow Pointer</string>
+    <string name="full_screen">Full Screen</string>
+    <string name="exit_full_screen">Exit Full Screen</string>
+    <string name="picture_hint_mac">Two fingers scroll · Pinch with %1$s held zooms the Mac</string>
+    <string name="picture_hint_pc">Two fingers scroll · Pinch with %1$s held zooms the computer</string>
 
     <!-- pairing -->
     <string name="pair_title">Pair with Computer</string>
@@ -130,8 +134,8 @@
     <string name="g_select_area">Drag, select an area</string>
     <string name="g_tap_touch">Tap, in Touch Mode</string>
     <string name="g_click_there">Click right there</string>
-    <string name="g_edge">One finger along the edge</string>
-    <string name="g_scroll">Scroll</string>
+    <string name="g_edge">One finger up or down the thumb-side edge</string>
+    <string name="g_scroll">Scroll at the pointer</string>
     <string name="g_two">Two fingers</string>
     <string name="g_two_does">Scroll at the pointer, tap to right click</string>
     <string name="g_two_touch">Two fingers, in Touch Mode</string>
@@ -140,6 +144,9 @@
     <string name="g_zoom">Zoom</string>
     <string name="g_pinch_screen">Pinch, with the screen showing</string>
     <string name="g_zoom_picture">Zoom the picture</string>
+    <string name="g_pinch_mod">Pinch with %1$s held</string>
+    <string name="g_zoom_mac">Zoom on the Mac</string>
+    <string name="g_zoom_computer">Zoom on the computer</string>
     <string name="g_one_zoomed">One finger, zoomed in, in Touch Mode</string>
     <string name="g_move_picture">Move the picture</string>
     <string name="g_pointer_zoomed">Pointer, zoomed in</string>
@@ -168,10 +175,15 @@
     <!-- the key editor -->
     <string name="editor_hint">Hold and drag a key to move it. Tap one to change it.</string>
     <string name="always_here">Always Here</string>
-    <string name="always_here_footer">With the keys put away in landscape, esc, return and space stay, or the keys in their places.</string>
+    <string name="always_here_footer">With the keys put away in landscape, esc, delete and return stay by the thumb.</string>
     <string name="rename">Rename</string>
     <string name="add_section">Add Section</string>
     <string name="delete_section">Delete Section</string>
+    <string name="template_empty">Empty</string>
+    <string name="template_writing">Writing</string>
+    <string name="template_design">Design</string>
+    <string name="template_presenting">Presenting</string>
+    <string name="template_spreadsheet">Spreadsheet</string>
     <string name="section_name">Section Name</string>
     <string name="ok">OK</string>
     <string name="restore_keys">Restore Default Keys</string>

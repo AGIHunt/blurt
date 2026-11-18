@@ -34,6 +34,7 @@ final class DisplaySwitchTests: XCTestCase {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { throw XCTSkip("no scene") }
         Pretend.connected = true
         Pretend.screen = true
+        Prefs.shared.fullScreen = false     // full screen has no screen button and no map
         Link.shared.pretend(displays: [laptop, dell], shown: "4", pinned: pinned)
         defer { Pretend.screen = false }
         let w = UIWindow(windowScene: scene)
@@ -74,5 +75,21 @@ final class DisplaySwitchTests: XCTestCase {
             }
         }
         _ = try screen(CGSize(width: 402, height: 874), safe: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0), name: "portrait-pinned", steps: nil, pinned: "4")
+    }
+
+    @MainActor
+    func testFullScreenLeavesThePictureTheTalkKeyAndAWayBack() throws {
+        let c = try screen(CGSize(width: 874, height: 402), safe: UIEdgeInsets(top: 0, left: 62, bottom: 21, right: 62), name: "landscape-full", steps: nil)
+        c.testCloseMap()
+        Prefs.shared.fullScreen = true
+        defer { Prefs.shared.fullScreen = false }
+        c.view.setNeedsLayout()
+        c.view.layoutIfNeeded()
+        let pad = try XCTUnwrap(c.view.subviews.first { ($0 as? TrackpadView)?.isStage == true })
+        XCTAssertEqual(pad.frame, c.view.bounds)
+        XCTAssertEqual(c.view.subviews.first { $0 is ScreenButton }?.isHidden, true)
+        XCTAssertEqual(c.view.subviews.first { $0 is TalkBar }?.isHidden, false)
+        XCTAssertTrue(c.view.subviews.contains { ($0 as? UIButton)?.configuration?.title == String(localized: "Exit Full Screen") && !$0.isHidden })
+        XCTAssertFalse(c.view.subviews.contains { $0 is KeyCell && !$0.isHidden }, "no keys over the picture")
     }
 }

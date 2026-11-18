@@ -161,6 +161,26 @@ as it passes, so what will happen shows before it's let go, and into the dock it
 icon, text or small line, or what it does; minus to remove, plus to add. Sections can be renamed, added and removed. The picker has the whole
 keyboard and about 90 actions with search, plus New Shortcut (tap modifiers, tap a key, optional hold-and-slide) and Text.
 
+**The keys round of 2026-11-18.** The founder, on an iPhone: in landscape with the keys put away there is a space bar by the thumb and no ⌫.
+Six user sketches (a terminal developer, a Chinese writer dictating, a lecturer at a projector, an iPad sofa reader, a Windows Excel analyst,
+a designer) on the landscape column, the dock and 常用. Four of six (and the founder) wanted ⌫ there: by voice a slip is mended with ⌫, and
+nobody presses space when dictation writes the spaces. The reader (play/pause) and the lecturer (next slide) wanted space; it's still in the
+keys, and the arrow key turns slides. Decided:
+- **Landscape column**: keys · ⌘Tab · esc · arrow key · ⌫ · ↩ · talk. ⌫ took space's place, so the column is no longer and the keys no smaller
+  (an eighth key would have made them 35 pt). esc and ↩ never side by side (one stops an agent, the other sends a half-written prompt); ⌫ not
+  against the talk key. The three are found in the dock by what they are (`Deck.thumbSlots`), so a rearranged dock keeps them by the thumb.
+- **Dock**: ⌃ ⌥ ⌘ ⇧ ⇥ space esc ⌫ ↩, then talk: ↩ by the talk key, where a phone's keyboard has return, and the same esc ⌫ ↩ order in portrait,
+  the landscape column and the iPad's right half (space esc ⌫ ↩ talk there; the split stays five and four).
+- **常用's last row**: Snap · Copy Text · Translate · Cards · ⌘R · ⇧Tab. ⇧Tab is a field back and Claude Code's next mode, two taps a time
+  before; reload three of six asked for. Record and Voice Note moved to 更多: hardly anyone reached for them from the first page. The other three
+  rows stay (on Windows, Snip leaves 更多 for the picker to keep it four rows; Blurt's Snap does the same): ⌘K, ⌃C and ⌘` are dead keys to the writer, designer and reader and daily ones to the developer, and no one set suits all.
+- **Pages to start from** (Edit Keys → … → Add Section): Writing (⇧⌘V, ⌥⌫, ⌘S, ⌘B, ⌘I, ⌘U), Design (⌘D, ⌘G, ⇧⌘G, ⌘S, ⇧1, ⇧0), Presenting
+  (⌥⌘P or F5 and ⇧F5, PgUp, PgDn, B, Home, End, zoom in, out, actual size, Win+P on Windows), Spreadsheet (F2, ⌦, save, sheet back and on,
+  fill). Each computer's own keys. What the lecturer needs is a dozen keys they would never add one by one.
+- Untouched decks take the new dock and 常用 (`Deck.modernise`); a dock or page its owner changed stays as it is.
+Left for later: on an iPad with the pages put away, back / close tab / next tab are out of reach; space in full screen for a video; the arrow
+key as two big ← → in landscape for slides. Not checked on a phone in the hand.
+
 ## Trackpad
 
 Raw touches into `PadEngine`, a pure state machine with tests (no gesture recognisers: they add delay). Tap click; tap, tap
@@ -185,6 +205,33 @@ apart, and a scroll whose fingers come apart further than it has travelled turns
 thumb still and finger out, 60 ↔ 150 pt both ways (as many steps each way), 60 → 85 (one step), a spread after 8 pt of hand drift, a 300 pt scroll
 with 30 pt of finger drift (no zoom), a wobbly two-finger tap (still a right click). On the old engine four of them fail, the first as a scroll.
 Not checked on a phone in the hand here: the tests are the engine's, the reporter's fingers are theirs.
+
+**One finger, two fingers, and the two zooms (2026-11-18).** An iPad user in Touch Mode: Settings promised one-finger scrolling and it never
+worked; two fingers scrolled fine; and they wanted the computer's zoom with the picture showing as well as the picture's. The row said
+「单指沿边缘滑动 → 滚动」, read as "one finger scrolls", while it is a 26 pt strip by the thumb whose mark hid whenever the picture showed. Five
+user sketches (an iPad reader, an iPhone developer at a big screen, a lecturer at a projector, a low-vision armchair reader, a designer on a
+13" iPad) split on one finger scrolling the picture: kept as it is, since in Touch Mode a slide of one finger is the only way to move the
+pointer without a click, which is what hover needs (menus and buttons that appear under the pointer, link previews, a hidden Dock). Decided
+with the founder:
+- **The edge stays on over the picture** and its mark shows when it matters: as the picture comes on (1.5 s, then it fades) and while one finger
+  scrolls there. Over the picture a standing line would hide a strip of it. What it takes away is only a quick vertical slide that starts in the
+  strip, which as a pointer move works as well from anywhere else (the pointer moves relatively), and a sideways slide from it is still the pointer.
+- **The gesture list says what is true**: two fingers first, then 「单指沿拇指一侧边缘上下滑 → 在光标处滚动」. The first time the picture comes on, a
+  line over it says two fingers scroll and ⌘ with a pinch zooms the Mac.
+- **⌘ (Ctrl on Windows and Linux) held with a pinch zooms the computer**, picture or not, as ⌘ or Ctrl with a wheel does on the computer;
+  a plain pinch over the picture still zooms the picture. Held means the dock's modifier (tapped once it's spent by the zoom, twice it's locked)
+  or a keyboard on the iPad. No setting: an either-or setting would have taken the picture's zoom away, and it is what small targets need
+  (⌘+ doesn't enlarge a menu bar). The reporter's own idea, the Find Pointer button's light as the switch, was turned down by all five: it is a
+  button that acts and is done, and a light on it reads as nothing. A zoom about the fingers like a real trackpad's isn't possible from
+  outside on macOS (no public way to post a magnify gesture); ⌘+ and ⌘− are what's sent.
+- **Full Screen** at the foot of the display map (holding the screen button now opens the map with one display too, as just that row): the
+  picture takes the whole screen, and only a see-through talk key by the thumb and an "Exit Full Screen" pill stay over it. Remembered; it
+  applies only while the picture shows, never with the phone's keyboard up or across a fold in use. Going in lets go of dock modifiers, so
+  nothing stays held unseen; there, only a keyboard's ⌘ or Ctrl gives the computer's zoom. For reading on an iPad what was left open on the
+  computer; on a phone in portrait it gains little.
+`PadEngine` (`computerZoomHeld`, `.edgeScroll`), `PadViewController` (`markEdge`, `tipOnce`, `setFullScreen`), `DisplayMap`; the same in Kotlin.
+Checked: the iOS (144) and Android (168) tests, including a full-screen layout test, and the iPhone and iPad simulators (map, full screen
+portrait and landscape, the tip). Not checked: a hand on a real iPad, Android on a device or emulator, the relay.
 
 Pointer gain rises smoothly from 1× for a slow finger to 5.5× for a fast one, because the glass is a tenth of a trackpad and
 the target may be 4K; reviews of other apps single out steep curves and bad slow-speed precision. Scrolling is

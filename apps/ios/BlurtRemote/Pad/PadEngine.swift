@@ -12,7 +12,9 @@
 //   two fingers  move = scroll what's under the pointer, as on the Mac's trackpad, both ways; tap = right click; pinch = zoom the app
 //                on the Mac. With the screen showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers.
 //                Two fingers moving together never stay exactly the same distance apart: a scroll stays a scroll until they clearly pinch.
-//                Away from the picture (the pad between the thumbs, Touch Mode off) the zoomed view follows the pointer
+//                Away from the picture (the pad between the thumbs, Touch Mode off) the zoomed view follows the pointer.
+//                With the computer's zoom key held (⌘ on a Mac, Ctrl elsewhere), a pinch zooms the computer even with the screen
+//                showing, as ⌘ or Ctrl with a wheel does there: both zooms are always a gesture away, with no setting to remember
 //   three        swipe left/right = change desktop, up = all windows, down = this app's windows
 //
 // A touch that stops a coasting scroll is only that: no click. A thumb resting still never clicks (`tapTime`).
@@ -44,6 +46,8 @@ enum PadOutput: Equatable {
     case viewEnd
     /// the finger moving the picture left it at this speed (points a second): it coasts on
     case viewCoast(CGFloat, CGFloat)
+    /// one finger along the edge began scrolling, or stopped: its mark lights while it does
+    case edgeScroll(Bool)
 }
 
 enum PadHaptic { case tap, grab, release, step }
@@ -102,6 +106,10 @@ final class PadEngine {
 
     var curve = RemotePointerCurve()
     var pinchZoomsView = false
+    /// the computer's zoom key is held (⌘ on a Mac, Ctrl elsewhere): a pinch zooms the computer, whatever is showing
+    var computerZoomHeld: () -> Bool = { false }
+    /// a pinch now zooms the view on the phone
+    private var zoomsView: Bool { pinchZoomsView && !computerZoomHeld() }
     var touchMode = false
     /// the picture is zoomed in under the finger: one finger moves it (set as the touch lands)
     var panView = false
@@ -169,9 +177,10 @@ final class PadEngine {
             switch state {
             case .dragging: state = .dragging(last: centroid)
             case .spent: break
-            case .scrolling:
+            case let .scrolling(_, two):
                 // the first two fingers moved a little before the third landed: it was three all along
                 out += [.scroll(0, 0, .ended)]
+                if !two { out.append(.edgeScroll(false)) }
                 state = .three(start: centroid)
             case .view, .panning:
                 out.append(.viewEnd)
@@ -191,7 +200,7 @@ final class PadEngine {
             if dist(p, start) > Self.slop {
                 if let e = scrollEdge, e.contains(start.x), scrollEdgeY?.contains(start.y) ?? true, abs(p.y - start.y) > abs(p.x - start.x) {
                     samples = []
-                    out.append(.scroll(0, 0, .began))
+                    out += [.scroll(0, 0, .began), .edgeScroll(true)]
                     state = .scrolling(last: p, two: false)
                 } else if panView {
                     samples = []
@@ -235,7 +244,7 @@ final class PadEngine {
         case let .scrolling(last, two):
             // a scroll that turns into a clear pinch: the picture zooms from here, and the scroll ends without coasting
             // (by a third and 36 pt both, so fingers drifting over a long scroll don't count)
-            if two, pinchZoomsView, touches.count >= 2, scrollSpread > 0, abs(spread - scrollSpread) > max(Self.pinchStep, scrollSpread / 3) {
+            if two, zoomsView, touches.count >= 2, scrollSpread > 0, abs(spread - scrollSpread) > max(Self.pinchStep, scrollSpread / 3) {
                 out.append(.scroll(0, 0, .ended))
                 state = .view(spread: spread, center: p, from: spread, zooming: true)
                 break
@@ -244,7 +253,7 @@ final class PadEngine {
             scrollTravel += hypot(dx, dy)
             // fingers that drifted before they spread started as a scroll: once they have come apart further than the scroll has gone,
             // it was a pinch (a real scroll has travelled much further than its fingers drift)
-            if two, !pinchZoomsView, touches.count >= 2, scrollSpread > 0,
+            if two, !zoomsView, touches.count >= 2, scrollSpread > 0,
                abs(spread - scrollSpread) > max(Self.pinchStride(scrollSpread, apart: spread > scrollSpread), scrollTravel) {
                 out.append(.scroll(0, 0, .ended))
                 state = .pinch(spread: scrollSpread)
@@ -256,13 +265,13 @@ final class PadEngine {
             state = .scrolling(last: p, two: two)
         case let .two(start, s, _):
             guard touches.count >= 2 else { break }
-            let apart = abs(spread - s), moved = dist(p, start)
-            if pinchZoomsView, apart > Self.pinchStep * 0.35 {
+            let apart = abs(spread - s), moved = dist(p, start), toView = zoomsView
+            if toView, apart > Self.pinchStep * 0.35 {
                 state = .view(spread: spread, center: p, from: spread, zooming: true)
-            } else if !pinchZoomsView, apart > Self.pinchLock(s), apart > moved {
+            } else if !toView, apart > Self.pinchLock(s), apart > moved {
                 // counted from where the fingers started, so the first step comes as soon as the next ones
                 state = .pinch(spread: s)
-            } else if moved > Self.slop, pinchZoomsView || apart < moved {
+            } else if moved > Self.slop, toView || apart < moved {
                 // one finger held still while the other spreads moves the middle half as far as the fingers come apart: that is a
                 // pinch still making up its mind, not a scroll, which moves the middle and leaves the spread alone
                 // zoomed or not, two fingers scroll the Mac, as on its own trackpad: what's under the pointer scrolls. With the picture
@@ -348,8 +357,9 @@ final class PadEngine {
             }
         case let .held(_, at):
             if now - at < Self.holdLimit { out += [.click(.right), .haptic(.tap)] }
-        case .scrolling:
+        case let .scrolling(_, two):
             out.append(.scroll(0, 0, .ended))
+            if !two { out.append(.edgeScroll(false)) }
             if let v = releaseVelocity() {
                 out.append(.fling(Float(v.dx * scrollGain), Float(v.dy * scrollGain)))
                 coastUntil = now + Self.coastTime
@@ -404,7 +414,9 @@ final class PadEngine {
         var out: [PadOutput] = []
         switch state {
         case .dragging: out.append(.button(.left, down: false))
-        case .scrolling: out.append(.scroll(0, 0, .ended))
+        case let .scrolling(_, two):
+            out.append(.scroll(0, 0, .ended))
+            if !two { out.append(.edgeScroll(false)) }
         case .view, .panning: out.append(.viewEnd)
         default: break
         }

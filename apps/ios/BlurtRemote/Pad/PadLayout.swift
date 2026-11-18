@@ -120,10 +120,13 @@ struct PadLayout {
     /// less, and it's a phone's layout
     static let bigWidth: CGFloat = 616
     static let bigHeight: CGFloat = 520
-    /// the dock's esc, return and space, as it ships: in landscape these stay out by the thumb with the keys put away. The rest are for keys
-    static let thumbSlots = (esc: Deck.dockCount - 4, enter: Deck.dockCount - 2, space: Deck.dockCount - 1)
+    /// the dock's esc, ⌫ and ↩, wherever the deck has them: in landscape these stay out by the thumb with the keys put away. The rest are for
+    /// keys. ⌫ took the space bar's place there (2026-11-18): writing by voice, a slip is mended with ⌫, and nobody pressed space
+    static var thumbSlots = Deck.thumbSlots(Deck.standard.dock)
+    /// big screens: the modifiers and ⇥ under one thumb, the rest of the dock and the talk key under the other
+    static let bigSplit = 5
 
-    static func staysOut(_ i: Int) -> Bool { i == thumbSlots.esc || i == thumbSlots.enter || i == thumbSlots.space }
+    static func staysOut(_ i: Int) -> Bool { i == thumbSlots.esc || i == thumbSlots.delete || i == thumbSlots.enter }
 
     static func mode(for size: CGSize) -> Mode {
         if size.width >= bigWidth && size.height >= bigHeight { return .big }
@@ -322,8 +325,8 @@ private struct Parts {
         p.appsKey = next(unit)
         let esc = next(unit)
         p.arrowKey = next(arrow)
+        let delete = next(unit)
         let enter = next(unit)
-        let space = next(unit)
         p.talk = fromFar(far, thumbW, y, top + tall - y)
 
         // the keys, beside that: pages, then the rest of the dock, as tall as the screen allows
@@ -345,8 +348,8 @@ private struct Parts {
         var column = 0
         p.dock = (0..<Deck.dockCount).map { i in
             if i == PadLayout.thumbSlots.esc { return esc }
+            if i == PadLayout.thumbSlots.delete { return delete }
             if i == PadLayout.thumbSlots.enter { return enter }
-            if i == PadLayout.thumbSlots.space { return space }
             defer { column += 1 }
             return CGRect(x: block.minX + CGFloat(column) * (keyW + gap), y: rowY, width: keyW, height: h)
         }
@@ -465,7 +468,7 @@ private struct Parts {
 
         // the dock: the modifiers and ⇥ under one thumb, what ends things and the talk key in the other's corner
         let dockY = deck.maxY - h
-        let leftCount = PadLayout.thumbSlots.esc, rightCount = Deck.dockCount - leftCount + 1
+        let leftCount = PadLayout.bigSplit, rightCount = Deck.dockCount - leftCount + 1
         func spot(_ r: CGRect, _ c: Int, of count: Int) -> CGRect {
             let w = keys(r.width, count)
             return CGRect(x: r.minX + CGFloat(c) * (w + gap), y: dockY, width: w, height: h)

@@ -5,7 +5,7 @@
 //  across, and the dock: the modifiers, the keys that end things, space, and the talk key in the corner by the thumb.
 //
 //  Phone, landscape: the end with the camera cutout holds what's rarely needed (settings, find the pointer, the screen, the system keyboard);
-//  the other end holds what's always needed, for the thumb that's there: the keys' switch, ⌘Tab, esc, the arrow key, return, space and the
+//  the other end holds what's always needed, for the thumb that's there: the keys' switch, ⌘Tab, esc, the arrow key, delete, return and the
 //  talk key. Everything else comes out beside it when the keys open and goes when they're put away. Turn the phone round to change hands.
 //
 //  A big screen (a tablet, an unfolded foldable, a large window) gets a large stage for the picture and a panel of keys the size of a
@@ -17,6 +17,8 @@
 package dev.blurt.remote.app.pad
 
 import dev.blurt.remote.core.Deck
+import dev.blurt.remote.core.KeyAction
+import dev.blurt.remote.core.KeySlot
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -40,7 +42,14 @@ class PadLayout(
     fold: Fold? = null,
     /** the computer has more than one display and its picture is showing: the switcher gets a place */
     private val displays: Boolean = false,
+    /** the dock slots that stay by the thumb in landscape: `thumbs(deck.dock)` */
+    private val thumbs: Thumbs = Thumbs(),
 ) {
+    /** Dock slots by index: esc, delete and return. */
+    data class Thumbs(val esc: Int = Deck.DOCK_COUNT - 3, val delete: Int = Deck.DOCK_COUNT - 2, val enter: Int = Deck.DOCK_COUNT - 1) {
+        fun has(i: Int) = i == esc || i == delete || i == enter
+    }
+
     data class Fold(val bounds: Frame, val vertical: Boolean, val halfOpened: Boolean)
 
     enum class Mode { PORTRAIT, LANDSCAPE, SPLIT, STACK }
@@ -276,8 +285,8 @@ class PadLayout(
         appsKey = next(unit)
         val esc = next(unit)
         arrowKey = next(arrow)
+        val delete = next(unit)
         val enter = next(unit)
-        val space = next(unit)
         talk = fromFar(far, thumbW, y, top + tall - y)
 
         // the keys, beside that: pages, then the rest of the dock, as tall as the screen allows while a key stays key-shaped
@@ -301,9 +310,9 @@ class PadLayout(
         var column = 0
         dock = (0 until Deck.DOCK_COUNT).map { i ->
             when (i) {
-                THUMB_ESC -> esc
-                THUMB_ENTER -> enter
-                THUMB_SPACE -> space
+                thumbs.esc -> esc
+                thumbs.delete -> delete
+                thumbs.enter -> enter
                 else -> Frame(block.left + column * (keyW + gap), rowY, block.left + column * (keyW + gap) + keyW, rowY + kh).also { column++ }
             }
         }
@@ -329,6 +338,9 @@ class PadLayout(
         if (b.left < band) exclusions += Frame(0f, from, band, b.bottom)
         if (b.right > w - band) exclusions += Frame(w - band, from, w, b.bottom)
     }
+
+    /** a dock key that stays out in landscape with the keys put away */
+    fun staysOut(i: Int) = thumbs.has(i)
 
     /** where one finger scrolls on the pad, across it: the side by the thumb */
     fun scrollEdge(width: Float): ClosedFloatingPointRange<Double> =
@@ -356,10 +368,20 @@ class PadLayout(
         const val PANEL_W = 402f
         /** the pad never goes below this before the keys give way */
         const val MIN_PAD = 120f
-        /** the dock's esc, return and space as it ships: in landscape these stay out by the thumb with the keys put away */
-        const val THUMB_ESC = Deck.DOCK_COUNT - 4
-        const val THUMB_ENTER = Deck.DOCK_COUNT - 2
-        const val THUMB_SPACE = Deck.DOCK_COUNT - 1
-        fun staysOut(i: Int) = i == THUMB_ESC || i == THUMB_ENTER || i == THUMB_SPACE
+
+        /**
+         * Where the dock's esc, delete and return are, found by what they do: in landscape these stay out by the thumb with the keys put
+         * away, wherever the user moved them. One that isn't in the dock leaves its place as shipped to whatever key is there.
+         */
+        fun thumbs(dock: List<KeySlot>): Thumbs {
+            fun find(key: String) = dock.indexOfFirst { val a = it.action; a is KeyAction.Chord && !a.cycle && a.chord.mods == 0 && a.chord.key == key }
+            val found = listOf("Escape", "Delete", "Return").map(::find)
+            val taken = found.filter { it >= 0 }.toMutableSet()
+            val n = Deck.DOCK_COUNT
+            val at = found.mapIndexed { k, i ->
+                if (i >= 0) i else (if (n - 3 + k !in taken) n - 3 + k else (n - 1 downTo 0).first { it !in taken }).also { taken += it }
+            }
+            return Thumbs(at[0], at[1], at[2])
+        }
     }
 }

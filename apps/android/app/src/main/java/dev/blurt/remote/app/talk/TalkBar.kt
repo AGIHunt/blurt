@@ -28,6 +28,9 @@ class TalkBar(c: Context) : View(c) {
     var onAsk: (() -> Unit)? = null
     /** it was refused: say how to get it back, or use the computer's */
     var onDenied: (() -> Unit)? = null
+    /** over the picture in full screen: the picture shows through it at rest */
+    var floating = false
+        set(v) { if (field != v) { field = v; invalidate() } }
     private var phase = RemoteDictationPhase.IDLE
     private var level = 0f
     private var down = false
@@ -67,6 +70,7 @@ class TalkBar(c: Context) : View(c) {
         val r = Theme.KEY_RADIUS.dp
         p.shader = null
         p.color = if (on) Theme.mint else if (down) Theme.slabPressed else Theme.talkRest
+        if (floating && !on) p.alpha = 150
         canvas.drawRoundRect(rect, r, r, p)
         if (on && level > 0) {
             // the level moves the fill a little, from the middle outward, so a glance says the mic hears you

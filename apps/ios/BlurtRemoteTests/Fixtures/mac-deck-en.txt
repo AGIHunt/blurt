@@ -55,6 +55,21 @@
       "action" : {
         "chord" : {
           "_0" : {
+            "key" : "Space",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "caption" : "",
+      "glyph" : "sf:space",
+      "hint" : "Space",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
             "key" : "Escape",
             "mods" : 0
           },
@@ -88,21 +103,6 @@
         }
       },
       "hint" : "Send",
-      "id" : "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "action" : {
-        "chord" : {
-          "_0" : {
-            "key" : "Space",
-            "mods" : 0
-          },
-          "cycle" : false
-        }
-      },
-      "caption" : "",
-      "glyph" : "sf:space",
-      "hint" : "Space",
       "id" : "00000000-0000-0000-0000-000000000000"
     }
   ],
@@ -380,28 +380,6 @@
         {
           "action" : {
             "blurt" : {
-              "_0" : "record"
-            }
-          },
-          "caption" : "Record",
-          "glyph" : "sf:record.circle",
-          "hint" : "Record",
-          "id" : "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "action" : {
-            "blurt" : {
-              "_0" : "voiceNote"
-            }
-          },
-          "caption" : "Voice Note",
-          "glyph" : "sf:waveform",
-          "hint" : "Voice Note",
-          "id" : "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "action" : {
-            "blurt" : {
               "_0" : "copyText"
             }
           },
@@ -430,6 +408,34 @@
           "caption" : "Cards",
           "glyph" : "sf:rectangle.stack",
           "hint" : "Cards",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "R",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:arrow.clockwise",
+          "hint" : "Reload",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Tab",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:arrow.left.to.line",
+          "hint" : "Back a Field",
           "id" : "00000000-0000-0000-0000-000000000000"
         }
       ]
@@ -1573,6 +1579,28 @@
           },
           "caption" : "Desktop Right",
           "glyph" : "sf:arrow.right.square",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "record"
+            }
+          },
+          "caption" : "Record",
+          "glyph" : "sf:record.circle",
+          "hint" : "Record",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "voiceNote"
+            }
+          },
+          "caption" : "Voice Note",
+          "glyph" : "sf:waveform",
+          "hint" : "Voice Note",
           "id" : "00000000-0000-0000-0000-000000000000"
         }
       ]

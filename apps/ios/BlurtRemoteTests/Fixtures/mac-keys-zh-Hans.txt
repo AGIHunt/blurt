@@ -3,10 +3,10 @@
 ⌘	-	Command
 ⇧	-	Shift
 sf:arrow.right.to.line	-	补全
+sf:space	-	空格
 esc	-	停止
 sf:delete.left	-	删除
 sf:return	-	发送
-sf:space	-	空格
 sf:doc.on.doc	⌘C	复制
 sf:clipboard	⌘V	粘贴
 sf:scissors	⌘X	剪切
@@ -26,11 +26,11 @@ sf:magnifyingglass	⌘␣	Spotlight
 mark:tabNew	⌘T	新标签页
 mark:tabClose	⌘W	关闭标签页
 sf:camera.viewfinder	截图	截图
-sf:record.circle	录屏	录屏
-sf:waveform	语音备注	语音备注
 sf:text.viewfinder	截图取字	截图取字
 sf:character.bubble	翻译	翻译
 sf:rectangle.stack	卡片	卡片
+sf:arrow.clockwise	⌘R	刷新
+sf:arrow.left.to.line	⇧⇥	反向 Tab
 1	-	1
 2	-	2
 3	-	3
@@ -120,6 +120,8 @@ sf:rectangle.3.group	所有窗口	所有窗口
 sf:rectangle.grid.2x2	App 窗口	App 窗口
 sf:arrow.left.square	左侧桌面	左侧桌面
 sf:arrow.right.square	右侧桌面	右侧桌面
+sf:record.circle	录屏	录屏
+sf:waveform	语音备注	语音备注
 常用	-	常用
 sf:doc.on.doc	⌘C	复制
 sf:clipboard	⌘V	粘贴

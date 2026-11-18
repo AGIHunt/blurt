@@ -54,6 +54,10 @@
     <string name="displays">显示器</string>
     <string name="displays_hint">点一台显示器即可显示它。轻点按钮会切到右边的下一台。</string>
     <string name="follow_pointer">跟随光标</string>
+    <string name="full_screen">全屏</string>
+    <string name="exit_full_screen">退出全屏</string>
+    <string name="picture_hint_mac">两指滑动可滚动 · 按着 %1$s 捏合缩放 Mac 上的内容</string>
+    <string name="picture_hint_pc">两指滑动可滚动 · 按着 %1$s 捏合缩放电脑上的内容</string>
 
     <string name="pair_title">与电脑配对</string>
     <string name="pair_with_q">与 %1$s 配对？</string>
@@ -123,8 +127,8 @@
     <string name="g_select_area">拖动、框选区域</string>
     <string name="g_tap_touch">触控模式下轻点</string>
     <string name="g_click_there">直接点击手指所在位置</string>
-    <string name="g_edge">单指沿边缘滑动</string>
-    <string name="g_scroll">滚动</string>
+    <string name="g_edge">单指沿拇指一侧边缘上下滑</string>
+    <string name="g_scroll">在光标处滚动</string>
     <string name="g_two">双指</string>
     <string name="g_two_does">在光标处滚动，轻点为右键</string>
     <string name="g_two_touch">触控模式下双指滑动</string>
@@ -133,6 +137,9 @@
     <string name="g_zoom">缩放</string>
     <string name="g_pinch_screen">显示屏幕时捏合</string>
     <string name="g_zoom_picture">缩放画面</string>
+    <string name="g_pinch_mod">按着 %1$s 捏合</string>
+    <string name="g_zoom_mac">缩放 Mac 上的内容</string>
+    <string name="g_zoom_computer">缩放电脑上的内容</string>
     <string name="g_one_zoomed">触控模式下放大后单指拖动</string>
     <string name="g_move_picture">移动画面</string>
     <string name="g_pointer_zoomed">放大时移动光标</string>
@@ -160,10 +167,15 @@
 
     <string name="editor_hint">按住拖动调整位置，轻点修改按键。</string>
     <string name="always_here">常驻</string>
-    <string name="always_here_footer">横屏收起按键后，esc、return 和空格仍会显示，或放在这三个位置上的键。</string>
+    <string name="always_here_footer">横屏收起按键后，esc、删除和回车留在拇指边。</string>
     <string name="rename">重命名</string>
     <string name="add_section">添加分组</string>
     <string name="delete_section">删除分组</string>
+    <string name="template_empty">空白</string>
+    <string name="template_writing">写作</string>
+    <string name="template_design">设计</string>
+    <string name="template_presenting">演示</string>
+    <string name="template_spreadsheet">表格</string>
     <string name="section_name">分组名称</string>
     <string name="ok">好</string>
     <string name="restore_keys">恢复默认按键</string>

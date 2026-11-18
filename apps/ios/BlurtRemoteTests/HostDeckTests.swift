@@ -53,13 +53,14 @@ final class HostDeckTests: XCTestCase {
             XCTAssertEqual(d.sections.map(\.columns), [6, 10, 10, 6], "\(h)")
             XCTAssertEqual(d.sections.map(\.name), mac.sections.map(\.name), "\(h)")
             XCTAssertEqual(d.sections[0].slots.count, 24, "\(h): four rows of six")
-            // the dock: the four modifiers, then the same keys in the same places (PadLayout.thumbSlots counts on them)
+            // the dock: the four modifiers, then the same keys in the same places
             XCTAssertEqual(d.dock.prefix(4).map { if case let .sticky(m) = $0.action { m.rawValue } else { 0 } }.reduce(0, |), 15, "\(h)")
             XCTAssertEqual(Array(d.dock.dropFirst(4).map(\.action)), Array(mac.dock.dropFirst(4).map(\.action)), "\(h)")
-            // 字母 and 符号 are the same everywhere, and so is the Blurt row
+            // 字母 and 符号 are the same everywhere, and so are the Blurt keys and ⇧Tab on the last row
             XCTAssertEqual(d.sections[1].slots.map(\.action), mac.sections[1].slots.map(\.action))
             XCTAssertEqual(d.sections[2].slots.map(\.action), mac.sections[2].slots.map(\.action))
-            XCTAssertEqual(d.sections[0].slots.suffix(6).map(\.action), mac.sections[0].slots.suffix(6).map(\.action))
+            XCTAssertEqual(d.sections[0].slots.suffix(6).prefix(4).map(\.action), mac.sections[0].slots.suffix(6).prefix(4).map(\.action))
+            XCTAssertEqual(d.sections[0].slots.last?.action, .chord(RemoteChord(.shift, "Tab"), cycle: false))
         }
         // the dock as each keyboard has its modifiers, left to right
         XCTAssertEqual(Deck.standard(for: .windows).dock.prefix(4).map { $0.face(on: .windows) }, ["Ctrl", "mark:win", "Alt", "Shift"])
@@ -167,7 +168,7 @@ final class HostDeckTests: XCTestCase {
         XCTAssertEqual(w.sections[0].slots[10].detail, "Ctrl+Shift+Tab")
         XCTAssertEqual(w.dock[1].face, "mark:win")
         XCTAssertEqual(w.dock[1].detail, "Win")
-        XCTAssertEqual(w.dock[5].face, "Esc")
+        XCTAssertEqual(w.dock[6].face, "Esc")
         XCTAssertEqual(w.sections[3].slots.first { $0.hint == String(localized: "Close Window") }?.detail, "Alt+F4")
         XCTAssertEqual(KeySlot(.nextTab).title, "Ctrl+Tab")
         RemoteHost.shown = .linux
@@ -206,5 +207,87 @@ final class MacDeckGoldenTests: XCTestCase {
     func testMacKeysReadAsBefore() throws {
         let all = Deck.standard.dock + Deck.standard.sections.flatMap(\.slots) + Deck.catalogue.flatMap { [KeySlot(.text($0.group, enter: false))] + $0.slots }
         try golden("mac-keys", all.map { "\($0.face)\t\($0.detail ?? "-")\t\($0.title)" }.joined(separator: "\n") + "\n")
+    }
+}
+
+/// The keys round of 2026-11-18 (docs/design/remote.md §Keys): ⌫ by the thumb in landscape, ↩ by the talk key, ⇧Tab and reload on 常用.
+final class DeckRoundTests: XCTestCase {
+    private func blurtRow(_ h: RemoteHost) -> [KeySlot] { Deck.catalogue(for: h).first { $0.group == "Blurt" }?.slots ?? [] }
+
+    /// A deck as 1.0.25 shipped it: the space bar last in the dock, the whole Blurt row on 常用, nothing of it on 更多.
+    private func before(_ h: RemoteHost) -> Deck {
+        var d = Deck.standard(for: h)
+        let space = d.dock.remove(at: 5)
+        d.dock.append(space)
+        d.sections[0].slots = Array(d.sections[0].slots.prefix(18)) + blurtRow(h)
+        d.sections[3].slots.removeLast(2)
+        if h == .windows { d.sections[3].slots.append(KeySlot(.chord(RemoteChord([.command, .shift], "S"), cycle: false))) }    // Snip was there
+        return d
+    }
+
+    func testTheDockEndsWithReturnByTheTalkKey() {
+        for h in RemoteHost.allCases {
+            let keys = Deck.standard(for: h).dock.suffix(4).compactMap { if case let .chord(c, _) = $0.action { c.key } else { nil } }
+            XCTAssertEqual(keys, ["Space", "Escape", "Delete", "Return"], "\(h)")
+        }
+    }
+
+    func testAnUntouchedDeckTakesTheNewDefaults() {
+        for h in RemoteHost.allCases {
+            var d = before(h)
+            XCTAssertTrue(Deck.modernise(&d, for: h))
+            let now = Deck.standard(for: h)
+            XCTAssertEqual(d.dock.map(\.action), now.dock.map(\.action), "\(h)")
+            XCTAssertEqual(d.sections.map { $0.slots.map(\.action) }, now.sections.map { $0.slots.map(\.action) }, "\(h)")
+            XCTAssertFalse(Deck.modernise(&d, for: h), "once")
+        }
+    }
+
+    func testAChangedDeckIsLeftAsItIs() {
+        var d = before(.mac)
+        d.dock.swapAt(0, 1)
+        d.sections[0].slots.removeLast()
+        let was = d
+        XCTAssertFalse(Deck.modernise(&d, for: .mac))
+        XCTAssertEqual(d, was)
+    }
+
+    func testTheThumbColumnFindsItsKeysWhereverTheyAre() {
+        let d = Deck.standard.dock
+        let t = Deck.thumbSlots(d)
+        XCTAssertEqual([t.esc, t.delete, t.enter], [6, 7, 8])
+        // an old dock, left as its owner had it: esc ⌫ ↩ are still the column, the space bar in the drawer
+        var old = d
+        old.append(old.remove(at: 5))
+        let o = Deck.thumbSlots(old)
+        XCTAssertEqual([o.esc, o.delete, o.enter], [5, 6, 7])
+        // ⌫ taken out of the dock: what's in its place goes by the thumb
+        var mine = d
+        mine[7] = KeySlot(.chord(RemoteChord(.command, "Z"), cycle: false))
+        let m = Deck.thumbSlots(mine)
+        XCTAssertEqual([m.esc, m.delete, m.enter], [6, 7, 8])
+    }
+
+    func testEveryDefaultPageFitsFourRows() {
+        for h in RemoteHost.allCases {
+            for p in Deck.standard(for: h).sections { XCTAssertLessThanOrEqual(p.slots.count, p.columns * 4, "\(h) \(p.name)") }
+        }
+    }
+
+    func testTemplatesAreEachComputersOwn() {
+        for t in KeyTemplate.allCases {
+            for h in RemoteHost.allCases {
+                let s = Deck.section(t, for: h)
+                XCTAssertFalse(s.slots.isEmpty)
+                XCTAssertLessThanOrEqual(s.slots.count, 12, "two rows at most")
+                if h != .mac {
+                    XCTAssertFalse(s.slots.contains { if case let .chord(c, _) = $0.action { c.mods.contains(.command) && c.key != "P" } else { false } },
+                                   "\(t) on \(h): Ctrl, not ⌘")
+                }
+            }
+        }
+        let project = KeySlot(.chord(RemoteChord(.command, "P"), cycle: false)).action
+        XCTAssertTrue(Deck.section(.presenting, for: .windows).slots.contains { $0.action == project }, "Win+P")
+        XCTAssertFalse(Deck.section(.presenting, for: .linux).slots.contains { $0.action == project })
     }
 }

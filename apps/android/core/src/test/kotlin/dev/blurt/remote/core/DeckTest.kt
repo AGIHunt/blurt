@@ -29,7 +29,8 @@ class DeckTest {
             val held = d.dock.mapNotNull { (it.action as? KeyAction.Sticky)?.mods }.toSet()
             assertEquals(setOf(W, A, C, S), held, "all four, side by side")
             assertTrue(d.dock.any { (it.action as? KeyAction.Chord)?.chord?.key == "Escape" }, "Esc wherever the list is")
-            assertEquals(Deck.spaceBar.action, d.dock.last().action)
+            assertEquals(KeyAction.Chord(RemoteChord(0, "Return")), d.dock.last().action, "return by the talk key")
+            assertEquals(Deck.spaceBar.action, d.dock[5].action, "space after tab")
         }
     }
 
@@ -174,8 +175,14 @@ class DeckTest {
             chords(d, 2).map { it.chord })
         assertEquals(listOf(C, A, W, S), d.dock.take(4).map { (it.action as KeyAction.Sticky).mods })
         assertEquals(listOf("⌃", "⌥", "⌘", "⇧"), d.dock.take(4).map { it.face(RemoteHost.MAC) })
-        assertEquals(listOf("Tab", "Escape", "Delete", "Return", "Space"), d.dock.drop(4).map { (it.action as KeyAction.Chord).chord.key })
-        assertEquals(RemoteBlurtCommand.entries.take(6), d.sections[0].slots.drop(18).map { (it.action as KeyAction.Blurt).command })
+        assertEquals(listOf("Tab", "Space", "Escape", "Delete", "Return"), d.dock.drop(4).map { (it.action as KeyAction.Chord).chord.key })
+        val last = d.sections[0].slots.drop(18).map { it.action }
+        assertEquals(listOf(RemoteBlurtCommand.SNAP, RemoteBlurtCommand.COPY_TEXT, RemoteBlurtCommand.TRANSLATE, RemoteBlurtCommand.CARDS).map { KeyAction.Blurt(it) },
+            last.take(4))
+        assertEquals(listOf(KeyAction.Chord(RemoteChord(W, "R")), KeyAction.Chord(RemoteChord(S, "Tab"))), last.drop(4))
+        assertEquals(listOf("sf:arrow.clockwise", "sf:arrow.left.to.line"), d.sections[0].slots.drop(22).map { it.face() })
+        assertEquals(listOf(RemoteBlurtCommand.RECORD, RemoteBlurtCommand.VOICE_NOTE).map { KeyAction.Blurt(it) }, d.sections[3].slots.takeLast(2).map { it.action },
+            "Record and Voice Note at the end of More")
     }
 
     @Test fun windowsDefaults() {
@@ -189,9 +196,14 @@ class DeckTest {
             chords(d, 2).map { it.chord })
         assertEquals("Start", d.sections[0].slots[14].hint)
         assertEquals(listOf("Ctrl", "Win", "Alt", "Shift"), d.dock.take(4).map { it.face(h) })
+        assertEquals(listOf("Tab", "Space", "Escape", "Delete", "Return"), d.dock.drop(4).map { (it.action as KeyAction.Chord).chord.key })
+        assertEquals(listOf(KeyAction.Chord(RemoteChord(C, "R")), KeyAction.Chord(RemoteChord(S, "Tab"))), d.sections[0].slots.drop(22).map { it.action })
         val more = d.sections[3].slots.mapNotNull { (it.action as? KeyAction.Chord)?.chord }
-        for (c in listOf(RemoteChord(W, "D"), RemoteChord(W, "E"), RemoteChord(W, "L"), RemoteChord(A, "F4"), RemoteChord(C or S, "Escape"), RemoteChord(W or S, "S"),
+        for (c in listOf(RemoteChord(W, "D"), RemoteChord(W, "E"), RemoteChord(W, "L"), RemoteChord(A, "F4"), RemoteChord(C or S, "Escape"),
             RemoteChord(0, "F1"), RemoteChord(0, "ForwardDelete"))) assertTrue(more.contains(c), c.label(h))
+        val snip = KeyAction.Chord(RemoteChord(W or S, "S"))
+        assertTrue(d.sections.flatMap { it.slots }.none { it.action == snip }, "Snip only in the picker: Snap does it")
+        assertTrue(Deck.catalogue(h).flatMap { it.slots }.any { it.action == snip })
         assertEquals(Deck.standard(RemoteHost.MAC).sections[1].slots.map { it.action }, d.sections[1].slots.map { it.action }, "字母 is the same everywhere")
         assertEquals(Deck.standard(RemoteHost.MAC).sections[2].slots.map { it.action }, d.sections[2].slots.map { it.action }, "and 符号")
     }
@@ -209,5 +221,95 @@ class DeckTest {
         val more = d.sections[3].slots.mapNotNull { (it.action as? KeyAction.Chord)?.chord }
         for (c in listOf(RemoteChord(W, "D"), RemoteChord(W, "L"), RemoteChord(A, "F4"))) assertTrue(more.contains(c), c.label(h))
         assertTrue(!more.contains(RemoteChord(C or S, "Escape")), "Task Manager is Windows'")
+    }
+
+    // MARK: brought up to date
+
+    /** A deck as stored by the version before: dock with space last, Record and Voice Note on Main, More without them. */
+    private fun old(h: RemoteHost): Deck {
+        val d = Deck.standard(h)
+        val dock = d.dock.take(5) + d.dock.drop(6) + d.dock[5]
+        val blurt = { c: RemoteBlurtCommand -> d.sections.flatMap { it.slots }.first { it.action == KeyAction.Blurt(c) } }
+        val main = d.sections[0].slots.take(18) + listOf(RemoteBlurtCommand.SNAP, RemoteBlurtCommand.RECORD, RemoteBlurtCommand.VOICE_NOTE,
+            RemoteBlurtCommand.COPY_TEXT, RemoteBlurtCommand.TRANSLATE, RemoteBlurtCommand.CARDS).map(blurt)
+        // as it shipped: F-keys and the rest, then the host's system keys (Snip too on Windows)
+        val system = Deck.catalogue(h).first { it.group == "Switch" }.slots.drop(5).let { if (h == RemoteHost.MAC) it else it.dropLast(4) }
+        val more = d.sections[3].slots.take(17) + system
+        return Deck(dock, listOf(d.sections[0].copy(slots = main), d.sections[1], d.sections[2], d.sections[3].copy(slots = more)))
+    }
+
+    @Test fun anUntouchedOldDeckGetsTheNewLayout() {
+        for (h in hosts) {
+            val o = old(h)
+            val d = Deck.restore(o.toJson(), h)
+            val n = Deck.standard(h)
+            assertEquals(n.dock.map { it.action }, d.dock.map { it.action }, "the new dock order on $h")
+            assertEquals(o.dock.map { it.id }.toSet(), d.dock.map { it.id }.toSet(), "the same keys, moved")
+            assertEquals(n.sections.map { s -> s.slots.map { it.action } }, d.sections.map { s -> s.slots.map { it.action } }, "Main and More as they ship now on $h")
+            val rec = o.sections[0].slots.first { it.action == KeyAction.Blurt(RemoteBlurtCommand.RECORD) }
+            assertEquals(rec.id, d.sections[3].slots[d.sections[3].slots.size - 2].id, "Record itself moved to More")
+            if (h == RemoteHost.WINDOWS) assertEquals(o.sections[3].slots.size - 1 + 2, d.sections[3].slots.size, "Snip off, Record and Voice Note on")
+            assertEquals(d, Deck.restore(d.toJson(), h), "once")
+        }
+    }
+
+    private fun n(h: RemoteHost) = Deck.standard(h)
+
+    @Test fun anEditedDeckIsLeftAlone() {
+        for (h in hosts) {
+            val o = old(h)
+            // the dock with two keys swapped, Main with a key taken off
+            val dock = o.dock.toMutableList().also { val t = it[0]; it[0] = it[1]; it[1] = t }
+            val edited = o.copy(dock = dock).let { it.remove(it.sections[0].slots[0].id) }
+            val d = Deck.restore(edited.toJson(), h)
+            assertEquals(edited.dock, d.dock, "a dock the user changed keeps its order")
+            assertEquals(edited.sections[0], d.sections[0], "and so does a Main the user changed")
+            assertEquals(edited.sections[3], d.sections[3], "with Main changed, More too stays: Record and Voice Note are still on Main")
+        }
+        // a More the user changed keeps what it has
+        val o = old(RemoteHost.MAC)
+        val more = o.sections[3].let { it.copy(slots = it.slots.drop(1)) }
+        val d = Deck.restore(o.copy(sections = o.sections.mapIndexed { i, s -> if (i == 3) more else s }).toJson(), RemoteHost.MAC)
+        assertEquals(more, d.sections[3])
+        // a deck already as it ships now: nothing changes
+        val now = Deck.standard(RemoteHost.LINUX)
+        assertEquals(now, Deck.restore(now.toJson(), RemoteHost.LINUX))
+    }
+
+    @Test fun templates() {
+        for (h in hosts) {
+            assertTrue(Deck.template(SectionTemplate.EMPTY, h).isEmpty())
+            for (t in SectionTemplate.entries.drop(1)) {
+                val keys = Deck.template(t, h)
+                assertTrue(keys.size in 6..Deck.COLUMNS * visibleRows, "$t on $h")
+                assertEquals(keys.size, keys.map { it.action }.toSet().size, "no key twice in $t on $h")
+                for (s in keys) {
+                    val c = (s.action as KeyAction.Chord).chord
+                    assertTrue(RemoteKey.named(c.key) != null, "${c.key} in $t on $h")
+                    assertTrue(s.face(h).isNotEmpty(), s.title(h))
+                }
+            }
+        }
+        val mac = Deck.template(SectionTemplate.WRITING, RemoteHost.MAC).map { (it.action as KeyAction.Chord).chord }
+        assertEquals(listOf(RemoteChord(W or S, "V"), RemoteChord(A, "Delete"), RemoteChord(W, "S"), RemoteChord(W, "B"), RemoteChord(W, "I"), RemoteChord(W, "U")), mac)
+        val pc = Deck.template(SectionTemplate.WRITING, RemoteHost.LINUX).map { (it.action as KeyAction.Chord).chord }
+        assertEquals(listOf(RemoteChord(C or S, "V"), RemoteChord(C, "Delete"), RemoteChord(C, "S"), RemoteChord(C, "B"), RemoteChord(C, "I"), RemoteChord(C, "U")), pc)
+        assertEquals("⌘B", Deck.template(SectionTemplate.WRITING, RemoteHost.MAC)[3].face(), "no icon: the key's own name")
+        val winP = KeyAction.Chord(RemoteChord(W, "P"))
+        assertTrue(Deck.template(SectionTemplate.PRESENTING, RemoteHost.WINDOWS).any { it.action == winP }, "Project on Windows")
+        assertTrue(Deck.template(SectionTemplate.PRESENTING, RemoteHost.LINUX).none { it.action == winP }, "not on Linux")
+        assertEquals(KeyAction.Chord(RemoteChord(W or A, "P")), Deck.template(SectionTemplate.PRESENTING, RemoteHost.MAC)[0].action)
+        assertEquals(listOf(RemoteChord(A, "Left"), RemoteChord(A, "Right"), RemoteChord(C, "Return")),
+            Deck.template(SectionTemplate.SPREADSHEET, RemoteHost.MAC).drop(3).map { (it.action as KeyAction.Chord).chord })
+        assertEquals(listOf(RemoteChord(C, "PageUp"), RemoteChord(C, "PageDown"), RemoteChord(C, "Return")),
+            Deck.template(SectionTemplate.SPREADSHEET, RemoteHost.WINDOWS).drop(3).map { (it.action as KeyAction.Chord).chord })
+    }
+
+    @Test fun aSectionGoesAfterTheOneItWasAddedFrom() {
+        val d = Deck.standard().addSection("Writing", Deck.template(SectionTemplate.WRITING), after = 0)
+        assertEquals("Writing", d.sections[1].name)
+        assertEquals(6, d.sections[1].slots.size)
+        assertEquals("Letters", d.sections[2].name)
+        assertEquals("Mine", d.addSection("Mine").sections.last().name, "no place: the end")
     }
 }

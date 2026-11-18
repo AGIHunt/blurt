@@ -102,7 +102,7 @@ struct KeySection: Codable, Hashable, Identifiable {
 
 struct Deck: Codable, Equatable {
     /// always in reach, whatever the list is scrolled to; the talk key sits with them. The arrow key does too, but it's not one of these:
-    /// it needs room to slide all four ways, so it has its own place. In landscape three stay out when the keys are put away (PadLayout.thumbSlots)
+    /// it needs room to slide all four ways, so it has its own place. In landscape esc, ⌫ and ↩ stay out when the keys are put away (Deck.thumbSlots)
     var dock: [KeySlot]
     var sections: [KeySection]
 
@@ -119,7 +119,10 @@ struct Deck: Codable, Equatable {
             guard let d = u.data(forKey: key), let deck = try? JSONDecoder().decode(Deck.self, from: d), !deck.sections.isEmpty, deck.dock.count == n else { return nil }
             return deck
         }
-        if let deck = stored(storeKey, dock: dockCount) { return deck }
+        if var deck = stored(storeKey, dock: dockCount) {
+            if modernise(&deck, for: .mac) { deck.save() }
+            return deck
+        }
         // set up by an earlier version: kept, brought up to date
         var deck: Deck
         if let d = stored("deck.v8", dock: dockCount) {
@@ -139,6 +142,7 @@ struct Deck: Codable, Equatable {
             if a == Self.lettersBefore.map(\.action) { deck.sections[i].slots = now[1].slots }
             if a == Self.symbolsBefore.map(\.action) { deck.sections[i].slots = now[2].slots }
         }
+        modernise(&deck, for: .mac)
         deck.save()
         return deck
     }
@@ -150,8 +154,9 @@ struct Deck: Codable, Equatable {
 
     static func load(for h: RemoteHost) -> Deck {
         guard h != .mac else { return load() }
-        guard let d = UserDefaults.standard.data(forKey: key(for: h)), let deck = try? JSONDecoder().decode(Deck.self, from: d), !deck.sections.isEmpty,
+        guard let d = UserDefaults.standard.data(forKey: key(for: h)), var deck = try? JSONDecoder().decode(Deck.self, from: d), !deck.sections.isEmpty,
               deck.dock.count == dockCount else { return standard(for: h) }
+        if modernise(&deck, for: h) { deck.save(for: h) }
         return deck
     }
 
@@ -184,13 +189,13 @@ extension Deck {
         Deck(dock: [
             sticky(.control, "Control"), sticky(.option, "Option"), sticky(.command, "Command"), sticky(.shift, "Shift"),
             KeySlot(.chord(RemoteChord([], "Tab"), cycle: false), glyph: "sf:arrow.right.to.line", caption: "", hint: String(localized: "Complete")),
-            chord([], "Escape", String(localized: "Stop")), chord([], "Delete", String(localized: "Delete")), chord([], "Return", String(localized: "Send")),
             spaceBar,
+            chord([], "Escape", String(localized: "Stop")), chord([], "Delete", String(localized: "Delete")), chord([], "Return", String(localized: "Send")),
         ], sections: [
-            KeySection(String(localized: "Main"), editKeys + switchKeys + actionKeys + blurtKeys),
+            KeySection(String(localized: "Main"), editKeys + switchKeys + actionKeys + lastRow(.mac)),
             KeySection(String(localized: "Letters"), letterKeys, columns: 10),
             KeySection(String(localized: "Symbols"), symbolKeys, columns: 10),
-            KeySection(String(localized: "More"), functionKeys + macKeys),
+            KeySection(String(localized: "More"), functionKeys + macKeys + rareBlurtKeys),
         ])
     }
 
@@ -228,6 +233,18 @@ extension Deck {
             blurt(.translate, "character.bubble", String(localized: "Translate")), blurt(.cards, "rectangle.stack", String(localized: "Cards")),
         ]
     }
+
+    /// Blurt's own that get used from the couch, then the two a thumb reaches for most after them (2026-11-18): reload, and ⇧Tab, a
+    /// field back and Claude Code's next mode, which took ⇧ and ⇥ from the dock, two taps, dozens of times a day.
+    private static func lastRow(_ h: RemoteHost) -> [KeySlot] {
+        let b = blurtKeys
+        return [b[0], b[3], b[4], b[5],
+                chord(h == .mac ? .command : C, "R", String(localized: "Reload"), icon: "arrow.clockwise"),
+                chord(.shift, "Tab", String(localized: "Back a Field"), icon: "arrow.left.to.line")]
+    }
+
+    /// Record and Voice Note: on 更多, since hardly anyone reached for them from the first page.
+    private static var rareBlurtKeys: [KeySlot] { [blurtKeys[1], blurtKeys[2]] }
 
     /// Kept for whoever wants them on a key; not on one to begin with.
     private static var lessUsedKeys: [KeySlot] {
@@ -361,13 +378,13 @@ extension Deck {
         Deck(dock: [
             KeySlot(.sticky(C), hint: h.name(C)), KeySlot(.sticky(W), hint: h.name(W)), KeySlot(.sticky(A), hint: h.name(A)), KeySlot(.sticky(S), hint: h.name(S)),
             KeySlot(.chord(RemoteChord([], "Tab"), cycle: false), glyph: "sf:arrow.right.to.line", caption: "", hint: String(localized: "Complete")),
-            chord([], "Escape", String(localized: "Stop")), chord([], "Delete", String(localized: "Delete")), chord([], "Return", String(localized: "Send")),
             spaceBar,
+            chord([], "Escape", String(localized: "Stop")), chord([], "Delete", String(localized: "Delete")), chord([], "Return", String(localized: "Send")),
         ], sections: [
-            KeySection(String(localized: "Main"), pcEdit(h) + pcSwitch(h) + pcAction(h) + blurtKeys),
+            KeySection(String(localized: "Main"), pcEdit(h) + pcSwitch(h) + pcAction(h) + lastRow(h)),
             KeySection(String(localized: "Letters"), letterKeys, columns: 10),
             KeySection(String(localized: "Symbols"), symbolKeys, columns: 10),
-            KeySection(String(localized: "More"), functionKeys + pcMore(h)),
+            KeySection(String(localized: "More"), functionKeys + pcMore(h).filter { $0.action != snip.action } + rareBlurtKeys),
         ])
     }
 
@@ -402,13 +419,16 @@ extension Deck {
         ]
     }
 
+    /// Win+Shift+S: in the picker, not on 更多, where Record and Voice Note need its place and Blurt's own Snap does the same.
+    private static var snip: KeySlot { chord([W, S], "S", String(localized: "Snip"), icon: "rectangle.dashed") }
+
     /// The computer's own moves, on 更多 after the F-keys and navigation.
     private static func pcMore(_ h: RemoteHost) -> [KeySlot] {
         h == .windows ? [
             chord(W, "D", String(localized: "Desktop"), icon: "menubar.dock.rectangle"), chord(W, "E", String(localized: "Files"), icon: "folder"),
             chord(W, "L", String(localized: "Lock"), icon: "lock"), chord(A, "F4", String(localized: "Close Window"), icon: "xmark.rectangle"),
             chord([C, S], "Escape", String(localized: "Task Manager"), icon: "waveform.path.ecg.rectangle"),
-            chord([W, S], "S", String(localized: "Snip"), icon: "rectangle.dashed"),
+            snip,
         ] : [
             chord(W, "D", String(localized: "Desktop"), icon: "menubar.dock.rectangle"), chord(W, "L", String(localized: "Lock"), icon: "lock"),
             chord(A, "F4", String(localized: "Close Window"), icon: "xmark.rectangle"),
@@ -476,5 +496,114 @@ extension Deck {
             (String(localized: "Letters"), letterKeys),
             (String(localized: "Symbols"), symbolKeys + functionKeys),
         ]
+    }
+}
+
+// MARK: - Bringing a deck up to date, and where the thumb's keys are
+
+extension Deck {
+    /// The dock as it shipped up to 2026-11-18: the space bar last, by the talk key.
+    private static func dockBefore(_ now: [KeySlot]) -> [KeySlot] {
+        var d = now
+        guard let i = d.firstIndex(where: { $0.action == spaceBar.action }) else { return d }
+        d.append(d.remove(at: i))
+        return d
+    }
+
+    /// 常用 and 更多 as they shipped up to 2026-11-18: the Blurt row whole, and nothing of it on 更多.
+    private static func mainBefore(_ h: RemoteHost) -> [KeySlot] { Array(standard(for: h).sections[0].slots.prefix(18)) + blurtKeys }
+    private static func moreBefore(_ h: RemoteHost) -> [KeySlot] { functionKeys + (h == .mac ? macKeys : pcMore(h)) }
+
+    /// What its owner never changed takes the new defaults: the dock's order, 常用's last row (Record and Voice Note go to 更多). Whatever
+    /// was changed stays as it is. True if anything changed.
+    @discardableResult
+    static func modernise(_ d: inout Deck, for h: RemoteHost) -> Bool {
+        let now = standard(for: h)
+        var changed = false
+        if d.dock.map(\.action) == dockBefore(now.dock).map(\.action) {
+            d.dock = now.dock
+            changed = true
+        }
+        let main = mainBefore(h).map(\.action), more = moreBefore(h).map(\.action)
+        if let i = d.sections.firstIndex(where: { $0.slots.map(\.action) == main }) {
+            d.sections[i].slots = now.sections[0].slots
+            if let j = d.sections.firstIndex(where: { $0.slots.map(\.action) == more }) { d.sections[j].slots = now.sections[3].slots }
+            changed = true
+        }
+        return changed
+    }
+
+    /// Where esc, ⌫ and ↩ are in a dock, for the thumb's column in landscape: found by what they do, so a dock rearranged keeps them there;
+    /// one taken out of the dock leaves what's in its place as it ships.
+    static func thumbSlots(_ dock: [KeySlot]) -> (esc: Int, delete: Int, enter: Int) {
+        var used = Set<Int>()
+        func pick(_ key: String, _ place: Int) -> Int {
+            let found = dock.firstIndex { $0.action == .chord(RemoteChord([], key), cycle: false) }.flatMap { used.contains($0) ? nil : $0 }
+            let i = found ?? ([place] + Array((0..<dockCount).reversed())).first { !used.contains($0) } ?? place
+            used.insert(i)
+            return i
+        }
+        return (pick("Escape", dockCount - 3), pick("Delete", dockCount - 2), pick("Return", dockCount - 1))
+    }
+}
+
+// MARK: - Pages to start from (Edit Keys → Add Section)
+
+/// A page for one kind of work, added in one go: what the Main page has no room for, for writers, designers, presenters, spreadsheets.
+enum KeyTemplate: CaseIterable, Identifiable {
+    case writing, design, presenting, spreadsheet
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .writing: String(localized: "template.writing", defaultValue: "Writing")
+        case .design: String(localized: "Design")
+        case .presenting: String(localized: "Presenting")
+        case .spreadsheet: String(localized: "Spreadsheet")
+        }
+    }
+}
+
+extension Deck {
+    static func section(_ t: KeyTemplate, for h: RemoteHost) -> KeySection {
+        let mac = h == .mac, M: RemoteModifiers = mac ? .command : C
+        let slots: [KeySlot]
+        switch t {
+        case .writing:
+            slots = [
+                chord([M, .shift], "V", String(localized: "Paste as Plain Text"), icon: "doc.on.clipboard"),
+                chord(mac ? .option : C, "Delete", String(localized: "Delete Word"), icon: "delete.left"),
+                chord(M, "S", String(localized: "Save"), icon: "square.and.arrow.down"),
+                chord(M, "B", String(localized: "Bold")), chord(M, "I", String(localized: "Italic")),
+                chord(M, "U", String(localized: "Underline")),
+            ]
+        case .design:
+            slots = [
+                chord(M, "D", String(localized: "Duplicate")),
+                chord(M, "G", String(localized: "Group")),
+                chord([M, .shift], "G", String(localized: "Ungroup")),
+                chord(M, "S", String(localized: "Save"), icon: "square.and.arrow.down"),
+                chord(.shift, "1", String(localized: "Zoom to Fit"), glyph: mac ? "⇧1" : nil),
+                chord(.shift, "0", String(localized: "Actual Size"), glyph: mac ? "⇧0" : nil),
+            ]
+        case .presenting:
+            let start = mac ? [chord([.command, .option], "P", String(localized: "Play"))]
+                : [chord([], "F5", String(localized: "Play")), chord(.shift, "F5", String(localized: "Play from Here"))]
+            slots = start + [
+                chord([], "PageUp", glyph: "PgUp"), chord([], "PageDown", glyph: "PgDn"), chord([], "B", String(localized: "Black Screen")),
+                chord([], "Home", glyph: "Home"), chord([], "End", glyph: "End"),
+                chord(M, "=", String(localized: "Zoom In"), icon: "plus.magnifyingglass"), chord(M, "-", String(localized: "Zoom Out"), icon: "minus.magnifyingglass"),
+                chord(M, "0", String(localized: "Actual Size")),
+            ] + (h == .windows ? [chord(W, "P", String(localized: "Project"))] : [])
+        case .spreadsheet:
+            slots = [
+                chord([], "F2", String(localized: "Edit Cell")), chord([], "ForwardDelete", String(localized: "Clear"), icon: "delete.right"),
+                chord(M, "S", String(localized: "Save"), icon: "square.and.arrow.down"),
+                mac ? chord(.option, "Left", String(localized: "Previous Sheet"), icon: "chevron.left.square") : chord(C, "PageUp", String(localized: "Previous Sheet"), icon: "chevron.left.square"),
+                mac ? chord(.option, "Right", String(localized: "Next Sheet"), icon: "chevron.right.square") : chord(C, "PageDown", String(localized: "Next Sheet"), icon: "chevron.right.square"),
+                chord(mac ? .control : C, "Return", String(localized: "Fill"), icon: "arrow.down.to.line"),
+            ]
+        }
+        return KeySection(t.name, slots)
     }
 }

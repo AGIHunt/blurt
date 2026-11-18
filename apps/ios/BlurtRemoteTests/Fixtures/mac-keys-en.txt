@@ -3,10 +3,10 @@
 ⌘	-	Command
 ⇧	-	Shift
 sf:arrow.right.to.line	-	Complete
+sf:space	-	Space
 esc	-	Stop
 sf:delete.left	-	Delete
 sf:return	-	Send
-sf:space	-	Space
 sf:doc.on.doc	⌘C	Copy
 sf:clipboard	⌘V	Paste
 sf:scissors	⌘X	Cut
@@ -26,11 +26,11 @@ sf:magnifyingglass	⌘␣	Spotlight
 mark:tabNew	⌘T	New Tab
 mark:tabClose	⌘W	Close Tab
 sf:camera.viewfinder	Snap	Snap
-sf:record.circle	Record	Record
-sf:waveform	Voice Note	Voice Note
 sf:text.viewfinder	Copy Text	Copy Text
 sf:character.bubble	Translate	Translate
 sf:rectangle.stack	Cards	Cards
+sf:arrow.clockwise	⌘R	Reload
+sf:arrow.left.to.line	⇧⇥	Back a Field
 1	-	1
 2	-	2
 3	-	3
@@ -120,6 +120,8 @@ sf:rectangle.3.group	All Windows	All Windows
 sf:rectangle.grid.2x2	App Windows	App Windows
 sf:arrow.left.square	Desktop Left	Desktop Left
 sf:arrow.right.square	Desktop Right	Desktop Right
+sf:record.circle	Record	Record
+sf:waveform	Voice Note	Voice Note
 Main	-	Main
 sf:doc.on.doc	⌘C	Copy
 sf:clipboard	⌘V	Paste

@@ -157,7 +157,7 @@ final class BigLayoutTests: XCTestCase {
                 // the talk key in the corner by the dominant thumb, the modifiers under the other
                 XCTAssertEqual(l.talk.maxY, l.dock.map(\.maxY).max()!, accuracy: 0.5, name)
                 if lefty { XCTAssertLessThan(l.talk.minX, 30, name) } else { XCTAssertGreaterThan(l.talk.maxX, w - 30, name) }
-                let mods = l.dock[0..<PadLayout.thumbSlots.esc]
+                let mods = l.dock[0..<PadLayout.bigSplit]
                 for m in mods { XCTAssertEqual(lefty ? m.midX > w / 2 : m.midX < w / 2, true, "\(name): modifiers under the other thumb") }
                 // the arrow key has room every way: never at an edge, never in the bottom row
                 XCTAssertGreaterThan(l.arrowKey.minX, 60, name)
