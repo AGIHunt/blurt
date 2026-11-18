@@ -174,10 +174,11 @@ enum AgentProbe {
     static var testAgent: [pid_t: Bool] = [:]
 
     static var getsPaths: Bool { AgentWindow.getsPaths(setting: recordConfig()["agent_drag"] as? String) }
-    /// record.agent_apps: the user's changes to the built-in list
-    static var changes: [String: Bool] { recordConfig()["agent_apps"] as? [String: Bool] ?? [:] }
-    /// the agents' apps while agents get paths, else none
-    static var list: Set<String> { getsPaths ? AgentWindow.list(changes) : [] }
+    /// the agents' apps while agents get paths, else none: agents.json's `drop` apps with the user's own and the ones
+    /// switched off (AgentDropList; v1.0.21's record.agent_apps until the list is edited)
+    static var list: Set<String> { getsPaths ? AgentWindow.list(record: recordConfig(), registry: AgentDropList.loadRegistry()) : [] }
+    /// of them, the ones whose drop lands in their own composer (several cards: a line each)
+    static var composers: Set<String> { AgentWindow.composers(record: recordConfig(), registry: AgentDropList.loadRegistry()) }
 
     /// v1.0.23 — never waits. The Accessibility walk of a Claude / Codex window ran on the main thread during the
     /// drag: the drag image froze for about a second as the pointer crossed the (full-screen) Claude window, and the
@@ -447,7 +448,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return DragLanding(cls: t.cls, kind: t.kind,
                            wordsWithheld: isVoice && VoiceCardDrop.withholdsWords(bundleID: t.bundleID, cls: t.cls, kind: t.kind,
                                                                                   canPaste: SmartPaste.enabled && SmartPaste.accessibility),
-                           lines: t.cls == .terminal && (t.bundleID.map(AgentWindow.composers.contains) ?? false))
+                           lines: t.cls == .terminal && (t.bundleID.map(AgentProbe.composers.contains) ?? false))
     }
 
     func layout(_ l: DragLanding) -> [CardPasteboard.Item] {

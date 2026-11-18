@@ -147,3 +147,37 @@
 /* Settings → Agents: section headings */
 "agents.header" = "Agents";
 "agents.manual.header" = "Other agent apps";
+
+/* Settings → Agents, v1.0.26: who organizes recordings, using Blurt in your agent, by hand, dragging cards */
+"agents.status.organizing" = "Recordings are organized by %@";
+"agents.status.none" = "No agent can organize recordings; they’re saved, not organized.";
+"agents.status.off" = "Recordings are saved, not organized.";
+"agents.use.header" = "Use Blurt in Your Agent";
+"agents.use.footer" = "Once connected, say “process my recordings” in your agent.";
+"agents.conn.connected" = "Connected · used %@";
+"agents.conn.linked" = "Set up, not used yet";
+"agents.conn.found" = "Found, not set up";
+"agents.conn.missing" = "Not found";
+"agents.conn.anyway" = "It’s Installed, Connect";
+"agents.other" = "Other Agent…";
+"agents.other.detail" = "Set up by hand";
+"agents.manual.title" = "Other Agent";
+"agents.manual.lead" = "Give your agent these settings, or let it set itself up.";
+"agents.manual.skill" = "Skill Folder";
+"agents.manual.open" = "Open Folder";
+"agents.manual.zip" = "Save as .zip…";
+"agents.manual.mcp" = "MCP Server";
+"agents.manual.command" = "Command";
+"agents.manual.args" = "Arguments";
+"agents.manual.prompt" = "Let Your Agent Set Itself Up";
+"agents.manual.copy_prompt" = "Copy Prompt";
+"agents.manual.test" = "Test";
+"agents.manual.waiting" = "Waiting for the agent to call hello…";
+"agents.manual.connected" = "Connected · just now";
+"agents.manual.name" = "Name";
+"agents.manual.save" = "Add to List";
+"agents.organize.none" = "Needs a command-line agent such as Claude Code or Codex.";
+"agents.drop.header" = "Dragging Cards";
+"agents.drop.line" = "Cards dragged into %@ carry the picture’s path and the note.";
+"agents.drop.edit" = "Edit…";
+"agents.copy" = "Copy";

@@ -48,7 +48,14 @@ struct AgentDef {
         processingDefault = o["processing"]
         modelsSpec = o["models"] as? [String: Any] ?? [:]
         usageSpec = o["usage"] as? [String: Any] ?? [:]
+        after = o["after"] as? [String: String] ?? [:]
+        site = (o["site"] as? String).flatMap(URL.init(string:))
     }
+    /// agents.json `after`: what to do in the agent after Connect (WorkBuddy: Connectors → blurt → Trust, a new chat)
+    let after: [String: String]
+    /// agents.json `site`: where to get it
+    let site: URL?
+    var afterText: String { Loc.pick(after) ?? "" }
     /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
     let headless: Bool
     let modelArgs: [String: [String]]

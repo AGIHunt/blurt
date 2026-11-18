@@ -96,7 +96,6 @@ final class CardsModel: ObservableObject {
 struct CardsPane: View {
     @StateObject var m = CardsModel()
     @StateObject var perms = Permissions()
-    @State private var agentApps = false
 
     var body: some View {
         SettingsPage(.cards) {
@@ -129,19 +128,12 @@ struct CardsPane: View {
                                     selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }))
                     }
                 }
+                // which apps are agents: Settings → Agents → Dragging Cards (one list with the agents, v1.0.26)
                 SettingRow("cards.agent_drag") {
-                    HStack(spacing: 8) {
-                        Button(T("settings.general.agent_apps.open")) { agentApps = true }
-                            .buttonStyle(SettingsOutlinedButtonStyle())
-                            .fixedSize()
-                        ChoicePopup(label: T("settings.general.agent_drag"),
-                                    choices: [(true, T("settings.general.agent_drag.paths")), (false, T("settings.general.agent_drag.same"))],
-                                    selection: Binding(get: { m.agentPaths }, set: { m.setAgentPaths($0) }))
-                    }
+                    ChoicePopup(label: T("settings.general.agent_drag"),
+                                choices: [(true, T("settings.general.agent_drag.paths")), (false, T("settings.general.agent_drag.same"))],
+                                selection: Binding(get: { m.agentPaths }, set: { m.setAgentPaths($0) }))
                 }
-                // screenshots: open the list with the page
-                .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_AGENT_APPS_SHEET"] == "1" { agentApps = true } }
-                .sheet(isPresented: $agentApps) { AgentAppsSheet { agentApps = false }.buttonStyle(.automatic) }
                 SettingToggle("cards.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
                 SettingRow("cards.history") {
                     ChoicePopup(label: T("settings.cards.history"),
