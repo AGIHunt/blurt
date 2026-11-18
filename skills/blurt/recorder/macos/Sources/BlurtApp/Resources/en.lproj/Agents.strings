@@ -160,14 +160,14 @@
 "agents.other" = "Other Agent…";
 "agents.other.detail" = "Set up by hand";
 "agents.manual.title" = "Other Agent";
-"agents.manual.lead" = "Give your agent these settings, or let it set itself up.";
+"agents.manual.lead" = "Add these to your agent’s settings, or copy the prompt and let the agent install them.";
 "agents.manual.skill" = "Blurt Skill";
 "agents.manual.open" = "Open Folder";
 "agents.manual.zip" = "Save as .zip…";
 "agents.manual.mcp" = "Blurt MCP Server";
 "agents.manual.command" = "Command";
 "agents.manual.args" = "Arguments";
-"agents.manual.prompt" = "Let Your Agent Set Itself Up";
+"agents.manual.prompt" = "Let Your Agent Install It";
 "agents.manual.copy_prompt" = "Copy Prompt";
 "agents.manual.test" = "Test";
 "agents.manual.waiting" = "Waiting for the agent to connect…";
@@ -180,6 +180,6 @@
 "agents.manual.save" = "Add to List";
 "agents.organize.none" = "Needs a command-line agent such as Claude Code or Codex.";
 "agents.drop.header" = "Dragging Cards";
-"agents.drop.line" = "Cards dragged into %@ carry the picture’s path and the note.";
+"agents.drop.line" = "Cards dragged into %@ include the picture’s path and the note.";
 "agents.drop.edit" = "Edit…";
 "agents.copy" = "Copy";

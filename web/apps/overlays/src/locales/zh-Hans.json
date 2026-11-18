@@ -48,7 +48,7 @@
   "error.no_agent": "没有可在后台整理的 Agent\n可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」",
   "error.auth": "Agent 需要重新登录",
   "error.quota": "Agent 的额度已用完",
-  "error.network": "连不上 Agent 的服务",
+  "error.network": "无法连接 Agent 服务，请检查网络",
   "error.snap": "没能截取屏幕",
   "error.voice.recording": "录屏已经在录你的声音了",
   "error.voice.mic": "没有可用的麦克风",
@@ -457,7 +457,7 @@
   "rec.set_up_agent": "设置 Agent…",
   "rec.copy_request": "复制",
   "rec.request_copied": "已复制，请粘贴到 Agent 的对话中",
-  "rec.show_in_files": "在“文件”中显示",
+  "rec.show_in_files": "在「文件」中显示",
   "rec.fallback": "{why}，改用 {agent} 整理",
-  "island.toast.organized_none": "没整理出事项"
+  "island.toast.organized_none": "未整理出事项"
 }
