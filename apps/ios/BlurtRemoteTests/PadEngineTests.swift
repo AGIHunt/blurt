@@ -102,8 +102,16 @@ final class PadEngineTests: XCTestCase {
         let e = PadEngine()
         e.scrollEdge = 374...400
         _ = e.began([t(1, 390, 100)], at: 0)
-        XCTAssertEqual(e.moved([t(1, 390, 120)], at: 0.05), [.scroll(0, 0, .began)])
+        XCTAssertEqual(e.moved([t(1, 390, 120)], at: 0.05), [.scroll(0, 0, .began), .edgeScroll(true)])
         guard case .scroll(_, _, .changed)? = e.moved([t(1, 390, 130)], at: 0.07).first else { return XCTFail() }
+        // its mark goes out with it; a two-finger scroll never lights it
+        XCTAssertEqual(e.ended([1], at: 0.5).prefix(2), [.scroll(0, 0, .ended), .edgeScroll(false)])
+    }
+
+    func testTwoFingerScrollIsNoEdgeScroll() {
+        let o = zooms(from: (CGPoint(x: 150, y: 200), CGPoint(x: 200, y: 200)), to: (CGPoint(x: 150, y: 400), CGPoint(x: 200, y: 400)))
+        XCTAssertTrue(o.contains(.scroll(0, 0, .began)))
+        XCTAssertFalse(o.contains { if case .edgeScroll = $0 { true } else { false } }, "\(o)")
     }
 
     func testAcrossTheEdgeIsThePointer() {
@@ -240,6 +248,37 @@ final class PadEngineTests: XCTestCase {
         XCTAssertEqual(dx, 0); XCTAssertEqual(dy, 0)
         XCTAssertEqual(at, CGPoint(x: 150, y: 300))
         XCTAssertEqual(e.ended([1, 2], at: 0.2), [.viewEnd])
+    }
+
+    func testWithTheZoomKeyHeldAPinchOverThePictureZoomsTheComputer() {
+        // ⌘ (or Ctrl) held: the computer's zoom, in the same steps as with no picture, and the view stays as it is
+        let e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { true }
+        let o = zooms(e, from: (CGPoint(x: 170, y: 300), CGPoint(x: 230, y: 300)), to: (CGPoint(x: 125, y: 300), CGPoint(x: 275, y: 300)))
+        XCTAssertGreaterThanOrEqual(count(.zoomIn, in: o), 2, "\(o)")
+        XCTAssertFalse(o.contains { if case .view = $0 { true } else { false } }, "the picture doesn't zoom: \(o)")
+    }
+
+    func testWithTheZoomKeyLetGoAPinchOverThePictureZoomsItAgain() {
+        var held = true
+        let e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { held }
+        _ = zooms(e, from: (CGPoint(x: 170, y: 300), CGPoint(x: 230, y: 300)), to: (CGPoint(x: 125, y: 300), CGPoint(x: 275, y: 300)))
+        held = false
+        let o = zooms(e, from: (CGPoint(x: 170, y: 300), CGPoint(x: 230, y: 300)), to: (CGPoint(x: 125, y: 300), CGPoint(x: 275, y: 300)))
+        XCTAssertEqual(count(.zoomIn, in: o), 0, "\(o)")
+        XCTAssertTrue(o.contains { if case .view = $0 { true } else { false } })
+    }
+
+    func testWithTheZoomKeyHeldTwoFingersStillScroll() {
+        let e = PadEngine()
+        e.pinchZoomsView = true
+        e.computerZoomHeld = { true }
+        let o = zooms(e, from: (CGPoint(x: 150, y: 200), CGPoint(x: 200, y: 200)), to: (CGPoint(x: 150, y: 400), CGPoint(x: 200, y: 400)))
+        XCTAssertTrue(o.contains(.scroll(0, 0, .began)))
+        XCTAssertEqual(count(.zoomIn, in: o) + count(.zoomOut, in: o), 0, "\(o)")
     }
 
     func testWithThePictureTwoFingersScrollTheMacUnderThem() {

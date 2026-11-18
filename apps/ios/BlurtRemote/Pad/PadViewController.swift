@@ -49,6 +49,15 @@ final class PadViewController: UIViewController {
     /// the pad has the Mac's shape and shows its screen
     private var showing = false
     private let edgeMark = UIView()
+    /// one finger is scrolling along the edge now
+    private var edgeLit = false
+    /// the first time the picture comes on: two fingers scroll, and the zoom key with a pinch zooms the computer
+    private let tip = UILabel()
+    private let tipBack = UIView()
+    /// full screen: the one way back, in words
+    private let exitFull = UIButton(type: .system)
+    /// not with the keyboard up, nor half folded: nothing goes across a fold in use
+    private var fullNow: Bool { showing && Prefs.shared.fullScreen && keyboardHeight == 0 && !surround.foldActive }
     private let liveText = UILabel()
     /// over the picture, the words need something behind them
     private let liveBack = UIView()
@@ -153,7 +162,17 @@ final class PadViewController: UIViewController {
         standIn.isHidden = true
         pad.layer.insertSublayer(standIn, at: 1)
         #endif
-        for v in [header, liveBack, liveText, emptyHint, edgeMark, card] as [UIView] { pad.addSubview(v) }
+        for v in [header, liveBack, liveText, emptyHint, edgeMark, tipBack, card] as [UIView] { pad.addSubview(v) }
+        tipBack.addSubview(tip)
+        tipBack.backgroundColor = UIColor(white: 0, alpha: 0.72)
+        tipBack.layer.cornerRadius = 12
+        tipBack.layer.cornerCurve = .continuous
+        tipBack.isUserInteractionEnabled = false
+        tipBack.alpha = 0
+        tip.font = .systemFont(ofSize: 14, weight: .medium)
+        tip.textColor = .white
+        tip.textAlignment = .center
+        tip.numberOfLines = 0
         liveBack.backgroundColor = UIColor(white: 0, alpha: 0.72)
         liveBack.layer.cornerRadius = 12
         liveBack.layer.cornerCurve = .continuous
@@ -165,6 +184,24 @@ final class PadViewController: UIViewController {
         screenButton.onToggle = { [weak self] in self?.toggleScreen() }
         screenButton.onPick = { [weak self] c in self?.pickDisplay(c) }
         screenButton.mapPlace = { [weak self] size in self?.placeMap(size) }
+        screenButton.fullScreen = Prefs.shared.fullScreen
+        var exit = UIButton.Configuration.filled()
+        exit.title = String(localized: "Exit Full Screen")
+        exit.image = UIImage(systemName: "arrow.down.right.and.arrow.up.left", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        exit.imagePadding = 6
+        exit.cornerStyle = .capsule
+        exit.baseBackgroundColor = UIColor(white: 0, alpha: 0.62)
+        exit.baseForegroundColor = .white
+        exit.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
+        exit.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+            var a = a
+            a.font = .systemFont(ofSize: 14, weight: .medium)
+            return a
+        }
+        exitFull.configuration = exit
+        exitFull.isHidden = true
+        exitFull.addAction(UIAction { [weak self] _ in self?.setFullScreen(false) }, for: .touchUpInside)
+        view.addSubview(exitFull)
         drawerButton.setImage(UIImage(systemName: "square.grid.3x3", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         drawerButton.tintColor = Theme.mark
         drawerButton.backgroundColor = Theme.slab
@@ -248,6 +285,15 @@ final class PadViewController: UIViewController {
                 }
             }
             p.onClick = { Sticky.shared.used() }
+            // ⌘ on a Mac, Ctrl elsewhere, from the keys here or a keyboard on the iPad
+            p.engine.computerZoomHeld = {
+                let k: RemoteModifiers = Link.shared.host == .mac ? .command : .control
+                return Sticky.shared.held.union(HardwareKeys.shared.sent).isSuperset(of: k)
+            }
+        }
+        pad.onEdgeScroll = { [weak self] on in
+            self?.edgeLit = on
+            self?.markEdge()
         }
         pad.onTouch = { [weak self] in
             guard let self, !self.padTouched else { return }
@@ -483,6 +529,20 @@ final class PadViewController: UIViewController {
         remember()
     }
 
+    /// Full screen on: the picture comes on too, as choosing a display does. Off: the keys come back around it.
+    private func setFullScreen(_ on: Bool) {
+        Haptics.tick()
+        Prefs.shared.fullScreen = on
+        screenButton.fullScreen = on
+        if on, !showing {
+            Link.shared.screenError = nil
+            setShowing(true)
+            remember()
+        }
+        view.setNeedsLayout()
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
     /// What the user chose, kept for next time.
     private func remember() {
         Prefs.shared.screenWanted = showing
@@ -492,6 +552,7 @@ final class PadViewController: UIViewController {
     /// From the screen button: another display, or following the pointer again. The picture comes on if it was off: choosing what to see is
     /// asking to see it.
     private func pickDisplay(_ c: DisplayChoice) {
+        if c == .fullScreen { return setFullScreen(!Prefs.shared.fullScreen) }
         Link.shared.screenError = nil
         Link.shared.showDisplay(c.id)
         if !showing { setShowing(true) }
@@ -503,7 +564,8 @@ final class PadViewController: UIViewController {
     private func placeMap(_ size: CGSize) -> (UIView, CGRect)? {
         let b = screenButton.frame, v = view.bounds, m: CGFloat = 8
         guard let l = layout else { return nil }
-        if l.mode != .landscape, !list.isHidden, l.list.height >= 150 {
+        // the keys' place for the arrangement; Full Screen alone is one row, beside the button
+        if l.mode != .landscape, !list.isHidden, l.list.height >= 150, size.height > DisplayMap.followHeight + DisplayMap.pad * 2 {
             var r = l.list
             if l.mode == .big, let half = l.halves.first(where: { $0.minX <= b.midX && b.midX <= $0.maxX }) {
                 r = CGRect(x: half.minX, y: l.list.minY, width: half.width, height: l.list.height)
@@ -521,6 +583,32 @@ final class PadViewController: UIViewController {
         return (view, r)
     }
 
+    /// The edge where one finger scrolls. On the plain pad its mark stays; over the picture it would hide a strip of it, so it shows as the
+    /// picture comes on and while one finger scrolls there, then fades.
+    private func markEdge(flash: Bool = false) {
+        edgeMark.layer.removeAllAnimations()
+        edgeMark.backgroundColor = showing ? UIColor(white: 1, alpha: 0.8) : Theme.hairline
+        // over a white page as well as a dark one
+        edgeMark.layer.borderWidth = showing ? 0.5 : 0
+        edgeMark.layer.borderColor = UIColor(white: 0, alpha: 0.4).cgColor
+        guard showing else { edgeMark.alpha = 1; return }
+        if flash || edgeLit { edgeMark.alpha = 1 }
+        guard !edgeLit else { return }
+        UIView.animate(withDuration: 0.3, delay: flash ? 1.5 : 0.3, options: [.allowUserInteraction, .beginFromCurrentState]) { self.edgeMark.alpha = 0 }
+    }
+
+    /// Once, the first time the picture is on: the two things a hand tries on a picture and doesn't find.
+    private func tipOnce() {
+        guard !Prefs.shared.pictureTipShown else { return }
+        Prefs.shared.pictureTipShown = true
+        tip.text = Link.shared.host == .mac ? String(localized: "Two fingers scroll · Pinch with ⌘ held zooms the Mac")
+            : String(localized: "Two fingers scroll · Pinch with Ctrl held zooms the computer")
+        view.setNeedsLayout()
+        UIView.animate(withDuration: 0.25) { self.tipBack.alpha = 1 } completion: { _ in
+            UIView.animate(withDuration: 0.4, delay: 4.5, options: [.allowUserInteraction]) { self.tipBack.alpha = 0 }
+        }
+    }
+
     private func setShowing(_ on: Bool) {
         guard on != showing else { return }
         if !on { screenButton.closeMap() }
@@ -536,6 +624,8 @@ final class PadViewController: UIViewController {
         ScreenStream.shared.resetView()
         applyPrefs()
         if on { ScreenStream.shared.start() } else { ScreenStream.shared.stop() }
+        markEdge(flash: on)
+        if on { tipOnce() } else { tipBack.alpha = 0 }
         status()
         view.setNeedsLayout()
         UIView.animate(withDuration: 0.22) { self.view.layoutIfNeeded() }
@@ -611,6 +701,8 @@ final class PadViewController: UIViewController {
         layout = l
         let typing = keyboardHeight > 0
         var padFrame = l.pad
+        let full = fullNow
+        if full { padFrame = view.bounds }
         if typing {
             let top = l.landscape ? max(view.safeAreaInsets.top, 8) : l.pad.minY
             padFrame = CGRect(x: l.landscape ? max(view.safeAreaInsets.left, 12) : l.pad.minX, y: top,
@@ -679,8 +771,30 @@ final class PadViewController: UIViewController {
         settingsButton.isHidden = typing
         findButton.isHidden = typing
         dim.frame = view.bounds
+        // full screen: everything but the picture goes, and the talk key stays over it, small and see-through, by the thumb
+        exitFull.isHidden = !full
+        talk.alpha = full ? 0.8 : 1
+        if full {
+            for v in [thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
+                v.isHidden = true
+            }
+            dockCells.forEach { $0.isHidden = true }
+            glassOutline.isHidden = true
+            screenButton.closeMap()
+            // the keys that showed a ⌘ held are gone: nothing stays held unseen
+            if !Sticky.shared.held.isEmpty { Sticky.shared.release(Sticky.shared.held) }
+            let s = view.safeAreaInsets, m: CGFloat = 12, k: CGFloat = 60, b = view.bounds, lefty = Prefs.shared.lefty
+            talk.isHidden = false
+            talk.frame = CGRect(x: lefty ? max(s.left, m) : b.width - max(s.right, m) - k, y: b.height - max(s.bottom, m) - k, width: k, height: k)
+            let e = exitFull.sizeThatFits(CGSize(width: b.width, height: 44))
+            exitFull.frame = CGRect(x: lefty ? b.width - max(s.right, m) - e.width : max(s.left, m), y: max(s.top, m), width: e.width, height: e.height)
+            view.insertSubview(talk, belowSubview: dim)
+            view.insertSubview(exitFull, belowSubview: dim)
+            pad.engine.scrollEdge = PadLayout.scrollEdge(width: padFrame.width, lefty: lefty)
+            pad.engine.scrollEdgeY = nil
+        }
 
-        ScreenStream.shared.layout(pad.bounds, alignY: l.stageAlignY)
+        ScreenStream.shared.layout(pad.bounds, alignY: full ? 0.5 : l.stageAlignY)
         #if DEBUG
         if Pretend.screen {
             ScreenStream.shared.standsIn = true
@@ -692,7 +806,7 @@ final class PadViewController: UIViewController {
         // with several displays, enough for any of them: a switch then needs no new stream, only another display in the same one
         let aspects = Link.shared.displays.map { $0.width / max($0.height, 1) }.filter { $0 > 0 }
         let want = (aspects.isEmpty ? [Link.shared.displayAspect] : aspects)
-            .map { PadLayout.outputPixels(stage: l.pad.size, aspect: $0, scale: traitCollection.displayScale) }
+            .map { PadLayout.outputPixels(stage: full ? padFrame.size : l.pad.size, aspect: $0, scale: traitCollection.displayScale) }
             .reduce(CGSize.zero) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) }
         if want.width > 0, askedPixels.map({ abs($0.width - want.width) > $0.width * 0.08 || abs($0.height - want.height) > $0.height * 0.08 }) ?? true {
             askedPixels = want
@@ -700,12 +814,15 @@ final class PadViewController: UIViewController {
         }
 
         // what's said on the stage stays clear of the fold, on the thumb's side
-        let hint = typing ? pad.bounds : l.hintArea
+        let hint = typing || full ? pad.bounds : l.hintArea
         let chipsW = min(hint.width - 16, 300)
         chips.frame = CGRect(x: padFrame.minX + hint.midX - chipsW / 2, y: padFrame.minY + hint.maxY - 8 - 32, width: chipsW, height: 32)
-        edgeMark.isHidden = showing
         let edge = pad.engine.scrollEdge ?? (0...0), ys = pad.engine.scrollEdgeY ?? (0...pad.bounds.height)
         edgeMark.frame = CGRect(x: edge.lowerBound < 1 ? 7 : pad.bounds.maxX - 10, y: (ys.lowerBound + ys.upperBound) / 2 - 34, width: 3, height: 68)
+        let tipW = min(hint.width - 32, 420)
+        let tipFit = ceil(tip.sizeThatFits(CGSize(width: tipW - 24, height: .greatestFiniteMagnitude)).height)
+        tipBack.frame = CGRect(x: hint.midX - tipW / 2, y: hint.minY + 16, width: tipW, height: tipFit + 16)
+        tip.frame = tipBack.bounds.insetBy(dx: 12, dy: 8)
         let inset = hint.insetBy(dx: 16, dy: 12)
         header.frame = CGRect(x: 16, y: 12, width: pad.bounds.width - 32, height: 16)
         // above the chips, nearest the thumb; the newest words stay in view

@@ -7,6 +7,8 @@
 //  • hold: the map stays up after lifting. Tap a display to show it, or Follow Pointer to have the picture follow the pointer from
 //    display to display again (the default).
 //  • a display chosen stays chosen, until Follow Pointer or until it's unplugged. The map says which; the button carries no badge for it.
+//  • Full Screen, at the foot of the map (and all of it with one display, where a hold opens it too): the picture takes the whole screen
+//    and only the talk key and a way back stay over it, for reading what was left open on the computer. Remembered.
 import BlurtRemoteKit
 import UIKit
 
@@ -14,6 +16,8 @@ import UIKit
 enum DisplayChoice: Equatable {
     case follow
     case display(String)
+    /// not a display: the picture full screen, on or off
+    case fullScreen
 
     var id: String? { if case let .display(d) = self { d } else { nil } }
 }
@@ -21,6 +25,8 @@ enum DisplayChoice: Equatable {
 final class ScreenButton: UIControl {
     var onToggle: (() -> Void)?
     var onPick: ((DisplayChoice) -> Void)?
+    /// the picture takes the whole screen (Prefs.fullScreen): the map's last row says so
+    var fullScreen = false { didSet { map?.fullScreen = fullScreen } }
     /// where the map goes: the view it's put in, and its frame there (the keys' place; or one of this size beside the button)
     var mapPlace: ((CGSize) -> (UIView, CGRect)?)?
 
@@ -66,11 +72,12 @@ final class ScreenButton: UIControl {
     required init?(coder: NSCoder) { fatalError() }
 
     func update(displays: [RemoteDisplay], shown: String?, pinned: String?) {
+        let was = several
         self.displays = displays
         self.shown = shown
         self.pinned = pinned
         map?.update(displays: displays, shown: shown, pinned: pinned)
-        if !several { closeMap() }
+        if several != was { closeMap() }     // the map's shape was for the other
         paint()
     }
 
@@ -97,9 +104,10 @@ final class ScreenButton: UIControl {
         let name = displays.first { $0.id == shown }?.name
         accessibilityValue = several ? [name, pinned == nil ? String(localized: "Follow Pointer") : nil].compactMap { $0 }.joined(separator: ", ") : nil
         accessibilityHint = several ? String(localized: "Hold to choose a display.") : nil
+        let full = UIAccessibilityCustomAction(name: String(localized: "Full Screen")) { [weak self] _ in self?.onPick?(.fullScreen); return true }
         accessibilityCustomActions = several ? displays.arranged.map { d in
             UIAccessibilityCustomAction(name: String(localized: "Show \(d.name)")) { [weak self] _ in self?.onPick?(.display(d.id)); return true }
-        } + [UIAccessibilityCustomAction(name: String(localized: "Follow Pointer")) { [weak self] _ in self?.onPick?(.follow); return true }] : nil
+        } + [UIAccessibilityCustomAction(name: String(localized: "Follow Pointer")) { [weak self] _ in self?.onPick?(.follow); return true }, full] : [full]
         setNeedsLayout()
     }
 
@@ -141,7 +149,6 @@ final class ScreenButton: UIControl {
         steps = 0
         sticky = false
         isHighlighted = true
-        guard several else { return }
         let h = DispatchWorkItem { [weak self] in
             guard let self, !self.moved, self.map == nil else { return }
             self.sticky = true
@@ -197,6 +204,7 @@ final class ScreenButton: UIControl {
         switch c {
         case .follow: if pinned == nil { return }
         case let .display(id): if id == pinned || (pinned == nil && id == shown && moved) { return }
+        case .fullScreen: break
         }
         Haptics.tick()
         onPick?(c)
@@ -205,7 +213,6 @@ final class ScreenButton: UIControl {
     #if DEBUG
     /// DisplayTest: held (nil), or slid `steps` along
     func pretendMap(steps: Int?) {
-        guard several else { return }
         sticky = steps == nil
         moved = steps != nil
         openMap(candidate: steps.flatMap { n in displays.step(from: shown, by: n).map { .display($0.id) } } ?? current)
@@ -224,7 +231,8 @@ final class ScreenButton: UIControl {
         guard map == nil else { return }
         let m = DisplayMap()
         m.update(displays: displays, shown: shown, pinned: pinned)
-        m.candidate = candidate
+        m.fullScreen = fullScreen
+        m.candidate = several ? candidate : nil
         m.onPick = { [weak self] c in
             self?.closeMap()
             self?.commit(c)
@@ -256,7 +264,7 @@ final class ScreenButton: UIControl {
     }
 }
 
-/// The arrangement drawn to scale, each display named, and Follow Pointer under it.
+/// The arrangement drawn to scale, each display named, Follow Pointer under it, and Full Screen at the foot. With one display, only that.
 final class DisplayMap: UIView {
     var onPick: ((DisplayChoice) -> Void)?
     var candidate: DisplayChoice? {
@@ -273,20 +281,26 @@ final class DisplayMap: UIView {
     private let follow = UIView()
     private let followLabel = UILabel()
     private let followIcon = UIImageView()
+    private let full = UIView()
+    private let fullLabel = UILabel()
+    private let fullIcon = UIImageView()
     private var spots: [String: CGRect] = [:]
+    var fullScreen = false { didSet { paint() } }
+    private var several: Bool { displays.count > 1 }
 
     static let pad: CGFloat = 10
     static let followHeight: CGFloat = 44
     /// With no keys to take the place of (landscape, keys put away): about a hand's width, as tall as the arrangement needs.
     static func floating(for displays: [RemoteDisplay]) -> CGSize {
-        let all = displays.map(\.frame).reduce(CGRect.null) { $0.union($1) }
         let w: CGFloat = 260, area = w - pad * 2
+        guard displays.count > 1 else { return CGSize(width: w, height: pad * 2 + followHeight) }
+        let all = displays.map(\.frame).reduce(CGRect.null) { $0.union($1) }
         let tiles = all.isNull || all.width <= 0 ? 90 : min(130, max(64, area * all.height / all.width + 8))
-        return CGSize(width: w, height: pad * 3 + tiles + followHeight)
+        return CGSize(width: w, height: pad * 4 + tiles + followHeight * 2)
     }
     /// the arrangement's room inside the map
     private var mapArea: CGSize {
-        CGSize(width: max(1, bounds.width - Self.pad * 2), height: max(1, bounds.height - Self.pad * 3 - Self.followHeight))
+        CGSize(width: max(1, bounds.width - Self.pad * 2), height: max(1, bounds.height - Self.pad * 4 - Self.followHeight * 2))
     }
 
     override init(frame: CGRect) {
@@ -310,6 +324,16 @@ final class DisplayMap: UIView {
         follow.addSubview(followLabel)
         follow.isUserInteractionEnabled = false
         addSubview(follow)
+        full.layer.cornerRadius = Theme.keyRadius
+        full.layer.cornerCurve = .continuous
+        fullLabel.text = String(localized: "Full Screen")
+        fullLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        fullIcon.image = UIImage(systemName: "arrow.up.left.and.arrow.down.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+        fullIcon.contentMode = .center
+        full.addSubview(fullIcon)
+        full.addSubview(fullLabel)
+        full.isUserInteractionEnabled = false
+        addSubview(full)
         // VoiceOver chooses through the screen button's actions
         accessibilityElementsHidden = true
     }
@@ -358,11 +382,16 @@ final class DisplayMap: UIView {
             t.label.frame = t.view.bounds.insetBy(dx: 4, dy: 3)
             t.label.isHidden = t.view.bounds.width < 34 || t.view.bounds.height < 20
         }
+        follow.isHidden = !several
         follow.frame = CGRect(x: Self.pad, y: Self.pad * 2 + mapArea.height, width: mapArea.width, height: Self.followHeight)
-        let w = ceil(followLabel.intrinsicContentSize.width), iconW: CGFloat = 20
-        let x = (follow.bounds.width - w - iconW - 6) / 2
-        followIcon.frame = CGRect(x: x, y: 0, width: iconW, height: follow.bounds.height)
-        followLabel.frame = CGRect(x: x + iconW + 6, y: 0, width: w, height: follow.bounds.height)
+        full.frame = several ? CGRect(x: Self.pad, y: follow.frame.maxY + Self.pad, width: mapArea.width, height: Self.followHeight)
+            : CGRect(x: Self.pad, y: Self.pad, width: bounds.width - Self.pad * 2, height: Self.followHeight)
+        for (row, icon, label) in [(follow, followIcon, followLabel), (full, fullIcon, fullLabel)] {
+            let w = ceil(label.intrinsicContentSize.width), iconW: CGFloat = 20
+            let x = (row.bounds.width - w - iconW - 6) / 2
+            icon.frame = CGRect(x: x, y: 0, width: iconW, height: row.bounds.height)
+            label.frame = CGRect(x: x + iconW + 6, y: 0, width: w, height: row.bounds.height)
+        }
     }
 
     /// Lit: what the picture shows (the display; Follow Pointer when it follows). Outlined: where the finger would take it.
@@ -384,10 +413,18 @@ final class DisplayMap: UIView {
         let aimed = candidate == .follow
         follow.layer.borderWidth = aimed ? 2 : 1
         follow.layer.borderColor = (aimed ? Theme.mark : Theme.edge).cgColor
+        full.backgroundColor = fullScreen ? Theme.slabLatched : Theme.slab
+        fullLabel.textColor = fullScreen ? .black : Theme.mark
+        fullIcon.tintColor = fullScreen ? .black : Theme.caption
+        let fullAimed = candidate == .fullScreen
+        full.layer.borderWidth = fullAimed ? 2 : 1
+        full.layer.borderColor = (fullAimed ? Theme.mark : Theme.edge).cgColor
     }
 
     func choice(at p: CGPoint) -> DisplayChoice? {
-        if follow.frame.insetBy(dx: -4, dy: -6).contains(p) { return .follow }
+        if full.frame.insetBy(dx: -4, dy: -4).contains(p) { return .fullScreen }
+        guard several else { return nil }
+        if follow.frame.insetBy(dx: -4, dy: -4).contains(p) { return .follow }
         let inMap = CGPoint(x: p.x - Self.pad, y: p.y - Self.pad)
         return RemoteDisplayMap.hit(inMap, in: spots, reach: 16).map(DisplayChoice.display)
     }

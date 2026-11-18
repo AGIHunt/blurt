@@ -79,8 +79,8 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
     }
 }
 
-/** A pill: mint words on black, over the picture. */
-class Chip(c: Context, val text: String, private val act: () -> Unit) : View(c) {
+/** A pill: mint words on black, over the picture (white for one that isn't about listening). */
+class Chip(c: Context, val text: String, private val ink: Int = Theme.mint, private val act: () -> Unit) : View(c) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private var down = false
 
@@ -92,7 +92,7 @@ class Chip(c: Context, val text: String, private val act: () -> Unit) : View(c) 
     override fun onDraw(canvas: Canvas) {
         p.color = if (down) Color.argb(230, 40, 40, 40) else Color.argb(184, 0, 0, 0)
         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), height / 2f, height / 2f, p)
-        p.color = Theme.mint
+        p.color = ink
         p.typeface = Fonts.medium
         p.textSize = 13.dp
         val fm = p.fontMetrics
@@ -114,6 +114,13 @@ class Chip(c: Context, val text: String, private val act: () -> Unit) : View(c) 
         Haptics.tick()
         act()
         return true
+    }
+
+    /** as wide as its words and a margin, dp */
+    fun fitWidth(): Float {
+        p.typeface = Fonts.medium
+        p.textSize = 13.dp
+        return p.measureText(text) / resources.displayMetrics.density + 28
     }
 }
 

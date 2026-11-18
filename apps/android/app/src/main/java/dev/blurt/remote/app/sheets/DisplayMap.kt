@@ -1,20 +1,25 @@
 // The computer's displays as its display settings arrange them, to scale: tap one to show it, or let the picture follow the pointer from
-// display to display. A dialog, so nothing covers the picture once it's gone.
+// display to display. A dialog, so nothing covers the picture once it's gone. Under them, Full Screen; with one display that's all there is.
 package dev.blurt.remote.app.sheets
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -26,6 +31,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.blurt.remote.app.Haptics
 import dev.blurt.remote.app.R
@@ -41,15 +47,19 @@ fun DisplayMap(onClose: () -> Unit) {
     val teal = MaterialTheme.colorScheme.primary
     val ink = MaterialTheme.colorScheme.onSurface
     val faint = MaterialTheme.colorScheme.outline
+    val changed by Remote.prefs.changed.collectAsState()
     all.hashCode()
+    changed.hashCode()
+    // the arrangement only with the picture showing (the screen button's hold opens this with it off too)
+    val many = list.size >= 2 && Remote.screen.on
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(stringResource(R.string.displays)) },
+        title = if (many) { { Text(stringResource(R.string.displays)) } } else null,
         text = {
             Column {
-                Text(stringResource(R.string.displays_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (list.isNotEmpty()) {
+                if (many) {
+                    Text(stringResource(R.string.displays_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val minX = list.minOf { it.x }
                     val minY = list.minOf { it.y }
                     val spanW = list.maxOf { it.x + it.width } - minX
@@ -89,9 +99,20 @@ fun DisplayMap(onClose: () -> Unit) {
                         }
                     }
                 }
+                // the picture fills the screen whenever it shows; the keys come back with it off
+                val full = Remote.prefs.fullScreen
+                Row(Modifier.fillMaxWidth().padding(top = if (many) 12.dp else 0.dp).heightIn(min = 48.dp)
+                    .toggleable(full, role = Role.Switch) { Haptics.tick(); Remote.prefs.fullScreen = it },
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.full_screen), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(full, null)
+                }
             }
         },
-        confirmButton = { TextButton({ l.showDisplay(null); onClose() }) { Text(stringResource(R.string.follow_pointer)) } },
-        dismissButton = { TextButton(onClose) { Text(stringResource(R.string.done)) } },
+        confirmButton = {
+            if (many) TextButton({ l.showDisplay(null); onClose() }) { Text(stringResource(R.string.follow_pointer)) }
+            else TextButton(onClose) { Text(stringResource(R.string.done)) }
+        },
+        dismissButton = if (many) { { TextButton(onClose) { Text(stringResource(R.string.done)) } } } else null,
     )
 }

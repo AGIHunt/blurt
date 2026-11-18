@@ -17,9 +17,10 @@ final class RenderTests: XCTestCase {
         Pretend.surround = room.surround
         // the room's own safe area, not that of the simulator the tests run on (the Duo's outer display has a band down one side)
         Pretend.safe = room.safe
-        let wasLefty = Prefs.shared.lefty
+        let wasLefty = Prefs.shared.lefty, wasFull = Prefs.shared.fullScreen
         Prefs.shared.lefty = lefty
-        defer { Prefs.shared.lefty = wasLefty; Pretend.surround = nil; Pretend.safe = nil; Pretend.screen = false }
+        Prefs.shared.fullScreen = false
+        defer { Prefs.shared.lefty = wasLefty; Prefs.shared.fullScreen = wasFull; Pretend.surround = nil; Pretend.safe = nil; Pretend.screen = false }
         let w = UIWindow(windowScene: scene)
         w.frame = CGRect(origin: .zero, size: room.size)
         let c = PadViewController()

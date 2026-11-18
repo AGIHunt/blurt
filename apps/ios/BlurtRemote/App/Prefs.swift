@@ -25,6 +25,10 @@ final class Prefs: ObservableObject {
     var screenWanted: Bool { didSet { d.set(screenWanted, forKey: "screenWanted") } }
     /// the picture has been turned on once: the empty pad no longer needs to say where it is
     var screenFound: Bool { didSet { d.set(screenFound, forKey: "screenFound") } }
+    /// the picture takes the whole screen while it shows, with only the talk key and a way back over it
+    var fullScreen: Bool { didSet { d.set(fullScreen, forKey: "fullScreen") } }
+    /// the first picture's tip (two fingers scroll, the zoom key with a pinch) has been shown
+    var pictureTipShown: Bool { didSet { d.set(pictureTipShown, forKey: "pictureTipShown") } }
 
     private init() {
         pointerSpeed = d.object(forKey: "pointerSpeed") as? Double ?? 1
@@ -38,5 +42,7 @@ final class Prefs: ObservableObject {
         quality = d.string(forKey: "quality").flatMap(ScreenQuality.init) ?? .auto
         screenWanted = d.bool(forKey: "screenWanted")
         screenFound = d.bool(forKey: "screenFound")
+        fullScreen = d.bool(forKey: "fullScreen")
+        pictureTipShown = d.bool(forKey: "pictureTipShown")
     }
 }

@@ -186,6 +186,33 @@ thumb still and finger out, 60 ↔ 150 pt both ways (as many steps each way), 60
 with 30 pt of finger drift (no zoom), a wobbly two-finger tap (still a right click). On the old engine four of them fail, the first as a scroll.
 Not checked on a phone in the hand here: the tests are the engine's, the reporter's fingers are theirs.
 
+**One finger, two fingers, and the two zooms (2026-11-18).** An iPad user in Touch Mode: Settings promised one-finger scrolling and it never
+worked; two fingers scrolled fine; and they wanted the computer's zoom with the picture showing as well as the picture's. The row said
+「单指沿边缘滑动 → 滚动」, read as "one finger scrolls", while it is a 26 pt strip by the thumb whose mark hid whenever the picture showed. Five
+user sketches (an iPad reader, an iPhone developer at a big screen, a lecturer at a projector, a low-vision armchair reader, a designer on a
+13" iPad) split on one finger scrolling the picture: kept as it is, since in Touch Mode a slide of one finger is the only way to move the
+pointer without a click, which is what hover needs (menus and buttons that appear under the pointer, link previews, a hidden Dock). Decided
+with the founder:
+- **The edge stays on over the picture** and its mark shows when it matters: as the picture comes on (1.5 s, then it fades) and while one finger
+  scrolls there. Over the picture a standing line would hide a strip of it. What it takes away is only a quick vertical slide that starts in the
+  strip, which as a pointer move works as well from anywhere else (the pointer moves relatively), and a sideways slide from it is still the pointer.
+- **The gesture list says what is true**: two fingers first, then 「单指沿拇指一侧边缘上下滑 → 在光标处滚动」. The first time the picture comes on, a
+  line over it says two fingers scroll and ⌘ with a pinch zooms the Mac.
+- **⌘ (Ctrl on Windows and Linux) held with a pinch zooms the computer**, picture or not, as ⌘ or Ctrl with a wheel does on the computer;
+  a plain pinch over the picture still zooms the picture. Held means the dock's modifier (tapped once it's spent by the zoom, twice it's locked)
+  or a keyboard on the iPad. No setting: an either-or setting would have taken the picture's zoom away, and it is what small targets need
+  (⌘+ doesn't enlarge a menu bar). The reporter's own idea, the Find Pointer button's light as the switch, was turned down by all five: it is a
+  button that acts and is done, and a light on it reads as nothing. A zoom about the fingers like a real trackpad's isn't possible from
+  outside on macOS (no public way to post a magnify gesture); ⌘+ and ⌘− are what's sent.
+- **Full Screen** at the foot of the display map (holding the screen button now opens the map with one display too, as just that row): the
+  picture takes the whole screen, and only a see-through talk key by the thumb and an "Exit Full Screen" pill stay over it. Remembered; it
+  applies only while the picture shows, never with the phone's keyboard up or across a fold in use. Going in lets go of dock modifiers, so
+  nothing stays held unseen; there, only a keyboard's ⌘ or Ctrl gives the computer's zoom. For reading on an iPad what was left open on the
+  computer; on a phone in portrait it gains little.
+`PadEngine` (`computerZoomHeld`, `.edgeScroll`), `PadViewController` (`markEdge`, `tipOnce`, `setFullScreen`), `DisplayMap`; the same in Kotlin.
+Checked: the iOS (144) and Android (168) tests, including a full-screen layout test, and the iPhone and iPad simulators (map, full screen
+portrait and landscape, the tip). Not checked: a hand on a real iPad, Android on a device or emulator, the relay.
+
 Pointer gain rises smoothly from 1× for a slow finger to 5.5× for a fast one, because the glass is a tenth of a trackpad and
 the target may be 4K; reviews of other apps single out steep curves and bad slow-speed precision. Scrolling is
 continuous-phase CGEvents so apps rubber-band as with a trackpad; the coast runs on the Mac at 120 Hz.

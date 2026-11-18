@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.lifecycle.LifecycleCoroutineScope
 import dev.blurt.remote.app.Fonts
+import dev.blurt.remote.app.HardwareKeys
 import dev.blurt.remote.app.Haptics
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
@@ -105,6 +106,15 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     var inFront = false
         set(v) { field = v; if (!v) follower = StatusFollower() }
     private val edgeMark = View(c)
+    private val edgeLook = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 1.5f.dp }
+    /** one finger is scrolling along the edge: its mark stays lit over the picture */
+    private var edgeScrolling = false
+    /** the first time the picture showed: a line on what two fingers do there, then gone */
+    private val tip = TextView(c)
+    /** full screen: the one way back to the keys, in the top corner away from the talk key */
+    private val exitFull = Chip(c, c.getString(R.string.exit_full_screen), Theme.mark) { Remote.prefs.fullScreen = false }
+    /** the picture fills the screen, last time it was laid out */
+    private var full = false
     private val dim = View(c)
     val field = TypeField(c)
     private val modRow = ModifierRow(c) { field.hide() }
@@ -129,7 +139,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         isMotionEventSplittingEnabled = true
         clipChildren = false
         pad.addView(stage, 0)
-        for (v in listOf(header, liveText, edgeMark, cursor, card)) pad.addView(v)
+        for (v in listOf(header, liveText, tip, edgeMark, cursor, card)) pad.addView(v)
         Remote.screen.attach(stage, cursor)
         addView(pad)
         addView(pad2)
@@ -142,12 +152,24 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             setPadding(10.dp.toInt(), 6.dp.toInt(), 10.dp.toInt(), 6.dp.toInt())
             visibility = GONE
         }
-        edgeMark.background = android.graphics.drawable.GradientDrawable().apply { setColor(Theme.hairline); cornerRadius = 1.5f.dp }
+        tip.apply {
+            textSize = 14f
+            setTextColor(Theme.mark)
+            gravity = android.view.Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.argb(184, 0, 0, 0)); cornerRadius = 12.dp }
+            setPadding(12.dp.toInt(), 7.dp.toInt(), 12.dp.toInt(), 7.dp.toInt())
+            visibility = GONE
+        }
+        edgeLook()
+        edgeMark.background = edgeLook
         for (p in listOf(pad, pad2)) {
             p.onHaptic = { h -> when (h) { PadHaptic.TAP -> Haptics.tick(); PadHaptic.GRAB -> Haptics.grab(); PadHaptic.RELEASE -> Haptics.release(); PadHaptic.STEP -> Haptics.step() } }
             p.onClick = { Remote.sticky.used() }
             p.onViewEnd = { applyPrefs() }
         }
+        pad.onEdgeScroll = { on -> edgeScroll(on) }
+        // ⌘ held (Ctrl on a PC), on the dock or a keyboard: a pinch over the picture zooms the computer, as it does with the picture off
+        pad.engine.computerZoomHeld = { ((Remote.sticky.held or HardwareKeys.held) and zoomModifier(host)) != 0 }
 
         addView(list)
         list.onCycle = { on, k -> cycling(on, k) }
@@ -160,12 +182,16 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         addView(appsCell)
         addView(talk)
         talk.onAsk = { sheets.askMic() }
+        addView(exitFull)
+        exitFull.visibility = GONE
         for (b in listOf(drawerButton, screenButton, keyboardButton, settingsButton, findButton)) addView(b)
         addView(displayButton)
         displayButton.onTap = { Remote.link.nextDisplay() }
         displayButton.onHold = { sheets.displays() }
         drawerButton.onTap = { toggleDrawer() }
         screenButton.onTap = { toggleScreen() }
+        // the map with one display too: it holds Full Screen
+        screenButton.onHold = { sheets.displays() }
         keyboardButton.onTap = { toggleKeyboard() }
         settingsButton.onTap = { sheets.settings() }
         settingsButton.onHold = { if (Remote.link.macs.value.size > 1) sheets.switchMac() }
@@ -353,8 +379,56 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         Remote.screen.resetView()
         applyPrefs()
         if (on) Remote.screen.start() else Remote.screen.stop()
+        edgeLook()
+        // over the picture the edge's mark hides, after showing where it is each time the picture comes
+        main.removeCallbacks(edgeFade)
+        edgeMark.animate().cancel()
+        edgeMark.alpha = 1f
+        if (on) main.postDelayed(edgeFade, 1500)
+        if (on && !Remote.prefs.pictureHintShown) showTip()
+        if (!on) hideTip()
         status()
         requestLayout()
+    }
+
+    private val edgeFade = Runnable { if (showing && !edgeScrolling) edgeMark.animate().alpha(0f).setDuration(300).start() }
+
+    private fun edgeScroll(on: Boolean) {
+        edgeScrolling = on
+        if (!showing) return
+        main.removeCallbacks(edgeFade)
+        if (on) {
+            edgeMark.animate().cancel()
+            edgeMark.alpha = 1f
+        } else {
+            edgeFade.run()
+        }
+    }
+
+    /** the mark: a hairline on the glass; over the picture, white with a dark edge, so it reads on any picture */
+    private fun edgeLook() {
+        edgeLook.setColor(if (showing) Color.argb(204, 255, 255, 255) else Theme.hairline)
+        edgeLook.setStroke(if (showing) max(1, 0.5f.dp.toInt()) else 0, Color.argb(110, 0, 0, 0))
+    }
+
+    private val tipFade = Runnable { tip.animate().alpha(0f).setDuration(300).withEndAction { tip.visibility = GONE }.start() }
+
+    private fun showTip() {
+        Remote.prefs.pictureHintShown = true
+        val mod = RemoteModifiers.label(zoomModifier(host), host)
+        tip.text = context.getString(if (host == RemoteHost.MAC) R.string.picture_hint_mac else R.string.picture_hint_pc, mod)
+        tip.animate().cancel()
+        tip.alpha = 1f
+        tip.visibility = VISIBLE
+        main.removeCallbacks(tipFade)
+        main.postDelayed(tipFade, 4000)
+        requestLayout()
+    }
+
+    private fun hideTip() {
+        main.removeCallbacks(tipFade)
+        tip.animate().cancel()
+        tip.visibility = GONE
     }
 
     private fun toggleDrawer() {
@@ -437,6 +511,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         talk.letGo()
         allCells.forEach { it.letGo() }
         Remote.sticky.clear()
+        HardwareKeys.forget()
     }
 
     /** turned, folded or resized: whatever was mid-gesture ends, the session and the view stay */
@@ -482,7 +557,30 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val l = PadLayout(w, h, safe.left / d, safe.top / d, safe.right / d, safe.bottom / d, Remote.prefs.lefty, drawerOpen, fold,
             displays = showing && Remote.link.displays.value.size >= 2)
         layout = l
+        // full screen: the picture takes it all, inside the cutouts; a fold half open keeps its halves
+        val fullNow = showing && Remote.prefs.fullScreen && !typing && fold == null
+        if (fullNow != full) {
+            full = fullNow
+            // the modifiers go out of sight with the keys: none stays held on the computer unseen
+            if (fullNow && Remote.sticky.held != 0) main.post { Remote.sticky.release(Remote.sticky.held) }
+        }
+        val keys = !fullNow
+        val sl = safe.left / d
+        val st = safe.top / d
+        val sr = safe.right / d
+        val sb = safe.bottom / d
         var padFrame = l.pad
+        var talkFrame = l.talk
+        if (fullNow) {
+            padFrame = Frame(sl, st, w - sr, h - sb)
+            // the talk key in the thumb's bottom corner; the way out in the top corner across from it
+            val m = 16f
+            talkFrame = if (l.lefty) Frame(sl + m, h - sb - m - 56, sl + m + 64, h - sb - m) else Frame(w - sr - m - 64, h - sb - m - 56, w - sr - m, h - sb - m)
+            val ew = exitFull.fitWidth()
+            place(exitFull, if (l.lefty) Frame(w - sr - 12 - ew, st + 12, w - sr - 12, st + 12 + 34) else Frame(sl + 12, st + 12, sl + 12 + ew, st + 12 + 34))
+        }
+        show(exitFull, fullNow)
+        talk.floating = fullNow
         if (typing) {
             // the keyboard has the keys' place: the pad takes everything above it, and the row of modifiers sits on the keyboard
             val top = if (l.landscape) max(safe.top / d, 8f) else l.pad.top
@@ -490,31 +588,31 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             padFrame = Frame(side, top, w - side, h - imeHeight / d - 48 - 8)
         }
         place(pad, padFrame)
-        show(pad2, !typing && l.pad2 != null)
+        show(pad2, keys && !typing && l.pad2 != null)
         if (!typing) place(pad2, l.pad2)
-        show(talk, !typing && !l.talk.isEmpty)
-        place(talk, l.talk)
+        show(talk, !typing && !talkFrame.isEmpty)
+        place(talk, talkFrame)
         val railed = l.rail != null
-        val keysOut = !typing && (!railed || drawerOpen)
+        val keysOut = keys && !typing && (!railed || drawerOpen)
         show(list, keysOut)
         place(list, l.list)
         list.arrange(l.keyW * d, l.keyH * d, PadLayout.GAP * d, if (l.landscape) 1.4f else null)
         for ((i, k) in dockCells.withIndex()) {
             place(k, l.dock[i])
-            show(k, !typing && (keysOut || PadLayout.staysOut(i)))
+            show(k, keys && !typing && (keysOut || PadLayout.staysOut(i)))
         }
-        show(arrowCell, !typing)
+        show(arrowCell, keys && !typing)
         place(arrowCell, l.arrowKey)
         place(appsCell, l.appsKey)
-        show(appsCell, !typing && railed)
+        show(appsCell, keys && !typing && railed)
         pad.engine.scrollEdge = l.scrollEdge(padFrame.width)
         l.pad2?.let { pad2.engine.scrollEdge = l.scrollEdge(it.width) }
         place(drawerButton, l.drawerButton)
-        show(drawerButton, railed && !typing)
+        show(drawerButton, keys && railed && !typing)
         drawerButton.slab = true
         drawerButton.lit = drawerOpen
         place(screenButton, l.screenButton)
-        show(screenButton, !typing)
+        show(screenButton, keys && !typing)
         // lit while it's on, as a modifier is: a crossed-out eye over a live picture reads as off
         screenButton.slab = railed
         screenButton.lit = showing
@@ -522,20 +620,21 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         screenButton.contentDescription = context.getString(if (showing) R.string.hide_screen else R.string.show_screen)
         for ((b, r) in listOf(keyboardButton to l.keyboardButton, settingsButton to l.settingsButton, findButton to l.findButton)) {
             place(b, r)
-            show(b, !typing)
+            show(b, keys && !typing)
             b.slab = railed
         }
-        show(displayButton, !typing && !l.displayButton.isEmpty)
+        show(displayButton, keys && !typing && !l.displayButton.isEmpty)
         if (!l.displayButton.isEmpty) place(displayButton, l.displayButton)
         displayButton.slab = railed
         place(strip, l.strip)
         show(strip, !typing && keysOut)
-        // over the bottom of the pad, not over keys that are still in use while talking
+        // over the bottom of the pad, not over keys that are still in use while talking; in full screen, above the talk key
         val chipsW = min(padFrame.width - 16, 300f)
         val cw = (chipsW - 12) / 3
+        val chipsBottom = if (fullNow) talkFrame.top - 8 else padFrame.bottom - 8
         for ((i, ch) in chips.withIndex()) {
             val x = padFrame.centerX - chipsW / 2 + i * (cw + 6)
-            place(ch, Frame(x, padFrame.bottom - 8 - 32, x + cw, padFrame.bottom - 8))
+            place(ch, Frame(x, chipsBottom - 32, x + cw, chipsBottom))
             if (Remote.link.dictation.value != RemoteDictationPhase.LISTENING) ch.visibility = GONE
         }
         field.layout(0, 0, 1, 1)
@@ -550,20 +649,26 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         // inside the pad, in its own coordinates
         val pw = padFrame.width
         val ph = padFrame.height
-        Remote.screen.layout(pw.toDouble(), ph.toDouble(), l.alignY.toDouble())
+        Remote.screen.layout(pw.toDouble(), ph.toDouble(), if (fullNow) 0.5 else l.alignY.toDouble())
         place(stage, Frame(0f, 0f, pw, ph))
         // a SurfaceView clears the glass under it: only there while the picture is
         show(stage, showing)
         cursor.measure(MeasureSpec.makeMeasureSpec((64 * d).toInt(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec((64 * d).toInt(), MeasureSpec.EXACTLY))
         cursor.layout(0, 0, (64 * d).toInt(), (64 * d).toInt())
-        show(edgeMark, !showing)
+        // over the picture it's there but see-through, lit as the picture comes and while the edge scrolls (setShowing, edgeScroll)
         place(edgeMark, if (Remote.prefs.lefty) Frame(7f, ph / 2 - 34, 10f, ph / 2 + 34) else Frame(pw - 10, ph / 2 - 34, pw - 7, ph / 2 + 34))
-        if (showing) edgeMark.visibility = GONE
         place(header, Frame(16f, 12f, pw - 16, 30f))
+        // the first time's line, at the top of the picture, under the way out of full screen
+        val tipW = min(pw - 32, 420f)
+        tip.measure(MeasureSpec.makeMeasureSpec((tipW * d).toInt(), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        val tw = tip.measuredWidth / d
+        val tth = tip.measuredHeight / d
+        val tipTop = if (fullNow) 12f + 34 + 10 else 12f
+        place(tip, Frame(pw / 2 - tw / 2, tipTop, pw / 2 + tw / 2, tipTop + tth))
         show(header, !header.text.isNullOrEmpty())
         // above the chips, nearest the thumb; the newest words stay in view
         val wordsW = min(pw - 32, 420f)
-        val chipsTop = ph - 8 - 32 - 8
+        val chipsTop = chipsBottom - padFrame.top - 32 - 8
         liveText.measure(MeasureSpec.makeMeasureSpec((wordsW * d).toInt(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
         val lh = liveText.measuredHeight / d
         place(liveText, Frame(pw / 2 - wordsW / 2, chipsTop - 6 - lh, pw / 2 + wordsW / 2, chipsTop - 6))
@@ -578,7 +683,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             place(card, Frame(pw / 2 - cw / 2, cy, pw / 2 + cw / 2, cy + chh))
         }
 
-        exclusions = l.exclusions.map { r -> Rect((r.left * d).toInt(), (r.top * d).toInt(), (r.right * d).toInt(), (r.bottom * d).toInt()) }
+        exclusions = (if (fullNow) emptyList() else l.exclusions).map { r -> Rect((r.left * d).toInt(), (r.top * d).toInt(), (r.right * d).toInt(), (r.bottom * d).toInt()) }
         if (android.os.Build.VERSION.SDK_INT >= 29) systemGestureExclusionRects = exclusions
     }
 
@@ -588,6 +693,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         /** long enough that it never happens in use: this only protects a phone left on the desk */
         const val IDLE_DIM = 300_000L
         const val IDLE_PACE = 45_000L
+        /** the modifier the computer's own zoom keys use: ⌘ on a Mac (⌘= ⌘−), Ctrl elsewhere */
+        fun zoomModifier(h: RemoteHost) = if (h == RemoteHost.MAC) RemoteModifiers.COMMAND else RemoteModifiers.CONTROL
         @Suppress("unused") private fun now() = SystemClock.uptimeMillis()
     }
 }

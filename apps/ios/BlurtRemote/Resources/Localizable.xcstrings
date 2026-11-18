@@ -1,6 +1,106 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Exit Full Screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出全屏"
+          }
+        }
+      }
+    },
+    "Full Screen" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全屏"
+          }
+        }
+      }
+    },
+    "One finger up or down the thumb-side edge" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单指沿拇指一侧边缘上下滑"
+          }
+        }
+      }
+    },
+    "Pinch with Ctrl held" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按着 Ctrl 捏合"
+          }
+        }
+      }
+    },
+    "Pinch with ⌘ held" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按着 ⌘ 捏合"
+          }
+        }
+      }
+    },
+    "Scroll at the pointer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在光标处滚动"
+          }
+        }
+      }
+    },
+    "Two fingers scroll · Pinch with Ctrl held zooms the computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两指滑动可滚动 · 按着 Ctrl 捏合缩放电脑上的内容"
+          }
+        }
+      }
+    },
+    "Two fingers scroll · Pinch with ⌘ held zooms the Mac" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两指滑动可滚动 · 按着 ⌘ 捏合缩放 Mac 上的内容"
+          }
+        }
+      }
+    },
+    "Zoom on the computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缩放电脑上的内容"
+          }
+        }
+      }
+    },
+    "Zoom on the Mac" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缩放 Mac 上的内容"
+          }
+        }
+      }
+    },
     "⌘ on This Keyboard" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1417,16 +1517,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在电脑上打开 Blurt 的设置，选「手机」。"
-          }
-        }
-      }
-    },
-    "One finger along the edge" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单指沿边缘滑动"
           }
         }
       }

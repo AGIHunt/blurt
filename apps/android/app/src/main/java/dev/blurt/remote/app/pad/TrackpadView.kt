@@ -31,14 +31,17 @@ import dev.blurt.remote.core.PadTouch
 import dev.blurt.remote.core.RemoteMouseButton
 import dev.blurt.remote.core.RemotePointerPacket
 import dev.blurt.remote.core.RemoteScrollPhase
+import dev.blurt.remote.core.RemoteSystemMove
 import dev.blurt.remote.core.ToMac
 
 class TrackpadView(c: Context) : FrameLayout(c) {
     val engine = PadEngine()
     var onHaptic: ((PadHaptic) -> Unit)? = null
     var onViewEnd: (() -> Unit)? = null
-    /** the phone's sticky modifiers were used by a click: one-shot ones clear */
+    /** the phone's sticky modifiers were used by a click (or a zoom step): one-shot ones clear */
     var onClick: (() -> Unit)? = null
+    /** one finger began or stopped scrolling along the edge */
+    var onEdgeScroll: ((Boolean) -> Unit)? = null
     /** this pad shows the picture (the stage); a second pad beside the keys never does */
     var isStage = true
     /** what it looks like: the glass with a hairline, or the picture's black with small corners */
@@ -243,7 +246,12 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                     link.pointer(RemotePointerPacket.ScrollFling(o.vx * f, o.vy * f), scrollPlaced)
                 }
                 PadOutput.ScrollStop -> link.pointer(RemotePointerPacket.ScrollStop)
-                is PadOutput.System -> link.send(ToMac.System(o.move))
+                is PadOutput.System -> {
+                    link.send(ToMac.System(o.move))
+                    // a ⌘ tapped once for the pinch is used by its first step, as a click uses it
+                    if (o.move == RemoteSystemMove.ZOOM_IN || o.move == RemoteSystemMove.ZOOM_OUT) onClick?.invoke()
+                }
+                is PadOutput.EdgeScroll -> onEdgeScroll?.invoke(o.on)
                 is PadOutput.Haptic -> onHaptic?.invoke(o.haptic)
             }
         }

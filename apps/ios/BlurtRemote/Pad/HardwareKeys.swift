@@ -24,7 +24,7 @@ final class HardwareKeys {
     /// physical modifier keys down now, by HID usage
     private var heldPhysical = Set<Int>()
     /// what the computer has been told is held
-    private var sent: RemoteModifiers = []
+    private(set) var sent: RemoteModifiers = []
     private var repeatTimer: Timer?
     private var repeating: Int?
 

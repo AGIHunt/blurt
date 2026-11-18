@@ -17,6 +17,8 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
     var onClick: (() -> Void)?
     /// a finger came down on the pad itself (not a mouse's buttons)
     var onTouch: (() -> Void)?
+    /// one finger along the edge began scrolling (true), or stopped
+    var onEdgeScroll: ((Bool) -> Void)?
     /// false: the trackpad between the thumbs (big screens). It never puts the pointer under a touch, and a pinch zooms the stage's view
     var isStage = true
     /// for the thumb pad: the stage's middle, in the stage's coordinates, for a pinch to zoom about
@@ -321,7 +323,11 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
                 let f: Float = Prefs.shared.reverseScroll ? -1 : 1
                 link.pointer(.scrollFling(vx: x * f, vy: y * f), inOrder: scrollPlaced)
             case .scrollStop: link.pointer(.scrollStop)
-            case let .system(m): link.send(.system(m))
+            case let .system(m):
+                link.send(.system(m))
+                // a ⌘ or Ctrl held for one go is spent by the zoom it made
+                if m == .zoomIn || m == .zoomOut { onClick?() }
+            case let .edgeScroll(on): onEdgeScroll?(on)
             case let .haptic(h): onHaptic?(h)
             }
         }
