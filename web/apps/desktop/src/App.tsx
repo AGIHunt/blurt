@@ -54,7 +54,7 @@ import { ItemBanner, bannerTitle } from './components/ItemBanner';
 import { ItemList, stateText } from './components/ItemList';
 import { JobDetail } from './components/JobDetail';
 import { actionLabel, recLength, RecordingsSection, runRecAction, useAgentReady, useRecordingInfos, type RecHandlers } from './components/Recordings';
-import { emptyStateShown, jobOf, jobsBesideRecordings, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
+import { emptyStateShown, jobsBesideRecordings, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
 import { CapturesBanner, FilterBar, JobsSection, ListHeading, MissingFolderBanner, SearchField, SuggestionsBanner } from './components/ListHeading';
 import { tidy, useMenu, type MenuEntry, type MenuItem } from './components/Menu';
 import { MovePopover } from './components/MovePopover';
