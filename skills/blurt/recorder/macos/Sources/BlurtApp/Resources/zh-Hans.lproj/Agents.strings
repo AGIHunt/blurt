@@ -44,7 +44,6 @@
 "agents.state.unchecked" = "无法确认登录";
 "agents.state.unchecked.help" = "无法在不消耗 token 的情况下确认登录状态。首次用它整理时会确认；如未登录，口喷鸡会改用下一个 Agent，并在此提示。";
 "agents.state.manual.help" = "独立 App。点「连接…」为 %@ 安装 blurt skill 和 MCP（会先列出改动），或在它的设置中通过 Skills / MCP 导入。之后在对话中说「处理我录的视频」即可整理录屏。";
-"agents.manual.footer" = "在对话中说「处理我录的视频」即可整理录屏。事项可通过「复制指令给 Agent」交给它们处理。";
 "agents.state.chat" = "在对话中整理";
 "agents.state.chat.help" = "在 %@ 的对话中说「处理我录的视频」，即可将未整理的录屏整理成事项。处理事项请使用「复制指令给 Agent」。";
 "agents.request" = "处理我录的视频";
@@ -134,7 +133,7 @@
 "agents.ask.3" = "修好 BA-12，改完标成待验证";
 "agents.details" = "详细信息…";
 "agents.missing" = "未安装";
-"agents.organize.header" = "整理";
+"agents.organize.header" = "后台整理";
 "agents.organize.recording" = "录屏";
 "agents.organize.cards" = "截图和语音备注";
 "agents.organize.footer" = "强度越高越慢，花的 token 越多。";
@@ -146,4 +145,37 @@
 
 /* Settings → Agents: section headings */
 "agents.header" = "Agent";
-"agents.manual.header" = "其他 Agent 应用";
+
+/* Settings → Agents, v1.0.26: who organizes recordings, using Blurt in your agent, by hand, dragging cards */
+"agents.status.organizing" = "录屏由 %@ 整理";
+"agents.status.none" = "没有能整理录屏的 Agent，录屏只保存不整理。";
+"agents.status.off" = "录屏只保存，不整理。";
+"agents.use.header" = "在你的 Agent 里用口喷鸡";
+"agents.use.footer" = "连上后，在 Agent 里说“处理我录的视频”。";
+"agents.conn.connected" = "已连接 · %@ 用过";
+"agents.conn.linked" = "已接入，还没用过";
+"agents.conn.found" = "找到了，未接入";
+"agents.conn.missing" = "没找到";
+"agents.conn.anyway" = "我装了，帮我连上";
+"agents.other" = "其他 Agent…";
+"agents.other.detail" = "手动设置";
+"agents.manual.title" = "其他 Agent";
+"agents.manual.lead" = "把下面的设置交给你的 Agent，或者让它自己装。";
+"agents.manual.skill" = "Skill 文件夹";
+"agents.manual.open" = "打开文件夹";
+"agents.manual.zip" = "存为 .zip…";
+"agents.manual.mcp" = "MCP 服务器";
+"agents.manual.command" = "命令";
+"agents.manual.args" = "参数";
+"agents.manual.prompt" = "让 Agent 自己装";
+"agents.manual.copy_prompt" = "拷贝提示词";
+"agents.manual.test" = "测试";
+"agents.manual.waiting" = "等待 Agent 调用 hello…";
+"agents.manual.connected" = "已连上 · 刚刚";
+"agents.manual.name" = "名称";
+"agents.manual.save" = "加到列表";
+"agents.organize.none" = "需要 Claude Code、Codex 这类命令行 Agent。";
+"agents.drop.header" = "拖卡片";
+"agents.drop.line" = "拖进 %@ 的卡片带图片路径和备注。";
+"agents.drop.edit" = "编辑…";
+"agents.copy" = "拷贝";

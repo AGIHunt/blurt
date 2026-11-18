@@ -105,6 +105,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
+from _common import uv_bin  # noqa: E402
 from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
                      server_exit, serve_exit_reason, serve_said, use_system_certs)
@@ -1085,7 +1086,7 @@ def _has_package(pkg: str) -> bool:
 
 def _reexec_with(pkgs: list[str]) -> None:
     """Run this very command again under `uv run --with` these packages (and the ones already added)."""
-    uv = shutil.which("uv") or str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))
+    uv = uv_bin() or str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))
     tried = [p for p in os.environ.get("BLURT_ASR_REEXEC", "").split(",") if p]
     new = [p for p in dict.fromkeys(pkgs) if p not in tried]
     if not new or not Path(uv).exists() or not sys.argv[0].endswith(".py"):

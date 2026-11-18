@@ -44,7 +44,6 @@
 "agents.state.unchecked" = "Can’t check sign-in";
 "agents.state.unchecked.help" = "Sign-in can’t be checked without spending tokens. It’s checked the first time it organizes something; if it isn’t signed in, Blurt uses the next agent and says so here.";
 "agents.state.manual.help" = "A separate app. Connect… installs the blurt skill and MCP in %@ (changes are listed first), or import them in its settings under Skills / MCP. Then say “Process my Blurt recordings” in its chat to organize recordings.";
-"agents.manual.footer" = "Say “Process my Blurt recordings” in their chat to organize recordings. Send items with Copy Instruction for Agent.";
 "agents.state.chat" = "Organizes in chat";
 "agents.state.chat.help" = "Say “Process my Blurt recordings” in %@ to organize recordings into items. To work on items, use Copy Instruction for Agent.";
 "agents.request" = "Process my Blurt recordings";
@@ -134,7 +133,7 @@
 "agents.ask.3" = "Fix BA-12, then mark it for me to verify";
 "agents.details" = "Details…";
 "agents.missing" = "Not installed";
-"agents.organize.header" = "Organizing";
+"agents.organize.header" = "Background Organizing";
 "agents.organize.recording" = "Recordings";
 "agents.organize.cards" = "Snaps and voice notes";
 "agents.organize.footer" = "Higher effort is slower and uses more tokens.";
@@ -146,4 +145,37 @@
 
 /* Settings → Agents: section headings */
 "agents.header" = "Agents";
-"agents.manual.header" = "Other agent apps";
+
+/* Settings → Agents, v1.0.26: who organizes recordings, using Blurt in your agent, by hand, dragging cards */
+"agents.status.organizing" = "Recordings are organized by %@";
+"agents.status.none" = "No agent can organize recordings; they’re saved, not organized.";
+"agents.status.off" = "Recordings are saved, not organized.";
+"agents.use.header" = "Use Blurt in Your Agent";
+"agents.use.footer" = "Once connected, say “process my recordings” in your agent.";
+"agents.conn.connected" = "Connected · used %@";
+"agents.conn.linked" = "Set up, not used yet";
+"agents.conn.found" = "Found, not set up";
+"agents.conn.missing" = "Not found";
+"agents.conn.anyway" = "It’s Installed, Connect";
+"agents.other" = "Other Agent…";
+"agents.other.detail" = "Set up by hand";
+"agents.manual.title" = "Other Agent";
+"agents.manual.lead" = "Give your agent these settings, or let it set itself up.";
+"agents.manual.skill" = "Skill Folder";
+"agents.manual.open" = "Open Folder";
+"agents.manual.zip" = "Save as .zip…";
+"agents.manual.mcp" = "MCP Server";
+"agents.manual.command" = "Command";
+"agents.manual.args" = "Arguments";
+"agents.manual.prompt" = "Let Your Agent Set Itself Up";
+"agents.manual.copy_prompt" = "Copy Prompt";
+"agents.manual.test" = "Test";
+"agents.manual.waiting" = "Waiting for the agent to call hello…";
+"agents.manual.connected" = "Connected · just now";
+"agents.manual.name" = "Name";
+"agents.manual.save" = "Add to List";
+"agents.organize.none" = "Needs a command-line agent such as Claude Code or Codex.";
+"agents.drop.header" = "Dragging Cards";
+"agents.drop.line" = "Cards dragged into %@ carry the picture’s path and the note.";
+"agents.drop.edit" = "Edit…";
+"agents.copy" = "Copy";

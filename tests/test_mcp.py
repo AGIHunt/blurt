@@ -1,4 +1,4 @@
-"""mcp_server.py (contract C4, v0.7 behaviour in K1) through the official MCP Python client over stdio: all 8 tools (bundle_items too),
+"""mcp_server.py (contract C4, v0.7 behaviour in K1) through the official MCP Python client over stdio: all the tools (bundle_items, hello too),
 images in get_item, writes through items.py, mark_fixed ending at to-verify, v0.6 sessions migrated on first touch. The server runs as agents launch it (`uv run --script mcp_server.py`); the client runs
 in its own `uv run --with mcp` interpreter, so this test needs uv (skipped without it).
 
@@ -112,6 +112,7 @@ def text_json(res):
 def test_all_tools_over_stdio(env):
     """As a user upgrading from v0.6: the index shows the old sessions; touching an item migrates its session."""
     calls = [
+        ["hello", "hello", {}],
         ["projects", "list_projects", {}],
         ["sessions", "list_sessions", {"limit": 10}],
         ["sessions_reviewed", "list_sessions", {"state": "reviewed"}],
@@ -142,7 +143,12 @@ def test_all_tools_over_stdio(env):
     ]
     r = run_client(env, calls)
     assert r["_server"] == "blurt"
-    assert set(r["_tools"]) == {"list_projects", "list_sessions", "search_items", "get_item", "get_transcript",
+    hello = text_json(r["hello"])
+    assert hello["ok"] and hello["client"] == "mcp" and Path(hello["skill_md"]).name == "SKILL.md", hello
+    # the server noted who started it (clientInfo.name, at initialize): Settings → Agents shows the agent as connected
+    seen = json.loads((env["bh"] / "run" / "mcp-clients.json").read_text())["clients"]
+    assert "mcp" in seen and seen["mcp"]["at"] > 0 and "via" not in seen["mcp"], seen
+    assert set(r["_tools"]) == {"hello", "list_projects", "list_sessions", "search_items", "get_item", "get_transcript",
                                 "update_item", "mark_fixed", "bundle_items",
                                 # model setup (agent-setup.md §5; tests/test_setup.py)
                                 "setup_status", "setup_recommend", "setup_connect", "setup_test", "setup_use",

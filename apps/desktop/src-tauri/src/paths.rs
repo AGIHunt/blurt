@@ -85,14 +85,25 @@ pub fn skill_dir() -> PathBuf {
     blurt_home().join("skill")
 }
 
-/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
-/// the repo checkout (dev builds) → the installed skill.
+/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the app's copy of its skill
+/// (skill_dir(), synced at launch: what agents are linked to, so the app and they run the same files) → the skill
+/// bundled with the app (its copy failed) → an older bundle's bare scripts → the repo checkout (dev builds) → the
+/// installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
+    let res = app.path().resource_dir().ok();
+    scripts_dir_from(res.as_deref())
+}
+
+pub fn scripts_dir_from(resources: Option<&Path>) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();
     if let Some(p) = std::env::var_os("BLURT_SCRIPTS").filter(|p| !p.is_empty()) {
         c.push(PathBuf::from(p));
     }
-    if let Ok(res) = app.path().resource_dir() {
+    if crate::skill::is_skill(&skill_dir()) {
+        c.push(skill_dir().join("scripts"));
+    }
+    if let Some(res) = resources {
+        c.push(res.join("skill").join("scripts"));
         c.push(res.join("scripts"));
     }
     c.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../skills/blurt/scripts"));

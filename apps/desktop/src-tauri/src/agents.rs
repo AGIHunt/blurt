@@ -34,7 +34,15 @@ pub fn detect(runner: &Runner) -> Result<Value, String> {
 
 /// `agents.py detect`: `login` false = no sign-in probes (fast); `ids` = only these agents (Settings probes one row).
 pub fn detect_with(runner: &Runner, login: bool, ids: Option<&[String]>) -> Result<Value, String> {
-    let mut args = vec!["detect".to_string()];
+    detect_fresh(runner, login, ids, false)
+}
+
+/// … `fresh`: look for the agents' apps again (else kept 10 minutes by agents.py).
+pub fn detect_fresh(runner: &Runner, login: bool, ids: Option<&[String]>, fresh: bool) -> Result<Value, String> {
+    let mut args = vec!["detect".to_string(), "--lang".into(), crate::l10n::short_lang().into()];
+    if fresh {
+        args.push("--fresh".into());
+    }
     if !login {
         // the quick look is only "on PATH or not": no CLI is started (a node CLI on Windows takes seconds each)
         args.extend(["--no-login".into(), "--no-version".into()]);

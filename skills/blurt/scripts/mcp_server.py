@@ -13,7 +13,8 @@ Register it: `agents.py install <agent> --mcp` (claude / codex / kimi / opencode
   codex mcp add blurt -- uv run --script <this file>
 
 Reads go through index.py's index.db (built on first use) and the item files; every write goes through items.py
-(locked, keeps the user's own edits), never straight to a file. The 7 tools keep their v0.6 names and parameters;
+(locked, keeps the user's own edits), never straight to a file. hello checks the connection (and the server notes the client's name and time at initialize in
+$BLURT_HOME/run/mcp-clients.json: Settings → Agents says which agents really use Blurt). The 7 tools keep their v0.6 names and parameters;
 bundle_items (export_local.py bundle) packs items into a hand-off .zip for the agent to send with its own tools.
 
 Model setup (docs/design/agent-setup.md §5): setup_status, setup_recommend, setup_connect, setup_test, setup_use,
@@ -33,11 +34,13 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
+import agents as agents_mod  # noqa: E402
 import index  # noqa: E402
 import items as items_mod  # noqa: E402
 import setup as setup_cli  # noqa: E402
 from _common import OPEN_STATES, STATES, load_json  # noqa: E402
-from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.fastmcp import Context, FastMCP  # noqa: E402
+from mcp.server.session import ServerSession  # noqa: E402
 from mcp.types import ImageContent, TextContent  # noqa: E402
 
 ITEMS_PY = SCRIPTS / "items.py"
@@ -60,6 +63,32 @@ mcp = FastMCP("blurt", instructions=(
     "and mark_fixed(uid, state='fixed', note=…) after. To pass items to someone (a teammate, a chat, a tracker), "
     "bundle_items packs them into one .zip and you send it with the tools you already have. " + DONE_RULE + " "
     + WRITE_RULE))
+
+
+# ------------------------------------------------------------------ who started us (Settings → Agents: "Connected")
+def _via() -> str | None:
+    """A run the Blurt app started (organising, a test) carries BLURT_RUN_ID: it proves the app's command line, not
+    that the user's own agent reads Blurt."""
+    return "app" if os.environ.get("BLURT_RUN_ID") or os.environ.get("BLURT_JOB") else None
+
+
+def note_client(info) -> None:
+    """clientInfo from initialize → $BLURT_HOME/run/mcp-clients.json (agents.py record_mcp_client)."""
+    name = getattr(info, "name", None) if info is not None else None
+    agents_mod.record_mcp_client(name, getattr(info, "version", None), via=_via())
+
+
+_received = ServerSession._received_request
+
+
+async def _received_request(self, responder):  # noqa: ANN001 — the SDK's own signature
+    await _received(self, responder)
+    req = getattr(getattr(responder, "request", None), "root", None)
+    if getattr(req, "method", None) == "initialize":
+        note_client(getattr(getattr(req, "params", None), "clientInfo", None))
+
+
+ServerSession._received_request = _received_request
 
 
 # ------------------------------------------------------------------ helpers
@@ -147,6 +176,19 @@ def _jpeg(path: Path) -> bytes | None:
 
 
 # ------------------------------------------------------------------ tools
+@mcp.tool()
+def hello(ctx: Context) -> dict:
+    """Check that Blurt is connected: call it once after setting Blurt up. → the server, the skill folder (read its
+    SKILL.md for how to work with recordings and items) and who you are to Blurt; Blurt's Settings then shows this
+    agent as connected."""
+    params = getattr(ctx.session, "client_params", None)
+    info = getattr(params, "clientInfo", None)
+    note_client(info)
+    return {"ok": True, "server": "blurt", "skill": str(agents_mod.SKILL_ROOT),
+            "skill_md": str(agents_mod.SKILL_ROOT / "SKILL.md"), "client": getattr(info, "name", None),
+            "message": "Blurt is connected. Use the blurt skill for recordings and the tools here for items."}
+
+
 @mcp.tool()
 def list_projects() -> list[dict]:
     """The user's projects (folders opened in Blurt) and the inbox ("inbox": captures not filed into a project yet).

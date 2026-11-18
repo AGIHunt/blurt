@@ -352,4 +352,75 @@ final class MultiCardDragTests: XCTestCase {
                                        .init(cls: .terminal), .init(cls: .terminal, lines: true)]
         for l in landings { XCTAssertEqual(CardPasteboard.drag(into: l, cards: [a, words, pdf]).count, 3, "\(l)") }
     }
+
+    // MARK: v1.0.26 — one list with the agents (agents.json `drop`), the same vectors as tests/test_agent_detect.py
+
+    /// the repo's agents.json (skills/blurt/scripts), as agents.py reads it
+    func registry() throws -> [[String: Any]] {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../scripts/agents.json").standardizedFileURL
+        let o = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        return try XCTUnwrap(o?["agents"] as? [[String: Any]])
+    }
+
+    func testDropTargetsFromAgentsJSON() throws {
+        let reg = try registry()
+        let t = Dictionary(uniqueKeysWithValues: AgentDropList.targets(registry: reg, record: [:]).map { ($0.agent, $0) })
+        XCTAssertEqual(t["claude"]?.ids, [AgentWindow.claude])
+        XCTAssertEqual(t["claude"]?.drop, "composer")
+        XCTAssertEqual(t["codex"]?.ids, [AgentWindow.codex])
+        XCTAssertEqual(t["workbuddy"]?.drop, "composer")
+        XCTAssertEqual(t["cursor"]?.drop, "terminal")
+        XCTAssertNil(t["gemini"], "no app, no drop")
+        XCTAssertTrue(t.values.allSatisfy(\.on))
+        // every built-in of v1.0.21 is still in the list
+        let all = AgentWindow.list(record: [:], registry: reg)
+        XCTAssertTrue(AgentWindow.builtIn.isSubset(of: all), "\(AgentWindow.builtIn.subtracting(all))")
+        let composers = AgentWindow.composers(record: [:], registry: reg)
+        XCTAssertTrue(composers.contains("com.tencent.workbuddy.mac") && composers.contains(AgentWindow.codex))
+        XCTAssertFalse(composers.contains("com.todesktop.230313mzl4w4u92"), "an AI IDE: its drop may land in its terminal")
+        // switched off (record.agent_drop), a user's own (record.agent_defs)
+        let mine: [String: Any] = ["agent_drop": ["cursor": false],
+                                   "agent_defs": ["zed": AgentDropList.customDef(name: "Zed", bundleID: "dev.zed.Zed")]]
+        let l = AgentWindow.list(record: mine, registry: reg)
+        XCTAssertFalse(l.contains("com.todesktop.230313mzl4w4u92"))
+        XCTAssertTrue(l.contains("dev.zed.Zed"))
+        XCTAssertEqual(AgentDropList.targets(registry: reg, record: mine).first { $0.agent == "zed" }?.custom, true)
+        // no agents.json at hand: the built-in list with v1.0.21's changes
+        XCTAssertEqual(AgentWindow.list(record: ["agent_apps": ["com.trae.app": false]], registry: nil),
+                       AgentWindow.builtIn.subtracting(["com.trae.app"]))
+    }
+
+    func testLegacyAgentAppsStillCountThenMove() throws {
+        let reg = try registry()
+        let legacy: [String: Any] = ["agent_apps": ["com.todesktop.230313mzl4w4u92": false, "dev.zed.Zed": true]]
+        let t = Dictionary(uniqueKeysWithValues: AgentDropList.targets(registry: reg, record: legacy).map { ($0.agent, $0) })
+        XCTAssertEqual(t["cursor"]?.on, false)
+        XCTAssertEqual(t["dev.zed.Zed"]?.on, true)
+        XCTAssertEqual(t["dev.zed.Zed"]?.custom, true)
+        let patch = try XCTUnwrap(AgentDropList.migrate(registry: reg, record: legacy))
+        XCTAssertTrue(patch["agent_apps"] is NSNull)
+        XCTAssertEqual(patch["agent_drop"] as? [String: Bool], ["cursor": false])
+        let defs = try XCTUnwrap(patch["agent_defs"] as? [String: Any])
+        XCTAssertEqual(defs.count, 1)
+        let (zid, zdef) = (defs.first!.key, defs.first!.value as? [String: Any])
+        XCTAssertEqual(zid, "zed")
+        XCTAssertEqual((zdef?["app"] as? [String: Any])?["macos"] as? [String], ["dev.zed.Zed"])
+        XCTAssertEqual(zdef?["drop"] as? String, "terminal")
+        XCTAssertEqual(zdef?["connect"] as? Bool, false)
+        var after: [String: Any] = [:]
+        for (k, v) in patch where !(v is NSNull) { after[k] = v }
+        let t2 = Dictionary(uniqueKeysWithValues: AgentDropList.targets(registry: reg, record: after).map { ($0.agent, $0) })
+        XCTAssertEqual(t2["cursor"]?.on, false)
+        XCTAssertEqual(t2[zid]?.ids, ["dev.zed.Zed"])
+        XCTAssertEqual(t2[zid]?.on, true)
+        XCTAssertNil(AgentDropList.migrate(registry: reg, record: after), "nothing left to move")
+    }
+
+    func testCustomIDs() {
+        XCTAssertEqual(AgentDropList.customID("My Agent", taken: []), "my-agent")
+        XCTAssertEqual(AgentDropList.customID("My Agent", taken: ["my-agent"]), "my-agent-2")
+        XCTAssertEqual(AgentDropList.customID("豆包 工作", taken: []), "豆包-工作")
+        XCTAssertEqual(AgentDropList.customID("  ", taken: []), "agent")
+    }
 }

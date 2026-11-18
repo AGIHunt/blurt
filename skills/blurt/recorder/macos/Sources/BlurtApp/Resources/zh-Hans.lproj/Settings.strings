@@ -451,7 +451,6 @@
 "settings.general.agent_drag.paths" = "图片路径 + 备注";
 "settings.general.agent_drag.same" = "和其他 App 一样";
 "settings.general.agent_drag.hint" = "指能直接读这台 Mac 上文件的 Agent：Codex、Claude Code、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae 等；点「Agent 列表…」查看，也可以自己加 App。图片路径 + 备注：每张卡片是一行，先是图片路径，后面跟它的备注，Agent 按路径打开图片；拖进几张卡片，每张图都和自己的备注挨在一起。复制卡片后按 ⌘V 也一样。和其他 App 一样：按上面那一项来。终端始终是路径 + 备注。";
-"settings.general.agent_apps.open" = "Agent 列表…";
 "settings.general.agent_apps.title" = "Agent 列表";
 "settings.general.agent_apps.note" = "这些 App 里的 Agent 能打开这台 Mac 上的文件，卡片拖进去是图片路径 + 备注。列表里没有的可以自己加；关掉某个，它就改收图片。";
 "settings.general.agent_apps.codex_note" = "只在 Codex 模式下";

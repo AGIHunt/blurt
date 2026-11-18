@@ -26,7 +26,11 @@ language; write items in the language the user spoke.
 ## 0. Setup (first run, or when something fails)
 
 - `doctor.py` → OS, RAM/GPU, ffmpeg, configured ASR, recommendations, `todo` list.
-- Missing ffmpeg/uv: offer the install command; run it only after the user agrees.
+- Missing ffmpeg/uv: offer the install command; run it only after the user agrees. On Windows and Linux the Blurt
+  app keeps its own copies in `$BLURT_HOME/bin` (default `~/.blurt/bin`, `%USERPROFILE%\.blurt\bin`; a moved data
+  folder: the `home` in `%APPDATA%\Blurt\location.json` / `~/.config/Blurt/location.json`): not on your PATH, so
+  call `~/.blurt/bin/uv` (`uv.exe`) when `uv` isn't found. The scripts find ffmpeg / ffprobe there themselves and
+  use the app's download mirrors (`$BLURT_HOME/run/env.json`). The app's copy of this skill is `$BLURT_HOME/skill`.
 - ASR: if none configured, pick from `asr_recommendations` + the language the user speaks, tell the user in one
   line what and why (size, local vs cloud, cost), run its `setup`. Details: `reference/asr.md`. Cloud keys are set
   by the user in their env — never ask them to paste keys in chat.

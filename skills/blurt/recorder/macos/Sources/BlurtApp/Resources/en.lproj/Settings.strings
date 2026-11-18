@@ -453,7 +453,6 @@
 "settings.general.agent_drag.paths" = "Picture path + note";
 "settings.general.agent_drag.same" = "As in other apps";
 "settings.general.agent_drag.hint" = "Agents that work on this Mac’s files: Codex, Claude Code, WorkBuddy, QoderWork, Qoder, DoubaoWork, Kimi Code, Cursor, Trae and more; Agents… shows the list, and you can add any app to it. Picture path + note: each card goes in as one line, the picture’s path followed by its note, and the agent opens the picture from the path. With several cards, every picture stays next to its own words. ⌘V after copying cards does the same. As in other apps: what the row above says. Terminals always get the path and the note.";
-"settings.general.agent_apps.open" = "Agents…";
 "settings.general.agent_apps.title" = "Agents";
 "settings.general.agent_apps.note" = "Apps whose agent can open files on this Mac. A card dragged into one of them is the picture’s path and its note. Add an app that isn’t listed; switch one off to give it the picture instead.";
 "settings.general.agent_apps.codex_note" = "In Codex mode only";

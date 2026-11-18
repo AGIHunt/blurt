@@ -88,8 +88,69 @@ def die(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
+def app_bin_dir() -> Path:
+    """$BLURT_HOME/bin: where the Windows / Linux app installs uv, ffmpeg and ffprobe (setup.rs). It is on the PATH of
+    what the app starts, and on nobody else's — an agent the user runs never has it."""
+    return blurt_home() / "bin"
+
+
+def _exe(name: str) -> str:
+    return name + ".exe" if IS_WIN and not name.lower().endswith(".exe") else name
+
+
+def find_tool(name: str) -> str | None:
+    """A tool on PATH, else the app's copy in $BLURT_HOME/bin."""
+    found = shutil.which(name)
+    if found:
+        return found
+    p = app_bin_dir() / _exe(name)
+    return str(p) if p.is_file() else None
+
+
+def uv_bin() -> str | None:
+    """uv: PATH, else the one running us ($UV, set by `uv run`), else the app's ($BLURT_HOME/bin) — the Windows app's
+    uv is on nobody's PATH."""
+    for c in (shutil.which("uv"), os.environ.get("UV"), str(app_bin_dir() / _exe("uv"))):
+        if c and Path(c).is_file():
+            return c
+    return None
+
+
+def app_env_file() -> Path:
+    """What the Windows / Linux app gives the scripts it starts (setup.rs write_agent_env): the PyPI / Python / Hugging
+    Face mirrors where they are on, the uv and Hugging Face caches of a chosen data folder. A script an agent started
+    on its own reads it here, so its children (uv, downloads) behave as the app's runs do."""
+    return blurt_home() / "run" / "env.json"
+
+
+def apply_app_env(environ=None) -> dict:
+    """Fill in what the app would have set (app_env_file; a variable already set wins) and put $BLURT_HOME/bin at the
+    end of PATH, so ffmpeg / ffprobe / uv are found the same way under an agent as under the app. → what was added."""
+    environ = os.environ if environ is None else environ
+    added: dict = {}
+    if not IS_MAC:
+        try:
+            d = json.loads(app_env_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            d = {}
+        env = d.get("env") if isinstance(d, dict) else None
+        for k, v in (env or {}).items():
+            if isinstance(k, str) and isinstance(v, str) and v and not environ.get(k):
+                environ[k] = v
+                added[k] = v
+    b = str(app_bin_dir())
+    parts = (environ.get("PATH") or "").split(os.pathsep)
+    if Path(b).is_dir() and b not in parts:
+        environ["PATH"] = os.pathsep.join([p for p in parts if p] + [b])
+        added["PATH"] = b
+    return added
+
+
+apply_app_env()
+
+
 def ffmpeg_bin(name: str = "ffmpeg") -> str:
-    path = shutil.which(name)
+    path = find_tool(name)
     if not path:
         hint = "brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN else "sudo apt install ffmpeg"
         die(f"{name} not found on PATH. Install it first: {hint}")

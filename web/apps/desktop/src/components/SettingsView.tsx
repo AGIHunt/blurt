@@ -23,7 +23,6 @@ import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { ProjectGlyph } from './glyphs';
 import { OkMark } from './Welcome';
 import '../settings/settings.css';
-import { AgentAppsSheet } from './AgentAppsSheet';
 import { AgentsPane } from './AgentsSettings';
 import { DictationPane, ModelsPane, ScreenTextPane } from './DictationSettings';
 import { StoragePane } from './StorageSettings';
@@ -525,8 +524,6 @@ function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdat
 /** Settings → Cards (v1.0.23: before, General's Voice notes and Cards boxes): taking a snap, the voice note, what a
  *  dragged card carries. The snap and drag rows are Windows' (its screenshot cards and card drag). */
 function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch: Record<string, unknown>) => Promise<void>; win: boolean }) {
-  const [agentApps, setAgentApps] = useState(false);
-  const closeAgentApps = useCallback(() => setAgentApps(false), []);
   const rec = cfg.record ?? {};
   const voice = rec.voice ?? {};
   // what a card dragged into an app carries: one choice over three settings (GeneralPane.swift's CardDragMode)
@@ -554,10 +551,10 @@ function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch:
             <Popup label={S('settings.general.card_drag')} value={cardDrag} choices={(['paste', 'caption', 'picture'] as const).map((m) => [m, S(`settings.general.card_drag.${m}`)] as [string, string])}
               onChange={setCardDrag} />
           </Row>
-          {/* an agent app (Codex, Cursor, WorkBuddy…: card_drop.rs AGENTS + the user's list) gets the picture's path and
-              the note, as a terminal does (record.agent_drag "paths", the default), or what the row above says ("same") */}
+          {/* an agent app (Codex, Cursor, WorkBuddy…: the list in Settings → Agents → Dragging Cards) gets the picture's
+              path and the note, as a terminal does (record.agent_drag "paths", the default), or what the row above says
+              ("same") */}
           <Row id="cards.agent_drag">
-            <button onClick={() => setAgentApps(true)}>{S('settings.general.agent_apps.open')}</button>
             <Popup label={S('settings.general.agent_drag')} value={rec.agent_drag === 'same' ? 'same' : 'paths'}
               choices={(['paths', 'same'] as const).map((m) => [m, S(`settings.general.agent_drag.${m}`)] as [string, string])}
               onChange={(m) => save({ record: { agent_drag: m === 'same' ? 'same' : null } })} />
@@ -565,7 +562,6 @@ function CardsPane({ cfg, save, win }: { cfg: Record<string, any>; save: (patch:
           <Toggle id="cards.drag_note_file" on={rec.drag_note_file === true} set={(v) => save({ record: { drag_note_file: v ? true : null } })} />
         </Group>
       )}
-      {agentApps && <AgentAppsSheet close={closeAgentApps} />}
     </Page>
   );
 }

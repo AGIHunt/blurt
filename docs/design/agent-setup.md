@@ -154,3 +154,44 @@ An isolated test build (`dev.blurt.recorder.layouttest`, scratch BLURT_HOME, key
 
 Still not verified: a logged-in Claude Code session end to end, `download` of a real model through the agent (the
 recogniser was installed), dark mode of the new surfaces, Gemini CLI / Kimi / OpenCode sandboxes.
+
+## 8. Finding and connecting agents (2026-11-18)
+
+Reports: on Windows, WorkBuddy (国内版) read 未安装 and Connect was hidden; 「获取 WorkBuddy…」 opened the international
+site; the Windows app had no SKILL.md to link; an agent's own runs found neither uv nor ffmpeg. What changed:
+
+- **The skill on Windows / Linux** — build.rs stages SKILL.md, scripts/, reference/, assets/ (not models/) into
+  `gen/skill` with `.version` = app version + a hash of the files; tauri.conf.json bundles it as `skill/`; skill.rs
+  copies it to `$BLURT_HOME/skill` at launch when the stamp differs (copy beside, swap in; the Mac's BundledSkill).
+  paths::scripts_dir prefers that copy, so the app and the agents run the same files, and Connect links agents to it,
+  never to the install folder. agents.py `SKILL_ROOT` must hold SKILL.md (else `$BLURT_HOME/skill`); install()
+  refuses to link a folder without one.
+- **Agent-started runs** — `_common.apply_app_env`: `$BLURT_HOME/bin` at the end of PATH (uv, ffmpeg, ffprobe), and
+  `$BLURT_HOME/run/env.json` (written by the app at launch: mirrors, a chosen data folder's caches) filled in where
+  the variable isn't set. SKILL.md §0 says where uv / ffmpeg are.
+- **Found** = the agent's own config folder exists (`home`: the signal that a skill / MCP written there is read) or
+  its app is found by an id that doesn't move: macOS bundle ids (Info.plist under /Applications…, then `mdfind`),
+  Windows program stems (Uninstall keys incl. WOW6432Node: DisplayIcon / InstallLocation; App Paths; Start Menu
+  shortcuts, their .lnk target parsed; Scoop shims; WinGet links), Linux .desktop ids (XDG, Flatpak, Snap). No CLI
+  is started for an app agent; the result is kept 10 min (`run/agents-apps.json`, Check Again looks again).
+- **Connected** = proof, not config: mcp_server.py notes `clientInfo.name` + time at initialize (and on the new
+  `hello` tool) in `run/mcp-clients.json`; agents.json `mcp_clients` maps names to agents; runs the app started
+  (`via: app`) don't count. States: connected (「15:42 用过」) › set up (its skill folder / MCP file has blurt) › found
+  › not found; every row not found offers Connect anyway, which writes into its `home`.
+- **WorkBuddy** is two entries: 「WorkBuddy」 国内版 (`~/.workbuddy`, codebuddy.cn/work) and 「WorkBuddy AI」 国际版
+  (`~/.workbuddy-ai`, workbuddy.ai), each with `after`: 连接器 → blurt → 信任, then a new chat.
+- **Other Agent…** — `agents.py manual`: the skill folder (Copy / Open / Save as .zip), the `mcpServers` JSON and the
+  command + arguments (absolute paths, json.dumps), a prompt the agent follows, Test (a new client in
+  mcp-clients.json), Add to List (`agents.py custom` → record.agent_defs).
+- **One list for card drags** — agents.json `drop` (composer | terminal) + app ids per OS; record.agent_drop.<id> =
+  false switches one off; a program the user adds is a custom agent; v1.0.21's record.agent_apps moves over on the
+  next edit (agents.py migrate_agent_apps = card_drop.rs migrate = AgentDropList.migrate).
+
+Verified on this Mac (2026-11-18, apps installed): bundle ids and homes of Cursor (`~/.cursor`), Qoder (`~/.qoder`,
+`mcp.json` with `mcpServers`), QoderWork, Trae / Trae CN, Kimi Code, Antigravity, DoubaoWork, WorkBuddy 国内版
+(`com.tencent.workbuddy.mac`, `~/.workbuddy`), Windsurf (now Devin.app, same bundle id; `~/.codeium/windsurf`).
+From documentation: Kiro (`~/.kiro/settings/mcp.json`, `~/.kiro/skills`), Windsurf's `mcp_config.json`. Marked
+`unverified` in agents.json: WorkBuddy AI's app ids, every Windows program stem (from the Mac names), Linux ids,
+Antigravity's skill / MCP paths (sources disagree), Windsurf's and Trae CN's skill folders, ZCode. Needs a Windows VM:
+the registry / shortcut lookup on a real install of WorkBuddy (both editions) and Cursor, Connect into
+`%USERPROFILE%\.workbuddy`, the skill copy at launch from Program Files, card drags into WorkBuddy AI.
