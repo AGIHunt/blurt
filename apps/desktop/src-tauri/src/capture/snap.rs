@@ -78,8 +78,11 @@ pub struct TakeSnap {
     /// takes the still of `region` (desktop px) into the take — the picture given (the picker's still, cut), else a
     /// grab: (n, "shots/NNN.png") once its line is written, None if it failed. Runs on a worker thread while the note
     /// opens; the picture's file is removed after.
-    pub shoot: Box<dyn FnOnce(Region, Option<PathBuf>) -> Option<(u32, String)> + Send>,
+    pub shoot: Shoot,
 }
+
+/// [`TakeSnap::shoot`]: the area and its picture (if any) → (n, file).
+pub type Shoot = Box<dyn FnOnce(Region, Option<PathBuf>) -> Option<(u32, String)> + Send>;
 
 /// Outside a recording.
 pub fn run(app: &AppHandle) {
