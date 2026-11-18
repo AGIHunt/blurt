@@ -87,7 +87,9 @@
 "settings.perm.input_monitoring" = "Input Monitoring";
 "settings.perm.fn_key" = "Fn key in macOS";
 "settings.perm.screen.readd" = "Remove Blurt from the list with the minus button";
-"settings.perm.screen.readd_why" = "The list still has an older Blurt’s permission, which doesn’t carry over.";
+"settings.perm.screen.readd_why" = "The listed permission may belong to an older build. Remove Blurt and add this copy again.";
+"settings.perm.screen.readd_action" = "Already enabled? Add Blurt again…";
+"settings.privacy.perm.screen_unavailable" = "Screen Recording access isn’t available to this copy of Blurt.";
 "settings.perm.screen.why" = "Used to record the screen, take snaps, and copy or translate text from the screen.";
 "settings.perm.microphone.why" = "Used for narration, voice notes and dictation.";
 "settings.perm.accessibility.why" = "Used to type dictated text at the cursor, detect the dictation key in any app, and draw while holding ⌃.";

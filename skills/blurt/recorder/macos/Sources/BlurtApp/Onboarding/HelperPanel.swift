@@ -313,6 +313,11 @@ struct HelperPanelView: View {
                 Text(T("settings.perm.restart_hint")).font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
+            if k == .screen {
+                Button(T("settings.perm.screen.readd_action")) { g.readdScreen() }
+                    .buttonStyle(.borderless).font(.system(size: 11))
+                    .padding(.top, 8)
+            }
             // what's needed only sometimes: System Settings closed, or Screen Recording's restart
             let reopen = g.noWindow && !(k == .microphone && SystemAccess.state(.microphone) == .notAsked)
             if reopen || k == .screen {

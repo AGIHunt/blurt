@@ -224,7 +224,7 @@ private struct PermissionsSummary: View {
         return HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(PermissionGuide.name(k)).font(.system(size: SettingsMetrics.titleSize))
-                Text(off ? T("settings.privacy.perm.turned_off") : Self.short(k))
+                Text(off ? T(k == .screen ? "settings.privacy.perm.screen_unavailable" : "settings.privacy.perm.turned_off") : Self.short(k))
                     .font(.system(size: SettingsMetrics.detailSize))
                     .foregroundStyle(off ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
                 // Screen Recording asked for while Blurt runs: some macOS versions apply it only after a relaunch
