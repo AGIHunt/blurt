@@ -654,9 +654,39 @@ fn save_temp_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> R<String
     Ok(p)
 }
 
+/// The jobs: the running ones (`active`), or the newest 100 and every failed organising still waiting for a Retry or a
+/// Dismiss (`waiting: true`, a week: the Mac's JobFailures).
 #[tauri::command(async)]
 fn jobs_list(active: Option<bool>) -> Vec<Value> {
-    jobs::list(active.unwrap_or(false), 100)
+    if active.unwrap_or(false) {
+        jobs::list(true, 100)
+    } else {
+        jobs::list_for_window(100)
+    }
+}
+
+/// Organise this recording (or batch) now — the list's Organize, a failed job's Retry: Err("no_agent") when no agent
+/// can run in the background (no job then); the job already organising it, when there is one.
+#[tauri::command(async)]
+fn session_process(app: AppHandle, dir: String) -> R<()> {
+    let session = std::path::PathBuf::from(&dir);
+    if !session.is_dir() {
+        return Err("missing".into());
+    }
+    // a Retry of a run on some of a batch's captures: those captures again, where they were going
+    let me = paths::normalize(&session);
+    let last = jobs::list_for_window(500).into_iter().find(|j| {
+        j["type"] == "process" && j["waiting"] == json!(true) && j["session"].as_str().is_some_and(|s| paths::normalize(std::path::Path::new(s)) == me)
+    });
+    let captures: Option<Vec<u64>> = last.as_ref().and_then(|j| j["captures"].as_array()).map(|a| a.iter().filter_map(Value::as_u64).collect()).filter(|c: &Vec<u64>| !c.is_empty());
+    let project = captures.as_ref().and(last.as_ref()).and_then(|j| j["project"].as_str().map(str::to_owned));
+    agents::process(&app, &session, captures, project, None, None).map(|_| ())
+}
+
+/// Dismiss a failed job: it leaves the list (the jobs watcher sees the file change and says so).
+#[tauri::command(async)]
+fn job_dismiss(id: String) -> R<()> {
+    jobs::dismiss(&id)
 }
 
 #[tauri::command(async)]
@@ -1197,6 +1227,8 @@ pub fn run() {
             agents_models,
             handoff_create,
             process_captures,
+            session_process,
+            job_dismiss,
             voice_start,
             voice_stop,
             settings_get,

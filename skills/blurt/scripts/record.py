@@ -55,6 +55,7 @@ VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", 
 AUDIO_SR = 48000
 SWIFT_DIR = Path(__file__).resolve().parent.parent / "recorder" / "macos"
 AGENTS_JSON = Path(__file__).with_name("agents.json")  # bundled into the app (Agents.swift)
+ORGANIZE_PROMPT_JSON = Path(__file__).with_name("organize_prompt.json")  # bundled into the app (OrganizerPrompt)
 
 
 STATUS: dict = {"on": False, "final": False, "err": None}  # `start --status-jsonl` (docs/design/desktop-app.md §5 C8)
@@ -757,6 +758,9 @@ def native_binary(build: bool = True) -> Path | None:
                     dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
+    # the organising run's text, shared with the Windows/Linux app (BlurtCore OrganizerPrompt)
+    if ORGANIZE_PROMPT_JSON.exists():
+        shutil.copy(ORGANIZE_PROMPT_JSON, APP_BUNDLE / "Contents" / "Resources" / "organize_prompt.json")
     # the AccentColor (Info.plist NSAccentColorName) and, for macOS 26, the app icon with its dark appearance
     # (CFBundleIconName; assets/brand/AppIcon.icon): compiled by assets/color/build.py with Xcode's actool and
     # committed, so this build needs the Command Line Tools only

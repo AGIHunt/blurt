@@ -541,21 +541,24 @@ extension App {
         Refile.runEnded(dir)
     }
 
-    /// The agent's instructions for an unattended run (English: agents read it, the user never does).
-    func processPrompt(_ dir: URL, captures: [Int]?, project: String? = nil, candidates: String? = nil) -> String {
-        OrganizerPrompt.with(basePrompt(dir, captures: captures, project: project), candidates: candidates)
+    /// skills/blurt/scripts/organize_prompt.json, the organising run's text (the Windows/Linux app sends the same): the
+    /// copy bundled into the app (record.py build), else the skill's.
+    static var promptParts: [String: String]? {
+        var urls: [URL] = []
+        if let u = Bundle.main.url(forResource: "organize_prompt", withExtension: "json") { urls.append(u) }
+        urls.append(BlurtPaths.scripts.appendingPathComponent("organize_prompt.json"))
+        return OrganizerPrompt.parts(from: urls)
     }
 
-    private func basePrompt(_ dir: URL, captures: [Int]?, project: String?) -> String {
-        let what = isShotsSession(dir)
-            ? "Use the blurt skill to process this batch of captures: \(dir.path)\nIt is a shots session (no video): each shot "
-              + "anchors one item and is that item's primary frame; voice notes are transcribed first; .marked.png files carry the user's ink."
-            : "Use the blurt skill to process this recording: \(dir.path)"
-        let only = captures.map { "\nOnly these captures (shots.jsonl n): " + $0.map(String.init).joined(separator: ", ") + "." } ?? ""
-        let skill = "\nThe blurt skill: \(BlurtPaths.skillDir.path)/SKILL.md" + UnattendedRun.scriptsHint(BlurtPaths.scripts.path)
-        return what + only + "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the "
-            + "review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences." + skill
-            + AgentHub.codeHint(project.flatMap { ProjectStore.shared.project(id: $0) } ?? ProjectStore.shared.project(containing: dir))
+    /// The agent's instructions for an unattended run (English: agents read it, the user never does): the SKILL.md it
+    /// follows, the scripts hint, items.py ingest, the project's code to read, the candidates. nil without the parts.
+    func processPrompt(_ dir: URL, captures: [Int]?, project: String? = nil, candidates: String? = nil) -> String? {
+        guard let parts = App.promptParts else { return nil }
+        let p = project.flatMap { ProjectStore.shared.project(id: $0) } ?? ProjectStore.shared.project(containing: dir)
+        let code = p.flatMap { !$0.isInbox && $0.exists ? $0.path.path : nil }
+        return OrganizerPrompt.render(parts, session: dir.path, shots: isShotsSession(dir), captures: captures,
+                                      skillMD: BlurtPaths.skillDir.appendingPathComponent("SKILL.md").path,
+                                      scripts: BlurtPaths.scripts.path, code: code, candidates: candidates)
     }
 
     /// Run queue[0]; on a failure another agent wouldn't share (login, quota, model), move on to the next.
@@ -567,8 +570,16 @@ extension App {
         // effort, a batch of cards with the cheapest one
         let kind = ProcessingSpec.kind(forSession: dir, isShots: isShotsSession(dir))
         let pa = a.def.processingArgs(env: agentEnvironment(), kind: kind)
-        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures, project: project, candidates: candidates), extra: pa.args)
         let log = dir.appendingPathComponent("agent.log")
+        guard let prompt = processPrompt(dir, captures: captures, project: project, candidates: candidates) else {
+            // the skill has no organize_prompt.json (an older copy): nothing to tell the agent — say so on the job
+            processing.removeAll { $0 == dir.path }
+            appendLog(log, "── blurt \(nowStamp()) · organize_prompt.json not found in \(BlurtPaths.scripts.path)\n")
+            job.finish(.failed, error: JobError(code: "skill", message: "organize_prompt.json not found", hintKey: nil))
+            Refile.runEnded(dir)
+            return refreshStatus()
+        }
+        let cmd = a.def.command(bin: bin, prompt: prompt, extra: pa.args)
         let withCandidates: String = candidates == nil ? "" : " · with the candidate projects"
         let model: String = " · model \(pa.model ?? "CLI default")" + (pa.effort.map { ", effort \($0)" } ?? "")
         let skips: String = skipped.isEmpty ? "" : " · skipped: " + skipped.map(\.1).joined(separator: "; ")

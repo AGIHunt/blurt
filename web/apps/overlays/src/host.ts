@@ -160,7 +160,7 @@ export type IslandOp =
   /** a capture's line (a snap, Copy Text / Translate, a recording, a filing): as `dictation`, but it never leads with
    *  the mic — `mark` the ok check, the attention triangle, or nothing (a working line ending in "…" gets the spinner);
    *  `action.extra` rides along with the button's action */
-  | { op: 'toast'; kind: 'capture'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; extra?: Record<string, unknown> }; ms?: number; key?: string; passive?: boolean; mark?: 'check' | 'warning' | 'peep'; /** where it went: the project's folder in its colour leads the line (`inbox`: Unassigned) */ project?: string }
+  | { op: 'toast'; kind: 'capture'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; extra?: Record<string, unknown> }; /** quieter choices left of it (the third leftmost) */ second?: { a: string; label: string }; third?: { a: string; label: string }; ms?: number; key?: string; passive?: boolean; mark?: 'check' | 'warning' | 'peep' | 'spinner'; /** where it went: the project's folder in its colour leads the line (`inbox`: Unassigned) */ project?: string }
   /** a picker, a snap's note or a take starting is up: the island steps back; its waiting lines hold until after */
   | { op: 'busy'; on: boolean }
   /** Copy Text / Translate read what was dragged over: Peep thinks in the ear until its line comes */

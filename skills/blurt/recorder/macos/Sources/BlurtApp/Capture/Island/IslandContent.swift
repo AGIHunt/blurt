@@ -1495,7 +1495,7 @@ final class IslandContent: NSView {
             y += qh + 4
         }
         var bx = w - IslandLayout.earInset
-        for (title, act, filled) in [(t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
+        for (title, act, filled) in [(t.thirdTitle, t.third, false), (t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
             guard let title = title, let act = act else { continue }
             let b = IslandButton(symbol: "", title: title, tip: title, fill: NSColor(white: 1, alpha: 0.14),
                                  gradient: filled ? BrandGradient.buttonStops : nil) {

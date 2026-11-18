@@ -240,6 +240,9 @@ interface Toast {
   /** a second, quieter choice left of it (the Mac's Toast.second: "Download (950 MB)" · "Use Cloud…"); the first is
    *  then the filled one */
   second?: { a: string; label: string; vars?: Record<string, string> };
+  /** a third, as quiet, left of the second (a take saved with no agent: Set Up an Agent…, Copy Phrase, Show in File
+   *  Explorer) */
+  third?: { a: string; label: string; vars?: Record<string, string> };
   /** waits behind what the user is doing now (a job that finished) */
   passive?: boolean;
   /** shown over the open island too (an Undo for what was just done on the cards under it) */
@@ -525,7 +528,8 @@ function toastHtml(): string {
         : tt.mark && tt.mark !== 'spinner' && tt.mark !== 'peep'
           ? `<span class="slot mark-${tt.mark}">${ic(tt.mark as IconName, 15)}</span>`
           : `<span class="slot quiet-peep">${mascotHtml('idle', { size: 18 })}</span>`;
-  const second = tt.action && tt.second ? `<button class="quiet" data-a="toast.second">${esc(t(tt.second.label, tt.second.vars))}</button>` : '';
+  const third = tt.action && tt.second && tt.third ? `<button class="quiet" data-a="toast.third">${esc(t(tt.third.label, tt.third.vars))}</button>` : '';
+  const second = tt.action && tt.second ? `${third}<button class="quiet" data-a="toast.second">${esc(t(tt.second.label, tt.second.vars))}</button>` : '';
   const act = tt.action ? `${second}<button class="quiet${second ? ' fill' : ''}" data-a="toast.act">${esc(t(tt.action.label, tt.action.vars))}</button>` : '';
   // two answers: a question (IslandContent.buildQuestion) — the text on its own line at the open width, the answers
   // on a row of their own under it, right-aligned on the 14 px edge
@@ -1211,6 +1215,7 @@ island.addEventListener('click', (e) => {
       hanging().forEach((l, i) => setTimeout(() => drop(l, 'pull'), i * 70));
       setOpen(false);
       return;
+    case 'toast.third':
     case 'toast.second':
     case 'toast.act': {
       // the pointer is still on the island after the click: it must not open the island (and drop the cards over the
@@ -1218,8 +1223,9 @@ island.addEventListener('click', (e) => {
       clearTimeout(hoverTimer);
       holdClosed = { x: (e as MouseEvent).screenX ?? 0, y: (e as MouseEvent).screenY ?? 0 };
       const tt = toastNow;
-      if (action === 'toast.second') {
-        if (tt?.second) void host.emit(EV.action, { action: tt.second.a });
+      if (action === 'toast.second' || action === 'toast.third') {
+        const b = action === 'toast.second' ? tt?.second : tt?.third;
+        if (b) void host.emit(EV.action, { action: b.a });
         return dismissToast();
       }
       if (tt?.action) void host.emit(EV.action, { action: tt.action.a, ...(tt.action.extra ?? {}) });
@@ -1273,11 +1279,13 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
     case 'capture':
       // a snap's, a screen text's, a recording's line: its own mark or none — never the mic (the Mac's toastMark)
       if (op.key === 'screen-text') readingUntil = 0;
-      return postToast({ key: op.key ?? 'capture', text: t(op.msg ?? '', op.vars), mark: op.mark, project: op.project, action: op.action, ms: op.ms, passive: op.passive });
+      return postToast({ key: op.key ?? 'capture', text: t(op.msg ?? '', op.vars), mark: op.mark, project: op.project, action: op.action, second: op.second, third: op.third, ms: op.ms, passive: op.passive });
     case 'sorted': {
       // the run ended: Peep's peep and hop, then the quiet line with Open (JobNotifier)
       sorted = { ok: true, n: op.n ?? 0, until: performance.now() + 2400 };
-      const text = op.n ? `${t('island.toast.organized')} · ${plural('island.toast.new', op.n)}` : t('island.toast.organized');
+      // it ran, and filed nothing: said so (the job's detail shows what it did)
+      if (!op.n) return postToast({ text: t('island.toast.organized_none'), peep: 'done', passive: true, action: op.job ? { a: 'open.job', label: 'island.toast.show', extra: { job: op.job } } : undefined });
+      const text = `${t('island.toast.organized')} · ${plural('island.toast.new', op.n)}`;
       return postToast({ text, peep: 'done', passive: true, action: { a: 'open.inbox', label: 'island.toast.open' } });
     }
     case 'failed': {

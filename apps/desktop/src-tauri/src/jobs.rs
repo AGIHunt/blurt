@@ -127,6 +127,78 @@ pub fn list(active_only: bool, limit: usize) -> Vec<Value> {
         .collect()
 }
 
+/// How long a failed organising job stays listed (the Mac's JobFailures.keep): a recording whose organising failed
+/// has no items to reach it from, so it waits for a Retry or a Dismiss.
+pub const FAILURE_KEEP_SECS: i64 = 7 * 24 * 3600;
+
+fn time_of(v: &Value) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    v.as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+}
+
+/// The failures still waiting (BlurtCore JobFailures.waiting): organising or routing that failed in the last week, not
+/// dismissed, and not replaced by a later run for the same recording (or the same items).
+pub fn waiting_failures(jobs: &[Value], now: chrono::DateTime<chrono::FixedOffset>) -> Vec<String> {
+    let created = |j: &Value| time_of(&j["created"]);
+    jobs.iter()
+        .filter(|j| {
+            j["state"] == "failed" && matches!(j["type"].as_str(), Some("process" | "route")) && j["dismissed"] != json!(true)
+                && time_of(&j["ended"]).or_else(|| created(j)).is_some_and(|t| (now - t).num_seconds() < FAILURE_KEEP_SECS)
+        })
+        .filter(|j| {
+            let items: BTreeSet<&str> = j["items"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            !jobs.iter().any(|o| {
+                o["id"] != j["id"] && o["type"] == j["type"] && created(o) > created(j)
+                    && match j["session"].as_str() {
+                        Some(s) => o["session"].as_str().is_some_and(|x| paths::normalize(Path::new(x)) == paths::normalize(Path::new(s))),
+                        None => !items.is_empty() && o["items"].as_array().into_iter().flatten().filter_map(Value::as_str).collect::<BTreeSet<_>>() == items,
+                    }
+            })
+        })
+        .filter_map(|j| j["id"].as_str().map(str::to_owned))
+        .collect()
+}
+
+/// The main window's jobs: the newest `limit`, and every failure still waiting however old it is in that count —
+/// those carry `"waiting": true` (the list shows them until Retry or Dismiss).
+pub fn list_for_window(limit: usize) -> Vec<Value> {
+    let all = list(false, usize::MAX);
+    let now = chrono::Local::now().fixed_offset();
+    let waiting: BTreeSet<String> = waiting_failures(&all, now).into_iter().collect();
+    all.into_iter()
+        .enumerate()
+        .filter(|(i, j)| *i < limit || j["id"].as_str().is_some_and(|id| waiting.contains(id)))
+        .map(|(_, mut j)| {
+            let id = j["id"].as_str().unwrap_or("").to_string();
+            if waiting.contains(&id) {
+                j["waiting"] = json!(true);
+            }
+            // its output, for Show Log (process jobs the app ran)
+            let log = paths::jobs_dir().join(format!("{id}.log"));
+            if log.is_file() {
+                j["log"] = json!(log.to_string_lossy());
+            }
+            j
+        })
+        .collect()
+}
+
+/// Dismiss a failed job: it leaves the list (the Mac's JobFiles.rewrite → dismissed). Only an ended job, whose owner
+/// writes it no more.
+pub fn dismiss(id: &str) -> Result<(), String> {
+    if !id.starts_with("j-") || id.contains(['/', '\\', '.']) {
+        return Err(format!("not a job: {id}"));
+    }
+    let p = paths::jobs_dir().join(format!("{id}.json"));
+    let mut job: Value = serde_json::from_slice(&std::fs::read(&p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    if load(id).is_some_and(|j| is_active(&j)) {
+        return Err("running".into());
+    }
+    job["dismissed"] = json!(true);
+    let tmp = paths::jobs_dir().join(format!(".{id}.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&job).unwrap_or_default()).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &p).map_err(|e| e.to_string())
+}
+
 /// A job the app owns (record / snap / voice / process). Every change rewrites `<id>.json` atomically, after
 /// folding what others appended, so the file always carries the effective state.
 pub struct JobWriter {
@@ -197,6 +269,12 @@ impl JobWriter {
 
     pub fn set_items(&self, uids: &[String]) {
         self.job.lock().unwrap()["items"] = json!(uids);
+        self.save();
+    }
+
+    /// One more field on the job (`organizer`: who organised it instead of whom).
+    pub fn set(&self, key: &str, value: Value) {
+        self.job.lock().unwrap()[key] = value;
         self.save();
     }
 
@@ -301,6 +379,9 @@ pub fn changed_ids(paths: &[PathBuf]) -> BTreeSet<String> {
 mod tests {
     use super::*;
 
+    /// The tests that point BLURT_HOME somewhere of their own run one at a time.
+    static HOME: Mutex<()> = Mutex::new(());
+
     #[test]
     fn ids_and_files() {
         let id = new_id();
@@ -352,6 +433,7 @@ mod tests {
 
     #[test]
     fn writer_folds_others_events() {
+        let _home = HOME.lock().unwrap_or_else(|e| e.into_inner());
         let d = tempfile::tempdir().unwrap();
         std::env::set_var("BLURT_HOME", d.path());
         let w = JobWriter::new("process", Some("p1"), None, None, None, &["prepare", "write"]);
@@ -367,5 +449,35 @@ mod tests {
         assert!(j["events_offset"].as_u64().unwrap() > 0);
         assert_eq!(list(false, 10).len(), 1);
         assert!(list(true, 10).is_empty());
+    }
+
+    #[test]
+    fn failures_wait_a_week_until_retried_or_dismissed() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-18T12:00:00+08:00").unwrap();
+        let jobs = vec![
+            // retried: a later run for the same recording replaced it
+            json!({"id": "j-b", "type": "process", "state": "running", "session": "/s/rec1", "created": "2026-11-18T11:00:00+08:00"}),
+            json!({"id": "j-a", "type": "process", "state": "failed", "session": "/s/rec1", "created": "2026-11-18T10:00:00+08:00", "ended": "2026-11-18T10:01:00+08:00"}),
+            json!({"id": "j-c", "type": "process", "state": "failed", "session": "/s/rec2", "created": "2026-11-17T10:00:00+08:00", "ended": "2026-11-17T10:01:00+08:00"}),
+            json!({"id": "j-d", "type": "process", "state": "failed", "session": "/s/rec3", "created": "2026-11-01T10:00:00+08:00", "ended": "2026-11-01T10:01:00+08:00"}),
+            json!({"id": "j-e", "type": "process", "state": "failed", "session": "/s/rec4", "dismissed": true, "created": "2026-11-17T10:00:00+08:00", "ended": "2026-11-17T10:01:00+08:00"}),
+            json!({"id": "j-f", "type": "record", "state": "failed", "session": "/s/rec5", "created": "2026-11-17T10:00:00+08:00", "ended": "2026-11-17T10:01:00+08:00"}),
+        ];
+        assert_eq!(waiting_failures(&jobs, now), vec!["j-c".to_string()]);
+    }
+
+    #[test]
+    fn dismissed_failures_leave_the_list() {
+        let _home = HOME.lock().unwrap_or_else(|e| e.into_inner());
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("BLURT_HOME", d.path());
+        let w = JobWriter::new("process", None, Some(Path::new("/s/rec9")), None, None, &["prepare"]);
+        w.finish("failed", Some(("agent_exit", "codex exited with 1")));
+        assert_eq!(list_for_window(10)[0]["waiting"], json!(true));
+        assert!(dismiss("../x").is_err());
+        dismiss(&w.id).unwrap();
+        let j = &list_for_window(10)[0];
+        assert_eq!(j["dismissed"], json!(true));
+        assert!(j.get("waiting").is_none());
     }
 }

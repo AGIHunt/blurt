@@ -461,6 +461,7 @@
 "notify.done.recording" = "录屏已整理";
 "notify.done.snaps" = "截图已整理";
 "notify.done.recording_in" = "已整理到 %@";
+"notify.done.none" = "没整理出事项";
 
 "notify.failed" = "%@ 未完成";
 

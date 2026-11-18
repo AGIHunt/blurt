@@ -205,6 +205,9 @@
 "capture.recording.organizing_usual" = "通常约 %@ 分钟 · 完成后事项会显示在那里";
 "capture.recording.organizing_where" = "完成后，事项会显示在那里";
 "capture.recording.organizing_left" = "还剩约 %@ 分钟";
+"capture.recording.no_agent" = "录屏已保存 · 未找到可在后台整理的 Agent\n可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」";
+"capture.recording.copy_request" = "复制说法";
+"capture.recording.request_copied" = "已复制 · 粘贴到 Agent 的对话中";
 "capture.rec.goes_after" = "点完成后整理到 %@";
 "capture.rec.video_only" = "只保存视频";
 "capture.card.in_take" = "随此录屏一起整理";

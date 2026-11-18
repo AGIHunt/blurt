@@ -1,6 +1,8 @@
 // A job in the detail (the Mac's JobDetailView, the part Windows has the data for): what it does and when it started,
-// its steps in an inset group with each one's state, the items it wrote so far (a click shows one). An agent session's
-// detail is its terminal (the Sessions pane), not this.
+// its steps in an inset group with each one's state, the items it wrote so far (a click shows one). A failed organising
+// has the Mac's controls: Try Again (the same recording, or the same captures, organised again), Show in File Explorer,
+// Show Log, Dismiss (it leaves the list; the Mac's JobFailures). An agent session's detail is its terminal (the
+// Sessions pane), not this.
 import { useEffect, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { KindIcon } from '@blurt/ui/react';
@@ -31,6 +33,22 @@ export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title:
   const since = job.started ? Date.parse(job.started) : NaN;
   const secs = Number.isFinite(since) ? Math.max(0, Math.round(((live ? now : Date.parse(job.ended ?? '') || now) - since) / 1000)) : null;
   const clock = secs == null ? '' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  // Files on GNOME, File Explorer on Windows (the window's other Show buttons)
+  const [gnome, setGnome] = useState(false);
+  useEffect(() => {
+    api.status().then((st) => setGnome(st.platform === 'gnome'), () => {});
+  }, []);
+  // a Try Again that couldn't start: why, in words (no agent → the same sentence as the job's own)
+  const [retryError, setRetryError] = useState<string | null>(null);
+  useEffect(() => setRetryError(null), [job.id]);
+  const ended = job.state === 'failed' || job.state === 'cancelled';
+  const canRetry = ended && job.type === 'process' && !!job.session;
+  const retry = () => {
+    if (!job.session) return;
+    setRetryError(null);
+    api.processSession(job.session).catch((e: unknown) => setRetryError(String(e) === 'no_agent' ? 'no_agent' : 'unknown'));
+  };
+  const errorText = (code: string) => (t(`main.job.error.${code}`) === `main.job.error.${code}` ? t('main.job.error.unknown') : t(`main.job.error.${code}`));
   const step = job.steps.find((x) => x.state === 'running');
   const pct = job.progress != null && live ? Math.round(job.progress * 100) : null;
   return (
@@ -46,10 +64,19 @@ export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title:
           </div>
         </div>
       )}
-      {job.error && <p className="mw-err">{t(`main.job.error.${job.error.code}`) === `main.job.error.${job.error.code}` ? t('main.job.error.unknown') : t(`main.job.error.${job.error.code}`)}</p>}
+      {job.error && <p className="mw-err">{errorText(job.error.code)}</p>}
+      {retryError && retryError !== job.error?.code && <p className="mw-err">{errorText(retryError)}</p>}
       {/* no agent to run it, or the one there isn't signed in: where that's fixed (the Home page's Set Up an Agent…) */}
-      {(job.error?.code === 'no_agent' || job.error?.code === 'auth') && (
+      {(job.error?.code === 'no_agent' || job.error?.code === 'auth' || retryError === 'no_agent') && (
         <p><button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button></p>
+      )}
+      {ended && (canRetry || job.session || job.log || (job.state === 'failed' && !job.dismissed)) && (
+        <p className="mw-job-actions">
+          {canRetry && <button className="pg-small" onClick={retry}>{t('main.job.retry')}</button>}
+          {job.session && <button className="pg-small" onClick={() => void api.reveal(job.session!).catch(() => {})}>{t(gnome ? 'mw.reveal.files' : 'mw.reveal')}</button>}
+          {job.log && <button className="pg-small" onClick={() => void api.openPath(job.log!).catch(() => {})}>{t('main.job.show_log')}</button>}
+          {job.state === 'failed' && !job.dismissed && <button className="pg-small" onClick={() => void api.jobDismiss(job.id).catch(() => {})}>{t('main.job.dismiss')}</button>}
+        </p>
       )}
       {job.steps.length > 0 && (
         <>

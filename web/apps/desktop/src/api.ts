@@ -175,6 +175,11 @@ export interface Job {
   started: string | null;
   ended: string | null;
   error: { code: string; message: string } | null;
+  /** a failed organising still listed (a week, until Retry or Dismiss: the Mac's JobFailures) */
+  waiting?: boolean;
+  dismissed?: boolean;
+  /** its output (Show Log) */
+  log?: string;
 }
 
 /** `agents.py models ID` */
@@ -446,6 +451,8 @@ export const api = {
   move: (uids: string[], project: string) => invoke('items_move', { uids, project }),
   /** the K4 jobs; agent-session jobs an older Blurt left in the jobs folder are not shown */
   jobs: (active = false) => invoke<(Job | { type: 'agent' })[]>('jobs_list', { active }).then((js) => js.filter((j): j is Job => j.type !== 'agent')),
+  processSession: (dir: string) => invoke<void>('session_process', { dir }),
+  jobDismiss: (id: string) => invoke<void>('job_dismiss', { id }),
   /** `login` false: no sign-in probes (fast); `ids`: only these agents */
   detect: (o: { login?: boolean; ids?: string[] } = {}) => invoke<Detect>('agents_detect', o),
   models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),

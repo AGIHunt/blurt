@@ -460,6 +460,7 @@
 "notify.done.recording" = "Recording organized";
 "notify.done.snaps" = "Snaps organized";
 "notify.done.recording_in" = "Organized into %@";
+"notify.done.none" = "No items found";
 
 "notify.failed" = "%@ didn’t finish";
 

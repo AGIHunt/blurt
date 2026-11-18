@@ -54,6 +54,34 @@ enum Refile {
         t.badge = badge(where_)
         t.seconds = 8
         t.key = "refile.\(dir.path)"
+        // and the way to the video (the Windows/Linux island says the same)
+        t.secondTitle = T("app.record.show_in_finder")
+        t.second = { App.revealVideo(dir) }
+        island.toast(t)
+    }
+
+    /// A take saved with no agent to organize it in the background (checked before anything is said): that it is
+    /// saved and not organized, and what to do — set up an agent, copy what to say in an agent app with the skill
+    /// (WorkBuddy, Cursor…), or go to the video. No job is started: the recording stays unorganized until then.
+    static func savedNotOrganized(_ dir: URL) {
+        emit(["event": "recording_saved_no_agent", "session": dir.path])
+        var t = Island.Toast(text: Loc.t("capture.recording.no_agent", table: "Capture"), actionTitle: T("home.recording.set_up_agent")) {
+            AppEnvironment.settings?.show(pane: "agents/agents.organize")
+        }
+        t.secondTitle = Loc.t("capture.recording.copy_request", table: "Capture")
+        t.second = {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(Loc.t("capture.sort.request", table: "Capture"), forType: .string)
+            emit(["event": "organize_request_copied", "session": dir.path])
+            var done = Island.Toast(text: Loc.t("capture.recording.request_copied", table: "Capture"), actionTitle: nil, action: nil)
+            done.icon = .check
+            island.toast(done)
+        }
+        t.thirdTitle = T("app.record.show_in_finder")
+        t.third = { App.revealVideo(dir) }
+        t.icon = .warning           // a failure leads with the attention triangle (system.md §3.2)
+        t.seconds = 12
+        t.key = "refile.\(dir.path)"
         island.toast(t)
     }
 

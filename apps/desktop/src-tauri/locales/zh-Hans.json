@@ -50,7 +50,7 @@
   "notify.sorted.empty": "这次没有整理出事项",
   "notify.failed": "没能完成：{title}",
   "notify.merged_other": "另有 {n} 条更新",
-  "error.no_agent": "还没有可用的编程 agent，请在「设置 → Agent」里配置。",
+  "error.no_agent": "没有可在后台整理的 Agent。可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」。",
   "error.scripts": "找不到 Blurt 的脚本。请重新安装，或设置 BLURT_SCRIPTS。",
   "error.uv": "还没有安装 uv。请从 docs.astral.sh/uv 安装后重新打开 Blurt。",
   "error.needs_project": "请先把这些事项归到一个项目文件夹。",
@@ -86,5 +86,10 @@
   "tray.models.status": "正在下载 · {pct}%",
   "tray.models.row": "语音模型 · {done} / {total}",
   "tray.counts_sep": "，",
-  "mainwin.add_files.title": "添加图片或文件"
+  "mainwin.add_files.title": "添加图片或文件",
+  "agent.why.not_installed": " 未安装",
+  "agent.why.logged_out": " 未登录",
+  "agent.why.unusable": " 无法使用",
+  "agent.list_sep": "、",
+  "rec.request": "处理我录的视频"
 }

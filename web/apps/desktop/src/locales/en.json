@@ -1027,5 +1027,9 @@
   "phonepage.ax.ok": "OK",
   "phonepage.ax.needs_you": "Needs attention",
   "welcome.features": "Blurt has five features. Turn off what you don’t need; you can change this on Home later.",
-  "welcome.use.phone.detail": "Use your phone as your computer’s trackpad, keyboard and microphone. Pair it on the Phone page after installing the app."
+  "welcome.use.phone.detail": "Use your phone as your computer’s trackpad, keyboard and microphone. Pair it on the Phone page after installing the app.",
+  "main.job.retry": "Try Again",
+  "main.job.show_log": "Show Log",
+  "main.job.dismiss": "Dismiss",
+  "main.job.error.timeout": "Organizing took too long and was stopped. Try again; if it keeps happening, see the log."
 }

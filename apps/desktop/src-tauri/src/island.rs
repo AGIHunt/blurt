@@ -881,7 +881,9 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             let project = j["project"].as_str().map(str::to_owned);
             let app = app.clone();
             std::thread::spawn(move || {
-                let _ = agents::process(&app, &session, captures, project, None, None);
+                if let Err(code) = agents::process(&app, &session, captures, project, None, None) {
+                    send(&app, json!({"op": "toast", "kind": "error", "code": if code == "no_agent" { "no_agent" } else { "unknown" }}));
+                }
                 refresh(&app);
             });
         }

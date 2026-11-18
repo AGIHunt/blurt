@@ -2187,6 +2187,12 @@ body.mw-resizing * {
   border-top-color: var(--brand-ink);
   border-width: 2px;
 }
+/* a failed organising's controls: Try Again first, then the ways to its files */
+.mw-jobdetail .mw-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* a menu row's count: a small capsule beside the label column (the Mac's filter popup), not a bare digit at the edge */
 .mw-menu-badge {

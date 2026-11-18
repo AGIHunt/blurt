@@ -1002,5 +1002,9 @@
   "phonepage.ax.ok": "正常",
   "phonepage.ax.needs_you": "需要处理",
   "welcome.features": "口喷鸡有以下五项功能。不需要的可以关闭，之后可在主页更改。",
-  "welcome.use.phone.detail": "将手机用作电脑的触控板、键盘和麦克风。安装手机 App 后，在「手机」页配对。"
+  "welcome.use.phone.detail": "将手机用作电脑的触控板、键盘和麦克风。安装手机 App 后，在「手机」页配对。",
+  "main.job.retry": "重试",
+  "main.job.show_log": "查看日志",
+  "main.job.dismiss": "忽略",
+  "main.job.error.timeout": "整理用时过长，已停止。请重试；如果问题持续，详情见日志。"
 }
