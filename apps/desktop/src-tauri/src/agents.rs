@@ -183,7 +183,7 @@ pub fn process(
     };
     let argv: Vec<String> = cmd["argv"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_owned)).collect();
     if argv.is_empty() {
-        job.finish("failed", Some(("skill", "this agent has no headless mode")));
+        job.finish("failed", Some(("no_agent", "this agent has no headless mode")));
         return Err("no_agent".into());
     }
     let cwd = cmd["cwd"].as_str().map(PathBuf::from).unwrap_or(repo);

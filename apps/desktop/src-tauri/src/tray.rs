@@ -882,8 +882,8 @@ fn chose(app: &AppHandle, id: &str) {
         "updates" => open_at(app, json!({"view": "settings", "pane": "general", "check_updates": true})),
         "update_now" => crate::housekeeping::install_update(app.clone()),
         "contract" => crate::housekeeping::contract_help(app),
-        // Show Download: where the download already shows — the Welcome's model step when the assistant is up
-        "models" if crate::mainwin::welcome_shown() => show_main(app),
+        // Show Download / Get Speech Model: the Welcome's model step when the assistant is up (it has the download)
+        "models" | "get_model" if crate::mainwin::welcome_shown() => show_main(app),
         "models" | "get_model" => open_at(app, json!({"view": "settings", "pane": "speech"})),
         "models_stop" => {
             crate::dictation::commands::model_download_cancel();

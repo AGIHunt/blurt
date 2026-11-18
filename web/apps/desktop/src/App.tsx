@@ -1978,7 +1978,7 @@ export default function App() {
           {detail?.kind === 'session' && reviewHost ? (
             <ReviewPane host={reviewHost} hostKey={detail.dir} opts={{ mode: 'review', platform, theme: 'auto', lang }} rev={tick} onHandle={onPage} />
           ) : shownJob ? (
-            <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} />
+            <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} />
           ) : plan ? (
             <SelectionView
               items={selectedRows}
