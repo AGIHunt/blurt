@@ -52,9 +52,9 @@ import { Tooltip } from './components/Tooltip';
 import { FilterGlyph, MissingFolderGlyph, PinGlyph, ProgressGlyph, ProjectGlyph, ScopeGlyph, SidebarGlyph, UnassignedGlyph } from './components/glyphs';
 import { ItemBanner, bannerTitle } from './components/ItemBanner';
 import { ItemList, stateText } from './components/ItemList';
-import { JobDetail } from './components/JobDetail';
-import { actionLabel, recLength, RecordingsSection, runRecAction, useAgentReady, useRecordingInfos, type RecHandlers } from './components/Recordings';
-import { emptyStateShown, placeJobList, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
+import { JobDetail, RecordingDetail, type RecDetail } from './components/JobDetail';
+import { recLength, RecordingsSection, useAgentReady, useRecordingInfos, type RecHandlers } from './components/Recordings';
+import { emptyStateShown, placeJobList, placeRecordings, recordings, samePath, type Recording } from './recordings';
 import { CapturesBanner, FilterBar, JobsSection, ListHeading, MissingFolderBanner, SearchField, SuggestionsBanner } from './components/ListHeading';
 import { tidy, useMenu, type MenuEntry, type MenuItem } from './components/Menu';
 import { MovePopover } from './components/MovePopover';
@@ -79,6 +79,7 @@ import { useOff } from './components/useCapabilities';
 import { useRemoteStatus } from './settings/phone';
 import { phoneNeedsAttention, placeShown } from './capabilities';
 import './components/main-window.css';
+import { revealLabel } from './reveal';
 
 const LIMIT = 20_000;
 const KINDS = ['issue', 'idea', 'note', 'task'] as const;
@@ -107,7 +108,7 @@ const loadSaved = (): Saved => {
 };
 
 type Screen = { kind: 'main' } | { kind: 'settings' };
-type Detail = { kind: 'session'; dir: string; project: string | null } | { kind: 'job'; id: string } | null;
+type Detail = { kind: 'session'; dir: string; project: string | null } | { kind: 'job'; id: string } | { kind: 'recording'; dir: string } | null;
 interface Toast {
   msg: string;
   undo?: () => void;
@@ -709,7 +710,7 @@ export default function App() {
       const r = await api.exportBundle(its.map((i) => i.uid), bundleName(one ? its[0].project_name : null, its.length, zh), zh ? 'zh' : 'en');
       if (r) {
         const path = r.path ?? '';
-        showToast(t('main.bundle.saved', { a: path.split(/[\\/]/).pop() ?? path }), { action: { label: revealLabel, run: () => api.reveal(path).catch(fail) } });
+        showToast(t('main.bundle.saved', { a: path.split(/[\\/]/).pop() ?? path }), { action: { label: revealLabel(), run: () => api.reveal(path).catch(fail) } });
       }
     } catch (e) {
       const code = String(e).match(/\[([a-z_]+)\]\s*$/)?.[1];
@@ -1043,7 +1044,6 @@ export default function App() {
 
   // ---------------------------------------------------------------- menus (one builder each, as on the Mac)
   const mac = status?.platform === 'mac';
-  const revealLabel = status?.platform === 'gnome' ? t('mw.reveal.files') : t('mw.reveal');
   const editorName = ({ vscode: 'VS Code', cursor: 'Cursor', zed: 'Zed' } as Record<string, string>)[editor] ?? 'VS Code';
   const stateTarget = (a: Action, items: ItemRow[]): State => (a === 'restore' ? 'new' : targetOf(a, validFor(a, items)[0] ?? items[0]) ?? 'todo');
   const stateEntry = (a: Action, items: ItemRow[]): MenuEntry => {
@@ -1106,7 +1106,7 @@ export default function App() {
       { kind: 'separator' },
       // a picture opens for one item; several selected, it would only open the first one's
       items.filter((i) => i.primary_frame).length <= 1 && { label: t('mw.open_picture'), icon: <Icon name="eye" size={14} />, keys: t('main.keys.space'), disabled: !items.some((i) => i.primary_frame), run: () => openPicture(items) },
-      { label: revealLabel, icon: <Icon name="reveal" size={14} />, keys: 'Ctrl+Shift+R', run: () => revealItems(items) },
+      { label: revealLabel(), icon: <Icon name="reveal" size={14} />, keys: 'Ctrl+Shift+R', run: () => revealItems(items) },
       one && { label: t('main.menu.open_in', { a: editorName }), icon: <Icon name="code" size={14} />, run: () => api.openUrl(codeUrl('', items[0].path, editor)).catch(fail) },
       one && !!items[0].session_dir && { label: t('main.menu.review_batch'), icon: <Icon name="film" size={14} />, run: () => setDetail({ kind: 'session', dir: items[0].session_dir!, project: items[0].project_id }) },
     ]);
@@ -1153,7 +1153,7 @@ export default function App() {
       { label: t('main.project.rename'), icon: <Icon name="pencil" size={14} />, keys: 'F2', run: () => setRenamingProject(p.id) },
       { label: t('main.project.settings'), icon: <Icon name="sliders" size={14} />, keys: 'Ctrl+I', run: () => setSettingsFor(p) },
       { kind: 'separator' },
-      { label: revealLabel, icon: <Icon name="reveal" size={14} />, run: () => api.reveal(p.path).catch(fail) },
+      { label: revealLabel(), icon: <Icon name="reveal" size={14} />, run: () => api.reveal(p.path).catch(fail) },
       { label: t('main.menu.open_in', { a: editorName }), icon: <Icon name="code" size={14} />, run: () => api.openUrl(`${editor === 'zed' ? 'zed' : editor === 'cursor' ? 'cursor' : 'vscode'}://file/${p.path.replace(/\\/g, '/').replace(/^\/+/, '')}`).catch(fail) },
       { label: t('action.copy_path'), icon: <Icon name="copy" size={14} />, run: () => copyLines([p.path], t('mw.copied.path')) },
       { kind: 'separator' },
@@ -1437,7 +1437,10 @@ export default function App() {
     const p = detail.project ? projectRow(detail.project) : null;
     return hostFor({ session: detail.dir }, p && p.kind !== 'inbox' ? p.path : null, hostCb, editor);
   }, [detail, editor]);
-  const shownJob = detail?.kind === 'job' ? jobs.find((j) => j.id === detail.id) ?? null : null;
+  // a recording's own detail turns into its run's once one starts (Organize, Retry from there)
+  const shownRec = detail?.kind === 'recording' ? recs.find((r) => samePath(r.info.dir, detail.dir)) ?? null : null;
+  const shownRecJob = shownRec && (shownRec.state.kind === 'organising' || shownRec.state.kind === 'failed') ? shownRec.state.job : null;
+  const shownJob = detail?.kind === 'job' ? jobs.find((j) => j.id === detail.id) ?? null : shownRecJob;
   /** the line above the item on show (the Mac's ItemBanner) */
   const banner = current1 ? bannerPlan(current1, jobs) : null;
   const bannerText = (() => {
@@ -1482,16 +1485,11 @@ export default function App() {
   }
   /** The recording a process job organises (its detail is that recording's: its words, its buttons). */
   const recOfJob = (j: Job): Recording | null => (j.type === 'process' && j.session ? recs.find((r) => samePath(r.info.dir, j.session)) ?? null : null);
-  /** A recording's run in the detail: what the recording's row offers (Retry, Play Video, Show in Folder, Dismiss…),
-   *  while this run is the recording's newest; Set Up an Agent… is JobDetail's own. */
-  const jobActions = (j: Job): ReactNode => {
+  /** The recording a run's detail is: while this run is that recording's newest (an older run is just a job). */
+  const recDetailOf = (j: Job): RecDetail | null => {
     const r = recOfJob(j);
     if (!r || (r.state.kind !== 'organising' && r.state.kind !== 'failed') || r.state.job?.id !== j.id) return null;
-    // the job's own Try Again / Show / Dismiss are JobDetail's
-    const acts = recActions(r, agentReady).filter((a) => a !== 'progress' && a !== 'set_up_agent' && a !== 'retry' && a !== 'dismiss' && a !== 'reveal');
-    return acts.map((a) => (
-      <button key={a} className="pg-small" onClick={() => runRecAction(a, r, recHandlers)}>{actionLabel(a)}</button>
-    ));
+    return { r, agent: agentReady, handlers: recHandlers };
   };
   /** A recording's place: its project, or Unassigned. */
   const placeOfProject = (id: string | null | undefined): Place => (id && id !== 'inbox' ? `project:${id}` : 'unassigned');
@@ -1506,8 +1504,16 @@ export default function App() {
       if (isPage(place)) go(placeOfProject(j.project), { focusList: false });
       openJob(j);
     },
+    // from Home: the recording's place, with its detail (Play Video, Show in Folder, Organize… are there)
+    onDetail: (r: Recording) => {
+      if (isPage(place)) go(placeOfProject(r.info.project_id), { focusList: false });
+      setScreen({ kind: 'main' });
+      setSelected(new Set());
+      setFocus(null);
+      setDetail({ kind: 'recording', dir: r.info.dir });
+    },
     onSettings: (pane: string) => (setScreen({ kind: 'settings' }), goSettingsPane(pane)),
-    onToast: (m: string) => showToast(m),
+    onToast: (m: string, action?: { label: string; run: () => void }) => showToast(m, action ? { action, mark: 'warn' } : {}),
     onChanged: () => refresh(),
   };
   const lang = i18n().lang;
@@ -1551,7 +1557,7 @@ export default function App() {
     if (e.key === 'Escape') {
       if (overlay) return;
       if (narrow && sidePeek) return stop(() => setSidePeek(false));
-      if (detail?.kind === 'session') return stop(() => setDetail(null));
+      if (detail?.kind === 'session' || detail?.kind === 'recording') return stop(() => setDetail(null));
       if (inDetail && !field) return stop(focusList);
       return;
     }
@@ -1674,7 +1680,7 @@ export default function App() {
         { id: 'move_pick', title: t('main.palette.move_pick'), icon: ic('move'), keys: 'M', hint: plural('main.selection.move.tip', items.length), section: 'selected', pinned: true, run: () => setTimeout(() => pickProject(items.map((i) => i.uid))) },
         { id: 'export', title: t('main.menu.export_bundle'), icon: ic('archive'), section: 'selected', run: () => exportBundle(items) },
         { id: 'picture', title: t('mw.open_picture'), icon: ic('eye'), keys: t('main.keys.space'), section: 'selected', run: () => openPicture(items) },
-        { id: 'reveal', title: revealLabel, icon: ic('reveal'), keys: 'Ctrl+Shift+R', section: 'selected', run: () => revealItems(items) },
+        { id: 'reveal', title: revealLabel(), icon: ic('reveal'), keys: 'Ctrl+Shift+R', section: 'selected', run: () => revealItems(items) },
         { id: 'copy_path', title: t('action.copy_path'), icon: ic('copy'), keys: 'Ctrl+Alt+C', section: 'selected', run: () => copyLines(items.map(pathOf), t('mw.copied.path')) },
         { id: 'rename', title: t('main.menu.rename'), icon: ic('pencil'), keys: 'E', section: 'selected', run: () => items.length === 1 && setRenaming(items[0].uid) },
         { id: 'enrich', title: t('main.menu.enrich'), icon: ic('text-plus'), section: 'selected', run: () => enrich(items) },
@@ -1939,7 +1945,7 @@ export default function App() {
           )}
           {shownProject && !shownProject.exists && rows.length > 0 && <MissingFolderBanner onLocate={() => locate(shownProject)} />}
           {place === 'inbox' && <CapturesBanner count={cardsWaiting} onChoose={() => void api.revealCards().catch(() => {})} />}
-          <RecordingsSection recs={placeRecs} agent={agentReady} selectedJob={detail?.kind === 'job' ? detail.id : null} showProject={!isProject(place) && place !== 'unassigned'} handlers={recHandlers}
+          <RecordingsSection recs={placeRecs} agent={agentReady} selectedJob={detail?.kind === 'job' ? detail.id : null} selectedDir={detail?.kind === 'recording' ? detail.dir : null} handlers={recHandlers}
             onMenu={(entries, at) => menu.open(entries, at)} />
           <JobsSection jobs={placeJobs} selected={detail?.kind === 'job' ? detail.id : null} projectName={projectName} showProject={!isProject(place) && place !== 'unassigned'} onSelect={openJob} />
           <SuggestionsBanner groups={sugGroups} onMoveAll={(p, u) => moveItems(u, p)} />
@@ -2018,7 +2024,9 @@ export default function App() {
             <ReviewPane host={reviewHost} hostKey={detail.dir} opts={{ mode: 'review', platform, theme: 'auto', lang }} rev={tick} onHandle={onPage} />
           ) : shownJob ? (
             <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))}
-              actions={jobActions(shownJob)} />
+              rec={recDetailOf(shownJob)} />
+          ) : shownRec ? (
+            <RecordingDetail rec={{ r: shownRec, agent: agentReady, handlers: recHandlers }} />
           ) : plan ? (
             <SelectionView
               items={selectedRows}

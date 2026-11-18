@@ -27,6 +27,7 @@ import { AgentsPane } from './AgentsSettings';
 import { DictationPane, ModelsPane, ScreenTextPane } from './DictationSettings';
 import { StoragePane } from './StorageSettings';
 import { PhonePane } from '../settings/PhonePane';
+import { revealLabel } from '../reveal';
 
 const REPO = 'https://github.com/AGIHunt/blurt';
 const guideURL = () => `${REPO}/blob/main/docs/guide.md#${lang() === 'zh-Hans' ? encodeURIComponent('中文') : 'english'}`;
@@ -825,7 +826,7 @@ function ProjectsPane({ onToast }: { onToast: (m: string) => void }) {
   const use = (id: string) => api.useProject(id === 'inbox' ? 'auto' : id).then(load, (e) => onToast(String(e)));
   const projects = [...list.projects].sort((a, b) => (b.last_used ?? '').localeCompare(a.last_used ?? ''));
   const rowMenu = (p: ProjectList['projects'][number]): MenuEntry[] => [
-    { label: S('win.projects.reveal'), run: () => api.reveal(p.path).catch((e) => onToast(String(e))) },
+    { label: revealLabel(), run: () => api.reveal(p.path).catch((e) => onToast(String(e))) },
     { label: S('settings.projects.make_current'), checked: current === p.id, disabled: !p.exists || current === p.id, run: () => use(p.id) },
   ];
   const headMenu: MenuEntry[] = [{ label: S('settings.general.open_unassigned'), run: () => api.reveal(list.inbox.path).catch((e) => onToast(String(e))) }];

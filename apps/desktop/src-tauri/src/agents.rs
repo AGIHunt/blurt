@@ -73,6 +73,15 @@ pub fn usable_cached() -> Option<bool> {
     (at.elapsed() < Duration::from_secs(ttl)).then_some(!usable.is_empty())
 }
 
+/// Can an agent organise in the background now (the window's Retry / Organize / Set Up an Agent…)? The full detect's
+/// answer — sign-in checked, the one a run starts from —: the cached one while it holds, else a fresh one.
+pub fn ready(runner: &Runner) -> Result<bool, String> {
+    if let Some(b) = usable_cached() {
+        return Ok(b);
+    }
+    detect(runner).map(|d| !queue(&d).0.is_empty())
+}
+
 /// The detect a run starts from: the cached one while its first usable agent is signed in and it is under 10 min old,
 /// else a fresh one — every agent that wasn't ready is checked again (the user may just have signed in).
 fn detect_for_run(runner: &Runner) -> Result<Value, String> {

@@ -585,13 +585,14 @@ body.mw-resizing * {
 }
 /* a recording's row (Recordings.tsx): its length in the id column, a failure's state in the attention ink, the first
    line muted when nothing was said */
-/* the first line and the state share the title column: the state (what became of it) first, the line in what's left */
+/* the first line and the state share the title column: the state is one word (why is the tooltip's), the line keeps
+   room enough to be read */
 .mw-rec .mw-tt {
   flex: 1 1 0;
-  min-width: 2.5em;
+  min-width: 9em;
 }
 .mw-rec .mw-hit {
-  flex: 0 1 auto;
+  flex: none;
 }
 .mw-rec .mw-hit.attn {
   color: var(--attn-ink);

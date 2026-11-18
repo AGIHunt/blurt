@@ -17,8 +17,8 @@ import type { Place } from '../places';
 import { useRemoteStatus } from '../settings/phone';
 import { Switch } from '../settings/kit';
 import { useMenu, type MenuEntry } from './Menu';
-import { inlineAction, recActions, type Recording } from '../recordings';
-import { actionLabel, recLength, recMenu, recStateText, recWhy, runRecAction, type RecHandlers } from './Recordings';
+import { inlineAction, type Recording } from '../recordings';
+import { actionLabel, recClick, recLength, recMenu, recStateText, recTip, recTitle, runRecAction, type RecHandlers } from './Recordings';
 import { screenTextSource } from './ScreenTextPage';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 import { CAP_ICON, dictationKeyName } from './SettingsView';
@@ -264,10 +264,11 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
 
   const isFailed = (e: FeedEntry) => e.kind === 'dictation' && e.sub === 'failed';
   const recOf = (e: FeedEntry) => (e.kind === 'recording' ? recByKey.get(e.key) ?? null : null);
-  /** a recording's one action on its row (under the pointer, in the time's place): only when it is the click's too */
+  /** a recording's one action on its row, under the pointer in the time's place: Retry or Organize (the click shows
+   *  its detail; Set Up an Agent… is there) */
   const recAct = (r: Recording) => {
     const a = inlineAction(r, agentReady);
-    return a && a === recActions(r, agentReady)[0] ? a : null;
+    return a === 'set_up_agent' ? null : a;
   };
   /** A failed dictation's Retry: the recording again, the text onto the clipboard (never pasted: the user is here). */
   const retry = async (e: FeedEntry) => {
@@ -289,7 +290,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
   };
   const primary = (e: FeedEntry) => {
     const r = recOf(e);
-    if (r) return runRecAction(recActions(r, agentReady)[0], r, recHandlers);
+    if (r) return runRecAction(recClick(r), r, recHandlers);
     return isFailed(e) ? void retry(e) : openEntry(e);
   };
   const openEntry = (e: FeedEntry) => (e.kind === 'dictation' ? onGo('dictation') : e.kind === 'card' ? onGo('cards') : e.kind === 'screen_text' ? onGo('screen_text') : onReveal(e.key));
@@ -384,7 +385,7 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
                       const recFailed = rec.state.kind === 'failed';
                       return (
                         <button key={feedId(e)} className={`hm-entry ${act ? 'failed' : ''}`} onClick={() => primary(e)} data-testid={`home-entry-recording-${rec.state.kind}`}
-                          title={recWhy(rec) || undefined}
+                          title={recTip(rec, agentReady) || undefined}
                           onContextMenu={(ev) => {
                             ev.preventDefault();
                             menu.open(entryMenu(e), { x: ev.clientX, y: ev.clientY });
@@ -392,11 +393,19 @@ export function HomePage({ status, hotkeys, summary, cardsWaiting, onGo, onRevea
                           <span className="hm-entry-ic">{entryIcon(e)}</span>
                           <span className="hm-entry-text">
                             <span className={`hm-entry-src ${recFailed ? 'attn' : ''}`}>{e.source}</span>
-                            <span className={`hm-entry-body ${e.text ? '' : 'none'}`}>{e.text || rec.info.project_name}</span>
+                            <span className={`hm-entry-body ${e.text ? '' : 'none'}`}>{recTitle(rec)}</span>
                           </span>
                           <span className="hm-entry-end">
                             <span className="hm-entry-time">{clock(e.time)}</span>
-                            {act && <span className="hm-entry-act">{actionLabel(act)}</span>}
+                            {act && (
+                              <span className="hm-entry-act" role="button" tabIndex={-1} data-testid="home-entry-recording-act"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  runRecAction(act, rec, recHandlers);
+                                }}>
+                                {actionLabel(act, rec)}
+                              </span>
+                            )}
                           </span>
                         </button>
                       );

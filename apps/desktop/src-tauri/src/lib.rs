@@ -710,6 +710,12 @@ fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Op
     agents::detect_fresh(&state.runner(), login.unwrap_or(true), ids.as_deref(), fresh.unwrap_or(false))
 }
 
+/// An agent can organise recordings in the background now (agents::ready: the full detect, cached).
+#[tauri::command(async)]
+fn agents_ready(state: tauri::State<'_, AppState>) -> R<bool> {
+    agents::ready(&state.runner())
+}
+
 /// K6: hand these items to the user's own agent — the sheet is written, the items are marked handed off, and the
 /// instruction (or the full text) is on the clipboard. → {id, path, text}
 #[tauri::command(async)]
@@ -1239,6 +1245,7 @@ pub fn run() {
             mainwin::items_drag_out_available,
             jobs_list,
             agents_detect,
+            agents_ready,
             agents_models,
             handoff_create,
             process_captures,

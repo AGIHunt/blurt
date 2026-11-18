@@ -97,6 +97,15 @@ export function recActions(r: Recording, agent: boolean | null): RecAction[] {
   }
 }
 
+/** A recording's detail (its own, or its run's): one primary button — Retry or Organize when an agent can, else Set Up
+ *  an Agent… (never both) — and the rest secondary, what to say to an agent first. Its items' detail is elsewhere. */
+export function detailActions(r: Recording, agent: boolean | null): { primary: RecAction | null; rest: RecAction[] } {
+  const acts = recActions(r, agent).filter((a) => a !== 'progress');
+  const primary = acts.find((a) => a === 'retry' || a === 'organise' || a === 'set_up_agent' || a === 'review') ?? null;
+  const rest = acts.filter((a) => a !== primary);
+  return { primary, rest: [...rest.filter((a) => a === 'copy_request'), ...rest.filter((a) => a !== 'copy_request')] };
+}
+
 /** The one action drawn on the row itself, beside its time: a failure's way forward, or Organise for one never
  *  organised (only with an agent to do it — without one, Home's Recording row already says how). */
 export function inlineAction(r: Recording, agent: boolean | null): RecAction | null {
@@ -136,7 +145,3 @@ export function placeJobList(jobs: readonly Job[], rs: readonly Recording[], pla
 
 /** A place's empty state ("All filed", "Nothing needs you") only when neither items nor recordings are listed. */
 export const emptyStateShown = (itemRows: number, recordingRows: number) => itemRows === 0 && recordingRows === 0;
-
-/** The job error codes whose words are short enough for a row ("The agent isn’t signed in"); the rest say only
- *  "Didn’t finish" there and the whole sentence in the tooltip. */
-export const SHORT_WHY = new Set(['no_agent', 'auth', 'network', 'quota', 'model', 'agent_exit']);

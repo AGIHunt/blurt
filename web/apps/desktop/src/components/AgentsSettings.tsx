@@ -21,6 +21,7 @@ import { AgentAppsSheet } from './AgentAppsSheet';
 import { useOff } from './useCapabilities';
 import { i18n } from '../i18n';
 import { Group, InfoTip, Page, Popup, S, Switch, TextLink, lang } from '../settings/kit';
+import { revealLabel } from '../reveal';
 
 type Kind = 'recording' | 'cards';
 const KINDS: Kind[] = ['recording', 'cards'];
@@ -974,7 +975,7 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
               <div>
                 <div>{r.title}</div>
                 {r.detail && <div className="st-detail">{r.detail}</div>}
-                {r.reveal && <TextLink ink onClick={() => api.reveal(r.reveal!)}>{S('win.projects.reveal')}</TextLink>}
+                {r.reveal && <TextLink ink onClick={() => api.reveal(r.reveal!)}>{revealLabel()}</TextLink>}
               </div>
             </div>
           </div>

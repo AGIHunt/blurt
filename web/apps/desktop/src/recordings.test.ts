@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Job } from './api';
-import { emptyStateShown, inlineAction, jobOf, jobsBesideRecordings, placeJobList, placeRecordings, recActions, recordings, recState, samePath, type RecordingInfo } from './recordings';
+import { detailActions, emptyStateShown, inlineAction, jobOf, jobsBesideRecordings, placeJobList, placeRecordings, recActions, recordings, recState, samePath, type RecordingInfo } from './recordings';
 
 const info = (dir: string, more: Partial<RecordingInfo> = {}): RecordingInfo => ({
   id: `inbox:${dir}`, dir, project_id: 'inbox', project_name: 'Unassigned', title: null, created: 100, duration: 60,
@@ -60,6 +60,15 @@ describe('what a recording’s row offers', () => {
     expect(recActions(rec([job('j01', '/s/a', 'running')]), true)).toEqual(['progress', 'play', 'reveal']);
   });
 
+  it('its detail: one primary — Retry or Organize with an agent, else Set Up an Agent…, never both', () => {
+    const failed = rec([job('j01', '/s/a', 'failed', { error: { code: 'no_agent', message: '' } })]);
+    expect(detailActions(failed, true)).toEqual({ primary: 'retry', rest: ['play', 'reveal', 'dismiss'] });
+    expect(detailActions(failed, false)).toEqual({ primary: 'set_up_agent', rest: ['copy_request', 'play', 'reveal', 'dismiss'] });
+    expect(detailActions(rec([]), true)).toEqual({ primary: 'organise', rest: ['play', 'reveal'] });
+    expect(detailActions(rec([]), false)).toEqual({ primary: 'set_up_agent', rest: ['copy_request', 'play', 'reveal'] });
+    expect(detailActions(rec([job('j01', '/s/a', 'running')]), true)).toEqual({ primary: null, rest: ['play', 'reveal'] });
+  });
+
   it('the video gone: no Play, nothing to organise, Show in Folder stays', () => {
     expect(recActions(rec([], { video: null }), true)).toEqual(['reveal']);
     expect(recActions(rec([], { video: null, item_count: 1, processed: 1 }), true)).toEqual(['review', 'reveal']);
@@ -98,8 +107,8 @@ describe('where recordings are listed', () => {
       // a waiting failure of a listed recording: drawn as that recording's row
       job('j04', '/i/failed', 'failed', { waiting: true }),
       // a routing failure waiting for Retry, and an old one no longer waiting
-      { ...job('j05', null, 'failed', { waiting: true, project: 'p1' }), type: 'route' },
-      { ...job('j06', null, 'failed'), type: 'route' },
+      { ...job('j05', null, 'failed', { waiting: true, project: 'p1' }), type: 'route' as const },
+      { ...job('j06', null, 'failed'), type: 'route' as const },
     ];
     expect(placeJobList(more, rs, 'inbox').map((j) => j.id)).toEqual(['j03', 'j05']);
     expect(placeJobList(more, rs, 'project:p1').map((j) => j.id)).toEqual(['j05']);

@@ -14,6 +14,7 @@ import { Icon, type IconName } from '@blurt/icons';
 import { api, onStorageMove, type AppStatus, type AsrModel, type DictationModels, type LocationCheck, type MoveProgress, type Settings, type StorageLocation, type StorageScan } from '../api';
 import { i18n } from '../i18n';
 import { Group, Line, Page, Popup, Row, S, Switch } from '../settings/kit';
+import { revealLabel } from '../reveal';
 
 /** "412 MB", "1.6 GB" — one formatter for every row (the Mac's ByteCountFormatter, file style). */
 export function size(bytes: number): string {
@@ -167,7 +168,7 @@ export function LocationGroup({ onToast }: { onToast: (m: string) => void }) {
         ) : (
           <>
             <Menu label={S('win.storage.location')} actions={[
-              { label: S('win.storage.show'), run: () => api.reveal(loc.custom && loc.folder ? loc.folder : loc.home).catch((e) => onToast(String(e))) },
+              { label: revealLabel(), run: () => api.reveal(loc.custom && loc.folder ? loc.folder : loc.home).catch((e) => onToast(String(e))) },
               ...(loc.custom && !fixed ? [{ label: S('win.storage.location.reset'), run: back, disabled: busy, sep: true }] : []),
             ]} />
             <button disabled={fixed || busy} onClick={change}>{S('win.storage.location.change')}</button>
@@ -242,7 +243,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
           <StorageRow icon="record" title={S('settings.privacy.recordings_screenshots')} bytes={recBytes}
             detail={sessions ? P('recordings', sessions) + (scan.folders.length > 1 ? ` · ${P('folders', scan.folders.length)}` : '') : S('settings.storage.none_yet')}
             tip={scan.folders.map((f) => f.path).join('\n')}
-            actions={scan.folders.map((f) => ({ label: scan.folders.length > 1 ? `${S('win.storage.show')} · ${f.path.split(/[\\/]/).slice(-3, -1).join('/')}` : S('win.storage.show'), run: () => reveal(f.path) }))} />
+            actions={scan.folders.map((f) => ({ label: scan.folders.length > 1 ? `${revealLabel()} · ${f.path.split(/[\\/]/).slice(-3, -1).join('/')}` : revealLabel(), run: () => reveal(f.path) }))} />
         )}
         {scan && scan.videos.length > 0 && (
           <StorageRow icon="film" title={S('settings.storage.videos')} bytes={bytesOf(scan.videos)} tip={S('settings.storage.videos.footer')}
@@ -273,7 +274,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
           const line = jobs.length ? S('settings.storage.model.used_for', i18n().formatList(jobs.map((j) => j.toLocaleLowerCase(i18n().locale)))) : asr ? S('settings.storage.model.not_used') : undefined;
           return (
             <StorageRow key={m.path} icon="waveform" title={n.name ?? m.folder} bytes={m.bytes} detail={line} tip={m.path}
-              actions={[{ label: S('win.storage.show'), run: () => reveal(m.path) }, ...(!jobs.length && asr && n.name === S('settings.storage.model.unknown') ? [{ label: S('settings.privacy.move_trash'), run: () => trash([m.path], n.name ?? m.folder), sep: true }] : [])]} />
+              actions={[{ label: revealLabel(), run: () => reveal(m.path) }, ...(!jobs.length && asr && n.name === S('settings.storage.model.unknown') ? [{ label: S('settings.privacy.move_trash'), run: () => trash([m.path], n.name ?? m.folder), sep: true }] : [])]} />
           );
         })}
       </Group>
@@ -283,7 +284,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
         {caches.length > 0 && (
           <StorageRow icon="sync" title={S('settings.storage.caches')} detail={S('settings.storage.rebuilt')} bytes={bytesOf(caches)} tip={caches.map((c) => c.path).join('\n')}
             actions={[
-              { label: S('win.storage.show'), run: () => reveal(caches[caches.length - 1].path) },
+              { label: revealLabel(), run: () => reveal(caches[caches.length - 1].path) },
               ...caches.filter((c) => c.removable).map((c) => ({ label: S('settings.privacy.move_trash'), run: () => trash([c.path], S('settings.storage.caches')), sep: true })),
             ]} />
         )}
@@ -292,7 +293,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
             text at the trailing edge) */}
         {([['win.storage.config', s.config_path, 'sliders'], ['win.storage.scripts', status.scripts, 'code'], ['win.storage.uv', status.uv, 'terminal']] as [string, string | null | undefined, IconName][]).map(([k, p, ic]) => (
           <Line key={k} icon={ic} title={S(k)} detail={p ?? S('win.storage.missing')} warn={!p}>
-            <Menu actions={p ? [{ label: S('win.storage.show'), run: () => reveal(p) }] : []} label={S(k)} />
+            <Menu actions={p ? [{ label: revealLabel(), run: () => reveal(p) }] : []} label={S(k)} />
           </Line>
         ))}
         {status.os === 'linux' && (
@@ -308,7 +309,7 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
     const meta = FILES[f.key] ?? { title: f.key, detail: '', icon: 'document' as IconName };
     return (
       <StorageRow key={f.key} icon={meta.icon} title={S(meta.title)} detail={meta.detail ? S(meta.detail) : undefined} bytes={f.bytes} tip={f.path}
-        actions={[{ label: S('win.storage.show'), run: () => reveal(f.path) }, ...(f.removable ? [{ label: S('settings.privacy.move_trash'), run: () => trash([f.path], S(meta.title)), sep: true }] : [])]} />
+        actions={[{ label: revealLabel(), run: () => reveal(f.path) }, ...(f.removable ? [{ label: S('settings.privacy.move_trash'), run: () => trash([f.path], S(meta.title)), sep: true }] : [])]} />
     );
   }
 }

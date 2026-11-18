@@ -7,6 +7,7 @@ import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
 import type { CardRef } from './drops';
 import type { RecordingInfo } from './recordings';
+import { notePlatform } from './reveal';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -460,7 +461,11 @@ export type DictationEdit =
   | { op: 'clear' };
 
 export const api = {
-  status: () => invoke<AppStatus>('app_status'),
+  status: () =>
+    invoke<AppStatus>('app_status').then((s) => {
+      notePlatform(s.platform);
+      return s;
+    }),
   /** captures hanging under the island waiting for a project (the Inbox's notice; `cards://changed` {count}) */
   cardsWaiting: () => invoke<number>('cards_waiting'),
   /** the notice's Choose projects…: the island opens with every card down */
@@ -488,6 +493,8 @@ export const api = {
   jobs: (active = false) => invoke<(Job | { type: 'agent' })[]>('jobs_list', { active }).then((js) => js.filter((j): j is Job => j.type !== 'agent')),
   /** `login` false: no sign-in probes (fast); `ids`: only these agents */
   detect: (o: { login?: boolean; ids?: string[]; fresh?: boolean } = {}) => invoke<Detect>('agents_detect', o),
+  /** an agent can organise in the background now (the full detect, sign-in checked; cached for a while) */
+  agentsReady: () => invoke<boolean>('agents_ready'),
   models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   /** a copy in the user's Downloads (the detail's ⤓); answers the file's name there */

@@ -734,6 +734,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       if (param('agents') === 'none') return r({ order, pick: null, agents: agents.map((a) => (a.headless ? { ...a, state: 'not_installed', installed: false, path: null } : a)) });
       return r({ order, pick: order.find((id) => agents.some((a) => a.id === id && a.state === 'ready')) ?? null, agents });
     }
+    case 'agents_ready':
+      return r(param('agents') !== 'none');
     case 'agents_models':
       return r(args.agent === 'codex'
         ? { ok: true, id: 'codex', models: [{ id: 'gpt-6-astra', name: 'GPT-6-Astra', description: '', cheap: false }, { id: 'gpt-6-luna', name: 'GPT-6-Luna', description: 'Fast and affordable', cheap: true }], cheapest: 'gpt-6-luna', cli_default: 'gpt-6-astra', efforts: ['low', 'medium', 'high'] }

@@ -10,6 +10,7 @@ import { api, listen, type CardInfo, type HotkeyRow } from '../api';
 import { i18n, t } from '../i18n';
 import { useMenu, type MenuEntry } from './Menu';
 import './pages.css';
+import { revealLabel } from '../reveal';
 
 const keyOf = (c: CardInfo) => `${c.session ?? ''}#${c.n}`;
 const when = (c: CardInfo) => c.taken ?? c.wall ?? 0;
@@ -26,7 +27,7 @@ function ago(sec: number): string {
     : new Intl.DateTimeFormat(loc, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(d);
 }
 
-export function CardsPage({ hotkeys, platform, onSnap, onToast }: {
+export function CardsPage({ hotkeys, onSnap, onToast }: {
   hotkeys: HotkeyRow[];
   platform: string;
   onSnap: () => void;
@@ -74,7 +75,7 @@ export function CardsPage({ hotkeys, platform, onSnap, onToast }: {
   const cardMenu = (c: CardInfo): MenuEntry[] => [
     { label: t('cards.menu.copy'), keys: 'Enter', run: () => void act(c, 'copy') },
     ...(c.text && kindOf(c) === 'shot' ? [{ label: t('cards.menu.copy_text'), run: () => void act(c, 'copy_text') }] : []),
-    ...(kindOf(c) === 'shot' || (kindOf(c) === 'file' && !c.missing) ? [{ label: t(platform === 'gnome' ? 'mw.reveal.files' : 'mw.reveal'), run: () => void act(c, 'reveal') }] : []),
+    ...(kindOf(c) === 'shot' || (kindOf(c) === 'file' && !c.missing) ? [{ label: revealLabel(), run: () => void act(c, 'reveal') }] : []),
     { kind: 'separator' } as MenuEntry,
     { label: t('cards.menu.delete'), keys: 'Del', danger: true, run: () => void act(c, 'remove') } as MenuEntry,
   ];

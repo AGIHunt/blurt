@@ -261,7 +261,7 @@ export function JobsSection({ jobs, selected, projectName, showProject, onSelect
 }
 
 
-/** m:ss since a time, ticking every second (a running job's row). */
+/** m:ss since a time (h:mm:ss from an hour on), ticking every second (a running job's row). */
 function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -269,5 +269,5 @@ function Elapsed({ since }: { since: string }) {
     return () => clearInterval(h);
   }, []);
   const s = Math.max(0, Math.floor((now - Date.parse(since)) / 1000));
-  return <>{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`}</>;
+  return <>{i18n().formatDuration(s, 'clock')}</>;
 }
