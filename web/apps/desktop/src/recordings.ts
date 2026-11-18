@@ -124,6 +124,16 @@ export function placeRecordings(rs: readonly Recording[], place: Place): Recordi
 export const jobsBesideRecordings = (jobs: readonly Job[], rs: readonly Recording[]) =>
   jobs.filter((j) => !(j.type === 'process' && rs.some((r) => samePath(r.info.dir, j.session))));
 
+/** The jobs section of an items' place (the Mac's MainModel.reloadJobs): the running jobs, and the failures still
+ *  waiting for a Retry or Dismiss (jobs.rs `waiting`, BlurtCore JobFailures) — a recording's own job is that
+ *  recording's row, never a job row beside it. */
+export function placeJobList(jobs: readonly Job[], rs: readonly Recording[], place: Place): Job[] {
+  const shown = jobsBesideRecordings(jobs, rs).filter((j) => j.state === 'running' || j.state === 'queued' || j.waiting);
+  if (place === 'unassigned') return shown.filter((j) => !j.project || j.project === 'inbox');
+  if (place.startsWith('project:')) return shown.filter((j) => j.project === place.slice(8));
+  return place === 'inbox' || place === 'progress' ? shown : [];
+}
+
 /** A place's empty state ("All filed", "Nothing needs you") only when neither items nor recordings are listed. */
 export const emptyStateShown = (itemRows: number, recordingRows: number) => itemRows === 0 && recordingRows === 0;
 

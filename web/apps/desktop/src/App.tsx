@@ -54,7 +54,7 @@ import { ItemBanner, bannerTitle } from './components/ItemBanner';
 import { ItemList, stateText } from './components/ItemList';
 import { JobDetail } from './components/JobDetail';
 import { actionLabel, recLength, RecordingsSection, runRecAction, useAgentReady, useRecordingInfos, type RecHandlers } from './components/Recordings';
-import { emptyStateShown, jobsBesideRecordings, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
+import { emptyStateShown, placeJobList, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
 import { CapturesBanner, FilterBar, JobsSection, ListHeading, MissingFolderBanner, SearchField, SuggestionsBanner } from './components/ListHeading';
 import { tidy, useMenu, type MenuEntry, type MenuItem } from './components/Menu';
 import { MovePopover } from './components/MovePopover';
@@ -1282,13 +1282,7 @@ export default function App() {
     showsState(place) && filter.state ? t(`state.${filter.state}`) : '',
   ].filter(Boolean);
   const filterText = filterParts.length ? t('main.filter.showing', { a: filterParts.join(' · ') }) : '';
-  const placeJobs = useMemo(() => {
-    // a recording's organising job is drawn as that recording's row
-    const active = jobsBesideRecordings(jobs, recs).filter((j) => j.state === 'running' || j.state === 'queued');
-    if (place === 'unassigned') return active.filter((j) => !j.project || j.project === 'inbox');
-    if (isProject(place)) return active.filter((j) => j.project === place.slice(8));
-    return place === 'inbox' || place === 'progress' ? active : [];
-  }, [jobs, recs, place]);
+  const placeJobs = useMemo(() => placeJobList(jobs, recs, place), [jobs, recs, place]);
   const sugGroups = place === 'unassigned' && !searching ? suggestionGroups(rows, registered) : [];
 
   // ---------------------------------------------------------------- the empty states (updateEmpty)

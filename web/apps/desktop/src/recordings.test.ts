@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Job } from './api';
-import { emptyStateShown, inlineAction, jobOf, jobsBesideRecordings, placeRecordings, recActions, recordings, recState, samePath, type RecordingInfo } from './recordings';
+import { emptyStateShown, inlineAction, jobOf, jobsBesideRecordings, placeJobList, placeRecordings, recActions, recordings, recState, samePath, type RecordingInfo } from './recordings';
 
 const info = (dir: string, more: Partial<RecordingInfo> = {}): RecordingInfo => ({
   id: `inbox:${dir}`, dir, project_id: 'inbox', project_name: 'Unassigned', title: null, created: 100, duration: 60,
@@ -90,6 +90,21 @@ describe('where recordings are listed', () => {
 
   it('one recording is one row: its organising job leaves the jobs section; other jobs stay', () => {
     expect(jobsBesideRecordings(jobs, rs).map((j) => j.id)).toEqual(['j03']);
+  });
+
+  it('the jobs section keeps failures waiting for Retry or Dismiss, but never a listed recording’s own', () => {
+    const more = [
+      ...jobs,
+      // a waiting failure of a listed recording: drawn as that recording's row
+      job('j04', '/i/failed', 'failed', { waiting: true }),
+      // a routing failure waiting for Retry, and an old one no longer waiting
+      { ...job('j05', null, 'failed', { waiting: true, project: 'p1' }), type: 'route' },
+      { ...job('j06', null, 'failed'), type: 'route' },
+    ];
+    expect(placeJobList(more, rs, 'inbox').map((j) => j.id)).toEqual(['j03', 'j05']);
+    expect(placeJobList(more, rs, 'project:p1').map((j) => j.id)).toEqual(['j05']);
+    expect(placeJobList(more, rs, 'unassigned').map((j) => j.id)).toEqual(['j03']);
+    expect(placeJobList(more, rs, 'all')).toEqual([]);
   });
 
   it('an empty state only when neither items nor recordings are listed (no "All filed" over unorganised recordings)', () => {
