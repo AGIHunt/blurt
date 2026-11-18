@@ -743,3 +743,18 @@
 "main.new_item.remove_file" = "移除 %@";
 "main.drop.pick_add" = "添加";
 "main.drop.pick_message" = "给「%@」添加图片或文件";
+
+/* A recording's row on Home and in the items' places (RecordingViews.swift, BlurtCore Recordings) */
+"main.rec.section" = "录屏";
+"main.rec.kind" = "录屏";
+"main.rec.state.unorganised" = "未整理";
+"main.rec.state.organising" = "整理中";
+"main.rec.state.failed" = "未完成";
+"main.rec.state.video_only" = "仅保存视频";
+"main.rec.why.no_agent" = "没有可用的 Agent";
+"main.rec.video_gone" = "视频已删除";
+"main.rec.play" = "播放视频";
+"main.rec.organise" = "整理";
+"main.rec.review" = "查看事项";
+"main.rec.copy_request" = "复制「%@」";
+"main.rec.request_copied" = "已复制，请粘贴到 Agent 的对话中";

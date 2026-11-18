@@ -26,6 +26,7 @@ pub mod location;
 pub mod onboarding;
 pub mod paths;
 pub mod projects;
+pub mod recordings;
 pub mod remote; // Blurt on the phone: this computer as its host (crates/blurt-remote)
 pub mod screen_text;
 pub mod scripts;
@@ -307,6 +308,13 @@ fn index_item(state: tauri::State<'_, AppState>, uid: String) -> R<Option<Value>
 #[tauri::command(async)]
 fn index_sessions(state: tauri::State<'_, AppState>, q: Option<SessionQuery>) -> R<Vec<Value>> {
     state.index().sessions(&q.unwrap_or_default())
+}
+
+/// The newest recordings (video sessions) with their folder's facts: recordings.rs.
+#[tauri::command(async)]
+fn recordings_list(state: tauri::State<'_, AppState>, limit: Option<usize>) -> R<Vec<Value>> {
+    let live = state.capture.recording_session();
+    recordings::list(&state.index(), live.as_deref(), limit.unwrap_or(40).clamp(1, 500))
 }
 
 #[tauri::command(async)]
@@ -1188,6 +1196,7 @@ pub fn run() {
             index_query,
             index_item,
             index_sessions,
+            recordings_list,
             index_summary,
             index_rescan,
             projects_list,

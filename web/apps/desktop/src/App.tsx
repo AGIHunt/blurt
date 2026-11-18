@@ -53,6 +53,8 @@ import { FilterGlyph, MissingFolderGlyph, PinGlyph, ProgressGlyph, ProjectGlyph,
 import { ItemBanner, bannerTitle } from './components/ItemBanner';
 import { ItemList, stateText } from './components/ItemList';
 import { JobDetail } from './components/JobDetail';
+import { actionLabel, recLength, RecordingsSection, runRecAction, useAgentReady, useRecordingInfos, type RecHandlers } from './components/Recordings';
+import { emptyStateShown, jobOf, jobsBesideRecordings, placeRecordings, recActions, recordings, samePath, type Recording } from './recordings';
 import { CapturesBanner, FilterBar, JobsSection, ListHeading, MissingFolderBanner, SearchField, SuggestionsBanner } from './components/ListHeading';
 import { tidy, useMenu, type MenuEntry, type MenuItem } from './components/Menu';
 import { MovePopover } from './components/MovePopover';
@@ -392,7 +394,13 @@ export default function App() {
   const rows = grouped.rows;
   const order = useMemo(() => rows.map((r) => r.uid), [rows]);
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.uid)), [rows, selected]);
-  const placeEmpty = loaded && !missing && rows.length === 0 && !filtered;
+  // the recordings: Home lists them all; an items' place, at the top, those with no items to be found by
+  // (recordings.ts) — while searching or filtering, only items
+  const recInfos = useRecordingInfos(recordingOn, tick);
+  const recs = useMemo(() => recordings(recInfos, jobs), [recInfos, jobs]);
+  const agentReady = useAgentReady(recordingOn);
+  const placeRecs = useMemo(() => (filtered || isPage(place) ? [] : placeRecordings(recs, place)), [recs, place, filtered]);
+  const placeEmpty = loaded && !missing && emptyStateShown(rows.length, placeRecs.length) && !filtered;
   const emptyWorld = !!summary && !summary.missing && summary.items === 0 && (summary.discarded ?? 0) === 0;
   const quietDetail = emptyWorld || missing || rows.length === 0;
   const fold = !isPage(place) && !detail && (placeEmpty || missing);
@@ -1275,11 +1283,12 @@ export default function App() {
   ].filter(Boolean);
   const filterText = filterParts.length ? t('main.filter.showing', { a: filterParts.join(' · ') }) : '';
   const placeJobs = useMemo(() => {
-    const active = jobs.filter((j) => j.state === 'running' || j.state === 'queued');
+    // a recording's organising job is drawn as that recording's row
+    const active = jobsBesideRecordings(jobs, recs).filter((j) => j.state === 'running' || j.state === 'queued');
     if (place === 'unassigned') return active.filter((j) => !j.project || j.project === 'inbox');
     if (isProject(place)) return active.filter((j) => j.project === place.slice(8));
     return place === 'inbox' || place === 'progress' ? active : [];
-  }, [jobs, place]);
+  }, [jobs, recs, place]);
   const sugGroups = place === 'unassigned' && !searching ? suggestionGroups(rows, registered) : [];
 
   // ---------------------------------------------------------------- the empty states (updateEmpty)
@@ -1293,7 +1302,7 @@ export default function App() {
         </EmptyState>
       );
     }
-    if (!loaded || rows.length) return null;
+    if (!loaded || !emptyStateShown(rows.length, placeRecs.length)) return null;
     const q = text.trim();
     const clear = () => {
       setText('');
@@ -1459,6 +1468,9 @@ export default function App() {
     // an organizing job with a name of its own is that name ("AI fill-in"), not "Organizing · AI fill-in": two names
     // glued by a dot read as one jargon phrase
     if (j.type === 'process' && j.title) return j.title;
+    // a recording's run: the recording ("Recording · 3:12")
+    const rec = recOfJob(j);
+    if (rec) return [t('inbox.mode.video'), recLength(rec)].filter(Boolean).join(' · ');
     const what = t(`job.type.${j.type}`);
     return j.title ? `${what} · ${j.title}` : what;
   };
@@ -1474,6 +1486,48 @@ export default function App() {
     setFocus(null);
     setDetail({ kind: 'job', id: j.id });
   }
+  /** Retry from a failed run's detail: the detail follows the new run (the Mac's jobAction "retry"). */
+  const retryJob = async (session: string) => {
+    try {
+      await api.processSession(session);
+      const js = await api.jobs(false);
+      setJobs(js);
+      const n = jobOf(session, js);
+      if (n) openJob(n);
+    } catch (e) {
+      fail(e);
+    }
+  };
+  /** The recording a process job organises (its detail is that recording's: its words, its buttons). */
+  const recOfJob = (j: Job): Recording | null => (j.type === 'process' && j.session ? recs.find((r) => samePath(r.info.dir, j.session)) ?? null : null);
+  /** A recording's run in the detail: what the recording's row offers (Retry, Play Video, Show in Folder, Dismiss…),
+   *  while this run is the recording's newest; Set Up an Agent… is JobDetail's own. */
+  const jobActions = (j: Job): ReactNode => {
+    const r = recOfJob(j);
+    if (!r || (r.state.kind !== 'organising' && r.state.kind !== 'failed') || r.state.job?.id !== j.id) return null;
+    // the job's own Try Again / Show / Dismiss are JobDetail's
+    const acts = recActions(r, agentReady).filter((a) => a !== 'progress' && a !== 'set_up_agent' && a !== 'retry' && a !== 'dismiss' && a !== 'reveal');
+    return acts.map((a) => (
+      <button key={a} className="pg-small" onClick={() => (a === 'retry' ? void retryJob(r.info.dir) : runRecAction(a, r, recHandlers))}>{actionLabel(a)}</button>
+    ));
+  };
+  /** A recording's place: its project, or Unassigned. */
+  const placeOfProject = (id: string | null | undefined): Place => (id && id !== 'inbox' ? `project:${id}` : 'unassigned');
+  const recHandlers: RecHandlers = {
+    // from Home (a page, no detail column): the recording's place, with it in the detail
+    onReview: (r: Recording) => {
+      if (isPage(place)) go(placeOfProject(r.info.project_id), { focusList: false });
+      setScreen({ kind: 'main' });
+      setDetail({ kind: 'session', dir: r.info.dir, project: r.info.project_id });
+    },
+    onJob: (j: Job) => {
+      if (isPage(place)) go(placeOfProject(j.project), { focusList: false });
+      openJob(j);
+    },
+    onSettings: (pane: string) => (setScreen({ kind: 'settings' }), goSettingsPane(pane)),
+    onToast: (m: string) => showToast(m),
+    onChanged: () => refresh(),
+  };
   const lang = i18n().lang;
   const platform = status?.platform ?? 'win';
 
@@ -1815,7 +1869,8 @@ export default function App() {
       {pageShown && place === 'home' && status && (
         <main className="mw-wide content">
           <HomePage status={status} hotkeys={hotkeys} summary={summary} cardsWaiting={cardsWaiting} onGo={go} onReveal={(uid) => void reveal(uid)} onToast={(m) => showToast(m)}
-            onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} tick={tick} />
+            onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} tick={tick}
+            recordings={recs} recAgent={agentReady} recHandlers={recHandlers} />
         </main>
       )}
       {pageShown && place === 'cards' && (
@@ -1902,6 +1957,8 @@ export default function App() {
           )}
           {shownProject && !shownProject.exists && rows.length > 0 && <MissingFolderBanner onLocate={() => locate(shownProject)} />}
           {place === 'inbox' && <CapturesBanner count={cardsWaiting} onChoose={() => void api.revealCards().catch(() => {})} />}
+          <RecordingsSection recs={placeRecs} agent={agentReady} selectedJob={detail?.kind === 'job' ? detail.id : null} showProject={!isProject(place) && place !== 'unassigned'} handlers={recHandlers}
+            onMenu={(entries, at) => menu.open(entries, at)} />
           <JobsSection jobs={placeJobs} selected={detail?.kind === 'job' ? detail.id : null} projectName={projectName} showProject={!isProject(place) && place !== 'unassigned'} onSelect={openJob} />
           <SuggestionsBanner groups={sugGroups} onMoveAll={(p, u) => moveItems(u, p)} />
           {filterText && !emptyWorld && <FilterBar text={filterText} canClear={rows.length > 0} onOpen={openFilterMenu} onClear={() => setFilter(NO_FILTER)} />}
@@ -1978,7 +2035,8 @@ export default function App() {
           {detail?.kind === 'session' && reviewHost ? (
             <ReviewPane host={reviewHost} hostKey={detail.dir} opts={{ mode: 'review', platform, theme: 'auto', lang }} rev={tick} onHandle={onPage} />
           ) : shownJob ? (
-            <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))} />
+            <JobDetail job={shownJob} title={jobTitle(shownJob)} onItem={(u) => reveal(u)} onSettings={(pane) => (setScreen({ kind: 'settings' }), goSettingsPane(pane))}
+              actions={jobActions(shownJob)} />
           ) : plan ? (
             <SelectionView
               items={selectedRows}

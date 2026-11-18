@@ -1,5 +1,6 @@
 // Home's "Recent" (MainWindow/HomePage.swift): one timeline of what the user made with the capabilities that are on —
-// dictations, cards (hanging and used), text read or translated from the screen (⌥C / ⌥T) and items — newest first, grouped by day, cut at a number of rows. The page
+// dictations, cards (hanging and used), text read or translated from the screen (⌥C / ⌥T), recordings with their state
+// (Recordings) and items — newest first, grouped by day, cut at a number of rows. The page
 // gathers the three lists; what is shown of them is decided here, so it can be tested without the app.
 //
 //   merge   the three lists as one, newest first, at most `limit` rows. Kinds whose capability is off are left out
@@ -12,7 +13,7 @@ import Foundation
 
 public enum HomeFeed {
     public enum Kind: String, CaseIterable, Sendable {
-        case dictation, card, screenText = "screen_text", item
+        case dictation, card, screenText = "screen_text", recording, item
 
         /// The capability a kind of row belongs to: with it off, none of its rows show.
         public var capability: Capability {
@@ -20,7 +21,7 @@ public enum HomeFeed {
             case .dictation: return .dictation
             case .card: return .cards
             case .screenText: return .screenText
-            case .item: return .recording
+            case .recording, .item: return .recording
             }
         }
     }
@@ -58,11 +59,11 @@ public enum HomeFeed {
 
     /// The timeline: every list's rows of the kinds whose capability is on, newest first (rows of one moment: in the
     /// capabilities' order, then by key — the order never depends on the lists' own), cut at `limit`.
-    public static func merge(dictations: [Entry], cards: [Entry], screenTexts: [Entry] = [], items: [Entry],
+    public static func merge(dictations: [Entry], cards: [Entry], screenTexts: [Entry] = [], recordings: [Entry] = [], items: [Entry],
                              limit: Int = HomeFeed.limit, off: Set<Capability> = []) -> Feed {
-        let order: [Kind: Int] = [.dictation: 0, .card: 1, .screenText: 2, .item: 3]
+        let order: [Kind: Int] = [.dictation: 0, .card: 1, .screenText: 2, .recording: 3, .item: 4]
         var seen = Set<String>()
-        let all = (dictations + cards + screenTexts + items)
+        let all = (dictations + cards + screenTexts + recordings + items)
             .filter { !off.contains($0.kind.capability) }
             .filter { seen.insert($0.id).inserted }          // a card listed as hanging and as used: once
             .sorted { a, b in

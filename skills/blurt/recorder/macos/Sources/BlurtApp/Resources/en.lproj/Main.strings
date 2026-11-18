@@ -742,3 +742,18 @@
 "main.new_item.remove_file" = "Remove %@";
 "main.drop.pick_add" = "Add";
 "main.drop.pick_message" = "Add pictures or files to “%@”";
+
+/* A recording's row on Home and in the items' places (RecordingViews.swift, BlurtCore Recordings) */
+"main.rec.section" = "Recordings";
+"main.rec.kind" = "Recording";
+"main.rec.state.unorganised" = "Not organized";
+"main.rec.state.organising" = "Organizing";
+"main.rec.state.failed" = "Didn’t finish";
+"main.rec.state.video_only" = "Video only";
+"main.rec.why.no_agent" = "No agent available";
+"main.rec.video_gone" = "Video deleted";
+"main.rec.play" = "Play Video";
+"main.rec.organise" = "Organize";
+"main.rec.review" = "Show Items";
+"main.rec.copy_request" = "Copy “%@”";
+"main.rec.request_copied" = "Copied. Paste it into your agent’s chat.";

@@ -168,6 +168,11 @@ fn toast_error(app: &AppHandle, code: &str) {
 }
 
 impl Capture {
+    /// The folder of the take being recorded now (the recordings list leaves it out until it ends).
+    pub fn recording_session(&self) -> Option<PathBuf> {
+        self.take.lock().unwrap().as_ref().map(|t| t.session.clone())
+    }
+
     /// For the island and the main window: {recording, paused, elapsed, shots, session, project, picking, voice}.
     pub fn state(&self) -> Value {
         let h = self.handle.lock().unwrap().clone();

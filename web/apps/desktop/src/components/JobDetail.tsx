@@ -3,13 +3,14 @@
 // has the Mac's controls: Try Again (the same recording, or the same captures, organised again), Show in File Explorer,
 // Show Log, Dismiss (it leaves the list; the Mac's JobFailures). An agent session's detail is its terminal (the
 // Sessions pane), not this.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '@blurt/icons';
 import { KindIcon } from '@blurt/ui/react';
 import { api, type ItemRow, type Job } from '../api';
 import { ago, plural, t } from '../i18n';
 
-export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title: string; onItem: (uid: string) => void; onSettings: (pane: string) => void }) {
+/** `actions`: the buttons beside Set Up an Agent… (a failed recording's Retry and Dismiss: App). */
+export function JobDetail({ job, title, onItem, onSettings, actions }: { job: Job; title: string; onItem: (uid: string) => void; onSettings: (pane: string) => void; actions?: ReactNode }) {
   const [rows, setRows] = useState<Record<string, ItemRow>>({});
   const key = job.items.slice(0, 20).join(',');
   useEffect(() => {
@@ -67,8 +68,11 @@ export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title:
       {job.error && <p className="mw-err">{errorText(job.error.code)}</p>}
       {retryError && retryError !== job.error?.code && <p className="mw-err">{errorText(retryError)}</p>}
       {/* no agent to run it, or the one there isn't signed in: where that's fixed (the Home page's Set Up an Agent…) */}
-      {(job.error?.code === 'no_agent' || job.error?.code === 'auth' || retryError === 'no_agent') && (
-        <p><button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button></p>
+      {(job.error?.code === 'no_agent' || job.error?.code === 'auth' || retryError === 'no_agent' || actions) && (
+        <p className="mw-job-acts">
+          {(job.error?.code === 'no_agent' || job.error?.code === 'auth' || retryError === 'no_agent') && <button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button>}
+          {actions}
+        </p>
       )}
       {ended && (canRetry || job.session || job.log || (job.state === 'failed' && !job.dismissed)) && (
         <p className="mw-job-actions">

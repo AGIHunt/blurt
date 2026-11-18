@@ -6,6 +6,7 @@ import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
 import type { CardRef } from './drops';
+import type { RecordingInfo } from './recordings';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -437,6 +438,10 @@ export const api = {
   items: (q: ItemQuery) => invoke<{ total: number; items: ItemRow[]; missing: boolean }>('index_query', { q }),
   item: (uid: string) => invoke<ItemRow | null>('index_item', { uid }),
   batches: (q: { project?: string; state?: string; limit?: number } = {}) => invoke<BatchRow[]>('index_sessions', { q }),
+  /** the newest recordings with their folder's facts (recordings.rs); their state comes from the jobs (recordings.ts) */
+  recordings: (limit = 40) => invoke<RecordingInfo[]>('recordings_list', { limit }),
+  processSession: (dir: string) => invoke<void>('session_process', { dir }),
+  jobDismiss: (id: string) => invoke<void>('job_dismiss', { id }),
   summary: () => invoke<Summary>('index_summary'),
   rescan: () => invoke<void>('index_rescan'),
   projects: () => invoke<ProjectList>('projects_list'),

@@ -905,6 +905,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     weak var actions: ItemListActions? { didSet { table.actions = actions } }
     let table = ItemTableView()
     let jobs = JobsSection()
+    /// the recordings this place lists, above the jobs (RecordingViews)
+    let recordings = RecordingsSection()
     let captures = CapturesBanner()
     let missing = MissingFolderBanner()
     let suggestions = SuggestionsBanner()
@@ -1013,6 +1015,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         scroll.drawsBackground = false
         bar.onClear = { [weak self] in self?.clearKindAndState() }
         jobs.onSelect = { [weak self] id in self?.actions?.selectJob(id) }
+        // a recording with a job shows it in the detail (the failure's words, Try Again, Dismiss); else its first action
+        recordings.onSelect = { [weak self] r in
+            if let j = r.state.job { self?.actions?.selectJob(j) }
+            else if let a = Recordings.actions(r, agent: RecordingLook.agent).first { RecordingLook.run(a, r) }
+        }
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
         captures.onClick = { AppEnvironment.island?.revealCards() }
@@ -1020,7 +1027,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
         suggestions.onMoveAll = { [weak self] p, uids in self?.actions?.move(uids: uids, to: p) }
-        let stack = NSStackView(views: [heading, captures, missing, jobs, suggestions, bar])
+        let stack = NSStackView(views: [heading, captures, missing, recordings, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty, band] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
@@ -1266,7 +1273,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         filtersChanged()
     }
 
-    func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
+    func reloadJobs() {
+        jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil)
+        recordings.set(model.recordings, showProject: model.scope.projectID == nil)
+        updateEmpty()
+    }
     /// "N captures are waiting for a project" on top of the inbox while cards hang under the island. (Cards used in
     /// other apps have no notice or place here: they are the Cards panel's History, ⌥H.)
     func reloadCaptures() {
@@ -1346,7 +1357,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             return
         case .ready: break
         }
-        guard model.rowCount == 0 else { empty.isHidden = true; return }
+        // no empty state ("All filed", "Nothing needs you") over recordings this place lists
+        guard model.rowCount == 0, model.recordings.isEmpty else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
         let filters = !model.kinds.isEmpty || model.shownState != nil
         if !q.isEmpty, let (it, why) = elsewhere(q) {
