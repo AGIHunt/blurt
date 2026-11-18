@@ -16,6 +16,7 @@
 //
 // The window is the full width of the screen and click-through except over what is drawn (we report those rects).
 // Rust (apps/desktop/src-tauri/src/island.rs) sends `state` / `cards` / … ops and gets actions back.
+import { dropSuperseded, queueLine } from './toastqueue';
 import { iconSvg, type IconName } from '@blurt/icons/core';
 import { mascotHtml, setMascotLevel } from '@blurt/icons/mascot';
 import '@blurt/icons/mascot.css';
@@ -431,6 +432,10 @@ function voiceHint(): string {
 
 // the take just ended: the dot and the time turn into the ok check and its length for 1.6 s (RecordingDone)
 let recDone: null | { text: string; until: number } = null;
+/** capture lines that came during the take's ✓ moment, shown in order when it ends (see the 'toast' op) */
+const afterMoment: { key?: string; op: Extract<IslandOp, { op: 'toast' }> }[] = [];
+const toastKey = (o: Extract<IslandOp, { op: 'toast' }>): string | undefined => ('key' in o ? o.key : undefined);
+let afterMomentTimer: ReturnType<typeof setTimeout> | 0 = 0;
 
 function ears(): { l: string; r: string } {
   // the moment wins over a state that still says recording (its refresh can land just after rec_done)
@@ -3312,12 +3317,23 @@ function apply(op: IslandOp) {
       return;
     case 'toast': {
       // the take's ✓ and length own the ears for their 1.6 s: a line that follows the take ("Organizing into …") waits
-      // for it instead of covering it (a card refresh in between used to take the moment at 100 %)
+      // for it instead of covering it (a card refresh in between used to take the moment at 100 %). The waiting lines
+      // are one queue in arrival order, a newer line replacing a waiting one of its key: "Organizing…" and its answer
+      // ("Saved · no agent") both land inside the moment once the agent check is cached, and two timers due at the same
+      // instant fired in either order — the stale "Organizing…" stayed (Windows, 2026-11-18).
       const wait = recDone ? recDone.until - performance.now() : 0;
       if (wait > 0 && op.kind === 'capture') {
-        setTimeout(() => showToastOp(op), wait + 20);
+        queueLine(afterMoment, { key: toastKey(op), op });
+        if (!afterMomentTimer) {
+          afterMomentTimer = setTimeout(() => {
+            afterMomentTimer = 0;
+            for (const w of afterMoment.splice(0)) showToastOp(w.op);
+          }, wait + 20);
+        }
         return;
       }
+      // a line about the same thing that comes after the moment supersedes one still waiting for it
+      dropSuperseded(afterMoment, { key: toastKey(op), op });
       return showToastOp(op);
     }
     case 'toast_drop':
