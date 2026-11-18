@@ -323,7 +323,7 @@ pub fn enrich(app: &tauri::AppHandle, uids: &[String], project: Option<&str>) ->
     };
     let agent = match crate::agents::detect(&runner).ok().and_then(|d| d["pick"].as_str().map(str::to_owned)) {
         Some(a) => a,
-        None => return fail(&job, "auth", "no coding agent is installed and signed in"),
+        None => return fail(&job, "no_agent", "no coding agent is installed and signed in"),
     };
     let scripts = runner.scripts.as_ref().map(|d| crate::scripts::s(d)).unwrap_or_default();
     let reg = crate::projects::Registry::load();

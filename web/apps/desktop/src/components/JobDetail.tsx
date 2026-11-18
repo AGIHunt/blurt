@@ -7,7 +7,7 @@ import { KindIcon } from '@blurt/ui/react';
 import { api, type ItemRow, type Job } from '../api';
 import { ago, plural, t } from '../i18n';
 
-export function JobDetail({ job, title, onItem }: { job: Job; title: string; onItem: (uid: string) => void }) {
+export function JobDetail({ job, title, onItem, onSettings }: { job: Job; title: string; onItem: (uid: string) => void; onSettings: (pane: string) => void }) {
   const [rows, setRows] = useState<Record<string, ItemRow>>({});
   const key = job.items.slice(0, 20).join(',');
   useEffect(() => {
@@ -47,6 +47,10 @@ export function JobDetail({ job, title, onItem }: { job: Job; title: string; onI
         </div>
       )}
       {job.error && <p className="mw-err">{t(`main.job.error.${job.error.code}`) === `main.job.error.${job.error.code}` ? t('main.job.error.unknown') : t(`main.job.error.${job.error.code}`)}</p>}
+      {/* no agent to run it, or the one there isn't signed in: where that's fixed (the Home page's Set Up an Agent…) */}
+      {(job.error?.code === 'no_agent' || job.error?.code === 'auth') && (
+        <p><button className="pg-small" onClick={() => onSettings('agents')}>{t('home.recording.set_up_agent')}</button></p>
+      )}
       {job.steps.length > 0 && (
         <>
           <h3 className="mw-sheet-sec">{t('main.job.steps')}</h3>

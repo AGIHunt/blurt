@@ -445,7 +445,7 @@ pub fn notices(app: &AppHandle, list: Vec<Notice>) {
                 send(app, json!({"op": "toast", "kind": "failed", "code": code, "job": job, "type": kind}));
                 if !in_front(app) {
                     let title = l10n::tf("notify.failed", &[("title", l10n::t(&format!("job.type.{kind}")))]);
-                    system_notify(app, "failed", &title, &l10n::t(&format!("error.{}", if code == "auth" { "no_agent" } else { "unknown" })));
+                    system_notify(app, "failed", &title, &l10n::t(&format!("error.{}", if code == "auth" || code == "no_agent" { "no_agent" } else { "unknown" })));
                 }
             }
         }

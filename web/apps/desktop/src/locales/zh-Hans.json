@@ -472,6 +472,7 @@
   "main.job.error.io": "无法读写所需的文件。请重试；如果问题持续，详情见日志。",
   "main.job.error.model": "模型不可用。",
   "main.job.error.network": "网络连接已断开。",
+  "main.job.error.no_agent": "后台整理需要命令行 Agent，请在「设置 > Agent」中安装或登录。也可在装有口喷鸡 skill 的 Agent 中说「处理我录的视频」。",
   "main.job.error.quota": "Agent 的额度已用完。",
   "main.job.error.skill": "口喷鸡 skill 不可用，请更新 skill 后重试。",
   "main.job.error.unknown": "整理未完成就停止了。请重试；如果问题持续，详情见日志。",

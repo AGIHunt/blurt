@@ -375,9 +375,13 @@ def unshim(path: str) -> str:
 
 
 def app_path(defn: dict) -> str | None:
+    """An app-only agent's app on this OS: app.<os> is a path or a list of them (per-user, then machine-wide…)."""
     key = "macos" if sys.platform == "darwin" else "windows" if os.name == "nt" else "linux"
-    p = (defn.get("app") or {}).get(key)
-    return str(expand(p)) if p and expand(p).exists() else None
+    ps = (defn.get("app") or {}).get(key)
+    for p in [ps] if isinstance(ps, str) else ps or []:
+        if p and expand(p).exists():
+            return str(expand(p))
+    return None
 
 
 def is_headless(defn: dict) -> bool:
