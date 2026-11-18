@@ -589,7 +589,7 @@ body.mw-resizing * {
    room enough to be read */
 .mw-rec .mw-tt {
   flex: 1 1 0;
-  min-width: 9em;
+  min-width: 7em;
 }
 .mw-rec .mw-hit {
   flex: none;

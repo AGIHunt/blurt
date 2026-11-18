@@ -1067,6 +1067,13 @@
 .st-install-row.err > .ico {
   color: var(--err);
 }
+/* after Connect, what is left to do in the agent (WorkBuddy's Trust): its own paragraph under the rows */
+.st-install-next {
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--attn) 10%, transparent);
+}
 .st-tech {
   margin-top: 14px;
 }

@@ -67,6 +67,8 @@ describe('what a recording’s row offers', () => {
     expect(detailActions(rec([]), true)).toEqual({ primary: 'organise', rest: ['play', 'reveal'] });
     expect(detailActions(rec([]), false)).toEqual({ primary: 'set_up_agent', rest: ['copy_request', 'play', 'reveal'] });
     expect(detailActions(rec([job('j01', '/s/a', 'running')]), true)).toEqual({ primary: null, rest: ['play', 'reveal'] });
+    // Save Video Only was the user's choice: the video first, organising still there
+    expect(detailActions(rec([], { video_only: true }), false)).toEqual({ primary: 'play', rest: ['copy_request', 'set_up_agent', 'reveal'] });
   });
 
   it('the video gone: no Play, nothing to organise, Show in Folder stays', () => {

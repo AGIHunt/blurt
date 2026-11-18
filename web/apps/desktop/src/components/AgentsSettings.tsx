@@ -19,7 +19,7 @@ import { Icon } from '@blurt/icons';
 import { api, type AgentApp, type AgentInfo, type AgentManual, type AgentModels, type AgentRegistry, type InstallChange, type InstallPlan } from '../api';
 import { AgentAppsSheet } from './AgentAppsSheet';
 import { useOff } from './useCapabilities';
-import { i18n } from '../i18n';
+import { i18n, t as tr } from '../i18n';
 import { Group, InfoTip, Page, Popup, S, Switch, TextLink, lang } from '../settings/kit';
 import { revealLabel } from '../reveal';
 
@@ -458,6 +458,8 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
   const dropAll = (dropHere.length ? dropHere : dropOn).map((d) => d.name);
   const dropNames = dropAll.length > 5 ? `${i18n().formatList(dropAll.slice(0, 5))}…` : i18n().formatList(dropAll);
 
+  /** "Claude Code、Codex、Kimi Code": a plain list of names (the row says what they are) */
+  const names = (l: AgentInfo[]) => l.map((a) => a.name).join(tr('mw.list_sep'));
   const connState = (a: AgentInfo) => {
     if (a.conn === 'connected' && a.last_seen) return S('agents.conn.connected', when(a.last_seen));
     return S(`agents.conn.${a.conn ?? 'missing'}`);
@@ -504,7 +506,7 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
           <button className="st-row st-missing" aria-expanded={showLost} onClick={() => setShowLost((x) => !x)}>
             <span className="st-icon"><Icon name={showLost ? 'chevron-down' : 'chevron-right'} size={12} /></span>
             <span className="st-dim">{S('agents.conn.missing')}</span>
-            {!showLost && <span className="st-detail st-ellipsis">{lost.length > 4 ? S('agents.missing.more', i18n().formatList(lost.slice(0, 3).map((a) => a.name)), lost.length - 3) : i18n().formatList(lost.map((a) => a.name))}</span>}
+            {!showLost && <span className="st-detail st-ellipsis">{names(lost)}</span>}
           </button>
         )}
         {showLost && lost.map(useRow)}
@@ -521,7 +523,7 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
           <button className="st-row st-missing" aria-expanded={showMissing} onClick={() => setShowMissing((x) => !x)}>
             <span className="st-icon"><Icon name={showMissing ? 'chevron-down' : 'chevron-right'} size={12} /></span>
             <span className="st-dim">{S('agents.missing')}</span>
-            {!showMissing && <span className="st-detail st-ellipsis">{i18n().formatList(missing.filter((a) => a.headless).map((a) => a.name))}</span>}
+            {!showMissing && <span className="st-detail st-ellipsis">{names(missing.filter((a) => a.headless))}</span>}
           </button>
         )}
         {cli && showMissing && missing.filter((a) => a.headless).map((a) => row(a, true))}
@@ -628,6 +630,20 @@ function ManualSheet({ close, added }: { close: () => void; added: (id: string) 
       {error && <div className="st-detail st-err">{error}</div>}
       {info && (
         <>
+          <Group id="agentManualPrompt" title={S('agents.manual.prompt')}>
+            <div className="st-row st-well-row">
+              <div className="st-detail st-prompt">{info.prompt}</div>
+              <div className="st-ctl"><button onClick={() => copy('prompt', info.prompt)}>{copied === 'prompt' ? S('install.copied') : S('agents.manual.copy_prompt')}</button></div>
+            </div>
+            <div className="st-row">
+              <div className="st-text">
+                {test === 'waiting' ? <span className="st-detail">{S('agents.manual.waiting')}</span>
+                  : test === 'ok' ? <span className="st-detail st-ok">{S('agents.manual.connected')}</span>
+                  : <span className="st-detail">{S('agents.manual.test.hint')}</span>}
+              </div>
+              <div className="st-ctl"><button onClick={startTest}>{S('agents.manual.test')}</button></div>
+            </div>
+          </Group>
           <Group id="agentManualSkill" title={S('agents.manual.skill')}>
             <div className="st-row">
               <code className="st-cmd st-ellipsis" title={info.skill}>{info.skill}</code>
@@ -652,24 +668,11 @@ function ManualSheet({ close, added }: { close: () => void; added: (id: string) 
               <div className="st-ctl"><code className="st-cmd st-ellipsis" title={info.args.join(' ')}>{info.args.join(' ')}</code><Copy k="args" text={info.args.join(' ')} /></div>
             </div>
           </Group>
-          <Group id="agentManualPrompt" title={S('agents.manual.prompt')}>
-            <div className="st-row st-well-row">
-              <div className="st-detail st-prompt">{info.prompt}</div>
-              <div className="st-ctl"><button onClick={() => copy('prompt', info.prompt)}>{copied === 'prompt' ? S('install.copied') : S('agents.manual.copy_prompt')}</button></div>
-            </div>
-            <div className="st-row">
-              <div className="st-text">
-                {test === 'waiting' && <span className="st-detail">{S('agents.manual.waiting')}</span>}
-                {test === 'ok' && <span className="st-detail st-ok">{S('agents.manual.connected')}</span>}
-              </div>
-              <div className="st-ctl"><button onClick={startTest}>{S('agents.manual.test')}</button></div>
-            </div>
-          </Group>
-          <Group id="agentManualName">
+          <Group id="agentManualName" footer={S('agents.manual.name.hint')}>
             <div className="st-row">
               <div className="st-text">{S('agents.manual.name')}</div>
               <div className="st-ctl">
-                <input className="st-field" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} aria-label={S('agents.manual.name')} />
+                <input className="st-field" value={name} placeholder={S('agents.manual.name.placeholder')} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} aria-label={S('agents.manual.name')} />
                 <button disabled={!name.trim()} onClick={save}>{S('agents.manual.save')}</button>
               </div>
             </div>
@@ -963,6 +966,8 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
   const tech = rows.filter((r) => r.line);
   const showInPlace = rows.some((r) => r.group !== 2) && rows.some((r) => r.group === 2);
   const glyph = { add: 'plus', added: 'check', in: 'check', attn: 'warning', err: 'x' } as const;
+  // what is left to do in the agent after Connect (WorkBuddy's Trust): the next step, in the body
+  const after = p.applied && !failed ? m.def(p.agent.id)?.after?.[L] ?? null : null;
   return (
     <Sheet label={title} close={close} width={480}>
       <div className="st-sheet-head"><div><div className="st-sheet-title">{title}</div><div className="st-detail">{subtitle}</div></div></div>
@@ -981,6 +986,12 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
           </div>
         ))}
       </div>
+      {after && (
+        <div className="st-install-row attn st-install-next" data-testid="install-after">
+          <Icon name="info" size={14} />
+          <div>{S('install.after', after)}</div>
+        </div>
+      )}
       {tech.length > 0 && (
         <div className="st-tech">
           <TextLink onClick={() => setDetails((d) => !d)}><Icon name={details ? 'chevron-down' : 'chevron-right'} size={11} /> {S('install.details')}</TextLink>
@@ -994,7 +1005,7 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
       )}
       <div className="st-ctl st-sheet-foot">
         <span className="st-detail" style={{ marginInlineEnd: 'auto' }}>
-          {m.installing ? S('install.working') : !p.applied && !nothing ? S('install.footnote') : p.applied && !failed ? (m.def(p.agent.id)?.after?.[L] ?? S('install.next', name)) : ''}
+          {m.installing ? S('install.working') : !p.applied && !nothing ? S('install.footnote') : p.applied && !failed && !after ? S('install.next', name) : ''}
         </span>
         {p.applied || nothing ? (
           <button className="primary" onClick={() => (close(), m.recheck())}>{S('dictation.feedback.done')}</button>

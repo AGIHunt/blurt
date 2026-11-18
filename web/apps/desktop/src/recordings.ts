@@ -98,10 +98,12 @@ export function recActions(r: Recording, agent: boolean | null): RecAction[] {
 }
 
 /** A recording's detail (its own, or its run's): one primary button — Retry or Organize when an agent can, else Set Up
- *  an Agent… (never both) — and the rest secondary, what to say to an agent first. Its items' detail is elsewhere. */
+ *  an Agent… (never both); Play Video for one saved with Save Video Only (kept, not organised: it was the user's
+ *  choice) — and the rest secondary, what to say to an agent first. Its items' detail is elsewhere. */
 export function detailActions(r: Recording, agent: boolean | null): { primary: RecAction | null; rest: RecAction[] } {
   const acts = recActions(r, agent).filter((a) => a !== 'progress');
-  const primary = acts.find((a) => a === 'retry' || a === 'organise' || a === 'set_up_agent' || a === 'review') ?? null;
+  const lead = r.state.kind === 'video_only' ? (['play'] as RecAction[]) : ['retry', 'organise', 'set_up_agent', 'review'];
+  const primary = acts.find((a) => lead.includes(a)) ?? null;
   const rest = acts.filter((a) => a !== primary);
   return { primary, rest: [...rest.filter((a) => a === 'copy_request'), ...rest.filter((a) => a !== 'copy_request')] };
 }
