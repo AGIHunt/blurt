@@ -481,6 +481,12 @@ impl Claims {
     }
 }
 
+impl Default for Claims {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 static CLAIMS: Claims = Claims::new();
 
 /// One organiser per recording, whatever asks (a Retry, a take's end, the list's Organize): Err(the job already
