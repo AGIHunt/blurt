@@ -1,5 +1,6 @@
 """Screen-permission relaunch regressions in an isolated, permission-free native app.
 
+BLURT_TEST_HOOKS=1 uv run skills/blurt/scripts/record.py build   # stand-in permissions need a test build
 BLURT_GUI_TESTS=1 BLURT_GUI_APP=/path/to/Blurt.app python -m pytest \
     tests/test_screen_permission_resume.py -q
 
