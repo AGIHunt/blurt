@@ -1486,18 +1486,6 @@ export default function App() {
     setFocus(null);
     setDetail({ kind: 'job', id: j.id });
   }
-  /** Retry from a failed run's detail: the detail follows the new run (the Mac's jobAction "retry"). */
-  const retryJob = async (session: string) => {
-    try {
-      await api.processSession(session);
-      const js = await api.jobs(false);
-      setJobs(js);
-      const n = jobOf(session, js);
-      if (n) openJob(n);
-    } catch (e) {
-      fail(e);
-    }
-  };
   /** The recording a process job organises (its detail is that recording's: its words, its buttons). */
   const recOfJob = (j: Job): Recording | null => (j.type === 'process' && j.session ? recs.find((r) => samePath(r.info.dir, j.session)) ?? null : null);
   /** A recording's run in the detail: what the recording's row offers (Retry, Play Video, Show in Folder, Dismiss…),
@@ -1508,7 +1496,7 @@ export default function App() {
     // the job's own Try Again / Show / Dismiss are JobDetail's
     const acts = recActions(r, agentReady).filter((a) => a !== 'progress' && a !== 'set_up_agent' && a !== 'retry' && a !== 'dismiss' && a !== 'reveal');
     return acts.map((a) => (
-      <button key={a} className="pg-small" onClick={() => (a === 'retry' ? void retryJob(r.info.dir) : runRecAction(a, r, recHandlers))}>{actionLabel(a)}</button>
+      <button key={a} className="pg-small" onClick={() => runRecAction(a, r, recHandlers)}>{actionLabel(a)}</button>
     ));
   };
   /** A recording's place: its project, or Unassigned. */
