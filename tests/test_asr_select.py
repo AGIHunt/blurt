@@ -23,6 +23,7 @@ import unittest
 import wave
 from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -286,6 +287,20 @@ class Select(unittest.TestCase):
             self.assertEqual(T.select("batch")["id"], "whisper-large-v3-turbo-ct2")
         with config({"asr": {"backend": "sensevoice"}}):
             self.assertTrue(T.is_auto(T.asr_config()))
+
+    def test_ming_is_available_for_explicit_selection_only(self):
+        mid = T.ming_asr.MODEL_ID
+        fake_installed(mid)
+        with mock.patch.object(T, "probe", return_value=hw("windows", "x86_64", 64, {"kind": "nvidia"})), \
+                mock.patch.object(T, "platform_key", return_value="windows-x86_64"), \
+                mock.patch.object(T, "model_path", return_value=Path("snapshot")):
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertNotEqual(T.select("note")["id"], mid)
+                models = T.dictation_models()
+                self.assertNotEqual(models["selected"], mid)
+                self.assertTrue(any(m["id"] == mid and m["installed"] for m in models["models"]))
+            with config({"record": {"dictation": {"asr_model": mid}}}):
+                self.assertEqual(T.dictation_models()["selected"], mid)
 
     def test_explicit_options_win(self):
         with config({"asr": {"auto": False, "models": {"batch": "whisper-large-v3-turbo-q4-mlx"}}}):

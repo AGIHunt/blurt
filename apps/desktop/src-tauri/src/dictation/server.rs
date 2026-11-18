@@ -34,6 +34,8 @@ pub struct Record {
     pub parent: Option<u32>,
     pub port: u16,
     pub token: String,
+    /// The recogniser runs in its own process. CPU time on the Python server does not measure it.
+    pub delegated_compute: bool,
 }
 
 pub fn record(name: &str) -> Option<Record> {
@@ -43,6 +45,7 @@ pub fn record(name: &str) -> Option<Record> {
         pid: v.get("pid").and_then(Value::as_u64).map(|p| p as u32),
         parent: v.get("parent").and_then(Value::as_u64).map(|p| p as u32),
         port,
+        delegated_compute: v.get("delegated_compute").and_then(Value::as_bool).unwrap_or(false),
         token: v
             .get("token")
             .and_then(Value::as_str)
@@ -181,7 +184,10 @@ pub fn verdict(has_pid: bool, alive: bool, answered: bool, python: Option<bool>,
 
 /// Ping it (`timeout`) and look at its process. Blocks up to `timeout`.
 pub fn health(name: &str, timeout: Duration) -> Health {
-    let Some(pid) = record(name).and_then(|r| r.pid) else {
+    let Some(r) = record(name) else {
+        return Health::Gone;
+    };
+    let Some(pid) = r.pid else {
         return Health::Gone;
     };
     if !alive(pid) {
@@ -190,6 +196,9 @@ pub fn health(name: &str, timeout: Duration) -> Health {
     let c0 = cpu_seconds(pid);
     let t0 = Instant::now();
     let answered = call(name, &json!({"cmd": "ping"}), timeout, None).is_some_and(|v| v["ok"] == json!(true));
+    if !answered && record(name).is_some_and(|current| current.pid == r.pid && current.delegated_compute) {
+        return Health::Working;
+    }
     // a ping refused at once still gets the whole window to show CPU
     if !answered {
         if let Some(left) = timeout.checked_sub(t0.elapsed()) {
@@ -283,6 +292,10 @@ pub fn call(
                         None => still_since = Instant::now(),
                     }
                     if hung(t0.elapsed().as_secs_f64(), still_since.elapsed().as_secs_f64()) {
+                        // A model can switch after the request came in. Its worker has its own deadline.
+                        if record(name).is_some_and(|current| current.pid == Some(pid) && current.delegated_compute) {
+                            continue;
+                        }
                         eprintln!("blurt: {name} hung (no CPU for 2 s): ended");
                         end(name, pid);
                         return None;

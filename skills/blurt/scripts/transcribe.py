@@ -105,6 +105,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
+import ming_asr  # noqa: E402
 from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
                      server_exit, serve_exit_reason, serve_said, use_system_certs)
@@ -205,6 +206,8 @@ def platform_key() -> str:
 
 def runs_here(m: dict, plat: str | None = None) -> bool:
     plats = m.get("platforms") or ["*"]
+    if m["backend"] == "ming-asr" and model_path(m) is None:
+        return False
     return "*" in plats or (plat or platform_key()) in plats
 
 
@@ -816,6 +819,9 @@ def hf_snapshot(repo: str) -> Path | None:
 def model_path(m: dict) -> Path | None:
     """Where an installed model lives, or None when it is not installed."""
     inst = m.get("install") or {}
+    if m["backend"] == "ming-asr":
+        directory = ming_asr.model_dir()
+        return directory if directory and safetensors_complete(directory) else None
     if inst.get("files"):
         paths = [MODELS_DIR / f for f in inst["files"]]
         return paths[0].parent if all(p.exists() and p.stat().st_size > 0 for p in paths) else None
@@ -927,6 +933,8 @@ def _progress_poller(target: Path, total_mb: float, stop: threading.Event) -> No
 def install_model(m: dict) -> Path:
     """Download a registry model (and the VAD every local backend needs). Progress on stderr. One download of a
     model at a time (download_lock): a second caller waits, then finds it installed."""
+    if m["backend"] == "ming-asr" and model_path(m) is None:
+        raise Fail(ming_asr.SETUP_HINT, "model_missing")
     download("silero_vad.onnx", aux="vad")      # its own named progress: not the model's (progress_line)
     if not m.get("local", True):
         return MODELS_DIR
@@ -2550,8 +2558,9 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float
 
 BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "fun-asr-onnx": FunAsrOnnx, "mlx-whisper": MlxWhisper,
             "qwen3-asr-mlx": Qwen3Mlx, "fun-asr-mlx": FunAsrMlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech,
+            "ming-asr": ming_asr.MingASR,
             "openai": OpenAICompat, "dashscope": DashScope, "volcengine": Volcengine}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "fun-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "fun-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple", "ming-asr"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
                   "qwen3-asr-mlx": "mlx-qwen3-asr", "fun-asr-mlx": "mlx-audio"}  # backend → `uv run --with` package
 # The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
@@ -2728,7 +2737,8 @@ def select(purpose: str, a=None) -> dict:
                                           "languages": "multi", "local": name in LOCAL}
     rec = recommend(purpose=purpose, cfg=cfg)
     order = ([chosen] if chosen else []) + [rec["pick"]["model"]] + [c["id"] for c in rec["candidates"]
-                                                                     if c["fits"] and len(c["speaks"]) == len(rec["languages"])]
+                                                                     if c["id"] != ming_asr.MODEL_ID and c["fits"]
+                                                                     and len(c["speaks"]) == len(rec["languages"])]
     apple = entry(APPLE)
     apple_ok = bool(apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]))
     # a local model hears through the VAD (0.6 MB) too: one whose own files are already here from elsewhere (a Whisper
@@ -2790,6 +2800,8 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
         return None if have else \
             f"no API key in the environment ({' / '.join(API_KEYS[name])})"
     m = entry(model_id) if model_id else entry_for(name)
+    if name == "ming-asr" and (not m or not installed(m)):
+        return ming_asr.SETUP_HINT
     if m and m.get("install") and not installed(m):
         return f"{m['id']} is not downloaded (transcribe.py setup --model {m['id']})"
     return None
@@ -3545,7 +3557,17 @@ class NoteEngine:
     def load(self, language: str | None = None, model_id: str | None = None):
         a = argparse.Namespace(backend=None, model=None, model_id=model_id, language=language, prompt=None)
         name = resolve_backend(a, "note")
+        if isinstance(self.backend, ming_asr.MingASR) and a.model_id == self.model_id:
+            self.backend.language = a.language
+            self.language = language or None
+            return self
         if self.backend is None or a.model_id != self.model_id or (language or None) != getattr(self, "language", None):
+            if SERVING:
+                info = load_json(SERVE_FILE, None)
+                if isinstance(info, dict) and info.get("pid") == os.getpid():
+                    delegated = name == "ming-asr"
+                    if bool(info.get("delegated_compute")) != delegated:
+                        save_json(SERVE_FILE, {**info, "delegated_compute": delegated})
             if self.backend is not None and a.model_id != self.model_id and hasattr(self.backend, "close"):
                 self.backend.close()     # its model goes before the next one loads (a language change keeps it)
             elif self.backend is not None and hasattr(self.backend, "_ex"):
@@ -3969,6 +3991,7 @@ def cmd_serve(a):
             try:
                 with no_download(getattr(a, "no_download", False)):
                     eng.load(None, mid)
+                eng.last = time.time()
             except Fail as e:
                 if e.code != "model_missing":
                     raise
@@ -4077,6 +4100,8 @@ def cmd_serve(a):
                     pass
     finally:
         SERVING = False
+        if isinstance(eng.backend, ming_asr.MingASR):
+            eng.backend.close()
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
@@ -4142,7 +4167,8 @@ QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
 FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
 FUN_CPU = "fun-asr-nano-onnx"     # the same model on the CPU (sherpa-onnx int8): Windows and Linux
-DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, FUN_CPU, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, FUN_CPU, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE,
+                    ming_asr.MODEL_ID)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
 # offered once their key is set (first-minute-speech.md §2.4; Volcengine: dictation-eval-2026-10-31.md §6.3 B′)
 DICTATION_CLOUD = ("qwen3-asr-flash", "volcengine-seedasr", "openai-compatible")

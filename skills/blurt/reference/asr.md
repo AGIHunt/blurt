@@ -59,6 +59,8 @@ Packages are added automatically: the script re-runs itself with `uv run --with 
 when it needs one. Whisper weights live in the Hugging Face cache (`HF_HOME`). SenseVoice, Qwen3-ASR and the VAD go
 to `$BLURT_HOME/models`. In mainland China, set `BLURT_HF_MIRROR=1` to prefer hf-mirror.com.
 
+For Linux or Windows with WSL 2 and an NVIDIA GPU, see [Ming-3.0-ASR-Tiny (experimental)](ming-asr.md).
+
 ## Configuration (`$BLURT_HOME/config.json` → `asr`)
 
 - `auto` (default true): the pick follows the machine. The app re-applies it when the hardware changes.
