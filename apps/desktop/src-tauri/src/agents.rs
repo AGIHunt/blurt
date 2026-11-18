@@ -152,7 +152,7 @@ pub fn process(
     let agent = match pick_agent(&runner) {
         Ok(a) => a,
         Err(_) => {
-            job.finish("failed", Some(("skill", "no coding agent is installed and logged in")));
+            job.finish("failed", Some(("no_agent", "no coding agent is installed and logged in")));
             return Err("no_agent".into());
         }
     };

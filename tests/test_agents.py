@@ -546,3 +546,19 @@ def test_detect_probes_agents_side_by_side(tmp_path):
     d = agents.detect(["kimi", "claude", "codex"], login=False, version=True, env=env)
     assert [r["id"] for r in d["agents"]] == ["kimi", "claude", "codex"]
     assert time.monotonic() - t < 5
+
+
+def test_opencode_status_reads_v1_and_v2_auth_list():
+    # v1 ends "└  3 credentials"; v2 (#83) prints a table whose last column is "stored", one row per connection
+    oc = next(a for a in agents.registry()["agents"] if a["id"] == "opencode")
+    v1 = "┌  Credentials ~/.local/share/opencode/auth.json\n│\n●  Anthropic api\n│\n└  3 credentials\n"
+    v2 = "Provider A        API key     stored\nOpenCode Console  Personal    stored\n"
+    assert agents.parse_status(oc, 0, v1, {}) == "configured"
+    assert agents.parse_status(oc, 0, v2, {}) == "configured"
+    assert agents.parse_status(oc, 0, "┌  Credentials ~/.local/share/opencode/auth.json\n└  0 credentials\n", {}) == "logged_out"
+
+
+def test_cursor_has_a_windows_app_path():
+    # #92: an app-only agent with no path for this platform always reads "not installed"
+    cur = next(a for a in agents.registry()["agents"] if a["id"] == "cursor")
+    assert agents.expand(cur["app"]["windows"], {"LOCALAPPDATA": "C:/Users/u/AppData/Local"}).as_posix().endswith("Programs/cursor/Cursor.exe")

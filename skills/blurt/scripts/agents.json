@@ -56,7 +56,7 @@
     },
     {
       "id": "opencode", "name": "OpenCode", "bins": ["opencode"], "verified": "cli",
-      "status": {"args": ["auth", "list"], "configured_if": "\\b[1-9]\\d* credentials?\\b",
+      "status": {"args": ["auth", "list"], "configured_if": "(?m)\\b[1-9]\\d* credentials?\\b|\\bstored\\s*$",
                  "env_any": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "ZHIPU_API_KEY"],
                  "otherwise": "logged_out"},
       "run": ["run", "{prompt}"],
@@ -121,7 +121,7 @@
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
-      "id": "cursor", "name": "Cursor", "bins": [], "app": {"macos": "/Applications/Cursor.app"}, "verified": "docs",
+      "id": "cursor", "name": "Cursor", "bins": [], "app": {"macos": "/Applications/Cursor.app", "windows": "${LOCALAPPDATA}/Programs/cursor/Cursor.exe"}, "verified": "docs",
       "headless": false,
       "install": {"zh": "见 cursor.com", "en": "see cursor.com"},
       "skill_dir": "~/.agents/skills",

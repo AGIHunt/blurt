@@ -481,6 +481,7 @@
   "main.job.error.io": "Blurt couldn’t read or write a file it needs. Retry; if it keeps failing, the details are in the log.",
   "main.job.error.model": "The model isn’t available.",
   "main.job.error.network": "The network connection was lost.",
+  "main.job.error.no_agent": "Organizing in the background needs an agent CLI (Claude Code, Codex…). Install or sign in to one in Settings > Agents.",
   "main.job.error.quota": "The agent ran out of quota.",
   "main.job.error.skill": "The Blurt skill isn’t ready. Update the skill, then retry.",
   "main.job.error.unknown": "It stopped before it finished. Retry; if it keeps failing, the details are in the log.",

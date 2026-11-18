@@ -306,6 +306,7 @@ export default function App() {
         if (p.ev === 'error' && p.code) showToast(t(`error.${p.code}`) === `error.${p.code}` ? t('error.unknown') : t(`error.${p.code}`));
       }),
       listen<{ view?: string; item?: string; session?: string; job?: string | null; project?: string }>('nav', (p) => {
+        if (p.view !== 'welcome') setWelcome(null); // the tray, a toast or a link asked for a place: the setup assistant would hide it (#93)
         if (p.view === 'inbox' || p.view === 'dictation' || p.view === 'home' || p.view === 'cards' || p.view === 'screen_text' || p.view === 'phone') live.current.go(p.view);
         else if (p.view === 'settings') setScreen({ kind: 'settings' }); // the tray's Settings… (the pane: SettingsView)
         else if (p.view === 'welcome') api.onboarding().then((o) => setWelcome({ onb: o, firstRun: o.needed }), () => {}); // blurt://onboarding
