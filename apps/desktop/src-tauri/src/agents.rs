@@ -405,12 +405,13 @@ pub fn process(
         }
     }
     let run = Run { session: session.to_path_buf(), captures, project, parent };
-    if let Some(id) = running_for(&run) {
-        return Ok(id);
-    }
+    let claim = match running_for(&run) {
+        Err(id) => return Ok(id),
+        Ok(c) => c,
+    };
     let runner = app.state::<AppState>().runner();
     let detected = detect_for_run(&runner)?;
-    begin(app, &runner, run, &detected)
+    begin(app, &runner, run, &detected, claim)
 }
 
 /// A take's end: returns at once (the island says "Organizing…" meanwhile); `said` gets Ok(job) once an agent
@@ -419,30 +420,79 @@ pub fn process_take(app: &AppHandle, session: &Path, project: Option<String>, pa
     let app = app.clone();
     let run = Run { session: session.to_path_buf(), captures: None, project, parent };
     std::thread::spawn(move || {
-        if let Some(id) = running_for(&run) {
-            return said(Ok(id));
-        }
+        let claim = match running_for(&run) {
+            Err(id) => return said(Ok(id)),
+            Ok(c) => c,
+        };
         let runner = app.state::<AppState>().runner();
-        let r = detect_for_run(&runner).and_then(|d| begin(&app, &runner, run, &d));
+        let r = detect_for_run(&runner).and_then(|d| begin(&app, &runner, run, &d, claim));
         said(r);
     });
 }
 
-/// The job already organising this whole recording (one organiser per recording, whatever asks: a Retry, a take's
-/// end, the list's Organize).
-fn running_for(run: &Run) -> Option<String> {
-    if run.captures.is_some() {
-        return None;
-    }
-    let me = paths::normalize(&run.session);
-    crate::jobs::list(true, 200)
-        .into_iter()
-        .find(|j| j["type"] == "process" && j["session"].as_str().is_some_and(|s| paths::normalize(Path::new(s)) == me))
-        .and_then(|j| j["id"].as_str().map(str::to_owned))
+/// Recordings a run is being set up for, before their job exists (detect alone can take 90 s): whoever asks
+/// meanwhile waits for that job instead of starting a second one.
+pub struct Claims {
+    set: Mutex<BTreeSet<PathBuf>>,
+    freed: std::sync::Condvar,
 }
 
-/// The job, its prompt, and the attempts on a thread of their own.
-fn begin(app: &AppHandle, runner: &Runner, run: Run, detected: &Value) -> Result<String, String> {
+/// One recording claimed: released when dropped (once its job is written, or when setting it up failed).
+pub struct Claim<'a> {
+    claims: &'a Claims,
+    key: PathBuf,
+}
+
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        self.claims.set.lock().unwrap().remove(&self.key);
+        self.claims.freed.notify_all();
+    }
+}
+
+impl Claims {
+    pub const fn new() -> Self {
+        Claims { set: Mutex::new(BTreeSet::new()), freed: std::sync::Condvar::new() }
+    }
+
+    /// Claim `key`, waiting while another run holds it; then Err(the job) when `existing` finds one already organising
+    /// it (the other run's, or one from before), else Ok(the claim).
+    pub fn claim(&self, key: PathBuf, existing: impl Fn() -> Option<String>) -> Result<Claim<'_>, String> {
+        let mut set = self.set.lock().unwrap();
+        while set.contains(&key) {
+            set = self.freed.wait(set).unwrap();
+        }
+        set.insert(key.clone());
+        drop(set);
+        let claim = Claim { claims: self, key };
+        match existing() {
+            Some(id) => Err(id), // the claim drops here
+            None => Ok(claim),
+        }
+    }
+}
+
+static CLAIMS: Claims = Claims::new();
+
+/// One organiser per recording, whatever asks (a Retry, a take's end, the list's Organize): Err(the job already
+/// organising this whole recording), else Ok(this recording claimed until its job is written — None for some
+/// captures of a batch, which aren't held to one run).
+fn running_for(run: &Run) -> Result<Option<Claim<'static>>, String> {
+    if run.captures.is_some() {
+        return Ok(None);
+    }
+    let me = paths::normalize(&run.session);
+    let existing = || {
+        crate::jobs::list(true, 200)
+            .into_iter()
+            .find(|j| j["type"] == "process" && j["session"].as_str().is_some_and(|s| paths::normalize(Path::new(s)) == me))
+            .and_then(|j| j["id"].as_str().map(str::to_owned))
+    };
+    CLAIMS.claim(me.clone(), existing).map(Some)
+}
+
+/// The job, its prompt, and the attempts on a thread of their own. `claim` is released once the job is written.
+fn begin(app: &AppHandle, runner: &Runner, run: Run, detected: &Value, claim: Option<Claim<'static>>) -> Result<String, String> {
     let session = run.session.clone();
     let (usable, skipped) = queue(detected);
     if usable.is_empty() {
@@ -453,6 +503,7 @@ fn begin(app: &AppHandle, runner: &Runner, run: Run, detected: &Value) -> Result
     let session_project = reg.project_of_path(&session);
     let job_project = run.project.clone().filter(|p| p != "inbox").or_else(|| session_project.clone().filter(|p| p != "inbox"));
     let job = Arc::new(JobWriter::new("process", job_project.as_deref(), Some(&session), run.parent.as_deref(), None, &["prepare", "transcribe", "write", "frames", "route"]));
+    drop(claim); // the job is listed now: whoever asks next finds it
     if let Some(c) = &run.captures {
         job.set_captures(c);
     }
@@ -507,6 +558,10 @@ fn start(runner: &Runner, run: &Run, job: &JobWriter, a: &Agent, pf: &Path) -> R
         scripts::s(session),
         "--var".into(),
         format!("run_id={}", job.id),
+        // the scripts folder as the prompt spells it: claude's / gemini's allowlist is that same string (agents.py
+        // would otherwise use its own resolved path, another spelling under a symlink or a junction)
+        "--var".into(),
+        format!("scripts={}", runner.scripts.as_deref().map(scripts::s).unwrap_or_default()),
         // the processing model for this kind of run (Settings → Agents): a recording, or cards
         "--processing".into(),
         processing_kind(session).into(),
@@ -573,6 +628,12 @@ fn attempts(app: &AppHandle, runner: &Runner, run: &Run, job: &Arc<JobWriter>, m
             Ok(c) => c,
             Err(e) => {
                 log_line(&job.id, &format!("couldn't start {}: {e}", a.name));
+                // the next usable agent in the user's order takes it, as after a login or quota problem
+                if !at.queue.is_empty() {
+                    at.passed.push(why(&a, None, &at.failures));
+                    note_fallback(app, job, &at.passed, &at.queue[0]);
+                    continue;
+                }
                 note_meta(session, json!({"result": "failed", "class": "skill", "done_at": projects::iso_now()}));
                 job.finish("failed", Some(("skill", &e)));
                 break;
@@ -598,7 +659,10 @@ fn attempts(app: &AppHandle, runner: &Runner, run: &Run, job: &Arc<JobWriter>, m
         if QUITTING.load(std::sync::atomic::Ordering::SeqCst) {
             return; // end_organising said how it ended
         }
-        let reported: Vec<String> = job.snapshot()["items"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_owned)).collect();
+        // the items the run reported (items.py appends them to the job's events, folded by load: the writer's own
+        // copy has them only after its next save)
+        let now = crate::jobs::load(&job.id).unwrap_or_else(|| job.snapshot());
+        let reported: Vec<String> = now["items"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_owned)).collect();
         let filed = filed_items(&before, &files_now(session), &reported, &batch_before, &batch_items(session));
         let class = if filed.is_none() && !timed_out { classify(runner, &job.id, from) } else { None };
         let ended = decide(filed, timed_out, class.as_deref(), !at.queue.is_empty());
@@ -756,6 +820,39 @@ mod tests {
         // a problem the next agent would share stays this job's
         assert_eq!(decide(None, false, Some("network"), true), Ended::Failed("network".into()));
         assert_eq!(decide(None, false, None, true), Ended::Failed("agent_exit".into()));
+    }
+
+    #[test]
+    fn one_run_per_recording_while_the_first_is_set_up() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static C: Claims = Claims::new();
+        static JOB: Mutex<Option<String>> = Mutex::new(None);
+        static STARTED: AtomicUsize = AtomicUsize::new(0);
+        let key = PathBuf::from("/s/rec1");
+        let existing = || JOB.lock().unwrap().clone();
+        let first = C.claim(key.clone(), existing).expect("nothing organises it yet");
+        // a second ask while the first is still detecting: it waits, then finds the first one's job
+        let second = std::thread::spawn({
+            let key = key.clone();
+            move || match C.claim(key, || JOB.lock().unwrap().clone()) {
+                Ok(_) => {
+                    STARTED.fetch_add(1, Ordering::SeqCst);
+                    None
+                }
+                Err(id) => Some(id),
+            }
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!second.is_finished(), "waits while the first run is set up");
+        *JOB.lock().unwrap() = Some("j-1".into()); // JobWriter::new
+        drop(first);
+        assert_eq!(second.join().unwrap().as_deref(), Some("j-1"));
+        assert_eq!(STARTED.load(Ordering::SeqCst), 0);
+        // another recording isn't held up; a failed setup (no job, claim dropped) lets the next ask run
+        let other = C.claim(PathBuf::from("/s/rec2"), || None);
+        assert!(other.is_ok());
+        drop(other);
+        assert!(C.claim(PathBuf::from("/s/rec2"), || None).is_ok());
     }
 
     #[test]
