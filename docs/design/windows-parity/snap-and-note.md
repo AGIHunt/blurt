@@ -159,8 +159,7 @@ strokes、flash、lw、selW、g）。
 
 - 全部只在 Mac 的浏览器里跑过页面（截图在 scratchpad `parity/snap-and-note/`），Windows 上没跑：麦克风、暖服务出字、
   Alt 拖动（Alt 松开是否让窗口进菜单模式——页面里 preventDefault 了）、WebView2 失焦事件、窗口列表的准确度。
-- 截图时冻结的选择器和舞台都还在屏幕上，靠 content protection（WDA_EXCLUDEFROMCAPTURE）不进 gdigrab 的画面——灵动岛录屏一直靠
-  这个，但截图这条路以前是先关窗再拍。要在 Windows 上确认截出来的图里没有暗色。
+- 截图时冻结的选择器和舞台都还在屏幕上：截图的图已不再在这时抓屏，改用选择器打开前拍的整屏静帧切出来（§15）。
 
 - 回收站（SHFileOperationW）、放大镜的整屏截图耗时（4K BMP 写到 $BLURT_HOME/run，在 asset 协议的范围里）、翻译卡片的全局 Esc、粘贴落地确认、Edit Note 的窗口缩放：都只在 Mac 上编译、在浏览器里看过。
 
@@ -281,3 +280,26 @@ strokes、flash、lw、selW、g）。
 还没找到原因的：语音备注按「完成」后出现「语音备注已丢弃 · 撤销」。只有 `Ended::Cancel`（Esc / `voice.cancel`）才会走到这句，「完成」发的是 `voice.stop`；需要在 Windows 上用 `BLURT_DEBUG_VOICE=1` 复现看是谁发的 Cancel（拍摄脚本这一步在重新启动之后，只点了「完成」）。
 
 **本轮也没有在 Windows 上重拍**：测试 VM（42.120.60.29 等四台克隆）11-03 00:00 已自动释放，IP 已归别人。只做了 Mac `cargo check`、Windows 目标 `cargo check`（假编译器）、overlays `tsc --noEmit` + `vitest` 72/72。要重拍的同 §13 末尾的清单，外加 picker-text-crosshair（放大镜在右下）。
+
+## 15. Windows 10 2004 之前（build < 19041）：截图变黑（2026-11-18）
+
+用户报告：Win10（2004 之前）截图后定格画面变黑。原因：浮层都 `content_protected` → tao 设 `WDA_EXCLUDEFROMCAPTURE`；这个值 2004
+（19041）才有，之前的系统按 `WDA_MONITOR` 处理——窗口在任何抓屏（BitBlt / gdigrab / Desktop Duplication）里是黑的。截图的 PNG
+是 `tk_recorder.py shot`（gdigrab）在冻结的选择器和舞台盖着屏幕时拍的，所以是一块黑。
+
+- **截图的图 = 选择器的静帧切出来的**（Windows、Linux 一条路，所有 Windows 版本）：每个选择器打开前拍一张静帧
+  （`snap.rs monitor_still`：Windows 用 GDI 拍光标所在的显示器，物理像素 1:1，与缩放 125/150/225 % 无关；Linux 用门户拍整个桌面），
+  存进 `screen_text/grab.rs` 的 `keep_still`；截图切出选区（`grab::cut`，一次性，120 s 内有效），写成 PNG 交给
+  `tk_recorder.py shot --image`。存下的图就是用户在上面画的那张定格画面；静帧里没有光标（以前 gdigrab 带光标）。拍不到静帧时照旧抓屏。
+- **录屏中的截图**同样：`snap-region:x,y,w,h|<路径>`（路径里的空格、`%`、`|` 用 %-编码，`.cmd` 按空白切词），record.py 复制进来，
+  编号、视频时间、events.jsonl 照旧。
+- **复制屏幕文字（Windows）**也从静帧切（和 Linux 一样），没有静帧时才等 60 ms 抓屏。
+- **安全网**：截图拿回来后，如果它几乎全黑（≥ 98 % 像素三通道都 ≤ 24，`grab::near_black`，有测试）而静帧切出来的不是，就用切出来的
+  覆盖，并在日志里写 Windows 版本号（RtlGetVersion）、区域。静帧本身全黑、取字抓到全黑也写日志。原样复制进来的（文件大小相同）不再检查。
+- **2004 之前不再给浮层开 content protection**（`blurt_capture::winver::protection_blackens`，岛、选择器、舞台、卡片、倒计时、录制框；
+  `BLURT_WINDOWS_BUILD=17763` 可在新系统上模拟）：黑块比被看见更糟。录屏里的取舍（最不坏的）：这些浮层录得进视频——录制框在区域外
+  4 pt（全屏录时压在边缘几个像素上）；倒计时在开录之前就关了；岛在录制区域盖住顶部时挪到区域下面（`island::keep_clear_of`，和 Linux
+  一样）；录制中截图时选择器的暗罩和备注气泡会出现在视频里（Mac 本来也录得进）。静帧里也看得见岛（退后时 35 % 透明度），选区盖到顶部正中时
+  截图里会有它。Tk 录屏条同理：2004 之前不设 display affinity。
+- 只有 Windows Server 2019 VM（17763）能证明的：静帧不黑（岛不再是黑块）、截图 PNG 与定格画面逐像素一致、录屏中截图、取字、
+  录制视频里没有黑块；多显示器负坐标和 150 % 缩放下切的位置。日志里找 `snap came out black` / `picker still is black`。

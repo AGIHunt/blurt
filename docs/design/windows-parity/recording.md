@@ -170,3 +170,8 @@
 - 录屏结束 ✓ 那一刻：见 island.md §13。
 - 没有在 Windows 上重拍（VM 已释放）。
 
+## 15. Windows 10 2004 之前（build < 19041）
+
+那里 `WDA_EXCLUDEFROMCAPTURE` 等于 `WDA_MONITOR`：开了 content protection 的窗口在视频里是黑块（整块录制框窗口、整个岛窗口）。
+所以 2004 之前浮层不开 protection（`blurt_capture::winver`），录得进视频；岛避开录制区域（`keep_clear_of`）。详见
+`snap-and-note.md` §15。上面表里「不进视频」的几行（3.6、4.1、5.9、7.2）只对 2004 及以后成立。
