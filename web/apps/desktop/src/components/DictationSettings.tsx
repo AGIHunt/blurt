@@ -16,6 +16,7 @@ import { t } from '../i18n';
 import { Icon } from '@blurt/icons';
 import { Group, lang, Line, Page, Popup, Row, S, Switch, TextLink, Toggle } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
+import { ExternalModelAPISection } from '../settings/ExternalModelAPISection';
 import { mb, ModelProgress, useDictationModels } from './ModelDownload';
 import { openWordsTab } from './DictationView';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
@@ -889,6 +890,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
           })}
         </Group>
       )}
+      <ExternalModelAPISection />
       {adding && <AddCloudSheet onClose={() => setAdding(false)} curated={addCurated} others={jobsHere.length ? addOthers : []} jobs={jobsHere} models={curated}
         onDone={(s, p) => {
           setSum(s);

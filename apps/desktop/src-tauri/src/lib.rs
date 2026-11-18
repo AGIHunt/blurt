@@ -762,6 +762,17 @@ fn asr_models(state: tauri::State<'_, AppState>) -> R<Value> {
     state.runner().run("transcribe.py", &["models".into()], None, Duration::from_secs(60)).map_err(String::from)
 }
 
+#[tauri::command(async)]
+fn model_api(state: tauri::State<'_, AppState>, action: String, scope: Option<String>, model: Option<String>) -> R<Value> {
+    let (args, timeout) = match (action.as_str(), scope.as_deref(), model) {
+        ("status" | "stop" | "config", None, None) => (vec![action], 60),
+        ("start", Some(access @ ("local" | "lan")), None) => (vec!["start".into(), "--scope".into(), access.into()], 60),
+        ("prepare", None, Some(id)) if !id.is_empty() => (vec!["prepare".into(), "--model".into(), id], 30 * 60),
+        _ => return Err("Invalid model API action, model or access scope".into()),
+    };
+    state.runner().run("model_api.py", &args, None, Duration::from_secs(timeout)).map_err(String::from)
+}
+
 #[tauri::command]
 fn reveal(app: AppHandle, path: String) -> R<()> {
     app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())
@@ -1205,6 +1216,7 @@ pub fn run() {
             shortcuts_suspend,
             shortcuts_reset,
             asr_models,
+            model_api,
             reveal,
             open_external,
             open_path,

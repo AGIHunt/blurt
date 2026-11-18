@@ -178,8 +178,8 @@ def _polish_dirs():
 
 
 def model_path() -> Path | None:
-    with _polish_dirs() as polish:
-        return polish.model_path(MODEL)
+    import polish
+    return polish.model_path(MODEL, directory=MODEL_DIR)
 
 
 def supported() -> bool:

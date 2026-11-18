@@ -147,7 +147,8 @@ def spaced(text: str) -> str:
 
 
 class Engine:
-    def __init__(self):
+    def __init__(self, installed_only=False):
+        self.installed_only = installed_only
         self.ocr = None
         self.last = time.time()
         self.load_ms = 0
@@ -161,11 +162,15 @@ class Engine:
             params = {"Global.use_cls": False,  # screen text is never upside down
                       "Det.ocr_version": v6, "Rec.ocr_version": v6}
             try:
-                d = ensure_models()
+                if self.installed_only and not folder_complete(MODEL_DIR):
+                    raise Fail("PP-OCRv6 tiny is not installed", "model_missing")
+                d = MODEL_DIR if self.installed_only else ensure_models()
                 params.update({"Det.model_type": ModelType.TINY, "Det.model_path": str(d / "det.onnx"),
                                "Rec.model_type": ModelType.TINY, "Rec.model_path": str(d / "rec.onnx"),
                                "Rec.rec_keys_path": str(keys_file(d))})
             except (Fail, OSError, ValueError, KeyError) as e:
+                if self.installed_only:
+                    raise
                 # neither site answers: v6 small, which comes in RapidOCR's wheel (as accurate, ~2.5× slower)
                 print(f"screen_ocr: reading with the bundled v6 small model ({e})", file=sys.stderr, flush=True)
                 params.update({"Det.model_type": ModelType.SMALL, "Rec.model_type": ModelType.SMALL})

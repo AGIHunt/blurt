@@ -213,6 +213,7 @@ let current = 'p1';
 // dictation's model download and the Welcome, in memory
 // ?models=0: no speech model on this PC yet (Settings' no-model notices)
 const modelsIn = new Set(param('models') === '0' ? [] : ['sensevoice-small']);
+let modelApiScope: 'local' | 'lan' | null = null;
 /** dictation's choice in the browser mock: dictation_use / dictation_dashscope_model */
 const mockDict: { use: string | null; ds: string | null } = { use: null, ds: null };
 /** Linux: GNOME's screenshot permission (?shots=1: given before) */
@@ -688,6 +689,24 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       mockMerge(args.patch ?? {});
       if (mockOff().join() !== before) emit('capabilities://changed', { off: mockOff() });
       return r(mockCfg);
+    }
+    case 'model_api': {
+      if (args.action === 'start') modelApiScope = args.scope === 'lan' ? 'lan' : 'local';
+      if (args.action === 'stop') modelApiScope = null;
+      if (args.action === 'prepare' && !modelsIn.has(args.model)) throw new Error('Model is no longer installed');
+      if (args.action === 'config' && !modelApiScope) throw new Error('Service stopped');
+      const base = modelApiScope === null ? '' : `http://${modelApiScope === 'lan' ? '192.0.2.1' : '127.0.0.1'}:11435/v1`;
+      return r({
+        running: modelApiScope !== null,
+        scope: modelApiScope ?? 'local',
+        base_url: base,
+        models: [...modelsIn].map((id) => ({ id, capability: 'transcription' })),
+        ...(args.action === 'config' ? {
+          api_key: 'preview-only',
+          python_examples: Object.fromEntries([...modelsIn].map((id) => [id,
+            `from openai import OpenAI\nclient = OpenAI(base_url="${base}", api_key="preview-only")\nwith open("audio.wav", "rb") as audio:\n    print(client.audio.transcriptions.create(model="${id}", file=audio).text)`]))
+        } : {}),
+      });
     }
     case 'asr_models':
       return r({ models: [{ id: 'sensevoice-small', name: 'SenseVoice Small', backend: 'sherpa-onnx', installed: true, size_mb: 228, languages: ['zh', 'en', 'ja', 'ko', 'yue'] }, { id: 'whisper-large-v3-turbo-ct2', name: 'Whisper large-v3 turbo', backend: 'faster-whisper', installed: false, size_mb: 1620, languages: 'multi' }] });

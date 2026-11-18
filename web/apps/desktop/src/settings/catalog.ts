@@ -106,6 +106,7 @@ export const SECTIONS: Record<string, Key> = {
   'screentext.translation': 'settings.screen_text.section.translate',
   'screentext.history_section': 'settings.screen_text.section.history',
   'speech.services': 'models.section.services',
+  'speech.api': 'models.api.title',
   'speech.jobs': 'speech.section.jobs',
   'speech.models': 'speech.section.models',
   'shortcuts.capture': 'capture.keys.section.capture',
@@ -206,6 +207,7 @@ export const ENTRIES: Entry[] = (() => {
     row('screentext.history', 'screentext.history_section', 'settings.screen_text.history', { detail: 'settings.screen_text.history.detail' }),
     // Models
     whole('speech.services', 'models.services.detail'),
+    whole('speech.api', 'models.api.detail'),
     row('speech.batch', 'speech.jobs', 'speech.purpose.batch', { detail: 'speech.purpose.batch.detail' }),
     row('speech.note', 'speech.jobs', 'speech.purpose.note', { detail: 'speech.purpose.note.detail' }),
     row('speech.dictation', 'speech.jobs', 'speech.purpose.dictation', { detail: 'speech.purpose.dictation.detail' }),

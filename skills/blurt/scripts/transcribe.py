@@ -101,7 +101,13 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError as e:
+    # Listing the installed weights from a plain Python process needs no inference runtime.
+    if e.name != "numpy" or __name__ == "__main__":
+        raise
+    np = None
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402

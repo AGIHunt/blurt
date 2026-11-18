@@ -968,10 +968,10 @@ def _complete(d: Path) -> bool:
         and not any(d.glob("*.part")) and not any(d.glob("*.incomplete"))
 
 
-def model_path(m: dict) -> Path | None:
+def model_path(m: dict, directory: Path | None = None) -> Path | None:
     """The newest complete copy: our own download ($BLURT_HOME/models/polish/<name>: complete only once every file of
     its manifest is in — folder_complete) or the Hugging Face cache."""
-    own = POLISH_DIR / m["repo"].split("/")[-1]
+    own = (directory or POLISH_DIR) / m["repo"].split("/")[-1]
     if folder_complete(own, legacy=_complete):
         return own
     root = hf_cache() / ("models--" + m["repo"].replace("/", "--"))

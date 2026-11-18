@@ -271,6 +271,16 @@ export interface Settings {
   config_path: string;
 }
 
+export type ModelApiScope = 'local' | 'lan';
+export interface ModelApiStatus {
+  messages_base_url?: string;
+  needs_restart?: boolean;
+  running: boolean;
+  scope: ModelApiScope;
+  base_url: string;
+  models: { id: string; capability: string }[];
+}
+
 export interface DictationModel {
   id: string;
   name: string;
@@ -463,6 +473,9 @@ export const api = {
   /** every key back to its default, in one write */
   resetShortcuts: () => invoke<HotkeyRow[]>('shortcuts_reset'),
   asrModels: () => invoke<{ models: AsrModel[] }>('asr_models'),
+  modelApi: (action: 'status' | 'start' | 'stop', scope?: ModelApiScope) => invoke<ModelApiStatus>('model_api', { action, scope }),
+  modelApiPrepare: (model: string) => invoke<ModelApiStatus>('model_api', { action: 'prepare', model }),
+  modelApiConfig: () => invoke<ModelApiStatus & { api_key: string; messages_python_examples?: Record<string, string>; python_examples: Record<string, string> }>('model_api', { action: 'config' }),
   dictationModels: () => invoke<DictationModels>('dictation_models'),
   modelDownload: (id: string) => invoke<void>('model_download', { id }),
   dictationUse: (id: string | null) => invoke<void>('dictation_use', { id }),

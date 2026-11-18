@@ -251,6 +251,7 @@ public enum SettingsCatalog {
 
         sec("speech.use", "speech.section.mac", "Speech"),
         sec("speech.services", "models.section.services", "Models"),
+        sec("speech.api", "models.api.title", "Models"),
         sec("speech.jobs", "speech.section.jobs", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
@@ -410,6 +411,7 @@ public enum SettingsCatalog {
             row("speech.vision", "speech.jobs", SettingsText("models.job.vision", "Models"), detail: SettingsText("models.job.vision.detail", "Models")),
             // the cloud services (the services themselves come from the user's setup; the section is what search finds)
             whole("speech.services", detail: SettingsText("models.services.detail", "Models")),
+            whole("speech.api", detail: SettingsText("models.api.detail", "Models")),
             whole("speech.languages", detail: P("speech.languages.footer")),
             row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
             row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),

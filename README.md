@@ -89,6 +89,8 @@ for the first time you snap or record.
 
 ## How it works with your agents
 
+**Use your downloaded models in another app.** In Settings → Models → External model API, start the service, select a model and copy its connection settings or Python example. Choose trusted LAN access to connect from another computer or phone. Chat clients can use OpenAI Chat Completions or Anthropic Messages, including streaming and client-side function calls with supported models. Transcription and image-to-text use the OpenAI-compatible endpoints.
+
 Blurt gets your words, pictures and recordings into an agent. The agent does the work.
 
 | | What it does |

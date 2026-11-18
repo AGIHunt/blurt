@@ -487,6 +487,7 @@ struct SpeechPane: View {
             useSection
             CloudServicesSection()
             jobsSection
+            ExternalModelAPISection()
             languagesSection
             advancedSection
         }

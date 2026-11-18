@@ -73,6 +73,8 @@ AGIHunt/blurt</code>，再运行 <code>/plugin install blurt@blurt</code>。然�
 
 ## 怎么配合你的 Agent
 
+**在其他应用中复用本机模型。** 打开「设置 → 模型 → 外部模型 API」，启动后选择聊天模型与 API 格式，即可复制连接配置或 Python 示例。OpenAI Chat Completions 和 Messages-compatible API 均提供普通聊天、流式输出和客户端函数调用。在同一网络的手机或另一台电脑上使用时，先选择受信任的局域网。可用的聊天、转写和取字能力取决于主机与已下载模型。[配置和兼容范围](docs/design/external-model-api.md)
+
 口喷鸡把你的话、截图和录屏送进 Agent，具体的工作由 Agent 来做。
 
 | | 做什么 |
