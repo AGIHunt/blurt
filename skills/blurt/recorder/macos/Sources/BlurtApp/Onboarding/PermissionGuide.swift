@@ -227,8 +227,9 @@ final class PermissionGuide: ObservableObject {
     /// The pane again (the user closed System Settings, or it went behind).
     func reopenPane() { if let k = current { SystemAccess.openPane(k) } }
 
-    /// A checked System Settings row can belong to an older build even when preflight says no. Let the user
-    /// reach the re-add instructions from the ordinary missing-permission step too; no permission is changed here.
+    /// A checked System Settings row can belong to an older version even when preflight says no: the step offers the
+    /// re-add instructions by hand once the switch has had time to work (HelperPanel, with suggestRestart); no
+    /// permission is changed here.
     func readdScreen() {
         guard running, current == .screen, !stepDone else { return }
         reauthorize = true
@@ -312,15 +313,20 @@ final class PermissionGuide: ObservableObject {
         guard let r = Config.shared["app.permission_resume"] as? [String: Any] else { return }
         Config.shared.set("app.permission_resume", nil)
         guard let at = r["at"] as? Double, Date().timeIntervalSince1970 - at < 600 else { return }
-        var kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
+        let kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
         let flow = PermissionFlowKind(rawValue: r["flow"] as? String ?? "") ?? .all
         let src = Source(rawValue: r["source"] as? String ?? "") ?? .privacy
         emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue), "source": src.rawValue])
-        // `kinds` only held the steps after Screen Recording. Recheck Screen Recording itself as well: an empty
-        // remainder isn't proof that the restart fixed it. Keep the screen-only scope on success, and offer the
-        // re-add instructions if macOS still refuses this build (including preflight=false with a checked row).
-        if !kinds.contains(.screen) { kinds.append(.screen) }
-        start(flow, only: kinds, source: src, reauthorize: !SystemAccess.granted(.screen))
+        guard kinds.isEmpty else { return start(flow, only: kinds, source: src) }
+        // Screen Recording was the walk's last step. On now: a walk of just that one ends saying so (not "Done for
+        // now" about the rest of the flow). Still off: the done line, back where the walk started, as before: Restart
+        // in Settings → Privacy lands here too, for someone who said no or hasn't flipped the switch yet, and they
+        // aren't told to remove a row that may not be there. A grant macOS lists but ScreenCaptureKit refuses is
+        // ScreenHelp's to find (ScreenGrant.stale); the step's "Already on…" link reaches re-add by hand.
+        if SystemAccess.granted(.screen) { return start(flow, only: [.screen], source: src) }
+        self.flow = flow
+        self.source = src
+        finish(already: true)
     }
 
     // MARK: words

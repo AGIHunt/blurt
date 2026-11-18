@@ -405,7 +405,10 @@ Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGui
   (`open -n` of our own bundle once this process has exited, then terminate; the rest of the walk is kept in
   `app.permission_resume` and continues after the relaunch, within 10 minutes — with nothing left, as when Screen
   Recording is the walk's last step, the relaunched Blurt shows the done line and brings back the window the walk
-  started from).
+  started from: "Screen Recording is on" when it is, scoped to that one permission; the flow's done line when it is still
+  off — Privacy's Restart lands here too, so someone who declined is not sent to re-add). Re-add mode comes only from
+  ScreenHelp's stale diagnosis (listed, but ScreenCaptureKit refuses) or the step's "Already on but not working? Add
+  Blurt again…", shown once the restart hint is (12 s on the step).
 - Blurt never clicks, scripts or writes anything in System Settings, and never writes `AppleFnUsageType`.
 - Test builds never register, never open a pane (unless `BLURT_TEST_OPEN_PANES=1`) and never relaunch; they emit
   `perm_request` / `perm_open_pane` / `perm_relaunch`. States are simulated with `BLURT_TEST_SCREEN_RECORDING`,

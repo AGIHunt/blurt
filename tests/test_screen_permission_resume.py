@@ -84,11 +84,11 @@ def resumed_events(app, tmp_path, *, screen, remaining=(), expired=False):
                 proc.wait(timeout=5)
 
 
-def test_failed_screen_restart_enters_reauthorization(permission_app, tmp_path):
+def test_restart_with_screen_still_off_ends_as_before(permission_app, tmp_path):
+    # Settings → Privacy's Restart lands here too, for someone who said no or hasn't flipped the switch: no re-add
     events = resumed_events(permission_app, tmp_path, screen=False)
-    assert any(e.get("op") == "start" and e.get("reauthorize") is True
-               and e.get("steps") == ["screen"] for e in events), events
-    assert not any(e.get("op") == "done" for e in events), events
+    assert any(e.get("op") == "done" for e in events), events
+    assert not any(e.get("reauthorize") is True for e in events), events
 
 
 def test_successful_restart_finishes_only_screen_scope(permission_app, tmp_path):
@@ -98,10 +98,10 @@ def test_successful_restart_finishes_only_screen_scope(permission_app, tmp_path)
                for e in events), events
 
 
-def test_other_pending_permissions_keep_screen_recheck(permission_app, tmp_path):
+def test_other_pending_permissions_carry_on(permission_app, tmp_path):
     events = resumed_events(permission_app, tmp_path, screen=False, remaining=["microphone"])
-    assert any(e.get("op") == "start" and e.get("steps") == ["microphone", "screen"]
-               and e.get("reauthorize") is True for e in events), events
+    assert any(e.get("op") == "start" and e.get("steps") == ["microphone"]
+               and e.get("reauthorize") is False for e in events), events
 
 
 def test_expired_restart_does_not_reopen_guide(permission_app, tmp_path):

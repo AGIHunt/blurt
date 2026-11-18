@@ -91,7 +91,7 @@ class TcpTransport(private val host: String, private val port: Int, private val 
     }
 }
 
-/** The owner's relay: wss:// or ws://, what passes is sealed either way. */
+/** The owner's relay: wss:// or ws://. The frames are sealed either way; over ws:// the address and the room show. */
 class RelayTransport(private val url: String) : Transport {
     private var ws: WebSocket? = null
     private val closed = AtomicBoolean(false)
