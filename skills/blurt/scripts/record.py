@@ -1428,13 +1428,17 @@ class FfmpegRecorder:
         def work():
             png = self.session / "shots" / f"{n:03d}.png"
             png.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                if image is not None:
+            ok = False
+            if image is not None:
+                try:
                     shutil.copyfile(image, png)
                     ok = png.exists()
-                elif FEED is not None:
+                except OSError:  # the host stopped waiting and removed it: the area is grabbed, as without one
+                    ok = False
+            try:
+                if not ok and FEED is not None:
                     ok = FEED.still(png, area)
-                else:
+                elif not ok:
                     r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
                                        capture_output=True, timeout=20)
                     ok = r.returncode == 0 and png.exists()
