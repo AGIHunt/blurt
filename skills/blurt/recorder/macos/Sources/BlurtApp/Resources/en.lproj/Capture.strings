@@ -205,6 +205,9 @@
 "capture.recording.organizing_usual" = "Usually about %@ min · Items appear there when done";
 "capture.recording.organizing_where" = "Items appear there when done";
 "capture.recording.organizing_left" = "about %@ min left";
+"capture.recording.no_agent" = "Recording saved · No agent can organize in the background\nOr say “Process my Blurt recordings” in an agent with the Blurt skill";
+"capture.recording.copy_request" = "Copy";
+"capture.recording.request_copied" = "Copied. Paste it into your agent’s chat.";
 "capture.rec.goes_after" = "Organized into %@ when you finish";
 "capture.rec.video_only" = "Save Video Only";
 "capture.card.in_take" = "Organized with this recording";

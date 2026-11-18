@@ -78,14 +78,32 @@ fn first_existing(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     cands.into_iter().find(|p| p.exists())
 }
 
-/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
-/// the repo checkout (dev builds) → the installed skill.
+/// The whole skill the app runs and links agents to (SKILL.md, scripts/, reference/, assets/): `$BLURT_HOME/skill`, a copy
+/// of the one bundled with the app, refreshed at launch when its `.version` stamp changes — as the Mac's ~/.blurt/skill
+/// (BlurtCore BundledSkill). The path never changes, so what an agent was given keeps working after updates.
+pub fn skill_dir() -> PathBuf {
+    blurt_home().join("skill")
+}
+
+/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the app's copy of its skill
+/// (skill_dir(), synced at launch: what agents are linked to, so the app and they run the same files) → the skill
+/// bundled with the app (its copy failed) → an older bundle's bare scripts → the repo checkout (dev builds) → the
+/// installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
+    let res = app.path().resource_dir().ok();
+    scripts_dir_from(res.as_deref())
+}
+
+pub fn scripts_dir_from(resources: Option<&Path>) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();
     if let Some(p) = std::env::var_os("BLURT_SCRIPTS").filter(|p| !p.is_empty()) {
         c.push(PathBuf::from(p));
     }
-    if let Ok(res) = app.path().resource_dir() {
+    if crate::skill::is_skill(&skill_dir()) {
+        c.push(skill_dir().join("scripts"));
+    }
+    if let Some(res) = resources {
+        c.push(res.join("skill").join("scripts"));
         c.push(res.join("scripts"));
     }
     c.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../skills/blurt/scripts"));

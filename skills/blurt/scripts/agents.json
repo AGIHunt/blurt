@@ -1,8 +1,10 @@
 {
-  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > provider_toml ({path, key, profile, profiles, except}: the TOML config selects a model provider not in `except` — at the top, or in the [<profiles>.<name>] its top-level `profile` names — → configured: codex pointed at another provider by cc-switch & co. has no ChatGPT login and needs none; it also hides models.cache, OpenAI's list) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text — only ever unattended (organising a recording or a batch of cards, AI fill-in, drafts) on text taken from the user's screen and voice, so it gets the least privilege that still lets it file items. Its cwd is the session folder (AI fill-in: a scratch folder), never the project; it reads the project's code but writes nothing there. No full-access / yolo modes. claude / gemini: file edits only inside cwd (acceptEdits / auto_edit) and shell commands only the skill scripts an organizing run uses, each pinned to its absolute path ({scripts} = the skill's scripts folder; the prompt names the same path) — no other command, no other script. codex: its workspace-write sandbox, writable = cwd + {writable} (one `--add-dir` each: the inbox store, every project's .blurt store, and a uv cache of its own — env UV_CACHE_DIR, BLURT_NO_INDEX; agents.py sandbox_env); never $BLURT_HOME (config.json, the jobs, index.db) nor the shared uv cache, so nothing it writes runs outside the sandbox later; network stays on because uv resolves the scripts' dependencies. grok: --permission-mode dontAsk (a call no rule allows is refused, never asked: nobody is there to answer), file edits only inside cwd (Edit(./**)) and the same skill scripts, each pinned to its absolute path; --disable-web-search because grok runs web search and fetch without asking in every mode, dontAsk included (a prompt injected through the screen could otherwise send what it reads out in a query), and --no-auto-update; its status is `grok models` (prints \"You are logged in…\", no tokens spent; it needs the network, so when it fails without saying either way, auth.json on disk counts as configured). A project's .blurt/config.json can't define agents (agents.py config). kimi / opencode: their own -p / run defaults (flags not verified). verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation. WP2 fields (agents.py detect / command / install): version = args printing the version; events = args appended to run for machine-readable progress + its format; headless: false = never run unattended (skip it in the auto chain: Connect only); app = {macos | windows | linux: path, or a list of paths tried in order} for app-only agents (none for this OS: listed as not installed); skill_dir = where the blurt skill is linked (a symlink; on Windows a directory junction, which needs no Developer Mode, else a copy); mcp = {args (+check: args that exit 0 when already added; current: values the check's output must name — else the entry is stale and written again, after `remove` for a CLI that won't add over it) | json: {path, key, value} merged into a config file}, {mcp_server} = absolute path of mcp_server.py, {uv} = uv's absolute path, used by every entry: the agent starts the server itself, desktop apps (Cursor, WorkBuddy) without the login shell's PATH, and on Windows / Linux the app's uv lives in $BLURT_HOME/bin, on no one else's PATH. codebuddy / workbuddy / cursor: connect only (skill + MCP; headless: false), paths from their documentation (WorkBuddy: the paths its app reads, ~/.workbuddy/skills and ~/.workbuddy/mcp.json); cursor links into ~/.agents/skills, which Cursor reads like ~/.claude/skills. Paths take ~ and ${VAR:-default}. headless_mcp = args `agents.py command … headless` adds so the run can use the blurt MCP server with no prompts (codex: the whole server via -c, since -c on an unregistered server breaks codex, plus approve mode and the BLURT_* env it forwards); {mcp_server_json} / {uv_json} = those paths as JSON/TOML strings. Processing (v0.7): models = where the agent's models are listed ({list: [{id, name, cheap}]} | {cache: the CLI's own model cache, format ('codex': a list of {slug, priority, visibility}; 'grok': a map of id → {info: {name, description, hidden}}, never a cheap one — its fast model costs more), config: its config file for the current default, config_key: that setting's TOML key (default `model`; dotted = in a table, grok's models.default)}); model_args = how a model / an effort level is passed ({model}, {effort}); processing = the defaults for unattended organising runs, per kind: recording (organizing a recording: the CLI's own model at low effort) and cards (snap / voice-note batches, AI fill-in, small runs: the cheapest model) — each {model: id | 'cheapest' (the cache's or list's cheap model) | 'default' (the CLI's own setting), effort: level | 'default'}; the v0.8 shape {model, effort} still means both. Overridden per agent and kind by config record.agent_processing.<id>.<kind> (Settings → Agents); usage = how a run reports the tokens it used (args added to the processing run + format | pattern with the number in group 1).",
+  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > provider_toml ({path, key, profile, profiles, except}: the TOML config selects a model provider not in `except` — at the top, or in the [<profiles>.<name>] its top-level `profile` names — → configured: codex pointed at another provider by cc-switch & co. has no ChatGPT login and needs none; it also hides models.cache, OpenAI's list) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text — only ever unattended (organising a recording or a batch of cards, AI fill-in, drafts) on text taken from the user's screen and voice, so it gets the least privilege that still lets it file items. Its cwd is the session folder (AI fill-in: a scratch folder), never the project; it reads the project's code but writes nothing there. No full-access / yolo modes. claude / gemini: file edits only inside cwd (acceptEdits / auto_edit) and shell commands only the skill scripts an organizing run uses, each pinned to its absolute path ({scripts} = the skill's scripts folder; the prompt names the same path) — no other command, no other script. codex: its workspace-write sandbox, writable = cwd + {writable} (one `--add-dir` each: the inbox store, every project's .blurt store, and a uv cache of its own — env UV_CACHE_DIR, BLURT_NO_INDEX; agents.py sandbox_env); never $BLURT_HOME (config.json, the jobs, index.db) nor the shared uv cache, so nothing it writes runs outside the sandbox later; network stays on because uv resolves the scripts' dependencies. grok: --permission-mode dontAsk (a call no rule allows is refused, never asked: nobody is there to answer), file edits only inside cwd (Edit(./**)) and the same skill scripts, each pinned to its absolute path; --disable-web-search because grok runs web search and fetch without asking in every mode, dontAsk included (a prompt injected through the screen could otherwise send what it reads out in a query), and --no-auto-update; its status is `grok models` (prints \"You are logged in…\", no tokens spent; it needs the network, so when it fails without saying either way, auth.json on disk counts as configured). A project's .blurt/config.json can't define agents (agents.py config). kimi / opencode: their own -p / run defaults (flags not verified). verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation. WP2 fields (agents.py detect / command / install): version = args printing the version; events = args appended to run for machine-readable progress + its format; headless: false = never run unattended (skip it in the auto chain: Connect only); app = {macos | windows | linux: path, or a list of paths tried in order} for app-only agents (none for this OS: listed as not installed); skill_dir = where the blurt skill is linked (a symlink; on Windows a directory junction, which needs no Developer Mode, else a copy); mcp = {args (+check: args that exit 0 when already added; current: values the check's output must name — else the entry is stale and written again, after `remove` for a CLI that won't add over it) | json: {path, key, value} merged into a config file}, {mcp_server} = absolute path of mcp_server.py, {uv} = uv's absolute path, used by every entry: the agent starts the server itself, desktop apps (Cursor, WorkBuddy) without the login shell's PATH, and on Windows / Linux the app's uv lives in $BLURT_HOME/bin, on no one else's PATH. codebuddy / workbuddy / cursor: connect only (skill + MCP; headless: false), paths from their documentation (WorkBuddy: the paths its app reads, ~/.workbuddy/skills and ~/.workbuddy/mcp.json); cursor links into ~/.agents/skills, which Cursor reads like ~/.claude/skills. Paths take ~ and ${VAR:-default}. headless_mcp = args `agents.py command … headless` adds so the run can use the blurt MCP server with no prompts (codex: the whole server via -c, since -c on an unregistered server breaks codex, plus approve mode and the BLURT_* env it forwards); {mcp_server_json} / {uv_json} = those paths as JSON/TOML strings. Processing (v0.7): models = where the agent's models are listed ({list: [{id, name, cheap}]} | {cache: the CLI's own model cache, format ('codex': a list of {slug, priority, visibility}; 'grok': a map of id → {info: {name, description, hidden}}, never a cheap one — its fast model costs more), config: its config file for the current default, config_key: that setting's TOML key (default `model`; dotted = in a table, grok's models.default)}); model_args = how a model / an effort level is passed ({model}, {effort}); processing = the defaults for unattended organising runs, per kind: recording (organizing a recording: the CLI's own model at low effort) and cards (snap / voice-note batches, AI fill-in, small runs: the cheapest model) — each {model: id | 'cheapest' (the cache's or list's cheap model) | 'default' (the CLI's own setting), effort: level | 'default'}; the v0.8 shape {model, effort} still means both. Overridden per agent and kind by config record.agent_processing.<id>.<kind> (Settings → Agents); usage = how a run reports the tokens it used (args added to the processing run + format | pattern with the number in group 1). Finding and connecting (v1.0.26, docs/design/agent-setup.md §8; agents.py detect): home = the agent's own config folder (a path or a list; ~ and ${VAR:-default}) — it existing is the signal that a skill / MCP config written there will be read, and Connect writes there even when nothing was found (Connect anyway); app = {macos: bundle ids, windows: program stems (lowercase, no .exe), linux: .desktop ids} found without starting anything (LaunchServices / Info.plist, the Uninstall keys + App Paths + Start Menu shortcuts + Scoop / WinGet links, XDG / Flatpak / Snap .desktop files), a path is still taken as a fallback; found = home exists or app found (cached 10 min). mcp_clients = the clientInfo.name values the agent's MCP client sends (the server notes them in $BLURT_HOME/run/mcp-clients.json: connected); edition = which edition, for two entries of one product (WorkBuddy 国内版 / WorkBuddy AI 国际版); site = its download page; after = what to do in the agent after Connect; connect: false = not listed for Connect (a card-drag target only). drop = composer | terminal (or {os: …}): a card dragged into the app is the picture's path and its note (composer: one line per card, terminal: one line) — the one list CardDropTarget.swift and card_drop.rs read, with record.agent_defs (the user's own) and record.agent_drop.<id> = false (switched off). verified / app_verified / skill_verified: run | cli | docs | local (seen on a real install) | unverified (a best guess: a user who finds it wrong uses Other Agent…).",
   "agents": [
     {
       "id": "claude", "name": "Claude Code", "bins": ["claude"], "verified": "run",
+      "home": "${CLAUDE_CONFIG_DIR:-~/.claude}", "app": {"macos": ["com.anthropic.claudefordesktop"]}, "drop": {"macos": "composer"},
+      "mcp_clients": ["claude-code"],
       "status": {"args": ["auth", "status", "--json"], "json_key": "loggedIn", "logged_out": ["not logged in", "please run /login"]},
       "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools",
               "Bash(uv run {scripts}/transcribe.py:*)", "Bash(uv run {scripts}/frames.py:*)", "Bash(uv run {scripts}/items.py:*)",
@@ -22,6 +24,8 @@
     },
     {
       "id": "codex", "name": "Codex", "bins": ["codex"], "verified": "run",
+      "home": "${CODEX_HOME:-~/.codex}", "app": {"macos": ["com.openai.codex"], "windows": ["codex"]}, "drop": "composer",
+      "mcp_clients": ["codex-mcp-client", "codex"],
       "status": {"args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"], "env_any": ["OPENAI_API_KEY"],
                  "provider_toml": {"path": "${CODEX_HOME:-~/.codex}/config.toml", "key": "model_provider", "profile": "profile",
                                    "profiles": "profiles", "except": ["openai"]}},
@@ -44,6 +48,7 @@
     },
     {
       "id": "kimi", "name": "Kimi Code", "bins": ["kimi"], "verified": "cli",
+      "home": "${KIMI_CODE_HOME:-~/.kimi-code}", "app": {"macos": ["com.kimi.code.desktop"], "windows": ["kimi code"]}, "drop": "composer",
       "status": {"args": ["provider", "list"], "creds_json": {"path": "~/.kimi-code/credentials/kimi-code.json", "keys": ["access_token", "refresh_token"]},
                  "configured_if": "models=[1-9]", "otherwise": "logged_out"},
       "run": ["-p", "{prompt}"],
@@ -55,7 +60,7 @@
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
-      "id": "opencode", "name": "OpenCode", "bins": ["opencode"], "verified": "cli",
+      "id": "opencode", "name": "OpenCode", "bins": ["opencode"], "verified": "cli", "home": "~/.config/opencode",
       "status": {"args": ["auth", "list"], "configured_if": "(?m)\\b[1-9]\\d* credentials?\\b|\\b(?:stored|environment)\\s*$",
                  "env_any": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "ZHIPU_API_KEY"],
                  "otherwise": "logged_out"},
@@ -70,7 +75,7 @@
       "model_args": {"model": ["--model", "{model}"]}
     },
     {
-      "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"], "verified": "docs",
+      "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"], "verified": "docs", "home": "~/.gemini", "mcp_clients": ["gemini-cli-mcp-client"],
       "status": {"env_any": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"], "files_any": ["~/.gemini/oauth_creds.json"],
                  "otherwise": "logged_out"},
       "run": ["-p", "{prompt}", "--approval-mode", "auto_edit", "--allowed-tools",
@@ -85,7 +90,7 @@
       "model_args": {"model": ["--model", "{model}"]}
     },
     {
-      "id": "grok", "name": "Grok", "bins": ["grok"], "verified": "cli",
+      "id": "grok", "name": "Grok", "bins": ["grok"], "verified": "cli", "home": "${GROK_HOME:-~/.grok}",
       "status": {"args": ["models"], "ok_if": ["you are logged in"],
                  "logged_out": ["not logged in", "not signed in", "please log in", "please sign in", "login required"],
                  "env_any": ["XAI_API_KEY"], "files_any": ["${GROK_HOME:-~/.grok}/auth.json"], "otherwise": "logged_out"},
@@ -104,7 +109,7 @@
       "processing": {"recording": {"model": "default", "effort": "low"}, "cards": {"model": "cheapest", "effort": "low"}}
     },
     {
-      "id": "codebuddy", "name": "CodeBuddy Code", "bins": ["codebuddy"], "verified": "docs",
+      "id": "codebuddy", "name": "CodeBuddy Code", "bins": ["codebuddy"], "verified": "docs", "home": "~/.codebuddy",
       "headless": false,
       "version": ["--version"],
       "install": {"zh": "npm install -g @tencent-ai/codebuddy-code", "en": "npm install -g @tencent-ai/codebuddy-code"},
@@ -113,24 +118,105 @@
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
-      "id": "workbuddy", "name": "WorkBuddy", "bins": [], "app": {"macos": "/Applications/WorkBuddy.app"}, "verified": "docs",
-      "headless": false,
-      "install": {"zh": "见 workbuddy.ai", "en": "see workbuddy.ai"},
+      "id": "workbuddy", "name": "WorkBuddy", "bins": [], "verified": "local", "headless": false,
+      "edition": {"zh": "国内版", "en": "China"},
+      "home": "~/.workbuddy", "app": {"macos": ["com.tencent.workbuddy.mac", "/Applications/WorkBuddy.app"], "windows": ["workbuddy"]}, "app_verified": {"windows": "local"},
+      "drop": "composer", "site": "https://www.codebuddy.cn/work/",
+      "install": {"zh": "见 codebuddy.cn/work", "en": "see codebuddy.cn/work"},
+      "after": {"zh": "在 WorkBuddy 中打开「连接器」→「blurt」，点击「信任」，然后新建对话。", "en": "In WorkBuddy, open Connectors → blurt, click Trust, then start a new chat."},
       "skill_dir": "~/.workbuddy/skills",
       "mcp": {"json": {"path": "~/.workbuddy/mcp.json", "key": ["mcpServers", "blurt"],
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
-      "id": "cursor", "name": "Cursor", "bins": [], "app": {"macos": "/Applications/Cursor.app", "windows": ["${LOCALAPPDATA}/Programs/cursor/Cursor.exe", "${ProgramFiles}/cursor/Cursor.exe"]}, "verified": "docs",
-      "headless": false,
+      "id": "workbuddy-ai", "name": "WorkBuddy AI", "bins": [], "verified": "docs", "headless": false,
+      "edition": {"zh": "国际版", "en": "International"},
+      "home": "~/.workbuddy-ai", "app": {"macos": ["/Applications/WorkBuddy AI.app"], "windows": ["workbuddy ai", "workbuddyai"]},
+      "app_verified": "unverified",
+      "drop": "composer", "site": "https://www.workbuddy.ai/",
+      "install": {"zh": "见 workbuddy.ai", "en": "see workbuddy.ai"},
+      "after": {"zh": "在 WorkBuddy AI 里打开 连接器 → blurt，点「信任」，然后新开一个对话。", "en": "In WorkBuddy AI, open Connectors → blurt, click Trust, then start a new chat."},
+      "skill_dir": "~/.workbuddy-ai/skills",
+      "mcp": {"json": {"path": "~/.workbuddy-ai/mcp.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
+    },
+    {
+      "id": "cursor", "name": "Cursor", "bins": [], "verified": "local", "headless": false,
+      "home": "~/.cursor", "app": {"macos": ["com.todesktop.230313mzl4w4u92"], "windows": ["cursor"], "linux": ["cursor"]},
+      "drop": "terminal", "site": "https://cursor.com", "mcp_clients": ["cursor-vscode", "cursor"],
       "install": {"zh": "见 cursor.com", "en": "see cursor.com"},
-      "skill_dir": "~/.agents/skills",
+      "skill_dir": "~/.cursor/skills",
       "mcp": {"json": {"path": "~/.cursor/mcp.json", "key": ["mcpServers", "blurt"],
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
-      "id": "zcode", "name": "ZCode", "bins": [], "app": {"macos": "/Applications/ZCode.app"}, "verified": "docs",
-      "headless": false,
+      "id": "qoder", "name": "Qoder", "bins": [], "verified": "local", "headless": false,
+      "home": "~/.qoder", "app": {"macos": ["com.qoder.ide"], "windows": ["qoder"], "linux": ["qoder"]}, "app_verified": {"windows": "unverified", "linux": "unverified"},
+      "drop": "terminal", "site": "https://qoder.com",
+      "install": {"zh": "见 qoder.com", "en": "see qoder.com"},
+      "skill_dir": "~/.qoder/skills",
+      "mcp": {"json": {"path": "~/.qoder/mcp.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "local"}
+    },
+    {
+      "id": "qoderwork", "name": "QoderWork", "bins": [], "verified": "local", "headless": false,
+      "home": "~/.qoderwork", "app": {"macos": ["com.qoder.work"], "windows": ["qoderwork"]}, "app_verified": {"windows": "unverified"},
+      "drop": "composer", "site": "https://qoder.com",
+      "install": {"zh": "见 qoder.com", "en": "see qoder.com"},
+      "skill_dir": "~/.qoderwork/skills",
+      "fix": {"zh": "在 QoderWork 的设置里添加 MCP，粘贴「其他 Agent…」里的配置", "en": "add the MCP server in QoderWork's settings with the setup from Other Agent…"}
+    },
+    {
+      "id": "trae", "name": "Trae", "bins": [], "verified": "local", "headless": false,
+      "home": "~/.trae", "app": {"macos": ["com.trae.app"], "windows": ["trae"], "linux": ["trae"]}, "app_verified": {"windows": "unverified", "linux": "unverified"},
+      "drop": "terminal", "site": "https://www.trae.ai",
+      "install": {"zh": "见 trae.ai", "en": "see trae.ai"},
+      "skill_dir": "~/.trae/skills",
+      "fix": {"zh": "在 Trae 的 设置 → MCP → 手动添加 里粘贴「其他 Agent…」里的配置", "en": "in Trae, Settings → MCP → Add Manually, paste the setup from Other Agent…"}
+    },
+    {
+      "id": "trae-cn", "name": "Trae CN", "bins": [], "verified": "local", "headless": false,
+      "home": "~/.trae-cn", "app": {"macos": ["cn.trae.app"], "windows": ["trae cn"]}, "app_verified": {"windows": "unverified"},
+      "drop": "terminal", "site": "https://www.trae.cn",
+      "install": {"zh": "见 trae.cn", "en": "see trae.cn"},
+      "skill_dir": "~/.trae-cn/skills", "skill_verified": "unverified",
+      "fix": {"zh": "在 Trae 的 设置 → MCP → 手动添加 里粘贴「其他 Agent…」里的配置", "en": "in Trae, Settings → MCP → Add Manually, paste the setup from Other Agent…"}
+    },
+    {
+      "id": "windsurf", "name": "Windsurf", "bins": [], "verified": "docs", "headless": false,
+      "home": "~/.codeium/windsurf", "app": {"macos": ["com.exafunction.windsurf"], "windows": ["windsurf"], "linux": ["windsurf"]},
+      "drop": "terminal", "site": "https://windsurf.com",
+      "install": {"zh": "见 windsurf.com", "en": "see windsurf.com"},
+      "skill_dir": "~/.codeium/windsurf/skills", "skill_verified": "unverified",
+      "mcp": {"json": {"path": "~/.codeium/windsurf/mcp_config.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
+    },
+    {
+      "id": "kiro", "name": "Kiro", "bins": [], "verified": "docs", "headless": false,
+      "home": "~/.kiro", "app": {"macos": ["dev.kiro.desktop"], "windows": ["kiro"], "linux": ["kiro"]},
+      "drop": "terminal", "site": "https://kiro.dev",
+      "install": {"zh": "见 kiro.dev", "en": "see kiro.dev"},
+      "skill_dir": "~/.kiro/skills",
+      "mcp": {"json": {"path": "~/.kiro/settings/mcp.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
+    },
+    {
+      "id": "antigravity", "name": "Antigravity", "bins": [], "verified": "unverified", "headless": false,
+      "home": "~/.gemini/antigravity", "app": {"macos": ["com.google.antigravity"], "windows": ["antigravity"], "linux": ["antigravity"]},
+      "drop": "terminal", "site": "https://antigravity.google",
+      "install": {"zh": "见 antigravity.google", "en": "see antigravity.google"},
+      "skill_dir": "~/.gemini/antigravity/skills", "skill_verified": "unverified",
+      "mcp": {"json": {"path": "~/.gemini/antigravity/mcp_config.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "unverified"}
+    },
+    {
+      "id": "doubaowork", "name": "DoubaoWork", "bins": [], "verified": "local", "headless": false, "connect": false,
+      "app": {"macos": ["com.work.pc.doubao"], "windows": ["doubaowork"]}, "app_verified": {"windows": "unverified"},
+      "drop": "composer"
+    },
+    {
+      "id": "zcode", "name": "ZCode", "bins": [], "verified": "unverified", "headless": false,
+      "app": {"macos": ["/Applications/ZCode.app"]},
       "fix": {"zh": "在 ZCode 设置 → Skills / MCP 里手动导入 blurt", "en": "in ZCode Settings → Skills / MCP, import blurt by hand"},
       "install": {"zh": "见 zcode.z.ai", "en": "see zcode.z.ai"}
     }

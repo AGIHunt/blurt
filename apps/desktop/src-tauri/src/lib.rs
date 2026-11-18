@@ -26,11 +26,13 @@ pub mod location;
 pub mod onboarding;
 pub mod paths;
 pub mod projects;
+pub mod recordings;
 pub mod remote; // Blurt on the phone: this computer as its host (crates/blurt-remote)
 pub mod screen_text;
 pub mod scripts;
 pub mod settings;
 pub mod setup;
+pub mod skill;
 pub mod tray;
 pub mod watcher;
 
@@ -307,6 +309,13 @@ fn index_item(state: tauri::State<'_, AppState>, uid: String) -> R<Option<Value>
 #[tauri::command(async)]
 fn index_sessions(state: tauri::State<'_, AppState>, q: Option<SessionQuery>) -> R<Vec<Value>> {
     state.index().sessions(&q.unwrap_or_default())
+}
+
+/// The newest recordings (video sessions) with their folder's facts: recordings.rs.
+#[tauri::command(async)]
+fn recordings_list(state: tauri::State<'_, AppState>, limit: Option<usize>) -> R<Vec<Value>> {
+    let live = state.capture.recording_session();
+    recordings::list(&state.index(), live.as_deref(), limit.unwrap_or(40).clamp(1, 500))
 }
 
 #[tauri::command(async)]
@@ -654,9 +663,39 @@ fn save_temp_image(app: AppHandle, request: tauri::ipc::Request<'_>) -> R<String
     Ok(p)
 }
 
+/// The jobs: the running ones (`active`), or the newest 100 and every failed organising still waiting for a Retry or a
+/// Dismiss (`waiting: true`, a week: the Mac's JobFailures).
 #[tauri::command(async)]
 fn jobs_list(active: Option<bool>) -> Vec<Value> {
-    jobs::list(active.unwrap_or(false), 100)
+    if active.unwrap_or(false) {
+        jobs::list(true, 100)
+    } else {
+        jobs::list_for_window(100)
+    }
+}
+
+/// Organise this recording (or batch) now — the list's Organize, a failed job's Retry: Err("no_agent") when no agent
+/// can run in the background (no job then); the job already organising it, when there is one.
+#[tauri::command(async)]
+fn session_process(app: AppHandle, dir: String) -> R<()> {
+    let session = std::path::PathBuf::from(&dir);
+    if !session.is_dir() {
+        return Err("missing".into());
+    }
+    // a Retry of a run on some of a batch's captures: those captures again, where they were going
+    let me = paths::normalize(&session);
+    let last = jobs::list_for_window(500).into_iter().find(|j| {
+        j["type"] == "process" && j["waiting"] == json!(true) && j["session"].as_str().is_some_and(|s| paths::normalize(std::path::Path::new(s)) == me)
+    });
+    let captures: Option<Vec<u64>> = last.as_ref().and_then(|j| j["captures"].as_array()).map(|a| a.iter().filter_map(Value::as_u64).collect()).filter(|c: &Vec<u64>| !c.is_empty());
+    let project = captures.as_ref().and(last.as_ref()).and_then(|j| j["project"].as_str().map(str::to_owned));
+    agents::process(&app, &session, captures, project, None, None).map(|_| ())
+}
+
+/// Dismiss a failed job: it leaves the list (the jobs watcher sees the file change and says so).
+#[tauri::command(async)]
+fn job_dismiss(id: String) -> R<()> {
+    jobs::dismiss(&id)
 }
 
 #[tauri::command(async)]
@@ -664,10 +703,17 @@ fn agents_models(state: tauri::State<'_, AppState>, agent: String) -> R<Value> {
     agents::models(&state.runner(), &agent)
 }
 
-/// `login` false: no sign-in probes (fast); `ids`: only these agents.
+/// `login` false: no sign-in probes (fast); `ids`: only these agents; `fresh`: look for the agents' apps again
+/// (Check Again; else what was found in the last 10 minutes).
 #[tauri::command(async)]
-fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Option<Vec<String>>) -> R<Value> {
-    agents::detect_with(&state.runner(), login.unwrap_or(true), ids.as_deref())
+fn agents_detect(state: tauri::State<'_, AppState>, login: Option<bool>, ids: Option<Vec<String>>, fresh: Option<bool>) -> R<Value> {
+    agents::detect_fresh(&state.runner(), login.unwrap_or(true), ids.as_deref(), fresh.unwrap_or(false))
+}
+
+/// An agent can organise recordings in the background now (agents::ready: the full detect, cached).
+#[tauri::command(async)]
+fn agents_ready(state: tauri::State<'_, AppState>) -> R<bool> {
+    agents::ready(&state.runner())
 }
 
 /// K6: hand these items to the user's own agent — the sheet is written, the items are marked handed off, and the
@@ -1028,6 +1074,10 @@ pub fn run() {
             let handle = app.handle().clone();
             hotkeys::mark_main_thread(); // hotkeys::apply runs here, whoever calls it
             retitle(&handle);
+            // the skill to $BLURT_HOME/skill before anything runs a script (skill.rs), and what agent-started runs
+            // read to match ours (setup::write_agent_env)
+            skill::sync_at_launch(handle.path().resource_dir().ok());
+            setup::write_agent_env();
             app.manage(AppState {
                 runner: RwLock::new(Runner::new(&handle)),
                 capture: capture::Capture::default(),
@@ -1158,6 +1208,7 @@ pub fn run() {
             index_query,
             index_item,
             index_sessions,
+            recordings_list,
             index_summary,
             index_rescan,
             projects_list,
@@ -1194,9 +1245,12 @@ pub fn run() {
             mainwin::items_drag_out_available,
             jobs_list,
             agents_detect,
+            agents_ready,
             agents_models,
             handoff_create,
             process_captures,
+            session_process,
+            job_dismiss,
             voice_start,
             voice_stop,
             settings_get,
@@ -1239,6 +1293,10 @@ pub fn run() {
             housekeeping::agents_registry,
             housekeeping::agents_install,
             housekeeping::agents_test,
+            housekeeping::agents_manual,
+            housekeeping::agents_custom,
+            housekeeping::mcp_clients,
+            housekeeping::skill_zip,
             housekeeping::feedback_send,
             control::agent_setup_instruction,
             control::agent_setup_state,

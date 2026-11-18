@@ -85,6 +85,28 @@ pub fn mirror_env() -> Vec<(&'static str, &'static str)> {
     .collect()
 }
 
+/// `$BLURT_HOME/run/env.json` = {"env": {…}}: what scripts the app starts get on top of the user's environment — the
+/// mirrors (mirror_env) and a chosen data folder's caches (location.rs: UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR, HF_HOME)
+/// — for the scripts an agent starts on its own, which read it in _common.apply_app_env (a variable already set
+/// wins there). Written at every launch: a setting changed since is in it the next time.
+pub fn write_agent_env() {
+    let mut env = serde_json::Map::new();
+    for (k, v) in mirror_env() {
+        env.insert(k.into(), json!(v));
+    }
+    for k in ["UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "HF_HOME"] {
+        if let Some(v) = std::env::var_os(k).filter(|v| !v.is_empty()) {
+            env.insert(k.into(), json!(v.to_string_lossy()));
+        }
+    }
+    let f = paths::blurt_home().join("run").join("env.json");
+    let _ = std::fs::create_dir_all(f.parent().unwrap_or(&f));
+    let tmp = f.with_extension(format!("json.{}.tmp", std::process::id()));
+    if std::fs::write(&tmp, serde_json::to_vec_pretty(&json!({"env": env})).unwrap_or_default()).is_ok() {
+        let _ = std::fs::rename(&tmp, &f);
+    }
+}
+
 fn no_window(c: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {

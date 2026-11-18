@@ -287,7 +287,9 @@ pub fn export_bundle(runner: &Runner, uids: &[String], out: &str, lang: &str) ->
 /// The Fill In Details with AI prompt (the Mac's AgentHub.enrich): the items filed straight from the user's notes get
 /// their kind, title and lens fields from one unattended agent run; the user's own words and choices stay.
 pub fn enrich_prompt(uids: &[String], scripts: &str, project_path: Option<&str>) -> String {
-    let items = format!("uv run --script {scripts}/items.py");
+    // `uv run <scripts>/items.py`: the one form the run's permissions allow (agents.json pins it; organize_prompt.json's
+    // scripts hint says so)
+    let items = format!("uv run {scripts}/items.py");
     let mut s = format!(
         "Use the blurt skill. These items were filed straight from the user's own notes, without an agent (they carry \
          `enrich: pending`): {}.\nFor each one: `{items} get <uid>`, read it and look at its frames; then set the right kind \
@@ -295,10 +297,10 @@ pub fn enrich_prompt(uids: &[String], scripts: &str, project_path: Option<&str>)
          what that kind's lens asks for (for an issue: steps, expected / actual, code_refs found in the project's code) with \
          `{items} patch <uid> --set key=VALUE … --unset enrich`. Keep the user's words in quote; don't change status, project \
          or work. This is an unattended background run started by the Blurt app: don't ask questions and don't open the \
-         review page. Finish with one sentence.\nRun the skill's scripts exactly as `uv run --script {scripts}/<name>.py …` (no \
-         other form, no other command is allowed).",
+         review page. Finish with one sentence.",
         uids.join(", ")
     );
+    s.push_str(&crate::agents::scripts_hint(scripts));
     if let Some(p) = project_path.filter(|p| std::path::Path::new(p).is_dir()) {
         s.push_str(&format!("\nThe project's code (read it, change nothing there): {p}"));
     }
@@ -416,7 +418,9 @@ mod tests {
     #[test]
     fn enrich_prompt_and_drag_files() {
         let p = enrich_prompt(&["u1".into(), "u2".into()], "/s", None);
-        assert!(p.contains("u1, u2") && p.contains("uv run --script /s/items.py get <uid>") && p.contains("--unset enrich"), "{p}");
+        assert!(p.contains("u1, u2") && p.contains("uv run /s/items.py get <uid>") && p.contains("--unset enrich"), "{p}");
+        // the one form the run may use (claude / gemini allow only `uv run <scripts>/<name>.py`)
+        assert!(!p.contains("--script") && p.contains("exactly as `uv run /s/<name>.py …`"), "{p}");
         assert!(!p.contains("change nothing there"));
         let d = tempfile::tempdir().unwrap();
         let (f, md) = (d.path().join("a.png"), d.path().join("b.md"));

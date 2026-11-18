@@ -1,0 +1,11 @@
+{
+  "_doc": "What an organising run is told (an unattended agent run on a recording or a batch of captures): the one text both apps send. The macOS app (BlurtCore OrganizerPrompt.render; a copy is bundled into Blurt.app/Contents/Resources) and the Windows/Linux app (agents.rs organize_prompt, compiled in) join these parts in this order — recording or shots, then captures, run, skill, scripts, code, candidates — each only when it applies, its one {placeholder} filled once (a value is never searched again). captures = the shots.jsonl n of a partial run (\"3, 4\"); skill_md = the SKILL.md the app runs (Mac ~/.blurt/skill, Windows/Linux $BLURT_HOME/skill); scripts = the scripts folder the run may call (the same {scripts} agents.json pins); code = the project's folder when it has one that exists (read, never the cwd); candidates = `projects.py candidates` text, for a capture with no project. tests/organize-prompt/golden.json pins what both make of it: change a part, then the golden file, and both tests follow.",
+  "recording": "Use the blurt skill to process this recording: {session}",
+  "shots": "Use the blurt skill to process this batch of captures: {session}\nIt is a shots session (no video): each shot anchors one item and is that item's primary frame; voice-only lines (type voice) are items of their own; voice notes are transcribed first; .marked.png files carry the user's ink.",
+  "captures": "\nOnly these captures (shots.jsonl n): {captures}.",
+  "run": "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences.",
+  "skill": "\nThe blurt skill: {skill_md}",
+  "scripts": "\nRun the skill's scripts exactly as `uv run {scripts}/<name>.py …` (no other form, no other command is allowed).",
+  "code": "\nThe project's code (read it, change nothing there): {code}",
+  "candidates": "\n\n{candidates}"
+}

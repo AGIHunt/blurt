@@ -42,19 +42,21 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import wave
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, STATE_FILE, die, ffmpeg_bin, fix_tcl_env, fmt_ts,  # noqa: E402
-                     global_config, load_json, new_session_dir, probe_duration, run, save_config_if_readable, save_json)
+                     uv_bin, global_config, load_json, new_session_dir, probe_duration, run, save_config_if_readable, save_json)
 
 VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", "teams", "oray", "vb-audio",
                      "voicemeeter", "stereo mix", "立体声混音", "aggregate", "聚集", "cable")
 AUDIO_SR = 48000
 SWIFT_DIR = Path(__file__).resolve().parent.parent / "recorder" / "macos"
 AGENTS_JSON = Path(__file__).with_name("agents.json")  # bundled into the app (Agents.swift)
+ORGANIZE_PROMPT_JSON = Path(__file__).with_name("organize_prompt.json")  # bundled into the app (OrganizerPrompt)
 
 
 STATUS: dict = {"on": False, "final": False, "err": None}  # `start --status-jsonl` (docs/design/desktop-app.md §5 C8)
@@ -370,15 +372,6 @@ class LivePcm:
 
 
 LIVE: dict = {}  # {"proc": the live.py process of the current take}
-
-
-def uv_bin() -> str | None:
-    """uv for live.py: PATH, else the one running us ($UV, set by `uv run`), else the one the app installs
-    (~/.blurt/bin) — the Windows app's uv is not on PATH, so live.py never ran there before."""
-    for c in (shutil.which("uv"), os.environ.get("UV"), str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))):
-        if c and Path(c).is_file():
-            return c
-    return None
 
 
 def live_enabled(cfg: dict | None = None) -> bool:
@@ -757,6 +750,9 @@ def native_binary(build: bool = True) -> Path | None:
                     dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
+    # the organising run's text, shared with the Windows/Linux app (BlurtCore OrganizerPrompt)
+    if ORGANIZE_PROMPT_JSON.exists():
+        shutil.copy(ORGANIZE_PROMPT_JSON, APP_BUNDLE / "Contents" / "Resources" / "organize_prompt.json")
     # the AccentColor (Info.plist NSAccentColorName) and, for macOS 26, the app icon with its dark appearance
     # (CFBundleIconName; assets/brand/AppIcon.icon): compiled by assets/color/build.py with Xcode's actool and
     # committed, so this build needs the Command Line Tools only
@@ -1420,9 +1416,10 @@ class FfmpegRecorder:
         self.log("resume")
         status("resumed", t=round(self.elapsed(), 3))
 
-    def snap(self, via: str, region: list[int] | None = None):
+    def snap(self, via: str, region: list[int] | None = None, image: Path | None = None):
         """A full-resolution still of the area now (ffmpeg grabs one frame), without pausing; works while paused.
-        `region`: another area of the screen than the recorded one (the host's snap flow)."""
+        `region`: another area of the screen than the recorded one (the host's snap flow); `image`: its picture,
+        already taken (the host's picker still, cut to the area: never the picker or the note over it), copied in."""
         self.shots += 1
         n, t, wall = self.shots, round(self.elapsed(), 3), time.time()
         area = region or self.region
@@ -1431,10 +1428,17 @@ class FfmpegRecorder:
         def work():
             png = self.session / "shots" / f"{n:03d}.png"
             png.parent.mkdir(parents=True, exist_ok=True)
+            ok = False
+            if image is not None:
+                try:
+                    shutil.copyfile(image, png)
+                    ok = png.exists()
+                except OSError:  # the host stopped waiting and removed it: the area is grabbed, as without one
+                    ok = False
             try:
-                if FEED is not None:
+                if not ok and FEED is not None:
                     ok = FEED.still(png, area)
-                else:
+                elif not ok:
                     r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
                                        capture_output=True, timeout=20)
                     ok = r.returncode == 0 and png.exists()
@@ -1514,13 +1518,16 @@ class FfmpegRecorder:
                     self.snap("marker" if c == "marker" else "command")
                 elif c.startswith("snap-region:"):
                     # the host's snap flow during a take (an area the user picked, then its note): a still of that
-                    # area — desktop px, anywhere on screen — numbered and logged like ours (snap-and-note.md §11)
+                    # area — desktop px, anywhere on screen — numbered and logged like ours (snap-and-note.md §11);
+                    # "|<path>" (%-encoded): its picture, the picker's still cut to the area, copied in
+                    area, _, img = c[12:].partition("|")
                     try:
-                        x, y, w, h = (int(float(v)) for v in c[12:].split(","))
+                        x, y, w, h = (int(float(v)) for v in area.split(","))
                     except ValueError:
                         status("error", msg=f"bad {c}", code="snap", fatal=False)
                         continue
-                    self.snap("picker", region=[x, y, max(2, w), max(2, h)])
+                    self.snap("picker", region=[x, y, max(2, w), max(2, h)],
+                              image=Path(urllib.parse.unquote(img)) if img else None)
                 elif c.startswith("stroke:"):
                     # the host's pen drew a stroke over the area (recording.md §4.6; the Mac's InkView.end): its
                     # shape and points (0–1 of the area) at the video time it began; it stays 3 s after the last one

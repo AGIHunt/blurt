@@ -54,6 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
+from _common import uv_bin  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, landed_in, load_json, progress_line,  # noqa: E402
                      save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said)
 from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
@@ -1012,7 +1013,7 @@ def ensure_mlx(stdin: str | None = None) -> None:
     if not supported():
         raise Fail("polish needs Apple Silicon (MLX)", "unsupported", 4)
     import shutil
-    uv = shutil.which("uv") or str(BLURT_HOME / "bin" / "uv")
+    uv = uv_bin() or str(BLURT_HOME / "bin" / "uv")
     if os.environ.get("BLURT_POLISH_REEXEC") or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
         raise Fail(f"mlx-lm is not installed (run with: uv run --with mlx-lm {Path(sys.argv[0]).name} …)", "deps", 4)
     os.environ["BLURT_POLISH_REEXEC"] = "1"

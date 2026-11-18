@@ -270,6 +270,10 @@ final class Island: NSObject, IslandHosting {
         /// the kept text) waits until one is chosen.
         var secondTitle: String?
         var second: (() -> Void)?
+        /// A third answer, as quiet, left of the second (a take saved with no agent: Set Up an Agent…, Copy Phrase,
+        /// Show in Finder).
+        var thirdTitle: String?
+        var third: (() -> Void)?
         /// A question's quoted text, under it in the quiet colour (the dictated text the island keeps)
         var quote: String?
         /// Called each time it goes up on the island (a line explained "the first couple of times" counts a showing,

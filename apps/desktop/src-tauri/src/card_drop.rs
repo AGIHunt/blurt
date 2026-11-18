@@ -14,19 +14,20 @@
 //!    fly back. The classic console window (conhost: ConsoleWindowClass, WM_DROPFILES), Alacritty (winit takes
 //!    files only), and until one is seen taking text, WezTerm, Hyper, Tabby, Warp, ConEmu and the rest of the
 //!    dictation table of terminals.
-//!  • an agent app — a desktop agent or an AI IDE whose agent reads files on this PC (AGENTS: Codex, WorkBuddy,
-//!    QoderWork, Cursor, Trae…, plus the programs the user added in Settings → General → Cards → Agents…) — gets
+//!  • an agent app — a desktop agent or an AI IDE whose agent reads files on this PC (agents.json's agents with a
+//!    `drop`: Codex, WorkBuddy, QoderWork, Cursor, Trae…, plus the programs the user added in Settings → Agents →
+//!    Dragging Cards → Edit…; one list with the agents Blurt connects, the Mac's too) — gets
 //!    the same line as a text-drop terminal while record.agent_drag is "paths" (the default; the Mac's choice):
 //!    with several cards dropped in a row, each picture's path stays next to its own note (as files, Codex and
 //!    Claude Code lost which note went with which picture). "same": an agent gets what any other app gets.
 //!    An explicit list, not names matched by a rule: a name doesn't say whether the app reads local files (Kimi vs
-//!    Kimi Code, Doubao vs DoubaoWork). record.agent_apps keeps only the user's changes to the built-in list,
-//!    `{stem: true}` added, `{stem: false}` a built-in switched off (`changing`).
+//!    Kimi Code, Doubao vs DoubaoWork). record.agent_drop.<agent> = false switches one off; a program the user adds
+//!    is a custom agent in record.agent_defs; v1.0.21's record.agent_apps moves over on the next edit (`migrate`).
 //!
 //!  • several cards dragged as one (a Ctrl/Shift-click selection, drag-drop.md §2), in the order picked: a terminal
 //!    (and an AI IDE, whose drop may land in its built-in terminal) gets every card's line on one line, two spaces
 //!    between them — a newline at a shell prompt would run what came before it; a desktop agent with its own composer
-//!    (COMPOSERS: Codex, WorkBuddy…) gets one line per card. A file-taking app gets every picture as a file and the
+//!    (drop "composer": Codex, WorkBuddy…) gets one line per card. A file-taking app gets every picture as a file and the
 //!    notes after the drop, numbered by file (`follow_up_notes`, the Mac's CardTransfer.followUpNotes).
 //!  • every card drag also carries which cards they are (`cards_json`, as the web's custom data `CARDS_MIME`), so
 //!    Blurt's own main window files them or adds them to an item instead of taking a bare picture (§4).
@@ -37,7 +38,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 /// The kind of window a card is dropped on, as far as what the drag carries goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,7 +46,7 @@ pub enum Target {
     /// a terminal that takes a text drop: the picture's path and the note, one line of text (several cards: still one
     /// line, two spaces between the cards)
     Terminal,
-    /// a desktop agent with its own composer (COMPOSERS): as Terminal, but several cards are one line each
+    /// a desktop agent with its own composer (agents.json drop "composer"): as Terminal, but several cards are one line each
     Composer,
     /// a terminal that takes only file drops (the classic console, Alacritty…): the picture as a file, as Other
     FilesOnly,
@@ -61,66 +62,256 @@ const TEXT_DROP: &[&str] = &["windowsterminal", "mintty"];
 /// owner pid is the program's, not conhost's).
 pub const CONSOLE_CLASS: &str = "ConsoleWindowClass";
 
-/// Desktop agents and AI IDEs whose agent reads files on this PC (executable stems): a card dragged into one is the
-/// picture's path and its note, as in a terminal. WorkBuddy, QoderWork, Qoder, Kimi Code, DoubaoWork (豆包工作),
-/// Cursor, Windsurf, Trae, Trae CN, Antigravity, Kiro, Codex. Not Claude (claude.exe is the desktop app's cloud chat
-/// and its Code tab in one window, which can't be told apart here), ChatGPT, Kimi or Doubao (cloud chats: the
-/// picture has to travel as a file). The exact Windows executable names are guesses from the Mac's app names, not
-/// yet seen on a PC: the user's own list (Agents… → Add Program…) is the way out when one is wrong.
-pub const AGENTS: &[&str] =
-    &["workbuddy", "qoderwork", "qoder", "kimi code", "doubaowork", "cursor", "windsurf", "trae", "trae cn", "antigravity", "kiro", "codex"];
+/// The registry compiled in: the list when the skill's copy can't be read (a first launch before the skill sync, a
+/// broken copy). The skill's own agents.json wins (`registry`): a user's Blurt and the skill it runs agree.
+pub const BUILT_IN_REGISTRY: &str = include_str!("../../../../skills/blurt/scripts/agents.json");
 
-/// Of the agents, the desktop apps whose drop lands in their own composer, not a shell (the Mac's
-/// AgentWindow.composers): several cards go in one line each there. The AI IDEs (Cursor, Windsurf, Trae, Qoder,
-/// Antigravity, Kiro) stay one line: a drop may land in their built-in terminal. A program the user added: one line.
-pub const COMPOSERS: &[&str] = &["workbuddy", "qoderwork", "kimi code", "doubaowork", "codex"];
+/// agents.json: the skill's copy ($BLURT_HOME/skill/scripts, kept in step with the app at launch), else the one
+/// compiled in.
+pub fn registry() -> Value {
+    let f = crate::paths::skill_dir().join("scripts").join("agents.json");
+    std::fs::read_to_string(f)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .filter(|v| v.get("agents").is_some_and(Value::is_array))
+        .unwrap_or_else(|| serde_json::from_str(BUILT_IN_REGISTRY).unwrap_or_default())
+}
 
-/// The agent apps in effect (executable stems).
-pub type Agents = BTreeSet<String>;
+/// This OS in agents.json's words (the Tauri app runs on Windows and Linux).
+pub const OS: &str = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
 
-/// The agent apps a card goes into as path + note, from the config's `record` object: none when record.agent_drag
-/// is "same"; else (paths: the default, also unset or unknown) the built-in list with the user's additions
-/// (record.agent_apps `true`) and without the built-ins switched off (`false`).
-pub fn agents(record: Option<&Value>) -> Agents {
-    if record.and_then(|r| r.get("agent_drag")).and_then(Value::as_str) == Some("same") {
-        return Agents::new();
+/// One card-drag target: an agent whose app gets the picture's path and its note (agents.json `drop`), its program
+/// stems on this OS, and whether the user left it on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DropRow {
+    pub agent: String,
+    pub name: String,
+    pub ids: Vec<String>,
+    /// "composer" (one line per card) | "terminal" (one line)
+    pub drop: String,
+    pub on: bool,
+    /// the user's own (record.agent_defs; a legacy record.agent_apps addition)
+    pub custom: bool,
+}
+
+fn strs(v: Option<&Value>) -> Vec<String> {
+    match v {
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect(),
+        _ => vec![],
     }
-    let changes = record.and_then(|r| r.get("agent_apps")).and_then(Value::as_object);
-    let said = |id: &str| changes.and_then(|c| c.get(id)).and_then(Value::as_bool);
-    let mut out: Agents = AGENTS.iter().filter(|id| said(id) != Some(false)).map(|id| id.to_string()).collect();
-    out.extend(changes.into_iter().flatten().filter(|(_, v)| v.as_bool() == Some(true)).map(|(k, _)| k.to_lowercase()));
+}
+
+/// A path entry in agents.json's `app` (a fallback for the finder), not an id.
+fn is_path(s: &str) -> bool {
+    s.starts_with(['~', '$', '/']) || s.contains(['\\', '/']) || s.as_bytes().get(1) == Some(&b':')
+}
+
+/// The definitions in effect: agents.json's, then record.agent_defs merged over them (new ids last) — agents.py
+/// definitions().
+pub fn definitions(registry: &Value, record: Option<&Value>) -> Vec<Map<String, Value>> {
+    let mut out: Vec<Map<String, Value>> = registry["agents"].as_array().into_iter().flatten().filter_map(|a| a.as_object().cloned()).collect();
+    for (k, v) in record.and_then(|r| r.get("agent_defs")).and_then(Value::as_object).into_iter().flatten() {
+        let Some(v) = v.as_object() else { continue };
+        if let Some(d) = out.iter_mut().find(|d| d.get("id").and_then(Value::as_str) == Some(k)) {
+            d.extend(v.clone());
+        } else {
+            let mut d = v.clone();
+            d.insert("id".into(), Value::String(k.clone()));
+            d.entry("name").or_insert_with(|| Value::String(k.clone()));
+            out.push(d);
+        }
+    }
     out
 }
 
-/// record.agent_apps after the user switches `id` on or off (Settings' Agents… sheet): only changes to the built-in
-/// list are kept — a built-in switched off is `false`, back on its key goes; a program added is `true`, removed its
-/// key goes.
-pub fn changing(changes: &Map<String, Value>, id: &str, on: bool) -> Map<String, Value> {
-    let id = id.trim().to_lowercase();
-    let mut out = changes.clone();
-    if id.is_empty() {
-        return out;
-    }
-    match (AGENTS.contains(&id.as_str()), on) {
-        (true, true) | (false, false) => out.remove(&id),
-        (true, false) => out.insert(id, Value::Bool(false)),
-        (false, true) => out.insert(id, Value::Bool(true)),
-    };
-    out
+fn drop_kind(d: &Map<String, Value>, os: &str) -> Option<String> {
+    let v = d.get("drop")?;
+    let k = if v.is_object() { v.get(os)?.as_str()? } else { v.as_str()? };
+    matches!(k, "composer" | "terminal").then(|| k.to_string())
 }
 
-/// The Agents… sheet's rows: every built-in (on unless switched off), then the programs the user added, by name.
-pub fn listing(changes: Option<&Map<String, Value>>) -> Vec<(String, bool, bool)> {
-    let said = |id: &str| changes.and_then(|c| c.get(id)).and_then(Value::as_bool);
-    let mut rows: Vec<(String, bool, bool)> = AGENTS.iter().map(|id| (id.to_string(), true, said(id) != Some(false))).collect();
-    let added: BTreeSet<String> = changes
+/// The card-drag targets (agents.py drop_targets): every agent with a `drop` and program ids for `os`, agents.json's
+/// and the user's, minus the ones switched off (record.agent_drop.<id> = false). A v1.0.21 record.agent_apps (stem →
+/// on / off) still counts until the list is next edited (`migrate`).
+pub fn drop_rows(registry: &Value, record: Option<&Value>, os: &str) -> Vec<DropRow> {
+    let off: BTreeSet<String> = record
+        .and_then(|r| r.get("agent_drop"))
+        .and_then(Value::as_object)
         .into_iter()
         .flatten()
-        .filter(|(k, v)| v.as_bool() == Some(true) && !AGENTS.contains(&k.to_lowercase().as_str()))
-        .map(|(k, _)| k.to_lowercase())
+        .filter(|(_, v)| v.as_bool() == Some(false))
+        .map(|(k, _)| k.clone())
         .collect();
-    rows.extend(added.into_iter().map(|id| (id, false, true)));
-    rows
+    let legacy: Vec<(String, bool)> = record
+        .and_then(|r| r.get("agent_apps"))
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| v.as_bool().map(|b| (k.to_lowercase(), b)))
+        .collect();
+    let said = |id: &str| legacy.iter().find(|(k, _)| k == id).map(|(_, b)| *b);
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::new();
+    for d in definitions(registry, record) {
+        let Some(kind) = drop_kind(&d, os) else { continue };
+        let ids: Vec<String> = strs(d.get("app").and_then(|a| a.get(os))).into_iter().filter(|i| !is_path(i)).map(|i| i.to_lowercase()).collect();
+        if ids.is_empty() {
+            continue;
+        }
+        let agent = d.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let on = !off.contains(&agent) && !ids.iter().any(|i| said(i) == Some(false));
+        seen.extend(ids.iter().cloned());
+        out.push(DropRow {
+            name: d.get("name").and_then(Value::as_str).unwrap_or(&agent).to_string(),
+            agent,
+            ids,
+            drop: kind,
+            on,
+            custom: d.get("custom").and_then(Value::as_bool).unwrap_or(false),
+        });
+    }
+    for (k, v) in legacy {
+        if v && !seen.contains(&k) {
+            out.push(DropRow { agent: k.clone(), name: k.clone(), ids: vec![k], drop: "terminal".into(), on: true, custom: true });
+        }
+    }
+    out
+}
+
+/// The agent apps in effect for a drag (program stems): all of them, and the ones with their own composer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Agents {
+    pub all: BTreeSet<String>,
+    pub composers: BTreeSet<String>,
+}
+
+impl Agents {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn contains(&self, stem: &str) -> bool {
+        self.all.contains(stem)
+    }
+    pub fn len(&self) -> usize {
+        self.all.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.all.is_empty()
+    }
+}
+
+/// The agent apps a card goes into as path + note, from the config's `record` object: none when record.agent_drag
+/// is "same"; else (paths: the default, also unset or unknown) the targets that are on.
+pub fn agents(registry: &Value, record: Option<&Value>) -> Agents {
+    agents_for(registry, record, OS)
+}
+
+pub fn agents_for(registry: &Value, record: Option<&Value>, os: &str) -> Agents {
+    let mut a = Agents::new();
+    if record.and_then(|r| r.get("agent_drag")).and_then(Value::as_str) == Some("same") {
+        return a;
+    }
+    for r in drop_rows(registry, record, os).into_iter().filter(|r| r.on) {
+        if r.drop == "composer" {
+            a.composers.extend(r.ids.iter().cloned());
+        }
+        a.all.extend(r.ids);
+    }
+    a
+}
+
+/// record after moving a v1.0.21 record.agent_apps into the new shape (agents.py migrate_agent_apps): a built-in
+/// switched off → record.agent_drop.<agent> = false; a program the user added → a custom agent in record.agent_defs
+/// (that program, drop "terminal", connect: false). The key goes.
+pub fn migrate(record: &mut Map<String, Value>, registry: &Value, os: &str) {
+    let Some(legacy) = record.remove("agent_apps").and_then(|v| v.as_object().cloned()) else { return };
+    let defs = definitions(registry, Some(&Value::Object(record.clone())));
+    let owner = |stem: &str| {
+        defs.iter().find(|d| strs(d.get("app").and_then(|a| a.get(os))).iter().any(|i| i.to_lowercase() == stem)).and_then(|d| d.get("id")?.as_str().map(str::to_owned))
+    };
+    let mut taken: BTreeSet<String> = defs.iter().filter_map(|d| d.get("id")?.as_str().map(str::to_owned)).collect();
+    for (k, v) in legacy {
+        let stem = k.to_lowercase();
+        match (v.as_bool(), owner(&stem)) {
+            (Some(false), Some(agent)) => {
+                record.entry("agent_drop").or_insert_with(|| json!({})).as_object_mut().map(|m| m.insert(agent, Value::Bool(false)));
+            }
+            (Some(true), None) => {
+                let id = custom_id(&stem, &taken);
+                taken.insert(id.clone());
+                let def = json!({"name": stem, "bins": [], "headless": false, "custom": true, "connect": false, "app": {os: [k]}, "drop": "terminal"});
+                record.entry("agent_defs").or_insert_with(|| json!({})).as_object_mut().map(|m| m.insert(id, def));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A custom agent's id from its name (agents.py custom_id): lowercase, runs of other characters one "-", unique.
+pub fn custom_id(name: &str, taken: &BTreeSet<String>) -> String {
+    let mut base = String::new();
+    for c in name.trim().to_lowercase().chars() {
+        if c.is_alphanumeric() || c == '_' {
+            base.push(c);
+        } else if !base.ends_with('-') {
+            base.push('-');
+        }
+    }
+    let base = base.trim_matches(['-', '_']).to_string();
+    let base = if base.is_empty() { "agent".to_string() } else { base };
+    let (mut out, mut i) = (base.clone(), 2);
+    while taken.contains(&out) {
+        out = format!("{base}-{i}");
+        i += 1;
+    }
+    out
+}
+
+/// Settings → Agents → Dragging Cards → Edit…: an agent switched on or off (record.agent_drop keeps only the ones
+/// off), after the legacy key moved over.
+pub fn set_on(record: &mut Map<String, Value>, registry: &Value, agent: &str, on: bool) {
+    migrate(record, registry, OS);
+    let m = record.entry("agent_drop").or_insert_with(|| json!({}));
+    if let Some(m) = m.as_object_mut() {
+        if on {
+            m.remove(agent);
+        } else {
+            m.insert(agent.to_string(), Value::Bool(false));
+        }
+    }
+    if record.get("agent_drop").and_then(Value::as_object).is_some_and(Map::is_empty) {
+        record.remove("agent_drop");
+    }
+}
+
+/// Add Program…: a custom agent for the program (its stem), a card-drag target with the terminal's line → its id.
+/// Nothing when a target already has that program.
+pub fn add_program(record: &mut Map<String, Value>, registry: &Value, stem: &str) -> Option<String> {
+    migrate(record, registry, OS);
+    let stem = stem.trim().to_lowercase();
+    let rec = Value::Object(record.clone());
+    if stem.is_empty() || drop_rows(registry, Some(&rec), OS).iter().any(|r| r.ids.contains(&stem)) {
+        return None;
+    }
+    let taken: BTreeSet<String> = definitions(registry, Some(&rec)).iter().filter_map(|d| d.get("id")?.as_str().map(str::to_owned)).collect();
+    let id = custom_id(&stem, &taken);
+    let def = json!({"name": stem, "bins": [], "headless": false, "custom": true, "connect": false, "app": {OS: [stem]}, "drop": "terminal"});
+    record.entry("agent_defs").or_insert_with(|| json!({})).as_object_mut()?.insert(id.clone(), def);
+    Some(id)
+}
+
+/// A custom agent removed (never a built-in one).
+pub fn remove_custom(record: &mut Map<String, Value>, id: &str) -> bool {
+    let Some(defs) = record.get_mut("agent_defs").and_then(Value::as_object_mut) else { return false };
+    if !defs.get(id).and_then(|d| d.get("custom")).and_then(Value::as_bool).unwrap_or(false) {
+        return false;
+    }
+    defs.remove(id);
+    if defs.is_empty() {
+        record.remove("agent_defs");
+    }
+    true
 }
 
 /// A program the user picked in Add Program… as its id: the executable's stem ("Cursor.exe" → "cursor"); a
@@ -141,7 +332,7 @@ pub fn target(exe: Option<&str>, class: Option<&str>, agents: &Agents) -> Target
     }
     let stem = exe.map(crate::dictation::apps::stem);
     if let Some(s) = stem.as_deref() {
-        if agents.contains(s) && COMPOSERS.contains(&s) {
+        if agents.composers.contains(s) {
             return Target::Composer;
         }
         if TEXT_DROP.contains(&s) || agents.contains(s) {
@@ -313,15 +504,22 @@ mod tests {
         Some(v)
     }
 
+    fn reg() -> Value {
+        serde_json::from_str(BUILT_IN_REGISTRY).unwrap()
+    }
+
+    fn win(record: Option<&Value>) -> Agents {
+        agents_for(&reg(), record, "windows")
+    }
+
     #[test]
     fn an_agent_app_gets_the_terminal_line() {
-        let built_in = agents(None);
-        assert_eq!(built_in.len(), AGENTS.len());
+        let built_in = win(None);
         for exe in [r"C:\Users\a\AppData\Local\Programs\cursor\Cursor.exe", "Trae CN.exe", "kiro.exe", "Windsurf.exe", "Qoder.exe", "Antigravity.exe"] {
             assert_eq!(target(Some(exe), Some("Chrome_WidgetWin_1"), &built_in), Target::Terminal, "{exe}");
         }
         // desktop agents with their own composer: the same line, but several cards one line each
-        for exe in ["Codex.exe", "WorkBuddy.exe", "Kimi Code.exe", "QoderWork.exe", "DoubaoWork.exe"] {
+        for exe in ["Codex.exe", "WorkBuddy.exe", "WorkBuddy AI.exe", "Kimi Code.exe", "QoderWork.exe", "DoubaoWork.exe"] {
             assert_eq!(target(Some(exe), Some("Chrome_WidgetWin_1"), &built_in), Target::Composer, "{exe}");
         }
         // cloud chats and the Claude desktop app (its chat and its Code tab are one window) get the picture
@@ -337,43 +535,64 @@ mod tests {
     }
 
     #[test]
+    fn the_list_is_agents_json_on_every_os() {
+        let rows = drop_rows(&reg(), None, "windows");
+        let by: std::collections::BTreeMap<_, _> = rows.iter().map(|r| (r.agent.as_str(), r)).collect();
+        assert_eq!(by["workbuddy"].drop, "composer");
+        assert_eq!(by["cursor"].ids, vec!["cursor".to_string()]);
+        assert!(!by.contains_key("claude") && rows.iter().all(|r| r.on && !r.custom));
+        // Linux: the .desktop ids agents.json lists there
+        assert!(drop_rows(&reg(), None, "linux").iter().any(|r| r.agent == "cursor"));
+    }
+
+    #[test]
     fn the_user_adds_and_switches_off_agents() {
+        // v1.0.21's record.agent_apps still counts until the list is edited
         let r = record(json!({"agent_apps": {"cursor": false, "Zed": true, "myagent": true, "trae": true, "odd": "yes"}}));
-        let a = agents(r.as_ref());
+        let a = win(r.as_ref());
         assert!(!a.contains("cursor") && a.contains("zed") && a.contains("myagent") && a.contains("trae") && !a.contains("odd"));
         assert_eq!(target(Some("Cursor.exe"), None, &a), Target::Other);
         assert_eq!(target(Some("zed.exe"), None, &a), Target::Terminal);
-        // a composer switched off is an ordinary app; one the user added is one line
-        let off = agents(record(json!({"agent_apps": {"codex": false}})).as_ref());
+        // the new shape: an agent switched off
+        let off = win(record(json!({"agent_drop": {"codex": false}})).as_ref());
         assert_eq!(target(Some("Codex.exe"), None, &off), Target::Other);
-        // "paths" and anything unknown: the list; "same": none at all
-        assert_eq!(agents(record(json!({"agent_drag": "paths"})).as_ref()).len(), AGENTS.len());
-        assert_eq!(agents(record(json!({"agent_drag": 3})).as_ref()).len(), AGENTS.len());
-        let same = agents(record(json!({"agent_drag": "same", "agent_apps": {"zed": true}})).as_ref());
+        let n = win(None).len();
+        assert_eq!(win(record(json!({"agent_drag": "paths"})).as_ref()).len(), n);
+        assert_eq!(win(record(json!({"agent_drag": 3})).as_ref()).len(), n);
+        let same = win(record(json!({"agent_drag": "same", "agent_apps": {"zed": true}})).as_ref());
         assert!(same.is_empty());
         assert_eq!(target(Some("Codex.exe"), None, &same), Target::Other);
         assert_eq!(target(Some("WindowsTerminal.exe"), None, &same), Target::Terminal);
     }
 
     #[test]
-    fn only_changes_to_the_built_in_list_are_kept() {
-        let empty = Map::new();
-        let off = changing(&empty, "cursor", false);
-        assert_eq!(Value::Object(off.clone()), json!({"cursor": false}));
-        assert!(changing(&off, "Cursor", true).is_empty());
-        assert!(changing(&empty, "cursor", true).is_empty());
-        let added = changing(&off, "Zed", true);
-        assert_eq!(Value::Object(added.clone()), json!({"cursor": false, "zed": true}));
-        assert_eq!(Value::Object(changing(&added, "zed", false)), json!({"cursor": false}));
-        assert!(changing(&empty, "zed", false).is_empty());
-        assert!(changing(&empty, "  ", true).is_empty());
-        // the sheet: built-ins first, in order, then the added ones
-        let rows = listing(Some(&added));
-        assert_eq!(rows.len(), AGENTS.len() + 1);
-        assert_eq!(rows[0], ("workbuddy".to_string(), true, true));
-        assert!(rows.contains(&("cursor".to_string(), true, false)));
-        assert_eq!(rows.last().unwrap(), &("zed".to_string(), false, true));
-        assert!(listing(None).iter().all(|(_, b, on)| *b && *on));
+    fn edits_move_the_old_key_over() {
+        let mut rec = json!({"agent_apps": {"cursor": false, "Zed": true}}).as_object().unwrap().clone();
+        migrate(&mut rec, &reg(), "windows");
+        assert!(rec.get("agent_apps").is_none());
+        assert_eq!(rec["agent_drop"], json!({"cursor": false}));
+        assert_eq!(rec["agent_defs"]["zed"]["app"], json!({"windows": ["Zed"]}));
+        let a = agents_for(&reg(), Some(&Value::Object(rec.clone())), "windows");
+        assert!(!a.contains("cursor") && a.contains("zed"));
+        // switches and programs, in the new shape only
+        let mut rec = Map::new();
+        set_on(&mut rec, &reg(), "kiro", false);
+        assert_eq!(Value::Object(rec.clone()), json!({"agent_drop": {"kiro": false}}));
+        set_on(&mut rec, &reg(), "kiro", true);
+        assert!(rec.is_empty());
+        let id = add_program(&mut rec, &reg(), "MyAgent").unwrap();
+        assert_eq!(id, "myagent");
+        assert!(add_program(&mut rec, &reg(), "myagent").is_none(), "already a target");
+        assert_eq!(rec["agent_defs"]["myagent"]["drop"], "terminal");
+        assert!(!remove_custom(&mut rec, "cursor") && remove_custom(&mut rec, "myagent") && rec.is_empty());
+    }
+
+    #[test]
+    fn custom_ids() {
+        let taken: BTreeSet<String> = ["my-agent".to_string()].into();
+        assert_eq!(custom_id("My Agent", &taken), "my-agent-2");
+        assert_eq!(custom_id("  ", &taken), "agent");
+        assert_eq!(custom_id("豆包 工作", &taken), "豆包-工作");
     }
 
     #[test]

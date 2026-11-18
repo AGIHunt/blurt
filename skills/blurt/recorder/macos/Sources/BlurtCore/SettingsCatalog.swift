@@ -263,9 +263,12 @@ public enum SettingsCatalog {
         sec("shortcuts.dictation", "dictation.settings.tab", "Dictation"),
         sec("shortcuts.open", "capture.keys.section.open", "Capture"),
 
-        sec("agents.list", "agents.header", "Agents"),
+        // v1.0.26, in the order people come for: using Blurt in their agent, background organizing (its list, then
+        // its model and effort, untitled under it), the apps a dragged card goes into, asking an agent
+        sec("agents.use", "agents.use.header", "Agents"),
+        sec("agents.list", "agents.organize.header", "Agents"),
         sec("agents.organize", "agents.organize.header", "Agents"),
-        sec("agents.manual", "agents.manual.header", "Agents"),
+        sec("agents.drop", "agents.drop.header", "Agents"),
         sec("agents.ask", "agents.ask.header", "Agents"),
 
         sec("privacy.permissions", "settings.privacy.permissions_live"),
@@ -440,7 +443,9 @@ public enum SettingsCatalog {
             row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture")),
 
             // Agents
+            whole("agents.use", detail: SettingsText("agents.use.footer", "Agents")),
             whole("agents.list", detail: SettingsText("agents.lead", "Agents")),
+            whole("agents.drop", detail: SettingsText("agents.drop.header", "Agents")),
             whole("agents.organize", detail: SettingsText("agents.organize.footer", "Agents")),
             whole("agents.ask", detail: SettingsText("agents.ask.footer", "Agents")),
 

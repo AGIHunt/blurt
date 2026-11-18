@@ -84,7 +84,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import blurt_home, global_config  # noqa: E402
+from _common import blurt_home, global_config, uv_bin  # noqa: E402
 import dictation_stitch as stitch  # noqa: E402
 import dictation_styles as styles  # noqa: E402
 
@@ -566,7 +566,7 @@ def config_key(cfg: dict) -> str:
 
 
 def _script_json(script: str, args: list[str], timeout: float = 120) -> dict:
-    uv = shutil.which("uv") or str(blurt_home() / "bin" / "uv")
+    uv = uv_bin() or str(blurt_home() / "bin" / "uv")
     try:
         r = subprocess.run([uv, "run", "-q", str(HERE / script), *args], capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
@@ -633,7 +633,7 @@ class Servers:
     def ensure(self, name: str, script: str, args: list[str]) -> bool:
         if (r := self.call(name, {"cmd": "ping"}, 3)) and r.get("ok"):
             return True
-        uv = shutil.which("uv") or str(blurt_home() / "bin" / "uv")
+        uv = uv_bin() or str(blurt_home() / "bin" / "uv")
         for offline in (True, False):
             env = {**os.environ, **({"UV_OFFLINE": "1"} if offline else {})}
             p = subprocess.Popen([uv, "run", "-q", str(HERE / script), *args], stdin=subprocess.DEVNULL,

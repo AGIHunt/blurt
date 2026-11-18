@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.parse
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "blurt" / "scripts"
@@ -184,6 +185,38 @@ class FfmpegStatusJsonl(unittest.TestCase):
         snaps = [json.loads(l) for l in (self.session / "events.jsonl").read_text().splitlines()
                  if json.loads(l)["type"] == "snap"]
         self.assertEqual([(x["n"], x["via"]) for x in snaps], [(1, "picker"), (2, "command")])
+
+    def test_snap_region_with_the_pickers_picture(self):
+        # the host passes its picker's still cut to the area (never a grab under the picker and the note: black on
+        # Windows before 2004): copied in as it is, numbered and logged like any snap; the path's spaces %-encoded
+        self.start("--region", "0,0,200,120", "--fps", "15")
+        self.until("started")
+        pic = self.tmp / "run dir" / "snap 1.png"
+        pic.parent.mkdir(parents=True)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=64x48", "-frames:v", "1",
+                        str(pic)], check=True)
+        with open(self.session / ".cmd", "a") as fh:
+            fh.write("snap-region:-40,30,64,48|" + urllib.parse.quote(str(pic), safe="/\\:") + "\n")
+        e = self.until("snap")
+        self.assertEqual((e["n"], e["file"]), (1, "shots/001.png"))
+        self.assertEqual((self.session / "shots" / "001.png").read_bytes(), pic.read_bytes())
+        self.control("stop")
+        self.until("stopped")
+        shots = [json.loads(l) for l in (self.session / "shots.jsonl").read_text().splitlines()]
+        self.assertEqual(shots[0]["region"], [-40, 30, 64, 48])
+
+    def test_snap_region_whose_picture_is_gone_grabs_the_area(self):
+        # the host gave up waiting (a busy take) and removed the picture it named: the area is grabbed as before
+        self.start("--region", "0,0,200,120", "--fps", "15")
+        self.until("started")
+        gone = self.tmp / "run" / "snap-gone.png"
+        with open(self.session / ".cmd", "a") as fh:
+            fh.write("snap-region:-40,30,64,48|" + urllib.parse.quote(str(gone), safe="/\\:") + "\n")
+        e = self.until("snap")
+        self.assertEqual((e["n"], e["file"]), (1, "shots/001.png"))
+        self.assertTrue((self.session / "shots" / "001.png").stat().st_size > 0)
+        self.control("stop")
+        self.until("stopped")
 
     def kill_grabber(self, seg: str):
         out = subprocess.run(["pgrep", "-f", str(self.session / seg)], capture_output=True, text=True).stdout.split()

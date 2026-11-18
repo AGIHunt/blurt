@@ -666,21 +666,57 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             snapper.takeEnded {}
             savedVideoOnly(dir, duration: dur)
         } else if autoProcess {
-            // its ⌥A snaps' words first (a few seconds at most): the run reads them with the rest
-            snapper.takeEnded { [weak self] in self?.process(dir, project: project?.id) }
-            // where its items go, how long that usually takes here, and the way to put them elsewhere (Refile)
-            Refile.offerRecording(dir, project: project?.id, usual: OrganizeProgress.usual(video: dur))
+            // an agent to organize it is checked before anything is said (the check was warmed when the take began):
+            // none usable → saved, not organized, and what to do about it; no job
+            let usual = OrganizeProgress.usual(video: dur)
+            agentUsable { [weak self] ok in
+                guard let self = self else { return }
+                guard ok else {
+                    snapper.takeEnded {}
+                    return Refile.savedNotOrganized(dir)
+                }
+                // its ⌥A snaps' words first (a few seconds at most): the run reads them with the rest
+                snapper.takeEnded { [weak self] in self?.process(dir, project: project?.id) }
+                // where its items go, how long that usually takes here, and the way to put them elsewhere (Refile)
+                Refile.offerRecording(dir, project: project?.id, usual: usual)
+            }
         } else if island.started {
             snapper.takeEnded {}
-            // the take's end already said "✓ 0:42" in place of the dot (RecordingDone): no second moment for one take
-            if !RecordingDone.saidRecently {
-                island.doneMoment(T("app.ear.saved", Island.clock(dur)), lead: .record, toast: T("app.toast.saved", Island.clock(dur)))
-            }
+            // Keep the Video Only: saved, with the way to it (the take's end said "✓ 0:42" in the ears already)
+            var t = Island.Toast(text: T("app.toast.saved", Island.clock(dur)), actionTitle: T("app.record.show_in_finder")) { App.revealVideo(dir) }
+            t.icon = .check
+            t.key = "record-saved"
+            t.seconds = 8
+            island.toast(t)
         } else {
             snapper.takeEnded {}
             toast(T("app.toast.saved", Island.clock(dur)), icon: .check)
         }
         refreshStatus()
+    }
+
+    /// Is an agent usable to organize in the background? The cached answer when one was usable a moment ago (no wait
+    /// at a take's end), else a check of every agent that wasn't ready. Tests: BLURT_TEST_AGENTS=none|ready; a stubbed
+    /// process (BLURT_TEST_PROCESS) counts as ready.
+    func agentUsable(_ then: @escaping (Bool) -> Void) {
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", let t = env["BLURT_TEST_AGENTS"] { return then(t != "none") }
+        if env["BLURT_TEST_PROCESS"] != nil { return then(true) }
+        let hub = AgentHub.shared
+        let order = hub.order()
+        if order.contains(where: { hub.cached($0.id)?.state.usable == true }) { return then(true) }
+        hub.check(order, recheck: true) { st in then(st.contains { $0.state.usable }) }
+    }
+
+    /// A take's video selected in the Finder (tests: the event says what would be shown).
+    static func revealVideo(_ dir: URL) {
+        let video = dir.appendingPathComponent("recording.mp4")
+        let target = FileManager.default.fileExists(atPath: video.path) ? video : dir
+        if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
+            emit(["event": "reveal_in_finder", "path": target.path])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([target])
+        }
     }
 
     /// Save Video Only (BA-66): the take is kept and not organized; its video is shown in the Finder, to send to

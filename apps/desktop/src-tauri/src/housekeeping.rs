@@ -1140,6 +1140,44 @@ pub fn agents_install(state: tauri::State<'_, AppState>, id: String, dry_run: bo
     state.runner().run("agents.py", &args, None, Duration::from_secs(120)).map_err(String::from)
 }
 
+/// Other Agent…: what any agent needs, by hand (`agents.py manual`): the skill folder, the MCP server as JSON and as a
+/// command with arguments, the prompt that lets the agent set itself up.
+#[tauri::command(async)]
+pub fn agents_manual(state: tauri::State<'_, AppState>) -> R<Value> {
+    state.runner().run("agents.py", &["manual".into(), "--lang".into(), crate::l10n::short_lang().into()], None, Duration::from_secs(60)).map_err(String::from)
+}
+
+/// Other Agent… → Add to List: a custom agent in record.agent_defs (`agents.py custom`); `remove`: a custom agent's id.
+#[tauri::command(async)]
+pub fn agents_custom(state: tauri::State<'_, AppState>, name: Option<String>, remove: Option<String>) -> R<Value> {
+    let args: Vec<String> = match remove {
+        Some(id) => vec!["custom".into(), "--remove".into(), id],
+        None => vec!["custom".into(), name.unwrap_or_default()],
+    };
+    state.runner().run("agents.py", &args, None, Duration::from_secs(60)).map_err(String::from)
+}
+
+/// The MCP clients that started the blurt server, `{name: {at, version, via?}}` ($BLURT_HOME/run/mcp-clients.json,
+/// written by mcp_server.py): Other Agent…'s Test watches it.
+#[tauri::command]
+pub fn mcp_clients() -> Value {
+    settings::read_json(&paths::blurt_home().join("run").join("mcp-clients.json"))
+        .and_then(|v| v.get("clients").cloned())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
+/// Other Agent… → Save as .zip…: the Save dialog, then the skill folder zipped (`agents.py zip-skill`). Ok(None):
+/// cancelled.
+#[tauri::command(async)]
+pub fn skill_zip(app: AppHandle, state: tauri::State<'_, AppState>) -> R<Option<Value>> {
+    let Some(f) = tauri_plugin_dialog::DialogExt::dialog(&app).file().set_file_name("blurt-skill.zip").add_filter("Zip", &["zip"]).blocking_save_file() else {
+        return Ok(None);
+    };
+    let path = f.into_path().map_err(|e| e.to_string())?;
+    state.runner().run("agents.py", &["zip-skill".into(), scripts::s(&path)], None, Duration::from_secs(120)).map(Some).map_err(String::from)
+}
+
 /// One tiny headless prompt through the agent's real command line: it runs and is signed in (a few tokens).
 /// → {ok, secs} or {ok: false, class, timeout}.
 #[tauri::command(async)]

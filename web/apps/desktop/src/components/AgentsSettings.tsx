@@ -1,23 +1,27 @@
-// Settings → Agents (the Mac's Settings/AgentsPane.swift, all of it): which agent Blurt uses and whether it works.
-//   lead        the rule (the first agent that works, from the top) with Check Again at its end
-//   the list    one compact row per installed agent, in the order Blurt tries them (drag a row, or Move Up / Down in
-//               its ⋯ menu): its status mark (§3.3: ok only for one known to run, attn = needs you, err = nothing can
-//               run, a hollow ring = off / not installed / nothing to check), its name and In use, a neutral state
-//               ("Not signed in") with its version and ⓘ, the one fix it needs (Sign In… / Install… / Get X… /
-//               Connect…) and a switch (record.agents). The ⋯ menu (and the right-click menu): Details…, Test, Connect
-//               Skill and MCP…, Move Up / Down, Check Again. Agents that aren't installed: one folded line at the foot.
-//   Organizing  one shared model (the agent's default / the cheapest) and effort for recordings and for snaps and
-//               voice notes (record.agent_processing["*"] and each agent that follows it); an agent set differently
-//               keeps its own, named in the footnote, changed in its Details sheet ("Default (Haiku)").
-//   other apps  installed agent apps Blurt can't run (Cursor, WorkBuddy): Connect… adds blurt to them.
+// Settings → Agents (the Mac's Settings/AgentsPane.swift), in the order people come for it:
+//   lead        who organizes recordings (the agent in use; none: they're saved, not organized) and Check Again —
+//               hidden with Recording & Items off
+//   use         "Use Blurt in your agent": every agent Blurt can connect (CLIs and apps), each with one state —
+//               connected (its MCP client said hello: "used 15:42"), set up, found (its app or its own folder is
+//               here), not found — and the one thing to do: Connect…, or "It's installed, connect" for one not found
+//               (written into its own folder). Other Agent…: the by-hand sheet (skill folder, MCP JSON / command,
+//               a prompt the agent can follow, Test, Add to List).
+//   organize    the CLIs that organize in the background, in the order Blurt tries them (drag a row, or Move Up /
+//               Down in its ⋯ menu): status mark, name and In use, a neutral state, the one fix it needs and a switch
+//               (record.agents); then one shared model and effort for recordings and for snaps and voice notes. No
+//               CLI: one line.
+//   drop        the apps a dragged card carries the picture's path and the note into (agents.json `drop`), Edit….
 //   Ask         the closing footnote with Examples… (three requests, copyable).
 // Connect (agents.py install) always shows its dry run first; nothing is written before the user says Connect.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@blurt/icons';
-import { api, type AgentInfo, type AgentModels, type AgentRegistry, type InstallChange, type InstallPlan } from '../api';
-import { i18n } from '../i18n';
+import { api, type AgentApp, type AgentInfo, type AgentManual, type AgentModels, type AgentRegistry, type InstallChange, type InstallPlan } from '../api';
+import { AgentAppsSheet } from './AgentAppsSheet';
+import { useOff } from './useCapabilities';
+import { i18n, t as tr } from '../i18n';
 import { Group, InfoTip, Page, Popup, S, Switch, TextLink, lang } from '../settings/kit';
+import { revealLabel } from '../reveal';
 
 type Kind = 'recording' | 'cards';
 const KINDS: Kind[] = ['recording', 'cards'];
@@ -107,9 +111,11 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
   const def = (id: string) => reg?.agents.find((d) => d.id === id);
 
   const defIds = useRef<string[] | null>(null);
+  /** custom agents added on this page (config.json changed under the page's copy of it) */
+  const extra = useRef<string[]>([]);
   /** bumped by every save: a check that started before it read the old config and mustn't set the switches back */
   const saves = useRef(0);
-  const load = useCallback(async (login = true) => {
+  const load = useCallback(async (login = true, again = false) => {
     setLoading(true);
     const at = saves.current;
     try {
@@ -117,7 +123,7 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
       // (as the Mac's detectAll). Registry ids plus record.agent_defs; configured order first, then the rest.
       defIds.current ??= (await api.agentsRegistry()).agents.map((a) => a.id);
       const ids = [...new Set([...defIds.current, ...Object.keys(cfg.record?.agent_defs ?? {})])];
-      const d = await api.detect({ login, ids });
+      const d = await api.detect({ login, ids: [...ids, ...extra.current.filter((x) => !ids.includes(x))], fresh: again });
       const pos = new Map(d.order.map((id, i) => [id, i]));
       const rank = (id: string) => pos.get(id) ?? 1000 + ids.indexOf(id);
       d.agents.sort((a, b) => rank(a.id) - rank(b.id));
@@ -154,16 +160,8 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
     }
   }, [cfg.record?.agent_defs]);
 
-  const checkConnected = useCallback(async (list: AgentInfo[]) => {
-    for (const a of list.filter((x) => x.installed)) {
-      try {
-        const p = await api.agentsInstall(a.id, true);
-        setConnected((c) => ({ ...c, [a.id]: !p.changes.some((x) => ['symlink', 'run', 'json_merge'].includes(x.action)) }));
-      } catch {
-        /* unknown: no Connect state */
-      }
-    }
-  }, []);
+  /** set up in the agent: what detect read from its files (no dry run per agent), or a Connect that just worked */
+  const isConnected = (a: AgentInfo) => connected[a.id] ?? (a.conn === 'connected' || a.conn === 'linked');
 
   const opened = useRef(false);
   useEffect(() => {
@@ -178,10 +176,9 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
     }, () => {});
     (async () => {
       await load(false);
-      const full = await load(true);
-      if (full) await checkConnected(full);
+      await load(true);
     })();
-  }, [load, checkConnected, order]);
+  }, [load, order]);
 
   const headless = rows.filter((r) => r.headless);
   const manual = rows.filter((r) => !r.headless);
@@ -212,8 +209,7 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
   };
   const recheck = async () => {
     setConnected({});
-    const full = await load(true);
-    if (full) await checkConnected(full);
+    await load(true, true);
   };
 
   // organizing
@@ -314,7 +310,7 @@ function useAgents(cfg: Record<string, any>, save: (patch: Record<string, unknow
   };
   void onToast;
   return {
-    rows, headless, manual, enabled, pick, signInChecked, loading, error, reg, def, models, connected, tests, testing, installing, plan, setPlan,
+    rows, headless, manual, enabled, pick, signInChecked, loading, error, reg, def, models, connected, isConnected, tests, testing, installing, plan, setPlan, load, extra,
     move, toggle, recheck, preview, apply, test, sharedSetting, setShared, setProcessing, modelOf, effortOf, followsModel, followsEffort, ownSettings, sharedEfforts,
   };
 }
@@ -332,12 +328,11 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
   const checked = m.signInChecked && !m.rows.some((r) => r.state === 'checking');
   const listed = m.headless.filter((a) => a.installed || a.state === 'checking');
   const missing = m.rows.filter((a) => !a.installed && a.state !== 'checking');
-  const apps = m.manual.filter((a) => a.installed);
   const on = (a: AgentInfo, ordered: boolean) => !ordered || m.enabled.has(a.id);
   const tone = (a: AgentInfo, ordered: boolean): Tone => {
     if (a.state === 'checking') return 'busy';
     if (!a.installed) return 'off';
-    if (!ordered) return m.connected[a.id] ? 'good' : 'off';
+    if (!ordered) return m.isConnected(a) ? 'good' : 'off';
     if (!on(a, ordered)) return 'off';
     if (a.state === 'ready') return 'good';
     if (a.state === 'configured' || a.state === 'unknown') return 'off';
@@ -351,7 +346,7 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
     const i = m.headless.findIndex((x) => x.id === a.id);
     return [
       ...(a.headless && a.installed ? [{ label: S('agents.details'), run: () => setDetails(a.id) }, { label: S('agents.test'), run: () => m.test(a), disabled: !!m.testing }] : []),
-      ...(a.installed ? [m.connected[a.id] ? { label: S('agents.connected.menu'), run: () => {}, disabled: true } : { label: S('agents.connect.menu'), run: () => m.preview(a), disabled: !!m.installing }] : []),
+      ...(a.installed ? [m.isConnected(a) ? { label: S('agents.connected.menu'), run: () => {}, disabled: true } : { label: S('agents.connect.menu'), run: () => m.preview(a), disabled: !!m.installing }] : []),
       ...(needsSignIn(a, ordered) ? [{ label: S('agents.sign_in'), run: () => setFixFor(a.id) }] : []),
       ...(!a.installed && a.headless ? [{ label: S('agents.install_cli'), run: () => setFixFor(a.id) }] : []),
       ...(ordered && a.installed && m.headless.filter((x) => x.installed).length > 1 ? [null, { label: S('agents.move_up'), run: () => m.move(a.id, i - 1), disabled: i === 0 }, { label: S('agents.move_down'), run: () => m.move(a.id, i + 1), disabled: i >= m.headless.length - 1 || !m.headless[i + 1]?.installed }] : []),
@@ -368,7 +363,7 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
       if (site) return <button className="st-small" title={site} onClick={() => api.openUrl(site)}>{S('agents.get_app', a.name)}</button>;
       return <button className="st-small" onClick={() => setFixFor(a.id)}>{S('agents.install_cli')}</button>;
     }
-    if (!a.headless && a.installed && !m.connected[a.id]) return <button className="st-small" title={S('agents.install.help')} onClick={() => m.preview(a)}>{S('agents.install')}</button>;
+    if (!a.headless && a.installed && !m.isConnected(a)) return <button className="st-small" title={S('agents.install.help')} onClick={() => m.preview(a)}>{S('agents.install')}</button>;
     return null;
   };
 
@@ -439,48 +434,125 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
 
   const organizeFooter = [S('agents.organize.footer'), m.ownSettings.length ? S('agents.organize.own', i18n().formatList(m.ownSettings.map((a) => a.name))) : ''].filter(Boolean).join(' ');
   const menuAgent = menu ? m.rows.find((r) => r.id === menu.id) : null;
+  const { off } = useOff();
+  const [showLost, setShowLost] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [dropEdit, setDropEdit] = useState(false);
+  const [drops, setDrops] = useState<AgentApp[] | null>(null);
+  useEffect(() => {
+    if (!dropEdit) api.agentApps().then(setDrops, () => setDrops([]));
+  }, [dropEdit, cfg.record?.agent_drag]);
+
+  // who organizes recordings: the agent in use; none, or Save Video Only: they're saved, not organized
+  const pickName = m.rows.find((r) => r.id === m.pick)?.name;
+  const status = cfg.record?.process === 'off' ? S('agents.status.off') : pickName ? S('agents.status.organizing', pickName) : checked ? S('agents.status.none') : '';
+  // "Use Blurt in your agent": connected first, then set up, then found; the ones not found folded at the foot
+  const rank = { connected: 0, linked: 1, found: 2, missing: 3 } as const;
+  const usable = m.rows.filter((a) => a.connect !== false && a.state !== 'checking').sort((x, y) => rank[x.conn ?? 'missing'] - rank[y.conn ?? 'missing']);
+  const here = usable.filter((a) => a.conn && a.conn !== 'missing');
+  const lost = usable.filter((a) => !a.conn || a.conn === 'missing');
+  const cli = m.headless.some((a) => a.installed || a.state === 'checking');
+  // the ones that are here first (the Mac's: installed apps), at most five named
+  const dropOn = (drops ?? []).filter((d) => d.on);
+  const dropHere = dropOn.filter((d) => m.rows.some((r) => r.id === d.id && r.found));
+  const dropAll = (dropHere.length ? dropHere : dropOn).map((d) => d.name);
+  const dropNames = dropAll.length > 5 ? `${i18n().formatList(dropAll.slice(0, 5))}…` : i18n().formatList(dropAll);
+
+  /** "Claude Code、Codex、Kimi Code": a plain list of names (the row says what they are) */
+  const names = (l: AgentInfo[]) => l.map((a) => a.name).join(tr('mw.list_sep'));
+  const connState = (a: AgentInfo) => {
+    if (a.conn === 'connected' && a.last_seen) return S('agents.conn.connected', when(a.last_seen));
+    return S(`agents.conn.${a.conn ?? 'missing'}`);
+  };
+  const useRow = (a: AgentInfo) => {
+    const site = m.def(a.id)?.site ?? siteOf(m.def(a.id)?.install?.[L] ?? '');
+    return (
+      <div key={a.id} className="st-row st-agent" data-testid={`use-${a.id}`}
+        onContextMenu={(e) => (e.preventDefault(), setMenu({ id: a.id, x: e.clientX, y: e.clientY }))}>
+        <span className="st-icon"><Dot tone={a.conn === 'connected' ? 'good' : 'off'} /></span>
+        <div className="st-text">
+          <div className="st-row-title">
+            <span className={a.conn === 'missing' ? 'st-name dim' : 'st-name'}>{a.name}</span>
+            {a.edition && <span className="st-detail st-faint">{a.edition}</span>}
+          </div>
+        </div>
+        <div className="st-ctl">
+          {/* the folded line above the ones not found already says so */}
+          {m.installing === a.id ? <span className="st-detail">{S('install.working')}</span> : a.conn !== 'missing' && <span className="st-detail">{connState(a)}</span>}
+          {m.installing !== a.id && a.conn === 'found' && <button className="st-small" title={S('agents.install.help')} onClick={() => m.preview(a)}>{S('agents.install')}</button>}
+          {m.installing !== a.id && a.conn === 'missing' && (
+            <>
+              {site && <TextLink onClick={() => api.openUrl(site)}>{S('agents.get_app', a.name)}</TextLink>}
+              <button className="st-small" onClick={() => m.preview(a)}>{S('agents.conn.anyway')}</button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <Page id="agents" lead={<>
-      <span>{S('agents.lead')}</span>
+    <Page id="agents" lead={off.has('recording') ? undefined : <>
+      <span>{status}</span>
       <span className="st-lead-end">
         {m.loading && <span className="st-detail">{S('agents.state.checking')}</span>}
         <TextLink onClick={() => m.recheck()}>{S('agents.check_again')}</TextLink>
       </span>
     </>}>
-      <Group id="agents.list" title="" footer={m.error ? <span className="st-warn">{m.error}</span> : undefined}>
-        {listed.map((a) => row(a, true))}
-        {missing.length > 0 && (
+      <Group id="agents.use" title={S('agents.use.header')} footer={m.error ? <span className="st-warn">{m.error}</span> : S('agents.use.footer')}>
+        {m.rows.some((r) => r.state === 'checking') && !here.length && <div className="st-row"><span className="st-detail">{S('agents.state.checking')}</span></div>}
+        {here.map(useRow)}
+        {lost.length > 0 && (
+          <button className="st-row st-missing" aria-expanded={showLost} onClick={() => setShowLost((x) => !x)}>
+            <span className="st-icon"><Icon name={showLost ? 'chevron-down' : 'chevron-right'} size={12} /></span>
+            <span className="st-dim">{S('agents.conn.missing')}</span>
+            {!showLost && <span className="st-detail st-ellipsis">{names(lost)}</span>}
+          </button>
+        )}
+        {showLost && lost.map(useRow)}
+        <button className="st-row st-missing" data-testid="agents-other" onClick={() => setManualOpen(true)}>
+          <span className="st-icon"><Icon name="plus" size={12} /></span>
+          <span>{S('agents.other')}</span>
+          <span className="st-detail">{S('agents.other.detail')}</span>
+        </button>
+      </Group>
+
+      <Group id="agents.list" title={S('agents.organize.header')}>
+        {cli ? listed.map((a) => row(a, true)) : <div className="st-row"><span className="st-detail">{S('agents.organize.none')}</span></div>}
+        {cli && missing.filter((a) => a.headless).length > 0 && (
           <button className="st-row st-missing" aria-expanded={showMissing} onClick={() => setShowMissing((x) => !x)}>
             <span className="st-icon"><Icon name={showMissing ? 'chevron-down' : 'chevron-right'} size={12} /></span>
             <span className="st-dim">{S('agents.missing')}</span>
-            {!showMissing && <span className="st-detail st-ellipsis">{missing.length > 4 ? S('agents.missing.more', i18n().formatList(missing.slice(0, 3).map((a) => a.name)), missing.length - 3) : i18n().formatList(missing.map((a) => a.name))}</span>}
+            {!showMissing && <span className="st-detail st-ellipsis">{names(missing.filter((a) => a.headless))}</span>}
           </button>
         )}
-        {showMissing && missing.map((a) => row(a, a.headless))}
+        {cli && showMissing && missing.filter((a) => a.headless).map((a) => row(a, true))}
       </Group>
 
-      <Group id="agents.organize" footer={organizeFooter} accessory={<span className="st-cols"><span>{S('agents.details.model')}</span><span>{S('agents.effort')}</span></span>}>
-        {KINDS.map((k) => {
-          const cur = m.sharedSetting(k);
-          return (
-            <div key={k} className="st-row" data-setting={k === 'recording' ? 'agents.organize' : undefined}>
-              <div className="st-text" title={S(`agents.processing.${k}.help`)}>{S(`agents.organize.${k}`)}</div>
-              <div className="st-ctl">
-                <Popup label={S(`agents.processing.${k}`)} value={cur.model} choices={[['default', S('agents.processing.default')], ['cheapest', S('agents.processing.cheapest')]]} onChange={(v) => m.setShared(k, v)} />
-                <Popup label={S('agents.effort')} value={cur.effort} dividers={[1]} choices={[['default', S('agents.effort.default')], ...m.sharedEfforts.map((e) => [e, S(`agents.effort.${e}`)] as [string, string])]}
-                  onChange={(v) => m.setShared(k, undefined, v)} />
+      {cli && (
+        <Group id="agents.organize" title="" footer={organizeFooter} accessory={<span className="st-cols"><span>{S('agents.details.model')}</span><span>{S('agents.effort')}</span></span>}>
+          {KINDS.map((k) => {
+            const cur = m.sharedSetting(k);
+            return (
+              <div key={k} className="st-row" data-setting={k === 'recording' ? 'agents.organize' : undefined}>
+                <div className="st-text" title={S(`agents.processing.${k}.help`)}>{S(`agents.organize.${k}`)}</div>
+                <div className="st-ctl">
+                  <Popup label={S(`agents.processing.${k}`)} value={cur.model} choices={[['default', S('agents.processing.default')], ['cheapest', S('agents.processing.cheapest')]]} onChange={(v) => m.setShared(k, v)} />
+                  <Popup label={S('agents.effort')} value={cur.effort} dividers={[1]} choices={[['default', S('agents.effort.default')], ...m.sharedEfforts.map((e) => [e, S(`agents.effort.${e}`)] as [string, string])]}
+                    onChange={(v) => m.setShared(k, undefined, v)} />
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </Group>
-
-      {apps.length > 0 && (
-        <Group id="agents.manual" title={S('agents.manual.header')} footer={S('agents.manual.footer')}>
-          {apps.map((a) => row(a, false))}
+            );
+          })}
         </Group>
       )}
+
+      <Group id="agents.drop" title={S('agents.drop.header')}>
+        <div className="st-row">
+          <div className="st-text">{drops === null ? '' : cfg.record?.agent_drag !== 'same' && dropAll.length ? S('agents.drop.line', dropNames) : S('agents.drop.none')}</div>
+          <div className="st-ctl"><button onClick={() => setDropEdit(true)}>{S('agents.drop.edit')}</button></div>
+        </div>
+      </Group>
 
       <AskNote />
 
@@ -489,7 +561,126 @@ export function AgentsPane({ cfg, save, onToast }: { cfg: Record<string, any>; s
       )}
       {details && <DetailSheet m={m} id={details} close={() => setDetails(null)} onSignIn={(id) => setFixFor(id)} />}
       {m.plan && <InstallSheet m={m} close={() => m.setPlan(null)} />}
+      {manualOpen && <ManualSheet close={() => setManualOpen(false)} added={(id) => (m.extra.current.push(id), m.recheck())} />}
+      {dropEdit && <AgentAppsSheet close={() => setDropEdit(false)} />}
     </Page>
+  );
+}
+
+/** "15:42" today, else the date ("Nov 16" / "11月16日") */
+function when(epoch: number): string {
+  const d = new Date(epoch * 1000);
+  const today = new Date().toDateString() === d.toDateString();
+  const loc = lang() === 'zh-Hans' ? 'zh-CN' : 'en';
+  return today ? d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', hour12: false }) : d.toLocaleDateString(loc, { month: 'short', day: 'numeric' });
+}
+
+/** Other Agent…: everything an agent Blurt doesn't know needs, to copy — the skill folder (or a .zip of it), the MCP
+ *  server as the common `mcpServers` JSON and as a command with its arguments, a prompt the agent can follow — then
+ *  Test (the server notes every client that starts it: a new one is "Connected · just now") and Add to List (a
+ *  custom agent, record.agent_defs). */
+function ManualSheet({ close, added }: { close: () => void; added: (id: string) => void }) {
+  const [info, setInfo] = useState<AgentManual | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [test, setTest] = useState<'idle' | 'waiting' | 'ok'>('idle');
+  const [name, setName] = useState('');
+  const stop = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    api.agentsManual().then(setInfo, (e) => setError(String(e)));
+    return () => stop.current?.();
+  }, []);
+  const copy = (k: string, text: string) => api.copyText(text).then(() => (setCopied(k), setTimeout(() => setCopied((c) => (c === k ? null : c)), 1500)));
+  const startTest = async () => {
+    stop.current?.();
+    const before = await api.mcpClients().catch(() => ({} as Record<string, { at: number }>));
+    const t0 = Date.now() / 1000 - 1;
+    setTest('waiting');
+    let n = 0;
+    const timer = setInterval(async () => {
+      n += 1;
+      const now = await api.mcpClients().catch(() => ({} as Record<string, { at: number; via?: string }>));
+      const fresh = Object.entries(now).some(([k, v]) => v.via !== 'app' && v.at > t0 && (!before[k] || v.at > before[k].at));
+      if (fresh) {
+        clearInterval(timer);
+        setTest('ok');
+      } else if (n > 120) {
+        clearInterval(timer);
+        setTest('idle');
+      }
+    }, 1500);
+    stop.current = () => clearInterval(timer);
+  };
+  const save = async () => {
+    if (!name.trim()) return;
+    try {
+      const r = await api.agentsCustom({ name: name.trim() });
+      if (r.id) added(r.id);
+      close();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const Copy = ({ k, text }: { k: string; text: string }) => (
+    <button className="link" aria-label={S('settings.kit.copy')} onClick={() => copy(k, text)}><Icon name={copied === k ? 'check' : 'copy'} size={13} /></button>
+  );
+  return (
+    <Sheet label={S('agents.manual.title')} close={close} width={620}>
+      <div className="st-sheet-head"><div><div className="st-sheet-title">{S('agents.manual.title')}</div><div className="st-detail">{S('agents.manual.lead')}</div></div></div>
+      {error && <div className="st-detail st-err">{error}</div>}
+      {info && (
+        <>
+          <Group id="agentManualPrompt" title={S('agents.manual.prompt')}>
+            <div className="st-row st-well-row">
+              <div className="st-detail st-prompt">{info.prompt}</div>
+              <div className="st-ctl"><button onClick={() => copy('prompt', info.prompt)}>{copied === 'prompt' ? S('install.copied') : S('agents.manual.copy_prompt')}</button></div>
+            </div>
+            <div className="st-row">
+              <div className="st-text">
+                {test === 'waiting' ? <span className="st-detail">{S('agents.manual.waiting')}</span>
+                  : test === 'ok' ? <span className="st-detail st-ok">{S('agents.manual.connected')}</span>
+                  : <span className="st-detail">{S('agents.manual.test.hint')}</span>}
+              </div>
+              <div className="st-ctl"><button onClick={startTest}>{S('agents.manual.test')}</button></div>
+            </div>
+          </Group>
+          <Group id="agentManualSkill" title={S('agents.manual.skill')}>
+            <div className="st-row">
+              <code className="st-cmd st-ellipsis" title={info.skill}>{info.skill}</code>
+              <div className="st-ctl">
+                <Copy k="skill" text={info.skill} />
+                <button onClick={() => api.openPath(info.skill)}>{S('agents.manual.open')}</button>
+                <button onClick={() => api.skillZip().catch((e) => setError(String(e)))}>{S('agents.manual.zip')}</button>
+              </div>
+            </div>
+          </Group>
+          <Group id="agentManualMcp" title={S('agents.manual.mcp')}>
+            <div className="st-row st-well-row">
+              <pre className="st-cmd st-pre">{info.mcp_json}</pre>
+              <div className="st-ctl"><Copy k="json" text={info.mcp_json} /></div>
+            </div>
+            <div className="st-row">
+              <div className="st-text">{S('agents.manual.command')}</div>
+              <div className="st-ctl"><code className="st-cmd st-ellipsis" title={info.command}>{info.command}</code><Copy k="cmd" text={info.command} /></div>
+            </div>
+            <div className="st-row">
+              <div className="st-text">{S('agents.manual.args')}</div>
+              <div className="st-ctl"><code className="st-cmd st-ellipsis" title={info.args.join(' ')}>{info.args.join(' ')}</code><Copy k="args" text={info.args.join(' ')} /></div>
+            </div>
+          </Group>
+          <Group id="agentManualName" footer={S('agents.manual.name.hint')}>
+            <div className="st-row">
+              <div className="st-text">{S('agents.manual.name')}</div>
+              <div className="st-ctl">
+                <input className="st-field" value={name} placeholder={S('agents.manual.name.placeholder')} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} aria-label={S('agents.manual.name')} />
+                <button disabled={!name.trim()} onClick={save}>{S('agents.manual.save')}</button>
+              </div>
+            </div>
+          </Group>
+        </>
+      )}
+      <div className="st-ctl st-sheet-foot"><button className="primary" onClick={close}>{S('dictation.feedback.done')}</button></div>
+    </Sheet>
   );
 }
 
@@ -706,9 +897,9 @@ function DetailSheet({ m, id, close, onSignIn }: { m: Model; id: string; close: 
       </Group>
       <Group id="agentSheetConnect" title={S('agents.details.more')}>
         <div className="st-row">
-          <div className="st-text"><div>{S('agents.details.skill')}</div><div className="st-detail">{S(m.connected[a.id] ? 'agents.connected.help' : 'agents.not_connected.help')}</div></div>
+          <div className="st-text"><div>{S('agents.details.skill')}</div><div className="st-detail">{S(m.isConnected(a) ? 'agents.connected.help' : 'agents.not_connected.help')}</div></div>
           <div className="st-ctl">
-            {m.installing === a.id ? <span className="st-detail">{S('install.working')}</span> : m.connected[a.id] ? <span className="st-detail">{S('agents.details.connected')}</span> : <button onClick={() => m.preview(a)}>{S('agents.install')}</button>}
+            {m.installing === a.id ? <span className="st-detail">{S('install.working')}</span> : m.isConnected(a) ? <span className="st-detail">{S('agents.details.connected')}</span> : <button onClick={() => m.preview(a)}>{S('agents.install')}</button>}
           </div>
         </div>
         <div className="st-row">
@@ -775,6 +966,8 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
   const tech = rows.filter((r) => r.line);
   const showInPlace = rows.some((r) => r.group !== 2) && rows.some((r) => r.group === 2);
   const glyph = { add: 'plus', added: 'check', in: 'check', attn: 'warning', err: 'x' } as const;
+  // what is left to do in the agent after Connect (WorkBuddy's Trust): the next step, in the body
+  const after = p.applied && !failed ? m.def(p.agent.id)?.after?.[L] ?? null : null;
   return (
     <Sheet label={title} close={close} width={480}>
       <div className="st-sheet-head"><div><div className="st-sheet-title">{title}</div><div className="st-detail">{subtitle}</div></div></div>
@@ -787,12 +980,18 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
               <div>
                 <div>{r.title}</div>
                 {r.detail && <div className="st-detail">{r.detail}</div>}
-                {r.reveal && <TextLink ink onClick={() => api.reveal(r.reveal!)}>{S('win.projects.reveal')}</TextLink>}
+                {r.reveal && <TextLink ink onClick={() => api.reveal(r.reveal!)}>{revealLabel()}</TextLink>}
               </div>
             </div>
           </div>
         ))}
       </div>
+      {after && (
+        <div className="st-install-row attn st-install-next" data-testid="install-after">
+          <Icon name="info" size={14} />
+          <div>{S('install.after', after)}</div>
+        </div>
+      )}
       {tech.length > 0 && (
         <div className="st-tech">
           <TextLink onClick={() => setDetails((d) => !d)}><Icon name={details ? 'chevron-down' : 'chevron-right'} size={11} /> {S('install.details')}</TextLink>
@@ -806,7 +1005,7 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
       )}
       <div className="st-ctl st-sheet-foot">
         <span className="st-detail" style={{ marginInlineEnd: 'auto' }}>
-          {m.installing ? S('install.working') : !p.applied && !nothing ? S('install.footnote') : p.applied && !failed ? S('install.next', name) : ''}
+          {m.installing ? S('install.working') : !p.applied && !nothing ? S('install.footnote') : p.applied && !failed && !after ? S('install.next', name) : ''}
         </span>
         {p.applied || nothing ? (
           <button className="primary" onClick={() => (close(), m.recheck())}>{S('dictation.feedback.done')}</button>

@@ -116,6 +116,10 @@ Atlas Web」（只在会整理时显示）。每张 ⌥A 截图也是绳子上�
 `OrganizeEstimate` 用本机已整理过的整段录屏（`jobs/` 里 process 任务的起止时间，对照 meta.json 的视频时长）做稳健直线拟合
 （Theil–Sen：两两斜率的中位数，斜率不小于 0，不短于最快的一次）。少于 3 次不给数字，只说「整理好后，事项会出现在那里」。
 展开刘海时，正在整理的任务行显示「还剩约 N 分钟」（超过通常时长就不再显示）。整理完：「已整理到 Atlas Web · 5 条新的」+「打开」。
+2026-11-18：宣布之前先查有没有能在后台整理的 Agent（AgentHub 缓存，开录时已预热）；没有就说「录屏已保存 · 未找到可在后台整理的
+Agent」+ 设置 Agent… / 复制说法 / 在访达中显示，不建任务。「正在整理到 X」多一个「在访达中显示」；整理出 0 个事项说「没整理出事项」。
+整理的提示词和 Windows/Linux 共用 `skills/blurt/scripts/organize_prompt.json`（BlurtCore OrganizerPrompt.render；golden 样例
+`tests/organize-prompt/golden.json`）。见 windows-parity/recording.md §15。
 
 **只保存视频（BA-66）。** 刘海 ··· 菜单第一项和菜单栏菜单里有「只保存视频」：录屏照常保存（meta.json `video_only: true`），
 不交给 agent，视频在访达里选中，刘海说「视频已保存 · 没有整理」并可再次在访达中显示。自动删除视频只删已整理的录屏，所以它不会被清理。

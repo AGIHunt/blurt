@@ -45,7 +45,7 @@
   "island.toast.open": "Open",
   "island.sessions.title": "Needs you",
   "island.jobs.title": "Under way",
-  "error.no_agent": "No coding agent is ready — set one up in Settings",
+  "error.no_agent": "No agent can organize in the background\nOr say “Process my Blurt recordings” in an agent with the Blurt skill",
   "error.auth": "The agent needs you to sign in again",
   "error.quota": "The agent hit its usage limit",
   "error.network": "No connection to the agent’s service",
@@ -451,5 +451,13 @@
   "island.dictation.copied_last": "Last dictation copied",
   "island.card.file": "File · {name}",
   "island.card.text": "Text",
-  "island.card.missing": "Original file not found"
+  "island.card.missing": "Original file not found",
+  "rec.preparing": "Organizing…",
+  "rec.saved_no_agent": "Recording saved · No agent can organize in the background\nOr say “Process my Blurt recordings” in an agent with the Blurt skill",
+  "rec.set_up_agent": "Set Up an Agent…",
+  "rec.copy_request": "Copy",
+  "rec.request_copied": "Copied. Paste it into your agent’s chat.",
+  "rec.show_in_files": "Show in Files",
+  "rec.fallback": "{why} — organizing with {agent} instead",
+  "island.toast.organized_none": "No items found"
 }

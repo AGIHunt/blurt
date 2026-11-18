@@ -583,6 +583,31 @@ body.mw-resizing * {
 .mw-job.failed .mw-c-ring {
   color: var(--attn-ink);
 }
+/* a recording's row (Recordings.tsx): its length in the id column, a failure's state in the attention ink, the first
+   line muted when nothing was said */
+/* the first line and the state share the title column: the state is one word (why is the tooltip's), the line keeps
+   room enough to be read */
+.mw-rec .mw-tt {
+  flex: 1 1 0;
+  min-width: 7em;
+}
+.mw-rec .mw-hit {
+  flex: none;
+}
+.mw-rec .mw-hit.attn {
+  color: var(--attn-ink);
+}
+.mw-rec .mw-linkbtn {
+  flex: none;
+}
+.mw-rec .mw-tt.quiet {
+  color: var(--mute);
+}
+.mw-job-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* ------------------------------------------------------------ rows */
 /* the gutter is always kept (stable), so the rows' right edge, the times and the search field line up in every place
@@ -2186,6 +2211,12 @@ body.mw-resizing * {
 .mw-jobdetail .mw-spinner.sm {
   border-top-color: var(--brand-ink);
   border-width: 2px;
+}
+/* a failed organising's controls: Try Again first, then the ways to its files */
+.mw-jobdetail .mw-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* a menu row's count: a small capsule beside the label column (the Mac's filter popup), not a bare digit at the edge */

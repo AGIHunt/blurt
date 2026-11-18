@@ -57,9 +57,12 @@
 // record.agent_drag ("paths", the default; "same": as every other app, the Cards box's other choice). A chat that runs
 // in the cloud (Kimi, Doubao, ChatGPT mode, a Claude chat) can't read a path and keeps the chat layout; in the Codex
 // and Claude apps the window decides (AgentWindow.isAgent: its web page's address, its mode button).
-// Which apps: a built-in list, and the user's own changes to it (record.agent_apps: bundle id → on / off; Settings →
-// General → Agents…: add any app, switch a built-in one off). Not rules on app names: a name doesn't say whether the
-// app reads this Mac's files (Kimi / Kimi Code, 豆包 / 豆包工作 differ by one word), and new built-ins still arrive.
+// Which apps (v1.0.26): one list with the agents — every agents.json entry with a `drop` for macOS and its `app`
+// bundle ids (AgentDropList, the same rule as agents.py drop_targets and the Windows app's card_drop.rs), the user's
+// own agents (record.agent_defs: Settings → Agents → Dragging Cards → Edit… → Add App…), minus the ones switched off
+// (record.agent_drop.<id> = false). v1.0.21's record.agent_apps (bundle id → on / off) still counts until the list
+// is next edited, which moves it to the new keys (AgentDropList.migrate). Not rules on app names: a name doesn't say
+// whether the app reads this Mac's files (Kimi / Kimi Code, 豆包 / 豆包工作 differ by one word).
 
 import CoreGraphics
 import Foundation
@@ -194,6 +197,19 @@ public enum AgentWindow {
     public static let composers: Set<String> = hosts.union(["com.tencent.workbuddy.mac", "com.qoder.work", "com.kimi.code.desktop",
                                                             "com.work.pc.doubao"])
 
+    /// The apps a card goes into as path + note: the list (AgentDropList.targets) when agents.json is at hand, else
+    /// the built-in fallback with v1.0.21's changes (record.agent_apps).
+    public static func list(record: [String: Any], registry: [[String: Any]]?) -> Set<String> {
+        guard let reg = registry else { return list(record["agent_apps"] as? [String: Bool] ?? [:]) }
+        return Set(AgentDropList.targets(registry: reg, record: record).filter(\.on).flatMap(\.ids))
+    }
+
+    /// Of `list(record:registry:)`, the ones with a composer of their own (drop "composer").
+    public static func composers(record: [String: Any], registry: [[String: Any]]?) -> Set<String> {
+        guard let reg = registry else { return composers }
+        return Set(AgentDropList.targets(registry: reg, record: record).filter { $0.on && $0.drop == "composer" }.flatMap(\.ids))
+    }
+
     /// record.agent_drag: "paths" (default, also when unset or unknown) or "same" (as every other app).
     public static func getsPaths(setting: String?) -> Bool { setting != "same" }
 
@@ -240,6 +256,151 @@ public enum AgentWindow {
         default: return false
         }
     }
+}
+
+/// One app agent a card can be dragged into (agents.json `drop`, or the user's own), as Settings lists it.
+public struct DropAgent: Equatable, Identifiable {
+    /// the agent's id (agents.json / record.agent_defs), or a bundle id from v1.0.21's record.agent_apps
+    public var agent: String
+    public var name: String
+    /// its macOS bundle ids
+    public var ids: [String]
+    /// "composer" (one line per card) | "terminal" (one line)
+    public var drop: String
+    public var on: Bool
+    /// the user's own (Remove, not a switch)
+    public var custom: Bool
+    public var id: String { agent }
+    public init(agent: String, name: String, ids: [String], drop: String, on: Bool, custom: Bool) {
+        self.agent = agent; self.name = name; self.ids = ids; self.drop = drop; self.on = on; self.custom = custom
+    }
+}
+
+/// The card-drag targets from agents.json and the config (agents.py drop_targets / migrate_agent_apps, card_drop.rs:
+/// one rule on three platforms). Pure: the registry's `agents` array and config.json's `record` object come in.
+public enum AgentDropList {
+    /// agents.json's agents with record.agent_defs merged in (a known id: its fields over the registry's; a new id:
+    /// added after the registry's, in id order) — agents.py definitions().
+    public static func definitions(registry: [[String: Any]], record: [String: Any]) -> [[String: Any]] {
+        var out = registry
+        let defs = record["agent_defs"] as? [String: Any] ?? [:]
+        for k in defs.keys.sorted() {
+            guard let v = defs[k] as? [String: Any] else { continue }
+            if let i = out.firstIndex(where: { $0["id"] as? String == k }) {
+                out[i].merge(v) { _, new in new }
+                out[i]["id"] = k
+            } else {
+                var d = v
+                d["id"] = k
+                if d["name"] == nil { d["name"] = k }
+                out.append(d)
+            }
+        }
+        return out
+    }
+
+    static func isPath(_ s: String) -> Bool { s.hasPrefix("~") || s.hasPrefix("$") || s.contains("/") || s.contains("\\") }
+
+    /// A def's macOS app ids (bundle ids; paths left out).
+    public static func appIDs(_ d: [String: Any]) -> [String] {
+        let v = (d["app"] as? [String: Any])?["macos"]
+        let all = (v as? [String]) ?? (v as? String).map { [$0] } ?? []
+        return all.filter { !isPath($0) }
+    }
+
+    /// `drop` for macOS: a string for every OS, or {os: kind}.
+    public static func dropKind(_ d: [String: Any]) -> String? {
+        let v = (d["drop"] as? [String: Any])?["macos"] ?? d["drop"]
+        guard let k = v as? String, k == "composer" || k == "terminal" else { return nil }
+        return k
+    }
+
+    public static func targets(registry: [[String: Any]], record: [String: Any]) -> [DropAgent] {
+        let off = Set((record["agent_drop"] as? [String: Any] ?? [:]).filter { ($0.value as? Bool) == false }.keys)
+        let legacy = (record["agent_apps"] as? [String: Any] ?? [:]).compactMapValues { $0 as? Bool }
+        var out: [DropAgent] = []
+        var seen = Set<String>()
+        for d in definitions(registry: registry, record: record) {
+            guard let id = d["id"] as? String, let kind = dropKind(d) else { continue }
+            let ids = appIDs(d)
+            guard !ids.isEmpty else { continue }
+            let on = !off.contains(id) && !ids.contains { legacy[$0] == false }
+            out.append(DropAgent(agent: id, name: d["name"] as? String ?? id, ids: ids, drop: kind, on: on,
+                                 custom: d["custom"] as? Bool ?? false))
+            seen.formUnion(ids)
+        }
+        for (k, v) in legacy.sorted(by: { $0.key < $1.key }) where v && !seen.contains(k) {
+            out.append(DropAgent(agent: k, name: k, ids: [k], drop: "terminal", on: true, custom: true))
+        }
+        return out
+    }
+
+    /// "My Agent" → "my-agent" (letters and digits of any script kept), unique among `taken` — agents.py custom_id.
+    public static func customID(_ name: String, taken: Set<String>) -> String {
+        let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
+        var base = ""
+        var dash = false
+        for ch in lower {
+            if ch.isLetter || ch.isNumber || ch == "_" { base.append(ch); dash = false }
+            else if !dash { base.append("-"); dash = true }
+        }
+        base = base.trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        if base.isEmpty { base = "agent" }
+        var out = base, i = 2
+        while taken.contains(out) { out = "\(base)-\(i)"; i += 1 }
+        return out
+    }
+
+    /// A user's own app (Add App…) as a record.agent_defs entry: a card-drag target only.
+    public static func customDef(name: String, bundleID: String) -> [String: Any] {
+        ["name": name, "bins": [String](), "headless": false, "custom": true, "connect": false,
+         "app": ["macos": [bundleID]], "drop": "terminal"]
+    }
+
+    /// record.agent_apps (v1.0.21) → the new keys, as the `record` values to write (NSNull = remove): an app switched
+    /// off → its agent in agent_drop = false; an app the user added → a custom agent with that bundle id. nil when
+    /// there is nothing to move. agents.py migrate_agent_apps.
+    public static func migrate(registry: [[String: Any]], record: [String: Any]) -> [String: Any]? {
+        guard let legacy = record["agent_apps"] as? [String: Any] else { return nil }
+        let defs = definitions(registry: registry, record: record)
+        var byApp: [String: String] = [:]
+        for d in defs { if let id = d["id"] as? String { for a in appIDs(d) { byApp[a] = id } } }
+        var drop = record["agent_drop"] as? [String: Any] ?? [:]
+        var userDefs = record["agent_defs"] as? [String: Any] ?? [:]
+        var taken = Set(defs.compactMap { $0["id"] as? String })
+        for k in legacy.keys.sorted() {
+            guard let v = legacy[k] as? Bool else { continue }
+            if !v, let a = byApp[k] { drop[a] = false }
+            else if v, byApp[k] == nil {
+                let short = k.split(separator: ".").last.map(String.init) ?? k
+                let id = customID(short, taken: taken)
+                taken.insert(id)
+                userDefs[id] = customDef(name: short, bundleID: k)
+            }
+        }
+        var patch: [String: Any] = ["agent_apps": NSNull()]
+        if !drop.isEmpty { patch["agent_drop"] = drop }
+        if !userDefs.isEmpty { patch["agent_defs"] = userDefs }
+        return patch
+    }
+
+    /// agents.json's `agents`: the skill's (BlurtPaths.scripts), else the copy in the app. Re-read when the file changes.
+    public static func loadRegistry(bundle: Bundle = .main) -> [[String: Any]]? {
+        var urls = [BlurtPaths.scripts.appendingPathComponent("agents.json")]
+        if let u = bundle.url(forResource: "agents", withExtension: "json") { urls.append(u) }
+        lock.lock(); defer { lock.unlock() }
+        for u in urls {
+            guard let m = (try? FileManager.default.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date else { continue }
+            if let c = cached, c.url == u, c.at == m { return c.agents }
+            guard let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let list = o["agents"] as? [[String: Any]] else { continue }
+            cached = (u, m, list)
+            return list
+        }
+        return nil
+    }
+    private static let lock = NSLock()
+    private static var cached: (url: URL, at: Date, agents: [[String: Any]])?
 }
 
 /// The app under a drag, as far as what the drag carries goes (CardPasteboard.drag(into:)): its class, its kind of

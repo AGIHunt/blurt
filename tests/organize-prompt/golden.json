@@ -1,0 +1,47 @@
+{
+  "_doc": "Golden cases for skills/blurt/scripts/organize_prompt.json: what the macOS app (BlurtCoreTests OrganizerPromptTests) and the Windows/Linux app (agents.rs tests) must both make of each input. Regenerate the prompts when a part of the template changes; both tests read this file.",
+  "cases": [
+    {
+      "name": "recording into a project",
+      "input": {
+        "session": "/Users/a/r/atlas/.blurt/sessions/20261118-101500",
+        "shots": false,
+        "captures": null,
+        "skill_md": "/Users/a/.blurt/skill/SKILL.md",
+        "scripts": "/Users/a/.blurt/skill/scripts",
+        "code": "/Users/a/r/atlas",
+        "candidates": null
+      },
+      "prompt": "Use the blurt skill to process this recording: /Users/a/r/atlas/.blurt/sessions/20261118-101500\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences.\nThe blurt skill: /Users/a/.blurt/skill/SKILL.md\nRun the skill's scripts exactly as `uv run /Users/a/.blurt/skill/scripts/<name>.py …` (no other form, no other command is allowed).\nThe project's code (read it, change nothing there): /Users/a/r/atlas"
+    },
+    {
+      "name": "cards from the inbox, with candidates",
+      "input": {
+        "session": "/Users/a/Blurt/inbox/sessions/20261118-102000-shots",
+        "shots": true,
+        "captures": [
+          3,
+          4
+        ],
+        "skill_md": "/Users/a/.blurt/skill/SKILL.md",
+        "scripts": "/Users/a/.blurt/skill/scripts",
+        "code": null,
+        "candidates": "  Candidate projects (suggest one per item; nothing moves):\n- atlas — Atlas Web\n- api — api-server\n"
+      },
+      "prompt": "Use the blurt skill to process this batch of captures: /Users/a/Blurt/inbox/sessions/20261118-102000-shots\nIt is a shots session (no video): each shot anchors one item and is that item's primary frame; voice-only lines (type voice) are items of their own; voice notes are transcribed first; .marked.png files carry the user's ink.\nOnly these captures (shots.jsonl n): 3, 4.\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences.\nThe blurt skill: /Users/a/.blurt/skill/SKILL.md\nRun the skill's scripts exactly as `uv run /Users/a/.blurt/skill/scripts/<name>.py …` (no other form, no other command is allowed).\n\nCandidate projects (suggest one per item; nothing moves):\n- atlas — Atlas Web\n- api — api-server"
+    },
+    {
+      "name": "Windows paths, values never searched again",
+      "input": {
+        "session": "C:\\Users\\a\\Blurt\\inbox\\sessions\\{scripts} 20261118",
+        "shots": false,
+        "captures": [],
+        "skill_md": "C:\\Users\\a\\.blurt\\skill\\SKILL.md",
+        "scripts": "C:\\Users\\a\\.blurt\\skill\\scripts",
+        "code": null,
+        "candidates": "   "
+      },
+      "prompt": "Use the blurt skill to process this recording: C:\\Users\\a\\Blurt\\inbox\\sessions\\{scripts} 20261118\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences.\nThe blurt skill: C:\\Users\\a\\.blurt\\skill\\SKILL.md\nRun the skill's scripts exactly as `uv run C:\\Users\\a\\.blurt\\skill\\scripts/<name>.py …` (no other form, no other command is allowed)."
+    }
+  ]
+}

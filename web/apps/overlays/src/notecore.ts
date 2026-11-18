@@ -415,5 +415,10 @@ export function placeChoices<T extends PlaceRef>(projects: T[], query: string, u
   return rows;
 }
 
-/** "0:04" */
-export const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** "0:04", "1:02:05" from an hour on */
+export const clock = (secs: number) => {
+  const s = Math.floor(Math.max(0, secs));
+  const two = (n: number) => String(n).padStart(2, '0');
+  const h = Math.floor(s / 3600);
+  return h ? `${h}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
+};

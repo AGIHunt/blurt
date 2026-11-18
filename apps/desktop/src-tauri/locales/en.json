@@ -50,7 +50,7 @@
   "notify.sorted.empty": "Nothing to file from this one",
   "notify.failed": "Couldn’t finish: {title}",
   "notify.merged_other": "{n} more updates",
-  "error.no_agent": "No coding agent is ready. Set one up in Settings → Agents.",
+  "error.no_agent": "No agent can organize in the background. Or say “Process my Blurt recordings” in an agent with the Blurt skill.",
   "error.scripts": "Blurt’s scripts weren’t found. Reinstall the app, or set BLURT_SCRIPTS.",
   "error.uv": "uv isn’t installed. Get it from docs.astral.sh/uv, then reopen Blurt.",
   "error.needs_project": "Assign these items to a project folder first.",
@@ -86,5 +86,10 @@
   "tray.models.status": "Downloading · {pct}%",
   "tray.models.row": "Speech model · {done} / {total}",
   "tray.counts_sep": ", ",
-  "mainwin.add_files.title": "Add Images or Files"
+  "mainwin.add_files.title": "Add Images or Files",
+  "agent.why.not_installed": " isn’t installed",
+  "agent.why.logged_out": " isn’t signed in",
+  "agent.why.unusable": " can’t be used",
+  "agent.list_sep": ", ",
+  "rec.request": "Process my Blurt recordings"
 }

@@ -225,5 +225,7 @@ describe('ProjectPick', () => {
   it('the running time', () => {
     expect(clock(4.6)).toBe('0:04');
     expect(clock(75)).toBe('1:15');
+    expect(clock(3600 + 2 * 60 + 5)).toBe('1:02:05');
+    expect(clock(59 * 60 + 59.9)).toBe('59:59');
   });
 });

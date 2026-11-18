@@ -145,6 +145,11 @@ final class MainModel {
     private(set) var counts = IndexCounts()
     private(set) var projects: [ProjectEntry] = []
     private(set) var jobs: [Job] = []            // active ones for this place (and failures waiting), newest first
+    /// the recordings this place lists at the top (BlurtCore Recordings.listed): their organising jobs are their rows,
+    /// not in `jobs`
+    private(set) var recordings: [Recordings.Row] = []
+    /// the newest recordings' facts, read again with the index (reload); their state follows the jobs (reloadJobs)
+    private(set) var recordingFacts: [Recordings.Facts] = []
     /// Unassigned only: its items by the project an organizing run suggested (the sidebar's order)
     private(set) var suggestionGroups: [SuggestionGroup] = []
     private(set) var lastReloadMS = 0.0
@@ -388,14 +393,28 @@ final class MainModel {
 
     /// The running jobs, and organising that failed and still waits for a Retry or Dismiss (JobFailures): a recording
     /// whose organising failed has no items to be found by, so its job stays in its place until then.
+    /// A recording's organising job is drawn as the recording's row (RecordingsSection), never as a job row beside it.
     func reloadJobs() {
-        let all = JobStore.shared.active + JobFailures.waiting(JobStore.shared.jobs)
+        let recs = Capability.recording.isOn ? Recordings.rows(recordingFacts, jobs: JobStore.shared.jobs) : []
+        let all = Recordings.jobsBeside(JobStore.shared.active + JobFailures.waiting(JobStore.shared.jobs), recs)
         switch scope {
         case .project(let p): jobs = all.filter { $0.project == p }
         case .unassigned: jobs = all.filter { $0.project == "inbox" || $0.project == nil }
         default: jobs = scope.showsJobs ? all : []
         }
+        // while searching or filtering, only items
+        recordings = filtered || testEmpty != nil ? [] : Recordings.listed(recs, in: recordingPlace)
         onJobs?()
+    }
+
+    private var recordingPlace: Recordings.Place {
+        switch scope {
+        case .inbox: return .needsYou
+        case .inProgress: return .inProgress
+        case .unassigned: return .unassigned
+        case .project(let p): return .project(p)
+        default: return .other
+        }
     }
 
     func reload() {
@@ -434,6 +453,8 @@ final class MainModel {
         let byName = projects.filter(\.registered).sorted { $0.name.lowercased() < $1.name.lowercased() }.map(\.id)
         suggestionGroups = scope == .unassigned ? Suggestions.groups((try? reader?.suggestions()) ?? [], known: byName) : []
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+        // (not while searching or filtering: the list is only items then)
+        recordingFacts = scope.showsJobs && !filtered && Capability.recording.isOn ? (reader.map { Recordings.load($0, live: RecordingLook.live) } ?? []) : []
         reloadJobs()
         onReload?()
         if ProcessInfo.processInfo.environment["BLURT_PERF"] != nil {    // query, then query + table reload + detail

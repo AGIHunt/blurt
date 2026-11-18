@@ -639,6 +639,10 @@ final class JobDetailView: NSView {
     private let controls = NSStackView()
     private let sub = NSTextField(labelWithString: "")
     private let error = NSTextField(wrappingLabelWithString: "")
+    /// A recording's failed run: its way forward and the recording's own buttons, all in sight (no ⋯)
+    private let recControls = NSStackView()
+    /// the recording this run organises (nil: not a recording's run)
+    private var rec: Recordings.Row?
     private let progress = NSView()
     private let bar = FlatProgressBar()
     private let doing = NSTextField(labelWithString: "")
@@ -710,11 +714,15 @@ final class JobDetailView: NSView {
         stack.spacing = 6
         // the title's line on the list's first line ("Running · 1"): one top under the toolbar for both columns
         stack.edgeInsets = NSEdgeInsets(top: 3, left: 24, bottom: 16, right: 24)
-        let full: [NSView] = [headerRow, sub, error, progress, stepsTitle, stepsCard, itemsTitle, itemsCard]
+        recControls.orientation = .horizontal
+        recControls.spacing = 8
+        recControls.alignment = .centerY
+        let full: [NSView] = [headerRow, sub, error, recControls, progress, stepsTitle, stepsCard, itemsTitle, itemsCard]
         for v in full { stack.addArrangedSubview(v) }
         stack.setCustomSpacing(1, after: headerRow)
         stack.setCustomSpacing(18, after: sub)
         stack.setCustomSpacing(18, after: error)
+        stack.setCustomSpacing(24, after: recControls)
         stack.setCustomSpacing(24, after: progress)
         stack.setCustomSpacing(8, after: stepsTitle)
         stack.setCustomSpacing(24, after: stepsCard)
@@ -760,9 +768,13 @@ final class JobDetailView: NSView {
 
     func show(_ j: Job, projectName: String?) {
         job = j
-        header.stringValue = JobLook.detailTitle(j)
+        // a recording's run is the recording's: "Recording · 3:12 · what was said first", its state word (未完成, never
+        // 失败), its buttons
+        rec = RecordingLook.row(of: j)
+        header.stringValue = rec.map(RecordingLook.detailTitle) ?? JobLook.detailTitle(j)
         header.toolTip = header.stringValue
         sub.stringValue = Self.subtitle(j, projectName: projectName)
+        if let r = rec, r.state.job == j.id { sub.stringValue = RecordingLook.stateText(r) + "  ·  " + sub.stringValue }
         sub.isHidden = sub.stringValue.isEmpty
         stack.setCustomSpacing(18, after: sub)
 
@@ -771,7 +783,7 @@ final class JobDetailView: NSView {
             error.stringValue = T("main.job.stopped")
             error.textColor = .secondaryLabelColor
             error.isHidden = false
-        } else if let why = JobLook.errorText(j) {
+        } else if let why = rec != nil ? RecordingLook.failureText(j) : JobLook.errorText(j) {
             error.stringValue = why
             error.textColor = BrandColor.err
             error.isHidden = false
@@ -822,6 +834,11 @@ final class JobDetailView: NSView {
 
     private func showControls(_ j: Job) {
         controls.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        recControls.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        recControls.isHidden = true
+        if let r = rec, j.state == .failed, !j.dismissed, r.state.job == j.id {
+            return showRecordingControls(j, r)
+        }
         let canRetry = (j.state == .failed || JobLook.stopped(j)) && j.type == .process && (j.session != nil || !j.items.isEmpty)
         var more: [(String, String)] = []
         if JobStop.canStop(j) {
@@ -854,6 +871,25 @@ final class JobDetailView: NSView {
             menu.addItem(i)
         }
         controls.addArrangedSubview(MenuButton(menu: menu, label: T("main.job.more")))
+    }
+
+    /// A recording's failed run, by what can be done now: an agent usable → Retry; none → Set Up an Agent… (and what to
+    /// say to one). Then Play Video, Show in Finder, Show Log, Dismiss — one primary, the rest plain, all in sight.
+    private func showRecordingControls(_ j: Job, _ r: Recordings.Row) {
+        let can = RecordingLook.agent != false
+        let primary = BrandButton(title: can ? T("action.retry") : T("home.recording.set_up_agent"), target: self, action: #selector(tap(_:)))
+        primary.identifier = .init(can ? "retry" : "setup")
+        primary.fontSize = 12
+        primary.hPad = 12
+        primary.radius = 6
+        var views: [NSView] = [primary]
+        if !can { views.append(plain(RecordingLook.label(.copyRequest), "copy_request")) }
+        if r.facts.video != nil { views.append(plain(T("main.rec.play"), "play")) }
+        views.append(plain(T("action.reveal_in_finder"), "reveal"))
+        if logURL(j) != nil { views.append(plain(T("main.job.show_log"), "log")) }
+        views.append(plain(T("main.job.dismiss"), "dismiss"))
+        for v in views { recControls.addArrangedSubview(v) }
+        recControls.isHidden = false
     }
 
     private func plain(_ title: String, _ action: String) -> NSButton {
@@ -932,7 +968,11 @@ final class JobDetailView: NSView {
         guard let j = job else { return }
         switch action {
         case "log": if let u = logURL(j) { NSWorkspace.shared.open(u) }
-        case "reveal": if let s = j.session { NSWorkspace.shared.activateFileViewerSelecting([s]) }
+        case "reveal":
+            if let r = rec { RecordingLook.run(.reveal, r) } else if let s = j.session { NSWorkspace.shared.activateFileViewerSelecting([s]) }
+        case "play": if let r = rec { RecordingLook.run(.play, r) }
+        case "setup": if let r = rec { RecordingLook.run(.setUpAgent, r) }
+        case "copy_request": if let r = rec { RecordingLook.run(.copyRequest, r) }
         default: onAction?(action)
         }
     }

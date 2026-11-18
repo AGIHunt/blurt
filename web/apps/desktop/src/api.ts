@@ -6,6 +6,8 @@ import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
 import type { CardRef } from './drops';
+import type { RecordingInfo } from './recordings';
+import { notePlatform } from './reveal';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -36,11 +38,26 @@ export function fileSrc(abs: string | null | undefined): string {
 // ---- rows
 
 /** ItemRow v3 (K1; one K3 `state`) + what the list shows besides. Times are epoch seconds. */
-/** A row of Settings → General → Cards → Agents…: `id` is the program's executable stem ("cursor"). */
+/** A row of Settings → Agents → Dragging Cards → Edit… (card_drop.rs drop_rows): an agent whose app gets the
+ *  picture's path and the note; `ids` are its programs' stems ("cursor"); `custom`: one the user added. */
 export interface AgentApp {
   id: string;
-  builtin: boolean;
+  name: string;
+  ids: string[];
+  drop: 'composer' | 'terminal';
   on: boolean;
+  custom: boolean;
+}
+
+/** `agents.py manual`: what any other agent needs, by hand. */
+export interface AgentManual {
+  skill: string;
+  skill_ok: boolean;
+  server: string;
+  command: string;
+  args: string[];
+  mcp_json: string;
+  prompt: string;
 }
 
 /** items.py attach's answer: what the item had (the Undo puts it back) and what was added */
@@ -175,6 +192,11 @@ export interface Job {
   started: string | null;
   ended: string | null;
   error: { code: string; message: string } | null;
+  /** a failed organising still listed (a week, until Retry or Dismiss: the Mac's JobFailures) */
+  waiting?: boolean;
+  dismissed?: boolean;
+  /** its output (Show Log) */
+  log?: string;
 }
 
 /** `agents.py models ID` */
@@ -232,6 +254,21 @@ export interface AgentInfo {
   login: 'ok' | 'logged_out' | 'unknown' | 'n/a';
   headless: boolean;
   interactive: string | null;
+  /** the agent's own config folder, when it is there */
+  home?: string | null;
+  /** its app, when found */
+  app?: string | null;
+  found?: boolean;
+  /** Blurt is set up in it (its skill folder / MCP config) */
+  linked?: boolean;
+  /** when its MCP client last started the blurt server (epoch s) */
+  last_seen?: number | null;
+  conn?: 'connected' | 'linked' | 'found' | 'missing';
+  /** listed under "Use Blurt in your agent" */
+  connect?: boolean;
+  /** WorkBuddy's 国内版 / 国际版 */
+  edition?: string;
+  custom?: boolean;
 }
 
 export interface Detect {
@@ -424,7 +461,11 @@ export type DictationEdit =
   | { op: 'clear' };
 
 export const api = {
-  status: () => invoke<AppStatus>('app_status'),
+  status: () =>
+    invoke<AppStatus>('app_status').then((s) => {
+      notePlatform(s.platform);
+      return s;
+    }),
   /** captures hanging under the island waiting for a project (the Inbox's notice; `cards://changed` {count}) */
   cardsWaiting: () => invoke<number>('cards_waiting'),
   /** the notice's Choose projects…: the island opens with every card down */
@@ -432,6 +473,10 @@ export const api = {
   items: (q: ItemQuery) => invoke<{ total: number; items: ItemRow[]; missing: boolean }>('index_query', { q }),
   item: (uid: string) => invoke<ItemRow | null>('index_item', { uid }),
   batches: (q: { project?: string; state?: string; limit?: number } = {}) => invoke<BatchRow[]>('index_sessions', { q }),
+  /** the newest recordings with their folder's facts (recordings.rs); their state comes from the jobs (recordings.ts) */
+  recordings: (limit = 40) => invoke<RecordingInfo[]>('recordings_list', { limit }),
+  processSession: (dir: string) => invoke<void>('session_process', { dir }),
+  jobDismiss: (id: string) => invoke<void>('job_dismiss', { id }),
   summary: () => invoke<Summary>('index_summary'),
   rescan: () => invoke<void>('index_rescan'),
   projects: () => invoke<ProjectList>('projects_list'),
@@ -447,7 +492,9 @@ export const api = {
   /** the K4 jobs; agent-session jobs an older Blurt left in the jobs folder are not shown */
   jobs: (active = false) => invoke<(Job | { type: 'agent' })[]>('jobs_list', { active }).then((js) => js.filter((j): j is Job => j.type !== 'agent')),
   /** `login` false: no sign-in probes (fast); `ids`: only these agents */
-  detect: (o: { login?: boolean; ids?: string[] } = {}) => invoke<Detect>('agents_detect', o),
+  detect: (o: { login?: boolean; ids?: string[]; fresh?: boolean } = {}) => invoke<Detect>('agents_detect', o),
+  /** an agent can organise in the background now (the full detect, sign-in checked; cached for a while) */
+  agentsReady: () => invoke<boolean>('agents_ready'),
   models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
   /** a copy in the user's Downloads (the detail's ⤓); answers the file's name there */
@@ -563,7 +610,7 @@ export const api = {
   // picture's path + its note — the built-ins, each switched on or off, then the programs the user added
   agentApps: () => invoke<AgentApp[]>('agent_apps_get'),
   /** a built-in switched on / off, a program added (on) or removed (off) → the rows */
-  setAgentApp: (id: string, on: boolean) => invoke<AgentApp[]>('agent_apps_set', { id, on }),
+  setAgentApp: (id: string, op: 'on' | 'off' | 'add' | 'remove') => invoke<AgentApp[]>('agent_apps_set', { id, op }),
   /** Add Program…: the Open dialog for programs → their ids (executable stems), or cancel */
   pickAgentApps: (title: string) => invoke<{ ids?: string[]; cancel?: boolean }>('agent_apps_pick', { title }),
   storageLocationCheck: (folder: string | null) => invoke<LocationCheck>('storage_location_check', { folder }),
@@ -575,6 +622,12 @@ export const api = {
   asrAutoApply: () => invoke<Record<string, unknown>>('asr_auto_apply'),
   agentsRegistry: () => invoke<AgentRegistry>('agents_registry'),
   agentsInstall: (id: string, dryRun: boolean) => invoke<InstallPlan>('agents_install', { id, dryRun }),
+  agentsManual: () => invoke<AgentManual>('agents_manual'),
+  agentsCustom: (o: { name?: string; remove?: string }) => invoke<{ ok: boolean; id?: string }>('agents_custom', o),
+  /** $BLURT_HOME/run/mcp-clients.json: {client name: {at, version, via?}} */
+  mcpClients: () => invoke<Record<string, { at: number; version?: string | null; via?: string }>>('mcp_clients'),
+  /** the Save dialog, then the skill zipped; null: cancelled */
+  skillZip: () => invoke<{ path: string } | null>('skill_zip'),
   agentsTest: (id: string) => invoke<{ ok: boolean; secs?: number; class?: string | null; timeout?: boolean }>('agents_test', { id }),
   // dictation's microphone and word list (dictation/commands.rs)
   dictationMics: () => invoke<{ default: string | null; devices: string[] }>('dictation_mics'),
@@ -756,6 +809,10 @@ export interface AgentDef {
   install?: Record<string, string>;
   processing?: Record<string, unknown>;
   app?: unknown;
+  /** what to do in the agent after Connect (WorkBuddy: trust the connector) */
+  after?: Record<string, string>;
+  site?: string;
+  edition?: Record<string, string>;
 }
 export interface AgentRegistry {
   agents: AgentDef[];

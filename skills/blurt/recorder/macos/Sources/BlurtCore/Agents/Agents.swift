@@ -189,8 +189,25 @@ public struct AgentStatus: Decodable, Hashable, Identifiable {
     public var why: String
     public var fix: String
     public var headless: Bool
+    /// "Use Blurt in your agent" (v1.0.26): its own config folder, its app (both nil when not found), whether either is
+    /// here, whether Blurt is set up in it (files say so), when its MCP client last started the blurt server, the
+    /// state that sums these up (connected | linked | found | missing), whether it is listed for Connect, which
+    /// edition (WorkBuddy 国内版 / 国际版), and whether the user added it.
+    public var home: String?
+    public var app: String?
+    public var found: Bool
+    public var linked: Bool
+    public var lastSeen: Double?
+    public var conn: String
+    public var connect: Bool
+    public var edition: String?
+    public var custom: Bool
 
-    enum CodingKeys: String, CodingKey { case id, name, installed, version, login, path, state, why, fix, headless }
+    enum CodingKeys: String, CodingKey {
+        case id, name, installed, version, login, path, state, why, fix, headless, home, app, found, linked, conn, connect,
+             edition, custom
+        case lastSeen = "last_seen"
+    }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -203,10 +220,21 @@ public struct AgentStatus: Decodable, Hashable, Identifiable {
         why = try c.decodeIfPresent(String.self, forKey: .why) ?? ""
         fix = try c.decodeIfPresent(String.self, forKey: .fix) ?? ""
         headless = try c.decodeIfPresent(Bool.self, forKey: .headless) ?? true
+        home = try c.decodeIfPresent(String.self, forKey: .home)
+        app = try c.decodeIfPresent(String.self, forKey: .app)
+        found = try c.decodeIfPresent(Bool.self, forKey: .found) ?? installed
+        linked = try c.decodeIfPresent(Bool.self, forKey: .linked) ?? false
+        lastSeen = try c.decodeIfPresent(Double.self, forKey: .lastSeen)
+        conn = try c.decodeIfPresent(String.self, forKey: .conn) ?? (lastSeen != nil ? "connected" : linked ? "linked" : found ? "found" : "missing")
+        connect = try c.decodeIfPresent(Bool.self, forKey: .connect) ?? true
+        edition = try c.decodeIfPresent(String.self, forKey: .edition)
+        custom = try c.decodeIfPresent(Bool.self, forKey: .custom) ?? false
     }
     public init(id: String, name: String, installed: Bool, state: String) {
         self.id = id; self.name = name; self.installed = installed; self.state = state
         version = nil; login = "unknown"; path = nil; why = ""; fix = ""; headless = true
+        home = nil; app = nil; found = installed; linked = false; lastSeen = nil; conn = installed ? "found" : "missing"
+        connect = true; edition = nil; custom = false
     }
     /// can run (or at least be tried) headless
     public var usable: Bool { headless && ["ready", "configured", "unknown"].contains(state) }
@@ -244,6 +272,21 @@ public struct AgentModels: Decodable {
 
     /// A model's name from the agent's own list (nil when it isn't listed: the caller says "default", not the id).
     public func name(_ id: String?) -> String? { id.flatMap { i in models.first { $0.id == i }?.name } }
+}
+
+/// `agents.py manual`
+public struct AgentManual: Decodable {
+    public var skill: String
+    public var skillOK: Bool
+    public var server: String
+    public var command: String
+    public var args: [String]
+    public var mcpJSON: String
+    public var prompt: String
+    enum CodingKeys: String, CodingKey {
+        case skill, server, command, args, prompt
+        case skillOK = "skill_ok", mcpJSON = "mcp_json"
+    }
 }
 
 /// `agents.py command`
@@ -456,10 +499,11 @@ public final class Agents {
 
     /// Every registry id (agents.py detect only lists the configured order; agents left out of record.agents are
     /// still shown in Settings so they can be turned back on).
-    public func detectAll(login: Bool = true) async throws -> AgentDetect {
+    public func detectAll(login: Bool = true, fresh: Bool = false) async throws -> AgentDetect {
         let ids = registryIDs()
         var args = ["detect", "--lang", lang, "--ids", ids.joined(separator: ",")]
         if !login { args.append("--no-login") }
+        if fresh { args.append("--fresh") }
         let r = try await SkillCLI.shared.run("agents.py", args, timeout: 90)
         guard r.ok, var d = r.decode(AgentDetect.self) else { throw AgentError.script(r.errorText) }
         if login { rememberLogin(d) }
@@ -483,6 +527,35 @@ public final class Agents {
         }
         for k in ((Config.shared["record.agent_defs"] as? [String: Any]) ?? [:]).keys.sorted() where !ids.contains(k) { ids.append(k) }
         return ids
+    }
+
+    /// `agents.py manual`: what any other agent needs (the skill folder, the MCP server as JSON and as a command, a
+    /// prompt that has the agent set itself up).
+    public func manual() async throws -> AgentManual {
+        let r = try await SkillCLI.shared.run("agents.py", ["manual", "--lang", lang], timeout: 30)
+        guard r.ok, let m = r.decode(AgentManual.self) else { throw AgentError.script(r.errorText) }
+        return m
+    }
+
+    /// `agents.py custom NAME`: the user's own agent in record.agent_defs → its id.
+    public func addCustom(_ name: String) async throws -> String {
+        let r = try await SkillCLI.shared.run("agents.py", ["custom", name], timeout: 30)
+        guard r.ok, let id = r.json?["id"] as? String else { throw AgentError.script(r.errorText) }
+        return id
+    }
+
+    /// $BLURT_HOME/run/mcp-clients.json: client name → when it last started the blurt MCP server (the app's own runs
+    /// left out). agents.py record_mcp_client writes it.
+    public static func mcpClients(home: URL = BlurtPaths.home) -> [String: Double] {
+        guard let d = try? Data(contentsOf: home.appendingPathComponent("run/mcp-clients.json")),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+              let c = o["clients"] as? [String: Any] else { return [:] }
+        var out: [String: Double] = [:]
+        for (k, v) in c {
+            guard let e = v as? [String: Any], e["via"] as? String != "app", let at = e["at"] as? Double else { continue }
+            out[k] = at
+        }
+        return out
     }
 
     /// record.agents (exclusive: only these, in this order). nil = the registry default.

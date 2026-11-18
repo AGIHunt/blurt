@@ -917,6 +917,29 @@
   overflow-x: auto;
   white-space: nowrap;
 }
+/* Other Agent… (ManualSheet): a JSON block and the prompt, each with its copy button beside it */
+.st-row.st-well-row {
+  align-items: flex-start;
+}
+.st-cmd.st-pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  white-space: pre;
+  max-height: 150px;
+  overflow: auto;
+  padding: 8px 10px;
+  user-select: text;
+}
+.st-prompt {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+  user-select: text;
+}
+.st-ctl > .st-cmd.st-ellipsis {
+  max-width: 340px;
+}
 .st-example {
   display: flex;
   gap: 10px;
@@ -1043,6 +1066,13 @@
 }
 .st-install-row.err > .ico {
   color: var(--err);
+}
+/* after Connect, what is left to do in the agent (WorkBuddy's Trust): its own paragraph under the rows */
+.st-install-next {
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--attn) 10%, transparent);
 }
 .st-tech {
   margin-top: 14px;

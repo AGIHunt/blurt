@@ -332,3 +332,13 @@ Mac 的详情是同一个审核组件（web/packages/review，`mode=item`、`pla
 - 任务「停止」：13.39，仍要先在 jobs.rs 加取消。
 - 截图：见本节开头。
 
+
+## 15. 录屏在列表和主页里（2026-11-18，capabilities.md §4）
+
+| # | 问题 | 改成 | 对应 Mac |
+|---|---|---|---|
+| 15.1 | 没装命令行 Agent 时录完，整理任务失败后被列表滤掉（只列运行中的），未归类说「全部已归类」，找不到录屏 | 列表最上面「录屏 N」（`RecordingsSection`，`recordings.ts placeRecordings`）；失败的整理任务就是录屏那一行（「未完成 · 没有可用的 Agent」），点开是任务详情（设置 Agent…、复制「处理我录的视频」、播放视频、在文件夹中显示、忽略）；有录屏时不出空状态 | `RecordingsSection` |
+| 15.2 | 主页「最近」没有录屏 | 每条录屏一行：「录屏 · 3:12 · 状态」+ 说的第一句；右键是这条录屏的动作 | `HomeFeed.Kind.recording` |
+
+要在 Windows 实机看：没有 Agent 时录一段（未完成那一行、播放视频打开系统播放器、在文件夹中显示选中 recording.mp4）；装好
+Agent 后点「重试」（需要 `session_process`）；忽略后回到「未整理」（需要 `job_dismiss` 和 `jobs_list` 留下失败任务）。

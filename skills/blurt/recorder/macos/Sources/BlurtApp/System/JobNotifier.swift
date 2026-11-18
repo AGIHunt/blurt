@@ -60,6 +60,12 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         case (.process, .done), (.route, .done):
             // a capture filed from its note (no agent) already said "Filed to …" in the island
             if let u = j.usage, u.agent == nil { MenuGlyph.shared.done(); return }
+            // a capture organized into nothing: said so (the Windows/Linux island says the same), Show = the job
+            if j.session != nil, j.items.isEmpty {
+                quiet(T("notify.done.none"), action: T("notify.show"), art: .done) { AppEnvironment.mainWindow?.reveal(job: j.id) }
+                MenuGlyph.shared.done()
+                return
+            }
             let n = j.items.isEmpty ? nil : j.items.count
             // a recording says where its items are (BA-61): "Organized into Atlas Web · 5 new", Open = that batch
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps")

@@ -180,6 +180,12 @@ def test_command_headless(env, tmp_path):
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
         "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
     assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
+    # the app's spelling of the scripts folder (a symlink / junction above it): the allowlist uses that one, as its
+    # prompt does
+    linked = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path, "--var", "scripts=/link/skill/scripts")
+    assert linked["scripts"] == "/link/skill/scripts"
+    assert any("Bash(uv run /link/skill/scripts/items.py:*)" in x for x in linked["argv"]), linked["argv"]
+    assert not any(str(SCRIPTS) + "/items.py" in x for x in linked["argv"])
     # unattended on recording-derived text: never full access; a plain run (routing) writes only its cwd
     a = out["argv"]
     assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
@@ -321,7 +327,7 @@ def test_install_kimi_json_merge(env):
 
 @pytest.mark.parametrize("agent, skill_dir, mcp_json", [
     ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json"),
-    ("cursor", ".agents/skills", ".cursor/mcp.json"),
+    ("cursor", ".cursor/skills", ".cursor/mcp.json"),
     ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json"),
 ])
 def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json):
@@ -562,12 +568,11 @@ def test_opencode_status_reads_v1_and_v2_auth_list():
     assert agents.parse_status(oc, 0, "No authenticated integrations\n", {}) == "logged_out"
 
 
-def test_cursor_has_a_windows_app_path():
-    # #92: an app-only agent with no path for this platform always reads "not installed"
+def test_cursor_has_a_windows_app():
+    # #92: an app-only agent with nothing for this platform always read "not installed"; since 1.0.26 the app is an
+    # id that doesn't move with the install folder (the program's stem, found through the registry and shortcuts)
     cur = next(a for a in agents.registry()["agents"] if a["id"] == "cursor")
-    paths = [agents.expand(p, {"LOCALAPPDATA": "C:/Users/u/AppData/Local", "ProgramFiles": "C:/Program Files"}).as_posix()
-             for p in cur["app"]["windows"]]
-    assert paths == ["C:/Users/u/AppData/Local/Programs/cursor/Cursor.exe", "C:/Program Files/cursor/Cursor.exe"]
+    assert cur["app"]["windows"] == ["cursor"] and cur["home"] == "~/.cursor"
 
 
 def test_app_path_takes_a_path_or_a_list(tmp_path, monkeypatch):

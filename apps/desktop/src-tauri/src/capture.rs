@@ -168,6 +168,11 @@ fn toast_error(app: &AppHandle, code: &str) {
 }
 
 impl Capture {
+    /// The folder of the take being recorded now (the recordings list leaves it out until it ends).
+    pub fn recording_session(&self) -> Option<PathBuf> {
+        self.take.lock().unwrap().as_ref().map(|t| t.session.clone())
+    }
+
     /// For the island and the main window: {recording, paused, elapsed, shots, session, project, picking, voice}.
     pub fn state(&self) -> Value {
         let h = self.handle.lock().unwrap().clone();
@@ -225,11 +230,17 @@ impl Capture {
 
     /// A still of `region` (desktop px) into the running take (record.py `snap-region`: its own numbering, the
     /// video time, events.jsonl): (n, "shots/NNN.png") once it is on disk, None after an error or 20 s.
-    pub fn shoot_in_take(&self, region: Region) -> Option<(u32, String)> {
+    pub fn shoot_in_take(&self, region: Region, image: Option<&Path>) -> Option<(u32, String)> {
         let h = self.handle.lock().unwrap().clone()?;
         let (tx, rx) = std::sync::mpsc::channel();
         self.snap_waits.lock().unwrap().push(tx);
-        let cmd = format!("snap-region:{},{},{},{}", region.x, region.y, region.w, region.h);
+        let mut cmd = format!("snap-region:{},{},{},{}", region.x, region.y, region.w, region.h);
+        // the picker's still cut to the area: record.py copies it in rather than grabbing the screen under the picker
+        // (the .cmd file is split at whitespace: the path's spaces go %-encoded)
+        if let Some(p) = image {
+            cmd.push('|');
+            cmd.push_str(&cmd_path(p));
+        }
         if h.lock().unwrap().send(&cmd).is_err() {
             self.snap_waits.lock().unwrap().pop();
             return None;
@@ -298,7 +309,10 @@ impl Capture {
         let cfg = overlay_config();
         let region = if pick && region.is_none() {
             let _ = app.emit("capture://status", json!({"ev": "picking"}));
-            match overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Record).map_err(|e| e.to_string())? {
+            let picked = overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Record).map_err(|e| e.to_string());
+            // a recording keeps no picture of its picker (only a snap and Copy Text cut theirs out of it): let it go
+            let _ = crate::screen_text::grab::take_still();
+            match picked? {
                 Some(r) => {
                     let _ = settings::merge(json!({"record": {"last_region_px": [r.x, r.y, r.w, r.h]}}));
                     Some(r)
@@ -320,6 +334,13 @@ impl Capture {
         let _ = app.asset_protocol_scope().allow_directory(&session, true);
         let job = Arc::new(JobWriter::new("record", project.as_deref(), Some(&session), None, None, &["capture", "finalize"]));
         job.step("capture", "running", None);
+        // the agents checked while it records (the Mac's warm AgentHub cache): the take's end says where it goes at once
+        if settings::read_config().pointer("/record/process").and_then(Value::as_str) != Some("off") && agents::usable_cached().is_none() {
+            let runner = app.state::<AppState>().runner();
+            std::thread::spawn(move || {
+                let _ = agents::detect(&runner);
+            });
+        }
         let mut opts = CaptureOptions::new(launcher, &session);
         opts.region = region;
         opts.mic = mic_from_config();
@@ -577,8 +598,7 @@ fn saved_video_only(app: &AppHandle, session: &Path, duration: f64) {
     let _ = std::fs::write(&meta, serde_json::to_string_pretty(&m).unwrap_or_default());
     reveal_video(session);
     island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.video_only_saved", "vars": {"length": clock(duration)},
-        "key": "record-saved", "ms": 8000, "mark": "check",
-        "action": {"a": format!("rec.reveal:{}", scripts::s(session)), "label": "rec.show_in_explorer"}}));
+        "key": "record-saved", "ms": 8000, "mark": "check", "action": show_button(&scripts::s(session))}));
 }
 
 /// The take's video selected in File Explorer (Linux: its folder opened).
@@ -595,6 +615,39 @@ pub fn reveal_video(session: &Path) {
         let _ = video;
         let _ = std::process::Command::new("xdg-open").arg(session).spawn();
     }
+}
+
+/// The button that shows a take's video: File Explorer (Windows), Files (Linux).
+fn show_button(session: &str) -> Value {
+    let label = if cfg!(windows) { "rec.show_in_explorer" } else { "rec.show_in_files" };
+    json!({"a": format!("rec.reveal:{session}"), "label": label})
+}
+
+/// "Organizing into X" (how long that usually takes here, and that the items appear there) with Change, and the way
+/// to the video (Refile.offerRecording, §6.2). Its mark: the project's folder (where it goes), never a done check on
+/// something that just began.
+fn say_organizing(app: &AppHandle, session: &str, project: Option<&str>, duration: f64) {
+    let name = organize::name(project);
+    let (msg, vars) = match organize::usual(duration) {
+        Some(u) => ("rec.organizing_usual", json!({"project": name, "minutes": organize::minutes(u).to_string()})),
+        None => ("rec.organizing", json!({"project": name})),
+    };
+    island::send(app, json!({"op": "toast", "kind": "capture", "msg": msg, "vars": vars,
+        "key": format!("refile.{session}"), "ms": 8000, "project": project.unwrap_or("inbox"),
+        "action": {"a": format!("rec.change:{session}"), "label": "rec.change"}, "second": show_button(session)}));
+}
+
+/// Saved, and nothing can organise it in the background: what to do about it (the Mac's Refile.savedNotOrganized).
+fn say_saved_no_agent(app: &AppHandle, session: &str) {
+    island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.saved_no_agent", "key": format!("refile.{session}"),
+        "ms": 12000, "mark": "warning", "action": {"a": "rec.setup_agent", "label": "rec.set_up_agent"},
+        "second": {"a": "rec.copy_request", "label": "rec.copy_request"}, "third": show_button(session)}));
+}
+
+/// "Recording saved · 0:42" with the way to the video (Keep the Video Only; or organising couldn't start).
+fn say_saved(app: &AppHandle, session: &str, duration: f64, mark: &str) {
+    island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.saved", "vars": {"length": clock(duration)},
+        "key": format!("refile.{session}"), "ms": 8000, "mark": mark, "action": show_button(session)}));
 }
 
 /// `blurt://record` / `blurt://snap` from a link while Blurt isn't in front: the island asks first, one click to go
@@ -624,6 +677,14 @@ pub fn rec_action(app: &AppHandle, action: &str) {
         }
     } else if let Some(s) = action.strip_prefix("rec.reveal:") {
         reveal_video(Path::new(s));
+    } else if action == "rec.setup_agent" {
+        crate::show_main(app);
+        let _ = app.emit("nav", json!({"view": "settings", "pane": "agents"}));
+    } else if action == "rec.copy_request" {
+        // what to say in an agent app with the skill (WorkBuddy, Cursor…): it organises the recordings left
+        use tauri_plugin_clipboard_manager::ClipboardExt;
+        let _ = app.clipboard().write_text(l10n::t("rec.request"));
+        island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.request_copied", "key": "request-copied", "mark": "check"}));
     } else if let Some(r) = action.strip_prefix("rec.again:") {
         let n: Vec<i64> = r.split(',').filter_map(|x| x.parse().ok()).collect();
         let region = (n.len() == 4 && n[2] > 0 && n[3] > 0).then(|| Region::new(n[0] as i32, n[1] as i32, n[2] as u32, n[3] as u32));
@@ -686,29 +747,32 @@ fn finished(app: &AppHandle, session: &str, res: Result<StatusEvent, blurt_captu
             if take.as_ref().is_some_and(|t| t.video_only) {
                 saved_video_only(app, Path::new(session), duration);
             } else if organize {
-                // K7: a recording is sorted as soon as it ends, item by item into projects when it was taken in auto
+                // K7: a recording is organised as soon as it ends, item by item into projects when it was taken in auto.
+                // The island says so at once: "Organizing into X · Change" when an agent was usable a moment ago (the
+                // detect cache), else "Organizing…" until the check is done — then where it goes, or that it was saved
+                // and isn't organised, with what to do (Set Up an Agent…, Copy Phrase, Show in File Explorer).
                 let parent = take.as_ref().map(|t| t.job.id.clone());
                 let project = take.as_ref().and_then(|t| t.project.clone());
-                let name = organize::name(project.as_deref());
-                let place = project.clone().unwrap_or_else(|| "inbox".into());
-                match agents::process(app, Path::new(session), None, project, None, parent) {
-                    // where its items go, how long that usually takes here, and Change (Refile.offerRecording, §6.2)
-                    Ok(_) => {
-                        let (msg, vars) = match organize::usual(duration) {
-                            Some(u) => ("rec.organizing_usual", json!({"project": name, "minutes": organize::minutes(u).to_string()})),
-                            None => ("rec.organizing", json!({"project": name})),
-                        };
-                        // its mark: the project's folder (where it goes), never a done check on something that just began
-                        island::send(app, json!({"op": "toast", "kind": "capture", "msg": msg, "vars": vars,
-                            "key": format!("refile.{session}"), "ms": 8000, "project": place,
-                            "action": {"a": format!("rec.change:{session}"), "label": "rec.change"}}));
-                    }
-                    Err(code) => toast_error(app, if code == "no_agent" { "no_agent" } else { "unknown" }),
+                let known = agents::usable_cached() == Some(true);
+                if known {
+                    say_organizing(app, session, project.as_deref(), duration);
+                } else {
+                    island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.preparing", "key": format!("refile.{session}"),
+                        "ms": 30000, "mark": "spinner"}));
                 }
+                let (app2, s, p) = (app.clone(), session.to_string(), project.clone());
+                agents::process_take(app, Path::new(session), project, parent, move |r| match r {
+                    Ok(_) if !known => say_organizing(&app2, &s, p.as_deref(), duration),
+                    Ok(_) => {}
+                    Err(code) if code == "no_agent" => say_saved_no_agent(&app2, &s),
+                    Err(e) => {
+                        eprintln!("blurt: organize {s}: {e}");
+                        say_saved(&app2, &s, duration, "warning");
+                    }
+                });
             } else {
                 // Settings → After a recording: Keep the video only
-                island::send(app, json!({"op": "toast", "kind": "capture", "msg": "rec.saved", "vars": {"length": clock(duration)},
-                    "key": "record-saved", "ms": 6000, "mark": "check"}));
+                say_saved(app, session, duration, "check");
             }
         }
         Some("discarded") => {
@@ -795,6 +859,22 @@ pub fn snap_with_note(app: &AppHandle) {
     snap(app);
 }
 
+/// A path as one word of record.py's .cmd file: `%`, whitespace and `|` %-encoded (record.py unquotes it).
+fn cmd_path(p: &Path) -> String {
+    let mut out = String::new();
+    for c in p.to_string_lossy().chars() {
+        if c == '%' || c == '|' || c.is_whitespace() {
+            let mut b = [0u8; 4];
+            for byte in c.encode_utf8(&mut b).bytes() {
+                out.push_str(&format!("%{byte:02X}"));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// During a take (the Mac's ⌥A while recording; snap-and-note.md §11, recording.md §5.8): the snap flow — pick an
 /// area, its note, its card on the thread — with the still taken by record.py into the take (its number, the video
 /// time, events.jsonl). Nothing during the countdown.
@@ -802,7 +882,7 @@ fn snap_in_take(app: &AppHandle) {
     let cap = &app.state::<AppState>().capture;
     let Some((session, project)) = cap.take_for_snap() else { return };
     let a = app.clone();
-    let shoot = Box::new(move |r: Region| a.state::<AppState>().capture.shoot_in_take(r));
+    let shoot = Box::new(move |r: Region, image: Option<PathBuf>| a.state::<AppState>().capture.shoot_in_take(r, image.as_deref()));
     snap::run_in_take(app, snap::TakeSnap { session, project, shoot });
 }
 
@@ -1385,6 +1465,15 @@ fn picture_line(session: &Path, project: Option<&str>, n: u64, file: &str, sourc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_snap_image_path_is_one_word_of_the_cmd_file() {
+        let p = Path::new("C:\\Users\\Ann Lee\\.blurt\\run\\snap 100%|1.png");
+        let w = cmd_path(p);
+        assert_eq!(w, "C:\\Users\\Ann%20Lee\\.blurt\\run\\snap%20100%25%7C1.png");
+        assert_eq!(w.split_whitespace().count(), 1);
+        assert_eq!(cmd_path(Path::new("/home/me/.blurt/run/截图.png")), "/home/me/.blurt/run/截图.png");
+    }
 
     #[test]
     fn cards_from_shots_jsonl() {

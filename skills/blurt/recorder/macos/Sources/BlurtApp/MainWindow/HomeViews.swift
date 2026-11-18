@@ -285,9 +285,11 @@ struct HomeEntryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 if e.text.isEmpty {
                     // a snap without a note: its name is all the row says, so it is said in the text's ink
-                    Text(e.source).font(.system(size: 13)).lineLimit(1).frame(minHeight: 16)
+                    Text(e.source).font(.system(size: 13)).foregroundStyle(recFailed ? Color.brandAttnInk : Color.primary)
+                        .lineLimit(1).frame(minHeight: 16)
                 } else {
-                    Text(e.source).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(e.source).font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(recFailed ? Color.brandAttnInk : Color.secondary).lineLimit(1)
                         .frame(minHeight: 16)
                     if isFailed {
                         // not recognised, recording kept: said in the attention ink, Retry is the row's action
@@ -343,11 +345,22 @@ struct HomeEntryRow: View {
             if inside { m.pointed = stop } else if m.pointed == stop { m.pointed = nil }
         }
         .contextMenu {
-            Button(action) { m.select(stop, keyboard: false); m.primary(e.id) }
-            if e.kind == .item { Button(T("home.entry.copy_title")) { m.copy(e.id) } }
-            Divider()
-            Button(all.title) { m.link(all.id) }
+            if let r = rec {
+                // what the recording's row offers in its state, Dismiss last on its own
+                let acts = Recordings.actions(r, agent: m.recAgent)
+                ForEach(acts.filter { $0 != .dismiss }, id: \.self) { a in Button(RecordingLook.label(a, r)) { RecordingLook.run(a, r) } }
+                if acts.contains(.dismiss) {
+                    Divider()
+                    Button(RecordingLook.label(.dismiss)) { RecordingLook.run(.dismiss, r) }
+                }
+            } else {
+                Button(action) { m.select(stop, keyboard: false); m.primary(e.id) }
+                if e.kind == .item { Button(T("home.entry.copy_title")) { m.copy(e.id) } }
+                Divider()
+                Button(all.title) { m.link(all.id) }
+            }
         }
+        .help(rec.flatMap(RecordingLook.stateDetail) ?? "")
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { m.primary(e.id) }
@@ -355,9 +368,13 @@ struct HomeEntryRow: View {
     }
 
     private var isFailed: Bool { e.kind == .dictation && m.failed.contains(e.key) }
+    private var rec: Recordings.Row? { e.kind == .recording ? m.recordings[e.key] : nil }
+    /// a recording whose organising didn't finish: its quiet line in the attention ink
+    private var recFailed: Bool { if case .failed? = rec?.state { return true } else { return false } }
 
     private var action: String {
-        isFailed ? T("home.entry.retry") : e.kind == .item ? T("home.entry.open") : T("dictation.history.copy")
+        if let r = rec { return RecordingLook.homeAction(r, agent: m.recAgent).map { RecordingLook.label($0, r) } ?? T("home.entry.open") }
+        return isFailed ? T("home.entry.retry") : e.kind == .item ? T("home.entry.open") : T("dictation.history.copy")
     }
 
     private var all: (id: String, title: String) {
@@ -365,7 +382,7 @@ struct HomeEntryRow: View {
         case .dictation: return ("all.dictation", T("home.all.dictation"))
         case .card: return ("all.cards", T("home.all.cards"))
         case .screenText: return ("all.screen_text", T("home.all.screen_text"))
-        case .item: return ("all.items", T("home.all.items"))
+        case .recording, .item: return ("all.items", T("home.all.items"))
         }
     }
 
@@ -379,6 +396,9 @@ struct HomeEntryRow: View {
                 .accessibilityHidden(true)
         case .screenText:
             ScreenTextMark(translated: m.screenTexts[e.key]?.translated ?? false)
+        case .recording:
+            Image(nsImage: Look.symbol("video", T("main.rec.kind"), size: 13) ?? NSImage())
+                .renderingMode(.template).foregroundStyle(.secondary).accessibilityHidden(true)
         case .item:
             Image(nsImage: Look.kindImage(m.items[e.key]?.kind ?? "note", size: 16)).accessibilityHidden(true)
         }

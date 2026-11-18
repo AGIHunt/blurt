@@ -116,8 +116,40 @@ public struct RefileTrail: Equatable {
     public var movesFrom: [String] { before.filter { $0 != to } }
 }
 
-/// What an organizing run is told about the projects.
+/// What an organizing run is told: skills/blurt/scripts/organize_prompt.json's parts — the text the Windows/Linux app
+/// sends too (agents.rs organize_prompt) — and the projects. tests/organize-prompt/golden.json pins what both make of it.
 public enum OrganizerPrompt {
+    /// The parts (key → text) from the first of `urls` that reads: the copy bundled into the app, then the skill's.
+    public static func parts(from urls: [URL]) -> [String: String]? {
+        for u in urls {
+            if let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                let p = o.compactMapValues { $0 as? String }
+                if p["recording"] != nil, p["run"] != nil { return p }
+            }
+        }
+        return nil
+    }
+
+    /// The parts that apply, in order, each one's placeholder filled once (a value is never searched again): the
+    /// recording or the batch of captures, which captures, how to run, the skill, the scripts hint, the project's code
+    /// to read, the candidate projects.
+    public static func render(_ parts: [String: String], session: String, shots: Bool, captures: [Int]?, skillMD: String,
+                              scripts: String, code: String?, candidates: String?) -> String {
+        func p(_ k: String) -> String { parts[k] ?? "" }
+        var s = p(shots ? "shots" : "recording").replacingOccurrences(of: "{session}", with: session)
+        if let c = captures, !c.isEmpty {
+            s += p("captures").replacingOccurrences(of: "{captures}", with: c.map(String.init).joined(separator: ", "))
+        }
+        s += p("run")
+        s += p("skill").replacingOccurrences(of: "{skill_md}", with: skillMD)
+        s += p("scripts").replacingOccurrences(of: "{scripts}", with: scripts)
+        if let c = code, !c.isEmpty { s += p("code").replacingOccurrences(of: "{code}", with: c) }
+        if let c = candidates?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+            s += p("candidates").replacingOccurrences(of: "{candidates}", with: c)
+        }
+        return s
+    }
+
     /// Only for a capture with no project: the run itself has none (no "Organize into X"), and its session is in the
     /// inbox store (`sessionProject` "inbox" or unknown). With a project, the items go there — no suggestions.
     public static func wantsCandidates(runProject: String?, sessionProject: String?) -> Bool {

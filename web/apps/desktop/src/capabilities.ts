@@ -108,12 +108,12 @@ export function landing(link: string, off: Off): string {
 
 // ---------------------------------------------------------------- Home's Recent (HomeFeed)
 
-export type FeedKind = 'dictation' | 'card' | 'screen_text' | 'item';
-export const FEED_KINDS: readonly FeedKind[] = ['dictation', 'card', 'screen_text', 'item'];
-export const FEED_CAPABILITY: Record<FeedKind, Capability> = { dictation: 'dictation', card: 'cards', screen_text: 'screen_text', item: 'recording' };
+export type FeedKind = 'dictation' | 'card' | 'screen_text' | 'recording' | 'item';
+export const FEED_KINDS: readonly FeedKind[] = ['dictation', 'card', 'screen_text', 'recording', 'item'];
+export const FEED_CAPABILITY: Record<FeedKind, Capability> = { dictation: 'dictation', card: 'cards', screen_text: 'screen_text', recording: 'recording', item: 'recording' };
 
 /** One row of the timeline. `key` is the thing's own id (a dictation's id, a card's "<session>#<n>", a screen text's
- *  id, an item's uid);
+ *  id, a recording's folder, an item's uid);
  *  `time` epoch seconds; `source` the quiet line over the text; `text` what was made. */
 export interface FeedEntry {
   kind: FeedKind;
@@ -122,7 +122,7 @@ export interface FeedEntry {
   source: string;
   text: string;
   /** what sort of thing it is, for its glyph: an item's kind; a card's shot | voice | file | text; a screen text's
-   *  copy | translate */
+   *  copy | translate; a recording's state (recordings.ts RecState kind) */
   sub?: string;
 }
 export const feedId = (e: FeedEntry) => `${e.kind}:${e.key}`;
@@ -140,10 +140,10 @@ export const FEED_LIMIT = 40;
 
 /** The lists as one: kinds whose capability is off left out, a thing listed twice once, newest first (rows of one
  *  moment in the capabilities' order, then by key), cut at `limit`. */
-export function mergeFeed(lists: { dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts?: FeedEntry[]; items: FeedEntry[] }, off: Off, limit = FEED_LIMIT): Feed {
-  const order: Record<FeedKind, number> = { dictation: 0, card: 1, screen_text: 2, item: 3 };
+export function mergeFeed(lists: { dictations: FeedEntry[]; cards: FeedEntry[]; screenTexts?: FeedEntry[]; recordings?: FeedEntry[]; items: FeedEntry[] }, off: Off, limit = FEED_LIMIT): Feed {
+  const order: Record<FeedKind, number> = { dictation: 0, card: 1, screen_text: 2, recording: 3, item: 4 };
   const seen = new Set<string>();
-  const all = [...lists.dictations, ...lists.cards, ...(lists.screenTexts ?? []), ...lists.items]
+  const all = [...lists.dictations, ...lists.cards, ...(lists.screenTexts ?? []), ...(lists.recordings ?? []), ...lists.items]
     .filter((e) => !off.has(FEED_CAPABILITY[e.kind]))
     .filter((e) => (seen.has(feedId(e)) ? false : (seen.add(feedId(e)), true)))
     .sort((a, b) => b.time - a.time || order[a.kind] - order[b.kind] || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
