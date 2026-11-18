@@ -7,9 +7,10 @@ described (contract C5): the apps and live.py run what this returns instead of b
   agents.py status [--json]        each agent in the configured order: installed? logged in? the fix command
   agents.py order [--json] [--repo DIR]   the configured order (config record.agents), one id per line
   agents.py classify FILE          a failed run's log (agent.log) → {"class": "auth|quota|network|model|skill|null", …}
-  agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang L]
+  agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang L] [--fresh]
                                    → {"order": [...], "pick": id|null, "agents": [{id, name, path, state, why, fix,
-                                      installed, version, login, headless}]}
+                                      installed, version, login, headless, home, app, found, linked, last_seen,
+                                      conn: connected|linked|found|missing, connect, edition?}]}
   agents.py command ID headless --prompt TEXT|--prompt-file F --repo DIR [--var k=v …] [--no-events]
                    [--no-mcp] [--processing [recording|cards]]
                                    → {"id","mode","argv","cwd","env","events","retry_exit"}; --processing (an
@@ -23,6 +24,9 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                       "cards":{model,effort}}}   (no network, no tokens)
   agents.py usage ID FILE [--offset N]   tokens a run reported in its output (from byte N) → {"ok","usage"|null}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
+  agents.py manual [--lang L]      any other agent, by hand: {skill, server, command, args, mcp_json, prompt}
+  agents.py custom NAME [--home DIR] | --remove ID   a user's own agent in record.agent_defs → {id, def}
+  agents.py drop [--os macos|windows|linux]   the card-drag targets: [{agent, name, ids, drop, on, custom}]
   agents.py prompt work --items REF … [--handoff H] [--lang en|zh]
                                    → {"ok","prompt","title","handoff","path","items"}: a short prompt for the user's
                                       own agent, pointing at the items' hand-off note (K6; written unless --handoff
@@ -222,8 +226,28 @@ def failure_reason(cls: str | None, name: str, fix: str = "", lang: str = "en", 
 
 # ------------------------------------------------------------------ WP2: detect / command / install / prompt (C5)
 SCRIPTS = Path(__file__).resolve().parent
-SKILL_ROOT = SCRIPTS.parent
-MCP_SERVER = SCRIPTS / "mcp_server.py"
+
+
+def has_skill(folder: Path) -> bool:
+    """A folder an agent can be given: the whole skill, SKILL.md at its top (not a bare scripts folder: an install
+    folder's resources, a checkout's scripts/)."""
+    return (folder / "SKILL.md").is_file()
+
+
+def skill_root(scripts: Path = SCRIPTS) -> Path:
+    """The skill these scripts belong to: their parent when it has SKILL.md, else the app's copy ($BLURT_HOME/skill,
+    which the apps keep up to date: BundledSkill / paths::skill_dir) when that has one. Never an install folder
+    without SKILL.md — install() refuses to link a folder that has none."""
+    if has_skill(scripts.parent):
+        return scripts.parent
+    from _common import blurt_home  # noqa: PLC0415
+    app = blurt_home() / "skill"
+    return app if has_skill(app) else scripts.parent
+
+
+SKILL_ROOT = skill_root()
+MCP_SERVER = (SKILL_ROOT / "scripts" / "mcp_server.py") if (SKILL_ROOT / "scripts" / "mcp_server.py").is_file() \
+    else SCRIPTS / "mcp_server.py"
 _SESSION_PREFIXES = ("CLAUDE", "ANTHROPIC_", "CODEX_", "MCP_", "OTEL_")
 _SESSION_NAMES = {"AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH", "API_TIMEOUT_MS", "DISABLE_AUTOUPDATER",
                   "DISABLE_MICROCOMPACT", "BLURT_APP"}
@@ -260,11 +284,21 @@ def config(repo: str | Path | None = None) -> dict:
     return cfg
 
 
-def _subst(path: str, env: dict) -> str:
-    """${VAR:-default} / $VAR, leaving ~ alone."""
+def _env_get(env: dict, name: str, nt: bool | None = None) -> str | None:
+    """env[name]; on Windows by any case, as Windows itself reads them (agents.json writes ${ProgramFiles}, a copied
+    environment may hold PROGRAMFILES)."""
+    v = env.get(name)
+    if v or not (os.name == "nt" if nt is None else nt):
+        return v
+    up = name.upper()
+    return next((val for k, val in env.items() if k.upper() == up and val), None)
+
+
+def _subst(path: str, env: dict, nt: bool | None = None) -> str:
+    """${VAR:-default} / $VAR, leaving ~ alone (names compared without case on Windows)."""
     def sub(m):
         name, default = m.group(1) or m.group(3), m.group(2)
-        return env.get(name) or (default if default is not None else "")
+        return _env_get(env, name, nt) or (default if default is not None else "")
     return re.sub(r"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)", sub, path)
 
 
@@ -374,14 +408,459 @@ def unshim(path: str) -> str:
     return str(exe) if exe.is_file() else path
 
 
-def app_path(defn: dict) -> str | None:
-    """An app-only agent's app on this OS: app.<os> is a path or a list of them (per-user, then machine-wide…)."""
-    key = "macos" if sys.platform == "darwin" else "windows" if os.name == "nt" else "linux"
-    ps = (defn.get("app") or {}).get(key)
-    for p in [ps] if isinstance(ps, str) else ps or []:
-        if p and expand(p).exists():
-            return str(expand(p))
+# ------------------------------------------------------------------ where agent apps are (agents.json `app`, `home`)
+# An app agent is found by what it leaves behind, never by starting it: its own config folder (`home`, the signal
+# that its skill / MCP config will be read) or its app, by an id that doesn't move with the install folder — a
+# macOS bundle id (LaunchServices), a Windows executable's stem (from the Uninstall keys, App Paths, Start Menu
+# shortcuts, Scoop / WinGet), a Linux .desktop id (XDG, Flatpak, Snap exports). What was found is kept APP_CACHE_TTL.
+
+APP_CACHE_TTL = 600
+
+
+def os_key(platform: str | None = None) -> str:
+    platform = platform or sys.platform
+    return "macos" if platform == "darwin" else "windows" if platform.startswith("win") else "linux"
+
+
+def _as_list(v) -> list:
+    return [v] if isinstance(v, str) else [x for x in (v or []) if isinstance(x, str)]
+
+
+def is_path_id(s: str) -> bool:
+    """An app entry that is a path (the v1.0.21 shape, and a fallback when an id isn't known), not an id."""
+    return s.startswith(("~", "$", "/")) or "\\" in s or "/" in s or bool(re.match(r"^[A-Za-z]:", s))
+
+
+def app_ids(defn: dict, osk: str | None = None) -> list[str]:
+    return _as_list((defn.get("app") or {}).get(osk or os_key()))
+
+
+def homes(defn: dict, env: dict | None = None) -> list[Path]:
+    env = os.environ if env is None else env
+    home = Path(env["HOME"]) if os.name != "nt" and env.get("HOME") else Path.home()
+    return [_at(h, env, home) for h in _as_list(defn.get("home"))]
+
+
+def home_of(defn: dict, env: dict | None = None) -> Path | None:
+    """The agent's own config folder when it is there (the first of `home`'s that exists)."""
+    return next((h for h in homes(defn, env) if h.is_dir()), None)
+
+
+# --- macOS: bundle ids
+def mac_app_dirs(home: Path | None = None) -> list[Path]:
+    h = home or Path.home()
+    return [Path("/Applications"), h / "Applications", Path("/Applications/Setapp"), Path("/System/Applications")]
+
+
+def mac_bundles(dirs: list[Path]) -> dict[str, str]:
+    """bundle id → .app path for the apps in these folders (one level, and one folder deeper: /Applications/Foo/Foo.app)."""
+    import plistlib  # noqa: PLC0415
+    out: dict[str, str] = {}
+
+    def one(app: Path):
+        try:
+            with open(app / "Contents" / "Info.plist", "rb") as f:
+                bid = plistlib.load(f).get("CFBundleIdentifier")
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            return
+        if isinstance(bid, str):
+            out.setdefault(bid, str(app))
+    for d in dirs:
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.suffix == ".app":
+                one(e)
+            elif e.is_dir() and not e.name.startswith("."):
+                try:
+                    for sub in e.iterdir():
+                        if sub.suffix == ".app":
+                            one(sub)
+                except OSError:
+                    pass
+    return out
+
+
+def mdfind_bundles(ids: list[str]) -> dict[str, str]:
+    """Bundle ids LaunchServices / Spotlight knows anywhere on disk → a path (one query for all)."""
+    if not ids or not shutil.which("mdfind"):
+        return {}
+    q = " || ".join(f'kMDItemCFBundleIdentifier == "{i}"' for i in ids if re.fullmatch(r"[\w.-]+", i))
+    code, out, _ = probe(["mdfind", q], dict(os.environ), 5)
+    if code != 0:
+        return {}
+    res: dict[str, str] = {}
+    paths = [Path(p) for p in out.splitlines() if p.endswith(".app")]
+    for p in paths:
+        res.update({k: v for k, v in mac_bundles([p.parent]).items() if k in ids and k not in res})
+    return res
+
+
+# --- Windows: executable stems
+def exe_stem(path: str) -> str | None:
+    """'"C:\\Program Files\\WorkBuddy\\WorkBuddy.exe",0' → 'workbuddy' (a DisplayIcon, a shortcut's target, a key name)."""
+    p = (path or "").strip().strip('"')
+    p = re.sub(r",\s*-?\d+$", "", p).strip().strip('"')
+    name = re.split(r"[\\/]", p)[-1]
+    return name[:-4].lower().strip() if name.lower().endswith(".exe") and len(name) > 4 else None
+
+
+def lnk_target(data: bytes) -> str | None:
+    """The local path a Windows shortcut (.lnk, MS-SHLLINK) points at: its LinkInfo's LocalBasePath (Unicode when
+    there is one). None for a shortcut without one (a URL, an MSI advertised shortcut)."""
+    import struct  # noqa: PLC0415
+    try:
+        if len(data) < 0x4C or struct.unpack_from("<I", data, 0)[0] != 0x4C:
+            return None
+        flags = struct.unpack_from("<I", data, 0x14)[0]
+        pos = 0x4C
+        if flags & 0x1:  # HasLinkTargetIDList
+            pos += 2 + struct.unpack_from("<H", data, pos)[0]
+        if not flags & 0x2:  # HasLinkInfo
+            return None
+        size, head, li_flags, _vol, local = struct.unpack_from("<IIIII", data, pos)
+        if not li_flags & 0x1:  # VolumeIDAndLocalBasePath
+            return None
+        if head >= 0x24:
+            uni = struct.unpack_from("<I", data, pos + 0x1C)[0]
+            if uni:
+                raw = data[pos + uni:pos + size]
+                end = next((i for i in range(0, len(raw) - 1, 2) if raw[i:i + 2] == b"\0\0"), len(raw))
+                return raw[:end].decode("utf-16-le", errors="replace") or None
+        raw = data[pos + local:pos + size]
+        return raw.split(b"\0", 1)[0].decode("mbcs" if os.name == "nt" else "latin-1", errors="replace") or None
+    except (struct.error, IndexError, LookupError):
+        return None
+
+
+def windows_uninstall_entries() -> list[dict]:
+    """DisplayName / DisplayIcon / InstallLocation of every Uninstall key: HKCU, HKLM and HKLM's WOW6432Node."""
+    try:
+        import winreg  # noqa: PLC0415
+    except ImportError:
+        return []
+    out = []
+    roots = [(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+             (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+             (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")]
+    for root, path in roots:
+        try:
+            k = winreg.OpenKey(root, path)
+        except OSError:
+            continue
+        with k:
+            for i in range(winreg.QueryInfoKey(k)[0]):
+                try:
+                    with winreg.OpenKey(k, winreg.EnumKey(k, i)) as sub:
+                        e = {}
+                        for name in ("DisplayName", "DisplayIcon", "InstallLocation"):
+                            try:
+                                e[name] = str(winreg.QueryValueEx(sub, name)[0])
+                            except OSError:
+                                pass
+                        out.append(e)
+                except OSError:
+                    continue
+    return out
+
+
+def windows_app_paths() -> list[str]:
+    """The App Paths keys' names (Cursor.exe…), HKCU and HKLM."""
+    try:
+        import winreg  # noqa: PLC0415
+    except ImportError:
+        return []
+    out = []
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(root, r"Software\Microsoft\Windows\CurrentVersion\App Paths") as k:
+                out += [winreg.EnumKey(k, i) for i in range(winreg.QueryInfoKey(k)[0])]
+        except OSError:
+            continue
+    return out
+
+
+def windows_stems(uninstall: list[dict], app_paths: list[str], shortcuts: list[tuple[str, str | None]],
+                  exes: list[str], listdir=None) -> dict[str, str]:
+    """stem → where it was seen (pure but for `listdir`, the files of an InstallLocation): the DisplayIcon's program,
+    the programs right in InstallLocation, App Paths names, Start Menu shortcuts (their target's program, and the
+    shortcut's own name: "Trae CN.lnk"), Scoop / WinGet links (`exes`)."""
+    out: dict[str, str] = {}
+
+    def add(stem, where):
+        if stem:
+            out.setdefault(stem, where)
+    for e in uninstall:
+        icon = re.sub(r",\s*-?\d+$", "", (e.get("DisplayIcon") or "").strip()).strip().strip('"')
+        add(exe_stem(icon), icon)
+        loc = (e.get("InstallLocation") or "").strip().strip('"')
+        if loc and listdir:
+            for f in listdir(loc):
+                add(exe_stem(f), os.path.join(loc, f))
+    for name in app_paths:
+        add(exe_stem(name), name)
+    for lnk, target in shortcuts:
+        add(exe_stem(target or ""), target or lnk)
+        base = re.split(r"[\\/]", lnk)[-1]
+        if base.lower().endswith(".lnk"):
+            add(base[:-4].lower().strip(), lnk)
+    for x in exes:
+        add(exe_stem(x), x)
+    return out
+
+
+def windows_found(env: dict) -> dict[str, str]:
+    def listdir(d):
+        try:
+            return [f for f in os.listdir(d) if f.lower().endswith(".exe")]
+        except OSError:
+            return []
+    shortcuts = []
+    for base in (_env_get(env, "APPDATA", True), _env_get(env, "ProgramData", True)):
+        if not base:
+            continue
+        root = Path(base) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+        for lnk in list(root.glob("*.lnk")) + list(root.glob("*/*.lnk")):
+            try:
+                shortcuts.append((str(lnk), lnk_target(lnk.read_bytes()[:65536])))
+            except OSError:
+                pass
+    exes = []
+    local = _env_get(env, "LOCALAPPDATA", True)
+    for d in ([Path(local) / "Microsoft" / "WinGet" / "Links"] if local else []) + \
+             [Path(_env_get(env, "SCOOP", True) or Path.home() / "scoop") / "shims"]:
+        exes += [str(p) for p in d.glob("*.exe")] if d.is_dir() else []
+    return windows_stems(windows_uninstall_entries(), windows_app_paths(), shortcuts, exes, listdir)
+
+
+# --- Linux: .desktop ids
+def desktop_entry(text: str) -> dict:
+    """The [Desktop Entry] keys that identify an app: Name, Exec's program (its file name, lowercased),
+    StartupWMClass."""
+    out: dict = {}
+    section = None
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if ln.startswith("["):
+            section = ln
+            continue
+        if section != "[Desktop Entry]" or "=" not in ln:
+            continue
+        k, v = (x.strip() for x in ln.split("=", 1))
+        if k in ("Name", "Exec", "StartupWMClass", "Type"):
+            out.setdefault(k, v)
+    exe = out.get("Exec", "")
+    if exe:
+        import shlex  # noqa: PLC0415
+        try:
+            words = [w for w in shlex.split(exe) if not w.startswith("%")]
+        except ValueError:
+            words = exe.split()
+        # flatpak run / snap run / env VAR=x prog
+        while words and (words[0].rsplit("/", 1)[-1] in ("env", "flatpak", "snap") or "=" in words[0]
+                         or words[0] in ("run",) or words[0].startswith("--")):
+            words = words[1:]
+        if words:
+            out["program"] = words[0].rsplit("/", 1)[-1].lower()
+    return out
+
+
+def linux_app_dirs(env: dict) -> list[Path]:
+    home = Path(_env_get(env, "HOME") or Path.home())
+    data_home = Path(_env_get(env, "XDG_DATA_HOME") or home / ".local" / "share")
+    dirs = [data_home] + [Path(d) for d in (_env_get(env, "XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":") if d]
+    dirs += [home / ".local/share/flatpak/exports/share", Path("/var/lib/flatpak/exports/share")]
+    out = [d / "applications" for d in dirs] + [Path("/var/lib/snapd/desktop/applications")]
+    return list(dict.fromkeys(out))
+
+
+def linux_ids(files: dict[str, str]) -> dict[str, str]:
+    """{path of a .desktop file: its text} → id → path: the file's id (cursor.desktop → cursor; a reverse-DNS id
+    com.cursor.Cursor → also its last part), Exec's program, StartupWMClass — all lowercased."""
+    out: dict[str, str] = {}
+    for path, text in files.items():
+        e = desktop_entry(text)
+        if e.get("Type", "Application") != "Application":
+            continue
+        fid = re.split(r"[\\/]", path)[-1].removesuffix(".desktop").lower()
+        for i in (fid, fid.rsplit(".", 1)[-1], fid.split("_", 1)[-1], e.get("program"), (e.get("StartupWMClass") or "").lower()):
+            if i:
+                out.setdefault(i, path)
+    return out
+
+
+def linux_found(env: dict) -> dict[str, str]:
+    files = {}
+    for d in linux_app_dirs(env):
+        for f in d.glob("*.desktop") if d.is_dir() else []:
+            try:
+                files[str(f)] = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+    return linux_ids(files)
+
+
+def _app_cache_file() -> Path:
+    from _common import blurt_home  # noqa: PLC0415
+    return blurt_home() / "run" / "agents-apps.json"
+
+
+def found_apps(defs: list[dict], env: dict | None = None, fresh: bool = False, now: float | None = None,
+               cache: bool = True) -> dict[str, str | None]:
+    """agent id → the app found for it on this OS (a path), or None. Kept APP_CACHE_TTL in run/agents-apps.json
+    (looking through the registry or every .desktop file takes a moment); `fresh` looks again (Check Again)."""
+    import time  # noqa: PLC0415
+    env = os.environ if env is None else env
+    now = time.time() if now is None else now
+    osk = os_key()
+    want = {d.get("id", ""): app_ids(d, osk) for d in defs if app_ids(d, osk)}
+    key = json.dumps(want, sort_keys=True)
+    cf = _app_cache_file()
+    if cache and not fresh:
+        try:
+            c = json.loads(cf.read_text(encoding="utf-8"))
+            if c.get("key") == key and now - float(c.get("at", 0)) < APP_CACHE_TTL:
+                return {k: v for k, v in c.get("found", {}).items() if k in want}
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+    found: dict[str, str | None] = {}
+    ids = {i for v in want.values() for i in v if not is_path_id(i)}
+    table: dict[str, str] = {}
+    if ids:
+        if osk == "macos":
+            table = mac_bundles(mac_app_dirs())
+            missing = [i for i in ids if i not in table]
+            if missing:
+                table.update(mdfind_bundles(missing))
+        elif osk == "windows":
+            table = windows_found(env)
+        else:
+            table = linux_found(env)
+        if osk != "macos":
+            table = {k.lower(): v for k, v in table.items()}
+    for aid, cands in want.items():
+        hit = None
+        for c in cands:
+            if is_path_id(c):
+                p = expand(c, env)
+                if p.exists():
+                    hit = str(p)
+            else:
+                hit = table.get(c if osk == "macos" else c.lower())
+            if hit:
+                break
+        found[aid] = hit
+    try:
+        if not cache:
+            return found
+        cf.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cf.with_name(cf.name + f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"key": key, "at": now, "found": found}), encoding="utf-8")
+        os.replace(tmp, cf)
+    except OSError:
+        pass
+    return found
+
+
+def app_path(defn: dict, env: dict | None = None, fresh: bool = False) -> str | None:
+    """An agent's app on this OS (agents.json app.<os>: ids, or paths)."""
+    return found_apps([defn], env, fresh, cache=False).get(defn.get("id", ""))
+
+
+# ------------------------------------------------------------------ connected? (mcp-clients.json)
+def mcp_clients_file() -> Path:
+    from _common import blurt_home  # noqa: PLC0415
+    return blurt_home() / "run" / "mcp-clients.json"
+
+
+def record_mcp_client(name: str | None, version: str | None = None, now: float | None = None,
+                      via: str | None = None) -> None:
+    """The blurt MCP server was started by an agent: its clientInfo.name and when (mcp_server.py, at initialize and
+    on hello). The proof that an agent really reads Blurt — not that a config file names it."""
+    import time  # noqa: PLC0415
+    name = " ".join(str(name or "").split())[:80]
+    if not name:
+        return
+    f = mcp_clients_file()
+    try:
+        from _common import file_lock  # noqa: PLC0415
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(f.with_name(f.name + ".lock"), timeout=3):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                d = {}
+            clients = d.get("clients") if isinstance(d, dict) and isinstance(d.get("clients"), dict) else {}
+            e = {"at": time.time() if now is None else now, "version": version or None}
+            if via:
+                e["via"] = via
+            clients[name] = e
+            tmp = f.with_name(f.name + f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"clients": clients}, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, f)
+    except Exception:  # noqa: BLE001 — a log, never in the way of the server
+        pass
+
+
+def mcp_clients() -> dict[str, dict]:
+    try:
+        d = json.loads(mcp_clients_file().read_text(encoding="utf-8"))
+        return d["clients"] if isinstance(d.get("clients"), dict) else {}
+    except (OSError, ValueError, KeyError, AttributeError):
+        return {}
+
+
+def client_agent(client: str, defs: dict[str, dict]) -> str | None:
+    """Which agent a clientInfo.name is: agents.json mcp_clients (exact, any case), else its id or name."""
+    c = client.strip().lower()
+    for d in defs.values():
+        if c in [x.lower() for x in _as_list(d.get("mcp_clients"))] or c in (d["id"].lower(), str(d.get("name", "")).lower()):
+            return d["id"]
     return None
+
+
+def last_seen(defs: dict[str, dict], clients: dict[str, dict] | None = None) -> dict[str, float]:
+    """agent id → when its MCP client last started the blurt server (runs the app started don't count: those prove
+    the app's command line, not the user's agent)."""
+    out: dict[str, float] = {}
+    for name, e in (mcp_clients() if clients is None else clients).items():
+        aid = client_agent(name, defs)
+        at = e.get("at") if isinstance(e, dict) else None
+        if aid and isinstance(at, (int, float)) and e.get("via") != "app":
+            out[aid] = max(out.get(aid, 0), float(at))
+    return out
+
+
+def linked(defn: dict, env: dict | None = None) -> bool:
+    """Blurt is set up in the agent, as far as files say (no CLI started): its skill folder has our skill (link or
+    copy), or its MCP config file names blurt."""
+    env = os.environ if env is None else env
+    if defn.get("skill_dir"):
+        t = expand(defn["skill_dir"], env) / "blurt"
+        try:
+            head = (t / "SKILL.md").read_text(encoding="utf-8")[:600].splitlines() if has_skill(t) else []
+            if any(ln.strip() == "name: blurt" for ln in head):  # ours, or another copy of Blurt (a checkout)
+                return True
+        except OSError:
+            pass
+    spec = ((defn.get("mcp") or {}).get("json")) or {}
+    if spec.get("path"):
+        try:
+            node = json.loads(expand(spec["path"], env).read_text(encoding="utf-8-sig") or "{}")
+            for k in spec["key"]:
+                node = node.get(k) if isinstance(node, dict) else None
+            return node is not None
+        except (OSError, ValueError):
+            pass
+    return False
+
+
+def connectable(defn: dict) -> bool:
+    """Listed under "Use Blurt in your agent": it has a skill folder or an MCP setup Connect can write, or a by-hand
+    note; `connect: false` (DoubaoWork: a card-drag target only) is not."""
+    return defn.get("connect") is not False and bool(defn.get("skill_dir") or defn.get("mcp") or defn.get("fix"))
 
 
 def is_headless(defn: dict) -> bool:
@@ -434,31 +913,63 @@ def version_of(defn: dict, path: str, env: dict) -> str | None:
     return text.splitlines()[0].strip() if text else None
 
 
+CONN = ("connected", "linked", "found", "missing")
+
+
+def conn_state(found: bool, is_linked: bool, seen: float | None) -> str:
+    """For "Use Blurt in your agent": connected (its MCP client started the blurt server) > linked (set up, not used
+    yet) > found (its app or config folder is here, not set up) > missing."""
+    if seen:
+        return "connected"
+    if is_linked:
+        return "linked"
+    return "found" if found else "missing"
+
+
 def detect(ids: list[str] | None = None, login: bool = True, version: bool = True, repo=None, env: dict | None = None,
-           lang: str = "en") -> dict:
-    """check() for every agent in the configured order (or `ids`), plus installed / version / login / pick.
+           lang: str = "en", fresh: bool = False) -> dict:
+    """check() for every agent in the configured order (or `ids`), plus installed / version / login / pick, and for
+    "Use Blurt in your agent": home, app, found, linked, last_seen, conn (CONN), connect (connectable), edition.
     pick = the first installed, headless-capable agent that is logged in ("ready"), else the first "configured" /
-    "unknown" one, else null."""
+    "unknown" one, else null. Only headless agents are probed (their CLI's sign-in and version); an app agent is
+    found by its config folder or its app (found_apps, cached; `fresh` looks again), never by starting anything."""
     cfg = config(repo)
     defs = definitions(cfg)
     order = agent_order(cfg)
     env = clean_env(env)
     # connect-only agents (headless: false) follow the order: Settings → Agents lists them for Connect
     todo = [defs[i] for i in ids or order + [k for k in defs if k not in order and not is_headless(defs[k])] if i in defs]
+    apps = found_apps(todo, env, fresh)
+    seen = last_seen(defs)
+    L = "zh" if (lang or "").startswith("zh") else "en"
 
     def one(d: dict) -> dict:
-        if login:
+        headless = is_headless(d)
+        if login and headless:
             r = check(d, env, lang)
         else:
             path = find_bin(d, env)
             r = {"id": d["id"], "name": d.get("name", d["id"]), "path": path,
                  "state": "unknown" if path else "not_installed", "why": "", "fix": ""}
-        if not r["path"] and app_path(d):  # app-only agents (ZCode): installed, nothing to probe
-            r.update(path=app_path(d), state="unknown", why="app" if lang == "en" else "应用", fix="")
+        home = home_of(d, env)
+        app = apps.get(d["id"])
+        if not headless and not r["path"] and (app or home):  # an app agent: its app or its own folder is here
+            r.update(path=app or str(home), state="unknown", why="app" if L == "en" else "应用", fix="")
         r["installed"] = r["state"] != "not_installed"
-        r["version"] = version_of(d, r["path"], env) if version and r["installed"] and find_bin(d, env) else None
+        r["version"] = version_of(d, r["path"], env) if version and headless and r["installed"] and find_bin(d, env) else None
         r["login"] = LOGIN.get(r["state"], "unknown")
-        r["headless"] = is_headless(d)
+        r["headless"] = headless
+        r["home"] = str(home) if home else None
+        r["app"] = app
+        r["found"] = bool(r["installed"] or home or app)
+        r["linked"] = linked(d, env)
+        r["last_seen"] = seen.get(d["id"])
+        r["conn"] = conn_state(r["found"], r["linked"], r["last_seen"])
+        r["connect"] = connectable(d)
+        if isinstance(d.get("edition"), dict):
+            r["edition"] = d["edition"].get(L) or d["edition"].get("en")
+        if d.get("custom"):
+            r["custom"] = True
         return r
 
     # every agent at once: each probe is a CLI start-up (node on Windows: seconds), one after another they added up
@@ -784,7 +1295,12 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT), "uv": uv_path(env)}
     changes, ok = [], True
     if skill:
-        if not d.get("skill_dir"):
+        if d.get("skill_dir") and not has_skill(SKILL_ROOT):
+            # the folder an agent would read has no SKILL.md (the app's scripts alone): never link that
+            changes.append({"action": "error", "what": "skill", "path": str(SKILL_ROOT),
+                            "error": f"no SKILL.md in {SKILL_ROOT}: not a skill folder"})
+            ok = False
+        elif not d.get("skill_dir"):
             changes.append({"action": "manual", "what": "skill", "how": (d.get("fix") or {}).get("en", "")})
         else:
             target = expand(d["skill_dir"], env) / "blurt"
@@ -849,7 +1365,8 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
             path = expand(spec["path"], env)
             value = _fill_obj(spec["value"], vals)
             try:
-                data = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
+                text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+                data = json.loads(text) if text.strip() else {}  # an empty file (Antigravity's) is no config yet
             except ValueError as e:
                 data = None
                 changes.append({"action": "error", "path": str(path), "error": f"not plain JSON ({e}); add by hand",
@@ -880,6 +1397,141 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
             changes.append({"action": "manual", "what": "mcp", "how": (d.get("fix") or {}).get("en", ""),
                             "command": [vals["uv"], "run", "--script", str(MCP_SERVER)]})
     return {"changes": changes, "applied": (not dry_run) and ok}
+
+
+# ------------------------------------------------------------------ any other agent, by hand ("Other Agent…")
+MANUAL_PROMPT = {
+    "en": "Set up Blurt for yourself. The Blurt skill is the folder {skill} (SKILL.md is in it): link or copy it into "
+          "your own skills folder under the name blurt. Then add an MCP server named blurt that runs {uv} with the "
+          "arguments run --script {server}. When both are in place, call the blurt MCP tool hello to check the "
+          "connection, and tell me what you changed.",
+    "zh": "请为你自己装上口喷鸡（Blurt）。口喷鸡的 skill 是文件夹 {skill}（里面有 SKILL.md）：把它链接或复制到你自己的 skills "
+          "文件夹，名字叫 blurt。再添加一个名为 blurt 的 MCP 服务器，命令是 {uv}，参数是 run --script {server}。两样都装好后，"
+          "调用 blurt 的 MCP 工具 hello 检查连接，并告诉我你改了哪些设置。",
+}
+
+
+def manual(lang: str = "en", env: dict | None = None) -> dict:
+    """What any agent needs to use Blurt, for the by-hand sheet: the skill folder, the MCP server as the common
+    `mcpServers` JSON (real absolute paths, written by json.dumps: a Windows path's backslashes escaped), the same as a
+    command and its arguments, and a prompt the user can paste so their agent sets itself up."""
+    env = os.environ if env is None else env
+    uv = uv_path(env)
+    server = str(MCP_SERVER)
+    args = ["run", "--script", server]
+    L = "zh" if (lang or "").startswith("zh") else "en"
+    return {"skill": str(SKILL_ROOT), "skill_ok": has_skill(SKILL_ROOT), "server": server, "command": uv, "args": args,
+            "mcp_json": json.dumps({"mcpServers": {"blurt": {"command": uv, "args": args}}}, ensure_ascii=False, indent=2),
+            "prompt": MANUAL_PROMPT[L].format(skill=str(SKILL_ROOT), uv=uv, server=server),
+            "clients_file": str(mcp_clients_file())}
+
+
+def custom_id(name: str, taken) -> str:
+    """A custom agent's id from its name: "My Agent" → "my-agent" (letters / digits kept, any script), unique."""
+    base = re.sub(r"[^\w]+", "-", name.strip().lower()).strip("-_") or "agent"
+    i, out = 2, base
+    while out in taken:
+        out, i = f"{base}-{i}", i + 1
+    return out
+
+
+def add_custom(name: str, home: str | None = None, app: dict | None = None, drop: str | None = None) -> dict:
+    """"Other Agent…" → Save: an entry in config record.agent_defs (definitions() merges it): a connect-only agent
+    (headless: false) with its name, and its config folder or app when given (app: {os: [id]}, drop: composer |
+    terminal: a card-drag target too). → {"id", "def"}."""
+    from _common import update_global_config  # noqa: PLC0415
+    name = " ".join((name or "").split())
+    if not name:
+        raise ValueError("a name is needed")
+    defs = definitions()
+    d: dict = {"name": name, "bins": [], "headless": False, "custom": True}
+    if home:
+        d["home"] = home
+    if app:
+        d["app"] = {k: _as_list(v) for k, v in app.items() if k in ("macos", "windows", "linux")}
+    if drop in ("composer", "terminal"):
+        d["drop"] = drop
+    # set up by hand (its home only says whether it is here): Blurt doesn't know where such an agent reads skills
+    d["fix"] = {"zh": "按「其他 Agent…」里的步骤设置", "en": "set it up with the steps in Other Agent…"}
+    aid = custom_id(name, defs)
+    cur = (global_config().get("record") or {}).get("agent_defs") or {}  # the patch replaces record.agent_defs whole
+    update_global_config({"record": {"agent_defs": {**cur, aid: d}}})
+    return {"id": aid, "def": d}
+
+
+def remove_custom(aid: str) -> bool:
+    from _common import global_config, save_config_if_readable  # noqa: PLC0415
+    rec = global_config().get("record") or {}
+    cur = dict(rec.get("agent_defs") or {})
+    if not (isinstance(cur.get(aid), dict) and cur[aid].get("custom")):
+        return False
+    cur.pop(aid)
+    return save_config_if_readable({"record": {"agent_defs": cur or None}})
+
+
+# ------------------------------------------------------------------ card drag targets (one list with the agents)
+def drop_kind(defn: dict, osk: str) -> str | None:
+    """agents.json `drop` for this OS: "composer" | "terminal" (a string for every OS, or {os: kind})."""
+    v = defn.get("drop")
+    v = v.get(osk) if isinstance(v, dict) else v
+    return v if v in ("composer", "terminal") else None
+
+
+def drop_targets(cfg: dict | None = None, osk: str | None = None) -> list[dict]:
+    """The apps a card dragged in gets the picture's path and its note (CardDropTarget.swift, card_drop.rs read the
+    same data): every agent with a `drop` for this OS — agents.json plus the user's record.agent_defs — and their app
+    ids, minus the agents switched off (record.agent_drop.<id> = false). The legacy record.agent_apps (v1.0.21: app id
+    → on / off) still counts until the list is next edited (migrate_agent_apps).
+    → [{"agent", "name", "ids", "drop", "on", "custom"}]"""
+    cfg = cfg if cfg is not None else global_config()
+    osk = osk or os_key()
+    rec = cfg.get("record") or {}
+    off = {k for k, v in (rec.get("agent_drop") or {}).items() if v is False}
+    legacy = {(k if osk == "macos" else k.lower()): v for k, v in (rec.get("agent_apps") or {}).items() if isinstance(v, bool)}
+    out = []
+    seen: set[str] = set()
+    for d in definitions(cfg).values():
+        kind = drop_kind(d, osk)
+        ids = [i if osk == "macos" else i.lower() for i in app_ids(d, osk) if not is_path_id(i)]
+        if not kind or not ids:
+            continue
+        on = d["id"] not in off and not any(legacy.get(i) is False for i in ids)
+        out.append({"agent": d["id"], "name": d.get("name", d["id"]), "ids": ids, "drop": kind, "on": on,
+                    "custom": bool(d.get("custom"))})
+        seen.update(ids)
+    for i, v in legacy.items():
+        if v is True and i not in seen:
+            out.append({"agent": i, "name": i, "ids": [i], "drop": "terminal", "on": True, "custom": True})
+    return out
+
+
+def migrate_agent_apps(cfg: dict, osk: str | None = None) -> dict:
+    """record.agent_apps (v1.0.21) → the new shape, as a config patch: an app switched off → its agent in
+    record.agent_drop = false; an app the user added → a custom agent (record.agent_defs) with that app id and
+    drop "terminal". Pure: the caller writes the patch."""
+    osk = osk or os_key()
+    rec = cfg.get("record") or {}
+    legacy = rec.get("agent_apps")
+    if not isinstance(legacy, dict):
+        return {}
+    defs = definitions(cfg)
+    by_app = {(i if osk == "macos" else i.lower()): d["id"] for d in defs.values() for i in app_ids(d, osk)}
+    drop_off = dict(rec.get("agent_drop") or {})
+    new_defs = {}
+    for k, v in legacy.items():
+        kk = k if osk == "macos" else k.lower()
+        if v is False and kk in by_app:
+            drop_off[by_app[kk]] = False
+        elif v is True and kk not in by_app:
+            aid = custom_id(kk.rsplit(".", 1)[-1], set(defs) | set(new_defs))
+            new_defs[aid] = {"name": kk.rsplit(".", 1)[-1] if osk == "macos" else kk, "bins": [], "headless": False,
+                             "custom": True, "connect": False, "app": {osk: [k]}, "drop": "terminal"}
+    patch: dict = {"agent_apps": None}
+    if drop_off:
+        patch["agent_drop"] = drop_off
+    if new_defs:  # the patch replaces record.agent_defs whole: the user's other definitions go with it
+        patch["agent_defs"] = {**(rec.get("agent_defs") or {}), **new_defs}
+    return {"record": patch}
 
 
 WORK_PROMPT = {
@@ -981,6 +1633,15 @@ def main():
     s.add_argument("--no-version", action="store_true")
     s.add_argument("--json", action="store_true", help="(default; accepted for symmetry with status)")
     s.add_argument("--lang", default=lang)
+    s.add_argument("--fresh", action="store_true", help="look for the agents' apps again (else kept 10 min)")
+    s = sub.add_parser("manual")
+    s.add_argument("--lang", default=lang)
+    s = sub.add_parser("custom")
+    s.add_argument("name", nargs="?")
+    s.add_argument("--home")
+    s.add_argument("--remove", metavar="ID")
+    s = sub.add_parser("drop")
+    s.add_argument("--os", choices=["macos", "windows", "linux"])
     s = sub.add_parser("command")
     s.add_argument("id")
     s.add_argument("mode", choices=["headless"])
@@ -1014,7 +1675,19 @@ def main():
     try:
         if a.cmd == "detect":
             _emit(detect(a.ids.split(",") if a.ids else None, login=not a.no_login, version=not a.no_version,
-                         repo=a.repo, lang=a.lang))
+                         repo=a.repo, lang=a.lang, fresh=a.fresh))
+            return
+        if a.cmd == "manual":
+            _emit({"ok": True, **manual(a.lang)})
+            return
+        if a.cmd == "custom":
+            if a.remove:
+                _emit({"ok": remove_custom(a.remove)})
+            else:
+                _emit({"ok": True, **add_custom(a.name or "", a.home)})
+            return
+        if a.cmd == "drop":
+            _emit({"ok": True, "os": a.os or os_key(), "targets": drop_targets(osk=a.os)})
             return
         if a.cmd == "command":
             prompt = a.prompt if a.prompt is not None else Path(a.prompt_file).read_text(encoding="utf-8")

@@ -48,7 +48,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, STATE_FILE, die, ffmpeg_bin, fix_tcl_env, fmt_ts,  # noqa: E402
-                     global_config, load_json, new_session_dir, probe_duration, run, save_config_if_readable, save_json)
+                     uv_bin, global_config, load_json, new_session_dir, probe_duration, run, save_config_if_readable, save_json)
 
 VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", "teams", "oray", "vb-audio",
                      "voicemeeter", "stereo mix", "立体声混音", "aggregate", "聚集", "cable")
@@ -370,15 +370,6 @@ class LivePcm:
 
 
 LIVE: dict = {}  # {"proc": the live.py process of the current take}
-
-
-def uv_bin() -> str | None:
-    """uv for live.py: PATH, else the one running us ($UV, set by `uv run`), else the one the app installs
-    (~/.blurt/bin) — the Windows app's uv is not on PATH, so live.py never ran there before."""
-    for c in (shutil.which("uv"), os.environ.get("UV"), str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))):
-        if c and Path(c).is_file():
-            return c
-    return None
 
 
 def live_enabled(cfg: dict | None = None) -> bool:

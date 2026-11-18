@@ -44,6 +44,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from _common import uv_bin  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, download_lock, load_json, save_json,  # noqa: E402
                      server_exit, serve_exit_reason, serve_said, watch_parent)
 
@@ -195,7 +196,7 @@ def ensure_vlm() -> None:
     if not supported():
         raise Fail("the OCR model needs Apple Silicon (MLX)", "unsupported", 4)
     import shutil
-    uv = shutil.which("uv") or str(BLURT_HOME / "bin" / "uv")
+    uv = uv_bin() or str(BLURT_HOME / "bin" / "uv")
     if os.environ.get("BLURT_SCREEN_TEXT_REEXEC") or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
         raise Fail(f"mlx-vlm is not installed (run with: uv run --with {MLX_VLM_PACKAGE} {Path(sys.argv[0]).name} …)", "deps", 4)
     os.environ["BLURT_SCREEN_TEXT_REEXEC"] = "1"
