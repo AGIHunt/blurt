@@ -348,7 +348,7 @@ struct HomeEntryRow: View {
             if let r = rec {
                 // what the recording's row offers in its state, Dismiss last on its own
                 let acts = Recordings.actions(r, agent: m.recAgent)
-                ForEach(acts.filter { $0 != .dismiss }, id: \.self) { a in Button(RecordingLook.label(a)) { RecordingLook.run(a, r) } }
+                ForEach(acts.filter { $0 != .dismiss }, id: \.self) { a in Button(RecordingLook.label(a, r)) { RecordingLook.run(a, r) } }
                 if acts.contains(.dismiss) {
                     Divider()
                     Button(RecordingLook.label(.dismiss)) { RecordingLook.run(.dismiss, r) }
@@ -360,6 +360,7 @@ struct HomeEntryRow: View {
                 Button(all.title) { m.link(all.id) }
             }
         }
+        .help(rec.flatMap(RecordingLook.stateDetail) ?? "")
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { m.primary(e.id) }
@@ -372,7 +373,7 @@ struct HomeEntryRow: View {
     private var recFailed: Bool { if case .failed? = rec?.state { return true } else { return false } }
 
     private var action: String {
-        if let r = rec { return Recordings.actions(r, agent: m.recAgent).first.map(RecordingLook.label) ?? T("home.entry.open") }
+        if let r = rec { return RecordingLook.homeAction(r, agent: m.recAgent).map { RecordingLook.label($0, r) } ?? T("home.entry.open") }
         return isFailed ? T("home.entry.retry") : e.kind == .item ? T("home.entry.open") : T("dictation.history.copy")
     }
 

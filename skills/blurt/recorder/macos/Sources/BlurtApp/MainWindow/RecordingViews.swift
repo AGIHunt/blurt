@@ -1,7 +1,7 @@
 // A recording's row (BlurtCore Recordings; docs/design/capabilities.md §4): on Home's Recent (HomeViews) and at the
 // top of an items' place, above the jobs section — where its organising job's row used to be (one recording, one row).
-// Its glyph, its length, the first thing said in it, its state (N 个事项 / 未整理 / 整理中 / 未完成 + why /
-// 仅保存视频), its time. The click and the menu do what fits the state: play the video, show it in Finder, organise or
+// Its glyph, its length, the first thing said in it (else 未命名录屏), its state word (N 个事项 / 未整理 / 整理中 /
+// 未完成 / 仅保存视频; the why in its tooltip), its time. The click and the menu do what fits the state: play the video, show it in Finder, organise or
 // retry it — or, with no agent to do it, Set Up an Agent… / copy what to say to one —, its items, Dismiss a failure.
 // The Windows/Linux app's Recordings.tsx says the same in the same places.
 import AppKit
@@ -36,22 +36,29 @@ enum RecordingLook {
         r.facts.duration.map { DictationHistoryModel.duration($0) } ?? ""
     }
 
-    /// "2 items", "Organizing · Transcribing", "Didn’t finish · No agent available", "Video only" — and "Video deleted"
-    /// once the video is gone.
+    /// The state word alone ("2 items", "Organizing", "Didn’t finish", "Video only", "Not organized"): what a row says,
+    /// so the line beside it stays readable. The why is the row's tooltip and the detail's.
     static func stateText(_ r: Recordings.Row) -> String {
-        var parts: [String]
         switch r.state {
-        case .items(let n): parts = [TP("main.rec.items", n)]
-        case .organising(_, let step): parts = [T("main.rec.state.organising")] + (step.map { [T("job.step.\($0)")] } ?? [])
-        case .failed(_, let code):
-            parts = [T("main.rec.state.failed")]
-            if let k = whyKey[code] { parts.append(T(k).trimmingCharacters(in: CharacterSet(charactersIn: "。."))) }
-        case .videoOnly: parts = [T("main.rec.state.video_only")]
-        case .unorganised: parts = [T("main.rec.state.unorganised")]
+        case .items(let n): return TP("main.rec.items", n)
+        case .organising: return T("main.rec.state.organising")
+        case .failed: return T("main.rec.state.failed")
+        case .videoOnly: return T("main.rec.state.video_only")
+        case .unorganised: return T("main.rec.state.unorganised")
         }
-        if r.facts.video == nil { parts.append(T("main.rec.video_gone")) }
-        return parts.joined(separator: " · ")
     }
+
+    /// What the state word leaves out (the row's tooltip): the step under way, a failure's whole sentence, the video gone.
+    static func stateDetail(_ r: Recordings.Row) -> String? {
+        var parts: [String] = []
+        if case .organising(_, let step) = r.state, let w = step.map({ T("job.step.\($0)") }) { parts.append(w) }
+        if let w = why(r) { parts.append(w) }
+        if r.facts.video == nil { parts.append(T("main.rec.video_gone")) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// What the row says: the first thing said in it, else "Untitled recording" (a take with no speech).
+    static func line(_ r: Recordings.Row) -> String { r.facts.firstLine ?? T("main.rec.untitled") }
 
     /// A failure's reason in a few words, for the codes whose sentence is short (Recordings.shortWhy): the job error's
     /// sentence without its full stop ("The agent isn’t signed in"); the rest say only "Didn’t finish" on the row.
@@ -71,10 +78,13 @@ enum RecordingLook {
         [T("main.rec.kind"), length(r), stateText(r)].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
-    static func label(_ a: Recordings.Action) -> String {
+    /// `r`: the row it's for — a failure's run is its details, not its progress.
+    static func label(_ a: Recordings.Action, _ r: Recordings.Row? = nil) -> String {
         switch a {
         case .review: return T("main.rec.review")
-        case .progress: return T("main.banner.show_progress")
+        case .progress:
+            if let r, case .failed = r.state { return T("main.rec.show_details") }
+            return T("main.banner.show_progress")
         case .play: return T("main.rec.play")
         case .reveal: return T("action.reveal_in_finder")
         case .organise: return T("main.rec.organise")
@@ -95,6 +105,46 @@ enum RecordingLook {
         case .copyRequest: return "doc.on.doc"
         default: return nil
         }
+    }
+
+    /// The recording a process job organises, with its state (the window's list of recordings, else its folder); nil:
+    /// not a recording's run (cards, AI fill-in).
+    static func row(of j: Job) -> Recordings.Row? {
+        guard j.type == .process, let s = j.session else { return nil }
+        let path = s.standardizedFileURL.path
+        let name = s.lastPathComponent
+        var f = MainWindowController.shared.model.recordingFacts.first { URL(fileURLWithPath: $0.dir).standardizedFileURL.path == path }
+        if f == nil, !name.hasSuffix("-shots"), !name.hasSuffix("-voice") {
+            let video = s.appendingPathComponent("recording.mp4")
+            let meta = (try? Data(contentsOf: s.appendingPathComponent("meta.json")))
+                .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+            let has = FileManager.default.fileExists(atPath: video.path)
+            guard has || meta["duration"] != nil else { return nil }
+            f = Recordings.Facts(dir: s.path, projectID: j.project ?? "inbox", duration: meta["duration"] as? Double,
+                                 video: has ? video : nil, firstLine: Recordings.firstLine(s),
+                                 videoOnly: meta["video_only"] as? Bool ?? false)
+        }
+        guard let f else { return nil }
+        return Recordings.rows([f], jobs: JobStore.shared.jobs).first
+    }
+
+    /// A recording's run in the detail: "Recording · 3:12 · what was said first".
+    static func detailTitle(_ r: Recordings.Row) -> String {
+        [T("main.rec.kind"), length(r), r.facts.firstLine ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// A failure's sentence in the detail, as things are now: a run that found no agent, with one usable now, says only
+    /// that (the fix it named is done); the rest as the job says.
+    static func failureText(_ j: Job) -> String? {
+        if j.error?.code == "no_agent", agent == true { return T("main.rec.why.no_agent_then") }
+        return JobLook.errorText(j)
+    }
+
+    /// A click on Home's row: a failure opens its detail (the run's words and its way forward, Play Video, Show in
+    /// Finder) in its place — never Settings; the rest do their first action.
+    static func homeAction(_ r: Recordings.Row, agent: Bool?) -> Recordings.Action? {
+        if case .failed = r.state { return .progress }
+        return Recordings.actions(r, agent: agent).first
     }
 
     /// Does an action (a row's click, its button, its menu).
@@ -132,8 +182,8 @@ enum RecordingLook {
         let acts = Recordings.actions(r, agent: agent)
         for a in acts {
             if a == .dismiss, m.numberOfItems > 0 { m.addItem(.separator()) }
-            let i = MenuAction(title: label(a)) { run(a, r) }
-            if let s = symbol(a) { i.image = Look.symbol(s, label(a), size: 13) }
+            let i = MenuAction(title: label(a, r)) { run(a, r) }
+            if let s = symbol(a) { i.image = Look.symbol(s, label(a, r), size: 13) }
             m.addItem(i)
         }
         return m
@@ -275,7 +325,7 @@ final class RecordingRow: NSView {
 
     func set(_ r: Recordings.Row, project: String?) {
         row = r
-        let line = r.facts.firstLine ?? project ?? T("main.rec.kind")
+        let line = RecordingLook.line(r)
         let t = NSMutableAttributedString()
         let len = RecordingLook.length(r)
         if !len.isEmpty {
@@ -288,10 +338,11 @@ final class RecordingRow: NSView {
         let failed: Bool = { if case .failed = r.state { return true } else { return false } }()
         status.stringValue = RecordingLook.stateText(r)
         status.textColor = failed ? BrandColor.attnInk : .secondaryLabelColor
-        status.toolTip = RecordingLook.why(r)
+        status.toolTip = RecordingLook.stateDetail(r)
+        toolTip = RecordingLook.stateDetail(r)
         // Set Up an Agent… isn't drawn on the row: its detail (the job's) has it, and so does its menu
         inline = Recordings.inline(r, agent: RecordingLook.agent).flatMap { $0 == .setUpAgent ? nil : $0 }
-        act.title = inline.map(RecordingLook.label) ?? ""
+        act.title = inline.map { RecordingLook.label($0, r) } ?? ""
         act.isHidden = inline == nil
         icon.image = Look.symbol("video", T("main.rec.kind"), size: 13)
         icon.contentTintColor = .secondaryLabelColor
@@ -321,9 +372,11 @@ final class RecordingRow: NSView {
         }
         let aw = act.isHidden ? 0 : ceil(act.intrinsicContentSize.width)
         act.frame = NSRect(x: grid.trailing - aw, y: (h - 18) / 2, width: aw, height: 18)
-        // the state where the times start, before the action; it gives way to the line no more than to half the row
+        // the state word where the times start, before the action; the line keeps at least `minTitle` (a state never
+        // takes the row from what was said)
         let room = (act.isHidden ? grid.trailing : act.frame.minX - 8)
-        let sw = min(ceil(status.intrinsicContentSize.width) + 4, max(0, (room - grid.title) / 2))
+        let minTitle: CGFloat = 140
+        let sw = min(ceil(status.intrinsicContentSize.width) + 4, max(0, room - grid.title - 12 - minTitle))
         let sh = status.intrinsicContentSize.height
         let sx = min(grid.time ?? .greatestFiniteMagnitude, room - sw)
         status.frame = NSRect(x: sx, y: (h - sh) / 2, width: sw, height: sh)

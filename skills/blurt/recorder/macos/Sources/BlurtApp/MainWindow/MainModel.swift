@@ -149,7 +149,7 @@ final class MainModel {
     /// not in `jobs`
     private(set) var recordings: [Recordings.Row] = []
     /// the newest recordings' facts, read again with the index (reload); their state follows the jobs (reloadJobs)
-    private var recordingFacts: [Recordings.Facts] = []
+    private(set) var recordingFacts: [Recordings.Facts] = []
     /// Unassigned only: its items by the project an organizing run suggested (the sidebar's order)
     private(set) var suggestionGroups: [SuggestionGroup] = []
     private(set) var lastReloadMS = 0.0

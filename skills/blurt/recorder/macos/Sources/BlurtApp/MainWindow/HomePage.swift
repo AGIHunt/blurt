@@ -509,11 +509,12 @@ final class HomeModel: ObservableObject {
             var q = ItemQuery()
             q.sort = "created"
             q.limit = 10
-            // every recording, with its state: "Recording · 3:12 · 2 items" over the first thing said in it
+            // every recording, with its state word: "Recording · 3:12 · 2 items" over the first thing said in it (else
+            // "Untitled recording")
             for r in RecordingLook.rows(reader) {
                 recordings[r.facts.dir] = r
                 rs.append(.init(kind: .recording, key: r.facts.dir, time: Date(timeIntervalSince1970: r.facts.created ?? 0),
-                                source: RecordingLook.source(r), text: r.facts.firstLine ?? ""))
+                                source: RecordingLook.source(r), text: RecordingLook.line(r)))
             }
             for it in (try? reader.items(q)) ?? [] {
                 items[it.uid] = it
@@ -731,7 +732,7 @@ final class HomeModel: ObservableObject {
         guard let e = entry(id) else { return }
         if failed.contains(e.key) { return retry(e.key) }
         if e.kind == .recording, let r = recordings[e.key] {
-            if let a = Recordings.actions(r, agent: agentReady).first { RecordingLook.run(a, r) }
+            if let a = RecordingLook.homeAction(r, agent: agentReady) { RecordingLook.run(a, r) }
             return
         }
         if e.kind == .item {

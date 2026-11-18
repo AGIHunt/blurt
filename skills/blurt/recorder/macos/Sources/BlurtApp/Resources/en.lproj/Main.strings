@@ -751,6 +751,9 @@
 "main.rec.state.failed" = "Didn’t finish";
 "main.rec.state.video_only" = "Video only";
 "main.rec.why.no_agent" = "No agent available";
+"main.rec.untitled" = "Untitled recording";
+"main.rec.show_details" = "Show Details";
+"main.rec.why.no_agent_then" = "No agent was available to organize this.";
 "main.rec.video_gone" = "Video deleted";
 "main.rec.play" = "Play Video";
 "main.rec.organise" = "Organize";

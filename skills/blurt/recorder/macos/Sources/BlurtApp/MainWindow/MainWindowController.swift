@@ -519,9 +519,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             appDelegate?.toast(T("main.toast.session_gone"))
             return
         }
-        if !model.scope.showsJobs || !model.jobs.contains(where: { $0.id == job }) {
-            go(j.project.map { $0 == "inbox" ? .unassigned : .project($0) } ?? .inProgress)
-            if !model.jobs.contains(where: { $0.id == job }) { go(.inProgress) }
+        // listed here: as a job row, or as its recording's row (a recording's run is drawn as the recording)
+        let listed = { [unowned self] in
+            model.jobs.contains { $0.id == job } || model.recordings.contains { $0.state.job == job }
+        }
+        if !model.scope.showsJobs || !listed() {
+            go(j.project.map { $0 == "inbox" ? .unassigned : .project($0) } ?? .unassigned)
+            if !listed() { go(.inProgress) }
         }
         selectJob(job)
     }

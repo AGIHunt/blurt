@@ -752,6 +752,9 @@
 "main.rec.state.failed" = "未完成";
 "main.rec.state.video_only" = "仅保存视频";
 "main.rec.why.no_agent" = "没有可用的 Agent";
+"main.rec.untitled" = "未命名录屏";
+"main.rec.show_details" = "查看详情";
+"main.rec.why.no_agent_then" = "整理时没有可用的 Agent。";
 "main.rec.video_gone" = "视频已删除";
 "main.rec.play" = "播放视频";
 "main.rec.organise" = "整理";
