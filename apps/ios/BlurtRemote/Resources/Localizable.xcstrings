@@ -1748,12 +1748,12 @@
         }
       }
     },
-    "On your computer, open Blurt’s Settings and choose Phone." : {
+    "On your computer, open Blurt’s Remote Control page and choose Add Device." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上打开 Blurt 的设置，选「手机」。"
+            "value" : "在电脑上打开 Blurt 的「远程控制」页，点「添加设备…」。"
           }
         }
       }
@@ -3088,7 +3088,7 @@
         }
       }
     },
-    "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer." : {
+    "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3118,7 +3118,7 @@
         }
       }
     },
-    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first." : {
+    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

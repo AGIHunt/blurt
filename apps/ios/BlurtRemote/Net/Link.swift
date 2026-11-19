@@ -253,7 +253,7 @@ final class Link: ObservableObject {
         waitingForMac = false
         Keychain.remove(account: j.mac.deviceID)
         pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
-            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first.")
+            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first.")
             : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that computer.")
         let t = pairFailed
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }

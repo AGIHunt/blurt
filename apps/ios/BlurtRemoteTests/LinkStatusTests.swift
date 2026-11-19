@@ -158,7 +158,7 @@ final class LinkStatusTests: XCTestCase {
         guard let data = try? Data(contentsOf: url) else { throw XCTSkip("no catalog beside the tests") }
         let all = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["strings"] as? [String: Any] ?? [:]
         for k in ["Connecting to %@…", "Reconnecting to %@…", "Can’t reach %@",
-                  "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer.",
+                  "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.",
                   "Check that the computer isn’t asleep and Blurt is running.", "Needs pairing again", "Another phone is connected", "Touch to take over.",
                   "Pair with your computer", "Waiting for your computer", "Pairing didn’t work", "Can’t control %@", "Can’t show the screen",
                   "Retry", "Scan Code", "Try Another Computer", "Connected to %@"] {

@@ -20,14 +20,14 @@
     <string name="talk_writing">正在转写</string>
     <string name="talk_off">未开启</string>
     <string name="mic_unavailable">手机麦克风不可用</string>
-    <string name="status_unpaired">在电脑上打开 Blurt 设置，选择「手机」。</string>
+    <string name="status_unpaired">在电脑上打开 Blurt 的「远程控制」页，点「添加设备…」。</string>
     <string name="scan_code">扫描二维码</string>
     <string name="status_forgotten">%1$s 已移除这台手机。</string>
     <string name="try_another">选择其他电脑</string>
     <string name="status_accessibility">在 Mac 的系统设置里给 Blurt 打开辅助功能。</string>
-    <string name="status_control">电脑上的 Blurt 还不能按键。请打开它的设置 → 手机。</string>
+    <string name="status_control">电脑上的 Blurt 还不能按键。请打开它的「远程控制」页。</string>
     <string name="status_screen_permission">在 Mac 的系统设置里给 Blurt 打开屏幕录制。</string>
-    <string name="status_screen_permission_pc">电脑上的 Blurt 还不能读取屏幕。请打开它的设置 → 手机。</string>
+    <string name="status_screen_permission_pc">电脑上的 Blurt 还不能读取屏幕。请打开它的「远程控制」页。</string>
     <string name="status_screen_off">电脑上的 Blurt 设置已关闭屏幕显示。</string>
     <string name="status_waiting">在电脑上 Blurt 的设置里允许这台手机，确认两边的数字都是 %1$s。</string>
     <string name="via_path">%1$s · %2$s</string>

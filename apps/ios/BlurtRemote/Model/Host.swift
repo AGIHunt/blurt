@@ -37,7 +37,7 @@ enum Words {
     }
 
     /// Before any computer: where its code is. Blurt calls the pane iPhone on a Mac, Phone on Windows and Linux.
-    static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Settings and choose Phone.") }
+    static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Remote Control page and choose Add Device.") }
 
     /// The pad's card, line by line (LinkStatus.swift has which lines a state gets). `name`: the computer in hand; `check`: the digits a
     /// pairing shows on both; `failed`: Link's sentence for a pairing that didn't take.
@@ -47,7 +47,7 @@ enum Words {
         case .connecting: return String(localized: "Connecting to \(n)…")
         case .reconnecting: return String(localized: "Reconnecting to \(n)…")
         case .cantReach: return String(localized: "Can’t reach \(n)")
-        case .checkNetwork: return String(localized: "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer.")
+        case .checkNetwork: return String(localized: "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.")
         case .checkAwake: return String(localized: "Check that the computer isn’t asleep and Blurt is running.")
         case .noDirect: return String(localized: "Can’t connect directly. Set up your own relay on the computer.")
         case .goBetweenBusy: return String(localized: "The public connection service has reached today’s limit. Try again later, or use your own relay.")
