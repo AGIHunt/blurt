@@ -363,9 +363,10 @@ pub fn computers_remove(id: String) -> ComputersStatus {
     status()
 }
 
-/// Open Window / Connect: the computer's window comes forward, or opens and connects.
+/// Open Window / Connect: the computer's window comes forward, or opens and connects. Async on purpose: a webview built inside a
+/// synchronous command deadlocks on Windows (the window opens white and never answers).
 #[tauri::command]
-pub fn computers_open(app: AppHandle, id: String) -> ComputersStatus {
+pub async fn computers_open(app: AppHandle, id: String) -> ComputersStatus {
     let _ = open_window(&app, &id);
     status()
 }
