@@ -1179,6 +1179,10 @@ impl Core {
             }
         }
         s.current = Some(sid);
+        // the silence before this counts for nothing: a new device says nothing while the owner compares the digits, however long
+        if let Some(x) = s.sessions.get(&sid) {
+            x.chan.heard();
+        }
         self.told.forget(sid); // another phone, or this one started again: its numbers start over
         let relay = s.sessions.get(&sid).is_some_and(|x| x.chan.relay);
         self.log(json!({"event": "remote_session", "state": "open", "relay": relay}));

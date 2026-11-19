@@ -500,9 +500,9 @@ impl App for Desktop {
         let _ = self.app.run_on_main_thread(move || crate::show_main(&app));
         use tauri_plugin_notification::NotificationExt;
         let (title, body) = if zh() {
-            (format!("{device} 想连接这台电脑"), format!("在口喷鸡中确认手机上显示的是 {digits}，再允许。"))
+            (format!("{device} 想连接本机"), format!("对方设备上显示 {digits} 时才允许。"))
         } else {
-            (format!("{device} wants to connect"), format!("In Blurt, check the phone shows {digits}, then allow it."))
+            (format!("{device} wants to connect"), format!("Allow it only if the other device shows {digits}."))
         };
         let _ = self.app.notification().builder().title(title).body(body).show();
     }

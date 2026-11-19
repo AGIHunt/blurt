@@ -781,6 +781,8 @@ final class RemoteServer {
             old.channel.queue.asyncAfter(deadline: .now() + 0.2) { old.channel.close() }
         }
         session = s
+        // the silence before this counts for nothing: a new device says nothing while the owner compares the digits, however long
+        s.lastHeard = CACurrentMediaTime()
         RemoteInput.shared.forgetPhone()      // another phone, or this one started again: its numbers start over
         emit(["event": "remote_session", "state": "open", "relay": s.channel.isRelay])
     }
