@@ -1,6 +1,6 @@
-/* 手机页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
+/* 手机和电脑页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
 
-"phone.title" = "手机";
+"phone.title" = "手机和电脑";
 "phone.settings" = "手机设置…";
 "phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
 /* 没有报上名字的手机 */
@@ -9,30 +9,22 @@
 /* 菜单栏菜单里的一行（SnapApp.addWaitingMenuItems）：打开手机页 */
 "phone.menu.connected" = "手机：%@ 已连接";
 "phone.menu.paired" = "手机：未连接";
-"phone.menu.add" = "添加手机…";
+"phone.menu.add" = "添加设备…";
 "phone.menu.needs_access" = "手机：无法控制 Mac";
 
 /* 主页上手机那一格的状态（PhoneStatus.line） */
 "phone.line.connected" = "%@ 已连接";
 "phone.line.not_connected" = "未连接";
 
-/* 页面最上面的一句话 */
-"phone.head.none" = "还没有配对的手机";
-"phone.head.none.detail" = "配对后，手机或平板可用作 Mac 的触控板、键盘和麦克风，并可查看屏幕。";
-"phone.head.not_connected" = "未连接";
-"phone.head.not_connected.detail" = "在手机上打开口喷鸡即可自动连接。";
-"phone.head.connected" = "%@ 已连接";
-"phone.head.local" = "与 Mac 在同一网络，直接连接。";
-"phone.head.relay" = "在其他网络，经中转连接。";
 
-"phone.add" = "添加手机…";
-"phone.add.tip" = "显示配对二维码，用手机扫描";
+"phone.add.title" = "添加设备";
+"phone.add.tip" = "显示配对二维码：用手机扫描，或拷贝链接给另一台电脑";
 "phone.remove" = "移除…";
 "phone.remove.named" = "移除 %@";
 
-/* 这台 Mac：只列出挡住手机的事，都没问题时只有一行 */
+/* 本机：只列出挡住其他设备的事，都没问题时只有一行 */
 "phone.mac" = "本机";
-"phone.mac.ok" = "手机可以控制 Mac";
+"phone.mac.ok" = "其他设备可以控制本机";
 "phone.mac.ok.keys" = "指针和按键";
 "phone.mac.ok.screen" = "屏幕画面";
 "phone.mac.ok.relay" = "外出时经中转连接";
@@ -53,6 +45,9 @@
 "phone.ax.needs_you" = "需要处理";
 
 "phone.paired" = "能控制本机的设备";
+"phone.none" = "还没有配对的设备";
+"phone.none.detail" = "配对后，手机、平板或另一台电脑可以控制本机。";
+"phone.computers.none" = "还没有添加电脑";
 
 /* 手机版从哪里来 */
 "phone.app" = "手机上的口喷鸡";
@@ -71,11 +66,9 @@
 "phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
-/* 设置 → 手机（Settings/RemotePane.swift）里指向这一页和配对前的提醒 */
-"phone.pane.before" = "请先开启辅助功能，否则配对后的手机无法移动指针或按键。";
-"phone.pane.see_page" = "连接状态和排查方法见主窗口的「手机」页。";
-"phone.pane.open_page" = "打开";
-"phone.pane.build.tip" = "手机版尚未上架应用商店，需从源码构建";
+/* 设置 → 手机和电脑（Settings/RemotePane.swift）开头指向这一页的一句 */
+"phone.pane.see_page" = "设备列表在主窗口的「手机和电脑」页。";
+"phone.pane.show" = "查看设备";
 
 /* 本机控制的电脑（Viewer/，docs/design/remote-desktop-viewer.md）。统一用语：docs/design/copy.md */
 "viewer.menu" = "电脑…";

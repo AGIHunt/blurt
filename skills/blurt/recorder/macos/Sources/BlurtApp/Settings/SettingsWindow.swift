@@ -147,7 +147,8 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         let page = SettingsDetailController()
         let split = NSSplitViewController()
         let sideItem = NSSplitViewItem(sidebarWithViewController: side)
-        sideItem.minimumThickness = 190
+        // 210: the longest pane name ("Phones and Computers") whole, not cut
+        sideItem.minimumThickness = 210
         sideItem.maximumThickness = 260
         sideItem.canCollapse = false
         sideItem.allowsFullHeightLayout = true          // the source list runs to the top, under the window's buttons
@@ -405,7 +406,7 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         view = root
-        view.frame = NSRect(x: 0, y: 0, width: 210, height: 620)
+        view.frame = NSRect(x: 0, y: 0, width: 226, height: 620)
     }
 
     override func viewDidLoad() {

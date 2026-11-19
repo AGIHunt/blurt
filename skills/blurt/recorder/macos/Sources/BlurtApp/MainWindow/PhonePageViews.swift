@@ -1,12 +1,14 @@
-// The Phone page's views (PhonePage.swift has the model). Top to bottom: the one headline (who is connected, and
-// how), a new phone waiting for a yes, this Mac (only what stands in a phone's way; all well is one line), the paired
-// phones with Add a Phone, where the phone app comes from, and what to try while a phone should be connecting and
-// isn't. What shows is PhoneChecks' decision (BlurtCore); the options (keys on screen, the screen, the relay) stay in
-// Settings → Phone, one button away.
+// The 手机和电脑 / Phones and Computers page's views (PhonePage.swift has the model; docs/design/remote-desktop-viewer.md
+// §One page for the devices). Top to bottom: a new device waiting for a yes, then three groups — the devices that can
+// control this Mac (every paired phone and computer, then Add Device…, whose code takes its place while open), the
+// computers this Mac controls (ViewerStore's, the Computers window's rows, then Add Computer…), and this Mac (only what
+// stands in a device's way; all well is one line) — then what to try while a phone should be connecting and isn't, and
+// where the phone app comes from. What shows is PhoneChecks' decision (BlurtCore); the options (keys on screen, the
+// screen, the relay) stay in Settings → 手机和电脑, one button away. No device is listed anywhere else in Settings.
 //
-// The grid: the page's title, the cards' edges, the headings and the rows' marks on the column's left edge; a row's
-// text 28 pt in (an 18 pt mark slot and 10), Settings' row metrics. PhonePairingCode, PhoneAsk and PhoneRemoveAlert
-// are Settings → Phone's too (RemotePane.swift): one look for the code wherever it is shown.
+// The grid: the page's title, the headings and the rows' marks on the column's left edge; a row's text 28 pt in (an
+// 18 pt mark slot and 10), Settings' row metrics; every row's one button at the trailing edge, and a list's Add… under
+// it on the same edge. PhonePairingCode and PhoneAsk are one look for the code wherever it is shown.
 import AppKit
 import CoreImage
 import SwiftUI
@@ -14,51 +16,85 @@ import BlurtCore
 
 struct PhonePageView: View {
     @ObservedObject private var m = PhoneModel.shared
+    @ObservedObject private var viewer = ViewerStore.shared
     @State private var removing: RemoteServer.Device?
+    @State private var addingComputer = false
 
     var body: some View {
         let f = m.facts
-        let head = PhoneChecks.headline(f), problems = PhoneChecks.problems(f), tips = PhoneChecks.tips(f)
+        let problems = PhoneChecks.problems(f), tips = PhoneChecks.tips(f)
         FullPageFrame(title: T("phone.title")) {
             // the page's own button, on the title's line at the column's trailing edge (FullPageFrame has the title
             // and 20 pt under it; the options are Settings')
             Color.clear.frame(maxWidth: .infinity).frame(height: 0)
                 .overlay(alignment: .bottomTrailing) {
                     Button(T("phone.settings")) { AppEnvironment.settings?.show(pane: "remote") }
-                        .buttonStyle(SettingsOutlinedButtonStyle())
+                        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                         .help(T("phone.settings.tip"))
                         .offset(y: -20)
                 }
-            PhoneHeadline(head: head, adding: m.adding, link: m.status.pairingLink, failure: m.status.failure,
-                          add: { m.setAdding(true) }, cancel: { m.setAdding(false) })
+            // a new device waiting for a yes comes first, whatever else is on the page
             if let who = m.status.asking {
-                PhoneAsk(who: who, check: m.status.askingCheck ?? "") { m.answer($0) }.padding(.top, 10)
+                PhoneAsk(who: who, check: m.status.askingCheck ?? "") { m.answer($0) }.padding(.bottom, 4)
             }
-            // nothing paired yet: the phone needs the app before anything else on this page matters
-            if head == .nonePaired { app }
+            PhoneSection(T("phone.paired"), first: m.status.asking == nil) { controllers }
+            PhoneSection(T("settings.remote.section.computers")) { computers }
             PhoneSection(T("phone.mac")) { mac(f, problems) }
-            if !m.devices.isEmpty {
-                PhoneSection(T("phone.paired")) {
-                    if m.adding {
-                        PhoneLine { PhonePairingCode(link: m.status.pairingLink, failure: m.status.failure) { m.setAdding(false) } }
-                    }
-                    ForEach(m.devices) { d in device(d) }
-                } accessory: {
-                    if !m.adding {
-                        Button(T("phone.add")) { m.setAdding(true) }
-                            .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-                            .help(T("phone.add.tip"))
-                    }
-                }
-            }
-            if head != .nonePaired { app }
             if !tips.isEmpty {
                 PhoneSection(T("phone.tips")) {
                     ForEach(Array(tips.enumerated()), id: \.offset) { i, t in tip(i + 1, t) }
                 }
             }
+            app
         }
         .phoneRemoveAlert($removing)
+        .sheet(isPresented: $addingComputer) {
+            AddComputerView { addingComputer = false; viewer.cancelPairing() }
+        }
+        // paired (or given up): the sheet's job is done
+        .onChange(of: viewer.pairing == nil) { none in if none { addingComputer = false } }
+    }
+
+    // MARK: devices that control this Mac
+
+    /// Every paired phone and computer, then Add Device… — or, while it's open, the code in its place.
+    @ViewBuilder private var controllers: some View {
+        ForEach(m.devices) { d in device(d) }
+        if m.adding {
+            PhoneLine { PhonePairingCode(link: m.status.pairingLink, failure: m.status.failure) { m.setAdding(false) } }
+        } else {
+            // nothing paired: one row says so; Add Device… is the list's last line whether it's empty or not
+            if m.devices.isEmpty {
+                PhoneRow(symbol: "iphone", title: T("phone.none"), detail: T("phone.none.detail"), quiet: true) { EmptyView() }
+            }
+            PhoneAddLine(title: T("settings.remote.add"), help: T("phone.add.tip")) { m.setAdding(true) }
+        }
+    }
+
+    private func device(_ d: RemoteServer.Device) -> some View {
+        let on = m.status.connectedID == d.id
+        return PhoneRow(symbol: PhoneText.symbol(d), title: PhoneStatus.name(d.name),
+                        detail: on ? PhoneText.connected(m.status.path) : PhoneText.lastUsed(d), detailTone: on ? .good : .off) {
+            // the same trailing column as the computers' rows: Remove is a rare action, in the ⋯ menu
+            RowMenu(label: T("viewer.more"), visible: true) {
+                Button(T("phone.remove")) { removing = d }
+                    .accessibilityLabel(T("phone.remove.named", PhoneStatus.name(d.name)))
+            }
+        }
+        .contextMenu { Button(T("phone.remove")) { removing = d } }
+    }
+
+    // MARK: computers this Mac controls
+
+    /// The viewer's computers, the rows of the Computers window in this page's grid, then Add Computer….
+    @ViewBuilder private var computers: some View {
+        ForEach(viewer.computers) { c in
+            PhoneLine { ComputerRow(computer: c, style: .page) }
+        }
+        if viewer.computers.isEmpty {
+            PhoneRow(symbol: "desktopcomputer", title: T("phone.computers.none"), detail: T("viewer.empty"), quiet: true) { EmptyView() }
+        }
+        PhoneAddLine(title: T("viewer.add")) { addingComputer = true }
     }
 
     // MARK: the phone app
@@ -119,20 +155,6 @@ struct PhonePageView: View {
         return parts.joined(separator: " · ")
     }
 
-    // MARK: phones
-
-    private func device(_ d: RemoteServer.Device) -> some View {
-        let on = m.status.connectedID == d.id
-        return PhoneRow(symbol: "iphone", title: PhoneStatus.name(d.name), detail: on ? T("settings.remote.connected") : PhoneText.lastUsed(d),
-                        detailTone: on ? .good : nil) {
-            Button(T("phone.remove")) { removing = d }
-                .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-                .help(T("settings.remote.remove.detail"))
-                .accessibilityLabel(T("phone.remove.named", PhoneStatus.name(d.name)))
-        }
-        .contextMenu { Button(T("phone.remove")) { removing = d } }
-    }
-
     // MARK: when it won't connect
 
     private func tip(_ n: Int, _ t: PhoneChecks.Tip) -> some View {
@@ -179,85 +201,35 @@ enum PhoneText {
     /// "Last used 3 days ago"; a phone that has never been back since pairing: "Not connected".
     static func lastUsed(_ d: RemoteServer.Device) -> String {
         guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
-        return T("settings.remote.last_used", RelativeDateTimeFormatter().localizedString(for: t, relativeTo: Date()))
-    }
-}
-
-// MARK: - the headline
-
-/// The page's one fact, on a quiet card: the phone's mark (mint with a check once one is connected), who and how, and
-/// with no phone paired the page's one primary, Add a Phone… (↩). Adding the first phone, the code takes the card.
-struct PhoneHeadline: View {
-    var head: PhoneChecks.Headline
-    var adding: Bool
-    var link: URL?
-    var failure: String?
-    var add: () -> Void
-    var cancel: () -> Void
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
-        Group {
-            if head == .nonePaired, adding {
-                PhonePairingCode(link: link, failure: failure, cancel: cancel)
-            } else {
-                HStack(alignment: .center, spacing: 14) {
-                    mark
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title).font(.system(size: 15, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                        Text(detail).font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isHeader)
-                    if head == .nonePaired {
-                        Button(T("phone.add"), action: add)
-                            .buttonStyle(SettingsPrimaryButtonStyle())
-                            .keyboardShortcut(.defaultAction)
-                            .help(T("phone.add.tip"))
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 14).padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(shape.fill(Color.primary.opacity(0.04)))
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+        let f = RelativeDateTimeFormatter()
+        f.locale = Loc.locale
+        return T("settings.remote.last_used", f.localizedString(for: t, relativeTo: Date()))
     }
 
-    private var connected: Bool { if case .connected = head { true } else { false } }
-
-    private var mark: some View {
-        let tile = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        return Image(systemName: "iphone").font(.system(size: 22, weight: .regular))
-            .foregroundStyle(connected ? Color.brandInk : Color.secondary)
-            .frame(width: 44, height: 44)
-            .background(tile.fill(connected ? Color.brandTint : Color.primary.opacity(0.06)))
-            // the state's shape twin: a check once a phone is here
-            .overlay(alignment: .bottomTrailing) {
-                if connected {
-                    StatusDot(tone: .good, diameter: 14)
-                        .background(Circle().fill(Color(nsColor: .textBackgroundColor)).padding(-2))
-                        .offset(x: 4, y: 4)
-                }
-            }
-            .accessibilityHidden(true)
+    /// The connected device's line: "Connected · Same network" (the path in the agreed terms), "Connecting · Public
+    /// connection service" while the direct path isn't open yet.
+    static func connected(_ p: RemoteServer.Path?) -> String {
+        guard let p else { return T("settings.remote.connected") }
+        if p == .meeting { return T("settings.remote.away.connecting", path(p)) }
+        return T("viewer.state.connected", path(p))
     }
 
-    private var title: String {
-        switch head {
-        case .nonePaired: T("phone.head.none")
-        case .notConnected: T("phone.head.not_connected")
-        case let .connected(name, _): T("phone.head.connected", PhoneStatus.name(name))
+    /// A path's name (copy.md's Connection paths). The owner's relay with the pointer and picture direct is "Direct".
+    static func path(_ p: RemoteServer.Path) -> String {
+        switch p {
+        case .local: T("settings.remote.path.local")
+        case .tailscale: T("settings.remote.path.tailscale")
+        case .overlay: T("settings.remote.path.overlay")
+        case .direct, .goBetween: T("settings.remote.path.direct")
+        case .relay: T("settings.remote.path.relay")
+        case .meeting: T("settings.remote.path.go_between")
         }
     }
 
-    private var detail: String {
-        switch head {
-        case .nonePaired: T("phone.head.none.detail")
-        case .notConnected: T("phone.head.not_connected.detail")
-        case let .connected(_, viaRelay): viaRelay ? T("phone.head.relay") : T("phone.head.local")
-        }
+    /// A paired device's mark, by what its hello said it is (RemoteServer.Device.kind): a computer, an iPad, a phone.
+    static func symbol(_ d: RemoteServer.Device) -> String {
+        if d.isComputer { return d.name.localizedCaseInsensitiveContains("MacBook") ? "laptopcomputer" : "desktopcomputer" }
+        return d.name.localizedCaseInsensitiveContains("iPad") ? "ipad" : "iphone"
     }
 }
 
@@ -272,18 +244,18 @@ struct PhonePairingCode: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
-            QRImage(link: link).frame(width: 168, height: 168)
+            QRImage(link: link).frame(width: 124, height: 124)
                 .accessibilityLabel(T("settings.remote.scan"))
-            VStack(alignment: .leading, spacing: 8) {
-                Text(T("settings.remote.scan")).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
-                Text(T("settings.remote.scan.detail")).font(.system(size: 12)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(T("phone.add.title")).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
+                Text(T("settings.remote.scan.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let f = failure {
-                    Text(f).font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                    Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
                     Button(T("settings.remote.cancel"), action: cancel)
-                        .buttonStyle(SettingsOutlinedButtonStyle())
+                        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                         .keyboardShortcut(.cancelAction)
                     // for another computer away from here (Add Computer takes it pasted): the same code, as text
                     if let link {
@@ -295,14 +267,25 @@ struct PhonePairingCode: View {
                             copied = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { copied = false }
                         }
-                        .buttonStyle(SettingsOutlinedButtonStyle())
+                        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, 6)
             }
-            .frame(maxWidth: 420, alignment: .leading)
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .phoneCard()
+    }
+}
+
+extension View {
+    /// The page's one quiet card (the code, a question): a soft fill and hairline edge, the same in both themes.
+    func phoneCard() -> some View {
+        let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+        return padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(Color.primary.opacity(0.035)))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
     }
 }
 
@@ -314,15 +297,30 @@ struct PhoneAsk: View {
     var answer: (Bool) -> Void
 
     var body: some View {
-        SettingsNotice(title: T("settings.remote.ask.title", PhoneStatus.name(who)), detail: T("settings.remote.ask.detail", check)) {
-            HStack(spacing: 8) {
-                Text(check).font(.system(size: 20, weight: .semibold, design: .monospaced)).padding(.trailing, 8)
-                    .accessibilityHidden(true)
-                Button(T("settings.remote.ask.no")) { answer(false) }
-                Button(T("settings.remote.ask.yes")) { answer(true) }
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "lock.shield").font(.system(size: 20)).foregroundStyle(Color.brandInk)
+                .frame(width: 28).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("settings.remote.ask.title", PhoneStatus.name(who))).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(T("settings.remote.ask.detail", PhoneStatus.name(who))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(SettingsOutlinedButtonStyle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(check)
+            // grouped in threes, as the other device shows them
+            Text(Self.grouped(check)).font(.system(size: 22, weight: .semibold, design: .monospaced))
+                .padding(.trailing, 14).accessibilityHidden(true)
+            Button(T("settings.remote.ask.no")) { answer(false) }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+            Button(T("settings.remote.ask.yes")) { answer(true) }.buttonStyle(SettingsPrimaryButtonStyle())
         }
+        .phoneCard()
+    }
+
+    static func grouped(_ c: String) -> String {
+        guard c.count == 6 else { return c }
+        return "\(c.prefix(3)) \(c.suffix(3))"
     }
 }
 
@@ -370,11 +368,14 @@ struct QRImage: View {
 /// rows with hairlines between them — never under the heading.
 struct PhoneSection<Content: View, Accessory: View>: View {
     var title: String
+    /// the page's first section, straight under the title: no gap of its own
+    var first = false
     var content: Content
     var accessory: Accessory
 
-    init(_ title: String, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+    init(_ title: String, first: Bool = false, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.title = title
+        self.first = first
         self.content = content()
         self.accessory = accessory()
     }
@@ -395,12 +396,40 @@ struct PhoneSection<Content: View, Accessory: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
         }
-        .padding(.top, SettingsMetrics.groupGap)
+        .padding(.top, first ? 0 : SettingsMetrics.groupGap)
     }
 }
 
 extension PhoneSection where Accessory == EmptyView {
-    init(_ title: String, @ViewBuilder content: () -> Content) { self.init(title, content: content) { EmptyView() } }
+    init(_ title: String, first: Bool = false, @ViewBuilder content: () -> Content) {
+        self.init(title, first: first, content: content) { EmptyView() }
+    }
+}
+
+/// A list's last line: its Add…, a "+" in the marks' slot and the words in brand ink on the text column (Login Items'
+/// "+", in words) — part of the list, not a button floating under it.
+struct PhoneAddLine: View {
+    var title: String
+    var help: String?
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        PhoneLine {
+            Button(action: action) {
+                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    Image(systemName: "plus").font(.system(size: 12, weight: .semibold)).frame(width: SettingsMetrics.iconSlot)
+                    Text(title).font(.system(size: SettingsMetrics.titleSize))
+                }
+                .foregroundStyle(Color.brandInk)
+                .opacity(hovering ? 0.8 : 1)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help(help ?? "")
+        }
+    }
 }
 
 /// One line of a section: the hairline above it and the row's padding (Settings' SettingsLine, on this page's edge).
@@ -427,6 +456,8 @@ struct PhoneRow<Control: View>: View {
     var detail: String?
     /// the secondary line is a state of its own ("Connected"): its disc before the words
     var detailTone: Tone?
+    /// a list's empty state: said quietly, so it doesn't read as a device of that name
+    var quiet = false
     @ViewBuilder var control: Control
 
     var body: some View {
@@ -436,12 +467,13 @@ struct PhoneRow<Control: View>: View {
                     Group {
                         if let t = tone { StatusDot(tone: t, diameter: 14) }
                         else if let s = symbol {
-                            Image(systemName: s).font(.system(size: 13)).foregroundStyle(.secondary).accessibilityHidden(true)
+                            Image(systemName: s).font(.system(size: 14)).foregroundStyle(.secondary).accessibilityHidden(true)
                         }
                     }
-                    .frame(width: SettingsMetrics.iconSlot)
+                    .frame(width: SettingsMetrics.iconSlot, height: 18)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(quiet ? .secondary : .primary)
                         if let d = detail, !d.isEmpty {
                             HStack(alignment: .center, spacing: 5) {
                                 if let t = detailTone { StatusDot(tone: t) }
@@ -454,7 +486,7 @@ struct PhoneRow<Control: View>: View {
                     .accessibilityValue(spoken)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                control.buttonStyle(SettingsOutlinedButtonStyle())
+                control.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
             }
         }
     }

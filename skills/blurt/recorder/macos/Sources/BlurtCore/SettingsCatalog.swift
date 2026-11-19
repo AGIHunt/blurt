@@ -245,9 +245,8 @@ public enum SettingsCatalog {
         sec("screentext.translation", "settings.screen_text.section.translate"),
         sec("screentext.history_section", "settings.screen_text.section.history"),
 
-        // iPhone: the phones, and what the Mac shows while one drives it
-        sec("remote.phones", "settings.remote.section.phones"),
-        sec("remote.computers", "settings.remote.section.computers"),
+        // 手机和电脑: what the Mac shows while a device drives it, and Away from home. The devices themselves are on the
+        // main window's page of the same name (docs/design/remote-desktop-viewer.md §One page for the devices).
         sec("remote.options", "settings.remote.section.options"),
         sec("remote.relay", "settings.remote.section.relay"),
 
@@ -394,9 +393,7 @@ public enum SettingsCatalog {
                 detail: S("settings.screen_text.history.detail")),
             row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep", fold: "screentext.history"),
 
-            // iPhone
-            row("remote.add", "remote.phones", "settings.remote.app", detail: S("settings.remote.add.detail")),
-            row("remote.computers.add", "remote.computers", "settings.remote.computers.add", detail: S("settings.remote.computers.add.detail")),
+            // 手机和电脑
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
             row("remote.away", "remote.relay", "settings.remote.away"),
