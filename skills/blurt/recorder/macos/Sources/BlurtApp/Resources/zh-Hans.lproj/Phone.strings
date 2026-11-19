@@ -113,6 +113,8 @@
 "viewer.take_over" = "接管";
 "viewer.screen_off" = "%@ 未开启屏幕显示。请在它的设置中打开。";
 "viewer.screen_permission" = "%@ 需要屏幕录制权限。";
+"viewer.screen_failed" = "无法显示 %@ 的屏幕。指针和按键仍可使用。";
+"viewer.one_display" = "%@ 一次只能显示一块屏幕。";
 "viewer.no_control" = "%@ 需要辅助功能权限才能被控制。";
 "viewer.path_rtt" = "%@ · %ld 毫秒";
 "viewer.display" = "屏幕 %ld / %ld";

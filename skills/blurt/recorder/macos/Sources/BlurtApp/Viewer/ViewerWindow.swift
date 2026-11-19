@@ -162,8 +162,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case let .screenFailed(why):
             screenOn = false
             let name = link.computer.name
-            showOverlay(why == "off" ? T("viewer.screen_off", name) : why == "permission" ? T("viewer.screen_permission", name) : T("viewer.unreachable", name),
-                        button: nil)
+            // the host's own sentence is for phones (English only): the viewer says it in its own words
+            let key = ["off": "viewer.screen_off", "permission": "viewer.screen_permission", "one_display": "viewer.one_display"][why]
+            // Try Again asks for the screen once more: a permission given, or the host's Remote Desktop dialog answered since
+            showOverlay(T(key ?? "viewer.screen_failed", name), button: why == "off" ? nil : (T("viewer.retry"), #selector(retryScreen)))
         case let .canControl(ok):
             if !ok { picture.showHint(T("viewer.no_control", link.computer.name), seconds: 6) }
         case let .session(i):
@@ -258,6 +260,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         link.tryAgain()
     }
     @objc private func takeOver() { link.takeBack() }
+    @objc private func retryScreen() {
+        guard link.state == .connected else { return retry() }
+        hideOverlay()
+        startPicture()
+    }
 
     // MARK: the picture
 

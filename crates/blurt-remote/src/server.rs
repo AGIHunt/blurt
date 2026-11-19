@@ -1980,7 +1980,14 @@ impl Core {
             None if s.devices.iter().any(|d| d.id == id) => self.keys.get(&format!("remote-{id}")),
             None => None,
         };
-        let Some(key) = key else { return };
+        let Some(key) = key else {
+            // a paired device whose key can't be read: nothing waits for it, and it can't connect from away (a spent code is
+            // simply done)
+            if s.devices.iter().any(|d| d.id == id) {
+                self.log(json!({"event": "remote_relay", "state": "no_key"}));
+            }
+            return;
+        };
         let Some(udp) = self.udp.lock().unwrap().clone() else { return };
         let sid = self.next_sid.fetch_add(1, SeqCst);
         let stop = Arc::new(tokio::sync::Notify::new());
@@ -2289,11 +2296,36 @@ fn advertise(name: &str, id: &str, port: u16) -> Option<(mdns_sd::ServiceDaemon,
 
 /// The computer's name as people see it.
 pub fn computer_name() -> String {
-    let h = gethostname::gethostname().to_string_lossy().to_string();
-    let h = h.strip_suffix(".local").unwrap_or(&h).to_string();
-    if h.is_empty() {
-        "Computer".into()
-    } else {
-        h
+    // Linux: the name set in Settings → About (hostnamectl's pretty name) first
+    #[cfg(target_os = "linux")]
+    if let Some(n) = std::fs::read_to_string("/etc/machine-info").ok().and_then(|t| pretty_hostname(&t)) {
+        return n;
+    }
+    short_host(&gethostname::gethostname().to_string_lossy())
+}
+
+/// The host name without its domain: a cloud machine's `vm.zone.c.project.internal` or a LAN's `pc.local` reads as `vm`, `pc`.
+fn short_host(h: &str) -> String {
+    let h = h.split('.').next().unwrap_or("").trim();
+    if h.is_empty() { "Computer".into() } else { h.into() }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn pretty_hostname(machine_info: &str) -> Option<String> {
+    let v = machine_info.lines().find_map(|l| l.strip_prefix("PRETTY_HOSTNAME="))?.trim();
+    let v = v.trim_matches(|c| c == '"' || c == '\'').trim();
+    (!v.is_empty()).then(|| v.to_string())
+}
+
+#[cfg(test)]
+mod name_tests {
+    #[test]
+    fn a_computers_name_drops_its_domain() {
+        assert_eq!(super::short_host("blurt-linux2.asia-southeast1-b.c.ordo-platform.internal"), "blurt-linux2");
+        assert_eq!(super::short_host("Studio.local"), "Studio");
+        assert_eq!(super::short_host("DESKTOP-4F2K"), "DESKTOP-4F2K");
+        assert_eq!(super::short_host(""), "Computer");
+        assert_eq!(super::pretty_hostname("PRETTY_HOSTNAME=\"Ana's ThinkPad\"\nICON_NAME=computer"), Some("Ana's ThinkPad".into()));
+        assert_eq!(super::pretty_hostname("ICON_NAME=computer"), None);
     }
 }

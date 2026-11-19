@@ -49,6 +49,8 @@ type Message =
 
 const HINT_MS = 3000;
 const QUALITIES: Quality[] = ['auto', 'sharp', 'balanced', 'saver'];
+/** screenFailed's codes that have their own line; any other reason gets the general one */
+const SCREEN_FAILED: Record<string, string> = { off: 'viewer.screen_off', permission: 'viewer.screen_permission', one_display: 'viewer.one_display' };
 
 /** The window's channel: Tauri's in the app; in a browser, a stand-in the mock talks into (mock.ts). */
 function channel(on: (m: Message | ArrayBuffer) => void): unknown {
@@ -77,6 +79,8 @@ export function ViewerWindow({ id }: { id: string }) {
   const [quality, setQuality] = useState<Quality>(() => (localStorage.getItem('blurt.viewer.quality') as Quality) || 'auto');
   const [options, setOptions] = useState({ mapped: true, clipboard: true });
   const [failed, setFailed] = useState<string | null>(null);
+  // asked for the screen again (Try Again after a failure, e.g. once the host's Remote Desktop dialog is answered)
+  const [screenTry, setScreenTry] = useState(0);
   const [canControl, setCanControl] = useState(true);
   const [noDecoder, setNoDecoder] = useState(false);
   const [codecs, setCodecs] = useState<string[] | null>(null);
@@ -204,7 +208,7 @@ export function ViewerWindow({ id }: { id: string }) {
       ro.disconnect();
       if (timer) clearTimeout(timer);
     };
-  }, [codecs, quality, link]);
+  }, [codecs, quality, link, screenTry]);
 
   const capture = useCallback((on: boolean) => {
     setCaptured(on);
@@ -408,6 +412,9 @@ export function ViewerWindow({ id }: { id: string }) {
             <div className="vw-cover-title">{cover.title}</div>
             {cover.detail && <div className="vw-cover-detail">{cover.detail}</div>}
             {cover.kind === 'replaced' && <button className="primary" onClick={attach}>{t('computers.connect')}</button>}
+            {cover.kind === 'screenFailed' && failed !== 'off' && (
+              <button onClick={() => { setFailed(null); setScreenTry((n) => n + 1); }}>{t('viewer.retry')}</button>
+            )}
           </div>
         )}
       </div>
@@ -441,7 +448,8 @@ export function coverFor(link: Link, name: string, failed: string | null, noDeco
       return { kind: 'replaced', title: t('viewer.replaced', { 1: n }), warn: false };
   }
   if (noDecoder) return { kind: 'noDecoder', title: t('viewer.no_decoder'), warn: true };
-  if (failed) return { kind: 'screenFailed', title: failed === 'off' ? t('viewer.screen_off', { 1: n }) : failed, warn: true };
+  // the host's own sentence is for phones (English only): the viewer says it in its own words
+  if (failed) return { kind: 'screenFailed', title: t(SCREEN_FAILED[failed] ?? 'viewer.screen_failed', { 1: n }), warn: true };
   if (!canControl) return { kind: 'noControl', title: t('viewer.no_control', { 1: n }), warn: true };
   return null;
 }

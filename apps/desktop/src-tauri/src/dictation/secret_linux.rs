@@ -95,7 +95,8 @@ fn file(id: &str) -> std::path::PathBuf {
 pub fn key(id: &str) -> Option<String> {
     match super::insert_linux::block(Duration::from_secs(5), get(id.to_string())) {
         Some(Ok(Some(k))) => Some(k),
-        Some(Ok(None)) => None,
+        // not in the Secret Service: perhaps it had no default keyring when the key was stored (an auto-login session), and
+        // the key went in the file
         _ => std::fs::read_to_string(file(id)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
     }
 }

@@ -113,6 +113,8 @@
 "viewer.take_over" = "Take Over";
 "viewer.screen_off" = "%@ doesn’t show its screen. Turn it on in its Settings.";
 "viewer.screen_permission" = "%@ needs Screen Recording permission.";
+"viewer.screen_failed" = "Can’t show %@’s screen. The pointer and keys still work.";
+"viewer.one_display" = "%@ shows one display at a time.";
 "viewer.no_control" = "%@ needs Accessibility permission before it can be controlled.";
 "viewer.path_rtt" = "%@ · %ld ms";
 "viewer.display" = "Display %ld / %ld";
