@@ -106,6 +106,22 @@ final class BigLayoutTests: XCTestCase {
         }
     }
 
+    func testTheTurnButtonSitsInTheStageCorner() {
+        for room in Rooms.all {
+            for (name, l) in layouts(room) {
+                let b = l.turnButton
+                XCTAssertEqual(b.width, 44, accuracy: 0.01, name)
+                XCTAssertEqual(b.height, 44, accuracy: 0.01, name)
+                XCTAssertEqual(l.pad.maxX - b.maxX, 8, accuracy: 0.01, name)
+                XCTAssertEqual(b.minY - l.pad.minY, 8, accuracy: 0.01, name)
+                XCTAssertTrue(l.pad.contains(b), name)
+                for o in room.surround.occlusions {
+                    XCTAssertFalse(b.intersects(o), "\(name): turn button under the camera")
+                }
+            }
+        }
+    }
+
     func testKeysStayKeySizedAndKeyShaped() {
         for room in Rooms.all {
             for (name, l) in layouts(room) {

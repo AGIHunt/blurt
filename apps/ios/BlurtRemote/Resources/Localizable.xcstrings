@@ -3208,6 +3208,26 @@
         }
       }
     },
+    "Turn to Landscape" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到横屏"
+          }
+        }
+      }
+    },
+    "Turn to Portrait" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到竖屏"
+          }
+        }
+      }
+    },
     "Waiting for your computer" : {
       "localizations" : {
         "zh-Hans" : {
