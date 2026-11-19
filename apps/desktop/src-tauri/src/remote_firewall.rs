@@ -1,6 +1,6 @@
 //! Windows Defender Firewall and Blurt on the phone (docs/design/remote-windows.md §Firewall). On a network Windows files as Public,
-//! or after a cancelled prompt, the firewall drops the phone's connections without a word: Settings → Phone has to say so, and offer
-//! the fix. Part of remote.rs (Settings → Phone's `firewall` and `remote_allow_firewall`).
+//! or after a cancelled prompt, the firewall drops the phone's connections without a word: Settings → Remote Control has to say so, and offer
+//! the fix. Part of remote.rs (Settings → Remote Control's `firewall` and `remote_allow_firewall`).
 //!
 //!  • the check reads the firewall through INetFwPolicy2 (COM, no administrator): which profiles are active, whether the firewall is
 //!    on in them, and the inbound rules for this exe. Blocked: any active profile with the firewall on that blocks this exe's TCP or

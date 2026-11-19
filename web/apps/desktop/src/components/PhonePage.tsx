@@ -1,8 +1,8 @@
-// Phones and Computers (the sidebar's page; docs/design/remote-desktop-viewer.md §One place for devices): every device in
+// Remote Control (the sidebar's page; docs/design/remote-desktop-viewer.md §One place for devices): every device in
 // three groups. Devices That Can Control This Computer: each paired phone and computer, its icon by kind, its state, Remove,
 // and Add Device… (the code to scan, its digits, Copy Link for a computer). Computers You Can Control: the computers this one
 // drives (ComputersGroup.tsx) and Add Computer…. This Computer: only what stands in a device's way (all well is one line,
-// never a wall of checks). Then what to try when a phone won't connect. Settings → Phones and Computers keeps the options and
+// never a wall of checks). Then what to try when a phone won't connect. Settings → Remote Control keeps the options and
 // away from home.
 import { useEffect, useRef, useState } from 'react';
 import { api, type AppStatus, type RemoteStatus } from '../api';

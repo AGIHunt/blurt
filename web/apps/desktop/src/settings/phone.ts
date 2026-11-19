@@ -1,4 +1,4 @@
-// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (the Phones and Computers page,
+// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (the Remote Control page,
 // its Settings pane, and the question that shows wherever the window is), the relay address as the Mac reads it (RemoteRelay.address), and the
 // pairing code's time left.
 import { useEffect, useState } from 'react';

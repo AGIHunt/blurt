@@ -1606,7 +1606,7 @@
   display: inline;
 }
 
-/* ------------------------------------------------------------ Settings → Phone (PhonePane.tsx) */
+/* ------------------------------------------------------------ Settings → Remote Control (PhonePane.tsx) */
 /* the notice: its title in the row's ink, what to do under it */
 .st-phone-notice {
   align-items: flex-start;
@@ -1818,14 +1818,6 @@
   text-align: center;
   text-wrap: balance;
   color: var(--ink-2);
-}
-/* the row that goes to the Phones and Computers page: how many there are, then the chevron */
-.st-phone-count {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--mute);
-  font-variant-numeric: tabular-nums;
 }
 .phone-ask-line {
   display: block;

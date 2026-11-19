@@ -1,6 +1,6 @@
 //! Blurt on the phone, with this computer as its host (docs/design/remote.md, remote-protocol.md §The desktop app; the Mac's
 //! RemoteServer.swift + RemotePane.swift). The session server is `crates/blurt-remote`; this file is what the desktop app gives it
-//! and what Settings → Phone calls:
+//! and what Settings → Remote Control calls:
 //!
 //!  • the commands and the `remote://status` event (`RemoteStatus`, the QR code drawn here as an SVG);
 //!  • the phone's keys and the paired list in `$BLURT_HOME/remote`, each phone's key in the OS's store (Credential Manager,
@@ -180,7 +180,7 @@ pub fn stop() {
     }
 }
 
-// ------------------------------------------------------------------ Settings → Phone
+// ------------------------------------------------------------------ Settings → Remote Control
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -368,7 +368,7 @@ pub fn remote_status() -> RemoteStatus {
     now_status()
 }
 
-/// Settings → Phone shows the code (on: listen, advertise, a code good for 2 minutes and one phone), or closed. A question
+/// Settings → Remote Control shows the code (on: listen, advertise, a code good for 2 minutes and one phone), or closed. A question
 /// already asked stays: the app-wide dialog keeps showing it.
 #[tauri::command]
 pub fn remote_show_pairing(on: bool) -> RemoteStatus {
@@ -479,7 +479,7 @@ If I'm in mainland China, prefer a server there: the round trip is far shorter. 
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.";
+When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.";
 
 // ------------------------------------------------------------------ what the host asks of the app
 

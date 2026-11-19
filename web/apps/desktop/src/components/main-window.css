@@ -2433,7 +2433,7 @@ body.mw-resizing * {
   box-shadow: var(--shadow-pop);
 }
 
-/* a paired device can't do anything here: the Phones and Computers row's mark, in the attention colour (capabilities.md),
+/* a paired device can't do anything here: the Remote Control row's mark, in the attention colour (capabilities.md),
    a dot on the row's icon so the name keeps its full width */
 .mw-side-ic.alert {
   position: relative;

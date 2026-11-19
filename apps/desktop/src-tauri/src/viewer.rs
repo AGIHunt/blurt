@@ -1,5 +1,5 @@
-//! One computer driving another, this computer's side (docs/design/remote-desktop-viewer.md): the list of computers (Settings →
-//! Phones and Computers, the tray's Computers), pairing with one (found nearby, or a pasted link), and a window per computer.
+//! One computer driving another, this computer's side (docs/design/remote-desktop-viewer.md): the list of computers (the
+//! Remote Control page, the tray's Computers), pairing with one (found nearby, or a pasted link), and a window per computer.
 //! The protocol, pairing and sessions are crates/blurt-remote's (viewer.rs, keys.rs); this file is the app around them.
 //!
 //!  • `computers://status` carries `ComputersStatus` whenever it changes; the commands below change it.

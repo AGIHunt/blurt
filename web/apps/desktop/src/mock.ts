@@ -332,7 +332,7 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
   dEntry('d-7', 30, 'Notion', L('three things for the launch one the press kit two the demo video three the faq', '发布要准备三件事 一是新闻稿 二是演示视频 三是常见问题'), L('Three things for the launch:\n1. The press kit\n2. The demo video\n3. The FAQ', '发布要准备三件事：\n1. 新闻稿\n2. 演示视频\n3. 常见问题'), { style: 'structured' }),
 ];
 
-// Settings → Phone (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
+// Settings → Remote Control (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
 // out sooner); a few seconds later a phone uses it over the relay and asks with six digits (?phone_scan=0: nobody
 // scans); Allow pairs it and it connects over the relay, then finds a direct path. ?phone= paired | asking | nocontrol |
 // problem | fromphone | relayfail | firewall starts there instead of with no phone (firewall: Windows Firewall keeps phones
@@ -516,7 +516,7 @@ If I'm in mainland China, prefer a server there: the round trip is far shorter. 
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-When it's up, run \`node test.mjs <address>\` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.`;
+When it's up, run \`node test.mjs <address>\` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.`;
 
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   if (cmd.startsWith('remote_')) return (await mockRemote(cmd, args)) as T;

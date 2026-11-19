@@ -1,4 +1,4 @@
-/* Phones and Computers → Computers You Can Control (ComputersGroup.tsx, on the page's boxes): Add Computer…'s panel and the
+/* Remote Control → Computers You Can Control (ComputersGroup.tsx, on the page's boxes): Add Computer…'s panel and the
    pairing in progress. The nearby computers are the list's own rows (DeviceRows.tsx); the captions, the link field, its words
    and Cancel sit in the names' column, every button on the rows' button edge (⋯'s place beyond it). */
 .st-computers-panel {

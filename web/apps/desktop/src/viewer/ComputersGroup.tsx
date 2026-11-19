@@ -1,4 +1,4 @@
-// Phones and Computers → Computers You Can Control (docs/design/remote-desktop-viewer.md §The list of computers; the page,
+// Remote Control → Computers You Can Control (docs/design/remote-desktop-viewer.md §The list of computers; the page,
 // PhonePage.tsx): the computers this one shows and drives. Each row: the name, its system, its state (Connected · <path>,
 // Available · <path>, Can't Connect Directly, Offline · <when last seen>), its button (Open Window or Connect) and ⋯ with
 // Remove. Add Computer… lists the Blurt computers found on this network (choosing one starts pairing) and takes a pasted

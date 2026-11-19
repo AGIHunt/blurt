@@ -653,7 +653,7 @@ export const api = {
   agentSetupState: () => invoke<AgentSetupState>('agent_setup_state'),
   agentSetupStop: () => invoke<AgentSetupState>('agent_setup_stop'),
   agentSetupDismiss: () => invoke<AgentSetupState>('agent_setup_dismiss'),
-  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Phone.
+  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Remote Control.
   // Every change also comes as 'remote://status' (onRemoteStatus).
   remoteStatus: () => invoke<RemoteStatus>('remote_status'),
   /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
@@ -702,7 +702,7 @@ export interface CardInfo {
   taken?: number | null;
 }
 
-/** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
+/** What Settings → Remote Control shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
 export interface RemoteStatus {
   listening: boolean;
   /** the code on screen; qrSvg is a complete <svg> the host draws */

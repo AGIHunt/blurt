@@ -520,7 +520,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- Phones and Computers (PhonePage.tsx, ComputersGroup.tsx,
+/* ---------------------------------------------------------------- Remote Control (PhonePage.tsx, ComputersGroup.tsx,
    DeviceRows.tsx): both lists on one row grammar — icon · name over state · at most one small button · ⋯ on the box's inset */
 .pg-line.ph-row {
   min-height: 56px;

@@ -1314,7 +1314,7 @@ pub fn run() {
             control::agent_setup_stop,
             control::agent_setup_dismiss,
             control::agent_setup_answer,
-            // Blurt on the phone: Settings → Phone (docs/design/remote-protocol.md §The desktop app)
+            // Blurt on the phone: Settings → Remote Control (docs/design/remote-protocol.md §The desktop app)
             remote::remote_status,
             remote::remote_show_pairing,
             remote::remote_pairing_link_copied,

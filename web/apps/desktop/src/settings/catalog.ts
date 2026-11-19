@@ -74,7 +74,7 @@ export const MOVED_ROW: Record<string, string> = {
   'general.cards': 'cards.snaps', 'general.voice': 'cards.voice',
   'general.after_recording': 'recording.after_recording', 'general.countdown': 'recording.countdown',
   'general.system_audio': 'recording.system_audio', 'general.recording': 'recording.capture',
-  // the device lists moved to the Phones and Computers page; their old rows land on the row that goes there
+  // the device lists moved to the Remote Control page; their old rows land on the row that goes there
   'phone.add': 'phone.devices', 'phone.computers.add': 'phone.devices',
 };
 /** "general/general.collect" (or "general/collect") → "cards/cards.collect"; a moved pane → its new place; else as it is. */
@@ -230,8 +230,8 @@ export const ENTRIES: Entry[] = (() => {
   e.push(
     row('shortcuts.restore', null, 'capture.keys.restore'),
     // Phone
-    // the devices are on the Phones and Computers page: this row goes there
-    row('phone.devices', null, 'phone.devices'),
+    // the devices are on the Remote Control page: this row goes there
+    row('phone.devices', null, 'phone.devices.show'),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
     row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),

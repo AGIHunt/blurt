@@ -62,7 +62,7 @@ function channel(on: (m: Message | ArrayBuffer) => void): unknown {
   return { onmessage: on };
 }
 
-/** The route's word in the toolbar: the agreed terms (copy.md), the same as Settings → Phones and Computers. */
+/** The route's word in the toolbar: the agreed terms (copy.md), the same as Settings → Remote Control. */
 const routeWord = (r: RemoteRoute) => t(`phone.route.${r}`);
 
 export function ViewerWindow({ id }: { id: string }) {

@@ -777,7 +777,7 @@ fn plan(app: &AppHandle) -> Vec<Node> {
                 None => l10n::t("tray.phone.not_connected"),
             };
             rows.push(item("phone", text, None));
-            // the computers this one drives (viewer.rs): their list, in Settings → Phones and Computers
+            // the computers this one drives (viewer.rs): their list, in Settings → Remote Control
             rows.push(item("computers", l10n::t("tray.computers"), None));
         }
         if recording {

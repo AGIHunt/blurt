@@ -1,4 +1,4 @@
-// Settings → Phone: the relay address as the Mac reads it, the code's countdown, the pane's words in both languages,
+// Settings → Remote Control: the relay address as the Mac reads it, the code's countdown, the pane's words in both languages,
 // search, and the browser stand-in's pairing (code → a phone asks with six digits → Allow → connected).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import EN from '../locales/en.json';
@@ -100,8 +100,10 @@ describe('Phone strings', () => {
 describe('Phone in search', () => {
   const ids = (q: string, l: 'en' | 'zh-Hans' = 'en') => results(q, l).flatMap((g) => g.hits.map((h) => h.entry.id));
   it('finds the pane by name, the rows by their words', () => {
-    expect(results('phone', 'en')[0]).toMatchObject({ pane: 'phone', paneHit: true });
-    expect(results('手机', 'zh-Hans')[0]).toMatchObject({ pane: 'phone', paneHit: true });
+    expect(results('remote control', 'en')[0]).toMatchObject({ pane: 'phone', paneHit: true });
+    expect(results('phone', 'en')[0]).toMatchObject({ pane: 'phone' });
+    expect(results('远程控制', 'zh-Hans')[0]).toMatchObject({ pane: 'phone', paneHit: true });
+    expect(results('手机', 'zh-Hans')[0]).toMatchObject({ pane: 'phone' });
     expect(ids('relay')).toContain('phone.relay.address');
     expect(ids('中转', 'zh-Hans')).toContain('phone.relay.address');
     expect(ids('QR')).toContain('phone.devices');

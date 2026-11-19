@@ -149,7 +149,7 @@ export function Sidebar({
       data-testid={opts.testId}
       {...(opts.dropTo ? drop(opts.dropTo) : {})}
     >
-      {/* the attention mark sits on the icon, so a long name (Phones and Computers) keeps its room */}
+      {/* the attention mark sits on the icon, so a long name (Remote Control) keeps its room */}
       <span className={`mw-side-ic ${opts.alert ? 'alert' : ''}`}>{icon}{opts.alert && <i className="mw-side-alert" aria-hidden="true" />}</span>
       <span className="mw-side-name">{label}</span>
       {!opts.alert && <Count n={n} mint={opts.mint} />}

@@ -1,6 +1,6 @@
-// Settings → Phones and Computers (the Mac's Settings/RemotePane.swift): the options only. On This Computer (whether a phone
+// Settings → Remote Control (the Mac's Settings/RemotePane.swift): the options only. On This Computer (whether a phone
 // may show this screen) and Away from home (an own relay, the public connection service, Set Up a Relay). The devices
-// themselves, paired and to pair, are on the Phones and Computers page (PhonePage.tsx); its first row here goes there.
+// themselves, paired and to pair, are on the Remote Control page (PhonePage.tsx); its first row here goes there.
 // A new device always needs a yes, with the same six digits it shows; the question shows over the whole window wherever it
 // is (PhoneAsk), and Allow is never the default (Return and Esc say no, and a click in the first moment after the question
 // appears answers nothing). The host: src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app.
@@ -8,8 +8,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { api, type AppStatus, type RemoteStatus } from '../api';
 import type { Place } from '../places';
-import { i18n } from '../i18n';
-import { useComputers } from '../viewer/computers';
 import { StatusDot } from '../components/StatusDot';
 import { Group, Page, Row, S, Switch, TextLink, Toggle } from './kit';
 import { APP_PAGES, apply, awayLine, groupDigits, relayAddress, timeLeft, useNow, useRemoteStatus } from './phone';
@@ -19,25 +17,15 @@ type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
 
 export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => void }) {
   const r = useRemoteStatus();
-  const c = useComputers();
   if (!r) return <Page id="phone"><p className="st-lead">{S('settings.loading')}</p></Page>;
   return (
-    <Page id="phone">
-      {/* the devices are on their page: this row goes there, the whole row its button, with how many there are (search's
-          QR, pair, add land here) */}
-      <Group id="phone.page">
-        <div className="st-row st-disclose" data-setting="phone.devices" role="button" tabIndex={0} data-testid="phone-devices"
-          onClick={() => onGo?.('phone')} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onGo?.('phone'))}>
-          <div className="st-text">
-            <div className="st-row-title"><span>{S('phone.devices')}</span></div>
-          </div>
-          <div className="st-ctl st-phone-count">
-            <span>{i18n().formatNumber(r.devices.length + (c?.computers.length ?? 0))}</span>
-            <Icon name="chevron-right" size={14} />
-          </div>
-        </div>
-      </Group>
-
+    <Page id="phone" lead={
+      // the devices are on their page: the lead says so and goes there (search's QR, pair, add, computer land here)
+      <span data-setting="phone.devices">
+        {S('phone.devices.lead', S('feature.phone'))}{' '}
+        {onGo && <TextLink ink onClick={() => onGo('phone')}>{S('phone.devices.show')}</TextLink>}
+      </span>
+    }>
       <Group id="phone.options">
         <Toggle id="phone.screen" on={r.screenAllowed} set={(v) => void apply(api.remoteSetScreenAllowed(v)).catch(() => {})} />
       </Group>
@@ -269,7 +257,7 @@ export function PhoneAsk() {
         </div>
         <div className="phone-ask-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</div>
         {/* two sentences, one to a line: what to check, then where it is */}
-        <p><span className="phone-ask-line">{S('phone.ask.detail')}</span> <span className="phone-ask-line">{S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</span></p>
+        <p><span className="phone-ask-line">{S('phone.ask.detail', ask.device)}</span> <span className="phone-ask-line">{S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</span></p>
         <div className="dict-confirm-foot">
           <button autoFocus className="dict-confirm-cancel" onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
           <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-ask-allow">{S('phone.ask.yes')}</button>

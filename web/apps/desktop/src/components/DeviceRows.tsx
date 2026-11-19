@@ -1,4 +1,4 @@
-// The parts both lists on the Phones and Computers page are made of (PhonePage.tsx, viewer/ComputersGroup.tsx), so the two
+// The parts both lists on the Remote Control page are made of (PhonePage.tsx, viewer/ComputersGroup.tsx), so the two
 // read as one: a state line led by its status mark, a row's ⋯ (Remove, in red), the "+ Add …" line that ends a box, and the
 // line a box shows while it is empty. Row: icon · name over state · at most one button · ⋯ (quiet at rest, its
 // place kept), every ⋯ on one right edge.
