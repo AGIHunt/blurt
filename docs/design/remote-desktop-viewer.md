@@ -338,23 +338,35 @@ Before, the same feature sat in three places under three names: Home's row (手�
 devices were listed twice, the computers this one drives were only in Settings, and a computer that drives this one showed under a
 phones heading with a phone icon. The founder approved one structure; branch `claude/devices-page-desktop`.
 
-- **One name:** 手机和电脑 / Phones and Computers for Home's row, the sidebar item, the page title and the Settings pane (`feature.phone`,
-  `phone.pane.title`). The sidebar, Home and the pane use a devices icon (`assets/icons/devices.svg`: a screen with a phone in front).
-- **The page** (`web/apps/desktop/src/components/PhonePage.tsx`) holds the devices, in three boxes:
-  - 能控制本机的设备 / Devices That Can Control This Computer: every paired phone and computer, its icon by kind (phone or screen), its
-    state (已连接 · <path>, 上次使用：…, 未连接) and 移除 / Remove. The last line: 还没有 App？ with the two build pages, and 添加设备… /
-    Add Device… (the QR code, its time left, 拷贝链接 / Copy Link for a computer: 4 s of 已拷贝，10 分钟内有效, and the host keeps that
-    link for 10 minutes, `remotePairingLinkCopied`). None paired: 还没有配对的设备 first, Add Device… in the accent.
-  - 本机可控制的电脑 / Computers You Can Control: `viewer/ComputersGroup.tsx`, moved here from Settings and drawn as the page's box. Each
-    row: system · state (已连接 · 可连接 · 无法直连 · 离线), one button (打开窗口 / Open Window when connected, otherwise 连接 / Connect) and
-    ⋯ with 移除 / Remove. The last line: 添加电脑… / Add Computer… (nearby list, pairing link field, the digits while pairing).
-  - 本机 / This Computer: what stands in a device's way (firewall Allow…, Wayland's Remote Desktop, the port, the relay), else one line.
+- **One name, one string:** 远程控制 / Remote Control (the founder's rename of 手机和电脑, 2026-11-20) is `feature.phone` alone: Home's
+  row, the sidebar item, ⌘K, the page title, the Settings pane title (the catalog's pane title is `feature.phone`; `phone.pane.title`
+  is gone) and the sentences that name the page (`welcome.use.phone.detail`, `phone.devices.lead` take it as a parameter). Renaming
+  again is that one string per language. The sidebar, Home and the pane use a devices icon (`assets/icons/devices.svg`: a screen with
+  a phone in front). The relay instructions (remote.rs), the mock's copy and apps/android/README.md say Settings → Remote Control.
+- **The page** (`web/apps/desktop/src/components/PhonePage.tsx`) holds the devices, in three boxes on one row grammar
+  (`components/DeviceRows.tsx`): glyph · name over its state line · at most one small button · ⋯ (quiet at rest) on one right edge.
+  - 能控制本机的设备 / Devices That Can Control This Computer: every paired phone and computer, glyph by kind (phone or screen), state
+    first (已连接 · <path> · 正在显示屏幕, or 未连接 · 上次使用：…), 移除 / Remove (red) in ⋯. The last line "+ 添加设备…": the QR code
+    with its time left ticking each second, one line of how, 还没有 App？ with the two build pages, 拷贝链接 / Copy Link (4 s of
+    已拷贝，10 分钟内有效; `remotePairingLinkCopied` keeps that link 10 minutes) and 取消. None paired: 还没有配对的设备 with 添加设备… as the
+    page's one primary.
+  - 本机可控制的电脑 / Computers You Can Control: `viewer/ComputersGroup.tsx`, moved here from Settings. State first (已连接 · 同一网络 ·
+    macOS; 可连接 · <path>; 无法直连, the agreed line as its tooltip; 离线 · <when>), 打开窗口 or 连接; an offline computer has no button,
+    its 连接 is in ⋯ above 移除. "+ 添加电脑…": the computers found nearby as the list's own rows (可连接 · 同一网络, 配对), then the
+    pairing link field (its 配对 once something is typed; Return pairs) with 取消 beside it; the digits while pairing.
+  - 本机 / This Computer: what stands in a device's way (firewall Allow…, Wayland's Remote Desktop, the port, the relay) — then first on
+    the page, on the attention wash — else one line at the end (手机和电脑可以控制本机 · 指针和按键 · 屏幕画面 · …).
   - Then 连不上时 when it applies. The header's 设置… / Settings… opens the pane.
-- **Settings → 手机和电脑** keeps only options: a 设备 / Devices row whose 查看 / Show goes to the page (search's pair / QR / computer words
-  land on it; the old `phone.add` and `phone.computers.add` rows redirect there), 本机 (show this screen on the phone) and 外出连接 (own
-  relay, public connection service, Set Up a Relay). No device lists, no notices.
-- **The question** for a new device is always the window's dialog now (the pane no longer asks in place). Its icon is the kind the
-  host gives with the question (`asking.kind`), or the neutral devices icon when a host doesn't say.
+- **Status marks** (`components/StatusDot.tsx`, tones in settings.css `.st-dot`, shared with Settings → Agents): connected a filled
+  green disc with a check, available a hollow ring in the accent, offline / not connected a small dim grey dot, warning an amber disc
+  with "!". system.md §3.3 still describes off as a hollow ring; this is the change.
+- **Settings → 远程控制** keeps only options: the lead 设备列表在主窗口的「远程控制」页。 查看设备 (search's pair / QR / computer words land on
+  it; the old `phone.add` and `phone.computers.add` rows redirect there), 本机 (show this screen on the phone) and 外出连接 (own relay,
+  public connection service, Set Up a Relay). No device lists, no notices. A switch that can't change now (the public service while
+  an own relay is set) keeps its setting on a dimmed accent track, the same in both themes.
+- **The question** for a new device is always the window's dialog now (the pane no longer asks in place): one centred column, the
+  device's glyph (screen or phone from `asking.kind`, the neutral devices glyph when a host doesn't say), 允许“X”控制本机？, the digits
+  in the UI face, “X”显示相同的数字时才允许。 and where it is, one sentence a line; 不允许 keeps the focus, its ring not changing its size.
 - **Kind on the host** (`crates/blurt-remote/src/store.rs` `DeviceKind`): a hello listing `viewer` is a computer. Kept on the device
   (`"kind": "computer"` in devices.json, nothing for a phone, so records from before read as phones) and learned again on every
   session, so an old record of a computer corrects itself. In the status: `devices[].kind` and `asking.kind` ("phone" | "computer").
@@ -365,8 +377,18 @@ phones heading with a phone icon. The founder approved one structure; branch `cl
   (`Computer.last_route` in computers.json, set at pairing and on every connect), else the guess from its overlay address or relay.
   Before, a computer just used on the same network (Windows → Linux, 同一网络 · 1 ms in the window) read 可连接 · 公共连接服务 afterwards,
   from the relay in its pairing link.
+- **Visual gate** (3 fresh judges a round, 3 rounds): round 3 — empty page 8/8/8, the question 8/8.5/8 (computer) and 8/8/8
+  (unknown), paired page 8/7.5/8, Add Device 7/7.5/7.5, Settings 7/7.5/8, ⋯ menu 7/7.5/7.5, firewall 7/7.5/7.5, Add Computer 6/7/7.
+  Fixed after round 3 without a fourth round: the nearby spinner (a quarter arc in secondary ink, not a ring), 取消 beside the link
+  field, the store links' underline, ⋯ at 3:1, the sidebar's attention dot clear of the glyph and name, the question's focus ring.
+  Still asked for: the warning state words neutral with only the mark amber (system.md says attnInk), a heading for the Add Computer
+  panel, the link field told apart from buttons in light mode (shared `.st-field`), a CJK-first font drawing ASCII hyphens long in
+  zh names (app-wide font stack), a tablet glyph for iPads.
 
-Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/desktop/`.
+Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/desktop/` — 01 page with devices, 02 empty, 03 Add Device,
+04 Add Computer, 05 a computer's ⋯ (无法直连), 06 Settings, 07 the question from a computer, 08 from a host that doesn't say, 09 Windows
+firewall. Mock: `?view=phone&phone=paired` (two phones and a computer), `&computers=nodirect`, `&phone=asking_pc | asking_old`.
+
 
 ## Tried on real machines (2026-11-19)
 

@@ -134,7 +134,7 @@ function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
   }
   const error = p?.state === 'failed' ? p.error : invalid ? 'invalid' : null;
   // the nearby ones are rows like the list's (可连接 · 同一网络, Pair in the button's place); then one field for a link, its Pair
-  // only once something is typed (Return pairs too); Cancel at the end, on the buttons' edge
+  // only once something is typed (Return pairs too), Cancel beside it
   return (
     <div className="st-computers-panel" data-setting="phone.computers.add" data-testid="computers-add-panel">
       <div className="st-computers-section">{S('computers.nearby')}{s.browsing && <span className="st-spin" aria-hidden />}</div>
@@ -158,6 +158,7 @@ function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
             onChange={(e) => (setText(e.target.value), setInvalid(false))}
             onKeyDown={(e) => e.key === 'Enter' && pairLink()} />
           {text.trim() && <button className="ph-act" onClick={pairLink} data-testid="computers-link-pair">{S('computers.pair')}</button>}
+          <button className="ph-act" onClick={onClose} data-testid="computers-cancel">{S('phone.cancel')}</button>
         </div>
         <div className={`st-detail ${error ? 'warn' : ''}`} data-testid="computers-link-detail">
           {error ? (
@@ -168,9 +169,6 @@ function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
           ) : (
             S('computers.link.detail')
           )}
-        </div>
-        <div className="st-computers-foot">
-          <button className="ph-act" onClick={onClose} data-testid="computers-cancel">{S('phone.cancel')}</button>
         </div>
       </div>
     </div>

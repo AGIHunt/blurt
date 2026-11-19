@@ -1837,5 +1837,7 @@
 }
 .app .sheet.phone-ask-sheet .dict-confirm-foot .dict-confirm-cancel:focus,
 .app .sheet.phone-ask-sheet .dict-confirm-foot .dict-confirm-cancel:focus-visible {
-  outline-offset: -3px;
+  outline: none;
+  border-color: var(--focus, var(--brand-ink));
+  box-shadow: 0 0 0 1px var(--focus, var(--brand-ink));
 }

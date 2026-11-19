@@ -554,7 +554,7 @@
   height: 28px;
   min-height: 0;
   border-radius: var(--r-sm);
-  color: var(--faint);
+  color: var(--mute);
 }
 .app .ph-row:hover .icon-btn.ph-more {
   color: var(--mute);
@@ -721,6 +721,7 @@
 .app .ph-pair .st-phone-noapp .st-link {
   color: var(--ink-2);
   text-decoration: underline;
-  text-decoration-color: var(--line);
+  text-decoration-color: var(--brand-ink);
+  text-decoration-thickness: 1.5px;
   text-underline-offset: 2px;
 }

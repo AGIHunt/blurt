@@ -2440,8 +2440,8 @@ body.mw-resizing * {
 }
 .mw-side-alert {
   position: absolute;
-  right: -6px;
-  top: -4px;
+  left: -5px;
+  top: -3px;
   width: 6px;
   height: 6px;
   border-radius: 50%;

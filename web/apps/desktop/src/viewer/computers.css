@@ -13,10 +13,12 @@
   font-weight: 600;
   color: var(--mute);
 }
+/* still looking: a quarter arc in the secondary ink, no track, so it can't be read as the Available ring below it */
 .st-computers-section .st-spin {
   width: 10px;
   height: 10px;
-  color: var(--mute);
+  border-color: transparent;
+  border-top-color: var(--ink-2);
 }
 .st-computers-nearby > * + * {
   border-top: 1px solid var(--line);
@@ -57,11 +59,6 @@
   display: flex;
   align-items: center;
   gap: 5px;
-}
-.st-computers-foot {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 4px;
 }
 .st-computers-pair-wrap {
   padding: 10px;
