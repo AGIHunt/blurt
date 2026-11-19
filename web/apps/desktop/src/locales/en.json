@@ -833,7 +833,7 @@
   "phone.scan.new": "New Code",
   "phone.cancel": "Cancel",
   "phone.ask.title": "Allow “{1}” to control this computer?",
-  "phone.ask.detail": "Allow only if your phone shows these digits.",
+  "phone.ask.detail": "Allow only if the other device shows these digits.",
   "phone.ask.relay": "It’s connecting from another network, not this one.",
   "phone.ask.local": "It’s on the same network as this computer.",
   "phone.ask.yes": "Allow",

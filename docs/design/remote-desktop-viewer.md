@@ -288,3 +288,40 @@ decode; two real computers end to end. Recipe for the rented VMs: below.
 Screenshots (zh-Hans and en, light and dark): `promo/cases/remote-desktop-viewer/` — `settings-computers`, `settings-add-computer`,
 `settings-pairing-digits`, `settings-link-error`, `viewer-captured-hint`, `viewer-display-switcher`, `viewer-more-menu`,
 `viewer-quality-menu`, `viewer-linux-shortcuts-local`, `viewer-connecting`, `viewer-offline`, `viewer-replaced`.
+
+## Tried on real machines (2026-11-19)
+
+Mac viewer (this repo's test build) on a home connection in China (China Mobile, symmetric CGNAT, no IPv6) → the 1.0.26 CI builds on
+two rented GCP machines in Singapore (Windows Server 2022 and Ubuntu 26.04 GNOME, public IPs, no GPU), through the public connection
+service.
+
+| | Windows | Linux |
+|---|---|---|
+| Pairing by pasted link through the public connection service | works; digits match | works; digits match |
+| Moved onto the direct path | only once Windows Firewall lets Blurt in; before that 无法直连 (as designed) | works at once |
+| Round trip after the move | 534–555 ms | 534–877 ms |
+| Picture | none: no D3D11 video processor without a GPU → CPU fallback added (below) | after GNOME's Remote Desktop dialog; see below |
+
+Found and fixed:
+
+- **A Linux host stopped listening after its first away session.** With a Secret Service that has no default keyring (an auto-login
+  session), keys go in `~/.blurt/secrets/`, but reading one asked the Secret Service only and took "not there" for an answer, so the
+  device's key was gone after the session and the host never waited for it again (`secret_linux.rs`; `remote_relay` `no_key` is logged
+  now when a paired device's key can't be read).
+- **The Windows host showed nothing without a GPU.** `nv12.rs` + `CpuConverter`: BGRA from a CPU-readable staging texture to NV12 on
+  the CPU (BT.709 limited, tent-filter scaling, up to 4 threads), into Microsoft's software H.264 MFT at the software size cap and ≤ 30
+  fps; 2.5 ms for 1080p → 720p on an M5 Max in tests. The GPU path is unchanged where it works.
+- **The viewer said 无法连接 when only the screen had failed**, and the desktop viewer showed the host's raw English sentence. Both now
+  say `viewer.screen_off` / `viewer.screen_permission` / `viewer.one_display` / `viewer.screen_failed` (无法显示 X 的屏幕。指针和按键仍可使用。)
+  with 重试, which asks for the screen again (after GNOME's dialog is answered, for one).
+- **A Linux computer's name was its FQDN** (`vm.zone.c.project.internal`): the pretty hostname, else the host name up to the first dot.
+- **The host's pairing question said "your phone"** to a computer: 对方设备上显示同样的数字时才允许。
+
+Seen, not changed:
+
+- A pasted pairing link is good while that code is shown; the code renews about every 100 s, and an older link then fails as 无法连接.
+  The waiting connections renew with it, so this is the only reconnect cadence on the public connection service: an idle connection
+  stays open (200 s measured from the Mac and from the VM, with and without protocol pings).
+- GNOME's Remote Desktop dialog has to be answered at the host the first time (90 s); a viewer away from it waits on a black window.
+  Answering it once is part of setting up a Linux host.
+- A viewer window that opens in front captures the keys (as designed); scripted test runs release capture right away.

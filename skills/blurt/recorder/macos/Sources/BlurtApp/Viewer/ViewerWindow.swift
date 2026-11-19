@@ -178,6 +178,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func stateChanged(_ s: RemoteViewerLink.State) {
         let name = link.computer.name
+        emit(["event": "viewer_link", "state": "\(s)", "route": link.route.map { "\($0)" } ?? "", "trying": link.trying.map { "\($0)" } ?? "", "lost": link.lostWhy])
         switch s {
         case .connected: connected()
         case .connecting:

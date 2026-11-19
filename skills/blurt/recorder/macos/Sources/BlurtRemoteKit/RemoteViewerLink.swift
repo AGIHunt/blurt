@@ -91,6 +91,8 @@ public final class RemoteViewerLink {
     public private(set) var away: Away?
     /// the way being tried while not connected: the public connection service or the owner's relay when there is one, else the same network
     public private(set) var trying: Route?
+    /// Why the last session ended here (for the log): "closed", "no pong", "no direct".
+    public private(set) var lostWhy = ""
     public private(set) var session: RemoteSessionInfo?
     /// the host takes a viewer's extras (clipboard, window size)
     public var hostTakesViewer: Bool { session?.features?.contains(RemoteFeature.viewer) == true }
@@ -373,6 +375,7 @@ public final class RemoteViewerLink {
             if failure?.kind == .notPaired { self.refused = true }
             if goBetween, let ch { self.goBetweenEnded(ch) }
             guard let ch, self.channel === ch else { return }
+            self.lostWhy = "closed (\(failure.map { "\($0.kind)" } ?? "no failure"), moved \(ch.moved))"
             self.lost()
         }
         attempts.append(ch)
@@ -454,7 +457,7 @@ public final class RemoteViewerLink {
     private func ping() {
         guard let ch = channel else { return }
         let relay = ch.isRelay, moved = ch.moved
-        if CACurrentMediaTime() - lastPong > (relay ? 8 : 2.5) { return lost() }
+        if CACurrentMediaTime() - lastPong > (relay ? 8 : 2.5) { lostWhy = "no pong (relay \(relay), moved \(moved))"; return lost() }
         pingCount += 1
         if !relay || moved || pingCount % 4 == 0 { ch.send(ToMac.ping(CACurrentMediaTime())) }
         // away: the same network, or a nearer way than an overlay network's, is looked for now and then

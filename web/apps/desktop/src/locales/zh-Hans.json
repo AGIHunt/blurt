@@ -812,7 +812,7 @@
   "phone.scan.new": "换个二维码",
   "phone.cancel": "取消",
   "phone.ask.title": "允许“{1}”控制这台电脑？",
-  "phone.ask.detail": "手机上显示同样的数字时才允许。",
+  "phone.ask.detail": "对方设备上显示同样的数字时才允许。",
   "phone.ask.relay": "它正从其他网络连接，不在这个网络上。",
   "phone.ask.local": "它和这台电脑在同一网络。",
   "phone.ask.yes": "允许",
