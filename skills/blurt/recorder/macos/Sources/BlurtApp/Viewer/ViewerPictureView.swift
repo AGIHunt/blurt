@@ -151,11 +151,27 @@ final class ViewerPictureView: NSView {
 
     // MARK: the hint
 
-    func showHint(_ text: String, seconds: Double = 3) {
+    /// The hint that lasts (no control over the other computer): a short one shows over it, then it's back.
+    private var lasting: String?
+
+    /// `seconds` nil: it stays until `hideHint`.
+    func showHint(_ text: String, seconds: Double? = 3) {
         hint.stringValue = "   \(text)   "
         hint.isHidden = false
         hintTimer?.invalidate()
-        hintTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in self?.hint.isHidden = true }
+        hintTimer = nil
+        guard let seconds else { lasting = text; return }
+        hintTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            if let l = self.lasting { self.hint.stringValue = "   \(l)   " } else { self.hint.isHidden = true }
+        }
+    }
+
+    func hideHint() {
+        lasting = nil
+        hintTimer?.invalidate()
+        hintTimer = nil
+        hint.isHidden = true
     }
 
     // MARK: the mouse

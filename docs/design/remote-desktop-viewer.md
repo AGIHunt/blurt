@@ -325,3 +325,17 @@ Seen, not changed:
 - GNOME's Remote Desktop dialog has to be answered at the host the first time (90 s); a viewer away from it waits on a black window.
   Answering it once is part of setting up a Linux host.
 - A viewer window that opens in front captures the keys (as designed); scripted test runs release capture right away.
+
+**Mac viewer → Mac host on the same network** (the M1 Max at home, this branch's test build next to the owner's own 1.0.26):
+path 同一网络, round trip 8–27 ms, picture at the host's 40 fps with idle frames skipped; pointer, click, keys (keypad Enter into
+TextEdit) and the clipboard both ways while captured all work. Two things found:
+
+- **Without Accessibility on the host nothing it posts lands** (macOS drops it silently), while the picture works on Screen Recording
+  alone: the owner clicked a button through the viewer and saw nothing happen. The Mac viewer said so for 6 s only; now the line stays
+  until the host can be controlled (`ViewerPictureView.showHint(seconds: nil)`; the desktop viewer already kept its cover).
+- **Two Blurts on one computer advertise the same name**, so "add by name" may reach the other one (the owner's release, which refused).
+  Real computers run one Blurt; tests pair by link.
+
+**The host hang** (Windows, any host sending a keyframe of more than 16 pieces after the move to the direct path): `frame()` held the
+stream's lock and the first paced batch locked it again on the same thread; found from a minidump, fixed in `screen.rs` with a test
+(`a_big_frame_on_the_direct_path_goes_out`).

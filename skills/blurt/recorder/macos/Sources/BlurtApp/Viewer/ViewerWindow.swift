@@ -167,10 +167,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             // Try Again asks for the screen once more: a permission given, or the host's Remote Desktop dialog answered since
             showOverlay(T(key ?? "viewer.screen_failed", name), button: why == "off" ? nil : (T("viewer.retry"), #selector(retryScreen)))
         case let .canControl(ok):
-            if !ok { picture.showHint(T("viewer.no_control", link.computer.name), seconds: 6) }
+            // clicks and keys go nowhere until it's allowed there: said for as long as it lasts
+            if ok { picture.hideHint() } else { picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil) }
         case let .session(i):
             window?.title = i.macName
-            if !i.canControl { picture.showHint(T("viewer.no_control", i.macName), seconds: 6) }
+            if !i.canControl { picture.showHint(T("viewer.no_control", i.macName), seconds: nil) }
             updateMore()
         default: break
         }
