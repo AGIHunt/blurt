@@ -21,6 +21,38 @@ pub struct Device {
     pub added: i64,
     #[serde(rename = "lastSeen", default, skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<i64>,
+    /// a phone, or a computer driving this one (its hello listed `viewer`); records from before say nothing: a phone
+    #[serde(default, skip_serializing_if = "DeviceKind::is_phone")]
+    pub kind: DeviceKind,
+}
+
+/// What a paired device is (the UI's icon and words): on disk `"kind": "computer"`, nothing for a phone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceKind {
+    #[default]
+    Phone,
+    Computer,
+}
+
+impl DeviceKind {
+    /// From a hello's `features`: `viewer` is a computer.
+    pub fn of_hello(viewer: bool) -> DeviceKind {
+        if viewer {
+            DeviceKind::Computer
+        } else {
+            DeviceKind::Phone
+        }
+    }
+    pub fn is_phone(&self) -> bool {
+        *self == DeviceKind::Phone
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DeviceKind::Phone => "phone",
+            DeviceKind::Computer => "computer",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,6 +71,10 @@ pub struct Settings {
     /// a paired phone may ask for the screen
     #[serde(default = "yes")]
     pub screen: bool,
+    /// Blurt's go-between (wss://meet.blurt.work) for away from home, when no relay of the owner's is set
+    /// (docs/design/remote-go-between.md). On unless the owner turned it off.
+    #[serde(rename = "goBetween", default = "yes")]
+    pub go_between: bool,
 }
 
 fn yes() -> bool {
@@ -110,7 +146,7 @@ impl Files {
                 return s;
             }
         }
-        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true };
+        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true, go_between: true };
         self.save_settings(&s);
         s
     }
@@ -173,6 +209,7 @@ mod tests {
         let mut s = f.settings();
         assert_eq!(s.relay, None);
         assert!(s.screen);
+        assert!(s.go_between, "the go-between is on until the owner turns it off");
         let id = s.id.clone();
         s.relay = Some(None);
         f.save_settings(&s);
@@ -186,8 +223,19 @@ mod tests {
         assert_eq!(k.get("a"), Some(vec![1, 2, 3]));
         k.delete("a");
         assert_eq!(k.get("a"), None);
-        f.save_devices(&[Device { id: "x".into(), name: "Pixel".into(), added: 1, last_seen: None }]);
+        f.save_devices(&[Device {
+            id: "x".into(),
+            name: "Pixel".into(),
+            added: 1,
+            last_seen: None,
+            kind: DeviceKind::Phone,
+        }]);
         assert_eq!(f.devices().len(), 1);
+        // a phone's record says nothing of its kind; one from before kinds reads as a phone, a computer's says so
+        assert!(!std::fs::read_to_string(d.join("devices.json")).unwrap().contains("kind"));
+        std::fs::write(d.join("devices.json"), r#"[{"id":"a","name":"Pixel","added":1},{"id":"b","name":"Den PC","added":2,"kind":"computer"}]"#).unwrap();
+        let kinds: Vec<DeviceKind> = f.devices().iter().map(|d| d.kind).collect();
+        assert_eq!(kinds, [DeviceKind::Phone, DeviceKind::Computer]);
         let _ = std::fs::remove_dir_all(d);
     }
 }

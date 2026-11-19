@@ -23,24 +23,32 @@
     <string name="talk_writing">Writing</string>
     <string name="talk_off">Off</string>
     <string name="mic_unavailable">Phone microphone unavailable</string>
-    <string name="status_unpaired">On your computer, open Blurt’s Settings and choose Phone.</string>
+    <string name="status_unpaired">On your computer, open Blurt’s Remote Control page and choose Add Device.</string>
     <string name="scan_code">Scan Code</string>
     <string name="status_forgotten">%1$s no longer knows this phone.</string>
     <string name="try_another">Try Another Computer</string>
     <string name="status_accessibility">On your Mac, allow Accessibility for Blurt.</string>
-    <string name="status_control">Blurt on your computer can’t press keys yet. Open its Settings → Phone.</string>
+    <string name="status_control">Blurt on your computer can’t press keys yet. Open its Remote Control page.</string>
     <string name="status_screen_permission">On your Mac, allow Screen Recording for Blurt.</string>
-    <string name="status_screen_permission_pc">Blurt on your computer can’t see the screen yet. Open its Settings → Phone.</string>
+    <string name="status_screen_permission_pc">Blurt on your computer can’t see the screen yet. Open its Remote Control page.</string>
     <string name="status_screen_off">Showing the screen is off in Blurt’s Settings on your computer.</string>
     <string name="status_waiting">Allow this phone in Blurt’s Settings on your computer. Check that it shows %1$s.</string>
-    <string name="via_internet">%1$s · Internet</string>
-    <string name="via_direct">%1$s · Direct</string>
+    <!-- the connection label away from home: the computer's name, then the way the session runs (remote-go-between.md) -->
+    <string name="via_path">%1$s · %2$s</string>
+    <string name="path_same_network">Same network</string>
+    <string name="path_tailscale">Tailscale</string>
+    <string name="path_overlay">Virtual network</string>
+    <string name="path_direct">Direct</string>
+    <string name="path_own_relay">Own relay</string>
+    <string name="path_go_between">Public connection service</string>
     <string name="connecting_to">Connecting to %1$s…</string>
     <!-- the pad's card, when the connection isn't simply there: a strong line, then the one thing to do (core/LinkStatus.kt) -->
     <string name="status_reconnecting">Reconnecting to %1$s…</string>
     <string name="status_cant_reach">Can’t reach %1$s</string>
-    <string name="status_check_network">Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer.</string>
+    <string name="status_check_network">Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.</string>
     <string name="status_check_awake">Check that the computer isn’t asleep and Blurt is running.</string>
+    <string name="status_no_direct">Can’t connect directly. Set up your own relay on the computer.</string>
+    <string name="status_go_between_busy">The public connection service has reached today’s limit. Try again later, or use your own relay.</string>
     <string name="status_other_phone">Another phone is connected</string>
     <string name="status_take_over">Touch to take over.</string>
     <string name="status_pair_first">Pair with your computer</string>
@@ -52,7 +60,7 @@
     <string name="connected_to">Connected to %1$s</string>
     <string name="the_computer">the computer</string>
     <string name="pair_not_allowed">%1$s didn’t allow this phone.</string>
-    <string name="pair_unreachable_local">Couldn’t reach %1$s. Put this phone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first.</string>
+    <string name="pair_unreachable_local">Couldn’t reach %1$s. Put this phone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first.</string>
     <string name="pair_unreachable_relay">Couldn’t reach %1$s. Scan a fresh code on that computer.</string>
 
     <string name="displays">Displays</string>
@@ -99,8 +107,7 @@
     <string name="gestures">Gestures</string>
     <string name="version">Blurt for Android %1$s</string>
     <string name="s_connected">Connected</string>
-    <string name="s_connected_direct">Connected, direct</string>
-    <string name="s_connected_relay">Connected through your relay</string>
+    <string name="s_connected_path">Connected · %1$s</string>
     <string name="s_connecting">Connecting…</string>
     <string name="s_unreachable">Can’t reach it</string>
     <string name="s_forgotten">Needs pairing again</string>

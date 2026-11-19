@@ -15,10 +15,13 @@
 //!     rate.rs         the picture's rate control
 //!     input.rs        clicks, drags, scroll phases and the coast, held keys: what the backend is told to press
 //!     screen.rs       the stream: packets, pacing, back-pressure, refresh, cursor
+//!     stream.rs       the stream after the move: ordered and reliable over UDP (kinds 7, 8), for the go-between
 //!     repair.rs       the picture's repairs: pieces sent again (nack), recovery frames (ltr), parity (fec), the phone's receiver
 //!     store.rs        paired devices, the host's settings, keys (through the app's secret store)
 //!     mic.rs          the phone's microphone as dictation's source
 //!     server.rs       listeners, pairing, sessions, the relay: the Host the app starts
+//!     keys.rs         every key name, and a viewer's keyboard turned into them (docs/design/remote-desktop-viewer.md)
+//!     viewer.rs       the viewer: a computer driving another (the phone's end, grown up), its paired computers, nearby ones
 
 pub mod host;
 pub mod platform;
@@ -28,6 +31,7 @@ pub mod credit;
 pub mod crypto;
 pub mod displays;
 pub mod input;
+pub mod keys;
 pub mod mic;
 pub mod packets;
 pub mod pairing;
@@ -38,7 +42,9 @@ pub mod repair;
 pub mod screen;
 pub mod server;
 pub mod sharpen;
+pub mod stream;
 pub mod store;
+pub mod viewer;
 pub mod wire;
 
 

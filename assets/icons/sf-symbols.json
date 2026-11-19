@@ -181,6 +181,9 @@
     "phone": [
       "iphone"
     ],
+    "devices": [
+      "laptopcomputer.and.iphone"
+    ],
     "cloud": [
       "cloud"
     ],

@@ -6,9 +6,11 @@ import Foundation
 
 public struct PhoneFacts: Equatable, Sendable {
     public enum Relay: Equatable, Sendable {
-        /// no relay address: phones connect on the local network only
+        /// no relay address: phones connect on the local network only (or an overlay network's)
         case none
         case checking, ok, failed
+        /// no relay of the owner's own, and the public connection service is on (docs/design/remote-go-between.md)
+        case goBetween
     }
 
     /// phones paired with this Mac
@@ -78,6 +80,8 @@ public enum PhoneChecks {
         case awayNeedsRelay
         /// away from home with a relay that answers: any network will do
         case awayUsesRelay
+        /// away from home through the public connection service: most networks, not every one
+        case awayGoBetween
     }
 
     public static func headline(_ f: PhoneFacts) -> Headline {
@@ -117,6 +121,7 @@ public enum PhoneChecks {
         switch f.relay {
         case .none: return near + [.awayNeedsRelay]
         case .ok, .checking: return near + [.awayUsesRelay]
+        case .goBetween: return near + [.awayGoBetween]
         case .failed: return near
         }
     }

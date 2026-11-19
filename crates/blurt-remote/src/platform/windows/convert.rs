@@ -14,6 +14,7 @@ use ::windows::Win32::Graphics::Dxgi::Common::{
 };
 
 use super::geometry::Rect;
+use super::nv12::ToNv12;
 
 /// Outputs in flight: an encoder may still read one while the next is drawn.
 const RING: usize = 4;
@@ -194,6 +195,62 @@ impl Converter {
                 out[row * w..row * w + w].copy_from_slice(src);
             }
             self.context.Unmap(staging, 0);
+        }
+        Ok(())
+    }
+}
+
+/// No video processor (WARP, Microsoft's Basic Render adapter: a VM or cloud desktop without a GPU, some RDP sessions): the held
+/// picture in a staging texture the CPU reads, the crop scaled and turned into NV12 there (nv12.rs), for the software encoder.
+pub struct CpuConverter {
+    context: ID3D11DeviceContext,
+    held: ID3D11Texture2D,
+    nv12: ToNv12,
+    pub in_w: u32,
+    pub in_h: u32,
+    pub out_w: u32,
+    pub out_h: u32,
+}
+
+impl CpuConverter {
+    pub fn new(device: &ID3D11Device, in_w: u32, in_h: u32, out_w: u32, out_h: u32) -> Result<CpuConverter, String> {
+        let context = unsafe { device.GetImmediateContext() }.map_err(|e| format!("CPU picture (context): {e}"))?;
+        let cpu = (D3D11_CPU_ACCESS_READ.0 | D3D11_CPU_ACCESS_WRITE.0) as u32;
+        let held =
+            tex(device, in_w, in_h, DXGI_FORMAT_B8G8R8A8_UNORM, 0, D3D11_USAGE_STAGING, cpu).map_err(|e| format!("CPU picture (held): {e}"))?;
+        Ok(CpuConverter { context, held, nv12: ToNv12::new(), in_w, in_h, out_w, out_h })
+    }
+
+    pub fn hold(&self, texture: &ID3D11Texture2D) {
+        unsafe { self.context.CopyResource(&self.held, texture) };
+    }
+
+    pub fn hold_pixels(&self, bgra: &[u8]) {
+        let row = self.in_w as usize * 4;
+        if bgra.len() < row * self.in_h as usize {
+            return;
+        }
+        unsafe {
+            let mut m = D3D11_MAPPED_SUBRESOURCE::default();
+            if self.context.Map(&self.held, 0, D3D11_MAP_WRITE, 0, Some(&mut m)).is_err() {
+                return;
+            }
+            for (y, src) in bgra.chunks_exact(row).take(self.in_h as usize).enumerate() {
+                std::ptr::copy_nonoverlapping(src.as_ptr(), (m.pData as *mut u8).add(y * m.RowPitch as usize), row);
+            }
+            self.context.Unmap(&self.held, 0);
+        }
+    }
+
+    /// The held picture's `crop` at the output size, as NV12 rows packed (what `Converter::read` gives).
+    pub fn render(&mut self, crop: &Rect, out: &mut Vec<u8>) -> Result<(), String> {
+        unsafe {
+            let mut m = D3D11_MAPPED_SUBRESOURCE::default();
+            self.context.Map(&self.held, 0, D3D11_MAP_READ, 0, Some(&mut m)).map_err(|e| format!("map: {e}"))?;
+            let pitch = m.RowPitch as usize;
+            let px = std::slice::from_raw_parts(m.pData as *const u8, pitch * (self.in_h as usize - 1) + self.in_w as usize * 4);
+            self.nv12.convert(px, pitch, crop, self.out_w, self.out_h, out);
+            self.context.Unmap(&self.held, 0);
         }
         Ok(())
     }

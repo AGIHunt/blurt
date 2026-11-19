@@ -8,6 +8,10 @@
 // nothing else, so a stranger who finds the host can't use it as a free pipe. Blurt's address is then wss://host/<secret>.
 //
 // Behind a web server for wss://, or on an open port for ws://. See README.md.
+//
+// BUDGET=1 applies the limits of Blurt's public go-between (src/meet.js, docs/design/remote-go-between.md), so it can be tested end to end
+// without Cloudflare: per connection, 16 KiB a message, 96 KiB in all and 24 KiB in any 5 s, then both ends get 4003; a phone stays
+// at most 12 h. `GET /` then answers "blurt go-between".
 "use strict";
 const http = require("http");
 const { WebSocketServer, WebSocket } = require("ws");
@@ -38,11 +42,33 @@ const TRUST_PROXY = process.env.TRUST_PROXY === "1";
 const PHONE_LEFT = 4000;   // the Mac reconnects: the next phone starts a new session
 const MAC_GONE = 4001;     // the phone's "Mac isn't reachable"
 const REPLACED = 4002;     // a newer connection in the same role took over
+const OVER_BUDGET = 4003;  // BUDGET=1: "the go-between can't carry this", to both ends
+
+const BUDGET = process.env.BUDGET === "1";
+const KiB = 1024;
+const MAX_TOTAL = 96 * KiB, MAX_WINDOW = 24 * KiB, BUDGET_MESSAGE = 16 * KiB;
+const WINDOW_MS = 5000, SLOT_MS = 250;   // the window is kept as 250 ms slots, so it looks back 5 to 5.25 s, as in src/meet.js
+const PHONE_MAX_MS = 12 * 3600 * 1000;
+// adds a message to a connection's counters; false once it passes a limit (the same as src/meet.js)
+function spend(c, size, now) {
+  if (size > BUDGET_MESSAGE) return false;
+  c.total += size;
+  if (c.total > MAX_TOTAL) return false;
+  const slot = Math.floor(now / SLOT_MS);
+  c.slots = c.slots.filter(([s]) => s >= slot - WINDOW_MS / SLOT_MS);
+  const last = c.slots[c.slots.length - 1];
+  if (last && last[0] === slot) last[1] += size; else c.slots.push([slot, size]);
+  return c.slots.reduce((n, [, b]) => n + b, 0) <= MAX_WINDOW;
+}
 
 const rooms = new Map();   // room → { mac, phone }
 const perAddress = new Map();
 
 const server = http.createServer((req, res) => {
+  if (BUDGET && req.url === "/" && (req.method === "GET" || req.method === "HEAD")) {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("blurt go-between");
+  }
   const ok = route(req.url) !== null;
   res.writeHead(ok ? 426 : 404, { "Content-Type": "text/plain" });
   res.end(ok ? "Expected a WebSocket\n" : "Not found\n");
@@ -76,15 +102,26 @@ function join(ws, id, role) {
   if (old) old.close(REPLACED, "replaced");
   ws.alive = true;
   ws.on("pong", () => { ws.alive = true; });
+  let budget = null, expire = null;
+  if (BUDGET) {
+    budget = { total: 0, slots: [] };
+    if (role === "phone") expire = setTimeout(() => overBudget(room), PHONE_MAX_MS);
+  }
   ws.on("message", (data, binary) => {
-    if (room[role] !== ws) return;         // replaced: nothing it says counts any more
+    if (room[role] !== ws || ws.readyState !== WebSocket.OPEN) return;   // replaced or over budget: nothing it says counts any more
+    if (budget && !spend(budget, data.length, Date.now())) return overBudget(room);
     const other = room[role === "mac" ? "phone" : "mac"];
     if (!isOpen(other)) return;
     if (other.bufferedAmount > MAX_BEHIND) return other.terminate();
     other.send(data, { binary });
   });
-  ws.on("close", () => left(id, room, role, ws));
+  ws.on("close", () => { clearTimeout(expire); left(id, room, role, ws); });
   ws.on("error", () => ws.terminate());
+}
+
+// BUDGET=1: the session can't go on here, and both ends hear why
+function overBudget(room) {
+  for (const ws of [room.mac, room.phone]) if (isOpen(ws)) ws.close(OVER_BUDGET, "budget");
 }
 
 function isOpen(ws) { return !!ws && ws.readyState === WebSocket.OPEN; }
@@ -106,4 +143,4 @@ setInterval(() => {
   }
 }, BEAT).unref();
 
-server.listen(PORT, HOST, () => console.log(`blurt relay on ${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`blurt ${BUDGET ? "go-between (budget mode)" : "relay"} on ${HOST}:${PORT}`));

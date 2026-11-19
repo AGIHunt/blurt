@@ -123,7 +123,7 @@ async fn follow_pin_unpin_and_a_display_going() {
     *w.displays.lock().unwrap() = two();
     w.at(100.0, 100.0);
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Two Screens".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0 },
+        HostConfig { dir: dir.clone(), name: "Two Screens".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()) },
         Box::new(Back(In(w.clone()), Scr(w.clone()))),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(NoApp),
@@ -154,6 +154,7 @@ async fn follow_pin_unpin_and_a_display_going() {
             codecs: Some(vec!["h264".into()]),
             display: None,
             features: None,
+            window: None,
         })))
         .await;
     assert_eq!(view(&mut phone, Duration::from_secs(3)).await, Some((Some("A".into()), 1512.0)));

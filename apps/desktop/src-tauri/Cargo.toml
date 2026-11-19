@@ -43,6 +43,8 @@ blurt-capture = { path = "../../../crates/blurt-capture" }
 png = "0.17"
 # Blurt on the phone (remote.rs): the host — protocol, pairing, sessions, each OS's screen and input — and the pairing QR code
 blurt-remote = { path = "../../../crates/blurt-remote" }
+# the viewer's sessions (viewer.rs) run on a runtime of their own; already in the tree through tauri and blurt-remote
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # Alt+Shift+T's direction (screen_text/direction.rs): the text's language identified first (a statistical model over
 # trigrams and scripts, not word lists), so the model is asked for one language
@@ -96,6 +98,10 @@ arboard = { version = "3", default-features = false }
 raw-window-handle = "0.6"
 # the ScreenCast fd made inheritable for record.py (capture/portal_linux.rs)
 libc = "0.2"
+# a computer's window takes the keyboard (viewer_keys.rs): GDK's seat grab, and whether the compositor offers
+# keyboard-shortcuts-inhibit (both already in the tree through tauri)
+gtk = "0.18"
+wayland-client = "0.31"
 
 [dev-dependencies]
 tempfile = "3"

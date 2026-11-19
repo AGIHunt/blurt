@@ -35,7 +35,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 40);
+    assert_eq!(list.len(), 50);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -49,7 +49,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 26);
+    assert_eq!(list.len(), 31);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -181,7 +181,7 @@ fn the_handshake_byte_for_byte() {
         if i == 0 {
             // the first sealed message is the hello that reveals the nonce
             match ToMac::decode(&plain[1..]) {
-                Some(ToMac::Hello { device, mic_on_phone, nonce: Some(n) }) => {
+                Some(ToMac::Hello { device, mic_on_phone, nonce: Some(n), .. }) => {
                     assert_eq!((device.as_str(), mic_on_phone, n.as_slice()), ("Pixel", true, &nonce[..]));
                 }
                 other => panic!("not the hello: {other:?}"),
@@ -281,4 +281,195 @@ fn pairing_url() {
     };
     assert_eq!(p.url(), v["pairingURL"].as_str().unwrap());
     assert_eq!(Pairing::parse(v["pairingURL"].as_str().unwrap()), Some(p));
+}
+
+#[test]
+fn go_between_and_the_moved_stream() {
+    use blurt_remote::stream;
+    let v = vectors();
+    let g = &v["goBetween"];
+    assert_eq!(g["address"].as_str(), Some(relay::GO_BETWEEN));
+    assert_eq!(g["chunk"].as_u64(), Some(stream::CHUNK as u64));
+    assert_eq!(g["window"].as_u64(), Some(stream::WINDOW));
+    assert_eq!(g["feature"].as_str(), Some(blurt_remote::wire::MOVE));
+    assert_eq!(g["overBudgetClose"].as_u64(), Some(relay::BUDGET as u64));
+
+    // the messages
+    let find = |list: &str, name: &str| v[list].as_array().unwrap().iter().find(|e| e["name"] == name).unwrap_or_else(|| panic!("{name}"))["json"].clone();
+    assert_eq!(ToMac::from_json(&find("toMac", "stream_moved")), Some(ToMac::StreamMoved));
+    assert_eq!(ToPhone::from_json(&find("toPhone", "stream_moved")), Some(ToPhone::StreamMoved));
+    assert_eq!(ToPhone::from_json(&find("toPhone", "no_direct")), Some(ToPhone::NoDirect));
+    match ToMac::from_json(&find("toMac", "hello_move")) {
+        Some(ToMac::Hello { features: Some(f), .. }) => assert_eq!(f, ["move"]),
+        other => panic!("{other:?}"),
+    }
+    match ToPhone::from_json(&find("toPhone", "session_go_between")) {
+        Some(ToPhone::Session(i)) => {
+            assert_eq!(i.features.as_deref(), Some(&["move".to_string()][..]));
+            assert_eq!(i.relay.as_deref(), Some(relay::GO_BETWEEN));
+        }
+        other => panic!("{other:?}"),
+    }
+    // a session from a host before the go-between: no features
+    match ToPhone::from_json(&find("toPhone", "session")) {
+        Some(ToPhone::Session(i)) => assert_eq!(i.features, None),
+        other => panic!("{other:?}"),
+    }
+
+    // kind 7 and 8 bodies
+    let st = &v["stream"];
+    for e in st["examples"].as_array().unwrap() {
+        let off = e["offset"].as_u64().unwrap();
+        let bytes = unhex(e["bytes"].as_str().unwrap());
+        assert_eq!(hex(&stream::encode_chunk(off, &bytes)), e["body"].as_str().unwrap());
+        let body = unhex(e["body"].as_str().unwrap());
+        assert_eq!(stream::decode_chunk(&body), Some((off, &bytes[..])));
+    }
+    for e in v["streamAck"]["examples"].as_array().unwrap() {
+        let next = e["next"].as_u64().unwrap();
+        assert_eq!(hex(&stream::encode_ack(next)), e["body"].as_str().unwrap());
+        assert_eq!(stream::decode_ack(&unhex(e["body"].as_str().unwrap())), Some(next));
+    }
+
+    // phone → host: the TCP frames of the handshake vector, then streamMoved as the last frame on the old stream (counter 2),
+    // then the next frame (counter 3) in a kind-7 datagram: the implicit counters go on
+    let h = &v["handshake"];
+    let to_host = key32(h["keyToMac"].as_str().unwrap());
+    let to_phone = key32(h["keyToPhone"].as_str().unwrap());
+    let mut out = SealOut::new(&to_host);
+    let mut inn = SealIn::new(&to_host);
+    for f in h["tcpPhoneToMac"].as_array().unwrap() {
+        let s = out.seal(&unhex(f["plain"].as_str().unwrap()));
+        inn.open(&s).unwrap();
+    }
+    let m = &st["streamMoved"];
+    assert_eq!(m["counter"].as_u64(), Some(2));
+    let plain = unhex(m["plain"].as_str().unwrap());
+    assert_eq!(ToMac::decode(&plain[1..]), Some(ToMac::StreamMoved));
+    let sealed = out.seal(&plain);
+    assert_eq!(hex(&sealed), m["sealed"].as_str().unwrap());
+    assert_eq!(hex(&FrameReader::framed(&sealed)), m["framed"].as_str().unwrap());
+    assert_eq!(inn.open(&sealed), Some(plain));
+    let f = &st["frame"];
+    assert_eq!(f["counter"].as_u64(), Some(3));
+    let plain = unhex(f["plain"].as_str().unwrap());
+    let framed = FrameReader::framed(&out.seal(&plain));
+    assert_eq!(hex(&framed), f["framed"].as_str().unwrap());
+    let p = &st["packet"];
+    let body = stream::encode_chunk(p["offset"].as_u64().unwrap(), &framed);
+    assert_eq!(hex(&body), p["body"].as_str().unwrap());
+    let mut dplain = vec![7u8];
+    dplain.extend_from_slice(&body);
+    assert_eq!(hex(&dplain), p["plain"].as_str().unwrap());
+    // the phone's datagrams before it: its UDP counter is past them
+    let mut udp = SealOut::new(&to_host);
+    for _ in 1..p["udpCounter"].as_u64().unwrap() {
+        udp.seal_packet(&[4], 7);
+    }
+    let d = udp.seal_packet(&dplain, p["session"].as_u64().unwrap() as u32);
+    assert_eq!(hex(&d), p["sealed"].as_str().unwrap());
+    // and the host reads it back: the datagram, the chunk, the frame in the stream, the key it carries
+    let mut udp_in = SealIn::new(&to_host);
+    let opened = udp_in.open_packet(&d).unwrap();
+    assert_eq!(opened[0], 7);
+    let (off, bytes) = stream::decode_chunk(&opened[1..]).unwrap();
+    assert_eq!(off, 0);
+    let mut r = FrameReader::default();
+    r.feed(bytes);
+    let frame = r.next_frame().unwrap().unwrap();
+    let k = inn.open(&frame).unwrap();
+    assert_eq!(ToMac::decode(&k[1..]), Some(ToMac::Key { chord: blurt_remote::wire::Chord::new(1, "C"), down: None }));
+
+    // host → phone: the ack, the host's first datagram
+    let a = &v["streamAck"]["packet"];
+    let mut plain = vec![8u8];
+    plain.extend_from_slice(&stream::encode_ack(a["next"].as_u64().unwrap()));
+    assert_eq!(hex(&plain), a["plain"].as_str().unwrap());
+    assert_eq!(a["udpCounter"].as_u64(), Some(1));
+    let d = SealOut::new(&to_phone).seal_packet(&plain, a["session"].as_u64().unwrap() as u32);
+    assert_eq!(hex(&d), a["sealed"].as_str().unwrap());
+}
+
+/// A computer driving another (docs/design/remote-desktop-viewer.md): the feature names, the clipboard's limit, every key name
+/// (RemoteKey.all), the nearby pairing's id prefix and key, a viewer's hello and screen request, and the modifier mapping.
+#[test]
+fn viewer() {
+    use blurt_remote::keys;
+    use blurt_remote::wire::{PixelSize, ScreenRequest};
+    let v = vectors();
+    let w = &v["viewer"];
+    assert_eq!(w["feature"], blurt_remote::wire::VIEWER);
+    assert_eq!(w["windowFeature"], blurt_remote::wire::WINDOW);
+    assert_eq!(
+        w["clipboardMaxBytes"].as_u64().unwrap() as usize,
+        blurt_remote::wire::MAX_CLIPBOARD
+    );
+    let names: Vec<&str> = w["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        keys::ALL.to_vec(),
+        "every key name, in RemoteKey.all's order"
+    );
+    assert_eq!(
+        w["nearby"]["idPrefix"],
+        blurt_remote::pairing::NEARBY_PREFIX
+    );
+    assert_eq!(
+        hex(&blurt_remote::pairing::nearby_key()),
+        w["nearby"]["key"].as_str().unwrap()
+    );
+    for m in w["modifierMap"].as_array().unwrap() {
+        let (viewer, host) = (m["viewer"].as_str().unwrap(), m["host"].as_str().unwrap());
+        let pressed = m["pressed"].as_u64().unwrap() as u8;
+        assert_eq!(
+            keys::map_mods(pressed, viewer, host, true),
+            m["sent"].as_u64().unwrap() as u8,
+            "{m}"
+        );
+        assert_eq!(
+            keys::map_mods(pressed, viewer, host, false),
+            pressed,
+            "off: as pressed"
+        );
+    }
+    let find = |name: &str| {
+        v["toMac"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"))["json"]
+            .clone()
+    };
+    let Some(ToMac::Screen(Some(r))) = ToMac::from_json(&find("screen_viewer")) else {
+        panic!("screen_viewer")
+    };
+    let r: ScreenRequest = r;
+    assert_eq!(
+        r.window,
+        Some(PixelSize {
+            width: 2400,
+            height: 1350
+        })
+    );
+    assert_eq!(r.boxed(), (2400, 1350), "the window is the ceiling");
+    assert!(
+        matches!(ToMac::from_json(&find("hello_viewer")), Some(ToMac::Hello { mic_on_phone: false, features: Some(f), .. }) if f == ["move", "viewer"])
+    );
+    assert_eq!(
+        ToMac::from_json(&find("keys_captured")),
+        Some(ToMac::KeysCaptured(true))
+    );
+    assert_eq!(
+        ToMac::from_json(&find("key_f13_down")),
+        Some(ToMac::Key {
+            chord: blurt_remote::wire::Chord::new(0, "F13"),
+            down: Some(true)
+        })
+    );
 }

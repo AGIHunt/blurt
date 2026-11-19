@@ -2,6 +2,10 @@
 // the handshake, control messages and audio; UDP carries the pointer once a packet has made it across, and the picture. Everything runs on
 // one thread of its own (`Net`), which is the only one that touches the sealer; callbacks arrive there too, and Link moves them to the main
 // thread.
+//
+// On Blurt's go-between the WebSocket only introduces the two ends (docs/design/remote-go-between.md): once the host says `udpOK`, each
+// side writes `streamMoved` as its last frame there, and the rest of its stream (the same sealed frames, the same counters) goes in kind-7
+// datagrams on the direct path (core's RemoteStreamSender / RemoteStreamReceiver). Until then no audio goes over the WebSocket.
 package dev.blurt.remote.app.net
 
 import android.os.Handler
@@ -16,7 +20,11 @@ import dev.blurt.remote.core.RemoteHandshakeError
 import dev.blurt.remote.core.RemotePointerPacket
 import dev.blurt.remote.core.RemoteSTUN
 import dev.blurt.remote.core.RemoteSealer
+import dev.blurt.remote.core.RemoteStreamPacket
+import dev.blurt.remote.core.RemoteStreamReceiver
+import dev.blurt.remote.core.RemoteStreamSender
 import dev.blurt.remote.core.ToMac
+import dev.blurt.remote.core.ToPhone
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -30,7 +38,15 @@ object Net {
     fun now(): Double = SystemClock.elapsedRealtimeNanos() / 1e9
 }
 
-class Channel(private val transport: Transport, private val handshake: PhoneHandshake, val isRelay: Boolean) : Transport.Sink {
+class Channel(
+    private val transport: Transport,
+    private val handshake: PhoneHandshake,
+    val isRelay: Boolean,
+    /** the relay is Blurt's go-between: the stream moves onto the direct path once it opens */
+    val goBetween: Boolean = false,
+    /** a TCP address DNS-SD found: the same network */
+    val discovered: Boolean = false,
+) : Transport.Sink {
     private val h = Net.handler
     private val reader = RemoteFrameReader()
     private var sealer: RemoteSealer? = null
@@ -49,8 +65,14 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
     /** `failure`: the handshake's reason, when that is what ended it */
     var onClose: ((RemoteHandshakeError?) -> Unit)? = null
 
+    /** the stream moved onto the direct path: the WebSocket is idle from here on */
+    var onMoved: (() -> Unit)? = null
+
     /** the relay's close code, when that ended it */
     @Volatile var relayClose: Int? = null
+        private set
+    /** the HTTP status of a refused upgrade (the go-between's 429), when that ended it */
+    @Volatile var relayRefused: Int? = null
         private set
 
     /** to reveal in the first message (ToMac.Hello) */
@@ -58,6 +80,8 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
     /** the session's six digits, once the handshake is done */
     val check: String? get() = sealer?.check(handshake.nonce)
     val label get() = transport.label
+    /** where a TCP session went, once connected */
+    val remoteAddress: InetAddress? get() = transport.remote
 
     fun start() {
         transport.start(this)
@@ -72,13 +96,14 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
 
     override fun bytes(b: ByteArray) {
         h.post {
-            if (closed) return@post
+            // past the peer's streamMoved nothing more is read from the old stream: the counters went on in the datagrams
+            if (closed || peerMoved) return@post
             reader.feed(b)
             try {
                 while (true) {
                     val f = reader.next() ?: break
-                    frame(f)
-                    if (closed) return@post
+                    frame(f, old = true)
+                    if (closed || peerMoved) return@post
                 }
             } catch (_: Exception) {
                 shut(null)
@@ -86,14 +111,18 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
         }
     }
 
-    override fun closed(code: Int?) {
+    override fun closed(code: Int?, http: Int?) {
         h.post {
             if (code != null) relayClose = code
+            if (http != null) relayRefused = http
+            // both ends have moved: the WebSocket's going changes nothing
+            if (moved && peerMoved) return@post
             shut(null)
         }
     }
 
-    private fun frame(f: ByteArray) {
+    /** `old`: read from the old stream (TCP or the WebSocket), not the datagrams' */
+    private fun frame(f: ByteArray, old: Boolean = false) {
         val s = sealer
         if (s == null) {
             try {
@@ -110,8 +139,12 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
             return
         }
         val plain = try { s.open(f) } catch (_: Exception) { return shut(null) }
+        if (old && moveAllowed && isStreamMoved(plain)) return peerMovedNow()
         deliver(plain)
     }
+
+    private fun isStreamMoved(plain: ByteArray): Boolean =
+        plain.size in 2..40 && plain[0].toInt() == RemoteFrameKind.CONTROL.raw && ToPhone.decode(plain.copyOfRange(1, plain.size)) == ToPhone.StreamMoved
 
     /** A frame or packet, opened: the first byte says what it is. */
     private fun deliver(plain: ByteArray) {
@@ -132,7 +165,10 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
         val s = sealer ?: return
         if (closed) return
         val f = try { s.seal(byteArrayOf(kind.raw.toByte()) + body) } catch (_: Exception) { return }
-        transport.send(RemoteFrameReader.framed(f))
+        // sealed and written in one go on this thread: the stream's order is the counters' order, wherever the stream runs
+        val framed = RemoteFrameReader.framed(f)
+        val out = streamOut
+        if (out != null) streamDatagrams(out.write(framed, Net.now())) else transport.send(framed)
     }
 
     fun send(m: ToMac) {
@@ -140,7 +176,17 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
         h.post { sendSealed(RemoteFrameKind.CONTROL, d) }
     }
 
-    fun sendAudio(pcm: ByteArray) = h.post { sendSealed(RemoteFrameKind.AUDIO, pcm) }
+    fun sendAudio(pcm: ByteArray) = h.post {
+        // on the go-between nothing heavy crosses the WebSocket: the talk key's first words wait for the move, the last few seconds of them
+        if (goBetween && !moved) {
+            if (closed) return@post
+            heldAudio.addLast(pcm)
+            heldAudioBytes += pcm.size
+            while (heldAudioBytes > HELD_AUDIO && heldAudio.isNotEmpty()) heldAudioBytes -= heldAudio.removeFirst().size
+            return@post
+        }
+        sendSealed(RemoteFrameKind.AUDIO, pcm)
+    }
 
     /** Over UDP once it works, else in the stream. `inOrder`: in the stream regardless, behind the messages sent before it, as a scroll must be
      *  when the pointer was just placed where it's to happen. */
@@ -157,7 +203,7 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
     /** For what's worthless late (probes, reports of what arrived). Without a datagram path it goes in the stream, probes excepted. */
     fun sendDatagram(kind: RemoteFrameKind, body: ByteArray) = h.post {
         if (datagram(kind, body)) return@post
-        if (kind != RemoteFrameKind.PROBE) sendSealed(kind, body)
+        if (kind != RemoteFrameKind.PROBE && !(goBetween && !moved)) sendSealed(kind, body)
     }
 
     /** True if it went as a datagram. */
@@ -213,7 +259,11 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
         h.postDelayed({ probe(left - 1) }, 400)
     }
 
-    fun udpConfirmed() = h.post { if (!isRelay && local != null) udpOK = true }
+    fun udpConfirmed() = h.post {
+        if (!isRelay && local != null) udpOK = true
+        // the host saw a datagram from here: on the go-between, everything moves to the direct path
+        if (goBetween && moveAllowed && !moved) move()
+    }
 
     private fun receive(s: DatagramSocket) {
         Thread({
@@ -240,7 +290,109 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
             if (chosen == null && trying.any { it == from }) choose(from)
             if (from == chosen) directHeard = Net.now()
         }
-        deliver(plain)
+        if (plain.isEmpty()) return
+        when (plain[0].toInt() and 0xFF) {
+            RemoteFrameKind.STREAM.raw -> streamChunk(plain)
+            RemoteFrameKind.STREAM_ACK.raw -> {
+                val next = RemoteStreamPacket.parseAck(plain.copyOfRange(1, plain.size)) ?: return
+                streamOut?.let { streamDatagrams(it.ack(next, Net.now())) }
+            }
+            else -> deliver(plain)
+        }
+    }
+
+    // MARK: the stream moved onto the direct path (the go-between)
+
+    /** both ends listed RemoteFeature.MOVE: set from the host's `session` */
+    private var moveAllowed = false
+    /** this phone writes its stream in kind-7 datagrams now */
+    @Volatile var moved = false
+        private set
+    /** the host's `streamMoved` has been read: its stream comes in kind-7 datagrams now */
+    private var peerMoved = false
+    private var streamOut: RemoteStreamSender? = null
+    private var streamIn: RemoteStreamReceiver? = null
+    private val streamReader = RemoteFrameReader().apply { limit = RemoteFrameReader.MAX_FRAME }
+    private val heldAudio = ArrayDeque<ByteArray>()
+    private var heldAudioBytes = 0
+    /** the session's round trip from its pings, for the stream's first retransmission timer */
+    @Volatile var rttHint: Double? = null
+    private val streamTicker = object : Runnable {
+        override fun run() {
+            if (closed || !(moved || peerMoved)) return
+            val now = Net.now()
+            streamOut?.let { streamDatagrams(it.tick(now)) }
+            streamIn?.tick(now)?.let { datagram(RemoteFrameKind.STREAM_ACK, it) }
+            h.postDelayed(this, 10)
+        }
+    }
+
+    /** The host's session said it moves too. Bytes it sends early wait for its `streamMoved`. */
+    fun allowMove(on: Boolean) = h.post {
+        if (closed || moveAllowed == on || moved) return@post
+        moveAllowed = on
+        if (on && streamIn == null) streamIn = RemoteStreamReceiver(holding = true)
+    }
+
+    private fun move() {
+        if (moved || closed || !moveAllowed) return
+        // the last frame on the old stream
+        sendSealed(RemoteFrameKind.CONTROL, ToMac.StreamMoved.encode())
+        moved = true
+        streamOut = RemoteStreamSender(rttHint)
+        directHeard = Net.now()       // the 6 s count from here
+        if (!peerMoved) h.postDelayed(streamTicker, 10)
+        watchMoved()
+        // what the talk key said before the move, in order, ahead of anything new
+        while (heldAudio.isNotEmpty()) sendSealed(RemoteFrameKind.AUDIO, heldAudio.removeFirst())
+        heldAudioBytes = 0
+        onMoved?.invoke()
+    }
+
+    private fun peerMovedNow() {
+        if (peerMoved) return
+        peerMoved = true
+        val inn = streamIn ?: RemoteStreamReceiver().also { streamIn = it }
+        if (!moved) h.postDelayed(streamTicker, 10)
+        // the host moved first (it got here before udpOK did): follow it
+        if (!moved) move()
+        feedStream(inn.release())
+    }
+
+    private fun streamChunk(plain: ByteArray) {
+        val inn = streamIn ?: return
+        val (offset, bytes) = RemoteStreamPacket.parseChunk(plain.copyOfRange(1, plain.size)) ?: return
+        val r = inn.received(offset, bytes, Net.now())
+        r.ack?.let { datagram(RemoteFrameKind.STREAM_ACK, it) }
+        if (r.data.isNotEmpty()) feedStream(r.data)
+        // a host that never says streamMoved can't fill the window and wait forever
+        if (inn.heldBytes >= RemoteStreamPacket.WINDOW) shut(null)
+    }
+
+    private fun feedStream(b: ByteArray) {
+        if (b.isEmpty() || closed) return
+        streamReader.feed(b)
+        try {
+            while (true) {
+                val f = streamReader.next() ?: break
+                frame(f)
+                if (closed) return
+            }
+        } catch (_: Exception) {
+            shut(null)
+        }
+    }
+
+    /** kind-7 bodies out; with no direct path yet they're lost, and the retransmission timer sends them again */
+    private fun streamDatagrams(bodies: List<ByteArray>) {
+        for (b in bodies) datagram(RemoteFrameKind.STREAM, b)
+    }
+
+    /** After the move, 6 s without a datagram ends the session: the phone starts over. */
+    private fun watchMoved() {
+        if (closed) return
+        if (Net.now() - directHeard > 6) return shut(null)
+        h.postDelayed({ watchMoved() }, 1000)
     }
 
     // MARK: a direct path, from over the relay
@@ -316,6 +468,8 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
     private fun holdDirect() {
         if (closed || chosen == null) return
         if (Net.now() - directHeard > 6) {
+            // after the move there is nothing to fall back on
+            if (moved) return shut(null)
             chosen = null
             onDirect?.invoke(false)
             return
@@ -340,12 +494,45 @@ class Channel(private val transport: Transport, private val handshake: PhoneHand
         direct?.close()
         direct = null
         chosen = null
+        heldAudio.clear()
+        h.removeCallbacks(streamTicker)
         onClose?.invoke(failure)
     }
 }
 
+private const val HELD_AUDIO = 5 * 32_000      // five seconds of 16 kHz PCM16
+
 /** This phone's public IPv6 addresses: reachable as they are, where a firewall lets a reply through. */
 object Addresses {
+    /** `a` is on one of the networks this phone is on itself, not through a VPN: the same network, rather than an overlay's address. */
+    fun onMyNetwork(c: android.content.Context, a: InetAddress): Boolean = runCatching {
+        if (a.isLoopbackAddress || a.isLinkLocalAddress) return true
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        @Suppress("DEPRECATION")
+        for (n in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(n) ?: continue
+            if (caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) continue
+            val lp = cm.getLinkProperties(n) ?: continue
+            for (la in lp.linkAddresses) if (sameSubnet(la.address, la.prefixLength, a)) return true
+        }
+        false
+    }.getOrDefault(false)
+
+    private fun sameSubnet(mine: InetAddress, prefix: Int, other: InetAddress): Boolean {
+        val x = mine.address
+        val y = other.address
+        if (x.size != y.size) return false
+        var bits = prefix.coerceIn(0, x.size * 8)
+        var i = 0
+        while (bits > 0) {
+            val mask = if (bits >= 8) 0xFF else (0xFF shl (8 - bits)) and 0xFF
+            if ((x[i].toInt() and mask) != (y[i].toInt() and mask)) return false
+            bits -= 8
+            i += 1
+        }
+        return true
+    }
+
     fun publicIPv6(): List<String> = runCatching {
         java.net.NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }.flatMap { i ->
             i.inetAddresses.toList().filterIsInstance<java.net.Inet6Address>()

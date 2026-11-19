@@ -160,6 +160,28 @@ pub struct ScreenRequest {
     pub display: Option<String>,
     /// the picture's repairs the phone implements: "nack", "ltr", "fec" (docs/design/remote-realtime.md). None: none (before 1.0.15)
     pub features: Option<Vec<String>>,
+    /// a viewer's window in pixels (docs/design/remote-desktop-viewer.md): the most the picture needs, whatever `width` and
+    /// `height` say. None from phones
+    pub window: Option<PixelSize>,
+}
+
+/// A size in pixels (RemotePixelSize).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PixelSize {
+    pub width: i64,
+    pub height: i64,
+}
+
+impl ScreenRequest {
+    /// The box the picture is fitted into: the one asked for, no larger than a viewer's window (RemoteScreenRequest.box).
+    pub fn boxed(&self) -> (i64, i64) {
+        match self.window {
+            Some(w) if w.width > 0 && w.height > 0 => {
+                (self.width.min(w.width), self.height.min(w.height))
+            }
+            _ => (self.width, self.height),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -189,7 +211,9 @@ pub enum ToMac {
     System(SystemMove),
     Activate { bundle: String },
     Hud(String),
-    Hello { device: String, mic_on_phone: bool, nonce: Option<Vec<u8>> },
+    /// `features`: what this phone can do that older ones can't, `["move"]` (its stream moves onto the direct path,
+    /// docs/design/remote-go-between.md). None: nothing (phones before the go-between).
+    Hello { device: String, mic_on_phone: bool, nonce: Option<Vec<u8>>, features: Option<Vec<String>> },
     SetMicOnPhone(bool),
     ReleaseAll,
     KeyStored,
@@ -210,6 +234,12 @@ pub enum ToMac {
     ScreenStats(String),
     ScreenSnapshot { name: String, jpeg: Vec<u8> },
     Ping(f64),
+    /// the phone's last frame on the old stream (TCP or the WebSocket): what follows comes in kind-7 datagrams
+    StreamMoved,
+    /// a viewer's clipboard text (at most `MAX_CLIPBOARD` bytes of UTF-8), sent only while its keys are captured
+    Clipboard(String),
+    /// a viewer's keys are captured (true) or given back (false): the host sends its clipboard only in between
+    KeysCaptured(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -256,8 +286,28 @@ pub struct SessionInfo {
     pub relay: Option<String>,
     /// "mac", "windows" or "linux"
     pub platform: Option<String>,
+    /// what this host can do that older ones can't: `["move"]` (docs/design/remote-go-between.md). None from older hosts.
+    pub features: Option<Vec<String>>,
 }
 
+/// `features` a phone and a host list when the stream can move onto the direct path.
+pub const MOVE: &str = "move";
+
+/// `features` a viewer (a computer driving another, docs/design/remote-desktop-viewer.md) lists in its hello, and a host that takes
+/// a viewer's extras (the clipboard, `screen.window`, `keysCaptured`) lists in `session`.
+pub const VIEWER: &str = "viewer";
+/// In a viewer's hello: another window of a viewer that has a session already (another display), kept beside the first by a
+/// host that can (the Mac). The Rust host streams one display at a time and answers it with `ONE_DISPLAY`.
+pub const WINDOW: &str = "window";
+/// `screenFailed`'s reason for a viewer's second window on a host that shows one display at a time.
+pub const ONE_DISPLAY: &str = "one_display";
+/// Clipboard text between a viewer and its host: plain text, at most 64 KiB of UTF-8, both ways (RemoteClipboard.maxBytes).
+pub const MAX_CLIPBOARD: usize = 64 * 1024;
+
+/// Worth sending as the clipboard: some text, and not too much of it (RemoteClipboard.fits).
+pub fn clipboard_fits(s: &str) -> bool {
+    !s.is_empty() && s.len() <= MAX_CLIPBOARD
+}
 /// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as in the
 /// computer's display settings), so the phone can draw the arrangement (RemoteDisplay).
 #[derive(Clone, Debug, PartialEq)]
@@ -304,6 +354,12 @@ pub enum ToPhone {
     /// every display the computer has, whenever that changes (and once a session is up)
     Displays(Vec<Display>),
     CursorShape { png: Vec<u8>, hot_x: f64, hot_y: f64, width: f64, height: f64 },
+    /// the host's last frame on the old stream: what follows comes in kind-7 datagrams
+    StreamMoved,
+    /// the direct path didn't open in time: this session can't go on through the go-between
+    NoDirect,
+    /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most `MAX_CLIPBOARD` bytes)
+    Clipboard(String),
 }
 
 // ------------------------------------------------------------------ helpers
@@ -463,7 +519,18 @@ fn request_json(r: &ScreenRequest) -> Value {
     if let Some(f) = &r.features {
         o["features"] = json!(f);
     }
+    if let Some(w) = &r.window {
+        o["window"] = json!({"width": w.width, "height": w.height});
+    }
     o
+}
+
+fn pixel_size_from(v: &Value) -> Option<PixelSize> {
+    let o = v.as_object()?;
+    Some(PixelSize {
+        width: int(req(o, "width")?)?,
+        height: int(req(o, "height")?)?,
+    })
 }
 
 fn display_json(d: &Display) -> Value {
@@ -495,6 +562,7 @@ fn request_from(v: &Value) -> Option<ScreenRequest> {
         codecs: opt(o, "codecs", |v| list(v, string))?,
         display: opt(o, "display", string)?,
         features: opt(o, "features", |v| list(v, string))?,
+        window: opt(o, "window", pixel_size_from)?,
     })
 }
 
@@ -528,6 +596,9 @@ fn session_json(i: &SessionInfo) -> Value {
     if let Some(p) = &i.platform {
         o["platform"] = json!(p);
     }
+    if let Some(f) = &i.features {
+        o["features"] = json!(f);
+    }
     o
 }
 
@@ -543,6 +614,7 @@ fn session_from(v: &Value) -> Option<SessionInfo> {
         display_aspect: num(req(o, "displayAspect")?)?,
         relay: opt(o, "relay", string)?,
         platform: opt(o, "platform", string)?,
+        features: opt(o, "features", |v| list(v, string))?,
     })
 }
 
@@ -568,10 +640,13 @@ impl ToMac {
             ToMac::System(m) => one("system", json!(system_name(*m))),
             ToMac::Activate { bundle } => case("activate", vec![("bundle", json!(bundle))]),
             ToMac::Hud(t) => one("hud", json!(t)),
-            ToMac::Hello { device, mic_on_phone, nonce } => {
+            ToMac::Hello { device, mic_on_phone, nonce, features } => {
                 let mut f = vec![("device", json!(device)), ("micOnPhone", json!(mic_on_phone))];
                 if let Some(n) = nonce {
                     f.push(("nonce", json!(b64(n))));
+                }
+                if let Some(x) = features {
+                    f.push(("features", json!(x)));
                 }
                 case("hello", f)
             }
@@ -598,6 +673,9 @@ impl ToMac {
             ToMac::ScreenStats(s) => one("screenStats", json!(s)),
             ToMac::ScreenSnapshot { name, jpeg } => case("screenSnapshot", vec![("name", json!(name)), ("jpeg", json!(b64(jpeg)))]),
             ToMac::Ping(t) => one("ping", f64v(*t)),
+            ToMac::StreamMoved => case("streamMoved", vec![]),
+            ToMac::Clipboard(t) => one("clipboard", json!(t)),
+            ToMac::KeysCaptured(on) => one("keysCaptured", json!(on)),
         }
     }
 
@@ -629,6 +707,7 @@ impl ToMac {
                 device: string(req(f, "device")?)?,
                 mic_on_phone: boolean(req(f, "micOnPhone")?)?,
                 nonce: opt(f, "nonce", data)?,
+                features: opt(f, "features", |v| list(v, string))?,
             },
             "setMicOnPhone" => ToMac::SetMicOnPhone(boolean(x0()?)?),
             "releaseAll" => ToMac::ReleaseAll,
@@ -651,6 +730,9 @@ impl ToMac {
             "screenStats" => ToMac::ScreenStats(string(x0()?)?),
             "screenSnapshot" => ToMac::ScreenSnapshot { name: string(req(f, "name")?)?, jpeg: data(req(f, "jpeg")?)? },
             "ping" => ToMac::Ping(num(x0()?)?),
+            "streamMoved" => ToMac::StreamMoved,
+            "clipboard" => ToMac::Clipboard(string(x0()?)?),
+            "keysCaptured" => ToMac::KeysCaptured(boolean(x0()?)?),
             _ => return None,
         })
     }
@@ -705,6 +787,9 @@ impl ToPhone {
                 "cursorShape",
                 vec![("png", json!(b64(png))), ("hotX", f64v(*hot_x)), ("hotY", f64v(*hot_y)), ("width", f64v(*width)), ("height", f64v(*height))],
             ),
+            ToPhone::StreamMoved => case("streamMoved", vec![]),
+            ToPhone::NoDirect => case("noDirect", vec![]),
+            ToPhone::Clipboard(t) => one("clipboard", json!(t)),
         }
     }
 
@@ -748,6 +833,9 @@ impl ToPhone {
                 width: num(req(f, "width")?)?,
                 height: num(req(f, "height")?)?,
             },
+            "streamMoved" => ToPhone::StreamMoved,
+            "noDirect" => ToPhone::NoDirect,
+            "clipboard" => ToPhone::Clipboard(string(x0()?)?),
             _ => return None,
         })
     }

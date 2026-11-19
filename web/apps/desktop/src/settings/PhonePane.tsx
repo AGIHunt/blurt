@@ -1,147 +1,37 @@
-// Settings → Phone (the Mac's Settings/RemotePane.swift, for any phone): pair a phone with the QR code, see which
-// phones are paired and which one is connected and how, remove one, let the phone show this screen, and the relay
-// for away from home. The code shows only while Add Phone… is open: with no paired phone Blurt doesn't listen at
-// all. A new phone always needs a yes here, with the same six digits the phone shows; Allow is never the default
-// (Return and Esc say no, and a click in the first moment after the question appears answers nothing). The same
-// question shows over the whole window when this pane isn't open (PhoneAsk). The host: src-tauri/src/remote.rs,
-// docs/design/remote-protocol.md §The desktop app.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+// Settings → Remote Control (the Mac's Settings/RemotePane.swift): the options only. On This Computer (whether a phone
+// may show this screen) and Away from home (an own relay, the public connection service, Set Up a Relay). The devices
+// themselves, paired and to pair, are on the Remote Control page (PhonePage.tsx); its first row here goes there.
+// A new device always needs a yes, with the same six digits it shows; the question shows over the whole window wherever it
+// is (PhoneAsk), and Allow is never the default (Return and Esc say no, and a click in the first moment after the question
+// appears answers nothing). The host: src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app.
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { api, type AppStatus, type RemoteStatus } from '../api';
-import { i18n } from '../i18n';
-import { Menu, type MenuAt } from '../components/Menu';
-import { Group, Line, Page, Row, S, TextLink, Toggle } from './kit';
-import { APP_PAGES, apply, groupDigits, relayAddress, timeLeft, useNow, usePhonePaneMounted, usePhonePaneOpen, useRemoteStatus } from './phone';
+import type { Place } from '../places';
+import { StatusDot } from '../components/StatusDot';
+import { Group, Page, Row, S, Switch, TextLink, Toggle } from './kit';
+import { APP_PAGES, apply, awayLine, groupDigits, relayAddress, timeLeft, useNow, useRemoteStatus } from './phone';
 import './settings.css';
 
 type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
 
-export function PhonePane({ status }: { status: AppStatus }) {
+export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => void }) {
   const r = useRemoteStatus();
-  usePhonePaneMounted();
-  const [adding, setAddingState] = useState(false);
-  const [removing, setRemoving] = useState<RemoteStatus['devices'][number] | null>(null);
-  const addingRef = useRef(false);
-
-  const setAdding = (on: boolean) => {
-    addingRef.current = on;
-    setAddingState(on);
-    void apply(api.remoteShowPairing(on)).catch(() => {});
-  };
-  // leaving the pane takes the code down (the Mac's stop())
-  useEffect(() => () => {
-    if (addingRef.current) void apply(api.remoteShowPairing(false)).catch(() => {});
-  }, []);
-  // a phone just paired from the code on screen: the code's job is done
-  const count = useRef<number | null>(null);
-  useEffect(() => {
-    if (!r) return;
-    if (count.current != null && r.devices.length > count.current && addingRef.current) setAdding(false);
-    count.current = r.devices.length;
-  }, [r?.devices.length]);
-
   if (!r) return <Page id="phone"><p className="st-lead">{S('settings.loading')}</p></Page>;
-  const win = status.platform === 'win';
   return (
-    <Page id="phone">
-      {r.firewall === 'blocked' && <FirewallNotice />}
-      {!r.canControl && r.devices.length > 0 && (
-        <Notice title={S(win ? 'phone.control.win' : 'phone.control.linux')} detail={S(win ? 'phone.control.win.detail' : 'phone.control.linux.detail')} />
-      )}
-      {r.problem && !adding && <Notice title={r.problem} />}
-
-      <Group id="phone.phones">
-        {r.devices.map((d) => <DeviceRow key={d.id} d={d} r={r} onRemove={() => setRemoving(d)} />)}
-        {r.asking ? (
-          <AskBlock ask={r.asking} />
-        ) : adding ? (
-          <PairPanel r={r} onCancel={() => setAdding(false)} onRenew={() => void apply(api.remoteShowPairing(true)).catch(() => {})} />
-        ) : (
-          <Row id="phone.add">
-            <GetApp />
-            <button onClick={() => setAdding(true)} data-testid="phone-add">{S('phone.add')}</button>
-          </Row>
-        )}
-      </Group>
-
+    <Page id="phone" lead={
+      // the devices are on their page: the lead says so and goes there (search's QR, pair, add, computer land here)
+      <span data-setting="phone.devices">
+        {S('phone.devices.lead', S('feature.phone'))}{' '}
+        {onGo && <TextLink ink onClick={() => onGo('phone')}>{S('phone.devices.show')}</TextLink>}
+      </span>
+    }>
       <Group id="phone.options">
         <Toggle id="phone.screen" on={r.screenAllowed} set={(v) => void apply(api.remoteSetScreenAllowed(v)).catch(() => {})} />
       </Group>
 
       <RelayGroup r={r} />
-
-      {removing && (
-        <Confirm title={S('phone.remove.title', removing.name)} detail={S('phone.remove.detail')} cancel={S('phone.cancel')} ok={S('phone.remove')}
-          onClose={() => setRemoving(null)}
-          onOk={() => {
-            const id = removing.id;
-            setRemoving(null);
-            void apply(api.remoteRemoveDevice(id)).catch(() => {});
-          }} />
-      )}
     </Page>
-  );
-}
-
-/** The one thing that stops the phone working, on the pane's first screen (Dictation's no-model notice), with its one way
- *  out when there is one. */
-function Notice({ title, detail, action, testid = 'phone-notice' }: { title: string; detail?: string; action?: ReactNode; testid?: string }) {
-  return (
-    <div className="st-notice warn st-phone-notice" role="status" data-testid={testid}>
-      <Icon name="warning" size={16} />
-      <span className="grow">
-        <span className="st-phone-notice-title">{title}</span>
-        {detail && <span className="st-phone-notice-detail">{detail}</span>}
-      </span>
-      {action}
-    </div>
-  );
-}
-
-/** Windows Firewall keeps phones out on this network (a Public network, or a prompt cancelled once): Allow… adds Blurt's rule
- *  through Windows' own administrator prompt. Nothing happens without the click. */
-function FirewallNotice() {
-  const [busy, setBusy] = useState(false);
-  const allow = () => {
-    setBusy(true);
-    void apply(api.remoteAllowFirewall()).catch(() => {}).finally(() => setBusy(false));
-  };
-  return (
-    <Notice testid="phone-firewall" title={S('phone.firewall')} detail={S('phone.firewall.detail')}
-      action={<button className="primary" onClick={allow} disabled={busy} data-testid="phone-firewall-allow">{S('phone.firewall.allow')}</button>} />
-  );
-}
-
-function DeviceRow({ d, r, onRemove }: { d: RemoteStatus['devices'][number]; r: RemoteStatus; onRemove: () => void }) {
-  const on = r.connected?.id === d.id ? r.connected : null;
-  let detail: ReactNode;
-  if (on) {
-    const how = [S(`phone.route.${on.route}`), on.screen ? S('phone.showing_screen') : ''].filter(Boolean).join(' · ');
-    detail = <span className="st-phone-live"><span className="st-phone-dot" aria-hidden />{S('phone.connected', how)}</span>;
-  } else {
-    detail = d.lastSeen ? S('phone.last_used', i18n().formatRelative(d.lastSeen)) : S('phone.not_connected');
-  }
-  // no icon: the names line up with Blurt for Phones under them, as on the Mac
-  return (
-    <Line title={d.name} detail={detail} flash={`phone.device.${d.id}`}>
-      <button onClick={onRemove} aria-label={`${S('phone.remove')} ${d.name}`}>{S('phone.remove')}</button>
-    </Line>
-  );
-}
-
-/** Get the App: the build steps for each phone, until the app is in the stores. */
-function GetApp() {
-  const [at, setAt] = useState<MenuAt | null>(null);
-  const open = (url: string) => void api.openUrl(url).catch(() => {});
-  return (
-    <>
-      <button type="button" className="st-link ink" aria-haspopup="menu" aria-expanded={!!at} data-testid="phone-get-app"
-        onClick={(e) => setAt(at ? null : { x: 0, y: 0, anchor: e.currentTarget, align: 'end' })}>{S('phone.get_app')}</button>
-      {at && (
-        <Menu at={at} label={S('phone.get_app')} onClose={() => setAt(null)}
-          entries={[{ label: S('phone.get_app.ios'), run: () => open(APP_PAGES.ios) }, { label: S('phone.get_app.android'), run: () => open(APP_PAGES.android) }]} />
-      )}
-    </>
   );
 }
 
@@ -157,26 +47,44 @@ export function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel:
         {src ? <img src={src} alt={S('phone.scan')} draggable={false} data-testid="phone-qr" /> : <span className="st-spin" aria-hidden />}
       </div>
       <div className="st-phone-pair-text">
-        <div className="st-phone-pair-title">{S('phone.scan')}</div>
+        {/* the title, its time left beside it; one line of what to do; where the app comes from; the buttons right under */}
+        <div className="st-phone-pair-title">
+          <span>{S('phone.scan')}</span>
+          {p && !expired && <span className="st-phone-left" aria-live="off">{S('phone.scan.left', timeLeft(p.expiresAt, now))}</span>}
+        </div>
         <div className="st-detail">{S('phone.scan.detail')}</div>
-        {p && (expired
-          ? <div className="st-detail warn" data-testid="phone-expired"><Icon name="warning" size={12} />{S('phone.scan.expired')}</div>
-          : <div className="st-detail st-phone-left" aria-live="off">{S('phone.scan.left', timeLeft(p.expiresAt, now))}</div>)}
+        <span className="st-phone-noapp">
+          <span>{S('phone.no_app')}</span>
+          <TextLink ink onClick={() => void api.openUrl(APP_PAGES.ios).catch(() => {})}>{S('phone.get_app.ios')}</TextLink>
+          <span aria-hidden>·</span>
+          <TextLink ink onClick={() => void api.openUrl(APP_PAGES.android).catch(() => {})}>{S('phone.get_app.android')}</TextLink>
+        </span>
+        {p && expired && <div className="st-detail warn" data-testid="phone-expired"><Icon name="warning" size={12} />{S('phone.scan.expired')}</div>}
         {r.problem && <div className="st-detail warn"><Icon name="warning" size={12} />{r.problem}</div>}
         <div className="st-phone-pair-actions">
-          {expired && <button className="primary" onClick={onRenew} data-testid="phone-renew">{S('phone.scan.new')}</button>}
-          <button onClick={onCancel} data-testid="phone-cancel">{S('phone.cancel')}</button>
-          <span className="grow" />
-          <span className="st-phone-noapp">
-            <span>{S('phone.no_app')}</span>
-            <TextLink ink onClick={() => void api.openUrl(APP_PAGES.ios).catch(() => {})}>{S('phone.get_app.ios')}</TextLink>
-            <span aria-hidden>·</span>
-            <TextLink ink onClick={() => void api.openUrl(APP_PAGES.android).catch(() => {})}>{S('phone.get_app.android')}</TextLink>
-          </span>
+          {expired && <button className="primary ph-act" onClick={onRenew} data-testid="phone-renew">{S('phone.scan.new')}</button>}
+          {p && !expired && <CopyLink url={p.url} />}
+          <button className="ph-act" onClick={onCancel} data-testid="phone-cancel">{S('phone.cancel')}</button>
         </div>
       </div>
     </div>
   );
+}
+
+/** The code as a link, for a computer to paste into its Add Computer… (docs/design/remote-desktop-viewer.md). */
+function CopyLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    void api.copyText(url).then(
+      () => {
+        // the link copied outlives the code on screen (10 minutes), and says so
+        void api.remotePairingLinkCopied().catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 4000);
+      },
+      () => {},
+    );
+  return <button className="ph-act" onClick={copy} data-testid="phone-copy-link">{copied ? S('phone.link_copied') : S('phone.copy_link')}</button>;
 }
 
 /** A click on Allow counts only once the question has been on screen a moment, and only from the mouse (a key press
@@ -189,36 +97,26 @@ export function useAllow(key: string) {
   return (e: React.MouseEvent) => e.detail > 0 && Date.now() - since.current > 600;
 }
 
-/** `digits` ties the answer to the phone that asked: a late click can't answer another one that started asking since. */
+/** `digits` ties the answer to the device that asked: a late click can't answer another one that started asking since. */
 const answer = (yes: boolean, digits: string) => void apply(api.remoteAnswerPairing(yes, digits)).catch(() => {});
 
-/** A phone asking, in the pane: its name, the digits large, where it came from; Don't Allow and Allow, neither default. */
-function AskBlock({ ask }: { ask: NonNullable<RemoteStatus['asking']> }) {
-  const ok = useAllow(ask.digits);
+/** Away from home's status line: the path a connected phone uses, or what a phone on another network would use and
+ *  why that won't work (phone.ts `awayLine`). */
+function AwayStatus({ r }: { r: RemoteStatus }) {
+  const a = awayLine(r);
   return (
-    <div className="st-phone-ask" role="group" aria-labelledby="phone-ask-title" data-setting="phone.ask" data-testid="phone-ask"
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === 'Escape') {
-          e.preventDefault();
-          answer(false, ask.digits);
-        }
-      }}>
-      <span className="st-phone-ask-icon"><Icon name="phone" size={20} /></span>
-      <div className="st-phone-ask-body">
-        <div className="st-phone-ask-title" id="phone-ask-title">{S('phone.ask.title', ask.device)}</div>
-        <div className="st-detail">{S('phone.ask.detail')} {S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</div>
-        <div className="st-phone-ask-foot">
-          <span className="st-phone-digits" data-testid="phone-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</span>
-          <span className="grow" />
-          <button onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
-          <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-allow">{S('phone.ask.yes')}</button>
-        </div>
-      </div>
+    <div className={`st-row st-phone-away ${a.warn ? 'warn' : ''}`} role="status" data-testid="phone-away" data-away={a.key}>
+      <span className="st-phone-away-label">{S('phone.away')}</span>
+      <span className="st-phone-away-value">
+        {a.live ? <StatusDot tone="good" small /> : a.warn ? <Icon name="warning" size={14} /> : null}
+        <span>{a.route ? S(a.key, S(a.route)) : S(a.key)}</span>
+      </span>
     </div>
   );
 }
 
-/** Away from Home: the relay address (Return or leaving the field uses it and tries it), and Copy Instructions. */
+/** Away from home: what's in use (AwayStatus), the owner's relay address, recommended (Return or leaving the field uses it
+ *  and tries it), Blurt's go-between switch (used only while no relay is set), and Copy Instructions. */
 function RelayGroup({ r }: { r: RemoteStatus }) {
   const [text, setText] = useState(r.relay.address ?? '');
   const [state, setState] = useState<RelayState>('idle');
@@ -282,9 +180,12 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
   else if (saved && r.relay.fromPhone) (line = S(r.relay.reachable === false ? 'phone.relay.from_phone_failed' : 'phone.relay.from_phone')), (warn = r.relay.reachable === false);
   else if (saved && r.relay.reachable === false) (line = S('phone.relay.failed')), (warn = true);
 
+  const own = !!r.relay.address;
   return (
     <Group id="phone.relay">
-      <Row id="phone.relay.address" detail={line} warn={warn}>
+      <AwayStatus r={r} />
+      <Row id="phone.relay.address" detail={line} warn={warn}
+        title={<span data-testid="phone-relay-recommended">{S('phone.relay.own')}</span>}>
         <input ref={field} className="st-field st-phone-relay" type="text" spellCheck={false} autoComplete="off" autoCapitalize="off"
           placeholder="wss://relay.example.com" aria-label={S('phone.relay')} value={text} data-testid="phone-relay"
           onChange={(e) => {
@@ -301,6 +202,11 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
             }
           }}
           onBlur={commit} />
+      </Row>
+      {/* with a relay of the owner's the go-between is never used: the switch stays as set, dimmed, and says so */}
+      <Row id="phone.go_between" detail={own ? S('phone.go_between.unused') : undefined}>
+        <Switch on={r.relay.goBetween} label={S('phone.go_between')} disabled={own}
+          set={(v) => void apply(api.remoteSetGoBetween(v)).catch(() => {})} />
       </Row>
       <Row id="phone.relay.help">
         <button onClick={copy} data-testid="phone-copy">{copied ? S('phone.relay.copied') : S('phone.relay.copy')}</button>
@@ -327,15 +233,14 @@ export function Confirm({ title, detail, cancel, ok, onOk, onClose, danger = tru
   );
 }
 
-/** The phone's question over the whole window, wherever it is (App.tsx shows it once), while Settings → Phone isn't
- *  open: that pane asks in place. Don't Allow has the focus; Return, Esc and a click outside say no; only a click on
- *  Allow says yes. Gone when the host stops asking (answered, timed out, the phone went away). */
+/** A new device's question over the whole window, wherever it is (App.tsx shows it once). Its icon is the device's kind
+ *  when the host knows it, else a neutral one. Don't Allow has the focus; Return, Esc and a click outside say no; only a
+ *  click on Allow says yes. Gone when the host stops asking (answered, timed out, the device went away). */
 export function PhoneAsk() {
   const r = useRemoteStatus();
-  const paneOpen = usePhonePaneOpen();
   const ask = r?.asking ?? null;
   const ok = useAllow(ask?.digits ?? '');
-  if (!ask || paneOpen) return null;
+  if (!ask) return null;
   return (
     <div className="overlay" onClick={() => answer(false, ask.digits)}>
       <div className="sheet dict-confirm phone-ask-sheet" role="alertdialog" aria-modal="true" aria-labelledby="phone-ask-sheet-title" data-testid="phone-ask-dialog"
@@ -347,11 +252,12 @@ export function PhoneAsk() {
           }
         }}>
         <div className="agent-ask-head">
-          <span className="phone-ask-icon"><Icon name="phone" size={22} /></span>
+          <span className="phone-ask-icon" data-kind={ask.kind ?? 'unknown'}><Icon name={ask.kind === 'computer' ? 'screen' : ask.kind === 'phone' ? 'phone' : 'devices'} size={28} /></span>
           <h3 id="phone-ask-sheet-title">{S('phone.ask.title', ask.device)}</h3>
         </div>
         <div className="phone-ask-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</div>
-        <p>{S('phone.ask.detail')} {S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</p>
+        {/* two sentences, one to a line: what to check, then where it is */}
+        <p><span className="phone-ask-line">{S('phone.ask.detail', ask.device)}</span> <span className="phone-ask-line">{S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</span></p>
         <div className="dict-confirm-foot">
           <button autoFocus className="dict-confirm-cancel" onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
           <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-ask-allow">{S('phone.ask.yes')}</button>

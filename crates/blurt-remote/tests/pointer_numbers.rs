@@ -98,6 +98,7 @@ fn screen() -> ToMac {
         codecs: Some(vec!["h264".into()]),
         display: None,
         features: None,
+        window: None,
     }))
 }
 
@@ -137,7 +138,7 @@ async fn the_cursor_carries_the_phones_number_once_it_sends_one() {
     let dir = std::env::temp_dir().join(format!("blurt-remote-numbers-{}", blurt_remote::crypto::new_id()));
     let w = World { pointer: Arc::new(Mutex::new((0.25, 0.5))), log: Arc::default() };
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Numbers".into(), version: "1.0.17".into(), test_answer: Some(true), port: 0 },
+        HostConfig { dir: dir.clone(), name: "Numbers".into(), version: "1.0.17".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()) },
         Box::new(Back(In(w.clone()), Scr)),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(NoApp),

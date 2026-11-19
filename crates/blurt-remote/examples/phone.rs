@@ -70,6 +70,7 @@ async fn main() {
             codecs: Some(vec!["hevc".into(), "h264".into()]),
             display: None,
             features: None,
+            window: None,
         })))
         .await;
     let mut a = VideoAssembler::new();
@@ -193,6 +194,7 @@ async fn measure(phone: &mut Phone, arg: &dyn Fn(&str) -> Option<String>) {
             codecs: Some(vec!["hevc".into(), "h264".into()]),
             display: None,
             features: repair.then(|| blurt_remote::repair::ALL.iter().map(|s| s.to_string()).collect()),
+            window: None,
         };
         let m = phone.watch(Watch { request, warmup: num("--warmup", 1.0), seconds: num("--seconds", 12.0), weather, verify: None }).await;
         println!("repair {}: {m}", if *repair { "on" } else { "off" });

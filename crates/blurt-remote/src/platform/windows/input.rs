@@ -583,6 +583,14 @@ impl Input for WinInput {
     }
 
     /// Several displays: the pointer in the points `Backend::displays` uses.
+    fn clipboard(&mut self) -> Option<String> {
+        super::clipboard::get_text()
+    }
+
+    fn set_clipboard(&mut self, text: &str) {
+        let _ = super::clipboard::set_text(text);
+    }
+
     fn pointer_desktop(&self) -> Option<(f64, f64)> {
         monitors::cursor_points()
     }

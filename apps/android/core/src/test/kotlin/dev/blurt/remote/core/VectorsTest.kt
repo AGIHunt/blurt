@@ -61,7 +61,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(40, list.size)
+        assertEquals(50, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -74,7 +74,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(26, list.size)
+        assertEquals(31, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -107,6 +107,9 @@ class VectorsTest {
         assertEquals(ToMac.Hud("常用"), mac("hud"))
         assertEquals(ToMac.Hello("Pixel 9", true, nonce), mac("hello"))
         assertEquals(ToMac.Hello("iPhone", false, null), mac("hello_no_nonce"))
+        assertEquals(ToMac.Hello("Pixel 9", true, nonce, listOf(RemoteFeature.MOVE)), mac("hello_move"))
+        assertNull((mac("hello") as ToMac.Hello).features, "a phone before the go-between names none")
+        assertEquals(ToMac.StreamMoved, mac("stream_moved"))
         assertEquals(ToMac.SetMicOnPhone(false), mac("set_mic_on_phone"))
         assertEquals(ToMac.ReleaseAll, mac("release_all"))
         assertEquals(ToMac.KeyStored, mac("key_stored"))
@@ -144,6 +147,15 @@ class VectorsTest {
         assertNull(old.platform)
         assertEquals(RemoteHost.MAC, old.host, "a Mac before 1.0.15 says nothing")
         assertEquals(1.6, old.displayAspect)
+        val gb = (phone("session_go_between") as ToPhone.Session).info
+        assertEquals(RemoteSessionInfo("Studio PC", 50123, 7, true, "1.0.27", listOf(RemoteCandidate("192.168.1.20", 50123),
+            RemoteCandidate("100.101.102.103", 50123), RemoteCandidate("fd7a:115c:a1e0::1", 50123)), 1.5, RemoteRelay.GO_BETWEEN, "windows",
+            listOf(RemoteFeature.MOVE)), gb)
+        assertTrue(RemoteRelay.isGoBetween(gb.relay))
+        assertEquals(listOf(false, true, true), gb.candidates.map { RemoteOverlay.isTailscale(it.host) })
+        assertNull(s.features, "a host before the go-between names none")
+        assertEquals(ToPhone.StreamMoved, phone("stream_moved"))
+        assertEquals(ToPhone.NoDirect, phone("no_direct"))
         assertEquals(ToPhone.CanControl(true), phone("can_control"))
         assertEquals(ToPhone.Front(RemoteFront("WindowsTerminal.exe", "Terminal")), phone("front"))
         assertEquals(ToPhone.Dictation(RemoteDictationPhase.LISTENING), phone("dictation"))
@@ -359,6 +371,88 @@ class VectorsTest {
             assertContentEquals(plain, mac.openPacket(sealed))
             assertNull(mac.openPacket(sealed), "a replay drops")
         }
+    }
+
+    /** The move: `streamMoved` as the phone's last frame on the old stream, the next frame continuing its counters inside a kind-7 datagram,
+     *  and the host's kind-8 ack, each sealed byte for byte as RemoteVectorsTests.swift wrote them. */
+    @Test
+    fun theMoveByteForByte() {
+        val g = v["goBetween"]!!.jsonObject
+        assertEquals(RemoteRelay.GO_BETWEEN, g["address"]!!.jsonPrimitive.content)
+        assertEquals(RemoteRelay.BUDGET, g["overBudgetClose"]!!.jsonPrimitive.int)
+        assertEquals(RemoteFeature.MOVE, g["feature"]!!.jsonPrimitive.content)
+        assertEquals(RemoteStreamPacket.MAX_CHUNK, g["chunk"]!!.jsonPrimitive.int)
+        assertEquals(RemoteStreamPacket.WINDOW, g["window"]!!.jsonPrimitive.int)
+
+        val st = v["stream"]!!.jsonObject
+        for (e in st["examples"]!!.jsonArray) {
+            val o = e.jsonObject
+            val body = RemoteStreamPacket.chunk(o["offset"]!!.jsonPrimitive.long, unhex(o["bytes"]!!.jsonPrimitive.content))
+            assertEquals(o["body"]!!.jsonPrimitive.content, hex(body))
+            val (off, b) = RemoteStreamPacket.parseChunk(body)!!
+            assertEquals(o["offset"]!!.jsonPrimitive.long, off)
+            assertEquals(o["bytes"]!!.jsonPrimitive.content, hex(b))
+        }
+        val sa = v["streamAck"]!!.jsonObject
+        for (e in sa["examples"]!!.jsonArray) {
+            val o = e.jsonObject
+            assertEquals(o["body"]!!.jsonPrimitive.content, hex(RemoteStreamPacket.ack(o["next"]!!.jsonPrimitive.long)))
+            assertEquals(o["next"]!!.jsonPrimitive.long, RemoteStreamPacket.parseAck(unhex(o["body"]!!.jsonPrimitive.content)))
+        }
+
+        // the session from the handshake vectors, with what each end has sealed so far
+        val h = v["handshake"]!!.jsonObject
+        fun b(k: String) = unhex(h[k]!!.jsonPrimitive.content)
+        val answer = MacHandshake.answer(PhoneHandshake(h["id"]!!.jsonPrimitive.content, b("paired"), b("phoneEphPrivate"), b("nonce")).hello(),
+            b("macEphPrivate")) { b("paired") }
+        val phone = PhoneHandshake(h["id"]!!.jsonPrimitive.content, b("paired"), b("phoneEphPrivate"), b("nonce")).finish(answer.reply)
+        val mac = answer.sealer!!
+        for (f in h["tcpPhoneToMac"]!!.jsonArray) mac.open(phone.seal(unhex(f.jsonObject["plain"]!!.jsonPrimitive.content)))
+        for (f in h["udpPhoneToMac"]!!.jsonArray) mac.openPacket(phone.sealPacket(unhex(f.jsonObject["plain"]!!.jsonPrimitive.content), 7))
+
+        // the last frame on the old stream: counter 2
+        val moved = st["streamMoved"]!!.jsonObject
+        val movedPlain = byteArrayOf(RemoteFrameKind.CONTROL.raw.toByte()) + ToMac.StreamMoved.encode()
+        assertEquals(moved["plain"]!!.jsonPrimitive.content, hex(movedPlain))
+        val movedSealed = phone.seal(movedPlain)
+        assertEquals(moved["sealed"]!!.jsonPrimitive.content, hex(movedSealed))
+        assertEquals(moved["framed"]!!.jsonPrimitive.content, hex(RemoteFrameReader.framed(movedSealed)))
+        assertEquals(ToMac.StreamMoved, mac.open(movedSealed).let { ToMac.decode(it.copyOfRange(1, it.size)) })
+
+        // the next frame (counter 3) is the UDP stream's first bytes, through the sender
+        val frame = st["frame"]!!.jsonObject
+        val afterPlain = unhex(frame["plain"]!!.jsonPrimitive.content)
+        assertEquals(ToMac.Key(RemoteChord(RemoteModifiers.COMMAND, "C")), ToMac.decode(afterPlain.copyOfRange(1, afterPlain.size)))
+        val after = RemoteFrameReader.framed(phone.seal(afterPlain))
+        assertEquals(frame["framed"]!!.jsonPrimitive.content, hex(after))
+        val out = RemoteStreamSender().write(after, 0.0)
+        assertEquals(1, out.size)
+        val packet = st["packet"]!!.jsonObject
+        assertEquals(packet["body"]!!.jsonPrimitive.content, hex(out[0]))
+        val plain = byteArrayOf(RemoteFrameKind.STREAM.raw.toByte()) + out[0]
+        assertEquals(packet["plain"]!!.jsonPrimitive.content, hex(plain))
+        val sealed = phone.sealPacket(plain, packet["session"]!!.jsonPrimitive.long)
+        assertEquals(packet["sealed"]!!.jsonPrimitive.content, hex(sealed), "udp counter ${packet["udpCounter"]}")
+
+        // the host's end: opened, read in order, its frame opened with the old stream's sealer
+        val opened = mac.openPacket(sealed)!!
+        assertEquals(RemoteFrameKind.STREAM, RemoteFrameKind.from(opened[0].toInt()))
+        val (offset, bytes) = RemoteStreamPacket.parseChunk(opened.copyOfRange(1, opened.size))!!
+        val rx = RemoteStreamReceiver()
+        val got = rx.received(offset, bytes, 0.0)
+        val reader = RemoteFrameReader().apply { limit = RemoteFrameReader.MAX_FRAME }
+        reader.feed(got.data)
+        assertContentEquals(afterPlain, mac.open(reader.next()!!))
+
+        // and its ack, the host's first datagram
+        val ack = sa["packet"]!!.jsonObject
+        assertEquals(after.size.toLong(), ack["next"]!!.jsonPrimitive.long)
+        assertEquals(ack["body"]!!.jsonPrimitive.content, hex(got.ack!!))
+        val ackPlain = byteArrayOf(RemoteFrameKind.STREAM_ACK.raw.toByte()) + got.ack!!
+        assertEquals(ack["plain"]!!.jsonPrimitive.content, hex(ackPlain))
+        val ackSealed = mac.sealPacket(ackPlain, ack["session"]!!.jsonPrimitive.long)
+        assertEquals(ack["sealed"]!!.jsonPrimitive.content, hex(ackSealed))
+        assertContentEquals(ackPlain, phone.openPacket(ackSealed))
     }
 
     @Test

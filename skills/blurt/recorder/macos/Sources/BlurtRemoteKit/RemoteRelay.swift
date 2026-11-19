@@ -12,6 +12,37 @@ public enum RemoteRelay {
     public static let macGone: UInt16 = 4001
     public static let phoneLeft: UInt16 = 4000
     public static let replaced: UInt16 = 4002
+    /// the go-between's budget for one connection is spent: it can't carry this session (docs/design/remote-go-between.md)
+    public static let overBudget: UInt16 = 4003
+
+    /// Blurt's go-between: phone and computer meet there, then move onto the direct path. Used only when the owner has no relay of their
+    /// own and hasn't turned it off, and only with a phone that can move (`RemoteFeature.move`).
+    public static let goBetween = "wss://meet.blurt.work"
+
+    /// This address is Blurt's go-between, not someone's own relay.
+    public static func isGoBetween(_ address: String?) -> Bool {
+        guard let a = address.flatMap(self.address), let h = URLComponents(string: a)?.host else { return false }
+        return h.lowercased() == "meet.blurt.work"
+    }
+
+    /// The go-between turned the connection away: the upgrade was refused (HTTP 429 when the day's quota or the rate limit is spent; any
+    /// other answer that isn't a WebSocket counts the same). The TCP and TLS parts worked, so it isn't this network. Network.framework
+    /// reports a refused upgrade as a connection abort.
+    public static func refused(_ e: NWError?) -> Bool {
+        if case .posix(.ECONNABORTED)? = e { return true }
+        return false
+    }
+
+    /// How long to leave the go-between alone after it turned us away `times` times in a row: 30 s, 2 min, 10 min, then hourly. Never a
+    /// loop of retries against a quota that resets at 00:00 UTC.
+    public static func busyWait(_ times: Int) -> Double {
+        switch times {
+        case ..<2: 30
+        case 2: 120
+        case 3: 600
+        default: 3600
+        }
+    }
 
     /// Derived from the paired key: unguessable, and it says nothing about the pair.
     public static func room(key: Data) -> String {
@@ -64,6 +95,47 @@ extension RemoteRelay {
         }
         c.start(queue: queue)
         queue.asyncAfter(deadline: .now() + 8) { finish(false) }
+    }
+}
+
+/// Overlay networks (Tailscale, ZeroTier and the like): an address on one reaches the computer from anywhere, with no server in between.
+public enum RemoteOverlay: String, Sendable {
+    case tailscale, other
+
+    /// Tailscale's ranges: IPv4 100.64.0.0/10 (shared address space, which Tailscale uses for its nodes), IPv6 fd7a:115c:a1e0::/48.
+    public static func isTailscale(_ address: String) -> Bool {
+        let a = address.split(separator: "%").first.map(String.init) ?? address
+        if a.contains(":") {
+            var v6 = in6_addr()
+            guard inet_pton(AF_INET6, a, &v6) == 1 else { return false }
+            let b = withUnsafeBytes(of: v6) { Array($0) }
+            return b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0
+        }
+        var v4 = in_addr()
+        guard inet_pton(AF_INET, a, &v4) == 1 else { return false }
+        let b = withUnsafeBytes(of: v4) { Array($0) }
+        return b[0] == 100 && b[1] & 0xc0 == 64
+    }
+
+    /// An interface that only carries an overlay network: ZeroTier's (`zt…` on Linux and Windows, `feth…` on a Mac). Tailscale's are
+    /// `utun…` / `tailscale…`, shared with every other VPN, so its addresses are told by their range instead.
+    public static func isOverlayInterface(_ name: String) -> Bool {
+        let n = name.lowercased()
+        return n.hasPrefix("zt") || n.hasPrefix("feth") || n.hasPrefix("tailscale") || n.contains("zerotier")
+    }
+
+    /// An address a phone may keep and try at the host's TCP port when away: private, shared (CGNAT / Tailscale) or unique-local, never a
+    /// public one (the direct path's business) or a link-local one.
+    public static func worthTrying(_ address: String) -> Bool {
+        if isTailscale(address) { return true }
+        if address.contains(":") {
+            let l = address.lowercased()
+            return l.hasPrefix("fd") || l.hasPrefix("fc")
+        }
+        var v4 = in_addr()
+        guard inet_pton(AF_INET, address, &v4) == 1 else { return false }
+        let b = withUnsafeBytes(of: v4) { Array($0) }
+        return b[0] == 10 || (b[0] == 172 && b[1] & 0xf0 == 16) || (b[0] == 192 && b[1] == 168)
     }
 }
 

@@ -15,13 +15,16 @@ import BlurtCore
 
 // MARK: - Look
 
-enum Tone { case good, warn, bad, off }
+/// `ready`: not in use, and can be used now (a computer that can be connected to: 可连接), between `good` (in use) and
+/// `off` (not now: offline, last used).
+enum Tone { case good, warn, bad, off, ready }
 
 /// A state as a small disc: good (ok, with a check: done is always a check shape, §2.3), warn (attention), bad (error),
 /// off (quiet).
 /// Every tone has its own shape too (system.md principle 5: a coloured state has a shape twin), so it reads in
 /// grayscale and to colour-blind eyes: good a disc with a check, warn a disc with "!", bad a disc with "×", off a
-/// hollow ring.
+/// hollow ring in the quiet grey, ready a plain filled disc in the secondary grey (not green: green is in use, and brand
+/// ink is a link).
 struct StatusDot: View {
     var tone: Tone
     /// the disc's diameter: 9 in a row's leading column, larger where it marks a banner
@@ -33,6 +36,8 @@ struct StatusDot: View {
         Group {
             if tone == .off {
                 Circle().strokeBorder(color, lineWidth: 1.5)
+            } else if tone == .ready {
+                Circle().fill(color)
             } else {
                 Circle().fill(color)
                     .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
@@ -63,7 +68,7 @@ struct StatusDot: View {
                 p.move(to: CGPoint(x: 3, y: 3)); p.addLine(to: CGPoint(x: 6, y: 6))
                 p.move(to: CGPoint(x: 6, y: 3)); p.addLine(to: CGPoint(x: 3, y: 6))
             }.applying(scale).stroke(Color.white, style: line)
-        case .off:
+        case .off, .ready:
             EmptyView()
         }
     }
@@ -73,6 +78,7 @@ struct StatusDot: View {
         case .warn: return .brandAttn
         case .bad: return .brandErr
         case .off: return Color(nsColor: .tertiaryLabelColor)
+        case .ready: return Color(nsColor: .secondaryLabelColor)
         }
     }
 }

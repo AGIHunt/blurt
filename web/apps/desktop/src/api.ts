@@ -653,11 +653,12 @@ export const api = {
   agentSetupState: () => invoke<AgentSetupState>('agent_setup_state'),
   agentSetupStop: () => invoke<AgentSetupState>('agent_setup_stop'),
   agentSetupDismiss: () => invoke<AgentSetupState>('agent_setup_dismiss'),
-  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Phone.
+  // Blurt on the phone (src-tauri/src/remote.rs, docs/design/remote-protocol.md §The desktop app): Settings → Remote Control.
   // Every change also comes as 'remote://status' (onRemoteStatus).
   remoteStatus: () => invoke<RemoteStatus>('remote_status'),
   /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
   remoteShowPairing: (on: boolean) => invoke<RemoteStatus>('remote_show_pairing', { on }),
+  remotePairingLinkCopied: () => invoke<void>('remote_pairing_link_copied'),
   /** the yes or no for the phone in `asking` */
   remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
   remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),
@@ -665,6 +666,8 @@ export const api = {
   remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),
   remoteCheckRelay: (address: string) => invoke<boolean>('remote_check_relay', { address }),
   remoteSetScreenAllowed: (on: boolean) => invoke<RemoteStatus>('remote_set_screen_allowed', { on }),
+  /** Blurt's go-between for away from home (on by default); used only while no relay of the owner's is set */
+  remoteSetGoBetween: (on: boolean) => invoke<RemoteStatus>('remote_set_go_between', { on }),
   /** the prompt for Claude Code or Codex that sets up a relay */
   remoteRelayInstructions: () => invoke<string>('remote_relay_instructions'),
   /** Windows Firewall keeps phones out (`firewall: 'blocked'`): its rule, through Windows' own administrator prompt; answers
@@ -699,16 +702,19 @@ export interface CardInfo {
   taken?: number | null;
 }
 
-/** What Settings → Phone shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
+/** What Settings → Remote Control shows (remote-protocol.md §The desktop app). Times are unix milliseconds. */
 export interface RemoteStatus {
   listening: boolean;
   /** the code on screen; qrSvg is a complete <svg> the host draws */
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
-  /** a new phone waits for a yes; the yes is for the phone showing the same digits */
-  asking: null | { device: string; digits: string; viaRelay: boolean };
-  devices: { id: string; name: string; lastSeen: number | null }[];
+  /** a new device waits for a yes; the yes is for the one showing the same digits. `kind` from its hello (missing: not known) */
+  asking: null | { device: string; digits: string; viaRelay: boolean; kind?: DeviceKind };
+  /** every device that can control this computer: phones, and computers driving it (docs/design/remote-desktop-viewer.md) */
+  devices: { id: string; name: string; lastSeen: number | null; kind?: DeviceKind }[];
   connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
+   *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: RemoteGoBetweenProblem | null };
   screenAllowed: boolean;
   /** false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows */
   canControl: boolean;
@@ -718,7 +724,12 @@ export interface RemoteStatus {
   firewall: RemoteFirewall;
 }
 export type RemoteFirewall = 'ok' | 'blocked' | 'unknown';
-export type RemoteRoute = 'local' | 'direct' | 'relay';
+/** a paired device: a phone, or a computer whose hello listed `viewer` (crates/blurt-remote store.rs DeviceKind) */
+export type DeviceKind = 'phone' | 'computer';
+/** local: the same network; tailscale / overlay: an overlay network's address; direct: UDP, found through a relay or the
+ *  go-between; relay: the owner's relay carries it; goBetween: Blurt's go-between, until the stream moves to the direct path */
+export type RemoteRoute = 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween';
+export type RemoteGoBetweenProblem = 'noDirect' | 'busy';
 
 export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
 

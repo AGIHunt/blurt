@@ -1,38 +1,31 @@
-/* 手机页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
+/* 远程控制页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
 
-"phone.title" = "手机";
-"phone.settings" = "手机设置…";
+"phone.settings" = "设置…";
 "phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
 /* 没有报上名字的手机 */
 "phone.unnamed" = "手机";
 
 /* 菜单栏菜单里的一行（SnapApp.addWaitingMenuItems）：打开手机页 */
-"phone.menu.connected" = "手机：%@ 已连接";
-"phone.menu.paired" = "手机：未连接";
-"phone.menu.add" = "添加手机…";
-"phone.menu.needs_access" = "手机：无法控制 Mac";
+"phone.menu.connected" = "%1$@：%2$@ 已连接";
+"phone.menu.paired" = "%@：未连接";
+"phone.menu.add" = "添加设备…";
+"phone.menu.needs_access" = "%@：无法控制本机";
 
 /* 主页上手机那一格的状态（PhoneStatus.line） */
 "phone.line.connected" = "%@ 已连接";
 "phone.line.not_connected" = "未连接";
 
-/* 页面最上面的一句话 */
-"phone.head.none" = "还没有配对的手机";
-"phone.head.none.detail" = "配对后，手机或平板可用作 Mac 的触控板、键盘和麦克风，并可查看屏幕。";
-"phone.head.not_connected" = "未连接";
-"phone.head.not_connected.detail" = "在手机上打开口喷鸡即可自动连接。";
-"phone.head.connected" = "%@ 已连接";
-"phone.head.local" = "与 Mac 在同一网络，直接连接。";
-"phone.head.relay" = "在其他网络，经中转连接。";
 
-"phone.add" = "添加手机…";
-"phone.add.tip" = "显示配对二维码，用手机扫描";
+"phone.add.title" = "添加设备";
+/* 屏幕上这张二维码多久后换新，如“1:40 后更换二维码”（换下的仍可用 20 秒） */
+"phone.add.left" = "%@ 后更换二维码";
+"phone.add.tip" = "显示配对二维码：用手机扫描，或拷贝链接给另一台电脑";
 "phone.remove" = "移除…";
 "phone.remove.named" = "移除 %@";
 
-/* 这台 Mac：只列出挡住手机的事，都没问题时只有一行 */
+/* 本机：只列出挡住其他设备的事，都没问题时只有一行 */
 "phone.mac" = "本机";
-"phone.mac.ok" = "手机可以控制 Mac";
+"phone.mac.ok" = "其他设备可以控制本机";
 "phone.mac.ok.keys" = "指针和按键";
 "phone.mac.ok.screen" = "屏幕画面";
 "phone.mac.ok.relay" = "外出时经中转连接";
@@ -52,7 +45,10 @@
 "phone.ax.ok" = "正常";
 "phone.ax.needs_you" = "需要处理";
 
-"phone.paired" = "已配对的手机";
+"phone.paired" = "能控制本机的设备";
+"phone.none" = "还没有配对的设备";
+"phone.none.detail" = "配对后，手机、平板或另一台电脑可以控制本机。";
+"phone.computers.none" = "还没有添加电脑";
 
 /* 手机版从哪里来 */
 "phone.app" = "手机上的口喷鸡";
@@ -67,10 +63,67 @@
 "phone.tips.vpn" = "关闭手机和 Mac 上的 VPN。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
 "phone.tips.vpn.local" = "关闭手机和 Mac 上的 VPN，并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
 "phone.tips.away.none" = "不在同一网络时（如外出），手机需经你自己的中转连接，目前未设置。";
+"phone.tips.away.go_between" = "不在同一网络时，手机通过公共连接服务连接。无法直连时，请设置自建中转。";
+"phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
-/* 设置 → 手机（Settings/RemotePane.swift）里指向这一页和配对前的提醒 */
-"phone.pane.before" = "请先开启辅助功能，否则配对后的手机无法移动指针或按键。";
-"phone.pane.see_page" = "连接状态和排查方法见主窗口的「手机」页。";
-"phone.pane.open_page" = "打开";
-"phone.pane.build.tip" = "手机版尚未上架应用商店，需从源码构建";
+/* 设置 → 远程控制（Settings/RemotePane.swift）开头指向这一页的一句 */
+"phone.pane.see_page" = "设备列表在主窗口的「%@」页。";
+"phone.pane.show" = "查看设备";
+
+/* 本机控制的电脑（Viewer/，docs/design/remote-desktop-viewer.md）。统一用语：docs/design/copy.md */
+"viewer.menu" = "电脑…";
+"viewer.title" = "电脑";
+"viewer.empty" = "添加一台运行口喷鸡的电脑，在这里查看并使用它的屏幕。";
+"viewer.add" = "添加电脑…";
+"viewer.add.title" = "添加电脑";
+"viewer.open" = "打开窗口";
+"viewer.connect" = "连接";
+"viewer.remove" = "移除";
+"viewer.remove.detail" = "以后要用，需重新添加。";
+"viewer.state.connected" = "已连接 · %@";
+"viewer.state.available" = "可连接 · %@";
+"viewer.state.offline" = "离线 · %@";
+"viewer.state.offline.never" = "离线";
+"viewer.state.no_direct" = "无法直连";
+"viewer.state.just_now" = "刚刚";
+"viewer.add.nearby" = "同一网络";
+"viewer.add.looking" = "正在查找电脑…";
+"viewer.add.nearby.detail" = "运行口喷鸡、已配对设备或打开了“添加设备”的电脑会出现在这里。";
+"viewer.add.link" = "配对链接";
+"viewer.add.link.detail" = "不在同一网络时：在那台电脑上打开“添加设备”，选“拷贝链接”，粘贴到这里。";
+"viewer.add.invalid" = "这不是配对链接。";
+"viewer.add.connecting" = "正在连接 %@…";
+"viewer.add.check" = "如果 %@ 显示的数字相同，请在那台电脑上允许。";
+"viewer.add.refused" = "%@ 未允许本机。";
+"viewer.add.unreachable" = "无法连接 %@。";
+"viewer.connecting" = "正在连接…";
+"viewer.unreachable" = "无法连接 %@。";
+"viewer.no_direct" = "无法直连。请在对方电脑上设置自建中转。";
+"viewer.busy" = "公共连接服务今日已达上限。请稍后再试，或使用自建中转。";
+"viewer.retry" = "重试";
+"viewer.forgotten" = "%@ 已移除本机。重新添加后才能使用。";
+"viewer.replaced" = "另一台设备正在控制 %@。";
+"viewer.take_over" = "接管";
+"viewer.screen_off" = "%@ 未开启屏幕显示。请在它的设置中打开。";
+"viewer.screen_permission" = "%@ 需要屏幕录制权限。";
+"viewer.screen_failed" = "无法显示 %@ 的屏幕。指针和按键仍可使用。";
+"viewer.one_display" = "%@ 一次只能显示一块屏幕。";
+"viewer.no_control" = "%@ 需要辅助功能权限才能被控制。";
+"viewer.path_rtt" = "%@ · %ld 毫秒";
+"viewer.display" = "屏幕 %ld / %ld";
+"viewer.display.label" = "屏幕";
+"viewer.keys" = "按键发往远端";
+"viewer.quality" = "画质";
+"viewer.quality.auto" = "自动";
+"viewer.quality.sharp" = "清晰";
+"viewer.quality.balanced" = "均衡";
+"viewer.quality.saver" = "省流量";
+"viewer.more" = "更多";
+"viewer.map_modifiers" = "⌘ 当作 Ctrl";
+"viewer.map_modifiers.tip" = "在 Windows 和 Linux 上，⌘ 当作 Ctrl，Control 当作 Windows 键。";
+"viewer.clipboard" = "共享剪贴板";
+"viewer.follow" = "跟着远端指针换屏";
+"viewer.new_window" = "在新窗口中打开";
+"viewer.release" = "按 ⌃⌘ 交还键盘和鼠标";
+"viewer.release.app_only" = "按 ⌃⌘ 交还键盘和鼠标。开启辅助功能权限前，系统快捷键仍在本机生效。";

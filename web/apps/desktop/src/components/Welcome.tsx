@@ -333,7 +333,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
   // keys step back, the line stays readable)
   const capKeys = (c: Capability): string[][] =>
     c === 'dictation' ? [keyCaps] : SHOWN_KEYS[c].map((a) => { const h = hk(a); return h && h.spec !== 'off' && h.label ? caps(h.label) : []; }).filter((k) => k.length);
-  const capWhat = (c: Capability) => (c === 'dictation' ? t('feature.dictation.what', { a: keyInText(keyName, i18n().lang) }) : c === 'phone' ? t('welcome.use.phone.detail') : t(`feature.${c}.what`));
+  const capWhat = (c: Capability) => (c === 'dictation' ? t('feature.dictation.what', { a: keyInText(keyName, i18n().lang) }) : c === 'phone' ? t('welcome.use.phone.detail', { a: t('feature.phone') }) : t(`feature.${c}.what`));
   const welcome = (
     <div className="wl-rows">
       {CAPS.filter((c) => (c !== 'dictation' || onb.dictation.available) && (c !== 'screen_text' || win || onb.dictation.available)).map((c, i) => {

@@ -264,7 +264,7 @@ export function SettingsView({ status: given, onToast, onLang, onWelcome, onBack
       ) : cur === 'shortcuts' ? (
         <ShortcutsPane s={s} status={status} reload={reload} goDictation={() => go('dictation', 'dictation.key')} off={off} />
       ) : cur === 'phone' ? (
-        <PhonePane status={status} />
+        <PhonePane status={status} onGo={onGo} />
       ) : cur === 'projects' ? (
         <ProjectsPane onToast={onToast} />
       ) : cur === 'agents' ? (
@@ -408,12 +408,12 @@ export function dictationKeyName(status: AppStatus, cfg: Record<string, any> | u
 }
 
 /** A capability's glyph (the sidebar's, Home's, the Welcome's). */
-export const CAP_ICON: Record<Capability, 'character-cursor' | 'cards' | 'text-viewfinder' | 'record' | 'phone'> = {
+export const CAP_ICON: Record<Capability, 'character-cursor' | 'cards' | 'text-viewfinder' | 'record' | 'devices'> = {
   dictation: 'character-cursor',
   cards: 'cards',
   screen_text: 'text-viewfinder',
   recording: 'record',
-  phone: 'phone',
+  phone: 'devices',
 };
 
 function GeneralPane({ status, cfg, save, onToast, onLang, onWelcome, checkUpdates, off, shown }: {

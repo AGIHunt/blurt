@@ -24,7 +24,17 @@ data class LinkStatus(
     val waiting: Boolean = false,
     /** a pairing just didn't take; Link has the sentence */
     val pairFailed: Boolean = false,
+    /** why away doesn't work through Blurt's go-between; said once nothing else has answered (remote-go-between.md §What each end shows) */
+    val away: AwayTrouble? = null,
 )
+
+/** What Blurt's go-between couldn't do */
+enum class AwayTrouble {
+    /** the direct path didn't open on this network (`noDirect`, or close code 4003): a relay of the owner's own fixes it */
+    NO_DIRECT,
+    /** out of today's free quota, or rate-limited */
+    BUSY,
+}
 
 /** what's drawn beside the words: a state is never told by colour alone */
 enum class StatusMark { BUSY, PROBLEM, PHONE, CODE }
@@ -39,6 +49,7 @@ enum class StatusLine {
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
     CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF,
+    NO_DIRECT, GO_BETWEEN_BUSY,
 }
 
 enum class StatusAction { RETRY, SCAN, ANOTHER }
@@ -53,7 +64,11 @@ data class StatusBanner(
     companion object {
         /** null: connected and working, nothing to say. */
         fun of(s: LinkStatus): StatusBanner? {
-            var b: StatusBanner? = when (s.phase) {
+            var b: StatusBanner? = if (s.phase == LinkPhase.UNREACHABLE && s.away != null) {
+                // the go-between said why it can't carry this: once nothing else has answered either, that's the one thing to say
+                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.away == AwayTrouble.NO_DIRECT) StatusLine.NO_DIRECT else StatusLine.GO_BETWEEN_BUSY,
+                    StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
+            } else when (s.phase) {
                 LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
                 LinkPhase.CONNECTING -> StatusBanner(StatusMark.BUSY, if (s.dropped) StatusLine.RECONNECTING else StatusLine.CONNECTING)
                 LinkPhase.UNREACHABLE -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.hasRelay) StatusLine.CHECK_AWAKE else StatusLine.CHECK_NETWORK,

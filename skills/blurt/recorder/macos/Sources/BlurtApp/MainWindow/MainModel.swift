@@ -552,7 +552,7 @@ final class MainModel {
         case .dictation: return T("dictation.history.sidebar")
         case .home: return T("home.title")
         case .cards: return T("cards.title")
-        case .phone: return T("phone.title")
+        case .phone: return T("feature.phone")
         case .screenText: return T("feature.screen_text")
         case .project(let p): return project(id: p)?.name ?? ProjectStore.shared.project(id: p)?.name ?? T("main.place.project")
         case .session(let s): return sessionRow(id: s).map(MainModel.title(of:)) ?? T("main.place.session")

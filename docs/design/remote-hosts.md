@@ -65,6 +65,46 @@ follow the pointer), `ToMac.showDisplay` (pin, the pointer to that display's mid
   the connector names Mutter gives); the pointer on the desktop from the RemoteDesktop session's absolute motion (`NotifyPointerMotionAbsolute`
   takes a stream and a position in it). Until then the default — one display, no list — works as before.
 
+## Away: the go-between and overlays (2026-11-19)
+
+The spec: [remote-go-between.md](remote-go-between.md). What the Rust host does:
+
+- **Which way.** `away()`: the owner's relay; else, with the switch on (`host.json` `goBetween`, on unless turned off), Blurt's
+  go-between (`relay::GO_BETWEEN`; `HostConfig.go_between` points tests at a local `BUDGET=1 node tools/remote-relay/server.js`,
+  the desktop app's test builds at `BLURT_TEST_GO_BETWEEN`). The pairing link's `r=` carries either; `session.relay` and `relay`
+  name the go-between only to a phone whose hello listed `move`, so an older phone forgets it. A phone can't offer the go-between
+  as this computer's own relay.
+- **Before the move** (channel.rs): nothing worthless late goes over the go-between (no picture, cursor or probe in the stream),
+  and control over 1 KB (`cursorShape`) is held. The heartbeat of a waiting connection is a WebSocket protocol ping.
+- **The move.** On the first sealed datagram the host says `udpOK`, then, on the go-between with a phone that can, `streamMoved`
+  as its last WebSocket frame; held control and every frame after go through `StreamOut` in kind-7 datagrams to the phone's
+  address. The phone's kind-7 bytes go through `StreamIn` into the same frame reader and channel-0 opener once its
+  `streamMoved` has been read (`read_ws`). A 10 ms timer resends and sends held-back acks. The WebSocket closing after both
+  have moved ends nothing; 6 s without a datagram does. No datagram 8 s after `session`: `noDirect`, closed.
+- **Refusals.** An upgrade the go-between refuses over HTTP (429, 1015, anything not 101) is "busy": Settings says so and the
+  next try waits 30 s, 2 min, 10 min, then an hour (`relay::busy_wait`). A 4003 close before the move is "no direct path".
+  Both show in `Status.relay.go_between_problem` until a connection or a move works.
+- **Overlays** (`relay::overlay_of`): 100.64.0.0/10, fd7a:115c:a1e0::/48, and anything on a `zt*` / ZeroTier interface are
+  listed (pairing `a=`, every session's candidates) though other virtual interfaces stay skipped. TCP sessions over them report
+  the route `tailscale` / `overlay` and count as away for the picture's ceiling. The sockets listen on `[::]` already.
+- **The Rust test phone** (phone.rs): `Options` (features, on the go-between), `open_direct` knocks on the candidates,
+  `connect_away` tries the kept candidates' overlay and private addresses over TCP (1.5 s) beside the relay and prefers them.
+
+Tested: `src/stream.rs` (fake clock: loss, bursts, the last chunk lost, duplicates, reordering, window full, RTO doubling to 2 s,
+three acks resend one chunk, acks every 20 ms unless a gap fills), `tests/vectors.rs` (`goBetween`, `stream`, `streamAck`, the
+new messages), `tests/go_between.rs` against the relay's budget mode: the session meets, moves, keys and a pong after the move,
+160 KB of text after it with no 4003; an old phone isn't offered it; UDP blocked → `noDirect` at 8 s; an overlay address wins over
+the go-between, a dead one falls back to it; a 429 is "busy" and asked again only after 30 s.
+
+## A computer driving this one (2026-11-19)
+
+The spec and what was built: [remote-desktop-viewer.md](remote-desktop-viewer.md) §Built for Windows and Linux. What the Rust host adds:
+a viewer's session (`viewer` in its hello) is a phone's plus the clipboard both ways while `keysCaptured` (`Input::clipboard` /
+`set_clipboard`, polled twice a second), `screen.window` as the ceiling, nearby pairing on its own TCP listener (`nearby-` ids,
+`pairing::nearby_key`, one question at a time, 30 s after a no), devices with `kind: "computer"`, a takeover that waits for the hello,
+and a second window (`window`) refused with `screenFailed("one_display")`, since the backends capture one display per process. The
+crate is also the Windows / Linux viewer (`viewer.rs`, `keys.rs`).
+
 ## Measured (this Mac, loopback, 2026-11-09)
 
 | Test | Result |

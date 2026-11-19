@@ -90,10 +90,35 @@ impl LinuxInput {
     }
 }
 
-/// The clipboard way, when the app gave nothing better: XWayland's clipboard (what the desktop app uses; mutter has no
-/// data-control protocol), Ctrl+V, and the old text back once the app has had time to take it.
+/// XWayland's clipboard (what the desktop app uses; mutter has no data-control protocol), made once.
+static CB: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
+
+/// A viewer's clipboard (docs/design/remote-desktop-viewer.md): the text, or onto it.
+fn clipboard_text() -> Option<String> {
+    let mut g = CB.lock().unwrap();
+    if g.is_none() {
+        *g = arboard::Clipboard::new()
+            .map_err(|e| eprintln!("blurt-remote: clipboard: {e}"))
+            .ok();
+    }
+    g.as_mut()?.get_text().ok()
+}
+
+fn set_clipboard_text(text: &str) {
+    let mut g = CB.lock().unwrap();
+    if g.is_none() {
+        *g = arboard::Clipboard::new()
+            .map_err(|e| eprintln!("blurt-remote: clipboard: {e}"))
+            .ok();
+    }
+    if let Some(cb) = g.as_mut() {
+        let _ = cb.set_text(text.to_string());
+    }
+}
+
+/// The clipboard way, when the app gave nothing better: XWayland's clipboard, Ctrl+V, and the old text back once the app has
+/// had time to take it.
 fn paste_with_clipboard(portal: &Arc<Portal>, text: &str) {
-    static CB: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
     let mut g = CB.lock().unwrap();
     if g.is_none() {
         *g = arboard::Clipboard::new().map_err(|e| eprintln!("blurt-remote: clipboard: {e}")).ok();
@@ -235,6 +260,14 @@ impl Input for LinuxInput {
     }
 
     /// The pointer on the desktop (the monitors' logical layout), while it's on the monitor being shown.
+    fn clipboard(&mut self) -> Option<String> {
+        clipboard_text()
+    }
+
+    fn set_clipboard(&mut self, text: &str) {
+        set_clipboard_text(text)
+    }
+
     fn pointer_desktop(&self) -> Option<(f64, f64)> {
         let (x, y) = self.pointer()?;
         if !(0.0..1.0).contains(&x) || !(0.0..1.0).contains(&y) {

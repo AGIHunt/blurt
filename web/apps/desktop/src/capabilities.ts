@@ -4,7 +4,7 @@
 // means gone: its place in the sidebar, its Settings pane, its rows in the palette, the toolbar and the tray. Home and
 // Settings → General list all five with their switches. No React here (capabilities.test.ts).
 import type { Place } from './places';
-import type { RemoteStatus } from './api';
+import type { RemoteRoute, RemoteStatus } from './api';
 
 export const CAPS = ['dictation', 'cards', 'screen_text', 'recording', 'phone'] as const;
 export type Capability = (typeof CAPS)[number];
@@ -168,14 +168,14 @@ export function feedDays(entries: FeedEntry[]): { day: number; rows: FeedEntry[]
 
 // ---------------------------------------------------------------- the Phone page (PhoneChecks)
 
-export type PhoneHeadline = { kind: 'none' } | { kind: 'not_connected' } | { kind: 'connected'; name: string; viaRelay: boolean };
+export type PhoneHeadline = { kind: 'none' } | { kind: 'not_connected' } | { kind: 'connected'; name: string; viaRelay: boolean; route: RemoteRoute };
 
 /** Something on this computer that stands in a phone's way, each with one fix. */
 export type PhoneProblem = 'control' | 'firewall' | 'listen' | 'relay';
-export type PhoneTip = 'network' | 'open' | 'vpn' | 'away_none' | 'away_ok';
+export type PhoneTip = 'network' | 'open' | 'vpn' | 'away_none' | 'away_ok' | 'away_go_between';
 
 export function phoneHeadline(r: RemoteStatus): PhoneHeadline {
-  if (r.connected) return { kind: 'connected', name: r.connected.name, viaRelay: r.connected.route === 'relay' };
+  if (r.connected) return { kind: 'connected', name: r.connected.name, viaRelay: r.connected.route === 'relay', route: r.connected.route };
   return r.devices.length ? { kind: 'not_connected' } : { kind: 'none' };
 }
 
@@ -200,6 +200,7 @@ export const phoneNeedsAttention = (r: RemoteStatus) =>
 export function phoneTips(r: RemoteStatus): PhoneTip[] {
   if (r.connected || (!r.devices.length && !r.pairing)) return [];
   const near: PhoneTip[] = ['network', 'open', 'vpn'];
-  if (!r.relay.address) return [...near, 'away_none'];
+  // no relay of the owner's: Blurt's go-between, when it's on (docs/design/remote-go-between.md)
+  if (!r.relay.address) return [...near, r.relay.goBetween ? 'away_go_between' : 'away_none'];
   return r.relay.reachable === false ? near : [...near, 'away_ok'];
 }

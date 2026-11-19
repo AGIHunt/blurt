@@ -7,7 +7,7 @@ latency and data: [remote-realtime.md](remote-realtime.md). What follows was dec
 section says otherwise.
 
 The app is called Blurt on the iPhone too (it was Blurt Remote while in development; the code keeps `BlurtRemote`). Until it
-is on the App Store, people build it themselves: [apps/ios/README.md](../../apps/ios/README.md). Settings → Phone links there (renamed from iPhone on 2026-11-09, since Android phones pair with a Mac too).
+is on the App Store, people build it themselves: [apps/ios/README.md](../../apps/ios/README.md). Settings → Remote Control links there (renamed from iPhone on 2026-11-09, since Android phones pair with a Mac too; then 手机和电脑 / Phones and Computers, and on 2026-11-20 远程控制 / Remote Control, where the Mac lists every device on its page).
 
 2026-11-07. Status: used on an iPhone 16 at home. The screen features and everything away from home are tested on the simulator only.
 
@@ -271,7 +271,7 @@ Control and audio use TCP; pointer and scroll use UDP once a probe gets through,
 | ⌃↑ posted plain / with the keyboard's fn + numpad flags | nothing / Mission Control opens (arrows need those flags for macOS's shortcuts) |
 
 On a Mac with no phone paired, nothing runs: no listener or Bonjour ad until Add Phone… shows the code (opening
-Settings → Phone alone doesn't, so it never brings up macOS's Local Network prompt), and the session watch timer only runs
+Settings → Remote Control alone doesn't, so it never brings up macOS's Local Network prompt), and the session watch timer only runs
 while a phone is connected.
 
 If a session goes quiet for 2 s, the Mac lets go of everything held, including the dictation key. A background phone sends
@@ -297,7 +297,7 @@ well), and "Can't reach *name*. Check…" at 15 pt regular, white 66 %, with no 
 |---|---|---|---|---|
 | Connecting (app opened, come back to, another computer chosen) | spinner | Connecting to *name*… 正在连接 *name*… | | |
 | A session went while in use | spinner | Reconnecting to *name*… 正在重新连接 *name*… | | |
-| Nothing answers for 8 s, no relay | amber triangle | Can't reach *name* 连不上 *name* | Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt's Settings → Phone on the computer. 确认 Blurt 在运行，手机和电脑连着同一个网络。不在同一网络时，先在电脑的 设置 → 手机 里设置中转。 (the same network is only needed without a relay, so the line names the relay, 中转, as the way to connect from anywhere; a pairing that can't reach the computer says the same, in the same order) | Retry 重试; Try Another Computer below it when there is one |
+| Nothing answers for 8 s, no relay | amber triangle | Can't reach *name* 连不上 *name* | Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt's Settings → Remote Control on the computer. 确认 Blurt 在运行，手机和电脑连着同一个网络。不在同一网络时，先在电脑的 设置 → 远程控制 里设置中转。 (the same network is only needed without a relay, so the line names the relay, 中转, as the way to connect from anywhere; a pairing that can't reach the computer says the same, in the same order) | Retry 重试; Try Another Computer below it when there is one |
 | The same, the computer has a relay | amber triangle | Can't reach *name* | Check that the computer isn't asleep and Blurt is running. 确认电脑没有进入睡眠，Blurt 在运行。 | the same |
 | The computer has forgotten this phone | amber triangle | Needs pairing again 需要重新配对 | *name* no longer knows this iPhone. | Scan Code |
 | Another phone took it | phone | Another phone is connected 另一台设备已连接 | Touch to take over. 轻点以接管。 | (a touch anywhere) |
@@ -509,6 +509,11 @@ each display chosen, a slide, back to following, strokes across and back) and lo
 
 ## Away from home
 
+Since 2026-11-19: with no relay of the owner's own, the phone and the computer can meet at Blurt's **go-between**
+(`wss://meet.blurt.work`, free, best effort, on by default in Settings → Remote Control → Away from home) and move the whole session onto the
+direct UDP path; and a host's Tailscale or ZeroTier addresses are offered like local ones. Which path wins, the wire, the stream over UDP
+and what each end says: [remote-go-between.md](remote-go-between.md). What follows is the owner's own relay, unchanged.
+
 Three routes, tried together, best one kept:
 
 | Route | When | Carries | Feel |
@@ -517,9 +522,10 @@ Three routes, tried together, best one kept:
 | Direct | Away; a path opens to the Mac | Pointer, video (UDP); control stays on the relay | Close to local, depends on the networks |
 | Relay | Away; once the Mac has a relay address | Everything, stream of sealed frames | Depends on how near the relay is |
 
-- **Relay:** Blurt doesn't run one: it's an open-source project, and a shared relay would be a cost and a service to keep up (founder, 2026-11-07).
+- **Relay:** Blurt doesn't run one that carries sessions: it's an open-source project, and a shared relay would be a cost and a service to
+  keep up (founder, 2026-11-07). The go-between only introduces the two ends and stays quiet once they talk directly (remote-go-between.md).
   Each owner runs their own, a Cloudflare Worker with one hibernating Durable Object per paired phone or one Node process on a server
-  (tools/remote-relay, same protocol), and pastes its address into Settings → Phone → Relay Address. Copy Instructions there gives a prompt
+  (tools/remote-relay, same protocol), and pastes its address into Settings → Remote Control → Relay Address. Copy Instructions there gives a prompt
   for Claude Code or Codex that does the setup. The address is in the pairing code and reaches the phone again inside each sealed session, so the phone has nothing to configure.
   `ws://` works too and needs no domain. The frames are sealed either way, so nobody on the network reads or forges them, but over `ws://`
   the address (the relay's secret), the room and the hello (the phone's device id) travel in the clear: whoever sees them can use the

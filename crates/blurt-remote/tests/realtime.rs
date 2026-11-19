@@ -229,6 +229,7 @@ fn request(repairs: bool) -> ScreenRequest {
         codecs: Some(vec!["h264".into()]),
         display: None,
         features: repairs.then(|| ALL.iter().map(|s| s.to_string()).collect()),
+        window: None,
     }
 }
 
@@ -284,7 +285,7 @@ async fn loss_is_repaired_not_restarted() {
     stops.watch(done.clone());
     let logs = Logs::default();
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Loopback".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0 },
+        HostConfig { dir: dir.clone(), name: "Loopback".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()) },
         Box::new(Back(In, synth.clone())),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(LogApp(logs.clone())),

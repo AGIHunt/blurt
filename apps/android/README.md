@@ -40,7 +40,7 @@ config.
 3. Both show the same six digits; say yes on the computer.
 
 From then on the phone connects by itself whenever the app opens, on the same network, or anywhere once the computer has a relay
-(Settings → Phone → Relay Address on the computer). Several computers: Settings → Add Computer on the phone; hold the settings button on the
+(Settings → Remote Control → Relay Address on the computer). Several computers: Settings → Add Computer on the phone; hold the settings button on the
 main screen to switch.
 
 No camera, or the code won't read: copy the pairing link shown under the code on the computer and paste it into the field under the camera.

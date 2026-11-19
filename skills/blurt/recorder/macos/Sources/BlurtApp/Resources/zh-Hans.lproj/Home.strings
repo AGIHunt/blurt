@@ -7,7 +7,8 @@
 "feature.cards" = "卡片";
 "feature.screen_text" = "取字与翻译";
 "feature.recording" = "录屏与事项";
-"feature.phone" = "手机";
+/* 远程控制的唯一名称：主页、侧栏、页面标题、⌘K、前往菜单、设置面板 */
+"feature.phone" = "远程控制";
 
 /* 每项能力一句话：它做什么，带句号（设置 > 通用里也当说明用）。主页上每行名字下面的那一行，要在窗口最窄时也放得下。%@ 是听写键的短名（Dictation.keyShort：
    「 Fn」「右 Option」，Fn 自带前面的空格） */
@@ -15,7 +16,7 @@
 "feature.cards.what" = "截图和语音备注保存为刘海下方的卡片，可拖入任何 App。";
 "feature.screen_text.what" = "框选屏幕上的文字，复制或翻译。";
 "feature.recording.what" = "边录屏边讲解，由 Agent 整理成事项，按项目归类。";
-"feature.phone.what" = "将手机用作 Mac 的触控板、键盘和麦克风。";
+"feature.phone.what" = "将手机用作 Mac 的触控板、键盘和麦克风，或在本机使用另一台电脑。";
 
 /* 一行能力：点这一行去它的页面；右键菜单打开它的设置；开关的提示按当前状态写 */
 "home.row.open" = "前往「%@」";

@@ -1,22 +1,28 @@
-// The Phone page (the Mac's MainWindow/PhonePage.swift + PhonePageViews.swift, BlurtCore/PhoneChecks.swift;
-// docs/design/capabilities.md): whether a phone is connected and how, what on this computer stands in a phone's way
-// (only that — all well is one line, never a wall of checks), the paired phones, Add Phone… (the code to scan, right
-// here), where the phone app comes from (built from source until it is in the stores) and what to try when it won't
-// connect. Settings → Phone keeps the options and the relay.
+// Remote Control (the sidebar's page; docs/design/remote-desktop-viewer.md §One place for devices): every device in
+// three groups. Devices That Can Control This Computer: each paired phone and computer, its icon by kind, its state, Remove,
+// and Add Device… (the code to scan, its digits, Copy Link for a computer). Computers You Can Control: the computers this one
+// drives (ComputersGroup.tsx) and Add Computer…. This Computer: only what stands in a device's way (all well is one line,
+// never a wall of checks). Then what to try when a phone won't connect. Settings → Remote Control keeps the options and
+// away from home.
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from '@blurt/icons';
 import { api, type AppStatus, type RemoteStatus } from '../api';
-import { phoneHeadline, phoneProblems, phoneTips, type PhoneProblem } from '../capabilities';
+import { phoneProblems, phoneTips, type PhoneProblem } from '../capabilities';
 import { i18n, t } from '../i18n';
-import { APP_PAGES, apply, useRemoteStatus } from '../settings/phone';
+import { apply, useRemoteStatus } from '../settings/phone';
 import { Confirm, PairPanel } from '../settings/PhonePane';
+import { ComputersGroup } from '../viewer/ComputersGroup';
+import { AddLine, DeviceRow, EmptyLine, RowMore, StateLine } from './DeviceRows';
+import { StatusDot } from './StatusDot';
 import './pages.css';
+
+type Device = RemoteStatus['devices'][number];
 
 export function PhonePage({ status, onSettings }: { status: AppStatus; onSettings: (pane: string) => void }) {
   const r = useRemoteStatus();
   const [adding, setAddingState] = useState(false);
-  const [removing, setRemoving] = useState<RemoteStatus['devices'][number] | null>(null);
+  const [removing, setRemoving] = useState<Device | null>(null);
   const [checking, setChecking] = useState(false);
+  const [allowing, setAllowing] = useState(false);
   const addingRef = useRef(false);
   const setAdding = (on: boolean) => {
     addingRef.current = on;
@@ -27,7 +33,7 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
   useEffect(() => () => {
     if (addingRef.current) void apply(api.remoteShowPairing(false)).catch(() => {});
   }, []);
-  // a phone just paired from the code on screen: the code's job is done
+  // a device just paired from the code on screen: the code's job is done
   const count = useRef<number | null>(null);
   useEffect(() => {
     if (!r) return;
@@ -37,10 +43,9 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
 
   if (!r) return <div className="pg" data-testid="phone-page" />;
   const win = status.platform === 'win';
-  const head = phoneHeadline(r);
   const problems = phoneProblems(r);
   const tips = phoneTips(r);
-  const open = (url: string) => void api.openUrl(url).catch(() => {});
+  const none = !r.devices.length;
 
   const problem = (p: PhoneProblem) => {
     switch (p) {
@@ -49,7 +54,10 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
       case 'firewall':
         return (
           <Check key={p} bad title={t('phone.firewall')} detail={t('phone.firewall.detail')}>
-            <button className="primary" onClick={() => void apply(api.remoteAllowFirewall()).catch(() => {})}>{t('phone.firewall.allow')}</button>
+            <button className="primary ph-act" disabled={allowing} data-testid="phone-firewall-allow" onClick={() => {
+              setAllowing(true);
+              void apply(api.remoteAllowFirewall()).catch(() => {}).finally(() => setAllowing(false));
+            }}>{t('phone.firewall.allow')}</button>
           </Check>
         );
       case 'listen':
@@ -57,15 +65,29 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
       case 'relay':
         return (
           <Check key={p} bad title={t('phonepage.relay')} detail={t('phonepage.relay.detail')}>
-            <button disabled={checking} onClick={() => {
+            <button className="ph-act" disabled={checking} onClick={() => {
               setChecking(true);
               void api.remoteCheckRelay(r.relay.address ?? '').finally(() => setChecking(false));
             }}>{t('phonepage.relay.again')}</button>
-            <button onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>
+            <button className="ph-act" onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>
           </Check>
         );
     }
   };
+
+  const thisComputer = (
+    <>
+      <h2 className="pg-h2">{t('phonepage.computer')}</h2>
+      <section className={`pg-box ${problems.length ? 'ph-attn' : ''}`} data-testid="phone-checks">
+        {problems.length ? (
+          problems.map(problem)
+        ) : (
+          <Check title={t('phonepage.ok')}
+            detail={[t('phonepage.ok.keys'), r.screenAllowed ? t('phonepage.ok.screen') : '', r.relay.address ? t(r.relay.reachable == null ? 'phonepage.ok.relay_checking' : 'phonepage.ok.relay') : ''].filter(Boolean).join(' · ')} />
+        )}
+      </section>
+    </>
+  );
 
   return (
     <div className="pg" data-testid="phone-page">
@@ -79,91 +101,48 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
           </div>
         </header>
 
-        {/* the one fact: connected, how; or not; or none paired yet, with the way to pair */}
-        <section className={`pg-box ph-head ${head.kind}`} data-testid="phone-head">
-          <span className="ph-glyph"><Icon name="phone" size={22} />{head.kind === 'connected' && <i className="ph-dot" aria-hidden />}</span>
-          <span className="ph-head-text">
-            <span className="ph-head-title">
-              {head.kind === 'connected' ? t('phonepage.head.connected', { a: head.name || t('phonepage.unnamed') }) : t(head.kind === 'none' ? 'phonepage.head.none' : 'phonepage.head.not_connected')}
-            </span>
-            <span className="ph-head-detail">
-              {head.kind === 'connected' ? t(head.viaRelay ? 'phonepage.head.relay' : 'phonepage.head.local') : t(head.kind === 'none' ? 'phonepage.head.none.detail' : 'phonepage.head.not_connected.detail')}
-            </span>
-          </span>
-          {!adding && !r.asking && (
-            <button className={head.kind === 'none' ? 'primary' : ''} onClick={() => setAdding(true)} title={t('phone.add.detail')} data-testid="phone-page-add">{t('phone.add')}</button>
-          )}
-        </section>
-        {adding && !r.asking && (
-          <div className="pg-box ph-pair">
-            <PairPanel r={r} onCancel={() => setAdding(false)} onRenew={() => void apply(api.remoteShowPairing(true)).catch(() => {})} />
-          </div>
-        )}
+        {/* something in a device's way here: said first, with its fix (the sidebar's mark points at it) */}
+        {problems.length > 0 && thisComputer}
 
-        {/* this computer: only what stands in a phone's way; all well is one line */}
-        <h2 className="pg-h2">{t('phonepage.computer')}</h2>
-        <section className="pg-box" data-testid="phone-checks">
-          {problems.length ? (
-            problems.map(problem)
+        {/* what can control this computer: phones and computers, then the way to add one */}
+        <h2 className="pg-h2">{t('phonepage.paired')}</h2>
+        <section className="pg-box" data-testid="phone-paired">
+          {none && !adding && (
+            <EmptyLine icon="devices" title={t('phonepage.head.none')} detail={t('phonepage.head.none.detail')}>
+              <button className="primary ph-act" disabled={!!r.asking} onClick={() => setAdding(true)} data-testid="phone-page-add">{t('phone.add')}</button>
+            </EmptyLine>
+          )}
+          {r.devices.map((d) => <DeviceLine key={d.id} d={d} r={r} onRemove={() => setRemoving(d)} />)}
+          {adding && !r.asking ? (
+            <div className="ph-pair">
+              <PairPanel r={r} onCancel={() => setAdding(false)} onRenew={() => void apply(api.remoteShowPairing(true)).catch(() => {})} />
+            </div>
           ) : (
-            <Check title={t('phonepage.ok')}
-              detail={[t('phonepage.ok.keys'), r.screenAllowed ? t('phonepage.ok.screen') : '', r.relay.address ? t(r.relay.reachable == null ? 'phonepage.ok.relay_checking' : 'phonepage.ok.relay') : ''].filter(Boolean).join(' · ')} />
+            !none && <AddLine label={t('phone.add')} disabled={!!r.asking} onClick={() => setAdding(true)} title={t('phone.add.detail')} testid="phone-page-add" />
           )}
         </section>
 
-        {r.devices.length > 0 && (
-          <>
-            <h2 className="pg-h2">{t('phonepage.paired')}</h2>
-            <section className="pg-box" data-testid="phone-paired">
-              {r.devices.map((d) => {
-                const on = r.connected?.id === d.id ? r.connected : null;
-                return (
-                  <div key={d.id} className="pg-line">
-                    <span className="pg-line-ic"><Icon name="phone" size={16} /></span>
-                    <span className="pg-line-text">
-                      <span className="pg-line-title">{d.name || t('phonepage.unnamed')}</span>
-                      <span className="pg-line-detail">
-                        {on ? (
-                          <span className="ph-live"><i className="ph-dot" aria-hidden />{t('phone.connected', { 1: t(`phone.route.${on.route}`) })}</span>
-                        ) : d.lastSeen ? t('phone.last_used', { 1: i18n().formatRelative(d.lastSeen) }) : t('phone.not_connected')}
-                      </span>
-                    </span>
-                    <button onClick={() => setRemoving(d)} aria-label={`${t('phone.remove')} ${d.name}`}>{t('phone.remove')}</button>
-                  </div>
-                );
-              })}
-            </section>
-          </>
-        )}
+        {/* what this computer controls */}
+        <ComputersGroup />
+
+        {/* this computer: all well is one quiet line at the end */}
+        {problems.length === 0 && thisComputer}
 
         {tips.length > 0 && (
           <>
             <h2 className="pg-h2">{t('phonepage.tips')}</h2>
             <ol className="pg-box ph-tips" data-testid="phone-tips">
               {tips.map((k) => (
-                <li key={k}>{t(k === 'vpn' && !win ? 'phonepage.tips.vpn.linux' : k === 'away_none' ? 'phonepage.tips.away.none' : k === 'away_ok' ? 'phonepage.tips.away.ok' : `phonepage.tips.${k}`)}
-                  {k === 'away_none' && <button className="pg-link" onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>}
+                <li key={k}>{t(k === 'vpn' && !win ? 'phonepage.tips.vpn.linux' : k === 'away_none' ? 'phonepage.tips.away.none' : k === 'away_ok' ? 'phonepage.tips.away.ok' : k === 'away_go_between' ? 'phonepage.tips.away.go_between' : `phonepage.tips.${k}`)}
+                  {(k === 'away_none' || k === 'away_go_between') && <button className="pg-link" onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>}
                 </li>
               ))}
             </ol>
           </>
         )}
-
-        {/* where the phone app comes from: built from source until it is in the stores */}
-        <h2 className="pg-h2">{t('phone.app')}</h2>
-        <section className="pg-box">
-          <div className="pg-line">
-            <span className="pg-line-ic"><Icon name="code" size={16} /></span>
-            <span className="pg-line-text">
-              <span className="pg-line-title">{t('phonepage.app.where')}</span>
-            </span>
-            <button onClick={() => open(APP_PAGES.ios)}>{t('phone.get_app.ios')}</button>
-            <button onClick={() => open(APP_PAGES.android)}>{t('phone.get_app.android')}</button>
-          </div>
-        </section>
       </div>
       {removing && (
-        <Confirm title={t('phone.remove.title', { 1: removing.name })} detail={t('phone.remove.detail')} cancel={t('phone.cancel')} ok={t('phone.remove')}
+        <Confirm title={t('phone.remove.title', { 1: removing.name })} detail={t(removing.kind === 'computer' ? 'computers.remove.detail' : 'phone.remove.detail')} cancel={t('phone.cancel')} ok={t('phone.remove')}
           onClose={() => setRemoving(null)}
           onOk={() => {
             const id = removing.id;
@@ -175,11 +154,30 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
   );
 }
 
+/** A device that can control this computer: a phone or a computer (its icon), whether it's connected and how, Remove. */
+function DeviceLine({ d, r, onRemove }: { d: Device; r: RemoteStatus; onRemove: () => void }) {
+  const computer = d.kind === 'computer';
+  const on = r.connected?.id === d.id ? r.connected : null;
+  const name = d.name || t(computer ? 'phonepage.unnamed.computer' : 'phonepage.unnamed');
+  // a computer always shows the screen: only a phone says so
+  const how = on ? [t(`phone.route.${on.route}`), on.screen && !computer ? t('phone.showing_screen') : ''].filter(Boolean).join(' · ') : '';
+  // state first, as the computers below: 已连接 · <path> · …, or 未连接 · 上次使用：<when>
+  const state = on ? t('phone.connected', { 1: how }) : t('phone.not_connected');
+  const rest = !on && d.lastSeen ? t('phone.last_used', { 1: i18n().formatRelative(d.lastSeen) }) : undefined;
+  return (
+    <DeviceRow icon={computer ? 'screen' : 'phone'} name={name} testid={`device-${d.id}`} kind={computer ? 'computer' : 'phone'}
+      state={<StateLine tone={on ? 'good' : 'off'} state={state} rest={rest} />}>
+      <RowMore name={name} testid={`device-more-${d.id}`} entries={[{ label: t('phone.remove'), danger: true, run: onRemove }]} />
+    </DeviceRow>
+  );
+}
+
 /** A line about this computer: a check or the attention mark, what it is, what it means, its fix. */
 function Check({ title, detail, bad, children }: { title: string; detail?: string; bad?: boolean; children?: React.ReactNode }) {
   return (
-    <div className={`pg-line ph-check ${bad ? 'bad' : 'good'}`} aria-label={`${title}, ${t(bad ? 'phonepage.ax.needs_you' : 'phonepage.ax.ok')}`}>
-      <span className="pg-line-ic">{bad ? <Icon name="warning" size={16} /> : <Icon name="check" size={16} />}</span>
+    <div className={`pg-line ph-row ph-check ${bad ? 'bad' : 'good'}`} aria-label={`${title}, ${t(bad ? 'phonepage.ax.needs_you' : 'phonepage.ax.ok')}`}>
+      {/* not a device: no device glyph, only the state's mark (a disc with a check, or with "!"), as the rows' marks */}
+      <span className="pg-line-ic"><StatusDot tone={bad ? 'warn' : 'good'} small /></span>
       <span className="pg-line-text">
         <span className="pg-line-title">{title}</span>
         {detail && <span className="pg-line-detail">{detail}</span>}

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { ViewerWindow } from './viewer/ViewerWindow';
 import '@blurt/ui/tokens.css';
 import '@blurt/ui/base.css';
 import '@blurt/icons/mascot.css';
@@ -16,8 +17,10 @@ document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
 });
 
+// a computer's window (src-tauri viewer.rs opens index.html?viewer=<host id>) or the main window
+const viewer = new URLSearchParams(location.search).get('viewer');
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {viewer ? <ViewerWindow id={viewer} /> : <App />}
   </StrictMode>,
 );

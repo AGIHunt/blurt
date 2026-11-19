@@ -6,6 +6,9 @@
 //
 // Away from home the same session runs over the relay, tried a moment after the local ways. Over it the phone looks for a direct
 // path for the pointer and video (RemoteRelay), and keeps checking for the local network, which takes over the moment it's back.
+// With no relay of the owner's own the computer may offer Blurt's go-between instead: the two meet there and move the whole session
+// onto the direct path, or say it can't be done on this network (docs/design/remote-go-between.md). An overlay address the computer
+// listed (Tailscale, ZeroTier) is tried like a local one, and needs no server at all.
 import BlurtRemoteKit
 import Combine
 import Foundation
@@ -56,8 +59,19 @@ final class Link: ObservableObject {
     @Published private(set) var liveFinal = ""
     @Published private(set) var level: Float = 0
     @Published private(set) var rtt: Double?
-    enum Route { case local, relay, direct }
+    enum Route { case local, relay, direct, overlay }
     @Published private(set) var route = Route.local
+    /// on an overlay network: Tailscale's own addresses, or another's (ZeroTier and the like)
+    @Published private(set) var overlayIsTailscale = false
+    /// the session came in through Blurt's go-between (RemoteRelay.goBetween)
+    @Published private(set) var viaGoBetween = false
+    /// why away from home didn't work with the go-between, for the pad's card
+    @Published private(set) var away: LinkStatus.Away?
+    /// the go-between turned this phone away so many times in a row (busy), or met the computer with no direct path (noDirect), and isn't
+    /// asked again before `meetQuietUntil`
+    private var meetRefusals = 0
+    private var noDirectTimes = 0
+    private var meetQuietUntil = Date.distantPast
     @Published private(set) var displayAspect: CGFloat = 1.6
     /// the computer's displays, as it arranges them; a switcher shows only with two or more (docs/design/remote.md §Several displays)
     @Published private(set) var displays: [RemoteDisplay] = []
@@ -115,13 +129,29 @@ final class Link: ObservableObject {
             DispatchQueue.main.async { self.open(u, confirmed: true) }
         }
         if !Pretend.displays.isEmpty { pretend(displays: Pretend.displays, shown: Pretend.displays.first?.id) }
+        // the pad's card when the public connection service couldn't carry the session, with no computer: =nodirect | =busy
+        if let a = ProcessInfo.processInfo.environment["BLURT_REMOTE_TEST_AWAY"] {
+            macs = [PairedMac(id: "test-mac", deviceID: "test-2", name: "MacBook Pro", port: 0, addresses: [], relayAddress: RemoteRelay.goBetween)]
+            current = macs.first
+            away = a == "busy" ? .busy : .noDirect
+            state = .unreachable
+            testAway = true
+        }
         #endif
         hostChanged()
         path.pathUpdateHandler = { [weak self] p in
             // a phone's hotspot is Wi-Fi the user is paying for
             let mobile = p.isExpensive, low = p.isConstrained
+            let network = p.availableInterfaces.map(\.name).joined(separator: ",")
             DispatchQueue.main.async {
-                guard let self, mobile != self.cellular || low != self.lowData else { return }
+                guard let self else { return }
+                // another network may open the direct path where this one didn't
+                if network != self.network {
+                    let first = self.network.isEmpty
+                    self.network = network
+                    if !first, self.away == .noDirect { self.away = nil; self.noDirectTimes = 0; self.meetQuietUntil = .distantPast }
+                }
+                guard mobile != self.cellular || low != self.lowData else { return }
                 self.cellular = mobile
                 self.lowData = low
                 ScreenStream.shared.planChanged()
@@ -129,6 +159,8 @@ final class Link: ObservableObject {
         }
         path.start(queue: queue)
     }
+
+    private var network = ""
 
     private func hostChanged() {
         let h = current?.host ?? .mac
@@ -165,7 +197,7 @@ final class Link: ObservableObject {
     #endif
 
     private func saveMacs() {
-        guard Self.testHost == nil else { return }
+        guard Self.testHost == nil, !testAway else { return }
         if let d = try? JSONEncoder().encode(macs) { UserDefaults.standard.set(d, forKey: Self.macsKey) }
         UserDefaults.standard.set(current?.id, forKey: "currentMac")
     }
@@ -221,7 +253,7 @@ final class Link: ObservableObject {
         waitingForMac = false
         Keychain.remove(account: j.mac.deviceID)
         pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
-            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first.")
+            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first.")
             : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that computer.")
         let t = pairFailed
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }
@@ -271,6 +303,7 @@ final class Link: ObservableObject {
         refused = false
         firstAttempt = nil
         lastRelayTry = .distantPast
+        away = nil
     }
 
     func rename(_ m: PairedMac, to name: String) {
@@ -327,6 +360,8 @@ final class Link: ObservableObject {
     func tryAgain() {
         guard active, current != nil, state == .unreachable else { return }
         firstAttempt = nil
+        // a network that wouldn't connect directly may now (the user moved, or switched Wi-Fi off); busy stays busy until it's waited out
+        if away == .noDirect { meetQuietUntil = .distantPast; noDirectTimes = 0 }
         state = .connecting
         cancelAttempts()
         connect()
@@ -348,21 +383,26 @@ final class Link: ObservableObject {
 
     // MARK: connecting
 
+    /// debug builds: BLURT_REMOTE_TEST_AWAY shows that card and connects nowhere
+    private var testAway = false
+
     private func connect() {
-        guard active, Self.testHost == nil, let mac = current, channel == nil, attempts.allSatisfy(\.isRelay) else { return }
+        guard active, Self.testHost == nil, !testAway, let mac = current, channel == nil, attempts.allSatisfy(\.isRelay) else { return }
         guard let key = Keychain.read(account: mac.deviceID) else { state = .forgotten; return }
         generation += 1
         if firstAttempt == nil { firstAttempt = Date() }
         if state == .connected || state == .unpaired || state == .replaced { state = .connecting }
         tryLocal(mac, key)
-        // the relay a moment later, so at home it's never the one that wins; and not every round
-        if let address = Self.relayOnly ?? mac.relayAddress, Date().timeIntervalSince(lastRelayTry) > 4 {
+        // the relay a moment later, so at home it's never the one that wins; and not every round. The go-between only while it isn't
+        // waiting out a refusal: a quota spent for the day doesn't come back for being asked again
+        if let address = Self.relayOnly ?? mac.relayAddress, Date().timeIntervalSince(lastRelayTry) > 4,
+           !RemoteRelay.isGoBetween(address) || Date() >= meetQuietUntil {
             let g0 = generation
             DispatchQueue.main.asyncAfter(deadline: .now() + (Self.relayOnly != nil ? 0 : 1.2)) { [weak self] in
                 guard let self, self.channel == nil, self.active, g0 == self.generation,
                       let c = RemoteRelay.connection(address: address, room: RemoteRelay.room(key: key), role: "phone") else { return }
                 self.lastRelayTry = Date()
-                self.attempt(c, relay: true, mac: mac, key: key)
+                self.attempt(c, relay: true, mac: mac, key: key, goBetween: RemoteRelay.isGoBetween(address))
             }
         }
         // keep trying while the app is open; say so after a while
@@ -371,7 +411,7 @@ final class Link: ObservableObject {
             guard let self, self.channel == nil, self.active, g == self.generation else { return }
             if let j = self.joining, !self.waitingForMac, self.refused || Date().timeIntervalSince(j.since) > 15 { return self.joinFailed() }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
-            if self.refused { self.state = .forgotten } else if let f = self.firstAttempt, Date().timeIntervalSince(f) > 8 { self.state = .unreachable }
+            if self.refused { self.state = .forgotten } else if let f = self.firstAttempt, Date().timeIntervalSince(f) > 8 || self.away != nil { self.state = .unreachable }
             // a relay attempt gets longer than a local one: it has further to go
             self.cancelAttempts(keepRelay: Date().timeIntervalSince(self.lastRelayTry) < 9)
             self.connect()
@@ -380,12 +420,15 @@ final class Link: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: r)
     }
 
+    /// The addresses it was last told (the code's, then the computer's own list each session), overlay networks' among them, and Bonjour.
+    /// An overlay address is a TCP connection like a local one, so it's tried the same way, with a shorter wait: away from that network
+    /// (or with another VPN on, as iOS allows one at a time) it never answers.
     private func tryLocal(_ mac: PairedMac, _ key: Data) {
         guard Self.relayOnly == nil else { return }
         lastLocalTry = Date()
         for a in mac.addresses {
             guard let port = NWEndpoint.Port(rawValue: mac.port) else { continue }
-            attempt(.hostPort(host: NWEndpoint.Host(a), port: port), mac: mac, key: key)
+            attempt(.hostPort(host: NWEndpoint.Host(a), port: port), mac: mac, key: key, timeout: RemoteOverlay.isTailscale(a) ? 1.5 : 3)
         }
         browse(mac: mac, key: key)
     }
@@ -408,23 +451,43 @@ final class Link: ObservableObject {
         browser = b
     }
 
-    private func attempt(_ endpoint: NWEndpoint, mac: PairedMac, key: Data) {
-        guard channel == nil || channel?.isRelay == true else { return }
+    private func attempt(_ endpoint: NWEndpoint, mac: PairedMac, key: Data, timeout: Double = 3) {
+        guard channel == nil || channel?.isRelay == true || route == .overlay else { return }
         let params = NWParameters.tcp
         params.includePeerToPeer = RemoteChannel.peerToPeer
         params.serviceClass = .interactiveVideo
         if let o = params.defaultProtocolStack.transportProtocol as? NWProtocolTCP.Options {
             o.noDelay = true
-            o.connectionTimeout = 3
+            o.connectionTimeout = Int(timeout.rounded(.up))
         }
-        attempt(NWConnection(to: endpoint, using: params), relay: false, mac: mac, key: key)
+        let ch = attempt(NWConnection(to: endpoint, using: params), relay: false, mac: mac, key: key)
+        // TCP's own timeout is in whole seconds: a shorter wait (an overlay address) is kept here
+        if timeout < 3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self, weak ch] in
+                guard let self, let ch, self.attempts.contains(where: { $0 === ch }), !ch.wasReady else { return }
+                self.attempts.removeAll { $0 === ch }
+                ch.close()
+            }
+        }
     }
 
-    private func attempt(_ c: NWConnection, relay: Bool, mac: PairedMac, key: Data) {
+    @discardableResult
+    private func attempt(_ c: NWConnection, relay: Bool, mac: PairedMac, key: Data, goBetween: Bool = false) -> RemoteChannel {
         let ch = RemoteChannel(connection: c, role: .phone(PhoneHandshake(id: mac.deviceID, paired: key)), relay: relay)
+        // on the go-between, nothing big goes over it from the start, and the stream moves once the direct path opens
+        if goBetween { ch.enableMove() }
         ch.onOpen = { [weak self, weak ch] _ in
             guard let ch else { return }
-            DispatchQueue.main.async { self?.opened(ch, mac: mac) }
+            DispatchQueue.main.async { self?.opened(ch, mac: mac, goBetween: goBetween) }
+        }
+        ch.onMoved = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                // the whole session is on the direct path now: the go-between worked on this network
+                self.noDirectTimes = 0
+                self.meetRefusals = 0
+                self.away = nil
+            }
         }
         ch.onControl = { [weak self, weak ch] d in
             guard let m = try? JSONDecoder().decode(ToPhone.self, from: d) else { return }
@@ -437,9 +500,9 @@ final class Link: ObservableObject {
         ch.onVideo = { ScreenStream.shared.packet($0) }
         ch.onProbe = { ScreenStream.shared.probeBack($0) }
         ch.onCursor = { ScreenStream.shared.cursor($0) }
-        ch.onDirect = { [weak self] found in
+        ch.onDirect = { [weak self, weak ch] found in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, let ch, self.channel === ch else { return }
                 self.route = found ? .direct : .relay
                 ScreenStream.shared.routeChanged()
                 // a path that went quiet may come back, or another may open
@@ -453,18 +516,21 @@ final class Link: ObservableObject {
                 guard let self else { return }
                 self.attempts.removeAll { $0 === ch }
                 if failure?.kind == .notPaired { self.refused = true }
+                if goBetween, let ch { self.goBetweenEnded(ch) }
                 guard let ch, self.channel === ch else { return }
                 self.lost()
             }
         }
         attempts.append(ch)
         ch.start()
+        return ch
     }
 
-    private func opened(_ ch: RemoteChannel, mac: PairedMac) {
+    private func opened(_ ch: RemoteChannel, mac: PairedMac, goBetween: Bool) {
+        let overlay = ch.isRelay ? nil : Self.overlay(ch)
         if let old = channel {
-            // back on the local network: it takes over from the relay
-            guard old.isRelay, !ch.isRelay else { return ch.close() }
+            // back on the local network: it takes over from the relay, or from an overlay network; an overlay one from the relay
+            guard old.isRelay && !ch.isRelay || route == .overlay && !ch.isRelay && overlay == nil else { return ch.close() }
             channel = nil
             old.close()
             pinger?.invalidate()
@@ -473,7 +539,9 @@ final class Link: ObservableObject {
         attempts.removeAll { $0 === ch }
         cancelAttempts()
         channel = ch
-        route = ch.isRelay ? .relay : .local
+        route = ch.isRelay ? .relay : overlay != nil ? .overlay : .local
+        overlayIsTailscale = overlay == .tailscale
+        viaGoBetween = goBetween
         firstAttempt = nil
         refused = false
         lastPong = Date()
@@ -482,7 +550,7 @@ final class Link: ObservableObject {
             joinOpens += 1
             if joinOpens > 3 { ch.close(); return joinFailed() }
         }
-        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce))
+        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: [RemoteFeature.move]))
         pinger = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.ping() }
     }
 
@@ -495,13 +563,45 @@ final class Link: ObservableObject {
         a.forEach { $0.close() }
     }
 
+    /// An overlay network's address, or a connection over a tunnel interface (ZeroTier's addresses are in no fixed range): nil for the
+    /// same network.
+    private static func overlay(_ ch: RemoteChannel) -> RemoteOverlay? {
+        if let h = ch.remoteHost, RemoteOverlay.isTailscale(h) { return .tailscale }
+        if let i = ch.interfaceName, i.hasPrefix("utun") || i.hasPrefix("ipsec") || RemoteOverlay.isOverlayInterface(i) { return .other }
+        return nil
+    }
+
+    /// A go-between connection ended: say why when it's the reason away doesn't work, and leave the go-between alone for a while after a
+    /// refusal (30 s, 2 min, 10 min, then hourly) instead of asking again every round. The same wait after a network that wouldn't
+    /// connect directly, until the network changes or Retry.
+    private func goBetweenEnded(_ ch: RemoteChannel) {
+        if RemoteRelay.refused(ch.failure) {
+            meetRefusals += 1
+            meetQuietUntil = Date().addingTimeInterval(RemoteRelay.busyWait(meetRefusals))
+            if channel == nil { away = .busy }
+            return
+        }
+        if ch.wasReady { meetRefusals = 0; if away == .busy { away = nil } }
+        if ch.relayClose == RemoteRelay.overBudget, !ch.moved { noDirect() }
+    }
+
+    /// The computer said the direct path didn't open, or the go-between couldn't carry the session: this network won't do it. Said on the
+    /// pad, and the go-between is left alone for 30 s (or until the network changes, or Retry).
+    private func noDirect() {
+        away = .noDirect
+        noDirectTimes += 1
+        meetQuietUntil = max(meetQuietUntil, Date().addingTimeInterval(RemoteRelay.busyWait(noDirectTimes)))
+    }
+
     private func ping() {
-        let relay = channel?.isRelay == true
+        let relay = channel?.isRelay == true, moved = channel?.moved == true
+        // the stream moved onto UDP: as long a wait as the relay's (a lost ping waits for its resend), but nothing there counts against a plan
         if Date().timeIntervalSince(lastPong) > (relay ? 8 : 2.5) { return lost() }
         pingCount += 1
         // over the relay, one in four: every message counts against the free plan
-        if !relay || pingCount % 4 == 0 { send(.ping(CACurrentMediaTime())) }
-        if relay, attempts.isEmpty, Date().timeIntervalSince(lastLocalTry) > 10, let mac = current, let key = Keychain.read(account: mac.deviceID) {
+        if !relay || moved || pingCount % 4 == 0 { send(.ping(CACurrentMediaTime())) }
+        // away, the same network (or a nearer way than an overlay network's) is looked for now and then
+        if relay || route == .overlay, attempts.isEmpty, Date().timeIntervalSince(lastLocalTry) > 10, let mac = current, let key = Keychain.read(account: mac.deviceID) {
             tryLocal(mac, key)
         }
     }
@@ -512,6 +612,7 @@ final class Link: ObservableObject {
         let c = channel
         channel = nil
         c?.close()
+        viaGoBetween = false
         MicStream.shared.stop()
         ScreenStream.shared.connectionLost()
         dictation = .idle
@@ -550,12 +651,14 @@ final class Link: ObservableObject {
             displayAspect = CGFloat(i.displayAspect)
             lastInfo = i
             noteRelay(i.relay)
+            noteAddresses(i.candidates)
+            if viaGoBetween { away = nil }
             if let r = replacing {
                 replacing = nil
                 send(.replaces(deviceID: r))
             }
             // one relay serves all of them: a Mac with none takes the one the others use
-            if i.relay == nil, let a = macs.compactMap(\.relayAddress).first { send(.offerRelay(a)) }
+            if i.relay == nil, let a = macs.compactMap(\.relayAddress).first(where: { !RemoteRelay.isGoBetween($0) }) { send(.offerRelay(a)) }
             if talkHeld { send(.dictationKey(down: true)) }
             ScreenStream.shared.resume()
             if channel?.isRelay == true {
@@ -641,10 +744,27 @@ final class Link: ObservableObject {
         case .replaced:
             state = .replaced
             disconnect()
+        case .noDirect:
+            noDirect()
+        case .streamMoved: break      // the channel reads it itself
+        case .clipboard: break        // to a computer driving another (remote-desktop-viewer.md); a phone never asks for it
         }
     }
 
     private var lastInfo: RemoteSessionInfo?
+
+    /// The computer's own addresses, as it listed them this session: the private and overlay ones are kept to try next time, newest first.
+    private func noteAddresses(_ list: [RemoteCandidate]) {
+        let keep = list.map(\.host).filter(RemoteOverlay.worthTrying)
+        guard !keep.isEmpty, var c = current, let n = macs.firstIndex(where: { $0.id == c.id && $0.deviceID == c.deviceID }) else { return }
+        var seen = Set<String>()
+        let next = Array((keep + c.addresses).filter { seen.insert($0).inserted }.prefix(8))
+        guard next != c.addresses else { return }
+        c.addresses = next
+        macs[n] = c
+        current = c
+        saveMacs()
+    }
 
     private func noteRelay(_ typed: String?) {
         let address = typed.flatMap(RemoteRelay.address)

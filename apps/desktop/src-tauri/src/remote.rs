@@ -1,6 +1,6 @@
 //! Blurt on the phone, with this computer as its host (docs/design/remote.md, remote-protocol.md §The desktop app; the Mac's
 //! RemoteServer.swift + RemotePane.swift). The session server is `crates/blurt-remote`; this file is what the desktop app gives it
-//! and what Settings → Phone calls:
+//! and what Settings → Remote Control calls:
 //!
 //!  • the commands and the `remote://status` event (`RemoteStatus`, the QR code drawn here as an SVG);
 //!  • the phone's keys and the paired list in `$BLURT_HOME/remote`, each phone's key in the OS's store (Credential Manager,
@@ -19,7 +19,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
 use blurt_remote::host::Backend;
-use blurt_remote::server::{Problem, Status};
+use blurt_remote::server::{GoBetweenProblem, Problem, Status};
 use blurt_remote::wire::{BlurtCommand, DictationPhase, Front};
 use blurt_remote::{App, Host, HostConfig, KeyStore};
 use serde::Serialize;
@@ -79,6 +79,8 @@ pub fn start(app: &AppHandle) {
             version: app.package_info().version.to_string(),
             test_answer,
             port: 0,
+            // test builds: another go-between (a local `BUDGET=1 node tools/remote-relay/server.js`), or "" for none
+            go_between: if testing() { std::env::var("BLURT_TEST_GO_BETWEEN").ok() } else { None },
         },
         backend,
         keys,
@@ -178,7 +180,7 @@ pub fn stop() {
     }
 }
 
-// ------------------------------------------------------------------ Settings → Phone
+// ------------------------------------------------------------------ Settings → Remote Control
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -210,6 +212,8 @@ struct AskingUi {
     device: String,
     digits: String,
     via_relay: bool,
+    /// "phone" or "computer": the question's icon
+    kind: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -218,6 +222,8 @@ struct DeviceUi {
     id: String,
     name: String,
     last_seen: Option<i64>,
+    /// "phone", or "computer": a computer driving this one (docs/design/remote-desktop-viewer.md)
+    kind: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -235,6 +241,10 @@ struct RelayUi {
     address: Option<String>,
     from_phone: bool,
     reachable: Option<bool>,
+    /// the go-between switch (docs/design/remote-go-between.md): used only while `address` is None
+    go_between: bool,
+    /// why the go-between couldn't carry the last session it tried: "noDirect" or "busy"; None: fine, or not tried
+    go_between_problem: Option<&'static str>,
 }
 
 /// The pairing link as a QR code: a complete <svg>, dark on light whatever the theme (cameras read it either way, and the
@@ -287,10 +297,19 @@ fn to_ui(s: &Status) -> RemoteStatus {
     RemoteStatus {
         listening: s.listening,
         pairing,
-        asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay }),
-        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen }).collect(),
+        asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay, kind: a.kind.as_str() }),
+        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
         connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
-        relay: RelayUi { address: s.relay.address.clone(), from_phone: s.relay.from_phone, reachable: s.relay.reachable },
+        relay: RelayUi {
+            address: s.relay.address.clone(),
+            from_phone: s.relay.from_phone,
+            reachable: s.relay.reachable,
+            go_between: s.relay.go_between,
+            go_between_problem: s.relay.go_between_problem.map(|p| match p {
+                GoBetweenProblem::NoDirect => "noDirect",
+                GoBetweenProblem::Busy => "busy",
+            }),
+        },
         screen_allowed: s.screen_allowed,
         can_control: s.can_control,
         problem: s.problem.as_ref().map(problem),
@@ -349,7 +368,7 @@ pub fn remote_status() -> RemoteStatus {
     now_status()
 }
 
-/// Settings → Phone shows the code (on: listen, advertise, a code good for 2 minutes and one phone), or closed. A question
+/// Settings → Remote Control shows the code (on: listen, advertise, a code good for 2 minutes and one phone), or closed. A question
 /// already asked stays: the app-wide dialog keeps showing it.
 #[tauri::command]
 pub fn remote_show_pairing(on: bool) -> RemoteStatus {
@@ -360,6 +379,15 @@ pub fn remote_show_pairing(on: bool) -> RemoteStatus {
         firewall_recheck();
     }
     now_status()
+}
+
+/// Copy Link: the link copied keeps working for 10 minutes, though the code on screen renews (pasting it on another computer takes
+/// longer than a scan).
+#[tauri::command]
+pub fn remote_pairing_link_copied() {
+    if let Some(h) = host() {
+        h.pairing_link_copied();
+    }
 }
 
 /// Windows Defender Firewall keeps phones out: the doc's netsh lines, elevated through Windows' own UAC prompt, on the owner's
@@ -411,6 +439,15 @@ pub async fn remote_check_relay(address: String) -> bool {
     tauri::async_runtime::spawn_blocking(move || h.check_relay(&address)).await.unwrap_or(false)
 }
 
+/// The go-between switch: Blurt's go-between for away from home while no relay of the owner's is set (on by default).
+#[tauri::command]
+pub fn remote_set_go_between(on: bool) -> RemoteStatus {
+    if let Some(h) = host() {
+        h.set_go_between(on);
+    }
+    now_status()
+}
+
 #[tauri::command]
 pub fn remote_set_screen_allowed(on: bool) -> RemoteStatus {
     if let Some(h) = host() {
@@ -442,7 +479,7 @@ If I'm in mainland China, prefer a server there: the round trip is far shorter. 
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.";
+When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.";
 
 // ------------------------------------------------------------------ what the host asks of the app
 
@@ -465,9 +502,9 @@ impl App for Desktop {
         let _ = self.app.run_on_main_thread(move || crate::show_main(&app));
         use tauri_plugin_notification::NotificationExt;
         let (title, body) = if zh() {
-            (format!("{device} 想连接这台电脑"), format!("在口喷鸡中确认手机上显示的是 {digits}，再允许。"))
+            (format!("{device} 想连接本机"), format!("对方设备上显示 {digits} 时才允许。"))
         } else {
-            (format!("{device} wants to connect"), format!("In Blurt, check the phone shows {digits}, then allow it."))
+            (format!("{device} wants to connect"), format!("Allow it only if the other device shows {digits}."))
         };
         let _ = self.app.notification().builder().title(title).body(body).show();
     }
@@ -739,8 +776,24 @@ fn note_falls_back() {
 // ------------------------------------------------------------------ keys in the OS's store
 
 /// Each paired phone's key (32 bytes, base64) under its device id: Windows Credential Manager (target "Blurt Phone/<id>"), the
-/// Secret Service on Linux (application = blurt, service = <id>).
+/// Secret Service on Linux (application = blurt, service = <id>). The computers this one drives keep theirs the same way, as
+/// `computer-<host id>` (viewer.rs).
 struct OsKeys;
+
+/// The secret store as the host has it: the OS's, or (test builds, other systems) a file in `$BLURT_HOME/remote`.
+pub fn key_store() -> std::sync::Arc<dyn KeyStore> {
+    let dir = crate::paths::blurt_home().join("remote");
+    if testing() || cfg!(not(any(windows, target_os = "linux"))) {
+        std::sync::Arc::new(blurt_remote::store::FileKeyStore::new(dir.join("test-keys.json")))
+    } else {
+        std::sync::Arc::new(OsKeys)
+    }
+}
+
+/// Test builds (debug, BLURT_TEST_COMMANDS=1): the file store, the test answers.
+pub fn test_build() -> bool {
+    testing()
+}
 
 impl KeyStore for OsKeys {
     fn get(&self, id: &str) -> Option<Vec<u8>> {
@@ -846,8 +899,16 @@ mod tests {
         assert!(svg.starts_with("<svg") && svg.trim_end().ends_with("</svg>"), "{svg:.80}");
         assert_eq!(v["pairing"]["expiresAt"], 1_700_000_000_000i64);
         assert_eq!(v["firewall"], if cfg!(windows) { "unknown" } else { "ok" });
-        for k in ["address", "fromPhone", "reachable"] {
+        for k in ["address", "fromPhone", "reachable", "goBetween", "goBetweenProblem"] {
             assert!(v["relay"].get(k).is_some(), "relay.{k}");
         }
+        let mut s = s;
+        s.relay.go_between = true;
+        s.relay.go_between_problem = Some(blurt_remote::server::GoBetweenProblem::NoDirect);
+        let v = serde_json::to_value(super::to_ui(&s)).unwrap();
+        assert_eq!(v["relay"]["goBetween"], true);
+        assert_eq!(v["relay"]["goBetweenProblem"], "noDirect");
+        s.relay.go_between_problem = Some(blurt_remote::server::GoBetweenProblem::Busy);
+        assert_eq!(serde_json::to_value(super::to_ui(&s)).unwrap()["relay"]["goBetweenProblem"], "busy");
     }
 }

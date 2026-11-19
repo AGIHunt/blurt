@@ -24,6 +24,11 @@ struct LinkStatus: Equatable {
     var waiting = false
     /// a pairing just didn't take; Link has the sentence
     var pairFailed = false
+    /// Blurt's go-between couldn't carry the session (docs/design/remote-go-between.md): this network won't connect directly, or the
+    /// go-between is busy today
+    var away: Away?
+
+    enum Away: Equatable { case noDirect, busy }
 }
 
 struct StatusBanner: Equatable {
@@ -33,6 +38,8 @@ struct StatusBanner: Equatable {
     enum Line: Equatable {
         case connecting, reconnecting
         case cantReach, checkNetwork, checkAwake
+        /// the go-between: the direct path wouldn't open here / the free quota is spent for today
+        case noDirect, goBetweenBusy
         case needsPairing, forgotten
         case otherPhone, touchToTakeOver
         case pairFirst, whereTheCodeIs
@@ -59,8 +66,13 @@ struct StatusBanner: Equatable {
         case .connecting:
             b = StatusBanner(mark: .busy, title: s.dropped ? .reconnecting : .connecting)
         case .unreachable:
-            b = StatusBanner(mark: .problem, title: .cantReach, detail: s.hasRelay ? .checkAwake : .checkNetwork, action: .retry,
-                             second: s.otherComputers ? .another : nil)
+            // the go-between's own reason, when that's why: it says what fixes it (a relay of one's own), not what to check
+            let detail: Line = switch s.away {
+            case .noDirect: .noDirect
+            case .busy: .goBetweenBusy
+            case nil: s.hasRelay ? .checkAwake : .checkNetwork
+            }
+            b = StatusBanner(mark: .problem, title: .cantReach, detail: detail, action: .retry, second: s.otherComputers ? .another : nil)
         case .forgotten:
             b = StatusBanner(mark: .problem, title: .needsPairing, detail: .forgotten, action: .scan)
         case .replaced:

@@ -964,6 +964,9 @@ body.mw-resizing * {
     transform: translateY(-2px);
   }
 }
+.mw-menu-row.danger {
+  color: var(--err);
+}
 .mw-menu-row {
   display: flex;
   align-items: center;
@@ -2430,10 +2433,18 @@ body.mw-resizing * {
   box-shadow: var(--shadow-pop);
 }
 
-/* a paired phone can't do anything here: the Phone row's mark, in the attention colour (capabilities.md) */
+/* a paired device can't do anything here: the Remote Control row's mark, in the attention colour (capabilities.md),
+   a dot on the row's icon so the name keeps its full width */
+.mw-side-ic.alert {
+  position: relative;
+}
 .mw-side-alert {
-  display: inline-flex;
-  color: var(--attn);
-  margin-left: 6px;
-  flex: none;
+  position: absolute;
+  left: -5px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--attn);
+  box-shadow: 0 0 0 1.5px var(--side, var(--panel));
 }

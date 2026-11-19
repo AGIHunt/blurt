@@ -94,6 +94,29 @@ pub fn set_text(text: &str) -> bool {
     put(&[(CF_UNICODETEXT, bytes)])
 }
 
+/// The clipboard's text, if it holds any (a viewer's session sends it on: docs/design/remote-desktop-viewer.md).
+pub fn get_text() -> Option<String> {
+    if !open() {
+        return None;
+    }
+    let mut out = None;
+    unsafe {
+        if let Ok(h) = GetClipboardData(CF_UNICODETEXT) {
+            let g = HGLOBAL(h.0);
+            let size = GlobalSize(g) / 2;
+            let p = GlobalLock(g) as *const u16;
+            if !p.is_null() && size > 0 {
+                let units = std::slice::from_raw_parts(p, size);
+                let end = units.iter().position(|&c| c == 0).unwrap_or(units.len());
+                out = Some(String::from_utf16_lossy(&units[..end]));
+                let _ = GlobalUnlock(g);
+            }
+        }
+        let _ = CloseClipboard();
+    }
+    out
+}
+
 pub fn restore(s: &Saved) {
     if s.items.is_empty() {
         if open() {

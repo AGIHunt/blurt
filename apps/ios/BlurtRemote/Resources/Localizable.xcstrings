@@ -398,16 +398,6 @@
         }
       }
     },
-    "%@ · Internet" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ · 外网"
-          }
-        }
-      }
-    },
     "%@: hold" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1758,12 +1748,12 @@
         }
       }
     },
-    "On your computer, open Blurt’s Settings and choose Phone." : {
+    "On your computer, open Blurt’s Remote Control page and choose Add Device." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上打开 Blurt 的设置，选「手机」。"
+            "value" : "在电脑上打开 Blurt 的「远程控制」页，点「添加设备…」。"
           }
         }
       }
@@ -3098,7 +3088,7 @@
         }
       }
     },
-    "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer." : {
+    "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3128,7 +3118,7 @@
         }
       }
     },
-    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Phone on the computer first." : {
+    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3214,6 +3204,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等待电脑确认"
+          }
+        }
+      }
+    },
+    "%@ · Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Tailscale"
+          }
+        }
+      }
+    },
+    "Can’t connect directly. Set up your own relay on the computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法直连。请在电脑上设置自建中转。"
+          }
+        }
+      }
+    },
+    "The public connection service has reached today’s limit. Try again later, or use your own relay." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公共连接服务今日已达上限。请稍后再试，或使用自建中转。"
+          }
+        }
+      }
+    },
+    "%@ · Virtual network" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 虚拟局域网"
+          }
+        }
+      }
+    },
+    "%@ · Public connection service" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 公共连接服务"
+          }
+        }
+      }
+    },
+    "%@ · Own relay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 自建中转"
+          }
+        }
+      }
+    },
+    "Connected · Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接 · Tailscale"
+          }
+        }
+      }
+    },
+    "Connected · Virtual network" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接 · 虚拟局域网"
+          }
+        }
+      }
+    },
+    "Connected · Public connection service" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接 · 公共连接服务"
+          }
+        }
+      }
+    },
+    "Uses the public connection service" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用公共连接服务"
+          }
+        }
+      }
+    },
+    "Public connection service" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公共连接服务"
+          }
+        }
+      }
+    },
+    "Free, with no guarantee. If a network can’t connect directly, set up your own relay." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免费，不保证可用。无法直连时，请设置自建中转。"
           }
         }
       }

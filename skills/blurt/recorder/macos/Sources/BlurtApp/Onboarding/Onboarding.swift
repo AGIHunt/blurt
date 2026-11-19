@@ -638,7 +638,7 @@ struct OnboardingView: View {
         switch c {
         // (the key's short name as it is: in Chinese it brings its own leading space, "按 Fn", "按右 Option")
         case .dictation: return T("feature.dictation.what", Dictation.keyShort(m.dictationKey))
-        case .phone: return T("onboarding.use.phone.detail")
+        case .phone: return T("onboarding.use.phone.detail", T("feature.phone"))
         default: return T("feature.\(c.rawValue).what")
         }
     }

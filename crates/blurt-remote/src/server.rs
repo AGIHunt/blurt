@@ -12,6 +12,8 @@
 //!  • nothing but the handshake before a session has greeted; a hello frame is at most 1 KB, 16 handshakes at once, 6 s each.
 //!  • quiet for 2 s with anything held: let go of everything (the phone left the Wi-Fi, locked, or crashed). 12 s: the session is over.
 //!  • the owner's relay: one waiting WebSocket per paired phone (and per showing code); a direct path from inside the session.
+//!  • no relay of the owner's and the switch on: Blurt's go-between (docs/design/remote-go-between.md) in its place, only for
+//!    meeting: the session moves its stream onto the direct path (channel.rs `move_out`), or ends with `noDirect` after 8 s.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
@@ -35,20 +37,29 @@ use crate::packets::{FrameReader, Kind, PointerPacket, MAX_FRAME};
 use crate::pairing::{Pairing, SERVICE_TYPE};
 use crate::relay;
 use crate::screen::{ScreenSession, NO_SCREEN};
-use crate::store::{now_ms, Device, Files, KeyStore};
+use crate::store::{now_ms, Device, DeviceKind, Files, KeyStore};
 use crate::wire::{BlurtCommand, Candidate, DictationPhase, Front, SessionInfo, ToMac, ToPhone};
 
 const SILENCE: f64 = 2.0;
 const GONE: f64 = 12.0;
 const PAIRING_LIFE: f64 = 120.0;
 const PAIRING_GRACE: f64 = 20.0;
+/// A copied link: pasted on another computer, often on another network, which takes longer than a scan. It lasts this long
+/// whatever the code on screen does; spent like any code, and still nothing opens without the six digits and a yes here.
+const COPIED_LIFE: f64 = 600.0;
 const MAX_HANDSHAKES: usize = 16;
 const HANDSHAKE_TIME: Duration = Duration::from_secs(6);
 const CODE_TRIES: u32 = 8;
 const MAX_STEPS: usize = 32;
 const MAX_WAIT_MS: i64 = 3000;
 const MAX_TEXT: usize = 64 * 1024;
+/// on the go-between: no datagram from the phone this long after `session`, and the host says `noDirect` and closes
+const NO_DIRECT: Duration = Duration::from_secs(8);
 
+/// a viewer's keys captured: the host looks at its clipboard this often and sends a change (docs/design/remote-desktop-viewer.md)
+const CLIPBOARD_EVERY: Duration = Duration::from_millis(500);
+/// a nearby computer the owner said no to (or didn't answer): no nearby question for this long
+const NEARBY_PAUSE: Duration = Duration::from_secs(30);
 /// What the desktop app does for the host. Called on a thread of the host's own, one at a time, never under its locks: a hook may
 /// call back into `Host`.
 pub trait App: Send + Sync + 'static {
@@ -89,6 +100,9 @@ pub struct HostConfig {
     pub test_answer: Option<bool>,
     /// tests: a fixed TCP port (0 = the saved one, or any)
     pub port: u16,
+    /// Blurt's go-between: None = the built-in one (`relay::GO_BETWEEN`); Some("") = none (a test that mustn't reach out);
+    /// Some(address) = another (tests: a local `BUDGET=1 node tools/remote-relay/server.js`)
+    pub go_between: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -117,6 +131,8 @@ pub struct Asking {
     pub device: String,
     pub digits: String,
     pub via_relay: bool,
+    /// a phone or a computer (its hello, which comes before the question)
+    pub kind: DeviceKind,
     /// which session it's about: a yes given to one can't go to another
     pub number: u32,
 }
@@ -125,7 +141,9 @@ pub struct Asking {
 pub struct Connected {
     pub id: String,
     pub name: String,
-    /// "local", "direct" or "relay"
+    /// "local" (the same network), "tailscale" or "overlay" (an overlay network's address: away, no server), "direct" (UDP,
+    /// found through a relay or the go-between), "relay" (the owner's relay carries it), "goBetween" (Blurt's go-between, until
+    /// the stream moves to the direct path)
     pub route: &'static str,
     pub screen: bool,
 }
@@ -136,6 +154,18 @@ pub struct RelayStatus {
     pub from_phone: bool,
     /// None: not tried yet (or no address)
     pub reachable: Option<bool>,
+    /// the go-between switch (docs/design/remote-go-between.md): used only while `address` is None
+    pub go_between: bool,
+    /// why the go-between couldn't carry the last session it tried, until one works (None: fine, or not tried)
+    pub go_between_problem: Option<GoBetweenProblem>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GoBetweenProblem {
+    /// the direct path didn't open on that network (`noDirect`, or the go-between's 4003 budget close)
+    NoDirect,
+    /// the go-between refused: its free quota for the day is gone, or it is rate-limiting
+    Busy,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -152,6 +182,7 @@ pub struct Host {
     core: Arc<Core>,
 }
 
+#[derive(Clone)]
 struct Code {
     id: String,
     key: [u8; 32],
@@ -172,6 +203,20 @@ struct Sess {
     key_sent: bool,
     /// a new phone the owner said yes to here, this session: it may also set the relay and drop the entry it replaces
     approved: bool,
+    /// the phone listed `move` (its stream can move onto the direct path): only such a phone is offered the go-between
+    moves: bool,
+    /// a computer driving this one (hello.features has `viewer`): its clipboard and keysCaptured count
+    viewer: bool,
+    /// a viewer's keys are captured: the clipboard goes both ways
+    captured: bool,
+    /// which capture the clipboard watch belongs to
+    clip_gen: u64,
+    /// the clipboard text both ends have now (sent, or received and put on): a change from it is sent
+    clip_known: Option<String>,
+    /// a new computer that found this one nearby, asking without a code (`pairing::nearby_key`)
+    nearby: bool,
+    /// the same device as the session open now: it takes over once its hello says it isn't a viewer's other window
+    deferred: bool,
     nonce: Option<Vec<u8>>,
     transcript: [u8; 32],
     commitment: Option<Vec<u8>>,
@@ -206,6 +251,8 @@ struct State {
     showing_pairing: bool,
     pairing: Option<Code>,
     old_code: Option<Code>,
+    /// the code whose link was copied (COPIED_LIFE)
+    copied: Option<Code>,
     pairing_gen: u64,
     code_tries: HashMap<String, u32>,
     sessions: HashMap<u64, Sess>,
@@ -225,6 +272,12 @@ struct State {
     problem: Option<Problem>,
     /// the app's Phone capability is off (`Host::set_off`): nothing listens, no relay is held, no code shows
     off: bool,
+    /// why the go-between couldn't carry the last session it tried (Settings says so until one works)
+    meet_problem: Option<crate::server::GoBetweenProblem>,
+    /// refusals from the go-between in a row ("busy today"): the next try waits 30 s, 2 min, 10 min, then an hour
+    meet_refusals: u32,
+    /// no nearby question until then (the owner said no to the last one)
+    nearby_paused_until: Option<Instant>,
 }
 
 struct Core {
@@ -282,6 +335,7 @@ impl Host {
             showing_pairing: false,
             pairing: None,
             old_code: None,
+            copied: None,
             pairing_gen: 0,
             code_tries: HashMap::new(),
             sessions: HashMap::new(),
@@ -299,6 +353,9 @@ impl Host {
             displays_sent: None,
             problem: None,
             off: false,
+            meet_problem: None,
+            meet_refusals: 0,
+            nearby_paused_until: None,
         };
         let core = Arc::new(Core {
             rt,
@@ -351,6 +408,28 @@ impl Host {
         c.publish(&mut s);
     }
 
+    /// Settings' Copy Link: the code on screen now stays good for COPIED_LIFE, though the screen moves on to new ones.
+    pub fn pairing_link_copied(&self) {
+        let c = &self.core;
+        let mut s = c.st.lock().unwrap();
+        let Some(mut code) = s.pairing.clone() else { return };
+        code.until = Instant::now() + Duration::from_secs_f64(COPIED_LIFE);
+        code.expires = now_ms() + (COPIED_LIFE * 1000.0) as i64;
+        let id = code.id.clone();
+        s.copied = Some(code);
+        c.update_listening(&mut s);
+        let me = c.arc();
+        c.rt.spawn(async move {
+            tokio::time::sleep(Duration::from_secs_f64(COPIED_LIFE + 1.0)).await;
+            let mut s = me.st.lock().unwrap();
+            if s.copied.as_ref().is_some_and(|c| c.id == id) {
+                s.copied = None;
+                me.update_listening(&mut s);
+                me.publish(&mut s);
+            }
+        });
+    }
+
     /// Yes or no to the phone that waits. `digits`: the six digits the owner saw: the answer counts only for the session they
     /// belong to, so a late click can't answer a different phone (None: whichever asks now).
     pub fn answer_pairing(&self, yes: bool, digits: Option<&str>) {
@@ -396,6 +475,21 @@ impl Host {
             let _ = tx.send(relay::check(&a).await);
         });
         rx.recv().unwrap_or(false)
+    }
+
+    /// The go-between switch (Settings → Phone, on by default): Blurt's go-between for away from home while no relay of the
+    /// owner's is set. Off: nothing connects out unless the owner sets a relay.
+    pub fn set_go_between(&self, on: bool) {
+        let c = &self.core;
+        let mut s = c.st.lock().unwrap();
+        if s.settings.go_between == on {
+            return;
+        }
+        s.settings.go_between = on;
+        s.meet_problem = None;
+        c.files.save_settings(&s.settings);
+        c.relay_changed(&mut s);
+        c.publish(&mut s);
     }
 
     pub fn set_screen_allowed(&self, on: bool) {
@@ -488,6 +582,7 @@ impl Host {
         s.showing_pairing = false;
         s.pairing = None;
         s.old_code = None;
+        s.copied = None;
         let ids: Vec<String> = s.relays.keys().cloned().collect();
         for id in ids {
             c.close_relay(&mut s, &id);
@@ -535,14 +630,20 @@ impl Core {
             }),
             asking: s.asking.and_then(|id| s.sessions.get(&id)).and_then(|a| {
                 let digits = a.nonce.as_ref().and_then(|n| check_digits(a, n))?;
-                Some(Asking { device: a.name.clone(), digits, via_relay: a.chan.relay, number: a.chan.number })
+                Some(Asking { device: a.name.clone(), digits, via_relay: a.chan.relay, kind: DeviceKind::of_hello(a.viewer), number: a.chan.number })
             }),
             devices: s.devices.clone(),
             connected: current.filter(|c| c.chan.greeted.load(SeqCst)).map(|c| Connected {
                 id: c.id.clone().unwrap_or_default(),
                 name: c.name.clone(),
                 route: if !c.chan.relay {
-                    "local"
+                    c.chan.overlay.lock().unwrap().unwrap_or("local")
+                } else if c.chan.meet.load(SeqCst) {
+                    if c.chan.moved_out() {
+                        "direct"
+                    } else {
+                        "goBetween"
+                    }
                 } else if c.chan.has_datagrams() {
                     "direct"
                 } else {
@@ -554,6 +655,8 @@ impl Core {
                 address: relay_address(&s.settings),
                 from_phone: s.settings.relay_from_phone,
                 reachable: relay_address(&s.settings).and(s.relay_reachable),
+                go_between: s.settings.go_between,
+                go_between_problem: s.meet_problem,
             },
             screen_allowed: s.settings.screen,
             can_control: s.last_control,
@@ -572,16 +675,51 @@ impl Core {
             key: c.key.to_vec(),
             name: self.cfg.name.clone(),
             port,
-            addresses: relay::lan_addresses(),
-            relay: relay_address(&s.settings),
+            addresses: relay::local_addresses(),
+            // the go-between too: a phone that can't move is told no relay in its session, and forgets it
+            relay: self.away(s).map(|(a, _)| a),
         }
         .url()
+    }
+
+    /// Blurt's go-between, unless this host was told of another or none.
+    fn meet_address(&self) -> Option<String> {
+        match self.cfg.go_between.as_deref() {
+            None => Some(relay::GO_BETWEEN.to_string()),
+            Some("") => None,
+            Some(a) => relay::address(a),
+        }
+    }
+
+    fn is_meet(&self, address: &str) -> bool {
+        let a = relay::address(address);
+        a.is_some() && (a == self.meet_address() || a.as_deref() == Some(relay::GO_BETWEEN))
+    }
+
+    /// Where away from home goes now: the owner's relay; else the go-between while its switch is on. (address, the go-between)
+    fn away(&self, s: &State) -> Option<(String, bool)> {
+        if let Some(a) = relay_address(&s.settings) {
+            return Some((a, false));
+        }
+        if s.settings.go_between {
+            return self.meet_address().map(|a| (a, true));
+        }
+        None
+    }
+
+    /// The relay this phone is told of (`session.relay`, `relay`): the owner's, or the go-between to a phone that can move.
+    fn offered(&self, s: &State, moves: bool) -> Option<String> {
+        match self.away(s) {
+            Some((a, false)) => Some(a),
+            Some((a, true)) if moves => Some(a),
+            _ => None,
+        }
     }
 
     // ------------------------------------------------------------------ keys and devices
 
     fn code<'a>(&self, s: &'a State, id: &str) -> Option<&'a Code> {
-        [s.pairing.as_ref(), s.old_code.as_ref()].into_iter().flatten().find(|c| c.id == id && c.until > Instant::now())
+        [s.pairing.as_ref(), s.old_code.as_ref(), s.copied.as_ref()].into_iter().flatten().find(|c| c.id == id && c.until > Instant::now())
     }
 
     fn key_for(&self, s: &State, id: &str) -> Option<Vec<u8>> {
@@ -595,8 +733,8 @@ impl Core {
     }
 
     /// The handshake's lookup: a code answers a few, no more (enough for a phone trying several ways at once, too few to try
-    /// for digits).
-    fn lookup(&self, id: &str) -> Option<Vec<u8>> {
+    /// for digits). `local`: over TCP, not a relay: a computer that found this one nearby may ask with the nearby key.
+    fn lookup(&self, id: &str, local: bool) -> Option<Vec<u8>> {
         let mut s = self.st.lock().unwrap();
         if self.code(&s, id).is_some() {
             let n = s.code_tries.entry(id.to_string()).or_insert(0);
@@ -605,7 +743,18 @@ impl Core {
                 return None;
             }
         }
+        let nearby = local
+            && id.starts_with(crate::pairing::NEARBY_PREFIX)
+            && id.len() <= 64
+            && self.nearby_open(&s);
         self.key_for(&s, id)
+            .or_else(|| nearby.then(|| crate::pairing::nearby_key().to_vec()))
+    }
+
+    /// A computer on the same network may ask to pair without a code (docs/design/remote-desktop-viewer.md §Add Computer): one
+    /// question at a time, none while another waits, and none for a while after the owner said no.
+    fn nearby_open(&self, s: &State) -> bool {
+        !s.off && s.asking.is_none() && s.nearby_paused_until.is_none_or(|t| Instant::now() >= t)
     }
 
     fn remove(&self, id: &str) {
@@ -639,7 +788,8 @@ impl Core {
 
     fn update_listening(&self, s: &mut State) {
         // a question already asked keeps its way in, even once Settings stopped showing the code
-        let want = !s.off && (s.showing_pairing || !s.devices.is_empty() || s.asking.is_some());
+        let copied = s.copied.as_ref().is_some_and(|c| c.until > Instant::now());
+        let want = !s.off && (s.showing_pairing || !s.devices.is_empty() || s.asking.is_some() || copied);
         if want && s.listeners.is_none() {
             self.start_listening(s);
         } else if !want && s.listeners.is_some() {
@@ -775,6 +925,9 @@ impl Core {
             self.greet(s, sid);
         } else {
             let ch = sess.chan.clone();
+            if sess.nearby {
+                s.nearby_paused_until = Some(Instant::now() + NEARBY_PAUSE);
+            }
             ch.close();
             self.closed_session(s, sid);
             if s.showing_pairing {
@@ -794,6 +947,10 @@ impl Core {
         let Some(udp) = self.udp.lock().unwrap().clone() else { return };
         let sid = self.next_sid.fetch_add(1, SeqCst);
         let (chan, rx) = Chan::new(sid, false, false, udp, self.rt.handle().clone());
+        // Tailscale, ZeroTier: away from home, with no server between
+        if let Ok(local) = c.local_addr() {
+            *chan.overlay.lock().unwrap() = relay::overlay_route(from, local).map(relay::Overlay::route);
+        }
         self.handshaking.fetch_add(1, SeqCst);
         let me = self.arc();
         let (r, w) = c.into_split();
@@ -853,7 +1010,8 @@ impl Core {
             if conn.answered {
                 return false;
             }
-            let a = crypto::answer(f, crypto::random(), |id| self.lookup(id));
+            let local = !chan.relay;
+            let a = crypto::answer(f, crypto::random(), |id| self.lookup(id, local));
             let Some(k) = a.keys else {
                 // one answer, then the connection is over
                 chan.last(FrameReader::framed(&a.reply));
@@ -901,6 +1059,11 @@ impl Core {
         }
         if let Some(id) = relay_device {
             let code = *conn.chan.relay_close.lock().unwrap();
+            if code == Some(relay::BUDGET) && conn.chan.meet.load(SeqCst) && !conn.chan.moved_out() {
+                // the go-between's budget for the connection is spent: it can't carry a session on that network
+                self.log(json!({"event": "remote_go_between", "state": "budget"}));
+                s.meet_problem = Some(GoBetweenProblem::NoDirect);
+            }
             self.relay_ended(&mut s, &id, sid, conn.chan.greeted.load(SeqCst), code);
         }
         self.publish(&mut s);
@@ -911,7 +1074,14 @@ impl Core {
         let mut s = self.st.lock().unwrap();
         // removed, its code spent or renewed, or the phone paired again since: a handshake begun with it, perhaps hours ago on
         // a waiting relay connection, opens nothing
-        let ok = self.key_for(&s, &id).is_some_and(|now| same(&now, &used));
+        let known = self.key_for(&s, &id);
+        // a computer that found this one nearby: no code, the nearby key, and a yes here as for any new phone
+        let nearby = known.is_none()
+            && !chan.relay
+            && id.starts_with(crate::pairing::NEARBY_PREFIX)
+            && same(&used, &crate::pairing::nearby_key())
+            && self.nearby_open(&s);
+        let ok = nearby || known.is_some_and(|now| same(&now, &used));
         if !ok {
             self.log(json!({"event": "remote_session", "state": "refused", "why": "stale_key"}));
             return false;
@@ -929,6 +1099,13 @@ impl Core {
                 pairing_key: None,
                 key_sent: false,
                 approved: false,
+                moves: false,
+                viewer: false,
+                captured: false,
+                clip_gen: 0,
+                clip_known: None,
+                nearby,
+                deferred: false,
                 nonce: None,
                 transcript,
                 commitment,
@@ -940,6 +1117,13 @@ impl Core {
                 pinned: None,
             },
         );
+        if nearby {
+            s.sessions.get_mut(&sid).unwrap().pairing_key = Some(crypto::new_key());
+            s.asking = Some(sid);
+            self.log(json!({"event": "remote_pairing_nearby"}));
+            self.publish(&mut s);
+            return true;
+        }
         // the code is spent the moment it opens a session
         if self.code(&s, &id).is_some() {
             // one new phone at a time: a second one using a code while the first waits is turned away
@@ -952,8 +1136,11 @@ impl Core {
             let current = s.pairing.as_ref().is_some_and(|c| c.id == id);
             if current {
                 s.pairing = None;
-            } else {
+            } else if s.old_code.as_ref().is_some_and(|c| c.id == id) {
                 s.old_code = None;
+            }
+            if s.copied.as_ref().is_some_and(|c| c.id == id) {
+                s.copied = None;
             }
             s.spent_code = Some(id.clone());
             // whoever holds a picture of the code, on any network: nothing until someone here says yes
@@ -966,6 +1153,16 @@ impl Core {
                 self.renew_pairing(&mut s);
             }
             self.publish(&mut s);
+            return true;
+        }
+        // the same device again while its session is open: a viewer's other window (hello.features "window") or the device
+        // starting over. Which, its hello says (it comes with this first frame)
+        if s.current.is_some_and(|c| {
+            s.sessions
+                .get(&c)
+                .is_some_and(|x| x.id.as_deref() == Some(id.as_str()))
+        }) {
+            s.sessions.get_mut(&sid).unwrap().deferred = true;
             return true;
         }
         self.take_over(&mut s, sid);
@@ -984,6 +1181,10 @@ impl Core {
             }
         }
         s.current = Some(sid);
+        // the silence before this counts for nothing: a new device says nothing while the owner compares the digits, however long
+        if let Some(x) = s.sessions.get(&sid) {
+            x.chan.heard();
+        }
         self.told.forget(sid); // another phone, or this one started again: its numbers start over
         let relay = s.sessions.get(&sid).is_some_and(|x| x.chan.relay);
         self.log(json!({"event": "remote_session", "state": "open", "relay": relay}));
@@ -1021,7 +1222,9 @@ impl Core {
                 }
                 let Some(x) = s.sessions.get_mut(&sid) else { return };
                 let quiet = x.chan.quiet().as_secs_f64();
-                if quiet > GONE {
+                // after the move nothing else carries it: 6 s without a datagram and it's over (the phone starts again)
+                let moved = x.chan.moved_out() || x.chan.moved_in();
+                if quiet > GONE || (moved && quiet > crate::channel::MOVED_QUIET.as_secs_f64()) {
                     me.log(json!({"event": "remote_session", "state": "gone"}));
                     let ch = x.chan.clone();
                     ch.close();
@@ -1148,6 +1351,13 @@ impl Core {
                 }
             }
             Kind::Video | Kind::Cursor => {}
+            // the phone's stream after the move, and how far it has the host's
+            Kind::Stream => {
+                if chan.greeted.load(SeqCst) {
+                    chan.stream_packet(body);
+                }
+            }
+            Kind::StreamAck => chan.stream_ack(body),
         }
     }
 
@@ -1156,11 +1366,29 @@ impl Core {
         let mut guard = self.st.lock().unwrap();
         let s = &mut *guard;
         match m {
-            ToMac::Hello { device, mic_on_phone, nonce } => {
+            ToMac::Hello { device, mic_on_phone, nonce, features } => {
+                let has = |n: &str| features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
+                let (moves, viewer) = (has(crate::wire::MOVE), has(crate::wire::VIEWER));
                 if let Some(x) = s.sessions.get_mut(&sid) {
                     x.name = device.chars().take(64).collect();
                     x.mic_on_phone = mic_on_phone;
                     x.nonce = nonce;
+                    x.moves = moves;
+                    x.viewer = viewer;
+                }
+                chan.phone_moves.store(moves, SeqCst);
+                if s.sessions.get(&sid).is_some_and(|x| x.deferred) {
+                    if has(crate::wire::WINDOW) {
+                        // a viewer's other window (another display): this host streams one display at a time, so the first
+                        // window keeps the computer and this one hears why
+                        self.log(json!({"event": "remote_session", "state": "refused", "why": "second_window"}));
+                        chan.send(&ToPhone::ScreenFailed(crate::wire::ONE_DISPLAY.into()));
+                        chan.close_after(Duration::from_millis(300));
+                        s.sessions.remove(&sid);
+                        return;
+                    }
+                    s.sessions.get_mut(&sid).unwrap().deferred = false;
+                    self.take_over(s, sid);
                 }
                 self.greet(s, sid);
                 self.publish(s);
@@ -1169,6 +1397,11 @@ impl Core {
             ToMac::KeyStored => {
                 self.key_stored(s, sid);
                 self.publish(s);
+                return;
+            }
+            // the phone's last frame on the old stream: the reader takes its frames from the UDP stream from here on
+            ToMac::StreamMoved => {
+                chan.peer_moved();
                 return;
             }
             ToMac::Ping(t) => {
@@ -1292,7 +1525,7 @@ impl Core {
             }
             ToMac::OfferRelay(a) => {
                 // and only it may set the relay: another paired phone can't point this one somewhere else
-                if s.sessions[&sid].approved && s.settings.relay.is_none() {
+                if s.sessions[&sid].approved && s.settings.relay.is_none() && !self.is_meet(&a) {
                     if let Some(a) = relay::address(&a) {
                         s.settings.relay = Some(Some(a));
                         s.settings.relay_from_phone = true;
@@ -1380,7 +1613,71 @@ impl Core {
                 self.post(move |a| a.hud(&t));
             }
             ToMac::ReleaseAll => self.let_go(s, sid),
+            ToMac::StreamMoved => {} // read where it's read (`peer_moved`)
+            // a viewer's: its clipboard onto this computer's, and whether its keys are here
+            ToMac::Clipboard(t) => {
+                let x = s.sessions.get_mut(&sid).unwrap();
+                if !x.viewer
+                    || !x.captured
+                    || !crate::wire::clipboard_fits(&t)
+                    || x.clip_known.as_deref() == Some(t.as_str())
+                {
+                    return;
+                }
+                x.clip_known = Some(t.clone());
+                drop(guard);
+                let backend = self.backend.clone();
+                self.rt
+                    .spawn_blocking(move || backend.lock().unwrap().input().set_clipboard(&t));
+            }
+            ToMac::KeysCaptured(on) => {
+                let x = s.sessions.get_mut(&sid).unwrap();
+                if !x.viewer || x.captured == on {
+                    return;
+                }
+                x.captured = on;
+                x.clip_gen += 1;
+                if on {
+                    let g = x.clip_gen;
+                    drop(guard);
+                    self.watch_clipboard(chan.clone(), g);
+                }
+            }
         }
+    }
+
+    /// While a viewer's keys are captured: this computer's clipboard, looked at twice a second, goes to the viewer when it
+    /// changes here (not what the viewer just put on it, and not what it held when the keys came here).
+    fn watch_clipboard(self: &Arc<Self>, chan: Arc<Chan>, g: u64) {
+        let me = self.clone();
+        self.rt.spawn(async move {
+            // what this watch last read: a change is a read that differs from it
+            let mut last: Option<Option<String>> = None;
+            loop {
+                let still = {
+                    let s = me.st.lock().unwrap();
+                    s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.captured && x.clip_gen == g)
+                };
+                if !still || chan.is_closed() {
+                    return;
+                }
+                let backend = me.backend.clone();
+                let now = tokio::task::spawn_blocking(move || backend.lock().unwrap().input().clipboard()).await.ok().flatten();
+                {
+                    let mut s = me.st.lock().unwrap();
+                    let Some(x) = s.sessions.get_mut(&chan.sid).filter(|x| x.captured && x.clip_gen == g) else { return };
+                    let changed = last.as_ref().is_some_and(|l| *l != now);
+                    if let Some(t) = now.as_ref().filter(|t| changed && crate::wire::clipboard_fits(t)) {
+                        if x.clip_known.as_deref() != Some(t.as_str()) {
+                            x.clip_known = Some(t.clone());
+                            chan.send(&ToPhone::Clipboard(t.clone()));
+                        }
+                    }
+                }
+                last = Some(now);
+                tokio::time::sleep(CLIPBOARD_EVERY).await;
+            }
+        });
     }
 
     fn screen(&self, s: &State, sid: u64) -> Option<Arc<ScreenSession>> {
@@ -1439,11 +1736,14 @@ impl Core {
             return;
         }
         let name = x.name.clone();
+        let kind = DeviceKind::of_hello(x.viewer);
         if let Some(d) = s.devices.iter_mut().find(|d| d.id == id) {
             d.last_seen = Some(now_ms());
             if !name.is_empty() {
                 d.name = name;
             }
+            // a record from before kinds were kept learns it here
+            d.kind = kind;
             self.files.save_devices(&s.devices);
         }
         self.begin(s, sid);
@@ -1461,7 +1761,14 @@ impl Core {
             self.log(json!({"event": "remote_key_store_failed", "why": e}));
         }
         s.devices.retain(|d| d.id != id);
-        s.devices.push(Device { id: id.clone(), name, added: now_ms(), last_seen: Some(now_ms()) });
+        let kind = DeviceKind::of_hello(x.viewer);
+        s.devices.push(Device {
+            id: id.clone(),
+            name,
+            added: now_ms(),
+            last_seen: Some(now_ms()),
+            kind,
+        });
         self.files.save_devices(&s.devices);
         self.begin(s, sid);
         self.update_listening(s);
@@ -1476,6 +1783,7 @@ impl Core {
         let x = &s.sessions[&sid];
         let chan = x.chan.clone();
         let name = x.name.clone();
+        let moves = x.moves;
         chan.greeted.store(true, SeqCst);
         chan.heard();
         self.keep_awake(s, true, false);
@@ -1485,6 +1793,7 @@ impl Core {
         };
         s.last_control = can;
         let udp_port = s.listeners.as_ref().map_or(0, |l| l.udp_port);
+        let relay = self.offered(s, moves);
         let info = SessionInfo {
             mac_name: self.cfg.name.clone(),
             udp_port,
@@ -1493,8 +1802,12 @@ impl Core {
             version: self.cfg.version.clone(),
             candidates: vec![],
             display_aspect: if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.6 },
-            relay: relay_address(&s.settings),
+            relay,
             platform: Some(self.platform.to_string()),
+            features: Some(vec![
+                crate::wire::MOVE.to_string(),
+                crate::wire::VIEWER.to_string(),
+            ]),
         };
         {
             let n = name.clone();
@@ -1503,16 +1816,34 @@ impl Core {
         let me = self.arc();
         self.rt.spawn(async move {
             let mut info = info;
+            // where the phone might reach this computer: the LAN's and the overlays' addresses always (the phone keeps them, and
+            // tries the overlays' when it's away); without the relay, also what the internet sees
+            let mut list: Vec<Candidate> = relay::local_addresses().into_iter().map(|h| Candidate { host: h, port: udp_port }).collect();
             if chan.relay {
-                // where the phone might reach this computer without the relay
-                let mut list: Vec<Candidate> = relay::lan_addresses().into_iter().map(|h| Candidate { host: h, port: udp_port }).collect();
                 list.extend(relay::public_ipv6().into_iter().map(|h| Candidate { host: h, port: udp_port }));
                 if let Some(c) = me.stun().await {
                     list.push(c);
                 }
-                info.candidates = list;
             }
+            info.candidates = list;
             chan.send(&ToPhone::Session(info));
+            if chan.meet.load(SeqCst) {
+                // the go-between only introduces: no direct path within 8 s, and this session can't go on
+                let (me, chan) = (me.clone(), chan.clone());
+                me.clone().rt.spawn(async move {
+                    tokio::time::sleep(NO_DIRECT).await;
+                    let mut s = me.st.lock().unwrap();
+                    let open = s.sessions.get(&chan.sid).is_some_and(|x| x.udp_seen);
+                    if open || chan.is_closed() {
+                        return;
+                    }
+                    me.log(json!({"event": "remote_go_between", "state": "no_direct"}));
+                    chan.send(&ToPhone::NoDirect);
+                    chan.close_after(Duration::from_millis(300));
+                    s.meet_problem = Some(GoBetweenProblem::NoDirect);
+                    me.publish(&mut s);
+                });
+            }
             let g = {
                 let mut s = me.st.lock().unwrap();
                 if let Some(x) = s.sessions.get_mut(&chan.sid) {
@@ -1620,6 +1951,13 @@ impl Core {
             if chan.relay {
                 chan.send_datagram(Kind::Probe, &[0; 8]); // the way back works too: the phone switches
             }
+            // on the go-between, with a phone that can: everything moves onto this path, and the go-between goes quiet
+            if chan.meet.load(SeqCst) && chan.phone_moves.load(SeqCst) && chan.move_out() {
+                self.log(json!({"event": "remote_go_between", "state": "moved"}));
+                let mut s = self.st.lock().unwrap();
+                s.meet_problem = None;
+                self.publish(&mut s);
+            }
         }
         let me = self.arc();
         me.deliver(&chan, &plain);
@@ -1630,7 +1968,7 @@ impl Core {
     fn relay_changed(&self, s: &mut State) {
         // first: it may be riding on the connection this closes
         if let Some(x) = s.current.and_then(|id| s.sessions.get(&id)) {
-            x.chan.send(&ToPhone::Relay(relay_address(&s.settings)));
+            x.chan.send(&ToPhone::Relay(self.offered(s, x.moves)));
         }
         self.update_relays(s);
         if s.showing_pairing && s.listeners.is_some() {
@@ -1639,9 +1977,9 @@ impl Core {
     }
 
     fn update_relays(&self, s: &mut State) {
-        let address = relay_address(&s.settings).filter(|_| s.listeners.is_some());
+        let address = self.away(s).map(|(a, _)| a).filter(|_| s.listeners.is_some());
         let mut ids: Vec<String> = s.devices.iter().map(|d| d.id.clone()).collect();
-        ids.extend([s.pairing.as_ref(), s.old_code.as_ref()].into_iter().flatten().map(|c| c.id.clone()));
+        ids.extend([s.pairing.as_ref(), s.old_code.as_ref(), s.copied.as_ref()].into_iter().flatten().map(|c| c.id.clone()));
         // a changed address counts as gone: the phone has been told the new one
         let stale: Vec<String> = s
             .relays
@@ -1676,7 +2014,7 @@ impl Core {
     }
 
     fn connect_relay(&self, s: &mut State, id: &str) {
-        let Some(address) = relay_address(&s.settings) else { return };
+        let Some((address, meet)) = self.away(s) else { return };
         if s.relays.contains_key(id) {
             return;
         }
@@ -1685,7 +2023,14 @@ impl Core {
             None if s.devices.iter().any(|d| d.id == id) => self.keys.get(&format!("remote-{id}")),
             None => None,
         };
-        let Some(key) = key else { return };
+        let Some(key) = key else {
+            // a paired device whose key can't be read: nothing waits for it, and it can't connect from away (a spent code is
+            // simply done)
+            if s.devices.iter().any(|d| d.id == id) {
+                self.log(json!({"event": "remote_relay", "state": "no_key"}));
+            }
+            return;
+        };
         let Some(udp) = self.udp.lock().unwrap().clone() else { return };
         let sid = self.next_sid.fetch_add(1, SeqCst);
         let stop = Arc::new(tokio::sync::Notify::new());
@@ -1701,24 +2046,38 @@ impl Core {
             let ws = match ws {
                 Ok(ws) => {
                     let mut s = me.st.lock().unwrap();
-                    if s.relay_reachable != Some(true) {
+                    if meet {
+                        s.meet_refusals = 0;
+                        if s.meet_problem == Some(GoBetweenProblem::Busy) {
+                            s.meet_problem = None;
+                        }
+                    } else if s.relay_reachable != Some(true) {
                         s.relay_reachable = Some(true);
-                        me.publish(&mut s);
                     }
+                    me.publish(&mut s);
                     drop(s);
-                    me.log(json!({"event": "remote_relay", "state": "waiting"}));
+                    me.log(json!({"event": "remote_relay", "state": "waiting", "goBetween": meet}));
                     ws
                 }
                 Err(e) => {
-                    me.log(json!({"event": "remote_relay", "state": "failed", "why": e}));
+                    me.log(json!({"event": "remote_relay", "state": "failed", "why": e.to_string(), "goBetween": meet}));
                     let mut s = me.st.lock().unwrap();
-                    s.relay_reachable = Some(false);
-                    me.relay_ended(&mut s, &id, sid, false, None);
+                    let busy = meet && matches!(e, relay::ConnectError::Refused(_));
+                    if busy {
+                        // the day's quota is gone, or it's rate-limiting: "busy today", and no retrying in a loop
+                        s.meet_refusals += 1;
+                        s.meet_problem = Some(GoBetweenProblem::Busy);
+                    } else if !meet {
+                        s.relay_reachable = Some(false);
+                    }
+                    let wait = busy.then(|| relay::busy_wait(s.meet_refusals));
+                    me.relay_ended_after(&mut s, &id, sid, false, None, wait);
                     me.publish(&mut s);
                     return;
                 }
             };
             let (chan, rx) = Chan::new(sid, true, true, udp, me.rt.handle().clone());
+            chan.meet.store(meet, SeqCst);
             {
                 // closed while connecting
                 let s = me.st.lock().unwrap();
@@ -1741,9 +2100,14 @@ impl Core {
     async fn read_ws(self: Arc<Self>, mut stream: futures_util::stream::SplitStream<relay::Socket>, chan: Arc<Chan>, id: String) {
         let mut conn = Conn::new(chan.clone());
         conn.counted = false;
+        // the heartbeat of a waiting connection is a WebSocket protocol ping, never a message: the go-between's host doesn't
+        // bill incoming protocol pings, and the relay answers them by itself
         let mut beat = tokio::time::interval(Duration::from_secs(30));
         beat.tick().await;
         let mut pong_owed = false;
+        // after the phone's streamMoved: its frames, in order, from the stream over UDP
+        let mut moved: Option<mpsc::UnboundedReceiver<Vec<u8>>> = None;
+        let mut ws_open = true;
         loop {
             let deadline = conn.deadline();
             let next = async {
@@ -1752,24 +2116,45 @@ impl Core {
                     None => Some(stream.next().await),
                 }
             };
+            let from_udp = async {
+                match moved.as_mut() {
+                    Some(r) => r.recv().await,
+                    None => std::future::pending().await,
+                }
+            };
             tokio::select! {
                 _ = chan.shut.notified() => break,
-                _ = beat.tick(), if !conn.opened => {
+                _ = beat.tick(), if !conn.opened && ws_open => {
                     // a waiting connection that doesn't answer is dead, and a new one is made
                     if pong_owed { break; }
                     pong_owed = true;
                     chan.ping();
                 }
-                m = next => match m {
+                b = from_udp => match b {
+                    Some(b) => if !self.bytes(&mut conn, &b) { break; },
+                    None => break,
+                },
+                m = next, if ws_open => match m {
                     Some(Some(Ok(Message::Binary(b)))) => {
+                        // nothing after the phone's streamMoved counts on the old stream
+                        if moved.is_some() { continue; }
                         if !self.bytes(&mut conn, &b) { break; }
+                        if chan.moved_in() {
+                            moved = chan.take_moved();
+                            conn.reader = FrameReader::default();
+                            conn.reader.limit = MAX_FRAME;
+                            self.log(json!({"event": "remote_go_between", "state": "phone_moved"}));
+                        }
                     }
                     Some(Some(Ok(Message::Pong(_)))) => pong_owed = false,
                     Some(Some(Ok(Message::Close(f)))) => {
                         *chan.relay_close.lock().unwrap() = f.map(|f| u16::from(f.code));
+                        // moved both ways: the session carries on over UDP
+                        if moved.is_some() && chan.moved_out() { ws_open = false; continue; }
                         break;
                     }
                     Some(Some(Ok(_))) => {}
+                    Some(None) | Some(Some(Err(_))) if moved.is_some() && chan.moved_out() => ws_open = false,
                     _ => break,
                 },
             }
@@ -1778,14 +2163,22 @@ impl Core {
     }
 
     fn relay_ended(&self, s: &mut State, id: &str, sid: u64, greeted: bool, code: Option<u16>) {
+        self.relay_ended_after(s, id, sid, greeted, code, None);
+    }
+
+    /// `after`: the go-between said it's busy, and the next try waits that long.
+    fn relay_ended_after(&self, s: &mut State, id: &str, sid: u64, greeted: bool, code: Option<u16>, after: Option<Duration>) {
         if s.relays.get(id).map(|r| r.sid) != Some(sid) {
             return;
         }
         s.relays.remove(id);
         let clean = code == Some(relay::PHONE_LEFT) || greeted;
         // a failure waits longer each time, but not so long that a bad hello now and then keeps the phone off the relay
-        let wait = if clean { 0.5 } else { (s.relay_wait.get(id).copied().unwrap_or(1.0) * 2.0).min(8.0) };
+        let mut wait = if clean { 0.5 } else { (s.relay_wait.get(id).copied().unwrap_or(1.0) * 2.0).min(8.0) };
         s.relay_wait.insert(id.to_string(), if clean { 1.0 } else { wait });
+        if let Some(a) = after {
+            wait = a.as_secs_f64();
+        }
         let me = self.arc();
         let id = id.to_string();
         self.rt.spawn(async move {
@@ -1946,11 +2339,36 @@ fn advertise(name: &str, id: &str, port: u16) -> Option<(mdns_sd::ServiceDaemon,
 
 /// The computer's name as people see it.
 pub fn computer_name() -> String {
-    let h = gethostname::gethostname().to_string_lossy().to_string();
-    let h = h.strip_suffix(".local").unwrap_or(&h).to_string();
-    if h.is_empty() {
-        "Computer".into()
-    } else {
-        h
+    // Linux: the name set in Settings → About (hostnamectl's pretty name) first
+    #[cfg(target_os = "linux")]
+    if let Some(n) = std::fs::read_to_string("/etc/machine-info").ok().and_then(|t| pretty_hostname(&t)) {
+        return n;
+    }
+    short_host(&gethostname::gethostname().to_string_lossy())
+}
+
+/// The host name without its domain: a cloud machine's `vm.zone.c.project.internal` or a LAN's `pc.local` reads as `vm`, `pc`.
+fn short_host(h: &str) -> String {
+    let h = h.split('.').next().unwrap_or("").trim();
+    if h.is_empty() { "Computer".into() } else { h.into() }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn pretty_hostname(machine_info: &str) -> Option<String> {
+    let v = machine_info.lines().find_map(|l| l.strip_prefix("PRETTY_HOSTNAME="))?.trim();
+    let v = v.trim_matches(|c| c == '"' || c == '\'').trim();
+    (!v.is_empty()).then(|| v.to_string())
+}
+
+#[cfg(test)]
+mod name_tests {
+    #[test]
+    fn a_computers_name_drops_its_domain() {
+        assert_eq!(super::short_host("blurt-linux2.asia-southeast1-b.c.ordo-platform.internal"), "blurt-linux2");
+        assert_eq!(super::short_host("Studio.local"), "Studio");
+        assert_eq!(super::short_host("DESKTOP-4F2K"), "DESKTOP-4F2K");
+        assert_eq!(super::short_host(""), "Computer");
+        assert_eq!(super::pretty_hostname("PRETTY_HOSTNAME=\"Ana's ThinkPad\"\nICON_NAME=computer"), Some("Ana's ThinkPad".into()));
+        assert_eq!(super::pretty_hostname("ICON_NAME=computer"), None);
     }
 }

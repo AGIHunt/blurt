@@ -115,6 +115,48 @@ struct St {
 }
 
 impl St {
+    fn new(rate: Rate, relayed: bool) -> St {
+        let encoder_rate = rate.bitrate;
+        St {
+            running: true,
+            rate,
+            relayed,
+            idle: false,
+            started: Instant::now(),
+            sent_total: 0,
+            received_total: 0,
+            last_report_at: 0.0,
+            report_bytes: 0,
+            report_since: 0.0,
+            busy_skips: 0,
+            held_since: 0.0,
+            paced_until: 0.0,
+            was_whole: false,
+            broken: false,
+            last_key_at: 0.0,
+            last_key_asked: 0.0,
+            last_key_answered: 0.0,
+            key_through: 0,
+            last_frame_at: 0.0,
+            last_refresh_at: 0.0,
+            refresh_pending: None,
+            sharpen: Sharpen::finished(),
+            capped: false,
+            cheap_rate: true,
+            probe: Probe::default(),
+            encoder_rate,
+            last_cursor: None,
+            tick: 0,
+            encoded: 0,
+            bytes: 0,
+            keyframes: 0,
+            skipped: 0,
+            refreshes: 0,
+            stats_since: 0.0,
+            repair: HostRepair::default(),
+        }
+    }
+
     fn now(&self) -> f64 {
         self.started.elapsed().as_secs_f64()
     }
@@ -210,8 +252,8 @@ impl ScreenSession {
             wait()?;
         }
         let relayed = chan.relay;
-        let rate = Rate::new(r.bitrate, r.fps, relayed);
-        let encoder_rate = rate.bitrate;
+        // away for the ceiling: a relay, the go-between's direct path, or an overlay network (Tailscale, ZeroTier)
+        let rate = Rate::new(r.bitrate, r.fps, chan.away());
         // the display: the one pinned, else the one under the pointer; its shape is the picture's
         let (aspect, display, pinned) = {
             let mut b = backend.lock().unwrap();
@@ -224,45 +266,10 @@ impl ScreenSession {
             let pinned = r.display.clone().filter(|id| displays::find(&list, id).is_some());
             (shape.unwrap_or_else(|| b.display_aspect()), first, pinned)
         };
-        let (width, height) = fit(r.width, r.height, aspect);
-        let st = Arc::new(Mutex::new(St {
-            running: true,
-            rate,
-            relayed,
-            idle: false,
-            started: Instant::now(),
-            sent_total: 0,
-            received_total: 0,
-            last_report_at: 0.0,
-            report_bytes: 0,
-            report_since: 0.0,
-            busy_skips: 0,
-            held_since: 0.0,
-            paced_until: 0.0,
-            was_whole: false,
-            broken: false,
-            last_key_at: 0.0,
-            last_key_asked: 0.0,
-            last_key_answered: 0.0,
-            key_through: 0,
-            last_frame_at: 0.0,
-            last_refresh_at: 0.0,
-            refresh_pending: None,
-            sharpen: Sharpen::finished(),
-            capped: false,
-            cheap_rate: true,
-            probe: Probe::default(),
-            encoder_rate,
-            last_cursor: None,
-            tick: 0,
-            encoded: 0,
-            bytes: 0,
-            keyframes: 0,
-            skipped: 0,
-            refreshes: 0,
-            stats_since: 0.0,
-            repair: HostRepair::default(),
-        }));
+        // a viewer's window is the most the picture needs (RemoteScreenRequest.box)
+        let (bw, bh) = r.boxed();
+        let (width, height) = fit(bw, bh, aspect);
+        let st = Arc::new(Mutex::new(St::new(rate, relayed)));
         let (bitrate, fps) = {
             let s = st.lock().unwrap();
             (s.rate.bitrate as u32, s.rate.fps as u32)
@@ -311,7 +318,7 @@ impl ScreenSession {
             follow: Mutex::new(Follow::new(pinned, display)),
             displays: all,
             config: Mutex::new(config),
-            asked: (r.width, r.height),
+            asked: r.boxed(),
             sink,
             codec: Mutex::new(info.codec),
             switching: AtomicBool::new(false),
@@ -647,22 +654,23 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
         let batches: Vec<Vec<VideoPacket>> = pieces.chunks(BURST).map(|c| c.to_vec()).collect();
         s.paced_until = now + gap * (batches.len() - 1) as f64;
         for (i, batch) in batches.into_iter().enumerate() {
+            if i == 0 {
+                // now, under the lock this frame already holds (taking it again here hung the backend's thread for good, and
+                // with it every phone's connection waiting on this stream)
+                for p in &batch {
+                    chan.send_datagram(Kind::Video, &p.encode());
+                }
+                continue;
+            }
             let (chan, st) = (chan.clone(), st.clone());
-            let go = move || {
+            rt.spawn(async move {
+                tokio::time::sleep(Duration::from_secs_f64(gap * i as f64)).await;
                 if st.lock().unwrap().running {
                     for p in &batch {
                         chan.send_datagram(Kind::Video, &p.encode());
                     }
                 }
-            };
-            if i == 0 {
-                go();
-            } else {
-                rt.spawn(async move {
-                    tokio::time::sleep(Duration::from_secs_f64(gap * i as f64)).await;
-                    go();
-                });
-            }
+            });
         }
     } else {
         for p in &pieces {
@@ -947,8 +955,42 @@ mod tests {
             codecs: None,
             display: None,
             features: None,
+            window: None,
         });
         assert_eq!((r.width, r.height, r.bitrate, r.fps), (8192, 64, 100_000, 120));
         assert_eq!(r.crop.x, 0.5);
+    }
+
+    /// A frame of more than `BURST` pieces on the go-between's direct path (relayed, with datagrams) goes in paced batches, the
+    /// first at once. That first batch took the frame's lock again on the same thread: the backend's thread hung for good, and the
+    /// server with it (seen on blurt-win2, a 1280×720 keyframe after the move).
+    #[test]
+    fn a_big_frame_on_the_direct_path_goes_out() {
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
+        let udp = Arc::new(rt.block_on(tokio::net::UdpSocket::bind("127.0.0.1:0")).unwrap());
+        let (chan, _out) = Chan::new(1, true, false, udp, rt.handle().clone());
+        chan.use_flow("127.0.0.1:9".parse().unwrap());
+        let st = Arc::new(Mutex::new(St::new(Rate::new(2_000_000, 30, true), true)));
+        let log: Arc<dyn Fn(serde_json::Value) + Send + Sync> = Arc::new(|_| {});
+        let (done, finished) = std::sync::mpsc::channel();
+        let (st2, rt2) = (st.clone(), rt.handle().clone());
+        std::thread::spawn(move || {
+            let f = EncodedFrame {
+                picture: vec![0x55; 40 * VideoPacket::PAYLOAD],
+                keyframe: true,
+                parameter_sets: vec![vec![0x67, 1], vec![0x68, 2]],
+                crop: Crop::WHOLE.to_host(),
+                captured: 0.0,
+                refresh: false,
+                reference: None,
+            };
+            frame(&st2, &chan, &rt2, &log, f);
+            let _ = done.send(());
+        });
+        assert!(finished.recv_timeout(Duration::from_secs(5)).is_ok(), "the frame never went: its lock taken twice");
+        let s = st.lock().unwrap();
+        assert_eq!(s.encoded, 1);
+        // it went the paced way: the batches after the first are on their way
+        assert!(s.paced_until > s.now() - 1.0 && s.paced_until > 0.0);
     }
 }

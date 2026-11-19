@@ -121,7 +121,7 @@ fn host(dir: &std::path::Path, input: Lines, app: Lines) -> Host {
 
 fn host_answering(dir: &std::path::Path, input: Lines, app: Lines, answer: Option<bool>) -> Host {
     Host::start(
-        HostConfig { dir: dir.into(), name: "Studio PC".into(), version: "1.0.15".into(), test_answer: answer, port: 0 },
+        HostConfig { dir: dir.into(), name: "Studio PC".into(), version: "1.0.15".into(), test_answer: answer, port: 0, go_between: Some(String::new()) },
         Box::new(TestBackend(TestInput(input))),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(TestApp(app)),
@@ -200,6 +200,7 @@ async fn pairing_a_session_keys_and_the_pointer() {
         codecs: Some(vec!["h264".into()]),
         display: None,
         features: None,
+            window: None,
     })))
     .await;
     let why = phone.wait(Duration::from_secs(3), |m| if let ToPhone::ScreenFailed(w) = m { Some(w.clone()) } else { None }).await;
@@ -298,6 +299,39 @@ async fn the_yes_is_for_the_digits_shown_and_survives_the_pane_closing() {
 
 use blurt_remote::pairing::Pairing;
 
+/// Copy Link: that link keeps working while the code on screen moves on (two renewals later it's neither the code shown nor the one
+/// before), and it's spent like any code. A link that wasn't copied is gone by then.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_copied_link_outlives_the_codes_on_screen() {
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    h.show_pairing(true);
+    let (copied, port) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+    h.pairing_link_copied();
+    h.show_pairing(true);
+    let shown_next = until(|| h.status().pairing.map(|p| p.url).filter(|u| *u != copied)).await;
+    h.show_pairing(true);
+    until(|| h.status().pairing.map(|p| p.url).filter(|u| *u != shown_next && *u != copied)).await;
+    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+
+    // not copied, two codes ago: refused
+    let gone = Pairing::parse(&shown_next).unwrap();
+    h.show_pairing(true);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(Phone::connect(at, &gone.device_id, &gone.key).await.err().as_deref(), Some("NotPaired"));
+
+    // copied: it asks
+    let p = Pairing::parse(&copied).unwrap();
+    let mut phone = Phone::connect(at, &p.device_id, &p.key).await.unwrap();
+    phone.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+    h.answer_pairing(false, None);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // spent: it opens nothing again
+    assert_eq!(Phone::connect(at, &p.device_id, &p.key).await.err().as_deref(), Some("NotPaired"));
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The app's Phone capability off: nothing listens, a code can't be shown, and on again it listens as before.
 #[tokio::test(flavor = "multi_thread")]
 async fn off_means_not_listening() {
@@ -316,5 +350,51 @@ async fn off_means_not_listening() {
     until(|| h.status().pairing.map(|_| ())).await;
     assert!(h.status().listening);
     h.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Whether a paired device is a phone or a computer (its hello lists `viewer`): known while it asks, kept on its record, read back
+/// after a restart. The UI draws its icon from this.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_is_a_phone_or_a_computer() {
+    use blurt_remote::phone::Options;
+    use blurt_remote::store::DeviceKind;
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    let mut port = 0;
+    let mut pair_as = async |opts: Options| {
+        h.show_pairing(true);
+        let (link, p) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+        port = p;
+        let at: SocketAddr = format!("127.0.0.1:{p}").parse().unwrap();
+        let code = Pairing::parse(&link).unwrap();
+        let mut d = Phone::connect_with(at, &code.device_id, &code.key, opts).await.unwrap();
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+        let asking = until(|| h.status().asking).await;
+        h.answer_pairing(true, Some(&asking.digits));
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::NewKey(_)).then_some(())).await.expect("a key");
+        d.send(&ToMac::KeyStored).await;
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::Session(_)).then_some(())).await.expect("session");
+        (asking.kind, d)
+    };
+    let viewer = Options {
+        features: Some(vec![blurt_remote::wire::MOVE.into(), blurt_remote::wire::VIEWER.into()]),
+        device: "Den PC".into(),
+        ..Options::default()
+    };
+    let (asked, _pc) = pair_as(viewer).await;
+    assert_eq!(asked, DeviceKind::Computer, "a viewer asks as a computer");
+    let (asked, _phone) = pair_as(Options::default()).await;
+    assert_eq!(asked, DeviceKind::Phone);
+    assert!(port > 0);
+    let kinds = |h: &Host| h.status().devices.iter().map(|d| (d.name.clone(), d.kind)).collect::<Vec<_>>();
+    assert_eq!(kinds(&h), [("Den PC".to_string(), DeviceKind::Computer), ("Test Phone".to_string(), DeviceKind::Phone)]);
+    h.stop();
+    // kept: a host started again over the same folder knows which is which
+    let again = host(&dir, Lines::default(), Lines::default());
+    assert_eq!(kinds(&again), [("Den PC".to_string(), DeviceKind::Computer), ("Test Phone".to_string(), DeviceKind::Phone)]);
+    again.stop();
+    // a host owns its runtime: let it go off the test's async thread
+    tokio::task::spawn_blocking(move || drop((h, again))).await.unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }

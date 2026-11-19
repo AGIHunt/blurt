@@ -51,8 +51,9 @@ export const PANES: PaneInfo[] = [
   // a recording and what becomes of it (v1.0.23: before, a box in General); its projects follow
   { id: 'recording', title: 'feature.recording', icon: 'record', group: 'features' },
   { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'features' },
-  // the Mac's iPhone pane ("remote"), for any phone: Settings → Phone (PhonePane.tsx)
-  { id: 'phone', title: 'feature.phone', icon: 'phone', group: 'features' },
+  // the Mac's iPhone pane ("remote"): the feature's options (PhonePane.tsx); its name is the feature's, feature.phone, as the
+  // page's, Home's row and the sidebar's: renaming the feature is that one string
+  { id: 'phone', title: 'feature.phone', icon: 'devices', group: 'features' },
   { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'app' },
   { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'app' },
   { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'app' },
@@ -73,6 +74,8 @@ export const MOVED_ROW: Record<string, string> = {
   'general.cards': 'cards.snaps', 'general.voice': 'cards.voice',
   'general.after_recording': 'recording.after_recording', 'general.countdown': 'recording.countdown',
   'general.system_audio': 'recording.system_audio', 'general.recording': 'recording.capture',
+  // the device lists moved to the Remote Control page; their old rows land on the row that goes there
+  'phone.add': 'phone.devices', 'phone.computers.add': 'phone.devices',
 };
 /** "general/general.collect" (or "general/collect") → "cards/cards.collect"; a moved pane → its new place; else as it is. */
 export function redirect(link: string): string {
@@ -112,7 +115,6 @@ export const SECTIONS: Record<string, Key> = {
   'shortcuts.recording': 'capture.keys.while_recording',
   'shortcuts.dictation': 'dictation.settings.tab',
   'shortcuts.open': 'capture.keys.section.open',
-  'phone.phones': 'phone.section.phones',
   'phone.options': 'phone.section.options',
   'phone.relay': 'phone.section.relay',
   'agents.use': 'agents.use.header',
@@ -228,9 +230,11 @@ export const ENTRIES: Entry[] = (() => {
   e.push(
     row('shortcuts.restore', null, 'capture.keys.restore'),
     // Phone
-    row('phone.add', 'phone.phones', 'phone.app', { detail: 'phone.add.detail' }),
+    // the devices are on the Remote Control page: this row goes there
+    row('phone.devices', null, 'phone.devices.show'),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
+    row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),
     row('phone.relay.help', 'phone.relay', 'phone.relay.help', { detail: 'phone.relay.help.detail' }),
     // Agents
     whole('agents.use', 'agents.use.footer'),

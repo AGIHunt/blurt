@@ -1,11 +1,13 @@
-// Phone (docs/design/capabilities.md): a full page of the main window, and the phone's state for everything outside
-// Settings — the page (PhonePageViews.swift), the menu-bar menu's row and Home's tile (PhoneStatus).
+// 手机和电脑 / Phones and Computers (docs/design/capabilities.md, remote-desktop-viewer.md §One page for the devices): a
+// full page of the main window with every device — what controls this Mac, what this Mac controls — and the phone's
+// state for everything outside Settings: the page (PhonePageViews.swift), the menu-bar menu's row and Home's tile
+// (PhoneStatus).
 //
-//  • PhoneModel.shared is the one model of the phone for the page AND Settings → Phone: both follow RemoteServer's
-//    notifications through it and both drive the same pairing code (`setAdding`), so a code shown from one is the
-//    code the other shows. Whoever leaves (the page hidden, the window closed, the pane left) ends the code.
-//  • The page never opens the port by itself: only Add a Phone does (RemoteServer.showPairing), and RemoteServer
-//    listens on its own only while a phone is paired and the capability is on.
+//  • PhoneModel.shared is the one model of the paired devices for the page AND Settings → 手机和电脑 (which shows
+//    only the options and Away from home): both follow RemoteServer's notifications through it. The pairing code
+//    (`setAdding`) is the page's; it ends when the page is hidden or the window closes.
+//  • The page never opens the port by itself: only Add Device does (RemoteServer.showPairing), and RemoteServer
+//    listens on its own only while a device is paired and the capability is on.
 //  • What the page says is decided in BlurtCore (PhoneChecks): this file gathers the facts.
 import AppKit
 import SwiftUI
@@ -17,7 +19,11 @@ final class PhonePage: FullPage {
     private var closing: NSObjectProtocol?
 
     func didShow() {
-        MainActor.assumeIsolated { PhoneModel.shared.watch("page") }
+        MainActor.assumeIsolated {
+            PhoneModel.shared.watch("page")
+            // the computers this Mac controls: which ones are on this network now (可连接)
+            ViewerStore.shared.watch("page")
+        }
         // the window closed with the page on show is the page left too (the controller only tells a page it hid when
         // another place takes over): a code must not stay up, with the port open, behind a closed window
         guard closing == nil, let w = viewController.view.window else { return }
@@ -27,7 +33,10 @@ final class PhonePage: FullPage {
     }
 
     func didHide() {
-        MainActor.assumeIsolated { PhoneModel.shared.unwatch("page") }
+        MainActor.assumeIsolated {
+            PhoneModel.shared.unwatch("page")
+            ViewerStore.shared.unwatch("page")
+        }
     }
 
     deinit { if let c = closing { NotificationCenter.default.removeObserver(c) } }
@@ -56,7 +65,7 @@ enum PhoneStatus {
         return PhoneFacts(paired: s.devices().count, connected: st.connected, viaRelay: st.viaRelay, canControl: canControl,
                           screenWanted: RemoteServer.screenAllowed, screenAllowed: SystemAccess.granted(.screen),
                           listening: st.listening, listenFailure: st.failure, pairing: st.pairingLink != nil,
-                          relay: RemoteServer.relayOn ? .checking : .none)
+                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay)
     }
 
     /// A phone's name as it gave it; one that gave none is "Phone".
@@ -68,8 +77,8 @@ enum PhoneStatus {
         let f = facts
         switch PhoneChecks.headline(f) {
         case .nonePaired: return T("phone.menu.add")
-        case let .connected(n, _): return needsAttention ? T("phone.menu.needs_access") : T("phone.menu.connected", name(n))
-        case .notConnected: return needsAttention ? T("phone.menu.needs_access") : T("phone.menu.paired")
+        case let .connected(n, _): return needsAttention ? T("phone.menu.needs_access", T("feature.phone")) : T("phone.menu.connected", T("feature.phone"), name(n))
+        case .notConnected: return needsAttention ? T("phone.menu.needs_access", T("feature.phone")) : T("phone.menu.paired", T("feature.phone"))
         }
     }
 
@@ -99,7 +108,9 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var canControl = PhoneStatus.canControl
     @Published private(set) var screenWanted = RemoteServer.screenAllowed
     @Published private(set) var screenAllowed = SystemAccess.granted(.screen)
-    @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : .none
+    @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : PhoneModel.noRelay
+    /// with no relay of the owner's own: the public connection service, unless it's switched off
+    nonisolated static var noRelay: PhoneFacts.Relay { RemoteServer.meetAddress != nil ? .goBetween : .none }
     #if DEBUG || BLURT_TEST_HOOKS
     /// tests (`phonepage relay …`): the relay's answer, without asking anything
     var testRelay: PhoneFacts.Relay? {
@@ -175,7 +186,7 @@ final class PhoneModel: ObservableObject {
         if wanted != screenWanted { screenWanted = wanted }
         if allowed != screenAllowed { screenAllowed = allowed }
         // the address changed (typed in Settings, filled in by a phone): what was said about the last one doesn't hold
-        if asked != nil, asked != (RemoteServer.relayAddress ?? "") { checkRelay() }
+        if asked != nil, asked != (RemoteServer.relayAddress ?? "") || RemoteServer.relayAddress == nil && relay != Self.noRelay { checkRelay() }
     }
 
     // MARK: pairing
@@ -214,7 +225,7 @@ final class PhoneModel: ObservableObject {
         #endif
         guard let a = RemoteServer.relayAddress else {
             asked = ""
-            if relay != .none { relay = .none }
+            if relay != Self.noRelay { relay = Self.noRelay }
             return
         }
         asked = a
@@ -240,9 +251,12 @@ final class PhoneModel: ObservableObject {
 
 extension PhonePage {
     /// `phonepage …` (SnapApp's test channel; test builds only — a release build ignores it):
-    ///   fake none|paired|connected|relay|asking|deaf [code]   phones and a connection as if real (RemoteServer.testFake):
-    ///                           nothing paired · two phones, none here · the iPhone connected on the local network ·
+    ///   fake none|paired|connected|relay|asking|deaf [code]   devices and a connection as if real (RemoteServer.testFake):
+    ///                           nothing paired · an iPhone, an iPad and a computer that controls this Mac (its hello
+    ///                           said "viewer"), none here · the iPhone connected on the local network ·
     ///                           … through the relay · a new phone waiting for a yes · the port could not be opened;
+    ///                           also tailscale|meeting|gobetween (connected that way) and busy|nodirect (paired, and why the
+    ///                           go-between didn't work: Settings → Phone → Away from home);
     ///                           `code`: with a pairing code on show that is no code (a picture of it gives nothing
     ///                           away: no key, no address, no name) and nothing listening for it
     ///   ax on|off|clear         what Accessibility says · relay none|checking|ok|failed|clear   the relay's answer
@@ -257,15 +271,22 @@ extension PhonePage {
             case "fake":
                 let now = Date()
                 let two = [RemoteServer.Device(id: "test-iphone", name: "iPhone", added: now.addingTimeInterval(-40 * 86400), lastSeen: now.addingTimeInterval(-2 * 3600)),
-                           RemoteServer.Device(id: "test-ipad", name: "iPad", added: now.addingTimeInterval(-12 * 86400), lastSeen: now.addingTimeInterval(-3 * 86400))]
+                           RemoteServer.Device(id: "test-ipad", name: "iPad", added: now.addingTimeInterval(-12 * 86400), lastSeen: now.addingTimeInterval(-3 * 86400)),
+                           RemoteServer.Device(id: "test-mbp", name: "MacBook Pro", added: now.addingTimeInterval(-5 * 86400),
+                                               lastSeen: now.addingTimeInterval(-26 * 3600), kind: "computer")]
                 var st = RemoteServer.Status()
                 st.listening = v != "none" && v != "deaf"
                 switch v {
-                case "connected", "relay":
+                case "connected", "relay", "tailscale", "meeting", "gobetween":
                     st.connected = "iPhone"
                     st.connectedID = "test-iphone"
-                    st.viaRelay = v == "relay"
-                    st.udp = true
+                    st.viaRelay = ["relay", "meeting", "gobetween"].contains(v)
+                    st.udp = v != "meeting"
+                    let paths: [String: RemoteServer.Path] = ["connected": .local, "relay": .relay, "tailscale": .tailscale, "meeting": .meeting,
+                                                              "gobetween": .goBetween]
+                    st.path = paths[v]
+                case "busy": st.away = .busy
+                case "nodirect": st.away = .noDirect
                 case "asking":
                     st.asking = "Pixel 9"
                     st.askingCheck = "482713"
@@ -274,6 +295,8 @@ extension PhonePage {
                 default: break
                 }
                 let code = a.count > 2 && a[2] == "code"
+                // a code that renews in 1:40, as one just put up
+                if code { st.pairingRenews = Date().addingTimeInterval(100) }
                 if code { st.pairingLink = URL(string: "https://example.com/blurt-pairing-code-for-screenshots-only#not-a-key-0000000000000000000000000000000000000000000") }
                 m.testCode(code)
                 RemoteServer.shared.testFake(devices: v == "none" ? [] : two, status: st)

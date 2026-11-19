@@ -7,6 +7,18 @@ object RemoteRelay {
     const val PHONE_LEFT = 4000
     const val MAC_GONE = 4001
     const val REPLACED = 4002
+    /** the go-between closed it: past its budget for one connection (remote-go-between.md §The go-between server) */
+    const val BUDGET = 4003
+
+    /** Blurt's own go-between: free, best effort, and only for phones and hosts that move their stream (RemoteFeature.MOVE) */
+    const val GO_BETWEEN = "wss://meet.blurt.work"
+
+    /** The address is Blurt's go-between rather than a relay of the owner's own. */
+    fun isGoBetween(address: String?): Boolean {
+        val a = address?.let { address(it) } ?: return false
+        val host = a.substringAfter("://").substringBefore('/').substringAfterLast('@').substringBefore(':').lowercase()
+        return a.startsWith("wss://") && host == GO_BETWEEN.substringAfter("://")
+    }
 
     /** base64url(HMAC-SHA256(paired, "blurt-relay-room")), no padding: unguessable, and it says nothing about the pair. */
     fun room(key: ByteArray): String = RemoteCrypto.base64url(RemoteCrypto.hmac(key, "blurt-relay-room".toByteArray()))

@@ -1,9 +1,13 @@
-//! A phone in Rust, for tests (tests/server.rs, examples/phone.rs): the phone's end of the handshake, the session over TCP, UDP
-//! once the host says where, the relay's WebSocket. It does what Link.swift and RemoteChannel.swift do on the iPhone, no more.
+//! A phone in Rust, for tests (tests/server.rs, tests/go_between.rs, examples/phone.rs): the phone's end of the handshake, the
+//! session over TCP, UDP once the host says where, the relay's WebSocket. It does what Link.swift and RemoteChannel.swift do on the
+//! iPhone, no more. Away from home (docs/design/remote-go-between.md) it says it can move (`hello.features`), keeps the host's
+//! candidates, tries the overlay addresses among them over TCP beside the relay (`connect_away`), knocks on the candidates over UDP
+//! (`open_direct`), and on the go-between moves its stream onto the direct path once the host says `udpOK`.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -11,10 +15,11 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::crypto::{PhoneHandshake, SealOut};
+use crate::crypto::{PhoneHandshake, SealIn, SealOut};
 use crate::packets::{cursor_from, FrameReader, Kind, PointerPacket, VideoPacket, MAX_FRAME};
 use crate::repair::{Feedback, Output, Receiver};
-use crate::wire::{ScreenReport, ScreenRequest, ToMac, ToPhone};
+use crate::stream::{self, StreamIn, StreamOut};
+use crate::wire::{Candidate, ScreenReport, ScreenRequest, SessionInfo, ToMac, ToPhone};
 
 #[derive(Debug)]
 pub enum Event {
@@ -24,7 +29,40 @@ pub enum Event {
     /// the pointer's place, and the newest of this phone's numbered pointer instructions it includes (12 bytes; None: the 8-byte one)
     Cursor(f32, f32, Option<u32>),
     Probe(Vec<u8>),
+    /// over: the connection closed (`Phone::close_code` has the relay's code), or nothing came for 6 s after the move
     Closed,
+}
+
+/// How this phone behaves (`connect_with`, `connect_relay_with`, `connect_away`).
+#[derive(Clone, Debug)]
+pub struct Options {
+    /// `hello.features`: `["move"]` by default; None plays a phone from before the go-between
+    pub features: Option<Vec<String>>,
+    /// the relay it connects through is Blurt's go-between: nothing large goes before the move, and the stream moves once the
+    /// host says `udpOK` (and lists `move`)
+    pub go_between: bool,
+    /// `hello.device`: the name the host shows ("Test Phone"; a viewer: its computer's name)
+    pub device: String,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            features: Some(vec![crate::wire::MOVE.to_string()]),
+            go_between: false,
+            device: "Test Phone".into(),
+        }
+    }
+}
+
+impl Options {
+    pub fn go_between() -> Options {
+        Options { go_between: true, ..Options::default() }
+    }
+
+    fn moves(&self) -> bool {
+        self.features.as_ref().is_some_and(|f| f.iter().any(|x| x == crate::wire::MOVE))
+    }
 }
 
 enum Writer {
@@ -32,15 +70,152 @@ enum Writer {
     Ws(futures_util::stream::SplitSink<crate::relay::Socket, Message>),
 }
 
-pub struct Phone {
+impl Writer {
+    async fn write(&mut self, f: Vec<u8>) {
+        let _ = match self {
+            Writer::Tcp(w) => w.write_all(&f).await.map_err(|_| ()),
+            Writer::Ws(w) => w.send(Message::Binary(f.into())).await.map_err(|_| ()),
+        };
+    }
+
+    async fn close(&mut self) {
+        match self {
+            Writer::Tcp(w) => {
+                let _ = w.shutdown().await;
+            }
+            Writer::Ws(w) => {
+                let _ = w.close().await;
+            }
+        }
+    }
+}
+
+/// What the phone's tasks share.
+struct Inner {
+    /// the old stream's writer; held while a frame is sealed, so the counters and the order on the wire agree
     w: tokio::sync::Mutex<Writer>,
-    out: Arc<Mutex<SealOut>>,
+    out: Mutex<SealOut>,
+    /// Some once this phone has moved: its stream over UDP
+    stream: Mutex<Option<StreamOut>>,
+    stream_in: Mutex<StreamIn>,
+    moved_tx: mpsc::UnboundedSender<Vec<u8>>,
+    /// the UDP socket and the session number
+    udp: Mutex<Option<(Arc<UdpSocket>, u32)>>,
+    /// where the host's datagrams come from: the way to it
+    udp_to: Mutex<Option<SocketAddr>>,
+    /// the candidates knocked on, until one answers
+    knock: Mutex<Vec<SocketAddr>>,
+    heard_udp: Mutex<Instant>,
+    opts: Options,
+    relayed: bool,
+    host_moves: AtomicBool,
+    candidates: Mutex<Vec<Candidate>>,
+    close_code: Arc<Mutex<Option<u16>>>,
+    closed: AtomicBool,
+    t0: Instant,
+}
+
+impl Inner {
+    fn now(&self) -> f64 {
+        self.t0.elapsed().as_secs_f64()
+    }
+
+    /// The stream moves on this connection: the go-between, a host that can, a phone that can.
+    fn moves(&self) -> bool {
+        self.relayed && self.opts.go_between && self.opts.moves() && self.host_moves.load(SeqCst)
+    }
+
+    fn moved_out(&self) -> bool {
+        self.stream.lock().unwrap().is_some()
+    }
+
+    /// A sealed datagram on its way: to where the host answers from, or before that to every candidate. False: no UDP yet.
+    fn udp_send(&self, kind: Kind, body: &[u8]) -> bool {
+        let Some((u, session)) = self.udp.lock().unwrap().clone() else { return false };
+        let to: Vec<SocketAddr> = match *self.udp_to.lock().unwrap() {
+            Some(a) => vec![a],
+            None => self.knock.lock().unwrap().clone(),
+        };
+        if to.is_empty() {
+            return false;
+        }
+        let mut plain = vec![kind as u8];
+        plain.extend_from_slice(body);
+        for t in to {
+            let d = self.out.lock().unwrap().seal_packet(&plain, session);
+            let _ = u.try_send_to(&d, t);
+        }
+        true
+    }
+
+    fn send_chunks(&self, chunks: Vec<stream::Chunk>) {
+        for (off, b) in chunks {
+            self.udp_send(Kind::Stream, &stream::encode_chunk(off, &b));
+        }
+    }
+
+    async fn sealed(&self, kind: Kind, body: &[u8]) {
+        if self.closed.load(SeqCst) {
+            return;
+        }
+        let mut w = self.w.lock().await;
+        let mut plain = vec![kind as u8];
+        plain.extend_from_slice(body);
+        let f = FrameReader::framed(&self.out.lock().unwrap().seal(&plain));
+        let chunks = self.stream.lock().unwrap().as_mut().map(|s| s.write(&f, self.now()));
+        match chunks {
+            Some(c) => self.send_chunks(c),
+            None => w.write(f).await,
+        }
+    }
+
+    /// The move, the phone's side: `streamMoved` as the last frame on the old stream, then everything over UDP.
+    async fn move_out(self: &Arc<Self>) {
+        {
+            let mut w = self.w.lock().await;
+            if self.moved_out() || self.closed.load(SeqCst) {
+                return;
+            }
+            let mut plain = vec![Kind::Control as u8];
+            plain.extend_from_slice(&ToMac::StreamMoved.encode());
+            let f = FrameReader::framed(&self.out.lock().unwrap().seal(&plain));
+            w.write(f).await;
+            *self.stream.lock().unwrap() = Some(StreamOut::new());
+        }
+        let me = self.clone();
+        tokio::spawn(async move {
+            let mut t = tokio::time::interval(Duration::from_millis(10));
+            while !me.closed.load(SeqCst) {
+                t.tick().await;
+                let now = me.now();
+                if let Some(a) = me.stream_in.lock().unwrap().tick(now) {
+                    me.udp_send(Kind::StreamAck, &stream::encode_ack(a));
+                }
+                let c = me.stream.lock().unwrap().as_mut().map(|s| s.tick(now)).unwrap_or_default();
+                me.send_chunks(c);
+            }
+        });
+    }
+}
+
+pub struct Phone {
+    inner: Arc<Inner>,
     rx: mpsc::UnboundedReceiver<Event>,
     tx: mpsc::UnboundedSender<Event>,
-    udp: Option<(Arc<UdpSocket>, u32)>,
-    udp_in: Option<crate::crypto::SealIn>,
+    udp_in: Option<SealIn>,
     pub host: SocketAddr,
     pub check: String,
+}
+
+impl Drop for Phone {
+    /// Gone: the connection closes, as an app that quits.
+    fn drop(&mut self) {
+        self.inner.closed.store(true, SeqCst);
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            let inner = self.inner.clone();
+            rt.spawn(async move { inner.w.lock().await.close().await });
+        }
+    }
 }
 
 fn deliver(tx: &mpsc::UnboundedSender<Event>, plain: &[u8]) {
@@ -61,142 +236,322 @@ fn deliver(tx: &mpsc::UnboundedSender<Event>, plain: &[u8]) {
     });
 }
 
+/// The frames of the session: from the old stream until the host's `streamMoved`, then from the stream over UDP. Acts on the
+/// few messages the connection itself needs (the session's features and candidates, `udpOK` for the move) and hands every one on.
+async fn read(inner: Arc<Inner>, mut reader: FrameReader, mut inn: SealIn, mut old: mpsc::UnboundedReceiver<Vec<u8>>, mut moved: mpsc::UnboundedReceiver<Vec<u8>>, tx: mpsc::UnboundedSender<Event>) {
+    let mut switched = false;
+    loop {
+        if inner.closed.load(SeqCst) {
+            return;
+        }
+        let b = if !switched {
+            match old.recv().await {
+                Some(b) => b,
+                None => {
+                    let _ = tx.send(Event::Closed);
+                    return;
+                }
+            }
+        } else {
+            tokio::select! {
+                b = moved.recv() => match b { Some(b) => b, None => return },
+                _ = tokio::time::sleep(Duration::from_millis(500)) => {
+                    // nothing over UDP for 6 s after the move: over, start again
+                    if inner.heard_udp.lock().unwrap().elapsed() > Duration::from_secs(6) {
+                        let _ = tx.send(Event::Closed);
+                        return;
+                    }
+                    continue;
+                }
+            }
+        };
+        reader.feed(&b);
+        loop {
+            let f = match reader.next_frame() {
+                Ok(Some(f)) => f,
+                Ok(None) => break,
+                Err(_) => {
+                    let _ = tx.send(Event::Closed);
+                    return;
+                }
+            };
+            let Some(p) = inn.open(&f) else {
+                let _ = tx.send(Event::Closed);
+                return;
+            };
+            let m = (p.first() == Some(&(Kind::Control as u8))).then(|| ToPhone::decode(&p[1..])).flatten();
+            match &m {
+                Some(ToPhone::Session(i)) => {
+                    inner.host_moves.store(i.features.as_ref().is_some_and(|f| f.iter().any(|x| x == crate::wire::MOVE)), SeqCst);
+                    *inner.candidates.lock().unwrap() = i.candidates.clone();
+                }
+                Some(ToPhone::UdpOk) if inner.moves() => {
+                    // the host has the phone's datagrams: once its way back is known too, the stream moves
+                    let me = inner.clone();
+                    tokio::spawn(async move {
+                        for _ in 0..100 {
+                            if me.udp_to.lock().unwrap().is_some() {
+                                me.move_out().await;
+                                return;
+                            }
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                        }
+                    });
+                }
+                _ => {}
+            }
+            deliver(&tx, &p);
+            if matches!(m, Some(ToPhone::StreamMoved)) && !switched && inner.moves() {
+                // the host's last frame on the old stream: the rest of it comes over UDP
+                switched = true;
+                *inner.heard_udp.lock().unwrap() = Instant::now();
+                reader = FrameReader::default();
+                reader.limit = MAX_FRAME;
+                break;
+            }
+        }
+    }
+}
+
+/// Bound to both stacks, as the host's: IPv4 candidates go as mapped addresses.
+fn dual_stack_udp() -> std::io::Result<UdpSocket> {
+    let s = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+    let _ = s.set_only_v6(false);
+    s.bind(&SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0).into())?;
+    s.set_nonblocking(true)?;
+    UdpSocket::from_std(s.into())
+}
+
+fn mapped(a: SocketAddr) -> SocketAddr {
+    match a.ip() {
+        IpAddr::V4(v4) => SocketAddr::new(IpAddr::V6(v4.to_ipv6_mapped()), a.port()),
+        _ => a,
+    }
+}
+
+/// The candidates worth a TCP try from away, at the host's TCP port: Tailscale's ranges, and private and unique-local addresses
+/// (a ZeroTier network's look like a LAN's: the phone can't tell them apart, so it tries them all, each for 1.5 s, in parallel).
+pub fn overlay_targets(candidates: &[Candidate], tcp_port: u16) -> Vec<SocketAddr> {
+    let mut out = vec![];
+    for c in candidates {
+        let Ok(ip) = c.host.parse::<IpAddr>() else { continue };
+        let worth = match ip {
+            IpAddr::V4(a) => a.is_private() || crate::relay::overlay_of(ip, "").is_some(),
+            IpAddr::V6(a) => (a.segments()[0] & 0xfe00) == 0xfc00,
+        };
+        let t = SocketAddr::new(ip, tcp_port);
+        if worth && !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
+/// What the phone's connection label says for a path (docs/design/remote-go-between.md §Overlay addresses).
+pub fn path_label(a: SocketAddr) -> &'static str {
+    match crate::relay::overlay_of(a.ip(), "") {
+        Some(crate::relay::Overlay::Tailscale) => "Tailscale",
+        _ => "Overlay network",
+    }
+}
+
 impl Phone {
     /// Connect over TCP and finish the handshake. Err: the host's refusal, or the way failed.
     pub async fn connect(host: SocketAddr, id: &str, key: &[u8]) -> Result<Phone, String> {
+        Phone::connect_with(host, id, key, Options::default()).await
+    }
+
+    pub async fn connect_with(host: SocketAddr, id: &str, key: &[u8], opts: Options) -> Result<Phone, String> {
         let s = tokio::time::timeout(Duration::from_secs(3), tokio::net::TcpStream::connect(host)).await.map_err(|_| "timed out")?.map_err(|e| e.to_string())?;
+        Phone::over_tcp(s, host, id, key, opts).await
+    }
+
+    pub async fn over_tcp(
+        s: tokio::net::TcpStream,
+        host: SocketAddr,
+        id: &str,
+        key: &[u8],
+        opts: Options,
+    ) -> Result<Phone, String> {
         s.set_nodelay(true).ok();
         let (mut r, mut w) = s.into_split();
         let h = PhoneHandshake::new(id, key);
         w.write_all(&FrameReader::framed(&h.hello())).await.map_err(|e| e.to_string())?;
-        let mut reader = FrameReader::default();
-        let mut buf = vec![0u8; 65536];
-        let reply = loop {
-            if let Some(f) = reader.next_frame().map_err(|_| "bad length")? {
-                break f;
-            }
-            let n = r.read(&mut buf).await.map_err(|e| e.to_string())?;
-            if n == 0 {
-                return Err("closed".into());
-            }
-            reader.feed(&buf[..n]);
-        };
-        let k = h.finish(&reply).map_err(|e| format!("{e:?}"))?;
-        reader.limit = MAX_FRAME;
-        let check = h.check(&k.transcript);
-        let (tx, rx) = mpsc::unbounded_channel();
-        let udp_in = Some(k.inn.clone());
-        let mut inn = k.inn;
-        let t2 = tx.clone();
+        let (old_tx, old_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(async move {
+            let mut buf = vec![0u8; 65536];
             loop {
-                while let Ok(Some(f)) = reader.next_frame() {
-                    match inn.open(&f) {
-                        Some(p) => deliver(&t2, &p),
-                        None => {
-                            let _ = t2.send(Event::Closed);
+                match r.read(&mut buf).await {
+                    Ok(n) if n > 0 => {
+                        if old_tx.send(buf[..n].to_vec()).is_err() {
                             return;
                         }
                     }
-                }
-                match r.read(&mut buf).await {
-                    Ok(n) if n > 0 => reader.feed(&buf[..n]),
-                    _ => {
-                        let _ = t2.send(Event::Closed);
-                        return;
-                    }
+                    _ => return,
                 }
             }
         });
-        let p = Phone { w: tokio::sync::Mutex::new(Writer::Tcp(w)), out: Arc::new(Mutex::new(k.out)), rx, tx, udp: None, udp_in, host, check };
-        p.hello(&h.nonce).await;
-        Ok(p)
+        Phone::start(Writer::Tcp(w), old_rx, h, host, false, opts, Arc::new(Mutex::new(None))).await
     }
 
     /// The same over the relay: `<relay>/v1/<room>/phone`.
     pub async fn connect_relay(address: &str, id: &str, key: &[u8]) -> Result<Phone, String> {
+        Phone::connect_relay_with(address, id, key, Options::default()).await
+    }
+
+    pub async fn connect_relay_with(address: &str, id: &str, key: &[u8], opts: Options) -> Result<Phone, String> {
         let ws = crate::relay::connect(address, &crate::relay::room(key), "phone").await?;
+        Phone::over_ws(ws, id, key, opts).await
+    }
+
+    pub async fn over_ws(
+        ws: crate::relay::Socket,
+        id: &str,
+        key: &[u8],
+        opts: Options,
+    ) -> Result<Phone, String> {
         let (mut w, mut r) = ws.split();
         let h = PhoneHandshake::new(id, key);
         w.send(Message::Binary(FrameReader::framed(&h.hello()).into())).await.map_err(|e| e.to_string())?;
+        let (old_tx, old_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let code = Arc::new(Mutex::new(None));
+        let c2 = code.clone();
+        tokio::spawn(async move {
+            while let Some(m) = r.next().await {
+                match m {
+                    Ok(Message::Binary(b)) => {
+                        if old_tx.send(b.to_vec()).is_err() {
+                            return;
+                        }
+                    }
+                    Ok(Message::Close(f)) => {
+                        *c2.lock().unwrap() = f.map(|f| u16::from(f.code));
+                        return;
+                    }
+                    Ok(_) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        Phone::start(Writer::Ws(w), old_rx, h, "0.0.0.0:0".parse().unwrap(), true, opts, code).await
+    }
+
+    async fn start(
+        w: Writer,
+        mut old: mpsc::UnboundedReceiver<Vec<u8>>,
+        h: PhoneHandshake,
+        host: SocketAddr,
+        relayed: bool,
+        opts: Options,
+        code: Arc<Mutex<Option<u16>>>,
+    ) -> Result<Phone, String> {
         let mut reader = FrameReader::default();
         let reply = loop {
             if let Some(f) = reader.next_frame().map_err(|_| "bad length")? {
                 break f;
             }
-            match r.next().await {
-                Some(Ok(Message::Binary(b))) => reader.feed(&b),
-                Some(Ok(Message::Close(f))) => return Err(format!("closed {:?}", f.map(|f| u16::from(f.code)))),
-                Some(Ok(_)) => {}
-                _ => return Err("closed".into()),
+            match old.recv().await {
+                Some(b) => reader.feed(&b),
+                // the relay's code is in before its reader lets go
+                None => return Err(match *code.lock().unwrap() {
+                    Some(c) => format!("closed {:?}", Some(c)),
+                    None => "closed".into(),
+                }),
             }
         };
-        let k = h.finish(&reply).map_err(|e| format!("{e:?}"))?;
         reader.limit = MAX_FRAME;
+        let k = h.finish(&reply).map_err(|e| format!("{e:?}"))?;
         let check = h.check(&k.transcript);
         let (tx, rx) = mpsc::unbounded_channel();
-        let udp_in = Some(k.inn.clone());
-        let mut inn = k.inn;
-        let t2 = tx.clone();
-        tokio::spawn(async move {
-            loop {
-                while let Ok(Some(f)) = reader.next_frame() {
-                    match inn.open(&f) {
-                        Some(p) => deliver(&t2, &p),
-                        None => {
-                            let _ = t2.send(Event::Closed);
-                            return;
-                        }
-                    }
-                }
-                match r.next().await {
-                    Some(Ok(Message::Binary(b))) => reader.feed(&b),
-                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
-                        let _ = t2.send(Event::Closed);
-                        return;
-                    }
-                    Some(Ok(_)) => {}
-                }
-            }
+        let (moved_tx, moved_rx) = mpsc::unbounded_channel();
+        let inner = Arc::new(Inner {
+            w: tokio::sync::Mutex::new(w),
+            out: Mutex::new(k.out),
+            stream: Mutex::new(None),
+            stream_in: Mutex::new(StreamIn::new()),
+            moved_tx,
+            udp: Mutex::new(None),
+            udp_to: Mutex::new(None),
+            knock: Mutex::new(vec![]),
+            heard_udp: Mutex::new(Instant::now()),
+            opts,
+            relayed,
+            host_moves: AtomicBool::new(false),
+            candidates: Mutex::new(vec![]),
+            close_code: code,
+            closed: AtomicBool::new(false),
+            t0: Instant::now(),
         });
-        let p = Phone {
-            w: tokio::sync::Mutex::new(Writer::Ws(w)),
-            out: Arc::new(Mutex::new(k.out)),
-            rx,
-            tx,
-            udp: None,
-            udp_in,
-            host: "0.0.0.0:0".parse().unwrap(),
-            check,
-        };
+        let udp_in = Some(k.inn.clone());
+        tokio::spawn(read(inner.clone(), reader, k.inn, old, moved_rx, tx.clone()));
+        let p = Phone { inner, rx, tx, udp_in, host, check };
         p.hello(&h.nonce).await;
         Ok(p)
     }
 
-    async fn hello(&self, nonce: &[u8]) {
-        self.send(&ToMac::Hello { device: "Test Phone".into(), mic_on_phone: true, nonce: Some(nonce.to_vec()) }).await;
+    /// Away from home, as the phone apps connect: a TCP connection to each overlay address (`overlay_targets` of the candidates
+    /// it kept), 1.5 s each, in parallel with the relay or the go-between. If both work the overlay wins. → the phone, and the
+    /// path's label ("Tailscale", "Overlay network", or "relay").
+    pub async fn connect_away(relay: Option<&str>, overlay: &[SocketAddr], id: &str, key: &[u8], opts: Options) -> Result<(Phone, &'static str), String> {
+        let tcp = async {
+            let mut tries: futures_util::stream::FuturesUnordered<_> = overlay
+                .iter()
+                .map(|a| async move { (*a, tokio::time::timeout(Duration::from_millis(1500), tokio::net::TcpStream::connect(*a)).await) })
+                .collect();
+            while let Some((a, r)) = tries.next().await {
+                if let Ok(Ok(s)) = r {
+                    return Some((a, s));
+                }
+            }
+            None
+        };
+        let ws = async {
+            match relay {
+                Some(r) => Some(crate::relay::connect(r, &crate::relay::room(key), "phone").await),
+                None => None,
+            }
+        };
+        let (t, w) = tokio::join!(tcp, ws);
+        if let Some((a, s)) = t {
+            drop(w);
+            let p = Phone::over_tcp(s, a, id, key, Options { go_between: false, ..opts }).await?;
+            return Ok((p, path_label(a)));
+        }
+        match w {
+            Some(Ok(ws)) => Ok((Phone::over_ws(ws, id, key, opts).await?, "relay")),
+            Some(Err(e)) => Err(e.into()),
+            None => Err("no way to the computer".into()),
+        }
     }
 
-    async fn sealed(&self, kind: Kind, body: &[u8]) {
-        let mut plain = vec![kind as u8];
-        plain.extend_from_slice(body);
-        let f = FrameReader::framed(&self.out.lock().unwrap().seal(&plain));
-        let mut w = self.w.lock().await;
-        let _ = match &mut *w {
-            Writer::Tcp(w) => w.write_all(&f).await.map_err(|_| ()),
-            Writer::Ws(w) => w.send(Message::Binary(f.into())).await.map_err(|_| ()),
-        };
+    async fn hello(&self, nonce: &[u8]) {
+        let o = &self.inner.opts;
+        let viewer = o
+            .features
+            .as_ref()
+            .is_some_and(|f| f.iter().any(|x| x == crate::wire::VIEWER));
+        self.send(&ToMac::Hello {
+            device: o.device.clone(),
+            mic_on_phone: !viewer,
+            nonce: Some(nonce.to_vec()),
+            features: o.features.clone(),
+        })
+        .await;
     }
 
     pub async fn send(&self, m: &ToMac) {
-        self.sealed(Kind::Control, &m.encode()).await;
+        self.inner.sealed(Kind::Control, &m.encode()).await;
     }
 
+    /// The microphone: in the stream. Not over the go-between before the move.
     pub async fn audio(&self, pcm: &[u8]) {
-        self.sealed(Kind::Audio, pcm).await;
+        if self.on_go_between_unmoved() {
+            return;
+        }
+        self.inner.sealed(Kind::Audio, pcm).await;
     }
 
-    /// Over UDP once it works, else in the stream.
+    /// Over UDP once it works, else in the stream (but never over the go-between).
     pub async fn pointer(&self, p: PointerPacket) {
         self.datagram(Kind::Pointer, &p.encode()).await;
     }
@@ -206,39 +561,100 @@ impl Phone {
         self.datagram(Kind::VideoFeedback, &f.encode()).await;
     }
 
-    async fn datagram(&self, kind: Kind, b: &[u8]) {
-        match &self.udp {
-            Some((u, session)) => {
-                let mut body = vec![kind as u8];
-                body.extend_from_slice(b);
-                let d = self.out.lock().unwrap().seal_packet(&body, *session);
-                let _ = u.send(&d).await;
-            }
-            None => self.sealed(kind, b).await,
-        }
+    fn on_go_between_unmoved(&self) -> bool {
+        self.inner.relayed && self.inner.opts.go_between && !self.inner.moved_out()
     }
 
-    /// The host said where (session.udpPort): probe it with sealed scrollStop packets; udpOK says one got through.
-    pub async fn open_udp(&mut self, port: u16, session: u32) -> std::io::Result<()> {
-        let u = Arc::new(UdpSocket::bind(if self.host.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }).await?);
-        u.connect(SocketAddr::new(self.host.ip(), port)).await?;
-        let (u2, tx) = (u.clone(), self.tx.clone());
+    async fn datagram(&self, kind: Kind, b: &[u8]) {
+        if self.inner.udp_send(kind, b) {
+            return;
+        }
+        if self.inner.relayed && self.inner.opts.go_between {
+            return; // the go-between carries nothing worthless late
+        }
+        self.inner.sealed(kind, b).await;
+    }
+
+    /// The UDP socket and what comes back on it: video, the cursor, probes, and the stream after the move.
+    fn udp_socket(&mut self, session: u32) -> std::io::Result<()> {
+        let u = Arc::new(dual_stack_udp()?);
+        let (u2, tx, inner) = (u.clone(), self.tx.clone(), self.inner.clone());
         if let Some(mut inn) = self.udp_in.take() {
-            // what comes back on it: video, the cursor, probes
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 2048];
-                while let Ok(n) = u2.recv(&mut buf).await {
-                    if let Some(p) = inn.open_packet(&buf[..n]) {
-                        deliver(&tx, &p);
+                while !inner.closed.load(SeqCst) {
+                    let Ok(Ok((n, from))) = tokio::time::timeout(Duration::from_millis(500), u2.recv_from(&mut buf)).await else { continue };
+                    let Some(p) = inn.open_packet(&buf[..n]) else { continue };
+                    inner.udp_to.lock().unwrap().get_or_insert(from);
+                    *inner.heard_udp.lock().unwrap() = Instant::now();
+                    match p.first().and_then(|b| Kind::from_byte(*b)) {
+                        Some(Kind::Stream) => {
+                            let Some((off, b)) = stream::decode_chunk(&p[1..]) else { continue };
+                            let r = inner.stream_in.lock().unwrap().receive(off, b, inner.now());
+                            if !r.bytes.is_empty() {
+                                let _ = inner.moved_tx.send(r.bytes);
+                            }
+                            if let Some(a) = r.ack {
+                                inner.udp_send(Kind::StreamAck, &stream::encode_ack(a));
+                            }
+                        }
+                        Some(Kind::StreamAck) => {
+                            let Some(next) = stream::decode_ack(&p[1..]) else { continue };
+                            let c = inner.stream.lock().unwrap().as_mut().map(|s| s.ack(next, inner.now())).unwrap_or_default();
+                            inner.send_chunks(c);
+                        }
+                        _ => deliver(&tx, &p),
                     }
                 }
             });
         }
-        self.udp = Some((u, session));
+        *self.inner.udp.lock().unwrap() = Some((u, session));
+        Ok(())
+    }
+
+    /// The host said where (session.udpPort): probe it with sealed scrollStop packets; udpOK says one got through.
+    pub async fn open_udp(&mut self, port: u16, session: u32) -> std::io::Result<()> {
+        self.udp_socket(session)?;
+        *self.inner.udp_to.lock().unwrap() = Some(mapped(SocketAddr::new(self.host.ip(), port)));
         for _ in 0..3 {
             self.pointer(PointerPacket::Stop).await;
         }
         Ok(())
+    }
+
+    /// Away: knock on every candidate the session named (sealed scrollStop packets, as the apps do), a few times; the first
+    /// that answers is the way (`udpOK` says the host has the phone's).
+    pub async fn open_direct(&mut self, info: &SessionInfo) -> std::io::Result<()> {
+        self.udp_socket(info.udp_session)?;
+        let targets: Vec<SocketAddr> =
+            info.candidates.iter().take(8).filter_map(|c| c.host.parse::<IpAddr>().ok().map(|ip| mapped(SocketAddr::new(ip, c.port)))).collect();
+        *self.inner.knock.lock().unwrap() = targets;
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            for _ in 0..8 {
+                if inner.udp_to.lock().unwrap().is_some() || inner.closed.load(SeqCst) {
+                    return;
+                }
+                inner.udp_send(Kind::Pointer, &PointerPacket::Stop.encode());
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+        });
+        Ok(())
+    }
+
+    /// The candidates the last session named: kept for the next time this phone is away (`overlay_targets`).
+    pub fn candidates(&self) -> Vec<Candidate> {
+        self.inner.candidates.lock().unwrap().clone()
+    }
+
+    /// This phone has moved its stream onto the direct path.
+    pub fn moved(&self) -> bool {
+        self.inner.moved_out()
+    }
+
+    /// The relay's close code, once it closed (4003: the go-between's budget).
+    pub fn close_code(&self) -> Option<u16> {
+        *self.inner.close_code.lock().unwrap()
     }
 
     /// The next event within `t`.

@@ -1,5 +1,5 @@
-// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (Settings → Phone and the
-// question that shows wherever the window is), the relay address as the Mac reads it (RemoteRelay.address), and the
+// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (the Remote Control page,
+// its Settings pane, and the question that shows wherever the window is), the relay address as the Mac reads it (RemoteRelay.address), and the
 // pairing code's time left.
 import { useEffect, useState } from 'react';
 import { api, onRemoteStatus, type RemoteStatus } from '../api';
@@ -38,30 +38,6 @@ export function useRemoteStatus(): RemoteStatus | null {
 /** A command that answers with the status: its answer is shown at once (the event follows). */
 export const apply = (p: Promise<RemoteStatus>) => p.then((s) => (publish(s), s));
 
-// Settings → Phone shows the question itself while it is open; the window's own dialog waits for it to close.
-let paneOpen = 0;
-const paneSubs = new Set<(n: number) => void>();
-export function usePhonePaneOpen(): boolean {
-  const [n, setN] = useState(paneOpen);
-  useEffect(() => {
-    paneSubs.add(setN);
-    return () => {
-      paneSubs.delete(setN);
-    };
-  }, []);
-  return n > 0;
-}
-export function usePhonePaneMounted() {
-  useEffect(() => {
-    paneOpen++;
-    paneSubs.forEach((f) => f(paneOpen));
-    return () => {
-      paneOpen--;
-      paneSubs.forEach((f) => f(paneOpen));
-    };
-  }, []);
-}
-
 /** What was typed as a relay address, as it will be used ("relay.example.com" → "wss://relay.example.com"), or null
  *  when it isn't one: ws or wss, a host, no query or fragment, no trailing slash (RemoteRelay.address). */
 export function relayAddress(typed: string): string | null {
@@ -78,6 +54,23 @@ export function relayAddress(typed: string): string | null {
   if (u.protocol !== 'wss:' && u.protocol !== 'ws:') return null;
   if (!u.hostname || /\s/.test(t) || u.search || u.hash || t.includes('?') || t.includes('#')) return null;
   return t;
+}
+
+/** Away from home's status line (docs/design/remote-go-between.md §What each end shows): with a phone connected, the
+ *  path it uses; otherwise what a phone on another network would use, or why that won't work. `warn`: something to fix.
+ *  The order of ways in is the spec's: the same network, an overlay (Tailscale…), the owner's relay, the go-between. */
+/** `key` is the line; `route`, when set, is a path's name for it ("Connected · Direct"). Plain path names, standard state
+ *  words; a problem says what's wrong and what to do. */
+export type AwayLine = { key: string; route?: string; warn: boolean; live: boolean };
+export function awayLine(r: Pick<RemoteStatus, 'connected' | 'relay'>): AwayLine {
+  const c = r.connected;
+  if (c) return { key: 'phone.connected', route: `phone.route.${c.route}`, warn: false, live: true };
+  const line = (key: string, warn = false): AwayLine => ({ key, warn, live: false });
+  if (r.relay.address) return r.relay.reachable === false ? line('phone.away.relay_down', true) : line('phone.route.relay');
+  if (!r.relay.goBetween) return line('phone.away.off');
+  if (r.relay.goBetweenProblem === 'noDirect') return line('phone.away.no_direct', true);
+  if (r.relay.goBetweenProblem === 'busy') return line('phone.away.busy', true);
+  return line('phone.route.goBetween');
 }
 
 /** "1:42": seconds left on the code, never below zero. */

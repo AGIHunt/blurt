@@ -193,6 +193,7 @@ Tauri commands, in `apps/desktop/src-tauri/src/remote.rs`; the React pane in `we
 | `remote_set_relay` | `{ address: string }` → `RemoteStatus` (empty clears; error text if it doesn't parse) |
 | `remote_check_relay` | `{ address: string }` → `bool` |
 | `remote_set_screen_allowed` | `{ on: bool }` → `RemoteStatus` |
+| `remote_set_go_between` | `{ on: bool }` → `RemoteStatus` (Blurt's go-between for away from home, on by default; used only while `relay.address` is null: [remote-go-between.md](remote-go-between.md)) (added 2026-11-19) |
 | `remote_relay_instructions` | → `string` (the prompt for Claude Code / Codex, as RemotePane.swift's Copy Instructions) |
 | `remote_allow_firewall` | → `RemoteStatus` (Windows, on the owner's click only: Blurt's inbound rule through Windows' UAC prompt, waited for, then `firewall` checked again; a declined prompt leaves it `"blocked"`, no error; elsewhere it only answers) |
 
@@ -204,12 +205,21 @@ type RemoteStatus = {
   pairing: null | { url: string; qrSvg: string; expiresAt: number }   // unix ms; qrSvg is a complete <svg> the host draws
   asking: null | { device: string; digits: string; viaRelay: boolean } // a new phone waits for a yes
   devices: { id: string; name: string; lastSeen: number | null }[]
-  connected: null | { id: string; name: string; route: "local" | "direct" | "relay"; screen: boolean }
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null }
+  connected: null | { id: string; name: string; route: Route; screen: boolean }
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null
+           goBetween: boolean                               // the go-between switch (added 2026-11-19)
+           goBetweenProblem: null | "noDirect" | "busy" }   // why it couldn't carry the last session it tried
   screenAllowed: boolean
   canControl: boolean          // false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows
   problem: string | null       // a sentence for the user, localised
   firewall: "ok" | "blocked" | "unknown" // Windows Defender Firewall keeps phones out on this network (remote_allow_firewall);
                                // "unknown": it couldn't be read; always "ok" off Windows (added 2026-11-09)
 }
+// local: the same network; tailscale / overlay: an overlay network's address (away, no server); direct: UDP found through a
+// relay or the go-between; relay: the owner's relay carries it; goBetween: Blurt's go-between, until the stream moves
+type Route = "local" | "tailscale" | "overlay" | "direct" | "relay" | "goBetween"   // tailscale, overlay, goBetween: 2026-11-19
 ```
+
+Settings → Phone → Away from home shows one status line from `connected` and `relay` (`awayLine` in `settings/phone.ts`): the
+path a connected phone uses; else the owner's relay (or that it isn't answering); else the go-between (or `noDirect` / `busy`);
+else only the same network or an overlay. The go-between switch is dimmed and says it isn't used while a relay address is set.

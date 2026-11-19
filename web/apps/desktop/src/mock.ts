@@ -2,6 +2,7 @@
 // projects, a dozen items in every K3 state, a batch to review, an agent session waiting for an answer, a
 // terminal that prints what Claude Code would. Writes are kept in memory.
 import { INBOX_STATES, migrate, OPEN_STATES, targetOf, type State } from '@blurt/ui';
+import { mockComputers } from './viewer/mock';
 
 /** The Words tab's list in the browser preview (vocabulary.json's shape). */
 const mockWords: { term: string; state: string; source?: string; hits?: number; seen?: number; sounds_like?: string[]; added?: string }[] = [
@@ -220,6 +221,8 @@ for (const c of (param('off') ?? '').split(',').filter((x) => CAP_IDS.includes(x
   if (c === 'dictation') mockCfg.record.dictation = { enabled: false };
   else mockCfg.app = { ...(mockCfg.app ?? {}), capabilities: { ...(mockCfg.app?.capabilities ?? {}), [c]: false } };
 }
+// ?pane=phone (with ?view=settings): Settings opens on that pane, as the remembered one would
+if (param('pane')) mockCfg.app = { ...(mockCfg.app ?? {}), settings_pane: param('pane') };
 function mockMerge(patch: Record<string, any>) {
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete mockCfg[k];
@@ -329,39 +332,50 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
   dEntry('d-7', 30, 'Notion', L('three things for the launch one the press kit two the demo video three the faq', '发布要准备三件事 一是新闻稿 二是演示视频 三是常见问题'), L('Three things for the launch:\n1. The press kit\n2. The demo video\n3. The FAQ', '发布要准备三件事：\n1. 新闻稿\n2. 演示视频\n3. 常见问题'), { style: 'structured' }),
 ];
 
-// Settings → Phone (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
+// Settings → Remote Control (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
 // out sooner); a few seconds later a phone uses it over the relay and asks with six digits (?phone_scan=0: nobody
 // scans); Allow pairs it and it connects over the relay, then finds a direct path. ?phone= paired | asking | nocontrol |
 // problem | fromphone | relayfail | firewall starts there instead of with no phone (firewall: Windows Firewall keeps phones
-// out; Allow… says yes for the administrator a moment later).
+// out; Allow… says yes for the administrator a moment later). Away from home with no relay, Blurt's go-between
+// (docs/design/remote-go-between.md): ?phone_away= goBetween | direct | tailscale | overlay (a phone connected that way) |
+// noDirect | busy (the go-between couldn't carry the last session) | off (the switch off) starts with two phones paired and
+// no relay; the switch turns it on and off, and a relay address set leaves it unused.
 type MockRemote = {
   listening: boolean;
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
-  asking: null | { device: string; digits: string; viaRelay: boolean };
-  devices: { id: string; name: string; lastSeen: number | null }[];
-  connected: null | { id: string; name: string; route: 'local' | 'direct' | 'relay'; screen: boolean };
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  asking: null | { device: string; digits: string; viaRelay: boolean; kind?: 'phone' | 'computer' };
+  devices: { id: string; name: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
+  connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null };
   screenAllowed: boolean;
   canControl: boolean;
   problem: string | null;
   firewall: 'ok' | 'blocked' | 'unknown';
 };
-const phoneStart = param('phone') ?? '';
+const away = param('phone_away') ?? '';
+const phoneStart = param('phone') ?? (away ? 'paired' : '');
 const paired = phoneStart !== '';
+const awayRoute = (['goBetween', 'direct', 'tailscale', 'overlay'] as const).find((r) => r === away);
 const remote: MockRemote = {
   listening: paired,
   pairing: null,
-  asking: phoneStart === 'asking' ? { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: '482913', viaRelay: true } : null,
+  // ?phone=asking: a phone asks; asking_pc: a computer (its Add Computer…); asking_old: a host that doesn't say which
+  asking: phoneStart === 'asking' ? { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: '482913', viaRelay: true, kind: 'phone' }
+    : phoneStart === 'asking_pc' ? { device: L('Office ThinkPad', '办公室 ThinkPad'), digits: '204718', viaRelay: false, kind: 'computer' }
+    : phoneStart === 'asking_old' ? { device: 'maya-7f2a', digits: '204718', viaRelay: false }
+    : null,
+  // paired: two phones and a computer that drives this one (the Studio Mac mini this one drives too)
   devices: paired
     ? [
-        { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), lastSeen: Date.now() - 4 * 60_000 },
-        { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000 },
+        { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), lastSeen: Date.now() - 4 * 60_000, kind: 'phone' },
+        { id: 'pc-1', name: 'Studio Mac mini', lastSeen: Date.now() - 3 * 3600_000, kind: 'computer' },
+        { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000, kind: 'phone' },
       ]
     : [],
-  connected: paired ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: 'relay', screen: true } : null,
-  relay: paired
-    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true }
-    : { address: null, fromPhone: false, reachable: null },
+  connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true } : null,
+  relay: paired && !away
+    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true, goBetween: true, goBetweenProblem: null }
+    : { address: null, fromPhone: false, reachable: null, goBetween: away !== 'off', goBetweenProblem: away === 'noDirect' || away === 'busy' ? away : null },
   screenAllowed: true,
   canControl: phoneStart !== 'nocontrol',
   problem: phoneStart === 'problem' ? L('Blurt can’t listen on this network: port 41833 is taken by another app.', '口喷鸡无法在这个网络上监听：端口 41833 已被其他应用占用。') : null,
@@ -405,7 +419,7 @@ function mockPairingCode() {
   remoteLater(5000, () => {
     if (!remote.pairing || remote.pairing.expiresAt < Date.now()) return;
     remote.pairing = null;
-    remote.asking = { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: String(100000 + Math.floor(Math.random() * 900000)), viaRelay: !!remote.relay.address };
+    remote.asking = { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: String(100000 + Math.floor(Math.random() * 900000)), viaRelay: !!remote.relay.address, kind: 'phone' };
     // nobody answers in two minutes: that's a no
     remoteLater(120_000, () => (remote.asking = null));
   });
@@ -415,6 +429,8 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
   switch (cmd) {
     case 'remote_status':
       return remoteNow();
+    case 'remote_pairing_link_copied':
+      return undefined;
     case 'remote_show_pairing':
       if (a.on) mockPairingCode();
       else {
@@ -435,7 +451,7 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
         break;
       }
       const id = `ph-${Date.now()}`;
-      remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now() }];
+      remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now(), kind: ask.kind ?? 'phone' }];
       remote.listening = true;
       remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false };
       if (ask.viaRelay) remoteLater(4000, () => remote.connected?.id === id && (remote.connected.route = 'direct'));
@@ -448,16 +464,21 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       break;
     case 'remote_set_relay': {
       const t = String(a.address ?? '').trim();
-      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null };
+      const { goBetween, goBetweenProblem } = remote.relay;
+      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
       else if (!/^wss?:\/\/[^\s/?#]+(\/[^\s?#]*)?$/.test(t)) throw new Error('not a relay address');
       else {
-        remote.relay = { address: t, fromPhone: false, reachable: null };
+        remote.relay = { address: t, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
         remoteLater(900, () => remote.relay.address === t && (remote.relay.reachable = !/nothing|bad|invalid/.test(t)));
       }
       break;
     }
     case 'remote_check_relay':
       return new Promise((ok) => setTimeout(() => ok(!/nothing|bad|invalid/.test(String(a.address))), 900));
+    case 'remote_set_go_between':
+      remote.relay.goBetween = !!a.on;
+      remote.relay.goBetweenProblem = null;
+      break;
     case 'remote_set_screen_allowed':
       remote.screenAllowed = !!a.on;
       if (!a.on && remote.connected) remote.connected.screen = false;
@@ -495,10 +516,11 @@ If I'm in mainland China, prefer a server there: the round trip is far shorter. 
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-When it's up, run \`node test.mjs <address>\` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.`;
+When it's up, run \`node test.mjs <address>\` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.`;
 
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   if (cmd.startsWith('remote_')) return (await mockRemote(cmd, args)) as T;
+  if (cmd.startsWith('computers_') || cmd.startsWith('viewer_')) return mockComputers(cmd, args, emit) as T;
   const r = (v: unknown) => v as T;
   switch (cmd) {
     case 'app_status':

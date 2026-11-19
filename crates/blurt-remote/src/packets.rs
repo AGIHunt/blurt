@@ -20,6 +20,10 @@ pub enum Kind {
     Cursor = 5,
     /// the phone's word on the picture: pieces missing, frames decoded, a frame lost (repair.rs `Feedback`; datagrams)
     VideoFeedback = 6,
+    /// the stream after the move, in datagrams: u64 BE offset ∥ at most 1,100 bytes (stream.rs; docs/design/remote-go-between.md)
+    Stream = 7,
+    /// u64 BE: the next offset the receiver expects, cumulative
+    StreamAck = 8,
 }
 
 impl Kind {
@@ -32,6 +36,8 @@ impl Kind {
             4 => Kind::Probe,
             5 => Kind::Cursor,
             6 => Kind::VideoFeedback,
+            7 => Kind::Stream,
+            8 => Kind::StreamAck,
             _ => return None,
         })
     }

@@ -100,6 +100,14 @@ pub trait Input: Send {
     fn pointer_desktop(&self) -> Option<(f64, f64)> {
         None
     }
+    /// The clipboard's text, for a viewer whose keys are captured (docs/design/remote-desktop-viewer.md §Clipboard): the server
+    /// asks twice a second and sends a change. None (the default): nothing, not text, or this backend can't read it.
+    /// (Added 2026-11-19.)
+    fn clipboard(&mut self) -> Option<String> {
+        None
+    }
+    /// Text from a viewer onto the clipboard, plain text only (at most 64 KiB). The default does nothing.
+    fn set_clipboard(&mut self, _text: &str) {}
 }
 
 /// One of the computer's displays (ToPhone.displays): its frame in points on the desktop (top-left origin, y down, as the OS's display

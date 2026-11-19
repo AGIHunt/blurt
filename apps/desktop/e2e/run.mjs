@@ -143,10 +143,9 @@ try {
   console.log('inbox:', await text('counts').catch(() => '(empty)'), '·', (await rows()).length, 'rows');
   await shot('4-inbox');
 
-  // 7. Settings → Phone → Add Phone…: the host starts listening and the pane shows the pairing QR code (an SVG data URI)
-  await (await sidebar('nav-settings')).click();
-  await (await waitFor(() => wd.findElement(By.css('[data-testid="settings-tab-phone"]')), 'Settings')).click();
-  await (await waitFor(() => wd.findElement(By.css('[data-testid="settings-pane-phone"] [data-testid="phone-add"]')), 'the Phone pane')).click();
+  // 7. The Remote Control page → Add Device…: the host starts listening and the page shows the pairing QR code (an SVG data URI)
+  await (await sidebar('nav-phone')).click();
+  await (await waitFor(() => wd.findElement(By.css('[data-testid="phone-page"] [data-testid="phone-page-add"]')), 'the Remote Control page')).click();
   const qr = await waitFor(async () => {
     const el = await wd.findElement(By.css('[data-testid="phone-pairing"] [data-testid="phone-qr"]'));
     return (await el.getAttribute('src')).startsWith('data:image/svg+xml') && (await el.isDisplayed()) && el;
@@ -155,9 +154,9 @@ try {
   assert.ok(size.width >= 100 && size.height >= 100, `the QR code is drawn at a scannable size (${size.width}×${size.height})`);
   console.log('phone: pairing code shown', `${Math.round(size.width)}×${Math.round(size.height)}`);
   await shot('5-phone');
-  // Cancel takes the code down: Add Phone… comes back
+  // Cancel takes the code down: Add Device… comes back
   await (await wd.findElement(By.css('[data-testid="phone-cancel"]'))).click();
-  await waitFor(async () => (await wd.findElements(By.css('[data-testid="phone-add"]'))).length === 1, 'Add Phone… after Cancel');
+  await waitFor(async () => (await wd.findElements(By.css('[data-testid="phone-page-add"]'))).length === 1, 'Add Device… after Cancel');
   console.log('e2e: ok');
 } catch (e) {
   failed = true;

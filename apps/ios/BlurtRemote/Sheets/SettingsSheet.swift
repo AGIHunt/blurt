@@ -155,7 +155,13 @@ struct SettingsSheet: View {
     private func state(of m: PairedMac) -> String.LocalizationValue {
         if m.id == l.current?.id {
             switch l.state {
-            case .connected: return l.route == .local ? "Connected" : l.route == .direct ? "Connected, direct" : "Connected through your relay"
+            case .connected:
+                switch l.route {
+                case .local: return "Connected"
+                case .direct: return "Connected, direct"
+                case .overlay: return l.overlayIsTailscale ? "Connected · Tailscale" : "Connected · Virtual network"
+                case .relay: return l.viaGoBetween ? "Connected · Public connection service" : "Connected through your relay"
+                }
             case .connecting: return "Connecting…"
             case .unreachable: return "Can’t reach it"
             case .forgotten: return "Needs pairing again"
@@ -163,7 +169,9 @@ struct SettingsSheet: View {
             case .unpaired: return "Not connected"
             }
         }
-        return l.nearby.contains(m.id) ? "On this network" : m.relayAddress != nil ? "Uses your relay" : "Not on this network"
+        if l.nearby.contains(m.id) { return "On this network" }
+        if RemoteRelay.isGoBetween(m.relayAddress) { return "Uses the public connection service" }
+        return m.relayAddress != nil ? "Uses your relay" : "Not on this network"
     }
 
     private func rate(_ kbps: Int) -> String {
@@ -203,9 +211,11 @@ private struct MacDetail: View {
                     .onSubmit { l.rename(mac, to: name == mac.name ? "" : name) }
             }
             Section {
-                LabeledContent("Relay", value: mac.relayAddress ?? String(localized: "None"))
+                LabeledContent("Relay", value: RemoteRelay.isGoBetween(mac.relayAddress) ? String(localized: "Public connection service") : mac.relayAddress ?? String(localized: "None"))
             } footer: {
-                if mac.host == .mac {
+                if RemoteRelay.isGoBetween(mac.relayAddress) {
+                    Text("Free, with no guarantee. If a network can’t connect directly, set up your own relay.")
+                } else if mac.host == .mac {
                     Text(mac.relayAddress == nil ? "Without a relay this Mac is reachable on its own network. Set one in Blurt’s Settings on the Mac." : "Set in Blurt’s Settings on the Mac. All your Macs can share one.")
                 } else {
                     Text(mac.relayAddress == nil ? "Without a relay this computer is reachable on its own network. Set one in Blurt’s Settings on the computer." : "Set in Blurt’s Settings on the computer. All your computers can share one.")
