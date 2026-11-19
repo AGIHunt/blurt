@@ -299,6 +299,39 @@ async fn the_yes_is_for_the_digits_shown_and_survives_the_pane_closing() {
 
 use blurt_remote::pairing::Pairing;
 
+/// Copy Link: that link keeps working while the code on screen moves on (two renewals later it's neither the code shown nor the one
+/// before), and it's spent like any code. A link that wasn't copied is gone by then.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_copied_link_outlives_the_codes_on_screen() {
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    h.show_pairing(true);
+    let (copied, port) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+    h.pairing_link_copied();
+    h.show_pairing(true);
+    let shown_next = until(|| h.status().pairing.map(|p| p.url).filter(|u| *u != copied)).await;
+    h.show_pairing(true);
+    until(|| h.status().pairing.map(|p| p.url).filter(|u| *u != shown_next && *u != copied)).await;
+    let at: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+
+    // not copied, two codes ago: refused
+    let gone = Pairing::parse(&shown_next).unwrap();
+    h.show_pairing(true);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(Phone::connect(at, &gone.device_id, &gone.key).await.err().as_deref(), Some("NotPaired"));
+
+    // copied: it asks
+    let p = Pairing::parse(&copied).unwrap();
+    let mut phone = Phone::connect(at, &p.device_id, &p.key).await.unwrap();
+    phone.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+    h.answer_pairing(false, None);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // spent: it opens nothing again
+    assert_eq!(Phone::connect(at, &p.device_id, &p.key).await.err().as_deref(), Some("NotPaired"));
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The app's Phone capability off: nothing listens, a code can't be shown, and on again it listens as before.
 #[tokio::test(flavor = "multi_thread")]
 async fn off_means_not_listening() {

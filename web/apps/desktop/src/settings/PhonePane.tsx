@@ -189,12 +189,14 @@ function CopyLink({ url }: { url: string }) {
   const copy = () =>
     void api.copyText(url).then(
       () => {
+        // the link copied outlives the code on screen (10 minutes), and says so
+        void api.remotePairingLinkCopied().catch(() => {});
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(false), 4000);
       },
       () => {},
     );
-  return <button onClick={copy} data-testid="phone-copy-link">{copied ? S('phone.relay.copied') : S('phone.copy_link')}</button>;
+  return <button onClick={copy} data-testid="phone-copy-link">{copied ? S('phone.link_copied') : S('phone.copy_link')}</button>;
 }
 
 /** A click on Allow counts only once the question has been on screen a moment, and only from the mouse (a key press

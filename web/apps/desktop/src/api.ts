@@ -658,6 +658,7 @@ export const api = {
   remoteStatus: () => invoke<RemoteStatus>('remote_status'),
   /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
   remoteShowPairing: (on: boolean) => invoke<RemoteStatus>('remote_show_pairing', { on }),
+  remotePairingLinkCopied: () => invoke<void>('remote_pairing_link_copied'),
   /** the yes or no for the phone in `asking` */
   remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
   remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),

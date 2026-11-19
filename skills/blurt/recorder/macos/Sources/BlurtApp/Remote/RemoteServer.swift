@@ -131,6 +131,10 @@ final class RemoteServer {
     private var pairing: (id: String, key: Data, until: Date)?
     /// the code before this one: someone may have scanned it just as it was replaced
     private var oldCode: (id: String, key: Data, until: Date)?
+    /// the code whose link was copied: pasted on another computer, which takes longer than a scan, so it lasts `copiedLife` whatever
+    /// the code on screen does; spent like any code, and nothing opens without the six digits and a yes here
+    private var copiedCode: (id: String, key: Data, until: Date)?
+    static let copiedLife: TimeInterval = 600
     private var asking: Session?
     /// a viewer's other windows (another display each): sessions of the same device beside `session` (hello.features "window")
     private var extras: [Session] = []
@@ -300,7 +304,7 @@ final class RemoteServer {
     }
 
     private func code(_ id: String) -> (id: String, key: Data, until: Date)? {
-        [pairing, oldCode].compactMap { $0 }.first { $0.id == id && $0.until > Date() }
+        [pairing, oldCode, copiedCode].compactMap { $0 }.first { $0.id == id && $0.until > Date() }
     }
 
     private func key(for id: String) -> Data? {
@@ -366,7 +370,8 @@ final class RemoteServer {
     func capabilityChanged() { queue.async { self.updateListening() } }
 
     private func updateListening() {
-        let want = Capability.phone.isOn && (showingPairing || !devices().isEmpty)
+        let copied = copiedCode.map { $0.until > Date() } ?? false
+        let want = Capability.phone.isOn && (showingPairing || !devices().isEmpty || copied)
         if want, tcp == nil { startListening() } else if !want, tcp != nil { stopListening() }
         updateRelays()
     }
@@ -451,6 +456,22 @@ final class RemoteServer {
                 self.pairing = nil
                 self.oldCode = nil
                 self.status.pairingLink = nil
+                self.updateRelays()
+            }
+        }
+    }
+
+    /// Copy Link: the code on screen now stays good for `copiedLife`, though the screen moves on to new ones.
+    func pairingLinkCopied() {
+        queue.async {
+            guard var c = self.pairing else { return }
+            c.until = Date().addingTimeInterval(Self.copiedLife)
+            self.copiedCode = c
+            self.updateListening()
+            self.queue.asyncAfter(deadline: .now() + Self.copiedLife + 1) { [weak self] in
+                guard let self, self.copiedCode?.id == c.id else { return }
+                self.copiedCode = nil
+                self.updateListening()
                 self.updateRelays()
             }
         }
@@ -649,7 +670,7 @@ final class RemoteServer {
     private func updateRelays() {
         let address = Self.standbyAddress
         // a code showing counts: a phone on another network can pair through the relay too
-        let ids = Set(devices().map(\.id)).union([pairing, oldCode].compactMap { $0?.id })
+        let ids = Set(devices().map(\.id)).union([pairing, oldCode, copiedCode].compactMap { $0?.id })
         // a changed address counts as gone: the phone has been told the new one
         for (id, s) in relays where address == nil || !(ids.contains(id) || (id == spentCode && (s === session || s === asking))) || relayAt != address {
             relays[id] = nil
@@ -732,7 +753,8 @@ final class RemoteServer {
             }
             s.pairingKey = RemoteCrypto.newKey()
             let current = pairing?.id == id
-            if current { pairing = nil } else { oldCode = nil }
+            if current { pairing = nil } else if oldCode?.id == id { oldCode = nil }
+            if copiedCode?.id == id { copiedCode = nil }
             spentCode = id
             // whoever holds a picture of the code, on any network: nothing until someone here says yes, comparing the four digits
             asking = s

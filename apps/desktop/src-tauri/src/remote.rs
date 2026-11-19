@@ -379,6 +379,15 @@ pub fn remote_show_pairing(on: bool) -> RemoteStatus {
     now_status()
 }
 
+/// Copy Link: the link copied keeps working for 10 minutes, though the code on screen renews (pasting it on another computer takes
+/// longer than a scan).
+#[tauri::command]
+pub fn remote_pairing_link_copied() {
+    if let Some(h) = host() {
+        h.pairing_link_copied();
+    }
+}
+
 /// Windows Defender Firewall keeps phones out: the doc's netsh lines, elevated through Windows' own UAC prompt, on the owner's
 /// click only. Waits for it, checks again, and answers; a declined prompt leaves `firewall` "blocked", with no error.
 #[tauri::command]

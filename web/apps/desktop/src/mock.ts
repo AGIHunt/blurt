@@ -423,6 +423,8 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
   switch (cmd) {
     case 'remote_status':
       return remoteNow();
+    case 'remote_pairing_link_copied':
+      return undefined;
     case 'remote_show_pairing':
       if (a.on) mockPairingCode();
       else {

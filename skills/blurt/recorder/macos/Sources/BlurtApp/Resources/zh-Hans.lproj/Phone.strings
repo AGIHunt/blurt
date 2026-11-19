@@ -52,7 +52,7 @@
 "phone.ax.ok" = "正常";
 "phone.ax.needs_you" = "需要处理";
 
-"phone.paired" = "已配对的手机";
+"phone.paired" = "能控制本机的设备";
 
 /* 手机版从哪里来 */
 "phone.app" = "手机上的口喷鸡";

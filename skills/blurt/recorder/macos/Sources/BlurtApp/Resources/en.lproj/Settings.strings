@@ -567,7 +567,7 @@
 /* Settings → Phone */
 "settings.kit.remote" = "Phones and Computers";
 "settings.kw.pane.remote" = "phone, iPhone, iPad, Android, remote, trackpad, touchpad, keyboard, mouse, pointer";
-"settings.remote.section.phones" = "Phones";
+"settings.remote.section.phones" = "Devices That Can Control This Computer";
 "settings.remote.section.options" = "While a Phone Is Connected";
 "settings.remote.add" = "Add Device…";
 "settings.remote.add.detail" = "Use your phone or tablet as a trackpad, keyboard and microphone. The phone app isn’t in the app stores yet; build it yourself.";
@@ -577,7 +577,8 @@
 "settings.remote.connected" = "Connected";
 "settings.remote.not_connected" = "Not connected";
 "settings.remote.copy_link" = "Copy Link";
-"settings.remote.section.computers" = "Computers";
+"settings.remote.link_copied" = "Copied · Works for 10 Minutes";
+"settings.remote.section.computers" = "Computers You Can Control";
 "settings.remote.computers.add" = "Other computers";
 "settings.remote.computers.add.detail" = "Show another computer’s screen and use it with this Mac’s keyboard and mouse. Blurt must run on it.";
 "settings.remote.remove" = "Remove";

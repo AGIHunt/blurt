@@ -52,7 +52,7 @@
 "phone.ax.ok" = "OK";
 "phone.ax.needs_you" = "Needs attention";
 
-"phone.paired" = "Paired Phones";
+"phone.paired" = "Devices That Can Control This Computer";
 
 /* where the phone app comes from */
 "phone.app" = "Blurt on Your Phone";

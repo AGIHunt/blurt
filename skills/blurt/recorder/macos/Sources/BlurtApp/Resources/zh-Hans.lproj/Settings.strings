@@ -565,7 +565,7 @@
 /* Settings → Phone */
 "settings.kit.remote" = "手机和电脑";
 "settings.kw.pane.remote" = "手机, iPhone, iPad, 安卓, Android, 遥控, 触摸板, 键盘, 鼠标, 光标";
-"settings.remote.section.phones" = "手机";
+"settings.remote.section.phones" = "能控制本机的设备";
 "settings.remote.section.options" = "连接时";
 "settings.remote.add" = "添加设备…";
 "settings.remote.add.detail" = "将手机或平板用作触控板、键盘和麦克风。手机版尚未上架应用商店，需自行构建。";
@@ -575,7 +575,8 @@
 "settings.remote.connected" = "已连接";
 "settings.remote.not_connected" = "未连接";
 "settings.remote.copy_link" = "拷贝链接";
-"settings.remote.section.computers" = "电脑";
+"settings.remote.link_copied" = "已拷贝，10 分钟内有效";
+"settings.remote.section.computers" = "本机可控制的电脑";
 "settings.remote.computers.add" = "其他电脑";
 "settings.remote.computers.add.detail" = "显示另一台电脑的屏幕，用本机的键盘和鼠标操作。那台电脑上需运行口喷鸡。";
 "settings.remote.remove" = "移除";

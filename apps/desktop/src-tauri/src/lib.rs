@@ -1317,6 +1317,7 @@ pub fn run() {
             // Blurt on the phone: Settings → Phone (docs/design/remote-protocol.md §The desktop app)
             remote::remote_status,
             remote::remote_show_pairing,
+            remote::remote_pairing_link_copied,
             remote::remote_answer_pairing,
             remote::remote_remove_device,
             remote::remote_set_relay,

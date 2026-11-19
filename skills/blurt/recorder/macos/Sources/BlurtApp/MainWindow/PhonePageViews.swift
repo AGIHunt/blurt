@@ -287,11 +287,13 @@ struct PhonePairingCode: View {
                         .keyboardShortcut(.cancelAction)
                     // for another computer away from here (Add Computer takes it pasted): the same code, as text
                     if let link {
-                        Button(copied ? T("settings.remote.relay.copied") : T("settings.remote.copy_link")) {
+                        Button(copied ? T("settings.remote.link_copied") : T("settings.remote.copy_link")) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                            // the link copied outlives the code on screen (10 minutes), and says so
+                            RemoteServer.shared.pairingLinkCopied()
                             copied = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { copied = false }
                         }
                         .buttonStyle(SettingsOutlinedButtonStyle())
                     }

@@ -47,6 +47,7 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The viewer's controls | 屏幕 · 按键发往远端 · 跟着远端指针换屏 · 在新窗口中打开 | Display · Keys to Remote · Follow the Pointer · Open in New Window |
 | The release hint | 按 ⌃⌘ 交还键盘和鼠标 (Windows/Linux: Ctrl+Alt) | Press ⌃⌘ to release the keyboard and mouse |
 | The settings pane for paired devices | 手机和电脑 | Phones and Computers |
+| Its two groups: what controls this computer · what this computer controls | 能控制本机的设备 · 本机可控制的电脑 | Devices That Can Control This Computer · Computers You Can Control |
 | Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |
 | The text form of the pairing code | 配对链接 | Pairing link |
 | The viewer's ⋯ menu | ⌘ 当作 Ctrl · 共享剪贴板 | Use ⌘ as Ctrl · Share Clipboard |

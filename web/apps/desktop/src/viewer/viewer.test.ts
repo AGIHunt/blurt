@@ -33,8 +33,8 @@ describe('the list of computers', () => {
     expect(keys.length).toBeGreaterThan(40);
     for (const k of keys) expect(zh[k], k).toBeTruthy();
     // copy.md's agreed terms
-    expect([zh['computers.section'], zh['computers.open'], zh['computers.connect'], zh['viewer.keys'], zh['viewer.follow'], zh['phone.pane.title']]).toEqual(['电脑', '打开窗口', '连接', '按键发往远端', '跟着远端指针换屏', '手机和电脑']);
-    expect([en['computers.section'], en['computers.open'], en['computers.connect'], en['viewer.keys'], en['viewer.follow'], en['phone.pane.title']]).toEqual(['Computers', 'Open Window', 'Connect', 'Keys to Remote', 'Follow the Pointer', 'Phones and Computers']);
+    expect([zh['computers.section'], zh['computers.open'], zh['computers.connect'], zh['viewer.keys'], zh['viewer.follow'], zh['phone.pane.title']]).toEqual(['本机可控制的电脑', '打开窗口', '连接', '按键发往远端', '跟着远端指针换屏', '手机和电脑']);
+    expect([en['computers.section'], en['computers.open'], en['computers.connect'], en['viewer.keys'], en['viewer.follow'], en['phone.pane.title']]).toEqual(['Computers You Can Control', 'Open Window', 'Connect', 'Keys to Remote', 'Follow the Pointer', 'Phones and Computers']);
     expect(zh['viewer.hint']).toBe('按 Ctrl+Alt 交还键盘和鼠标');
     expect(zh['computers.state.connected']).toMatch(/^已连接/);
     expect(zh['computers.state.available']).toMatch(/^可连接/);

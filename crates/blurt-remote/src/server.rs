@@ -44,6 +44,9 @@ const SILENCE: f64 = 2.0;
 const GONE: f64 = 12.0;
 const PAIRING_LIFE: f64 = 120.0;
 const PAIRING_GRACE: f64 = 20.0;
+/// A copied link: pasted on another computer, often on another network, which takes longer than a scan. It lasts this long
+/// whatever the code on screen does; spent like any code, and still nothing opens without the six digits and a yes here.
+const COPIED_LIFE: f64 = 600.0;
 const MAX_HANDSHAKES: usize = 16;
 const HANDSHAKE_TIME: Duration = Duration::from_secs(6);
 const CODE_TRIES: u32 = 8;
@@ -177,6 +180,7 @@ pub struct Host {
     core: Arc<Core>,
 }
 
+#[derive(Clone)]
 struct Code {
     id: String,
     key: [u8; 32],
@@ -245,6 +249,8 @@ struct State {
     showing_pairing: bool,
     pairing: Option<Code>,
     old_code: Option<Code>,
+    /// the code whose link was copied (COPIED_LIFE)
+    copied: Option<Code>,
     pairing_gen: u64,
     code_tries: HashMap<String, u32>,
     sessions: HashMap<u64, Sess>,
@@ -327,6 +333,7 @@ impl Host {
             showing_pairing: false,
             pairing: None,
             old_code: None,
+            copied: None,
             pairing_gen: 0,
             code_tries: HashMap::new(),
             sessions: HashMap::new(),
@@ -397,6 +404,28 @@ impl Host {
             c.update_listening(&mut s);
         }
         c.publish(&mut s);
+    }
+
+    /// Settings' Copy Link: the code on screen now stays good for COPIED_LIFE, though the screen moves on to new ones.
+    pub fn pairing_link_copied(&self) {
+        let c = &self.core;
+        let mut s = c.st.lock().unwrap();
+        let Some(mut code) = s.pairing.clone() else { return };
+        code.until = Instant::now() + Duration::from_secs_f64(COPIED_LIFE);
+        code.expires = now_ms() + (COPIED_LIFE * 1000.0) as i64;
+        let id = code.id.clone();
+        s.copied = Some(code);
+        c.update_listening(&mut s);
+        let me = c.arc();
+        c.rt.spawn(async move {
+            tokio::time::sleep(Duration::from_secs_f64(COPIED_LIFE + 1.0)).await;
+            let mut s = me.st.lock().unwrap();
+            if s.copied.as_ref().is_some_and(|c| c.id == id) {
+                s.copied = None;
+                me.update_listening(&mut s);
+                me.publish(&mut s);
+            }
+        });
     }
 
     /// Yes or no to the phone that waits. `digits`: the six digits the owner saw: the answer counts only for the session they
@@ -551,6 +580,7 @@ impl Host {
         s.showing_pairing = false;
         s.pairing = None;
         s.old_code = None;
+        s.copied = None;
         let ids: Vec<String> = s.relays.keys().cloned().collect();
         for id in ids {
             c.close_relay(&mut s, &id);
@@ -687,7 +717,7 @@ impl Core {
     // ------------------------------------------------------------------ keys and devices
 
     fn code<'a>(&self, s: &'a State, id: &str) -> Option<&'a Code> {
-        [s.pairing.as_ref(), s.old_code.as_ref()].into_iter().flatten().find(|c| c.id == id && c.until > Instant::now())
+        [s.pairing.as_ref(), s.old_code.as_ref(), s.copied.as_ref()].into_iter().flatten().find(|c| c.id == id && c.until > Instant::now())
     }
 
     fn key_for(&self, s: &State, id: &str) -> Option<Vec<u8>> {
@@ -756,7 +786,8 @@ impl Core {
 
     fn update_listening(&self, s: &mut State) {
         // a question already asked keeps its way in, even once Settings stopped showing the code
-        let want = !s.off && (s.showing_pairing || !s.devices.is_empty() || s.asking.is_some());
+        let copied = s.copied.as_ref().is_some_and(|c| c.until > Instant::now());
+        let want = !s.off && (s.showing_pairing || !s.devices.is_empty() || s.asking.is_some() || copied);
         if want && s.listeners.is_none() {
             self.start_listening(s);
         } else if !want && s.listeners.is_some() {
@@ -1103,8 +1134,11 @@ impl Core {
             let current = s.pairing.as_ref().is_some_and(|c| c.id == id);
             if current {
                 s.pairing = None;
-            } else {
+            } else if s.old_code.as_ref().is_some_and(|c| c.id == id) {
                 s.old_code = None;
+            }
+            if s.copied.as_ref().is_some_and(|c| c.id == id) {
+                s.copied = None;
             }
             s.spent_code = Some(id.clone());
             // whoever holds a picture of the code, on any network: nothing until someone here says yes
@@ -1936,7 +1970,7 @@ impl Core {
     fn update_relays(&self, s: &mut State) {
         let address = self.away(s).map(|(a, _)| a).filter(|_| s.listeners.is_some());
         let mut ids: Vec<String> = s.devices.iter().map(|d| d.id.clone()).collect();
-        ids.extend([s.pairing.as_ref(), s.old_code.as_ref()].into_iter().flatten().map(|c| c.id.clone()));
+        ids.extend([s.pairing.as_ref(), s.old_code.as_ref(), s.copied.as_ref()].into_iter().flatten().map(|c| c.id.clone()));
         // a changed address counts as gone: the phone has been told the new one
         let stale: Vec<String> = s
             .relays
