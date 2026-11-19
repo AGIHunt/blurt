@@ -465,3 +465,19 @@ TextEdit) and the clipboard both ways while captured all work. Two things found:
 **The host hang** (Windows, any host sending a keyframe of more than 16 pieces after the move to the direct path): `frame()` held the
 stream's lock and the first paced batch locked it again on the same thread; found from a minidump, fixed in `screen.rs` with a test
 (`a_big_frame_on_the_direct_path_goes_out`).
+
+**Windows ↔ Linux** (the two rented machines, one network, 2026-11-19, last build of the branch): both ways pair by pasted link (six
+digits, a computer icon on the question), connect from the list, show the picture on the same network at 1 ms, and take clicks and
+typing (Notepad on Windows, Text Editor on Linux). Found and fixed on the way:
+
+- **Connect / Open Window opened a white window that never answered on Windows**: a webview built inside a synchronous Tauri command
+  deadlocks there. `computers_open` is async now; pairing had worked because its window opens from another thread.
+- **A quick click held the button down** on the host: the desktop viewer sent the down after the pointer move resolved but the up at
+  once, so a fast click's up arrived first. Both now go in order (`inOrder` in ViewerWindow.tsx).
+- **Keys didn't reach the other computer from Windows**: the hook dropped every injected key (an on-screen keyboard, a remote-desktop
+  tool such as the one the owner uses, a remapper); now only Blurt's own tagged keys (BRMT, BLRT) stay. And after another device took
+  the session, Keys to Remote stayed on with the hook off, so keys went nowhere after reconnecting: capture ends with the session.
+  The webview's own key events stand in when the hook isn't installed (the hook swallows what it takes, so nothing goes twice).
+- **A slow yes ended the session it allowed** (the host's 12 s silence clock ran while the owner compared digits): it restarts when the
+  session takes over, on the Rust and the Mac host.
+- **A copied pairing link died with the next code on screen** (≤ 2 min): it now lasts 10 minutes (COPIED_LIFE), the button says so.
