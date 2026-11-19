@@ -1,11 +1,12 @@
-// Settings → Phone: pair a phone with the QR code, see what's connected, remove a phone, and the options (keys on screen,
-// the screen, the relay). Away from home says first how the phone gets here now, or why it can't (docs/design/remote-go-between.md):
-// the owner's relay (recommended), else Blurt's go-between unless it's switched off, and an overlay network's address in any case. The code shows while "Add Phone" is open and there's nothing to switch on: with no paired phone
-// Blurt doesn't listen at all (Remote/RemoteServer.swift).
+// Settings → 手机和电脑 / Phones and Computers: the options only — what shows while a device is connected (keys on screen,
+// the screen) and Away from home, which says first how a device gets here now, or why it can't
+// (docs/design/remote-go-between.md): the owner's relay (recommended), else Blurt's go-between unless it's switched off,
+// and an overlay network's address in any case. The devices themselves — paired phones and computers, Add Device…'s
+// code, the computers this Mac controls — are on the main window's 手机和电脑 page (MainWindow/PhonePageViews.swift,
+// docs/design/remote-desktop-viewer.md §One page for the devices); the pane's lead says so, with the way there.
 //
-// The phones, the connection and the pairing code are PhoneModel's (MainWindow/PhonePage.swift), the one model this pane
-// shares with the main window's Phone page — where the connection's state and what to try when it won't connect live;
-// RemoteModel keeps what only this pane edits (the options, the relay's field).
+// The connection and the relay's answer are PhoneModel's (MainWindow/PhonePage.swift), the one model this pane shares
+// with the page; RemoteModel keeps what only this pane edits (the options, the relay's field).
 import AppKit
 import BlurtCore
 import BlurtRemoteKit
@@ -31,7 +32,7 @@ final class RemoteModel: ObservableObject {
 
     private var adoption: NSObjectProtocol?
 
-    /// The pane came on show. The QR code waits for Add Phone…: showing it listens on the network and advertises this Mac.
+    /// The pane came on show: the connection's path and the relay's answer, for Away from home.
     func start() {
         PhoneModel.shared.watch("settings")
         guard adoption == nil else { return }
@@ -41,7 +42,7 @@ final class RemoteModel: ObservableObject {
         }
     }
 
-    /// The pane left: a code on show goes with it.
+    /// The pane left.
     func stop() {
         PhoneModel.shared.unwatch("settings")
         if let a = adoption { NotificationCenter.default.removeObserver(a) }
@@ -106,9 +107,6 @@ final class RemoteModel: ObservableObject {
     }
     @Published var copied = false
 
-    /// Where the phone apps come from (iPhone and iPad, Android): their build steps, until they are in the stores.
-    static let appPage = URL(string: "https://github.com/AGIHunt/blurt#what-it-does")!
-
     /// For the user's own coding agent: Blurt doesn't run a relay, and setting one up is a job for someone at a terminal.
     static let relayPrompt = """
     Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
@@ -141,9 +139,6 @@ struct RemotePane: View {
     @StateObject private var m = RemoteModel()
     @ObservedObject private var phone = PhoneModel.shared
     @FocusState private var relayFocused: Bool
-    @State private var removing: RemoteServer.Device?
-    @ObservedObject private var viewer = ViewerStore.shared
-    @State private var addingComputer = false
 
     private var relayLine: String {
         switch m.relayState {
@@ -156,144 +151,70 @@ struct RemotePane: View {
         }
     }
 
-    private func allowAccessibility() { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
-
     /// Away from home, first: the way the connected phone came, or the way a phone would come from another network ("Not set" when there
     /// is none), and when that way isn't working, the problem and what to do about it.
     private var away: (tone: Tone, value: String, problem: String?) {
         let st = phone.status
-        func path(_ k: String) -> String { T("settings.remote.path.\(k)") }
         if st.connectedID != nil, let p = st.path {
-            let name = switch p {
-            case .local: path("local")
-            case .tailscale: path("tailscale")
-            case .overlay: path("overlay")
-            case .direct, .goBetween: path("direct")
-            case .relay: path("relay")
-            case .meeting: path("go_between")
-            }
+            let name = PhoneText.path(p)
             return p == .meeting ? (.off, T("settings.remote.away.connecting", name), nil) : (.good, T("settings.remote.away.connected", name), nil)
         }
         if m.ownRelay {
-            return phone.relay == .failed ? (.warn, path("relay"), T("settings.remote.away.relay_down")) : (.good, path("relay"), nil)
+            return phone.relay == .failed ? (.warn, T("settings.remote.path.relay"), T("settings.remote.away.relay_down")) : (.good, T("settings.remote.path.relay"), nil)
         }
-        guard m.goBetween else { return (.off, path("none"), nil) }
+        guard m.goBetween else { return (.off, T("settings.remote.path.none"), nil) }
         switch st.away {
-        case .busy?: return (.warn, path("go_between"), T("settings.remote.away.busy"))
-        case .noDirect?: return (.warn, path("go_between"), T("settings.remote.away.no_direct"))
-        case nil: return (.good, path("go_between"), nil)
+        case .busy?: return (.warn, T("settings.remote.path.go_between"), T("settings.remote.away.busy"))
+        case .noDirect?: return (.warn, T("settings.remote.path.go_between"), T("settings.remote.away.no_direct"))
+        case nil: return (.good, T("settings.remote.path.go_between"), nil)
         }
     }
 
-    /// Under the phones: where the connection's state is. Only while there is a main window to open.
-    private var pageNote: AnyView? {
+    /// The pane's lead: the devices are on the page, and the way there. Only while there is a main window to open.
+    private var lead: SettingsLead? {
         guard AppEnvironment.mainWindow != nil else { return nil }
-        return AnyView(HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(T("phone.pane.see_page"))
-            InkLink(T("phone.pane.open_page")) {
-                MainWindowController.shared.show()
-                MainWindowController.shared.go(.phone)
-            }
-        })
+        return SettingsLead(text: Text(T("phone.pane.see_page")), accessory: AnyView(InkLink(T("phone.pane.show")) {
+            MainWindowController.shared.show()
+            MainWindowController.shared.go(.phone)
+        }))
     }
 
     var body: some View {
-        SettingsPage(.remote) {
-            if !phone.canControl, !phone.devices.isEmpty {
-                SettingsNotice(title: T("settings.remote.needs_access"), detail: T("settings.remote.needs_access.detail")) {
-                    Button(T("settings.kit.allow")) { allowAccessibility() }
-                }
-                .padding(.top, SettingsMetrics.groupGap)
-            }
-            SettingsGroup("remote.phones", note: pageNote) { phones }
-            SettingsGroup("remote.computers") { computers }
-            SettingsGroup("remote.options") {
-                SettingToggle("remote.hud", isOn: Binding(get: { m.hud }, set: { m.setHUD($0) }))
-                SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
-            }
-            SettingsGroup("remote.relay") {
-                let a = away
-                SettingRow("remote.away", title: T("settings.remote.away"), detail: a.problem, detailColor: a.problem == nil ? nil : .brandAttnInk) {
-                    HStack(spacing: 6) {
-                        StatusDot(tone: a.tone)
-                        Text(a.value).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-                SettingRow("remote.relay.address", title: T("settings.remote.relay.own"), detail: relayLine) {
-                    TextField("wss://relay.example.com", text: $m.relayText)
-                        .accessibilityLabel(T("settings.remote.relay"))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 230)
-                        .focused($relayFocused)
-                        .onSubmit { m.commitRelay() }
-                        .onChange(of: m.relayText) { _ in m.relayEdited() }
-                        .onChange(of: relayFocused) { on in if !on { m.commitRelay() } }
-                }
-                SettingToggle("remote.go_between", isOn: Binding(get: { m.goBetween }, set: { m.setGoBetween($0) }),
-                              detail: m.ownRelay ? T("settings.remote.go_between.unused") : nil)
-                SettingRow("remote.relay.help") {
-                    Button(m.copied ? T("settings.remote.relay.copied") : T("settings.remote.relay.copy")) { m.copyRelayPrompt() }
-                }
-            }
+        Group {
+            if let l = lead { SettingsPage(.remote, lead: l) { groups } } else { SettingsPage(.remote) { groups } }
         }
-        .onAppear { m.start(); viewer.watch("settings") }
-        .onDisappear { m.stop(); viewer.unwatch("settings") }
-        .phoneRemoveAlert($removing)
+        .onAppear { m.start() }
+        .onDisappear { m.stop() }
     }
 
-    /// The computers this Mac drives: the same rows as the list from the menu bar (Viewer/ComputersView.swift).
-    @ViewBuilder var computers: some View {
-        ForEach(viewer.computers) { c in
-            SettingsLine(flashID: "remote.computer.\(c.id)", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
-                ComputerRow(computer: c, compact: true)
-            }
+    @ViewBuilder private var groups: some View {
+        SettingsGroup("remote.options") {
+            SettingToggle("remote.hud", isOn: Binding(get: { m.hud }, set: { m.setHUD($0) }))
+            SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
         }
-        SettingRow("remote.computers.add") {
-            Button(T("viewer.add")) { addingComputer = true }
-        }
-        .sheet(isPresented: Binding(get: { addingComputer || viewer.pairing != nil }, set: { if !$0 { addingComputer = false; viewer.cancelPairing() } })) {
-            AddComputerView { addingComputer = false; viewer.cancelPairing() }
-        }
-    }
-
-    @ViewBuilder var phones: some View {
-        ForEach(phone.devices) { d in
-            let on = phone.status.connectedID == d.id
-            SettingRow("remote.device.\(d.id)", title: PhoneStatus.name(d.name), detail: on ? T("settings.remote.connected") : PhoneText.lastUsed(d),
-                       icon: d.isComputer ? "desktopcomputer" : nil) {
-                Button(T("settings.remote.remove")) { removing = d }
-            }
-        }
-        if let who = phone.status.asking {
-            SettingsLine(flashID: "remote.ask", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
-                PhoneAsk(who: who, check: phone.status.askingCheck ?? "") { phone.answer($0) }
-            }
-        }
-        if phone.adding {
-            SettingsLine(flashID: "remote.add", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
-                PhonePairingCode(link: phone.status.pairingLink, failure: phone.status.failure) { phone.setAdding(false) }
-            }
-        } else {
-            SettingRow("remote.add") {
-                HStack(spacing: 12) {
-                    // not in the stores yet: the page has the build steps (the Phone page says so in words)
-                    Link(T("settings.remote.get_app"), destination: RemoteModel.appPage).font(.system(size: 12))
-                        .help(T("phone.pane.build.tip"))
-                    Button(T("settings.remote.add")) { phone.setAdding(true, by: "settings") }
+        SettingsGroup("remote.relay") {
+            let a = away
+            SettingRow("remote.away", title: T("settings.remote.away"), detail: a.problem, detailColor: a.problem == nil ? nil : .brandAttnInk) {
+                HStack(spacing: 6) {
+                    StatusDot(tone: a.tone)
+                    Text(a.value).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .combine)
             }
-            // said before pairing, not after: with no phone yet the notice above isn't showing
-            if !phone.canControl, phone.devices.isEmpty {
-                SettingsLine(flashID: "remote.access", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
-                    HStack(alignment: .center, spacing: 6) {
-                        StatusDot(tone: .warn)
-                        Text(T("phone.pane.before")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button(T("settings.kit.allow")) { allowAccessibility() }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-                    }
-                }
+            SettingRow("remote.relay.address", title: T("settings.remote.relay.own"), detail: relayLine) {
+                TextField("wss://relay.example.com", text: $m.relayText)
+                    .accessibilityLabel(T("settings.remote.relay"))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 230)
+                    .focused($relayFocused)
+                    .onSubmit { m.commitRelay() }
+                    .onChange(of: m.relayText) { _ in m.relayEdited() }
+                    .onChange(of: relayFocused) { on in if !on { m.commitRelay() } }
+            }
+            SettingToggle("remote.go_between", isOn: Binding(get: { m.goBetween }, set: { m.setGoBetween($0) }),
+                          detail: m.ownRelay ? T("settings.remote.go_between.unused") : nil)
+            SettingRow("remote.relay.help") {
+                Button(m.copied ? T("settings.remote.relay.copied") : T("settings.remote.relay.copy")) { m.copyRelayPrompt() }
             }
         }
     }

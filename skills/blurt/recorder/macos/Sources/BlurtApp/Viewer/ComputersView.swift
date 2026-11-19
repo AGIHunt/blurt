@@ -1,22 +1,45 @@
-// 电脑 / Computers (docs/design/remote-desktop-viewer.md): the computers this Mac can drive, from the menu bar, and the same rows in Settings →
-// 手机和电脑. Each row: the computer's name, its system, its state (已连接 · <path>, 可连接 · <path>, 离线 · <when>) and one button (打开窗口,
+// 电脑 / Computers (docs/design/remote-desktop-viewer.md): the computers this Mac can drive, from the menu bar, and the same rows on the
+// main window's 手机和电脑 page (本机可控制的电脑). Each row: the computer's name, its system, its state (已连接 · <path>, 可连接 · <path>, 离线 · <when>) and one button (打开窗口,
 // 连接 or 移除). 添加电脑 / Add Computer: one found on this network, or a pairing link pasted from another network.
 import AppKit
 import BlurtRemoteKit
 import SwiftUI
 
-/// One computer's row, here and in Settings.
+/// One computer's row: in the Computers window, and on the 手机和电脑 page in that page's grid (`.page`: the mark in the
+/// 18 pt slot, Settings' type sizes, Connect / Open Window with Remove in the ⋯ menu beside it).
 struct ComputerRow: View {
+    enum Style { case list, page }
     var computer: RemoteComputer
     @ObservedObject var store = ViewerStore.shared
-    var compact = false
+    var style = Style.list
     @State private var removing = false
 
     var body: some View {
         let row = store.row(computer)
+        Group {
+            switch style {
+            case .list: list(row)
+            case .page: page(row)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { store.open(computer) }
+        .contextMenu {
+            Button(T("viewer.connect")) { store.open(computer) }
+            Button(T("viewer.remove")) { removing = true }
+        }
+        .alert(T("settings.remote.remove.title", computer.name), isPresented: $removing) {
+            Button(T("viewer.remove"), role: .destructive) { store.remove(computer) }
+            Button(T("settings.remote.cancel"), role: .cancel) {}
+        } message: {
+            Text(T("viewer.remove.detail"))
+        }
+    }
+
+    @ViewBuilder private func list(_ row: ViewerStore.Row) -> some View {
         HStack(spacing: 12) {
             Image(systemName: ViewerStore.symbol(computer))
-                .font(.system(size: compact ? 18 : 22, weight: .regular))
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(.secondary)
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
@@ -33,18 +56,38 @@ struct ComputerRow: View {
             case .offline: Button(T("viewer.remove")) { removing = true }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { store.open(computer) }
-        .contextMenu {
-            Button(T("viewer.connect")) { store.open(computer) }
-            Button(T("viewer.remove")) { removing = true }
-        }
         .accessibilityElement(children: .combine)
-        .alert(T("settings.remote.remove.title", computer.name), isPresented: $removing) {
-            Button(T("viewer.remove"), role: .destructive) { store.remove(computer) }
-            Button(T("settings.remote.cancel"), role: .cancel) {}
-        } message: {
-            Text(T("viewer.remove.detail"))
+    }
+
+    @ViewBuilder private func page(_ row: ViewerStore.Row) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                Image(systemName: ViewerStore.symbol(computer)).font(.system(size: 14)).foregroundStyle(.secondary)
+                    .frame(width: SettingsMetrics.iconSlot, height: 18)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    // offline reads quieter than one that can be reached now (both have the hollow ring)
+                    Text(computer.name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
+                        .foregroundStyle(row.isOffline ? .secondary : .primary)
+                    HStack(alignment: .center, spacing: 5) {
+                        StatusDot(tone: tone(row))
+                        Text(ViewerStore.line(row)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                if case .connected = row {
+                    Button(T("viewer.open")) { store.open(computer) }
+                } else {
+                    Button(T("viewer.connect")) { store.open(computer) }
+                }
+                RowMenu(label: T("viewer.more"), visible: true) {
+                    Button(T("phone.remove")) { removing = true }
+                }
+            }
+            .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
         }
     }
 
@@ -218,4 +261,8 @@ final class ComputersWindowController: NSWindowController, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+}
+
+extension ViewerStore.Row {
+    var isOffline: Bool { if case .offline = self { true } else { false } }
 }

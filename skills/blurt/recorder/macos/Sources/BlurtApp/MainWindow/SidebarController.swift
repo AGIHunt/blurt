@@ -448,6 +448,10 @@ final class SourceCell: NSTableCellView, InlineEditable {
     let badge = CountPill()
     /// the current project's mark (SidebarNode.current)
     let mark = NSImageView()
+    /// the current-project mark takes no room while hidden (a hidden view keeps its width in the layout): a long
+    /// place name ("Phones and Computers") gets that room instead of being cut
+    private lazy var markOff = mark.widthAnchor.constraint(equalToConstant: 0)
+    private lazy var markGap = mark.leadingAnchor.constraint(equalTo: key.trailingAnchor, constant: 5)
 
     init(id: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -477,7 +481,7 @@ final class SourceCell: NSTableCellView, InlineEditable {
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
             key.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 5),
             key.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            mark.leadingAnchor.constraint(equalTo: key.trailingAnchor, constant: 5),
+            markGap,
             mark.centerYAnchor.constraint(equalTo: centerYAnchor),
             badge.leadingAnchor.constraint(greaterThanOrEqualTo: mark.trailingAnchor, constant: 6),
             badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
@@ -508,6 +512,8 @@ final class SourceCell: NSTableCellView, InlineEditable {
         icon.alphaValue = 1
         toolTip = n.current ? [n.tip, T("main.project.current_mark")].compactMap { $0 }.joined(separator: "\n") : n.tip
         mark.isHidden = !n.current
+        markOff.isActive = !n.current
+        markGap.constant = n.current ? 5 : 0
         applyInk()
         badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = n.alert

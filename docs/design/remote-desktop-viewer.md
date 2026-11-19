@@ -14,7 +14,8 @@ What it doesn't need from the phone: the key deck, the touch gestures, the zoome
 
 ## The viewer
 
-**The list of computers.** It opens from the menu bar or tray → 电脑 / Computers, and from Settings → 手机和电脑 / Phones and Computers.
+**The list of computers.** It opens from the menu bar or tray → 电脑 / Computers; on the Mac the same rows are on the main window's
+手机和电脑 / Phones and Computers page (§One page for the devices).
 
 - Each row shows the computer's name, its system, and a state: 已连接 · <path>, 可连接 · <path>, or 离线 · <when last seen>.
   It has one button: 打开窗口 / Open Window, 连接 / Connect, or 移除 / Remove.
@@ -114,7 +115,7 @@ Branch `claude/remote-go-between`. Swift only; the wire's reference is BlurtRemo
 
 **Host** (`RemoteServer`, `RemoteScreen`, `RemoteInput`): a viewer is paired, kept (`Device.kind` "computer", shown with a computer
 icon in the device list) and driven like a phone, on every path; the go-between and the move unchanged. A nearby question brings
-Settings → 手机和电脑 to the front. Session takeover now waits for the hello, so a viewer's `window` session can be kept beside the
+the main window's 手机和电脑 page to the front (Settings until 2026-11-20). Session takeover now waits for the hello, so a viewer's `window` session can be kept beside the
 first; the other windows end with the first, or after 12 s of quiet. Their picture, display choice, input and clipboard work as the
 first's.
 
@@ -127,7 +128,7 @@ first's.
 - `RemoteScreenPlan`: the phone's rates with the window's pixels as the ceiling. Auto: Sharp on the same network (window size, 12 Mbps,
   the panel's rate up to 120), Balanced away (at most 2560 × 1600, 4–8 Mbps by pixels, 30 fps); Low Data Mode: Data Saver (1280 × 800,
   1 Mbps, 15 fps). A resize asks again 0.4 s after the window settles; a new path asks again; a new round trip doesn't.
-- Computers list: menu bar → 电脑…, and Settings → 手机和电脑 → 电脑 (the same rows). The pane is the phone capability's, so the
+- Computers list: menu bar → 电脑…, and Settings → 手机和电脑 → 电脑 (the same rows; on the Mac now the page, §One page for the devices). The pane is the phone capability's, so the
   capability is now called 手机和电脑 / Phones and Computers everywhere it's named (Home, General). "Available" means a way to it exists
   now: found by DNS-SD, or it has a relay / the public connection service / a Tailscale address; nothing is asked of it until Connect.
   A Windows computer's icon is `display`, not `pc` (whose face reads as Windows' crash screen). The host's 添加设备 has 拷贝链接 / Copy
@@ -288,6 +289,48 @@ decode; two real computers end to end. Recipe for the rented VMs: below.
 Screenshots (zh-Hans and en, light and dark): `promo/cases/remote-desktop-viewer/` — `settings-computers`, `settings-add-computer`,
 `settings-pairing-digits`, `settings-link-error`, `viewer-captured-hint`, `viewer-display-switcher`, `viewer-more-menu`,
 `viewer-quality-menu`, `viewer-linux-shortcuts-local`, `viewer-connecting`, `viewer-offline`, `viewer-replaced`.
+
+## One page for the devices (Mac, 2026-11-20)
+
+The same feature sat in three places with three names: Home's row (手机和电脑), the sidebar page 手机, and Settings → 手机和电脑. Paired
+devices were listed twice (page and Settings), the computers this Mac controls only in Settings and the Computers window, and a computer
+that controls this Mac showed under a phone heading with a phone icon. Now:
+
+- **One name:** 手机和电脑 / Phones and Computers on Home, in the sidebar, as the page's title, in ⌘K and the Go menu, and as the
+  Settings pane. The menu-bar row's Add… and Home's fix say 添加设备… / Add Device…, as the page does.
+- **The page holds every device**, in three groups (`MainWindow/PhonePageViews.swift`), with a new device's yes-or-no above them:
+  - 能控制本机的设备 / Devices That Can Control This Computer: every paired phone and computer, its mark by kind (iPhone, iPad; a
+    laptop or desktop for a computer), its line (已连接 · <path> in the agreed path names, or 上次使用：…), 移除…; at the bottom 添加设备…,
+    whose code (QR, the six digits, 拷贝链接 → 已拷贝，10 分钟内有效 for 4 s) takes its place while open. Nothing paired: one row that
+    says so and carries 添加设备….
+  - 本机可控制的电脑 / Computers You Can Control: ViewerStore's computers, drawn by the Computers window's `ComputerRow` in the page's
+    grid (`style: .page`): its state (已连接 · 可连接 · 离线 · 无法直连), 连接 or 打开窗口, and 移除… in the ⋯ menu (and the context menu).
+    添加电脑… at the bottom opens the same Add Computer sheet. The page watches ViewerStore while on show, so 可连接 is live.
+  - 本机 / This Mac: unchanged — only what stands in a device's way (Accessibility, the port, Screen Recording, the relay); all well is
+    one line.
+  - Then 连不上时 while a phone should be connecting, and where the phone app comes from. 手机设置… on the title line opens Settings.
+- **Settings → 手机和电脑 is options only:** 连接时 (keys on screen, the screen on the phone) and 外出连接 (status, own relay, public
+  connection service, Set Up a Relay). Its lead says where the devices are, with 打开. The catalogue's `remote.phones` /
+  `remote.computers` sections and their rows are gone, so search doesn't land on a list that isn't there.
+- **Device kind on the host:** `RemoteServer.Device.kind` is "computer" when the hello's `features` carry `viewer`
+  (`RemoteFeature.viewer`), nil for a phone. It is written when a device pairs and again whenever it connects, so a record kept before
+  kinds existed (nil, a phone) is corrected the first time that computer comes back.
+
+- **The row grid, after three rounds of the visual gate:** every row's mark in one 18 pt slot at one size, the text 28 pt in, its state
+  disc before every state line (hollow ring for 上次使用 / 可连接 / 离线, the check for 已连接), an offline computer's name quieter;
+  Remove… is in each row's ⋯ (one trailing column for both lists, Connect / Open Window before it); each list ends with an inline
+  "+ 添加设备… / + 添加电脑…" line on the grid, empty or not; every bordered button on the page is the small size. The code is one quiet
+  card (QR 124 pt, 添加设备 / Add Device, one line of how, 取消 · 拷贝链接); a device asking is a card of its own (lock, 允许 X 控制本机？,
+  the digits in threes, 不允许 · 允许 with Allow the page's primary, and still no default: Return must not say yes). Copy cut on the way:
+  the code's how-to and the own relay's line are one sentence each; Settings' headings are sentence case, as its other panes'.
+  Gate scores (3 fresh judges, round 3): empty 8/8/7, devices 7/7.5/7, add device 7/7/7, asking 8/7.5/7.5, settings 8/8/7.5. What they
+  still ask for: a third state disc (可连接 filled, 离线 hollow — a new StatusDot tone, a design-system change), Connect quieter on an
+  offline computer, a live "waiting for a phone" line or renewal timer on the code card, and the Screen Recording row's 允许… renamed
+  while a pairing 允许 is on screen (`settings.kit.allow` is shared).
+
+Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/mac/` — `page-empty`, `page-devices`, `page-add-device`,
+`page-asking`, `settings`. Hooks: `phonepage fake …` now includes a paired computer (MacBook Pro) beside the iPhone and iPad;
+`viewer fake` for the computers; `viewer settings` for the pane.
 
 ## Tried on real machines (2026-11-19)
 

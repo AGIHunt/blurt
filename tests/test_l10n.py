@@ -104,7 +104,7 @@ def table_of(key: str) -> str:
     head = key.split(".")[0]
     return "Main" if head in ("main", "menu", "app", "notify") else "Settings" if head in ("settings", "onboarding") \
         else "Dictation" if head == "dictation" else "Home" if head in ("home", "feature") else "Cards" if head == "cards" \
-        else "Phone" if head == "phone" else "Common"
+        else "Phone" if head in ("phone", "viewer") else "Common"
 
 
 def keys(table: str, lang: str) -> dict:

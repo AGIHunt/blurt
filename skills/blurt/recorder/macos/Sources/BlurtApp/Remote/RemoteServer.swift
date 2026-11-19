@@ -1093,7 +1093,9 @@ final class RemoteServer {
             emit(["event": "remote_pairing_asks", "nearby": RemoteNearby.isNearby(s.id ?? "")])
             s.channel.send(ToPhone.pairingWaits)
             // nobody opened Add Device for it: the question comes to the front, where the owner sees it
-            if RemoteNearby.isNearby(s.id ?? "") { DispatchQueue.main.async { SettingsController.shared.show(pane: "remote") } }
+            if RemoteNearby.isNearby(s.id ?? "") {
+                DispatchQueue.main.async { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
+            }
             if Self.testing, let a = ProcessInfo.processInfo.environment["BLURT_TEST_PAIR_ANSWER"] {
                 queue.asyncAfter(deadline: .now() + 3) { self.answerPairing(a == "yes") }
             }
@@ -1109,6 +1111,8 @@ final class RemoteServer {
         if let i = list.firstIndex(where: { $0.id == id }) {
             list[i].lastSeen = Date()
             list[i].name = s.name
+            // what it is, as its hello says: a record from before kinds were kept (nil: a phone) learns it here
+            list[i].kind = s.viewer ? "computer" : nil
             save(list)
         }
         begin(s)

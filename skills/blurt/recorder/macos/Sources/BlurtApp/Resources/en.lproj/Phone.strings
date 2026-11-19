@@ -1,6 +1,6 @@
-/* The Phone page (MainWindow/PhonePage.swift, PhonePageViews.swift). */
+/* The Phones and Computers page (MainWindow/PhonePage.swift, PhonePageViews.swift). */
 
-"phone.title" = "Phone";
+"phone.title" = "Phones and Computers";
 "phone.settings" = "Phone Settings…";
 "phone.settings.tip" = "On-screen keys, the screen on your phone, and the relay for connecting away from home";
 /* a phone that gave no name */
@@ -9,30 +9,22 @@
 /* the menu-bar menu's row (SnapApp.addWaitingMenuItems): opens the Phone page */
 "phone.menu.connected" = "Phone: %@ Connected";
 "phone.menu.paired" = "Phone: Not Connected";
-"phone.menu.add" = "Add a Phone…";
+"phone.menu.add" = "Add Device…";
 "phone.menu.needs_access" = "Phone: Can’t Control Mac";
 
 /* the Phone tile's state on Home (PhoneStatus.line) */
 "phone.line.connected" = "%@ connected";
 "phone.line.not_connected" = "Not connected";
 
-/* the page's one headline */
-"phone.head.none" = "No phone paired yet";
-"phone.head.none.detail" = "Once paired, a phone or tablet works as your Mac’s trackpad, keyboard and microphone, and can show its screen.";
-"phone.head.not_connected" = "Not connected";
-"phone.head.not_connected.detail" = "Open Blurt on your phone to connect.";
-"phone.head.connected" = "%@ is connected";
-"phone.head.local" = "Same network as your Mac, connected directly.";
-"phone.head.relay" = "On another network, connected through your relay.";
 
-"phone.add" = "Add a Phone…";
-"phone.add.tip" = "Shows the pairing code to scan with the phone";
+"phone.add.title" = "Add Device";
+"phone.add.tip" = "Shows the pairing code: scan it with a phone, or copy the link for another computer";
 "phone.remove" = "Remove…";
 "phone.remove.named" = "Remove %@";
 
-/* This Mac: only what stands in a phone's way; one line when all is well */
+/* This Mac: only what stands in another device's way; one line when all is well */
 "phone.mac" = "This Mac";
-"phone.mac.ok" = "A phone can control your Mac";
+"phone.mac.ok" = "Other devices can control this Mac";
 "phone.mac.ok.keys" = "Pointer and keys";
 "phone.mac.ok.screen" = "Screen";
 "phone.mac.ok.relay" = "Away from home through your relay";
@@ -53,6 +45,9 @@
 "phone.ax.needs_you" = "Needs attention";
 
 "phone.paired" = "Devices That Can Control This Computer";
+"phone.none" = "No devices paired yet";
+"phone.none.detail" = "Once paired, a phone, tablet or another computer can control this Mac.";
+"phone.computers.none" = "No computers added yet";
 
 /* where the phone app comes from */
 "phone.app" = "Blurt on Your Phone";
@@ -71,11 +66,9 @@
 "phone.mac.ok.go_between" = "Away from home through the public connection service";
 "phone.tips.away.ok" = "On another network it connects through your relay. The phone only needs internet access.";
 
-/* Settings → Phone (Settings/RemotePane.swift): the way to this page, and the reminder before pairing */
-"phone.pane.before" = "Turn on Accessibility first. Without it, a paired phone can’t move the pointer or press keys.";
-"phone.pane.see_page" = "Connection status and troubleshooting are on the Phone page in the main window.";
-"phone.pane.open_page" = "Open";
-"phone.pane.build.tip" = "The phone app isn’t in the app stores yet. Build it from source";
+/* Settings → Phones and Computers (Settings/RemotePane.swift): its lead, the way to this page */
+"phone.pane.see_page" = "The device list is on the Phones and Computers page in the main window.";
+"phone.pane.show" = "Show Devices";
 
 /* Computers this Mac drives (Viewer/, docs/design/remote-desktop-viewer.md). Agreed terms: docs/design/copy.md */
 "viewer.menu" = "Computers…";
