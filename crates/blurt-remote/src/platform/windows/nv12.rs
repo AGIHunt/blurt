@@ -158,7 +158,7 @@ fn band_rows(
     let nx = xs.n;
     for (r, line) in rows.chunks_exact_mut(w * 3).enumerate() {
         let src = &bgra[(y0 + s0 + r) * stride..];
-        for (x, px) in line.chunks_exact_mut(3).enumerate() {
+        for (x, px) in line.as_chunks_mut::<3>().0.iter_mut().enumerate() {
             let at = (x0 + xs.start[x]) * 4;
             let (mut b, mut g, mut rr) = (0i32, 0i32, 0i32);
             for (k, &wt) in xs.w[x * nx..x * nx + nx].iter().enumerate() {
