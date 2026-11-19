@@ -126,7 +126,16 @@ export function ViewerWindow({ id }: { id: string }) {
       case 'link':
         setLink(m.link);
         setRoute(m.route);
-        if (m.link !== 'connected') setRtt(null);
+        if (m.link !== 'connected') {
+          setRtt(null);
+          // no session, no capture: otherwise Keys to Remote stays on, the click that captures is taken for a click on the
+          // other computer, and after a reconnect the keys go nowhere
+          if (capturedRef.current) {
+            setCaptured(false);
+            setHint(false);
+            void invoke('viewer_capture', { on: false }).catch(() => {});
+          }
+        }
         break;
       case 'rtt':
         setRtt(m.ms);
@@ -219,8 +228,9 @@ export function ViewerWindow({ id }: { id: string }) {
   }, []);
 
   // keys: the webview's own events (Linux, and a Mac build). On Windows the hook takes them before the webview (viewer_keys.rs)
+  // and swallows them, so this sees only what the hook didn't take: a fallback, never a second copy
   useEffect(() => {
-    if (!init || init.os === 'windows') return;
+    if (!init) return;
     const on = (down: boolean) => (e: KeyboardEvent) => {
       if (!capturedRef.current) return;
       e.preventDefault();

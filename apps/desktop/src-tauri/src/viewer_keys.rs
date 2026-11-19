@@ -67,10 +67,16 @@ mod win {
         }
         let _ = std::thread::Builder::new().name("viewer-keys".into()).spawn(|| unsafe {
             THREAD.store(GetCurrentThreadId(), SeqCst);
-            let Ok(h) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) else {
-                ON.store(false, SeqCst);
-                return;
+            let h = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), None, 0) {
+                Ok(h) => h,
+                Err(e) => {
+                    // the webview's own key events still carry the keys (no system shortcuts)
+                    eprintln!("blurt viewer: keyboard hook not installed: {e}");
+                    ON.store(false, SeqCst);
+                    return;
+                }
             };
+            eprintln!("blurt viewer: keyboard hook on");
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
                 let _ = TranslateMessage(&msg);
