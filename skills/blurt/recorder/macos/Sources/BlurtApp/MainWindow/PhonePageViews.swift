@@ -255,7 +255,7 @@ struct PhonePairingCode: View {
                 if let renews, link != nil {
                     TimelineView(.periodic(from: .now, by: 1)) { t in
                         Text(T("phone.add.left", Self.left(renews, t.date)))
-                            .font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.tertiary)
+                            .font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.secondary)
                     }
                     .accessibilityHidden(true)      // a number that changes every second is noise to VoiceOver
                 }

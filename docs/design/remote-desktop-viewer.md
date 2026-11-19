@@ -340,6 +340,11 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
     next to "the code renews itself" judges read it as a contradiction, so the Mac says what happens instead. 拷贝链接's
     已拷贝，10 分钟内有效 is unchanged.
   - Hairlines start at the text column, as Apple's lists; an empty list's line has no device mark.
+  - Gate, three fresh judges per round: page-devices 7.5/7/7 → 7/8/8 → 7/8/8; page-add-device 7/7/7 → 6.5/8/8 → 7/7/7.5;
+    Computers window 7.5/7.5/7 → 7/7/7 → 8/7/7.5. The last round's shared asks were made after it (the countdown back to the
+    secondary grey, the window's Add Computer… the rows' size and trailing edge) and not judged again. Still asked for: a colour for
+    可连接 rather than grey (the founder asked for it to read apart from 离线; a hue would be a sixth colour in the status set), one
+    zh format for 上次使用：3天前 and 离线 · 2 天前 (system formatter output vs ours), and lighter chrome on the code card.
   - The pairing question's 允许 was already its own key (`settings.remote.ask.yes`), apart from the permission rows' 允许…
     (`settings.kit.allow`).
   - The name is one key on the Mac, `feature.phone` (Home, sidebar, page, ⌘K, Go menu, Settings pane, and through %@ the pane's

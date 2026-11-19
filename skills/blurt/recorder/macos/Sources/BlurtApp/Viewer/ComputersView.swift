@@ -225,9 +225,9 @@ struct ComputersView: View {
             Divider()
             HStack {
                 Spacer()
-                Button(T("viewer.add")) { adding = true }.buttonStyle(SettingsOutlinedButtonStyle())
+                Button(T("viewer.add")) { adding = true }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
             }
-            .padding(12)
+            .padding(.horizontal, 16).padding(.vertical, 10)     // the rows' trailing edge
         }
         .frame(minWidth: 420, minHeight: 280)
         .sheet(isPresented: Binding(get: { adding || store.pairing != nil }, set: { if !$0 { adding = false; store.cancelPairing() } })) {
