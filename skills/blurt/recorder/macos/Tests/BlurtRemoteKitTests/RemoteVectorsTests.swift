@@ -67,6 +67,17 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen_stats", .screenStats("fps=30")),
             ("screen_snapshot", .screenSnapshot(name: "a", jpeg: Data([0xff, 0xd8, 0xff]))),
             ("ping", .ping(12.5)),
+            // a computer driving another (docs/design/remote-desktop-viewer.md)
+            ("hello_viewer", .hello(device: "MacBook Pro", micOnPhone: false, nonce: bytes(9), features: ["move", "viewer"])),
+            // another window of a viewer that has a session: the host keeps the first beside it
+            ("hello_viewer_window", .hello(device: "MacBook Pro", micOnPhone: false, nonce: bytes(9), features: ["move", "viewer", "window"])),
+            ("screen_viewer", .screen(RemoteScreenRequest(target: "display", width: 2560, height: 1600, bitrate: 12_000_000, fps: 60, codecs: ["hevc", "h264"],
+                                                          display: "69733382", features: ["nack", "ltr", "fec"], window: RemotePixelSize(width: 2400, height: 1350)))),
+            ("clipboard", .clipboard("复制 copied\n")),
+            ("keys_captured", .keysCaptured(true)),
+            ("keys_released", .keysCaptured(false)),
+            ("key_f13_down", .key(RemoteChord([], "F13"), down: true)),
+            ("key_keypad_enter", .key(RemoteChord([], "KeypadEnter"), down: nil)),
         ]
     }
 
@@ -107,6 +118,10 @@ final class RemoteVectorsTests: XCTestCase {
             ("displays", .displays([RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1512, height: 982, main: true),
                                     RemoteDisplay(id: "69733382", name: "DELL U2723QE", x: 1512, y: -458, width: 2560, height: 1440, main: false)])),
             ("cursor_shape", .cursorShape(png: Data([0x89, 0x50]), hotX: 1, hotY: 2, width: 16, height: 24)),
+            ("session_viewer", .session(RemoteSessionInfo(macName: "Studio", udpPort: 50123, udpSession: 7, canControl: true, version: "1.0.27",
+                                                          candidates: [RemoteCandidate(host: "192.168.1.20", port: 50123)], displayAspect: 1.6,
+                                                          platform: "mac", features: ["move", "viewer"]))),
+            ("clipboard", .clipboard("host text")),
         ]
     }
 
@@ -218,6 +233,21 @@ final class RemoteVectorsTests: XCTestCase {
                               ["session": 7, "counter": 2, "plain": hex(Data([2]) + RemotePointerPacket.move(dx: 1, dy: 1).encoded()), "sealed": hex(udp2)]],
         ]
         out["relayRoom"] = ["paired": hex(paired), "room": RemoteRelay.room(key: paired)]
+        // a computer driving another (docs/design/remote-desktop-viewer.md): its feature name, the clipboard's limit, every key name a host
+        // must know (a phone's deck and a full keyboard's) with the Mac's key code for it, the modifier swap, and nearby pairing's id and key
+        out["viewer"] = [
+            "feature": RemoteFeature.viewer, "windowFeature": RemoteFeature.window, "clipboardMaxBytes": RemoteClipboard.maxBytes,
+            "keys": RemoteKey.all.map { ["name": $0.name, "macCode": Int($0.code)] },
+            "modifierMap": [["viewer": "mac", "host": "windows", "pressed": Int(RemoteModifiers([.command]).rawValue),
+                             "sent": Int(RemoteViewerKeys.map([.command], from: .mac, to: .windows, mapping: true).rawValue)],
+                            ["viewer": "mac", "host": "linux", "pressed": Int(RemoteModifiers([.control, .shift]).rawValue),
+                             "sent": Int(RemoteViewerKeys.map([.control, .shift], from: .mac, to: .linux, mapping: true).rawValue)],
+                            ["viewer": "windows", "host": "mac", "pressed": Int(RemoteModifiers([.control, .option]).rawValue),
+                             "sent": Int(RemoteViewerKeys.map([.control, .option], from: .windows, to: .mac, mapping: true).rawValue)],
+                            ["viewer": "linux", "host": "windows", "pressed": Int(RemoteModifiers([.control]).rawValue),
+                             "sent": Int(RemoteViewerKeys.map([.control], from: .linux, to: .windows, mapping: true).rawValue)]],
+            "nearby": ["idPrefix": RemoteNearby.idPrefix, "key": hex(RemoteNearby.key), "seed": "blurt-remote-nearby-1"],
+        ]
         let pairing = RemotePairing(macID: "host-id-1", deviceID: "device-id-1", key: paired, macName: "Studio PC", port: 50123,
                                     addresses: ["192.168.1.20", "fe80::1"], relay: "wss://relay.example.com")
         out["pairingURL"] = pairing.url.absoluteString

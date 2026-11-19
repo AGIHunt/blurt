@@ -142,6 +142,8 @@ struct RemotePane: View {
     @ObservedObject private var phone = PhoneModel.shared
     @FocusState private var relayFocused: Bool
     @State private var removing: RemoteServer.Device?
+    @ObservedObject private var viewer = ViewerStore.shared
+    @State private var addingComputer = false
 
     private var relayLine: String {
         switch m.relayState {
@@ -204,6 +206,7 @@ struct RemotePane: View {
                 .padding(.top, SettingsMetrics.groupGap)
             }
             SettingsGroup("remote.phones", note: pageNote) { phones }
+            SettingsGroup("remote.computers") { computers }
             SettingsGroup("remote.options") {
                 SettingToggle("remote.hud", isOn: Binding(get: { m.hud }, set: { m.setHUD($0) }))
                 SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
@@ -234,15 +237,31 @@ struct RemotePane: View {
                 }
             }
         }
-        .onAppear { m.start() }
-        .onDisappear { m.stop() }
+        .onAppear { m.start(); viewer.watch("settings") }
+        .onDisappear { m.stop(); viewer.unwatch("settings") }
         .phoneRemoveAlert($removing)
+    }
+
+    /// The computers this Mac drives: the same rows as the list from the menu bar (Viewer/ComputersView.swift).
+    @ViewBuilder var computers: some View {
+        ForEach(viewer.computers) { c in
+            SettingsLine(flashID: "remote.computer.\(c.id)", hosts: [], padding: SettingsMetrics.rowPadding, height: nil) {
+                ComputerRow(computer: c, compact: true)
+            }
+        }
+        SettingRow("remote.computers.add") {
+            Button(T("viewer.add")) { addingComputer = true }
+        }
+        .sheet(isPresented: Binding(get: { addingComputer || viewer.pairing != nil }, set: { if !$0 { addingComputer = false; viewer.cancelPairing() } })) {
+            AddComputerView { addingComputer = false; viewer.cancelPairing() }
+        }
     }
 
     @ViewBuilder var phones: some View {
         ForEach(phone.devices) { d in
             let on = phone.status.connectedID == d.id
-            SettingRow("remote.device.\(d.id)", title: PhoneStatus.name(d.name), detail: on ? T("settings.remote.connected") : PhoneText.lastUsed(d)) {
+            SettingRow("remote.device.\(d.id)", title: PhoneStatus.name(d.name), detail: on ? T("settings.remote.connected") : PhoneText.lastUsed(d),
+                       icon: d.isComputer ? "desktopcomputer" : nil) {
                 Button(T("settings.remote.remove")) { removing = d }
             }
         }

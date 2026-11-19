@@ -41,11 +41,17 @@ pub struct Options {
     /// the relay it connects through is Blurt's go-between: nothing large goes before the move, and the stream moves once the
     /// host says `udpOK` (and lists `move`)
     pub go_between: bool,
+    /// `hello.device`: the name the host shows ("Test Phone"; a viewer: its computer's name)
+    pub device: String,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { features: Some(vec![crate::wire::MOVE.to_string()]), go_between: false }
+        Options {
+            features: Some(vec![crate::wire::MOVE.to_string()]),
+            go_between: false,
+            device: "Test Phone".into(),
+        }
     }
 }
 
@@ -360,7 +366,13 @@ impl Phone {
         Phone::over_tcp(s, host, id, key, opts).await
     }
 
-    async fn over_tcp(s: tokio::net::TcpStream, host: SocketAddr, id: &str, key: &[u8], opts: Options) -> Result<Phone, String> {
+    pub async fn over_tcp(
+        s: tokio::net::TcpStream,
+        host: SocketAddr,
+        id: &str,
+        key: &[u8],
+        opts: Options,
+    ) -> Result<Phone, String> {
         s.set_nodelay(true).ok();
         let (mut r, mut w) = s.into_split();
         let h = PhoneHandshake::new(id, key);
@@ -392,7 +404,12 @@ impl Phone {
         Phone::over_ws(ws, id, key, opts).await
     }
 
-    async fn over_ws(ws: crate::relay::Socket, id: &str, key: &[u8], opts: Options) -> Result<Phone, String> {
+    pub async fn over_ws(
+        ws: crate::relay::Socket,
+        id: &str,
+        key: &[u8],
+        opts: Options,
+    ) -> Result<Phone, String> {
         let (mut w, mut r) = ws.split();
         let h = PhoneHandshake::new(id, key);
         w.send(Message::Binary(FrameReader::framed(&h.hello()).into())).await.map_err(|e| e.to_string())?;
@@ -508,7 +525,18 @@ impl Phone {
     }
 
     async fn hello(&self, nonce: &[u8]) {
-        self.send(&ToMac::Hello { device: "Test Phone".into(), mic_on_phone: true, nonce: Some(nonce.to_vec()), features: self.inner.opts.features.clone() }).await;
+        let o = &self.inner.opts;
+        let viewer = o
+            .features
+            .as_ref()
+            .is_some_and(|f| f.iter().any(|x| x == crate::wire::VIEWER));
+        self.send(&ToMac::Hello {
+            device: o.device.clone(),
+            mic_on_phone: !viewer,
+            nonce: Some(nonce.to_vec()),
+            features: o.features.clone(),
+        })
+        .await;
     }
 
     pub async fn send(&self, m: &ToMac) {

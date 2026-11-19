@@ -2,6 +2,7 @@
 // projects, a dozen items in every K3 state, a batch to review, an agent session waiting for an answer, a
 // terminal that prints what Claude Code would. Writes are kept in memory.
 import { INBOX_STATES, migrate, OPEN_STATES, targetOf, type State } from '@blurt/ui';
+import { mockComputers } from './viewer/mock';
 
 /** The Words tab's list in the browser preview (vocabulary.json's shape). */
 const mockWords: { term: string; state: string; source?: string; hits?: number; seen?: number; sounds_like?: string[]; added?: string }[] = [
@@ -511,6 +512,7 @@ When it's up, run \`node test.mjs <address>\` from that folder and check it pass
 
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   if (cmd.startsWith('remote_')) return (await mockRemote(cmd, args)) as T;
+  if (cmd.startsWith('computers_') || cmd.startsWith('viewer_')) return mockComputers(cmd, args, emit) as T;
   const r = (v: unknown) => v as T;
   switch (cmd) {
     case 'app_status':

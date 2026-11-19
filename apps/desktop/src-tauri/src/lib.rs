@@ -34,6 +34,8 @@ pub mod settings;
 pub mod setup;
 pub mod skill;
 pub mod tray;
+pub mod viewer; // one computer driving another: the list, pairing, a window per computer (crates/blurt-remote viewer.rs)
+pub mod viewer_keys;
 pub mod watcher;
 
 use std::sync::RwLock;
@@ -1136,6 +1138,7 @@ pub fn run() {
                     eprintln!("blurt: dictation key not available: {e}");
                 }
             }
+            viewer::start(&handle); // the computers this one drives: nothing connects until a window opens
             remote::start(&handle); // Blurt on the phone: idle until a code shows or a phone is paired (and off with Phone off)
             capabilities::watch(&handle); // the switches, whoever writes them (capabilities.rs)
             housekeeping::start(&handle); // launch messages, housekeeping, the update check
@@ -1153,6 +1156,14 @@ pub fn run() {
             }
             if matches!(ev, WindowEvent::ThemeChanged(_)) {
                 tray::retint(w.app_handle());
+            }
+            // a computer's window: keys only ever go to the one in front, and its session ends with it
+            if w.label().starts_with("viewer-") {
+                match ev {
+                    WindowEvent::Focused(f) => viewer::window_focused(w.label(), *f),
+                    WindowEvent::Destroyed => viewer::window_closed(w.label()),
+                    _ => {}
+                }
             }
             // closing the window keeps Blurt in the tray (hotkeys keep working); Quit is in the tray menu
             if let WindowEvent::CloseRequested { api, .. } = ev {
@@ -1314,6 +1325,22 @@ pub fn run() {
             remote::remote_set_go_between,
             remote::remote_relay_instructions,
             remote::remote_allow_firewall,
+            viewer::computers_status,
+            viewer::computers_browse,
+            viewer::computers_pair,
+            viewer::computers_cancel_pairing,
+            viewer::computers_remove,
+            viewer::computers_open,
+            viewer::viewer_attach,
+            viewer::viewer_screen,
+            viewer::viewer_pointer,
+            viewer::viewer_button,
+            viewer::viewer_scroll,
+            viewer::viewer_key,
+            viewer::viewer_capture,
+            viewer::viewer_options,
+            viewer::viewer_show_display,
+            viewer::viewer_decode_failed,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Blurt");

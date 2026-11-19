@@ -98,6 +98,25 @@ impl Pairing {
     }
 }
 
+/// A device id that asks to pair as a computer found nearby starts with this (`nearby_key`): any other id the host doesn't know is
+/// `not_paired`, as before, so a phone that was removed hears exactly that.
+pub const NEARBY_PREFIX: &str = "nearby-";
+
+/// A new device id for pairing with a computer found nearby.
+pub fn nearby_id() -> String {
+    format!("{NEARBY_PREFIX}{}", crate::crypto::new_id())
+}
+
+/// The key a computer uses to ask a host it found nearby (DNS-SD) to pair, with no code: SHA-256("blurt-remote-nearby-1")
+/// (RemoteNearby.key; vectors.json `viewer.nearby`). Known to
+/// everyone, so it proves nothing: the host takes it only over its own TCP port (never through a relay), asks its owner for a yes
+/// with the six digits both ends show (commit-then-reveal, as for a code), one question at a time, and after a no takes none for
+/// 30 s. Like a spent code, the session gets a fresh key of its own before anything else (docs/design/remote-desktop-viewer.md).
+pub fn nearby_key() -> [u8; 32] {
+    use sha2::Digest;
+    sha2::Sha256::digest(b"blurt-remote-nearby-1").into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,7 +7,7 @@
 "feature.cards" = "Cards";
 "feature.screen_text" = "Text & Translation";
 "feature.recording" = "Recording & Items";
-"feature.phone" = "Phone";
+"feature.phone" = "Phones and Computers";
 
 /* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — it has to fit at the window's
    narrowest. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
@@ -15,7 +15,7 @@
 "feature.cards.what" = "Snaps and voice notes saved as cards under the notch. Drag them into any app.";
 "feature.screen_text.what" = "Copy or translate text from anywhere on screen.";
 "feature.recording.what" = "Record your screen while you talk. Your agent turns it into items, filed by project.";
-"feature.phone.what" = "Use your phone as your Mac’s trackpad, keyboard and microphone.";
+"feature.phone.what" = "Use your phone as your Mac’s trackpad, keyboard and microphone, or use another computer from this Mac.";
 
 /* a capability's row: a click goes to its place; the context menu opens its settings; the switch's tooltip is
    written for its state */

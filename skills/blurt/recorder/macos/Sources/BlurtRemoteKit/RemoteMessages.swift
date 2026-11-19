@@ -74,12 +74,28 @@ public enum ToMac: Codable, Sendable {
     case ping(Double)
     /// the last frame this phone writes to the old stream (TCP or the WebSocket): what follows comes in kind-7 datagrams (RemoteStream)
     case streamMoved
+    /// a viewer's clipboard text, at most RemoteClipboard.maxBytes of UTF-8, sent only while its keys are captured (docs/design/remote-desktop-viewer.md)
+    case clipboard(String)
+    /// a viewer's keys are captured (true) or given back (false). The host sends its clipboard (ToPhone.clipboard) only in between
+    case keysCaptured(Bool)
 }
 
 /// What one end can do beyond the base protocol, named in `ToMac.hello.features` and `RemoteSessionInfo.features`. Unknown names are ignored.
 public enum RemoteFeature {
     /// the stream can move onto the direct UDP path (frame kinds 7 and 8): docs/design/remote-go-between.md
     public static let move = "move"
+    /// a computer driving another (docs/design/remote-desktop-viewer.md): `hello.features` from a viewer, `session.features` from a host that
+    /// takes its extras (the clipboard, `screen.window`, `keysCaptured`)
+    public static let viewer = "viewer"
+    /// in a viewer's hello: another window of a viewer that has a session already (another display). The host keeps the first session
+    public static let window = "window"
+}
+
+/// Text on the clipboard between a viewer and its host: plain text only, at most 64 KiB of UTF-8, both ways.
+public enum RemoteClipboard {
+    public static let maxBytes = 64 * 1024
+    /// Worth sending: some text, and not too much of it.
+    public static func fits(_ s: String) -> Bool { !s.isEmpty && s.utf8.count <= maxBytes }
 }
 
 public enum RemoteSystemMove: String, Codable, Sendable {
@@ -157,6 +173,8 @@ public enum ToPhone: Codable, Sendable {
     case streamMoved
     /// the direct path didn't open in time on the go-between: this session can't go on there (docs/design/remote-go-between.md)
     case noDirect
+    /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most RemoteClipboard.maxBytes)
+    case clipboard(String)
 }
 
 /// A frame's first byte says what follows.

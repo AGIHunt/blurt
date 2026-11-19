@@ -268,6 +268,7 @@ struct PhonePairingCode: View {
     var link: URL?
     var failure: String?
     var cancel: () -> Void
+    @State private var copied = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
@@ -280,10 +281,22 @@ struct PhonePairingCode: View {
                 if let f = failure {
                     Text(f).font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
-                Button(T("settings.remote.cancel"), action: cancel)
-                    .buttonStyle(SettingsOutlinedButtonStyle())
-                    .keyboardShortcut(.cancelAction)
-                    .padding(.top, 2)
+                HStack(spacing: 8) {
+                    Button(T("settings.remote.cancel"), action: cancel)
+                        .buttonStyle(SettingsOutlinedButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                    // for another computer away from here (Add Computer takes it pasted): the same code, as text
+                    if let link {
+                        Button(copied ? T("settings.remote.relay.copied") : T("settings.remote.copy_link")) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                            copied = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                        }
+                        .buttonStyle(SettingsOutlinedButtonStyle())
+                    }
+                }
+                .padding(.top, 2)
             }
             .frame(maxWidth: 420, alignment: .leading)
             Spacer(minLength: 0)

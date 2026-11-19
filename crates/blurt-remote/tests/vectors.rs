@@ -35,7 +35,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 42);
+    assert_eq!(list.len(), 50);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -49,7 +49,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 29);
+    assert_eq!(list.len(), 31);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -388,4 +388,88 @@ fn go_between_and_the_moved_stream() {
     assert_eq!(a["udpCounter"].as_u64(), Some(1));
     let d = SealOut::new(&to_phone).seal_packet(&plain, a["session"].as_u64().unwrap() as u32);
     assert_eq!(hex(&d), a["sealed"].as_str().unwrap());
+}
+
+/// A computer driving another (docs/design/remote-desktop-viewer.md): the feature names, the clipboard's limit, every key name
+/// (RemoteKey.all), the nearby pairing's id prefix and key, a viewer's hello and screen request, and the modifier mapping.
+#[test]
+fn viewer() {
+    use blurt_remote::keys;
+    use blurt_remote::wire::{PixelSize, ScreenRequest};
+    let v = vectors();
+    let w = &v["viewer"];
+    assert_eq!(w["feature"], blurt_remote::wire::VIEWER);
+    assert_eq!(w["windowFeature"], blurt_remote::wire::WINDOW);
+    assert_eq!(
+        w["clipboardMaxBytes"].as_u64().unwrap() as usize,
+        blurt_remote::wire::MAX_CLIPBOARD
+    );
+    let names: Vec<&str> = w["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        keys::ALL.to_vec(),
+        "every key name, in RemoteKey.all's order"
+    );
+    assert_eq!(
+        w["nearby"]["idPrefix"],
+        blurt_remote::pairing::NEARBY_PREFIX
+    );
+    assert_eq!(
+        hex(&blurt_remote::pairing::nearby_key()),
+        w["nearby"]["key"].as_str().unwrap()
+    );
+    for m in w["modifierMap"].as_array().unwrap() {
+        let (viewer, host) = (m["viewer"].as_str().unwrap(), m["host"].as_str().unwrap());
+        let pressed = m["pressed"].as_u64().unwrap() as u8;
+        assert_eq!(
+            keys::map_mods(pressed, viewer, host, true),
+            m["sent"].as_u64().unwrap() as u8,
+            "{m}"
+        );
+        assert_eq!(
+            keys::map_mods(pressed, viewer, host, false),
+            pressed,
+            "off: as pressed"
+        );
+    }
+    let find = |name: &str| {
+        v["toMac"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"))["json"]
+            .clone()
+    };
+    let Some(ToMac::Screen(Some(r))) = ToMac::from_json(&find("screen_viewer")) else {
+        panic!("screen_viewer")
+    };
+    let r: ScreenRequest = r;
+    assert_eq!(
+        r.window,
+        Some(PixelSize {
+            width: 2400,
+            height: 1350
+        })
+    );
+    assert_eq!(r.boxed(), (2400, 1350), "the window is the ceiling");
+    assert!(
+        matches!(ToMac::from_json(&find("hello_viewer")), Some(ToMac::Hello { mic_on_phone: false, features: Some(f), .. }) if f == ["move", "viewer"])
+    );
+    assert_eq!(
+        ToMac::from_json(&find("keys_captured")),
+        Some(ToMac::KeysCaptured(true))
+    );
+    assert_eq!(
+        ToMac::from_json(&find("key_f13_down")),
+        Some(ToMac::Key {
+            chord: blurt_remote::wire::Chord::new(0, "F13"),
+            down: Some(true)
+        })
+    );
 }

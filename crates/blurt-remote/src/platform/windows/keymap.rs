@@ -112,12 +112,25 @@ pub fn key(name: &str) -> Option<Key> {
         };
     }
     if let Some(n) = name.strip_prefix('F').and_then(|n| n.parse::<u16>().ok()) {
-        if (1..=12).contains(&n) && !name[1..].starts_with('0') {
-            // F1–F10 are 3B–44; F11 and F12 came later and sit at 57, 58
-            let scan = if n <= 10 { 0x3A + n } else { 0x57 + (n - 11) };
+        if (1..=20).contains(&n) && !name[1..].starts_with('0') {
+            // F1–F10 are 3B–44; F11 and F12 came later and sit at 57, 58; F13–F20 at 64–6B
+            let scan = match n {
+                1..=10 => 0x3A + n,
+                11 | 12 => 0x57 + (n - 11),
+                _ => 0x64 + (n - 13),
+            };
             return Some(plain(VK_F1 + n - 1, scan));
         }
         return None;
+    }
+    // the keypad: what NumLock on gives, whatever NumLock is
+    if let Some(d) = name
+        .strip_prefix("Keypad")
+        .and_then(|d| d.parse::<u16>().ok())
+        .filter(|d| *d <= 9 && name.len() == 7)
+    {
+        const SCANS: [u16; 10] = [0x52, 0x4F, 0x50, 0x51, 0x4B, 0x4C, 0x4D, 0x47, 0x48, 0x49];
+        return Some(plain(0x60 + d, SCANS[d as usize]));
     }
     Some(match name {
         "Return" => plain(VK_RETURN, 0x1C),
@@ -135,6 +148,30 @@ pub fn key(name: &str) -> Option<Key> {
         "End" => ext(VK_END, 0x4F),
         "PageUp" => ext(VK_PRIOR, 0x49),
         "PageDown" => ext(VK_NEXT, 0x51),
+        // a full keyboard's (a computer driving this one: docs/design/remote-desktop-viewer.md)
+        "KeypadDecimal" => plain(0x6E, 0x53),
+        "KeypadMultiply" => plain(0x6A, 0x37),
+        "KeypadPlus" => plain(0x6B, 0x4E),
+        "KeypadMinus" => plain(0x6D, 0x4A),
+        "KeypadDivide" => ext(0x6F, 0x35),
+        "KeypadEnter" => ext(VK_RETURN, 0x1C), // Return's VK, told apart by its E0 scan code as a real keypad's
+        "KeypadEquals" => plain(0x92, 0x59),   // VK_OEM_NEC_EQUAL
+        "KeypadComma" => plain(0x6C, 0x7E),    // VK_SEPARATOR
+        "NumLock" => ext(0x90, 0x45),
+        "CapsLock" => plain(0x14, 0x3A),
+        "Menu" => ext(0x5D, 0x5D),
+        "IntlBackslash" => pos(0xE2, 0x56),
+        "IntlYen" => pos(0xDC, 0x7D),
+        "IntlRo" => pos(0xC1, 0x73),
+        // かな / 英数 (and Korean's 한/영 on, off): the IME on and off, as Windows 10 names them
+        "Lang1" => plain(0x16, 0),
+        "Lang2" => plain(0x1A, 0),
+        "VolumeUp" => ext(0xAF, 0x30),
+        "VolumeDown" => ext(0xAE, 0x2E),
+        "Mute" => ext(0xAD, 0x20),
+        "PrintScreen" => ext(0x2C, 0x37),
+        "ScrollLock" => plain(0x91, 0x46),
+        "Pause" => plain(0x13, 0x45),
         _ => return None,
     })
 }
@@ -149,23 +186,15 @@ const LETTER_SCANS: [u16; 26] = [
 mod tests {
     use super::*;
 
-    /// RemoteKey.all (RemoteKeys.swift), the names host.rs lists.
+    /// RemoteKey.all (RemoteKeys.swift), the names keys.rs lists.
     fn wire_names() -> Vec<String> {
-        let mut v: Vec<String> = ('A'..='Z').chain('0'..='9').map(|c| c.to_string()).collect();
-        v.extend((1..=12).map(|n| format!("F{n}")));
-        for n in [
-            "Return", "Tab", "Space", "Delete", "Escape", "ForwardDelete", "Left", "Right", "Down", "Up", "Home", "End", "PageUp",
-            "PageDown", "-", "=", "[", "]", ";", "'", ",", ".", "/", "\\", "`",
-        ] {
-            v.push(n.into());
-        }
-        v
+        crate::keys::ALL.iter().map(|n| n.to_string()).collect()
     }
 
     #[test]
     fn every_wire_name_has_a_key() {
         let names = wire_names();
-        assert_eq!(names.len(), 73);
+        assert_eq!(names.len(), crate::keys::ALL.len());
         for n in &names {
             assert!(key(n).is_some(), "{n}");
         }
@@ -176,14 +205,33 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for n in wire_names() {
             let k = key(&n).unwrap();
-            assert!(seen.insert((k.scan, k.extended)), "{n} shares a scan code");
-            assert!(seen.insert((k.vk | 0x8000, false)), "{n} shares a VK");
+            if k.scan != 0 {
+                assert!(seen.insert((k.scan, k.extended)), "{n} shares a scan code");
+            }
+            // a position goes as its scan code alone; the keypad's Enter is Return's VK with its own scan code
+            if !k.positional && n != "KeypadEnter" {
+                assert!(seen.insert((k.vk | 0x8000, false)), "{n} shares a VK");
+            }
         }
     }
 
     #[test]
     fn unknown_names_are_nothing() {
-        for n in ["", "a", "F0", "F13", "F01", "Enter", "Backspace", "Ä", "AB", "§", " "] {
+        for n in [
+            "",
+            "a",
+            "F0",
+            "F21",
+            "F01",
+            "Enter",
+            "Backspace",
+            "Ä",
+            "AB",
+            "§",
+            " ",
+            "Keypad10",
+            "Keypad",
+        ] {
             assert_eq!(key(n), None, "{n:?}");
         }
     }
@@ -204,6 +252,10 @@ mod tests {
         assert_eq!(key("F10").unwrap(), plain(0x79, 0x44));
         assert_eq!(key("F11").unwrap(), plain(0x7A, 0x57));
         assert_eq!(key("F12").unwrap(), plain(0x7B, 0x58));
+        assert_eq!(key("F13").unwrap(), plain(0x7C, 0x64));
+        assert_eq!(key("F20").unwrap(), plain(0x83, 0x6B));
+        assert_eq!(key("Keypad7").unwrap(), plain(0x67, 0x47));
+        assert_eq!(key("Keypad0").unwrap(), plain(0x60, 0x52));
     }
 
     #[test]
@@ -217,7 +269,10 @@ mod tests {
             assert!(!k.extended && !k.positional, "{n}");
         }
         // every printable key is a position
-        for n in wire_names().iter().filter(|n| n.len() == 1) {
+        for n in wire_names()
+            .iter()
+            .filter(|n| n.len() == 1 || n.starts_with("Intl"))
+        {
             assert!(key(n).unwrap().positional, "{n}");
         }
     }

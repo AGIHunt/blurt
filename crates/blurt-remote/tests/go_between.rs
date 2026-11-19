@@ -192,7 +192,10 @@ async fn the_session_meets_moves_to_udp_and_stays_off_the_go_between() {
     let (h, dir, device, key) = paired(&meet, input.clone()).await;
 
     let (mut phone, mut info) = away(&meet, &device, &key, Options::go_between()).await;
-    assert_eq!(info.features.as_deref(), Some(&["move".to_string()][..]));
+    assert_eq!(
+        info.features.as_deref(),
+        Some(&["move".to_string(), "viewer".to_string()][..])
+    );
     assert_eq!(info.relay.as_deref(), Some(meet.as_str()), "offered to a phone that can move");
     assert!(!info.candidates.is_empty() || cfg!(not(target_os = "macos")), "the LAN's addresses go in every session");
     until(|| h.status().connected.filter(|c| c.route == "goBetween")).await;
@@ -257,7 +260,17 @@ async fn an_old_phone_isnt_offered_it_and_no_direct_path_ends_the_session() {
     let (h, dir, device, key) = paired(&meet, Lines::default()).await;
 
     // a phone from before the go-between: its session names no relay, so it forgets this one
-    let (old, info) = away(&meet, &device, &key, Options { features: None, go_between: true }).await;
+    let (old, info) = away(
+        &meet,
+        &device,
+        &key,
+        Options {
+            features: None,
+            go_between: true,
+            ..Options::default()
+        },
+    )
+    .await;
     assert_eq!(info.relay, None);
     drop(old);
     until(|| h.status().connected.is_none().then_some(())).await;

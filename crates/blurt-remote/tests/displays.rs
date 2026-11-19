@@ -154,6 +154,7 @@ async fn follow_pin_unpin_and_a_display_going() {
             codecs: Some(vec!["h264".into()]),
             display: None,
             features: None,
+            window: None,
         })))
         .await;
     assert_eq!(view(&mut phone, Duration::from_secs(3)).await, Some((Some("A".into()), 1512.0)));

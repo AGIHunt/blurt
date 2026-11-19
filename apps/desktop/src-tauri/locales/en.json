@@ -21,6 +21,7 @@
   "tray.phone.needs_access": "Phone: can’t control computer",
   "tray.phone.add": "Add a phone…",
   "tray.phone.unnamed": "Phone",
+  "tray.computers": "Computers…",
   "tray.project": "Current Project: {name}",
   "tray.project.inbox": "Unassigned",
   "tray.project.header": "Project",

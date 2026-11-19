@@ -646,6 +646,116 @@
         }
       },
       "name" : "ping"
+    },
+    {
+      "json" : {
+        "hello" : {
+          "device" : "MacBook Pro",
+          "features" : [
+            "move",
+            "viewer"
+          ],
+          "micOnPhone" : false,
+          "nonce" : "CRAXHiUsMzpBSE9WXWRrcnmAh46VnKOqsbi/xs3U2+I="
+        }
+      },
+      "name" : "hello_viewer"
+    },
+    {
+      "json" : {
+        "hello" : {
+          "device" : "MacBook Pro",
+          "features" : [
+            "move",
+            "viewer",
+            "window"
+          ],
+          "micOnPhone" : false,
+          "nonce" : "CRAXHiUsMzpBSE9WXWRrcnmAh46VnKOqsbi/xs3U2+I="
+        }
+      },
+      "name" : "hello_viewer_window"
+    },
+    {
+      "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 12000000,
+            "codecs" : [
+              "hevc",
+              "h264"
+            ],
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "display" : "69733382",
+            "features" : [
+              "nack",
+              "ltr",
+              "fec"
+            ],
+            "fps" : 60,
+            "height" : 1600,
+            "target" : "display",
+            "width" : 2560,
+            "window" : {
+              "height" : 1350,
+              "width" : 2400
+            }
+          }
+        }
+      },
+      "name" : "screen_viewer"
+    },
+    {
+      "json" : {
+        "clipboard" : {
+          "_0" : "复制 copied\n"
+        }
+      },
+      "name" : "clipboard"
+    },
+    {
+      "json" : {
+        "keysCaptured" : {
+          "_0" : true
+        }
+      },
+      "name" : "keys_captured"
+    },
+    {
+      "json" : {
+        "keysCaptured" : {
+          "_0" : false
+        }
+      },
+      "name" : "keys_released"
+    },
+    {
+      "json" : {
+        "key" : {
+          "_0" : {
+            "key" : "F13",
+            "mods" : 0
+          },
+          "down" : true
+        }
+      },
+      "name" : "key_f13_down"
+    },
+    {
+      "json" : {
+        "key" : {
+          "_0" : {
+            "key" : "KeypadEnter",
+            "mods" : 0
+          }
+        }
+      },
+      "name" : "key_keypad_enter"
     }
   ],
   "toPhone" : [
@@ -972,6 +1082,40 @@
         }
       },
       "name" : "cursor_shape"
+    },
+    {
+      "json" : {
+        "session" : {
+          "_0" : {
+            "canControl" : true,
+            "candidates" : [
+              {
+                "host" : "192.168.1.20",
+                "port" : 50123
+              }
+            ],
+            "displayAspect" : 1.6000000000000001,
+            "features" : [
+              "move",
+              "viewer"
+            ],
+            "macName" : "Studio",
+            "platform" : "mac",
+            "udpPort" : 50123,
+            "udpSession" : 7,
+            "version" : "1.0.27"
+          }
+        }
+      },
+      "name" : "session_viewer"
+    },
+    {
+      "json" : {
+        "clipboard" : {
+          "_0" : "host text"
+        }
+      },
+      "name" : "clipboard"
     }
   ],
   "version" : 1,
@@ -1036,5 +1180,499 @@
       "pieceSize" : 16,
       "refresh" : true
     }
+  },
+  "viewer" : {
+    "clipboardMaxBytes" : 65536,
+    "feature" : "viewer",
+    "keys" : [
+      {
+        "macCode" : 0,
+        "name" : "A"
+      },
+      {
+        "macCode" : 11,
+        "name" : "B"
+      },
+      {
+        "macCode" : 8,
+        "name" : "C"
+      },
+      {
+        "macCode" : 2,
+        "name" : "D"
+      },
+      {
+        "macCode" : 14,
+        "name" : "E"
+      },
+      {
+        "macCode" : 3,
+        "name" : "F"
+      },
+      {
+        "macCode" : 5,
+        "name" : "G"
+      },
+      {
+        "macCode" : 4,
+        "name" : "H"
+      },
+      {
+        "macCode" : 34,
+        "name" : "I"
+      },
+      {
+        "macCode" : 38,
+        "name" : "J"
+      },
+      {
+        "macCode" : 40,
+        "name" : "K"
+      },
+      {
+        "macCode" : 37,
+        "name" : "L"
+      },
+      {
+        "macCode" : 46,
+        "name" : "M"
+      },
+      {
+        "macCode" : 45,
+        "name" : "N"
+      },
+      {
+        "macCode" : 31,
+        "name" : "O"
+      },
+      {
+        "macCode" : 35,
+        "name" : "P"
+      },
+      {
+        "macCode" : 12,
+        "name" : "Q"
+      },
+      {
+        "macCode" : 15,
+        "name" : "R"
+      },
+      {
+        "macCode" : 1,
+        "name" : "S"
+      },
+      {
+        "macCode" : 17,
+        "name" : "T"
+      },
+      {
+        "macCode" : 32,
+        "name" : "U"
+      },
+      {
+        "macCode" : 9,
+        "name" : "V"
+      },
+      {
+        "macCode" : 13,
+        "name" : "W"
+      },
+      {
+        "macCode" : 7,
+        "name" : "X"
+      },
+      {
+        "macCode" : 16,
+        "name" : "Y"
+      },
+      {
+        "macCode" : 6,
+        "name" : "Z"
+      },
+      {
+        "macCode" : 29,
+        "name" : "0"
+      },
+      {
+        "macCode" : 18,
+        "name" : "1"
+      },
+      {
+        "macCode" : 19,
+        "name" : "2"
+      },
+      {
+        "macCode" : 20,
+        "name" : "3"
+      },
+      {
+        "macCode" : 21,
+        "name" : "4"
+      },
+      {
+        "macCode" : 23,
+        "name" : "5"
+      },
+      {
+        "macCode" : 22,
+        "name" : "6"
+      },
+      {
+        "macCode" : 26,
+        "name" : "7"
+      },
+      {
+        "macCode" : 28,
+        "name" : "8"
+      },
+      {
+        "macCode" : 25,
+        "name" : "9"
+      },
+      {
+        "macCode" : 122,
+        "name" : "F1"
+      },
+      {
+        "macCode" : 120,
+        "name" : "F2"
+      },
+      {
+        "macCode" : 99,
+        "name" : "F3"
+      },
+      {
+        "macCode" : 118,
+        "name" : "F4"
+      },
+      {
+        "macCode" : 96,
+        "name" : "F5"
+      },
+      {
+        "macCode" : 97,
+        "name" : "F6"
+      },
+      {
+        "macCode" : 98,
+        "name" : "F7"
+      },
+      {
+        "macCode" : 100,
+        "name" : "F8"
+      },
+      {
+        "macCode" : 101,
+        "name" : "F9"
+      },
+      {
+        "macCode" : 109,
+        "name" : "F10"
+      },
+      {
+        "macCode" : 103,
+        "name" : "F11"
+      },
+      {
+        "macCode" : 111,
+        "name" : "F12"
+      },
+      {
+        "macCode" : 36,
+        "name" : "Return"
+      },
+      {
+        "macCode" : 48,
+        "name" : "Tab"
+      },
+      {
+        "macCode" : 49,
+        "name" : "Space"
+      },
+      {
+        "macCode" : 51,
+        "name" : "Delete"
+      },
+      {
+        "macCode" : 53,
+        "name" : "Escape"
+      },
+      {
+        "macCode" : 117,
+        "name" : "ForwardDelete"
+      },
+      {
+        "macCode" : 123,
+        "name" : "Left"
+      },
+      {
+        "macCode" : 124,
+        "name" : "Right"
+      },
+      {
+        "macCode" : 125,
+        "name" : "Down"
+      },
+      {
+        "macCode" : 126,
+        "name" : "Up"
+      },
+      {
+        "macCode" : 115,
+        "name" : "Home"
+      },
+      {
+        "macCode" : 119,
+        "name" : "End"
+      },
+      {
+        "macCode" : 116,
+        "name" : "PageUp"
+      },
+      {
+        "macCode" : 121,
+        "name" : "PageDown"
+      },
+      {
+        "macCode" : 27,
+        "name" : "-"
+      },
+      {
+        "macCode" : 24,
+        "name" : "="
+      },
+      {
+        "macCode" : 33,
+        "name" : "["
+      },
+      {
+        "macCode" : 30,
+        "name" : "]"
+      },
+      {
+        "macCode" : 41,
+        "name" : ";"
+      },
+      {
+        "macCode" : 39,
+        "name" : "'"
+      },
+      {
+        "macCode" : 43,
+        "name" : ","
+      },
+      {
+        "macCode" : 47,
+        "name" : "."
+      },
+      {
+        "macCode" : 44,
+        "name" : "/"
+      },
+      {
+        "macCode" : 42,
+        "name" : "\\"
+      },
+      {
+        "macCode" : 50,
+        "name" : "`"
+      },
+      {
+        "macCode" : 105,
+        "name" : "F13"
+      },
+      {
+        "macCode" : 107,
+        "name" : "F14"
+      },
+      {
+        "macCode" : 113,
+        "name" : "F15"
+      },
+      {
+        "macCode" : 106,
+        "name" : "F16"
+      },
+      {
+        "macCode" : 64,
+        "name" : "F17"
+      },
+      {
+        "macCode" : 79,
+        "name" : "F18"
+      },
+      {
+        "macCode" : 80,
+        "name" : "F19"
+      },
+      {
+        "macCode" : 90,
+        "name" : "F20"
+      },
+      {
+        "macCode" : 82,
+        "name" : "Keypad0"
+      },
+      {
+        "macCode" : 83,
+        "name" : "Keypad1"
+      },
+      {
+        "macCode" : 84,
+        "name" : "Keypad2"
+      },
+      {
+        "macCode" : 85,
+        "name" : "Keypad3"
+      },
+      {
+        "macCode" : 86,
+        "name" : "Keypad4"
+      },
+      {
+        "macCode" : 87,
+        "name" : "Keypad5"
+      },
+      {
+        "macCode" : 88,
+        "name" : "Keypad6"
+      },
+      {
+        "macCode" : 89,
+        "name" : "Keypad7"
+      },
+      {
+        "macCode" : 91,
+        "name" : "Keypad8"
+      },
+      {
+        "macCode" : 92,
+        "name" : "Keypad9"
+      },
+      {
+        "macCode" : 65,
+        "name" : "KeypadDecimal"
+      },
+      {
+        "macCode" : 67,
+        "name" : "KeypadMultiply"
+      },
+      {
+        "macCode" : 69,
+        "name" : "KeypadPlus"
+      },
+      {
+        "macCode" : 78,
+        "name" : "KeypadMinus"
+      },
+      {
+        "macCode" : 75,
+        "name" : "KeypadDivide"
+      },
+      {
+        "macCode" : 76,
+        "name" : "KeypadEnter"
+      },
+      {
+        "macCode" : 81,
+        "name" : "KeypadEquals"
+      },
+      {
+        "macCode" : 95,
+        "name" : "KeypadComma"
+      },
+      {
+        "macCode" : 71,
+        "name" : "NumLock"
+      },
+      {
+        "macCode" : 114,
+        "name" : "Insert"
+      },
+      {
+        "macCode" : 57,
+        "name" : "CapsLock"
+      },
+      {
+        "macCode" : 110,
+        "name" : "Menu"
+      },
+      {
+        "macCode" : 10,
+        "name" : "IntlBackslash"
+      },
+      {
+        "macCode" : 93,
+        "name" : "IntlYen"
+      },
+      {
+        "macCode" : 94,
+        "name" : "IntlRo"
+      },
+      {
+        "macCode" : 102,
+        "name" : "Lang2"
+      },
+      {
+        "macCode" : 104,
+        "name" : "Lang1"
+      },
+      {
+        "macCode" : 72,
+        "name" : "VolumeUp"
+      },
+      {
+        "macCode" : 73,
+        "name" : "VolumeDown"
+      },
+      {
+        "macCode" : 74,
+        "name" : "Mute"
+      },
+      {
+        "macCode" : 105,
+        "name" : "PrintScreen"
+      },
+      {
+        "macCode" : 107,
+        "name" : "ScrollLock"
+      },
+      {
+        "macCode" : 113,
+        "name" : "Pause"
+      }
+    ],
+    "modifierMap" : [
+      {
+        "host" : "windows",
+        "pressed" : 1,
+        "sent" : 8,
+        "viewer" : "mac"
+      },
+      {
+        "host" : "linux",
+        "pressed" : 10,
+        "sent" : 3,
+        "viewer" : "mac"
+      },
+      {
+        "host" : "mac",
+        "pressed" : 12,
+        "sent" : 5,
+        "viewer" : "windows"
+      },
+      {
+        "host" : "windows",
+        "pressed" : 8,
+        "sent" : 8,
+        "viewer" : "linux"
+      }
+    ],
+    "nearby" : {
+      "idPrefix" : "nearby-",
+      "key" : "176992f24bd5bcb05881ed436e840d832f6f4f4b628f49be5ffaeca60b73506a",
+      "seed" : "blurt-remote-nearby-1"
+    },
+    "windowFeature" : "window"
   }
 }

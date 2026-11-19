@@ -81,6 +81,12 @@ public final class RemoteChannel {
         }
     }
 
+    /// The port at the other end (the host's TCP port, which it keeps across launches), once known.
+    public var remotePort: UInt16? {
+        guard case let .hostPort(_, p) = connection.currentPath?.remoteEndpoint ?? connection.endpoint else { return nil }
+        return p.rawValue
+    }
+
     /// The interface the connection runs over ("en0", "utun4", "feth1234"): an overlay network has its own.
     public var interfaceName: String? {
         guard let p = connection.currentPath else { return nil }

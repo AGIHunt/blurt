@@ -220,6 +220,8 @@ struct DeviceUi {
     id: String,
     name: String,
     last_seen: Option<i64>,
+    /// "computer": a computer driving this one (docs/design/remote-desktop-viewer.md); null: a phone
+    kind: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -294,7 +296,7 @@ fn to_ui(s: &Status) -> RemoteStatus {
         listening: s.listening,
         pairing,
         asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay }),
-        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen }).collect(),
+        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.clone() }).collect(),
         connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
         relay: RelayUi {
             address: s.relay.address.clone(),
@@ -763,8 +765,24 @@ fn note_falls_back() {
 // ------------------------------------------------------------------ keys in the OS's store
 
 /// Each paired phone's key (32 bytes, base64) under its device id: Windows Credential Manager (target "Blurt Phone/<id>"), the
-/// Secret Service on Linux (application = blurt, service = <id>).
+/// Secret Service on Linux (application = blurt, service = <id>). The computers this one drives keep theirs the same way, as
+/// `computer-<host id>` (viewer.rs).
 struct OsKeys;
+
+/// The secret store as the host has it: the OS's, or (test builds, other systems) a file in `$BLURT_HOME/remote`.
+pub fn key_store() -> std::sync::Arc<dyn KeyStore> {
+    let dir = crate::paths::blurt_home().join("remote");
+    if testing() || cfg!(not(any(windows, target_os = "linux"))) {
+        std::sync::Arc::new(blurt_remote::store::FileKeyStore::new(dir.join("test-keys.json")))
+    } else {
+        std::sync::Arc::new(OsKeys)
+    }
+}
+
+/// Test builds (debug, BLURT_TEST_COMMANDS=1): the file store, the test answers.
+pub fn test_build() -> bool {
+    testing()
+}
 
 impl KeyStore for OsKeys {
     fn get(&self, id: &str) -> Option<Vec<u8>> {

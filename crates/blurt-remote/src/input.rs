@@ -24,16 +24,9 @@ use crate::wire::{Chord, MouseButton, Step};
 /// The backend, shared by the input thread, the screen and the server (one call at a time).
 pub type Shared = Arc<Mutex<Box<dyn Backend>>>;
 
-/// The names RemoteKey.all has (RemoteKeys.swift): anything else in a chord is its modifiers alone, as on the Mac.
+/// The names RemoteKey.all has (RemoteKeys.swift, keys.rs): anything else in a chord is its modifiers alone, as on the Mac.
 pub fn known_key(name: &str) -> bool {
-    const NAMED: [&str; 25] = [
-        "Return", "Tab", "Space", "Delete", "Escape", "ForwardDelete", "Left", "Right", "Down", "Up", "Home", "End", "PageUp",
-        "PageDown", "-", "=", "[", "]", ";", "'", ",", ".", "/", "\\", "`",
-    ];
-    let b = name.as_bytes();
-    (b.len() == 1 && (b[0].is_ascii_uppercase() || b[0].is_ascii_digit()))
-        || name.strip_prefix('F').and_then(|n| n.parse::<u8>().ok()).is_some_and(|n| (1..=12).contains(&n) && !name.starts_with("F0"))
-        || NAMED.contains(&name)
+    crate::keys::known(name)
 }
 
 /// The modifiers as the host names them (Ctrl+C here, ⌘C on a Mac), for a HUD.
@@ -138,6 +131,9 @@ pub struct Hands {
     last_click: Option<(Button, f64, u32, (f64, f64))>,
     scrolling: bool,
     coast: Option<Coast>,
+    /// where the last absolute move put the pointer, and where it was at the last click (0…1 of the display shown)
+    placed: Option<(f64, f64)>,
+    click_at: Option<(f64, f64)>,
     /// seconds; Windows' default double-click time
     pub double_click: f64,
 }
@@ -235,10 +231,20 @@ impl Hands {
         i.move_by(dx, dy);
     }
 
-    /// The phone's view moved away from the pointer (or a hold brought it to the finger): it comes along.
+    /// The phone's view moved away from the pointer (or a hold brought it to the finger): it comes along. A viewer's mouse moves
+    /// this way all the time: within half a percent of the display (a few points) of the last click, the next click still
+    /// counts with it, as a real mouse's jitter does.
     pub fn move_to(&mut self, i: &mut dyn Input, x: f64, y: f64) {
-        self.last_click = None;
-        i.move_to(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0));
+        let (x, y) = (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0));
+        let near = |c: Option<(f64, f64)>| {
+            c.is_some_and(|(px, py)| (px - x).abs() < 0.005 && (py - y).abs() < 0.005)
+        };
+        if !near(self.click_at) {
+            self.last_click = None;
+            self.click_at = None;
+        }
+        self.placed = Some((x, y));
+        i.move_to(x, y);
     }
 
     pub fn button(&mut self, i: &mut dyn Input, b: MouseButton, down: bool, now: f64) {
@@ -256,6 +262,7 @@ impl Hands {
                 }
             }
             self.last_click = Some((b, now, count, (0.0, 0.0)));
+            self.click_at = self.placed;
             if !self.buttons.contains(&b) {
                 self.buttons.push(b);
             }
@@ -611,11 +618,30 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_viewers_double_click_survives_a_few_points_of_jitter() {
+        let mut h = Hands::new();
+        let mut log = Log::default();
+        h.move_to(&mut log, 0.5, 0.5);
+        h.button(&mut log, MouseButton::Left, true, 0.0);
+        h.button(&mut log, MouseButton::Left, false, 0.05);
+        h.move_to(&mut log, 0.502, 0.501);
+        h.button(&mut log, MouseButton::Left, true, 0.2);
+        assert!(log.0.last().unwrap().ends_with(" 2"), "{:?}", log.0);
+        h.button(&mut log, MouseButton::Left, false, 0.25);
+        // further away: a new first click
+        h.move_to(&mut log, 0.6, 0.5);
+        h.button(&mut log, MouseButton::Left, true, 0.3);
+        assert!(log.0.last().unwrap().ends_with(" 1"), "{:?}", log.0);
+    }
+
+    #[test]
     fn key_names() {
-        for k in ["A", "Z", "0", "9", "F1", "F12", "Return", "`", "\\", "PageDown"] {
+        for k in [
+            "A", "Z", "0", "9", "F1", "F12", "F13", "Keypad5", "Return", "`", "\\", "PageDown",
+        ] {
             assert!(known_key(k), "{k}");
         }
-        for k in ["", "a", "F0", "F13", "F01", "Enter", "AB"] {
+        for k in ["", "a", "F0", "F21", "F01", "Enter", "AB"] {
             assert!(!known_key(k), "{k}");
         }
         assert_eq!(label(&Chord::new(8 | 2, "C"), true), "Ctrl+Shift+C");

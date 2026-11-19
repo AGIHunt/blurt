@@ -225,7 +225,9 @@ impl ScreenSession {
             let pinned = r.display.clone().filter(|id| displays::find(&list, id).is_some());
             (shape.unwrap_or_else(|| b.display_aspect()), first, pinned)
         };
-        let (width, height) = fit(r.width, r.height, aspect);
+        // a viewer's window is the most the picture needs (RemoteScreenRequest.box)
+        let (bw, bh) = r.boxed();
+        let (width, height) = fit(bw, bh, aspect);
         let st = Arc::new(Mutex::new(St {
             running: true,
             rate,
@@ -312,7 +314,7 @@ impl ScreenSession {
             follow: Mutex::new(Follow::new(pinned, display)),
             displays: all,
             config: Mutex::new(config),
-            asked: (r.width, r.height),
+            asked: r.boxed(),
             sink,
             codec: Mutex::new(info.codec),
             switching: AtomicBool::new(false),
@@ -948,6 +950,7 @@ mod tests {
             codecs: None,
             display: None,
             features: None,
+            window: None,
         });
         assert_eq!((r.width, r.height, r.bitrate, r.fps), (8192, 64, 100_000, 120));
         assert_eq!(r.crop.x, 0.5);

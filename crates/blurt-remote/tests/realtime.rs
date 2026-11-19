@@ -229,6 +229,7 @@ fn request(repairs: bool) -> ScreenRequest {
         codecs: Some(vec!["h264".into()]),
         display: None,
         features: repairs.then(|| ALL.iter().map(|s| s.to_string()).collect()),
+        window: None,
     }
 }
 

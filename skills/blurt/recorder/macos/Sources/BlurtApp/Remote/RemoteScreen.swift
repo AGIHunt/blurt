@@ -141,7 +141,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The stream for a display: its shape, as large as the phone asked for and no larger than the display has pixels.
     private static func configure(_ src: CGRect, scale: CGFloat, _ r: RemoteScreenRequest) -> SCStreamConfiguration {
         let c = SCStreamConfiguration()
-        let k = min(CGFloat(r.width) / src.width, CGFloat(r.height) / src.height, scale)
+        // a viewer's window is a ceiling too: a picture larger than the window it's shown in is sent for nothing
+        let box = r.box
+        let k = min(CGFloat(box.width) / src.width, CGFloat(box.height) / src.height, scale)
         c.width = Int(src.width * k) / 2 * 2
         c.height = Int(src.height * k) / 2 * 2
         c.scalesToFit = true
@@ -161,6 +163,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         r.fps = min(max(r.fps, 1), 120)
         r.width = min(max(r.width, 64), 8192)
         r.height = min(max(r.height, 64), 8192)
+        if let w = r.window { r.window = RemotePixelSize(width: min(max(w.width, 64), 8192), height: min(max(w.height, 64), 8192)) }
         r.bitrate = min(max(r.bitrate, 100_000), 50_000_000)
         q.sync {
             self.asked = r

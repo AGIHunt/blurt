@@ -777,6 +777,8 @@ fn plan(app: &AppHandle) -> Vec<Node> {
                 None => l10n::t("tray.phone.not_connected"),
             };
             rows.push(item("phone", text, None));
+            // the computers this one drives (viewer.rs): their list, in Settings → Phones and Computers
+            rows.push(item("computers", l10n::t("tray.computers"), None));
         }
         if recording {
             for j in jobs::list(true, 40).iter().take(5) {
@@ -866,6 +868,7 @@ fn chose(app: &AppHandle, id: &str) {
         "inbox" => open_at(app, json!({"view": "inbox"})),
         "home" => open_at(app, json!({"view": "home"})),
         "phone" => open_at(app, json!({"view": "phone"})),
+        "computers" => open_at(app, json!({"view": "settings", "pane": "phone/phone.computers"})),
         "copy_last_dictation" => {
             if let Some(text) = crate::dictation::history::last_text() {
                 use tauri_plugin_clipboard_manager::ClipboardExt;

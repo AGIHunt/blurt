@@ -41,11 +41,28 @@ public struct RemoteKey: Hashable, Sendable {
               k("ForwardDelete", 117, "⌦"), k("Left", 123, "←"), k("Right", 124, "→"), k("Down", 125, "↓"), k("Up", 126, "↑"),
               k("Home", 115, "↖"), k("End", 119, "↘"), k("PageUp", 116, "⇞"), k("PageDown", 121, "⇟"),
               k("-", 27), k("=", 24), k("[", 33), k("]", 30), (k(";", 41)), k("'", 39), k(",", 43), k(".", 47), k("/", 44), k("\\", 42), k("`", 50)]
+        // a full keyboard's, for a computer driving another (docs/design/remote-desktop-viewer.md): what a phone's deck never sends
+        let more: [UInt16] = [105, 107, 113, 106, 64, 79, 80, 90]
+        t += more.enumerated().map { k("F\($0.offset + 13)", $0.element) }
+        let pad: [UInt16] = [82, 83, 84, 85, 86, 87, 88, 89, 91, 92]
+        t += pad.enumerated().map { k("Keypad\($0.offset)", $0.element, "\($0.offset)") }
+        t += [k("KeypadDecimal", 65, "."), k("KeypadMultiply", 67, "*"), k("KeypadPlus", 69, "+"), k("KeypadMinus", 78, "-"),
+              k("KeypadDivide", 75, "/"), k("KeypadEnter", 76, "⌤"), k("KeypadEquals", 81, "="), k("KeypadComma", 95, ","),
+              // the Mac's Clear sits where a PC keyboard has Num Lock, and Help where it has Insert
+              k("NumLock", 71, "⌧"), k("Insert", 114, "Ins"), k("CapsLock", 57, "⇪"), k("Menu", 110, "≣"),
+              // ISO and JIS keys: the extra one by the left Shift, ¥, ろ, 英数 and かな
+              k("IntlBackslash", 10, "§"), k("IntlYen", 93, "¥"), k("IntlRo", 94, "_"), k("Lang2", 102, "英数"), k("Lang1", 104, "かな"),
+              k("VolumeUp", 72, "🔊"), k("VolumeDown", 73, "🔉"), k("Mute", 74, "🔇"),
+              // a PC keyboard's: a Mac has F13–F15 in their place, so a Mac host presses those
+              k("PrintScreen", 105, "PrtSc"), k("ScrollLock", 107, "ScrLk"), k("Pause", 113, "Pause")]
         return t
     }()
 
     private static let byName: [String: RemoteKey] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
     public static func named(_ name: String) -> RemoteKey? { byName[name] }
+    /// A Mac's key code to its name; where two names share a code (F13 and PrintScreen), the first.
+    private static let byCode: [UInt16: RemoteKey] = Dictionary(all.map { ($0.code, $0) }, uniquingKeysWith: { a, _ in a })
+    public static func named(code: UInt16) -> RemoteKey? { byCode[code] }
 }
 
 /// A key and its modifiers: ⌘C is {command, "C"}. An empty key is the modifiers alone (held, or tapped).

@@ -21,6 +21,7 @@
   "tray.phone.needs_access": "手机：无法控制电脑",
   "tray.phone.add": "添加手机…",
   "tray.phone.unnamed": "手机",
+  "tray.computers": "电脑…",
   "tray.project": "当前项目：{name}",
   "tray.project.inbox": "未归类",
   "tray.project.header": "项目",

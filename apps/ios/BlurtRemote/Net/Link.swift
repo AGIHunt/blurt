@@ -747,6 +747,7 @@ final class Link: ObservableObject {
         case .noDirect:
             noDirect()
         case .streamMoved: break      // the channel reads it itself
+        case .clipboard: break        // to a computer driving another (remote-desktop-viewer.md); a phone never asks for it
         }
     }
 

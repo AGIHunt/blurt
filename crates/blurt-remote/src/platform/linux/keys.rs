@@ -46,6 +46,48 @@ pub const KEYS: &[(&str, i32)] = &[
     ("ForwardDelete", 111), ("Left", 105), ("Right", 106), ("Down", 108), ("Up", 103),
     ("Home", 102), ("End", 107), ("PageUp", 104), ("PageDown", 109),
     ("-", 12), ("=", 13), ("[", 26), ("]", 27), (";", 39), ("'", 40), (",", 51), (".", 52), ("/", 53), ("\\", 43), ("`", 41),
+    // a full keyboard's (a computer driving this one: docs/design/remote-desktop-viewer.md)
+    ("F13", 183),
+    ("F14", 184),
+    ("F15", 185),
+    ("F16", 186),
+    ("F17", 187),
+    ("F18", 188),
+    ("F19", 189),
+    ("F20", 190),
+    ("Keypad0", 82),
+    ("Keypad1", 79),
+    ("Keypad2", 80),
+    ("Keypad3", 81),
+    ("Keypad4", 75),
+    ("Keypad5", 76),
+    ("Keypad6", 77),
+    ("Keypad7", 71),
+    ("Keypad8", 72),
+    ("Keypad9", 73),
+    ("KeypadDecimal", 83),
+    ("KeypadMultiply", 55),
+    ("KeypadPlus", 78),
+    ("KeypadMinus", 74),
+    ("KeypadDivide", 98),
+    ("KeypadEnter", 96),
+    ("KeypadEquals", 117),
+    ("KeypadComma", 121),
+    ("NumLock", 69),
+    ("Insert", 110),
+    ("CapsLock", 58),
+    ("Menu", 127),
+    ("IntlBackslash", 86),
+    ("IntlYen", 124),
+    ("IntlRo", 89),
+    ("Lang2", 123),
+    ("Lang1", 122),
+    ("VolumeUp", 115),
+    ("VolumeDown", 114),
+    ("Mute", 113),
+    ("PrintScreen", 99),
+    ("ScrollLock", 70),
+    ("Pause", 119),
 ];
 
 pub fn key_code(name: &str) -> Option<i32> {
@@ -253,7 +295,11 @@ pub fn input_method_active(mru_sources: &str, sources: &str) -> bool {
         Some(s[open + 1..close].to_string())
     };
     let pick = first(mru_sources).or_else(|| first(sources));
-    pick.is_some_and(|p| p.trim_start().trim_start_matches(['\'', '"']).starts_with("ibus"))
+    pick.is_some_and(|p| {
+        p.trim_start()
+            .trim_start_matches(['\'', '"'])
+            .starts_with("ibus")
+    })
 }
 
 #[cfg(test)]
@@ -263,27 +309,8 @@ mod tests {
 
     #[test]
     fn every_wire_key_has_a_code_and_codes_are_unique() {
-        // the reference list, from the Swift source both phone apps follow
-        let swift = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../skills/blurt/recorder/macos/Sources/BlurtRemoteKit/RemoteKeys.swift");
-        let names: Vec<String> = match std::fs::read_to_string(&swift) {
-            Ok(src) => {
-                let mut names = vec![];
-                let body = &src[src.find("public static let all").expect("RemoteKey.all")..];
-                let body = &body[..body.find("return t").expect("end of RemoteKey.all")];
-                // every string literal: ("A", 0) pairs, k("Return", 36, "↩") calls. Glyphs are skipped (not ASCII, or "esc"),
-                // and F1…F12 are built from a count ("F\(…)")
-                for (i, seg) in body.split('"').enumerate() {
-                    if i % 2 == 0 || seg == "esc" || seg.contains("\\(") || !seg.is_ascii() {
-                        continue;
-                    }
-                    names.push(if seg == "\\\\" { "\\".to_string() } else { seg.to_string() });
-                }
-                names.extend((1..=12).map(|i| format!("F{i}")));
-                names
-            }
-            Err(_) => KEYS.iter().map(|(n, _)| n.to_string()).collect(),
-        };
+        // the reference list (keys.rs, kept to RemoteKeys.swift by the vectors' key names)
+        let names: Vec<String> = crate::keys::ALL.iter().map(|n| n.to_string()).collect();
         for n in &names {
             assert!(key_code(n).is_some(), "no evdev code for wire key {n:?}");
         }

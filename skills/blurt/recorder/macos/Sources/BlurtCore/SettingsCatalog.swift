@@ -98,6 +98,7 @@ public enum SettingsCatalog {
         // a recording and what becomes of it (v1.0.23: before, a box in General); its projects follow
         pane("recording", "feature.recording", "Home", "record.circle", "features"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "features"),
+        // phones, and the computers this Mac drives or that drive it (docs/design/remote-desktop-viewer.md)
         pane("remote", "feature.phone", "Home", "iphone", "features"),
         pane("general", "settings.kit.general", "Settings", "gearshape", "app"),
         pane("speech", "settings.kit.speech", "Settings", "cpu", "app"),
@@ -246,6 +247,7 @@ public enum SettingsCatalog {
 
         // iPhone: the phones, and what the Mac shows while one drives it
         sec("remote.phones", "settings.remote.section.phones"),
+        sec("remote.computers", "settings.remote.section.computers"),
         sec("remote.options", "settings.remote.section.options"),
         sec("remote.relay", "settings.remote.section.relay"),
 
@@ -394,6 +396,7 @@ public enum SettingsCatalog {
 
             // iPhone
             row("remote.add", "remote.phones", "settings.remote.app", detail: S("settings.remote.add.detail")),
+            row("remote.computers.add", "remote.computers", "settings.remote.computers.add", detail: S("settings.remote.computers.add.detail")),
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
             row("remote.away", "remote.relay", "settings.remote.away"),

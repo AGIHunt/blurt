@@ -62,9 +62,10 @@ final class RemoteInput {
 
     // MARK: keys
 
-    private func postKey(_ code: CGKeyCode, down: Bool, mods: RemoteModifiers) {
-        testLog?("key \(code) \(down ? "down" : "up") mods=\(mods.glyphs)")
+    private func postKey(_ code: CGKeyCode, down: Bool, mods: RemoteModifiers, repeating: Bool = false) {
+        testLog?("key \(code) \(down ? "down" : "up")\(repeating ? " repeat" : "") mods=\(mods.glyphs)")
         guard let e = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else { return }
+        if repeating { e.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
         e.flags = flags(mods).union(Self.keyFlags(code))
         post(e)
     }
@@ -111,7 +112,11 @@ final class RemoteInput {
     func hold(_ c: RemoteChord, down: Bool) {
         let id = c.key.isEmpty ? "mods:\(c.mods.rawValue)" : c.key
         if down {
-            guard !heldKeys.contains(id) else { return }
+            // held already and down again: the viewer's keyboard repeating it. A posted key doesn't repeat by itself
+            if heldKeys.contains(id) {
+                if let k = RemoteKey.named(c.key) { postKey(k.code, down: true, mods: downMods, repeating: true) }
+                return
+            }
             heldKeys.insert(id)
             heldChordMods[id] = c.mods
             syncMods(allHeldMods)

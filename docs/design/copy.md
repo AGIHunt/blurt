@@ -41,6 +41,16 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The user's own relay | 自建中转 | Own relay |
 | The relay address field | 中转地址 | Relay Address |
 | Connection paths | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service |
+| One computer driving another (remote-desktop-viewer.md) | 电脑 · 添加电脑 · 打开窗口 · 连接 · 移除 | Computers · Add Computer · Open Window · Connect · Remove |
+| A computer's state in that list | 已连接 · 可连接 · 离线 · 无法直连 | Connected · Available · Offline · Can't Connect Directly |
+| The viewer, when the public connection service finds no direct path | 无法直连。请在对方电脑上设置自建中转。 | Can't connect directly. Set up your own relay on the other computer. |
+| The viewer's controls | 屏幕 · 按键发往远端 · 跟着远端指针换屏 · 在新窗口中打开 | Display · Keys to Remote · Follow the Pointer · Open in New Window |
+| The release hint | 按 ⌃⌘ 交还键盘和鼠标 (Windows/Linux: Ctrl+Alt) | Press ⌃⌘ to release the keyboard and mouse |
+| The settings pane for paired devices | 手机和电脑 | Phones and Computers |
+| Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |
+| The text form of the pairing code | 配对链接 | Pairing link |
+| The viewer's ⋯ menu | ⌘ 当作 Ctrl · 共享剪贴板 | Use ⌘ as Ctrl · Share Clipboard |
+| Picture quality (as on the phone) | 画质：自动 · 清晰 · 均衡 · 省流量 | Quality: Auto · Sharp · Balanced · Data Saver |
 | Items not in a project | 未归类 | Unsorted |
 | Card tabs | 当前 / 历史 | Current / History |
 

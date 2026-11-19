@@ -53,6 +53,10 @@ const MAX_TEXT: usize = 64 * 1024;
 /// on the go-between: no datagram from the phone this long after `session`, and the host says `noDirect` and closes
 const NO_DIRECT: Duration = Duration::from_secs(8);
 
+/// a viewer's keys captured: the host looks at its clipboard this often and sends a change (docs/design/remote-desktop-viewer.md)
+const CLIPBOARD_EVERY: Duration = Duration::from_millis(500);
+/// a nearby computer the owner said no to (or didn't answer): no nearby question for this long
+const NEARBY_PAUSE: Duration = Duration::from_secs(30);
 /// What the desktop app does for the host. Called on a thread of the host's own, one at a time, never under its locks: a hook may
 /// call back into `Host`.
 pub trait App: Send + Sync + 'static {
@@ -195,6 +199,18 @@ struct Sess {
     approved: bool,
     /// the phone listed `move` (its stream can move onto the direct path): only such a phone is offered the go-between
     moves: bool,
+    /// a computer driving this one (hello.features has `viewer`): its clipboard and keysCaptured count
+    viewer: bool,
+    /// a viewer's keys are captured: the clipboard goes both ways
+    captured: bool,
+    /// which capture the clipboard watch belongs to
+    clip_gen: u64,
+    /// the clipboard text both ends have now (sent, or received and put on): a change from it is sent
+    clip_known: Option<String>,
+    /// a new computer that found this one nearby, asking without a code (`pairing::nearby_key`)
+    nearby: bool,
+    /// the same device as the session open now: it takes over once its hello says it isn't a viewer's other window
+    deferred: bool,
     nonce: Option<Vec<u8>>,
     transcript: [u8; 32],
     commitment: Option<Vec<u8>>,
@@ -252,6 +268,8 @@ struct State {
     meet_problem: Option<crate::server::GoBetweenProblem>,
     /// refusals from the go-between in a row ("busy today"): the next try waits 30 s, 2 min, 10 min, then an hour
     meet_refusals: u32,
+    /// no nearby question until then (the owner said no to the last one)
+    nearby_paused_until: Option<Instant>,
 }
 
 struct Core {
@@ -328,6 +346,7 @@ impl Host {
             off: false,
             meet_problem: None,
             meet_refusals: 0,
+            nearby_paused_until: None,
         };
         let core = Arc::new(Core {
             rt,
@@ -682,8 +701,8 @@ impl Core {
     }
 
     /// The handshake's lookup: a code answers a few, no more (enough for a phone trying several ways at once, too few to try
-    /// for digits).
-    fn lookup(&self, id: &str) -> Option<Vec<u8>> {
+    /// for digits). `local`: over TCP, not a relay: a computer that found this one nearby may ask with the nearby key.
+    fn lookup(&self, id: &str, local: bool) -> Option<Vec<u8>> {
         let mut s = self.st.lock().unwrap();
         if self.code(&s, id).is_some() {
             let n = s.code_tries.entry(id.to_string()).or_insert(0);
@@ -692,7 +711,18 @@ impl Core {
                 return None;
             }
         }
+        let nearby = local
+            && id.starts_with(crate::pairing::NEARBY_PREFIX)
+            && id.len() <= 64
+            && self.nearby_open(&s);
         self.key_for(&s, id)
+            .or_else(|| nearby.then(|| crate::pairing::nearby_key().to_vec()))
+    }
+
+    /// A computer on the same network may ask to pair without a code (docs/design/remote-desktop-viewer.md §Add Computer): one
+    /// question at a time, none while another waits, and none for a while after the owner said no.
+    fn nearby_open(&self, s: &State) -> bool {
+        !s.off && s.asking.is_none() && s.nearby_paused_until.is_none_or(|t| Instant::now() >= t)
     }
 
     fn remove(&self, id: &str) {
@@ -862,6 +892,9 @@ impl Core {
             self.greet(s, sid);
         } else {
             let ch = sess.chan.clone();
+            if sess.nearby {
+                s.nearby_paused_until = Some(Instant::now() + NEARBY_PAUSE);
+            }
             ch.close();
             self.closed_session(s, sid);
             if s.showing_pairing {
@@ -944,7 +977,8 @@ impl Core {
             if conn.answered {
                 return false;
             }
-            let a = crypto::answer(f, crypto::random(), |id| self.lookup(id));
+            let local = !chan.relay;
+            let a = crypto::answer(f, crypto::random(), |id| self.lookup(id, local));
             let Some(k) = a.keys else {
                 // one answer, then the connection is over
                 chan.last(FrameReader::framed(&a.reply));
@@ -1007,7 +1041,14 @@ impl Core {
         let mut s = self.st.lock().unwrap();
         // removed, its code spent or renewed, or the phone paired again since: a handshake begun with it, perhaps hours ago on
         // a waiting relay connection, opens nothing
-        let ok = self.key_for(&s, &id).is_some_and(|now| same(&now, &used));
+        let known = self.key_for(&s, &id);
+        // a computer that found this one nearby: no code, the nearby key, and a yes here as for any new phone
+        let nearby = known.is_none()
+            && !chan.relay
+            && id.starts_with(crate::pairing::NEARBY_PREFIX)
+            && same(&used, &crate::pairing::nearby_key())
+            && self.nearby_open(&s);
+        let ok = nearby || known.is_some_and(|now| same(&now, &used));
         if !ok {
             self.log(json!({"event": "remote_session", "state": "refused", "why": "stale_key"}));
             return false;
@@ -1026,6 +1067,12 @@ impl Core {
                 key_sent: false,
                 approved: false,
                 moves: false,
+                viewer: false,
+                captured: false,
+                clip_gen: 0,
+                clip_known: None,
+                nearby,
+                deferred: false,
                 nonce: None,
                 transcript,
                 commitment,
@@ -1037,6 +1084,13 @@ impl Core {
                 pinned: None,
             },
         );
+        if nearby {
+            s.sessions.get_mut(&sid).unwrap().pairing_key = Some(crypto::new_key());
+            s.asking = Some(sid);
+            self.log(json!({"event": "remote_pairing_nearby"}));
+            self.publish(&mut s);
+            return true;
+        }
         // the code is spent the moment it opens a session
         if self.code(&s, &id).is_some() {
             // one new phone at a time: a second one using a code while the first waits is turned away
@@ -1063,6 +1117,16 @@ impl Core {
                 self.renew_pairing(&mut s);
             }
             self.publish(&mut s);
+            return true;
+        }
+        // the same device again while its session is open: a viewer's other window (hello.features "window") or the device
+        // starting over. Which, its hello says (it comes with this first frame)
+        if s.current.is_some_and(|c| {
+            s.sessions
+                .get(&c)
+                .is_some_and(|x| x.id.as_deref() == Some(id.as_str()))
+        }) {
+            s.sessions.get_mut(&sid).unwrap().deferred = true;
             return true;
         }
         self.take_over(&mut s, sid);
@@ -1263,14 +1327,29 @@ impl Core {
         let s = &mut *guard;
         match m {
             ToMac::Hello { device, mic_on_phone, nonce, features } => {
-                let moves = features.is_some_and(|f| f.iter().any(|x| x == crate::wire::MOVE));
+                let has = |n: &str| features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
+                let (moves, viewer) = (has(crate::wire::MOVE), has(crate::wire::VIEWER));
                 if let Some(x) = s.sessions.get_mut(&sid) {
                     x.name = device.chars().take(64).collect();
                     x.mic_on_phone = mic_on_phone;
                     x.nonce = nonce;
                     x.moves = moves;
+                    x.viewer = viewer;
                 }
                 chan.phone_moves.store(moves, SeqCst);
+                if s.sessions.get(&sid).is_some_and(|x| x.deferred) {
+                    if has(crate::wire::WINDOW) {
+                        // a viewer's other window (another display): this host streams one display at a time, so the first
+                        // window keeps the computer and this one hears why
+                        self.log(json!({"event": "remote_session", "state": "refused", "why": "second_window"}));
+                        chan.send(&ToPhone::ScreenFailed(crate::wire::ONE_DISPLAY.into()));
+                        chan.close_after(Duration::from_millis(300));
+                        s.sessions.remove(&sid);
+                        return;
+                    }
+                    s.sessions.get_mut(&sid).unwrap().deferred = false;
+                    self.take_over(s, sid);
+                }
                 self.greet(s, sid);
                 self.publish(s);
                 return;
@@ -1495,7 +1574,70 @@ impl Core {
             }
             ToMac::ReleaseAll => self.let_go(s, sid),
             ToMac::StreamMoved => {} // read where it's read (`peer_moved`)
+            // a viewer's: its clipboard onto this computer's, and whether its keys are here
+            ToMac::Clipboard(t) => {
+                let x = s.sessions.get_mut(&sid).unwrap();
+                if !x.viewer
+                    || !x.captured
+                    || !crate::wire::clipboard_fits(&t)
+                    || x.clip_known.as_deref() == Some(t.as_str())
+                {
+                    return;
+                }
+                x.clip_known = Some(t.clone());
+                drop(guard);
+                let backend = self.backend.clone();
+                self.rt
+                    .spawn_blocking(move || backend.lock().unwrap().input().set_clipboard(&t));
+            }
+            ToMac::KeysCaptured(on) => {
+                let x = s.sessions.get_mut(&sid).unwrap();
+                if !x.viewer || x.captured == on {
+                    return;
+                }
+                x.captured = on;
+                x.clip_gen += 1;
+                if on {
+                    let g = x.clip_gen;
+                    drop(guard);
+                    self.watch_clipboard(chan.clone(), g);
+                }
+            }
         }
+    }
+
+    /// While a viewer's keys are captured: this computer's clipboard, looked at twice a second, goes to the viewer when it
+    /// changes here (not what the viewer just put on it, and not what it held when the keys came here).
+    fn watch_clipboard(self: &Arc<Self>, chan: Arc<Chan>, g: u64) {
+        let me = self.clone();
+        self.rt.spawn(async move {
+            // what this watch last read: a change is a read that differs from it
+            let mut last: Option<Option<String>> = None;
+            loop {
+                let still = {
+                    let s = me.st.lock().unwrap();
+                    s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.captured && x.clip_gen == g)
+                };
+                if !still || chan.is_closed() {
+                    return;
+                }
+                let backend = me.backend.clone();
+                let now = tokio::task::spawn_blocking(move || backend.lock().unwrap().input().clipboard()).await.ok().flatten();
+                {
+                    let mut s = me.st.lock().unwrap();
+                    let Some(x) = s.sessions.get_mut(&chan.sid).filter(|x| x.captured && x.clip_gen == g) else { return };
+                    let changed = last.as_ref().is_some_and(|l| *l != now);
+                    if let Some(t) = now.as_ref().filter(|t| changed && crate::wire::clipboard_fits(t)) {
+                        if x.clip_known.as_deref() != Some(t.as_str()) {
+                            x.clip_known = Some(t.clone());
+                            chan.send(&ToPhone::Clipboard(t.clone()));
+                        }
+                    }
+                }
+                last = Some(now);
+                tokio::time::sleep(CLIPBOARD_EVERY).await;
+            }
+        });
     }
 
     fn screen(&self, s: &State, sid: u64) -> Option<Arc<ScreenSession>> {
@@ -1576,7 +1718,14 @@ impl Core {
             self.log(json!({"event": "remote_key_store_failed", "why": e}));
         }
         s.devices.retain(|d| d.id != id);
-        s.devices.push(Device { id: id.clone(), name, added: now_ms(), last_seen: Some(now_ms()) });
+        let kind = x.viewer.then(|| "computer".to_string());
+        s.devices.push(Device {
+            id: id.clone(),
+            name,
+            added: now_ms(),
+            last_seen: Some(now_ms()),
+            kind,
+        });
         self.files.save_devices(&s.devices);
         self.begin(s, sid);
         self.update_listening(s);
@@ -1612,7 +1761,10 @@ impl Core {
             display_aspect: if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.6 },
             relay,
             platform: Some(self.platform.to_string()),
-            features: Some(vec![crate::wire::MOVE.to_string()]),
+            features: Some(vec![
+                crate::wire::MOVE.to_string(),
+                crate::wire::VIEWER.to_string(),
+            ]),
         };
         {
             let n = name.clone();

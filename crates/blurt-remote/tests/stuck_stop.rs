@@ -126,6 +126,7 @@ fn ask() -> ToMac {
         codecs: Some(vec!["h264".into()]),
         display: None,
         features: None,
+        window: None,
     }))
 }
 

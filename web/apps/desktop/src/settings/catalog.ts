@@ -52,7 +52,7 @@ export const PANES: PaneInfo[] = [
   { id: 'recording', title: 'feature.recording', icon: 'record', group: 'features' },
   { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'features' },
   // the Mac's iPhone pane ("remote"), for any phone: Settings → Phone (PhonePane.tsx)
-  { id: 'phone', title: 'feature.phone', icon: 'phone', group: 'features' },
+  { id: 'phone', title: 'phone.pane.title', icon: 'phone', group: 'features' },
   { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'app' },
   { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'app' },
   { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'app' },
@@ -113,6 +113,7 @@ export const SECTIONS: Record<string, Key> = {
   'shortcuts.dictation': 'dictation.settings.tab',
   'shortcuts.open': 'capture.keys.section.open',
   'phone.phones': 'phone.section.phones',
+  'phone.computers': 'computers.section',
   'phone.options': 'phone.section.options',
   'phone.relay': 'phone.section.relay',
   'agents.use': 'agents.use.header',
@@ -229,6 +230,7 @@ export const ENTRIES: Entry[] = (() => {
     row('shortcuts.restore', null, 'capture.keys.restore'),
     // Phone
     row('phone.add', 'phone.phones', 'phone.app', { detail: 'phone.add.detail' }),
+    row('phone.computers.add', 'phone.computers', 'computers.add.title', { detail: 'computers.add.detail' }),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
     row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),

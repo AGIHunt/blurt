@@ -96,6 +96,15 @@ new messages), `tests/go_between.rs` against the relay's budget mode: the sessio
 160 KB of text after it with no 4003; an old phone isn't offered it; UDP blocked → `noDirect` at 8 s; an overlay address wins over
 the go-between, a dead one falls back to it; a 429 is "busy" and asked again only after 30 s.
 
+## A computer driving this one (2026-11-19)
+
+The spec and what was built: [remote-desktop-viewer.md](remote-desktop-viewer.md) §Built for Windows and Linux. What the Rust host adds:
+a viewer's session (`viewer` in its hello) is a phone's plus the clipboard both ways while `keysCaptured` (`Input::clipboard` /
+`set_clipboard`, polled twice a second), `screen.window` as the ceiling, nearby pairing on its own TCP listener (`nearby-` ids,
+`pairing::nearby_key`, one question at a time, 30 s after a no), devices with `kind: "computer"`, a takeover that waits for the hello,
+and a second window (`window`) refused with `screenFailed("one_display")`, since the backends capture one display per process. The
+crate is also the Windows / Linux viewer (`viewer.rs`, `keys.rs`).
+
 ## Measured (this Mac, loopback, 2026-11-09)
 
 | Test | Result |

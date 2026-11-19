@@ -708,7 +708,8 @@ export interface RemoteStatus {
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
   /** a new phone waits for a yes; the yes is for the phone showing the same digits */
   asking: null | { device: string; digits: string; viaRelay: boolean };
-  devices: { id: string; name: string; lastSeen: number | null }[];
+  /** kind 'computer': a computer driving this one (its window, docs/design/remote-desktop-viewer.md); null: a phone */
+  devices: { id: string; name: string; lastSeen: number | null; kind?: 'computer' | null }[];
   connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
   /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
    *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */

@@ -26,6 +26,9 @@ final class RemoteServer {
         var name: String
         var added: Date
         var lastSeen: Date?
+        /// "computer": another computer that drives this one (docs/design/remote-desktop-viewer.md); nil: a phone
+        var kind: String?
+        var isComputer: Bool { kind == "computer" }
     }
 
     /// Published to whoever shows the phone (the Phone page, Settings → Phone, the menu-bar menu, Home), always on the
@@ -129,7 +132,13 @@ final class RemoteServer {
     /// the code before this one: someone may have scanned it just as it was replaced
     private var oldCode: (id: String, key: Data, until: Date)?
     private var asking: Session?
+    /// a viewer's other windows (another display each): sessions of the same device beside `session` (hello.features "window")
+    private var extras: [Session] = []
+    /// `session` or one of its other windows
+    private func live(_ s: Session) -> Bool { session === s || extras.contains { $0 === s } }
     private var codeTries: [String: Int] = [:]
+    /// a nearby computer's question was turned down or went unanswered: no other for a while, so nobody on the network can keep asking
+    private var nearbyQuietUntil = 0.0
     private static let codeTries = 8
     private var pairingTimer: DispatchSourceTimer?
     private var showingPairing = false
@@ -150,6 +159,12 @@ final class RemoteServer {
         var goBetween = false
         /// what the phone said it can do (`ToMac.hello.features`)
         var features: [String] = []
+        /// another computer driving this one: it takes the clipboard both ways while its keys are captured
+        var viewer: Bool { features.contains(RemoteFeature.viewer) }
+        var captured = false
+        /// the pasteboard's change count as last seen, or as last set from the viewer (so its own text doesn't go back)
+        var pasteboardSeen = 0
+        var pasteboardTimer: DispatchSourceTimer?
         var id: String?
         var name = ""
         var micOnPhone = true
@@ -171,6 +186,8 @@ final class RemoteServer {
         var screen: RemoteScreen?
         /// the display the phone chose to see; nil follows the pointer (docs/design/remote.md §Several displays)
         var pinned: CGDirectDisplayID?
+        /// paired already: it takes over once its hello says whether it's another window of a viewer already here
+        var pendingTakeOver = false
         var heldReleased = false
         var punches = 0
         // gaps between the phone's 10 ms probes as they arrive: the pointer's own path, one way
@@ -515,7 +532,10 @@ final class RemoteServer {
                     self.codeTries[id, default: 0] += 1
                     if self.codeTries[id, default: 0] > Self.codeTries { return nil }
                 }
-                return self.key(for: id)
+                if let k = self.key(for: id) { return k }
+                // a computer that found this one nearby: on this network's listener only, one question at a time, and not just after a no
+                guard deviceID == nil, RemoteNearby.isNearby(id), self.asking == nil, CACurrentMediaTime() >= self.nearbyQuietUntil else { return nil }
+                return RemoteNearby.key
             }
         }), relay: deviceID != nil, standby: deviceID != nil, queue: DispatchQueue(label: "blurt.remote.session", qos: .userInteractive))
         let s = Session(ch)
@@ -690,11 +710,19 @@ final class RemoteServer {
         handshaking[ObjectIdentifier(s)] = nil
         // the key the handshake used must still be this id's key: removed, its code spent or renewed, or the phone paired again since,
         // and a handshake begun with it, perhaps hours ago on a waiting relay connection, opens nothing
-        guard let id, let now = key(for: id), let used = s.channel.pairedKey, RemoteCrypto.same(now, used) else {
+        guard let id, let now = key(for: id) ?? (RemoteNearby.isNearby(id) && !s.channel.isRelay ? RemoteNearby.key : nil),
+              let used = s.channel.pairedKey, RemoteCrypto.same(now, used) else {
             emit(["event": "remote_session", "state": "refused", "why": "stale_key"])
             return s.channel.close()
         }
         s.id = id
+        // a computer that found this one nearby and isn't paired yet: the same question as a code's, with no code to spend
+        if RemoteNearby.isNearby(id), !s.channel.isRelay, !devices().contains(where: { $0.id == id }) {
+            guard asking == nil else { return s.channel.close() }
+            s.pairingKey = RemoteCrypto.newKey()
+            asking = s
+            return
+        }
         // the code is spent the moment it opens a session
         if code(id) != nil {
             // one new phone at a time: a second one using a code while the first waits is turned away, so a yes can't go to it
@@ -713,10 +741,17 @@ final class RemoteServer {
             if current, showingPairing { renewPairing() }
             return
         }
-        takeOver(s)
+        // its hello comes with this first frame: it says whether this is a viewer's other window, kept beside the first
+        s.pendingTakeOver = true
     }
 
     private func takeOver(_ s: Session) {
+        // a viewer's other window: beside its first, not in its place
+        if s.features.contains(RemoteFeature.window), let main = session, main !== s, main.id == s.id, s.viewer {
+            extras.append(s)
+            emit(["event": "remote_session", "state": "open", "window": extras.count + 1])
+            return
+        }
         // the phone that had the session gives way
         if let old = session, old !== s {
             if old.id != s.id { old.channel.send(ToPhone.replaced) }
@@ -729,6 +764,15 @@ final class RemoteServer {
     }
 
     private func closed(_ s: Session) {
+        if let i = extras.firstIndex(where: { $0 === s }) {
+            extras.remove(at: i)
+            s.screen?.stop()
+            s.screen = nil
+            s.pasteboardTimer?.cancel()
+            s.pasteboardTimer = nil
+            s.channel.close()
+            return
+        }
         if asking === s {
             asking = nil
             status.asking = nil
@@ -737,8 +781,15 @@ final class RemoteServer {
         }
         guard session === s else { return }
         session = nil
+        // its other windows go with it
+        let others = extras
+        extras = []
+        others.forEach { $0.screen?.stop(); $0.screen = nil; $0.pasteboardTimer?.cancel(); $0.channel.close() }
         s.screen?.stop()
         s.screen = nil
+        s.captured = false
+        s.pasteboardTimer?.cancel()
+        s.pasteboardTimer = nil
         keepAwake(false)
         status.connected = nil
         status.connectedID = nil
@@ -769,6 +820,7 @@ final class RemoteServer {
             lastControl = ok
             session?.channel.send(ToPhone.canControl(ok))
         }
+        for x in extras where CACurrentMediaTime() - x.lastHeard > Self.gone { closed(x) }
         if let s = session {
             let quiet = CACurrentMediaTime() - s.lastHeard
             if quiet > Self.gone {
@@ -806,7 +858,13 @@ final class RemoteServer {
                 }
                 s.channel.enableMove()
             }
-            queue.async { self.greet(s) }
+            queue.async {
+                if s.pendingTakeOver {
+                    s.pendingTakeOver = false
+                    self.takeOver(s)
+                }
+                self.greet(s)
+            }
             return
         case .keyStored:
             queue.async { self.keyStored(s) }
@@ -820,10 +878,23 @@ final class RemoteServer {
         guard s.greeted else { return }
         switch m {
         case .hello, .keyStored, .ping, .streamMoved: break
+        case let .clipboard(t):
+            // a viewer's, while its keys are captured: what it copied pastes here
+            guard s.viewer, s.captured, RemoteClipboard.fits(t) else { return }
+            DispatchQueue.main.async {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(t, forType: .string)
+                let n = pb.changeCount
+                self.queue.async { s.pasteboardSeen = n }
+            }
+        case let .keysCaptured(on):
+            guard s.viewer else { return }
+            queue.async { self.captured(on, s) }
         case let .screen(r):
             // on the server's queue, where `closed` runs: a capture can't start for a session that has just ended
             queue.async {
-                guard self.session === s else { return }
+                guard self.live(s) else { return }
                 s.screen?.stop()
                 s.screen = nil
                 self.keepAwake(displayToo: false)
@@ -926,6 +997,30 @@ final class RemoteServer {
         }
     }
 
+    /// A viewer's keys are captured, or given back. While captured, what's copied here goes to it (text, at most 64 KiB), checked twice a
+    /// second: macOS says nothing when the pasteboard changes.
+    private func captured(_ on: Bool, _ s: Session) {
+        guard live(s), s.captured != on else { return }
+        s.captured = on
+        s.pasteboardTimer?.cancel()
+        s.pasteboardTimer = nil
+        emit(["event": "remote_viewer", "captured": on])
+        guard on else { return }
+        let seen = DispatchQueue.main.sync { NSPasteboard.general.changeCount }
+        s.pasteboardSeen = seen
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 0.5, repeating: 0.5, leeway: .milliseconds(100))
+        t.setEventHandler { [weak self, weak s] in
+            guard let self, let s, self.live(s), s.captured else { return }
+            let (n, text) = DispatchQueue.main.sync { (NSPasteboard.general.changeCount, NSPasteboard.general.string(forType: .string)) }
+            guard n != s.pasteboardSeen else { return }
+            s.pasteboardSeen = n
+            if let text, RemoteClipboard.fits(text) { s.channel.send(ToPhone.clipboard(text)) }
+        }
+        t.resume()
+        s.pasteboardTimer = t
+    }
+
     /// Packets out to where the phone may be, from the port it's knocking on: they open this side's firewall. They carry nothing.
     private func punch(_ list: [RemoteCandidate]) {
         guard udpPort != 0, let local = NWEndpoint.Port(rawValue: udpPort) else { return }
@@ -971,14 +1066,16 @@ final class RemoteServer {
                 guard let self, let s, self.asking === s else { return }
                 self.answerPairing(false, number: s.number)
             }
-            emit(["event": "remote_pairing_asks"])
+            emit(["event": "remote_pairing_asks", "nearby": RemoteNearby.isNearby(s.id ?? "")])
             s.channel.send(ToPhone.pairingWaits)
+            // nobody opened Add Device for it: the question comes to the front, where the owner sees it
+            if RemoteNearby.isNearby(s.id ?? "") { DispatchQueue.main.async { SettingsController.shared.show(pane: "remote") } }
             if Self.testing, let a = ProcessInfo.processInfo.environment["BLURT_TEST_PAIR_ANSWER"] {
                 queue.asyncAfter(deadline: .now() + 3) { self.answerPairing(a == "yes") }
             }
             return
         }
-        guard session === s, let id = s.id else { return }
+        guard live(s), let id = s.id else { return }
         if let k = s.pairingKey {
             s.keySent = true
             s.channel.send(ToPhone.newKey(k))   // `keyStored` finishes it
@@ -1007,6 +1104,7 @@ final class RemoteServer {
                 self.takeOver(s)
                 self.greet(s)
             } else {
+                if RemoteNearby.isNearby(s.id ?? "") { self.nearbyQuietUntil = CACurrentMediaTime() + 30 }
                 s.channel.close()
                 self.closed(s)
             }
@@ -1017,7 +1115,7 @@ final class RemoteServer {
         guard session === s, s.keySent, let id = s.id, let k = s.pairingKey else { return }
         s.pairingKey = nil
         store(k, for: id)
-        save(devices() + [Device(id: id, name: s.name, added: Date(), lastSeen: Date())])
+        save(devices() + [Device(id: id, name: s.name, added: Date(), lastSeen: Date(), kind: s.viewer ? "computer" : nil)])
         begin(s)
         // a relay connection still in the code's room goes; the next waits in the new key's
         if let r = relays[id], r !== s { relays[id] = nil; r.channel.close() }
@@ -1026,17 +1124,19 @@ final class RemoteServer {
 
     private func begin(_ s: Session) {
         s.greeted = true
-        status.viaRelay = s.channel.isRelay
+        if session === s {
+            status.viaRelay = s.channel.isRelay
         status.connected = s.name
         status.connectedID = s.id
-        status.path = Self.path(of: s)
+            status.path = Self.path(of: s)
+        }
         keepAwake()
         let info = { (list: [RemoteCandidate]) in
             let main = CGDisplayBounds(CGMainDisplayID())
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                                                              candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: self.relayFor(s),
-                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move])))
+                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move, RemoteFeature.viewer])))
             if s.goBetween { self.awaitDirect(s) }
         }
         if s.channel.isRelay {
@@ -1082,7 +1182,7 @@ final class RemoteServer {
 
     /// The phone chose a display: shown from now on, with the pointer in its middle, where the eyes go next; nil follows the pointer again.
     private func showDisplay(_ asked: String?, _ s: Session) {
-        guard session === s else { return }
+        guard live(s) else { return }
         if asked != nil, RemoteDisplayList.id(asked) == nil { return }      // gone since the phone heard of it
         let id = RemoteDisplayList.id(asked)
         s.pinned = id
@@ -1097,12 +1197,14 @@ final class RemoteServer {
 
     /// Plugged in, unplugged, rearranged: the phone redraws its map, and a display that went is no longer chosen.
     private func displaysChanged() {
-        guard let s = session, s.greeted else { return }
+        guard let main = session, main.greeted else { return }
         let list = RemoteDisplayList.all()
         emit(["event": "remote_displays", "count": list.count])
-        s.channel.send(ToPhone.displays(list))
-        if let p = s.pinned, !list.contains(where: { $0.id == String(p) }) { s.pinned = nil }
-        s.screen?.displaysChanged()
+        for s in [main] + extras where s.greeted {
+            s.channel.send(ToPhone.displays(list))
+            if let p = s.pinned, !list.contains(where: { $0.id == String(p) }) { s.pinned = nil }
+            s.screen?.displaysChanged()
+        }
     }
 
     private func pointer(_ p: RemotePointerPacket) {
@@ -1209,7 +1311,8 @@ final class RemoteServer {
     private func receive(_ c: NWConnection) {
         c.receiveMessage { [weak self] data, _, _, err in
             guard let self else { return }
-            guard err == nil, let data, let s = self.session, s.greeted, RemoteSealer.sessionOfPacket(data) == s.number else { return c.cancel() }
+            let number = RemoteSealer.sessionOfPacket(data ?? Data())
+            guard err == nil, let data, let s = ([self.session].compactMap { $0 } + self.extras).first(where: { $0.number == number }), s.greeted else { return c.cancel() }
             s.channel.queue.async {
                 guard s.channel.packet(data) else { return }
                 s.channel.useFlow(c)

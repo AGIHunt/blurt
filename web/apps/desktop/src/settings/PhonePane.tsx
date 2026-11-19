@@ -12,6 +12,7 @@ import { i18n } from '../i18n';
 import { Menu, type MenuAt } from '../components/Menu';
 import { Group, Line, Page, Row, S, Switch, TextLink, Toggle } from './kit';
 import { APP_PAGES, apply, awayLine, groupDigits, relayAddress, timeLeft, useNow, usePhonePaneMounted, usePhonePaneOpen, useRemoteStatus } from './phone';
+import { ComputersGroup } from '../viewer/ComputersGroup';
 import './settings.css';
 
 type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
@@ -63,6 +64,8 @@ export function PhonePane({ status }: { status: AppStatus }) {
           </Row>
         )}
       </Group>
+
+      <ComputersGroup />
 
       <Group id="phone.options">
         <Toggle id="phone.screen" on={r.screenAllowed} set={(v) => void apply(api.remoteSetScreenAllowed(v)).catch(() => {})} />
@@ -165,6 +168,7 @@ export function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel:
         {r.problem && <div className="st-detail warn"><Icon name="warning" size={12} />{r.problem}</div>}
         <div className="st-phone-pair-actions">
           {expired && <button className="primary" onClick={onRenew} data-testid="phone-renew">{S('phone.scan.new')}</button>}
+          {p && !expired && <CopyLink url={p.url} />}
           <button onClick={onCancel} data-testid="phone-cancel">{S('phone.cancel')}</button>
           <span className="grow" />
           <span className="st-phone-noapp">
@@ -177,6 +181,20 @@ export function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel:
       </div>
     </div>
   );
+}
+
+/** The code as a link, for a computer to paste into its Add Computer… (docs/design/remote-desktop-viewer.md). */
+function CopyLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    void api.copyText(url).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => {},
+    );
+  return <button onClick={copy} data-testid="phone-copy-link">{copied ? S('phone.relay.copied') : S('phone.copy_link')}</button>;
 }
 
 /** A click on Allow counts only once the question has been on screen a moment, and only from the mouse (a key press

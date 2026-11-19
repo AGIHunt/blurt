@@ -21,6 +21,9 @@ pub struct Device {
     pub added: i64,
     #[serde(rename = "lastSeen", default, skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<i64>,
+    /// "computer" for a computer driving this one (its hello listed `viewer`); missing for a phone
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -191,7 +194,13 @@ mod tests {
         assert_eq!(k.get("a"), Some(vec![1, 2, 3]));
         k.delete("a");
         assert_eq!(k.get("a"), None);
-        f.save_devices(&[Device { id: "x".into(), name: "Pixel".into(), added: 1, last_seen: None }]);
+        f.save_devices(&[Device {
+            id: "x".into(),
+            name: "Pixel".into(),
+            added: 1,
+            last_seen: None,
+            kind: None,
+        }]);
         assert_eq!(f.devices().len(), 1);
         let _ = std::fs::remove_dir_all(d);
     }

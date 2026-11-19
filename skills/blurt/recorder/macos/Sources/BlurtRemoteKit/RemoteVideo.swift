@@ -38,11 +38,26 @@ public struct RemoteScreenRequest: Codable, Hashable, Sendable {
     /// what this phone can do to repair the stream (RemoteVideoFeature: "nack", "ltr", "fec"); nil = none (phones before 1.0.15). The host
     /// says which it uses in ToPhone.screenView (docs/design/remote-realtime.md)
     public var features: [String]?
+    /// a viewer's window, in pixels: the most the picture needs, whatever `width` and `height` say (docs/design/remote-desktop-viewer.md).
+    /// nil from phones
+    public var window: RemotePixelSize?
     public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60, codecs: [String]? = RemoteVideoCodec.decodable,
-                display: String? = nil, features: [String]? = nil) {
+                display: String? = nil, features: [String]? = nil, window: RemotePixelSize? = nil) {
         self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps; self.codecs = codecs
-        self.display = display; self.features = features
+        self.display = display; self.features = features; self.window = window
     }
+
+    /// The box the picture is fitted into: the one asked for, no larger than a viewer's window.
+    public var box: (width: Int, height: Int) {
+        guard let w = window, w.width > 0, w.height > 0 else { return (width, height) }
+        return (min(width, w.width), min(height, w.height))
+    }
+}
+
+public struct RemotePixelSize: Codable, Hashable, Sendable {
+    public var width: Int
+    public var height: Int
+    public init(width: Int, height: Int) { self.width = width; self.height = height }
 }
 
 public enum RemoteVideoCodec {

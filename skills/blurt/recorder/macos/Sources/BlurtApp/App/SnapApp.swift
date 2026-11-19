@@ -624,6 +624,7 @@ extension App {
         case "home": HomePage.testCommand(arg)          // home state | show | toggle <capability> | key K | point STOP | … (HomePage.swift)
         case "live": LiveTranscript.shared.testCommand(arg)          // live state | caret X,Y,W,H | caret - | set on|off
         case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
+        case "viewer": ViewerTests.command(arg)          // viewer fake|demo|list|add|settings|state (Viewer/ViewerTests.swift)
         case "phonepage": PhonePage.testCommand(arg)   // phonepage fake none|paired|connected|… | ax | relay | add | cancel | state (PhonePage.swift)
         case "screentextpage":                          // screentextpage state|select id,…|key down|up|shift-down|all|copy|delete|query T (ScreenTextPage.swift)
             MainActor.assumeIsolated { ScreenTextPageModel.shared.testCommand(arg.isEmpty ? "state" : arg) }
@@ -736,6 +737,12 @@ extension App {
             phone.target = self
             menu.addItem(phone)
         }
+        // the computers this Mac drives (docs/design/remote-desktop-viewer.md)
+        if Capability.phone.isOn {
+            let computers = NSMenuItem(title: T("viewer.menu"), action: #selector(mComputers), keyEquivalent: "")
+            computers.target = self
+            menu.addItem(computers)
+        }
     }
 
     /// A failed take's recording is still on disk.
@@ -759,6 +766,7 @@ extension App {
             island.toast(Loc.t("dictation.menu.copied_last", table: "Dictation"), key: "dictation-copy", icon: nil, seconds: 2, actionTitle: nil, action: nil)
         }
     }
+    @objc func mComputers() { MainActor.assumeIsolated { ComputersWindowController.shared.show() } }
     @objc func mPhone() { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
 
 
