@@ -352,3 +352,49 @@ async fn off_means_not_listening() {
     h.stop();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Whether a paired device is a phone or a computer (its hello lists `viewer`): known while it asks, kept on its record, read back
+/// after a restart. The UI draws its icon from this.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_is_a_phone_or_a_computer() {
+    use blurt_remote::phone::Options;
+    use blurt_remote::store::DeviceKind;
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    let mut port = 0;
+    let mut pair_as = async |opts: Options| {
+        h.show_pairing(true);
+        let (link, p) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+        port = p;
+        let at: SocketAddr = format!("127.0.0.1:{p}").parse().unwrap();
+        let code = Pairing::parse(&link).unwrap();
+        let mut d = Phone::connect_with(at, &code.device_id, &code.key, opts).await.unwrap();
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+        let asking = until(|| h.status().asking).await;
+        h.answer_pairing(true, Some(&asking.digits));
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::NewKey(_)).then_some(())).await.expect("a key");
+        d.send(&ToMac::KeyStored).await;
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::Session(_)).then_some(())).await.expect("session");
+        (asking.kind, d)
+    };
+    let viewer = Options {
+        features: Some(vec![blurt_remote::wire::MOVE.into(), blurt_remote::wire::VIEWER.into()]),
+        device: "Den PC".into(),
+        ..Options::default()
+    };
+    let (asked, _pc) = pair_as(viewer).await;
+    assert_eq!(asked, DeviceKind::Computer, "a viewer asks as a computer");
+    let (asked, _phone) = pair_as(Options::default()).await;
+    assert_eq!(asked, DeviceKind::Phone);
+    assert!(port > 0);
+    let kinds = |h: &Host| h.status().devices.iter().map(|d| (d.name.clone(), d.kind)).collect::<Vec<_>>();
+    assert_eq!(kinds(&h), [("Den PC".to_string(), DeviceKind::Computer), ("Test Phone".to_string(), DeviceKind::Phone)]);
+    h.stop();
+    // kept: a host started again over the same folder knows which is which
+    let again = host(&dir, Lines::default(), Lines::default());
+    assert_eq!(kinds(&again), [("Den PC".to_string(), DeviceKind::Computer), ("Test Phone".to_string(), DeviceKind::Phone)]);
+    again.stop();
+    // a host owns its runtime: let it go off the test's async thread
+    tokio::task::spawn_blocking(move || drop((h, again))).await.unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

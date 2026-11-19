@@ -21,9 +21,38 @@ pub struct Device {
     pub added: i64,
     #[serde(rename = "lastSeen", default, skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<i64>,
-    /// "computer" for a computer driving this one (its hello listed `viewer`); missing for a phone
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
+    /// a phone, or a computer driving this one (its hello listed `viewer`); records from before say nothing: a phone
+    #[serde(default, skip_serializing_if = "DeviceKind::is_phone")]
+    pub kind: DeviceKind,
+}
+
+/// What a paired device is (the UI's icon and words): on disk `"kind": "computer"`, nothing for a phone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceKind {
+    #[default]
+    Phone,
+    Computer,
+}
+
+impl DeviceKind {
+    /// From a hello's `features`: `viewer` is a computer.
+    pub fn of_hello(viewer: bool) -> DeviceKind {
+        if viewer {
+            DeviceKind::Computer
+        } else {
+            DeviceKind::Phone
+        }
+    }
+    pub fn is_phone(&self) -> bool {
+        *self == DeviceKind::Phone
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DeviceKind::Phone => "phone",
+            DeviceKind::Computer => "computer",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -199,9 +228,14 @@ mod tests {
             name: "Pixel".into(),
             added: 1,
             last_seen: None,
-            kind: None,
+            kind: DeviceKind::Phone,
         }]);
         assert_eq!(f.devices().len(), 1);
+        // a phone's record says nothing of its kind; one from before kinds reads as a phone, a computer's says so
+        assert!(!std::fs::read_to_string(d.join("devices.json")).unwrap().contains("kind"));
+        std::fs::write(d.join("devices.json"), r#"[{"id":"a","name":"Pixel","added":1},{"id":"b","name":"Den PC","added":2,"kind":"computer"}]"#).unwrap();
+        let kinds: Vec<DeviceKind> = f.devices().iter().map(|d| d.kind).collect();
+        assert_eq!(kinds, [DeviceKind::Phone, DeviceKind::Computer]);
         let _ = std::fs::remove_dir_all(d);
     }
 }

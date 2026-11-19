@@ -11,7 +11,7 @@
 //!    captured (viewer_keys.rs). blurt_remote::keys::Keyboard turns them into the host's messages and spots Ctrl+Alt.
 //!  • Options (`viewer.json` beside the host's files): the modifier mapping to a Mac, and the clipboard. Both on by default.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -37,6 +37,9 @@ struct Viewers {
     windows: Mutex<HashMap<String, Win>>,
     next_window: AtomicU64,
     options: Mutex<Options>,
+    /// computers whose last try through the public connection service found no direct path (their window said so): the list says
+    /// Can't Connect Directly until one connects or Connect tries again (the Mac's ViewerStore.failed)
+    no_direct: Mutex<HashSet<String>>,
 }
 
 struct Pairing {
@@ -99,6 +102,7 @@ pub fn start(app: &AppHandle) {
         windows: Mutex::new(HashMap::new()),
         next_window: AtomicU64::new(1),
         options: Mutex::new(options),
+        no_direct: Mutex::new(HashSet::new()),
     });
 }
 
@@ -139,7 +143,8 @@ pub struct ComputerUi {
     id: String,
     name: String,
     platform: Option<String>,
-    /// "connected" (a window shows it), "available" (found nearby, or reachable through its relay), "offline"
+    /// "connected" (a window shows it), "available" (found nearby, or reachable through its relay), "noDirect" (the public
+    /// connection service found no direct path last time), "offline"
     state: &'static str,
     route: Option<Route>,
     last_seen: Option<i64>,
@@ -177,6 +182,7 @@ fn status() -> ComputersStatus {
     let Some(v) = viewers() else { return ComputersStatus { computers: vec![], nearby: vec![], pairing: None, browsing: false } };
     let list = v.computers.list();
     let nearby = v.nearby.lock().unwrap().clone();
+    let no_direct = v.no_direct.lock().unwrap().clone();
     let ws = v.windows.lock().unwrap();
     let computers = list
         .iter()
@@ -187,10 +193,13 @@ fn status() -> ComputersStatus {
                 ("connected", w.route)
             } else if nearby.iter().any(|n| n.host_id == c.host_id) {
                 ("available", Some(Route::Local))
+            } else if no_direct.contains(&c.host_id) {
+                ("noDirect", None)
             } else if let Some(t) = c.addresses.iter().find_map(|a| a.parse().ok().and_then(|ip| blurt_remote::relay::overlay_of(ip, ""))) {
-                ("available", Some(if t == blurt_remote::relay::Overlay::Tailscale { Route::Tailscale } else { Route::Overlay }))
+                ("available", c.last_route.or(Some(if t == blurt_remote::relay::Overlay::Tailscale { Route::Tailscale } else { Route::Overlay })))
             } else if let Some(r) = &c.relay {
-                ("available", Some(if r.contains("meet.blurt.work") { Route::GoBetween } else { Route::Relay }))
+                // the path it last used (a computer on this network that DNS-SD didn't find says Same network), else the relay
+                ("available", c.last_route.or(Some(if r.contains("meet.blurt.work") { Route::GoBetween } else { Route::Relay })))
             } else {
                 ("offline", None)
             };
@@ -367,6 +376,10 @@ pub fn computers_remove(id: String) -> ComputersStatus {
 /// synchronous command deadlocks on Windows (the window opens white and never answers).
 #[tauri::command]
 pub async fn computers_open(app: AppHandle, id: String) -> ComputersStatus {
+    // Connect is a fresh try: what the last one found no longer stands
+    if let Some(v) = viewers() {
+        v.no_direct.lock().unwrap().remove(&id);
+    }
     let _ = open_window(&app, &id);
     status()
 }
@@ -468,7 +481,21 @@ fn on_event(label: String) -> viewer::OnEvent {
                 let changed = w.link != link || w.route != route;
                 w.link = link;
                 w.route = route;
+                let host = w.host_id.clone();
                 drop(ws);
+                match link {
+                    Link::NoDirect => {
+                        v.no_direct.lock().unwrap().insert(host);
+                    }
+                    Link::Connected => {
+                        v.no_direct.lock().unwrap().remove(&host);
+                        // the list names this path afterwards, not the relay it happens to know
+                        if route.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != route) {
+                            v.computers.update(&host, |c| c.last_route = route);
+                        }
+                    }
+                    _ => {}
+                }
                 send_json(&ch, json!({"type": "link", "link": link, "route": route_json(route)}));
                 if changed {
                     emit();

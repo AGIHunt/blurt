@@ -37,7 +37,7 @@ use crate::packets::{FrameReader, Kind, PointerPacket, MAX_FRAME};
 use crate::pairing::{Pairing, SERVICE_TYPE};
 use crate::relay;
 use crate::screen::{ScreenSession, NO_SCREEN};
-use crate::store::{now_ms, Device, Files, KeyStore};
+use crate::store::{now_ms, Device, DeviceKind, Files, KeyStore};
 use crate::wire::{BlurtCommand, Candidate, DictationPhase, Front, SessionInfo, ToMac, ToPhone};
 
 const SILENCE: f64 = 2.0;
@@ -131,6 +131,8 @@ pub struct Asking {
     pub device: String,
     pub digits: String,
     pub via_relay: bool,
+    /// a phone or a computer (its hello, which comes before the question)
+    pub kind: DeviceKind,
     /// which session it's about: a yes given to one can't go to another
     pub number: u32,
 }
@@ -628,7 +630,7 @@ impl Core {
             }),
             asking: s.asking.and_then(|id| s.sessions.get(&id)).and_then(|a| {
                 let digits = a.nonce.as_ref().and_then(|n| check_digits(a, n))?;
-                Some(Asking { device: a.name.clone(), digits, via_relay: a.chan.relay, number: a.chan.number })
+                Some(Asking { device: a.name.clone(), digits, via_relay: a.chan.relay, kind: DeviceKind::of_hello(a.viewer), number: a.chan.number })
             }),
             devices: s.devices.clone(),
             connected: current.filter(|c| c.chan.greeted.load(SeqCst)).map(|c| Connected {
@@ -1734,11 +1736,14 @@ impl Core {
             return;
         }
         let name = x.name.clone();
+        let kind = DeviceKind::of_hello(x.viewer);
         if let Some(d) = s.devices.iter_mut().find(|d| d.id == id) {
             d.last_seen = Some(now_ms());
             if !name.is_empty() {
                 d.name = name;
             }
+            // a record from before kinds were kept learns it here
+            d.kind = kind;
             self.files.save_devices(&s.devices);
         }
         self.begin(s, sid);
@@ -1756,7 +1761,7 @@ impl Core {
             self.log(json!({"event": "remote_key_store_failed", "why": e}));
         }
         s.devices.retain(|d| d.id != id);
-        let kind = x.viewer.then(|| "computer".to_string());
+        let kind = DeviceKind::of_hello(x.viewer);
         s.devices.push(Device {
             id: id.clone(),
             name,

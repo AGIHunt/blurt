@@ -56,6 +56,9 @@ pub struct Computer {
     pub added: i64,
     #[serde(default)]
     pub last_seen: Option<i64>,
+    /// the path its last session was on (the list says it rather than guessing from the relay it knows)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_route: Option<Route>,
 }
 
 pub struct Computers {
@@ -252,7 +255,7 @@ pub fn browse(
 // ------------------------------------------------------------------ the ways to a computer
 
 /// The path a session is on, as the host names it (server.rs `Connected.route`; the toolbar's words: copy.md).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Route {
     Local,
@@ -432,7 +435,7 @@ pub async fn pair(
             None,
         ),
     };
-    let (mut phone, _) = open(
+    let (mut phone, route) = open(
         device,
         &device_id,
         &key,
@@ -500,6 +503,7 @@ pub async fn pair(
         relay: info.relay.clone().or(relay),
         added: now_ms(),
         last_seen: Some(now_ms()),
+        last_route: Some(route),
     };
     phone.send(&ToMac::ReleaseAll).await;
     Ok((c, new_key))
@@ -1233,6 +1237,7 @@ mod tests {
             relay: None,
             added: 1,
             last_seen: None,
+            last_route: None,
         };
         cs.add(c.clone(), &[7; 32]).unwrap();
         assert_eq!(cs.list(), vec![c.clone()]);
@@ -1245,6 +1250,10 @@ mod tests {
         );
         cs.update("h", |c| c.last_seen = Some(5));
         assert_eq!(cs.get("h").unwrap().last_seen, Some(5));
+        // the path last used is kept, by its wire name
+        cs.update("h", |c| c.last_route = Some(Route::Local));
+        assert!(std::fs::read_to_string(d.join("computers.json")).unwrap().contains(r#""lastRoute": "local""#));
+        assert_eq!(cs.get("h").unwrap().last_route, Some(Route::Local));
         cs.remove("h");
         assert!(cs.list().is_empty() && cs.key("h").is_none());
         let _ = std::fs::remove_dir_all(d);
