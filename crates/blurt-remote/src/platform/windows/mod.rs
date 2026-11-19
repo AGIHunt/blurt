@@ -15,6 +15,7 @@ pub mod geometry;
 pub mod keyboard;
 pub mod keymap;
 pub mod ltr;
+pub mod nv12;
 pub mod pacing;
 pub mod pointer;
 

@@ -1,6 +1,7 @@
 //! The monitor under the pointer, to the phone (the Mac's RemoteScreen.swift): capture → crop + scale + NV12 on the GPU →
-//! hardware encoder → length-prefixed NAL units. One worker thread owns every D3D11 / WinRT / Media Foundation object; the
-//! `Screen` the server holds only sends it commands, so it is Send whatever COM is.
+//! hardware encoder → length-prefixed NAL units (no video processor: crop + scale + NV12 on the CPU → the software encoder).
+//! One worker thread owns every D3D11 / WinRT / Media Foundation object; the `Screen` the server holds only sends it commands,
+//! so it is Send whatever COM is.
 //!
 //! * The output size is fixed for the stream (the monitor's shape, as large as asked for, never more pixels than the monitor
 //!   has); a crop is a source rectangle, changed between two frames.
@@ -20,8 +21,8 @@ use ::windows::core::Interface;
 use ::windows::Win32::Foundation::HMODULE;
 use ::windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_UNKNOWN};
 use ::windows::Win32::Graphics::Direct3D11::{
-    D3D11CreateDevice, ID3D11Device, ID3D11Multithread, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
-    D3D11_SDK_VERSION,
+    D3D11CreateDevice, ID3D11Device, ID3D11Multithread, ID3D11Texture2D, ID3D11VideoDevice, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+    D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION,
 };
 use ::windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1, IDXGIOutput1};
 use ::windows::Win32::Graphics::Gdi::HMONITOR;
@@ -31,7 +32,7 @@ use ::windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 use super::annexb::{self, Codec};
 pub use super::capture::PageSource;
 use super::capture::{Capture, Page, Signal, Synthetic};
-use super::convert::Converter;
+use super::convert::{Converter, CpuConverter};
 use super::encoder::Encoder;
 use super::geometry::{self, Monitor, Rect};
 use super::imp::Shown;
@@ -42,6 +43,9 @@ use crate::sharpen::NO_CEILING;
 
 /// The software encoder's longest side: Microsoft's H.264 MFT on a CPU keeps 30 fps at about this size.
 const SOFTWARE_LONGEST: u32 = 1280;
+
+/// The CPU picture's highest frame rate: the scaler and Microsoft's encoder share the CPU with everything else on the PC.
+const CPU_PICTURE_FPS: u32 = 30;
 
 /// Where pictures come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -359,6 +363,43 @@ impl Enc {
     }
 }
 
+/// Where the crop is scaled and made NV12: the GPU's video processor, or the CPU where there is none.
+enum Picture {
+    Gpu(Converter),
+    Cpu(CpuConverter),
+}
+
+impl Picture {
+    fn new(device: &ID3D11Device, cpu: bool, in_w: u32, in_h: u32, out: (u32, u32), fps: u32) -> Result<Picture, String> {
+        if cpu {
+            CpuConverter::new(device, in_w, in_h, out.0, out.1).map(Picture::Cpu)
+        } else {
+            Converter::new(device, in_w, in_h, out.0, out.1, fps).map(Picture::Gpu)
+        }
+    }
+
+    fn size(&self) -> (u32, u32) {
+        match self {
+            Picture::Gpu(c) => (c.in_w, c.in_h),
+            Picture::Cpu(c) => (c.in_w, c.in_h),
+        }
+    }
+
+    fn hold(&self, texture: &ID3D11Texture2D) {
+        match self {
+            Picture::Gpu(c) => c.hold(texture),
+            Picture::Cpu(c) => c.hold(texture),
+        }
+    }
+
+    fn hold_pixels(&self, bgra: &[u8]) {
+        match self {
+            Picture::Gpu(c) => c.hold_pixels(bgra),
+            Picture::Cpu(c) => c.hold_pixels(bgra),
+        }
+    }
+}
+
 impl Worker {
     fn run(self, ready: Sender<Result<ScreenInfo, String>>) {
         let _dpi = monitors::Dpi::physical();
@@ -374,12 +415,13 @@ impl Worker {
         }
     }
 
-    fn open_encoder(&self, device: &ID3D11Device, src: (u32, u32)) -> Result<(Enc, (u32, u32)), String> {
+    /// `cpu_picture`: NV12 made on the CPU, so the software encoder (it takes memory) at no more than `CPU_PICTURE_FPS`.
+    fn open_encoder(&self, device: &ID3D11Device, src: (u32, u32), cpu_picture: bool) -> Result<(Enc, (u32, u32)), String> {
         let c = &self.config;
-        let fps = c.fps.clamp(1, 120);
+        let fps = if cpu_picture { c.fps.clamp(1, CPU_PICTURE_FPS) } else { c.fps.clamp(1, 120) };
         let bitrate = c.bitrate.clamp(100_000, 50_000_000);
         let mut errors = Vec::new();
-        if !self.options.software {
+        if !self.options.software && !cpu_picture {
             let size = geometry::output_size(c.width, c.height, src.0, src.1, None);
             let wants: Vec<&str> = if c.codecs.is_empty() { vec!["hevc"] } else { c.codecs.iter().map(|s| s.as_str()).collect() };
             for w in wants {
@@ -449,8 +491,24 @@ impl Worker {
             Source::Page(p) => Capture::Page(Page::new(&device, p, self.config.capture_fps.max(self.config.fps))?),
         };
         let src = (monitor.rect.width().max(2) as u32, monitor.rect.height().max(2) as u32);
-        let (mut enc, out) = self.open_encoder(&device, src)?;
-        let mut conv = Converter::new(&device, src.0, src.1, out.0, out.1, self.config.fps)?;
+        // no video device at all (WARP, the basic adapter): the picture on the CPU from the start
+        let mut cpu_picture = device.cast::<ID3D11VideoDevice>().is_err();
+        let (mut enc, mut out) = self.open_encoder(&device, src, cpu_picture)?;
+        let mut conv = match Picture::new(&device, cpu_picture, src.0, src.1, out, self.config.fps) {
+            Ok(p) => p,
+            Err(e) if !cpu_picture => {
+                // a video device whose processor won't do this: the CPU, and the software encoder that takes memory
+                log(&format!("{e}; the picture on the CPU instead"));
+                cpu_picture = true;
+                if matches!(enc, Enc::Gpu(_)) {
+                    drop(enc);
+                    (enc, out) = self.open_encoder(&device, src, true)?;
+                }
+                Picture::new(&device, true, src.0, src.1, out, self.config.fps)?
+            }
+            Err(e) => return Err(e),
+        };
+        let max_fps = if cpu_picture { CPU_PICTURE_FPS } else { 120 };
         let codec = enc.get().codec;
         self.ltr.store(enc.get().has_ltr(), Ordering::SeqCst);
         self.capped.store(enc.get().caps_quantiser(), Ordering::SeqCst);
@@ -470,7 +528,7 @@ impl Worker {
         let (pw, ph) = monitor.points();
         let (enc_name, hardware) = (enc.get().name.clone(), enc.get().hardware);
         log(&format!(
-            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}{}{}), {} kbps {} fps",
+            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}{}{}{}), {} kbps {} fps",
             capture.kind(),
             src.0,
             src.1,
@@ -479,17 +537,18 @@ impl Worker {
             codec.wire_name(),
             enc_name,
             if hardware { "hardware" } else { "software" },
+            if cpu_picture { ", NV12 on the CPU (no video processor)" } else { "" },
             if enc.get().has_ltr() { ", LTR recovery frames" } else { "" },
             if enc.get().caps_quantiser() { ", quantiser ceiling" } else { "" },
             self.config.bitrate / 1000,
-            self.config.fps
+            self.config.fps.min(max_fps)
         ));
         if let Some(r) = ready.take() {
             let _ = r.send(Ok(ScreenInfo { width: pw, height: ph, codec: codec.wire_name().into() }));
         }
 
         let mut crop = geometry::valid_crop(self.config.crop);
-        let mut pacer = Pacer::new(self.config.fps);
+        let mut pacer = Pacer::new(self.config.fps.min(max_fps));
         let mut want_key = true;
         let mut want_recover = false;
         // the ceiling the next resend is held to; any other frame goes without one
@@ -526,7 +585,7 @@ impl Worker {
             if !have_picture && matches!(self.options.source, Source::Monitor) && started_at.elapsed() > Duration::from_millis(150) {
                 have_picture = true;
                 let m = (*self.shown.lock().unwrap_or_else(|e| e.into_inner())).unwrap_or(monitor);
-                if m.rect.width() as u32 == conv.in_w && m.rect.height() as u32 == conv.in_h {
+                if (m.rect.width() as u32, m.rect.height() as u32) == conv.size() {
                     if let Some(px) = super::capture::gdi_snapshot(&m.rect) {
                         conv.hold_pixels(&px);
                         captured_at = monitors::now();
@@ -547,6 +606,7 @@ impl Worker {
                         }
                     }
                     Cmd::Rate(b, f) => {
+                        let f = f.min(max_fps);
                         let t = Instant::now();
                         enc.get().set_rate(b.clamp(100_000, 50_000_000), f);
                         pacer.set_fps(f);
@@ -577,9 +637,15 @@ impl Worker {
             let now = monitors::now();
             let wait = match pacer.next(now) {
                 Next::Encode(due) => {
-                    let (rect, shown_crop) = geometry::crop_rect(crop, conv.in_w, conv.in_h);
+                    let (in_w, in_h) = conv.size();
+                    let (rect, shown_crop) = geometry::crop_rect(crop, in_w, in_h);
                     let started = Instant::now();
-                    let nv12 = match conv.render(&rect) {
+                    // the GPU's NV12 texture; on the CPU the NV12 is already in `this_out`
+                    let made = match &mut conv {
+                        Picture::Gpu(c) => c.render(&rect).map(Some),
+                        Picture::Cpu(c) => c.render(&rect, &mut this_out).map(|_| None),
+                    };
+                    let nv12 = match made {
                         Ok(t) => t,
                         Err(e) => {
                             log(&e);
@@ -590,8 +656,8 @@ impl Worker {
                     let cpu = matches!(enc, Enc::Cpu(_));
                     // nothing new in the picture: compare what came out with what went last (a crop change or a forced one goes anyway)
                     let compare = cpu || (due.changed && !due.forced && !dirty_known);
-                    if compare {
-                        if let Err(e) = conv.read(&nv12, &mut this_out) {
+                    if let (true, Picture::Gpu(c), Some(t)) = (compare, &mut conv, &nv12) {
+                        if let Err(e) = c.read(t, &mut this_out) {
                             log(&e);
                         }
                     }
@@ -615,9 +681,10 @@ impl Worker {
                     let time = ((t0.elapsed().as_secs_f64() * 1e7) as i64).max(last_time + 1);
                     last_time = time;
                     let tag = Tag { crop: shown_crop, captured: if due.forced && !due.changed { now } else { captured_at }, started };
-                    let r = match &mut enc {
-                        Enc::Gpu(e) => e.encode_texture(&nv12, time, key, recover, cap, tag),
-                        Enc::Cpu(e) => e.encode_memory(&last_out, time, key, recover, cap, tag),
+                    let r = match (&mut enc, &nv12) {
+                        (Enc::Gpu(e), Some(t)) => e.encode_texture(t, time, key, recover, cap, tag),
+                        (Enc::Gpu(_), None) => Err("a hardware encoder with the picture on the CPU".into()),
+                        (Enc::Cpu(e), _) => e.encode_memory(&last_out, time, key, recover, cap, tag),
                     };
                     if !enc.get().caps_quantiser() {
                         self.capped.store(false, Ordering::SeqCst);
@@ -651,9 +718,9 @@ impl Worker {
                 Next::Idle => Duration::from_millis(100),
             };
             if let Some(f) = capture.next(wait, &self.signal) {
-                if f.width != conv.in_w || f.height != conv.in_h {
+                if (f.width, f.height) != conv.size() {
                     // the monitor changed size: a new converter at the same output size
-                    match Converter::new(&device, f.width, f.height, out.0, out.1, self.config.fps) {
+                    match Picture::new(&device, cpu_picture, f.width, f.height, out, self.config.fps) {
                         Ok(c) => conv = c,
                         Err(e) => {
                             log(&e);
@@ -669,7 +736,8 @@ impl Worker {
                 have_picture = true;
                 captured_at = f.time;
                 dirty_known = f.dirty.is_some();
-                let (rect, _) = geometry::crop_rect(crop, conv.in_w, conv.in_h);
+                let (in_w, in_h) = conv.size();
+                let (rect, _) = geometry::crop_rect(crop, in_w, in_h);
                 let in_crop = f.dirty.as_ref().is_none_or(|d| geometry::touches(d, &rect));
                 pacer.picture(in_crop);
                 let mut g = self.stats.lock().unwrap_or_else(|e| e.into_inner());
