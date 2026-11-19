@@ -5,7 +5,7 @@ import EN from '../locales/en.json';
 import ZH from '../locales/zh-Hans.json';
 import { mockInvoke, mockListen } from '../mock';
 import type { RemoteStatus } from '../api';
-import { MOVED, results } from './catalog';
+import { MOVED, redirect, results } from './catalog';
 import { awayLine, groupDigits, relayAddress, timeLeft } from './phone';
 
 describe('relay address', () => {
@@ -104,11 +104,15 @@ describe('Phone in search', () => {
     expect(results('手机', 'zh-Hans')[0]).toMatchObject({ pane: 'phone', paneHit: true });
     expect(ids('relay')).toContain('phone.relay.address');
     expect(ids('中转', 'zh-Hans')).toContain('phone.relay.address');
-    expect(ids('QR')).toContain('phone.add');
+    expect(ids('QR')).toContain('phone.devices');
     expect(results('trackpad', 'en').map((g) => g.pane)).toContain('phone');
   });
   it('the Mac’s pane name for it lands here', () => {
     expect(MOVED.remote).toBe('phone');
+    // the device lists moved to the page: their old rows land on the row that goes there
+    expect([redirect('phone/phone.add'), redirect('phone/phone.computers.add')]).toEqual(['phone/phone.devices', 'phone/phone.devices']);
+    expect(ids('computer')).toContain('phone.devices');
+    expect(ids('电脑', 'zh-Hans')).toContain('phone.devices');
   });
 });
 
@@ -178,13 +182,13 @@ describe('browser stand-in', () => {
     s = await mockInvoke<RemoteStatus>('remote_set_relay', { address: '' });
     expect(s.relay.goBetween).toBe(true);
   });
-  it('?phone_away=noDirect: two phones, no relay, the go-between couldn’t carry the last one', async () => {
+  it('?phone_away=noDirect: two phones and a computer, no relay, the go-between couldn’t carry the last one', async () => {
     vi.resetModules();
     vi.stubGlobal('location', { search: '?phone_away=noDirect' });
     try {
       const m = await import('../mock');
       const s = await m.mockInvoke<RemoteStatus>('remote_status');
-      expect(s.devices).toHaveLength(2);
+      expect(s.devices).toHaveLength(3);
       expect(s.connected).toBeNull();
       expect(s.relay.address).toBeNull();
       expect(awayLine(s)).toMatchObject({ key: 'phone.away.no_direct', warn: true });

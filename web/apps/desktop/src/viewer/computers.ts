@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { invoke, listen, type RemoteRoute } from '../api';
 
-export type ComputerState = 'connected' | 'available' | 'offline';
+/** noDirect: the public connection service found no direct path last time (until it connects, or Connect tries again) */
+export type ComputerState = 'connected' | 'available' | 'noDirect' | 'offline';
 export interface ComputerRow {
   id: string;
   name: string;
@@ -64,12 +65,14 @@ export function useComputers(): ComputersStatus | null {
 
 export const applyComputers = (p: Promise<ComputersStatus>) => p.then((s) => (publishComputers(s), s));
 
-/** A row's state line and its one button (the spec's table): Connected · <path> → Open Window; Available · <path> →
- *  Connect; Offline · <when last seen> → Remove. Keys into the locale; `route` and `when` fill them. */
-export function rowPlan(c: ComputerRow): { state: string; route: RemoteRoute | null; when: number | null; action: 'open' | 'connect' | 'remove' } {
-  if (c.state === 'connected') return { state: 'computers.state.connected', route: c.route ?? 'local', when: null, action: 'open' };
-  if (c.state === 'available') return { state: 'computers.state.available', route: c.route ?? 'local', when: null, action: 'connect' };
-  return { state: c.lastSeen ? 'computers.state.offline' : 'computers.state.offline_never', route: null, when: c.lastSeen, action: 'remove' };
+/** A row's state line and its button (the spec's table; Remove is in the row's menu): Connected · <path> → Open Window;
+ *  Available · <path> → Connect; Can't Connect Directly → Connect (a fresh try); Offline · <when last seen> → Connect.
+ *  Keys into the locale; `route` and `when` fill them. `warn`: the line is a problem. */
+export function rowPlan(c: ComputerRow): { state: string; route: RemoteRoute | null; when: number | null; action: 'open' | 'connect'; warn: boolean } {
+  if (c.state === 'connected') return { state: 'computers.state.connected', route: c.route ?? 'local', when: null, action: 'open', warn: false };
+  if (c.state === 'available') return { state: 'computers.state.available', route: c.route ?? 'local', when: null, action: 'connect', warn: false };
+  if (c.state === 'noDirect') return { state: 'computers.state.no_direct', route: null, when: null, action: 'connect', warn: true };
+  return { state: c.lastSeen ? 'computers.state.offline' : 'computers.state.offline_never', route: null, when: c.lastSeen, action: 'connect', warn: false };
 }
 
 /** A pasted pairing link, as the host makes it (blurtremote://pair?…), trimmed; null when it isn't one. */

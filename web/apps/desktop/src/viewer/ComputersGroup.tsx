@@ -1,12 +1,14 @@
-// Settings → Phones and Computers → Computers (docs/design/remote-desktop-viewer.md §The list of computers): the computers
-// this one shows and drives. Each row: the name, its system, its state (Connected · <path>, Available · <path>, Offline ·
-// <when last seen>) and one button (Open Window, Connect, Remove). Add Computer… lists the Blurt computers found on this
-// network (choosing one starts pairing) and takes a pasted pairing link for one that's away. While pairing, the six digits
-// the other computer asks with show here. The app's side: src-tauri/src/viewer.rs.
+// Phones and Computers → Computers You Can Control (docs/design/remote-desktop-viewer.md §The list of computers; the page,
+// PhonePage.tsx): the computers this one shows and drives. Each row: the name, its system, its state (Connected · <path>,
+// Available · <path>, Can't Connect Directly, Offline · <when last seen>), its button (Open Window or Connect) and ⋯ with
+// Remove. Add Computer… lists the Blurt computers found on this network (choosing one starts pairing) and takes a pasted
+// pairing link for one that's away. While pairing, the six digits the other computer asks with show here. The app's side:
+// src-tauri/src/viewer.rs.
 import { useEffect, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { i18n } from '../i18n';
-import { Group, Line, Row, S } from '../settings/kit';
+import { AddLine, DeviceRow, EmptyLine, RowMore, StateLine } from '../components/DeviceRows';
+import { S } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
 import { groupDigits } from '../settings/phone';
 import { applyComputers, computers, pairingLink, rowPlan, useComputers, type ComputerRow, type ComputersStatus } from './computers';
@@ -38,16 +40,23 @@ export function ComputersGroup() {
     setAdding(false);
     void applyComputers(computers.cancelPairing()).catch(() => {});
   };
+  const none = !s.computers.length;
   return (
-    <Group id="phone.computers">
-      {s.computers.map((c) => <ComputerLine key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
-      {adding || s.pairing ? (
-        <AddPanel s={s} onClose={close} />
-      ) : (
-        <Row id="phone.computers.add">
-          <button onClick={() => setAdding(true)} data-testid="computers-add">{S('computers.add')}</button>
-        </Row>
-      )}
+    <>
+      <h2 className="pg-h2">{S('computers.section')}</h2>
+      <section className="pg-box" data-testid="computers">
+        {none && !adding && !s.pairing && (
+          <EmptyLine icon="screen" title={S('computers.none')} detail={S('computers.add.detail')}>
+            <button className="ph-act" onClick={() => setAdding(true)} data-testid="computers-add">{S('computers.add')}</button>
+          </EmptyLine>
+        )}
+        {s.computers.map((c) => <ComputerLine key={c.id} c={c} onRemove={() => setRemoving(c)} />)}
+        {adding || s.pairing ? (
+          <AddPanel s={s} onClose={close} />
+        ) : (
+          !none && <AddLine label={S('computers.add')} onClick={() => setAdding(true)} title={S('computers.add.detail')} testid="computers-add" />
+        )}
+      </section>
       {removing && (
         <Confirm title={S('phone.remove.title', removing.name)} detail={S('computers.remove.detail')} cancel={S('phone.cancel')} ok={S('phone.remove')}
           onClose={() => setRemoving(null)}
@@ -57,7 +66,7 @@ export function ComputersGroup() {
             void applyComputers(computers.remove(id)).catch(() => {});
           }} />
       )}
-    </Group>
+    </>
   );
 }
 
@@ -66,20 +75,23 @@ function ComputerLine({ c, onRemove }: { c: ComputerRow; onRemove: () => void })
   const route = p.route ? S(`phone.route.${p.route}`) : '';
   const when = p.when ? i18n().formatRelative(p.when) : '';
   const stateText = S(p.state, p.route ? route : when);
-  const detail = (
-    <span className={c.state === 'connected' ? 'st-phone-live' : undefined} data-testid={`computer-state-${c.id}`} data-state={c.state}>
-      {c.state === 'connected' && <span className="st-phone-dot" aria-hidden />}
-      {[c.platform ? SYSTEM[c.platform] : '', stateText].filter(Boolean).join(' · ')}
-    </span>
-  );
-  const run = () => (p.action === 'remove' ? onRemove() : void applyComputers(computers.open(c.id)).catch(() => {}));
-  const label = S(p.action === 'open' ? 'computers.open' : p.action === 'connect' ? 'computers.connect' : 'phone.remove');
+  const label = S(p.action === 'open' ? 'computers.open' : 'computers.connect');
+  const tone = c.state === 'connected' ? 'good' : p.warn ? 'warn' : c.state === 'available' ? 'ready' : 'off';
+  const open = () => void applyComputers(computers.open(c.id)).catch(() => {});
+  // offline: nothing to press at rest (a try is in ⋯); otherwise its one button
+  const offline = c.state === 'offline';
   return (
-    <Line title={c.name} detail={detail} flash={`computers.computer.${c.id}`}>
-      <button onClick={run} aria-label={`${label} ${c.name}`} data-testid={`computer-action-${c.id}`}>{label}</button>
-    </Line>
+    <DeviceRow icon="screen" name={c.name} testid={`computer-${c.id}`}
+      state={<StateLine tone={tone} state={stateText} rest={c.platform ? SYSTEM[c.platform] : undefined} tip={p.warn ? S('computers.no_direct.detail') : undefined}
+        testid={`computer-state-${c.id}`} data={c.state} />}>
+      {!offline && <button className="ph-act" onClick={open} aria-label={`${label} ${c.name}`} data-testid={`computer-action-${c.id}`}>{label}</button>}
+      <RowMore name={c.name} testid={`computer-more-${c.id}`}
+        entries={offline ? [{ label, run: open }, { kind: 'separator' }, { label: S('phone.remove'), danger: true, run: onRemove }] : [{ label: S('phone.remove'), danger: true, run: onRemove }]} />
+    </DeviceRow>
   );
 }
+
+
 
 /** Add Computer…: the ones on this network, a link for one that's away, and while pairing, the digits to compare. */
 function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
@@ -94,71 +106,72 @@ function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
   };
   if (p && p.state !== 'failed') {
     return (
-      <div className="st-row st-computers-pair" data-setting="phone.computers.add" data-testid="computers-pairing" data-state={p.state}>
-        <span className="st-phone-ask-icon"><Icon name="screen" size={20} /></span>
-        <div className="st-phone-ask-body">
-          <div className="st-phone-ask-title">{p.state === 'asking' ? S('computers.pairing.asking', p.name) : S('computers.pairing.connecting', p.name)}</div>
-          {p.state === 'asking' && p.digits ? (
-            <>
-              <div className="st-detail">{S('computers.pairing.asking.detail')}</div>
+      <div className="st-computers-pair-wrap">
+        <div className="st-computers-pair" data-setting="phone.computers.add" data-testid="computers-pairing" data-state={p.state}>
+          <span className="st-phone-ask-icon"><Icon name="screen" size={20} /></span>
+          <div className="st-phone-ask-body">
+            <div className="st-phone-ask-title">{p.state === 'asking' ? S('computers.pairing.asking', p.name) : S('computers.pairing.connecting', p.name)}</div>
+            {p.state === 'asking' && p.digits ? (
+              <>
+                <div className="st-detail">{S('computers.pairing.asking.detail')}</div>
+                <div className="st-phone-ask-foot">
+                  <span className="st-phone-digits" data-testid="computers-digits" aria-label={p.digits.split('').join(' ')}>{groupDigits(p.digits)}</span>
+                  <span className="grow" />
+                  <button className="ph-act" onClick={onClose}>{S('phone.cancel')}</button>
+                </div>
+              </>
+            ) : (
               <div className="st-phone-ask-foot">
-                <span className="st-phone-digits" data-testid="computers-digits" aria-label={p.digits.split('').join(' ')}>{groupDigits(p.digits)}</span>
+                <span className="st-spin" aria-hidden />
                 <span className="grow" />
-                <button onClick={onClose}>{S('phone.cancel')}</button>
+                <button className="ph-act" onClick={onClose}>{S('phone.cancel')}</button>
               </div>
-            </>
-          ) : (
-            <div className="st-phone-ask-foot">
-              <span className="st-spin" aria-hidden />
-              <span className="grow" />
-              <button onClick={onClose}>{S('phone.cancel')}</button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     );
   }
   const error = p?.state === 'failed' ? p.error : invalid ? 'invalid' : null;
+  // the nearby ones are rows like the list's (可连接 · 同一网络, Pair in the button's place); then one field for a link, its Pair
+  // only once something is typed (Return pairs too); Cancel at the end, on the buttons' edge
   return (
-    <div className="st-row st-computers-add" data-setting="phone.computers.add" data-testid="computers-add-panel">
-      <div className="st-computers-section">{S('computers.nearby')}</div>
+    <div className="st-computers-panel" data-setting="phone.computers.add" data-testid="computers-add-panel">
+      <div className="st-computers-section">{S('computers.nearby')}{s.browsing && <span className="st-spin" aria-hidden />}</div>
       {s.nearby.length ? (
-        <ul className="st-computers-nearby" data-testid="computers-nearby">
+        <div className="st-computers-nearby" data-testid="computers-nearby">
           {s.nearby.map((n) => (
-            <li key={n.id}>
-              <Icon name="screen" size={16} />
-              <span className="grow">{n.name}</span>
-              <button onClick={() => void applyComputers(computers.pairNearby(n.id)).catch(() => {})} data-testid={`computers-pair-${n.id}`}>{S('computers.pair')}</button>
-            </li>
+            <DeviceRow key={n.id} icon="screen" name={n.name} state={<StateLine tone="ready" state={S('computers.state.available', S('phone.route.local'))} />}>
+              <button className="ph-act" onClick={() => void applyComputers(computers.pairNearby(n.id)).catch(() => {})} data-testid={`computers-pair-${n.id}`}>{S('computers.pair')}</button>
+              <span className="ph-more-slot" aria-hidden />
+            </DeviceRow>
           ))}
-        </ul>
-      ) : (
-        <div className="st-detail st-computers-none">
-          {s.browsing && <span className="st-spin" aria-hidden />}
-          {S('computers.nearby.none')}
         </div>
+      ) : (
+        <div className="st-detail st-computers-none">{S('computers.nearby.none')}</div>
       )}
-      <div className="st-computers-section">{S('computers.link')}</div>
-      <div className="st-computers-link">
-        <input className="st-field" type="text" spellCheck={false} autoComplete="off" placeholder="blurtremote://pair?…" aria-label={S('computers.link')}
-          value={text} data-testid="computers-link"
-          onChange={(e) => (setText(e.target.value), setInvalid(false))}
-          onKeyDown={(e) => e.key === 'Enter' && pairLink()} />
-        <button onClick={pairLink} disabled={!text.trim()} data-testid="computers-link-pair">{S('computers.pair')}</button>
-      </div>
-      <div className={`st-detail ${error ? 'warn' : ''}`} data-testid="computers-link-detail">
-        {error ? (
-          <>
-            <Icon name="warning" size={12} />
-            {S(`computers.error.${error}`)}
-          </>
-        ) : (
-          S('computers.link.detail')
-        )}
-      </div>
-      <div className="st-phone-pair-actions">
-        <span className="grow" />
-        <button onClick={onClose} data-testid="computers-cancel">{S('phone.cancel')}</button>
+      <div className="st-computers-add">
+        <div className="st-computers-section">{S('computers.link')}</div>
+        <div className="st-computers-link">
+          <input className="st-field" type="text" spellCheck={false} autoComplete="off" placeholder="blurtremote://pair?…" aria-label={S('computers.link')}
+            value={text} data-testid="computers-link"
+            onChange={(e) => (setText(e.target.value), setInvalid(false))}
+            onKeyDown={(e) => e.key === 'Enter' && pairLink()} />
+          {text.trim() && <button className="ph-act" onClick={pairLink} data-testid="computers-link-pair">{S('computers.pair')}</button>}
+        </div>
+        <div className={`st-detail ${error ? 'warn' : ''}`} data-testid="computers-link-detail">
+          {error ? (
+            <>
+              <Icon name="warning" size={12} />
+              {S(`computers.error.${error}`)}
+            </>
+          ) : (
+            S('computers.link.detail')
+          )}
+        </div>
+        <div className="st-computers-foot">
+          <button className="ph-act" onClick={onClose} data-testid="computers-cancel">{S('phone.cancel')}</button>
+        </div>
       </div>
     </div>
   );

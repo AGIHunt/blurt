@@ -1,44 +1,46 @@
-/* Settings → Phones and Computers → Computers (ComputersGroup.tsx): Add Computer…'s panel and the pairing in progress, on the
-   pane's own parts (the phone's pairing block, rows, fields). */
-.st-row.st-computers-add {
+/* Phones and Computers → Computers You Can Control (ComputersGroup.tsx, on the page's boxes): Add Computer…'s panel and the
+   pairing in progress. The nearby computers are the list's own rows (DeviceRows.tsx); the captions, the link field, its words
+   and Cancel sit in the names' column, every button on the rows' button edge (⋯'s place beyond it). */
+.st-computers-panel {
+  padding-top: 12px;
+}
+.st-computers-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 44px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mute);
+}
+.st-computers-section .st-spin {
+  width: 10px;
+  height: 10px;
+  color: var(--mute);
+}
+.st-computers-nearby > * + * {
+  border-top: 1px solid var(--line);
+}
+.ph-more-slot {
+  width: 28px;
+  flex: none;
+}
+.st-computers-none {
+  padding: 8px 14px 10px 44px;
+}
+.st-computers-add {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 12px 0 14px;
-}
-.st-computers-section {
-  font-weight: 600;
-  margin-top: 4px;
-}
-.st-computers-nearby {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-}
-.st-computers-nearby li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 12px;
-  color: var(--ink);
-}
-.st-computers-nearby li + li {
+  padding: 12px 54px 14px 0;
   border-top: 1px solid var(--line);
 }
-.st-computers-nearby li > svg {
-  color: var(--mute);
+.st-computers-add > :not(.st-computers-section) {
+  margin-left: 44px;
 }
-.st-computers-nearby .grow,
 .st-computers-add .grow {
   flex: 1;
-}
-.st-computers-none {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .st-computers-link {
   display: flex;
@@ -47,23 +49,27 @@
 .app .st-computers-link .st-field {
   flex: 1;
   width: auto;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--ctl-border);
 }
 .st-computers-add .st-detail.warn {
   display: flex;
   align-items: center;
   gap: 5px;
 }
-.st-computers-add .st-phone-pair-actions {
-  margin-top: 4px;
+.st-computers-foot {
+  display: flex;
+  justify-content: flex-end;
   padding-top: 4px;
 }
-.st-row.st-computers-pair {
+.st-computers-pair-wrap {
+  padding: 10px;
+}
+.st-computers-pair {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin: 6px 0;
   padding: 14px 16px;
   border-radius: var(--r);
   background: var(--brand-tint);

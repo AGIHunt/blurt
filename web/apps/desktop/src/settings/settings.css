@@ -177,7 +177,6 @@
   padding: 10px 0;
   min-height: 46px;
   box-sizing: border-box;
-  border-radius: var(--r-sm);
 }
 .st-icon {
   width: 18px;
@@ -245,6 +244,7 @@
   }
 }
 .st-flash {
+  border-radius: var(--r-sm);
   animation: st-flash 1.6s ease;
 }
 
@@ -319,6 +319,20 @@
 }
 [dir='rtl'] .app .st-switch.on > span {
   transform: translateX(-16px);
+}
+/* a switch that can't be changed now: its track grey whatever it is set to, the knob still white, the same in both themes
+   (opacity alone left a grey knob on a green track in dark mode) */
+.app .st-switch:disabled {
+  opacity: 1;
+  background: var(--chip);
+  border-color: var(--ctl-border);
+}
+.app .st-switch.on:disabled {
+  background: color-mix(in srgb, var(--brand-accent) 40%, var(--chip));
+  border-color: transparent;
+}
+.app .st-switch:disabled > span {
+  opacity: 0.85;
 }
 
 /* the pop-up: one width, one chevron */
@@ -715,23 +729,43 @@
   gap: 8px;
   align-items: baseline;
 }
+/* the status mark (components/StatusDot.tsx): each tone its own shape — good a filled green disc with a check, warn an amber
+   disc with "!", bad a red disc with "×", ready a hollow ring in the accent, off a small dim grey dot; .sm inside a line of text */
 .st-dot {
   width: 14px;
   height: 14px;
+  flex: none;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
+  line-height: 1;
   color: #fff;
   box-sizing: border-box;
 }
+.st-dot.sm {
+  width: 12px;
+  height: 12px;
+  font-size: 9px;
+}
 .st-dot.good {
   background: var(--ok);
+  color: #fff;
 }
 .st-dot.warn {
   background: var(--attn);
+  color: var(--on-attn);
+}
+.st-dot.ready {
+  border: 2px solid var(--brand-accent);
+}
+.st-dot.sm.ready {
+  width: 10px;
+  height: 10px;
+  margin: 1px;
+  border-width: 1.75px;
 }
 .st-dot.bad {
   background: var(--err);
@@ -1609,8 +1643,10 @@
    when a phone is connected and the warning mark when something's in the way (the text stays ink, as .st-detail.warn) */
 .st-row.st-phone-away {
   gap: 16px;
-  /* the label and the value's first line on one baseline (they differ in size) */
-  align-items: baseline;
+  align-items: flex-start;
+}
+.st-phone-away-label {
+  line-height: 18px;
 }
 .st-phone-away-label {
   flex: 1;
@@ -1673,12 +1709,19 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-height: 168px;
+  gap: 6px;
 }
 .st-phone-pair-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font-weight: 600;
   margin-top: 2px;
+}
+.st-phone-pair-title .st-phone-left {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--mute);
 }
 .st-phone-pair-text .st-detail {
   margin-top: 0;
@@ -1687,8 +1730,7 @@
   font-variant-numeric: tabular-nums;
 }
 .st-phone-pair-actions {
-  margin-top: auto;
-  padding-top: 10px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1703,16 +1745,8 @@
 .app .st-phone-noapp .st-link {
   font-size: 12px;
 }
-/* a phone asking: one tinted block, the digits large so they can be read against the phone's */
-.st-phone-ask {
-  display: flex;
-  gap: 12px;
-  margin: 6px 0;
-  padding: 14px 16px;
-  border-radius: var(--r);
-  background: var(--brand-tint);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-ink) 22%, transparent);
-}
+/* Add Computer…'s pairing block (ComputersGroup.tsx): the glyph, the question, the digits large so they can be read
+   against the other computer's */
 .st-phone-ask-icon {
   flex: none;
   color: var(--brand-ink);
@@ -1733,10 +1767,9 @@
 }
 .st-phone-digits,
 .phone-ask-digits {
-  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   color: var(--ink);
 }
 .st-phone-digits {
@@ -1746,28 +1779,71 @@
 .app input.st-field.st-phone-relay {
   width: 240px;
 }
-/* the window's own question (PhoneAsk): the agent-setup sheet with the phone's glyph and the digits centred */
+/* the window's own question (PhoneAsk): one centred column, as a system pairing alert — the device's glyph on a neutral
+   tile, the question, the digits large in the UI face, one line on where it is; the app's confirm footer under it */
+.sheet.phone-ask-sheet .agent-ask-head {
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 24px 0;
+  text-align: center;
+}
 .phone-ask-icon {
   flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 9px;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
-  color: var(--brand-ink);
-  background: var(--brand-tint);
+  color: var(--ink-2);
+  background: var(--chip);
 }
 .sheet.phone-ask-sheet .agent-ask-head h3 {
   padding: 0;
+  max-width: 340px;
   font-size: 17px;
-  line-height: 1.3;
+  line-height: 1.35;
+  text-wrap: balance;
 }
 .phone-ask-digits {
-  font-size: 34px;
+  font-family: var(--font);
+  letter-spacing: 0.02em;
+  font-size: 36px;
+  line-height: 1;
   text-align: center;
-  padding: 20px 24px 4px;
+  padding: 18px 24px 6px;
+  word-spacing: 0.15em;
 }
 .sheet.phone-ask-sheet p {
-  padding-top: 4px;
+  padding: 8px 24px 24px;
   text-align: center;
+  text-wrap: balance;
+  color: var(--ink-2);
+}
+/* the row that goes to the Phones and Computers page: how many there are, then the chevron */
+.st-phone-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+.phone-ask-line {
+  display: block;
+}
+.phone-ask-icon .ico {
+  width: 28px;
+  height: 28px;
+}
+.st-phone-away-value > .st-dot {
+  margin-top: 3px;
+}
+/* the pair of answers: outlined, so they read as buttons on the footer band in light mode too; the focus ring inside the
+   button, so the safe default (Don't Allow) keeps the same size and gap as Allow */
+.app .sheet.phone-ask-sheet .dict-confirm-foot button {
+  border: 1px solid var(--ctl-border);
+  background: var(--raise);
+}
+.app .sheet.phone-ask-sheet .dict-confirm-foot .dict-confirm-cancel:focus,
+.app .sheet.phone-ask-sheet .dict-confirm-foot .dict-confirm-cancel:focus-visible {
+  outline-offset: -3px;
 }

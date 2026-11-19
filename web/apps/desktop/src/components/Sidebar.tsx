@@ -149,9 +149,10 @@ export function Sidebar({
       data-testid={opts.testId}
       {...(opts.dropTo ? drop(opts.dropTo) : {})}
     >
-      <span className="mw-side-ic">{icon}</span>
+      {/* the attention mark sits on the icon, so a long name (Phones and Computers) keeps its room */}
+      <span className={`mw-side-ic ${opts.alert ? 'alert' : ''}`}>{icon}{opts.alert && <i className="mw-side-alert" aria-hidden="true" />}</span>
       <span className="mw-side-name">{label}</span>
-      {opts.alert ? <span className="mw-side-alert" aria-hidden="true"><Icon name="warning" size={13} /></span> : <Count n={n} mint={opts.mint} />}
+      {!opts.alert && <Count n={n} mint={opts.mint} />}
     </a>
   );
   return (
@@ -161,7 +162,7 @@ export function Sidebar({
         {!off.has('dictation') && row('dictation', t('dictation.history.sidebar'), <Icon name="character-cursor" size={16} />, 0, { ax: t('main.sidebar.dictation.ax'), testId: 'nav-dictation' })}
         {!off.has('cards') && row('cards', t('cards.title'), <Icon name="cards" size={16} />, cards, { testId: 'nav-cards' })}
         {screenText && !off.has('screen_text') && row('screen_text', t('feature.screen_text'), <Icon name="text-viewfinder" size={16} />, 0, { testId: 'nav-screen-text' })}
-        {!off.has('phone') && row('phone', t('feature.phone'), <Icon name="phone" size={16} />, 0, { testId: 'nav-phone', alert: phoneAlert })}
+        {!off.has('phone') && row('phone', t('feature.phone'), <Icon name="devices" size={16} />, 0, { testId: 'nav-phone', alert: phoneAlert })}
         {recording && <div className="mw-side-head">{t('main.sidebar.items')}</div>}
         {recording && row('inbox', t('main.place.inbox'), <Icon name="inbox" size={16} />, s?.inbox ?? 0, { mint: true, ax: t('main.sidebar.inbox.ax'), testId: 'nav-inbox' })}
         {recording && row('progress', t('main.place.progress'), <ProgressGlyph size={15} />, progress, { ax: t('main.sidebar.progress.ax'), testId: 'nav-progress' })}

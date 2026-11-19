@@ -343,8 +343,8 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
 type MockRemote = {
   listening: boolean;
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
-  asking: null | { device: string; digits: string; viaRelay: boolean };
-  devices: { id: string; name: string; lastSeen: number | null }[];
+  asking: null | { device: string; digits: string; viaRelay: boolean; kind?: 'phone' | 'computer' };
+  devices: { id: string; name: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
   connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
   relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null };
   screenAllowed: boolean;
@@ -359,11 +359,17 @@ const awayRoute = (['goBetween', 'direct', 'tailscale', 'overlay'] as const).fin
 const remote: MockRemote = {
   listening: paired,
   pairing: null,
-  asking: phoneStart === 'asking' ? { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: '482913', viaRelay: true } : null,
+  // ?phone=asking: a phone asks; asking_pc: a computer (its Add Computer…); asking_old: a host that doesn't say which
+  asking: phoneStart === 'asking' ? { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: '482913', viaRelay: true, kind: 'phone' }
+    : phoneStart === 'asking_pc' ? { device: L('Office ThinkPad', '办公室 ThinkPad'), digits: '204718', viaRelay: false, kind: 'computer' }
+    : phoneStart === 'asking_old' ? { device: 'maya-7f2a', digits: '204718', viaRelay: false }
+    : null,
+  // paired: two phones and a computer that drives this one (the Studio Mac mini this one drives too)
   devices: paired
     ? [
-        { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), lastSeen: Date.now() - 4 * 60_000 },
-        { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000 },
+        { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), lastSeen: Date.now() - 4 * 60_000, kind: 'phone' },
+        { id: 'pc-1', name: 'Studio Mac mini', lastSeen: Date.now() - 3 * 3600_000, kind: 'computer' },
+        { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000, kind: 'phone' },
       ]
     : [],
   connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true } : null,
@@ -413,7 +419,7 @@ function mockPairingCode() {
   remoteLater(5000, () => {
     if (!remote.pairing || remote.pairing.expiresAt < Date.now()) return;
     remote.pairing = null;
-    remote.asking = { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: String(100000 + Math.floor(Math.random() * 900000)), viaRelay: !!remote.relay.address };
+    remote.asking = { device: L('Maya’s Pixel 9', 'Maya 的 Pixel 9'), digits: String(100000 + Math.floor(Math.random() * 900000)), viaRelay: !!remote.relay.address, kind: 'phone' };
     // nobody answers in two minutes: that's a no
     remoteLater(120_000, () => (remote.asking = null));
   });
@@ -445,7 +451,7 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
         break;
       }
       const id = `ph-${Date.now()}`;
-      remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now() }];
+      remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now(), kind: ask.kind ?? 'phone' }];
       remote.listening = true;
       remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false };
       if (ask.viaRelay) remoteLater(4000, () => remote.connected?.id === id && (remote.connected.route = 'direct'));

@@ -22,6 +22,7 @@ import { useOff } from './useCapabilities';
 import { i18n, t as tr } from '../i18n';
 import { Group, InfoTip, Page, Popup, S, Switch, TextLink, lang } from '../settings/kit';
 import { revealLabel } from '../reveal';
+import { StatusDot } from './StatusDot';
 
 type Kind = 'recording' | 'cards';
 const KINDS: Kind[] = ['recording', 'cards'];
@@ -69,11 +70,8 @@ function sentence(s: string): string {
 }
 
 type Tone = 'good' | 'warn' | 'bad' | 'off' | 'busy';
-function Dot({ tone }: { tone: Tone }) {
-  // still checking: a spinner — an empty ring on every row read as radio buttons beside the switches
-  if (tone === 'busy') return <span className="st-dot busy" aria-hidden><span className="st-spin" /></span>;
-  return <span className={`st-dot ${tone}`} aria-hidden>{tone === 'good' ? <Icon name="check" size={9} /> : tone === 'warn' ? '!' : tone === 'bad' ? '×' : null}</span>;
-}
+/** The shared status mark (StatusDot.tsx). */
+const Dot = ({ tone }: { tone: Tone }) => <StatusDot tone={tone} />;
 
 function stateText(a: AgentInfo): string {
   if (!a.headless) return S(a.installed ? 'agents.state.manual' : 'agents.state.not_installed');

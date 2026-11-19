@@ -1,5 +1,5 @@
-// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (Settings → Phone and the
-// question that shows wherever the window is), the relay address as the Mac reads it (RemoteRelay.address), and the
+// Blurt on the phone, the parts that aren't drawing: one RemoteStatus for the whole window (the Phones and Computers page,
+// its Settings pane, and the question that shows wherever the window is), the relay address as the Mac reads it (RemoteRelay.address), and the
 // pairing code's time left.
 import { useEffect, useState } from 'react';
 import { api, onRemoteStatus, type RemoteStatus } from '../api';
@@ -37,30 +37,6 @@ export function useRemoteStatus(): RemoteStatus | null {
 
 /** A command that answers with the status: its answer is shown at once (the event follows). */
 export const apply = (p: Promise<RemoteStatus>) => p.then((s) => (publish(s), s));
-
-// Settings → Phone shows the question itself while it is open; the window's own dialog waits for it to close.
-let paneOpen = 0;
-const paneSubs = new Set<(n: number) => void>();
-export function usePhonePaneOpen(): boolean {
-  const [n, setN] = useState(paneOpen);
-  useEffect(() => {
-    paneSubs.add(setN);
-    return () => {
-      paneSubs.delete(setN);
-    };
-  }, []);
-  return n > 0;
-}
-export function usePhonePaneMounted() {
-  useEffect(() => {
-    paneOpen++;
-    paneSubs.forEach((f) => f(paneOpen));
-    return () => {
-      paneOpen--;
-      paneSubs.forEach((f) => f(paneOpen));
-    };
-  }, []);
-}
 
 /** What was typed as a relay address, as it will be used ("relay.example.com" → "wss://relay.example.com"), or null
  *  when it isn't one: ws or wss, a host, no query or fragment, no trailing slash (RemoteRelay.address). */

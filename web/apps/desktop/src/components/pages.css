@@ -69,9 +69,6 @@
 .pg-box > * + * {
   border-top: 1px solid var(--line);
 }
-.pg-box.ph-head > * + * {
-  border-top: none;
-}
 .pg-caps {
   display: inline-flex;
   gap: 3px;
@@ -523,72 +520,90 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- Phone */
-.ph-head {
+/* ---------------------------------------------------------------- Phones and Computers (PhonePage.tsx, ComputersGroup.tsx,
+   DeviceRows.tsx): both lists on one row grammar — icon · name over state · at most one small button · ⋯ on the box's inset */
+.pg-line.ph-row {
+  min-height: 56px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.ph-row .pg-line-ic {
+  color: var(--ink-2);
+}
+/* the state: its mark in a fixed column, then the words; only the state words take the warning colour */
+.ph-state {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  margin-top: 16px;
-}
-.ph-glyph {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r);
-  background: var(--chip);
-  color: var(--mute);
-}
-.ph-head.connected .ph-glyph {
-  background: var(--brand-tint);
-  color: var(--brand-ink);
-}
-.ph-glyph .ph-dot {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  box-shadow: 0 0 0 2px var(--raise);
-}
-.ph-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  display: inline-block;
-}
-.ph-head-text {
-  flex: 1;
+  gap: 6px;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
 }
-.ph-head-title {
-  font-size: 15px;
-  font-weight: 600;
+.ph-state > span:not(.st-dot) {
+  white-space: nowrap;
 }
-.ph-head-detail {
-  font-size: 12.5px;
+.ph-state .ph-warn {
+  color: var(--attn-ink, var(--attn));
+}
+/* a row's button and the box's own buttons: the small size, so names stay the heaviest thing in a row */
+.app button.ph-act {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.app .icon-btn.ph-more {
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  border-radius: var(--r-sm);
+  color: var(--faint);
+}
+.app .ph-row:hover .icon-btn.ph-more {
   color: var(--mute);
-  text-wrap: pretty;
+}
+.app .icon-btn.ph-more:hover,
+.app .icon-btn.ph-more[aria-expanded='true'] {
+  background: var(--hover);
+  color: var(--ink);
+}
+/* "+ Add Device…": the box's last line, the whole line the button */
+.app .pg-box > button.pg-line.ph-add:first-child {
+  border-top: none;
+}
+.app button.pg-line.ph-add {
+  width: 100%;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 14px;
+  justify-content: flex-start;
+  text-align: start;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 400;
+}
+.app button.pg-line.ph-add:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
+}
+.app button.pg-line.ph-add .pg-line-ic {
+  color: inherit;
 }
 .ph-pair {
-  margin-top: 10px;
-  padding: 4px 14px;
+  padding: 14px;
 }
 .ph-check.good .pg-line-ic {
-  color: var(--ok);
+  color: var(--ink-2);
 }
 .ph-check.bad .pg-line-ic {
   color: var(--attn);
 }
-.ph-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* This Computer with something in the way: said first, on the attention wash */
+.pg-box.ph-attn {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--attn) 7%, var(--raise));
 }
 .ph-tips {
   margin: 0;
@@ -684,4 +699,28 @@
 }
 .sx-row:hover .hm-entry-time {
   visibility: hidden;
+}
+.ph-pair .st-row.st-phone-pair {
+  padding: 0;
+}
+/* the code beside its words, centred on each other; the words kept to a readable measure */
+.ph-pair .st-row.st-phone-pair {
+  align-items: center;
+}
+.ph-pair .st-phone-qr {
+  width: 148px;
+  height: 148px;
+}
+.ph-pair .st-phone-qr {
+  box-shadow: none;
+}
+.ph-pair .st-phone-pair-text .st-detail {
+  text-wrap: pretty;
+}
+/* where the app comes from: plain links in the secondary ink, not the brand colour */
+.app .ph-pair .st-phone-noapp .st-link {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
 }

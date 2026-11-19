@@ -2,7 +2,7 @@
 // on the network, pairing with digits after a moment, and a computer's window with a made-up desktop that is really encoded
 // (WebCodecs VideoEncoder, H.264 Annex B) and sent through the same frames the app sends, so the window's decoding runs as in
 // the app. URL parameters:
-//   ?computers= none | some (default)                     the list: none, or Connected / Available / Offline rows
+//   ?computers= none | some (default) | nodirect            the list: none, or Connected / Available (nodirect: Can't Connect Directly) / Offline rows
 //   ?computers_pairing= connecting | asking | failed        Add Computer… already pairing
 //   ?viewer=<id>&viewer_state= connected (default) | connecting | offline | busy | noDirect | removed | replaced | noControl
 //   &viewer_route= local | direct | relay | goBetween | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
@@ -22,7 +22,7 @@ const state: ComputersStatus = {
       ? []
       : [
           { id: 'studio', name: 'Studio Mac mini', platform: 'mac', state: 'connected', route: 'local', lastSeen: Date.now(), windows: 1 },
-          { id: 'den', name: L('Den PC', '书房电脑'), platform: 'windows', state: 'available', route: 'goBetween', lastSeen: Date.now() - 2 * hour, windows: 0 },
+          { id: 'den', name: L('Den PC', '书房电脑'), platform: 'windows', ...(param('computers') === 'nodirect' ? { state: 'noDirect' as const, route: null } : { state: 'available' as const, route: 'goBetween' as const }), lastSeen: Date.now() - 2 * hour, windows: 0 },
           { id: 'lab', name: 'ubuntu-lab', platform: 'linux', state: 'offline', route: null, lastSeen: Date.now() - 3 * 24 * hour, windows: 0 },
         ],
   nearby: [{ id: 'office', name: L('Office ThinkPad', '办公室 ThinkPad') }],

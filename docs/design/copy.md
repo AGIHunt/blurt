@@ -51,6 +51,8 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | Settings → 手机和电脑's lead, the way to the page | 设备列表在主窗口的「手机和电脑」页。 查看设备 | The device list is on the Phones and Computers page in the main window. Show Devices |
 | A new device asking the host for a yes | 允许 %@ 控制本机？ · %@ 显示相同的数字时才允许。 · 不允许 · 允许 | Allow %@ to control this Mac? · Allow only if %@ shows the same digits. · Don't Allow · Allow |
 | Its two groups: what controls this computer · what this computer controls | 能控制本机的设备 · 本机可控制的电脑 | Devices That Can Control This Computer · Computers You Can Control |
+| This Computer's status on that page · the page's button to the pane | 本机 · 设置… | This Computer · Settings… |
+| A paired device with no name, by kind | 手机 · 电脑 | Phone · Computer |
 | Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |
 | The text form of the pairing code | 配对链接 | Pairing link |
 | The viewer's ⋯ menu | ⌘ 当作 Ctrl · 共享剪贴板 | Use ⌘ as Ctrl · Share Clipboard |

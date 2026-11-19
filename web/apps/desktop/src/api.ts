@@ -707,10 +707,10 @@ export interface RemoteStatus {
   listening: boolean;
   /** the code on screen; qrSvg is a complete <svg> the host draws */
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
-  /** a new phone waits for a yes; the yes is for the phone showing the same digits */
-  asking: null | { device: string; digits: string; viaRelay: boolean };
-  /** kind 'computer': a computer driving this one (its window, docs/design/remote-desktop-viewer.md); null: a phone */
-  devices: { id: string; name: string; lastSeen: number | null; kind?: 'computer' | null }[];
+  /** a new device waits for a yes; the yes is for the one showing the same digits. `kind` from its hello (missing: not known) */
+  asking: null | { device: string; digits: string; viaRelay: boolean; kind?: DeviceKind };
+  /** every device that can control this computer: phones, and computers driving it (docs/design/remote-desktop-viewer.md) */
+  devices: { id: string; name: string; lastSeen: number | null; kind?: DeviceKind }[];
   connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
   /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
    *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */
@@ -724,6 +724,8 @@ export interface RemoteStatus {
   firewall: RemoteFirewall;
 }
 export type RemoteFirewall = 'ok' | 'blocked' | 'unknown';
+/** a paired device: a phone, or a computer whose hello listed `viewer` (crates/blurt-remote store.rs DeviceKind) */
+export type DeviceKind = 'phone' | 'computer';
 /** local: the same network; tailscale / overlay: an overlay network's address; direct: UDP, found through a relay or the
  *  go-between; relay: the owner's relay carries it; goBetween: Blurt's go-between, until the stream moves to the direct path */
 export type RemoteRoute = 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween';

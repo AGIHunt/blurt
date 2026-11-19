@@ -332,6 +332,42 @@ Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/mac/` �
 `page-asking`, `settings`. Hooks: `phonepage fake …` now includes a paired computer (MacBook Pro) beside the iPhone and iPad;
 `viewer fake` for the computers; `viewer settings` for the pane.
 
+## One place for devices (Windows and Linux, 2026-11-20)
+
+Before, the same feature sat in three places under three names: Home's row (手机), the sidebar page (手机) and Settings → 手机和电脑. Paired
+devices were listed twice, the computers this one drives were only in Settings, and a computer that drives this one showed under a
+phones heading with a phone icon. The founder approved one structure; branch `claude/devices-page-desktop`.
+
+- **One name:** 手机和电脑 / Phones and Computers for Home's row, the sidebar item, the page title and the Settings pane (`feature.phone`,
+  `phone.pane.title`). The sidebar, Home and the pane use a devices icon (`assets/icons/devices.svg`: a screen with a phone in front).
+- **The page** (`web/apps/desktop/src/components/PhonePage.tsx`) holds the devices, in three boxes:
+  - 能控制本机的设备 / Devices That Can Control This Computer: every paired phone and computer, its icon by kind (phone or screen), its
+    state (已连接 · <path>, 上次使用：…, 未连接) and 移除 / Remove. The last line: 还没有 App？ with the two build pages, and 添加设备… /
+    Add Device… (the QR code, its time left, 拷贝链接 / Copy Link for a computer: 4 s of 已拷贝，10 分钟内有效, and the host keeps that
+    link for 10 minutes, `remotePairingLinkCopied`). None paired: 还没有配对的设备 first, Add Device… in the accent.
+  - 本机可控制的电脑 / Computers You Can Control: `viewer/ComputersGroup.tsx`, moved here from Settings and drawn as the page's box. Each
+    row: system · state (已连接 · 可连接 · 无法直连 · 离线), one button (打开窗口 / Open Window when connected, otherwise 连接 / Connect) and
+    ⋯ with 移除 / Remove. The last line: 添加电脑… / Add Computer… (nearby list, pairing link field, the digits while pairing).
+  - 本机 / This Computer: what stands in a device's way (firewall Allow…, Wayland's Remote Desktop, the port, the relay), else one line.
+  - Then 连不上时 when it applies. The header's 设置… / Settings… opens the pane.
+- **Settings → 手机和电脑** keeps only options: a 设备 / Devices row whose 查看 / Show goes to the page (search's pair / QR / computer words
+  land on it; the old `phone.add` and `phone.computers.add` rows redirect there), 本机 (show this screen on the phone) and 外出连接 (own
+  relay, public connection service, Set Up a Relay). No device lists, no notices.
+- **The question** for a new device is always the window's dialog now (the pane no longer asks in place). Its icon is the kind the
+  host gives with the question (`asking.kind`), or the neutral devices icon when a host doesn't say.
+- **Kind on the host** (`crates/blurt-remote/src/store.rs` `DeviceKind`): a hello listing `viewer` is a computer. Kept on the device
+  (`"kind": "computer"` in devices.json, nothing for a phone, so records from before read as phones) and learned again on every
+  session, so an old record of a computer corrects itself. In the status: `devices[].kind` and `asking.kind` ("phone" | "computer").
+  No wire change. Test: `tests/server.rs` `a_device_is_a_phone_or_a_computer` (asks as a computer, kept, read back after a restart).
+- **无法直连 in the list** (`src-tauri/src/viewer.rs`): a window that ended with `noDirect` marks its computer until it connects or
+  Connect tries again (the Mac's `ViewerStore.failed`).
+- **The path a row names** when the computer isn't open: 同一网络 when found nearby, else the path its last session used
+  (`Computer.last_route` in computers.json, set at pairing and on every connect), else the guess from its overlay address or relay.
+  Before, a computer just used on the same network (Windows → Linux, 同一网络 · 1 ms in the window) read 可连接 · 公共连接服务 afterwards,
+  from the relay in its pairing link.
+
+Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/desktop/`.
+
 ## Tried on real machines (2026-11-19)
 
 Mac viewer (this repo's test build) on a home connection in China (China Mobile, symmetric CGNAT, no IPv6) → the 1.0.26 CI builds on
