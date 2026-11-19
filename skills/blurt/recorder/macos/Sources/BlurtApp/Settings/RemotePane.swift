@@ -126,7 +126,7 @@ final class RemoteModel: ObservableObject {
 
     Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-    When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.
+    When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.
     """
 
     func setHUD(_ on: Bool) {
@@ -173,7 +173,7 @@ struct RemotePane: View {
     /// The pane's lead: the devices are on the page, and the way there. Only while there is a main window to open.
     private var lead: SettingsLead? {
         guard AppEnvironment.mainWindow != nil else { return nil }
-        return SettingsLead(text: Text(T("phone.pane.see_page")), accessory: AnyView(InkLink(T("phone.pane.show")) {
+        return SettingsLead(text: Text(T("phone.pane.see_page", T("feature.phone"))), accessory: AnyView(InkLink(T("phone.pane.show")) {
             MainWindowController.shared.show()
             MainWindowController.shared.go(.phone)
         }))

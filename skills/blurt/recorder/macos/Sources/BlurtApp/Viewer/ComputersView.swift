@@ -26,7 +26,7 @@ struct ComputerRow: View {
         .onTapGesture(count: 2) { store.open(computer) }
         .contextMenu {
             Button(T("viewer.connect")) { store.open(computer) }
-            Button(T("viewer.remove")) { removing = true }
+            Button(T("phone.remove")) { removing = true }
         }
         .alert(T("settings.remote.remove.title", computer.name), isPresented: $removing) {
             Button(T("viewer.remove"), role: .destructive) { store.remove(computer) }
@@ -49,14 +49,11 @@ struct ComputerRow: View {
                     Text(ViewerStore.line(row)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
+            .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
-            switch row {
-            case .connected: Button(T("viewer.open")) { store.open(computer) }
-            case .available, .noDirect: Button(T("viewer.connect")) { store.open(computer) }
-            case .offline: Button(T("viewer.remove")) { removing = true }
-            }
+            // the page's buttons, so the same rows look the same in both places
+            actions(row).buttonStyle(SettingsOutlinedButtonStyle(compact: true))
         }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private func page(_ row: ViewerStore.Row) -> some View {
@@ -66,9 +63,7 @@ struct ComputerRow: View {
                     .frame(width: SettingsMetrics.iconSlot, height: 18)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    // offline reads quieter than one that can be reached now (both have the hollow ring)
                     Text(computer.name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
-                        .foregroundStyle(row.isOffline ? .secondary : .primary)
                     HStack(alignment: .center, spacing: 5) {
                         StatusDot(tone: tone(row))
                         Text(ViewerStore.line(row)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
@@ -77,24 +72,31 @@ struct ComputerRow: View {
                 .accessibilityElement(children: .combine)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 6) {
-                if case .connected = row {
-                    Button(T("viewer.open")) { store.open(computer) }
-                } else {
-                    Button(T("viewer.connect")) { store.open(computer) }
-                }
-                RowMenu(label: T("viewer.more"), visible: true) {
-                    Button(T("phone.remove")) { removing = true }
-                }
+            actions(row).buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+        }
+    }
+
+    /// The row's one button and its ⋯ (here and in the window alike): Open Window while connected, Connect while it can
+    /// be reached; offline (a guess from when it was last seen) shows no button — Connect is still there, in the ⋯ with
+    /// Remove…, for when the public connection service or the relay reaches it anyway.
+    @ViewBuilder private func actions(_ row: ViewerStore.Row) -> some View {
+        HStack(spacing: 6) {
+            switch row {
+            case .connected: Button(T("viewer.open")) { store.open(computer) }
+            case .available, .noDirect: Button(T("viewer.connect")) { store.open(computer) }
+            case .offline: EmptyView()
             }
-            .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+            RowMenu(label: T("viewer.more"), visible: true) {
+                if row.isOffline { Button(T("viewer.connect")) { store.open(computer) } }
+                Button(T("phone.remove")) { removing = true }
+            }
         }
     }
 
     private func tone(_ r: ViewerStore.Row) -> Tone {
         switch r {
         case .connected: .good
-        case .available: .off
+        case .available: .ready
         case .noDirect: .warn
         case .offline: .off
         }
@@ -223,9 +225,9 @@ struct ComputersView: View {
             Divider()
             HStack {
                 Spacer()
-                Button(T("viewer.add")) { adding = true }
+                Button(T("viewer.add")) { adding = true }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
             }
-            .padding(12)
+            .padding(.horizontal, 16).padding(.vertical, 10)     // the rows' trailing edge
         }
         .frame(minWidth: 420, minHeight: 280)
         .sheet(isPresented: Binding(get: { adding || store.pairing != nil }, set: { if !$0 { adding = false; store.cancelPairing() } })) {

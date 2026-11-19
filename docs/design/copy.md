@@ -43,12 +43,13 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | Connection paths | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service |
 | One computer driving another (remote-desktop-viewer.md) | 电脑 · 添加电脑 · 打开窗口 · 连接 · 移除 | Computers · Add Computer · Open Window · Connect · Remove |
 | A computer's state in that list | 已连接 · 可连接 · 离线 · 无法直连 | Connected · Available · Offline · Can't Connect Directly |
+| When the pairing code on screen gives way to a new one (the Mac renews it; the desktop app's expiring code says 还剩 1:40) | 1:40 后更换二维码 | New code in 1:40 |
 | The viewer, when the public connection service finds no direct path | 无法直连。请在对方电脑上设置自建中转。 | Can't connect directly. Set up your own relay on the other computer. |
 | The viewer's controls | 屏幕 · 按键发往远端 · 跟着远端指针换屏 · 在新窗口中打开 | Display · Keys to Remote · Follow the Pointer · Open in New Window |
 | The release hint | 按 ⌃⌘ 交还键盘和鼠标 (Windows/Linux: Ctrl+Alt) | Press ⌃⌘ to release the keyboard and mouse |
-| The main window's page with every paired device, and the Settings pane with their options (Home's row, the sidebar) | 手机和电脑 | Phones and Computers |
+| The feature, its main-window page with every paired device, and the Settings pane with its options (Home's row, the sidebar, the menu bar's row); on the Mac one key, `feature.phone` (2026-11-20, was 手机和电脑) | 远程控制 | Remote Control |
 | That page's empty lists | 还没有配对的设备 · 还没有添加电脑 | No devices paired yet · No computers added yet |
-| Settings → 手机和电脑's lead, the way to the page | 设备列表在主窗口的「手机和电脑」页。 查看设备 | The device list is on the Phones and Computers page in the main window. Show Devices |
+| Settings → 远程控制's lead, the way to the page | 设备列表在主窗口的「远程控制」页。 查看设备 | The device list is on the Remote Control page in the main window. Show Devices |
 | A new device asking the host for a yes | 允许 %@ 控制本机？ · %@ 显示相同的数字时才允许。 · 不允许 · 允许 | Allow %@ to control this Mac? · Allow only if %@ shows the same digits. · Don't Allow · Allow |
 | Its two groups: what controls this computer · what this computer controls | 能控制本机的设备 · 本机可控制的电脑 | Devices That Can Control This Computer · Computers You Can Control |
 | Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |

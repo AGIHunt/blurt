@@ -385,7 +385,7 @@
 "onboarding.use.translate" = "Translate from screen";
 "onboarding.use.translate.detail" = "Drag over text; you get the translation.";
 "onboarding.use.change" = "Change Shortcuts in Settings…";
-"onboarding.use.phone.detail" = "Use your phone as your Mac’s trackpad, keyboard and microphone. Pair it on the Phone page after installing the app.";
+"onboarding.use.phone.detail" = "Use your phone as your Mac’s trackpad, keyboard and microphone. Pair it on the %@ page after installing the app.";
 "onboarding.cap.right_option" = "right ⌥";
 "onboarding.dictation.title" = "Set up dictation";
 "onboarding.dictation.detail" = "Choose a key, then allow what dictation needs.";
@@ -565,13 +565,12 @@
 "onboarding.models.left_label" = "Left";
 
 /* Settings → Phone */
-"settings.kit.remote" = "Phones and Computers";
-"settings.kw.pane.remote" = "phone, iPhone, iPad, Android, remote, trackpad, touchpad, keyboard, mouse, pointer";
+"settings.kw.pane.remote" = "phones and computers, remote control, remote desktop, phone, iPhone, iPad, Android, remote, trackpad, touchpad, keyboard, mouse, pointer";
 "settings.remote.section.options" = "While a phone is connected";
 "settings.remote.add" = "Add Device…";
 "settings.kw.remote.add" = "pair, QR code, connect, trackpad, touchpad";
 "settings.remote.scan" = "Scan with your phone";
-"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone, then allow it here. The code renews itself.";
+"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone, then allow it here.";
 "settings.remote.connected" = "Connected";
 "settings.remote.not_connected" = "Not connected";
 "settings.remote.copy_link" = "Copy Link";

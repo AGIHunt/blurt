@@ -292,6 +292,8 @@ Screenshots (zh-Hans and en, light and dark): `promo/cases/remote-desktop-viewer
 
 ## One page for the devices (Mac, 2026-11-20)
 
+Now named 远程控制 / Remote Control (below); 手机和电脑 is the name this section started with.
+
 The same feature sat in three places with three names: Home's row (手机和电脑), the sidebar page 手机, and Settings → 手机和电脑. Paired
 devices were listed twice (page and Settings), the computers this Mac controls only in Settings and the Computers window, and a computer
 that controls this Mac showed under a phone heading with a phone icon. Now:
@@ -323,10 +325,33 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
   card (QR 124 pt, 添加设备 / Add Device, one line of how, 取消 · 拷贝链接); a device asking is a card of its own (lock, 允许 X 控制本机？,
   the digits in threes, 不允许 · 允许 with Allow the page's primary, and still no default: Return must not say yes). Copy cut on the way:
   the code's how-to and the own relay's line are one sentence each; Settings' headings are sentence case, as its other panes'.
-  Gate scores (3 fresh judges, round 3): empty 8/8/7, devices 7/7.5/7, add device 7/7/7, asking 8/7.5/7.5, settings 8/8/7.5. What they
-  still ask for: a third state disc (可连接 filled, 离线 hollow — a new StatusDot tone, a design-system change), Connect quieter on an
-  offline computer, a live "waiting for a phone" line or renewal timer on the code card, and the Screen Recording row's 允许… renamed
-  while a pairing 允许 is on screen (`settings.kit.allow` is shared).
+  Gate scores (3 fresh judges, round 3): empty 8/8/7, devices 7/7.5/7, add device 7/7/7, asking 8/7.5/7.5, settings 8/8/7.5.
+- **Round 2 (2026-11-20), the three points left open:**
+  - States read apart: `StatusDot` has a fifth tone, `ready` (a plain filled disc, secondary grey), for 可连接; 已连接 keeps the
+    green check, 离线 and 上次使用 the quiet grey ring, and no name is dimmed (the mark and the words carry it, on both lists). Tried
+    first and dropped: a brand-ink ring (judges read it as a second green beside the check, and as the links' colour), then a grey
+    ring with a dot (too close to the hollow ring at 9 pt). The Computers window
+    draws the same rows with the page's outlined buttons and ⋯, so it changed with the page.
+  - An offline computer shows no button: 离线 is a guess from when it was last seen, so 连接 is still there, in the row's ⋯ with
+    移除… (and the context menu); never a disabled button. The Computers window's rows have the same ⋯ now.
+  - The code card says when the code on screen gives way: 1:40 后更换二维码 / New code in 1:40, counting down once a second to
+    `Status.pairingRenews` — the moment RemoteServer puts up the next code (`pairingLife − pairingGrace`, 100 s; the code itself is
+    good 20 s longer, so the one showing never fails). The desktop app's 还剩 1:40 is for a code that runs out and waits for New Code;
+    next to "the code renews itself" judges read it as a contradiction, so the Mac says what happens instead. 拷贝链接's
+    已拷贝，10 分钟内有效 is unchanged.
+  - Hairlines start at the text column, as Apple's lists; an empty list's line has no device mark.
+  - Gate, three fresh judges per round: page-devices 7.5/7/7 → 7/8/8 → 7/8/8; page-add-device 7/7/7 → 6.5/8/8 → 7/7/7.5;
+    Computers window 7.5/7.5/7 → 7/7/7 → 8/7/7.5. The last round's shared asks were made after it (the countdown back to the
+    secondary grey, the window's Add Computer… the rows' size and trailing edge) and not judged again. Still asked for: a colour for
+    可连接 rather than grey (the founder asked for it to read apart from 离线; a hue would be a sixth colour in the status set), one
+    zh format for 上次使用：3天前 and 离线 · 2 天前 (system formatter output vs ours), and lighter chrome on the code card.
+  - The pairing question's 允许 was already its own key (`settings.remote.ask.yes`), apart from the permission rows' 允许…
+    (`settings.kit.allow`).
+  - The name is one key on the Mac, `feature.phone` (Home, sidebar, page, ⌘K, Go menu, Settings pane, and through %@ the pane's
+    lead, the menu bar's row and onboarding's line): `phone.title` and `settings.kit.remote` are gone.
+  - **Renamed 远程控制 / Remote Control** (the founder, 2026-11-20): 手机和电脑 named two kinds of device, not what the feature does;
+    the two groups keep their names (能控制本机的设备 · 本机可控制的电脑). The menu bar's row reads 远程控制：iPhone 已连接; the relay
+    instructions say Settings → Remote Control → Relay Address; the phone apps point to the same names.
 
 Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/mac/` — `page-empty`, `page-devices`, `page-add-device`,
 `page-asking`, `settings`. Hooks: `phonepage fake …` now includes a paired computer (MacBook Pro) beside the iPhone and iPad;
