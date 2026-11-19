@@ -46,6 +46,9 @@ final class RemoteServer {
         var askingNumber: UInt32?
         var udp = false
         var pairingLink: URL?
+        /// when the code on screen gives way to the next (its own life is `pairingLife`; it is renewed `pairingGrace`
+        /// before that, so the one showing is always good): the code card's "1:40 left"
+        var pairingRenews: Date?
         var failure: String?
         /// how the connected phone reaches this Mac (Settings → Phone → Away from home)
         var path: Path?
@@ -456,6 +459,7 @@ final class RemoteServer {
                 self.pairing = nil
                 self.oldCode = nil
                 self.status.pairingLink = nil
+                self.status.pairingRenews = nil
                 self.updateRelays()
             }
         }
@@ -485,6 +489,7 @@ final class RemoteServer {
         status.pairingLink = RemotePairing(macID: macID, deviceID: id, key: key, macName: Host.current().localizedName ?? "Mac", port: port,
                                            addresses: Self.addresses(), relay: Self.relayAddress ?? Self.meetAddress).url
         updateRelays()
+        status.pairingRenews = Date().addingTimeInterval(Self.pairingLife - Self.pairingGrace)
         if Self.testing { emit(["event": "remote_pairing", "link": status.pairingLink?.absoluteString ?? ""]) }
         pairingTimer?.cancel()
         let t = DispatchSource.makeTimerSource(queue: queue)

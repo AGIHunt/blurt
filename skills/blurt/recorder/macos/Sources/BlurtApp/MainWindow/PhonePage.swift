@@ -77,8 +77,8 @@ enum PhoneStatus {
         let f = facts
         switch PhoneChecks.headline(f) {
         case .nonePaired: return T("phone.menu.add")
-        case let .connected(n, _): return needsAttention ? T("phone.menu.needs_access") : T("phone.menu.connected", name(n))
-        case .notConnected: return needsAttention ? T("phone.menu.needs_access") : T("phone.menu.paired")
+        case let .connected(n, _): return needsAttention ? T("phone.menu.needs_access", T("feature.phone")) : T("phone.menu.connected", T("feature.phone"), name(n))
+        case .notConnected: return needsAttention ? T("phone.menu.needs_access", T("feature.phone")) : T("phone.menu.paired", T("feature.phone"))
         }
     }
 
@@ -295,6 +295,8 @@ extension PhonePage {
                 default: break
                 }
                 let code = a.count > 2 && a[2] == "code"
+                // a code that renews in 1:40, as one just put up
+                if code { st.pairingRenews = Date().addingTimeInterval(100) }
                 if code { st.pairingLink = URL(string: "https://example.com/blurt-pairing-code-for-screenshots-only#not-a-key-0000000000000000000000000000000000000000000") }
                 m.testCode(code)
                 RemoteServer.shared.testFake(devices: v == "none" ? [] : two, status: st)

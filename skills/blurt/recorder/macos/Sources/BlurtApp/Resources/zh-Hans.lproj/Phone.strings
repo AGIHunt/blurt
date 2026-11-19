@@ -1,16 +1,15 @@
-/* 手机和电脑页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
+/* 远程控制页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
 
-"phone.title" = "手机和电脑";
 "phone.settings" = "设置…";
 "phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
 /* 没有报上名字的手机 */
 "phone.unnamed" = "手机";
 
 /* 菜单栏菜单里的一行（SnapApp.addWaitingMenuItems）：打开手机页 */
-"phone.menu.connected" = "手机：%@ 已连接";
-"phone.menu.paired" = "手机：未连接";
+"phone.menu.connected" = "%1$@：%2$@ 已连接";
+"phone.menu.paired" = "%@：未连接";
 "phone.menu.add" = "添加设备…";
-"phone.menu.needs_access" = "手机：无法控制 Mac";
+"phone.menu.needs_access" = "%@：无法控制本机";
 
 /* 主页上手机那一格的状态（PhoneStatus.line） */
 "phone.line.connected" = "%@ 已连接";
@@ -18,6 +17,8 @@
 
 
 "phone.add.title" = "添加设备";
+/* 屏幕上这张二维码多久后换新，如“1:40 后更换二维码”（换下的仍可用 20 秒） */
+"phone.add.left" = "%@ 后更换二维码";
 "phone.add.tip" = "显示配对二维码：用手机扫描，或拷贝链接给另一台电脑";
 "phone.remove" = "移除…";
 "phone.remove.named" = "移除 %@";
@@ -66,8 +67,8 @@
 "phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
-/* 设置 → 手机和电脑（Settings/RemotePane.swift）开头指向这一页的一句 */
-"phone.pane.see_page" = "设备列表在主窗口的「手机和电脑」页。";
+/* 设置 → 远程控制（Settings/RemotePane.swift）开头指向这一页的一句 */
+"phone.pane.see_page" = "设备列表在主窗口的「%@」页。";
 "phone.pane.show" = "查看设备";
 
 /* 本机控制的电脑（Viewer/，docs/design/remote-desktop-viewer.md）。统一用语：docs/design/copy.md */

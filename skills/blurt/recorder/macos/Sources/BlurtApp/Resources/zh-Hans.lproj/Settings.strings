@@ -383,7 +383,7 @@
 "onboarding.use.translate" = "截图翻译";
 "onboarding.use.translate.detail" = "框选文字，获取译文";
 "onboarding.use.change" = "在设置里修改快捷键…";
-"onboarding.use.phone.detail" = "将手机用作 Mac 的触控板、键盘和麦克风。安装手机 App 后，在「手机」页配对。";
+"onboarding.use.phone.detail" = "将手机用作 Mac 的触控板、键盘和麦克风。安装手机 App 后，在「%@」页配对。";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";
 "onboarding.dictation.detail" = "选择听写键，并开启所需权限。";
@@ -563,13 +563,12 @@
 "onboarding.models.left_label" = "还剩";
 
 /* Settings → Phone */
-"settings.kit.remote" = "手机和电脑";
-"settings.kw.pane.remote" = "手机, iPhone, iPad, 安卓, Android, 遥控, 触摸板, 键盘, 鼠标, 光标";
+"settings.kw.pane.remote" = "手机和电脑, 远程控制, 远程桌面, 手机, iPhone, iPad, 安卓, Android, 遥控, 触摸板, 键盘, 鼠标, 光标";
 "settings.remote.section.options" = "连接时";
 "settings.remote.add" = "添加设备…";
 "settings.kw.remote.add" = "配对, 二维码, 连接, 触摸板";
 "settings.remote.scan" = "用手机扫描";
-"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，然后在此处允许。二维码会自动更新。";
+"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，然后在此处允许。";
 "settings.remote.connected" = "已连接";
 "settings.remote.not_connected" = "未连接";
 "settings.remote.copy_link" = "拷贝链接";

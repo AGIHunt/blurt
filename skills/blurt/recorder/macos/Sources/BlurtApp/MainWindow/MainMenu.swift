@@ -101,7 +101,7 @@ enum MainMenu {
         }
         if Capability.cards.isOn { go.append(item(T("cards.title"), #selector(MainWindowController.mGo(_:)), obj: "cards")) }
         if Capability.screenText.isOn { go.append(item(T("feature.screen_text"), #selector(MainWindowController.mGo(_:)), obj: "screen_text")) }
-        if Capability.phone.isOn { go.append(item(T("phone.title"), #selector(MainWindowController.mGo(_:)), obj: "phone")) }
+        if Capability.phone.isOn { go.append(item(T("feature.phone"), #selector(MainWindowController.mGo(_:)), obj: "phone")) }
         if recording {
             go += [.separator(),
                    item(T("main.place.inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),

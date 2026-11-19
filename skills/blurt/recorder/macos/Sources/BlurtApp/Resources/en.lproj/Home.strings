@@ -7,7 +7,8 @@
 "feature.cards" = "Cards";
 "feature.screen_text" = "Text & Translation";
 "feature.recording" = "Recording & Items";
-"feature.phone" = "Phones and Computers";
+/* the one name of the feature (phones and computers): Home's row, the sidebar, the page, ⌘K, the Go menu, the Settings pane */
+"feature.phone" = "Remote Control";
 
 /* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — it has to fit at the window's
    narrowest. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */

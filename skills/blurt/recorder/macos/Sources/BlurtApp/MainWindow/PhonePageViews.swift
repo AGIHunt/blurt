@@ -23,7 +23,7 @@ struct PhonePageView: View {
     var body: some View {
         let f = m.facts
         let problems = PhoneChecks.problems(f), tips = PhoneChecks.tips(f)
-        FullPageFrame(title: T("phone.title")) {
+        FullPageFrame(title: T("feature.phone")) {
             // the page's own button, on the title's line at the column's trailing edge (FullPageFrame has the title
             // and 20 pt under it; the options are Settings')
             Color.clear.frame(maxWidth: .infinity).frame(height: 0)
@@ -61,11 +61,11 @@ struct PhonePageView: View {
     @ViewBuilder private var controllers: some View {
         ForEach(m.devices) { d in device(d) }
         if m.adding {
-            PhoneLine { PhonePairingCode(link: m.status.pairingLink, failure: m.status.failure) { m.setAdding(false) } }
+            PhoneLine { PhonePairingCode(link: m.status.pairingLink, renews: m.status.pairingRenews, failure: m.status.failure) { m.setAdding(false) } }
         } else {
             // nothing paired: one row says so; Add Device… is the list's last line whether it's empty or not
             if m.devices.isEmpty {
-                PhoneRow(symbol: "iphone", title: T("phone.none"), detail: T("phone.none.detail"), quiet: true) { EmptyView() }
+                PhoneRow(title: T("phone.none"), detail: T("phone.none.detail"), quiet: true) { EmptyView() }
             }
             PhoneAddLine(title: T("settings.remote.add"), help: T("phone.add.tip")) { m.setAdding(true) }
         }
@@ -92,7 +92,7 @@ struct PhonePageView: View {
             PhoneLine { ComputerRow(computer: c, style: .page) }
         }
         if viewer.computers.isEmpty {
-            PhoneRow(symbol: "desktopcomputer", title: T("phone.computers.none"), detail: T("viewer.empty"), quiet: true) { EmptyView() }
+            PhoneRow(title: T("phone.computers.none"), detail: T("viewer.empty"), quiet: true) { EmptyView() }
         }
         PhoneAddLine(title: T("viewer.add")) { addingComputer = true }
     }
@@ -238,6 +238,8 @@ enum PhoneText {
 /// The pairing code: the QR on its white plate, how to scan it, what went wrong opening the port, Cancel (Esc).
 struct PhonePairingCode: View {
     var link: URL?
+    /// when this code gives way to the next: "1:40 left", ticking once a second while the card shows
+    var renews: Date?
     var failure: String?
     var cancel: () -> Void
     @State private var copied = false
@@ -250,6 +252,13 @@ struct PhonePairingCode: View {
                 Text(T("phone.add.title")).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
                 Text(T("settings.remote.scan.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let renews, link != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { t in
+                        Text(T("phone.add.left", Self.left(renews, t.date)))
+                            .font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.tertiary)
+                    }
+                    .accessibilityHidden(true)      // a number that changes every second is noise to VoiceOver
+                }
                 if let f = failure {
                     Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
@@ -275,6 +284,14 @@ struct PhonePairingCode: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .phoneCard()
+    }
+}
+
+extension PhonePairingCode {
+    /// "1:40": minutes and seconds to `until` (the desktop app's timeLeft), never below 0:00.
+    static func left(_ until: Date, _ now: Date) -> String {
+        let s = max(0, Int((until.timeIntervalSince(now)).rounded(.up)))
+        return "\(s / 60):" + String(format: "%02d", s % 60)
     }
 }
 
@@ -443,6 +460,7 @@ struct PhoneLine<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .top) {
                 Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).allowsHitTesting(false)
+                    .padding(.leading, SettingsMetrics.iconSlot + SettingsMetrics.iconGap)
             }
     }
 }
@@ -468,6 +486,8 @@ struct PhoneRow<Control: View>: View {
                         if let t = tone { StatusDot(tone: t, diameter: 14) }
                         else if let s = symbol {
                             Image(systemName: s).font(.system(size: 14)).foregroundStyle(.secondary).accessibilityHidden(true)
+                        } else {
+                            Color.clear      // no mark (an empty list's line): the words stay on the text column
                         }
                     }
                     .frame(width: SettingsMetrics.iconSlot, height: 18)
