@@ -1,7 +1,7 @@
 /* The Phones and Computers page (MainWindow/PhonePage.swift, PhonePageViews.swift). */
 
 "phone.title" = "Phones and Computers";
-"phone.settings" = "Phone Settings…";
+"phone.settings" = "Settings…";
 "phone.settings.tip" = "On-screen keys, the screen on your phone, and the relay for connecting away from home";
 /* a phone that gave no name */
 "phone.unnamed" = "Phone";

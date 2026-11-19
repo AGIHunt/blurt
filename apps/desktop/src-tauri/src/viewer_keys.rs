@@ -83,8 +83,11 @@ mod win {
     unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 && ON.load(SeqCst) {
             let k = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-            let injected = (k.flags.0 & LLKHF_INJECTED.0) != 0;
-            if !injected && k.scanCode != ALTGR_FAKE_CTRL_SCAN {
+            // only Blurt's own made-up keys stay here: what a phone or computer controlling this one sends ("BRMT", blurt-remote's
+            // REMOTE_TAG) and dictation's typing ("BLRT", keys_win's INJECT_TAG). Other injected keys are the user's: an on-screen
+            // keyboard, a remote-desktop tool, a key remapper
+            let ours = (k.flags.0 & LLKHF_INJECTED.0) != 0 && matches!(k.dwExtraInfo, 0x4252_4D54 | 0x424C_5254);
+            if !ours && k.scanCode != ALTGR_FAKE_CTRL_SCAN {
                 let ext = (k.flags.0 & LLKHF_EXTENDED.0) != 0;
                 let msg = wparam.0 as u32;
                 let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;

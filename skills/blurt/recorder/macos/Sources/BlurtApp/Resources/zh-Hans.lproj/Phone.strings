@@ -1,7 +1,7 @@
 /* 手机和电脑页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
 
 "phone.title" = "手机和电脑";
-"phone.settings" = "手机设置…";
+"phone.settings" = "设置…";
 "phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
 /* 没有报上名字的手机 */
 "phone.unnamed" = "手机";
