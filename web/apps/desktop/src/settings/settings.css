@@ -758,25 +758,33 @@
   background: var(--attn);
   color: var(--on-attn);
 }
-.st-dot.ready {
-  border: 2px solid var(--brand-accent);
+/* available: a plain filled disc in the secondary grey (as the Mac's StatusDot .ready); an accent ring read as a second green
+   beside the connected check */
+.st-dot.ready::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mute);
 }
-.st-dot.sm.ready {
-  width: 10px;
-  height: 10px;
-  margin: 1px;
-  border-width: 1.75px;
+.st-dot.sm.ready::before {
+  width: 7px;
+  height: 7px;
 }
 .st-dot.bad {
   background: var(--err);
 }
+/* offline, last used: a hollow grey ring (as the Mac's): hollow is away, and it can't be taken for the filled available disc */
 .st-dot.off::before {
-  /* a small grey dot, not a ring: a ring beside a switch reads as a radio button */
   content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+}
+.st-dot.sm.off::before {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: var(--faint);
 }
 .st-agent {
   position: relative;
