@@ -658,6 +658,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 Remote.screen.source(m.width, m.height, m.codec, m.display, m.features)
             }
             is ToPhone.Displays -> displays.value = m.displays
+            // a computer host sends its clipboard to computer viewers only; nothing for a phone to do
+            is ToPhone.Clipboard -> {}
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {

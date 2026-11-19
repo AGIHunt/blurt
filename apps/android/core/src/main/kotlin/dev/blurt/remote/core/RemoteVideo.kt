@@ -58,11 +58,13 @@ data class RemoteScreenRequest(
     val display: String? = null,
     /** the repairs this phone does (RemoteVideoFeature); null = none, as from phones before 1.0.15 */
     val features: List<String>? = null,
+    /** a computer viewer's window, in pixels: the most the picture needs (phones leave it out) */
+    val window: RemoteBox? = null,
 ) {
     fun toJson(): JsonObject = J.obj(
         "target" to J.str(target), "crop" to crop.toJson(), "width" to J.int(width), "height" to J.int(height), "bitrate" to J.int(bitrate),
         "fps" to J.int(fps), "codecs" to J.list(codecs) { JsonPrimitive(it) }, "display" to J.str(display),
-        "features" to J.list(features) { JsonPrimitive(it) },
+        "features" to J.list(features) { JsonPrimitive(it) }, "window" to window?.toJson(),
     )
 
     companion object {
@@ -74,8 +76,20 @@ data class RemoteScreenRequest(
             return RemoteScreenRequest(
                 J.str(o, "target") ?: return null, RemoteCrop.fromJson(o["crop"]) ?: return null, J.int(o, "width") ?: return null,
                 J.int(o, "height") ?: return null, J.int(o, "bitrate") ?: return null, J.int(o, "fps") ?: return null, codecs,
-                J.str(o, "display"), features,
+                J.str(o, "display"), features, if (J.has(o, "window")) RemoteBox.fromJson(o["window"]) ?: return null else null,
             )
+        }
+    }
+}
+
+/** A width and height in pixels (a viewer window's). */
+data class RemoteBox(val width: Int, val height: Int) {
+    fun toJson(): JsonObject = J.obj("width" to J.int(width), "height" to J.int(height))
+
+    companion object {
+        fun fromJson(e: JsonElement?): RemoteBox? {
+            val o = e as? JsonObject ?: return null
+            return RemoteBox(J.int(o, "width") ?: return null, J.int(o, "height") ?: return null)
         }
     }
 }
