@@ -228,6 +228,10 @@ sealed class ToMac {
     data class Ping(val t: Double) : ToMac()
     /** the last frame this phone writes to the old stream: what follows comes in kind-7 datagrams (remote-go-between.md §Moving the stream) */
     data object StreamMoved : ToMac()
+    /** a viewer's clipboard text, sent while it has the keys (computers only; docs/design/remote-desktop-viewer.md) */
+    data class Clipboard(val text: String) : ToMac()
+    /** a viewer took the keys (true) or gave them back */
+    data class KeysCaptured(val on: Boolean) : ToMac()
 
     fun toJson(): JsonObject = when (this) {
         is Key -> J.case("key", "_0" to chord.toJson(), "down" to J.bool(down))
@@ -261,6 +265,8 @@ sealed class ToMac {
         is ScreenSnapshot -> J.case("screenSnapshot", "name" to J.str(name), "jpeg" to J.data(jpeg))
         is Ping -> J.case("ping", "_0" to J.double(t))
         StreamMoved -> J.case("streamMoved")
+        is Clipboard -> J.case("clipboard", "_0" to J.str(text))
+        is KeysCaptured -> J.case("keysCaptured", "_0" to J.bool(on))
     }
 
     /** UTF-8 JSON, the body of a control frame (after its kind byte). */
@@ -305,6 +311,8 @@ sealed class ToMac {
                 "screenSnapshot" -> ScreenSnapshot(J.str(o, "name") ?: return null, J.data(o, "jpeg") ?: return null)
                 "ping" -> Ping(J.double(o, "_0") ?: return null)
                 "streamMoved" -> StreamMoved
+                "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
+                "keysCaptured" -> KeysCaptured(J.bool(o, "_0") ?: return null)
                 else -> null
             }
         }
@@ -362,6 +370,8 @@ sealed class ToPhone {
     data object StreamMoved : ToPhone()
     /** on the go-between: the direct path didn't open in time, and this session can't continue there */
     data object NoDirect : ToPhone()
+    /** a computer host's clipboard text, while a viewer has the keys (phones never see it) */
+    data class Clipboard(val text: String) : ToPhone()
 
     fun toJson(): JsonObject = when (this) {
         is Session -> J.case("session", "_0" to info.toJson())
@@ -389,6 +399,7 @@ sealed class ToPhone {
             "height" to J.double(height))
         StreamMoved -> J.case("streamMoved")
         NoDirect -> J.case("noDirect")
+        is Clipboard -> J.case("clipboard", "_0" to J.str(text))
     }
 
     fun encode(): ByteArray = J.bytes(toJson())
@@ -425,6 +436,7 @@ sealed class ToPhone {
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)
                 "streamMoved" -> StreamMoved
                 "noDirect" -> NoDirect
+                "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
                 else -> null
             }
         }
