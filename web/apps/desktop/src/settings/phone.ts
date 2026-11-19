@@ -80,6 +80,23 @@ export function relayAddress(typed: string): string | null {
   return t;
 }
 
+/** Away from home's status line (docs/design/remote-go-between.md §What each end shows): with a phone connected, the
+ *  path it uses; otherwise what a phone on another network would use, or why that won't work. `warn`: something to fix.
+ *  The order of ways in is the spec's: the same network, an overlay (Tailscale…), the owner's relay, the go-between. */
+/** `key` is the line; `route`, when set, is a path's name for it ("Connected · Direct"). Plain path names, standard state
+ *  words; a problem says what's wrong and what to do. */
+export type AwayLine = { key: string; route?: string; warn: boolean; live: boolean };
+export function awayLine(r: Pick<RemoteStatus, 'connected' | 'relay'>): AwayLine {
+  const c = r.connected;
+  if (c) return { key: 'phone.connected', route: `phone.route.${c.route}`, warn: false, live: true };
+  const line = (key: string, warn = false): AwayLine => ({ key, warn, live: false });
+  if (r.relay.address) return r.relay.reachable === false ? line('phone.away.relay_down', true) : line('phone.route.relay');
+  if (!r.relay.goBetween) return line('phone.away.off');
+  if (r.relay.goBetweenProblem === 'noDirect') return line('phone.away.no_direct', true);
+  if (r.relay.goBetweenProblem === 'busy') return line('phone.away.busy', true);
+  return line('phone.route.goBetween');
+}
+
 /** "1:42": seconds left on the code, never below zero. */
 export function timeLeft(expiresAt: number, now: number): string {
   const s = Math.max(0, Math.ceil((expiresAt - now) / 1000));

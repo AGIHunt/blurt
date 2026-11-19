@@ -2,6 +2,10 @@
 //! owner sets one up (tools/remote-relay) and gives its address here; the phone hears it inside the sealed session. Once a session
 //! is up over the relay both ends trade addresses (LAN, public IPv6, what a STUN server sees) and knock, and the pointer and video
 //! move to the first path that answers. The relay only ever sees sealed bytes.
+//!
+//! With no relay of the owner's, Blurt's go-between (`GO_BETWEEN`, docs/design/remote-go-between.md) speaks the same protocol on a
+//! strict budget: the two ends meet there, open the direct path and move the stream onto it (stream.rs). Overlay networks
+//! (Tailscale, ZeroTier) need no server at all: their addresses are candidates like the LAN's.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -13,6 +17,21 @@ use crate::wire::Candidate;
 pub const PHONE_LEFT: u16 = 4000;
 pub const MAC_GONE: u16 = 4001;
 pub const REPLACED: u16 = 4002;
+/// the go-between's budget for one connection is spent: it can't carry this session
+pub const BUDGET: u16 = 4003;
+
+/// Blurt's go-between: used only when the owner has no relay and the switch is on.
+pub const GO_BETWEEN: &str = "wss://meet.blurt.work";
+
+/// "busy today": after a refusal the go-between is tried again after 30 s, 2 min, 10 min, then every hour.
+pub fn busy_wait(refusals: u32) -> Duration {
+    Duration::from_secs(match refusals {
+        0 | 1 => 30,
+        2 => 120,
+        3 => 600,
+        _ => 3600,
+    })
+}
 
 /// Derived from the paired key: unguessable, and it says nothing about the pair.
 pub fn room(key: &[u8]) -> String {
@@ -88,6 +107,75 @@ pub const STUN_SERVERS: [&str; 2] = ["stun.cloudflare.com:3478", "stun.miwifi.co
 
 // ------------------------------------------------------------------ this machine's addresses
 
+/// An overlay network, by its addresses: Tailscale's ranges, or any address on a ZeroTier interface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Overlay {
+    Tailscale,
+    Other,
+}
+
+impl Overlay {
+    /// the route's name in Status: "tailscale" or "overlay"
+    pub fn route(self) -> &'static str {
+        match self {
+            Overlay::Tailscale => "tailscale",
+            Overlay::Other => "overlay",
+        }
+    }
+}
+
+fn zerotier(interface: &str) -> bool {
+    let n = interface.to_ascii_lowercase();
+    n.starts_with("zt") || n.contains("zerotier")
+}
+
+/// IPv4 100.64.0.0/10 and IPv6 fd7a:115c:a1e0::/48 are Tailscale's; anything on a `zt*` / ZeroTier interface is an overlay too.
+pub fn overlay_of(ip: IpAddr, interface: &str) -> Option<Overlay> {
+    match ip {
+        IpAddr::V4(a) if a.octets()[0] == 100 && (a.octets()[1] & 0xC0) == 64 => Some(Overlay::Tailscale),
+        IpAddr::V6(a) if a.segments()[..3] == [0xfd7a, 0x115c, 0xa1e0] => Some(Overlay::Tailscale),
+        IpAddr::V6(a) if a.to_ipv4_mapped().is_some() => overlay_of(IpAddr::V4(a.to_ipv4_mapped().unwrap()), interface),
+        IpAddr::V6(a) if (a.segments()[0] & 0xffc0) == 0xfe80 => None,
+        _ if zerotier(interface) => Some(Overlay::Other),
+        _ => None,
+    }
+}
+
+/// The overlay a peer reached this computer over (a TCP session's addresses), if any: by the phone's address, or by the
+/// interface the connection came in on.
+pub fn overlay_route(peer: SocketAddr, local: SocketAddr) -> Option<Overlay> {
+    let (peer, local) = (plain(peer).ip(), plain(local).ip());
+    if let Some(o) = overlay_of(peer, "") {
+        return Some(o);
+    }
+    let list = if_addrs::get_if_addrs().ok()?;
+    list.iter().filter(|i| i.ip() == local).find_map(|i| overlay_of(local, &i.name))
+}
+
+/// This machine's overlay addresses (Tailscale, ZeroTier): reachable from wherever the phone is on the same overlay.
+pub fn overlay_addresses() -> Vec<String> {
+    let Ok(list) = if_addrs::get_if_addrs() else { return vec![] };
+    let mut out: Vec<String> = list
+        .into_iter()
+        .filter(|i| !i.is_loopback() && !i.ip().is_unspecified() && overlay_of(i.ip(), &i.name).is_some())
+        .map(|i| i.ip().to_string())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// What the pairing link's `a=` and the session's candidates list: the LAN's addresses, then the overlays'.
+pub fn local_addresses() -> Vec<String> {
+    let mut out = lan_addresses();
+    for a in overlay_addresses() {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    out
+}
+
 fn virtual_interface(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     ["docker", "br-", "veth", "virbr", "vmnet", "vboxnet", "utun", "tun", "tap", "wg", "zt", "tailscale", "vethernet", "lxc", "podman"]
@@ -95,7 +183,8 @@ fn virtual_interface(name: &str) -> bool {
         .any(|p| n.starts_with(p) || n.contains("(wsl") || n.contains("hyper-v"))
 }
 
-/// This machine's LAN addresses (IPv4), the usual private ranges first.
+/// This machine's LAN addresses (IPv4), the usual private ranges first. Virtual interfaces are skipped (containers, VMs, VPNs);
+/// the overlays among them come back in `overlay_addresses`.
 pub fn lan_addresses() -> Vec<String> {
     let Ok(list) = if_addrs::get_if_addrs() else { return vec![] };
     let mut out: Vec<(u8, String)> = list
@@ -135,6 +224,30 @@ pub fn public_ipv6() -> Vec<String> {
 
 // ------------------------------------------------------------------ the WebSocket
 
+/// Why a WebSocket didn't open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectError {
+    /// it answered over HTTP and refused the upgrade (429 and Cloudflare's 1015 among them): from the go-between, "busy today"
+    Refused(u16),
+    /// no answer, or the way failed
+    Failed(String),
+}
+
+impl std::fmt::Display for ConnectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectError::Refused(code) => write!(f, "refused ({code})"),
+            ConnectError::Failed(why) => f.write_str(why),
+        }
+    }
+}
+
+impl From<ConnectError> for String {
+    fn from(e: ConnectError) -> String {
+        e.to_string()
+    }
+}
+
 pub type Socket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 fn tls() -> Arc<rustls::ClientConfig> {
@@ -153,8 +266,8 @@ fn tls() -> Arc<rustls::ClientConfig> {
 }
 
 /// A WebSocket to `<relay>/v1/<room>/<role>`, within 8 s.
-pub async fn connect(address: &str, room: &str, role: &str) -> Result<Socket, String> {
-    let url = room_url(address, room, role).ok_or("not a relay address")?;
+pub async fn connect(address: &str, room: &str, role: &str) -> Result<Socket, ConnectError> {
+    let url = room_url(address, room, role).ok_or(ConnectError::Failed("not a relay address".into()))?;
     let mut cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
     cfg.max_message_size = Some(1 << 21);
     cfg.max_frame_size = Some(1 << 21);
@@ -164,10 +277,12 @@ pub async fn connect(address: &str, room: &str, role: &str) -> Result<Socket, St
         true,
         Some(tokio_tungstenite::Connector::Rustls(tls())),
     );
+    use tokio_tungstenite::tungstenite::Error;
     match tokio::time::timeout(Duration::from_secs(8), go).await {
         Ok(Ok((s, _))) => Ok(s),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err("timed out".into()),
+        Ok(Err(Error::Http(r))) => Err(ConnectError::Refused(r.status().as_u16())),
+        Ok(Err(e)) => Err(ConnectError::Failed(e.to_string())),
+        Err(_) => Err(ConnectError::Failed("timed out".into())),
     }
 }
 
@@ -227,5 +342,34 @@ mod tests {
         assert_eq!(stun_parse(&d, &txn), Some(Candidate { host: "203.0.113.5".into(), port }));
         assert_eq!(stun_parse(&d, &[8u8; 12]), None, "someone else's answer");
         assert_eq!(stun_request(&txn).len(), 20);
+    }
+
+    #[test]
+    fn overlays_by_address_and_interface() {
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        assert_eq!(overlay_of(ip("100.64.0.1"), "utun4"), Some(Overlay::Tailscale));
+        assert_eq!(overlay_of(ip("100.127.255.254"), "Tailscale"), Some(Overlay::Tailscale));
+        assert_eq!(overlay_of(ip("100.128.0.1"), "tailscale0"), None, "just past 100.64.0.0/10");
+        assert_eq!(overlay_of(ip("100.63.255.255"), "en0"), None);
+        assert_eq!(overlay_of(ip("fd7a:115c:a1e0::1234"), "utun4"), Some(Overlay::Tailscale));
+        assert_eq!(overlay_of(ip("fd7a:115c:a1e1::1"), "utun4"), None);
+        assert_eq!(overlay_of(ip("::ffff:100.100.1.2"), ""), Some(Overlay::Tailscale), "v4-mapped, as a dual-stack socket sees it");
+        assert_eq!(overlay_of(ip("10.147.17.5"), "ztabcdef12"), Some(Overlay::Other));
+        assert_eq!(overlay_of(ip("10.147.17.5"), "ZeroTier One [8056c2e21c000001]"), Some(Overlay::Other));
+        assert_eq!(overlay_of(ip("fe80::1"), "ztabcdef12"), None, "link-local isn't reachable from away");
+        // the other virtual interfaces stay out: a VPN, a container bridge
+        assert_eq!(overlay_of(ip("10.8.0.2"), "wg0"), None);
+        assert_eq!(overlay_of(ip("172.17.0.1"), "docker0"), None);
+        assert_eq!(overlay_of(ip("192.168.1.20"), "en0"), None);
+        assert_eq!(Overlay::Tailscale.route(), "tailscale");
+        assert_eq!(overlay_route("[::ffff:100.101.102.103]:5000".parse().unwrap(), "[::ffff:100.70.0.1]:7000".parse().unwrap()), Some(Overlay::Tailscale));
+        assert_eq!(overlay_route("192.168.1.9:5000".parse().unwrap(), "192.168.1.2:7000".parse().unwrap()), None);
+    }
+
+    #[test]
+    fn busy_backs_off_30_s_2_min_10_min_then_hourly() {
+        let w: Vec<u64> = (1..=6).map(|n| busy_wait(n).as_secs()).collect();
+        assert_eq!(w, [30, 120, 600, 3600, 3600, 3600]);
+        assert_eq!(address(GO_BETWEEN).as_deref(), Some(GO_BETWEEN));
     }
 }

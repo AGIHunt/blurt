@@ -220,6 +220,8 @@ for (const c of (param('off') ?? '').split(',').filter((x) => CAP_IDS.includes(x
   if (c === 'dictation') mockCfg.record.dictation = { enabled: false };
   else mockCfg.app = { ...(mockCfg.app ?? {}), capabilities: { ...(mockCfg.app?.capabilities ?? {}), [c]: false } };
 }
+// ?pane=phone (with ?view=settings): Settings opens on that pane, as the remembered one would
+if (param('pane')) mockCfg.app = { ...(mockCfg.app ?? {}), settings_pane: param('pane') };
 function mockMerge(patch: Record<string, any>) {
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) delete mockCfg[k];
@@ -333,21 +335,26 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
 // out sooner); a few seconds later a phone uses it over the relay and asks with six digits (?phone_scan=0: nobody
 // scans); Allow pairs it and it connects over the relay, then finds a direct path. ?phone= paired | asking | nocontrol |
 // problem | fromphone | relayfail | firewall starts there instead of with no phone (firewall: Windows Firewall keeps phones
-// out; Allow… says yes for the administrator a moment later).
+// out; Allow… says yes for the administrator a moment later). Away from home with no relay, Blurt's go-between
+// (docs/design/remote-go-between.md): ?phone_away= goBetween | direct | tailscale | overlay (a phone connected that way) |
+// noDirect | busy (the go-between couldn't carry the last session) | off (the switch off) starts with two phones paired and
+// no relay; the switch turns it on and off, and a relay address set leaves it unused.
 type MockRemote = {
   listening: boolean;
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
   asking: null | { device: string; digits: string; viaRelay: boolean };
   devices: { id: string; name: string; lastSeen: number | null }[];
-  connected: null | { id: string; name: string; route: 'local' | 'direct' | 'relay'; screen: boolean };
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null };
+  connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null };
   screenAllowed: boolean;
   canControl: boolean;
   problem: string | null;
   firewall: 'ok' | 'blocked' | 'unknown';
 };
-const phoneStart = param('phone') ?? '';
+const away = param('phone_away') ?? '';
+const phoneStart = param('phone') ?? (away ? 'paired' : '');
 const paired = phoneStart !== '';
+const awayRoute = (['goBetween', 'direct', 'tailscale', 'overlay'] as const).find((r) => r === away);
 const remote: MockRemote = {
   listening: paired,
   pairing: null,
@@ -358,10 +365,10 @@ const remote: MockRemote = {
         { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000 },
       ]
     : [],
-  connected: paired ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: 'relay', screen: true } : null,
-  relay: paired
-    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true }
-    : { address: null, fromPhone: false, reachable: null },
+  connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true } : null,
+  relay: paired && !away
+    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true, goBetween: true, goBetweenProblem: null }
+    : { address: null, fromPhone: false, reachable: null, goBetween: away !== 'off', goBetweenProblem: away === 'noDirect' || away === 'busy' ? away : null },
   screenAllowed: true,
   canControl: phoneStart !== 'nocontrol',
   problem: phoneStart === 'problem' ? L('Blurt can’t listen on this network: port 41833 is taken by another app.', '口喷鸡无法在这个网络上监听：端口 41833 已被其他应用占用。') : null,
@@ -448,16 +455,21 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       break;
     case 'remote_set_relay': {
       const t = String(a.address ?? '').trim();
-      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null };
+      const { goBetween, goBetweenProblem } = remote.relay;
+      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
       else if (!/^wss?:\/\/[^\s/?#]+(\/[^\s?#]*)?$/.test(t)) throw new Error('not a relay address');
       else {
-        remote.relay = { address: t, fromPhone: false, reachable: null };
+        remote.relay = { address: t, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
         remoteLater(900, () => remote.relay.address === t && (remote.relay.reachable = !/nothing|bad|invalid/.test(t)));
       }
       break;
     }
     case 'remote_check_relay':
       return new Promise((ok) => setTimeout(() => ok(!/nothing|bad|invalid/.test(String(a.address))), 900));
+    case 'remote_set_go_between':
+      remote.relay.goBetween = !!a.on;
+      remote.relay.goBetweenProblem = null;
+      break;
     case 'remote_set_screen_allowed':
       remote.screenAllowed = !!a.on;
       if (!a.on && remote.connected) remote.connected.screen = false;

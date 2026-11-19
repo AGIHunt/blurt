@@ -81,28 +81,30 @@ describe("Home's Recent", () => {
 
 describe('the Phone page', () => {
   const base: RemoteStatus = {
-    listening: false, pairing: null, asking: null, devices: [], connected: null, relay: { address: null, fromPhone: false, reachable: null },
+    listening: false, pairing: null, asking: null, devices: [], connected: null, relay: { address: null, fromPhone: false, reachable: null, goBetween: false, goBetweenProblem: null },
     screenAllowed: true, canControl: true, problem: null, firewall: 'ok',
   };
   const phone = { id: 'p', name: 'Pixel', lastSeen: null };
   it('one headline', () => {
     expect(phoneHeadline(base)).toEqual({ kind: 'none' });
     expect(phoneHeadline({ ...base, devices: [phone] })).toEqual({ kind: 'not_connected' });
-    expect(phoneHeadline({ ...base, devices: [phone], connected: { id: 'p', name: 'Pixel', route: 'relay', screen: false } })).toEqual({ kind: 'connected', name: 'Pixel', viaRelay: true });
+    expect(phoneHeadline({ ...base, devices: [phone], connected: { id: 'p', name: 'Pixel', route: 'relay', screen: false } })).toEqual({ kind: 'connected', name: 'Pixel', viaRelay: true, route: 'relay' });
   });
   it('only what stands in the way, and only once it matters', () => {
     expect(phoneProblems({ ...base, canControl: false })).toEqual([]);
     expect(phoneProblems({ ...base, devices: [phone], canControl: false })).toEqual(['control']);
     expect(phoneProblems({ ...base, devices: [phone], listening: true, firewall: 'blocked' })).toEqual(['firewall']);
     expect(phoneProblems({ ...base, devices: [phone], problem: 'port taken' })).toEqual(['listen']);
-    expect(phoneProblems({ ...base, relay: { address: 'wss://r', fromPhone: false, reachable: false } })).toEqual(['relay']);
+    expect(phoneProblems({ ...base, relay: { ...base.relay, address: 'wss://r', reachable: false } })).toEqual(['relay']);
     expect(phoneNeedsAttention({ ...base, devices: [phone], canControl: false })).toBe(true);
-    expect(phoneNeedsAttention({ ...base, devices: [phone], relay: { address: 'wss://r', fromPhone: false, reachable: false } })).toBe(false);
+    expect(phoneNeedsAttention({ ...base, devices: [phone], relay: { ...base.relay, address: 'wss://r', reachable: false } })).toBe(false);
   });
   it('what to try: only while a phone should connect and doesn’t', () => {
     expect(phoneTips(base)).toEqual([]);
     expect(phoneTips({ ...base, devices: [phone] })).toEqual(['network', 'open', 'vpn', 'away_none']);
-    expect(phoneTips({ ...base, devices: [phone], relay: { address: 'wss://r', fromPhone: false, reachable: true } })).toEqual(['network', 'open', 'vpn', 'away_ok']);
+    // no relay, the go-between on: that is the way in from other networks
+    expect(phoneTips({ ...base, devices: [phone], relay: { ...base.relay, goBetween: true } })).toEqual(['network', 'open', 'vpn', 'away_go_between']);
+    expect(phoneTips({ ...base, devices: [phone], relay: { ...base.relay, address: 'wss://r', reachable: true } })).toEqual(['network', 'open', 'vpn', 'away_ok']);
     expect(phoneTips({ ...base, devices: [phone], connected: { id: 'p', name: '', route: 'local', screen: false } })).toEqual([]);
   });
 });

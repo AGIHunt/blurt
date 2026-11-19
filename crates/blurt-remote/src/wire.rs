@@ -189,7 +189,9 @@ pub enum ToMac {
     System(SystemMove),
     Activate { bundle: String },
     Hud(String),
-    Hello { device: String, mic_on_phone: bool, nonce: Option<Vec<u8>> },
+    /// `features`: what this phone can do that older ones can't, `["move"]` (its stream moves onto the direct path,
+    /// docs/design/remote-go-between.md). None: nothing (phones before the go-between).
+    Hello { device: String, mic_on_phone: bool, nonce: Option<Vec<u8>>, features: Option<Vec<String>> },
     SetMicOnPhone(bool),
     ReleaseAll,
     KeyStored,
@@ -210,6 +212,8 @@ pub enum ToMac {
     ScreenStats(String),
     ScreenSnapshot { name: String, jpeg: Vec<u8> },
     Ping(f64),
+    /// the phone's last frame on the old stream (TCP or the WebSocket): what follows comes in kind-7 datagrams
+    StreamMoved,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -256,7 +260,12 @@ pub struct SessionInfo {
     pub relay: Option<String>,
     /// "mac", "windows" or "linux"
     pub platform: Option<String>,
+    /// what this host can do that older ones can't: `["move"]` (docs/design/remote-go-between.md). None from older hosts.
+    pub features: Option<Vec<String>>,
 }
+
+/// `features` a phone and a host list when the stream can move onto the direct path.
+pub const MOVE: &str = "move";
 
 /// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as in the
 /// computer's display settings), so the phone can draw the arrangement (RemoteDisplay).
@@ -304,6 +313,10 @@ pub enum ToPhone {
     /// every display the computer has, whenever that changes (and once a session is up)
     Displays(Vec<Display>),
     CursorShape { png: Vec<u8>, hot_x: f64, hot_y: f64, width: f64, height: f64 },
+    /// the host's last frame on the old stream: what follows comes in kind-7 datagrams
+    StreamMoved,
+    /// the direct path didn't open in time: this session can't go on through the go-between
+    NoDirect,
 }
 
 // ------------------------------------------------------------------ helpers
@@ -528,6 +541,9 @@ fn session_json(i: &SessionInfo) -> Value {
     if let Some(p) = &i.platform {
         o["platform"] = json!(p);
     }
+    if let Some(f) = &i.features {
+        o["features"] = json!(f);
+    }
     o
 }
 
@@ -543,6 +559,7 @@ fn session_from(v: &Value) -> Option<SessionInfo> {
         display_aspect: num(req(o, "displayAspect")?)?,
         relay: opt(o, "relay", string)?,
         platform: opt(o, "platform", string)?,
+        features: opt(o, "features", |v| list(v, string))?,
     })
 }
 
@@ -568,10 +585,13 @@ impl ToMac {
             ToMac::System(m) => one("system", json!(system_name(*m))),
             ToMac::Activate { bundle } => case("activate", vec![("bundle", json!(bundle))]),
             ToMac::Hud(t) => one("hud", json!(t)),
-            ToMac::Hello { device, mic_on_phone, nonce } => {
+            ToMac::Hello { device, mic_on_phone, nonce, features } => {
                 let mut f = vec![("device", json!(device)), ("micOnPhone", json!(mic_on_phone))];
                 if let Some(n) = nonce {
                     f.push(("nonce", json!(b64(n))));
+                }
+                if let Some(x) = features {
+                    f.push(("features", json!(x)));
                 }
                 case("hello", f)
             }
@@ -598,6 +618,7 @@ impl ToMac {
             ToMac::ScreenStats(s) => one("screenStats", json!(s)),
             ToMac::ScreenSnapshot { name, jpeg } => case("screenSnapshot", vec![("name", json!(name)), ("jpeg", json!(b64(jpeg)))]),
             ToMac::Ping(t) => one("ping", f64v(*t)),
+            ToMac::StreamMoved => case("streamMoved", vec![]),
         }
     }
 
@@ -629,6 +650,7 @@ impl ToMac {
                 device: string(req(f, "device")?)?,
                 mic_on_phone: boolean(req(f, "micOnPhone")?)?,
                 nonce: opt(f, "nonce", data)?,
+                features: opt(f, "features", |v| list(v, string))?,
             },
             "setMicOnPhone" => ToMac::SetMicOnPhone(boolean(x0()?)?),
             "releaseAll" => ToMac::ReleaseAll,
@@ -651,6 +673,7 @@ impl ToMac {
             "screenStats" => ToMac::ScreenStats(string(x0()?)?),
             "screenSnapshot" => ToMac::ScreenSnapshot { name: string(req(f, "name")?)?, jpeg: data(req(f, "jpeg")?)? },
             "ping" => ToMac::Ping(num(x0()?)?),
+            "streamMoved" => ToMac::StreamMoved,
             _ => return None,
         })
     }
@@ -705,6 +728,8 @@ impl ToPhone {
                 "cursorShape",
                 vec![("png", json!(b64(png))), ("hotX", f64v(*hot_x)), ("hotY", f64v(*hot_y)), ("width", f64v(*width)), ("height", f64v(*height))],
             ),
+            ToPhone::StreamMoved => case("streamMoved", vec![]),
+            ToPhone::NoDirect => case("noDirect", vec![]),
         }
     }
 
@@ -748,6 +773,8 @@ impl ToPhone {
                 width: num(req(f, "width")?)?,
                 height: num(req(f, "height")?)?,
             },
+            "streamMoved" => ToPhone::StreamMoved,
+            "noDirect" => ToPhone::NoDirect,
             _ => return None,
         })
     }

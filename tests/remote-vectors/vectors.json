@@ -11,6 +11,13 @@
     "x" : 0.5,
     "y" : 0.25
   },
+  "goBetween" : {
+    "address" : "wss://meet.blurt.work",
+    "chunk" : 1100,
+    "feature" : "move",
+    "overBudgetClose" : 4003,
+    "window" : 262144
+  },
   "handshake" : {
     "check" : "684117",
     "commitment" : "8312c4cf7c9d25d077839a4c6a184bb2b57b000dae13fc0f5251563b434a8770",
@@ -103,6 +110,66 @@
   "relayRoom" : {
     "paired" : "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
     "room" : "XnpvguvK9APB5tb6ROrun0yHSmx3kwlj2BPrLhVCZJw"
+  },
+  "stream" : {
+    "about" : "kind 7: u64 BE offset ∥ at most 1100 bytes of the sender's stream (length-prefixed channel-0 frames, counters continuing). Sealed with handshake's keys.",
+    "examples" : [
+      {
+        "body" : "0000000000000000",
+        "bytes" : "",
+        "offset" : 0
+      },
+      {
+        "body" : "000000000000044c0102",
+        "bytes" : "0102",
+        "offset" : 1100
+      },
+      {
+        "body" : "0102030405060708ff",
+        "bytes" : "ff",
+        "offset" : 72623859790382856
+      }
+    ],
+    "frame" : {
+      "counter" : 3,
+      "framed" : "0000003485da813b19544dadb433d2c2396ad5b39e03abdbc7b22c30756239f23efaebe353055b259c41c29662c6bd8201452e86780d342d",
+      "plain" : "007b226b6579223a7b225f30223a7b226b6579223a2243222c226d6f6473223a317d7d7d"
+    },
+    "packet" : {
+      "body" : "00000000000000000000003485da813b19544dadb433d2c2396ad5b39e03abdbc7b22c30756239f23efaebe353055b259c41c29662c6bd8201452e86780d342d",
+      "offset" : 0,
+      "plain" : "0700000000000000000000003485da813b19544dadb433d2c2396ad5b39e03abdbc7b22c30756239f23efaebe353055b259c41c29662c6bd8201452e86780d342d",
+      "sealed" : "0000000700000000000000038fe4c049d54659370d459e9dfd2269af3f2099d0b6b46192306a9adf2138597bafb5327b6e0ed788485faa2550918b5b3d1f8f2f8fe59d87abd0fd4351287f502d92231fbe345f7305070a124b95c84f55",
+      "session" : 7,
+      "udpCounter" : 3
+    },
+    "streamMoved" : {
+      "counter" : 2,
+      "framed" : "00000023f71bdc0300cd3d17d03b56ddd500d576076ccef4ce2709b9da4f1d2fe60fa428c79348",
+      "plain" : "007b2273747265616d4d6f766564223a7b7d7d",
+      "sealed" : "f71bdc0300cd3d17d03b56ddd500d576076ccef4ce2709b9da4f1d2fe60fa428c79348"
+    }
+  },
+  "streamAck" : {
+    "about" : "kind 8: u64 BE next expected offset, cumulative. Host to phone, sealed on channel 1 (the host's first packet: counter 1).",
+    "examples" : [
+      {
+        "body" : "0000000000000000",
+        "next" : 0
+      },
+      {
+        "body" : "0000000000040000",
+        "next" : 262144
+      }
+    ],
+    "packet" : {
+      "body" : "0000000000000038",
+      "next" : 56,
+      "plain" : "080000000000000038",
+      "sealed" : "000000070000000000000001911b3e7f8f2920b7128907ae715b8439c900c8ebbe4c627acd",
+      "session" : 7,
+      "udpCounter" : 1
+    }
   },
   "toMac" : [
     {
@@ -275,6 +342,27 @@
         }
       },
       "name" : "hello_no_nonce"
+    },
+    {
+      "json" : {
+        "hello" : {
+          "device" : "Pixel 9",
+          "features" : [
+            "move"
+          ],
+          "micOnPhone" : true,
+          "nonce" : "CRAXHiUsMzpBSE9WXWRrcnmAh46VnKOqsbi/xs3U2+I="
+        }
+      },
+      "name" : "hello_move"
+    },
+    {
+      "json" : {
+        "streamMoved" : {
+
+        }
+      },
+      "name" : "stream_moved"
     },
     {
       "json" : {
@@ -583,6 +671,56 @@
         }
       },
       "name" : "session"
+    },
+    {
+      "json" : {
+        "session" : {
+          "_0" : {
+            "canControl" : true,
+            "candidates" : [
+              {
+                "host" : "192.168.1.20",
+                "port" : 50123
+              },
+              {
+                "host" : "100.101.102.103",
+                "port" : 50123
+              },
+              {
+                "host" : "fd7a:115c:a1e0::1",
+                "port" : 50123
+              }
+            ],
+            "displayAspect" : 1.5,
+            "features" : [
+              "move"
+            ],
+            "macName" : "Studio PC",
+            "platform" : "windows",
+            "relay" : "wss://meet.blurt.work",
+            "udpPort" : 50123,
+            "udpSession" : 7,
+            "version" : "1.0.27"
+          }
+        }
+      },
+      "name" : "session_go_between"
+    },
+    {
+      "json" : {
+        "streamMoved" : {
+
+        }
+      },
+      "name" : "stream_moved"
+    },
+    {
+      "json" : {
+        "noDirect" : {
+
+        }
+      },
+      "name" : "no_direct"
     },
     {
       "json" : {

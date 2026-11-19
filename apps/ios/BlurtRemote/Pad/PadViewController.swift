@@ -404,7 +404,7 @@ final class PadViewController: UIViewController {
         }.store(in: &bag)
         // the picture was of the Mac just left
         l.$current.map { $0?.deviceID }.removeDuplicates().dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.setShowing(false) }.store(in: &bag)
-        Publishers.CombineLatest(l.$waitingForMac, l.$pairFailed).receive(on: RunLoop.main).sink { [weak self] _, _ in
+        Publishers.CombineLatest3(l.$waitingForMac, l.$pairFailed, l.$away).receive(on: RunLoop.main).sink { [weak self] _, _, _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
         Publishers.CombineLatest(l.$route, l.$displayAspect).receive(on: RunLoop.main).sink { [weak self] _, _ in
@@ -462,7 +462,7 @@ final class PadViewController: UIViewController {
         let cue = follower.see(phase, computer: l.current?.id, inUse: UIApplication.shared.applicationState != .background)
         var banner = StatusBanner.of(LinkStatus(phase: phase, dropped: follower.dropped, hasRelay: l.current?.relayAddress != nil,
                                                 otherComputers: l.macs.count > 1, canControl: l.canControl, screenError: l.screenError,
-                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil))
+                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil, away: l.away))
         var ready = l.state == .connected
         #if DEBUG
         if Pretend.connected { banner = nil; ready = true }
@@ -484,7 +484,12 @@ final class PadViewController: UIViewController {
         }
         if changed, let words { UIAccessibility.post(notification: .announcement, argument: words.spoken) }
         emptyHint.isHidden = !(ready && banner == nil && !showing && !padTouched && !Prefs.shared.screenFound)
-        let via = l.route == .relay ? String(localized: "\(name ?? "") · Internet") : l.route == .direct ? String(localized: "\(name ?? "") · Direct") : name
+        let via: String? = switch l.route {
+        case .relay: l.viaGoBetween ? String(localized: "\(name ?? "") · Public connection service") : String(localized: "\(name ?? "") · Own relay")
+        case .direct: String(localized: "\(name ?? "") · Direct")
+        case .overlay: l.overlayIsTailscale ? String(localized: "\(name ?? "") · Tailscale") : String(localized: "\(name ?? "") · Virtual network")
+        case .local: name
+        }
         header.text = l.state == .connected && !showing ? via : nil
         talk.alpha = ready ? 1 : 0.35
         if cycleKey == nil { allCells.forEach { $0.alpha = ready ? 1 : 0.35 } }

@@ -56,6 +56,8 @@ final class PhoneChecksTests: XCTestCase {
         XCTAssertEqual(PhoneChecks.tips(PhoneFacts()), [])
         XCTAssertEqual(PhoneChecks.tips(PhoneFacts(paired: 1, connected: "iPhone", listening: true)), [])
         XCTAssertEqual(PhoneChecks.tips(PhoneFacts(paired: 1, listening: true)), [.sameNetwork, .appOpenMacAwake, .vpnFirewall, .awayNeedsRelay])
+        // no relay of one's own, the public connection service on: that's the way in from elsewhere (remote-go-between.md)
+        XCTAssertEqual(PhoneChecks.tips(PhoneFacts(paired: 1, listening: true, relay: .goBetween)).last, .awayGoBetween)
         // a code waiting to be scanned counts
         XCTAssertEqual(PhoneChecks.tips(PhoneFacts(listening: true, pairing: true)).count, 4)
     }

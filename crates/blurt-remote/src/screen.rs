@@ -210,7 +210,8 @@ impl ScreenSession {
             wait()?;
         }
         let relayed = chan.relay;
-        let rate = Rate::new(r.bitrate, r.fps, relayed);
+        // away for the ceiling: a relay, the go-between's direct path, or an overlay network (Tailscale, ZeroTier)
+        let rate = Rate::new(r.bitrate, r.fps, chan.away());
         let encoder_rate = rate.bitrate;
         // the display: the one pinned, else the one under the pointer; its shape is the picture's
         let (aspect, display, pinned) = {

@@ -67,6 +67,25 @@ public final class RemoteChannel {
 
     /// the relay's close code, when that ended it
     public private(set) var relayClose: UInt16?
+    /// the connection came up (for a relay: the WebSocket upgrade was accepted)
+    public private(set) var wasReady = false
+
+    /// Where the other end is, as the connection sees it (an IP address, or nil before it knows).
+    public var remoteHost: String? {
+        guard case let .hostPort(h, _) = connection.currentPath?.remoteEndpoint ?? connection.endpoint else { return nil }
+        switch h {
+        case let .ipv4(a): return "\(a)".split(separator: "%").first.map(String.init)
+        case let .ipv6(a): return "\(a)".split(separator: "%").first.map(String.init)
+        case let .name(n, _): return n
+        @unknown default: return nil
+        }
+    }
+
+    /// The interface the connection runs over ("en0", "utun4", "feth1234"): an overlay network has its own.
+    public var interfaceName: String? {
+        guard let p = connection.currentPath else { return nil }
+        return p.availableInterfaces.first { p.usesInterfaceType($0.type) }?.name
+    }
     /// a direct path answered, or stopped answering (phone)
     public var onDirect: ((Bool) -> Void)?
 
@@ -93,12 +112,17 @@ public final class RemoteChannel {
     private func stateChanged(_ s: NWConnection.State) {
         switch s {
         case .ready:
+            wasReady = true
             receive()
             if case let .phone(h) = role { sendRaw(RemoteFrameReader.framed(h.hello())) }
             if standby { keepAlive() }
-        case .failed, .cancelled:
-            shut(nil)
-        case .waiting where isRelay:
+        case let .failed(e):
+            if !oldStreamGone { failure = e }
+            oldStreamEnded()
+        case .cancelled:
+            oldStreamEnded()
+        case let .waiting(e) where isRelay:
+            failure = e
             shut(nil)      // no network, or the relay refused: the caller tries again later
         default: break
         }
@@ -119,6 +143,21 @@ public final class RemoteChannel {
     }
     private var pongOwed = false
 
+    /// what the connection failed with, when it did: a relay that refused the upgrade (busy, over quota) says so here (RemoteRelay.refused)
+    public private(set) var failure: NWError?
+    /// the WebSocket (or TCP) is gone and the session goes on: both ways have moved onto the direct path
+    private var oldStreamGone = false
+
+    /// The old stream ended. Once both ends have moved onto the direct path that's nothing: the session carries on over UDP.
+    private func oldStreamEnded() {
+        guard !closed else { return }
+        guard inMoved, outMoved else { return shut(nil) }
+        guard !oldStreamGone else { return }
+        oldStreamGone = true
+        connection.stateUpdateHandler = nil
+        connection.cancel()
+    }
+
     private func receive() {
         if isRelay { return receiveMessages() }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, done, err in
@@ -132,7 +171,7 @@ public final class RemoteChannel {
                     }
                 } catch { return self.shut(nil) }
             }
-            if done || err != nil { return self.shut(nil) }
+            if done || err != nil { return self.oldStreamEnded() }
             self.receive()
         }
     }
@@ -142,7 +181,7 @@ public final class RemoteChannel {
             guard let self else { return }
             if let m = ctx?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata, m.opcode == .close {
                 if case let .privateCode(c) = m.closeCode { self.relayClose = c }
-                return self.shut(nil)
+                return self.oldStreamEnded()
             }
             if let data, !data.isEmpty {
                 self.reader.feed(data)
@@ -153,19 +192,26 @@ public final class RemoteChannel {
                     }
                 } catch { return self.shut(nil) }
             }
-            if err != nil { return self.shut(nil) }
+            if err != nil { return self.oldStreamEnded() }
             self.receiveMessages()
         }
     }
 
     private func frame(_ f: Data) {
         guard let sealer else { return handshake(f) }
+        if inMoved { return }       // the other end's last frame here was `streamMoved`: nothing after it counts
         guard let plain = try? sealer.open(f) else { return shut(nil) }
         if !opened {
             opened = true
             handshakeTimeout?.cancel()
             reader.limit = RemoteFrameReader.maxFrame     // only now: an id alone doesn't buy anyone a megabyte
             onOpen?(macID)
+        }
+        if isRelay, Self.isStreamMoved(plain) {
+            inMoved = true
+            readStream()
+            movedChanged()
+            return
         }
         deliver(plain)
     }
@@ -197,10 +243,11 @@ public final class RemoteChannel {
         }
     }
 
-    /// A frame or packet, opened: first byte says what it is.
-    public func deliver(_ plain: Data) {
+    /// A frame or packet, opened: first byte says what it is. `datagram`: it came as a packet, not in a stream.
+    public func deliver(_ plain: Data, datagram: Bool = false) {
         guard let k = plain.first.flatMap(RemoteFrameKind.init) else { return }
         let body = plain.dropFirst()
+        if datagram { lastDatagram = CACurrentMediaTime() }
         switch k {
         case .control: onControl?(Data(body))
         case .audio: onAudio?(Data(body))
@@ -209,6 +256,7 @@ public final class RemoteChannel {
         case .probe: onProbe?(Data(body))
         case .cursor: onCursor?(Data(body))
         case .videoFeedback: onVideoFeedback?(Data(body))
+        case .stream, .streamAck: if datagram, isRelay { streamPacket(k, Data(body)) }
         }
     }
 
@@ -223,8 +271,29 @@ public final class RemoteChannel {
 
     private func sendSealed(_ kind: RemoteFrameKind, _ body: Data, done: (() -> Void)? = nil) {
         guard let sealer, !closed else { return }
+        if canMove, !outMoved {
+            // the go-between before the move: no picture or sound over it at all, and the big messages wait for the direct path (in order,
+            // so whatever follows one waits too). If the move never comes, the session ends and they go with it
+            switch kind {
+            case .control:
+                if !held.isEmpty || body.count > Self.holdOver {
+                    held.append(body)
+                    done?()
+                    return
+                }
+            case .pointer: break
+            default:
+                done?()
+                return
+            }
+        }
         guard let f = try? sealer.seal(Data([kind.rawValue]) + body) else { return }
-        sendRaw(RemoteFrameReader.framed(f), done: done)
+        if outMoved {
+            writeStream(RemoteFrameReader.framed(f))
+            done?()
+        } else {
+            sendRaw(RemoteFrameReader.framed(f), done: done)
+        }
     }
 
     /// Frames waiting on the way out: over a slow link the next one is dropped rather than queued.
@@ -295,7 +364,7 @@ public final class RemoteChannel {
                let d = try? sealer.sealPacket(Data([kind.rawValue]) + body, session: self.udpSession) {
                 return path.send(content: d, completion: .idempotent)
             }
-            guard self.isRelay, kind != .probe else { return }
+            guard self.isRelay, kind != .probe, !self.outMoved else { return }
             if kind == .video {
                 // the sender checks `streamBusy` before it spends an encode on a frame: dropped here, it would cost a keyframe
                 guard self.framesOut < 4 else { return }
@@ -328,7 +397,7 @@ public final class RemoteChannel {
             if let data, let plain = self.sealer?.openPacket(data) {
                 if self.trying.contains(where: { $0 === c }) { self.chose(c) }
                 if c === self.udp { self.directHeard = CACurrentMediaTime() }
-                self.deliver(plain)
+                self.deliver(plain, datagram: true)
             }
             self.receiveUDP(c)
         }
@@ -382,6 +451,7 @@ public final class RemoteChannel {
         trying = []
         onDirect?(true)
         holdDirect()
+        tryMove()
     }
 
     /// A small packet now and every 2 s, echoed by the Mac: the Mac answers on the path it heard last, which must be this one and not
@@ -389,6 +459,7 @@ public final class RemoteChannel {
     private func holdDirect() {
         guard !closed, let c = udp, udpOK else { return }
         if CACurrentMediaTime() - directHeard > 6 {
+            if moved { return shut(nil) }      // the stream is on this path: no way back to the old one
             udpOK = false
             udp = nil
             setPath(false)
@@ -435,12 +506,167 @@ public final class RemoteChannel {
         queue.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.probeUDP(attempts: attempts - 1) }
     }
 
-    /// Over the relay, a path counts once something has come back on it (`chose`), not when the Mac heard a knock.
+    /// Over the relay, a path counts once something has come back on it (`chose`), not when the Mac heard a knock. On the go-between
+    /// (`enableMove`) the other end's word that a datagram got through is half of what moving the stream needs; the path is the other half.
     public func udpConfirmed() {
         queue.async {
-            guard !self.isRelay else { return }
+            guard !self.isRelay else {
+                self.wantMove = true
+                return self.tryMove()
+            }
             self.udpOK = true
             self.setPath(true)
+        }
+    }
+
+    // MARK: the stream, moved onto the direct path (docs/design/remote-go-between.md)
+
+    /// control messages bigger than this wait for the direct path on the go-between
+    static let holdOver = 2048
+    /// both ends listed `move` and this is the go-between: the stream moves once the direct path is open
+    private var canMove = false
+    /// the other end's word that a datagram got through (phone: `udpOK`; host: it saw one)
+    private var wantMove = false
+    /// this end has written `streamMoved` and writes to the UDP stream since; the other end's `streamMoved` has been read
+    private var outMoved = false
+    private var inMoved = false
+    private var streamOut: RemoteStreamSender?
+    private let streamIn = RemoteStreamReceiver()
+    private var streamReader: RemoteFrameReader = {
+        var r = RemoteFrameReader()
+        r.limit = RemoteFrameReader.maxFrame
+        return r
+    }()
+    /// control messages that wait for the move (`holdOver`)
+    private var held: [Data] = []
+    private var lastDatagram = 0.0
+    private var timerToken = 0
+    private var timerDue: Double?
+    private var watching = false
+    /// both ways have moved (once; on the channel's queue)
+    public var onMoved: (() -> Void)?
+
+    /// Both ends are on the stream over UDP. Safe from any queue.
+    public var moved: Bool {
+        pathLock.lock()
+        defer { pathLock.unlock() }
+        return movedBoth
+    }
+    private var movedBoth = false
+
+    /// The go-between, and both ends listed `move`: from now on nothing big goes over the WebSocket, and the stream moves onto the direct
+    /// path once `udpConfirmed` and a path agree. The host calls `udpConfirmed` itself, once it has seen a datagram and said `udpOK`.
+    public func enableMove() {
+        queue.async {
+            self.canMove = true
+            self.tryMove()
+        }
+    }
+
+    /// what datagrams go out on: the phone's chosen direct path, or the flow the host last heard the phone on
+    private var datagramPath: NWConnection? { (udpOK ? udp : nil) ?? (flowFresh ? flow : nil) }
+
+    private func tryMove() {
+        guard canMove, wantMove, !outMoved, !closed, let sealer, datagramPath != nil else { return }
+        // the last frame on the old stream
+        guard let body = try? JSONEncoder().encode(Self.movedMessage), let f = try? sealer.seal(Data([RemoteFrameKind.control.rawValue]) + body) else { return }
+        sendRaw(RemoteFrameReader.framed(f))
+        outMoved = true
+        streamOut = RemoteStreamSender()
+        lastDatagram = CACurrentMediaTime()
+        let waiting = held
+        held = []
+        for m in waiting { sendSealed(.control, m) }
+        movedChanged()
+    }
+
+    private struct MovedMessage: Encodable { struct Empty: Encodable {}; var streamMoved = Empty() }
+    private static let movedMessage = MovedMessage()
+
+    /// `{"streamMoved":{}}` in a control frame, however the other end spaced it
+    static func isStreamMoved(_ plain: Data) -> Bool {
+        guard plain.first == RemoteFrameKind.control.rawValue, plain.count < 64,
+              let o = try? JSONSerialization.jsonObject(with: plain.dropFirst()) as? [String: Any] else { return false }
+        return o.count == 1 && o["streamMoved"] != nil
+    }
+
+    private func movedChanged() {
+        if outMoved || inMoved, !watching {
+            watching = true
+            lastDatagram = max(lastDatagram, CACurrentMediaTime())
+            watchDatagrams()
+        }
+        guard outMoved, inMoved, !moved else { return }
+        pathLock.lock()
+        movedBoth = true
+        pathLock.unlock()
+        onMoved?()
+    }
+
+    /// After the move the session lives on datagrams: none for 6 s and it's over (the phone starts again from the beginning).
+    private func watchDatagrams() {
+        guard !closed else { return }
+        if CACurrentMediaTime() - lastDatagram > 6 { return shut(nil) }
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in self?.watchDatagrams() }
+    }
+
+    private func writeStream(_ bytes: Data) {
+        guard let s = streamOut else { return }
+        s.write(bytes, now: CACurrentMediaTime()).forEach(sendStream)
+        armTimer()
+    }
+
+    private func sendStream(_ p: RemoteStreamPacket) {
+        guard let sealer, let path = datagramPath,
+              let d = try? sealer.sealPacket(Data([p.kind.rawValue]) + p.encoded(), session: udpSession) else { return }
+        path.send(content: d, completion: .idempotent)
+    }
+
+    /// A kind-7 or kind-8 datagram (over the relay only: nobody else moves).
+    private func streamPacket(_ k: RemoteFrameKind, _ body: Data) {
+        guard let p = RemoteStreamPacket(kind: k, body: body) else { return }
+        let now = CACurrentMediaTime()
+        switch p {
+        case let .data(offset, bytes):
+            let (d, ack) = streamIn.receive(offset: offset, bytes: bytes, now: now)
+            if let ack { sendStream(.ack(next: ack)) }
+            if !d.isEmpty {
+                streamReader.feed(d)
+                // bytes that came before the other end's `streamMoved` was read wait for it
+                if inMoved { readStream() }
+            }
+        case let .ack(next):
+            streamOut?.ack(next, now: now).forEach(sendStream)
+        }
+        armTimer()
+    }
+
+    /// The other end's frames from the UDP stream, in order, with the same implicit counters as before the move.
+    private func readStream() {
+        guard let sealer else { return }
+        do {
+            while let f = try streamReader.next() {
+                guard let plain = try? sealer.open(f) else { return shut(nil) }
+                deliver(plain)
+                if closed { return }
+            }
+        } catch { shut(nil) }
+    }
+
+    /// One timer for the stream: the sender's timeout and the receiver's held-back ack, whichever is first.
+    private func armTimer() {
+        guard !closed, let due = [streamOut?.deadline, streamIn.deadline].compactMap({ $0 }).min() else { return }
+        if let t = timerDue, t <= due { return }
+        timerDue = due
+        timerToken += 1
+        let token = timerToken
+        queue.asyncAfter(deadline: .now() + max(0, due - CACurrentMediaTime())) { [weak self] in
+            guard let self, token == self.timerToken, !self.closed else { return }
+            self.timerDue = nil
+            let now = CACurrentMediaTime()
+            if let a = self.streamIn.tick(now: now) { self.sendStream(.ack(next: a)) }
+            self.streamOut?.tick(now: now).forEach(self.sendStream)
+            self.armTimer()
         }
     }
 
@@ -449,7 +675,7 @@ public final class RemoteChannel {
     /// A packet the listener matched to this session (on the channel's queue).
     public func packet(_ p: Data) -> Bool {
         guard let plain = sealer?.openPacket(p) else { return false }
-        deliver(plain)
+        deliver(plain, datagram: true)
         return true
     }
 
@@ -460,6 +686,8 @@ public final class RemoteChannel {
     private func shut(_ failure: RemoteHandshakeError?) {
         guard !closed else { return }
         closed = true
+        timerToken += 1
+        held = []
         handshakeTimeout?.cancel()
         udp?.cancel()
         udp = nil

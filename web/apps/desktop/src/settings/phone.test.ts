@@ -6,7 +6,7 @@ import ZH from '../locales/zh-Hans.json';
 import { mockInvoke, mockListen } from '../mock';
 import type { RemoteStatus } from '../api';
 import { MOVED, results } from './catalog';
-import { groupDigits, relayAddress, timeLeft } from './phone';
+import { awayLine, groupDigits, relayAddress, timeLeft } from './phone';
 
 describe('relay address', () => {
   it('takes what the Mac takes', () => {
@@ -18,6 +18,48 @@ describe('relay address', () => {
   it('refuses what isn’t one', () => {
     for (const t of ['', '   ', 'https://relay.example.com', 'wss://', 'wss://relay.example.com?x=1', 'wss://relay.example.com#a', 'relay example.com'])
       expect(relayAddress(t), t).toBeNull();
+  });
+});
+
+describe('away from home', () => {
+  type R = Pick<RemoteStatus, 'connected' | 'relay'>;
+  const none: R = { connected: null, relay: { address: null, fromPhone: false, reachable: null, goBetween: true, goBetweenProblem: null } };
+  const on = (route: NonNullable<RemoteStatus['connected']>['route']): R => ({ ...none, connected: { id: 'p', name: 'Pixel', route, screen: false } });
+  it('a connected phone: the path it uses, whatever else is set', () => {
+    for (const route of ['local', 'tailscale', 'overlay', 'direct', 'relay', 'goBetween'] as const)
+      expect(awayLine(on(route))).toEqual({ key: 'phone.connected', route: `phone.route.${route}`, warn: false, live: true });
+    expect(awayLine({ ...on('local'), relay: { ...none.relay, goBetweenProblem: 'busy' } }).route).toBe('phone.route.local');
+  });
+  it('the owner’s relay wins over the public connection service', () => {
+    expect(awayLine({ ...none, relay: { ...none.relay, address: 'wss://r', reachable: true, goBetweenProblem: 'noDirect' } })).toEqual({ key: 'phone.route.relay', warn: false, live: false });
+    expect(awayLine({ ...none, relay: { ...none.relay, address: 'wss://r', reachable: null } }).key).toBe('phone.route.relay');
+    expect(awayLine({ ...none, relay: { ...none.relay, address: 'wss://r', reachable: false } })).toEqual({ key: 'phone.away.relay_down', warn: true, live: false });
+  });
+  it('no relay: the public connection service, or why it couldn’t, or not set', () => {
+    expect(awayLine(none)).toEqual({ key: 'phone.route.goBetween', warn: false, live: false });
+    expect(awayLine({ ...none, relay: { ...none.relay, goBetweenProblem: 'noDirect' } })).toEqual({ key: 'phone.away.no_direct', warn: true, live: false });
+    expect(awayLine({ ...none, relay: { ...none.relay, goBetweenProblem: 'busy' } })).toEqual({ key: 'phone.away.busy', warn: true, live: false });
+    expect(awayLine({ ...none, relay: { ...none.relay, goBetween: false, goBetweenProblem: 'busy' } })).toEqual({ key: 'phone.away.off', warn: false, live: false });
+  });
+  it('every line and route has its words, in both languages', () => {
+    const keys = ['local', 'tailscale', 'overlay', 'direct', 'relay', 'goBetween'].map((r) => `phone.route.${r}`)
+      .concat(['relay_down', 'no_direct', 'busy', 'off'].map((k) => `phone.away.${k}`), ['phone.away', 'phone.connected', 'phone.relay.own']);
+    for (const k of keys) {
+      expect((EN as Record<string, string>)[k], k).toBeTruthy();
+      expect((ZH as Record<string, string>)[k], k).toBeTruthy();
+    }
+  });
+  it('the words are the founder’s: plain names, no coined terms', () => {
+    expect(EN['phone.go_between']).toBe('Public connection service');
+    expect(ZH['phone.go_between']).toBe('公共连接服务');
+    expect(EN['phone.go_between.detail']).toBe('Free, with no guarantee. If a network can’t connect directly, set up your own relay.');
+    expect(ZH['phone.go_between.detail']).toBe('免费，不保证可用。无法直连时，请设置自建中转。');
+    expect(ZH['phone.relay.own']).toBe('自建中转（推荐）');
+    expect(EN['phone.away.no_direct']).toBe('Can’t connect directly. Set up your own relay on the computer.');
+    expect(ZH['phone.away.busy']).toBe('公共连接服务今日已达上限。请稍后再试，或使用自建中转。');
+    expect(ZH['phone.away.off']).toBe('未设置');
+    const all = JSON.stringify(EN) + JSON.stringify(ZH);
+    expect(all).not.toMatch(/牵线|go-between/i);
   });
 });
 
@@ -122,6 +164,34 @@ describe('browser stand-in', () => {
     expect(ZH['phone.firewall']).toBe('Windows 防火墙挡住了这个网络上的手机。');
     expect(EN['phone.firewall.allow']).toBe('Allow…');
     expect(ZH['phone.firewall.allow']).toBe('允许…');
+  });
+  it('the go-between switch: on by default, off and on again; a relay keeps it as set', async () => {
+    let s = await mockInvoke<RemoteStatus>('remote_status');
+    expect(s.relay.goBetween).toBe(true);
+    s = await mockInvoke<RemoteStatus>('remote_set_go_between', { on: false });
+    expect(s.relay.goBetween).toBe(false);
+    expect(awayLine(s).key).toBe('phone.away.off');
+    s = await mockInvoke<RemoteStatus>('remote_set_go_between', { on: true });
+    expect(awayLine(s).key).toBe('phone.route.goBetween');
+    s = await mockInvoke<RemoteStatus>('remote_set_relay', { address: 'wss://relay.example.com' });
+    expect(s.relay.goBetween).toBe(true);
+    s = await mockInvoke<RemoteStatus>('remote_set_relay', { address: '' });
+    expect(s.relay.goBetween).toBe(true);
+  });
+  it('?phone_away=noDirect: two phones, no relay, the go-between couldn’t carry the last one', async () => {
+    vi.resetModules();
+    vi.stubGlobal('location', { search: '?phone_away=noDirect' });
+    try {
+      const m = await import('../mock');
+      const s = await m.mockInvoke<RemoteStatus>('remote_status');
+      expect(s.devices).toHaveLength(2);
+      expect(s.connected).toBeNull();
+      expect(s.relay.address).toBeNull();
+      expect(awayLine(s)).toMatchObject({ key: 'phone.away.no_direct', warn: true });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
   });
   it('a relay address: refused when it isn’t one, cleared with ""', async () => {
     await expect(mockInvoke('remote_set_relay', { address: 'http://x' })).rejects.toBeTruthy();

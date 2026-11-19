@@ -10,8 +10,8 @@ import { Icon } from '@blurt/icons';
 import { api, type AppStatus, type RemoteStatus } from '../api';
 import { i18n } from '../i18n';
 import { Menu, type MenuAt } from '../components/Menu';
-import { Group, Line, Page, Row, S, TextLink, Toggle } from './kit';
-import { APP_PAGES, apply, groupDigits, relayAddress, timeLeft, useNow, usePhonePaneMounted, usePhonePaneOpen, useRemoteStatus } from './phone';
+import { Group, Line, Page, Row, S, Switch, TextLink, Toggle } from './kit';
+import { APP_PAGES, apply, awayLine, groupDigits, relayAddress, timeLeft, useNow, usePhonePaneMounted, usePhonePaneOpen, useRemoteStatus } from './phone';
 import './settings.css';
 
 type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
@@ -218,7 +218,23 @@ function AskBlock({ ask }: { ask: NonNullable<RemoteStatus['asking']> }) {
   );
 }
 
-/** Away from Home: the relay address (Return or leaving the field uses it and tries it), and Copy Instructions. */
+/** Away from home's status line: the path a connected phone uses, or what a phone on another network would use and
+ *  why that won't work (phone.ts `awayLine`). */
+function AwayStatus({ r }: { r: RemoteStatus }) {
+  const a = awayLine(r);
+  return (
+    <div className={`st-row st-phone-away ${a.warn ? 'warn' : ''}`} role="status" data-testid="phone-away" data-away={a.key}>
+      <span className="st-phone-away-label">{S('phone.away')}</span>
+      <span className="st-phone-away-value">
+        {a.live ? <span className="st-phone-dot" aria-hidden /> : a.warn ? <Icon name="warning" size={14} /> : null}
+        <span>{a.route ? S(a.key, S(a.route)) : S(a.key)}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Away from home: what's in use (AwayStatus), the owner's relay address, recommended (Return or leaving the field uses it
+ *  and tries it), Blurt's go-between switch (used only while no relay is set), and Copy Instructions. */
 function RelayGroup({ r }: { r: RemoteStatus }) {
   const [text, setText] = useState(r.relay.address ?? '');
   const [state, setState] = useState<RelayState>('idle');
@@ -282,9 +298,12 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
   else if (saved && r.relay.fromPhone) (line = S(r.relay.reachable === false ? 'phone.relay.from_phone_failed' : 'phone.relay.from_phone')), (warn = r.relay.reachable === false);
   else if (saved && r.relay.reachable === false) (line = S('phone.relay.failed')), (warn = true);
 
+  const own = !!r.relay.address;
   return (
     <Group id="phone.relay">
-      <Row id="phone.relay.address" detail={line} warn={warn}>
+      <AwayStatus r={r} />
+      <Row id="phone.relay.address" detail={line} warn={warn}
+        title={<span data-testid="phone-relay-recommended">{S('phone.relay.own')}</span>}>
         <input ref={field} className="st-field st-phone-relay" type="text" spellCheck={false} autoComplete="off" autoCapitalize="off"
           placeholder="wss://relay.example.com" aria-label={S('phone.relay')} value={text} data-testid="phone-relay"
           onChange={(e) => {
@@ -301,6 +320,11 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
             }
           }}
           onBlur={commit} />
+      </Row>
+      {/* with a relay of the owner's the go-between is never used: the switch stays as set, dimmed, and says so */}
+      <Row id="phone.go_between" detail={own ? S('phone.go_between.unused') : undefined}>
+        <Switch on={r.relay.goBetween} label={S('phone.go_between')} disabled={own}
+          set={(v) => void apply(api.remoteSetGoBetween(v)).catch(() => {})} />
       </Row>
       <Row id="phone.relay.help">
         <button onClick={copy} data-testid="phone-copy">{copied ? S('phone.relay.copied') : S('phone.relay.copy')}</button>

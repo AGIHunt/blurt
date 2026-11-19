@@ -31,6 +31,21 @@ final class LinkStatusTests: XCTestCase {
                        StatusBanner(mark: .problem, title: .cantReach, detail: .checkNetwork, action: .retry, second: .another))
     }
 
+    func testTheGoBetweenSaysWhyAndWhatFixesIt() {
+        // the direct path didn't open, or the go-between couldn't carry it: a relay of one's own fixes that, whatever else is true
+        XCTAssertEqual(banner(.unreachable) { $0.away = .noDirect; $0.hasRelay = true },
+                       StatusBanner(mark: .problem, title: .cantReach, detail: .noDirect, action: .retry))
+        XCTAssertEqual(banner(.unreachable) { $0.away = .busy; $0.otherComputers = true },
+                       StatusBanner(mark: .problem, title: .cantReach, detail: .goBetweenBusy, action: .retry, second: .another))
+        // connecting or connected, there's nothing to say about it yet / any more
+        XCTAssertEqual(banner(.connecting) { $0.away = .noDirect }, StatusBanner(mark: .busy, title: .connecting))
+        XCTAssertNil(banner(.connected) { $0.away = .busy })
+        // the words, as the spec has them
+        XCTAssertEqual(Words.status(.noDirect, host: .mac, name: "Mac"),
+                       "Can’t connect directly. Set up your own relay on the computer.")
+        XCTAssertEqual(Words.status(.goBetweenBusy, host: .windows, name: "PC"), "The public connection service has reached today’s limit. Try again later, or use your own relay.")
+    }
+
     func testPairingStates() {
         XCTAssertEqual(banner(.unpaired), StatusBanner(mark: .code, title: .pairFirst, detail: .whereTheCodeIs, action: .scan))
         XCTAssertEqual(banner(.forgotten), StatusBanner(mark: .problem, title: .needsPairing, detail: .forgotten, action: .scan))

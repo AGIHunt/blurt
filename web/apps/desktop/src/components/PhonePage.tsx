@@ -87,7 +87,7 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
               {head.kind === 'connected' ? t('phonepage.head.connected', { a: head.name || t('phonepage.unnamed') }) : t(head.kind === 'none' ? 'phonepage.head.none' : 'phonepage.head.not_connected')}
             </span>
             <span className="ph-head-detail">
-              {head.kind === 'connected' ? t(head.viaRelay ? 'phonepage.head.relay' : 'phonepage.head.local') : t(head.kind === 'none' ? 'phonepage.head.none.detail' : 'phonepage.head.not_connected.detail')}
+              {head.kind === 'connected' ? t(head.route === 'local' ? 'phonepage.head.local' : head.route === 'relay' ? 'phonepage.head.relay' : `phone.route.${head.route}`) : t(head.kind === 'none' ? 'phonepage.head.none.detail' : 'phonepage.head.not_connected.detail')}
             </span>
           </span>
           {!adding && !r.asking && (
@@ -141,8 +141,8 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
             <h2 className="pg-h2">{t('phonepage.tips')}</h2>
             <ol className="pg-box ph-tips" data-testid="phone-tips">
               {tips.map((k) => (
-                <li key={k}>{t(k === 'vpn' && !win ? 'phonepage.tips.vpn.linux' : k === 'away_none' ? 'phonepage.tips.away.none' : k === 'away_ok' ? 'phonepage.tips.away.ok' : `phonepage.tips.${k}`)}
-                  {k === 'away_none' && <button className="pg-link" onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>}
+                <li key={k}>{t(k === 'vpn' && !win ? 'phonepage.tips.vpn.linux' : k === 'away_none' ? 'phonepage.tips.away.none' : k === 'away_ok' ? 'phonepage.tips.away.ok' : k === 'away_go_between' ? 'phonepage.tips.away.go_between' : `phonepage.tips.${k}`)}
+                  {(k === 'away_none' || k === 'away_go_between') && <button className="pg-link" onClick={() => onSettings('phone/phone.relay.address')}>{t('phonepage.relay_settings')}</button>}
                 </li>
               ))}
             </ol>

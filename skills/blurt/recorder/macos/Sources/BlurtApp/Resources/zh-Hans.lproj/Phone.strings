@@ -67,6 +67,8 @@
 "phone.tips.vpn" = "关闭手机和 Mac 上的 VPN。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
 "phone.tips.vpn.local" = "关闭手机和 Mac 上的 VPN，并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
 "phone.tips.away.none" = "不在同一网络时（如外出），手机需经你自己的中转连接，目前未设置。";
+"phone.tips.away.go_between" = "不在同一网络时，手机通过公共连接服务连接。无法直连时，请设置自建中转。";
+"phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
 /* 设置 → 手机（Settings/RemotePane.swift）里指向这一页和配对前的提醒 */

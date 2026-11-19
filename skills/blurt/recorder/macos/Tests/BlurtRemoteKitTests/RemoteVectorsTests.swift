@@ -39,6 +39,9 @@ final class RemoteVectorsTests: XCTestCase {
             ("hud", .hud("常用")),
             ("hello", .hello(device: "Pixel 9", micOnPhone: true, nonce: bytes(9))),
             ("hello_no_nonce", .hello(device: "iPhone", micOnPhone: false)),
+            // a phone that can move its stream onto the direct path (docs/design/remote-go-between.md)
+            ("hello_move", .hello(device: "Pixel 9", micOnPhone: true, nonce: bytes(9), features: ["move"])),
+            ("stream_moved", .streamMoved),
             ("set_mic_on_phone", .setMicOnPhone(false)),
             ("release_all", .releaseAll),
             ("key_stored", .keyStored),
@@ -72,6 +75,12 @@ final class RemoteVectorsTests: XCTestCase {
             ("session", .session(RemoteSessionInfo(macName: "Studio PC", udpPort: 50123, udpSession: 7, canControl: true, version: "1.0.15",
                                                    candidates: [RemoteCandidate(host: "192.168.1.20", port: 50123)], displayAspect: 1.5,
                                                    relay: "wss://relay.example.com", platform: "windows"))),
+            ("session_go_between", .session(RemoteSessionInfo(macName: "Studio PC", udpPort: 50123, udpSession: 7, canControl: true, version: "1.0.27",
+                                                              candidates: [RemoteCandidate(host: "192.168.1.20", port: 50123), RemoteCandidate(host: "100.101.102.103", port: 50123),
+                                                                           RemoteCandidate(host: "fd7a:115c:a1e0::1", port: 50123)],
+                                                              displayAspect: 1.5, relay: "wss://meet.blurt.work", platform: "windows", features: ["move"]))),
+            ("stream_moved", .streamMoved),
+            ("no_direct", .noDirect),
             ("session_old_mac", .session(RemoteSessionInfo(macName: "Mac", udpPort: 1, udpSession: 2, canControl: false, version: "1.0.13", platform: nil))),
             ("can_control", .canControl(true)),
             ("front", .front(RemoteFront(bundle: "WindowsTerminal.exe", name: "Terminal"))),
@@ -164,6 +173,36 @@ final class RemoteVectorsTests: XCTestCase {
         let udp1 = try phone.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + RemotePointerPacket.scrollStop.encoded(), session: 7)
         let udp2 = try phone.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + RemotePointerPacket.move(dx: 1, dy: 1).encoded(), session: 7)
         let sharedRaw = secret.withUnsafeBytes { Data($0) }
+        // The move (docs/design/remote-go-between.md): `streamMoved` is the phone's last frame on the old stream (channel 0, counter 2 after
+        // the two frames above); its next frame, sealed with counter 3 as it would have been on the old stream, is the UDP stream's first
+        // bytes, at offset 0, in a kind-7 datagram sealed on channel 1 (counter 3 after the two packets above). The host acks with kind 8.
+        let movedPlain = Data([RemoteFrameKind.control.rawValue]) + (try sorted.encode(ToMac.streamMoved))
+        let moved = try phone.seal(movedPlain)
+        let afterPlain = Data([RemoteFrameKind.control.rawValue]) + (try sorted.encode(ToMac.key(RemoteChord(.command, "C"), down: nil)))
+        let after = RemoteFrameReader.framed(try phone.seal(afterPlain))
+        let streamBody = RemoteStreamPacket.data(offset: 0, bytes: after).encoded()
+        let streamPacket = try phone.sealPacket(Data([RemoteFrameKind.stream.rawValue]) + streamBody, session: 7)
+        let ackBody = RemoteStreamPacket.ack(next: UInt64(after.count)).encoded()
+        let ackPacket = try mac.sealPacket(Data([RemoteFrameKind.streamAck.rawValue]) + ackBody, session: 7)
+        out["stream"] = [
+            "about": "kind 7: u64 BE offset ∥ at most 1100 bytes of the sender's stream (length-prefixed channel-0 frames, counters continuing). Sealed with handshake's keys.",
+            "streamMoved": ["counter": 2, "plain": hex(movedPlain), "sealed": hex(moved), "framed": hex(RemoteFrameReader.framed(moved))],
+            "frame": ["counter": 3, "plain": hex(afterPlain), "framed": hex(after)],
+            "packet": ["offset": 0, "body": hex(streamBody), "plain": hex(Data([RemoteFrameKind.stream.rawValue]) + streamBody),
+                       "session": 7, "udpCounter": 3, "sealed": hex(streamPacket)],
+            "examples": [["offset": 0, "bytes": "", "body": hex(RemoteStreamPacket.data(offset: 0, bytes: Data()).encoded())],
+                         ["offset": 1100, "bytes": "0102", "body": hex(RemoteStreamPacket.data(offset: 1100, bytes: Data([1, 2])).encoded())],
+                         ["offset": 0x0102030405060708, "bytes": "ff", "body": hex(RemoteStreamPacket.data(offset: 0x0102030405060708, bytes: Data([0xff])).encoded())]],
+        ]
+        out["streamAck"] = [
+            "about": "kind 8: u64 BE next expected offset, cumulative. Host to phone, sealed on channel 1 (the host's first packet: counter 1).",
+            "packet": ["next": after.count, "body": hex(ackBody), "plain": hex(Data([RemoteFrameKind.streamAck.rawValue]) + ackBody),
+                       "session": 7, "udpCounter": 1, "sealed": hex(ackPacket)],
+            "examples": [["next": 0, "body": hex(RemoteStreamPacket.ack(next: 0).encoded())],
+                         ["next": 262144, "body": hex(RemoteStreamPacket.ack(next: 262144).encoded())]],
+        ]
+        out["goBetween"] = ["address": RemoteRelay.goBetween, "overBudgetClose": Int(RemoteRelay.overBudget), "feature": RemoteFeature.move,
+                            "chunk": RemoteStream.chunk, "window": RemoteStream.window]
         out["handshake"] = [
             "paired": hex(paired), "phoneEphPrivate": hex(phonePriv), "macEphPrivate": hex(macPriv), "phoneEph": hex(phoneEph), "macEph": hex(macEph),
             "id": id, "nonce": hex(nonce), "commitment": hex(RemoteCrypto.commitment(nonce)),
@@ -214,5 +253,16 @@ final class RemoteVectorsTests: XCTestCase {
         guard case let .screenView(_, _, codec, display, _) = try JSONDecoder().decode(ToPhone.self, from: v) else { return XCTFail() }
         XCTAssertNil(codec)
         XCTAssertNil(display)
+        // an old phone's hello and an old host's session have no features
+        let h = Data(#"{"hello":{"device":"iPhone","micOnPhone":true}}"#.utf8)
+        guard case let .hello(_, _, _, features) = try JSONDecoder().decode(ToMac.self, from: h) else { return XCTFail() }
+        XCTAssertNil(features)
+        XCTAssertNil(i.features)
+        // the move's frames open in order on the other end: the stream continues the old one's counters
+        XCTAssertEqual(try JSONDecoder().decode(ToPhone.self, from: Data(#"{"noDirect":{}}"#.utf8)).isNoDirect, true)
     }
+}
+
+private extension ToPhone {
+    var isNoDirect: Bool { if case .noDirect = self { true } else { false } }
 }

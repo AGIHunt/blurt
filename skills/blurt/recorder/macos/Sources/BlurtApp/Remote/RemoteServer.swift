@@ -44,6 +44,31 @@ final class RemoteServer {
         var udp = false
         var pairingLink: URL?
         var failure: String?
+        /// how the connected phone reaches this Mac (Settings → Phone → Away from home)
+        var path: Path?
+        /// why away from home doesn't work right now, when it doesn't
+        var away: AwayProblem?
+    }
+
+    /// The way the connected phone came in (docs/design/remote-go-between.md §Who uses which path).
+    enum Path: String, Equatable {
+        /// the same network
+        case local
+        /// a Tailscale address, or another overlay network's
+        case tailscale, overlay
+        /// the owner's relay, with the pointer and picture direct / everything through it
+        case direct, relay
+        /// met at Blurt's go-between, everything on the direct path since
+        case goBetween
+        /// at the go-between, the direct path not open yet
+        case meeting
+    }
+
+    enum AwayProblem: String, Equatable {
+        /// the go-between turned this Mac away (the day's quota, or its rate limit): it's left alone for a while
+        case busy
+        /// the last phone met here but the direct path didn't open (or the go-between's budget ran out): a relay of one's own fixes it
+        case noDirect
     }
 
     private static let serviceKeychain = "Blurt iPhone Remote"
@@ -121,6 +146,10 @@ final class RemoteServer {
 
     private final class Session {
         let channel: RemoteChannel
+        /// it came in through Blurt's go-between (RemoteRelay.goBetween)
+        var goBetween = false
+        /// what the phone said it can do (`ToMac.hello.features`)
+        var features: [String] = []
         var id: String?
         var name = ""
         var micOnPhone = true
@@ -416,7 +445,7 @@ final class RemoteServer {
         oldCode = pairing
         pairing = (id, key, Date().addingTimeInterval(Self.pairingLife))
         status.pairingLink = RemotePairing(macID: macID, deviceID: id, key: key, macName: Host.current().localizedName ?? "Mac", port: port,
-                                           addresses: Self.addresses(), relay: Self.relayAddress).url
+                                           addresses: Self.addresses(), relay: Self.relayAddress ?? Self.meetAddress).url
         updateRelays()
         if Self.testing { emit(["event": "remote_pairing", "link": status.pairingLink?.absoluteString ?? ""]) }
         pairingTimer?.cancel()
@@ -433,7 +462,7 @@ final class RemoteServer {
         }
     }
 
-    /// This Mac's LAN addresses (IPv4), Wi-Fi and Ethernet first.
+    /// This Mac's LAN addresses (IPv4), Wi-Fi and Ethernet first, then its overlay networks' (`overlayAddresses`).
     static func addresses() -> [String] {
         var out: [String] = []
         var list: UnsafeMutablePointer<ifaddrs>?
@@ -445,6 +474,27 @@ final class RemoteServer {
                   i.ifa_flags & UInt32(IFF_UP) != 0, String(cString: i.ifa_name).hasPrefix("en") || String(cString: i.ifa_name).hasPrefix("bridge") else { continue }
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             if getnameinfo(a, socklen_t(a.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 { out.append(String(cString: host)) }
+        }
+        return out + overlayAddresses().filter { !out.contains($0) }
+    }
+
+    /// Tailscale's addresses (100.64.0.0/10 and fd7a:115c:a1e0::/48, on whichever utun carries them) and any address on a ZeroTier
+    /// interface (`feth…` on a Mac): a phone on the same overlay reaches this Mac from anywhere, with no server (remote-go-between.md
+    /// §Overlay addresses). The listeners are on every interface already.
+    static func overlayAddresses() -> [String] {
+        var out: [String] = []
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return [] }
+        defer { freeifaddrs(list) }
+        for p in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let i = p.pointee
+            guard let a = i.ifa_addr, a.pointee.sa_family == UInt8(AF_INET) || a.pointee.sa_family == UInt8(AF_INET6),
+                  i.ifa_flags & UInt32(IFF_LOOPBACK) == 0, i.ifa_flags & UInt32(IFF_UP) != 0 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(a, socklen_t(a.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            let s = String(cString: host)
+            guard !s.contains("%"), !s.lowercased().hasPrefix("fe80") else { continue }     // link-local: no use from elsewhere
+            if RemoteOverlay.isTailscale(s) || RemoteOverlay.isOverlayInterface(String(cString: i.ifa_name)), !out.contains(s) { out.append(s) }
         }
         return out
     }
@@ -469,6 +519,16 @@ final class RemoteServer {
             }
         }), relay: deviceID != nil, standby: deviceID != nil, queue: DispatchQueue(label: "blurt.remote.session", qos: .userInteractive))
         let s = Session(ch)
+        s.goBetween = deviceID != nil && RemoteRelay.isGoBetween(relayAt)
+        ch.onMoved = { [weak self, weak s] in
+            guard let self, let s else { return }
+            self.queue.async {
+                guard self.session === s else { return }
+                emit(["event": "remote_relay", "state": "moved"])
+                self.status.path = .goBetween
+                self.status.away = nil
+            }
+        }
         ch.onOpen = { [weak self, weak s] id in
             guard let self, let s else { return }
             self.queue.async { self.opened(s, id: id) }
@@ -516,12 +576,26 @@ final class RemoteServer {
     static var relayUnset: Bool { Config.shared["record.remote.relay_url"] == nil }
     static var relayAddress: String? { (Config.shared["record.remote.relay_url"] as? String).flatMap(RemoteRelay.address) }
     static var relayOn: Bool { relayAddress != nil }
+    /// Settings → Phone → Blurt go-between (free, best effort): on unless the owner turned it off
+    static var goBetweenOn: Bool { Config.shared["record.remote.go_between"] as? Bool ?? true }
+    /// Blurt's go-between, when it's the way in: no relay of the owner's own, and the switch on
+    static var meetAddress: String? { relayAddress == nil && goBetweenOn ? RemoteRelay.goBetween : nil }
+    /// where the waiting connections go: the owner's relay, else the go-between, else nowhere
+    static var standbyAddress: String? { relayAddress ?? meetAddress }
+
+    /// The relay a phone is told about: the owner's own; the go-between only to a phone that can move its stream onto the direct path.
+    private func relayFor(_ s: Session?) -> String? {
+        if let a = Self.relayAddress { return a }
+        guard let s, s.features.contains(RemoteFeature.move) else { return nil }
+        return Self.meetAddress
+    }
     /// Settings → Phone: a paired phone may ask for the screen
     static var screenAllowed: Bool { Config.shared["record.remote.screen"] as? Bool ?? true }
 
     func relayChanged() {
         queue.async {
-            self.session?.channel.send(ToPhone.relay(Self.relayAddress))     // first: it may be riding on the connection this closes
+            self.session?.channel.send(ToPhone.relay(self.relayFor(self.session)))     // first: it may be riding on the connection this closes
+            if Self.standbyAddress == nil || Self.relayAddress != nil { self.status.away = nil }
             self.updateRelays()
             if self.showingPairing, self.tcp?.state == .ready { self.renewPairing() }   // the code carries the address
         }
@@ -542,7 +616,7 @@ final class RemoteServer {
 
     /// A paired phone may already do everything on this Mac; its relay is the owner's own.
     private func adoptRelay(_ typed: String) {
-        guard Self.relayUnset, let a = RemoteRelay.address(typed) else { return }
+        guard Self.relayUnset, let a = RemoteRelay.address(typed), !RemoteRelay.isGoBetween(a) else { return }
         Config.shared.set("record.remote.relay_url", a)
         emit(["event": "remote_relay", "state": "adopted"])
         relayChanged()
@@ -553,30 +627,59 @@ final class RemoteServer {
     }
 
     private func updateRelays() {
-        let on = Self.relayOn
+        let address = Self.standbyAddress
         // a code showing counts: a phone on another network can pair through the relay too
         let ids = Set(devices().map(\.id)).union([pairing, oldCode].compactMap { $0?.id })
         // a changed address counts as gone: the phone has been told the new one
-        for (id, s) in relays where !on || !(ids.contains(id) || (id == spentCode && (s === session || s === asking))) || relayAt != Self.relayAddress {
+        for (id, s) in relays where address == nil || !(ids.contains(id) || (id == spentCode && (s === session || s === asking))) || relayAt != address {
             relays[id] = nil
             s.channel.close()
         }
-        relayAt = Self.relayAddress
-        guard on else { return }
+        if relayAt != address { meetRefusals = 0; meetQuietUntil = 0 }
+        relayAt = address
+        guard address != nil else { return }
         for id in ids where relays[id] == nil { connectRelay(id) }
     }
 
+    /// The go-between turned this Mac away this many times in a row, and isn't asked again before then (RemoteRelay.busyWait)
+    private var meetRefusals = 0
+    private var meetQuietUntil = 0.0
+
     private func connectRelay(_ id: String) {
-        guard let a = Self.relayAddress, relays[id] == nil, let k = code(id)?.key ?? (devices().contains { $0.id == id } ? storedKey(id) : nil),
+        guard let a = Self.standbyAddress, relays[id] == nil, let k = code(id)?.key ?? (devices().contains { $0.id == id } ? storedKey(id) : nil),
               let c = RemoteRelay.connection(address: a, room: RemoteRelay.room(key: k), role: "mac") else { return }
-        emit(["event": "remote_relay", "state": "waiting"])
+        if RemoteRelay.isGoBetween(a), CACurrentMediaTime() < meetQuietUntil {
+            // turned away lately: try again once the wait is over, not before
+            return queue.asyncAfter(deadline: .now() + (meetQuietUntil - CACurrentMediaTime())) { [weak self] in self?.connectRelay(id) }
+        }
+        emit(["event": "remote_relay", "state": "waiting", "go_between": RemoteRelay.isGoBetween(a)])
         wire(c, relay: id)
     }
 
     private func relayEnded(_ id: String, _ s: Session) {
         guard relays[id] === s else { return }
         relays[id] = nil
-        let clean = s.channel.relayClose == RemoteRelay.phoneLeft || s.greeted
+        let ch = s.channel
+        if s.goBetween {
+            if RemoteRelay.refused(ch.failure) {
+                // busy today, or its rate limit: leave it alone for a while, longer each time, and say so in Settings
+                meetRefusals += 1
+                let wait = RemoteRelay.busyWait(meetRefusals)
+                meetQuietUntil = CACurrentMediaTime() + wait
+                status.away = .busy
+                emit(["event": "remote_relay", "state": "busy", "wait": wait])
+                return queue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.connectRelay(id) }
+            }
+            if ch.wasReady {
+                meetRefusals = 0
+                if status.away == .busy { status.away = nil }
+            }
+            if ch.relayClose == RemoteRelay.overBudget {
+                emit(["event": "remote_relay", "state": "over_budget"])
+                if !ch.moved { status.away = .noDirect }
+            }
+        }
+        let clean = ch.relayClose == RemoteRelay.phoneLeft || s.greeted
         // a failure waits longer each time, but not so long that a bad hello now and then keeps the phone off the relay
         let wait = clean ? 0.5 : min((relayWait[id] ?? 1) * 2, 8)
         relayWait[id] = clean ? 1 : wait
@@ -641,6 +744,7 @@ final class RemoteServer {
         status.connectedID = nil
         status.viaRelay = false
         status.udp = false
+        status.path = nil
         dropFlows()
         letGo(s)
         DispatchQueue.main.async { RemoteMicFeed.shared.sessionEnded() }
@@ -686,10 +790,22 @@ final class RemoteServer {
     private func handle(_ m: ToMac, _ s: Session) {
         let input = RemoteInput.shared
         switch m {
-        case let .hello(device, mic, nonce):
+        case let .hello(device, mic, nonce, features):
             s.name = String(device.prefix(64))
             s.micOnPhone = mic
             s.nonce = nonce
+            s.features = (features ?? []).prefix(16).map { String($0.prefix(32)) }
+            if s.goBetween {
+                // the go-between carries only a phone that can move onto the direct path; an older one is told it has no relay here
+                guard s.features.contains(RemoteFeature.move) else {
+                    emit(["event": "remote_session", "state": "refused", "why": "no_move"])
+                    s.channel.send(ToPhone.relay(nil))
+                    s.channel.send(ToPhone.noDirect)
+                    s.channel.queue.asyncAfter(deadline: .now() + 0.3) { s.channel.close() }
+                    return
+                }
+                s.channel.enableMove()
+            }
             queue.async { self.greet(s) }
             return
         case .keyStored:
@@ -703,7 +819,7 @@ final class RemoteServer {
         }
         guard s.greeted else { return }
         switch m {
-        case .hello, .keyStored, .ping: break
+        case .hello, .keyStored, .ping, .streamMoved: break
         case let .screen(r):
             // on the server's queue, where `closed` runs: a capture can't start for a session that has just ended
             queue.async {
@@ -913,12 +1029,15 @@ final class RemoteServer {
         status.viaRelay = s.channel.isRelay
         status.connected = s.name
         status.connectedID = s.id
+        status.path = Self.path(of: s)
         keepAwake()
         let info = { (list: [RemoteCandidate]) in
             let main = CGDisplayBounds(CGMainDisplayID())
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: Self.relayAddress, platform: RemoteHost.mac.rawValue)))
+                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: self.relayFor(s),
+                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move])))
+            if s.goBetween { self.awaitDirect(s) }
         }
         if s.channel.isRelay {
             // where the phone might reach this Mac without the relay
@@ -933,10 +1052,32 @@ final class RemoteServer {
             }
             return
         }
-        info([])
+        // the phone keeps these, and tries the overlay ones when it's away (remote-go-between.md §Overlay addresses)
+        info(Self.addresses().map { RemoteCandidate(host: $0, port: udpPort) })
         s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
         sendFront()
         DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
+    }
+
+    /// How a session came in, for Settings: an overlay network's address, the same network, the owner's relay, or the go-between.
+    private static func path(of s: Session) -> Path {
+        if s.goBetween { return s.channel.moved ? .goBetween : .meeting }
+        if s.channel.isRelay { return s.udpSeen ? .direct : .relay }
+        if let h = s.channel.remoteHost, RemoteOverlay.isTailscale(h) { return .tailscale }
+        if let i = s.channel.interfaceName, RemoteOverlay.isOverlayInterface(i) { return .overlay }
+        return .local
+    }
+
+    /// On the go-between the session lives only if the direct path opens: 8 s after `session` without a datagram from the phone, it
+    /// hears `noDirect` and the session ends. The phone shows why, and that a relay of one's own fixes it.
+    private func awaitDirect(_ s: Session) {
+        queue.asyncAfter(deadline: .now() + 8) { [weak self, weak s] in
+            guard let self, let s, self.session === s, !s.udpSeen else { return }
+            emit(["event": "remote_session", "state": "no_direct"])
+            self.status.away = .noDirect
+            s.channel.send(ToPhone.noDirect)
+            s.channel.queue.asyncAfter(deadline: .now() + 0.3) { s.channel.close() }
+        }
     }
 
     /// The phone chose a display: shown from now on, with the pointer in its middle, where the eyes go next; nil follows the pointer again.
@@ -1078,7 +1219,12 @@ final class RemoteServer {
                     emit(["event": "remote_udp", "state": "ok", "relay": s.channel.isRelay])
                     s.channel.send(ToPhone.udpOK)
                     if s.channel.isRelay { s.channel.sendDatagram(.probe, Data(count: 8)) }    // the way back works too: the phone switches
-                    self.queue.async { self.status.udp = true }
+                    // on the go-between, the stream follows: `streamMoved`, then everything in kind-7 datagrams (RemoteStream)
+                    if s.goBetween { s.channel.udpConfirmed() }
+                    self.queue.async {
+                        self.status.udp = true
+                        if self.session === s, !s.goBetween { self.status.path = Self.path(of: s) }
+                    }
                 }
             }
             self.receive(c)

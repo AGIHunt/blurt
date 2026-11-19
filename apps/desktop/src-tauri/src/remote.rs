@@ -19,7 +19,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
 use blurt_remote::host::Backend;
-use blurt_remote::server::{Problem, Status};
+use blurt_remote::server::{GoBetweenProblem, Problem, Status};
 use blurt_remote::wire::{BlurtCommand, DictationPhase, Front};
 use blurt_remote::{App, Host, HostConfig, KeyStore};
 use serde::Serialize;
@@ -79,6 +79,8 @@ pub fn start(app: &AppHandle) {
             version: app.package_info().version.to_string(),
             test_answer,
             port: 0,
+            // test builds: another go-between (a local `BUDGET=1 node tools/remote-relay/server.js`), or "" for none
+            go_between: if testing() { std::env::var("BLURT_TEST_GO_BETWEEN").ok() } else { None },
         },
         backend,
         keys,
@@ -235,6 +237,10 @@ struct RelayUi {
     address: Option<String>,
     from_phone: bool,
     reachable: Option<bool>,
+    /// the go-between switch (docs/design/remote-go-between.md): used only while `address` is None
+    go_between: bool,
+    /// why the go-between couldn't carry the last session it tried: "noDirect" or "busy"; None: fine, or not tried
+    go_between_problem: Option<&'static str>,
 }
 
 /// The pairing link as a QR code: a complete <svg>, dark on light whatever the theme (cameras read it either way, and the
@@ -290,7 +296,16 @@ fn to_ui(s: &Status) -> RemoteStatus {
         asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay }),
         devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen }).collect(),
         connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
-        relay: RelayUi { address: s.relay.address.clone(), from_phone: s.relay.from_phone, reachable: s.relay.reachable },
+        relay: RelayUi {
+            address: s.relay.address.clone(),
+            from_phone: s.relay.from_phone,
+            reachable: s.relay.reachable,
+            go_between: s.relay.go_between,
+            go_between_problem: s.relay.go_between_problem.map(|p| match p {
+                GoBetweenProblem::NoDirect => "noDirect",
+                GoBetweenProblem::Busy => "busy",
+            }),
+        },
         screen_allowed: s.screen_allowed,
         can_control: s.can_control,
         problem: s.problem.as_ref().map(problem),
@@ -409,6 +424,15 @@ pub fn remote_set_relay(address: String) -> Result<RemoteStatus, String> {
 pub async fn remote_check_relay(address: String) -> bool {
     let Some(h) = host().cloned() else { return false };
     tauri::async_runtime::spawn_blocking(move || h.check_relay(&address)).await.unwrap_or(false)
+}
+
+/// The go-between switch: Blurt's go-between for away from home while no relay of the owner's is set (on by default).
+#[tauri::command]
+pub fn remote_set_go_between(on: bool) -> RemoteStatus {
+    if let Some(h) = host() {
+        h.set_go_between(on);
+    }
+    now_status()
 }
 
 #[tauri::command]
@@ -846,8 +870,16 @@ mod tests {
         assert!(svg.starts_with("<svg") && svg.trim_end().ends_with("</svg>"), "{svg:.80}");
         assert_eq!(v["pairing"]["expiresAt"], 1_700_000_000_000i64);
         assert_eq!(v["firewall"], if cfg!(windows) { "unknown" } else { "ok" });
-        for k in ["address", "fromPhone", "reachable"] {
+        for k in ["address", "fromPhone", "reachable", "goBetween", "goBetweenProblem"] {
             assert!(v["relay"].get(k).is_some(), "relay.{k}");
         }
+        let mut s = s;
+        s.relay.go_between = true;
+        s.relay.go_between_problem = Some(blurt_remote::server::GoBetweenProblem::NoDirect);
+        let v = serde_json::to_value(super::to_ui(&s)).unwrap();
+        assert_eq!(v["relay"]["goBetween"], true);
+        assert_eq!(v["relay"]["goBetweenProblem"], "noDirect");
+        s.relay.go_between_problem = Some(blurt_remote::server::GoBetweenProblem::Busy);
+        assert_eq!(serde_json::to_value(super::to_ui(&s)).unwrap()["relay"]["goBetweenProblem"], "busy");
     }
 }

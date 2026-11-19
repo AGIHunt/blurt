@@ -6,6 +6,10 @@
 // Away from home the same session runs over the owner's relay, tried a moment after the local ways. Over it the phone looks for a direct path
 // for the pointer and video, and keeps checking for the local network, which takes over the moment it's back.
 //
+// Without an own relay, Blurt's go-between does the introducing (docs/design/remote-go-between.md): the host offers it as its relay, and
+// once the direct path opens the whole session moves onto it (Channel). And an overlay address the computer listed (Tailscale, ZeroTier) is
+// tried over TCP alongside, which wins over any relay.
+//
 // Main thread only.
 package dev.blurt.remote.app.net
 
@@ -16,10 +20,15 @@ import android.os.Looper
 import android.provider.Settings
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
+import dev.blurt.remote.core.AwayTrouble
+import dev.blurt.remote.core.GoBetweenBackoff
+import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.LinkRoute
 import dev.blurt.remote.core.PhoneHandshake
 import dev.blurt.remote.core.RemoteBlurtCommand
 import dev.blurt.remote.core.RemoteDictationPhase
+import dev.blurt.remote.core.RemoteFeature
+import dev.blurt.remote.core.RemoteOverlay
 import dev.blurt.remote.core.RemoteFront
 import dev.blurt.remote.core.RemoteFrameKind
 import dev.blurt.remote.core.RemoteHandshakeError
@@ -49,17 +58,21 @@ data class PairedMac(
     val nickname: String? = null,
     /** "mac", "windows", "linux" as it last said: the keys follow it before it has said so again */
     val platform: String? = null,
+    /** the addresses it last listed that may be reachable away from home over an overlay (Tailscale, ZeroTier): tried at `port` */
+    val candidates: List<String> = emptyList(),
 ) {
     val title: String get() = nickname?.takeIf { it.isNotEmpty() } ?: name
     val host: RemoteHost get() = RemoteHost.from(platform)
 
     fun json(): JSONObject = JSONObject().put("id", id).put("deviceID", deviceID).put("name", name).put("port", port)
         .put("addresses", JSONArray(addresses)).put("relayAddress", relayAddress).put("nickname", nickname).put("platform", platform)
+        .put("candidates", JSONArray(candidates))
 
     companion object {
         fun from(o: JSONObject) = PairedMac(o.getString("id"), o.getString("deviceID"), o.getString("name"), o.getInt("port"),
             (0 until (o.optJSONArray("addresses")?.length() ?: 0)).map { o.getJSONArray("addresses").getString(it) },
-            o.optString("relayAddress").ifEmpty { null }, o.optString("nickname").ifEmpty { null }, o.optString("platform").ifEmpty { null })
+            o.optString("relayAddress").ifEmpty { null }, o.optString("nickname").ifEmpty { null }, o.optString("platform").ifEmpty { null },
+            (0 until (o.optJSONArray("candidates")?.length() ?: 0)).map { o.getJSONArray("candidates").getString(it) })
     }
 }
 
@@ -92,6 +105,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
     var rtt: Double? = null
         private set
     val route = MutableStateFlow(LinkRoute.LOCAL)
+    /** which way the session runs, for the connection label; `route` follows from it */
+    val path = MutableStateFlow(LinkPath.SAME_NETWORK)
+    /** why Blurt's go-between couldn't carry the session, while nothing else has connected */
+    val away = MutableStateFlow<AwayTrouble?>(null)
+    /** the go-between said busy: it isn't asked again for a while (shared by every computer, as the go-between is) */
+    private val busy = GoBetweenBackoff()
+    /** the go-between said this network won't connect directly: not asked again before this (ms), unless Retry */
+    private var noDirectUntil = 0L
     val displayAspect = MutableStateFlow(1.6)
     /** paired computers on this network right now, while Settings looks */
     val nearby = MutableStateFlow<Set<String>>(emptySet())
@@ -190,7 +211,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (joining?.mac?.deviceID == p.deviceID || _macs.value.any { it.deviceID == p.deviceID }) return     // the same code, read twice
         vault.store(p.key, p.deviceID)
         val m = PairedMac(p.macID, p.deviceID, p.macName, p.port, p.addresses, p.relay, nickname = _macs.value.firstOrNull { it.id == p.macID }?.nickname,
-            platform = _macs.value.firstOrNull { it.id == p.macID }?.platform)
+            platform = _macs.value.firstOrNull { it.id == p.macID }?.platform, candidates = _macs.value.firstOrNull { it.id == p.macID }?.candidates ?: emptyList())
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = Joining(m, if (joining != null) joining!!.back else _current.value, now())
         joinOpens = 0
@@ -253,6 +274,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         screenError.value = null
         displays.value = emptyList()
         shownDisplay.value = null
+        away.value = null
+        noDirectUntil = 0
         refused = false
         firstAttempt = null
         lastRelayTry = 0
@@ -311,6 +334,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (!active || _current.value == null || _state.value != State.UNREACHABLE) return
         firstAttempt = null
         _state.value = State.CONNECTING
+        // the user may have changed networks: the go-between gets another go, unless it said it's out of today's quota
+        noDirectUntil = 0
+        if (away.value == AwayTrouble.NO_DIRECT) away.value = null
         cancelAttempts()
         connect()
     }
@@ -338,15 +364,19 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (firstAttempt == null) firstAttempt = now()
         if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED)) _state.value = State.CONNECTING
         tryLocal(mac, key)
-        // the relay a moment later, so at home it's never the one that wins; and not every round
+        // the relay a moment later, so at home it's never the one that wins; and not every round. Overlay addresses alongside it.
         val address = RELAY_ONLY ?: mac.relayAddress
-        if (address != null && now() - lastRelayTry > 4000) {
-            val g0 = generation
+        val g0 = generation
+        main.postDelayed({
+            if (channel != null || !active || g0 != generation) return@postDelayed
+            tryOverlay(mac, key)
+        }, 1200)
+        if (address != null && now() - lastRelayTry > 4000 && mayTryRelay(address)) {
             main.postDelayed({
                 if (channel != null || !active || g0 != generation) return@postDelayed
                 val url = RemoteRelay.url(address, RemoteRelay.room(key), "phone") ?: return@postDelayed
                 lastRelayTry = now()
-                attempt(RelayTransport(url), relay = true, mac = mac, key = key)
+                attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address))
             }, if (RELAY_ONLY != null) 0 else 1200)
         }
         // keep trying while the app is open; say so after a while
@@ -366,10 +396,15 @@ class Link(private val c: Context, private val vault: KeyVault) {
         main.postDelayed(r, 3000)
     }
 
+    /** The go-between isn't asked in a loop: not while it's busy, nor for a minute after it said this network won't connect directly. */
+    private fun mayTryRelay(address: String): Boolean =
+        !RemoteRelay.isGoBetween(address) || busy.mayTry(now() / 1000.0) && now() >= noDirectUntil
+
     private fun tryLocal(mac: PairedMac, key: ByteArray) {
         if (RELAY_ONLY != null) return
         lastLocalTry = now()
-        for (a in mac.addresses) attempt(TcpTransport(a, mac.port), relay = false, mac = mac, key = key)
+        // Tailscale's addresses are tried with the overlay ones, on a shorter fuse
+        for (a in mac.addresses) if (!RemoteOverlay.isTailscale(a)) attempt(TcpTransport(a, mac.port), relay = false, mac = mac, key = key)
         browse?.stop()
         val tried = mutableSetOf<String>()
         browse = discovery.browse({ f ->
@@ -377,14 +412,37 @@ class Link(private val c: Context, private val vault: KeyVault) {
             for (a in f.addresses) {
                 val k = "${a.hostAddress}:${f.port}"
                 if (!tried.add(k) || mac.addresses.contains(a.hostAddress) && f.port == mac.port) continue
-                if (channel == null || channel?.isRelay == true) attempt(TcpTransport(a.hostAddress ?: continue, f.port, a), relay = false, mac = mac, key = key)
+                if (channel == null || channel?.isRelay == true) attempt(TcpTransport(a.hostAddress ?: continue, f.port, a), relay = false, mac = mac, key = key,
+                    discovered = true)
             }
         })
     }
 
-    private fun attempt(t: Transport, relay: Boolean, mac: PairedMac, key: ByteArray) {
+    /**
+     * Away from the same network: the overlay addresses the computer listed (Tailscale, ZeroTier and the like), each over TCP at its port
+     * with 1.5 s to answer, alongside the relay or the go-between. One that answers wins over either. With a phone VPN that isn't the
+     * overlay's (one runs at a time), they just time out.
+     */
+    private fun tryOverlay(mac: PairedMac, key: ByteArray) {
+        if (RELAY_ONLY != null) return
+        val list = (mac.addresses.filter { RemoteOverlay.isTailscale(it) } + mac.candidates.filter { it !in mac.addresses && RemoteOverlay.mayBeOverlay(it) }).distinct()
+        for (a in list) attempt(TcpTransport(a, mac.port, timeoutMs = RemoteOverlay.CONNECT_TIMEOUT_MS), relay = false, mac = mac, key = key)
+    }
+
+    private fun setPath(p: LinkPath) {
+        path.value = p
+        route.value = p.route
+    }
+
+    /** The go-between ended a session: this network won't connect directly. */
+    private fun noDirect() {
+        away.value = AwayTrouble.NO_DIRECT
+        noDirectUntil = now() + 60_000
+    }
+
+    private fun attempt(t: Transport, relay: Boolean, mac: PairedMac, key: ByteArray, goBetween: Boolean = false, discovered: Boolean = false) {
         if (!relay && channel != null && channel?.isRelay != true) return
-        val ch = Channel(t, PhoneHandshake(mac.deviceID, key), relay)
+        val ch = Channel(t, PhoneHandshake(mac.deviceID, key), relay, goBetween, discovered)
         ch.onOpen = { main.post { opened(ch) } }
         ch.onControl = { d ->
             val m = ToPhone.decode(d)
@@ -397,15 +455,33 @@ class Link(private val c: Context, private val vault: KeyVault) {
         ch.onDirect = { found ->
             main.post {
                 if (channel !== ch) return@post
-                route.value = if (found) LinkRoute.DIRECT else LinkRoute.RELAY
+                setPath(if (found) LinkPath.DIRECT else if (ch.goBetween) LinkPath.GO_BETWEEN else LinkPath.OWN_RELAY)
                 Remote.screen.planChanged()
                 // a path that went quiet may come back, or another may open
                 if (!found) lastInfo?.let { i -> main.postDelayed({ if (route.value == LinkRoute.RELAY && channel === ch) lookForDirect(i) }, 15_000) }
             }
         }
+        ch.onMoved = {
+            main.post {
+                if (channel !== ch) return@post
+                // everything goes direct now: the go-between has done its part
+                setPath(LinkPath.DIRECT)
+                away.value = null
+                busy.worked()
+                Remote.screen.planChanged()
+            }
+        }
         ch.onClose = { failure ->
             main.post {
                 attempts.remove(ch)
+                if (ch.goBetween) {
+                    if (ch.relayClose == RemoteRelay.BUDGET) noDirect()
+                    // refused at the door (429, Cloudflare's 1015, any upgrade that didn't happen): out of today's quota, or rate-limited
+                    if (ch.relayRefused != null) {
+                        busy.refused(now() / 1000.0)
+                        away.value = AwayTrouble.BUSY
+                    }
+                }
                 if (failure?.kind == RemoteHandshakeError.Kind.NOT_PAIRED) refused = true
                 if (channel === ch) lost()
             }
@@ -426,7 +502,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
         attempts.remove(ch)
         cancelAttempts()
         channel = ch
-        route.value = if (ch.isRelay) LinkRoute.RELAY else LinkRoute.LOCAL
+        setPath(when {
+            ch.goBetween -> LinkPath.GO_BETWEEN
+            ch.isRelay -> LinkPath.OWN_RELAY
+            else -> {
+                val at = ch.remoteAddress
+                LinkPath.of(at?.hostAddress?.substringBefore('%') ?: ch.label.substringBeforeLast(':'), ch.discovered || (at != null && Addresses.onMyNetwork(c, at)))
+            }
+        })
         firstAttempt = null
         refused = false
         lastPong = now()
@@ -435,7 +518,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             joinOpens += 1
             if (joinOpens > 3) { ch.close(); return joinFailed() }
         }
-        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce))
+        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOf(RemoteFeature.MOVE)))
         val p = object : Runnable {
             override fun run() { ping(); if (pinger === this) main.postDelayed(this, 500) }
         }
@@ -464,10 +547,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
         val relay = channel?.isRelay == true
         if (now() - lastPong > if (relay) 8000 else 2500) return lost()
         pingCount += 1
-        // over the relay, one in four: every message counts against the free plan
-        if (!relay || pingCount % 4 == 0) send(ToMac.Ping(Net.now()))
+        // over the relay, one in four: every message counts against the free plan (once moved off the go-between, nothing goes through it)
+        if (!relay || channel?.moved == true || pingCount % 4 == 0) send(ToMac.Ping(Net.now()))
         val mac = _current.value
-        if (relay && attempts.isEmpty() && now() - lastLocalTry > 10_000 && mac != null) vault.read(mac.deviceID)?.let { tryLocal(mac, it) }
+        if (relay && attempts.isEmpty() && now() - lastLocalTry > 10_000 && mac != null) vault.read(mac.deviceID)?.let { tryLocal(mac, it); tryOverlay(mac, it) }
     }
 
     private fun lost() {
@@ -503,6 +586,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
                     cameBack = 0
                 }
                 _state.value = State.CONNECTED
+                // connected some other way, or the go-between is introducing: either way nothing to say about it now (noDirect may follow)
+                if (channel?.goBetween != true) away.value = null
+                channel?.allowMove(i.features?.contains(RemoteFeature.MOVE) == true)
+                noteCandidates(i)
                 pointerSeq = 0      // a new session: the computer has forgotten the last one's numbers too
                 val cur = _current.value
                 val n = _macs.value.indexOfFirst { it.id == cur?.id }
@@ -517,8 +604,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 lastInfo = i
                 noteRelay(i.relay)
                 replacing?.let { send(ToMac.Replaces(it)); replacing = null }
-                // one relay serves all of them: a computer with none takes the one the others use
-                if (i.relay == null) _macs.value.mapNotNull { it.relayAddress }.firstOrNull()?.let { send(ToMac.OfferRelay(it)) }
+                // one relay serves all of them: a computer with none of its own (or only the go-between) takes the one the others use
+                if (i.relay == null || RemoteRelay.isGoBetween(i.relay))
+                    _macs.value.mapNotNull { it.relayAddress }.firstOrNull { !RemoteRelay.isGoBetween(it) }?.let { send(ToMac.OfferRelay(it)) }
                 if (talkHeld) send(ToMac.DictationKey(true))
                 Remote.screen.resume()
                 if (channel?.isRelay == true) lookForDirect(i) else channel?.openUDP(i.udpPort, i.udpSession)
@@ -553,7 +641,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.Pong -> {
                 lastPong = now()
                 rtt = Net.now() - m.t
+                channel?.rttHint = rtt
             }
+            // the host is about to close: this network won't let the two meet directly
+            ToPhone.NoDirect -> noDirect()
+            // Channel reads it off the old stream itself; one in the datagrams says nothing more
+            ToPhone.StreamMoved -> {}
             ToPhone.UdpOK -> channel?.udpConfirmed()
             is ToPhone.Clock -> Remote.screen.clock(m.phone, m.mac)
             is ToPhone.ScreenFailed -> {
@@ -595,6 +688,20 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 _state.value = State.REPLACED
                 disconnect()
             }
+        }
+    }
+
+    /** The computer's overlay addresses as it last listed them (a list that says nothing keeps the last one). */
+    private fun noteCandidates(i: RemoteSessionInfo) {
+        val list = i.candidates.map { it.host }.filter { RemoteOverlay.mayBeOverlay(it) }.distinct()
+        val cur = _current.value ?: return
+        if (list.isEmpty() || list == cur.candidates) return
+        val n = _macs.value.indexOfFirst { it.id == cur.id }
+        val r = cur.copy(candidates = list)
+        setCurrent(r)
+        if (n >= 0) {
+            _macs.value = _macs.value.toMutableList().also { it[n] = r }
+            saveMacs()
         }
     }
 

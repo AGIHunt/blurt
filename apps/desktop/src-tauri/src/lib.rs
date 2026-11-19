@@ -1311,6 +1311,7 @@ pub fn run() {
             remote::remote_set_relay,
             remote::remote_check_relay,
             remote::remote_set_screen_allowed,
+            remote::remote_set_go_between,
             remote::remote_relay_instructions,
             remote::remote_allow_firewall,
         ])

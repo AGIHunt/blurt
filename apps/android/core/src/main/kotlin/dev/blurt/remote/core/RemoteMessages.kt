@@ -133,13 +133,16 @@ data class RemoteSessionInfo(
     val relay: String? = null,
     /** "mac", "windows" or "linux"; null from a Mac before 1.0.15 */
     val platform: String? = RemoteHost.MAC.raw,
+    /** what the host can do beyond the base protocol (RemoteFeature): `["move"]` from a host that moves the stream onto the direct path.
+     *  null from hosts before the go-between */
+    val features: List<String>? = null,
 ) {
     val host: RemoteHost get() = RemoteHost.from(platform)
 
     fun toJson(): JsonObject = J.obj(
         "macName" to J.str(macName), "udpPort" to J.int(udpPort), "udpSession" to J.int(udpSession), "canControl" to J.bool(canControl),
         "version" to J.str(version), "candidates" to J.list(candidates) { it.toJson() }, "displayAspect" to J.double(displayAspect),
-        "relay" to J.str(relay), "platform" to J.str(platform),
+        "relay" to J.str(relay), "platform" to J.str(platform), "features" to J.list(features) { JsonPrimitive(it) },
     )
 
     companion object {
@@ -149,10 +152,16 @@ data class RemoteSessionInfo(
                 J.str(o, "macName") ?: return null, J.uint16(o, "udpPort") ?: return null, J.uint32(o, "udpSession") ?: return null,
                 J.bool(o, "canControl") ?: return null, J.str(o, "version") ?: return null,
                 J.list(o, "candidates") { RemoteCandidate.fromJson(it) } ?: return null, J.double(o, "displayAspect") ?: return null,
-                J.str(o, "relay"), J.str(o, "platform"),
+                J.str(o, "relay"), J.str(o, "platform"), if (J.has(o, "features")) J.list(o, "features") { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return null else null,
             )
         }
     }
+}
+
+/** What an end can do beyond the base protocol, named in `ToMac.hello.features` and `RemoteSessionInfo.features`. */
+object RemoteFeature {
+    /** the stream moves onto the direct UDP path after `udpOK` (the go-between: remote-go-between.md) */
+    const val MOVE = "move"
 }
 
 /** Phone → host. */
@@ -173,13 +182,14 @@ sealed class ToMac {
     data class Activate(val bundle: String) : ToMac()
     /** a word on the host's screen, where the user is looking */
     data class Hud(val text: String) : ToMac()
-    /** `nonce`: what the handshake's hello committed to (RemoteCrypto.check) */
-    class Hello(val device: String, val micOnPhone: Boolean, val nonce: ByteArray? = null) : ToMac() {
+    /** `nonce`: what the handshake's hello committed to (RemoteCrypto.check). `features`: what this phone can do beyond the base protocol
+     *  (RemoteFeature), `["move"]` from a phone that moves its stream onto the direct path; null from phones before the go-between */
+    class Hello(val device: String, val micOnPhone: Boolean, val nonce: ByteArray? = null, val features: List<String>? = null) : ToMac() {
         override fun equals(other: Any?): Boolean = other is Hello && other.device == device && other.micOnPhone == micOnPhone &&
-            (other.nonce?.let { n -> nonce?.contentEquals(n) == true } ?: (nonce == null))
+            (other.nonce?.let { n -> nonce?.contentEquals(n) == true } ?: (nonce == null)) && other.features == features
 
         override fun hashCode(): Int = device.hashCode() * 31 + (nonce?.contentHashCode() ?: 0)
-        override fun toString(): String = "Hello(device=$device, micOnPhone=$micOnPhone, nonce=${nonce?.size})"
+        override fun toString(): String = "Hello(device=$device, micOnPhone=$micOnPhone, nonce=${nonce?.size}, features=$features)"
     }
     data class SetMicOnPhone(val on: Boolean) : ToMac()
     /** nothing held any more: the phone left the app or the screen locked */
@@ -216,6 +226,8 @@ sealed class ToMac {
         override fun toString(): String = "ScreenSnapshot(name=$name, ${jpeg.size} bytes)"
     }
     data class Ping(val t: Double) : ToMac()
+    /** the last frame this phone writes to the old stream: what follows comes in kind-7 datagrams (remote-go-between.md §Moving the stream) */
+    data object StreamMoved : ToMac()
 
     fun toJson(): JsonObject = when (this) {
         is Key -> J.case("key", "_0" to chord.toJson(), "down" to J.bool(down))
@@ -229,7 +241,8 @@ sealed class ToMac {
         is System -> J.case("system", "_0" to J.str(move.raw))
         is Activate -> J.case("activate", "bundle" to J.str(bundle))
         is Hud -> J.case("hud", "_0" to J.str(text))
-        is Hello -> J.case("hello", "device" to J.str(device), "micOnPhone" to J.bool(micOnPhone), "nonce" to J.data(nonce))
+        is Hello -> J.case("hello", "device" to J.str(device), "micOnPhone" to J.bool(micOnPhone), "nonce" to J.data(nonce),
+            "features" to J.list(features) { JsonPrimitive(it) })
         is SetMicOnPhone -> J.case("setMicOnPhone", "_0" to J.bool(on))
         ReleaseAll -> J.case("releaseAll")
         KeyStored -> J.case("keyStored")
@@ -247,6 +260,7 @@ sealed class ToMac {
         is ScreenStats -> J.case("screenStats", "_0" to J.str(text))
         is ScreenSnapshot -> J.case("screenSnapshot", "name" to J.str(name), "jpeg" to J.data(jpeg))
         is Ping -> J.case("ping", "_0" to J.double(t))
+        StreamMoved -> J.case("streamMoved")
     }
 
     /** UTF-8 JSON, the body of a control frame (after its kind byte). */
@@ -271,7 +285,7 @@ sealed class ToMac {
                 "activate" -> Activate(J.str(o, "bundle") ?: return null)
                 "hud" -> Hud(J.str(o, "_0") ?: return null)
                 "hello" -> Hello(J.str(o, "device") ?: return null, J.bool(o, "micOnPhone") ?: return null,
-                    if (J.has(o, "nonce")) J.data(o, "nonce") ?: return null else null)
+                    if (J.has(o, "nonce")) J.data(o, "nonce") ?: return null else null, if (J.has(o, "features")) J.list(o, "features") { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return null else null)
                 "setMicOnPhone" -> SetMicOnPhone(J.bool(o, "_0") ?: return null)
                 "releaseAll" -> ReleaseAll
                 "keyStored" -> KeyStored
@@ -290,6 +304,7 @@ sealed class ToMac {
                 "screenStats" -> ScreenStats(J.str(o, "_0") ?: return null)
                 "screenSnapshot" -> ScreenSnapshot(J.str(o, "name") ?: return null, J.data(o, "jpeg") ?: return null)
                 "ping" -> Ping(J.double(o, "_0") ?: return null)
+                "streamMoved" -> StreamMoved
                 else -> null
             }
         }
@@ -343,6 +358,10 @@ sealed class ToPhone {
         override fun hashCode(): Int = png.contentHashCode() * 31 + width.hashCode()
         override fun toString(): String = "CursorShape(${png.size} bytes, hot=$hotX,$hotY, $width×$height)"
     }
+    /** the last frame the host writes to the old stream: what follows comes in kind-7 datagrams */
+    data object StreamMoved : ToPhone()
+    /** on the go-between: the direct path didn't open in time, and this session can't continue there */
+    data object NoDirect : ToPhone()
 
     fun toJson(): JsonObject = when (this) {
         is Session -> J.case("session", "_0" to info.toJson())
@@ -368,6 +387,8 @@ sealed class ToPhone {
         is Displays -> J.case("displays", "_0" to J.list(displays) { it.toJson() })
         is CursorShape -> J.case("cursorShape", "png" to J.data(png), "hotX" to J.double(hotX), "hotY" to J.double(hotY), "width" to J.double(width),
             "height" to J.double(height))
+        StreamMoved -> J.case("streamMoved")
+        NoDirect -> J.case("noDirect")
     }
 
     fun encode(): ByteArray = J.bytes(toJson())
@@ -402,6 +423,8 @@ sealed class ToPhone {
                 "displays" -> Displays(J.list(o, "_0") { RemoteDisplay.fromJson(it) } ?: return null)
                 "cursorShape" -> CursorShape(J.data(o, "png") ?: return null, J.double(o, "hotX") ?: return null, J.double(o, "hotY") ?: return null,
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)
+                "streamMoved" -> StreamMoved
+                "noDirect" -> NoDirect
                 else -> null
             }
         }
@@ -423,7 +446,11 @@ enum class RemoteFrameKind(val raw: Int) {
     /** RemoteCursor: x, y as f32 LE, 0…1 of the source; outside it, the pointer is elsewhere */
     CURSOR(5),
     /** RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+ */
-    VIDEO_FEEDBACK(6);
+    VIDEO_FEEDBACK(6),
+    /** after the move: u64 BE offset ∥ up to 1,100 bytes of the sender's stream (RemoteStreamPacket), datagrams only */
+    STREAM(7),
+    /** u64 BE next: the receiver's next expected offset in the moved stream, cumulative; datagrams only */
+    STREAM_ACK(8);
 
     companion object { fun from(raw: Int): RemoteFrameKind? = entries.firstOrNull { it.raw == raw } }
 }

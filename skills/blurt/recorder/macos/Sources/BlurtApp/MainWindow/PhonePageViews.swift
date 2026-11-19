@@ -113,6 +113,7 @@ struct PhonePageView: View {
         switch f.relay {
         case .ok: parts.append(T("phone.mac.ok.relay"))
         case .checking: parts.append(T("phone.mac.ok.relay_checking"))
+        case .goBetween: parts.append(T("phone.mac.ok.go_between"))
         case .none, .failed: break
         }
         return parts.joined(separator: " · ")
@@ -141,6 +142,7 @@ struct PhonePageView: View {
         case .vpnFirewall: PhoneText.vpnTip
         case .awayNeedsRelay: T("phone.tips.away.none")
         case .awayUsesRelay: T("phone.tips.away.ok")
+        case .awayGoBetween: T("phone.tips.away.go_between")
         }
         return PhoneLine {
             HStack(alignment: .firstTextBaseline, spacing: SettingsMetrics.iconGap) {

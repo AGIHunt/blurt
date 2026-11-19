@@ -37,8 +37,9 @@ public enum ToMac: Codable, Sendable {
     case activate(bundle: String)
     /// a word on the Mac's screen, where the user is looking (the page the thumb just turned to)
     case hud(String)
-    /// `nonce`: what the handshake's hello committed to (RemoteCrypto.check)
-    case hello(device: String, micOnPhone: Bool, nonce: Data? = nil)
+    /// `nonce`: what the handshake's hello committed to (RemoteCrypto.check). `features`: what this phone can do beyond the base protocol,
+    /// `["move"]` from a phone that can move its stream onto the direct path (RemoteFeature, docs/design/remote-go-between.md). nil from older phones
+    case hello(device: String, micOnPhone: Bool, nonce: Data? = nil, features: [String]? = nil)
     case setMicOnPhone(Bool)
     /// nothing held any more: the phone left the app or the screen locked
     case releaseAll
@@ -71,6 +72,14 @@ public enum ToMac: Codable, Sendable {
     /// a test build's decoded frame, for judging sharpness
     case screenSnapshot(name: String, jpeg: Data)
     case ping(Double)
+    /// the last frame this phone writes to the old stream (TCP or the WebSocket): what follows comes in kind-7 datagrams (RemoteStream)
+    case streamMoved
+}
+
+/// What one end can do beyond the base protocol, named in `ToMac.hello.features` and `RemoteSessionInfo.features`. Unknown names are ignored.
+public enum RemoteFeature {
+    /// the stream can move onto the direct UDP path (frame kinds 7 and 8): docs/design/remote-go-between.md
+    public static let move = "move"
 }
 
 public enum RemoteSystemMove: String, Codable, Sendable {
@@ -101,9 +110,11 @@ public struct RemoteSessionInfo: Codable, Hashable, Sendable {
     /// what the computer is: "mac", "windows" or "linux" (nil from a Mac before 1.0.15). The phone's keys follow it: ⌘ on a Mac, Ctrl and
     /// the Windows key elsewhere (docs/design/remote-protocol.md §Hosts). `macName` stays the field's name on the wire, whatever the computer.
     public var platform: String?
-    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil, platform: String? = RemoteHost.mac.rawValue) {
+    /// what this host can do beyond the base protocol: `["move"]` from one that can move the stream onto the direct path (RemoteFeature). nil from older hosts
+    public var features: [String]?
+    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil, platform: String? = RemoteHost.mac.rawValue, features: [String]? = nil) {
         self.macName = macName; self.udpPort = udpPort; self.udpSession = udpSession; self.canControl = canControl; self.version = version
-        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay; self.platform = platform
+        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay; self.platform = platform; self.features = features
     }
     public var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
 }
@@ -142,6 +153,10 @@ public enum ToPhone: Codable, Sendable {
     /// every display the computer has, whenever that changes (and once a session is up). Only sent by hosts that can show more than one. 1.0.15+
     case displays([RemoteDisplay])
     case cursorShape(png: Data, hotX: Double, hotY: Double, width: Double, height: Double)
+    /// the last frame this host writes to the old stream: what follows comes in kind-7 datagrams (RemoteStream)
+    case streamMoved
+    /// the direct path didn't open in time on the go-between: this session can't go on there (docs/design/remote-go-between.md)
+    case noDirect
 }
 
 /// A frame's first byte says what follows.
@@ -173,6 +188,8 @@ public enum RemoteFrameKind: UInt8, Sendable {
     case probe = 4      // 8 bytes the other side sends straight back, datagrams only
     case cursor = 5     // RemoteCursor: x, y as Float32 little-endian, 0…1 of the source; outside it, the pointer is elsewhere
     case videoFeedback = 6  // RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+
+    case stream = 7     // u64 BE offset ∥ up to 1,100 bytes of the sender's stream, once it moved (RemoteStream), datagrams only
+    case streamAck = 8  // u64 BE: the next offset the receiver expects, cumulative, datagrams only
 }
 
 /// The pointer and scroll, one packet per display frame at most.

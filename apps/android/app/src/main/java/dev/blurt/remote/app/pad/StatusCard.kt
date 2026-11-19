@@ -31,6 +31,7 @@ import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Theme
 import dev.blurt.remote.app.dp
 import dev.blurt.remote.app.keys.Icons
+import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.RemoteHost
 import dev.blurt.remote.core.StatusAction
 import dev.blurt.remote.core.StatusLine
@@ -180,6 +181,8 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.CANT_SHOW_SCREEN -> c.getString(R.string.status_cant_show_screen)
                 StatusLine.ALLOW_SCREEN -> c.getString(if (host == RemoteHost.MAC) R.string.status_screen_permission else R.string.status_screen_permission_pc)
                 StatusLine.SCREEN_IS_OFF -> c.getString(R.string.status_screen_off)
+                StatusLine.NO_DIRECT -> c.getString(R.string.status_no_direct)
+                StatusLine.GO_BETWEEN_BUSY -> c.getString(R.string.status_go_between_busy)
             }
         }
 
@@ -190,6 +193,16 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
         })
     }
 }
+
+/** The way a session runs, as the connection label names it (remote-go-between.md §What each end shows). */
+fun pathName(c: Context, p: LinkPath): String = c.getString(when (p) {
+    LinkPath.SAME_NETWORK -> R.string.path_same_network
+    LinkPath.TAILSCALE -> R.string.path_tailscale
+    LinkPath.OVERLAY -> R.string.path_overlay
+    LinkPath.DIRECT -> R.string.path_direct
+    LinkPath.OWN_RELAY -> R.string.path_own_relay
+    LinkPath.GO_BETWEEN -> R.string.path_go_between
+})
 
 /**
  * The mark above the words. The triangle and the phone are drawn here: the app's icon font is cut down to the keys' own symbols. Busy is

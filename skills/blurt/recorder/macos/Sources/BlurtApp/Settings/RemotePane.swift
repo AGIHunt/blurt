@@ -1,5 +1,6 @@
 // Settings → Phone: pair a phone with the QR code, see what's connected, remove a phone, and the options (keys on screen,
-// the screen, the relay). The code shows while "Add Phone" is open and there's nothing to switch on: with no paired phone
+// the screen, the relay). Away from home says first how the phone gets here now, or why it can't (docs/design/remote-go-between.md):
+// the owner's relay (recommended), else Blurt's go-between unless it's switched off, and an overlay network's address in any case. The code shows while "Add Phone" is open and there's nothing to switch on: with no paired phone
 // Blurt doesn't listen at all (Remote/RemoteServer.swift).
 //
 // The phones, the connection and the pairing code are PhoneModel's (MainWindow/PhonePage.swift), the one model this pane
@@ -18,6 +19,15 @@ final class RemoteModel: ObservableObject {
     private var committed = Config.shared["record.remote.relay_url"] as? String ?? ""
     enum RelayState { case idle, checking, ok, failed, invalid, fromPhone }
     @Published var screen = RemoteServer.screenAllowed
+    @Published var goBetween = RemoteServer.goBetweenOn
+    /// a relay of the owner's own is set (committed), so the go-between isn't used
+    var ownRelay: Bool { RemoteRelay.address(committed) != nil }
+
+    func setGoBetween(_ on: Bool) {
+        goBetween = on
+        Config.shared.set("record.remote.go_between", on ? nil : false)
+        RemoteServer.shared.relayChanged()
+    }
 
     private var adoption: NSObjectProtocol?
 
@@ -146,6 +156,33 @@ struct RemotePane: View {
 
     private func allowAccessibility() { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
 
+    /// Away from home, first: the way the connected phone came, or the way a phone would come from another network ("Not set" when there
+    /// is none), and when that way isn't working, the problem and what to do about it.
+    private var away: (tone: Tone, value: String, problem: String?) {
+        let st = phone.status
+        func path(_ k: String) -> String { T("settings.remote.path.\(k)") }
+        if st.connectedID != nil, let p = st.path {
+            let name = switch p {
+            case .local: path("local")
+            case .tailscale: path("tailscale")
+            case .overlay: path("overlay")
+            case .direct, .goBetween: path("direct")
+            case .relay: path("relay")
+            case .meeting: path("go_between")
+            }
+            return p == .meeting ? (.off, T("settings.remote.away.connecting", name), nil) : (.good, T("settings.remote.away.connected", name), nil)
+        }
+        if m.ownRelay {
+            return phone.relay == .failed ? (.warn, path("relay"), T("settings.remote.away.relay_down")) : (.good, path("relay"), nil)
+        }
+        guard m.goBetween else { return (.off, path("none"), nil) }
+        switch st.away {
+        case .busy?: return (.warn, path("go_between"), T("settings.remote.away.busy"))
+        case .noDirect?: return (.warn, path("go_between"), T("settings.remote.away.no_direct"))
+        case nil: return (.good, path("go_between"), nil)
+        }
+    }
+
     /// Under the phones: where the connection's state is. Only while there is a main window to open.
     private var pageNote: AnyView? {
         guard AppEnvironment.mainWindow != nil else { return nil }
@@ -172,8 +209,17 @@ struct RemotePane: View {
                 SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
             }
             SettingsGroup("remote.relay") {
-                SettingRow("remote.relay.address", detail: relayLine) {
+                let a = away
+                SettingRow("remote.away", title: T("settings.remote.away"), detail: a.problem, detailColor: a.problem == nil ? nil : .brandAttnInk) {
+                    HStack(spacing: 6) {
+                        StatusDot(tone: a.tone)
+                        Text(a.value).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                SettingRow("remote.relay.address", title: T("settings.remote.relay.own"), detail: relayLine) {
                     TextField("wss://relay.example.com", text: $m.relayText)
+                        .accessibilityLabel(T("settings.remote.relay"))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 230)
                         .focused($relayFocused)
@@ -181,6 +227,8 @@ struct RemotePane: View {
                         .onChange(of: m.relayText) { _ in m.relayEdited() }
                         .onChange(of: relayFocused) { on in if !on { m.commitRelay() } }
                 }
+                SettingToggle("remote.go_between", isOn: Binding(get: { m.goBetween }, set: { m.setGoBetween($0) }),
+                              detail: m.ownRelay ? T("settings.remote.go_between.unused") : nil)
                 SettingRow("remote.relay.help") {
                     Button(m.copied ? T("settings.remote.relay.copied") : T("settings.remote.relay.copy")) { m.copyRelayPrompt() }
                 }

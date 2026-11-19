@@ -509,6 +509,11 @@ each display chosen, a slide, back to following, strokes across and back) and lo
 
 ## Away from home
 
+Since 2026-11-19: with no relay of the owner's own, the phone and the computer can meet at Blurt's **go-between**
+(`wss://meet.blurt.work`, free, best effort, on by default in Settings → Phone → Away from home) and move the whole session onto the
+direct UDP path; and a host's Tailscale or ZeroTier addresses are offered like local ones. Which path wins, the wire, the stream over UDP
+and what each end says: [remote-go-between.md](remote-go-between.md). What follows is the owner's own relay, unchanged.
+
 Three routes, tried together, best one kept:
 
 | Route | When | Carries | Feel |
@@ -517,7 +522,8 @@ Three routes, tried together, best one kept:
 | Direct | Away; a path opens to the Mac | Pointer, video (UDP); control stays on the relay | Close to local, depends on the networks |
 | Relay | Away; once the Mac has a relay address | Everything, stream of sealed frames | Depends on how near the relay is |
 
-- **Relay:** Blurt doesn't run one: it's an open-source project, and a shared relay would be a cost and a service to keep up (founder, 2026-11-07).
+- **Relay:** Blurt doesn't run one that carries sessions: it's an open-source project, and a shared relay would be a cost and a service to
+  keep up (founder, 2026-11-07). The go-between only introduces the two ends and stays quiet once they talk directly (remote-go-between.md).
   Each owner runs their own, a Cloudflare Worker with one hibernating Durable Object per paired phone or one Node process on a server
   (tools/remote-relay, same protocol), and pastes its address into Settings → Phone → Relay Address. Copy Instructions there gives a prompt
   for Claude Code or Codex that does the setup. The address is in the pairing code and reaches the phone again inside each sealed session, so the phone has nothing to configure.

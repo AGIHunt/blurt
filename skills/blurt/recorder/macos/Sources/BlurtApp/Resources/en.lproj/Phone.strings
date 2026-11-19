@@ -67,6 +67,8 @@
 "phone.tips.vpn" = "Turn off VPN on both. If your Mac’s firewall is on, allow incoming connections for Blurt.";
 "phone.tips.vpn.local" = "Turn off VPN on both. On your Mac, allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
 "phone.tips.away.none" = "On another network (for example, away from home), the phone connects through your own relay. None is set.";
+"phone.tips.away.go_between" = "On another network, the phone connects through the public connection service. If that network can’t connect directly, set up your own relay.";
+"phone.mac.ok.go_between" = "Away from home through the public connection service";
 "phone.tips.away.ok" = "On another network it connects through your relay. The phone only needs internet access.";
 
 /* Settings → Phone (Settings/RemotePane.swift): the way to this page, and the reminder before pairing */

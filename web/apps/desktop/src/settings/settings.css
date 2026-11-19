@@ -1605,6 +1605,41 @@
   background: var(--ok);
   flex: none;
 }
+/* away from home's status: "Status" as a row's title, the path or the problem where a control would be, with the dot
+   when a phone is connected and the warning mark when something's in the way (the text stays ink, as .st-detail.warn) */
+.st-row.st-phone-away {
+  gap: 16px;
+  /* the label and the value's first line on one baseline (they differ in size) */
+  align-items: baseline;
+}
+.st-phone-away-label {
+  flex: 1;
+  color: var(--ink);
+}
+.st-phone-away-value {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 62%;
+  /* a short value sits at the right edge (the block hugs it); a sentence that wraps reads left to right, its mark by
+     the first line, not between the two */
+  text-align: start;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-2);
+}
+.st-phone-away-value > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--attn);
+}
+.st-phone-away-value > .st-phone-dot {
+  margin-top: 5.5px;
+}
+/* the go-between while a relay of the owner's is set: never used, so dimmed (the switch itself is disabled) */
+.st-row[data-setting='phone.go_between']:has(.st-switch:disabled) .st-row-title {
+  color: var(--mute);
+}
 /* the code to scan: dark on a white plate whatever the theme, sharp pixels; the words beside it */
 .st-row.st-phone-pair {
   align-items: flex-start;

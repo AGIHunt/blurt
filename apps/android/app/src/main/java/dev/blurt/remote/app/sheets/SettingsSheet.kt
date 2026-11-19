@@ -57,7 +57,7 @@ import dev.blurt.remote.app.keys.DeckText
 import dev.blurt.remote.app.net.Link
 import dev.blurt.remote.app.net.PairedMac
 import dev.blurt.remote.app.pad.PadScreen
-import dev.blurt.remote.core.LinkRoute
+import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.RemoteHost
 import dev.blurt.remote.core.RemoteModifiers
 import dev.blurt.remote.core.ScreenQuality
@@ -82,7 +82,7 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
     val macs by l.macs.collectAsState()
     val cur by l.current.collectAsState()
     val state by l.state.collectAsState()
-    val route by l.route.collectAsState()
+    val path by l.path.collectAsState()
     val nearby by l.nearby.collectAsState()
     val use by Remote.screen.use.collectAsState()
     val host by l.host.collectAsState()
@@ -100,7 +100,7 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
             Section(stringResource(R.string.computers), if (macs.size > 1) stringResource(R.string.computers_footer) else null) {
                 for (m in macs) {
-                    MacRow(m, m.id == cur?.id, stateOf(m, cur, state, route, nearby), if (m.id == cur?.id) state else null, onPick = { if (m.id != cur?.id) { l.choose(m); onClose() } }, onInfo = { onDetails(m) })
+                    MacRow(m, m.id == cur?.id, stateOf(m, cur, state, path, nearby), if (m.id == cur?.id) state else null, onPick = { if (m.id != cur?.id) { l.choose(m); onClose() } }, onInfo = { onDetails(m) })
                     Divider()
                 }
                 Row2(stringResource(R.string.add_computer), modifier = Modifier.clickable(onClick = onPair)) { Sym("add", color = MaterialTheme.colorScheme.primary) }
@@ -214,9 +214,10 @@ private fun ProblemMark(modifier: Modifier) {
 }
 
 @Composable
-private fun stateOf(m: PairedMac, cur: PairedMac?, state: Link.State, route: LinkRoute, nearby: Set<String>): String {
+private fun stateOf(m: PairedMac, cur: PairedMac?, state: Link.State, path: LinkPath, nearby: Set<String>): String {
+    if (m.id == cur?.id && state == Link.State.CONNECTED) return stringResource(R.string.s_connected_path, dev.blurt.remote.app.pad.pathName(LocalContext.current, path))
     if (m.id == cur?.id) return stringResource(when (state) {
-        Link.State.CONNECTED -> when (route) { LinkRoute.LOCAL -> R.string.s_connected; LinkRoute.DIRECT -> R.string.s_connected_direct; LinkRoute.RELAY -> R.string.s_connected_relay }
+        Link.State.CONNECTED -> R.string.s_connected
         Link.State.CONNECTING -> R.string.s_connecting
         Link.State.UNREACHABLE -> R.string.s_unreachable
         Link.State.FORGOTTEN -> R.string.s_forgotten

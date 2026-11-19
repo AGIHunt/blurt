@@ -396,7 +396,9 @@ public enum SettingsCatalog {
             row("remote.add", "remote.phones", "settings.remote.app", detail: S("settings.remote.add.detail")),
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
+            row("remote.away", "remote.relay", "settings.remote.away"),
             row("remote.relay.address", "remote.relay", "settings.remote.relay", detail: S("settings.remote.relay.address.detail")),
+            row("remote.go_between", "remote.relay", "settings.remote.go_between", detail: S("settings.remote.go_between.detail")),
             row("remote.relay.help", "remote.relay", "settings.remote.relay.help", detail: S("settings.remote.relay.help.detail")),
 
             // Speech

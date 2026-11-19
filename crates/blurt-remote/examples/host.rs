@@ -457,6 +457,8 @@ fn main() {
                 _ => Some(true),
             },
             port,
+            // --go-between ws://127.0.0.1:8788: a local one (`BUDGET=1 node tools/remote-relay/server.js`); "none": no go-between
+            go_between: arg("--go-between").map(|a| if a == "none" { String::new() } else { a }),
         },
         if args.iter().any(|a| a == "--real") { blurt_remote::platform::backend() } else { Box::new(backend) },
         Box::new(FileKeyStore::new(dir.join("test-keys.json"))),

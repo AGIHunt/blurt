@@ -36,7 +36,7 @@ import dev.blurt.remote.core.Deck
 import dev.blurt.remote.core.KeyAction
 import dev.blurt.remote.core.KeySlot
 import dev.blurt.remote.core.LinkPhase
-import dev.blurt.remote.core.LinkRoute
+import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.LinkStatus
 import dev.blurt.remote.core.PadHaptic
 import dev.blurt.remote.core.RemoteBlurtCommand
@@ -236,6 +236,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val l = Remote.link
         scope.launch { combine(l.state, l.current, l.canControl) { _, _, _ -> }.collect { status() } }
         scope.launch { combine(l.waitingForMac, l.pairFailed, l.route, l.screenError) { _, _, _, e -> e }.collect { e -> if (e != null) setShowing(false); status() } }
+        scope.launch { combine(l.path, l.away) { _, _ -> }.collect { status() } }
         // the picture was of the computer just left
         var last: String? = l.current.value?.deviceID
         scope.launch { l.current.collect { m -> if (m?.deviceID != last) { last = m?.deviceID; setShowing(false) } } }
@@ -328,7 +329,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val cue = follower.see(phase, l.current.value?.id, inFront)
         val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,
             otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value,
-            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null))
+            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null, away = l.away.value))
         shownBanner = banner
         fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value)
         card.show(banner?.mark, banner?.let { b ->
@@ -344,11 +345,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             }
             null -> {}
         }
-        val via = when (l.route.value) {
-            LinkRoute.RELAY -> c.getString(R.string.via_internet, name)
-            LinkRoute.DIRECT -> c.getString(R.string.via_direct, name)
-            LinkRoute.LOCAL -> name
-        }
+        // away, the label names the way: Tailscale, an overlay, direct, the owner's relay or the go-between; at home just the name
+        val via = if (l.path.value == LinkPath.SAME_NETWORK) name else c.getString(R.string.via_path, name, pathName(c, l.path.value))
         header.text = if (l.state.value == Link.State.CONNECTED && !showing) via else null
         val ready = l.state.value == Link.State.CONNECTED
         talk.alpha = if (ready) 1f else 0.35f

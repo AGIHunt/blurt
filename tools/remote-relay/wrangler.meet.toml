@@ -1,0 +1,18 @@
+# Blurt's public go-between (src/meet.js, docs/design/remote-go-between.md): the relay's protocol on a strict budget per connection.
+# Workers Free plan: over the limits it stops answering; nothing can be billed. It binds only the hibernating, SQLite-backed Durable Object
+# `Meet`: no KV, no R2, no secrets.
+name = "blurt-meet"
+main = "src/meet.js"
+compatibility_date = "2025-09-01"
+workers_dev = false          # only the custom domain: no *.workers.dev URL
+preview_urls = false
+
+routes = [{ pattern = "meet.blurt.work", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "MEET"
+class_name = "Meet"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Meet"]

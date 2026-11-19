@@ -56,7 +56,7 @@ enum PhoneStatus {
         return PhoneFacts(paired: s.devices().count, connected: st.connected, viaRelay: st.viaRelay, canControl: canControl,
                           screenWanted: RemoteServer.screenAllowed, screenAllowed: SystemAccess.granted(.screen),
                           listening: st.listening, listenFailure: st.failure, pairing: st.pairingLink != nil,
-                          relay: RemoteServer.relayOn ? .checking : .none)
+                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay)
     }
 
     /// A phone's name as it gave it; one that gave none is "Phone".
@@ -99,7 +99,9 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var canControl = PhoneStatus.canControl
     @Published private(set) var screenWanted = RemoteServer.screenAllowed
     @Published private(set) var screenAllowed = SystemAccess.granted(.screen)
-    @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : .none
+    @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : PhoneModel.noRelay
+    /// with no relay of the owner's own: the public connection service, unless it's switched off
+    nonisolated static var noRelay: PhoneFacts.Relay { RemoteServer.meetAddress != nil ? .goBetween : .none }
     #if DEBUG || BLURT_TEST_HOOKS
     /// tests (`phonepage relay …`): the relay's answer, without asking anything
     var testRelay: PhoneFacts.Relay? {
@@ -175,7 +177,7 @@ final class PhoneModel: ObservableObject {
         if wanted != screenWanted { screenWanted = wanted }
         if allowed != screenAllowed { screenAllowed = allowed }
         // the address changed (typed in Settings, filled in by a phone): what was said about the last one doesn't hold
-        if asked != nil, asked != (RemoteServer.relayAddress ?? "") { checkRelay() }
+        if asked != nil, asked != (RemoteServer.relayAddress ?? "") || RemoteServer.relayAddress == nil && relay != Self.noRelay { checkRelay() }
     }
 
     // MARK: pairing
@@ -214,7 +216,7 @@ final class PhoneModel: ObservableObject {
         #endif
         guard let a = RemoteServer.relayAddress else {
             asked = ""
-            if relay != .none { relay = .none }
+            if relay != Self.noRelay { relay = Self.noRelay }
             return
         }
         asked = a
@@ -243,6 +245,8 @@ extension PhonePage {
     ///   fake none|paired|connected|relay|asking|deaf [code]   phones and a connection as if real (RemoteServer.testFake):
     ///                           nothing paired · two phones, none here · the iPhone connected on the local network ·
     ///                           … through the relay · a new phone waiting for a yes · the port could not be opened;
+    ///                           also tailscale|meeting|gobetween (connected that way) and busy|nodirect (paired, and why the
+    ///                           go-between didn't work: Settings → Phone → Away from home);
     ///                           `code`: with a pairing code on show that is no code (a picture of it gives nothing
     ///                           away: no key, no address, no name) and nothing listening for it
     ///   ax on|off|clear         what Accessibility says · relay none|checking|ok|failed|clear   the relay's answer
@@ -261,11 +265,16 @@ extension PhonePage {
                 var st = RemoteServer.Status()
                 st.listening = v != "none" && v != "deaf"
                 switch v {
-                case "connected", "relay":
+                case "connected", "relay", "tailscale", "meeting", "gobetween":
                     st.connected = "iPhone"
                     st.connectedID = "test-iphone"
-                    st.viaRelay = v == "relay"
-                    st.udp = true
+                    st.viaRelay = ["relay", "meeting", "gobetween"].contains(v)
+                    st.udp = v != "meeting"
+                    let paths: [String: RemoteServer.Path] = ["connected": .local, "relay": .relay, "tailscale": .tailscale, "meeting": .meeting,
+                                                              "gobetween": .goBetween]
+                    st.path = paths[v]
+                case "busy": st.away = .busy
+                case "nodirect": st.away = .noDirect
                 case "asking":
                     st.asking = "Pixel 9"
                     st.askingCheck = "482713"

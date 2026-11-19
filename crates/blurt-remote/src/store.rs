@@ -39,6 +39,10 @@ pub struct Settings {
     /// a paired phone may ask for the screen
     #[serde(default = "yes")]
     pub screen: bool,
+    /// Blurt's go-between (wss://meet.blurt.work) for away from home, when no relay of the owner's is set
+    /// (docs/design/remote-go-between.md). On unless the owner turned it off.
+    #[serde(rename = "goBetween", default = "yes")]
+    pub go_between: bool,
 }
 
 fn yes() -> bool {
@@ -110,7 +114,7 @@ impl Files {
                 return s;
             }
         }
-        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true };
+        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true, go_between: true };
         self.save_settings(&s);
         s
     }
@@ -173,6 +177,7 @@ mod tests {
         let mut s = f.settings();
         assert_eq!(s.relay, None);
         assert!(s.screen);
+        assert!(s.go_between, "the go-between is on until the owner turns it off");
         let id = s.id.clone();
         s.relay = Some(None);
         f.save_settings(&s);

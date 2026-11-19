@@ -15,6 +15,7 @@
 //!     rate.rs         the picture's rate control
 //!     input.rs        clicks, drags, scroll phases and the coast, held keys: what the backend is told to press
 //!     screen.rs       the stream: packets, pacing, back-pressure, refresh, cursor
+//!     stream.rs       the stream after the move: ordered and reliable over UDP (kinds 7, 8), for the go-between
 //!     repair.rs       the picture's repairs: pieces sent again (nack), recovery frames (ltr), parity (fec), the phone's receiver
 //!     store.rs        paired devices, the host's settings, keys (through the app's secret store)
 //!     mic.rs          the phone's microphone as dictation's source
@@ -38,6 +39,7 @@ pub mod repair;
 pub mod screen;
 pub mod server;
 pub mod sharpen;
+pub mod stream;
 pub mod store;
 pub mod wire;
 

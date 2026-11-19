@@ -231,6 +231,7 @@ export const ENTRIES: Entry[] = (() => {
     row('phone.add', 'phone.phones', 'phone.app', { detail: 'phone.add.detail' }),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
+    row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),
     row('phone.relay.help', 'phone.relay', 'phone.relay.help', { detail: 'phone.relay.help.detail' }),
     // Agents
     whole('agents.use', 'agents.use.footer'),

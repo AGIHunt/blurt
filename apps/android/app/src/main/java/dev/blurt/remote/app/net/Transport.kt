@@ -22,8 +22,9 @@ interface Transport {
     interface Sink {
         fun ready()
         fun bytes(b: ByteArray)
-        /** `code`: the relay's close code, when that ended it */
-        fun closed(code: Int?)
+        /** `code`: the relay's close code, when that ended it. `http`: the status of a refused upgrade (429 when the go-between is out of
+         *  today's quota), when that ended it */
+        fun closed(code: Int?, http: Int? = null)
     }
 
     fun start(sink: Sink)
@@ -36,8 +37,8 @@ interface Transport {
     val label: String
 }
 
-/** A TCP connection: no Nagle, low-delay traffic class, three seconds to connect. */
-class TcpTransport(private val host: String, private val port: Int, private val resolved: InetAddress? = null) : Transport {
+/** A TCP connection: no Nagle, low-delay traffic class, three seconds to connect (an overlay address gets 1.5). */
+class TcpTransport(private val host: String, private val port: Int, private val resolved: InetAddress? = null, private val timeoutMs: Int = 3000) : Transport {
     private var socket: Socket? = null
     private var out: OutputStream? = null
     private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "blurt-tcp-out").apply { isDaemon = true; priority = Thread.MAX_PRIORITY } }
@@ -53,7 +54,7 @@ class TcpTransport(private val host: String, private val port: Int, private val 
                 socket = s
                 s.tcpNoDelay = true
                 runCatching { s.trafficClass = 0x10 }      // IPTOS_LOWDELAY
-                s.connect(if (resolved != null) InetSocketAddress(resolved, port) else InetSocketAddress(host, port), 3000)
+                s.connect(if (resolved != null) InetSocketAddress(resolved, port) else InetSocketAddress(host, port), timeoutMs)
                 if (closed.get()) { s.close(); return@Thread }
                 remote = s.inetAddress
                 out = s.getOutputStream()
@@ -108,7 +109,12 @@ class RelayTransport(private val url: String) : Transport {
                 if (closed.compareAndSet(false, true)) sink.closed(code)
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (closed.compareAndSet(false, true)) sink.closed(code) }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (closed.compareAndSet(false, true)) sink.closed(null) }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                // an answer that isn't the upgrade: refused (the go-between's 429 or 1015), not a network that's down
+                val http = response?.code?.takeIf { it != 101 }
+                response?.close()
+                if (closed.compareAndSet(false, true)) sink.closed(null, http)
+            }
         })
     }
 
