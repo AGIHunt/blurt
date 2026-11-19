@@ -274,6 +274,11 @@ export function ViewerWindow({ id }: { id: string }) {
     setCursor(p);
     sendMove(p);
   };
+  // a button's down and up reach the host in the order they happened
+  const clicks = useRef<Promise<unknown>>(Promise.resolve());
+  const inOrder = (f: () => Promise<unknown>) => {
+    clicks.current = clicks.current.then(f, f).catch(() => {});
+  };
   const onPointerDown = (e: React.PointerEvent) => {
     const p = at(e);
     if (!p || link !== 'connected') return;
@@ -283,13 +288,16 @@ export function ViewerWindow({ id }: { id: string }) {
       return;
     }
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    void invoke('viewer_pointer', p).then(() => invoke('viewer_button', { button: e.button === 2 ? 1 : e.button === 1 ? 2 : 0, down: true }));
+    const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
+    inOrder(() => invoke('viewer_pointer', p).then(() => invoke('viewer_button', { button, down: true })));
   };
   const onPointerUp = (e: React.PointerEvent) => {
     if (!live) return;
     const p = at(e);
-    if (p) sendMove(p);
-    void invoke('viewer_button', { button: e.button === 2 ? 1 : e.button === 1 ? 2 : 0, down: false }).catch(() => {});
+    const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
+    // after the down has gone, whatever it waited on: a quick click (a tap) otherwise lets the up arrive first, and the host holds
+    // the button down
+    inOrder(() => (p ? invoke('viewer_pointer', p) : Promise.resolve()).then(() => invoke('viewer_button', { button, down: false })));
   };
   const wheelEnd = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
