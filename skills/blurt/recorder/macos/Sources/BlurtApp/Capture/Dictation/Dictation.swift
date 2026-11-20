@@ -1325,19 +1325,39 @@ final class Dictation {
         }
         trigger.reset(active: false)
         var kept = false
-        if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
-                                           retentionDays: Dictation.retentionDays), let v = voice, let url = wav {
+        // one Esc still discards what was said, but for `undoSeconds` Undo brings it back: the take as it would have
+        // been, typed where the user is (the founder, 2026-11-21). Its recording waits that long — then goes, unless
+        // the history keeps it (with Retry)
+        var undo: DictationTake?
+        if heardSpeech, !quietly, let v = voice, let url = wav, let s = stream {
             let duration = v.elapsed
             v.stop(keep: true)
-            voice = nil         // discard() below ends the rest: the stream, the live text — not this recording
-            appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
-                                reason: DictationHistory.cancelledReason, wav: url)
-            kept = true
+            voice = nil         // discard() below ends the rest: the live text — not this recording, nor its stream
+            stream = nil
+            s.cancel()
+            let t = take(duration: duration, wav: url, stream: s, keyUp: CACurrentMediaTime(), switches: nil)
+            t.cancelled = true
+            cancelledTakes[t.id] = t
+            undo = t
+            if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
+                                               retentionDays: Dictation.retentionDays) {
+                appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
+                                    reason: DictationHistory.cancelledReason, wav: url)
+                kept = true
+            }
+            let keep = kept
+            DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.undoSeconds + 1) { [weak self] in
+                guard let self = self, self.cancelledTakes[t.id] === t else { return }
+                self.cancelledTakes[t.id] = nil
+                if !keep { try? FileManager.default.removeItem(at: url) }
+            }
         }
-        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept])
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept, "undo": undo != nil])
         discard(quietly: true)
         if !quietly { DictationSound.cancel.play() }
-        if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
+        if let t = undo { toastCancelled([t.id]) } else if !quietly {
+            toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2)
+        }
     }
 
     /// A double tap: Return in the app in front ("send"). After the takes still on their way, once the last one has
@@ -1504,7 +1524,16 @@ final class Dictation {
             updatePhase()
             return toastNothing()
         }
-        let switches = switchesAtStop()     // a ⇧ / ⌘ switch stays on in this app once typed (DictationRemembering)
+        let take = self.take(duration: duration, wav: url, stream: s, keyUp: keyUp,
+                             switches: switchesAtStop())    // a ⇧ / ⌘ switch stays on in this app once typed (DictationRemembering)
+        emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
+              "pending": queue.count])
+        enqueue(take)
+    }
+
+    /// The take that is listening now, as it goes on its way once stopped (or waits for Esc's Undo).
+    private func take(duration: Double, wav url: URL, stream s: DictationStream, keyUp: CFTimeInterval,
+                      switches: DictationSwitches?) -> DictationTake {
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish
@@ -1516,9 +1545,7 @@ final class Dictation {
         take.mic = micName
         take.switches = switches
         take.translate = translateJob(style: styleDecision?.style ?? .light)
-        emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
-              "pending": queue.count])
-        enqueue(take)
+        return take
     }
 
     /// The warm server (no process start; waiting up to `budget` for one starting), else `transcribe.py note

@@ -233,13 +233,13 @@ extension Dictation {
         return stopped
     }
 
-    /// How long "Cancelled" offers Undo for takes stopped on their way.
+    /// How long "Cancelled" offers Undo — for takes stopped on their way, and for one Esc stopped while it listened.
     static let undoSeconds = 5.0
 
     /// "Cancelled", with Undo when takes on their way were stopped (they go on as if Esc hadn't come).
     func toastCancelled(_ stopped: [String]) {
         guard !stopped.isEmpty else { return toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
-        island.toast(Loc.t("dictation.toast.cancelled", table: "Dictation"), key: Dictation.cancelToastKey,
+        island.toast(Loc.t("dictation.toast.cancelled", table: "Dictation"), key: Dictation.cancelToastKey, icon: .keyboard,
                      seconds: Dictation.undoSeconds,
                      actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: { [weak self] in
             guard let self = self else { return }
