@@ -373,7 +373,6 @@
 "onboarding.models.small.help" = "SenseVoice Small：支持听写和语音备注，完整模型可稍后下载。";
 "settings.privacy.stay_with_agents" = "所有内容均存储在本机，仅交给 Agent 的内容会发送给它。";
 "settings.storage.model.vad_name" = "人声检测";
-"settings.storage.model.unknown" = "旧模型";
 "settings.storage.model.unused" = "当前版本不再使用";
 "settings.general.login_failed" = "无法更改，请在「系统设置」的「登录项」中修改。";
 "onboarding.step_of" = "第 %ld 步，共 %ld 步";

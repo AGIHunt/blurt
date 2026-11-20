@@ -440,7 +440,8 @@ final class StorageModel: ObservableObject {
         let dir = BlurtPaths.home.appendingPathComponent("models")
         var out: [Row] = []
         func model(_ u: URL) -> Row {
-            let f = u.lastPathComponent
+            // a model linked in from elsewhere is named by what it links to (a Hugging Face snapshot by its repo)
+            let f = linkedFolder(u) ?? u.lastPathComponent
             return Row(name: displayName(f), path: u, bytes: diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
         }
         for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
@@ -454,7 +455,21 @@ final class StorageModel: ObservableObject {
                 out.append(model(e))
             }
         }
-        return out
+        // nothing on disk here (a link, an empty folder): nothing to free, and a "0 KB" row only puzzled (dogfood
+        // 2026-11-21: two nameless "Older model · 0 KB" rows that were the models in use, linked in)
+        return out.filter { $0.bytes > 0 }
+    }
+
+    /// What a symbolic link in the models folder points at, as a folder name the catalogues know: the target's own
+    /// name, or for a Hugging Face snapshot (…/models--org--name/snapshots/<hash>) the repo's last part. nil: no link.
+    nonisolated static func linkedFolder(_ u: URL) -> String? {
+        guard (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true else { return nil }
+        let t = u.resolvingSymlinksInPath()
+        let parts = t.pathComponents
+        if let i = parts.lastIndex(where: { $0.hasPrefix("models--") }) {
+            return parts[i].components(separatedBy: "--").last
+        }
+        return t.lastPathComponent
     }
 
     /// A model's glyph by what it does, as the Models pane draws it: speech recognition the waveform, polish the wand
@@ -472,11 +487,11 @@ final class StorageModel: ObservableObject {
         return ModelCatalog.entry(folder: folder).map { T($0.polish ? "settings.storage.model.polish" : "settings.storage.model.asr") }
     }
 
-    /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else as a
-    /// model this version doesn't use (the folder is in the row's tooltip, with its path).
+    /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else by its
+    /// folder's own name ("qwen3-asr-0.6b-mlx"; "Not used by this version" under it) — never a nameless "Older model".
     nonisolated static func displayName(_ folder: String) -> String {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad_name") }
-        return ModelCatalog.entry(folder: folder)?.name ?? T("settings.storage.model.unknown")
+        return ModelCatalog.entry(folder: folder)?.name ?? folder
     }
 
     /// Which model is which and what uses it (BlurtCore ModelUsage): transcribe.py models and dictation-models (speech
