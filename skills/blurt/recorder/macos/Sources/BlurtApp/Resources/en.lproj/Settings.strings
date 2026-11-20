@@ -14,6 +14,7 @@
 "onboarding.set_up_blurt" = "Set Up Blurt";
 
 "onboarding.skip_setup" = "Skip Setup";
+"onboarding.skip_step" = "Skip This Step";
 
 "onboarding.welcome_blurt" = "Welcome to Blurt";
 
@@ -141,6 +142,7 @@
 "onboarding.models.stop" = "Stop";
 "onboarding.background_download" = "Downloading speech models in the background · %1$@ of %2$@";
 "onboarding.background_download.why" = "When it’s done, recognition is more accurate and uses your word list. You can dictate now.";
+"onboarding.background_download.why_later" = "When it’s done, recognition is more accurate and uses your word list.";
 "onboarding.models.failed_toast" = "Model download interrupted";
 "onboarding.models.failed_open" = "Try Again…";
 "onboarding.models.later" = "You can change this later in Settings > Models.";
@@ -409,6 +411,7 @@
 "onboarding.models.what.polish" = "Removes filler words and fixes punctuation.";
 "onboarding.models.what.note" = "Transcribes voice notes and recordings.";
 "onboarding.models.total_label" = "To download";
+"onboarding.models.free" = "%@ free";
 "onboarding.models.installed" = "Installed";
 "onboarding.models.offline.title" = "Not connected to the internet";
 "onboarding.models.offline" = "Connect to the internet to download the models.";
@@ -533,18 +536,17 @@
 "onboarding.start.language.title" = "The language you speak";
 "onboarding.start.language.mixed" = "Choose the language you speak most. English words in your speech are recognized too.";
 "onboarding.start.language.one" = "Choose the language you speak most.";
-"onboarding.key.title" = "Cloud Model (Optional)";
+"onboarding.key.title" = "Cloud model (optional)";
 "onboarding.key.detail" = "Add an API key to use cloud models.";
 "onboarding.key.on" = "Connected · %@";
 "onboarding.key.add" = "Add…";
 "onboarding.key.change" = "Change…";
 "onboarding.key.cloud.title" = "Cloud dictation";
 "onboarding.key.cloud.detail" = "Dictate with an Alibaba Cloud Model Studio key. No download needed.";
-"onboarding.upgrade.title" = "Local models (optional)";
-"onboarding.upgrade.detail" = "Works offline, uses your Words, more accurate";
+"onboarding.upgrade.title" = "Local speech model (optional)";
+"onboarding.upgrade.detail" = "Works offline, uses your Words, and is more accurate.";
 "onboarding.upgrade.download" = "Download (%@)";
 "onboarding.upgrade.needs_uv" = "Local models need uv (the tool that runs them)";
-"onboarding.not_now" = "Not Now";
 "onboarding.models.detail_cloud" = "Dictate in the cloud with a key, or download models to run on your Mac.";
 "onboarding.section.cloud" = "Cloud";
 "onboarding.section.local" = "On Your Mac";
@@ -559,6 +561,7 @@
 "onboarding.upgrade.resume" = "Resume (%@ left)";
 "onboarding.start.ready.detail" = "Built in. No download needed.";
 "onboarding.upgrade.better" = "%1$@ (%2$@): more accurate, works offline.";
+"onboarding.upgrade.better_free" = "%1$@ (%2$@): more accurate, works offline. %3$@ free on this Mac.";
 "onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It turns on when done.";
 "onboarding.key.compare" = "About %2$@ per %1$@; audio isn’t uploaded.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";

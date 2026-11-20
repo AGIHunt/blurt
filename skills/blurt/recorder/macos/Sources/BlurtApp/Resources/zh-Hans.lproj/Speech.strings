@@ -101,6 +101,7 @@
 "speech.download.queued" = "排队中";
 "speech.download.failed" = "下载未完成，请重试，或在「高级」中打开镜像。";
 "speech.download.failed.short" = "下载未完成";
+"speech.download.no_space" = "空间不足";
 "speech.bench.button" = "实测";
 "speech.bench.running" = "正在测量…";
 "speech.bench.help" = "在本机转写几段你所用语言的语音样本，测量准确率、速度和内存。";

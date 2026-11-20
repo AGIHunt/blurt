@@ -16,6 +16,11 @@
 //              assistant's close); a toast when the assistant closes mid-download, when
 //              the batch is in ("Speech models are ready · tap Fn to try") and when a request stopped on an error (Try
 //              Again). "Stop" on every surface.
+//   free space before anything is queued (every surface, and a batch resumed at launch): what is still to fetch (the
+//              part a stopped download left on disk not counted again) plus 2 GB must be free on the models' volume
+//              (and the Hugging Face cache's), else nothing starts and one line says "4.5 GB needed, 3.1 GB free ·
+//              Show Storage" (BlurtCore ModelDownloadNotice.diskShort); a setup that hit a full disk anyway
+//              (`disk_full`, ENOSPC) says the same. Test builds: BLURT_TEST_FREE_MB stands in for the free space.
 //   errors     a failed model ends its own request (the assistant's batch, one Settings row…): the rest of that
 //              request is marked not downloaded in its rows, and models other surfaces asked for carry on.
 //   Stop       one model: a queued one leaves the queue, the running one ends. Everything: the running one ends and
@@ -73,6 +78,9 @@ final class ModelDownloads: ObservableObject {
     /// this batch's start went up on the island (BlurtCore ModelDownloadNotice: the first run's, nobody asked for
     /// it): nothing more is said until it is in — closing the assistant doesn't repeat it
     private(set) var startSaid = false
+    /// The last download that couldn't start for want of space, or that filled the disk: what it needed and what was
+    /// free (MB). Cleared when a download starts.
+    @Published private(set) var diskFull: (needMB: Double, freeMB: Double)?
 
     var active: Bool { queue.active }
     var progress: (done: Double, total: Double) { queue.progress(current: current, line: line) }
@@ -92,9 +100,19 @@ final class ModelDownloads: ObservableObject {
 
     // MARK: asking
 
-    /// Queue these models (the ones already queued or running are not asked for twice) and start if idle.
+    /// Queue these models (the ones already queued or running are not asked for twice) and start if idle — only when
+    /// what is still to fetch, with 2 GB to spare, fits on the disk (else the line says so and nothing is queued).
     func download(_ jobs: [Job], via source: String) {
+        let new = jobs.filter { !queue.contains($0.id) }
+        if !new.isEmpty, let short = ModelDownloadNotice.diskShort(remainingMB: Self.toFetchMB(queue.pending + new), freeBytes: Self.freeBytes()) {
+            for j in new { failed[j.id] = "disk_full" }
+            emit(["event": "model_download", "op": "no_space", "via": source, "models": new.map(\.id),
+                  "need_mb": Int(short.needMB), "free_mb": Int(short.freeMB)])
+            sayDiskFull(short, via: source)
+            return
+        }
         for j in jobs { failed[j.id] = nil }
+        if !new.isEmpty { diskFull = nil }
         // the batch a launch kept for the network comes along (the file would otherwise be overwritten without it)
         if waitingForNetwork, let kept = ModelDownloadQueue.load() {
             waitingForNetwork = false
@@ -107,6 +125,53 @@ final class ModelDownloads: ObservableObject {
               "queue": queue.pending.map(\.id)])
         if proc == nil { runNext() }
         if !added.isEmpty, !startSaid, ModelDownloadNotice.announcesStart(via: source) { announceStart() }
+    }
+
+    // MARK: free space
+
+    /// What these models still have to fetch (MB): each one's size less what a stopped download left on disk.
+    nonisolated static func toFetchMB(_ jobs: [Job]) -> Double {
+        let models = BlurtPaths.home.appendingPathComponent("models"), hub = ModelSetup.hfCache
+        return jobs.reduce(0) { t, j in
+            let kept = Double(ModelCatalog.keptBytes(j.id, models: models, hfCache: hub)) / 1_048_576
+            return t + max(j.sizeMB - min(kept, j.sizeMB), 0)
+        }
+    }
+
+    /// Free space for the models (bytes): the smaller of the models folder's volume and the Hugging Face cache's (a
+    /// model comes down into one or the other). nil: it couldn't be read. Test builds: BLURT_TEST_FREE_MB.
+    nonisolated static func freeBytes() -> Int64? {
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", let mb = env["BLURT_TEST_FREE_MB"].flatMap(Double.init) { return Int64(mb * 1_048_576) }
+        func free(_ u: URL) -> Int64? {
+            var d = u
+            while !FileManager.default.fileExists(atPath: d.path), d.pathComponents.count > 1 { d.deleteLastPathComponent() }
+            let v = try? d.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            return v?.volumeAvailableCapacityForImportantUsage ?? v?.volumeAvailableCapacity.map(Int64.init)
+        }
+        let all = [free(BlurtPaths.home.appendingPathComponent("models")), free(ModelSetup.hfCache)].compactMap { $0 }
+        return all.min()
+    }
+
+    /// "4.5 GB needed, 3.1 GB free" (nil: no download was short of space).
+    var diskLine: String? { diskFull.map { T("app.models.disk_full", modelSize($0.needMB), modelSize($0.freeMB)) } }
+
+    /// Why this model's last download didn't come down, in the words its row shows (nil: it didn't fail).
+    func failedText(_ id: String) -> String? {
+        guard let f = failed[id] else { return nil }
+        return f == "disk_full" ? diskLine : nil
+    }
+
+    static func showStorage() { AppEnvironment.settings?.show(pane: SettingsPane.storage.rawValue) }
+
+    /// Not enough space: the line, with Show Storage — on the island, unless the assistant's models step shows it.
+    private func sayDiskFull(_ short: (needMB: Double, freeMB: Double), via source: String) {
+        diskFull = short
+        guard !(ModelSetup.shared.shown && source == "onboarding"), let text = diskLine else { return }
+        var t = Island.Toast(text: text, actionTitle: T("app.models.show_storage")) { ModelDownloads.showStorage() }
+        t.seconds = 8
+        t.key = "models-disk-full"
+        if source == "launch" { LaunchMessages.shared.post(.models, t) } else { island.toast(t) }
     }
 
     /// The first run's batch started without asking: the island says so once, with its size and Stop.
@@ -144,6 +209,14 @@ final class ModelDownloads: ObservableObject {
     /// At launch: what a quit, a relaunch or a crash left carries on, quietly, with one launch line.
     func resumeAtLaunch() {
         guard proc == nil, let q = ModelDownloadQueue.load() else { return }
+        // no room for what is left: it waits (the file stays for a launch with room, or the user's own Download)
+        if let short = ModelDownloadNotice.diskShort(remainingMB: Self.toFetchMB(q.pending), freeBytes: Self.freeBytes()) {
+            emit(["event": "model_download", "op": "no_space", "via": "launch", "models": q.pending.map(\.id),
+                  "need_mb": Int(short.needMB), "free_mb": Int(short.freeMB)])
+            for j in q.pending { failed[j.id] = "disk_full" }
+            sayDiskFull(short, via: "launch")
+            return
+        }
         emit(["event": "model_download", "op": "resume", "models": q.pending.map(\.id), "finished": q.finished])
         waitingForNetwork = false
         announceResume = true           // the line goes up with the first progress line: it carries on for real
@@ -261,9 +334,15 @@ final class ModelDownloads: ObservableObject {
         if outcome == .failed, via == "launch", ModelDownloadQueue.waitsForNetwork(code: code, online: NetworkWatch.shared.isOnline) {
             return keepForNetwork(j)
         }
+        // the disk filled up on the way: "4.5 GB needed, 0.2 GB free · Show Storage", not a download error
+        let full = outcome == .failed && ModelDownloadNotice.diskFull(code: code, error: error)
         if outcome == .failed {
-            failed[j.id] = error.isEmpty ? "exit \(st)" : error
+            failed[j.id] = full ? "disk_full" : error.isEmpty ? "exit \(st)" : error
             announceResume = false          // no "finishing" line for a batch that just stopped on an error
+        }
+        if full {
+            let need = Self.toFetchMB(queue.pending.filter { $0.group == j.group }) + ModelDownloadNotice.headroomMB
+            diskFull = (need, Double(Self.freeBytes() ?? 0) / 1_048_576)
         }
         let next = queue.ended(j.id, outcome: outcome, stop: request)
         queue.save()
@@ -338,6 +417,10 @@ final class ModelDownloads: ObservableObject {
     /// when it started the batch, else the same models again).
     private func stoppedOnError(_ batch: [Job], via source: String) {
         guard !ModelSetup.shared.shown else { return }
+        if batch.contains(where: { failed[$0.id] == "disk_full" }), let text = diskLine {
+            AppEnvironment.island?.toast(text, actionTitle: T("app.models.show_storage")) { ModelDownloads.showStorage() }
+            return
+        }
         AppEnvironment.island?.toast(T("onboarding.models.failed_toast"), actionTitle: T("onboarding.models.failed_open")) {
             if source == "onboarding" { Onboarding.shared.show(step: 2) } else { ModelDownloads.shared.download(batch, via: source) }
         }

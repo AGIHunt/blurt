@@ -14,6 +14,7 @@
 "onboarding.set_up_blurt" = "设置口喷鸡";
 
 "onboarding.skip_setup" = "跳过设置";
+"onboarding.skip_step" = "跳过这一步";
 
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
 
@@ -141,6 +142,7 @@
 "onboarding.models.stop" = "停止";
 "onboarding.background_download" = "正在后台下载语音模型 · %1$@ / %2$@";
 "onboarding.background_download.why" = "完成后识别更准确，并使用你的词库。现在已可开始听写。";
+"onboarding.background_download.why_later" = "完成后识别更准确，并使用你的词库。";
 "onboarding.models.failed_toast" = "模型下载已中断";
 "onboarding.models.failed_open" = "重试…";
 "onboarding.models.later" = "之后可在「设置 > 模型」中更改。";
@@ -407,6 +409,7 @@
 "onboarding.models.what.polish" = "去掉口头禅，补好标点。";
 "onboarding.models.what.note" = "把语音备注和录屏讲解转成文字。";
 "onboarding.models.total_label" = "需要下载";
+"onboarding.models.free" = "可用 %@";
 "onboarding.models.installed" = "已安装";
 "onboarding.models.offline.title" = "未连接互联网";
 "onboarding.models.offline" = "联网后即可下载模型。";
@@ -538,11 +541,10 @@
 "onboarding.key.change" = "更改…";
 "onboarding.key.cloud.title" = "云端听写";
 "onboarding.key.cloud.detail" = "填入阿里云百炼 Key 即可听写，无需下载。";
-"onboarding.upgrade.title" = "本机模型（可选）";
-"onboarding.upgrade.detail" = "离线可用，支持词库，更准确";
+"onboarding.upgrade.title" = "本机语音模型（可选）";
+"onboarding.upgrade.detail" = "离线可用，支持词库，更准确。";
 "onboarding.upgrade.download" = "下载（%@）";
 "onboarding.upgrade.needs_uv" = "需要先安装 uv（运行本机模型的工具）";
-"onboarding.not_now" = "以后再说";
 "onboarding.models.detail_cloud" = "可使用 Key 云端听写，或下载模型在本机运行。";
 "onboarding.section.cloud" = "云端";
 "onboarding.section.local" = "本机";
@@ -557,6 +559,7 @@
 "onboarding.upgrade.resume" = "继续下载（还剩 %@）";
 "onboarding.start.ready.detail" = "系统自带，无需下载。";
 "onboarding.upgrade.better" = "%1$@（%2$@）：识别更准确，可离线使用。";
+"onboarding.upgrade.better_free" = "%1$@（%2$@）：识别更准确，可离线使用。这台 Mac 可用 %3$@。";
 "onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），完成后自动启用。";
 "onboarding.key.compare" = "%1$@约 %2$@，录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";

@@ -8,6 +8,25 @@ final class ModelDownloadNoticeTests: XCTestCase {
     let asr = Job(id: "qwen3-asr-1.7b-mlx", kind: .dictation, name: "Qwen3-ASR 1.7B", sizeMB: 2468)
     let polish = Job(id: "gemma4-e2b", kind: .polish, name: "Gemma 4 E2B", sizeMB: 3415)
 
+    func testADownloadNeedsItsSizeAndTwoGigabytesFree() {
+        let gb: Int64 = 1 << 30
+        // 2.5 GB to fetch, 10 GB free: fits
+        XCTAssertNil(ModelDownloadNotice.diskShort(remainingMB: 2468, freeBytes: 10 * gb))
+        // 2.5 GB to fetch, 4 GB free: 4.4 GB needed (the 2 GB headroom), refused
+        let short = ModelDownloadNotice.diskShort(remainingMB: 2468, freeBytes: 4 * gb)
+        XCTAssertEqual(short?.needMB, 2468 + 2048)
+        XCTAssertEqual(short?.freeMB, 4096)
+        // nothing left to fetch, or the free space unknown: never refused on a guess
+        XCTAssertNil(ModelDownloadNotice.diskShort(remainingMB: 0, freeBytes: 0))
+        XCTAssertNil(ModelDownloadNotice.diskShort(remainingMB: 2468, freeBytes: nil))
+    }
+
+    func testAFullDiskIsKnownByItsCodeOrItsErrno() {
+        XCTAssertTrue(ModelDownloadNotice.diskFull(code: "disk_full", error: ""))
+        XCTAssertTrue(ModelDownloadNotice.diskFull(code: "network", error: "could not download x: [Errno 28] No space left on device"))
+        XCTAssertFalse(ModelDownloadNotice.diskFull(code: "network", error: "timed out"))
+    }
+
     func testOnlyTheBatchNobodyAskedForGoesUpOnTheIsland() {
         XCTAssertTrue(ModelDownloadNotice.announcesStart(via: "install"))
         // asked for on a surface that shows its own bar
@@ -54,6 +73,15 @@ final class ModelDownloadNoticeTests: XCTestCase {
         // dictation itself waits for its model (or isn't read yet): the row's own words, not "more accurate"
         XCTAssertEqual(home(ready: false, downloading: true), .usual)
         XCTAssertEqual(home(ready: nil), .usual)
+        // the polish model comes later, on its own, with its own size: once the recogniser is in
+        func polish(_ mb: Double, betterMissing: Bool = false, failed: Bool = false) -> ModelDownloadNotice.HomeLine {
+            ModelDownloadNotice.home(ready: true, downloading: false, unpacking: false, progress: (0, 0), automatic: true,
+                                     betterMissing: betterMissing, missingMB: 2468, polishMB: mb, failed: failed)
+        }
+        XCTAssertEqual(polish(3415), .offerPolish(mb: 3415))
+        XCTAssertEqual(polish(3415, betterMissing: true), .offer(mb: 2468), "the recogniser first, alone")
+        XCTAssertEqual(polish(0), .usual)
+        XCTAssertEqual(polish(3415, failed: true), .interrupted)
     }
 
     func testAStopIsRememberedAtOnceAndAQuitStillResumes() throws {

@@ -5,9 +5,10 @@
 //      switch. All on: a new user just presses Next; one who wants less turns the rest off here (Capability.set — the
 //      same switches as Home's and Settings → General's, so the keys are given back at once). A link to Settings →
 //      Shortcuts. Steps 2–4 are dictation's: with Dictation switched off this step is the whole assistant — its
-//      primary is Done and "Open Blurt at login" is its last row. On the first run nothing of dictation's is read or
-//      fetched until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model
-//      list — and with the list the recogniser that starts downloading by itself, ModelSetup.startAtInstall);
+//      primary is Done and "Open Blurt at login" is its last row. On the first run nothing of dictation's is read
+//      until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model list), and
+//      no model downloads unasked (the founder, 2026-11-21): the models step offers the recogniser with its size and
+//      the free space;
 //   2. dictation — the key first (a pop-up, ChoicePopup as the language row; it decides which lines the list below has, so changing it never moves the
 //      control under the pointer), with Fn macOS's own Fn-key setting as a line of the key (not a permission), then
 //      the permissions it needs: the microphone and Accessibility, live; Input Monitoring only when it is needed
@@ -19,11 +20,13 @@
 //   3. models — with macOS 26's own recogniser in the user's language (ModelSetup.startNow,
 //      docs/design/first-minute-speech.md): "Dictation works now" (nothing to download), the one cloud key (Add… opens
 //      the cloud polish sheet: polish, voice notes, Copy Text from Screen; a Model Studio key is cloud speech's too),
-//      and the models below as one optional "Local models" row with its own Download — Next stays the primary.
+//      and this Mac's recogniser as one optional row — its name, its size and the free space on this Mac, its own
+//      Download — Next stays the primary. Only the recogniser comes down here; the polish model is offered later
+//      (Home's Dictation row, with its size).
 //      Without it (macOS 13–15, a language it doesn't speak): two groups — Cloud (the Model Studio speech key, the AI
 //      service key; the line under the title says both ways, never "nothing is uploaded" over them) and On this Mac:
-//      the three models for this Mac (ModelSetup.swift: dictation, polish, voice notes) as plain rows (what
-//      each does; the model's name is the tooltip), the total to download, then one progress bar (and Stop); it
+//      this Mac's recogniser (ModelSetup.swift) as a plain row (what it does; the model's name is the tooltip), the
+//      size to download and the free space, then one progress bar (and Stop); it
 //      carries on in the background. "Download Models" is the footer's primary; offline it waits, and a line says the
 //      Mac is offline before anything was tried (NetworkWatch). uv is found, or — one sentence, Install uv as the
 //      primary — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
@@ -55,9 +58,9 @@
 // a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
 // then the steps: the title in gradient text and one line, the step's rows (OnboardingKit.swift: one row language,
 // rows over hairlines as in Settings, a neutral glyph column, one trailing element on one right edge), and the footer:
-// the step dots, Skip Setup (neutral; the one skip — none per step), Back, and one brand primary: the step's own
-// action while it is still to do (a quiet "Not Now" beside Skip Setup goes on without it — one forward action per
-// footer), else Next / Done. Every row's glyph is the line family (BlurtIcon: the text cursor is dictation, the
+// the step dots, one quiet way past, Back, and one brand primary: the step's own action while it is still to do, with
+// "Skip This Step" beside it (going on without it; the window's close button ends the whole assistant), else Next /
+// Done with "Skip Setup" (dogfood 2026-11-21: Skip Setup and Not Now side by side couldn't be told apart). Every row's glyph is the line family (BlurtIcon: the text cursor is dictation, the
 // keyboard only Input Monitoring; globe, mic, accessibility, screen, cloud, power), one weight on every step. Done closes
 // (Peep already peeps and hops on the last step; no bloom). The window is sized before it is centred (it opened
 // against the menu bar, its left edge on the screen's middle, when centred at zero size).
@@ -198,8 +201,8 @@ final class OnboardingModel: ObservableObject {
     /// Dictation is on and — on the first run — the step that asks about it is behind (BlurtCore OnboardingFlow).
     var wantsDictationSetup: Bool { OnboardingFlow.setsUpDictation(off: Capability.off, firstRun: firstRun, step: step) }
 
-    /// Dictation's own setup: macOS's language files, the model list (ModelSetup.load — which also starts this Mac's
-    /// recogniser downloading in the background, once: startAtInstall). Not before the first run's first step is
+    /// Dictation's own setup: macOS's language files, the model list (ModelSetup.load; nothing downloads until the
+    /// user asks on the models step). Not before the first run's first step is
     /// answered, and never with Dictation off. `leaving`: the assistant is closing from that first step (Skip Setup,
     /// the close button) with Dictation still on — as if it had been passed.
     func startDictationSetup(leaving: Bool = false) {
@@ -297,8 +300,9 @@ final class OnboardingModel: ObservableObject {
             retrying = false
             if speechStep == .blocked { retriedAt = Date() }
             emit(["event": "onboarding_retry_done", "via": via, "step": "\(speechStep)", "cause": "\(blockedCause)"])
+            // carried through: a download the user asked for that broke off — never one nobody asked for
             let ms = ModelSetup.shared
-            if warm == "done", ms.listRead, !ms.pending.isEmpty, !ms.downloading { ms.start() }
+            if warm == "done", ms.listRead, ms.failed, !ms.pending.isEmpty, !ms.downloading { ms.start() }
         }
     }
 
@@ -434,8 +438,8 @@ struct OnboardingView: View {
                 return StepAction(title: T("onboarding.install_uv"), enabled: !m.installingUV, help: OnboardingModel.uvInstallCommand) { m.installUV() }
             case .offer:
                 // offline, the download can't start: the line above says so and the button waits for the network
-                return StepAction(title: T(models.resumable ? "onboarding.models.resume" : "onboarding.models.download"),
-                                  enabled: m.online != false) { models.start() }
+                // the size on the button: what Download fetches, or what is left of it
+                return StepAction(title: downloadTitle, enabled: m.online != false) { models.start() }
             default:
                 return StepAction(title: T("onboarding.models.retry"), enabled: !m.retrying) { m.retrySetup(via: "models") }
             }
@@ -502,16 +506,11 @@ struct OnboardingView: View {
             // (one step — Dictation off — has nothing to count)
             if m.steps > 1 { StepDots(step: m.step, count: m.steps) }
             Spacer(minLength: 12)
-            // on the last step Done says the same: one way out
-            if !last {
-                Button(T("onboarding.skip_setup")) { m.finish() }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
-                    .padding(.trailing, 8)
-            }
             let nextTitle = last ? T("onboarding.done") : T("onboarding.next")
             if let a = action {
-                // one forward action: the step's own; going on without it is a quiet "Not Now" beside Skip Setup
-                Button(T("onboarding.not_now")) { advance() }
+                // one forward action, the step's own, and one quiet way past it: "Skip This Step" (the whole assistant
+                // ends with the window's close button) — never two grey skips side by side
+                Button(T("onboarding.skip_step")) { advance() }
                     .buttonStyle(.borderless).foregroundStyle(.secondary)
                     .padding(.trailing, 8)
                 if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
@@ -519,6 +518,12 @@ struct OnboardingView: View {
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                     .disabled(!a.enabled).help(a.help ?? "")
             } else {
+                // on the last step Done says the same: one way out
+                if !last {
+                    Button(T("onboarding.skip_setup")) { m.finish() }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary)
+                        .padding(.trailing, 8)
+                }
                 if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
                 Button(nextTitle) { advance() }
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
@@ -554,7 +559,9 @@ struct OnboardingView: View {
                 }
                 .font(.system(size: 12))
                 if ModelDownloadNotice.saysPurpose(systemReady: models.systemReady, dictationReady: DictationModels.shared.dictationReady) {
-                    Text(T("onboarding.background_download.why")).font(.system(size: 12)).foregroundStyle(.tertiary)
+                    // "You can dictate now" only once dictation is allowed (the microphone, Accessibility…)
+                    Text(T(guide.missing(.dictation).isEmpty ? "onboarding.background_download.why" : "onboarding.background_download.why_later"))
+                        .font(.system(size: 12)).foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -590,7 +597,7 @@ struct OnboardingView: View {
     /// The dictation key as keycaps.
     static func dictationCaps(_ k: DictationTrigger.Key) -> [String] {
         switch k {
-        case .fn: return ["fn"]
+        case .fn: return [Dictation.keyName(.fn)]          // "Fn", as on Home, Shortcuts and the menus
         case .rightOption: return [T("onboarding.cap.right_option")]
         case .eitherOption: return ["⌥"]
         }
@@ -614,9 +621,10 @@ struct OnboardingView: View {
     /// The capability's glyph (the line family, as the rest of the assistant).
     static func capabilityIcon(_ c: Capability) -> BlurtIcon {
         switch c {
-        case .dictation: return .textCursor
+        // the metaphors Home, General and the sidebars use (character.cursor.ibeam, text.viewfinder), in our line family
+        case .dictation: return .characterCursor
         case .cards: return .cards
-        case .screenText: return .copy
+        case .screenText: return .textViewfinder
         case .recording: return .record
         case .phone: return .phone
         }
@@ -700,7 +708,7 @@ struct OnboardingView: View {
     var permissions: some View {
         VStack(alignment: .leading, spacing: 0) {
             // the key first: it decides which lines the permissions below have, so changing it never moves this row
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.dictation_key"), detail: keyGesture, first: true) {
+            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.dictation_key"), detail: keyGesture, first: true) {
                 // the same pop-up as the language row and Settings
                 ChoicePopup(label: T("onboarding.dictation_key"),
                             choices: DictationTrigger.Key.allCases.map { ($0, OnboardingView.keyLabel($0)) },
@@ -771,17 +779,17 @@ struct OnboardingView: View {
     /// Start now: dictation on macOS's recogniser, the one cloud key, the local models as one optional row.
     @ViewBuilder var startNowRows: some View {
         if models.system == .installed {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.start.ready.title"),
+            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.start.ready.title"),
                    detail: T("onboarding.start.ready.detail"),
                    first: true) {
                 StateLabel(tone: .good, text: T("onboarding.start.ready.state"))
             }
         } else if models.system == nil {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.models.checking"), detail: nil, first: true) {
+            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.models.checking"), detail: nil, first: true) {
                 BrandSpinnerView(size: 10)
             }
         } else {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.start.assets.title"),
+            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.start.assets.title"),
                    detail: T("onboarding.start.assets.detail"), first: true) {
                 BrandSpinnerView(size: 10)
             }
@@ -846,12 +854,17 @@ struct OnboardingView: View {
     /// the user's own language when its numbers aren't the mixed Chinese + English ones (nil: Chinese, or unmeasured)
     var compareLanguage: String? { DictationChoices.ownLanguage(SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages) }
 
-    /// "Qwen3-ASR 0.6B (1.0 GB) recognizes better and works offline." — or "Downloading …" while it comes down;
-    /// nil when dictation's model isn't one the eval measured.
+    /// "Qwen3-ASR 1.7B (2.5 GB): more accurate, works offline. 120 GB free on this Mac." — the size and the free space
+    /// before anything starts (the founder, 2026-11-21) — or "Downloading …" while it comes down; nil when
+    /// dictation's model isn't one the eval measured.
     var betterModel: String? {
         guard let p = models.parts.first(where: { $0.kind == .dictation }), let c = DictationChoice(rawValue: p.id), c.local else { return nil }
         let downloading = models.downloading && !(p.installed || models.finished.contains(p.id))
-        return T(downloading ? "onboarding.upgrade.better_downloading" : "onboarding.upgrade.better", p.name, size(p.sizeMB))
+        if downloading { return T("onboarding.upgrade.better_downloading", p.name, size(p.sizeMB)) }
+        if let free = models.freeMB, !(p.installed || models.finished.contains(p.id)) {
+            return T("onboarding.upgrade.better_free", p.name, size(p.sizeMB), size(free))
+        }
+        return T("onboarding.upgrade.better", p.name, size(p.sizeMB))
     }
 
     /// The cloud model row's line before a key is in: what a cloud model is used for, what it adds and costs.
@@ -873,7 +886,7 @@ struct OnboardingView: View {
             if models.ready {
                 StateLabel(tone: .good, text: T("onboarding.models.installed"))
             } else if models.downloading {
-                BrandSpinnerView(size: 10)
+                EmptyView()             // the bar under the rows says it, with Stop: no second spinner
             } else if models.loaded, models.totalMB > 0 {
                 Button(downloadTitle) { models.start() }
                     .controlSize(.small).disabled(m.online == false)
@@ -967,10 +980,10 @@ struct OnboardingView: View {
 
     func kindIcon(_ k: ModelBundle.Kind) -> NSImage {
         switch k {
-        case .dictation: return GlyphTile.brand(.textCursor)
+        case .dictation: return GlyphTile.brand(.characterCursor)
         case .polish: return GlyphTile.brand(.wand)
         case .note: return GlyphTile.brand(.mic)
-        case .screenText: return GlyphTile.brand(.copy)
+        case .screenText: return GlyphTile.brand(.textViewfinder)
         }
     }
 
@@ -1007,6 +1020,11 @@ struct OnboardingView: View {
                 } else {
                     Text(T("onboarding.models.total_label")).font(.system(size: 12)).foregroundStyle(.secondary)
                     Text(size(models.totalMB)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+                }
+                // and the room for it, before anything starts
+                if let free = models.freeMB {
+                    Text(T("onboarding.models.free", size(free))).font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(.secondary).padding(.leading, 8)
                 }
             }
             .padding(.top, 8)
@@ -1051,6 +1069,13 @@ struct OnboardingView: View {
             }
         } else if models.ready {
             check(T("onboarding.models.ready"))
+        } else if models.failed, let room = models.parts.compactMap({ ModelDownloads.shared.failedText($0.id) }).first {
+            // not enough space: how much is needed and free, nothing started; Show Storage
+            HStack(spacing: 8) {
+                Text(room).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.brandErr)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(T("app.models.show_storage")) { ModelDownloads.showStorage() }.controlSize(.small)
+            }
         } else if models.failed {
             VStack(alignment: .leading, spacing: 8) {
                 Text(T("onboarding.models.failed")).font(.system(size: 12)).foregroundStyle(Color.brandErr)

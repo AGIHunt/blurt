@@ -551,6 +551,8 @@
 "app.models.show" = "Show";
 "app.models.menu_unpacking" = "Unpacking speech models…";
 "app.models.stop" = "Stop";
+"app.models.disk_full" = "%1$@ needed, %2$@ free";
+"app.models.show_storage" = "Show Storage";
 "app.models.started" = "Downloading speech models in the background (%@)";
 "app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";

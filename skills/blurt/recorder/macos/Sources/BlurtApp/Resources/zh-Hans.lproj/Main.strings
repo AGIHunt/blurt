@@ -552,6 +552,8 @@
 "app.models.show" = "查看";
 "app.models.menu_unpacking" = "正在解压语音模型…";
 "app.models.stop" = "停止";
+"app.models.disk_full" = "需要 %1$@，可用 %2$@";
+"app.models.show_storage" = "查看存储";
 "app.models.started" = "正在后台下载语音模型（%@）";
 "app.toast.welcome_dictation_only" = "口喷鸡在菜单栏里 · 按%@ 听写";
 "app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 未下载语音模型";

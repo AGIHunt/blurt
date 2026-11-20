@@ -4,9 +4,9 @@
 //   2  dictation: the speech model             ├ only while Dictation is on
 //   3  dictation: try it                       ┘
 // With Dictation off the first step is the whole assistant (its primary is Done, "Open Blurt at login" is its last
-// row). Nothing of dictation's is read or fetched before the first run's first step is answered — macOS's language
-// files, the model list, and with the list the recogniser that starts downloading by itself (ModelSetup
-// startAtInstall, docs/design/first-minute-speech.md): a user who switches Dictation off there downloads nothing for it.
+// row). Nothing of dictation's is read before the first run's first step is answered — macOS's language files, the
+// model list — and no model downloads unasked (the founder, 2026-11-21): the models step offers the recogniser with
+// its size and the free space.
 import Foundation
 
 public enum OnboardingFlow {

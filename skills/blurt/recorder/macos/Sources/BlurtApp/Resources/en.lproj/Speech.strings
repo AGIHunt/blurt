@@ -101,6 +101,7 @@
 "speech.download.queued" = "Queued";
 "speech.download.failed" = "The download didn’t finish. Try again, or turn on the mirror under Advanced.";
 "speech.download.failed.short" = "Download didn’t finish";
+"speech.download.no_space" = "Not enough space";
 "speech.bench.button" = "Measure";
 "speech.bench.running" = "Measuring…";
 "speech.bench.help" = "Transcribes short spoken samples in your languages on your Mac and measures accuracy, speed and memory.";

@@ -237,7 +237,9 @@ final class SpeechModel: ObservableObject {
         return nil
     }
     /// Why the model's last download stopped on an error (nil: it didn't).
-    func failed(_ id: String) -> String? { ModelDownloads.shared.failed[id] == nil ? nil : S("speech.download.failed") }
+    func failed(_ id: String) -> String? {
+        ModelDownloads.shared.failed[id] == nil ? nil : ModelDownloads.shared.failedText(id) ?? S("speech.download.failed")
+    }
 
     func model(_ id: String?) -> ASRModel? { id.flatMap { i in models.first { $0.id == i } } }
     func selected(_ p: ASRPurpose) -> ASRModel? { model(state?.selected[p.rawValue] ?? nil) }
@@ -701,8 +703,16 @@ struct SpeechPane: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             if failed {
-                                Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
-                                    .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                // a full disk says how much is needed and free, with Show Storage
+                                let room = ps.compactMap { dl.failedText($0.job.id) }.first
+                                HStack(spacing: 6) {
+                                    Text(room ?? S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
+                                        .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                    if room != nil {
+                                        Button(T("app.models.show_storage")) { ModelDownloads.showStorage() }
+                                            .buttonStyle(.link).font(.system(size: SettingsMetrics.detailSize))
+                                    }
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1238,7 +1248,7 @@ private struct ModelLibrary: View {
         let dash = x.installed ? S("speech.lib.dash.installed") : S("speech.lib.dash")
         var used = Used()
         if let p = m.download(x.id) { used.text = p.text }
-        else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
+        else if m.failed(x.id) != nil { used = Used(text: S(ModelDownloads.shared.failed[x.id] == "disk_full" ? "speech.download.no_space" : "speech.download.failed.short"), err: true) }
         else if m.benching.contains(x.id) { used.text = S("speech.bench.running") }
         else if m.bench[x.id]?.error != nil { used = Used(text: S("speech.bench.failed"), err: true) }
         else if !uses.isEmpty { used.jobs = uses }
@@ -1297,7 +1307,7 @@ private struct ModelLibrary: View {
         let inUse = d.polish?.selected == x.id
         var used = Used()
         if let p = m.download(x.id) { used.text = p.text }
-        else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
+        else if m.failed(x.id) != nil { used = Used(text: S(ModelDownloads.shared.failed[x.id] == "disk_full" ? "speech.download.no_space" : "speech.download.failed.short"), err: true) }
         else if inUse { used.jobs = [Job.polish] }
         else { used.text = tag(id: x.id, recommended: d.polish?.recommended == x.id); used.tag = true }
         return row(id: x.id, installed: x.installed, name: x.name, help: "", used: used, inUse: inUse) {

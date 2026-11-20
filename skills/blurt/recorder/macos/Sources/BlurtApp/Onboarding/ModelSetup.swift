@@ -1,6 +1,7 @@
-// The setup assistant's models step (Onboarding.swift, docs/design/desktop-app.md §2.2): one "Download recommended
-// models" for this Mac — dictation's recogniser, the polish model and the voice-note model (BlurtCore ModelBundle) —
-// with the total size and one progress bar (Stop ends it). The downloads themselves are the app's one download manager
+// The setup assistant's models step (Onboarding.swift, docs/design/desktop-app.md §2.2): one Download for this Mac's
+// recogniser alone (the founder, 2026-11-21: only the recogniser, ~2.5 GB, comes down during setup; the polish model
+// is offered later on Home with its own size, HomePage.betterModels) — with its size and the free space on this Mac
+// before anything starts, then one progress bar (Stop ends it). The downloads themselves are the app's one download manager
 // (App/ModelDownloads.swift): they run one after another, carry on when the assistant closes (a line says so; the
 // menu-bar menu and Settings → Speech show the progress), and pick up again after a quit or a crash. When the set
 // didn't come down, SenseVoice Small alone is offered. A list that couldn't be read (`listRead` false) is the same
@@ -15,13 +16,10 @@
 //              so dictation works with nothing downloaded — the step says so, offers the one cloud key, and the set
 //              becomes the optional local upgrade (Download is no longer the footer's primary). `system` is where
 //              macOS's language files stand (asked for here, in the background: AppleSpeech.prepare).
-//   at install `startAtInstall` (docs/design/dictation.md §Defaults by Mac; dictation-eval-2026-10-31 §6.1): with
-//              macOS's recogniser dictating the first minutes, this Mac's recogniser (BlurtCore DictationTier: the 1.7B
-//              on 16 GB+ Macs fast enough for it, else the 0.6B) starts downloading in the background as soon as the
-//              list is read — once (record.dictation.first_download), only while dictation is automatic; never again
-//              after a Stop or once it is in. The polish model this Mac's default includes (Gemma 4 E2B from 16 GB)
-//              follows it (v1.0.8: without it every style read the same and the Mac never had its default); the
-//              voice-note model stays the step's optional Download.
+//   unasked   nothing (the founder, 2026-11-21; dogfood: Next on the first step started 5.9 GB with no size and no
+//              free-space check). v1.0.8–1.1.0 started the recogniser and the polish model at install (startAtInstall);
+//              the step now offers the recogniser with its size and the free space, and the download manager refuses a
+//              download that doesn't fit (ModelDownloads: what is left + 2 GB).
 import AppKit
 import BlurtCore
 import Combine
@@ -41,6 +39,8 @@ final class ModelSetup: ObservableObject {
     var settled: Bool { only && !downloading && SpeechModel.shared.model(ModelBundle.fallbackID)?.installed == true }
     /// the assistant is showing (else the download manager's toasts say how the models went)
     var shown = false
+    /// Free space where the models go (MB; nil: not read yet, or unreadable): said beside the size before Download.
+    @Published private(set) var freeMB: Double?
     /// macOS's language files for its recogniser (nil: not asked yet)
     @Published private(set) var system: AppleSpeech.Assets?
     /// Dictation works with nothing downloaded: macOS's recogniser, in a language the user speaks.
@@ -129,15 +129,16 @@ final class ModelSetup: ObservableObject {
         // no local polish model for this Mac (8 GB: polish_models.json defaults) is a set without one, not an unread list
         let plan = ModelBundle.plan(dictation: dictation, polish: pm,
                                     polishRuns: polish.map { $0.supported && $0.recommended != nil }, note: note)
-        // while the set downloads, keep the rows it started with (a read mid-download changes nothing that matters)
-        if !(downloading && plan == nil) { parts = plan ?? [] }
+        // while the set downloads, keep the rows it started with (a read mid-download changes nothing that matters).
+        // The recogniser alone: the polish and voice-note models are offered later, each with its size
+        if !(downloading && plan == nil) { parts = plan?.filter { $0.kind == .dictation } ?? [] }
         listRead = plan != nil || downloading
         loaded = true
         let ids = pending.map(\.id), models = BlurtPaths.home.appendingPathComponent("models"), hub = Self.hfCache
         kept = await Task.detached(priority: .utility) {
             Dictionary(ids.map { ($0, Double(ModelCatalog.keptBytes($0, models: models, hfCache: hub)) / 1_048_576) }) { a, _ in a }
         }.value
-        startAtInstall(automatic: asr.map { $0.configured == nil } ?? false)
+        freeMB = await Task.detached(priority: .utility) { ModelDownloads.freeBytes().map { Double($0) / 1_048_576 } }.value
         emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
                                                                    "installed": $0.installed] },
@@ -188,22 +189,7 @@ final class ModelSetup: ObservableObject {
 
     // MARK: download
 
-    /// The first minutes on macOS's recogniser, this Mac's own coming down meanwhile: the recommended recogniser alone,
-    /// once ever, while dictation is automatic (`automatic`: no model picked by hand) and the Mac is online.
-    private func startAtInstall(automatic: Bool) {
-        guard automatic, startNow, listRead, !downloading, Dictation.settings["first_download"] == nil,
-              NetworkWatch.shared.isOnline != false,
-              let d = parts.first(where: { $0.kind == .dictation }), !d.installed, d.id != AppleSpeech.modelID,
-              !dl.queue.contains(d.id) else { return }
-        Dictation.set("first_download", d.id)
-        // the recogniser first (dictation's words), then the polish model of this Mac's default, one after the other
-        let todo = [d] + parts.filter { $0.kind == .polish && !$0.installed && !dl.queue.contains($0.id) }
-        emit(["event": "onboarding_models", "op": "start_at_install", "models": todo.map(\.id),
-              "size_mb": todo.reduce(0) { $0 + $1.sizeMB }])
-        dl.download(todo.map { ModelDownloadQueue.Job(id: $0.id, kind: $0.kind, name: $0.name, sizeMB: $0.sizeMB) }, via: "install")
-    }
-
-    /// The recommended set (or `only` these), through the download manager.
+    /// The recogniser (or `only` these), through the download manager — which first checks it fits on the disk.
     func start(only: [ModelBundle.Part]? = nil) {
         let todo = only ?? pending
         guard !todo.isEmpty else { return }

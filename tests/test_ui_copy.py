@@ -176,8 +176,11 @@ class ShellCopy(unittest.TestCase):
     def test_the_setup_assistant_has_one_forward_action(self):
         src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Onboarding/Onboarding.swift").read_text(encoding="utf-8")
         footer = src[src.index("var footer: some View"):src.index("/// The headline and its line")]
-        # beside the step's own action, going on without it is the quiet Not Now — never a second bordered Next
-        self.assertIn('T("onboarding.not_now")', footer)
+        # beside the step's own action, going on without it is the quiet Skip This Step — never a second bordered Next,
+        # and never Skip Setup beside it (two grey skips nobody could tell apart: dogfood 2026-11-21)
+        self.assertIn('T("onboarding.skip_step")', footer)
+        with_action = footer[footer.index("if let a = action {"):footer.index("} else {", footer.index("if let a = action {"))]
+        self.assertNotIn("onboarding.skip_setup", with_action)
         self.assertNotIn("Button(nextTitle) { advance() }\n                Button(a.title)", footer)
         self.assertNotIn(".pickerStyle(.menu)", src, "the dictation key is a ChoicePopup, as the language row")
         self.assertNotIn("GlyphTile.symbol(", src, "one glyph family on every step: the line glyphs")

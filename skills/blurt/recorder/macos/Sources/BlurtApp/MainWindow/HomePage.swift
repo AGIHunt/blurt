@@ -391,15 +391,21 @@ final class HomeModel: ObservableObject {
     /// the offer after a Stop, or the retry after it broke off.
     private func betterModels(_ dm: DictationModels, into r: inout HomeRow) {
         let dl = ModelDownloads.shared
-        let better = dm.recommendedASR, pair = [dm.recommendedASR?.id, dm.recommendedPolish?.id].compactMap { $0 }
+        let better = dm.recommendedASR
+        let betterMissing = better.map { !$0.installed && $0.builtin != true } ?? false
+        // the polish model, offered on its own once the recogniser is in (the assistant brings only the recogniser):
+        // while polish picks its model by itself and no cloud key polishes
+        let polish = dm.polishAuto && !DictationCloud.ready ? dm.recommendedPolish.flatMap { $0.installed ? nil : $0 } : nil
+        let offered = betterMissing ? better?.id : polish?.id
         let line = ModelDownloadNotice.home(ready: dm.dictationReady, downloading: dl.active, unpacking: dl.isUnpacking(dl.current ?? ""),
-                                            progress: dl.progress, automatic: dm.asrAuto,
-                                            betterMissing: better.map { !$0.installed && $0.builtin != true } ?? false,
-                                            missingMB: dm.recommendedMB.missing, failed: pair.contains { dl.failed[$0] != nil })
+                                            progress: dl.progress, automatic: dm.asrAuto, betterMissing: betterMissing,
+                                            missingMB: better?.sizeMB ?? 0, polishMB: polish?.sizeMB ?? 0,
+                                            failed: offered.map { dl.failed[$0] != nil } ?? false)
         switch line {
         case .usual: return
         case .downloading(let done, let total):
-            r.text = T("home.dictation.better_downloading", modelSize(done), modelSize(total))
+            let polishing = dl.queue.pending.first { $0.id == dl.current }?.kind == .polish
+            r.text = T(polishing ? "home.dictation.polish_downloading" : "home.dictation.better_downloading", modelSize(done), modelSize(total))
             r.fix = T("app.models.stop"); r.fixKind = "stop_download"
         case .unpacking:
             r.text = T("app.models.menu_unpacking")
@@ -411,6 +417,9 @@ final class HomeModel: ObservableObject {
             // the line is the offer itself, in link ink
             r.text = ""
             r.fix = T("home.dictation.better_offer", modelSize(mb)); r.fixKind = "better_models"
+        case .offerPolish(let mb):
+            r.text = ""
+            r.fix = T("home.dictation.polish_offer", modelSize(mb)); r.fixKind = "better_models"
         }
         r.tone = .note
     }
@@ -701,6 +710,17 @@ final class HomeModel: ObservableObject {
         refresh()                 // (CapabilityWatch's notice follows on the next turn: the switch answers now)
     }
 
+    /// Home's offer, one model at a time with its own size: this Mac's recogniser while it is missing, then its
+    /// polish model (the download manager first checks it fits on the disk).
+    private func downloadBetter() {
+        let dm = DictationModels.shared
+        if let a = dm.recommendedASR, !a.installed, a.builtin != true {
+            ModelDownloads.shared.download([.init(id: a.id, kind: .dictation, name: a.name ?? a.id, sizeMB: a.sizeMB)], via: "home")
+        } else if let p = dm.recommendedPolish, !p.installed {
+            ModelDownloads.shared.download([.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB)], via: "home")
+        }
+    }
+
     /// The one button of a row's line.
     func fix(_ c: Capability) {
         guard let kind = rows.first(where: { $0.capability == c })?.fixKind else { return }
@@ -712,7 +732,7 @@ final class HomeModel: ObservableObject {
         case "choose_model": SpeechPane.showDictationModels()
         case "download": ModelDownloads.showProgress()
         case "stop_download": ModelDownloads.shared.stop()
-        case "better_models": DictationModels.shared.downloadRecommended()
+        case "better_models": downloadBetter()
         case "agent": AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
         case "keys": AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
         case "phone": MainWindowController.shared.go(.phone)

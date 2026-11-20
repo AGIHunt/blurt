@@ -34,6 +34,8 @@
 "home.dictation.downloading" = "正在下载语音模型 · %1$@ / %2$@";
 "home.dictation.better_downloading" = "正在下载更准确的语音模型 · %1$@ / %2$@";
 "home.dictation.better_offer" = "下载更准确的语音模型 · %@";
+"home.dictation.polish_offer" = "下载润色模型，用于各种风格 · %@";
+"home.dictation.polish_downloading" = "正在下载润色模型 · %1$@ / %2$@";
 "home.recording.no_agent" = "在 Agent 中说「处理我录的视频」来整理。";
 "home.recording.set_up_agent" = "设置 Agent…";
 "home.phone.needs_access" = "手机暂无法控制 Mac";
