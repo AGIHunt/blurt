@@ -74,6 +74,8 @@ enum PhoneStatus {
     /// The menu-bar menu's row: "Phone: iPhone Connected" · "Phone: Not Connected" (paired, none here now) ·
     /// "Phone: Needs Accessibility" (paired, and it could do nothing here) · "Add a Phone…" (none paired)
     static var menuTitle: String {
+        // a device waits for a yes: said here too, as the page says it
+        if let who = RemoteServer.shared.shown.asking { return T("phone.menu.asking", name(who)) }
         let f = facts
         switch PhoneChecks.headline(f) {
         case .nonePaired: return T("phone.menu.add")

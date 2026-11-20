@@ -9,6 +9,7 @@
 "phone.menu.connected" = "%1$@: %2$@ Connected";
 "phone.menu.paired" = "%@: Not Connected";
 "phone.menu.add" = "Add Device…";
+"phone.menu.asking" = "%@ Wants to Control This Mac…";
 "phone.menu.needs_access" = "%@: Can’t Control This Mac";
 
 /* the Phone tile's state on Home (PhoneStatus.line) */

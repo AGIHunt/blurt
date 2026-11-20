@@ -9,6 +9,7 @@
 "phone.menu.connected" = "%1$@：%2$@ 已连接";
 "phone.menu.paired" = "%@：未连接";
 "phone.menu.add" = "添加设备…";
+"phone.menu.asking" = "%@ 请求控制本机…";
 "phone.menu.needs_access" = "%@：无法控制本机";
 
 /* 主页上手机那一格的状态（PhoneStatus.line） */

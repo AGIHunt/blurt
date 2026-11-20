@@ -1332,10 +1332,9 @@ final class RemoteServer {
             }
             emit(["event": "remote_pairing_asks", "nearby": RemoteNearby.isNearby(s.id ?? "")])
             s.channel.send(ToPhone.pairingWaits)
-            // nobody opened Add Device for it: the question comes to the front, where the owner sees it
-            if RemoteNearby.isNearby(s.id ?? "") {
-                DispatchQueue.main.async { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
-            }
+            // the question comes to the front, where the owner sees it, wherever they are: a nearby computer's had no Add Device opened
+            // for it, and a code's may have been put up minutes ago (a copied link lasts ten) with the window on another page since
+            DispatchQueue.main.async { MainActor.assumeIsolated { MainWindowController.shared.show(); MainWindowController.shared.go(.phone) } }
             if Self.testing, let a = ProcessInfo.processInfo.environment["BLURT_TEST_PAIR_ANSWER"] {
                 queue.asyncAfter(deadline: .now() + 3) { self.answerPairing(a == "yes") }
             }
