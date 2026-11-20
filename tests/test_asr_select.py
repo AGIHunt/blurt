@@ -808,6 +808,16 @@ class AppleSpeechSelect(unittest.TestCase):
                 rec.write_text(json.dumps({"snapshot": "abc", "files": []}))     # a Blurt setup finished it
                 self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")
             rec.unlink()
+            # a download from before Blurt kept records, which Blurt dictated with: still the engine
+            hist = T.MODELS_DIR.parent / "dictation" / "history.jsonl"
+            hist.parent.mkdir(parents=True, exist_ok=True)
+            had = hist.read_bytes() if hist.exists() else None
+            try:
+                hist.write_text(json.dumps({"id": "x", "asr_model": "whisper-large-v3-turbo-mlx"}) + "\n")
+                with config({"asr": {"languages": ["zh", "en"]}}):
+                    self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")
+            finally:
+                hist.write_bytes(had) if had is not None else hist.unlink()
             with config({"asr": {"languages": ["zh", "en"]},
                          "record": {"dictation": {"asr_model": "whisper-large-v3-turbo-mlx"}}}):
                 self.assertEqual(T.dictation_models(hw())["selected"], "whisper-large-v3-turbo-mlx")   # the user's pick

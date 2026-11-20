@@ -860,7 +860,38 @@ def blurt_downloaded(m: dict) -> bool:
     rec = load_json(_hf_record(inst["hf"]), None)
     if isinstance(rec, dict) and rec.get("snapshot"):
         return True
+    # dictated with through Blurt before: a download from before Blurt kept records (2026-10-25) stays the user's engine
+    if m.get("id") in _dictated_with():
+        return True
     return m.get("backend") == "faster-whisper" and (MODELS_DIR / "faster-whisper").is_dir()
+
+
+_DICTATED: tuple = (None, frozenset())
+
+
+def _dictated_with() -> frozenset:
+    """The recognisers the dictation history says typed a take (its `asr_model`), read again only when the file changes."""
+    global _DICTATED
+    f = MODELS_DIR.parent / "dictation" / "history.jsonl"
+    try:
+        st = f.stat()
+    except OSError:
+        return frozenset()
+    key = (st.st_mtime_ns, st.st_size)
+    if _DICTATED[0] != key:
+        ids = set()
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if '"asr_model"' not in line:
+                    continue
+                try:
+                    v = json.loads(line).get("asr_model")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(v, str):
+                    ids.add(v)
+        _DICTATED = (key, frozenset(ids))
+    return _DICTATED[1]
 
 
 def installed(m: dict) -> bool:
