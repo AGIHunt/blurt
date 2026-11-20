@@ -394,6 +394,8 @@ public enum SettingsCatalog {
             row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep", fold: "screentext.history"),
 
             // 手机和电脑
+            row("remote.stay_awake", "remote.options", "settings.remote.stay_awake", detail: S("settings.remote.stay_awake.desktop")),
+            row("remote.say_asleep", "remote.options", "settings.remote.say_asleep", detail: S("settings.remote.say_asleep.detail")),
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
             row("remote.away", "remote.relay", "settings.remote.away"),
