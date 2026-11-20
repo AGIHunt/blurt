@@ -16,8 +16,11 @@ public struct ScreenTextEntry: Equatable, Identifiable, Sendable {
     public var target: String?
     public var app: String?
     public var bundle: String?
-    /// pasted | unconfirmed | copied (ScreenTextPaste.Outcome's raw values)
+    /// pasted | unconfirmed | copied (ScreenTextPaste.Outcome's raw values); `interrupted`: a translation Blurt quit
+    /// before it came back — `text` is what was read, `target` what it was to go into
     public var outcome: String?
+    public static let interrupted = "interrupted"
+    public var wasInterrupted: Bool { outcome == ScreenTextEntry.interrupted }
 
     public init(id: String = ScreenTextHistory.newID(), time: Date = Date(), translated: Bool, text: String, source: String? = nil,
                 target: String? = nil, app: String? = nil, bundle: String? = nil, outcome: String? = nil) {
@@ -94,6 +97,12 @@ public final class ScreenTextHistory {
         appendLine(["op": "delete", "ids": ids])
     }
 
+    /// Undo of a delete: the entries as they were (written again after the delete line, so load() has them back — also
+    /// after a prune dropped the line and them).
+    public func restore(_ es: [ScreenTextEntry]) {
+        for e in es.sorted(by: { $0.time < $1.time }) { appendLine(e.json) }
+    }
+
     /// A better reading replaced the text on the clipboard (⌥C's second pass): the entry says what is there now.
     public func update(_ id: String, text: String) {
         appendLine(["op": "text", "id": id, "text": text])
@@ -119,6 +128,11 @@ public final class ScreenTextHistory {
 
     /// Newest first, deletions applied.
     public func load() -> [ScreenTextEntry] {
+        lock.lock(); defer { lock.unlock() }
+        return loadUnlocked()
+    }
+
+    private func loadUnlocked() -> [ScreenTextEntry] {
         guard let d = try? Data(contentsOf: url) else { return [] }
         var out: [ScreenTextEntry] = []
         for line in d.split(separator: 0x0A) {
@@ -129,22 +143,32 @@ public final class ScreenTextHistory {
             } else if o["op"] as? String == "text" {
                 if let id = o["id"] as? String, let t = o["text"] as? String, let i = out.firstIndex(where: { $0.id == id }) { out[i].text = t }
             } else if let e = ScreenTextEntry(json: o) {
+                out.removeAll { $0.id == e.id }       // written again (a delete undone): once
                 out.append(e)
             }
         }
         return out.sorted { $0.time > $1.time }
     }
 
+    /// How many entries a retention of `days` would delete now (Settings asks before it does: "Delete N entries?").
+    public func wouldPrune(days: Int, now: Date = Date()) -> Int {
+        guard days >= 0 else { return 0 }
+        let all = load()
+        return days == 0 ? all.count : all.filter { $0.time < now.addingTimeInterval(-Double(days) * 86400) }.count
+    }
+
     /// Rewrites the file without entries older than `days` (0: none kept, -1: all kept) and without delete lines.
     /// Returns how many went.
     @discardableResult
     public func prune(days: Int, now: Date = Date()) -> Int {
+        // read and rewritten under the lock: a line appended meanwhile (an ⌥C saved while the retention changed) was
+        // lost when the rewrite replaced the file with the earlier read
+        lock.lock(); defer { lock.unlock() }
         guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
-        let all = load()
+        let all = loadUnlocked()
         let keep = days < 0 ? all : days == 0 ? [] : all.filter { $0.time >= now.addingTimeInterval(-Double(days) * 86400) }
         let lines = (try? Data(contentsOf: url))?.split(separator: 0x0A).count ?? 0
         if keep.count == all.count && lines == all.count { return 0 }
-        lock.lock(); defer { lock.unlock() }
         var out = Data()
         for e in keep.reversed() {
             if let d = try? JSONSerialization.data(withJSONObject: e.json, options: [.sortedKeys]) { out.append(d); out.append(0x0A) }
