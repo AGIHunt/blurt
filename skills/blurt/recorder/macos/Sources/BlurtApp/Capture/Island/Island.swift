@@ -1037,6 +1037,12 @@ final class Island: NSObject, IslandHosting {
                 // right — never one black slab hanging off one side of the notch
                 left.set(.mark(.inbox))
                 right.set(.text("+" + Loc.number(n), mono: true))
+            } else if revealed, !open, case .none = r {
+                // brought out by the pointer with "Show the notch when idle" off and nothing to say: Peep at rest in its
+                // ear, as the idle island's own mark — never a bare black tab that read as a glitch (dogfood
+                // 2026-11-21); resting on it opens the home row as usual
+                left.set(.peep(.idle))
+                right.set(.none)
             } else if peepAcross(r) {
                 // Peep's moments are told across the notch too: Peep on the left (where it talks and listens), the
                 // words or the count on the right — it never jumps from one side to the other between states
