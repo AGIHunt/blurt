@@ -350,7 +350,8 @@ start or pick an agent for this. Select one or more items and choose:
 
 - **Copy Instruction for Agent** (`⌘↩`, also in the Item menu and the selection's button) — a one-line instruction
   pointing at a hand-off note with everything the agent needs (screenshots included) goes to the clipboard. Paste it
-  into your agent. The items move to *Handed off*. **Copy full text** copies the note itself.
+  into your agent. The items move to *Handed off*. **Copy Full Text** (`⇧⌘C`, in the Copy submenu) copies the note
+  itself. `⌘Z` takes the hand-off back, but never an agent's report that came in since.
 - **Export Hand-off Bundle…** — for a person rather than an agent: one `.zip` with a summary (counts by kind and
   state, then each item with its state, what you said, the steps, suspected code and screenshots), a file per item,
   and the screenshots and clips. It uses relative paths only, so it opens on a teammate's computer. Pick where to
@@ -366,8 +367,11 @@ with the tools it already has; Blurt has no connectors of its own. *Settings →
 more examples.
 
 Agents that have the Blurt MCP installed (Settings → Agents → Connect) report back on their own: you'll see the item
-move to *In progress*, then *To verify*. Without it the note gives the agent an `items.py` command that does the same.
-If the agent never reports, the item stays *Handed off*: **Mark as Done** or **Take Back** when you know how it went.
+move to *In progress* ("Codex is working on it"), then *To verify*. Connect lets Codex run the reporting tools
+(`mark_fixed`, `get_item`, `search_items`) without asking, so a Codex run with no one to approve still reports; its
+preview lists that line. When the MCP isn't there or a call fails, the note gives the agent an `items.py` command that
+does the same. If the agent never reports, the item stays *Handed off*, and after an hour its banner says no word has
+come: **Mark as Done** or **Take Back** when you know how it went.
 
 Organizing a recording stops when you quit Blurt (Blurt asks first; Return keeps it going), and a recording is never
 organized twice at the same time. Running work is listed above the list under *Running*. If organizing fails, it stays
