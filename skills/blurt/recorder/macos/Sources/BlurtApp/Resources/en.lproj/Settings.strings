@@ -470,6 +470,7 @@
 "settings.projects.add" = "Add Project Folder…";
 "settings.projects.key_help" = "Item IDs in this project start with %@.";
 "settings.projects.missing" = "Folder not found";
+"settings.projects.in" = "in %@";
 "settings.projects.empty" = "No projects yet. Add a folder to file snaps and voice notes in it.";
 "settings.projects.more" = "More";
 "settings.kw.projects.capture_into" = "project, folder, inbox, unassigned, where, destination, current project, snaps, voice notes";

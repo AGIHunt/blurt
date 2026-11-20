@@ -468,6 +468,7 @@
 "settings.projects.add" = "添加项目文件夹…";
 "settings.projects.key_help" = "这个项目的事项编号以 %@ 开头。";
 "settings.projects.missing" = "找不到文件夹";
+"settings.projects.in" = "位于 %@";
 "settings.projects.empty" = "暂无项目。添加文件夹后，截图和语音备注可归入其中。";
 "settings.projects.more" = "更多";
 "settings.kw.projects.capture_into" = "项目, 文件夹, 归到哪里, 未归类, 当前项目, 截图, 语音备注";
