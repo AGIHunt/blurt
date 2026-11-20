@@ -36,6 +36,12 @@ What it doesn't need from the phone: the key deck, the touch gestures, the zoome
     `removed`, and its row says 已移除本机 with 重新添加… in place of Connect (the window's cover offers the same). A key refused with no
     session (`forgotten`, which anyone on the network can send) says the same for this run only and keeps the key. Adding it again
     replaces the record by the host's id. Tests: BlurtRemoteKitTests `RemoteViewerPairingTests`.
+  - **The same on every platform** (2026-11-21): the Windows/Linux viewer (blurt-remote `PairError` Spent / Declined / Unanswered /
+    Unreachable, `pair_steps`, `Link::Removed` apart from `Link::Forgotten`; the web's Add Computer panel and window cover) and both
+    phones (iOS `PairFailure`, Android `PairEnd`: the pad's card says the failure, then what to do, with Retry while a code can't be
+    reached and Scan Code otherwise; a computer's `removed` in a session keeps the record, marked, with its key gone). A phone also says
+    when the pairing stopped because the app left the screen while the computer was asking. Tests: blurt-remote tests/viewer.rs,
+    web viewer.test.ts, iOS LinkStatusTests, Android LinkStatusTest.
 
 **A window per computer.** Several computers at once means several windows. Keys go only to the window in front. On a Mac the windows
 can merge into tabs, the system's way.
