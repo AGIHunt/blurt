@@ -459,7 +459,7 @@ struct SettingsSearchResults: View {
             switch HotkeySettings.shared.drawKey {
             case "control": return ["⌃"]
             case "option": return ["⌥"]
-            case "fn": return ["fn"]
+            case "fn": return [Dictation.keyName(.fn)]          // "Fn", as every other keycap
             default: return []
             }
         default:

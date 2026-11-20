@@ -599,15 +599,17 @@ struct AgentsPane: View {
         }
     }
 
-    /// Check Again, at the right end of the page's lead (a spinner beside it while a check runs).
+    /// Check Again, at the right end of the page's lead (a spinner beside it while a check runs). The button's text is
+    /// the lead's baseline whether or not the spinner shows: the spinner is drawn beside it, not stacked with it (it has
+    /// no text baseline, and its bottom edge dropped the button ~10 pt while a check ran: dogfood 2026-11-21).
     var checkAgain: some View {
-        HStack(spacing: 6) {
-            if m.loading { BrandSpinnerView(size: 10, label: AL("agents.state.checking")) }
-            Button(AL("agents.check_again")) { m.recheck() }
-                .buttonStyle(.plain)
-                .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
-                .disabled(m.loading)
-        }
+        Button(AL("agents.check_again")) { m.recheck() }
+            .buttonStyle(.plain)
+            .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
+            .disabled(m.loading)
+            .overlay(alignment: .leading) {
+                if m.loading { BrandSpinnerView(size: 10, label: AL("agents.state.checking")).offset(x: -16) }
+            }
     }
 
     /// The agents that aren't installed: one folded line ("Not installed · Gemini CLI, ZCode"); open, a row each.
