@@ -262,6 +262,9 @@ final class Island: NSObject, IslandHosting {
         /// Not a reply to what the user just did (a launch message, a job that finished, a reminder): it waits behind
         /// every reply instead of taking the slot (ToastQueue).
         var passive = false
+        /// Work still under way that the user just asked for ("Translating…"): the spinner in the leading slot and no
+        /// trailing dots, as a passive line at work has — a reply, so it takes the slot at once.
+        var working = false
         /// It went without being acted on (expired, replaced, superseded, stale, dropped — ToastQueue.onGone): the
         /// main window's page toast answers its page "gone" here, so the page never waits on an Undo that's gone.
         var gone: (() -> Void)?

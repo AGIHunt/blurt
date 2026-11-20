@@ -397,6 +397,7 @@
 "capture.menu.translate" = "Translate Text from Screen";
 "capture.text.typed" = "Pasted";
 "capture.text.translating" = "Translating…";
+"capture.text.still_translating" = "Still translating…";
 "capture.text.translate_failed" = "Couldn’t translate · original copied";
 "capture.text.translate_needs_model" = "Translating needs a cloud model or a local polish model";
 "capture.text.translate_key" = "The translation key isn’t valid · original copied";
@@ -404,6 +405,7 @@
 "capture.text.translate_offline" = "Can’t reach the translation service · original copied";
 "capture.text.try_again" = "Try Again";
 "capture.text.no_permission" = "Copying text from the screen needs Screen Recording";
+"capture.text.translate_no_permission" = "Translating text from the screen needs Screen Recording";
 "capture.text.stale" = "Can’t read the screen — allow Screen Recording again";
 "capture.text.copied_paste" = "Copied · ⌘V to paste";
 "capture.text.translation_pasted" = "Translation pasted";

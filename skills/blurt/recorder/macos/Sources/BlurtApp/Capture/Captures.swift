@@ -1290,21 +1290,24 @@ final class Snapper {
 
     // MARK: quitting
 
-    /// Blurt is quitting: the open note is saved, a voice note finished (its wav closed, its line written), words and
-    /// filings under way get a moment (`cap`), and every batch's shots.jsonl is flushed — then `done`. What is still
+    /// Blurt is quitting: the open note is saved, a voice note finished (its wav closed, its line written), words,
+    /// filings and ⌥T translations under way get a moment (`cap`), and every batch's shots.jsonl is flushed — then `done`. What is still
     /// on its way is picked up at the next launch (restore).
     func prepareForQuit(cap: Double = 3, _ done: @escaping () -> Void) {
         VoiceInput.shared.finishForQuit()
         NoteBubble.shared.commitNow()
         let until = Date().addingTimeInterval(cap)
-        emit(["event": "quit_wait", "words": pendingWords.count, "filing": filing])
+        let text = ScreenTextCopy.shared
+        emit(["event": "quit_wait", "words": pendingWords.count, "filing": filing, "translating": text.inFlight.count])
         // a run-loop timer in the common modes, not the main queue: AppKit waits for the reply in a modal loop, and
         // a quit that came from a main-queue block (a signal, a scripted command) never gets the main queue back
         let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return done() }
-            guard (self.pendingWords.isEmpty && self.filing == 0) || Date() >= until else { return }
+            guard (self.pendingWords.isEmpty && self.filing == 0 && text.inFlight.isEmpty) || Date() >= until else { return }
             t.invalidate()
-            emit(["event": "quit_ready", "words": self.pendingWords.count, "filing": self.filing])
+            emit(["event": "quit_ready", "words": self.pendingWords.count, "filing": self.filing, "translating": text.inFlight.count])
+            // an ⌥T still on its way: what was read is kept, marked interrupted (it went without a trace)
+            text.keepInterrupted()
             for b in self.cardBatches + Array(self.open.values) { b.flush() }       // every shots.jsonl line is on disk
             done()
         }

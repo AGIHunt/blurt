@@ -397,6 +397,7 @@
 "capture.menu.translate" = "截图翻译";
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
+"capture.text.still_translating" = "仍在翻译…";
 "capture.text.translate_failed" = "翻译失败，已复制原文";
 "capture.text.translate_needs_model" = "翻译需要云端模型或本机润色模型";
 "capture.text.translate_key" = "翻译服务的 Key 无效，已复制原文";
@@ -404,6 +405,7 @@
 "capture.text.translate_offline" = "无法连接翻译服务，已复制原文";
 "capture.text.try_again" = "再试一次";
 "capture.text.no_permission" = "截图取字需要「屏幕录制」权限";
+"capture.text.translate_no_permission" = "截图翻译需要「屏幕录制」权限";
 "capture.text.stale" = "无法读取屏幕，请重新授权「屏幕录制」";
 "capture.text.copied_paste" = "已复制 · ⌘V 粘贴";
 "capture.text.translation_pasted" = "已粘贴译文";

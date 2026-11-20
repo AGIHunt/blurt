@@ -1347,7 +1347,7 @@ final class IslandContent: NSView {
         var detail = parts.count > 1 ? parts[1...].joined(separator: " · ") : nil
         // a passive line still at work ("Organizing 4 captures…"): the spinner in the slot says "at work", the text says
         // what — no trailing dots to be read as text cut short
-        let working = t.passive && t.action == nil && headline.hasSuffix("…")
+        let working = (t.passive || t.working) && t.action == nil && headline.hasSuffix("…")
         if working { headline = String(headline.dropLast()) }
         // a detail line still at work ("Organizing it into items…" under "Recording saved"): a small spinner before it,
         // the headline keeps its own mark
