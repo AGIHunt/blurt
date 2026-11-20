@@ -907,8 +907,12 @@ struct DictationPane: View {
         return SettingRow("dictation.models", detail: detail) {
             switch s {
             case .loading: BrandSpinnerView()
-            case .missing: TextLinkButton(T("dictation.models.get_in_speech")) { SpeechPane.showDictationModels() }
-            case .coming, .ready: TextLinkButton(T("dictation.models.change")) { SpeechPane.showDictationModels() }
+            // a row's action is a bordered button, as Change… and Open History… two rows away; link ink is for links in
+            // running text (dogfood 2026-11-21)
+            case .missing: Button(T("dictation.models.get_in_speech")) { SpeechPane.showDictationModels() }
+                .buttonStyle(SettingsOutlinedButtonStyle())
+            case .coming, .ready: Button(T("dictation.models.change")) { SpeechPane.showDictationModels() }
+                .buttonStyle(SettingsOutlinedButtonStyle())
             }
         }
     }
