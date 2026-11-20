@@ -65,10 +65,10 @@ const NEARBY_PAUSE: Duration = Duration::from_secs(30);
 pub trait App: Send + Sync + 'static {
     /// The status changed (Settings, the tray).
     fn status(&self, _s: &Status) {}
-    /// The sentence a paired device hears when others were paired here since it was last in (anti-scam, remote-1.1.md §3), in the
-    /// app's language. `devices`: their names, joined; `host`: this computer's name.
     /// A file from `from` was saved to the Downloads folder as `name`: tell the person here.
     fn file_received(&self, _from: &str, _name: &str) {}
+    /// The sentence a paired device hears when others were paired here since it was last in, or when one is let in while it's
+    /// connected (anti-scam, remote-1.1.md §3), in the app's language. `devices`: their names, joined; `host`: this computer's name.
     fn new_pairing_notice(&self, devices: &str, host: &str) -> String {
         format!("New device paired with {host}: {devices}. If that wasn't you or your family, remove it on that computer.")
     }
@@ -219,6 +219,8 @@ struct Sess {
     key_sent: bool,
     /// a new phone the owner said yes to here, this session: it may also set the relay and drop the entry it replaces
     approved: bool,
+    /// the device it took the session from heard of it then (`take_over`), and isn't told again when it next comes in
+    told_to: Option<String>,
     /// the phone listed `move` (its stream can move onto the direct path): only such a phone is offered the go-between
     moves: bool,
     /// a computer driving this one (hello.features has `viewer`): its clipboard and keysCaptured count
@@ -1219,6 +1221,7 @@ impl Core {
                 pairing_key: None,
                 key_sent: false,
                 approved: false,
+                told_to: None,
                 moves: false,
                 viewer: false,
                 captured: false,
@@ -1291,13 +1294,31 @@ impl Core {
 
     fn take_over(&self, s: &mut State, sid: u64) {
         if let Some(old) = s.current.filter(|o| *o != sid) {
-            let new_id = s.sessions.get(&sid).and_then(|x| x.id.clone());
+            let (new_id, pairing, name) =
+                s.sessions.get(&sid).map(|x| (x.id.clone(), x.pairing_key.is_some(), x.name.clone())).unwrap_or_default();
             if let Some((ch, old_id)) = s.sessions.get(&old).map(|o| (o.chan.clone(), o.id.clone())) {
-                if old_id != new_id {
-                    ch.send(&ToPhone::Replaced);
+                match old_id {
+                    // anti-scam (remote-1.1.md §3): a device being let in for the first time is said to the one in use, before it
+                    // gives way. The sentence is the app's: the notice, Replaced and the close go together, in that order
+                    Some(old_id) if pairing && Some(&old_id) != new_id.as_ref() => {
+                        if let Some(x) = s.sessions.get_mut(&sid) {
+                            x.told_to = Some(old_id);
+                        }
+                        let host = self.cfg.name.clone();
+                        self.post(move |a| {
+                            ch.send(&ToPhone::Notice(a.new_pairing_notice(&name, &host)));
+                            ch.send(&ToPhone::Replaced);
+                            ch.close_after(Duration::from_millis(200));
+                        });
+                    }
+                    _ => {
+                        if old_id != new_id {
+                            ch.send(&ToPhone::Replaced);
+                        }
+                        ch.close_after(Duration::from_millis(200));
+                    }
                 }
                 self.closed_session(s, old);
-                ch.close_after(Duration::from_millis(200));
             }
         }
         s.current = Some(sid);
@@ -1920,10 +1941,9 @@ impl Core {
         }
         let name = x.name.clone();
         let kind = DeviceKind::of_hello(x.viewer);
+        // anti-scam: devices paired here since this one was last in are said to it, after its session (it listens from then on)
         let since = s.devices.iter().find(|d| d.id == id).and_then(|d| d.last_seen);
-        if let Some(since) = since {
-            self.tell_new_pairings(&x.chan, &id, since);
-        }
+        let notice = since.and_then(|since| self.new_pairings(&id, since));
         if let Some(d) = s.devices.iter_mut().find(|d| d.id == id) {
             d.last_seen = Some(now_ms());
             if !name.is_empty() {
@@ -1933,7 +1953,7 @@ impl Core {
             d.kind = kind;
             self.files.save_devices(&s.devices);
         }
-        self.begin(s, sid);
+        self.begin(s, sid, notice);
     }
 
     fn key_stored(&self, s: &mut State, sid: u64) {
@@ -1944,6 +1964,7 @@ impl Core {
         let (Some(id), Some(k), true) = (x.id.clone(), x.pairing_key, x.key_sent) else { return };
         x.pairing_key = None;
         let name = x.name.clone();
+        let told = x.told_to.clone();
         if let Err(e) = self.keys.put(&format!("remote-{id}"), &k) {
             self.log(json!({"event": "remote_key_store_failed", "why": e}));
         }
@@ -1961,12 +1982,12 @@ impl Core {
         self.files.change_connections(|l| {
             l.push(Connection { id: sid, device_id: id.clone(), name: name.clone(), start: now_ms(), end: None, route: None, paired: true })
         });
-        // a device already connected hears of it now; the others when they next come in
-        if let Some(other) = s.current.filter(|c| *c != sid).and_then(|c| s.sessions.get(&c)).filter(|x| x.chan.greeted.load(SeqCst)) {
-            let (chan, host) = (other.chan.clone(), self.cfg.name.clone());
-            self.post(move |a| chan.send(&ToPhone::Notice(a.new_pairing_notice(&name, &host))));
+        // the device connected when the owner said yes heard of it then (take_over); the others hear of it when they next come in
+        if let Some(d) = told.and_then(|t| s.devices.iter_mut().find(|d| d.id == t)) {
+            d.last_seen = Some(now_ms()); // not before the paired entry just logged
+            self.files.save_devices(&s.devices);
         }
-        self.begin(s, sid);
+        self.begin(s, sid, None);
         self.update_listening(s);
         // a relay connection still in the code's room goes; the next waits in the new key's
         if waiting_other(s, &id, sid) {
@@ -1975,7 +1996,8 @@ impl Core {
         self.update_relays(s);
     }
 
-    fn begin(&self, s: &mut State, sid: u64) {
+    /// `notice`: the devices paired since this one was last in, said right after the session message
+    fn begin(&self, s: &mut State, sid: u64, notice: Option<String>) {
         if let Some(x) = s.sessions.get_mut(&sid) {
             if !x.logged {
                 x.logged = true;
@@ -2035,6 +2057,10 @@ impl Core {
             }
             info.candidates = list;
             chan.send(&ToPhone::Session(info));
+            if let Some(list) = notice {
+                let (chan, host) = (chan.clone(), me.cfg.name.clone());
+                me.post(move |a| chan.send(&ToPhone::Notice(a.new_pairing_notice(&list, &host))));
+            }
             if chan.meet.load(SeqCst) {
                 // the go-between only introduces: no direct path within 8 s, and this session can't go on
                 let (me, chan) = (me.clone(), chan.clone());
@@ -2171,8 +2197,8 @@ impl Core {
         me.deliver(&chan, &plain);
     }
 
-    /// Devices paired here since `since` (ms), other than `id`, said to that device (anti-scam).
-    fn tell_new_pairings(&self, chan: &Arc<Chan>, id: &str, since: i64) {
+    /// Devices paired here since `since` (ms), other than `id`: their names, to be said to that device (anti-scam).
+    fn new_pairings(&self, id: &str, since: i64) -> Option<String> {
         let mut names: Vec<String> = self
             .files
             .connections()
@@ -2182,11 +2208,7 @@ impl Core {
             .collect();
         names.sort();
         names.dedup();
-        if names.is_empty() {
-            return;
-        }
-        let (list, host, chan) = (names.join(", "), self.cfg.name.clone(), chan.clone());
-        self.post(move |a| chan.send(&ToPhone::Notice(a.new_pairing_notice(&list, &host))));
+        (!names.is_empty()).then(|| names.join(", "))
     }
 
     // ------------------------------------------------------------------ the relay

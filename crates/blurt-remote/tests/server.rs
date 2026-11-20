@@ -428,12 +428,63 @@ async fn a_new_pairing_is_said_to_the_devices_already_paired() {
     drop(phone);
     until(|| h.status().connected.is_none().then_some(())).await;
     let mut pc = Phone::connect_with(at, &id, &key, mine).await.unwrap();
+    // after the session, where a device listens from (one that waits for Session first used to drop it)
+    pc.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::Session(_)).then_some(())).await.expect("session");
     let said = pc.wait(Duration::from_secs(3), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
     assert!(said.as_deref().is_some_and(|t| t.contains("Stranger")), "{said:?}");
     // said once: the next time it comes in, nothing
     drop(pc);
     until(|| h.status().connected.is_none().then_some(())).await;
     let mut pc = Phone::connect_with(at, &id, &key, Options { device: "Den PC".into(), ..Options::default() }).await.unwrap();
+    let again = pc.wait(Duration::from_secs(1), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
+    assert_eq!(again, None);
+    drop(pc);
+    h.stop();
+    tokio::task::spawn_blocking(move || drop(h)).await.unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Anti-scam (remote-1.1.md §3): a device paired while another is in use is said to that one at once, before it gives way (it used to
+/// hear only Replaced), and not again when it next comes in. A device that was away hears of it after its session, where it listens.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_pairing_is_said_to_the_device_in_use() {
+    use blurt_remote::phone::{Event, Options};
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    let pair_as = async |opts: Options| {
+        h.show_pairing(true);
+        let (link, p) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+        let at: SocketAddr = format!("127.0.0.1:{p}").parse().unwrap();
+        let code = Pairing::parse(&link).unwrap();
+        let mut d = Phone::connect_with(at, &code.device_id, &code.key, opts).await.unwrap();
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+        let asking = until(|| h.status().asking).await;
+        h.answer_pairing(true, Some(&asking.digits));
+        let key = d.wait(Duration::from_secs(3), |m| if let ToPhone::NewKey(k) = m { Some(k.clone()) } else { None }).await.expect("a key");
+        d.send(&ToMac::KeyStored).await;
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::Session(_)).then_some(())).await.expect("session");
+        (at, code.device_id, key, d)
+    };
+    let mine = Options { device: "Den PC".into(), ..Options::default() };
+    let (at, id, key, mut pc) = pair_as(mine.clone()).await;
+    let (_, _, _, phone) = pair_as(Options { device: "Stranger".into(), ..Options::default() }).await;
+    // what the device in use heard, in order, until it was let go
+    let mut heard = vec![];
+    while let Some(e) = pc.next(Duration::from_secs(2)).await {
+        match e {
+            Event::Control(ToPhone::Notice(t)) => heard.push(format!("notice {t}")),
+            Event::Control(ToPhone::Replaced) => heard.push("replaced".into()),
+            Event::Closed => break,
+            _ => {}
+        }
+    }
+    assert_eq!(heard.len(), 2, "{heard:?}");
+    assert!(heard[0].starts_with("notice") && heard[0].contains("Stranger"), "{heard:?}");
+    assert_eq!(heard[1], "replaced");
+    drop(phone);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    // said once: coming in again, nothing
+    let mut pc = Phone::connect_with(at, &id, &key, mine).await.unwrap();
     let again = pc.wait(Duration::from_secs(1), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
     assert_eq!(again, None);
     drop(pc);

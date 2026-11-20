@@ -194,6 +194,8 @@ final class RemoteServer {
         var keySent = false
         /// a new phone the owner said yes to on this Mac, this session: it may also set the relay, and drop the entry it replaces
         var approved = false
+        /// the device it took the session from heard of it then (`takeOver`), and isn't told again when it next comes in
+        var toldTo: String?
         /// revealed in the hello: with the handshake it makes the six digits
         var nonce: Data?
         /// when the question was asked: unanswered for two minutes, it's a no
@@ -934,7 +936,14 @@ final class RemoteServer {
         }
         // the phone that had the session gives way
         if let old = session, old !== s {
-            if old.id != s.id { old.channel.send(ToPhone.replaced) }
+            if old.id != s.id {
+                // anti-scam (remote-1.1.md §3): a device being let in for the first time is said to the one in use, before it gives way
+                if s.pairingKey != nil, let oldID = old.id {
+                    old.channel.send(ToPhone.notice(Self.newPairingNotice(PhoneStatus.name(s.name))))
+                    s.toldTo = oldID
+                }
+                old.channel.send(ToPhone.replaced)
+            }
             closed(old)
             old.channel.queue.asyncAfter(deadline: .now() + 0.2) { old.channel.close() }
         }
@@ -992,11 +1001,15 @@ final class RemoteServer {
         if let s = session { s.channel.close(); closed(s) }
     }
 
-    private func tellNewPairings(_ s: Session, since: Date) {
+    /// The devices paired here since `since`, other than `s` itself, as the notice it hears after its session (anti-scam, remote-1.1.md §3).
+    private func newPairings(_ s: Session, since: Date) -> String? {
         let names = RemoteConnectionLog.all().filter { $0.paired && $0.deviceID != s.id && $0.start > since }.map { PhoneStatus.name($0.name) }
-        guard !names.isEmpty else { return }
-        let list = ListFormatter.localizedString(byJoining: Array(Set(names)).sorted())
-        s.channel.send(ToPhone.notice(T("remote.notice.new_pairing", list, Host.current().localizedName ?? "Mac")))
+        guard !names.isEmpty else { return nil }
+        return Self.newPairingNotice(ListFormatter.localizedString(byJoining: Array(Set(names)).sorted()))
+    }
+
+    private static func newPairingNotice(_ names: String) -> String {
+        T("remote.notice.new_pairing", names, Host.current().localizedName ?? "Mac")
     }
 
     /// The person at this Mac ended the session (the "being controlled" bar): the device hears `ended` first, so it waits for its user
@@ -1312,16 +1325,18 @@ final class RemoteServer {
             return
         }
         var list = devices()
+        var notice: String?
         if let i = list.firstIndex(where: { $0.id == id }) {
-            // anti-scam: devices paired here since this one was last in are said to it (remote-1.1.md §3)
-            if let since = list[i].lastSeen { tellNewPairings(s, since: since) }
+            // anti-scam: devices paired here since this one was last in are said to it (remote-1.1.md §3), after its session: a device
+            // listens from `session` on
+            if let since = list[i].lastSeen { notice = newPairings(s, since: since) }
             list[i].lastSeen = Date()
             list[i].name = s.name
             // what it is, as its hello says: a record from before kinds were kept (nil: a phone) learns it here
             list[i].kind = s.viewer ? "computer" : nil
             save(list)
         }
-        begin(s)
+        begin(s, notice: notice)
     }
 
     /// Settings: yes or no to the phone that used the code over the relay.
@@ -1349,19 +1364,19 @@ final class RemoteServer {
         guard session === s, s.keySent, let id = s.id, let k = s.pairingKey else { return }
         s.pairingKey = nil
         store(k, for: id)
-        save(devices() + [Device(id: id, name: s.name, added: Date(), lastSeen: Date(), kind: s.viewer ? "computer" : nil)])
         RemoteConnectionLog.paired(id, name: s.name)
-        // a device already connected hears of it now; the others when they next come in
-        if let other = session, other !== s, other.greeted {
-            other.channel.send(ToPhone.notice(T("remote.notice.new_pairing", PhoneStatus.name(s.name), Host.current().localizedName ?? "Mac")))
-        }
+        // the device connected when the owner said yes heard of it then (takeOver); the others hear of it when they next come in
+        var list = devices() + [Device(id: id, name: s.name, added: Date(), lastSeen: Date(), kind: s.viewer ? "computer" : nil)]
+        if let told = s.toldTo, let i = list.firstIndex(where: { $0.id == told }) { list[i].lastSeen = Date() }
+        save(list)
         begin(s)
         // a relay connection still in the code's room goes; the next waits in the new key's
         if let r = relays[id], r !== s { relays[id] = nil; r.channel.close() }
         updateRelays()
     }
 
-    private func begin(_ s: Session) {
+    /// `notice`: said right after the session message (a device listens from that on)
+    private func begin(_ s: Session, notice: String? = nil) {
         s.greeted = true
         if session === s {
             status.viaRelay = s.channel.isRelay
@@ -1377,6 +1392,7 @@ final class RemoteServer {
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                                                              candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: self.relayFor(s),
                                                              platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.privacy, RemoteFeature.files])))
+            if let notice { s.channel.send(ToPhone.notice(notice)) }
             if s.goBetween { self.awaitDirect(s) }
         }
         if s.channel.isRelay {
