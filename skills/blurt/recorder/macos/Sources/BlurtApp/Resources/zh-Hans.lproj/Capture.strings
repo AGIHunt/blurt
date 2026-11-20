@@ -343,6 +343,8 @@
 "capture.voice.structured_on" = "结构化：结束后整理成清单，仅保留更正后的说法 · 再双击 ⇧ 切回";
 "capture.voice.structured_off" = "已切回原话";
 "capture.voice.structure_failed" = "无法整理为结构化内容，已保留原话";
+"capture.voice.structuring" = "正在整理…";
+"capture.voice.structure_no_server" = "润色模型没有启动，已保留原话";
 "capture.voice.structure_needs_model" = "整理需要云端模型或本机润色模型，已保留原话";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";

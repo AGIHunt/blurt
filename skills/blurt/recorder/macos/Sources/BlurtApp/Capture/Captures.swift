@@ -456,8 +456,10 @@ final class Snapper {
 
     /// A Structured voice note's words → the polish model's structuring pass (Dictation.structure: the request
     /// dictation's Structured makes — lists laid out, self-corrections settled, a paragraph left one). The card's note
-    /// is its text, the transcript stays as `said_raw` (BlurtCore VoiceNoteStructure); no model or a refusal: the
-    /// transcript, and the island says so.
+    /// is its text, the transcript stays as `said_raw` (BlurtCore VoiceNoteStructure). "Structuring…" is on the island
+    /// meanwhile (it showed only the card count for up to 12 s). A polish server that didn't come up (a uv failure, the
+    /// first use offline, its idle exit racing the note): `polish.py run --style structured` through the CLI, as ⌥T
+    /// does. No model: what it takes; still nothing: the transcript, why, and Try Again.
     private func structureWords(_ s: Shot, _ raw: String, key: ObjectIdentifier, take: Int, via: String) {
         let vocab = DictationVocabulary.shared.payload()
         let t0 = CACurrentMediaTime()
@@ -465,26 +467,59 @@ final class Snapper {
         let noModel = DictationCloud.payload() == nil && Dictation.shared.polishModel == nil
         s.transcription = .pending
         hanging.update(s)
+        var working = Island.Toast(text: Loc.t("capture.voice.structuring", table: "Capture"), actionTitle: nil, action: nil)
+        working.key = "voice-style"
+        working.working = true
+        working.seconds = Dictation.loadBudget + Dictation.structureTimeout + 60
+        if !noModel { island.toast(working) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
+            var viaCLI = false
+            var r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
                 ?? Dictation.structure(raw, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
                                        cloud: DictationCloud.payload())
-            let fellBack = r == nil || r?["fell_back"] as? Bool == true
+            // no server to ask (it never came up): the CLI loads the model itself
+            if r == nil, !noModel, Snapper.testStructure == nil, !WarmServer.running("polish-serve") {
+                viaCLI = true
+                let sem = DispatchSemaphore(value: 0)
+                Task {
+                    do {
+                        r = try await ScriptRunner.shared.json("polish.py", ["run", "--style", "structured", "--stdin", "--no-server"],
+                                                               stdin: Data(raw.utf8), timeout: 60)
+                    } catch ScriptError.failed(_, let stdout, _) {
+                        r = Scripts.json(stdout)
+                    } catch {}
+                    sem.signal()
+                }
+                sem.wait()
+                if r?["ok"] as? Bool != true, r?["code"] as? String != "model_missing" { r = nil }
+            }
+            let serverDown = !WarmServer.running("polish-serve")
+            let fellBack = r == nil || r?["fell_back"] as? Bool == true || r?["ok"] as? Bool == false
             let text = fellBack ? nil : r?["text"] as? String
             DispatchQueue.main.async {
                 let k = VoiceNoteStructure.keep(raw: raw, structured: text)
                 emit(["event": "voice_structure", "n": s.n, "ms": Int((CACurrentMediaTime() - t0) * 1000),
-                      "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? NSNull(),
-                      "changed": k.raw != nil])
+                      "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? r?["code"] ?? NSNull(),
+                      "changed": k.raw != nil, "cli": viaCLI])
                 s.saidRaw = k.raw
-                if r?["reason"] as? String == "model_missing" || (r == nil && noModel) {
+                if r?["reason"] as? String == "model_missing" || r?["code"] as? String == "model_missing" || (r == nil && noModel) {
                     // say what it takes, with the way there (a bare "couldn't" would fail the same way every note)
                     island.toast(Loc.t("capture.voice.structure_needs_model", table: "Capture"), key: "voice-style", seconds: 8,
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation"), action: {
                         AppEnvironment.settings?.show(pane: "speech/speech.polish")
                     })
-                } else if r == nil {
-                    island.toast(Loc.t("capture.voice.structure_failed", table: "Capture"), key: "voice-style", seconds: 5)
+                } else if fellBack {
+                    // why, and Try Again on the same words (the Structured choice isn't lost for this note)
+                    island.toast(Loc.t(serverDown ? "capture.voice.structure_no_server" : "capture.voice.structure_failed", table: "Capture"),
+                                 key: "voice-style", icon: .warning, seconds: 8,
+                                 actionTitle: Loc.t("capture.text.try_again", table: "Capture"), action: { [weak self] in
+                        guard let self = self, !s.deleted else { return }
+                        emit(["event": "voice_structure_retry", "n": s.n])
+                        Dictation.shared.warmPolish()
+                        self.structureWords(s, raw, key: key, take: take, via: "retry")
+                    })
+                } else {
+                    island.dropToasts(key: "voice-style")       // the note is its structured text now: nothing to say
                 }
                 self.wordsArrived(s, k.said, key: key, take: take, via: via, structured: true)
             }
