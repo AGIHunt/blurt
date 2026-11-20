@@ -98,6 +98,15 @@
 "viewer.add.check" = "Allow this Mac on %@ if it shows the same digits.";
 "viewer.add.refused" = "%@ didn’t allow this Mac.";
 "viewer.add.unreachable" = "Can’t reach %@.";
+"viewer.add.unreachable.help" = "Make sure %@ is on and Blurt is open there.";
+"viewer.add.unreachable.help.link" = "Make sure %@ is on and Blurt is open there. A copied link works for 10 minutes.";
+"viewer.add.expired" = "This link has expired or was already used.";
+"viewer.add.new_link" = "On %@, open Add Device, choose Copy Link and paste the new link here.";
+"viewer.add.not_now" = "%@ isn’t taking a new computer right now. Try again in a minute.";
+"viewer.add.unanswered" = "No one answered on %@ in time.";
+"viewer.add.back" = "Back";
+"viewer.add_again" = "Add Again…";
+"viewer.state.removed" = "Removed this Mac";
 "viewer.connecting" = "Connecting…";
 "viewer.unreachable" = "Can’t reach %@.";
 "viewer.unreachable.mac" = "Can’t reach %@. If it restarted with FileVault on, someone needs to enter its password at the computer first.";

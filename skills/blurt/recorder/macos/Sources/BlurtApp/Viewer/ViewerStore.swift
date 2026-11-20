@@ -27,7 +27,11 @@ final class ViewerStore: ObservableObject {
     struct Pairing: Equatable {
         var name: String
         var check: String?
+        /// what went wrong, and what to do about it (a second line, or nil)
         var failed: String?
+        var help: String?
+        /// the same link, or the computer found nearby, can still work: Try Again (else Back, for a new link)
+        var canRetry = false
     }
 
     @Published private(set) var computers: [RemoteComputer] = []
@@ -37,11 +41,20 @@ final class ViewerStore: ObservableObject {
         didSet { objectWillChange.send() }
     }
     @Published private(set) var pairing: Pairing?
+    /// the Add Computer sheet's link field: kept here, so Back after a failure finds the link still in it
+    @Published var linkText = ""
+    /// a pairing ended paired (its window opened): the sheet's job is done
+    @Published private(set) var pairedCount = 0
+    /// computers that refused this Mac's key this run, with no session (`.forgotten`): said in the list, the key kept (anyone on the
+    /// network can send a refusal); cleared when one connects
+    @Published private(set) var refused: Set<String> = []
     /// a computer's last try through the public connection service didn't work (its window says why): until it connects, Try Again, or
     /// another network
     @Published private(set) var failed: [String: RemoteViewerLink.Away] = [:]
     private let network = NWPathMonitor()
     private var pairingLink: RemoteViewerLink?
+    /// how the pairing under way began: Try Again starts it again the same way
+    private var pairingStart: (computer: RemoteComputer, key: Data, endpoint: NWEndpoint?)?
     private var browser: NWBrowser?
     private var watchers: Set<String> = []
     /// what each computer's relay said lately (`peek`), while a list of computers is on screen: asleep since, last seen
@@ -92,7 +105,10 @@ final class ViewerStore: ObservableObject {
 
     /// A computer heard from: its name, system, addresses and relay as it said them this session.
     func save(_ c: RemoteComputer) {
+        var c = c
         if let i = computers.firstIndex(where: { $0.id == c.id }) {
+            // a window's late word on a computer that removed this Mac doesn't bring it back; pairing again (a new device id) does
+            if computers[i].removed == true, computers[i].deviceID == c.deviceID { c.removed = true }
             // paired again (a new device id): the old key goes
             if computers[i].deviceID != c.deviceID { ViewerKeys.remove(computers[i].deviceID) }
             computers[i] = c
@@ -112,6 +128,28 @@ final class ViewerStore: ObservableObject {
 
     func key(_ c: RemoteComputer) -> Data? { ViewerKeys.read(c.deviceID) }
 
+    /// A window's link heard that the computer let this Mac go. `inSession`: said in a session it had opened, so it's so: the key goes and
+    /// the list says Removed until it's added again. Otherwise (a refused key, which anyone on the network can send) only this run's
+    /// list says so, and the key stays.
+    func hostRemoved(_ id: String, inSession: Bool) {
+        guard let i = computers.firstIndex(where: { $0.id == id }) else { return }
+        if inSession {
+            guard computers[i].removed != true else { return }
+            computers[i].removed = true
+            ViewerKeys.remove(computers[i].deviceID)
+            persist()
+        } else {
+            refused.insert(id)
+        }
+        emit(["event": "viewer_computer", "state": inSession ? "removed_by_host" : "refused"])
+    }
+
+    /// Add Computer, from a row or a window that says the computer removed this Mac: the Computers window and its sheet.
+    func requestAdd() {
+        ComputersWindowController.shared.show()
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .viewerAdd, object: nil) }
+    }
+
     // MARK: the list's words
 
     /// The path, in the agreed terms (copy.md).
@@ -130,7 +168,7 @@ final class ViewerStore: ObservableObject {
     func row(_ c: RemoteComputer) -> Row {
         let l = live[c.id]
         return RemoteViewerRow.of(c, connected: l != nil, route: l?.route, nearby: nearby.contains { $0.id == c.id }, failed: failed[c.id],
-                                  presence: presence[c.id])
+                                  presence: presence[c.id], refused: refused.contains(c.id))
     }
 
     /// The way being tried, before it's up: the public connection service until the move, the owner's relay, the same network.
@@ -151,6 +189,7 @@ final class ViewerStore: ObservableObject {
         case let .asleep(d): T("viewer.state.asleep", Self.clock(d))
         case let .offline(d?): T("viewer.state.offline", Self.when(d))
         case .offline(nil): T("viewer.state.offline.never")
+        case .removed: T("viewer.state.removed")
         }
     }
 
@@ -182,10 +221,14 @@ final class ViewerStore: ObservableObject {
     // MARK: open windows
 
     func liveChanged(_ id: String, route: RemoteViewerLink.Route?, rtt: Double?, open: Bool) {
-        if open { live[id] = (route, rtt) } else { live[id] = nil }
+        if open { live[id] = (route, rtt); refused.remove(id) } else { live[id] = nil }
     }
 
-    func open(_ c: RemoteComputer) { ViewerWindowController.open(c) }
+    /// Its window; a computer that removed this Mac has no key to open one with: Add Computer instead.
+    func open(_ c: RemoteComputer) {
+        if c.removed == true { return requestAdd() }
+        ViewerWindowController.open(c)
+    }
 
     // MARK: nearby
 
@@ -244,8 +287,10 @@ final class ViewerStore: ObservableObject {
 
     // MARK: adding
 
-    /// Nearby computers not paired yet, for the Add Computer sheet.
-    var unpaired: [Nearby] { nearby.filter { n in !computers.contains { $0.id == n.id } } }
+    /// Nearby computers not paired yet, for the Add Computer sheet (one that removed this Mac counts: it's added again).
+    var unpaired: [Nearby] {
+        nearby.filter { n in !computers.contains { $0.id == n.id && $0.removed != true && !refused.contains($0.id) } }
+    }
 
     /// Pair with one found on this network: the host shows six digits and asks its owner; this sheet shows the same six.
     func pair(_ n: Nearby) {
@@ -256,44 +301,85 @@ final class ViewerStore: ObservableObject {
     /// A pasted pairing link (the host's 添加设备 / Add Device). False when it isn't one.
     @discardableResult func pair(link text: String) -> Bool {
         guard let u = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), let p = RemotePairing(url: u) else { return false }
+        // kept for Back: the field shows the link that was used
+        linkText = text
         startPairing(RemoteComputer(pairing: p), key: p.key, endpoint: nil)
         return true
     }
 
     private func startPairing(_ c: RemoteComputer, key: Data, endpoint: NWEndpoint?) {
-        cancelPairing()
+        cancelPairing(keepLink: true)
         pairing = Pairing(name: c.name)
+        pairingStart = (c, key, endpoint)
         let link = RemoteViewerLink(computer: c, key: key, deviceName: Host.current().localizedName ?? "Mac", pairing: true, endpoint: endpoint)
         link.onNewKey = { c, k in ViewerKeys.store(k, c.deviceID) }
+        let byLink = endpoint == nil
         link.onState = { [weak self, weak link] s in
             MainActor.assumeIsolated {
                 guard let self, let link, self.pairingLink === link else { return }
+                let name = link.computer.name
+                @MainActor func fail(_ text: String, _ help: String?, retry: Bool) {
+                    self.pairing?.check = nil
+                    self.pairing?.failed = text
+                    self.pairing?.help = help
+                    self.pairing?.canRetry = retry
+                }
                 switch s {
-                case let .waiting(check): self.pairing?.check = check
+                case .connecting:
+                    // Try Again: what went wrong is gone until it goes wrong again
+                    self.pairing?.failed = nil
+                    self.pairing?.help = nil
+                case let .waiting(check):
+                    // the other computer asks its owner now, whatever was said before (it may have woken after "Can't reach"): the
+                    // digits take the place of the failure, so they can be compared
+                    self.pairing?.check = check
+                    self.pairing?.failed = nil
+                    self.pairing?.help = nil
                 case .connected:
                     // paired: the computer is saved, and its window opens on this very session
                     self.save(link.computer)
                     self.pairingLink = nil
+                    self.pairingStart = nil
                     self.pairing = nil
+                    self.linkText = ""
+                    self.pairedCount += 1
                     emit(["event": "viewer_pairing", "state": "paired", "platform": link.computer.platform ?? ""])
                     ViewerWindowController.open(link.computer, adopting: link)
-                case .forgotten:
-                    self.pairing?.failed = T("viewer.add.refused", link.computer.name)
+                case let .pairingFailed(why):
+                    // a link's code is spent by now whatever happened (Back, for a new one); nearby, asking again is a new question
+                    switch why {
+                    case .spent where byLink: fail(T("viewer.add.expired"), T("viewer.add.new_link", name), retry: false)
+                    case .spent: fail(T("viewer.add.not_now", name), nil, retry: true)
+                    case .declined: fail(T("viewer.add.refused", name), byLink ? T("viewer.add.new_link", name) : nil, retry: !byLink)
+                    case .unanswered: fail(T("viewer.add.unanswered", name), byLink ? T("viewer.add.new_link", name) : nil, retry: !byLink)
+                    }
+                    link.stop()
+                    self.pairingLink = nil
+                    emit(["event": "viewer_pairing", "state": "failed", "why": why.rawValue, "link": byLink])
+                case .forgotten, .removed:
+                    // not from a pairing link (its refusals are pairingFailed); said all the same
+                    fail(T("viewer.add.refused", name), byLink ? T("viewer.add.new_link", name) : nil, retry: !byLink)
                     link.stop()
                     self.pairingLink = nil
                 case .unreachable:
-                    self.pairing?.failed = T("viewer.add.unreachable", link.computer.name)
+                    // it goes on trying meanwhile: if the other computer turns up and asks, its digits replace this
+                    fail(T("viewer.add.unreachable", name), T(byLink ? "viewer.add.unreachable.help.link" : "viewer.add.unreachable.help", name),
+                         retry: true)
+                    emit(["event": "viewer_pairing", "state": "failed", "why": "unreachable", "link": byLink])
                 case let .away(a) where !link.pairing:
                     // paired over the public connection service, and then it couldn't connect directly: the computer is kept, and its
                     // window says why and offers Try Again
                     self.save(link.computer)
                     self.failed[link.computer.id] = a
                     self.pairingLink = nil
+                    self.pairingStart = nil
                     self.pairing = nil
+                    self.linkText = ""
+                    self.pairedCount += 1
                     emit(["event": "viewer_pairing", "state": "paired", "away": a.rawValue])
                     ViewerWindowController.open(link.computer, adopting: link)
                 case let .away(a):
-                    self.pairing?.failed = T(a == .busy ? "viewer.busy" : a == .relayDown ? "viewer.relay_down.short" : "viewer.no_direct")
+                    fail(T(a == .busy ? "viewer.busy" : a == .relayDown ? "viewer.relay_down.short" : "viewer.no_direct"), nil, retry: a != .busy)
                 default: break
                 }
             }
@@ -309,10 +395,30 @@ final class ViewerStore: ObservableObject {
         emit(["event": "viewer_pairing", "state": "started", "nearby": endpoint != nil])
     }
 
-    func cancelPairing() {
+    /// The failed sheet's Try Again: the same link (or the computer found nearby) once more. A link still trying asks again from now;
+    /// one that ended starts over.
+    func retryPairing() {
+        if let l = pairingLink {
+            pairing?.failed = nil
+            pairing?.help = nil
+            l.tryAgain()
+        } else if let s = pairingStart {
+            startPairing(s.computer, key: s.key, endpoint: s.endpoint)
+        }
+    }
+
+    /// The failed sheet's Back: the sheet's first page, the pasted link still in its field.
+    func backFromPairing() {
+        cancelPairing(keepLink: true)
+    }
+
+    /// Cancel (the sheet closes, and the link with it), Back, or another pairing starting.
+    func cancelPairing(keepLink: Bool = false) {
+        if !keepLink { linkText = "" }
         if let l = pairingLink, l.pairing { ViewerKeys.remove(l.computer.deviceID) }
         pairingLink?.stop()
         pairingLink = nil
+        pairingStart = nil
         pairing = nil
     }
 

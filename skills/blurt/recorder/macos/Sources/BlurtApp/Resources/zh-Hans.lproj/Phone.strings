@@ -98,6 +98,15 @@
 "viewer.add.check" = "如果 %@ 显示的数字相同，请在那台电脑上允许。";
 "viewer.add.refused" = "%@ 未允许本机。";
 "viewer.add.unreachable" = "无法连接 %@。";
+"viewer.add.unreachable.help" = "请确认 %@ 已开机，并且打开了口喷鸡。";
+"viewer.add.unreachable.help.link" = "请确认 %@ 已开机，并且打开了口喷鸡。拷贝的链接 10 分钟内有效。";
+"viewer.add.expired" = "这个链接已过期或已被用过。";
+"viewer.add.new_link" = "请在 %@ 上打开“添加设备”，选“拷贝链接”，把新链接粘贴到这里。";
+"viewer.add.not_now" = "%@ 暂时不接受新电脑，请过一分钟再试。";
+"viewer.add.unanswered" = "%@ 那边没有人及时回应。";
+"viewer.add.back" = "返回";
+"viewer.add_again" = "重新添加…";
+"viewer.state.removed" = "已移除本机";
 "viewer.connecting" = "正在连接…";
 "viewer.unreachable" = "无法连接 %@。";
 "viewer.unreachable.mac" = "无法连接 %@。如果它重启过且开了 FileVault，需要有人先在电脑前输一次密码。";

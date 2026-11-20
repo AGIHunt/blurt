@@ -22,6 +22,8 @@ public struct RemoteComputer: Codable, Hashable, Identifiable, Sendable {
     /// "mac", "windows", "linux"; nil until the host says
     public var platform: String?
     public var lastSeen: Date?
+    /// the host removed this viewer, said in a session it had opened: its key is gone, and it has to be added again (nil before 1.1)
+    public var removed: Bool?
     public init(id: String, deviceID: String, name: String, port: UInt16, addresses: [String], relayAddress: String? = nil, platform: String? = nil, lastSeen: Date? = nil) {
         self.id = id; self.deviceID = deviceID; self.name = name; self.port = port; self.addresses = addresses; self.relayAddress = relayAddress
         self.platform = platform; self.lastSeen = lastSeen
@@ -42,8 +44,13 @@ public final class RemoteViewerLink {
         /// pairing: the host shows these six digits and waits for its owner's yes
         case waiting(check: String)
         case connected
-        /// the host has forgotten this viewer, or turned its pairing down
+        /// the host refused this viewer's key with no session (it may have removed it; anyone on the network can send a refusal, so the
+        /// key is kept)
         case forgotten
+        /// the host removed this viewer, said in a session it had opened
+        case removed
+        /// a pairing that ended without a key: nothing more until the user starts another
+        case pairingFailed(PairingFailure)
         /// another device took the host
         case replaced
         /// the person at the computer ended the session: nothing more until the user reconnects
@@ -52,6 +59,17 @@ public final class RemoteViewerLink {
         /// limit. Stays until the backoff (30 s, 2 min, 10 min, hourly) lets the service be asked again and that works, a network change,
         /// or Try Again (no direct path only)
         case away(Away)
+    }
+
+    /// How a pairing ended without a key. The host never says which (a bare close, or a refused handshake), so it's read from when:
+    public enum PairingFailure: String, Sendable {
+        /// refused before anyone was asked: a link's code ran out or was used already; nearby, the host isn't taking a new computer now
+        /// (it's asking about another, or was just told no)
+        case spent
+        /// the question was asked and the host let go: its owner said no
+        case declined
+        /// the question was asked and nobody answered: the host gives up after its two minutes
+        case unanswered
     }
 
     /// How the session came, in the agreed terms (copy.md): 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务
@@ -131,6 +149,10 @@ public final class RemoteViewerLink {
     var moveOnRelay = false
     /// a second window on the same computer (another display): the host keeps the first window's session beside this one
     public var extraWindow = false
+    /// how long a host asks its owner about a new device before it takes the silence as a no (RemoteServer's and blurt-remote's
+    /// `pairingLife`): a close that late is "nobody answered", not "no"
+    var questionLife = 120.0
+    private var waitingSince: Double?
 
     public init(computer: RemoteComputer, key: Data, deviceName: String, pairing: Bool = false, endpoint: NWEndpoint? = nil, relayOnly: String? = nil,
                 callbacks: DispatchQueue = .main) {
@@ -316,7 +338,7 @@ public final class RemoteViewerLink {
         queue.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, self.channel == nil, self.active, g == self.generation else { return }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
-            if self.refused { self.set(.forgotten); return }
+            if self.refused { self.set(self.pairing ? .pairingFailed(.spent) : .forgotten); return }
             if let a = self.away { self.set(.away(a)) } else if let f = self.firstAttempt, CACurrentMediaTime() - f > 8 { self.set(.unreachable) }
             self.cancelAttempts(keepRelay: CACurrentMediaTime() - self.lastRelayTry < 9)
             self.connect()
@@ -526,13 +548,26 @@ public final class RemoteViewerLink {
         c?.close()
         session = nil
         setRoute(nil)
-        guard active, state != .forgotten, state != .replaced, state != .ended else { return }
-        // a pairing that lost its way before its key was kept starts again from the code: the host has spent it
-        if pairing, case .waiting = state { set(.forgotten); return }
+        guard active, !stays else { return }
+        // a pairing that lost its way before its key was kept can't go on: the host has spent the code. A close near the end of the
+        // host's question is its own no to the silence
+        if pairing, case .waiting = state {
+            let waited = waitingSince.map { CACurrentMediaTime() - $0 } ?? 0
+            set(.pairingFailed(waited >= questionLife * 0.9 ? .unanswered : .declined))
+            return
+        }
         awaitingMove = false
         // a reason away didn't work stays said; the next round goes on in the background, the service only once its wait is over
         if let a = away { set(.away(a)) } else { set(.connecting) }
         connect()
+    }
+
+    /// a state that stays until the user does something (or, replaced and ended, takes the host back)
+    private var stays: Bool {
+        switch state {
+        case .forgotten, .removed, .replaced, .ended, .pairingFailed: true
+        default: false
+        }
     }
 
     // MARK: what the host says
@@ -572,6 +607,7 @@ public final class RemoteViewerLink {
         case .udpOK:
             channel?.udpConfirmed()
         case .pairingWaits:
+            waitingSince = CACurrentMediaTime()
             set(.waiting(check: channel?.check ?? ""))
         case let .newKey(k):
             guard k.count == 32 else { return }
@@ -582,7 +618,7 @@ public final class RemoteViewerLink {
             let c = computer
             callbacks.async { self.onComputer?(c) }
         case .removed:
-            set(.forgotten)
+            set(.removed)
             active = false
             channel?.close()
         case .replaced:
@@ -645,12 +681,16 @@ public enum RemoteViewerRow: Equatable, Sendable {
     /// its relay says it went to sleep then (it said so before sleeping)
     case asleep(Date)
     case offline(Date?)
+    /// it removed this viewer (or refused its key this run): Add Again, not Connect
+    case removed
 
     /// `connected`: a window has a session with it. `failed`: why its last try through the public connection service didn't work.
     /// `presence`: what its relay said lately (`peek`); a computer not waiting there is asleep or offline, not "available".
+    /// `refused`: it refused this viewer's key this run, with no session (not saved: anyone on the network can send that)
     public static func of(_ c: RemoteComputer, connected: Bool, route: RemoteViewerLink.Route?, nearby: Bool,
-                          failed: RemoteViewerLink.Away?, presence: RemotePresence? = nil) -> RemoteViewerRow {
+                          failed: RemoteViewerLink.Away?, presence: RemotePresence? = nil, refused: Bool = false) -> RemoteViewerRow {
         if connected { return .connected(route) }
+        if c.removed == true || refused { return .removed }
         if nearby { return .available(.local) }
         if let p = presence, !p.host, failed != .relayDown {
             if let a = p.asleep { return .asleep(a) }

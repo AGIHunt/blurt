@@ -23,6 +23,19 @@ What it doesn't need from the phone: the key deck, the touch gestures, the zoome
   - On the same network, nearby Blurt computers are listed, found by DNS-SD `_blurt-remote._tcp`. Choosing one starts pairing. The host
     shows six digits and asks for a yes, as for a new phone; the viewer shows the same six digits.
   - Away, the user pastes the pairing link from the host's 添加设备 / Add Device (`blurtremote://pair?…`).
+  - **When it doesn't pair** (1.1.0, Mac viewer; `RemoteViewerLink.State.pairingFailed`), the host never says why (a refused handshake
+    or a bare close), so the viewer reads it from when, and each case says what to do next. The sheet is never a dead end: Try Again
+    where the same link or nearby computer can still work, else Back to the link field with the link still in it; Cancel closes.
+    - refused before anyone was asked (`spent`): a link → 这个链接已过期或已被用过。 + how to get a new one (Back); nearby → the host
+      isn't taking a new computer now (it's asking about another, or was just told no) + Try Again.
+    - closed while the question was up (`declined`): %@ 未允许本机。 A close at 90 % of the host's 120 s question or later
+      (`unanswered`): %@ 那边没有人及时回应。 A link's code is spent either way (Back); nearby, Try Again asks again.
+    - can't reach it: 无法连接 %@。 + what to check (a copied link lasts 10 minutes) + Try Again / Back. The link keeps trying
+      meanwhile: if the host turns up and asks, its six digits replace the failure, so the anti-scam check can be done.
+  - **A computer that removed this Mac** (the host's `removed` in a session, `State.removed`): its key is deleted, the record kept with
+    `removed`, and its row says 已移除本机 with 重新添加… in place of Connect (the window's cover offers the same). A key refused with no
+    session (`forgotten`, which anyone on the network can send) says the same for this run only and keeps the key. Adding it again
+    replaces the record by the host's id. Tests: BlurtRemoteKitTests `RemoteViewerPairingTests`.
 
 **A window per computer.** Several computers at once means several windows. Keys go only to the window in front. On a Mac the windows
 can merge into tabs, the system's way.

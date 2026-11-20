@@ -17,6 +17,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private let screen: RemoteViewerScreen
     private let picture = ViewerPictureView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
     private let overlay = NSStackView()
+    /// the overlay's dark card, behind the sentence and its button
+    private let overlayCard = NSView()
     private let overlayText = NSTextField(wrappingLabelWithString: "")
     private let overlayButton = NSButton(title: "", target: nil, action: nil)
     /// another window of a computer already open: the host keeps it beside the first
@@ -300,9 +302,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             // a Mac that restarted with FileVault on waits for its disk password at the computer: nothing reaches it before that
             showOverlay(T(host == .mac ? "viewer.unreachable.mac" : "viewer.unreachable", name), button: (T("viewer.retry"), #selector(retry)))
         case .waiting: showOverlay(T("viewer.connecting"), button: nil)
-        case .forgotten:
+        case .forgotten, .removed:
+            // its key is no good there now: the way back is to add it again (removed in a session is certain, and the list says so
+            // until then; a refused key alone only for this run, the key kept)
             stopPicture()
-            showOverlay(T("viewer.forgotten", name), button: nil)
+            ViewerStore.shared.hostRemoved(computer.id, inSession: s == .removed)
+            showOverlay(T("viewer.forgotten", name), button: (T("viewer.add_again"), #selector(addAgain)))
+        case .pairingFailed:
+            // a pairing's own end, said in the Add Computer sheet; a window only ever adopts a link that paired
+            stopPicture()
+            showOverlay(T("viewer.forgotten", name), button: (T("viewer.add_again"), #selector(addAgain)))
         case .replaced:
             stopPicture()
             showOverlay(T("viewer.replaced", name), button: (T("viewer.take_over"), #selector(takeOver)))
@@ -373,8 +382,15 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func updateSubtitle() {
         guard let w = window else { return }
-        // before it's up: the way being tried (公共连接服务 until the move); then the real path and the round trip
-        guard link.state == .connected else { w.subtitle = ViewerStore.trying(link.trying); return }
+        // before it's up: the way being tried (公共连接服务 until the move), only while it is being tried; a state that waits on the user
+        // (can't reach, ended, removed…) names no path, which would read as if it worked. Then the real path and the round trip
+        guard link.state == .connected else {
+            switch link.state {
+            case .connecting, .waiting, .away(.relayDown): w.subtitle = ViewerStore.trying(link.trying)
+            default: w.subtitle = ""
+            }
+            return
+        }
         let path = ViewerStore.path(link.route)
         w.subtitle = link.rtt.map { T("viewer.path_rtt", path, max(1, Int(($0 * 1000).rounded()))) } ?? path
     }
@@ -384,6 +400,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         link.tryAgain()
     }
     @objc private func takeOver() { link.takeBack() }
+    /// The computer removed this Mac: this window has nothing more to show; Add Computer takes its place.
+    @objc private func addAgain() {
+        ViewerStore.shared.requestAdd()
+        close()
+    }
     @objc private func retryScreen() {
         guard link.state == .connected else { return retry() }
         hideOverlay()
@@ -540,12 +561,19 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         overlayText.font = .systemFont(ofSize: 15, weight: .medium)
         overlayText.textColor = .white
         overlayText.alignment = .center
-        overlayText.preferredMaxLayoutWidth = 420
-        // drawn by its own layer: a standard bezel over the picture's layer didn't show (measured: attached, framed, not drawn)
+        overlayText.preferredMaxLayoutWidth = 380
+        // the sentence and its button on one dark card (the capture surface's, system.md §3.1), so they read over any picture, a light
+        // window's too; drawn by its own layer: a standard bezel over the picture's layer didn't show (measured: attached, framed, not drawn)
         overlay.wantsLayer = true
+        overlayCard.wantsLayer = true
+        overlayCard.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.88).cgColor
+        overlayCard.layer?.cornerRadius = 12
+        overlayCard.layer?.borderWidth = 0.5
+        overlayCard.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        // the button: the quiet pill (system.md §3.2), white 16 % with a white medium title
         overlayButton.isBordered = false
         overlayButton.wantsLayer = true
-        overlayButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.2).cgColor
+        overlayButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.16).cgColor
         overlayButton.layer?.cornerRadius = 7
         overlayButton.translatesAutoresizingMaskIntoConstraints = false
         overlayButton.heightAnchor.constraint(equalToConstant: 30).isActive = true
@@ -554,14 +582,23 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         overlay.addArrangedSubview(overlayText)
         overlay.addArrangedSubview(overlayButton)
         overlay.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(overlay)
-        NSLayoutConstraint.activate([overlay.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-                                     overlay.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-                                     overlay.widthAnchor.constraint(lessThanOrEqualToConstant: 440)])
+        overlayCard.translatesAutoresizingMaskIntoConstraints = false
+        overlayText.translatesAutoresizingMaskIntoConstraints = false
+        overlayCard.addSubview(overlay)
+        content.addSubview(overlayCard)
+        NSLayoutConstraint.activate([overlay.leadingAnchor.constraint(equalTo: overlayCard.leadingAnchor, constant: 20),
+                                     overlay.trailingAnchor.constraint(equalTo: overlayCard.trailingAnchor, constant: -20),
+                                     overlay.topAnchor.constraint(equalTo: overlayCard.topAnchor, constant: 16),
+                                     overlay.bottomAnchor.constraint(equalTo: overlayCard.bottomAnchor, constant: -16),
+                                     overlayText.widthAnchor.constraint(lessThanOrEqualToConstant: 380),
+                                     overlayCard.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+                                     overlayCard.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+                                     overlayCard.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32)])
     }
 
     private func showOverlay(_ text: String, button: (String, Selector)?) {
         overlay.isHidden = false
+        overlayCard.isHidden = false
         overlayText.stringValue = text
         overlayButton.isHidden = button == nil
         if let (t, a) = button {
@@ -571,7 +608,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
     }
 
-    private func hideOverlay() { overlay.isHidden = true }
+    private func hideOverlay() {
+        overlay.isHidden = true
+        overlayCard.isHidden = true
+    }
 
     // MARK: the toolbar
 

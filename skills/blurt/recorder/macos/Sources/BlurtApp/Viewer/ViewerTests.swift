@@ -82,7 +82,7 @@ enum ViewerTests {
             case "list": ComputersWindowController.shared.show()
             case "add":
                 ComputersWindowController.shared.show()
-                NotificationCenter.default.post(name: .viewerTestAdd, object: nil)
+                NotificationCenter.default.post(name: .viewerAdd, object: nil)
             case "settings": SettingsController.shared.show(pane: "remote")
             case "fakehost":
                 let png = a.count > 1 ? a[1] : ""
@@ -191,7 +191,8 @@ enum ViewerTests {
 }
 
 extension Notification.Name {
-    static let viewerTestAdd = Notification.Name("blurt.viewer.test_add")
+    /// Add Computer: the Computers window opens its sheet (ViewerStore.requestAdd, tests)
+    static let viewerAdd = Notification.Name("blurt.viewer.add")
 }
 
 #if DEBUG || BLURT_TEST_HOOKS

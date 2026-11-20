@@ -12,6 +12,8 @@ struct ComputerRow: View {
     var computer: RemoteComputer
     @ObservedObject var store = ViewerStore.shared
     var style = Style.list
+    /// Add Again… (a computer that removed this Mac): the page opens its own sheet; the list window, the Computers window's
+    var addAgain: (() -> Void)?
     @State private var removing = false
 
     var body: some View {
@@ -23,9 +25,9 @@ struct ComputerRow: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { store.open(computer) }
+        .onTapGesture(count: 2) { computer.removed == true ? add() : store.open(computer) }
         .contextMenu {
-            Button(T("viewer.connect")) { store.open(computer) }
+            if computer.removed == true { Button(T("viewer.add_again")) { add() } } else { Button(T("viewer.connect")) { store.open(computer) } }
             Button(T("phone.remove")) { removing = true }
         }
         .alert(T("settings.remote.remove.title", computer.name), isPresented: $removing) {
@@ -85,19 +87,23 @@ struct ComputerRow: View {
             case .connected: Button(T("viewer.open")) { store.open(computer) }
             case .available, .noDirect, .relayDown: Button(T("viewer.connect")) { store.open(computer) }
             case .offline, .asleep: EmptyView()
+            // its key is gone (or refused): it has to be added again; Connect stays in the ⋯ while the key is here
+            case .removed: Button(T("viewer.add_again")) { add() }
             }
             RowMenu(label: T("viewer.more"), visible: true) {
-                if row.isOffline { Button(T("viewer.connect")) { store.open(computer) } }
+                if row.isOffline || row == .removed && computer.removed != true { Button(T("viewer.connect")) { store.open(computer) } }
                 Button(T("phone.remove")) { removing = true }
             }
         }
     }
 
+    private func add() { if let addAgain { addAgain() } else { store.requestAdd() } }
+
     private func tone(_ r: ViewerStore.Row) -> Tone {
         switch r {
         case .connected: .good
         case .available: .ready
-        case .noDirect, .relayDown: .warn
+        case .noDirect, .relayDown, .removed: .warn
         case .offline, .asleep: .off
         }
     }
@@ -107,7 +113,6 @@ struct ComputerRow: View {
 struct AddComputerView: View {
     @ObservedObject var store = ViewerStore.shared
     var done: () -> Void
-    @State private var link = ""
     @State private var invalid = false
 
     var body: some View {
@@ -143,11 +148,11 @@ struct AddComputerView: View {
                 Text(T("viewer.add.nearby.detail")).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text(T("viewer.add.link")).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary).padding(.top, 4)
                 HStack(spacing: 8) {
-                    TextField("blurtremote://pair?…", text: $link)
+                    TextField("blurtremote://pair?…", text: $store.linkText)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(useLink)
-                        .onChange(of: link) { _ in invalid = false }
-                    Button(T("viewer.connect"), action: useLink).disabled(link.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .onChange(of: store.linkText) { _ in invalid = false }
+                    Button(T("viewer.connect"), action: useLink).disabled(store.linkText.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 Text(invalid ? T("viewer.add.invalid") : T("viewer.add.link.detail")).font(.system(size: 11.5))
                     .foregroundStyle(invalid ? Color.brandAttnInk : .secondary).fixedSize(horizontal: false, vertical: true)
@@ -164,15 +169,28 @@ struct AddComputerView: View {
     }
 
     private func useLink() {
-        if !store.pair(link: link) { invalid = true }
+        if !store.pair(link: store.linkText) { invalid = true }
     }
 
     @ViewBuilder private func pairing(_ p: ViewerStore.Pairing) -> some View {
         if let f = p.failed {
-            Text(f).font(.system(size: 13)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+            // what went wrong, then what to do; never a dead end: Try Again where the same link can still work, else Back to the
+            // link field (the link still in it) for a new one
+            VStack(alignment: .leading, spacing: 4) {
+                Text(f).font(.system(size: 13)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                if let h = p.help {
+                    Text(h).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
             HStack {
+                if p.canRetry { Button(T("viewer.add.back")) { store.backFromPairing() } }
                 Spacer()
-                Button(T("settings.remote.cancel")) { store.cancelPairing() }.keyboardShortcut(.cancelAction)
+                Button(T("settings.remote.cancel")) { done() }.keyboardShortcut(.cancelAction)
+                if p.canRetry {
+                    Button(T("viewer.retry")) { store.retryPairing() }.keyboardShortcut(.defaultAction)
+                } else {
+                    Button(T("viewer.add.back")) { store.backFromPairing() }.keyboardShortcut(.defaultAction)
+                }
             }
         } else if let c = p.check, !c.isEmpty {
             Text(T("viewer.add.check", p.name)).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
@@ -183,7 +201,7 @@ struct AddComputerView: View {
                 .accessibilityLabel(c)
             HStack {
                 Spacer()
-                Button(T("settings.remote.cancel")) { store.cancelPairing() }.keyboardShortcut(.cancelAction)
+                Button(T("settings.remote.cancel")) { done() }.keyboardShortcut(.cancelAction)
             }
         } else {
             HStack(spacing: 8) {
@@ -192,7 +210,7 @@ struct AddComputerView: View {
             }
             HStack {
                 Spacer()
-                Button(T("settings.remote.cancel")) { store.cancelPairing() }.keyboardShortcut(.cancelAction)
+                Button(T("settings.remote.cancel")) { done() }.keyboardShortcut(.cancelAction)
             }
         }
     }
@@ -233,10 +251,13 @@ struct ComputersView: View {
         .sheet(isPresented: Binding(get: { adding || store.pairing != nil }, set: { if !$0 { adding = false; store.cancelPairing() } })) {
             AddComputerView { adding = false; store.cancelPairing() }
         }
-        .onChange(of: store.pairing == nil) { none in if none { adding = false } }
+        // a pairing begun from elsewhere (a test, a link) holds the sheet open as one begun here does, so Back keeps it
+        .onChange(of: store.pairing == nil) { none in if !none { adding = true } }
+        // paired: its window opens, the sheet's job is done
+        .onChange(of: store.pairedCount) { _ in adding = false }
         .onAppear { store.watch("list") }
         .onDisappear { store.unwatch("list") }
-        .onReceive(NotificationCenter.default.publisher(for: .viewerTestAdd)) { _ in adding = true }
+        .onReceive(NotificationCenter.default.publisher(for: .viewerAdd)) { _ in adding = true }
     }
 }
 

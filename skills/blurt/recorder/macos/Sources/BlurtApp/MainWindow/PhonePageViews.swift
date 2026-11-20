@@ -55,8 +55,8 @@ struct PhonePageView: View {
         .sheet(isPresented: $addingComputer) {
             AddComputerView { addingComputer = false; viewer.cancelPairing() }
         }
-        // paired (or given up): the sheet's job is done
-        .onChange(of: viewer.pairing == nil) { none in if none { addingComputer = false } }
+        // paired: the sheet's job is done (a failure stays on it, with Try Again or Back)
+        .onChange(of: viewer.pairedCount) { _ in addingComputer = false }
     }
 
     // MARK: devices that control this Mac
@@ -117,7 +117,7 @@ struct PhonePageView: View {
     /// The viewer's computers, the rows of the Computers window in this page's grid, then Add Computer….
     @ViewBuilder private var computers: some View {
         ForEach(viewer.computers) { c in
-            PhoneLine { ComputerRow(computer: c, style: .page) }
+            PhoneLine { ComputerRow(computer: c, style: .page, addAgain: { addingComputer = true }) }
         }
         if viewer.computers.isEmpty {
             PhoneRow(title: T("phone.computers.none"), detail: T("viewer.empty"), quiet: true) { EmptyView() }
