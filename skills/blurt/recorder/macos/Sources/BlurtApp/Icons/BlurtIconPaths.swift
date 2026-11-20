@@ -31,6 +31,7 @@ enum BlurtIcon: String, CaseIterable {
     case code = "code"
     case copy = "copy"
     case cpu = "cpu"
+    case cube = "cube"
     case devices = "devices"
     case document = "document"
     case download = "download"
@@ -153,7 +154,7 @@ extension BlurtIcon {
     /// "brand" (our own glyph everywhere) or "generic" (an SF Symbol on macOS when one exists).
     var group: String {
         switch self {
-        case .accessibility, .alignLeft, .archive, .arrowLeft, .bell, .camera, .captions, .characterBubble, .characterCursor, .characterCursorZh, .check, .chevronDown, .chevronLeft, .chevronRight, .chevronUp, .cloud, .code, .copy, .cpu, .devices, .download, .drive, .externalLink, .eye, .film, .filter, .filterFill, .flag, .folder, .folderMissing, .folderPlus, .gitBranch, .gitCommit, .gitPullRequest, .globe, .hand, .helpCircle, .history, .home, .inbox, .info, .keyboard, .languages, .lines, .list, .listBox, .merge, .minusCircle, .moon, .more, .move, .pause, .pauseFill, .pencil, .phone, .pin, .pinOff, .play, .playFill, .plus, .power, .progress, .quote, .record, .recordFill, .refresh, .restart, .reveal, .scope, .screen, .search, .send, .settings, .sidebar, .sidebarRight, .sliders, .stop, .stopFill, .sun, .sync, .terminal, .textCursor, .textPlus, .textViewfinder, .trash, .tray2, .unassigned, .undo, .video, .wand, .warning, .window, .x: return "generic"
+        case .accessibility, .alignLeft, .archive, .arrowLeft, .bell, .camera, .captions, .characterBubble, .characterCursor, .characterCursorZh, .check, .chevronDown, .chevronLeft, .chevronRight, .chevronUp, .cloud, .code, .copy, .cpu, .cube, .devices, .download, .drive, .externalLink, .eye, .film, .filter, .filterFill, .flag, .folder, .folderMissing, .folderPlus, .gitBranch, .gitCommit, .gitPullRequest, .globe, .hand, .helpCircle, .history, .home, .inbox, .info, .keyboard, .languages, .lines, .list, .listBox, .merge, .minusCircle, .moon, .more, .move, .pause, .pauseFill, .pencil, .phone, .pin, .pinOff, .play, .playFill, .plus, .power, .progress, .quote, .record, .recordFill, .refresh, .restart, .reveal, .scope, .screen, .search, .send, .settings, .sidebar, .sidebarRight, .sliders, .stop, .stopFill, .sun, .sync, .terminal, .textCursor, .textPlus, .textViewfinder, .trash, .tray2, .unassigned, .undo, .video, .wand, .warning, .window, .x: return "generic"
         default: return "brand"
         }
     }
@@ -226,7 +227,7 @@ extension BlurtIcon {
         case .textViewfinder: return ["text.viewfinder"]
         case .cpu: return ["cpu"]
         case .hand: return ["hand.raised"]
-        case .drive: return ["internaldrive"]
+        case .drive: return ["internaldrive", "externaldrive"]
         case .sliders: return ["slider.horizontal.3"]
         case .progress: return ["circle.righthalf.filled"]
         case .unassigned: return ["circle.dashed"]
@@ -253,6 +254,7 @@ extension BlurtIcon {
         case .lines: return ["line.3.horizontal"]
         case .alignLeft: return ["text.alignleft"]
         case .window: return ["macwindow"]
+        case .cube: return ["cube"]
         default: return []
         }
     }
@@ -284,6 +286,7 @@ extension BlurtIcon {
         case .code: return "Code"
         case .copy: return "Copy"
         case .cpu: return "Chip (on-device models)"
+        case .cube: return "Cube (models)"
         case .devices: return "Devices (a phone or a computer)"
         case .document: return "Page — a note (kind family)"
         case .download: return "Download"
@@ -399,6 +402,7 @@ extension BlurtIcon {
         case .code: return "<path d=\"M8 7L3 12L8 17M16 7L21 12L16 17\"/>"
         case .copy: return "<path d=\"M11 8.5L18 8.5C19.381 8.5 20.5 9.619 20.5 11L20.5 18C20.5 19.381 19.381 20.5 18 20.5L11 20.5C9.619 20.5 8.5 19.381 8.5 18L8.5 11C8.5 9.619 9.619 8.5 11 8.5Z\"/><path d=\"M15.5 8.5L15.5 6C15.5 4.619 14.381 3.5 13 3.5L6 3.5C4.619 3.5 3.5 4.619 3.5 6L3.5 13C3.5 14.381 4.619 15.5 6 15.5L8.5 15.5\"/>"
         case .cpu: return "<path d=\"M8.25 6L15.75 6C16.993 6 18 7.007 18 8.25L18 15.75C18 16.993 16.993 18 15.75 18L8.25 18C7.007 18 6 16.993 6 15.75L6 8.25C6 7.007 7.007 6 8.25 6Z\"/><path d=\"M10.5 9.5L13.5 9.5C14.052 9.5 14.5 9.948 14.5 10.5L14.5 13.5C14.5 14.052 14.052 14.5 13.5 14.5L10.5 14.5C9.948 14.5 9.5 14.052 9.5 13.5L9.5 10.5C9.5 9.948 9.948 9.5 10.5 9.5Z\"/><path d=\"M9.5 2.75L9.5 6M14.5 2.75L14.5 6M9.5 18L9.5 21.25M14.5 18L14.5 21.25M2.75 9.5L6 9.5M2.75 14.5L6 14.5M18 9.5L21.25 9.5M18 14.5L21.25 14.5\"/>"
+        case .cube: return "<path d=\"M12 2.75L20.25 7.25L20.25 16.75L12 21.25L3.75 16.75L3.75 7.25L12 2.75Z\"/><path d=\"M3.75 7.25L12 11.75L20.25 7.25M12 11.75L12 21.25\"/>"
         case .devices: return "<path d=\"M17.25 7L17.25 6C17.25 4.9 16.35 4 15.25 4L4.75 4C3.65 4 2.75 4.9 2.75 6L2.75 12.5C2.75 13.6 3.65 14.5 4.75 14.5L12.75 14.5M9.5 14.5L9.5 18.25M7 18.25L12 18.25\"/><path d=\"M16.5 9L19.5 9C20.466 9 21.25 9.784 21.25 10.75L21.25 18.5C21.25 19.466 20.466 20.25 19.5 20.25L16.5 20.25C15.534 20.25 14.75 19.466 14.75 18.5L14.75 10.75C14.75 9.784 15.534 9 16.5 9Z\"/><path d=\"M17.25 17.5L18.75 17.5\"/>"
         case .document: return "<path d=\"M13.5 3.75L8.25 3.75C6.731 3.75 5.5 4.981 5.5 6.5L5.5 17.5C5.5 19.019 6.731 20.25 8.25 20.25L15.75 20.25C17.269 20.25 18.5 19.019 18.5 17.5L18.5 8.75Z\"/><path d=\"M13.5 3.75L13.5 7.25C13.5 8.078 14.172 8.75 15 8.75L18.5 8.75\"/><path d=\"M9 12.5L15 12.5M9 16L13 16\"/>"
         case .download: return "<path d=\"M12 4L12 15M12 15L7.5 10.5M12 15L16.5 10.5M5 20L19 20\"/>"
@@ -760,6 +764,16 @@ extension BlurtIcon {
                     p.m(9.5, 2.75); p.l(9.5, 6); p.m(14.5, 2.75); p.l(14.5, 6); p.m(9.5, 18); p.l(9.5, 21.25); p.m(14.5, 18);
                     p.l(14.5, 21.25); p.m(2.75, 9.5); p.l(6, 9.5); p.m(2.75, 14.5); p.l(6, 14.5); p.m(18, 9.5); p.l(21.25, 9.5);
                     p.m(18, 14.5); p.l(21.25, 14.5)
+                },
+            ]
+        case .cube:
+            return [
+                BlurtIconLayer(.stroke) { p in
+                    p.m(12, 2.75); p.l(20.25, 7.25); p.l(20.25, 16.75); p.l(12, 21.25); p.l(3.75, 16.75); p.l(3.75, 7.25); p.l(12, 2.75);
+                    p.z()
+                },
+                BlurtIconLayer(.stroke) { p in
+                    p.m(3.75, 7.25); p.l(12, 11.75); p.l(20.25, 7.25); p.m(12, 11.75); p.l(12, 21.25)
                 },
             ]
         case .devices:

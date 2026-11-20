@@ -55,7 +55,7 @@ export const PANES: PaneInfo[] = [
   // page's, Home's row and the sidebar's: renaming the feature is that one string
   { id: 'phone', title: 'feature.phone', icon: 'devices', group: 'features' },
   { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'app' },
-  { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'app' },
+  { id: 'speech', title: 'settings.kit.speech', icon: 'cube', group: 'app' },
   { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'app' },
   { id: 'agents', title: 'settings.kit.agents', icon: 'terminal', group: 'app' },
   { id: 'privacy', title: 'settings.kit.privacy', icon: 'hand', group: 'mac' },

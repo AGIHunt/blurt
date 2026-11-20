@@ -382,7 +382,7 @@ def _sf(icon: str) -> list[str]:
 
 
 # the SF Symbols that are one metaphor with another name ("terminal" and "apple.terminal" are both a prompt in a window)
-SAME = {"terminal": "apple.terminal"}
+SAME = {"terminal": "apple.terminal", "command": "keyboard"}   # Shortcuts: ⌘ on the Mac, a keyboard where there is no ⌘ key (Windows, Linux)
 # one pane under two ids: the Mac's Remote is Windows / Linux's Phone (Blurt Remote reaches every host since v1.0.15)
 WIN_ID = {"remote": "phone"}
 
