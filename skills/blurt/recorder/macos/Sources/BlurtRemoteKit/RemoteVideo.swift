@@ -141,10 +141,12 @@ public struct RemoteRate: Equatable, Sendable {
         if recent.count > Self.window { recent.removeFirst() }
         let seen = recent.reduce(0) { $0 + $1.0 }, missing = recent.reduce(0) { $0 + $1.1 }
         // a round trip well over the best counts once it lasts two reports: a phone's hotspot or a relay swings by a few hundred ms on its
-        // own, and taking each swing for a queue brought the picture down to 200 kbps at 10 frames with nothing lost (2026-11-20)
+        // own, and taking each swing for a queue brought the picture down to 200 kbps at 10 frames with nothing lost (2026-11-20). With
+        // less arriving than went, it is a queue at once (a rate left past what the network carries otherwise stayed there).
         let longer = rtt.map { $0 > bestRTT * 3 + 0.1 } ?? false
         longRTTs = longer ? longRTTs + 1 : 0
-        let queued = longRTTs >= 2
+        let shortfall = sent > 0 && delivered > 0 && delivered * 10 < sent * 9
+        let queued = longRTTs >= 2 || (longer && shortfall)
         let lossy = missing >= 2 && missing * 20 >= seen + missing
         sinceTrouble += 1
         if sinceTrouble > Self.patience { troubleAt = Int.max }

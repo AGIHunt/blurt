@@ -15,6 +15,8 @@ pub struct Rate {
     pub fps: i64,
     calm: i64,
     best_rtt: f64,
+    /// reports in a row with a round trip well over the best
+    long_rtts: u32,
     wait: i64,
     trouble_at: i64,
     since_trouble: i64,
@@ -59,6 +61,7 @@ impl Rate {
             fps: Self::frames(b, fps),
             calm: 0,
             best_rtt: f64::INFINITY,
+            long_rtts: 0,
             wait: 0,
             trouble_at: i64::MAX,
             since_trouble: 0,
@@ -112,7 +115,12 @@ impl Rate {
         }
         let seen: i64 = self.recent.iter().map(|r| r.0).sum();
         let missing: i64 = self.recent.iter().map(|r| r.1).sum();
-        let queued = rtt.is_some_and(|r| r > self.best_rtt * 3.0 + 0.1);
+        // a round trip well over the best counts once it lasts two reports (a hotspot or a relay swings by a few hundred ms on its own;
+        // taking each swing for a queue brought the picture to the floor with nothing lost), or at once when less arrived than went
+        let longer = rtt.is_some_and(|r| r > self.best_rtt * 3.0 + 0.1);
+        self.long_rtts = if longer { self.long_rtts + 1 } else { 0 };
+        let shortfall = sent > 0 && delivered > 0 && delivered * 10 < sent * 9;
+        let queued = self.long_rtts >= 2 || (longer && shortfall);
         let lossy = missing >= 2 && missing * 20 >= seen + missing;
         self.since_trouble += 1;
         if self.since_trouble > PATIENCE {
@@ -217,7 +225,12 @@ mod tests {
         assert!(a.update(20, 3, 0, false, Some(0.05), 3_000_000, 0));
         let mut b = Rate::new(4_000_000, 30, false);
         b.update(30, 0, 0, false, Some(0.05), 3_000_000, 0);
-        assert!(b.update(30, 0, 0, false, Some(0.6), 3_000_000, 0));
+        assert!(!b.update(30, 0, 0, false, Some(0.6), 3_000_000, 0), "one long round trip is a swing");
+        assert!(b.update(30, 0, 0, false, Some(0.6), 3_000_000, 0), "two in a row are a queue");
+        // less arriving than went: a queue at once
+        let mut c = Rate::new(4_000_000, 30, false);
+        c.update(30, 0, 0, false, Some(0.05), 3_000_000, 0);
+        assert!(c.update(30, 0, 0, false, Some(0.6), 3_000_000, 2_000_000));
     }
 
     #[test]
@@ -274,6 +287,7 @@ mod tests {
         assert_eq!((r.bitrate, r.probe()), (4_000_000, 4_000_000), "and the next still picture goes at the rate");
         let mut plain = Rate::new(8_000_000, 30, true);
         plain.update(6, 0, 0, false, Some(0.05), 0, 0);
+        assert!(!plain.update(6, 0, 0, false, Some(0.4), 4_000_000, 4_000_000), "one long round trip is a swing");
         assert!(plain.update(6, 0, 0, false, Some(0.4), 4_000_000, 4_000_000), "trouble without a question is still trouble");
         for _ in 0..31 {
             r.update(0, 0, 0, false, Some(0.05), 0, 0);
