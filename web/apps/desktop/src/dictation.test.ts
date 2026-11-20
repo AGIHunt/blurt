@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DictationEntry } from './api';
-import { appName, byDay, CANCELLED_REASON, changes, exception, failedNotCancelled, marked, matches, onHome, preview, stats, units } from './dictation';
+import { appName, byDay, CANCELLED_REASON, changes, exception, failedNotCancelled, marked, matches, onHome, preview, stats, units, wouldPrune } from './dictation';
 import EN from './locales/en.json';
 import ZH from './locales/zh-Hans.json';
 import { checkCatalogs } from '@blurt/i18n';
@@ -79,5 +79,19 @@ describe('dictation page rules', () => {
   it('has every dictation_page string in both languages', () => {
     const pick = (c: Record<string, string>) => Object.fromEntries(Object.entries(c).filter(([k]) => k.startsWith('dictation_page.')));
     expect(checkCatalogs(pick(EN), pick(ZH))).toEqual([]);
+  });
+});
+
+describe('wouldPrune', () => {
+  it('counts what a shorter retention deletes, so it can ask first', () => {
+    const now = Date.parse('2026-11-21T12:00:00Z');
+    const ago = (d: number) => new Date(now - d * 86_400_000).toISOString();
+    const es = [e({ id: 'a', t: ago(0.1) }), e({ id: 'b', t: ago(10) }), e({ id: 'c', t: ago(20) })];
+    expect(wouldPrune(es, 30, now)).toBe(0);
+    expect(wouldPrune(es, 7, now)).toBe(2);
+    expect(wouldPrune(es, 0, now)).toBe(3);
+    // Don't keep: a take waiting for Retry still gets a day
+    const retry = e({ id: 'r', t: ago(0.5), text: '', reason: 'asr_failed:timeout', audio_path: '/x.wav' });
+    expect(wouldPrune([retry], 0, now)).toBe(0);
   });
 });

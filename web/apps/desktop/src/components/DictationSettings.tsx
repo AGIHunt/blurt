@@ -12,7 +12,8 @@
 // What the Mac has here that Windows doesn't (yet): docs/design/windows-parity/settings.md.
 import { useEffect, useRef, useState } from 'react';
 import { api, builds, listen, type AgentSetupState, type AgentSetupStep, type AppStatus, type AsrModel, type CloudSummary, type CuratedOption, type DictationHistory, type VoiceprintEvent, type VoiceprintStatus } from '../api';
-import { t } from '../i18n';
+import { plural, t } from '../i18n';
+import { wouldPrune } from '../dictation';
 import { Icon } from '@blurt/icons';
 import { Group, lang, Line, Page, Popup, Row, S, Switch, TextLink, Toggle } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
@@ -122,6 +123,14 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
   const [words, setWords] = useState<{ term: string; state: string; source?: string }[] | null>(null);
   const [byApp, setByApp] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  // a shorter period (or Don't keep) that would delete saved dictations: asked first, as Clear History is (the Mac's
+  // chooseRetention) — it used to delete them at once
+  const [askKeep, setAskKeep] = useState<{ days: number; n: number } | null>(null);
+  const chooseKeep = (v: number) => {
+    const n = (v < days || v === 0) && hist ? wouldPrune(hist.entries, v) : 0;
+    if (n > 0) setAskKeep({ days: v, n });
+    else set({ retention_days: v === 30 ? undefined : v });
+  };
   const loadHist = () => api.dictationHistory().then(setHist, () => {});
   const loadWords = () => api.dictationWords().then((w) => setWords(w.terms), () => {});
   useEffect(() => {
@@ -308,8 +317,27 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
           <Popup label={S('dictation.history.keep')} value={days} dividers={hist?.entries.length ? [4, 5] : [4]}
             choices={[...[7, 30, 90, 365].map((n) => [n, S('dictation.history.days', n)] as [number, string]), [0, S('dictation.history.dont_keep')] as [number, string],
               ...(hist?.entries.length ? [[-1, S('dictation.history.clear')] as [number, string]] : [])]}
-            onChange={(v) => (v === -1 ? setConfirmClear(true) : set({ retention_days: v === 30 ? undefined : v }))} />
+            onChange={(v) => (v === -1 ? setConfirmClear(true) : chooseKeep(v))} />
         </Row>
+        {askKeep && (
+          <div className="overlay" onClick={() => setAskKeep(null)}>
+            <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.key === 'Escape' && setAskKeep(null)}>
+              <h3>{plural('dictation_page.keep.title', askKeep.n)}</h3>
+              <p>{askKeep.days === 0 ? t('dictation_page.keep.off') : t('dictation_page.keep.days', { days: plural('dictation_page.days', askKeep.days) })}
+                {' '}{t('dictation_page.clear.undo')}</p>
+              <div className="dict-confirm-foot">
+                <button autoFocus className="dict-confirm-cancel" onClick={() => setAskKeep(null)}>{t('dictation_page.clear.cancel')}</button>
+                <button className="dict-danger-tint" onClick={async () => {
+                  const v = askKeep.days;
+                  setAskKeep(null);
+                  await set({ retention_days: v === 30 ? undefined : v });
+                  loadHist();
+                }}>{t('dictation_page.keep.confirm')}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {confirmClear && (
           <div className="overlay" onClick={() => setConfirmClear(false)}>
             <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}

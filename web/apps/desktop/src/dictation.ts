@@ -24,6 +24,16 @@ export const failedNotCancelled = (e: DictationEntry) => isFailed(e) && e.reason
 export const onHome = (e: DictationEntry, retryable: boolean) =>
   !!finalText(e).trim() || (failedNotCancelled(e) && retryable);
 
+/** How many entries a retention of `days` deletes now (the Mac's DictationHistory.wouldPrune): older than the period;
+ *  under Don't keep (0) a take waiting for Retry still gets a day. A shorter period that deletes any asks first. */
+export const wouldPrune = (entries: DictationEntry[], days: number, now = Date.now()): number => {
+  const day = 86_400_000;
+  return entries.filter((e) => {
+    const cut = now - (days > 0 ? days : isFailed(e) && e.audio_path ? 1 : 0) * day;
+    return Date.parse(e.t) < cut;
+  }).length;
+};
+
 /** One paragraph: line breaks and runs of spaces become one space, so every row clamps the same way. */
 export const preview = (s: string) => s.split(/\s+/).filter(Boolean).join(' ');
 
