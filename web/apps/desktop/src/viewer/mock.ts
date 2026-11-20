@@ -2,8 +2,10 @@
 // on the network, pairing with digits after a moment, and a computer's window with a made-up desktop that is really encoded
 // (WebCodecs VideoEncoder, H.264 Annex B) and sent through the same frames the app sends, so the window's decoding runs as in
 // the app. URL parameters:
-//   ?computers= none | some (default) | nodirect            the list: none, or Connected / Available (nodirect: Can't Connect Directly) / Offline rows
+//   ?computers= none | some (default) | nodirect | removed   the list: none, or Connected / Available (nodirect: Can't Connect Directly;
+//                                                           removed: Removed this computer) / Offline rows
 //   ?computers_pairing= connecting | asking | failed        Add Computer… already pairing
+//   &computers_error= declined (default) | unanswered | spent | unreachable   &computers_link=1 (begun from a link)
 //   ?viewer=<id>&viewer_state= connected (default) | connecting | offline | busy | noDirect | removed | replaced | noControl
 //   &viewer_route= local | direct | relay | goBetween | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
 //   &viewer_captured=1 (keys captured, the hint showing)
@@ -21,17 +23,38 @@ const state: ComputersStatus = {
     param('computers') === 'none'
       ? []
       : [
-          { id: 'studio', name: 'Studio Mac mini', platform: 'mac', state: 'connected', route: 'local', lastSeen: Date.now(), windows: 1 },
-          { id: 'den', name: L('Den PC', '书房电脑'), platform: 'windows', ...(param('computers') === 'nodirect' ? { state: 'noDirect' as const, route: null } : { state: 'available' as const, route: 'goBetween' as const }), lastSeen: Date.now() - 2 * hour, windows: 0 },
-          { id: 'lab', name: 'ubuntu-lab', platform: 'linux', state: 'offline', route: null, lastSeen: Date.now() - 3 * 24 * hour, windows: 0 },
+          { id: 'studio', name: 'Studio Mac mini', platform: 'mac', state: 'connected', key: true, route: 'local', lastSeen: Date.now(), windows: 1 },
+          {
+            id: 'den',
+            name: L('Den PC', '书房电脑'),
+            platform: 'windows',
+            key: param('computers') !== 'removed',
+            ...(param('computers') === 'nodirect'
+              ? { state: 'noDirect' as const, route: null }
+              : param('computers') === 'removed'
+                ? { state: 'removed' as const, route: null }
+                : { state: 'available' as const, route: 'goBetween' as const }),
+            lastSeen: Date.now() - 2 * hour,
+            windows: 0,
+          },
+          { id: 'lab', name: 'ubuntu-lab', platform: 'linux', state: 'offline', key: true, route: null, lastSeen: Date.now() - 3 * 24 * hour, windows: 0 },
         ],
   nearby: [{ id: 'office', name: L('Office ThinkPad', '办公室 ThinkPad') }],
   pairing: null,
   browsing: false,
+  addRequests: 0,
+  paired: 0,
 };
 const p0 = param('computers_pairing');
 if (p0 === 'connecting' || p0 === 'asking' || p0 === 'failed')
-  state.pairing = { name: L('Office ThinkPad', '办公室 ThinkPad'), state: p0, digits: p0 === 'asking' ? '204718' : null, error: p0 === 'failed' ? 'declined' : null };
+  state.pairing = {
+    name: L('Office ThinkPad', '办公室 ThinkPad'),
+    state: p0,
+    digits: p0 === 'asking' ? '204718' : null,
+    error: p0 === 'failed' ? ((param('computers_error') as 'declined' | 'unanswered' | 'spent' | 'unreachable' | null) ?? 'declined') : null,
+    link: param('computers_link') === '1',
+  };
+let last: Record<string, any> = {};
 
 let timers: ReturnType<typeof setTimeout>[] = [];
 const now = () => JSON.parse(JSON.stringify(state)) as ComputersStatus;
@@ -43,16 +66,22 @@ export function mockComputers(cmd: string, a: Record<string, any>, emit: Emit): 
     case 'computers_browse':
       state.browsing = !!a.on;
       break;
+    case 'computers_retry_pairing':
+      return mockComputers('computers_pair', last, emit);
+    case 'computers_add_again':
+      state.addRequests += 1;
+      break;
     case 'computers_pair': {
+      last = a;
       timers.forEach(clearTimeout);
       timers = [];
       const link = a.link as string | null;
       const name = a.nearby ? state.nearby.find((n) => n.id === a.nearby)?.name ?? '' : L('Den PC', '书房电脑');
       if (link != null && !/^blurtremote:\/\/pair\?/.test(link)) {
-        state.pairing = { name: '', state: 'failed', digits: null, error: 'invalid' };
+        state.pairing = { name: '', state: 'failed', digits: null, error: 'invalid', link: true };
         break;
       }
-      state.pairing = { name, state: 'connecting', digits: null, error: null };
+      state.pairing = { name, state: 'connecting', digits: null, error: null, link: link != null };
       later(1200, () => state.pairing && (state.pairing = { ...state.pairing, state: 'asking', digits: String(100000 + Math.floor(Math.random() * 900000)) }));
       // the owner there says yes a few seconds later
       later(7000, () => {
@@ -60,7 +89,8 @@ export function mockComputers(cmd: string, a: Record<string, any>, emit: Emit): 
         state.pairing = null;
         const id = a.nearby ?? `pc-${Date.now()}`;
         state.nearby = state.nearby.filter((n) => n.id !== id);
-        state.computers = [...state.computers, { id, name, platform: 'windows', state: 'connected', route: 'local', lastSeen: Date.now(), windows: 1 }];
+        state.computers = [...state.computers.filter((c) => c.id !== id), { id, name, platform: 'windows', state: 'connected', key: true, route: 'local', lastSeen: Date.now(), windows: 1 }];
+        state.paired += 1;
       });
       break;
     }

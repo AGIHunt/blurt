@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { pairingLink, pathLine, rowPlan, type ComputerRow } from './computers';
+import { pairingLink, pairingPlan, pathLine, rowPlan, type ComputerRow, type Pairing } from './computers';
 import { contained, packFrame, parseFrame, toPicture, wheelPoints } from './decode';
 import { CATALOGS } from '../i18n';
 
-const row = (o: Partial<ComputerRow>): ComputerRow => ({ id: 'a', name: 'Studio', platform: 'mac', state: 'offline', route: null, lastSeen: null, windows: 0, ...o });
+const row = (o: Partial<ComputerRow>): ComputerRow => ({ id: 'a', name: 'Studio', platform: 'mac', state: 'offline', key: true, route: null, lastSeen: null, windows: 0, ...o });
+const failed = (o: Partial<Pairing>): Pairing => ({ name: 'Studio', state: 'failed', digits: null, error: 'unreachable', link: false, ...o });
 
 describe('the list of computers', () => {
   it('says each state with its one button (Remove is in the menu)', () => {
@@ -12,6 +13,25 @@ describe('the list of computers', () => {
     expect(rowPlan(row({ state: 'noDirect' }))).toEqual({ state: 'computers.state.no_direct', route: null, when: null, action: 'connect', warn: true });
     expect(rowPlan(row({ state: 'offline', lastSeen: 5 }))).toEqual({ state: 'computers.state.offline', route: null, when: 5, action: 'connect', warn: false });
     expect(rowPlan(row({ state: 'offline' })).state).toBe('computers.state.offline_never');
+  });
+
+  it('offers Add Again… for a computer that removed this one, in place of Connect', () => {
+    expect(rowPlan(row({ state: 'removed', key: false }))).toEqual({ state: 'computers.state.removed', route: null, when: null, action: 'add', warn: true });
+    // refused this run (its key kept): said the same; Connect stays in ⋯ (ComputersGroup)
+    expect(rowPlan(row({ state: 'removed', key: true })).action).toBe('add');
+  });
+
+  it('says why a pairing failed and what to do next, never a dead end', () => {
+    // can't reach: what to check, and Try Again (the same link or computer); a link lasts 10 minutes
+    expect(pairingPlan(failed({ error: 'unreachable' }))).toEqual({ title: 'computers.error.unreachable', help: 'computers.error.unreachable.help', retry: true });
+    expect(pairingPlan(failed({ error: 'unreachable', link: true })).help).toBe('computers.error.unreachable.help_link');
+    // refused before anyone was asked: a link has expired or was used (Back, for a new one); nearby, not now (Try Again)
+    expect(pairingPlan(failed({ error: 'spent', link: true }))).toEqual({ title: 'computers.error.spent', help: 'computers.error.new_link', retry: false });
+    expect(pairingPlan(failed({ error: 'spent' }))).toEqual({ title: 'computers.error.not_now', help: null, retry: true });
+    // a no, and nobody answering, are told apart; a link's code is spent either way, nearby asks again
+    expect(pairingPlan(failed({ error: 'declined', link: true }))).toEqual({ title: 'computers.error.declined', help: 'computers.error.new_link', retry: false });
+    expect(pairingPlan(failed({ error: 'unanswered' }))).toEqual({ title: 'computers.error.unanswered', help: null, retry: true });
+    expect(pairingPlan(failed({ error: 'unanswered', link: true })).retry).toBe(false);
   });
 
   it('takes a pasted pairing link and nothing else', () => {
@@ -41,6 +61,11 @@ describe('the list of computers', () => {
     expect(zh['computers.state.available']).toMatch(/^可连接/);
     expect(zh['computers.state.offline']).toMatch(/^离线/);
     expect([zh['computers.state.no_direct'], en['computers.state.no_direct']]).toEqual(['无法直连', 'Can’t Connect Directly']);
+    // the Mac's words (Phone.strings), "this Mac" as this computer
+    expect([en['computers.error.unanswered'], zh['computers.error.unanswered']]).toEqual(['No one answered on “{1}” in time.', '“{1}”那边没有人及时回应。']);
+    expect([en['computers.state.removed'], zh['computers.state.removed'], zh['computers.add_again']]).toEqual(['Removed this computer', '已移除本机', '重新添加…']);
+    for (const k of ['spent', 'new_link', 'not_now', 'declined', 'unreachable', 'unreachable.help', 'unreachable.help_link']) expect(en[`computers.error.${k}`], k).toBeTruthy();
+    expect(en['computers.error.notTaken']).toBeUndefined();
   });
 });
 
@@ -83,5 +108,11 @@ describe('the cover over the picture', () => {
     expect(lock?.kind).toBe('locked');
     expect(lock?.over).toBe(true);
     expect(coverFor('connected', 'Studio', null, false, true, false, true)).toBeNull();
+  });
+
+  it('says a computer removed this one, and a refused key the same (Add Again…)', async () => {
+    const { coverFor } = await import('./ViewerWindow');
+    expect(coverFor('removed', 'Studio', null, false, true)?.kind).toBe('removed');
+    expect(coverFor('forgotten', 'Studio', null, false, true)?.kind).toBe('removed');
   });
 });

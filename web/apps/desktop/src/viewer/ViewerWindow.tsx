@@ -17,7 +17,8 @@ import { pathLine } from './computers';
 import './viewer.css';
 
 type Quality = 'auto' | 'sharp' | 'balanced' | 'saver';
-type Link = 'connecting' | 'connected' | 'offline' | 'busy' | 'noDirect' | 'relayDown' | 'removed' | 'replaced' | 'ended';
+/** removed: the host said so in a session (the key is gone); forgotten: it refused the key with no session (kept, said this run) */
+type Link = 'connecting' | 'connected' | 'offline' | 'busy' | 'noDirect' | 'relayDown' | 'removed' | 'forgotten' | 'replaced' | 'ended';
 interface Display {
   id: string;
   name: string;
@@ -477,6 +478,10 @@ export function ViewerWindow({ id }: { id: string }) {
             {cover.detail && <div className="vw-cover-detail">{cover.detail}</div>}
             {cover.kind === 'replaced' && <button className="primary" onClick={attach}>{t('computers.connect')}</button>}
             {cover.kind === 'ended' && <button className="primary" onClick={attach}>{t('viewer.reconnect')}</button>}
+            {/* its key is no good there now: the way back is to add it again, in the main window (this one closes) */}
+            {cover.kind === 'removed' && (
+              <button className="primary" onClick={() => void invoke('computers_add_again').catch(() => {})} data-testid="viewer-add-again">{t('computers.add_again')}</button>
+            )}
             {cover.kind === 'screenFailed' && failed !== 'off' && (
               <button onClick={() => { setFailed(null); setScreenTry((n) => n + 1); }}>{t('viewer.retry')}</button>
             )}
@@ -515,6 +520,7 @@ export function coverFor(link: Link, name: string, failed: string | null, noDeco
       // still trying, through the public connection service as well
       return { kind: 'relayDown', title: t('viewer.relay_down', { 1: n }), warn: true, over: hadPicture };
     case 'removed':
+    case 'forgotten':
       return { kind: 'removed', title: t('viewer.removed', { 1: n }), warn: true };
     case 'replaced':
       return { kind: 'replaced', title: t('viewer.replaced', { 1: n }), warn: false };
