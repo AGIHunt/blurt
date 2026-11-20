@@ -7,14 +7,13 @@
 //!  • mirrors (the Mac's ModelBundle.mirror): `asr.hf_mirror` when set, else on for the mainland (region CN or the
 //!    China time zone). Children then get Alibaba Cloud's PyPI mirror, npmmirror's Python builds and
 //!    `BLURT_HF_MIRROR=1` (the scripts take hf-mirror / ModelScope first).
-//!  • the speech model: dictation's recommended model starts downloading by itself once, at the first launch while
-//!    dictation is automatic (`record.dictation.first_download`); a Stop or a failure is final — Settings → Dictation
-//!    offers it again.
+//!  • the speech model: nothing downloads unasked (the founder, 2026-11-21). Until 1.1.0 dictation's recommended
+//!    model started by itself at the first launch (`record.dictation.first_download`); now the Welcome's model step
+//!    offers it with its size and the free space, and every download checks the disk first (commands.rs disk_short).
 
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
@@ -335,7 +334,6 @@ pub fn start(app: &AppHandle) {
                 }
             }
         }
-        first_download(&app);
         #[cfg(windows)]
         if let Err(e) = ensure_ffmpeg() {
             eprintln!("blurt: ffmpeg not installed: {e}");
@@ -343,43 +341,3 @@ pub fn start(app: &AppHandle) {
     });
 }
 
-fn first_download(app: &AppHandle) {
-    let cfg = settings::read_config();
-    let d = cfg
-        .pointer("/record/dictation")
-        .cloned()
-        .unwrap_or(json!({}));
-    if d.get("first_download").is_some()
-        || d.get("asr_model").is_some_and(|m| !m.is_null())
-        || d.get("enabled") == Some(&json!(false))
-    {
-        return;
-    }
-    let runner = app.state::<AppState>().runner();
-    let Ok(m) = runner.run(
-        "transcribe.py",
-        &["dictation-models".into()],
-        None,
-        Duration::from_secs(300),
-    ) else {
-        return;
-    };
-    let rec = m["recommended"].as_str().unwrap_or_default().to_string();
-    let installed = m["models"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|x| x["id"] == json!(rec) && x["installed"] == json!(true));
-    let _ = settings::merge(
-        json!({"record": {"dictation": {"first_download": chrono::Utc::now().to_rfc3339()}}}),
-    );
-    if rec.is_empty() || installed {
-        return;
-    }
-    if crate::dictation::commands::model_download(app.clone(), rec).is_ok() {
-        crate::island::send(
-            app,
-            json!({"op": "toast", "kind": "dictation", "msg": "dictation.toast.first_download", "ms": 6000}),
-        );
-    }
-}

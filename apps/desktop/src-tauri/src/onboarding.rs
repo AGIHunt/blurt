@@ -60,16 +60,6 @@ pub fn step_from(cfg: &Value) -> u64 {
     cfg.pointer("/app/onboarding_step").and_then(Value::as_u64).unwrap_or(0).min(LAST_STEP)
 }
 
-/// setup.rs is still to start the first download (`record.dictation.first_download` not written yet, the same
-/// conditions it checks) — the page waits for it instead of offering a second one. Not when uv failed: setup stops there.
-pub fn first_download_pending(cfg: &Value, uv_failed: bool) -> bool {
-    let d = cfg.pointer("/record/dictation").cloned().unwrap_or(json!({}));
-    !uv_failed
-        && d.get("first_download").is_none()
-        && !d.get("asr_model").is_some_and(|m| !m.is_null())
-        && d.get("enabled") != Some(&json!(false))
-}
-
 /// A launch from the login entry: Blurt starts in the tray (unless the Welcome is still to show).
 pub fn launched_at_login() -> bool {
     std::env::args().any(|a| a == AUTOSTART_ARG) && !needed()
@@ -88,7 +78,6 @@ pub fn onboarding_get(app: AppHandle) -> Value {
     use tauri::Manager;
     let cfg = settings::read_config();
     let uv_state = UV.lock().unwrap().clone();
-    let uv_failed = uv_state.as_deref() == Some("failed");
     let uv = app.state::<crate::AppState>().runner().uv.is_some();
     let d = cfg.pointer("/record/dictation").cloned().unwrap_or(json!({}));
     json!({
@@ -96,7 +85,8 @@ pub fn onboarding_get(app: AppHandle) -> Value {
         "step": step_from(&cfg),
         "uv": uv,
         "uv_state": uv_state,
-        "first_download_pending": uv && first_download_pending(&cfg, uv_failed),
+        // nothing downloads unasked any more (setup.rs): there is never a first download to wait for
+        "first_download_pending": false,
         // the capabilities turned off (capabilities.rs ids): the first step's switches, and whether dictation's steps show
         "off": crate::capabilities::ids(&crate::capabilities::off(&cfg)),
         "dictation": {
@@ -433,16 +423,6 @@ mod tests {
         assert_eq!(step_from(&json!({"app": {"onboarding_step": 2}})), 2);
         assert_eq!(step_from(&json!({"app": {"onboarding_step": 9}})), LAST_STEP);
         assert_eq!(step_from(&json!({"app": {"onboarding_step": "x"}})), 0);
-    }
-
-    #[test]
-    fn first_download_waits_for_setup() {
-        assert!(first_download_pending(&json!({}), false));
-        assert!(!first_download_pending(&json!({}), true)); // uv failed: setup stopped before it
-        assert!(!first_download_pending(&json!({"record": {"dictation": {"first_download": "2026-11-02T08:00:00Z"}}}), false));
-        assert!(!first_download_pending(&json!({"record": {"dictation": {"asr_model": "sensevoice-small"}}}), false));
-        assert!(first_download_pending(&json!({"record": {"dictation": {"asr_model": null}}}), false));
-        assert!(!first_download_pending(&json!({"record": {"dictation": {"enabled": false}}}), false));
     }
 
     #[test]

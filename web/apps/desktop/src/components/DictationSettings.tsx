@@ -17,7 +17,8 @@ import { wouldPrune } from '../dictation';
 import { Icon } from '@blurt/icons';
 import { Group, lang, Line, Page, Popup, Row, S, Switch, TextLink, Toggle } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
-import { mb, ModelProgress, useDictationModels } from './ModelDownload';
+import { mb, ModelProgress, roomLine, useDictationModels } from './ModelDownload';
+import { goSettingsPane } from './SettingsView';
 import { openWordsTab } from './DictationView';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { KeyCaps } from './SettingsView';
@@ -731,7 +732,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
   useEffect(() => {
     api.detect({ login: false }).then((d) => setHasAgent(d.agents.some((a) => a.installed)), () => {});
   }, []);
-  const { models, err, dl, failed, failedId, load, download } = useDictationModels();
+  const { models, err, dl, failed, failedId, room, load, download } = useDictationModels();
   const rec = models?.models.find((m) => m.id === models.recommended);
   // Add Cloud Model: every service not added yet (the curated ones first), its 用于 boxes the text jobs built here
   const { curated: addCurated, others: addOthers } = addSheetServices(sum?.services.map((s) => s.preset) ?? [], volcOffered());
@@ -877,9 +878,11 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
           {/* with no speech model on this PC at all, dictation can't run: the line says so in the attention mark (the
               Dictation pane's notice), the Download beside it the one way out */}
           <Line title={S('speech.rec.title_size', mb(rec.size_mb))}
-            detail={failed && failedId === rec.id ? S('win.models.failed_row') : !installed.length && !dl ? S('dictation.nomodel.notice', rec.name) : S('speech.rec.line', S('speech.purpose.dictation'), rec.name)}
+            detail={failed && failedId === rec.id ? (room ? roomLine(room) : S('win.models.failed_row')) : !installed.length && !dl ? S('dictation.nomodel.notice', rec.name) : S('speech.rec.line', S('speech.purpose.dictation'), rec.name)}
             warn={(failed && failedId === rec.id) || (!installed.length && !dl)}>
-            {dl?.id === rec.id ? <><ModelProgress dl={dl} /><StopDownload /></> : <button className="primary" disabled={!!dl} onClick={() => download(rec.id)}>{S(failed && failedId === rec.id ? 'speech.rec.retry' : 'speech.download.button')}</button>}
+            {dl?.id === rec.id ? <><ModelProgress dl={dl} /><StopDownload /></>
+              : failed && failedId === rec.id && room ? <button onClick={() => goSettingsPane('storage')}>{S('models.show_storage')}</button>
+              : <button className="primary" disabled={!!dl} onClick={() => download(rec.id)}>{S(failed && failedId === rec.id ? 'speech.rec.retry' : 'speech.download.button')}</button>}
           </Line>
         </Group>
       )}

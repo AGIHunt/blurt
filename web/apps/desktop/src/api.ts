@@ -329,12 +329,16 @@ export interface DictationModels {
   weak?: boolean;
   /** cloud recognition may be offered (Privacy: recognition not kept on this computer) */
   cloud_allowed?: boolean;
+  /** free space where the models go (MB; null: unreadable): said beside the size before Download */
+  free_mb?: number | null;
 }
 export interface ModelDownload {
   id: string;
   state: 'running' | 'done' | 'failed';
   done_mb: number;
   total_mb: number;
+  /** why it failed ("disk_full:<need MB>:<free MB>" when the disk filled up) */
+  message?: string | null;
 }
 export interface CloudSummary {
   /** record.cloud.services: `region` for a preset with two addresses, `base_url` / `name` for the user's own */
