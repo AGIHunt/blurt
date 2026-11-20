@@ -13,9 +13,10 @@
 //   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models, open the mic
 //                       early); `armedDown` says whether that press can still start (else the app closes the mic).
 //   double tap          (`doubleTap`, on by default) two clean taps, the second going down within `doubleTapWindow`
-//                       of the first one's release, say `.send`: the app presses Return. The window is macOS's own
-//                       double-click interval clamped to 0.3–0.5 s (`window(doubleClickInterval:)`; 0.5 s here by
-//                       default). The first tap still does what it always did, at once (no waiting for a second one):
+//                       of the first one's release, say `.send`: the app presses Return. The window is 0.65 s
+//                       (`sendWindow`, the founder 2026-11-21: a finger's double tap after a stop ran 0.64 s and started
+//                       a take instead of sending; it was the double-click interval clamped to 0.3–0.5 s). For the send
+//                       gesture only: ⇧ / ⌘ keep their own 350 ms. The first tap still does what it always did, at once (no waiting for a second one):
 //                         • it started a dictation (idle, auto / tap mode) → the second one cancels it (`.cancel`,
 //                           nothing kept) and sends: Return in the app in front;
 //                         • it stopped one (hands-free) → the second one sends: the app presses Return once the
@@ -161,9 +162,8 @@ public struct DictationTrigger {
     public var autoHold = 0.3
     /// Two quick taps press Return (record.dictation.double_tap_send, on by default).
     public var doubleTap = true
-    /// the second tap must go down within this long of the first one's release (the app sets macOS's double-click
-    /// interval, clamped: `window(doubleClickInterval:)`)
-    public var doubleTapWindow = 0.5
+    /// the second tap must go down within this long of the first one's release (`sendWindow`)
+    public var doubleTapWindow = DictationTrigger.sendWindow
     /// a stop tap going down this soon after the start tap's release is a near miss of a double tap (`quickStop`)
     public var nearMissWindow = 0.8
     /// The last take is still on its way (transcribing, polishing, pasting; the app sets it): Esc cancels it. A press
@@ -183,10 +183,11 @@ public struct DictationTrigger {
         return miss
     }
 
-    /// macOS's double-click interval (System Settings → Accessibility → Pointer Control) as the double-tap window:
-    /// a Fn tap with the little finger is slower than a click, so never under 0.3 s; never over 0.5 s, where two
-    /// separate taps (stop, then start the next one) would start to read as one double tap.
-    public static func window(doubleClickInterval: Double) -> Double { min(0.5, max(0.3, doubleClickInterval)) }
+    /// The double tap's window (the send gesture): a Fn tap with the little finger is slower than a click — real
+    /// double taps after a stop ran 0.32–0.64 s — and two separate taps (stop, then the next take) are further apart
+    /// than this. It no longer follows macOS's double-click interval (0.5 s by default: a 0.64 s double tap started a
+    /// take instead of sending, dogfood 1.1.0).
+    public static let sendWindow = 0.65
 
     private enum State: Equatable {
         case idle

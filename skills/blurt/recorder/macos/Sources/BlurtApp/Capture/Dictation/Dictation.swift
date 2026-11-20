@@ -570,7 +570,7 @@ final class Dictation {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         trigger.doubleTap = Dictation.doubleTapSend
-        trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
+        trigger.doubleTapWindow = DictationTrigger.sendWindow
         trigger.modifierTapShift = Dictation.modifierTapShift
         trigger.modifierTapCommand = Dictation.modifierTapCommand
         trigger.modifierDoubleTapWindow = Dictation.modifierDoubleTapWindow

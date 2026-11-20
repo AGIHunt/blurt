@@ -87,9 +87,12 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   / "Double-tap to send", the key named in its description ("Double-tap Fn to press Return after the text"). In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
   `doubleTapWindow` of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
-  The window is macOS's own double-click interval (`NSEvent.doubleClickInterval`, System Settings → Accessibility →
-  Pointer Control) clamped to 0.3–0.5 s — 0.5 s by default. It was a fixed 300 ms, and a Fn tap with the little
-  finger is slower than a mouse click: the audit's real "double taps" were 320 ms apart and missed.
+  The window is 0.65 s (`DictationTrigger.sendWindow`; the founder, 2026-11-21), for the send gesture only (⇧ / ⌘ keep
+  350 ms). It was a fixed 300 ms — a Fn tap with the little finger is slower than a mouse click: the audit's real
+  "double taps" were 320 ms apart and missed — then macOS's double-click interval clamped to 0.3–0.5 s (0.5 s by
+  default), where the 1.1.0 dogfood's finger double tap after a stop, 0.64 s apart, started a new take instead of
+  sending. Two separate taps (stop, then the next take) are further apart than 0.65 s; the near miss (below, 0.8 s)
+  still covers a slower one when nothing was said.
   The first tap is never delayed: it does what it always did, at once, and the second one decides:
   - **idle** (auto / tap mode): the first tap started a dictation; the second cancels it (`.cancel`: audio dropped,
     nothing pasted, no history entry) and Return goes to the app in front now;
