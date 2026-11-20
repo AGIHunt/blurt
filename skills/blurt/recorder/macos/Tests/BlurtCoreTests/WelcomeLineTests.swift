@@ -50,6 +50,15 @@ final class WelcomeLineTests: XCTestCase {
         XCTAssertFalse(l.args.contains("Fn"))
     }
 
+    func testDictationModelsUnreadableOnlineSaysSoWithTryAgain() {
+        // the list failed while online, twice (a script error): not "isn't set up" (it sent people to set up what was
+        // there) — the models couldn't be checked, with Try Again
+        let l = WelcomeLine.compose(dictation: .unreadable, dictationKey: "Fn", snap: "⌥⇧A", record: "⌥⇧R", conflicts: [])
+        XCTAssertEqual(l.key, "app.toast.welcome_unreadable")
+        XCTAssertEqual(l.action, .readModelsAgain)
+        XCTAssertFalse(l.args.contains("Fn"))
+    }
+
     func testDictationOff() {
         XCTAssertEqual(WelcomeLine.compose(dictation: .off, dictationKey: "Fn", snap: "⌥⇧A", record: "⌥⇧R", conflicts: []).key,
                        "app.toast.welcome_no_dictation")
@@ -79,7 +88,7 @@ final class WelcomeLineTests: XCTestCase {
 
     func testDictationOffSaysNothingAboutDictation() {
         // switched off as a capability: no key, no "dictation is off · Turn On…", no model to download
-        for d in [WelcomeLine.Dictation.works, .needsSetup, .noModel, .unknown, .off] {
+        for d in [WelcomeLine.Dictation.works, .needsSetup, .noModel, .unknown, .unreadable, .off] {
             let l = WelcomeLine.compose(dictation: d, dictationKey: "Fn", snap: "⌥A", record: "⌥R", conflicts: [], off: [.dictation])
             XCTAssertEqual(l.key, "app.toast.welcome_no_dictation", "\(d)")
             XCTAssertEqual(l.args, ["⌥A", "⌥R"], "\(d)")
@@ -142,6 +151,7 @@ final class WelcomeLineWidthTests: XCTestCase {
                 case .turnOnDictation?: main["app.toast.welcome_setup.action"]
                 case .downloadModel?: main["app.toast.welcome_no_model.action"]
                 case .setUpDictation?: main["app.toast.welcome_not_set_up.action"]
+                case .readModelsAgain?: main["app.toast.welcome_unreadable.action"]
                 case .changeShortcut?: main["app.toast.change_shortcut"]
                 case nil: nil
                 }
@@ -152,7 +162,7 @@ final class WelcomeLineWidthTests: XCTestCase {
                     add(WelcomeLine.compose(dictation: .works, dictationKey: k, snap: snap, record: "⌥⇧R", conflicts: []))
                 }
             }
-            for d in [WelcomeLine.Dictation.works, .needsSetup, .noModel, .unknown, .off] {
+            for d in [WelcomeLine.Dictation.works, .needsSetup, .noModel, .unknown, .unreadable, .off] {
                 for conflicts in [[], ["⌃⌥⇧⌘A"], ["⌥⇧A", "⌥⇧R", "⌥⇧V"]] {
                     for (snap, record) in [("⌥⇧A", "⌥⇧R"), ("⌥⇧A", nil), (nil, nil)] as [(String?, String?)] {
                         add(WelcomeLine.compose(dictation: d, dictationKey: keyNames[2], snap: snap, record: record, conflicts: conflicts))

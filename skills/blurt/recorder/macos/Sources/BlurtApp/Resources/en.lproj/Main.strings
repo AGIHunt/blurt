@@ -568,6 +568,8 @@
 // dogfood v0.9 review
 "app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
 "app.toast.welcome_not_set_up.action" = "Set Up…";
+"app.toast.welcome_unreadable" = "Blurt is in the menu bar · couldn’t check speech models";
+"app.toast.welcome_unreadable.action" = "Retry";
 "app.config.show" = "Show File";
 "app.models.offline" = "Speech models download when you’re online";
 "main.speech.recommended_recordings" = "Recommended model for recordings · %@";

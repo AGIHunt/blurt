@@ -324,8 +324,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // it is read or said
             let off = Capability.off
             if !off.contains(.dictation) { await DictationModels.shared.load() }         // has dictation a speech model?
-            let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
-                : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
+            // another Blurt has the key (a dev build next to the release): nothing to set up here — the key works
+            // there, and the conflicts below name it; a list that failed while online isn't "not set up" either
+            let models = DictationModels.shared
+            let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.deferredTo != nil ? .works
+                : Dictation.shared.needsSetup ? .needsSetup
+                : models.asrUnreadable ? (models.asrFailure == .error ? .unreadable : .unknown)
+                : models.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
             // counted as Settings → Shortcuts counts them: the dictation key another copy listens to is one of them
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
@@ -344,6 +349,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_no_model.action")) { Dictation.getSpeechModel(from: "welcome") }
             case .setUpDictation?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_not_set_up.action")) { Onboarding.shared.show(step: 2) }
+            case .readModelsAgain?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_unreadable.action")) { Dictation.shared.refreshSpeechModels() }
+                t.icon = .warning
             case .changeShortcut?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.change_shortcut")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
@@ -352,7 +360,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t = Island.Toast(text: text, actionTitle: nil, action: nil)
             }
             t.seconds = 7
-            emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts])
+            emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts,
+                  "models_failure": models.asrFailure?.rawValue ?? NSNull(), "deferred_to": Dictation.shared.deferredTo.map { Int($0) } ?? NSNull()])
             LaunchMessages.shared.post(.welcome, t, shown: {
                 setRecordConfig("welcomed", true)
                 if saysConflicts { Hotkeys.shared.markWarned() }     // named here: no second line for them

@@ -569,6 +569,8 @@
 // dogfood v0.9 review
 "app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写未设置";
 "app.toast.welcome_not_set_up.action" = "设置…";
+"app.toast.welcome_unreadable" = "口喷鸡在菜单栏里 · 无法读取语音模型";
+"app.toast.welcome_unreadable.action" = "重试";
 "app.config.show" = "显示文件";
 "app.models.offline" = "联网后将继续下载语音模型";
 "main.speech.recommended_recordings" = "推荐用于录屏的模型 · %@";
