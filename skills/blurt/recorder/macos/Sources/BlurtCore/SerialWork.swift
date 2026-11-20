@@ -36,5 +36,7 @@ public final class SerialWork {
 /// it changed, where the items were), filled in when it runs and read by its undo, which runs after it.
 public final class UndoStep<Value> {
     public var value: Value?
+    /// A state step: the state it left each item in (uid → state). Its undo changes only the items still there.
+    public var after: [String: String] = [:]
     public init() {}
 }

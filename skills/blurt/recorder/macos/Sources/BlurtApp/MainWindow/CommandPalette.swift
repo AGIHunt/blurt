@@ -290,11 +290,12 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         var out: [Entry] = []
         if has {
             out += [
-                // the Handed off ring, as the state actions below show the state each leads to
-                Entry(T("main.menu.start_session"), image: Look.target("handed_off", size: 14), keys: "⌘↩", hint: T("main.toolbar.handoff.tip"),
+                // the Handed off ring, as the state actions below show the state each leads to — as a template, in the
+                // same quiet ink as its neighbours (the selection highlight marks the active row). One row for the
+                // one command: Copy Instruction for Agent is ⌘↩, with no second name under ⇧⌘C.
+                Entry(T("main.menu.start_session"), image: Self.template(Look.target("handed_off", size: 14)), keys: "⌘↩", hint: T("main.toolbar.handoff.tip"),
                       kind: .command, mutates: false, enabled: true, section: .selected, pinned: true) { c.handOffSelection() },
-                e(T("main.cmd.copy_instruction"), "doc.on.doc", "⇧⌘C", hint: T("main.palette.hint.copy_instruction"), section: .selected, pinned: true) { c.mCopyInstruction() },
-                e(T("main.cmd.copy_full"), "text.alignleft", hint: T("main.palette.hint.copy_full"), section: .selected) { c.mCopyFull() },
+                e(T("main.cmd.copy_full"), "doc.on.doc", "⇧⌘C", hint: T("main.palette.hint.copy_full"), section: .selected) { c.mCopyFull() },
             ]
             // K3: what the selection can do from its state (hand off is above); the hint goes to the footer
             // the same marks as the ring's menu (the shape of the state each leads to), so ⌘K and the menu read alike
@@ -303,7 +304,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                       hint: StateMenu.hint(a, items), mutates: true, enabled: Scripts.canWrite, section: .selected, pinned: true) { c.apply(a, to: items) }
             }
             out += [
-                e(T("main.palette.move_pick"), "arrow.turn.up.right", "M", section: .selected, pinned: true, enabled: Scripts.canWrite) {
+                e(T("main.palette.move_pick"), "folder", "M", section: .selected, pinned: true, enabled: Scripts.canWrite) {
                     DispatchQueue.main.async { c.pickProject() }
                 },
                 e(T("main.menu.export_bundle"), "archivebox", section: .selected) { c.mExportBundle() },
@@ -366,7 +367,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             out.append(e(p.name, "folder", hint: p.id == current ? T("main.project.current_count", path) : T("main.palette.project", path),
                          kind: .place) { c.reveal(project: p.id) })
             if has {
-                out.append(e(T("main.palette.move_to", p.name), "arrow.turn.up.right", section: .selected, mutates: true) {
+                out.append(e(T("main.palette.move_to", p.name), "folder", section: .selected, mutates: true) {
                     c.move(uids: items.map(\.uid), to: p.id)
                 })
             }
@@ -379,6 +380,13 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             out.append(e(T("main.palette.use_none"), "tray.2", hint: T("app.menu.project.none_tip"), mutates: true) { c.useProject(nil) })
         }
         return out.filter(\.enabled)
+    }
+
+    /// A drawn mark (the hand-off ring) as a template, so the cell tints it like the SF glyphs around it.
+    static func template(_ image: NSImage?) -> NSImage? {
+        let i = image?.copy() as? NSImage
+        i?.isTemplate = true
+        return i
     }
 
     /// Commands' glyphs: SF Symbols, one size and weight, template (the cell tints them secondary ink).

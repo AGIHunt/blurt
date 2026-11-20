@@ -7,7 +7,7 @@
   "state.todo": "要做",
   "state.handed_off": "已交给 Agent",
   "state.handed_off.session": "已交给 {agent}",
-  "state.handed_off.external": "已复制给你的 Agent",
+  "state.handed_off.external": "已交给 Agent",
   "state.in_progress": "进行中",
   "state.to_verify": "待验证",
   "state.done": "已完成",

@@ -87,9 +87,14 @@
 "main.action.record" = "Start Recording";
 "main.action.snap" = "Snap";
 
+"main.undo.kept" = "%@ changed since, so it wasn’t undone.";
 "main.banner.agent" = "an agent";
-"main.banner.ended" = "Session ended without the agent reporting back";
-"main.banner.external" = "Copied for your agent. Mark it done here when it’s finished.";
+"main.banner.ended" = "it stopped without reporting back";
+"main.banner.external" = "Handed off to your agent. Mark it done here when it’s finished.";
+"main.banner.quiet" = "Handed off %@ · no word from your agent yet";
+"main.banner.working" = "%@ is working on it · started %@";
+"main.banner.working_now" = "%@ is working on it";
+"main.banner.your_agent" = "Your agent";
 "main.banner.organizing" = "Organizing · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
@@ -255,7 +260,8 @@
 "main.keys.back" = "Send back or reopen";
 "main.keys.back.note" = "Also takes back a handed-off item or restores a discarded one";
 "main.keys.kind" = "Kind: issue, idea, note, task";
-"main.keys.copy_instruction" = "Copy instruction";
+"main.keys.copy_full" = "Copy full text";
+"main.keys.new_item" = "New item";
 "main.keys.move" = "Move to project";
 "main.keys.space" = "Space";
 "main.keys.copy_path" = "Copy path";
@@ -725,8 +731,8 @@
 "main.jobs.title.failed" = "Failed";
 
 /* An item whose session ended without reporting back */
-"main.row.session_ended" = "Session ended";
-"main.row.session_ended.help" = "It went to an agent session in an older version of Blurt, which ended without reporting the work as done. Mark it done or take it back.";
+"main.row.session_ended" = "No report";
+"main.row.session_ended.help" = "It went to an agent in an older version of Blurt, which stopped without reporting back. Mark it done or take it back.";
 
 /* A folder opened as a new project */
 "main.open.added" = "Added %1$@ · items start at %2$@-1";

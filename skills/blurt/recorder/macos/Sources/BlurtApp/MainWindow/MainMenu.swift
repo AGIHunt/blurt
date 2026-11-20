@@ -305,8 +305,9 @@ enum ShortcutsSheet {
                 Row(label: T("main.keys.kind"), keys: [["1", "–", "4"]]),
             ]),
             (T("main.keys.section.item"), [
+                Row(label: T("main.keys.new_item"), keys: [["⌘N"]]),
                 Row(label: plain(T("action.hand_off")), keys: [["⌘↩"]]),
-                Row(label: T("main.keys.copy_instruction"), keys: [["⇧⌘C"]]),
+                Row(label: T("main.keys.copy_full"), keys: [["⇧⌘C"]]),
                 Row(label: plain(T("main.menu.rename")), keys: [["E"]]),
                 Row(label: T("main.keys.move"), keys: [["M"]]),
                 Row(label: T("main.menu.quick_look"), keys: [[T("main.keys.space")]]),

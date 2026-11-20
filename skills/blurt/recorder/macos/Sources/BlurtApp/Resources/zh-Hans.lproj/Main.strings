@@ -87,9 +87,14 @@
 "main.action.record" = "开始录屏";
 "main.action.snap" = "截图";
 
+"main.undo.kept" = "%@ 之后有了变化，没有撤销。";
 "main.banner.agent" = "Agent";
-"main.banner.ended" = "会话已结束，Agent 未报告结果";
-"main.banner.external" = "已复制给你的 Agent。完成后请在这里标为完成。";
+"main.banner.ended" = "没有回报就结束了";
+"main.banner.external" = "已交给你的 Agent。做完后在这里标为完成。";
+"main.banner.quiet" = "%@交出 · 你的 Agent 还没有回报";
+"main.banner.working" = "%@ 正在处理 · %@开始";
+"main.banner.working_now" = "%@ 正在处理";
+"main.banner.your_agent" = "你的 Agent";
 "main.banner.organizing" = "正在整理 · %@";
 "main.banner.show_progress" = "查看进度";
 "main.banner.with_agent" = "已交给 %@ · %@";
@@ -255,7 +260,8 @@
 "main.keys.back" = "退回或重新打开";
 "main.keys.back.note" = "已交给 Agent 的会收回，丢弃的会恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、待办";
-"main.keys.copy_instruction" = "复制指令";
+"main.keys.copy_full" = "复制全文";
+"main.keys.new_item" = "新建事项";
 "main.keys.move" = "移到项目";
 "main.keys.space" = "空格";
 "main.keys.copy_path" = "复制路径";
@@ -726,8 +732,8 @@
 "main.jobs.title.failed" = "失败";
 
 /* 会话没回报就结束了的事项 */
-"main.row.session_ended" = "会话已结束";
-"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent 会话，会话已结束，但没有报告完成。可以标记完成或收回。";
+"main.row.session_ended" = "未回报";
+"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent，Agent 没有回报就结束了。可以标为完成或收回。";
 
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";

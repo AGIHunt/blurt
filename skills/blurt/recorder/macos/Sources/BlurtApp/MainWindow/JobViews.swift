@@ -25,7 +25,7 @@ enum JobLook {
     /// captured ("口喷鸡还在整理今天 19:40 的内容。") — never the job's own title, which starts with "整理" again.
     static func quitTitle(_ j: Job) -> String {
         if let s = j.session, let t = batchTitle(s) { return T("app.quit.organizing.title", t) }
-        if let s = j.session { return T("app.quit.organizing.title_at", sessionLabel(s)) }
+        if let s = j.session { return T("app.quit.organizing.title_at", sessionLabel(s, inSentence: true)) }
         return T("app.quit.organizing.title_n", 1)
     }
 
@@ -38,8 +38,9 @@ enum JobLook {
         return nil
     }
 
-    /// A session dir's batch title, else its time stamp as a date.
-    static func sessionLabel(_ dir: URL) -> String {
+    /// A session dir's batch title, else its time stamp as a date. inSentence: the date goes inside a sentence
+    /// ("…what you captured yesterday at 08:36"), so its relative word isn't capitalised.
+    static func sessionLabel(_ dir: URL, inSentence: Bool = false) -> String {
         if let t = batchTitle(dir) { return t }
         let name = dir.lastPathComponent
         let f = DateFormatter()
@@ -47,7 +48,7 @@ enum JobLook {
         f.dateFormat = "yyyyMMdd-HHmmss"
         // never the folder's own name: when it was made, else just "a capture"
         let made = (try? FileManager.default.attributesOfItem(atPath: dir.path)[.creationDate]) as? Date
-        return (f.date(from: String(name.prefix(15))) ?? made).map(Loc.dateTime) ?? T("main.job.capture")
+        return (f.date(from: String(name.prefix(15))) ?? made).map(inSentence ? Loc.dateTimeInSentence : Loc.dateTime) ?? T("main.job.capture")
     }
 
     /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
@@ -133,7 +134,7 @@ extension JobLook {
     static func detailTitle(_ j: Job) -> String {
         if j.type == .process, let s = j.session {
             if let t = batchTitle(s) { return T("main.job.title.organizing", t) }
-            return T("main.job.title.organizing_at", sessionLabel(s))
+            return T("main.job.title.organizing_at", sessionLabel(s, inSentence: true))
         }
         return title(j)
     }

@@ -100,8 +100,11 @@ enum Scripts {
 
     /// items.py state REF… --state S --by user --undo: the user takes back their own last change (⌘Z in the list) —
     /// any state, and the hand-off record that was there comes back.
-    static func undoState(_ uids: [String], to state: String, done: @escaping (Result<[String: Any], Failure>) -> Void) {
-        call("items.py", ["state"] + uids + ["--state", state, "--by", "user", "--undo"], timeout: 30, done: done)
+    /// `from`: only the items still in that state (the one the step left them in); the others come back in "kept".
+    static func undoState(_ uids: [String], to state: String, from: String? = nil,
+                          done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["state"] + uids + ["--state", state, "--by", "user", "--undo"] + (from.map { ["--from-state", $0] } ?? []),
+             timeout: 30, done: done)
     }
 
     /// items.py move REF… --project P|inbox --by user (the AI never moves them back).

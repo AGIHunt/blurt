@@ -686,7 +686,7 @@ enum SelfTests {
         case "mainhandoff":             // mainhandoff instruction|full: copy for your own agent
             let c = MainWindowController.shared
             c.handOff(uids: c.list.selectedItems.map(\.uid), what: arg.isEmpty ? "instruction" : arg) { r in
-                out(["text": r?["text"] ?? NSNull(), "clipboard": NSPasteboard.general.string(forType: .string) ?? ""])
+                out(["text": r?["text"] ?? NSNull(), "clipboard": DictationInsert.pasteboard.string(forType: .string) ?? ""])
             }
         case "mainbundle":              // mainbundle [PATH.zip | cancel]: Export Hand-off Bundle… on the selection —
                                         // no PATH: its Save sheet (the suggested name back); PATH: written there, no panel

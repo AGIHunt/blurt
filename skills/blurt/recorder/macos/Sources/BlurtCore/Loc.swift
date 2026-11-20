@@ -185,6 +185,18 @@ public extension Loc {
         return f.string(from: date)
     }
 
+    /// dateTime inside a sentence ("Organizing what you captured yesterday at 08:36"): the relative word in its
+    /// mid-sentence case, never a capital "Yesterday" after other words.
+    static func dateTimeInSentence(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = locale
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.doesRelativeDateFormatting = true
+        f.formattingContext = .middleOfSentence
+        return f.string(from: date)
+    }
+
     /// 0:42, 12:05, 1:02:03 — positional, the way media players show it everywhere.
     static func duration(_ seconds: Double) -> String {
         let f = DateComponentsFormatter()

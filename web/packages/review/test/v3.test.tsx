@@ -430,7 +430,7 @@ describe("v3 UI", () => {
     expect(cards.map((c) => c.querySelector(".sring")!.getAttribute("class"))).toEqual(["sring s-to_verify", "sring s-new",
       "sring s-handed_off", "sring s-new", "sring s-wontfix", "sring s-in_progress", "sring s-done"]);
     expect(cards[1].querySelector(".spill-ring")?.getAttribute("aria-label")).toBe("新 · 更改状态");
-    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 Agent");
+    expect(cards[2].querySelector(".wk")?.textContent).toBe("已交给 Agent");
     expect(cards[5].querySelector(".wk")?.textContent).toBe("进行中");
     await act(async () => (cards[0].querySelector(".pickbox") as HTMLButtonElement).click());
     await act(async () => (cards[2].querySelector(".pickbox") as HTMLButtonElement).click());

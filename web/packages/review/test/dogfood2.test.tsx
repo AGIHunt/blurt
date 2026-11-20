@@ -57,7 +57,7 @@ describe("the item detail", () => {
     };
     const s = new ReviewStore(host(doc), { lang: "zh" });
     await s.load();
-    expect(stateText(s, s.data.items[0])).toBe("已复制给你的 Agent");
+    expect(stateText(s, s.data.items[0])).toBe("已交给 Agent");
     expect(stateText(s, s.data.items[1])).toBe("已交给 Agent");
     expect(agentName(s, "opencode")).toBe("OpenCode");
     expect(agentName(s, "zcode")).toBe("Agent");

@@ -86,8 +86,10 @@ describe('the item banner (WebHostController.ItemBanner)', () => {
   const job = (more: Partial<Job>): Job =>
     ({ id: 'j1', type: 'process', state: 'running', project: 'p1', session: null, title: null, items: ['a'], steps: [], progress: null, created: '2026-11-02T10:00:00Z', started: '2026-11-02T10:00:01Z', ended: null, error: null, ...more }) as Job;
   const item = (state: ItemRow['state'], more: Partial<ItemRow> = {}) => row('a', state, 'p1', { work_to: 'external', ...more });
-  it("the user's own agent: Won't Do, then Mark as Done as the primary", () => {
-    expect(bannerPlan(item('handed_off'), [])).toMatchObject({ kind: 'external', tone: 'brand', actions: ['wontfix', 'done'], primary: 'done' });
+  it("the user's own agent: Take Back, then Mark as Done as the primary; In progress says the agent is on it", () => {
+    expect(bannerPlan(item('handed_off'), [])).toMatchObject({ kind: 'external', tone: 'brand', text: { key: 'main.banner.external' }, actions: ['take_back', 'done'], primary: 'done' });
+    expect(bannerPlan(item('in_progress', { work_agent: 'codex' }), [])).toMatchObject({ text: { key: 'main.banner.working', args: ['codex'] }, actions: ['take_back', 'done'] });
+    expect(bannerPlan(item('in_progress', { work_agent: 'human' }), [])).toMatchObject({ text: { key: 'main.banner.working', args: [''] } });
   });
   it('with an agent some other way (set by hand, an older session): the same, quieter', () => {
     expect(bannerPlan(item('in_progress', { work_to: 'session', work_agent: 'claude' }), [])).toMatchObject({ kind: 'external', tone: 'neutral', text: { key: 'main.banner.manual' }, primary: 'done' });

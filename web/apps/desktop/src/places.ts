@@ -204,7 +204,8 @@ export function needsYouParts(fresh: number, verify: number, t: (k: string, p?: 
 // ---------------------------------------------------------------- the line above an item (the Mac's ItemBanner)
 
 /** What the banner above an item's detail says and offers (WebHostController.ItemBanner):
-    - handed to the user's own agent (or set by hand): Mark as Done (primary) and Won't Do;
+    - handed to the user's own agent (or set by hand): Take Back and Mark as Done (primary); once the agent reports
+      In progress it says so ("Codex is working on it"), so a silent hand-off and a working agent never look alike;
     - its batch still being organised: Show Progress.
     To verify, new, closed and discarded items have no banner: the page's own work card asks. */
 export interface BannerPlan {
@@ -226,11 +227,14 @@ export function bannerPlan(r: ItemRow, jobs: Job[]): BannerPlan | null {
   if (r.state === 'discarded' || r.state === 'to_verify') return null;
   const active = r.state === 'handed_off' || r.state === 'in_progress';
   if (active && r.work_to === 'external') {
-    return { kind: 'external', tone: 'brand', icon: 'ring', text: { key: 'main.banner.external', args: [] }, actions: ['wontfix', 'done'], primary: 'done', more: [], job: null };
+    const text = r.state === 'in_progress'
+      ? { key: 'main.banner.working', args: [r.work_agent && r.work_agent !== 'human' ? r.work_agent : ''] }
+      : { key: 'main.banner.external', args: [] };
+    return { kind: 'external', tone: 'brand', icon: 'ring', text, actions: ['take_back', 'done'], primary: 'done', more: [], job: null };
   }
   // with an agent but not through a copied hand-off note (set by hand, or an agent session of an older Blurt): mark it
   // done here when it's finished
-  if (active) return { kind: 'external', tone: 'neutral', icon: 'ring', text: { key: 'main.banner.manual', args: [] }, actions: ['wontfix', 'done'], primary: 'done', more: [], job: null };
+  if (active) return { kind: 'external', tone: 'neutral', icon: 'ring', text: { key: 'main.banner.manual', args: [] }, actions: ['take_back', 'done'], primary: 'done', more: [], job: null };
   if (r.session_dir) {
     const p = jobs.find((j) => j.type === 'process' && (j.state === 'running' || j.state === 'queued') && j.session === r.session_dir);
     if (p) return { kind: 'organizing', tone: 'brand', icon: 'spinner', text: { key: 'main.banner.organizing', args: [] }, actions: ['progress'], primary: 'progress', more: [], job: p.id };

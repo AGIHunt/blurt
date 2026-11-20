@@ -145,6 +145,11 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectList | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  /** agent id → its name (agents.json): "Codex is working on it" */
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api.agentsRegistry().then((r) => setAgentNames(Object.fromEntries(r.agents.map((a) => [a.id, a.name]))), () => {});
+  }, []);
   const [place, setPlace] = useState<Place>(saved.homeSeen ? saved.place ?? 'home' : 'home');
   const { off, known: offKnown } = useOff();
   const recordingOn = !off.has('recording');
@@ -1450,6 +1455,10 @@ export default function App() {
       const step = j?.steps.find((x) => x.state === 'running') ?? j?.steps.find((x) => x.state === 'pending');
       return t(banner.text.key, { what: step ? t(`job.step.${step.id}`) : t('job.state.running') });
     }
+    if (banner.text.key === 'main.banner.working') {
+      const id = banner.text.args[0];
+      return t(banner.text.key, { who: id ? agentNames[id] ?? id : t('main.banner.your_agent') });
+    }
     return t(banner.text.key, { who: banner.text.args[0], what: banner.text.args[1] });
   })();
   function bannerAction(a: string) {
@@ -1459,7 +1468,7 @@ export default function App() {
       const j = jobs.find((x) => x.id === job);
       return j ? openJob(j) : undefined;
     }
-    if (a === 'done' || a === 'wontfix') void apply(a as Action, [current1]);
+    if (a === 'done' || a === 'wontfix' || a === 'take_back') void apply(a as Action, [current1]);
   }
   const jobTitle = (j: Job) => {
     // an organizing job with a name of its own is that name ("AI fill-in"), not "Organizing · AI fill-in": two names
