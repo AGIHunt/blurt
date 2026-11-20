@@ -463,8 +463,16 @@ final class RemoteServer {
             tcp = l
         } catch {
             emit(["event": "remote_listen_failed", "why": "\(error)"])
-            status.failure = "\(error)"
+            status.failure = Self.listenFailure(error)
         }
+    }
+
+    /// `Status.failure` when the port is taken (another Blurt, or another app): the page says so in words. Anything else is macOS's own
+    /// error, shown only on hover.
+    static let portInUse = "in_use"
+    static func listenFailure(_ e: Error) -> String {
+        if case .posix(.EADDRINUSE)? = e as? NWError { return portInUse }
+        return "\(e)"
     }
 
     private func listenerState(_ s: NWListener.State, _ l: NWListener) {
@@ -478,7 +486,7 @@ final class RemoteServer {
         case let .failed(e):
             emit(["event": "remote_listen_failed", "why": "\(e)"])
             status.listening = false
-            status.failure = "\(e)"
+            status.failure = Self.listenFailure(e)
             // the saved port went to someone else: any free one
             if case .posix(.EADDRINUSE) = e {
                 Config.shared.set("record.remote.port", nil)

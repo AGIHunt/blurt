@@ -34,8 +34,9 @@
 "phone.mac.accessibility.detail" = "Until it’s on, a phone can connect but can’t move the pointer or press keys.";
 "phone.mac.screen" = "Screen Recording is off";
 "phone.mac.screen.detail" = "Until it’s on, the phone can’t show your screen. The pointer and keys still work.";
-"phone.mac.deaf" = "Couldn’t start listening for phones";
-"phone.mac.deaf.detail" = "macOS error: %@";
+"phone.mac.deaf" = "Phones and computers can’t connect to this Mac";
+"phone.mac.deaf.in_use" = "Another copy of Blurt or another app is using its connection. Quit it, then click Try Again.";
+"phone.mac.deaf.other" = "macOS couldn’t open the connection. Click Try Again, or restart the Mac if that doesn’t help.";
 "phone.mac.deaf.retry" = "Try Again";
 "phone.mac.relay" = "Relay not responding";
 "phone.mac.relay.detail" = "A phone on another network can’t connect. On the same Wi-Fi it still works.";

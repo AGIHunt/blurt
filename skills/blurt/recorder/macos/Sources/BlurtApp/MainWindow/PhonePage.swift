@@ -254,7 +254,7 @@ extension PhonePage {
     ///   fake none|paired|connected|relay|asking|deaf [code]   devices and a connection as if real (RemoteServer.testFake):
     ///                           nothing paired · an iPhone, an iPad and a computer that controls this Mac (its hello
     ///                           said "viewer"), none here · the iPhone connected on the local network ·
-    ///                           … through the relay · a new phone waiting for a yes · the port could not be opened;
+    ///                           … through the relay · a new phone waiting for a yes · the port could not be opened (`deaf other`: an error with no words of its own);
     ///                           also tailscale|meeting|gobetween (connected that way) and busy|nodirect (paired, and why the
     ///                           go-between didn't work: Settings → Phone → Away from home);
     ///                           `code`: with a pairing code on show that is no code (a picture of it gives nothing
@@ -292,7 +292,8 @@ extension PhonePage {
                     st.asking = "Pixel 9"
                     st.askingCheck = "482713"
                     st.askingNumber = 1
-                case "deaf": st.failure = "POSIXErrorCode(rawValue: 48): Address already in use"
+                // `deaf other`: an error the page has no words of its own for
+                case "deaf": st.failure = a.count > 2 && a[2] == "other" ? "POSIXErrorCode(rawValue: 13): Permission denied" : RemoteServer.portInUse
                 default: break
                 }
                 let code = a.count > 2 && a[2] == "code"

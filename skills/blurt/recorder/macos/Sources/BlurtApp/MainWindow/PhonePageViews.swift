@@ -152,9 +152,11 @@ struct PhonePageView: View {
                     Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
                 }
             case let .notListening(why):
-                PhoneRow(tone: .bad, title: T("phone.mac.deaf"), detail: T("phone.mac.deaf.detail", why)) {
+                // what to do, in words; macOS's own error only on hover (and in the log)
+                PhoneRow(tone: .bad, title: T("phone.mac.deaf"), detail: PhoneText.listenFailure(why)) {
                     Button(T("phone.mac.deaf.retry")) { m.listenAgain() }
                 }
+                .help(why == RemoteServer.portInUse ? "" : why)
             case .screenRecording:
                 PhoneRow(tone: .warn, title: T("phone.mac.screen"), detail: T("phone.mac.screen.detail")) {
                     Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.screen], source: .phone) }
@@ -219,6 +221,11 @@ enum PhoneLinks {
 }
 
 enum PhoneText {
+    /// Why phones and computers can't connect, in words (RemoteServer.Status.failure): the port taken, or anything else macOS said.
+    static func listenFailure(_ why: String) -> String {
+        why == RemoteServer.portInUse ? T("phone.mac.deaf.in_use") : T("phone.mac.deaf.other")
+    }
+
     /// macOS 15 asks before an app may use the local network (Privacy & Security → Local Network); earlier ones have
     /// no such list to point at.
     static var vpnTip: String {
@@ -305,7 +312,7 @@ struct PhonePairingCode: View {
                     .accessibilityHidden(true)      // a number that changes every second is noise to VoiceOver
                 }
                 if let f = failure {
-                    Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                    Text(PhoneText.listenFailure(f)).help(f == RemoteServer.portInUse ? "" : f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
                     Button(T("settings.remote.cancel"), action: cancel)

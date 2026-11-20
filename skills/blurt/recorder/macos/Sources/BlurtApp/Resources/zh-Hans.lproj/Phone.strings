@@ -34,8 +34,9 @@
 "phone.mac.accessibility.detail" = "开启前，手机可以连接，但无法移动指针或按键。";
 "phone.mac.screen" = "屏幕录制未开启";
 "phone.mac.screen.detail" = "开启前，手机上无法显示屏幕。指针和按键不受影响。";
-"phone.mac.deaf" = "无法开始等待手机连接";
-"phone.mac.deaf.detail" = "macOS 返回：%@";
+"phone.mac.deaf" = "手机和电脑暂时连不上本机";
+"phone.mac.deaf.in_use" = "另一个口喷鸡或其他应用占用了连接。退出它后点“重试”。";
+"phone.mac.deaf.other" = "macOS 没能打开连接。请点“重试”，不行就重启电脑。";
 "phone.mac.deaf.retry" = "重试";
 "phone.mac.relay" = "中转无响应";
 "phone.mac.relay.detail" = "其他网络中的手机无法连接；同一 Wi-Fi 下不受影响。";
