@@ -5,9 +5,12 @@
 //                                nearby, as if real: nothing saved, nothing connected
 //   viewer list | add | settings the Computers window · its Add Computer sheet · Settings → 手机和电脑
 //   viewer pairing               the Add Computer sheet showing six digits
-//   viewer fakehost PNG [windows|linux|mac] [nodirect]   a pretend host (nodirect: it says the direct path didn't open, as the public
-//                                connection service's host does, then takes no more sessions); on 127.0.0.1 in this process, paired as a nearby computer is (its owner's yes
-//                                comes by itself), whose screen is PNG encoded as H.264 and sent as a real host sends it. It posts no input
+//   viewer fakehost PNG [windows|linux|mac] [nodirect|no|silent|late=S|removed=S|link]   a pretend host (nodirect: it says the direct
+//                                path didn't open, as the public connection service's host does, then takes no more sessions); on 127.0.0.1 in this process,
+//                                paired as a nearby computer is (its owner's yes comes by itself), whose screen is PNG encoded as H.264 and sent as a real
+//                                host sends it. no: its owner says no · silent: nobody answers, and it gives up asking after two minutes, as RemoteServer
+//                                does · late=S: it drops every connection for S seconds (not up yet) · removed=S: it removes this Mac S seconds into the
+//                                session · link: not paired by itself; its port and id come as `viewer_host` for a link to it. It posts no input
 //                                and captures nothing: what it is sent comes back as `viewer_host` events. Two displays, so the switcher shows
 //   viewer pair LINK|NAME        pair with a pasted blurtremote:// link, or the computer of that name found on this network
 //   viewer open NAME             a paired computer's window · viewer quality auto|sharp|balanced|saver (for the next request)
@@ -87,10 +90,14 @@ enum ViewerTests {
                     return emit(["event": "viewer_host", "error": "no image"])
                 }
                 fakeHost?.stop()
-                let h = ViewerFakeHost(image: img, platform: a.count > 2 ? a[2] : "windows", noDirect: a.count > 3 && a[3] == "nodirect")
+                let opts = Array(a.dropFirst(3))
+                func secs(_ k: String) -> Double? { opts.first { $0.hasPrefix(k + "=") }.flatMap { Double($0.dropFirst(k.count + 1)) } }
+                let h = ViewerFakeHost(image: img, platform: a.count > 2 ? a[2] : "windows", noDirect: opts.contains("nodirect"),
+                                       answer: opts.contains("no") ? .no : opts.contains("silent") ? .silent : .yes, late: secs("late"), removeAfter: secs("removed"))
                 fakeHost = h
                 h.start { port in
                     MainActor.assumeIsolated {
+                        if opts.contains("link") { return emit(["event": "viewer_host", "port": Int(port), "id": h.id]) }
                         let n = ViewerStore.Nearby(id: h.id, name: "Office PC", endpoint: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
                         store.pair(n)
                     }
@@ -199,6 +206,13 @@ final class ViewerFakeHost {
     private let platform: String
     /// as the public connection service on a network with no direct path: `noDirect` a second after the session, then no more sessions
     private let noDirect: Bool
+    /// its owner's answer to the pairing question: yes, no, or none (the host gives up asking after two minutes, a bare close as a no)
+    enum Answer { case yes, no, silent }
+    private let answer: Answer
+    /// connections dropped until then: a host not up yet
+    private var deafUntil: Date?
+    /// this Mac removed, that many seconds into its session
+    private let removeAfter: Double?
     private var ended = false
     private var channel: RemoteChannel?
     private var pairedID: String?
@@ -211,10 +225,13 @@ final class ViewerFakeHost {
     private var encodedSize = (0, 0)
     private var saw = false
 
-    init(image: CGImage, platform: String, noDirect: Bool = false) {
+    init(image: CGImage, platform: String, noDirect: Bool = false, answer: Answer = .yes, late: Double? = nil, removeAfter: Double? = nil) {
         self.image = image
         self.platform = platform
         self.noDirect = noDirect
+        self.answer = answer
+        self.deafUntil = late.map { Date().addingTimeInterval($0) }
+        self.removeAfter = removeAfter
         tcp = try! NWListener(using: .tcp, on: .any)
         udp = try! NWListener(using: .udp, on: .any)
     }
@@ -245,6 +262,7 @@ final class ViewerFakeHost {
 
     private func wire(_ c: NWConnection) {
         if ended { return c.cancel() }
+        if let d = deafUntil, Date() < d { c.start(queue: q); note("dropped (late)"); return c.cancel() }
         let ch = RemoteChannel(connection: c, role: .mac(lookup: { [weak self] id in
             guard let self else { return nil }
             return id == self.pairedID ? self.pairedKey : RemoteNearby.isNearby(id) && self.pairedKey == nil ? RemoteNearby.key : nil
@@ -272,6 +290,15 @@ final class ViewerFakeHost {
             guard RemoteNearby.isNearby(id), let n = nonce, let check = ch.check(revealing: n) else { return ch.close() }
             note("asks \(check)")
             ch.send(ToPhone.pairingWaits)
+            switch answer {
+            case .no:
+                q.asyncAfter(deadline: .now() + 2) { self.note("owner said no"); ch.close() }
+                return
+            case .silent:
+                q.asyncAfter(deadline: .now() + 120) { self.note("nobody answered"); ch.close() }
+                return
+            case .yes: break
+            }
             let k = RemoteCrypto.newKey()
             newKey = k
             pairedID = id
@@ -327,6 +354,17 @@ final class ViewerFakeHost {
         let w = Double(image.width) / 2, h = Double(image.height) / 2
         ch.send(ToPhone.displays([RemoteDisplay(id: "1", name: "DELL U2723QE", x: 0, y: 0, width: w, height: h, main: true),
                                   RemoteDisplay(id: "2", name: "Built-in Display", x: w, y: h * 0.3, width: w * 0.8, height: h * 0.8, main: false)]))
+        if let r = removeAfter {
+            q.asyncAfter(deadline: .now() + r) {
+                // its owner's Remove: forgotten here, then told; the old key opens nothing after
+                self.note("removed")
+                self.pairedID = nil
+                self.pairedKey = nil
+                self.sending = false
+                ch.send(ToPhone.removed)
+                self.q.asyncAfter(deadline: .now() + 0.3) { ch.close() }
+            }
+        }
     }
 
     /// The still picture as a keyframe, sent again twice a second (a real host sends a still screen once, then sharpens it).
