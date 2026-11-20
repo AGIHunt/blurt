@@ -248,6 +248,10 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
      The input unit's device is switched before it starts. Trade-off: the built-in mic is ready at once and the
      headset's music keeps its quality (HFP drops it to call quality), but it is farther from the mouth and hears
      more of the room. `DictationMicChoice` (pure, tested) decides.
+   - **A device with more channels than the take keeps** (an audio interface's two ins and its loopback pair: MiniFuse
+     1 shows four): the converter's own channel map for that drop is all -1 — silence, no error, and the island said
+     nothing was heard while the mic itself worked (2026-11-20, dictation and voice notes alike). The take takes the
+     device's first channels (`MicChannelMap`, pure, tested) when that map carries nothing.
    - **The island says "listening" only once audio arrives** (`NoteVoice.onFirstAudio` → `Dictation.micLive`):
      until then the keyboard glyph with dots (`shots/island-mic-starting.png`), then the mint level and the clock
      (`shots/island-listening.png`). `dictation_mic_live` records `from_key_ms`.

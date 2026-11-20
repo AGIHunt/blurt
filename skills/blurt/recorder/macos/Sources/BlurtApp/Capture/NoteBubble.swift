@@ -326,6 +326,12 @@ final class NoteVoice {
         guard inFmt.sampleRate > 0, inFmt.channelCount > 0, let conv = AVAudioConverter(from: inFmt, to: fmt) else {
             return "no_input_format"
         }
+        // A converter that keeps fewer channels than the device has (MiniFuse: two ins and its loopback pair) maps
+        // them all to -1 — the take hears silence and no error says so. Take the first channels instead.
+        if let fix = MicChannelMap.silenceFix(device: Int(inFmt.channelCount), kept: Int(fmt.channelCount),
+                                              map: conv.channelMap.map({ $0.intValue })) {
+            conv.channelMap = fix.map { NSNumber(value: $0) }
+        }
         let rate = inFmt.sampleRate
         var err: NSError?
         let ok = BlurtTry({
