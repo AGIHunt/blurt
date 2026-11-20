@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use blurt_remote::keys::{Keyboard, Sent};
 use blurt_remote::packets::{PointerPacket, ScrollPhase};
-use blurt_remote::viewer::{self, Computer, Computers, Event, Found, Link, PairError, PairWith, Quality, Route, Session, Target, Want};
+use blurt_remote::viewer::{self, Computer, Computers, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want};
 use blurt_remote::wire::{MouseButton, ToMac};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -36,6 +36,17 @@ struct Viewers {
     browser: Mutex<Option<viewer::Browser>>,
     pairing: Mutex<Option<Pairing>>,
     pair_gen: AtomicU64,
+    /// the pairing under way: aborted by Cancel, Back or another pairing, so its connection closes and the host stops asking
+    pair_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// how the last pairing began: Try Again begins it the same way
+    pair_last: Mutex<Option<PairFrom>>,
+    /// computers that refused this computer's key this run, with no session (`Link::Forgotten`): the list says Removed, the key is
+    /// kept (anyone on the network can send a refusal); cleared when one connects
+    refused: Mutex<HashSet<String>>,
+    /// Add Again… from a viewer window: the main window's list opens Add Computer when this goes up
+    add_requests: AtomicU64,
+    /// pairings that ended paired: the Add Computer panel's job is done
+    paired: AtomicU64,
     windows: Mutex<HashMap<String, Win>>,
     next_window: AtomicU64,
     options: Mutex<Options>,
@@ -49,6 +60,14 @@ struct Pairing {
     state: &'static str,
     digits: Option<String>,
     error: Option<&'static str>,
+    /// begun from a pasted link (else from a computer found nearby)
+    link: bool,
+}
+
+#[derive(Clone)]
+enum PairFrom {
+    Nearby(Found),
+    Link(String),
 }
 
 /// A window and its session.
@@ -104,6 +123,11 @@ pub fn start(app: &AppHandle) {
         browser: Mutex::new(None),
         pairing: Mutex::new(None),
         pair_gen: AtomicU64::new(0),
+        pair_task: Mutex::new(None),
+        pair_last: Mutex::new(None),
+        refused: Mutex::new(HashSet::new()),
+        add_requests: AtomicU64::new(0),
+        paired: AtomicU64::new(0),
         windows: Mutex::new(HashMap::new()),
         next_window: AtomicU64::new(1),
         options: Mutex::new(options),
@@ -149,8 +173,10 @@ pub struct ComputerUi {
     name: String,
     platform: Option<String>,
     /// "connected" (a window shows it), "available" (found nearby, or reachable through its relay), "noDirect" (the public
-    /// connection service found no direct path last time), "offline"
+    /// connection service found no direct path last time), "asleep", "offline", "removed" (it removed this computer: Add Again)
     state: &'static str,
+    /// its key is still here: a "removed" said only from a refusal this run, so Connect stays in ⋯
+    key: bool,
     route: Option<Route>,
     last_seen: Option<i64>,
     windows: usize,
@@ -167,11 +193,14 @@ pub struct NearbyUi {
 #[serde(rename_all = "camelCase")]
 pub struct PairingUi {
     name: String,
-    /// "connecting", "asking" (the digits show; the owner answers there), "failed"
+    /// "connecting", "asking" (the digits show; the owner answers there), "failed" (an unreachable one goes on trying meanwhile:
+    /// if the host turns up and asks, "asking" takes its place)
     state: &'static str,
     digits: Option<String>,
-    /// "unreachable", "notTaken", "declined", "invalid"
+    /// "unreachable", "spent" (refused before anyone was asked), "declined", "unanswered", "invalid"
     error: Option<&'static str>,
+    /// begun from a pasted link (else from a computer found nearby)
+    link: bool,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -181,14 +210,19 @@ pub struct ComputersStatus {
     nearby: Vec<NearbyUi>,
     pairing: Option<PairingUi>,
     browsing: bool,
+    /// goes up with each Add Again… from a viewer window: the list opens Add Computer
+    add_requests: u64,
+    /// goes up with each pairing that ended paired: the panel closes
+    paired: u64,
 }
 
 fn status() -> ComputersStatus {
-    let Some(v) = viewers() else { return ComputersStatus { computers: vec![], nearby: vec![], pairing: None, browsing: false } };
+    let Some(v) = viewers() else { return ComputersStatus { computers: vec![], nearby: vec![], pairing: None, browsing: false, add_requests: 0, paired: 0 } };
     let list = v.computers.list();
     let nearby = v.nearby.lock().unwrap().clone();
     let no_direct = v.no_direct.lock().unwrap().clone();
     let presence = v.presence.lock().unwrap().clone();
+    let refused = v.refused.lock().unwrap().clone();
     let ws = v.windows.lock().unwrap();
     let computers = list
         .iter()
@@ -199,6 +233,9 @@ fn status() -> ComputersStatus {
             let gone = presence.get(&c.host_id).filter(|p| !p.host);
             let (state, route) = if let Some(w) = live {
                 ("connected", w.route)
+            } else if c.removed || refused.contains(&c.host_id) {
+                // its key is gone there (or refused this run): it has to be added again
+                ("removed", None)
             } else if nearby.iter().any(|n| n.host_id == c.host_id) {
                 ("available", Some(Route::Local))
             } else if let Some(p) = gone {
@@ -215,13 +252,16 @@ fn status() -> ComputersStatus {
             } else {
                 ("offline", None)
             };
-            ComputerUi { id: c.host_id.clone(), name: c.name.clone(), platform: c.platform.clone(), state, route, last_seen, windows: mine.len() }
+            let key = !c.removed;
+            ComputerUi { id: c.host_id.clone(), name: c.name.clone(), platform: c.platform.clone(), state, key, route, last_seen, windows: mine.len() }
         })
         .collect();
-    let paired: Vec<&str> = list.iter().map(|c| c.host_id.as_str()).collect();
+    // one that removed this computer (or refused its key this run) is offered again: it's added again
+    let paired: Vec<&str> = list.iter().filter(|c| !c.removed && !refused.contains(&c.host_id)).map(|c| c.host_id.as_str()).collect();
     let nearby = nearby.iter().filter(|n| !paired.contains(&n.host_id.as_str())).map(|n| NearbyUi { id: n.host_id.clone(), name: n.name.clone() }).collect();
-    let pairing = v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error });
-    ComputersStatus { computers, nearby, pairing, browsing: v.browser.lock().unwrap().is_some() }
+    let pairing =
+        v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error, link: p.link });
+    ComputersStatus { computers, nearby, pairing, browsing: v.browser.lock().unwrap().is_some(), add_requests: v.add_requests.load(SeqCst), paired: v.paired.load(SeqCst) }
 }
 
 fn emit() {
@@ -302,37 +342,70 @@ fn set_pairing(g: u64, f: impl FnOnce(&mut Option<Pairing>)) {
 #[tauri::command]
 pub fn computers_pair(nearby: Option<String>, link: Option<String>) -> ComputersStatus {
     let Some(v) = viewers() else { return status() };
-    let with = match (nearby, link) {
+    let from = match (nearby, link) {
         (Some(id), _) => match v.nearby.lock().unwrap().iter().find(|f| f.host_id == id).cloned() {
-            Some(f) => PairWith::Nearby(f),
+            Some(f) => PairFrom::Nearby(f),
             None => return status(),
         },
-        (None, Some(l)) => match blurt_remote::pairing::Pairing::parse(l.trim()) {
-            Some(p) => PairWith::Link(p),
-            None => {
-                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid") });
-                emit();
-                return status();
-            }
-        },
+        (None, Some(l)) => PairFrom::Link(l),
         _ => return status(),
     };
+    start_pairing(v, from);
+    status()
+}
+
+/// The failed panel's Try Again: the same link, or the computer found nearby, once more (a new question there).
+#[tauri::command]
+pub fn computers_retry_pairing() -> ComputersStatus {
+    let Some(v) = viewers() else { return status() };
+    let last = v.pair_last.lock().unwrap().clone();
+    if let Some(from) = last {
+        start_pairing(v, from);
+    }
+    status()
+}
+
+fn start_pairing(v: &'static Viewers, from: PairFrom) {
+    stop_pairing(v);
+    let by_link = matches!(from, PairFrom::Link(_));
+    let with = match &from {
+        PairFrom::Nearby(f) => PairWith::Nearby(f.clone()),
+        PairFrom::Link(l) => match blurt_remote::pairing::Pairing::parse(l.trim()) {
+            Some(p) => PairWith::Link(p),
+            None => {
+                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true });
+                emit();
+                return;
+            }
+        },
+    };
+    *v.pair_last.lock().unwrap() = Some(from);
     let name = match &with {
         PairWith::Link(p) => p.name.clone(),
         PairWith::Nearby(f) => f.name.clone(),
     };
     let g = v.pair_gen.fetch_add(1, SeqCst) + 1;
-    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None });
+    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link });
     emit();
     let me = blurt_remote::server::computer_name();
     let at = test_go_between();
-    v.rt.spawn(async move {
-        let r = viewer::pair(with, &me, at.as_deref(), |d| {
-            let d = d.to_string();
+    let task = v.rt.spawn(async move {
+        // nothing answering is said, and it goes on trying: if the host turns up and asks, its digits take the place of the failure
+        let r = viewer::pair_steps(with, &me, at.as_deref(), viewer::QUESTION_LIFE, true, |s| {
             set_pairing(g, move |p| {
                 if let Some(p) = p {
-                    p.state = "asking";
-                    p.digits = Some(d);
+                    match s {
+                        PairStep::Unreachable => {
+                            p.state = "failed";
+                            p.error = Some("unreachable");
+                            p.digits = None;
+                        }
+                        PairStep::Asking(d) => {
+                            p.state = "asking";
+                            p.error = None;
+                            p.digits = Some(d);
+                        }
+                    }
                 }
             });
         })
@@ -340,7 +413,14 @@ pub fn computers_pair(nearby: Option<String>, link: Option<String>) -> Computers
         match r {
             Ok((c, key)) => {
                 let id = c.host_id.clone();
+                // paired (again): the record by the host's id, with its new key, and nothing said against it this run
                 let ok = viewers().is_some_and(|v| v.computers.add(c, &key).is_ok());
+                if ok {
+                    if let Some(v) = viewers() {
+                        v.refused.lock().unwrap().remove(&id);
+                        v.paired.fetch_add(1, SeqCst);
+                    }
+                }
                 set_pairing(g, |p| *p = if ok { None } else { p.take().map(|p| Pairing { state: "failed", error: Some("unreachable"), ..p }) });
                 if ok {
                     // paired: its window opens, as a phone shows the computer at once
@@ -355,8 +435,9 @@ pub fn computers_pair(nearby: Option<String>, link: Option<String>) -> Computers
             Err(e) => {
                 let why = match e {
                     PairError::Unreachable => "unreachable",
-                    PairError::NotTaken => "notTaken",
+                    PairError::Spent => "spent",
                     PairError::Declined => "declined",
+                    PairError::Unanswered => "unanswered",
                 };
                 set_pairing(g, |p| {
                     if let Some(p) = p {
@@ -368,17 +449,41 @@ pub fn computers_pair(nearby: Option<String>, link: Option<String>) -> Computers
             }
         }
     });
-    status()
+    *v.pair_task.lock().unwrap() = Some(task);
 }
 
-/// Done with the pairing panel: a pairing still under way stops (the host's question goes when the connection does).
+/// A pairing under way stops: its task ends, the connection with it, so the host's question goes too.
+fn stop_pairing(v: &Viewers) {
+    v.pair_gen.fetch_add(1, SeqCst);
+    if let Some(t) = v.pair_task.lock().unwrap().take() {
+        t.abort();
+    }
+}
+
+/// Done with the pairing panel (Cancel), or Back to its first page after a failure: a pairing still under way stops.
 #[tauri::command]
 pub fn computers_cancel_pairing() -> ComputersStatus {
     if let Some(v) = viewers() {
-        v.pair_gen.fetch_add(1, SeqCst);
+        stop_pairing(v);
         *v.pairing.lock().unwrap() = None;
     }
     emit();
+    status()
+}
+
+/// Add Again…, from a viewer window whose computer removed this one: the main window's Remote Control page with Add Computer open,
+/// and this window closes (it has nothing more to show).
+#[tauri::command]
+pub fn computers_add_again(app: AppHandle, window: WebviewWindow) -> ComputersStatus {
+    crate::show_main(&app);
+    let _ = app.emit("nav", json!({"view": "phone"}));
+    if let Some(v) = viewers() {
+        v.add_requests.fetch_add(1, SeqCst);
+    }
+    emit();
+    if window.label().starts_with("viewer-") {
+        let _ = window.close();
+    }
     status()
 }
 
@@ -405,6 +510,7 @@ pub fn computers_remove(id: String) -> ComputersStatus {
             });
         }
         v.computers.remove(&id);
+        v.refused.lock().unwrap().remove(&id);
     }
     emit();
     status()
@@ -417,6 +523,10 @@ pub async fn computers_open(app: AppHandle, id: String) -> ComputersStatus {
     // Connect is a fresh try: what the last one found no longer stands
     if let Some(v) = viewers() {
         v.no_direct.lock().unwrap().remove(&id);
+        // its key is gone: nothing to open a window with (the list offers Add Again… instead)
+        if v.computers.get(&id).is_some_and(|c| c.removed) {
+            return status();
+        }
     }
     let _ = open_window(&app, &id);
     status()
@@ -526,8 +636,17 @@ fn on_event(label: String) -> viewer::OnEvent {
                     Link::NoDirect => {
                         v.no_direct.lock().unwrap().insert(host);
                     }
+                    Link::Removed => {
+                        // said in a session it had opened, so it's so: the key goes, the list says Removed until it's added again
+                        v.computers.mark_removed(&host);
+                    }
+                    Link::Forgotten => {
+                        // a refusal with no session, which anyone on the network can send: said for this run, the key kept
+                        v.refused.lock().unwrap().insert(host);
+                    }
                     Link::Connected => {
                         v.no_direct.lock().unwrap().remove(&host);
+                        v.refused.lock().unwrap().remove(&host);
                         // the list names this path afterwards, not the relay it happens to know
                         if route.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != route) {
                             v.computers.update(&host, |c| c.last_route = route);
@@ -984,18 +1103,24 @@ mod tests {
                 name: "Studio PC".into(),
                 platform: Some("windows".into()),
                 state: "available",
+                key: true,
                 route: Some(Route::GoBetween),
                 last_seen: None,
                 windows: 0,
             }],
             nearby: vec![NearbyUi { id: "n".into(), name: "Den".into() }],
-            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None }),
+            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None, link: false }),
             browsing: true,
+            add_requests: 0,
+            paired: 1,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["computers"][0]["route"], "goBetween");
         assert_eq!(v["computers"][0]["lastSeen"], serde_json::Value::Null);
         assert_eq!(v["pairing"]["digits"], "123456");
+        assert_eq!(v["pairing"]["link"], false);
+        assert_eq!(v["addRequests"], 0);
+        assert_eq!(v["paired"], 1);
         assert_eq!(serde_json::to_value(Options::default()).unwrap(), json!({"mapped": true, "clipboard": true}));
         assert_eq!(urlencode("a b/c"), "a%20b%2Fc");
     }
