@@ -467,7 +467,7 @@ final class CardsPage: NSObject, FullPage, ObservableObject, CardTileHost, CardP
         guard !ts.isEmpty else { return }
         let used = ts.contains(where: \.used)
         emit(["event": "cards_page_delete", "n": ts.map(\.shot.n)])
-        snapper.delete(ts.map(\.shot))
+        snapper.delete(ts.map(\.shot), undo: root.window?.undoManager)      // ⌘Z on the page brings them back
         if used { NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": snapper.recentlyTaken.count]) }
     }
 

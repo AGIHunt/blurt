@@ -38,6 +38,15 @@ final class CardPreview: NSObject, NSWindowDelegate {
         shot = nil
     }
 
+    /// "Saturday, November 21" (with the year when it isn't this one), in the app's language.
+    static func day(_ d: Date, now: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.locale = Loc.locale
+        let sameYear = Calendar.current.isDate(d, equalTo: now, toGranularity: .year)
+        f.setLocalizedDateFormatFromTemplate(sameYear ? "EEEEMMMMd" : "yMMMMEEEEd")
+        return f.string(from: d)
+    }
+
     /// Shows `s` (card `index` of `count` in its segment) on `screen`, taking the keyboard when `keyboard`.
     func show(_ s: Shot, used: Bool, index: Int, of count: Int, on screen: NSScreen?, keyboard: Bool) {
         if window == nil { build() }
@@ -46,12 +55,13 @@ final class CardPreview: NSObject, NSWindowDelegate {
         self.used = used
         head.title.stringValue = s.plainName          // "Snap · 19:03": the note itself is the footer's, whole
         head.count.stringValue = count > 1 ? Loc.number(index + 1) + " / " + Loc.number(count) : ""
-        // the whole note and when; a card without one: only when (its name is the header already)
+        // the whole note and when; a card without one: its day, written out ("Saturday, November 21") — the header has
+        // its name and time already, and the footer repeated "00:37" under "Snap · 00:37"
         let hasWords = !(s.words ?? "").isEmpty
         caption.attributedStringValue = hasWords ? CardTile.footerLine(s, used: used)
             : used ? CardTile.usedWhen(s)
-            : NSAttributedString(string: s.takenAt, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-                                                                  .foregroundColor: NSColor.tertiaryLabelColor])
+            : NSAttributedString(string: CardPreview.day(Date(timeIntervalSince1970: s.wall)),
+                                 attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor])
         let scr = screen ?? NSScreen.main ?? NSScreen.screens[0]
         let vf = scr.visibleFrame
         let p = CardPreview.pad

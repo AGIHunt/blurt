@@ -776,12 +776,21 @@ final class Snapper {
     private func announceFiled(project: String, id: String?, uids: [String]) {
         let store = ProjectStore.shared
         let p = project == "inbox" ? store.inbox : store.project(id: project)
-        let name = p?.name ?? project
+        let full = p?.name ?? project
         let ids = (id ?? "") + (uids.count > 1 ? " +\(uids.count - 1)" : "")
-        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: Loc.t("capture.change", table: "Capture")) {
+        // a long name loses its middle so the line stays one line at the open island's width, as the sidebar shows it
+        // ("口喷鸡 i…试截断）"): wrapped, it left "断）" alone on a line and the ID on a third
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium), small = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let change = Loc.t("capture.change", table: "Capture")
+        let room = Island.openW - IslandLayout.textColumn - IslandLayout.toastInset - 16
+            - ceil((change as NSString).size(withAttributes: [.font: small]).width) - 28
+        let name = MiddleTruncate.fit(full, in: { Loc.t("capture.filed", table: "Capture", $0, ids) },
+                                      fits: { ceil(($0 as NSString).size(withAttributes: [.font: font]).width) <= room })
+        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: change) {
             Refile.items(uids, from: project)
         }
         t.badge = p.map { ($0.key, ProjectLook.color($0)) }
+        island.expectFiled(max(uids.count, id == nil ? 0 : 1))
         island.toast(t)
     }
 
@@ -898,14 +907,17 @@ final class Snapper {
     private var undoable = CardUndo<Shot>()
     private var trashedFiles: [ObjectIdentifier: [URL: URL]] = [:]
 
-    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them.
-    func delete(_ shots: [Shot]) {
+    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them. `undo`: the
+    /// window it was done in (the Cards page's): ⌘Z there brings them back too, and doesn't drop the cards under the
+    /// notch over the window; several at once keep their Undo 8 s (97 cards' went before it could be reached).
+    func delete(_ shots: [Shot], undo: UndoManager? = nil) {
         for s in shots where NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         // (a fresh shot's bubble discards it itself, with its own Undo)
         let gone = shots.filter { !$0.deleted && $0.batch != nil }
         guard !gone.isEmpty else { return }
         let live = island.toastLive(key: Snapper.deleteToast)
-        if !live { trashedFiles = [:] }
+        // (the Trash locations stay known while an Undo — the island's or a window's ⌘Z — may still ask for them)
+        if !live && undo == nil && !pageUndoPending { trashedFiles = [:] }
         let all = undoable.add(gone, live: live)
         for s in gone {
             hanging.drop(s)
@@ -915,22 +927,40 @@ final class Snapper {
               "sessions": Array(Set(gone.compactMap { $0.batch?.dir.path }))])
         let text = all.count == 1 ? Loc.t("capture.card.deleted", table: "Capture")
                                   : Loc.plural("capture.card.deleted_n", table: "Capture", count: all.count)
-        var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) { [weak self] in self?.undelete() }
-        t.seconds = CardDelete.undoSeconds
+        let fromPage = undo != nil
+        var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) { [weak self] in self?.undelete(fromPage: fromPage) }
+        t.seconds = all.count > 1 ? max(CardDelete.undoSeconds, 8) : CardDelete.undoSeconds
+        if let u = undo {
+            pageUndoPending = true
+            u.registerUndo(withTarget: self) { me in me.undelete(gone, fromPage: true) }
+            u.setActionName(Loc.t("capture.card.delete", table: "Capture"))
+        }
         t.overOpen = true               // the island may be open over the cards: the Undo shows at once all the same
         t.key = Snapper.deleteToast     // a delete while it shows joins it, and the toast says so
         island.toast(t)
     }
 
+    /// A window's ⌘Z may still bring deleted cards back (their Trash locations are kept for it).
+    private var pageUndoPending = false
+
     /// Undo of a delete: back on their threads, where they hung (the cards keep the order they were taken in).
-    private func undelete() {
-        let back = undoable.take().filter(\.deleted)
+    /// `these`: a window's ⌘Z, the cards that delete took; else the island's Undo, everything it covers. `fromPage`:
+    /// asked for on the Cards page — the cards don't come down under the notch over the window.
+    private func undelete(_ these: [Shot]? = nil, fromPage: Bool = false) {
+        let back: [Shot]
+        if let t = these {
+            back = t.filter(\.deleted)
+            _ = undoable.take()
+            island.dropToasts(key: Snapper.deleteToast)
+        } else {
+            back = undoable.take().filter(\.deleted)
+        }
         for s in back { s.batch?.undelete(s, from: trashedFiles.removeValue(forKey: ObjectIdentifier(s)) ?? [:]) }
         emit(["event": "undo_delete", "captures": back.map(\.n)])
         hanging.refresh()
         // a card used in another app comes back to the Cards panel's History, not to a thread
         if back.contains(where: { $0.taken != nil }) { takenChanged() }
-        if back.contains(where: { $0.taken == nil }) { hanging.show(peek: 2.5) }
+        if !fromPage, back.contains(where: { $0.taken == nil }) { hanging.show(peek: 2.5) }
     }
 
     /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 5 s (as long as a discarded voice

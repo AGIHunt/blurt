@@ -1700,12 +1700,29 @@ final class Island: NSObject, IslandHosting {
                 guard let self = self, Capability.recording.isOn else { return }
                 defer { self.reviewLoaded = true }
                 guard n != self.reviewCount else { return }
-                // more than before (not the first count at launch): that many just landed — said for a moment
-                if self.reviewLoaded, n > self.reviewCount { self.announceInbox(n - self.reviewCount) }
+                // more than before (not the first count at launch): that many just landed — said for a moment; the
+                // items a "Filed to X" just said are not news (the tray's "+1" read as "it went to the Inbox")
+                if self.reviewLoaded, n > self.reviewCount {
+                    let grew = n - self.reviewCount
+                    let filed = CACurrentMediaTime() < self.filedUntil ? min(self.filedCredit, grew) : 0
+                    self.filedCredit -= filed
+                    if grew - filed > 0 { self.announceInbox(grew - filed) }
+                    emit(["event": "island_inbox_grew", "n": grew, "filed": filed])
+                }
                 self.reviewCount = n
                 self.refresh()
             }
         }
+    }
+
+    /// Items a "Filed to X" toast has just named (Snapper.announceFiled): the to-review count's next rise by them is
+    /// not announced again as "+n" in the tray (for a while; a filing whose items never come leaves no credit behind).
+    private var filedCredit = 0
+    private var filedUntil: CFTimeInterval = 0
+    func expectFiled(_ n: Int) {
+        guard n > 0 else { return }
+        filedCredit = CACurrentMediaTime() < filedUntil ? filedCredit + n : n
+        filedUntil = CACurrentMediaTime() + 30
     }
 
     /// "+n" with the tray in the right ear for a few seconds (a second batch within them adds to it): the inbox grew.
