@@ -442,9 +442,10 @@ final class StorageModel: ObservableObject {
         func model(_ u: URL) -> Row {
             // a model linked in from elsewhere is named by what it links to (a Hugging Face snapshot by its repo)
             let f = linkedFolder(u) ?? u.lastPathComponent
-            // a link takes nothing here (what it points at is counted where it lives)
+            // a model linked in is measured where the link leads (the link itself is a few bytes: "0 KB")
             let link = (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
-            return Row(name: displayName(f), path: u, bytes: link ? 0 : diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
+            return Row(name: displayName(f), path: u, bytes: diskSize(link ? u.resolvingSymlinksInPath() : u), icon: icon(f),
+                       family: family(f), vad: f == "silero_vad.onnx")
         }
         for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
             where !e.lastPathComponent.hasPrefix(".") {
@@ -457,8 +458,8 @@ final class StorageModel: ObservableObject {
                 out.append(model(e))
             }
         }
-        // nothing on disk here (a link, an empty folder): nothing to free, and a "0 KB" row only puzzled (dogfood
-        // 2026-11-21: two nameless "Older model · 0 KB" rows that were the models in use, linked in)
+        // nothing on disk (an empty folder, a link that leads nowhere): nothing to free, and a "0 KB" row only puzzled
+        // (dogfood 2026-11-21: two nameless "Older model · 0 KB" rows that were the models in use, linked in)
         return out.filter { $0.bytes > 0 }
     }
 
