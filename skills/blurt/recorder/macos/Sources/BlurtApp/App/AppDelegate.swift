@@ -31,6 +31,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var resident: Bool { opts.standalone }
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        if resident {
+            // first: a hand edit gone wrong is said at launch, before a migration below writes to the file (its
+            // refused write made the backup unheard, and "12 shortcuts won't work" went up instead: dogfood 2026-11-21)
+            LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+            Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
+            Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
+            Config.shared.checkReadable()   // (defaults until fixed), not at the first write
+        }
         CloudSpeech.install()
         UVSetup.ensure(via: "launch")           // quietly, only when no usable uv is there (first-minute-speech.md)
         for sig in [SIGTERM, SIGINT] {
@@ -221,15 +229,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: menu-bar app
 
     func startResident() {
-        LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+        // (LaunchMessages and the config's checks started first thing: applicationDidFinishLaunching)
         for (name, active) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in App.activeSince = active ? Date() : nil }
         }
         FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
-        Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
-        Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
-        Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
-        ScreenTextCopy.migrateTranslateConfig()     // ⌥T's own translate settings, once (from dictation's)
+        // ⌥T's own translate settings, once (from dictation's) — never from defaults read off a file that doesn't parse
+        if Config.shared.readable { ScreenTextCopy.migrateTranslateConfig() }
         watchNetwork()
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends

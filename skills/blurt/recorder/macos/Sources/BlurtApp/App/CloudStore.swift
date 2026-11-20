@@ -72,6 +72,8 @@ enum CloudStore {
             }
             return pinned
         }
+        // a config.json that doesn't parse reads as {}: nothing to migrate from (the defaults, not written over it)
+        guard Config.shared.readable else { return CloudMigration.migrate(dictation: [:], screenText: [:], keys: [], speechKey: false) }
         let dictation = recordConfig()["dictation"] as? [String: Any] ?? [:]
         let screen = recordConfig()["screen_text"] as? [String: Any] ?? [:]
         var keys = Set<String>()

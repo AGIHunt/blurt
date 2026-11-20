@@ -219,9 +219,21 @@ final class ModelDownloads: ObservableObject {
         }
         emit(["event": "model_download", "op": "resume", "models": q.pending.map(\.id), "finished": q.finished])
         waitingForNetwork = false
-        announceResume = true           // the line goes up with the first progress line: it carries on for real
         queue = q
         via = "launch"
+        if LaunchMessages.shared.holding {
+            // at launch: said now, inside the hold, so it outranks the welcome as LaunchRank means it to (posted with
+            // the first progress line it came after the hold and was dropped: dogfood 2026-11-21) — and dropped at the
+            // end of the hold if the download stopped by then. Stop on it: gigabytes never resume without a word.
+            announceResume = false
+            var t = Island.Toast(text: T("app.models.resuming", modelSize(Self.toFetchMB(q.pending))), actionTitle: T("app.models.stop")) {
+                MainActor.assumeIsolated { ModelDownloads.shared.stop() }
+            }
+            t.seconds = 8
+            LaunchMessages.shared.post(.models, t, stillTrue: { MainActor.assumeIsolated { ModelDownloads.shared.active } })
+        } else {
+            announceResume = true       // the line goes up with the first progress line: it carries on for real
+        }
         runNext()
     }
 
