@@ -79,7 +79,10 @@ const server = http.createServer((req, res) => {
   if (r && r[1] === "peek" && req.method === "GET") {
     const s = seen.get(r[0]) || {};
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    return res.end(JSON.stringify({ host: isOpen(rooms.get(r[0])?.mac), asleep: s.asleep ?? null, seen: s.seen ?? null }));
+    // Node 12 (README): no ?. or ??
+    const room = rooms.get(r[0]);
+    const nil = (v) => (v === undefined ? null : v);
+    return res.end(JSON.stringify({ host: isOpen(room && room.mac), asleep: nil(s.asleep), seen: nil(s.seen) }));
   }
   const ok = r !== null && r[1] !== "peek";
   res.writeHead(ok ? 426 : 404, { "Content-Type": "text/plain" });
