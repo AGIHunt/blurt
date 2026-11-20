@@ -1544,14 +1544,19 @@ final class Dictation {
         if !before.isEmpty { req["before"] = before }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
-        var restarted = false
+        var restarted = false, replaced = false
         while WarmServer.running("asr-serve"), !serverGivenUp {
             let t0 = Date()
-            let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)
-            // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit
-            let watch = WarmServer.pid("asr-serve").map { CPUWatch(pid: $0) }
+            // a model still loading (the server's run file says so) gets the time a cold load takes on top
+            let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds,
+                                                          loading: WarmServer.loading("asr-serve"))
+            // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit;
+            // never while its model loads (a load waiting on the disk shows no CPU): the CPU is watched from its end
+            let pid = WarmServer.pid("asr-serve")
+            var watch = pid.map { CPUWatch(pid: $0) }
             let (answer, hung) = WarmServer.call("asr-serve", req, timeout: limit) { waited in
-                watch.map { DictationASRFailure.hung(waited: waited, cpuIdle: $0.idle()) } ?? false
+                if WarmServer.loading("asr-serve") { watch = pid.map { CPUWatch(pid: $0) }; return false }
+                return watch.map { DictationASRFailure.hung(waited: waited, cpuIdle: $0.idle()) } ?? false
             }
             if let r = answer {
                 if r["ok"] as? Bool == true { return r }
@@ -1571,6 +1576,16 @@ final class Dictation {
                 }
             } else if hung || Date().timeIntervalSince(t0) >= limit - 0.5 {
                 giveUpOnServer(hung: hung, waited: Date().timeIntervalSince(t0))
+                // a hung server is replaced by a fresh one that loads the model now: this request waits for it rather
+                // than loading the same model in the CLI beside it (two cold loads at once), once
+                if hung, !replaced {
+                    replaced = true
+                    let back = Date().addingTimeInterval(10)
+                    func up() -> Bool { WarmServer.running("asr-serve") && WarmServer.pid("asr-serve") != pid }
+                    while !up() && Date() < back && VoiceInput.serverStarting { usleep(100_000) }
+                    emit(["event": "dictation_asr_server", "state": "replaced", "back": up()])
+                    if up() { continue }
+                }
             }
             break
         }

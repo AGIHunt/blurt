@@ -159,7 +159,12 @@ public enum DictationASRFailure: Equatable {
 
     /// How long a speech-server call may take for this much audio at most: a model load (cold, from disk) plus 1.5×
     /// the audio — a piece of 20 s gets 45 s. A hung server is told well before that (`hung`).
-    public static func serverTimeout(audioSeconds: Double) -> Double { 15 + 1.5 * max(0, audioSeconds) }
+    /// `loading`: the server says its model is loading (WarmServer.loading) — a cold load from a busy disk took 15 s
+    /// on its own (dogfood 2026-11-21), so it gets `loadAllowance` more.
+    public static let loadAllowance = 30.0
+    public static func serverTimeout(audioSeconds: Double, loading: Bool = false) -> Double {
+        15 + 1.5 * max(0, audioSeconds) + (loading ? loadAllowance : 0)
+    }
 
     /// A request in flight is given up on as hung: no answer after `minWait` s while the server's CPU time hasn't
     /// moved for `stalledFor` s (v0.9 dogfood: a stopped server held a 3 s take 21.6 s, only dots on the island). The

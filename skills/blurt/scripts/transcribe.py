@@ -3551,7 +3551,14 @@ class NoteEngine:
                 self.backend.close()     # its model goes before the next one loads (a language change keeps it)
             elif self.backend is not None and hasattr(self.backend, "_ex"):
                 self.backend._ex.shutdown(wait=False)   # the same model: only its thread goes
-            self.backend = make_backend(name, a, "note")
+            loading = SERVING and (self.backend is None or a.model_id != self.model_id)
+            if loading:
+                serve_loading(True)
+            try:
+                self.backend = make_backend(name, a, "note")
+            finally:
+                if loading:
+                    serve_loading(False)
             self.name, self.model_id, self.language = name, a.model_id, language or None
         return self
 
@@ -3837,6 +3844,23 @@ def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
 
 
 SERVE_FILE = RUN_DIR / "asr-serve.json"
+
+
+def serve_loading(on: bool) -> None:
+    """The server's run file says while its model loads (`loading_since`): a load answers nothing until it is done
+    (the preload runs before the loop; a cold `load` or `note` inside it), and a load waiting on the disk or the GPU
+    can show no CPU for seconds — the app took that for a hang, ended the server mid-load and loaded the same model
+    again in the CLI beside a fresh one (first dictation after setup: 31 s, dogfood 2026-11-21). Only this server's
+    own file is touched."""
+    info = load_json(SERVE_FILE, None)
+    if not isinstance(info, dict) or info.get("pid") != os.getpid():
+        return
+    if on:
+        info["loading_since"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    else:
+        info.pop("loading_since", None)
+    with contextlib.suppress(OSError):
+        save_json(SERVE_FILE, info)
 
 
 def _server_call(req: dict, timeout: float = 120) -> dict | None:

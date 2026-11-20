@@ -97,4 +97,44 @@ final class WarmServerTests: XCTestCase {
         let later = Date().addingTimeInterval(3)
         XCTAssertGreaterThan(w.idle(now: later), 2.5)
     }
+
+    /// A server whose run file says its model is loading (transcribe.py serve_loading) is never stuck: the first
+    /// dictation's server was ended mid-load (no CPU while the load waited on the disk) and the model loaded twice
+    func testALoadingServerIsWorkingNotStuck() {
+        XCTAssertEqual(WarmServer.verdict(record: rec, alive: true, argv: argv, script: "transcribe.py",
+                                          processStarted: Date(timeIntervalSince1970: 998), answered: false, cpu: 0,
+                                          parentAlive: true, loading: true), .working)
+        // still not a server, loading or not: the file is stale
+        XCTAssertEqual(WarmServer.verdict(record: rec, alive: true, argv: ["/bin/zsh"], script: "transcribe.py",
+                                          processStarted: Date(timeIntervalSince1970: 998), answered: false, cpu: 0,
+                                          parentAlive: true, loading: true), .notAServer)
+        var r = rec
+        let now = Date(timeIntervalSince1970: 2000)
+        XCTAssertFalse(WarmServer.loading(r, now: now))
+        r.loadingSince = now.addingTimeInterval(-20)
+        XCTAssertTrue(WarmServer.loading(r, now: now))
+        // loading for longer than any load takes: judged like any server
+        r.loadingSince = now.addingTimeInterval(-(WarmServer.loadTrusted + 1))
+        XCTAssertFalse(WarmServer.loading(r, now: now))
+        XCTAssertEqual(DictationASRFailure.serverTimeout(audioSeconds: 4, loading: true), 15 + 6 + DictationASRFailure.loadAllowance)
+    }
+
+    func testTheRunFileSaysWhileItsModelLoads() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("warm-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("run"), withIntermediateDirectories: true)
+        let was = getenv("BLURT_HOME").map { String(cString: $0) }
+        setenv("BLURT_HOME", dir.path, 1)
+        defer {
+            if let w = was { setenv("BLURT_HOME", w, 1) } else { unsetenv("BLURT_HOME") }
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let f = dir.appendingPathComponent("run/x.json")
+        try #"{"pid": 4242, "port": 50000, "token": "t", "started": "2026-11-21T10:00:00+08:00", "loading_since": "2026-11-21T10:00:01+08:00"}"#
+            .write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertEqual(WarmServer.record("x")?.loadingSince, ISO8601DateFormatter().date(from: "2026-11-21T10:00:01+08:00"))
+        try #"{"pid": 4242, "port": 50000, "token": "t", "started": "2026-11-21T10:00:00+08:00"}"#
+            .write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertNil(WarmServer.record("x")?.loadingSince)
+        XCTAssertFalse(WarmServer.loading("x"))
+    }
 }
