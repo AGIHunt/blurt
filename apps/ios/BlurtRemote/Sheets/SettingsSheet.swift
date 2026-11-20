@@ -164,12 +164,14 @@ struct SettingsSheet: View {
                 }
             case .connecting: return "Connecting…"
             case .unreachable: return "Can’t reach it"
-            case .forgotten: return "Needs pairing again"
+            // removed there in a session (the key is gone), or a key refused this run (kept): either way, a new code adds it again
+            case .forgotten: return "Removed this iPhone"
             case .replaced: return "Another phone is using it"
             case .ended: return "Ended at the computer"
             case .unpaired: return "Not connected"
             }
         }
+        if m.removed == true { return "Removed this iPhone" }
         if l.nearby.contains(m.id) { return "On this network" }
         if RemoteRelay.isGoBetween(m.relayAddress) { return "Uses the public connection service" }
         return m.relayAddress != nil ? "Uses your relay" : "Not on this network"

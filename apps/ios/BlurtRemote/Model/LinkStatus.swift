@@ -22,8 +22,10 @@ struct LinkStatus: Equatable {
     var screenError: String?
     /// the computer is asking its owner about this phone's code
     var waiting = false
-    /// a pairing just didn't take; Link has the sentence
+    /// a pairing just didn't take; Link has the sentences
     var pairFailed = false
+    /// the code that didn't take can still work (it couldn't be reached, and is still being tried): Try Again
+    var pairRetry = false
     /// Blurt's go-between couldn't carry the session (docs/design/remote-go-between.md): this network won't connect directly, or the
     /// go-between is busy today
     var away: Away?
@@ -87,12 +89,15 @@ struct StatusBanner: Equatable {
             if s.screenError == "permission" { b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .allowScreen) }
             if s.screenError == "off" { b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .screenIsOff) }
         }
-        // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing
-        if s.waiting { b = StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer) }
+        // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
+        // once the computer asks, whatever went wrong before is past
+        if s.waiting { return StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer) }
         if s.pairFailed {
-            // what there was to do about the computer in hand is still there to do
-            b = StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: s.waiting ? nil : b?.action,
-                             second: s.waiting ? nil : b?.second)
+            // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the
+            // computer gone back to is still there to do
+            b = s.pairRetry ? StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .retry, second: .scan)
+                : StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan,
+                               second: b?.action == .scan ? nil : b?.action)
         }
         return b
     }

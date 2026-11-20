@@ -40,8 +40,8 @@ enum Words {
     static var whereTheCodeIs: String { String(localized: "On your computer, open Blurt’s Remote Control page and choose Add Device.") }
 
     /// The pad's card, line by line (LinkStatus.swift has which lines a state gets). `name`: the computer in hand; `check`: the digits a
-    /// pairing shows on both; `failed`: Link's sentence for a pairing that didn't take.
-    static func status(_ line: StatusBanner.Line, host h: RemoteHost, name: String?, check: String? = nil, failed: String? = nil) -> String {
+    /// pairing shows on both; `failed`: Link's sentences for a pairing that didn't take.
+    static func status(_ line: StatusBanner.Line, host h: RemoteHost, name: String?, check: String? = nil, failed: PairFailure? = nil) -> String {
         let n = name ?? String(localized: "the computer")
         switch line {
         case .connecting: return String(localized: "Connecting to \(n)…")
@@ -53,7 +53,7 @@ enum Words {
         case .goBetweenBusy: return String(localized: "The public connection service has reached today’s limit. Try again later, or use your own relay.")
         case .relayDown: return String(localized: "Its own relay isn’t responding. Trying the public connection service…")
         case .needsPairing: return String(localized: "Needs pairing again")
-        case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) no longer knows this iPhone.")
+        case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) removed this iPhone.")
         case .otherPhone: return String(localized: "Another phone is connected")
         case .touchToTakeOver: return String(localized: "Touch to take over.")
         case .endedThere: return String(localized: "Someone at \(n) ended the connection.")
@@ -62,8 +62,8 @@ enum Words {
         case .whereTheCodeIs: return whereTheCodeIs
         case .waiting: return String(localized: "Waiting for your computer")
         case .allowOnComputer: return String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@."), check ?? "")
-        case .pairingFailed: return String(localized: "Pairing didn’t work")
-        case .whyPairingFailed: return failed ?? ""
+        case .pairingFailed: return failed?.title ?? String(localized: "Pairing didn’t work")
+        case .whyPairingFailed: return failed?.help ?? ""
         case .cantControl: return String(localized: "Can’t control \(n)")
         case .howToAllowControl: return cantControl(h, n)
         case .cantShowScreen: return String(localized: "Can’t show the screen")

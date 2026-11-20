@@ -27,13 +27,40 @@ struct PairedMac: Codable, Identifiable, Hashable {
     var nickname: String?
     /// what the computer said it is ("mac", "windows", "linux"), as last heard; nil before it said, as a Mac paired before 1.0.15
     var platform: String?
+    /// the computer removed this phone, said in a session it had opened: its key is gone, and it has to be paired again (nil before 1.1)
+    var removed: Bool?
 
     var title: String { nickname?.isEmpty == false ? nickname! : name }
     var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
 }
 
+/// A pairing that didn't take: what went wrong, what to do next, and whether the same code can still work (Try Again). The computer never
+/// says why (a refused handshake, or a bare close), so it's read from when (docs/design/remote-desktop-viewer.md, as the Mac viewer does).
+struct PairFailure: Equatable {
+    enum Why: Equatable {
+        /// refused before anyone was asked: the code ran out or was used already
+        case spent
+        /// the question was asked and the computer let go: its owner said no
+        case declined
+        /// closed at 90 % of the computer's two-minute question or later: nobody answered
+        case unanswered
+        /// the app went to the background while the computer was asking: the code is spent
+        case left
+        /// nothing answered; still trying, and the digits take this one's place as soon as the computer asks
+        case unreachable
+    }
+
+    var why: Why
+    var title: String
+    var help: String
+    var canRetry: Bool { why == .unreachable }
+}
+
 final class Link: ObservableObject {
     static let shared = Link()
+    /// how long a computer asks its owner about a new device before it takes the silence as a no (RemoteServer's and blurt-remote's
+    /// pairing life): a close that late is "nobody answered", not "no"
+    static let questionLife: TimeInterval = 120
 
     enum State: Equatable {
         case unpaired
@@ -220,7 +247,11 @@ final class Link: ObservableObject {
     /// the four digits the Mac shows with its question: a yes there is for this iPhone only if they match
     private(set) var pairCheck: String?
     /// a pairing that didn't take, for the pad to say
-    @Published private(set) var pairFailed: String?
+    @Published private(set) var pairFailed: PairFailure?
+    /// when the computer began asking about the code in hand
+    private var askedAt: Date?
+    /// the last pairing link typed into the sheet (an iPhone without a camera): the sheet shows it again after a failure
+    var lastLink = ""
     /// A code isn't a pairing until the Mac has answered it: the Macs already paired stay as they are until then.
     private var joining: (mac: PairedMac, back: PairedMac?, since: Date)?
     /// paired again: the entry this one took over from, for the Mac to drop
@@ -253,18 +284,45 @@ final class Link: ObservableObject {
         switchTo(m)
     }
 
-    /// The code never got an answer, or a refusal: back where things were, and say why.
-    private func joinFailed() {
+    /// Why a pairing that ended without a key ended, from when: refused before the question (spent), closed while it was up (a no), or
+    /// closed near the end of the computer's two minutes (nobody answered).
+    static func ending(asked: Date?, now: Date = Date()) -> PairFailure.Why {
+        guard let asked else { return .spent }
+        return now.timeIntervalSince(asked) >= questionLife * 0.9 ? .unanswered : .declined
+    }
+
+    static func failure(_ why: PairFailure.Why, name: String, hasRelay: Bool) -> PairFailure {
+        let scan = String(localized: "On \(name), open Add Device and scan the code it shows now.")
+        return switch why {
+        case .spent: PairFailure(why: why, title: String(localized: "This code has expired or was already used."), help: scan)
+        case .declined: PairFailure(why: why, title: String(localized: "\(name) didn’t allow this iPhone."), help: scan)
+        case .unanswered: PairFailure(why: why, title: String(localized: "No one answered on \(name) in time."), help: scan)
+        case .left: PairFailure(why: why, title: String(localized: "Pairing stopped when Blurt left the screen."), help: scan)
+        case .unreachable:
+            PairFailure(why: why, title: String(localized: "Can’t reach \(name)."),
+                        help: hasRelay ? String(localized: "Make sure \(name) is on and Blurt is open there.")
+                            : String(localized: "Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first."))
+        }
+    }
+
+    /// The code in hand can't be reached yet: said, and it goes on trying; if the computer turns up and asks, its digits take this one's
+    /// place, so they can be compared.
+    private func joinUnreachable() {
+        guard let j = joining, pairFailed == nil else { return }
+        pairFailed = Self.failure(.unreachable, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
+    }
+
+    /// The code never got an answer, or a refusal: back where things were, and say why, with Scan Code for a new one. Said for a while
+    /// over the computer gone back to (it may be in use), or until the next pairing begins.
+    private func joinFailed(_ why: PairFailure.Why) {
         guard let j = joining else { return }
-        let asked = waitingForMac
         joining = nil
         waitingForMac = false
+        askedAt = nil
         Keychain.remove(account: j.mac.deviceID)
-        pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
-            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first.")
-            : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that computer.")
-        let t = pairFailed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }
+        let f = Self.failure(why, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
+        pairFailed = f
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in if self?.pairFailed == f { self?.pairFailed = nil } }
         leave()
         current = macs.first { $0.id == j.back?.id } ?? macs.first
         state = current == nil ? .unpaired : .connecting
@@ -282,6 +340,8 @@ final class Link: ObservableObject {
         if let j = joining { Keychain.remove(account: j.mac.deviceID) }
         joining = nil
         waitingForMac = false
+        askedAt = nil
+        pairFailed = nil
     }
 
     private func switchTo(_ m: PairedMac?) {
@@ -337,6 +397,19 @@ final class Link: ObservableObject {
         nearbyBrowser = b
     }
 
+    /// The computer removed this phone in a session: its key is deleted and the record kept, marked removed, so the pad and the list say
+    /// so and offer a new code. Pairing again replaces the record by the computer's id.
+    private func removedHere(_ m: PairedMac) {
+        Keychain.remove(account: m.deviceID)
+        if let n = macs.firstIndex(where: { $0.id == m.id && $0.deviceID == m.deviceID }) {
+            macs[n].removed = true
+            if current?.id == m.id { current = macs[n] }
+            saveMacs()
+        }
+        state = .forgotten
+        disconnect()
+    }
+
     func forget(_ m: PairedMac) {
         if current?.id == m.id, state == .connected { send(.unpair) }
         Keychain.remove(account: m.deviceID)
@@ -367,8 +440,13 @@ final class Link: ObservableObject {
     /// The pad's Retry, when nothing has answered for a while: the same attempts, started over now, and the pad says "connecting" again
     /// while they run. It was already trying every 3 s; this is for the moment the user has just woken the computer or started Blurt.
     func tryAgain() {
-        guard active, current != nil, state == .unreachable else { return }
+        guard active, current != nil, state == .unreachable || pairFailed?.canRetry == true else { return }
         firstAttempt = nil
+        // a code that couldn't be reached: the same code once more; what went wrong is gone until it goes wrong again
+        if joining != nil, pairFailed?.canRetry == true {
+            pairFailed = nil
+            joining?.since = Date()
+        }
         // a network that wouldn't connect directly may now (the user moved, or switched Wi-Fi off); busy stays busy until it's waited out
         if away == .noDirect { meetQuietUntil = .distantPast; noDirectTimes = 0 }
         state = .connecting
@@ -381,7 +459,7 @@ final class Link: ObservableObject {
 
     func background() {
         active = false
-        if waitingForMac { joinFailed() }      // nobody's there to see it, and the code is spent
+        if waitingForMac { joinFailed(.left) }      // nobody's there to see it, and the code is spent
         Sticky.shared.clear()
         UIApplication.shared.isIdleTimerDisabled = false
         send(.releaseAll)
@@ -430,7 +508,11 @@ final class Link: ObservableObject {
         let g = generation
         let r = DispatchWorkItem { [weak self] in
             guard let self, self.channel == nil, self.active, g == self.generation else { return }
-            if let j = self.joining, !self.waitingForMac, self.refused || Date().timeIntervalSince(j.since) > 15 { return self.joinFailed() }
+            // a code refused before anyone was asked has run out or was used; one that can't be reached is said, and tried on
+            if let j = self.joining, !self.waitingForMac {
+                if self.refused { return self.joinFailed(.spent) }
+                if Date().timeIntervalSince(j.since) > 15 { self.joinUnreachable() }
+            }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
             if self.refused { self.state = .forgotten } else if let f = self.firstAttempt, Date().timeIntervalSince(f) > 8 || self.away != nil { self.state = .unreachable }
             // a relay attempt gets longer than a local one: it has further to go
@@ -579,7 +661,7 @@ final class Link: ObservableObject {
         // a code that keeps getting sessions which never come to a question is being tried for digits: give up on it
         if joining != nil {
             joinOpens += 1
-            if joinOpens > 3 { ch.close(); return joinFailed() }
+            if joinOpens > 3 { ch.close(); return joinFailed(.spent) }
         }
         ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: [RemoteFeature.move]))
         pinger = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.ping() }
@@ -647,7 +729,8 @@ final class Link: ObservableObject {
         MicStream.shared.stop()
         ScreenStream.shared.connectionLost()
         dictation = .idle
-        if waitingForMac { return joinFailed() }       // the Mac said no, or the way to it went
+        // the computer let go while it was asking: its owner said no, or nobody answered in its two minutes
+        if waitingForMac { return joinFailed(Self.ending(asked: askedAt)) }
         guard current != nil, state != .forgotten, state != .replaced, state != .ended else { return }
         state = .connecting
         connect()
@@ -752,9 +835,12 @@ final class Link: ObservableObject {
         case .pairingWaits:
             pairCheck = channel?.check
             waitingForMac = true
+            askedAt = Date()
+            // the computer asks now, whatever was said before (it may have turned up after "Can't reach"): the digits take its place
+            pairFailed = nil
             let d = joining?.mac.deviceID
-            DispatchQueue.main.asyncAfter(deadline: .now() + 120) { [weak self] in
-                if let self, self.waitingForMac, self.joining?.mac.deviceID == d { self.joinFailed() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionLife) { [weak self] in
+                if let self, self.waitingForMac, self.joining?.mac.deviceID == d { self.joinFailed(.unanswered) }
             }
         case let .newKey(k):
             guard let c = current else { return }
@@ -762,6 +848,9 @@ final class Link: ObservableObject {
             if joining != nil {
                 joining = nil
                 waitingForMac = false
+                askedAt = nil
+                pairFailed = nil
+                lastLink = ""
                 if let old = macs.first(where: { $0.id == c.id }), old.deviceID != c.deviceID {
                     Keychain.remove(account: old.deviceID)
                     replacing = old.deviceID
@@ -772,7 +861,9 @@ final class Link: ObservableObject {
             }
             send(.keyStored)
         case .removed:
-            if let c = current { forget(c) }
+            // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused
+            // key with no session (anyone on the network can send one) only says so, the key kept (`refused` → `.forgotten`)
+            if let c = current { removedHere(c) }
         case .replaced:
             state = .replaced
             disconnect()

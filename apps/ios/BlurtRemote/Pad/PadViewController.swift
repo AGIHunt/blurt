@@ -469,7 +469,8 @@ final class PadViewController: UIViewController {
         let cue = follower.see(phase, computer: l.current?.id, inUse: UIApplication.shared.applicationState != .background)
         var banner = StatusBanner.of(LinkStatus(phase: phase, dropped: follower.dropped, hasRelay: l.current?.relayAddress != nil,
                                                 otherComputers: l.macs.count > 1, canControl: l.canControl, screenError: l.screenError,
-                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil, away: l.away))
+                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil,
+                                                pairRetry: l.pairFailed?.canRetry == true, away: l.away))
         var ready = l.state == .connected
         #if DEBUG
         if Pretend.connected { banner = nil; ready = true }
