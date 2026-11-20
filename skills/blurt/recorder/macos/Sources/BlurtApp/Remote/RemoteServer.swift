@@ -105,8 +105,13 @@ final class RemoteServer {
     static let statusChanged = Notification.Name("blurt.remote.status_changed")
     static let devicesChanged = Notification.Name("blurt.remote.devices_changed")
     static let relayAdopted = Notification.Name("blurt.remote.relay_adopted")
+    /// Changed on `queue` only: the main thread reads `shown`.
     private(set) var status = Status() { didSet { if status != oldValue { let s = status; DispatchQueue.main.async { self.tell(s) } } } }
+    /// `status` as last told to the main thread (in order: the main queue keeps it), for whoever shows it there (the bar, the Remote
+    /// Control page, the menu). Main thread only: reading `status` there raced its changes on `queue`.
+    private(set) var shown = Status()
     private func tell(_ s: Status) {
+        shown = s
         onStatus?(s)
         NotificationCenter.default.post(name: Self.statusChanged, object: self)
     }

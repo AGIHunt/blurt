@@ -18,9 +18,11 @@ enum RemoteBanner {
         update()
     }
 
+    /// From what the main thread was told (`shown`), on every status change: a bar that should show and doesn't (ordered out by
+    /// something else, or never ordered in) comes back on the next one, not only when the name changes.
     private static func update() {
-        let who = RemoteServer.shared.status.connected
-        guard who != shownFor else { return }
+        let who = RemoteServer.shared.shown.connected
+        guard who != shownFor || (who != nil && panel?.isVisible != true) else { return }
         shownFor = who
         guard let who else {
             panel?.orderOut(nil)

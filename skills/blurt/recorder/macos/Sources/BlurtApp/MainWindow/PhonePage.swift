@@ -61,7 +61,7 @@ enum PhoneStatus {
 
     /// The facts that need no asking around (the relay's answer is the page's: PhoneModel).
     static var facts: PhoneFacts {
-        let s = RemoteServer.shared, st = s.status
+        let s = RemoteServer.shared, st = s.shown
         return PhoneFacts(paired: s.devices().count, connected: st.connected, viaRelay: st.viaRelay, canControl: canControl,
                           screenWanted: RemoteServer.screenAllowed, screenAllowed: SystemAccess.granted(.screen),
                           listening: st.listening, listenFailure: st.failure, pairing: st.pairingLink != nil,
@@ -101,7 +101,7 @@ enum PhoneStatus {
 final class PhoneModel: ObservableObject {
     static let shared = PhoneModel()
 
-    @Published private(set) var status = RemoteServer.shared.status
+    @Published private(set) var status = RemoteServer.shared.shown
     @Published private(set) var devices = RemoteServer.shared.devices()
     /// Add a Phone is open: the code is on show (and the port is open for it)
     @Published private(set) var adding = false
@@ -137,7 +137,7 @@ final class PhoneModel: ObservableObject {
     private init() {
         let c = NotificationCenter.default, s = RemoteServer.shared
         observers.append(c.addObserver(forName: RemoteServer.statusChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.statusChanged(s.status) }
+            MainActor.assumeIsolated { self?.statusChanged(s.shown) }
         })
         observers.append(c.addObserver(forName: RemoteServer.devicesChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.devicesChanged(s.devices()) }
@@ -159,7 +159,7 @@ final class PhoneModel: ObservableObject {
     func watch(_ who: String) {
         let first = watchers.isEmpty
         watchers.insert(who)
-        status = RemoteServer.shared.status
+        status = RemoteServer.shared.shown
         devices = RemoteServer.shared.devices()
         refresh()
         // back on show with a relay that didn't answer last time: it may have been fixed since
@@ -324,8 +324,8 @@ extension PhonePage {
                     m.refresh()
                     let f = m.facts
                     emit(["event": "phone_page", "headline": "\(PhoneChecks.headline(f))", "problems": PhoneChecks.problems(f).map { "\($0)" },
-                          "tips": PhoneChecks.tips(f).map { "\($0)" }, "adding": m.adding, "listening": RemoteServer.shared.status.listening,
-                          "link": RemoteServer.shared.status.pairingLink != nil, "menu": PhoneStatus.menuTitle,
+                          "tips": PhoneChecks.tips(f).map { "\($0)" }, "adding": m.adding, "listening": RemoteServer.shared.shown.listening,
+                          "link": RemoteServer.shared.shown.pairingLink != nil, "menu": PhoneStatus.menuTitle,
                           "line": PhoneStatus.line ?? NSNull(), "attention": PhoneStatus.needsAttention])
                 }
             }
