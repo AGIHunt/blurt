@@ -98,6 +98,7 @@
 "dictation.perm.restart_hint" = "Allowed. Takes effect within a few seconds, no restart needed.";
 
 "dictation.polish.timeout" = "Polish time limit";
+"dictation.polish.timeout.detail" = "If polish takes longer, the text is typed as heard.";
 "dictation.polish.seconds" = "%@ s";
 "dictation.cancel" = "Cancel";
 
@@ -112,6 +113,9 @@
 "dictation.history.clear.title" = "Clear dictation history?";
 "dictation.history.clear.undo" = "You can’t undo this.";
 "dictation.history.clear.confirm" = "Clear History";
+"dictation.history.shorten.days" = "Dictations older than %@ are deleted, with their recordings.";
+"dictation.history.shorten.off" = "History turns off, and every saved dictation is deleted with its recording.";
+"dictation.history.shorten.confirm" = "Delete";
 
 /* the history window */
 "dictation.history.title" = "Dictation History";

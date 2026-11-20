@@ -528,16 +528,27 @@ public final class DictationHistory {
     /// Rewrites the file without entries older than `days` (and without the edit lines), removing their audio — and
     /// any recording in audio/ that no entry keeps (`pruneOrphanAudio`). Returns how many entries went.
     @discardableResult
+    /// How many entries `prune(days:)` would delete now — a shorter retention, or Don't keep (0), asks before it does
+    /// (Settings → Dictation: "Delete N dictations?").
+    public func wouldPrune(days: Int, now: Date = Date()) -> Int {
+        load().filter { !DictationHistory.keeps($0, days: days, now: now) }.count
+    }
+
+    /// An entry stays at retention `days`: within it — a take waiting for Retry (no text, only its recording) still
+    /// gets a day under "Don't keep" (0).
+    static func keeps(_ e: DictationEntry, days: Int, now: Date) -> Bool {
+        let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
+        let retryCutoff = days > 0 ? cutoff : now.addingTimeInterval(-86400)
+        return e.time >= (awaitsRetry(e) ? retryCutoff : cutoff)
+    }
+
     public func prune(days: Int, now: Date = Date()) -> Int {
         purgeDeleted()                  // a delete's Undo doesn't outlive the app
         recoverInterrupted(days: days, now: now)
         return exclusive {
             let all = load()
             pruneOrphanAudio(keeping: all, now: now)
-            let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
-            // "Don't keep" (0): a take waiting for Retry (no text, only its recording) still gets a day
-            let retryCutoff = days > 0 ? cutoff : now.addingTimeInterval(-86400)
-            let kept: (DictationEntry) -> Bool = { $0.time >= (DictationHistory.awaitsRetry($0) ? retryCutoff : cutoff) }
+            let kept: (DictationEntry) -> Bool = { DictationHistory.keeps($0, days: days, now: now) }
             let keep = all.filter(kept)
             let drop = all.filter { !kept($0) }
             guard FileManager.default.fileExists(atPath: url.path) else { return 0 }

@@ -14,7 +14,8 @@
 //               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu ·
 //               Translate: Chinese ↔ English / into English / into Chinese (⌘ while talking turns it on), whether the
 //               cloud model translates, the apps where every take is translated (DictationTranslating.swift)
-//   History and models  History: Open History…, with how long it is kept, the audio and Clear History… in its menu ·
+//   History and models  History: Open History… and Clear History… · Keep dictations for: a popup (a shorter period asks
+//               before it deletes) · the audio ·
 //               Models: the names in use, or what isn't on this Mac yet, in plain words — and always the one way on,
 //               a link to Settings → Speech, which chooses them and owns the one Download (DictationModels.swift)
 //   Advanced    folded at the foot (open while it is on): Show the Dictation Lab (record.dictation.lab), for developers
@@ -128,6 +129,45 @@ final class DictationSettings: ObservableObject {
     func setModifierTap(_ v: DictationTrigger.ModifierTap) { modifierTap = v; save("modifier_tap", v == DictationTrigger.shippedModifierTap ? nil : v.rawValue) }
     func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
+    /// The retention popup: a shorter period, or Don't keep, that would delete saved dictations asks first ("Delete 12
+    /// dictations?", Cancel the default) — before, the choice deleted them at once while Clear History… asked (the
+    /// founder, 2026-11-21). A longer one, or one that deletes nothing, applies at once.
+    func chooseRetention(_ d: Int) {
+        guard d != retention else { return }
+        let n = d < retention || d == 0 ? DictationHistory.shared.wouldPrune(days: d) : 0
+        guard n > 0, asking == nil else { return setRetention(d) }
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.icon = NSApp.applicationIconImage
+        a.messageText = TP("dictation.history.shorten.title", n)
+        a.informativeText = (d == 0 ? T("dictation.history.shorten.off") : T("dictation.history.shorten.days", T("dictation.history.days", d)))
+            + "\n" + T("dictation.history.clear.undo")
+        let cancel = a.addButton(withTitle: T("dictation.cancel"))       // first: the default (↩)
+        cancel.keyEquivalent = "\r"
+        let delete = a.addButton(withTitle: T("dictation.history.shorten.confirm"))
+        delete.keyEquivalent = ""
+        delete.hasDestructiveAction = true
+        asking = a
+        emit(["event": "dictation_retention_ask", "days": d, "count": n])
+        let esc = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak a] e in
+            guard e.keyCode == 53, let a = a, e.window === a.window else { return e }
+            a.buttons.first?.performClick(nil)
+            return nil
+        }
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            if let m = esc { NSEvent.removeMonitor(m) }
+            guard let self = self else { return }
+            self.asking = nil
+            let yes = r == .alertSecondButtonReturn
+            emit(["event": "dictation_retention", "days": d, "deleted": yes ? n : 0, "answer": yes ? "delete" : "cancel"])
+            if yes { self.setRetention(d) } else { self.objectWillChange.send() }      // the popup shows the old period again
+        }
+        if SettingsTestKeyLook.on { SettingsTestKeyLook.apply(to: a.window) }
+        if let w = NSApp.windows.first(where: { $0 is SettingsWindow && $0.isVisible }) {
+            a.beginSheetModal(for: w, completionHandler: done)
+        } else { done(a.runModal()) }
+    }
+
     func setRetention(_ d: Int) {
         retention = d
         save("retention_days", d == 30 ? nil : d)
@@ -514,6 +554,11 @@ struct DictationPane: View {
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             guard let id = n.object as? String else { return }
             if id == "style" { showByApp = true }
+            if id.hasPrefix("retention:"), let d = Int(id.dropFirst("retention:".count)) {   // tests: the popup's choice
+                nav.reveal("dictation.history_keep")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { m.chooseRetention(d) }
+                return
+            }
             if id == "voiceprint-start" { vp.start(); return }     // tests: the sheet's Start Recording / Done
             if id == "voiceprint-done" { vp.finish(); return }
             if id == "voiceprint" {     // tests: `dictation settings-scroll voiceprint` — Only my voice's sheet
@@ -759,6 +804,10 @@ struct DictationPane: View {
                             selection: Binding(get: { m.styles.categories[c] }, set: { m.setStyle($0, for: c) }))
             }
         }
+        // the keys that change the style of one take, under the style rows (it was the time limit's description)
+        SettingsLine(padding: 8) {
+            Hint(hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat)))
+        }
         if !m.styles.apps.isEmpty {
             SettingsLine(padding: 8) { Hint(T("dictation.style.apps")) }
             ForEach(m.styles.apps.keys.sorted(), id: \.self) { b in
@@ -776,8 +825,7 @@ struct DictationPane: View {
         }
         SettingToggle("dictation.suggest_lists", isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
         SettingToggle("dictation.learn_styles", isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) }))
-        SettingRow("dictation.polish_timeout",
-                   detail: hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat))) {
+        SettingRow("dictation.polish_timeout") {
             HStack(spacing: 6) {
                 Text(T("dictation.polish.seconds", seconds(m.timeout))).foregroundStyle(.secondary).monospacedDigit()
                 Stepper(T("dictation.polish.timeout"), value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5)
@@ -804,25 +852,26 @@ struct DictationPane: View {
         }
     }
 
-    /// "9 saved · deleted after 30 days", Open History… — how long (or Don't keep, issue #36) and the destructive
-    /// Clear History… are in its menu, never a button at rest; keeping the audio is the row under it.
-    var historyRow: some View {
+    /// "9 saved · deleted after 30 days" with Open History… and Clear History… side by side, then how long it is kept
+    /// (or Don't keep, issue #36) as a visible popup — as Settings → Cards → History (it was in Open History…'s menu,
+    /// where people looking for it didn't find it). A period that would delete saved dictations asks first
+    /// (`chooseRetention`). Keeping the audio is the row under it.
+    @ViewBuilder var historyRow: some View {
         SettingRow("dictation.history_saved", detail: m.retention == 0 ? T("dictation.history.summary.off")
-                       : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention)),
-                   hosts: ["dictation.history_keep"]) {
-            Menu {
-                SettingMenuPicker("dictation.history_keep", selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
-                    ForEach([7, 30, 90, 365], id: \.self) { d in Text(T("dictation.history.days", d)).tag(d) }
-                    Divider()
-                    Text(T("dictation.history.dont_keep")).tag(0)
-                }
-                Divider()
-                Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }
+                       : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention))) {
+            HStack(spacing: 8) {
+                Button(T("dictation.history.clear")) { m.askClear() }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
                     .disabled(m.historyCount == 0)
-            } label: {
-                Text(T("dictation.history.open"))
-            } primaryAction: { DictationHistoryWindow.shared.show() }
+                Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
+            }
             .fixedSize()
+        }
+        SettingRow("dictation.history_keep") {
+            ChoicePopup(label: T("dictation.history.keep"),
+                        choices: [7, 30, 90, 365].map { ($0, T("dictation.history.days", $0)) } + [(0, T("dictation.history.dont_keep"))],
+                        selection: Binding(get: { m.retention }, set: { m.chooseRetention($0) }), dividers: [4])
         }
     }
 

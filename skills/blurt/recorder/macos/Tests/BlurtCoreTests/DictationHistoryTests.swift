@@ -178,6 +178,23 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertTrue(try String(contentsOf: h.url, encoding: .utf8).contains("\"corrected\""))
     }
 
+    /// A shorter retention (or Don't keep) asks before it deletes: the count it asks about is what prune then deletes.
+    func testWouldPruneCountsWhatAShorterRetentionDeletes() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        let now = Date()
+        h.append(entry("d-1", "today", now.timeIntervalSince1970 - 3600))
+        h.append(entry("d-10", "ten days", now.timeIntervalSince1970 - 10 * 86400))
+        h.append(entry("d-20", "twenty days", now.timeIntervalSince1970 - 20 * 86400))
+        XCTAssertEqual(h.wouldPrune(days: 30, now: now), 0)
+        XCTAssertEqual(h.wouldPrune(days: 7, now: now), 2)
+        XCTAssertEqual(h.wouldPrune(days: 0, now: now), 3)
+        XCTAssertEqual(h.load().count, 3)                                   // asking deletes nothing
+        XCTAssertEqual(h.prune(days: 7, now: now), 2)
+        XCTAssertEqual(h.load().map(\.id), ["d-1"])
+    }
+
     func testVocabularyFieldsSurvivePruneAndOldLinesStillRead() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

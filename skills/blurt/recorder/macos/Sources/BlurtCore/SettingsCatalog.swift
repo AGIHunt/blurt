@@ -365,7 +365,8 @@ public enum SettingsCatalog {
             row("dictation.suggest_lists", "dictation.text", D("dictation.style.suggest"), fold: "dictation.by_app"),
             row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
-            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
+            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), detail: D("dictation.polish.timeout.detail"),
+                fold: "dictation.by_app"),
             // translate mode (docs/design/dictation-translate.md): into what — its own, not ⌥T's (2026-10-30) — and the
             // model that translates (Settings → Models' Translate row, said here)
             row("dictation.translate", "dictation.translation", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
@@ -378,7 +379,7 @@ public enum SettingsCatalog {
             // the history's menu: how long it is kept, clearing it; keeping the audio is a row of its own (what is kept
             // is said where it is seen)
             row("dictation.history_saved", "dictation.data", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
-            row("dictation.history_keep", "dictation.data", D("dictation.history.keep"), fold: "dictation.history_saved"),
+            row("dictation.history_keep", "dictation.data", D("dictation.history.keep")),
             row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail")),
             // chosen and listed in Settings → Speech
             row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
