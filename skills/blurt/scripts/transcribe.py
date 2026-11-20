@@ -857,6 +857,13 @@ def blurt_downloaded(m: dict) -> bool:
         return True
     if folder_complete(MODELS_DIR / "asr" / inst["hf"].split("/")[-1], legacy=_own_legacy_complete):
         return True
+    p = model_path(m)
+    try:
+        # in the models folder, as found or as resolved (a models folder or model linked to another disk is still ours)
+        if p is not None and (p.is_relative_to(MODELS_DIR) or p.resolve().is_relative_to(MODELS_DIR.resolve())):
+            return True
+    except OSError:
+        pass
     rec = load_json(_hf_record(inst["hf"]), None)
     if isinstance(rec, dict) and rec.get("snapshot"):
         return True
