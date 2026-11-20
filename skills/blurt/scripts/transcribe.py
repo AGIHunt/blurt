@@ -843,6 +843,26 @@ def _own_legacy_complete(d: Path) -> bool:
     return (d / "config.json").exists() and safetensors_complete(d) and not any(d.glob("*.part"))
 
 
+def blurt_downloaded(m: dict) -> bool:
+    """The model's files are ones Blurt fetched: everything under MODELS_DIR (files, archives, a ModelScope copy, the
+    old faster-whisper folder), or a Hugging Face snapshot a Blurt `setup` saw finish (_hf_record). A model that is
+    only in the shared Hugging Face cache — put there by another tool (a Whisper for mlx-whisper) — is never chosen
+    automatically: dictation uses only models Blurt downloaded (the founder, 2026-11-21; dogfood 1.1.0: a cached
+    Whisper silently became the dictation engine while setup said macOS speech was ready). Downloading it from Blurt
+    is then quick (the files are already there) and makes it Blurt's. Cloud and built-in models count as Blurt's."""
+    if not m.get("local", True) or m.get("builtin"):
+        return True
+    inst = m.get("install") or {}
+    if not inst.get("hf"):
+        return True
+    if folder_complete(MODELS_DIR / "asr" / inst["hf"].split("/")[-1], legacy=_own_legacy_complete):
+        return True
+    rec = load_json(_hf_record(inst["hf"]), None)
+    if isinstance(rec, dict) and rec.get("snapshot"):
+        return True
+    return m.get("backend") == "faster-whisper" and (MODELS_DIR / "faster-whisper").is_dir()
+
+
 def installed(m: dict) -> bool:
     if not m.get("local", True):
         # every one of its variables when it needs a pair (Volcengine: App ID + Access Token), else any one
@@ -2738,7 +2758,8 @@ def select(purpose: str, a=None) -> dict:
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     for mid in dict.fromkeys(order):
         m = entry(mid)
-        if m and m.get("local", True) and runs_here(m) and installed(m) and (vad or m.get("builtin") or not apple_ok):
+        if m and m.get("local", True) and runs_here(m) and installed(m) and blurt_downloaded(m) \
+                and (vad or m.get("builtin") or not apple_ok):
             return m
         if m and not m.get("local", True) and not local_only() and installed(m) and mid == chosen:
             return m
@@ -4306,8 +4327,9 @@ def dictation_models(hw: dict | None = None) -> dict:
     # without the VAD, macOS's recogniser (the voice-note pick then) runs before a model whose files only are here —
     # unless the user chose that model
     pick = (configured,) if not vad and note_pick["id"] == APPLE else (configured, rec, *usable)
+    # only what Blurt downloaded runs unasked (blurt_downloaded); the model the user configured is their choice
     selected = next((mid for mid in pick if mid and entry(mid) and runs_here(entry(mid))
-                     and installed(entry(mid))), note_pick["id"])
+                     and installed(entry(mid)) and (mid == configured or blurt_downloaded(entry(mid)))), note_pick["id"])
     rows = []
     for mid in DICTATION_MODELS + DICTATION_CLOUD:
         m = entry(mid)
@@ -4317,7 +4339,8 @@ def dictation_models(hw: dict | None = None) -> dict:
             continue        # a cloud service: only with its key, never when recognition stays on this Mac
         if mid in (FUN_MLX, FUN_CPU) and not speaks_all(m, langs) and mid not in (configured, selected):
             continue        # three languages: not offered to someone who speaks another (unless already chosen)
-        have = installed(m)
+        # files only in the shared Hugging Face cache: not counted as installed (a Download makes them Blurt's at once)
+        have = installed(m) and (mid == configured or blurt_downloaded(m))
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
                      "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True) or bool(m.get("builtin"))),
                      "files": have,

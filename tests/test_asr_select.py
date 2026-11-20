@@ -36,6 +36,11 @@ import transcribe as T  # noqa: E402
 
 SR = 16000
 
+# the fakes below (fake_installed, T.installed = …) stand for models Blurt downloaded; the tests of a model that is only
+# in the shared Hugging Face cache put the real rule back (AppleSpeechSelect.test_a_model_only_in_the_hf_cache_…)
+REAL_BLURT_DOWNLOADED = T.blurt_downloaded
+T.blurt_downloaded = lambda m: True
+
 
 def hw(os_="darwin", arch="arm64", ram=128.0, gpu=None, perf=6, eff=12, battery=False) -> dict:
     h = {"os": os_, "arch": arch, "chip": "test", "perf_cores": perf, "eff_cores": eff, "ram_gb": ram,
@@ -784,8 +789,35 @@ class AppleSpeechSelect(unittest.TestCase):
             self.addCleanup(setattr, T, "BUNDLED_VAD", bundled)
         self.addCleanup(lambda: f.write_bytes(was) if was is not None else f.unlink(missing_ok=True))
 
+    def test_a_model_only_in_the_hf_cache_never_runs_unasked(self):
+        # dictation uses only models Blurt downloaded (the founder, 2026-11-21): a Whisper another tool left in the shared
+        # Hugging Face cache doesn't take over from macOS's recogniser — VAD in or not — until Blurt downloads it (its
+        # setup leaves the record), or the user picks it
+        self.vad(True)
+        real = fake_installed("apple-speech", "whisper-large-v3-turbo-mlx")
+        T.blurt_downloaded = REAL_BLURT_DOWNLOADED
+        repo = T.entry("whisper-large-v3-turbo-mlx")["install"]["hf"]
+        rec = T._hf_record(repo)
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.select("note")["id"], "apple-speech")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "apple-speech")
+                self.assertFalse({m["id"]: m for m in d["models"]}.get("whisper-large-v3-turbo-mlx", {}).get("installed", False))
+                rec.parent.mkdir(parents=True, exist_ok=True)
+                rec.write_text(json.dumps({"snapshot": "abc", "files": []}))     # a Blurt setup finished it
+                self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")
+            rec.unlink()
+            with config({"asr": {"languages": ["zh", "en"]},
+                         "record": {"dictation": {"asr_model": "whisper-large-v3-turbo-mlx"}}}):
+                self.assertEqual(T.dictation_models(hw())["selected"], "whisper-large-v3-turbo-mlx")   # the user's pick
+        finally:
+            T.installed = real
+            T.blurt_downloaded = lambda m: True
+            rec.unlink(missing_ok=True)
+
     def test_model_files_without_the_vad_dont_beat_macos_speech(self):
-        # a Whisper in a shared Hugging Face cache, no silero_vad.onnx yet: the first Fn must listen, not ask for 1 MB
+        # a Whisper Blurt downloaded, no silero_vad.onnx yet: the first Fn must listen, not ask for 1 MB
         self.vad(False)
         real = fake_installed("apple-speech", "whisper-large-v3-turbo-mlx")
         try:

@@ -1125,7 +1125,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   list (`DictationModels.$asr`); BlurtCore's `DictationSpeechModels` reads it. Its `ready` says whether a take can run
   with nothing downloaded: the selected model (local and on this Mac, or a cloud one with its key — judged by itself,
   not by being one of the Settings rows) **and** the VAD every take goes through (`silero_vad.onnx`, 0.6 MB, in
-  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). `missing` lists what a
+  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). Only models Blurt
+  downloaded run unasked (`transcribe.py blurt_downloaded`: under `$BLURT_HOME/models`, or a Hugging Face snapshot a
+  Blurt `setup` saw finish — its `models/asr/.hf/<repo>.json`): a Whisper another tool left in the shared cache is no
+  row's "installed" and never the automatic pick — 1.1.0's dogfood found one silently running dictation (a 31 s cold
+  start) while setup said macOS speech was ready. Downloading it from Blurt takes seconds (the files are there) and
+  makes it Blurt's; a model the user configures is used as it is. `missing` lists what a
   download would bring. `transcribe.py dictation-models` is read once, by `DictationModels` (Settings' rows, the
   download manager's sizes, `dictationReady` for the welcome line and the assistant), and Dictation follows its
   `$asr` — one answer for every surface. Not ready: the key doesn't listen (no mic, no warm-up) and the island says
