@@ -57,6 +57,7 @@ enum BlurtIcon: String, CaseIterable {
     case ink = "ink"
     case keyboard = "keyboard"
     case languages = "languages"
+    case letterT = "letter-t"
     case lightbulb = "lightbulb"
     case lines = "lines"
     case list = "list"
@@ -67,6 +68,7 @@ enum BlurtIcon: String, CaseIterable {
     case minusCircle = "minus-circle"
     case moon = "moon"
     case more = "more"
+    case mosaic = "mosaic"
     case move = "move"
     case pause = "pause"
     case pauseFill = "pause-fill"
@@ -308,6 +310,7 @@ extension BlurtIcon {
         case .ink: return "Ink — draw on the screen"
         case .keyboard: return "Keyboard shortcuts"
         case .languages: return "Language"
+        case .letterT: return "Text (the markup tool that types on the picture)"
         case .lightbulb: return "Light bulb — an idea (kind family)"
         case .lines: return "Three lines (a drag handle)"
         case .list: return "List"
@@ -318,6 +321,7 @@ extension BlurtIcon {
         case .minusCircle: return "Remove (a minus in a circle)"
         case .moon: return "Dark mode"
         case .more: return "More"
+        case .mosaic: return "Mosaic (the markup tool that blurs an area)"
         case .move: return "Move to (an arrow turning up and right)"
         case .pause: return "Pause"
         case .pauseFill: return "Pause (filled)"
@@ -421,6 +425,7 @@ extension BlurtIcon {
         case .ink: return "<path d=\"M3.5 18.5C6 13.4 9.4 5 12.4 5C15 5 9 17.3 12.3 17.3C14.4 17.3 15.4 12.7 17.4 12.7C18.9 12.7 18.2 16.7 20.5 16.7\"/>"
         case .keyboard: return "<path d=\"M5 5.5L19 5.5C20.381 5.5 21.5 6.619 21.5 8L21.5 16C21.5 17.381 20.381 18.5 19 18.5L5 18.5C3.619 18.5 2.5 17.381 2.5 16L2.5 8C2.5 6.619 3.619 5.5 5 5.5Z\"/><path d=\"M6.5 9.5L6.51 9.5M10.2 9.5L10.21 9.5M13.8 9.5L13.81 9.5M17.5 9.5L17.51 9.5M8 14.5L16 14.5\"/>"
         case .languages: return "<path d=\"M5 8L11 14M4 14L10 8L12 5M2.5 5L13.5 5M7 2.5L8 2.5M21.5 21.5L17 11.5L12.5 21.5M14.1 18L19.9 18\"/>"
+        case .letterT: return "<path d=\"M5.5 5L18.5 5M12 5L12 19.5M9 19.5L15 19.5\"/>"
         case .lightbulb: return "<path d=\"M9.5 17.25L9.5 16.15C9.5 15.15 8.95 14.4 8.2 13.7C6.405 12.119 5.776 9.592 6.621 7.354C7.466 5.116 9.608 3.635 12 3.635C14.392 3.635 16.534 5.116 17.379 7.354C18.224 9.592 17.595 12.119 15.8 13.7C15.05 14.4 14.5 15.15 14.5 16.15L14.5 17.25Z\"/><path d=\"M10 20.25L14 20.25\"/><path d=\"M12 6.4C13.712 6.4 15.1 7.788 15.1 9.5\"/>"
         case .lines: return "<path d=\"M4.5 7L19.5 7M4.5 12L19.5 12M4.5 17L19.5 17\"/>"
         case .list: return "<path d=\"M9 6.5L20 6.5M9 12L20 12M9 17.5L20 17.5\"/><path d=\"M5.8 6.5C5.8 7.163 5.263 7.7 4.6 7.7C3.937 7.7 3.4 7.163 3.4 6.5C3.4 5.837 3.937 5.3 4.6 5.3C5.263 5.3 5.8 5.837 5.8 6.5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5.8 12C5.8 12.663 5.263 13.2 4.6 13.2C3.937 13.2 3.4 12.663 3.4 12C3.4 11.337 3.937 10.8 4.6 10.8C5.263 10.8 5.8 11.337 5.8 12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M5.8 17.5C5.8 18.163 5.263 18.7 4.6 18.7C3.937 18.7 3.4 18.163 3.4 17.5C3.4 16.837 3.937 16.3 4.6 16.3C5.263 16.3 5.8 16.837 5.8 17.5Z\" fill=\"currentColor\" stroke=\"none\"/>"
@@ -431,6 +436,7 @@ extension BlurtIcon {
         case .minusCircle: return "<path d=\"M21.25 12C21.25 17.109 17.109 21.25 12 21.25C6.891 21.25 2.75 17.109 2.75 12C2.75 6.891 6.891 2.75 12 2.75C17.109 2.75 21.25 6.891 21.25 12Z\"/><path d=\"M8 12L16 12\"/>"
         case .moon: return "<path d=\"M20.5 14.2C19.266 18.023 15.524 20.46 11.528 20.043C7.532 19.626 4.374 16.468 3.957 12.472C3.54 8.476 5.977 4.734 9.8 3.5C6.845 6.455 6.845 11.245 9.8 14.2C12.755 17.155 17.545 17.155 20.5 14.2Z\"/>"
         case .more: return "<path d=\"M7 12C7 12.828 6.328 13.5 5.5 13.5C4.672 13.5 4 12.828 4 12C4 11.172 4.672 10.5 5.5 10.5C6.328 10.5 7 11.172 7 12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M13.5 12C13.5 12.828 12.828 13.5 12 13.5C11.172 13.5 10.5 12.828 10.5 12C10.5 11.172 11.172 10.5 12 10.5C12.828 10.5 13.5 11.172 13.5 12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M20 12C20 12.828 19.328 13.5 18.5 13.5C17.672 13.5 17 12.828 17 12C17 11.172 17.672 10.5 18.5 10.5C19.328 10.5 20 11.172 20 12Z\" fill=\"currentColor\" stroke=\"none\"/>"
+        case .mosaic: return "<path d=\"M7 3.5L17 3.5C18.933 3.5 20.5 5.067 20.5 7L20.5 17C20.5 18.933 18.933 20.5 17 20.5L7 20.5C5.067 20.5 3.5 18.933 3.5 17L3.5 7C3.5 5.067 5.067 3.5 7 3.5Z\"/><path d=\"M12 3.5L12 20.5M3.5 12L20.5 12\"/>"
         case .move: return "<path d=\"M5 20.5L5 14.5C5 11.462 7.462 9 10.5 9L20.5 9\"/><path d=\"M16 4.5L20.5 9L16 13.5\"/>"
         case .pause: return "<path d=\"M7.7 5L8.8 5C9.463 5 10 5.537 10 6.2L10 17.8C10 18.463 9.463 19 8.8 19L7.7 19C7.037 19 6.5 18.463 6.5 17.8L6.5 6.2C6.5 5.537 7.037 5 7.7 5Z\"/><path d=\"M15.2 5L16.3 5C16.963 5 17.5 5.537 17.5 6.2L17.5 17.8C17.5 18.463 16.963 19 16.3 19L15.2 19C14.537 19 14 18.463 14 17.8L14 6.2C14 5.537 14.537 5 15.2 5Z\"/>"
         case .pauseFill: return "<path d=\"M7.4 4.5L8.8 4.5C9.573 4.5 10.2 5.127 10.2 5.9L10.2 18.1C10.2 18.873 9.573 19.5 8.8 19.5L7.4 19.5C6.627 19.5 6 18.873 6 18.1L6 5.9C6 5.127 6.627 4.5 7.4 4.5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M15.2 4.5L16.6 4.5C17.373 4.5 18 5.127 18 5.9L18 18.1C18 18.873 17.373 19.5 16.6 19.5L15.2 19.5C14.427 19.5 13.8 18.873 13.8 18.1L13.8 5.9C13.8 5.127 14.427 4.5 15.2 4.5Z\" fill=\"currentColor\" stroke=\"none\"/>"
@@ -1078,6 +1084,12 @@ extension BlurtIcon {
                     p.m(21.5, 21.5); p.l(17, 11.5); p.l(12.5, 21.5); p.m(14.1, 18); p.l(19.9, 18)
                 },
             ]
+        case .letterT:
+            return [
+                BlurtIconLayer(.stroke) { p in
+                    p.m(5.5, 5); p.l(18.5, 5); p.m(12, 5); p.l(12, 19.5); p.m(9, 19.5); p.l(15, 19.5)
+                },
+            ]
         case .lightbulb:
             return [
                 BlurtIconLayer(.stroke) { p in
@@ -1205,6 +1217,17 @@ extension BlurtIcon {
                 BlurtIconLayer(.fill) { p in
                     p.m(20, 12); p.c(20, 12.828, 19.328, 13.5, 18.5, 13.5); p.c(17.672, 13.5, 17, 12.828, 17, 12);
                     p.c(17, 11.172, 17.672, 10.5, 18.5, 10.5); p.c(19.328, 10.5, 20, 11.172, 20, 12); p.z()
+                },
+            ]
+        case .mosaic:
+            return [
+                BlurtIconLayer(.stroke) { p in
+                    p.m(7, 3.5); p.l(17, 3.5); p.c(18.933, 3.5, 20.5, 5.067, 20.5, 7); p.l(20.5, 17);
+                    p.c(20.5, 18.933, 18.933, 20.5, 17, 20.5); p.l(7, 20.5); p.c(5.067, 20.5, 3.5, 18.933, 3.5, 17); p.l(3.5, 7);
+                    p.c(3.5, 5.067, 5.067, 3.5, 7, 3.5); p.z()
+                },
+                BlurtIconLayer(.stroke) { p in
+                    p.m(12, 3.5); p.l(12, 20.5); p.m(3.5, 12); p.l(20.5, 12)
                 },
             ]
         case .move:
