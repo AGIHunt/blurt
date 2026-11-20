@@ -33,3 +33,13 @@
 {"fn": "windowInput", "carry": "我小时候报过绘画班，但是", "piece": "我报的是一个线上的课", "want": "我小时候报过绘画班，但是我报的是一个线上的课"}
 {"fn": "windowInput", "carry": "", "piece": "下午修问题。", "want": "下午修问题。"}
 {"fn": "windowInput", "carry": "we should move the meeting to", "piece": "Thursday afternoon.", "want": "we should move the meeting to Thursday afternoon."}
+{"fn": "rehearLoss", "said": "Let me check the build logs first, and then we can ship the release tonight然后我再把发布说明写好，发到用户群里。", "answer": "然后我再把发布说明写好，发到用户群里。", "want": "latin"}
+{"fn": "rehearLoss", "said": "Let me check the build logs first.然后我再把发布说明写好，发到用户群里。After that I will reply to the issues.", "answer": "然后我再把发布说明写好，发到用户群里。After that I will reply to the issues.", "want": "latin"}
+{"fn": "rehearLoss", "said": "然后我再把发布说明写好，发到用户群里。Let me check the build logs first.", "answer": "然后我再把发布说明写好，发到用户群里。Let me check the build logs first.", "want": null}
+{"fn": "rehearLoss", "said": "刚才那个巨幅做得不错，发到群里吧", "answer": "刚才那个GIF做得不错，发到群里吧", "want": null}
+{"fn": "rehearLoss", "said": "我们明天明天上午开会讨论一下这个问题", "answer": "我们明天上午开会讨论一下这个问题", "want": null}
+{"fn": "rehearLoss", "said": "我刚才看了一下日志，好像是因为网络断开以后没有重新连接", "answer": "我刚才看了一下日志，好像是因为", "want": "cjk"}
+{"fn": "rehearLoss", "said": "Thank you. 今天我们讨论一下发布计划", "answer": "今天我们讨论一下发布计划", "want": null}
+{"fn": "rehearLoss", "said": "OK", "answer": "好的", "want": null}
+{"fn": "rehearLoss", "said": "we should probably move the meeting to tomorrow morning", "answer": "We should probably move the meeting to tomorrow morning.", "want": null}
+{"fn": "rehearLoss", "said": "the release is blocked on the signing step and the notarization", "answer": "The release is blocked.", "want": "latin"}

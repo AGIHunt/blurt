@@ -763,10 +763,13 @@ final class VoiceNoteStream {
             let r = VoiceInput.transcribePiece(url, prior: DictationStitch.joinPieces(windowTexts, pauses: wgaps))
             try? FileManager.default.removeItem(at: url)
             let again = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !again.isEmpty { text = again }        // nothing back: the pieces' own text, never worse than before
+            // nothing back, or an answer that lost what the pieces heard (a language half of a mixed window): the
+            // pieces' own text, never worse than before
+            let lost = again.isEmpty ? nil : DictationStitch.rehearLoss(said: said, answer: again)
+            if !again.isEmpty, lost == nil { text = again }
             emit(["event": "voice_rehear", "id": id, "pieces": pieces.count, "ms": Int((CACurrentMediaTime() - t0) * 1000),
                   "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100, "ok": !again.isEmpty,
-                  "changed": !again.isEmpty && again != said])
+                  "changed": !again.isEmpty && lost == nil && again != said, "lost": lost ?? NSNull()])
         }
         windowTexts.append(text)
         windowLast.append(pieces.upperBound - 1)

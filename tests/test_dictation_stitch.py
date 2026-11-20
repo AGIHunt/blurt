@@ -38,6 +38,8 @@ def run(r: dict):
         return S.keep_case(r["input"], r["output"])
     if fn == "windowInput":
         return S.window_input(r["carry"], r["piece"])
+    if fn == "rehearLoss":
+        return S.rehear_loss(r["said"], r["answer"])
     raise AssertionError(fn)
 
 

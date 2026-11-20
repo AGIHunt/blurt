@@ -509,6 +509,14 @@ without one; `record.dictation.rehear`, and `rehear_window_s` overrides the mode
 - A window of one piece keeps that piece's transcript (the same audio); one the model fails on, or answers nothing for,
   keeps its pieces' (`dictation_rehear`: `ok`, `changed`); a covered piece in a failed window sends the take down the
   safety path (the whole recording), as a failed piece does.
+- **A window answer must cover its pieces** (1.1.0, `DictationStitch.rehearLoss`): the model hears a window under one
+  language tag, and an English sentence followed by a Chinese one came back as the Chinese alone — the English the
+  user had watched turn final was lost (en+zh: the English gone; en+zh+en: the first English gone; zh+en kept both).
+  For each script the pieces heard ≥ 3 units of (Latin words, CJK characters), ≥ 60 % of those units (as a multiset)
+  must be in the answer, else the pieces' own text stays (`dictation_rehear` `lost`: `latin` / `cjk`). Counts only, no
+  word lists; corrections (巨幅 → GIF) and doubles dropped at a hard cut stay well inside it. A covered piece in such a
+  window is then heard alone. Voice notes apply the same check (`voice_rehear` `lost`); the Lab's port is
+  `dictation_stitch.rehear_loss` (shared fixture rows), and the built-in pack has two mixed prompts (b032, b033).
 - The history keeps both: `pieces` (each with `hard`, `covered`) and `windows` (`pieces`, `pieces_text`, `raw`,
   `asr_ms`), and `timing` has `windows` and `rehear_ms_all`. The Lab replays it (`rehear=on`, the default;
   `dictation_stitch.rehear_groups` is the port, the same cases in both test suites).
@@ -2656,7 +2664,7 @@ by tag (`length:short`, `feature:correction` …).
 {"schema": 1, "id": "typeless-history", "name": "…", "name_zh": "…", "description": "…", "source": "builtin|typeless-history|…",
  "created": "…", "prompts": [{"id": "t001", "read": "what to say aloud", "expected": "what should be typed (optional)",
    "tags": {"length": "short|medium|long|xlong", "scenario": "chat|coding|email|notes|meeting",
-            "languages": "zh|zh-terms|en",
+            "languages": "zh|zh-terms|en|mixed",
             "features": ["names", "numbers", "correction", "fillers", "enumeration", "question", "run_on"]},
    "origin": "seed|variant|generated"}]}
 ```

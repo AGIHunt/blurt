@@ -411,6 +411,7 @@
 "dictation.lab.tag.languages.zh" = "中文";
 "dictation.lab.tag.languages.zh-terms" = "中文夹英文术语";
 "dictation.lab.tag.languages.en" = "英文";
+"dictation.lab.tag.languages.mixed" = "中英混说";
 "dictation.lab.tag.features.names" = "名字和术语";
 "dictation.lab.tag.features.numbers" = "数字";
 "dictation.lab.tag.features.correction" = "说错改口";

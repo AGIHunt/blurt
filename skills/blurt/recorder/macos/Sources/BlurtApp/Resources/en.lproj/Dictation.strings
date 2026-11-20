@@ -411,6 +411,7 @@
 "dictation.lab.tag.languages.zh" = "Chinese";
 "dictation.lab.tag.languages.zh-terms" = "Chinese with English terms";
 "dictation.lab.tag.languages.en" = "English";
+"dictation.lab.tag.languages.mixed" = "English and Chinese";
 "dictation.lab.tag.features.names" = "Names and terms";
 "dictation.lab.tag.features.numbers" = "Numbers";
 "dictation.lab.tag.features.correction" = "Self-correction";

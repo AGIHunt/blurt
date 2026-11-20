@@ -176,6 +176,8 @@ final class DictationStitchTests: XCTestCase {
                 XCTAssertEqual(S.keepCase(input: r["input"] as! String, output: r["output"] as! String), r["want"] as? String, "\(r)")
             case "windowInput":
                 XCTAssertEqual(S.windowInput(carry: r["carry"] as! String, piece: r["piece"] as! String), r["want"] as? String, "\(r)")
+            case "rehearLoss":
+                XCTAssertEqual(S.rehearLoss(said: r["said"] as! String, answer: r["answer"] as! String), r["want"] as? String, "\(r)")
             default:
                 XCTFail("unknown fn \(fn)")
             }
