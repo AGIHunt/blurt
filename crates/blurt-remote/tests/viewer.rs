@@ -773,7 +773,10 @@ async fn through_the_public_connection_service_then_direct() {
     // far more than the service's budget went (frames), and the session is still up
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(h.status().connected.is_some());
-    assert!(!seen.0.lock().unwrap().iter().any(|e| matches!(
+    // once connected, never dropped (a first try before the host waits in its room may say Offline: that's the start, not a drop)
+    let events = seen.0.lock().unwrap().clone();
+    let up = events.iter().position(|e| matches!(e, Event::Link { link: Link::Connected, .. })).expect("connected");
+    assert!(!events[up..].iter().any(|e| matches!(
         e,
         Event::Link {
             link: Link::NoDirect | Link::Offline,

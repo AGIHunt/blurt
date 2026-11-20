@@ -429,7 +429,8 @@ async fn a_peek_says_whether_the_host_waits_and_since_when_it_left() {
     h.stop();
     let mut gone = None;
     for _ in 0..100 {
-        gone = peek().await.filter(|p| !p.host);
+        // gone, and its leaving written down (the relay sees it closing a moment before its close comes in)
+        gone = peek().await.filter(|p| !p.host && p.seen.is_some());
         if gone.is_some() {
             break;
         }
