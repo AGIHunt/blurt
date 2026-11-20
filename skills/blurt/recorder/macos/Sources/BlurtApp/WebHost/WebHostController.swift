@@ -82,7 +82,7 @@ final class DetailWebView: WKWebView {
         if hint.superview == nil { addSubview(hint) }
         wantsLayer = true
         layer?.borderWidth = 2
-        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.borderColor = BrandColor.accent.cgColor }
         hint.show(T("main.drop.add_to", ItemListController.shortTitle(it)), at: convert(s.draggingLocation, from: nil), ok: true)
         return Island.shots(from: s.draggingPasteboard).isEmpty ? .copy : .move
     }

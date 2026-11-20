@@ -23,8 +23,8 @@ struct ViewerDisplayMapView: View {
                     if let r = map[d.id] {
                         let on = d.id == shown
                         RoundedRectangle(cornerRadius: 5)
-                            .fill(on ? Color.accentColor.opacity(0.85) : Color.primary.opacity(hover == d.id ? 0.16 : 0.09))
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.25), lineWidth: 1))
+                            .fill(on ? Color.brandAccent.opacity(0.85) : Color.primary.opacity(hover == d.id ? 0.16 : 0.09))
+                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Color.brandAccent : Color.primary.opacity(0.25), lineWidth: 1))
                             .overlay(Text("\(i + 1)").font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? .white : .primary))
                             .frame(width: r.width, height: r.height)
                             .offset(x: r.minX, y: r.minY)
