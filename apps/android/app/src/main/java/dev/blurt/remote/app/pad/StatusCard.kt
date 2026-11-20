@@ -33,6 +33,7 @@ import dev.blurt.remote.app.dp
 import dev.blurt.remote.app.keys.Icons
 import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.RemoteHost
+import dev.blurt.remote.app.net.PairFailure
 import dev.blurt.remote.core.StatusAction
 import dev.blurt.remote.core.StatusLine
 import dev.blurt.remote.core.StatusMark
@@ -157,8 +158,9 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
         const val DETAIL_SIZE = 15f
         const val MAX_SCALE = 1.5f
 
-        /** The card's lines in words. `name`: the computer in hand; `check`: the digits a pairing shows on both; `failed`: Link's sentence. */
-        fun text(c: Context, line: StatusLine, host: RemoteHost, name: String?, check: String? = null, failed: String? = null): String {
+        /** The card's lines in words. `name`: the computer in hand; `check`: the digits a pairing shows on both; `failed`: Link's sentences
+         *  for a pairing that didn't take (what went wrong, then what to do). */
+        fun text(c: Context, line: StatusLine, host: RemoteHost, name: String?, check: String? = null, failed: PairFailure? = null): String {
             val n = name?.takeIf { it.isNotEmpty() } ?: c.getString(R.string.the_computer)
             return when (line) {
                 StatusLine.CONNECTING -> c.getString(R.string.connecting_to, n)
@@ -176,8 +178,8 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.WHERE_THE_CODE_IS -> c.getString(R.string.status_unpaired)
                 StatusLine.WAITING -> c.getString(R.string.status_waiting_title)
                 StatusLine.ALLOW_ON_COMPUTER -> c.getString(R.string.status_waiting, check ?: "")
-                StatusLine.PAIRING_FAILED -> c.getString(R.string.status_pair_failed)
-                StatusLine.WHY_PAIRING_FAILED -> failed ?: ""
+                StatusLine.PAIRING_FAILED -> failed?.title ?: c.getString(R.string.status_pair_failed)
+                StatusLine.WHY_PAIRING_FAILED -> failed?.help ?: ""
                 StatusLine.CANT_CONTROL -> c.getString(R.string.status_cant_control, n)
                 StatusLine.HOW_TO_ALLOW_CONTROL -> c.getString(if (host == RemoteHost.MAC) R.string.status_accessibility else R.string.status_control)
                 StatusLine.CANT_SHOW_SCREEN -> c.getString(R.string.status_cant_show_screen)

@@ -220,11 +220,13 @@ private fun stateOf(m: PairedMac, cur: PairedMac?, state: Link.State, path: Link
         Link.State.CONNECTED -> R.string.s_connected
         Link.State.CONNECTING -> R.string.s_connecting
         Link.State.UNREACHABLE -> R.string.s_unreachable
-        Link.State.FORGOTTEN -> R.string.s_forgotten
+        // removed there in a session (the key is gone), or a key refused this run (kept): either way, a new code adds it again
+        Link.State.FORGOTTEN -> R.string.s_removed
         Link.State.REPLACED -> R.string.s_replaced
         Link.State.ENDED -> R.string.s_ended
         Link.State.UNPAIRED -> R.string.s_not_connected
     })
+    if (m.removed) return stringResource(R.string.s_removed)
     return stringResource(if (m.id in nearby) R.string.s_on_network else if (m.relayAddress != null) R.string.s_uses_relay else R.string.s_not_on_network)
 }
 
