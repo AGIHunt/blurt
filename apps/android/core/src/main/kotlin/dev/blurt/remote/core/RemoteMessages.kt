@@ -236,7 +236,11 @@ sealed class ToMac {
     data class PrivacyScreen(val on: Boolean) : ToMac()
     /** a file to the host's Downloads: its name and size, its bytes, the end */
     data class FileBegin(val id: String, val name: String, val size: Long) : ToMac()
-    class FileChunk(val id: String, val data: ByteArray) : ToMac()
+    class FileChunk(val id: String, val data: ByteArray) : ToMac() {
+        override fun equals(other: Any?): Boolean = other is FileChunk && other.id == id && other.data.contentEquals(data)
+        override fun hashCode(): Int = id.hashCode() * 31 + data.contentHashCode()
+        override fun toString(): String = "FileChunk(id=$id, ${data.size} bytes)"
+    }
     data class FileEnd(val id: String) : ToMac()
 
     fun toJson(): JsonObject = when (this) {
