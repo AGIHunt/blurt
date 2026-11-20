@@ -15,6 +15,7 @@
 // The language's files are macOS's (~390 MB a language, in the system's own folder; often already there for macOS
 // dictation): `prepare` asks macOS for them once (AssetInventory), in the background.
 import AVFAudio
+import Carbon
 import Foundation
 import BlurtCore
 #if compiler(>=6.2)
@@ -51,18 +52,60 @@ enum AppleSpeech {
     }
 
     /// The locale "Automatic" stands for: of the user's languages (asr.languages, else the system's — the list Settings
-    /// shows) the first one people mix English into, else the first one SpeechTranscriber speaks, else English. So an
-    /// English Mac that lists Chinese too (Settings: English + 中文) listens for Chinese, English words included,
-    /// instead of English alone.
+    /// shows — and the keyboard input sources turned on) the first one people mix English into, else the first one
+    /// SpeechTranscriber speaks, else English. So an English Mac that lists Chinese too (Settings: English + 中文), or
+    /// one with a Chinese input method (Pinyin), listens for Chinese, English words included, instead of English alone
+    /// (dogfood 1.1.0: a Chinese speaker's first take on an English Mac came out as pinyin-like English).
     static var automatic: String? {
         let configured = Config.shared["asr.languages"] as? [String] ?? []
-        let system = Locale.preferredLanguages.map { tag -> String in
-            let t = tag.lowercased()
-            if t.hasPrefix("zh-hant") || t.hasPrefix("zh-tw") || t.hasPrefix("zh-hk") { return "zh-hant" }
-            return String(t.prefix(while: { $0 != "-" && $0 != "_" }))
-        }
+        let system = Locale.preferredLanguages.map(languageCode) + inputSourceLanguages
         let spoken = (configured.isEmpty ? system : configured).filter { locales[$0] != nil }
         return (spoken.first { mixed.contains($0) } ?? spoken.first).flatMap { locales[$0] } ?? locales["en"]
+    }
+
+    /// Blurt's language code for a BCP-47 tag ("zh-Hans-CN" → zh, "zh-Hant" → zh-hant, "en-US" → en).
+    static func languageCode(_ tag: String) -> String {
+        let t = tag.lowercased()
+        if t.hasPrefix("zh-hant") || t.hasPrefix("zh-tw") || t.hasPrefix("zh-hk") { return "zh-hant" }
+        return String(t.prefix(while: { $0 != "-" && $0 != "_" }))
+    }
+
+    /// The languages of the keyboard input sources the user turned on, each by its first language (Pinyin → zh,
+    /// Kotoeri → ja, the ABC layout → en). Read on the main thread (Text Input Sources is main-thread API) and kept
+    /// until macOS says the enabled list changed; a read from another thread gets the last one.
+    static var inputSourceLanguages: [String] {
+        guard Thread.isMainThread else { return lock.withLock { inputLanguages } ?? [] }
+        if let l = lock.withLock({ inputLanguages }) { return l }
+        let l = readInputSources()
+        lock.withLock { inputLanguages = l }
+        if !watchingInputSources {
+            watchingInputSources = true
+            DistributedNotificationCenter.default().addObserver(
+                forName: NSNotification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String), object: nil, queue: .main) { _ in
+                lock.withLock { inputLanguages = nil }
+            }
+        }
+        return l
+    }
+    private static var inputLanguages: [String]?
+    private static var watchingInputSources = false
+
+    private static func readInputSources() -> [String] {
+        // test builds: the input sources a scenario stands for ("zh,en"), not this Mac's
+        if DictationInsert.testMode, let t = ProcessInfo.processInfo.environment["BLURT_TEST_INPUT_SOURCES"] {
+            return t.split(separator: ",").map { languageCode(String($0)) }
+        }
+        let props = [kTISPropertyInputSourceIsEnabled as String: true,
+                     kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String] as CFDictionary
+        guard let list = TISCreateInputSourceList(props, false)?.takeRetainedValue() as? [TISInputSource] else { return [] }
+        var out: [String] = []
+        for s in list {
+            guard let p = TISGetInputSourceProperty(s, kTISPropertyInputSourceLanguages),
+                  let first = (Unmanaged<CFArray>.fromOpaque(p).takeUnretainedValue() as? [String])?.first else { continue }
+            let c = languageCode(first)
+            if !out.contains(c) { out.append(c) }
+        }
+        return out
     }
 
     /// The language code a locale listens for ("zh", "en"…), for the rows that say it.

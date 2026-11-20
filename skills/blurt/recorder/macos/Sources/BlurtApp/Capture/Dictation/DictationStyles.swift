@@ -131,6 +131,7 @@ extension Dictation {
                                          table: "Dictation", Dictation.styleName(to)), actionTitle: nil, action: nil)
         t.key = Dictation.styleToastKey
         t.seconds = 3
+        t.icon = .list
         if to == .structured { t.onShown = Dictation.countOnce("style_hint_shown") }      // counted when seen
         island.toast(t)
     }
@@ -212,7 +213,7 @@ extension Dictation {
                 DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: "suggest", from: "light", to: "structured", replaced: false))
                 let key = hk(.reformat)
                 island.toast(Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
-                             key: Dictation.toastKey, seconds: 6,
+                             key: Dictation.toastKey, icon: .list, seconds: 6,
                              actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self, weak lp] in
                     guard let lp = lp else { return }
                     self?.reformat(lp, to: .structured, action: "reformat", via: "chip")

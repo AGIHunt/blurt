@@ -1081,7 +1081,7 @@ final class Dictation {
             if e == .maxed {
                 // the 5-minute limit: said, and the user's next tap (meant as the stop) doesn't start a new take
                 self.trigger.endedByItself(at: CACurrentMediaTime())
-                self.toast("dictation.toast.limit", key: Dictation.listeningToastKey, seconds: DictationTrigger.limitGrace)      // in place of "still listening"
+                self.toast("dictation.toast.limit", key: Dictation.listeningToastKey, seconds: DictationTrigger.limitGrace, icon: .mic)      // in place of "still listening"
                 emit(["event": "dictation_limit", "id": self.entryID, "seconds": DictationRunaway.limit])
             } else {
                 self.trigger.reset(active: false)
@@ -1444,19 +1444,23 @@ final class Dictation {
         switch n {
         case .stillListening:
             emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
-            toast("dictation.toast.still_listening", Dictation.keyShort, Dictation.cancelKey.label, key: Dictation.listeningToastKey, seconds: 4, passive: true)
+            // a reply to the take in progress, not a tip: shown while it listens (a passive line waits until it ends,
+            // and these two only matter while it listens — dogfood 1.1.0: neither ever showed)
+            toast("dictation.toast.still_listening", Dictation.keyShort, Dictation.cancelKey.label, key: Dictation.listeningToastKey,
+                  seconds: 4, icon: .mic)
         case .endsSoon:
             emit(["event": "dictation_runaway", "notice": "ends_soon", "id": entryID, "elapsed": Int(v.elapsed)])
             island.dictationChanged()
             // one quiet line with the clock turning to the attention colour: the limit is coming
-            toast("dictation.toast.ends_soon", key: Dictation.listeningToastKey, seconds: 3, passive: true)
+            toast("dictation.toast.ends_soon", key: Dictation.listeningToastKey, seconds: 3, icon: .mic)
         }
     }
 
     /// One quiet line on the island from this table (`name`), about `key` (Island.toast: a newer one with the same key
     /// replaces it at once). `passive`: not a reply to what the user just did (a reminder, a tip) — it waits behind
-    /// replies. Every toast stays at least ToastQueue.minSeconds, whatever `seconds` asks.
-    func toast(_ name: String, _ args: CVarArg..., key: String?, seconds: Double = 2.4, icon: BlurtIcon? = nil,
+    /// replies. Every toast stays at least ToastQueue.minSeconds, whatever `seconds` asks. `icon`: its mark — dictation's
+    /// own glyph (the keyboard) unless the line is done (✓) or needs the user (⚠).
+    func toast(_ name: String, _ args: CVarArg..., key: String?, seconds: Double = 2.4, icon: BlurtIcon = .keyboard,
                passive: Bool = false) {
         let fmt = Loc.string(name, table: "Dictation")
         var t = Island.Toast(text: args.isEmpty ? fmt : String(format: fmt, locale: Loc.locale, arguments: args),
@@ -1478,7 +1482,7 @@ final class Dictation {
               "peak": Double(levels.max() ?? 0)])
         // about the last take (Dictation.toastKey): the next take's start drops it
         island.toast(Loc.t(NothingHeard.key(why, hasName: name != nil), table: "Dictation", name ?? ""), key: Dictation.toastKey,
-                     actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
+                     icon: .warning, actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
             AppEnvironment.settings?.show(pane: "dictation/mic")
         }
     }

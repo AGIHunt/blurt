@@ -35,9 +35,10 @@
 //               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: the island's mint tint (r 8);
 //               a project's key shows on the row being chosen unless it is the current one (one trailing mark: the check)
-//   toast       one component, one layout: the leading slot always filled (✓ ok for done, the spinner for working, the
-//               amber ⚠ for needs you, Peep for a done line, the project's folder for a filing, else Peep's quiet glyph
-//               glyph), the title (13 medium) and an optional detail (11.5, 60 %) on the text column, an optional quiet
+//   toast       one component, one layout: the leading slot (✓ ok for done, the spinner for working, the amber ⚠ for
+//               needs you or a failure, Peep for a done line, the project's folder for a filing, else the source's own
+//               line glyph — mic, keyboard, languages; every line a caller sends names one: a line without a mark
+//               starts on the text column after an empty slot and reads as broken), the title (13 medium) and an optional detail (11.5, 60 %) on the text column, an optional quiet
 //               pill 14 pt from the right. Nothing centred. A detail line still at work leads with a small spinner, a
 //               peck's state with its ✓ / ⚠; a line that is its own button (a peck) ends in a chevron, "Open" beside
 //               it while pointed at. A line too long for the open width wraps (up to three lines), never "…" mid-word
@@ -1326,7 +1327,7 @@ final class IslandContent: NSView {
 
     /// The mark a toast leads with: the ok check for done, the attention triangle for needs you / a failure, a
     /// project's folder for a filing, else the source's own line glyph (snap, mic, keyboard…). A toast that names
-    /// none leads with nothing — its text still starts on the text column. (It was Peep's menu-bar glyph: a second,
+    /// none leads with nothing — its text still starts on the text column, after an empty slot: callers name one. (It was Peep's menu-bar glyph: a second,
     /// filled chick under the clay Peep in the ear, in another icon set — "one Peep, never two".)
     static func toastMark(_ t: Island.Toast) -> NSImage? {
         if let b = t.badge { return IslandGlyph.project(b.color).image(size: 15, color: ink) }
