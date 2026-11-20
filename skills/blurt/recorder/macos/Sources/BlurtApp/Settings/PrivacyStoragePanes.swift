@@ -442,7 +442,9 @@ final class StorageModel: ObservableObject {
         func model(_ u: URL) -> Row {
             // a model linked in from elsewhere is named by what it links to (a Hugging Face snapshot by its repo)
             let f = linkedFolder(u) ?? u.lastPathComponent
-            return Row(name: displayName(f), path: u, bytes: diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
+            // a link takes nothing here (what it points at is counted where it lives)
+            let link = (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+            return Row(name: displayName(f), path: u, bytes: link ? 0 : diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
         }
         for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
             where !e.lastPathComponent.hasPrefix(".") {
@@ -474,8 +476,13 @@ final class StorageModel: ObservableObject {
 
     /// A model's glyph by what it does, as the Models pane draws it: speech recognition the waveform, polish the wand
     /// (an unknown folder: the generic cube, the Models pane's glyph).
+    /// Only my voice's two models (transcribe.py VP_FILE, VP_SEG_FILE): no catalogue lists them, and they were shown
+    /// as "Not used by this version", free to delete (dogfood 2026-11-21).
+    nonisolated static let voiceprintFiles: Set<String> = ["3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+                                                           "pyannote-segmentation-3-0.int8.onnx"]
+
     nonisolated static func icon(_ folder: String) -> String {
-        if folder == "silero_vad.onnx" { return "waveform" }
+        if folder == "silero_vad.onnx" || voiceprintFiles.contains(folder) { return "waveform" }
         guard let e = ModelCatalog.entry(folder: folder) else { return "cube" }
         return e.polish ? "wand.and.stars" : "waveform"
     }
@@ -484,6 +491,7 @@ final class StorageModel: ObservableObject {
     /// What a model folder is for, from the catalogues (nil: not known — annotateModels says it).
     nonisolated static func family(_ folder: String) -> String? {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad") }
+        if voiceprintFiles.contains(folder) { return T("settings.storage.model.voiceprint") }
         return ModelCatalog.entry(folder: folder).map { T($0.polish ? "settings.storage.model.polish" : "settings.storage.model.asr") }
     }
 
@@ -491,6 +499,7 @@ final class StorageModel: ObservableObject {
     /// folder's own name ("qwen3-asr-0.6b-mlx"; "Not used by this version" under it) — never a nameless "Older model".
     nonisolated static func displayName(_ folder: String) -> String {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad_name") }
+        if voiceprintFiles.contains(folder) { return T("settings.storage.model.voiceprint_name") }
         return ModelCatalog.entry(folder: folder)?.name ?? folder
     }
 
@@ -524,7 +533,7 @@ final class StorageModel: ObservableObject {
             guard let k = known[p] ?? knownResolved[r] else {
                 // a folder no script knows (a model an older version used): nothing uses it, it may go
                 let folder = rows[i].path.lastPathComponent
-                if folder != "silero_vad.onnx", ModelCatalog.entry(folder: folder) == nil {
+                if folder != "silero_vad.onnx", !StorageModel.voiceprintFiles.contains(folder), ModelCatalog.entry(folder: folder) == nil {
                     rows[i].family = nil
                     rows[i].detail = T("settings.storage.model.unused")
                     rows[i].removable = true
