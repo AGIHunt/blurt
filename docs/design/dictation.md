@@ -1104,8 +1104,10 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently). Once
-  something was said, its recording stays in the history as "已取消：录音已保留" with Retry
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently), and once
+  something was said it has the same **Undo for a full 5 s** (the founder, 2026-11-21: one Esc still discards, Undo
+  brings the take back as it would have been typed; its recording waits that long in `cancelledTakes`). Once
+  something was said, its recording also stays in the history as "已取消：录音已保留" with Retry
   (`DictationHistory.cancelledReason`, #54): an Esc meant for the app in front no longer costs what was said. Only
   while the history keeps recordings (`keepsCancelled`): "Don't keep" or Keep Recordings off keeps nothing, nor does a
   take that heard nothing or the double tap's own cancel. A paste already under way (⌘V until it has landed) can't be
@@ -1225,6 +1227,25 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   the cleared (or deleted) takes. It asks first in an alert sheet with the app icon (`DictationSettings.askClear`):
   *Clear dictation history?*, how many go (a plural) and their recordings only when some are still on disk, then *You
   can't undo this.* on its own line; Cancel is the default (↩ and Esc), *Clear History* the quiet red one.
+- **How long it is kept** is a visible popup in Settings → Dictation (*Keep dictations for*: 7 / 30 / 90 / 365 days /
+  Don't keep), beside *Open History…* and *Clear History…* — as Settings → Cards → History (until 1.1.0 it was in Open
+  History…'s menu, and people looking for it didn't find it). A shorter period, or Don't keep, that would delete saved
+  dictations asks first in the same sheet (`DictationSettings.chooseRetention`, `DictationHistory.wouldPrune`): *Delete
+  12 dictations?*, which go, *You can't undo this.*; Cancel keeps the period it was (it used to delete at once while
+  Clear History asked).
+- **Every island line about dictation has its mark** (IslandContent's leading slot): ⚠ for a failure or something
+  missing (not recognised, no speech, not sent, no polish model), the mic while a take listens (Still listening, the
+  5-minute lines), languages for Translate and for macOS speech's language, the list for Structured, else dictation's
+  keyboard — a line with an empty slot read as broken next to one with a mark (1.1.0 dogfood). Two-clause lines are
+  *headline · detail* ("没有润色模型 · …" → "本次未润色 · 未下载润色模型"), so they fit one line instead of leaving one word on
+  the second. "Still listening" and "close to the 5-minute limit" are replies to the take in progress, not passive
+  tips: they show while it listens (passive lines wait for the take to end, so they never showed).
+- **macOS speech names its language.** It listens in one language (`AppleSpeech`: no detection); "Automatic" is the
+  first language people mix English into among the system's languages **and the keyboard input sources turned on**
+  (Pinyin → 中文, Kotoeri → 日本語; `AppleSpeech.inputSourceLanguages`), so a Chinese speaker on an English Mac is heard in
+  Chinese. After a take it typed, the first line names the language it listened in, with Change… (Settings → Speech →
+  the recognition language) — once a day for each language, before any polish line: the 1.1.0 dogfood's first take
+  came out as pinyin-like English under "No polish model downloaded", which blamed the wrong thing.
 
 ## Polish
 
