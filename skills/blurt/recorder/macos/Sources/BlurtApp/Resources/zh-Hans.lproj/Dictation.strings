@@ -438,8 +438,10 @@
 "dictation.style.reformat.same" = "各风格结果相同";
 "dictation.style.needs_polish" = "切换风格需要润色模型";
 "dictation.style.reformatted" = "已重排为%@";
-"dictation.style.copied" = "已按%@复制，输入框中的文字未更改";
-"dictation.style.copied.edited" = "已按%@复制修改后的文字，输入框中的文字未更改";
+"dictation.style.copied" = "已按%@复制 · 输入框中的文字未更改";
+"dictation.style.copied.edited" = "已按%@复制修改后的文字 · 输入框中的文字未更改";
+"dictation.style.edited.failed" = "无法把改过的文字重排为%@ · 文字保持不变";
+"dictation.style.edited.same" = "按%@重排，改过的文字没有变化";
 "dictation.style.copied.original" = "文字已修改，已按原始听写排成%@并复制";
 "dictation.style.undone" = "已还原为%@";
 "dictation.style.learn.auto" = "以后在%@里自动排成清单？";

@@ -343,26 +343,38 @@ extension Dictation {
     }
 
     /// The last take as the user edited it in the field, in `style` — the same passes the take's own versions got
-    /// (Light: polish; Structured: the structuring pass; Verbatim: as it stands) — then copied, the field left alone.
-    private func restyleEdited(_ lp: DictationLastPaste, _ edited: String, to style: DictationStyle, action: String, via: String) {
+    /// (Light: polish; Structured: the structuring pass) — then copied, the field left alone. Verbatim is "as it
+    /// stands": for edited text it would copy the same text under another name, so ⌥L goes on to the next style
+    /// that changes it (dogfood 1.1.0). A pass that fell back, timed out or changed nothing copies nothing and moves
+    /// nothing on: the line says the edited text stays as it is.
+    private func restyleEdited(_ lp: DictationLastPaste, _ edited: String, to asked: DictationStyle, action: String, via: String) {
+        let style = asked == .verbatim ? DictationStyle.verbatim.next : asked
         let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: lp.bundle) ? "terminal" : nil
         let t0 = CACurrentMediaTime()
         DispatchQueue.global(qos: .userInitiated).async {
             var out = edited
+            var fellBack = true
             switch style {
             case .structured, .auto:
                 if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
                                                cloud: DictationCloud.payload()),
-                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
+                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t; fellBack = false }
             case .light:
                 if let r = Dictation.polish(edited, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
                                             context: nil, variant: variant, cloud: DictationCloud.payload()),
-                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
+                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t; fellBack = false }
             case .verbatim:
                 break
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.lastPaste === lp else { return }
+                guard out != edited else {
+                    emit(["event": "dictation_reformat", "result": fellBack ? "failed" : "same", "why": "edited", "via": via,
+                          "id": lp.id, "to": style.rawValue, "from_edited": true, "ms": Int((CACurrentMediaTime() - t0) * 1000)])
+                    island.toast(Loc.t(fellBack ? "dictation.style.edited.failed" : "dictation.style.edited.same", table: "Dictation",
+                                       Dictation.styleName(style)), key: Dictation.toastKey, icon: fellBack ? .warning : .keyboard, seconds: 3)
+                    return
+                }
                 DictationInsert.copy(out)
                 lp.current = style
                 lp.currentVersion = out
@@ -371,7 +383,7 @@ extension Dictation {
                 emit(["event": "dictation_reformat", "result": "copied", "why": "edited", "via": via, "id": lp.id,
                       "to": style.rawValue, "text": out, "from_edited": true, "ms": Int((CACurrentMediaTime() - t0) * 1000)])
                 island.toast(Loc.t("dictation.style.copied.edited", table: "Dictation", Dictation.styleName(style)),
-                             key: Dictation.toastKey, seconds: 3)
+                             key: Dictation.toastKey, icon: .copy, seconds: 3)
             }
         }
     }
