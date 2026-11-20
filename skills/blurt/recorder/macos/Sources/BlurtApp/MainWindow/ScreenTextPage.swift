@@ -13,7 +13,8 @@
 // ⌘A all. A double-click copies the row, ⌘C the selection (a blank line between texts), ⌫ deletes it — with Undo in the
 // island and ⌘Z, as the Dictation page's delete (it was gone at once).
 // A translation Blurt quit before it came back is kept as the text read, "Translation interrupted", with Translate Again.
-// Test commands (`screentextpage …`): state | select <id,…> | key <name> | copy | delete | query <text>.
+// Test commands (`screentextpage …`): state | select <id,…> | key <name> | copy | delete | undo | translate_again <id> |
+// query <text>.
 import AppKit
 import Combine
 import SwiftUI
@@ -230,6 +231,7 @@ final class ScreenTextPageModel: ObservableObject {
         case "copy": copySelection()
         case "delete": deleteSelection()
         case "undo": if undo?.canUndo == true { undo?.undo() }
+        case "translate_again": if p.count > 1 { translateAgain(p[1]) }
         case "query": query = p.count > 1 ? p[1] : ""
         case "reload": reload()
         default: break
@@ -381,7 +383,7 @@ private struct ScreenTextRow: View {
     var body: some View {
         let selected = m.selection.contains(e.id), pointed = m.pointed == e.id, copied = m.copied == e.id
         HStack(alignment: .top, spacing: HomeMetrics.gap) {
-            ScreenTextMark(translated: e.translated).frame(width: HomeMetrics.slot)
+            ScreenTextMark(translated: e.translated || e.wasInterrupted).frame(width: HomeMetrics.slot)
             VStack(alignment: .leading, spacing: 2) {
                 Text(ScreenTextPage.source(e)).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
                     .frame(minHeight: 16)

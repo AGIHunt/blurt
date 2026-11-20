@@ -1076,22 +1076,39 @@ final class HangingCards: NSObject {
             moreL.isHidden = true; moreR.isHidden = true; moreCounts = (0, 0); return
         }
         let cs = shownCards.filter { !$0.flying && !inView($0) }
-        let counts = (left: cs.filter { $0.x.value < v.lowerBound }.count, right: cs.filter { $0.x.value > v.upperBound }.count)
+        let beyond = (left: cs.filter { $0.x.value < v.lowerBound }.count, right: cs.filter { $0.x.value > v.upperBound }.count)
         let dark = isDarkMode
         let y = (shownCards.first.map { $0.grip.value + $0.size.height / 2 } ?? anchor.y + 42)
-        for (pill, text, n, right) in [(moreL, moreLText, counts.left, false), (moreR, moreRText, counts.right, true)] {
-            pill.isHidden = n == 0
-            guard n > 0 else { continue }
-            let s = NSAttributedString(string: right ? "+\(n) ›" : "‹ +\(n)",
-                                       attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                                                    .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
-            let w = ceil(s.size().width) + 18
-            pill.bounds = CGRect(x: 0, y: 0, width: w, height: 22)
-            text.string = s
-            text.frame = CGRect(x: 0, y: 3, width: w, height: 17)
-            pill.position = CGPoint(x: right ? v.upperBound - w / 2 - 2 : v.lowerBound + w / 2 + 2, y: y)
+        var counts = (left: 0, right: 0)
+        for (pill, text, n0, right) in [(moreL, moreLText, beyond.left, false), (moreR, moreRText, beyond.right, true)] {
+            pill.isHidden = n0 == 0
+            guard n0 > 0 else { continue }
+            let set = { (n: Int) in
+                let s = NSAttributedString(string: right ? "+\(n) ›" : "‹ +\(n)",
+                                           attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                                                        .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
+                let w = ceil(s.size().width) + 18
+                pill.bounds = CGRect(x: 0, y: 0, width: w, height: 22)
+                text.string = s
+                text.frame = CGRect(x: 0, y: 3, width: w, height: 17)
+                pill.position = CGPoint(x: right ? v.upperBound - w / 2 - 2 : v.lowerBound + w / 2 + 2, y: y)
+            }
+            set(n0)
+            // the card the pill sits on, at the faded end, is one of those waiting too (it is under the pill)
+            let n = shownCards.filter { !$0.flying && behindMore($0, right: right) }.count
+            if n != n0 { set(n) }
+            if right { counts.right = n } else { counts.left = n }
         }
         moreCounts = counts
+    }
+
+    /// Beyond the row's window on that side, or under that side's "+N" pill.
+    private func behindMore(_ c: HangingCard, right: Bool) -> Bool {
+        let pill = right ? moreR : moreL
+        guard !pill.isHidden, let v = row.viewport else { return false }
+        let l = c.x.value - c.size.width / 2, r = c.x.value + c.size.width / 2
+        return right ? (c.x.value > v.upperBound || r > pill.frame.minX) && c.x.value > v.lowerBound + (v.upperBound - v.lowerBound) / 2
+                     : (c.x.value < v.lowerBound || l < pill.frame.maxX) && c.x.value < v.lowerBound + (v.upperBound - v.lowerBound) / 2
     }
 
     /// The "+N" ends: the row scrolls a window's width (less its fades) that way.
@@ -2836,7 +2853,7 @@ final class HangingCards: NSObject {
         var keep: [ObjectIdentifier: LayerAXElement] = [:]
         // only the cards in the row's window: the ones scrolled past its edges are off screen (VoiceOver walked onto
         // them); the "+N" ends bring them in
-        let visible = shownCards.filter { !$0.flying && inView($0) }
+        let visible = shownCards.filter { !$0.flying && inView($0) && !behindMore($0, right: true) && !behindMore($0, right: false) }
         let names = visible.map { HangingCards.cardLabel($0.shot) }
         for (j, c) in visible.enumerated() {
             let key = ObjectIdentifier(c)
@@ -2859,7 +2876,10 @@ final class HangingCards: NSObject {
         for (pill, d) in [(moreL, -1), (moreR, 1)] where !pill.isHidden {
             let e = morePillAX[d] ?? LayerAXElement.make(role: .button, layer: pill, host: v)
             e.press = { [weak self] in self?.scrollMore(d) }
-            e.setAccessibilityLabel(Loc.plural("capture.cards.more_ax", table: "Capture", count: d < 0 ? moreCounts.left : moreCounts.right))
+            // its own words as the name ("+12 ›"), what it means as the help ("12 more cards")
+            let n = d < 0 ? moreCounts.left : moreCounts.right
+            e.setAccessibilityLabel(d < 0 ? "‹ +\(n)" : "+\(n) ›")
+            e.setAccessibilityHelp(Loc.plural("capture.cards.more_ax", table: "Capture", count: n))
             morePillAX[d] = e
             if d < 0 { out.insert(e, at: 0) } else { out.append(e) }
         }
