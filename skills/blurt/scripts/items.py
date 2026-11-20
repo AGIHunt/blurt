@@ -964,7 +964,11 @@ def set_state(item: dict, state: str, given: dict, by: str, undo: bool = False, 
         w = cur_work or {}
         carry = w if cur in ("handed_off", "in_progress", "to_verify") and state != "todo" else {}
         new = {"to": given.get("to") or carry.get("to"),
-               "agent": given.get("agent") or carry.get("agent") or ("human" if by == "user" else None),
+               # the user's own change is the user's ("human"), never credited to the agent that had the item; an
+               # agent's report keeps the agent it went to, but not the "human" of the user's hand-off (an external
+               # hand-off doesn't know which agent: no name beats a wrong one)
+               "agent": given.get("agent") or (carry.get("agent") if by != "user" and carry.get("agent") != "human"
+                                               else None) or ("human" if by == "user" else None),
                "job": given.get("job") or carry.get("job"), "handoff": given.get("handoff") or carry.get("handoff"),
                "claim": given.get("claim"), "note": given.get("note") or "",
                "commit": given.get("commit") or (carry.get("commit") if state != "in_progress" else None),
@@ -987,7 +991,9 @@ def legacy_status_target(cur: str, status: str) -> str | None:
 
 
 def change_state(session: Path | None, refs: list[str], state: str | None, action: str | None, given: dict,
-                 by: str, undo: bool = False) -> dict:
+                 by: str, undo: bool = False, only_from: str | None = None) -> dict:
+    """only_from: change only the items still in that state (the user's ⌘Z: the state its step left them in); the
+    rest are left as they are and listed in "kept" — an agent reported in between, and that report stays."""
     given = dict(given)
     given.setdefault("agent", None)
     if not given.get("agent") and os.environ.get("BLURT_AGENT") and by != "user":
@@ -1010,7 +1016,9 @@ def change_state(session: Path | None, refs: list[str], state: str | None, actio
         if to is None:
             fail(f"{it.get('id')}: can't {action.replace('_', ' ')} an item that is {state_of(it)}", "bad_transition")
         return to
-    targets = []
+    if only_from is not None and only_from not in STATES:
+        fail(f"--from-state must be one of {', '.join(STATES)}", "bad_value")
+    targets, kept = [], []
     for ref in refs:
         path, uid, into = locate(session, ref)
         if path is None and into is None:
@@ -1019,6 +1027,9 @@ def change_state(session: Path | None, refs: list[str], state: str | None, actio
             targets.append((ref, None, into))
             continue
         it = load(path)
+        if only_from is not None and state_of(it) != only_from:
+            kept.append({"uid": it.get("uid"), "id": it.get("id"), "state": state_of(it)})
+            continue
         set_state(json.loads(json.dumps(it)), target(it), given, by, undo)  # check every item before writing any
         targets.append((ref, path, into))
     out = []
@@ -1029,7 +1040,7 @@ def change_state(session: Path | None, refs: list[str], state: str | None, actio
             continue
         out.append(mutate(path, lambda it: set_state(it, target(it), given, by, undo)))
         touch_batch(st.read_header(path))
-    return {"ok": True, "items": out}
+    return {"ok": True, "items": out, **({"kept": kept} if kept else {})}
 
 
 def fix(session: Path | None, ref: str, state: str, given: dict) -> dict:
@@ -1702,6 +1713,7 @@ def build_parser() -> Parser:
     g.add_argument("--state", choices=list(STATES))
     g.add_argument("--action", choices=list(ACTIONS))
     s.add_argument("--undo", action="store_true", help=argparse.SUPPRESS)  # the user takes back their last change
+    s.add_argument("--from-state", choices=list(STATES), help=argparse.SUPPRESS)  # ⌘Z: only items still in this state
     s.add_argument("--to", choices=["session", "external"])
     s.add_argument("--agent")
     s.add_argument("--job")
@@ -1826,7 +1838,7 @@ def run(a) -> dict:
             fail(f"{a.cmd}: expected REF …")
         given = {"to": a.to, "agent": a.agent, "job": a.job, "handoff": a.handoff, "claim": a.claim,
                  "commit": a.commit, "pr": a.pr, "note": a.note}
-        return change_state(session, refs, a.state, a.action, given, a.by, a.undo)
+        return change_state(session, refs, a.state, a.action, given, a.by, a.undo, a.from_state)
     if a.cmd == "move":
         session, refs = target_of(a.target)
         return move(session, refs, a.project, a.only_from)

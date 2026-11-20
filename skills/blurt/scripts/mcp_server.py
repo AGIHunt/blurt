@@ -91,6 +91,23 @@ async def _received_request(self, responder):  # noqa: ANN001 — the SDK's own 
 ServerSession._received_request = _received_request
 
 
+def client_agent(ctx: Context | None) -> str | None:
+    """Who is calling, from initialize's clientInfo.name: the agents.json id (codex-mcp-client → codex), else the
+    name itself; None when the client gave none — the report then names no agent rather than a made-up one."""
+    try:
+        info = getattr(getattr(ctx.session, "client_params", None), "clientInfo", None) if ctx is not None else None
+    except (AttributeError, ValueError):  # no request context (a direct call)
+        info = None
+    name = str(getattr(info, "name", "") or "").strip()
+    if not name:
+        return None
+    try:
+        defs = agents_mod.definitions(agents_mod.config())
+    except (OSError, ValueError):
+        defs = {}
+    return agents_mod.client_agent(name, defs) or name
+
+
 # ------------------------------------------------------------------ helpers
 def _db():
     index.ensure_index()
@@ -317,9 +334,10 @@ def update_item(uid: str, set: dict, unset: list[str] | None = None) -> dict:
 @mcp.tool(description=(
     "Report your work on an item: state = fixing (call it when you start) | fixed | wontfix | reopened. note = one "
     "line on what changed (or why not); commit / pr if there is one. " + DONE_RULE + " fixed and wontfix are your "
-    "claim, shown to the user as \"to verify\"; reopened takes your claim back. agent defaults to $BLURT_AGENT. The "
-    "Blurt app shows it to the user right away. " + STATE_HELP + " " + WRITE_RULE))
-def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: str | None = None,
+    "claim, shown to the user as \"to verify\"; reopened takes your claim back. agent = who you are (codex, "
+    "claude…); it defaults to $BLURT_AGENT, else the name your MCP client gave. The Blurt app shows it to the user "
+    "right away. " + STATE_HELP + " " + WRITE_RULE))
+def mark_fixed(uid: str, ctx: Context, state: str = "fixed", commit: str | None = None, pr: str | None = None,
                note: str | None = None, agent: str | None = None) -> dict:
     if state not in MARK_STATES:
         raise ValueError("state must be fixing | fixed | wontfix | reopened")
@@ -327,7 +345,7 @@ def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: st
     to, claim = MARK_STATES[state]
     args = ["state", uid, "--state", to, "--by", "agent"]
     for flag, v in (("--claim", claim), ("--commit", commit), ("--pr", pr), ("--note", note),
-                    ("--agent", agent or os.environ.get("BLURT_AGENT") or "mcp")):
+                    ("--agent", agent or os.environ.get("BLURT_AGENT") or client_agent(ctx))):
         if v:
             args += [flag, v]
     out = _items_py(*args)
@@ -344,15 +362,21 @@ def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: st
     "\"<project>-<date>-<n items>.zip\". Pass uids (from search_items), or a filter: project (+ state, kind; default "
     "every state but discarded). Grouping is yours: for \"the A module's issues for Zhang San\" pick those items and "
     "call once per group; title names the bundle (e.g. \"Payment issues for Zhang San\"). out_dir = an absolute "
-    "folder or path ending in .zip (default: the project's .blurt/exports/). Returns the zip's absolute path and "
+    "folder or path ending in .zip (default: the project's .blurt/exports/; output and path are accepted for it too). "
+    "Returns the zip's absolute path and "
     "`summary`, one "
     "paragraph to paste next to the file. Blurt sends nothing anywhere: post or upload the zip with the tool you "
     "already have for that destination (Slack, Feishu/Lark, Notion, Google Drive, Linear, GitHub, email…), after the "
     "user confirms where. No item changes state."))
 def bundle_items(uids: list[str] | None = None, project: str | None = None, state: list[str] | None = None,
                  kind: list[str] | None = None, title: str | None = None, out_dir: str | None = None,
-                 lang: str | None = None) -> dict:
+                 lang: str | None = None, output: str | None = None, path: str | None = None) -> dict:
     import export_local  # noqa: PLC0415
+    # the names an agent guesses for where it goes: never dropped in silence
+    given = [v for v in (out_dir, output, path) if v]
+    if len(set(given)) > 1:
+        raise ValueError("pass one of out_dir, output or path (they are the same thing)")
+    out_dir = given[0] if given else None
     if not uids and not project:
         raise ValueError("pass uids, or project (+ state / kind)")
     for u in uids or []:

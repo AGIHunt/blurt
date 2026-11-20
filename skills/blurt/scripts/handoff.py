@@ -122,36 +122,43 @@ T = {
     "en": {
         "title_one": "{id} for {project}", "title_many": "{n} items for {project}", "title_bare": "{n} items",
         "folder": "Project folder: {path}",
-        "mcp": "When you finish an item, call the blurt MCP tool `mark_fixed` with its uid (state \"fixed\" or "
-               "\"wontfix\", plus a short note).",
-        "nomcp": "Without the MCP: `{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`.",
+        "mcp": "Report on each item in Blurt as you go: call the blurt MCP tool `mark_fixed` with its uid, state "
+               "\"fixing\" when you start, then state \"fixed\" or \"wontfix\" with a one-line note when you finish.",
+        "nomcp": "If that tool isn't there or a call fails (for example because it needs approval), run these instead. "
+                 "When you start: `{start}`. When you finish: `{end}` (`--claim wontfix` if you won't fix it). Put your own "
+                 "name after --agent (codex, claude…).",
+        "your_name": "<name>",
         "verify": "The user confirms each item before it counts as done.",
         "rule_external": "Don't push, and don't commit unless the user asks you to.",
         "said": "They said", "summary": "Summary", "why": "Why", "inspired_by": "Inspired by", "actual": "Actual",
-        "expected": "Expected", "steps": "Steps", "details": "Details", "next_steps": "Next steps",
+        "expected": "Expected", "done_when": "Done when", "steps": "Steps", "details": "Details", "next_steps": "Next steps",
         "open_questions": "Open questions", "answer": "Their answer", "code": "Suspected code", "frame": "Frame", "files": "Files", "missing": "not found",
         "module": "module", "project": "project",
         "kind": {"issue": "issue", "idea": "idea", "note": "note", "task": "task"},
         "severity": {},
-        "instr_one": "Please handle {id} — details and screenshots are in {path}. When you're done, call mark_fixed if "
-                     "the blurt MCP is available.",
-        "instr_many": "Please handle these {n} items — details and screenshots are in {path}. When you're done, call "
-                      "mark_fixed for each if the blurt MCP is available.",
+        "instr_one": "Please handle {id} — details and screenshots are in {path}. Report back with the blurt MCP tool "
+                     "mark_fixed when you start and when you're done; if that fails, run the command in the note.",
+        "instr_many": "Please handle these {n} items — details and screenshots are in {path}. Report back on each with "
+                      "the blurt MCP tool mark_fixed when you start and when you're done; if that fails, run the command "
+                      "in the note.",
     },
     "zh": {
         "title_one": "{project} · {id}", "title_many": "{project} 的 {n} 个事项", "title_bare": "{n} 个事项",
         "folder": "项目文件夹：{path}",
-        "mcp": "每做完一条，用它的 uid 调用 blurt MCP 工具 `mark_fixed`（state 填 \"fixed\" 或 \"wontfix\"，附一句说明）。",
-        "nomcp": "没有 MCP 时：`{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`。",
+        "mcp": "边做边在口喷鸡里报告每一条：用它的 uid 调用 blurt MCP 工具 `mark_fixed`，开始时 state 填 \"fixing\"，"
+               "做完时填 \"fixed\" 或 \"wontfix\"，附一句说明。",
+        "nomcp": "如果没有这个工具，或者调用失败（比如需要批准），改为运行下面的命令。开始时：`{start}`。做完时：`{end}`"
+                 "（不修就用 `--claim wontfix`）。--agent 后面填你自己的名字（codex、claude…）。",
+        "your_name": "<name>",
         "verify": "每一条都要用户确认后才算完成。",
         "rule_external": "不要推送；除非用户要求，也不要提交。",
         "said": "原话", "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "actual": "实际效果",
-        "expected": "预期效果", "steps": "复现步骤", "details": "详情", "next_steps": "下一步", "open_questions": "待定问题",
+        "expected": "预期效果", "done_when": "完成标准", "steps": "复现步骤", "details": "详情", "next_steps": "下一步", "open_questions": "待定问题",
         "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "files": "文件", "missing": "找不到", "module": "模块", "project": "项目",
         "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
         "severity": {"critical": "严重", "high": "高", "medium": "中", "low": "低"},
-        "instr_one": "请处理 {id}，详情和截图见 {path}。做完后如果有 blurt MCP，调用 mark_fixed。",
-        "instr_many": "请处理这 {n} 个事项，详情和截图见 {path}。做完后如果有 blurt MCP，逐条调用 mark_fixed。",
+        "instr_one": "请处理 {id}，详情和截图见 {path}。开始和做完时用 blurt MCP 工具 mark_fixed 报告；调用失败就运行说明里的命令。",
+        "instr_many": "请处理这 {n} 个事项，详情和截图见 {path}。开始和做完时用 blurt MCP 工具 mark_fixed 逐条报告；调用失败就运行说明里的命令。",
     },
 }
 
@@ -217,15 +224,21 @@ def render_item(n: int, it: dict, lang: str, show_project: bool = False) -> str:
     quote = _text(it.get("quote"))
     if quote:
         parts.append(f"**{t['said']}**\n" + "\n".join(f"> {ln}" if ln else ">" for ln in quote.splitlines()))
+    # a task's `expected` is its "Done when" (the page labels it so): the agent's finish line, said right after the
+    # details under the same name, as is a hand-written done_when
+    task = kind == "task"
     for key in ("summary", "why", "inspired_by", "actual", "expected"):
         v = _text(it.get(key))
-        if v:
+        if v and not (task and key == "expected"):
             parts.append(f"**{t[key]}**\n{v}")
     steps = [s for s in (it.get("steps") or []) if _text(s)] if isinstance(it.get("steps"), list) else []
     if steps:
         parts.append(f"**{t['steps']}**\n" + "\n".join(f"{i}. {_text(s)}" for i, s in enumerate(steps, 1)))
     if _text(it.get("details")):
         parts.append(f"**{t['details']}**\n{_text(it['details'])}")
+    done_when = [v for v in ((_text(it.get("expected")) if task else ""), _text(it.get("done_when"))) if v]
+    if done_when:
+        parts.append(f"**{t['done_when']}**\n" + "\n".join(dict.fromkeys(done_when)))
     for key in ("next_steps", "open_questions"):
         vals = [x for x in (it.get(key) or []) if _text(x)] if isinstance(it.get(key), list) else []
         if vals:
@@ -268,7 +281,14 @@ def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: s
     intro = []
     if same and proj.get("id") != "inbox" and proj.get("path"):
         intro.append(t["folder"].format(path=proj["path"]))
-    intro += [t["mcp"], t["nomcp"].format(items_cmd=items_command()), t["verify"], rule]
+    # the fallback names the item when there is one (nothing to fill in), and asks the agent for its name so the
+    # report says who claims the fix
+    uid = items[0]["uid"] if len(items) == 1 else "<uid>"
+    who = t["your_name"]
+    cmd = items_command()
+    start = f"{cmd} state {uid} --state in_progress --agent {who}"
+    end = f"{cmd} state {uid} --state to_verify --claim fixed --note \"…\" --agent {who}"
+    intro += [t["mcp"], t["nomcp"].format(start=start, end=end), t["verify"], rule]
     body = [f"# {title}", "\n".join(intro)] + [render_item(n, it, lang, show_project=not same)
                                                 for n, it in enumerate(items, 1)]
     return "\n".join(fm) + "\n" + "\n\n".join(body) + "\n"

@@ -587,7 +587,7 @@ function WorkHistory({ i }: { i: Item }) {
   );
 }
 
-const SOURCE_ICON: Record<string, IconName> = { recording: "video", snap: "snap", voice: "waveform", dictation: "mic", url: "external-link", import: "download", service: "agent" };
+const SOURCE_ICON: Record<string, IconName> = { manual: "pencil", recording: "video", snap: "snap", voice: "waveform", dictation: "mic", url: "external-link", import: "download", service: "agent" };
 
 /** "com.apple.TextEdit" → "TextEdit": an older dictation row stored the app's bundle id; people see its last part */
 export const appLabel = (app: string) => (/^[a-z0-9-]+(\.[A-Za-z0-9-]+){2,}$/.test(app) ? app.split(".").pop()! : app);
@@ -630,8 +630,10 @@ function Provenance({ i }: { i: Item }) {
       </span>,
     );
   // the Mac's own account name ("by john") is you: never the raw login
-  if (src.by)
-    line.push(<span key="b">{String(src.by).toLowerCase() === String(s.data.me ?? "").toLowerCase() ? s.t("work.by_you") : s.t("source.by_who", { who: String(src.by) })}</span>);
+  // "Added by hand" by you says itself: no "by you" after it
+  const byMe = String(src.by ?? "").toLowerCase() === String(s.data.me ?? "").toLowerCase();
+  if (src.by && !(type === "manual" && byMe))
+    line.push(<span key="b">{byMe ? s.t("work.by_you") : s.t("source.by_who", { who: String(src.by) })}</span>);
   const rows: [string, React.ReactNode][] = [];
   if (src.app) rows.push([s.t("source.app"), appLabel(String(src.app))]);
   // the page once: not again when a field of the item already holds the same address (its Source link)

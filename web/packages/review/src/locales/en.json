@@ -175,6 +175,7 @@
   "source.type.snap": "Snap",
   "source.type.voice": "Voice note",
   "source.type.url": "Web page",
+  "source.type.manual": "Added by hand",
   "source.type.import": "Imported",
   "source.type.service": "From the Services menu",
   "source.at": "at {time}",

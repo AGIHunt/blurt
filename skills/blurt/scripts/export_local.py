@@ -35,12 +35,12 @@ import items as items_mod  # noqa: E402
 
 LABELS = {
     "zh": {"id": "编号", "title": "标题", "module": "所属模块", "owner": "负责人", "severity": "严重程度", "type": "类型",
-           "actual": "实际效果", "expected": "预期效果", "steps": "复现步骤", "time": "录屏时间点", "quote": "原话",
+           "actual": "实际效果", "expected": "预期效果", "done_when": "完成标准", "steps": "复现步骤", "time": "录屏时间点", "quote": "原话",
            "frames": "截图", "clip": "录屏片段", "code_refs": "疑似代码位置", "questions": "待确认", "answer": "回答",
            "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "next_steps": "下一步", "open_questions": "待定问题",
            "details": "详情", "due": "截止", "tags": "标签", "source": "来源", "kind": "种类"},
     "en": {"id": "ID", "title": "Title", "module": "Module", "owner": "Owner", "severity": "Severity", "type": "Type",
-           "actual": "Actual", "expected": "Expected", "steps": "Steps to reproduce", "time": "Time in recording",
+           "actual": "Actual", "expected": "Expected", "done_when": "Done when", "steps": "Steps to reproduce", "time": "Time in recording",
            "quote": "Quote", "frames": "Screenshots", "clip": "Clip", "code_refs": "Suspected code",
            "questions": "Open questions", "answer": "Answer", "summary": "Summary", "why": "Why",
            "inspired_by": "Inspired by", "next_steps": "Next steps", "open_questions": "Open questions",
@@ -360,7 +360,9 @@ def _lead(i: dict, L: dict) -> list[str]:
     out = _quote(str(i["quote"])) if _md(i.get("quote")) else []
     for k in LEAD:
         if _md(i.get(k)):
-            out += [f"**{L[k]}**: {_md(i[k])}", ""]
+            # a task's expected is its "Done when" (the page's name for it)
+            label = L["done_when"] if k == "expected" and i.get("kind") == "task" else L[k]
+            out += [f"**{label}**: {_md(i[k])}", ""]
     steps = [s for s in i["steps"] if _md(s)] if isinstance(i.get("steps"), list) else []
     if steps:
         out += [f"**{L['steps']}**", *[f"{n}. {_md(s)}" for n, s in enumerate(steps, 1)], ""]
