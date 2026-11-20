@@ -21,12 +21,13 @@ enum DictationFrontApp {
         }
     }
 
-    /// The take's app now: the one in front when it is an ordinary app (or Blurt), else the last ordinary one still
-    /// running, else nil (the row then names no app).
+    /// The take's app now: the one in front when it is an ordinary app (or Blurt), else the one that owns the menu bar
+    /// (an alert in front doesn't take it), else the last ordinary one still running, else nil ("Unknown app").
     static var current: NSRunningApplication? {
         watch()
         let f = NSWorkspace.shared.frontmostApplication
         if let f = f, f.activationPolicy == .regular || f.processIdentifier == ProcessInfo.processInfo.processIdentifier { return f }
+        if let m = NSWorkspace.shared.menuBarOwningApplication, m.activationPolicy == .regular { return m }
         if let l = lastRegular, !l.isTerminated { return l }
         return nil
     }
