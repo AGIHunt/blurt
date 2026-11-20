@@ -1,7 +1,7 @@
 // K10 shorthands for P4's string tables (Sources/BlurtApp/Resources/{en,zh-Hans}.lproj): the key's first part picks
 // the table — main.* / menu.* / app.* / notify.* → Main, settings.* / onboarding.* → Settings, anything else
 // (kind.*, work.*, session.*, project.*, job.*, action.*…) → Common; dictation.* → Dictation; home.* / feature.* → Home;
-// cards.* → Cards; phone.* → Phone.
+// cards.* → Cards; phone.* / viewer.* / remote.* → Phone.
 //   T("main.place.inbox")                   Loc.t("main.place.inbox", table: "Main")
 //   T("main.open.failed", name)             %@ / %ld placeholders
 //   TP("main.items.count", n)               Loc.plural(…, count: n) — the .stringsdict entry
