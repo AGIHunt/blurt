@@ -84,6 +84,36 @@ final class ScreenTextHistoryTests: XCTestCase {
         XCTAssertTrue(h.load().isEmpty)
     }
 
+    /// The page's Undo: deleted entries come back, once each, also after a prune dropped the delete line.
+    func testDeletedEntriesComeBackOnUndo() {
+        let h = store()
+        let now = Date()
+        let a = ScreenTextEntry(id: "a", time: now.addingTimeInterval(-60), translated: false, text: "one")
+        let b = ScreenTextEntry(id: "b", time: now, translated: false, text: "two")
+        h.append(a, days: 30); h.append(b, days: 30)
+        h.delete(["a", "b"])
+        XCTAssertTrue(h.load().isEmpty)
+        h.restore([b, a])
+        XCTAssertEqual(h.load().map(\.id), ["b", "a"])
+        h.restore([a])
+        XCTAssertEqual(h.load().map(\.id), ["b", "a"], "written again, still once")
+        h.delete(["a"]); h.prune(days: 30, now: now); h.restore([a])
+        XCTAssertEqual(h.load().map(\.id), ["b", "a"])
+    }
+
+    /// Settings asks before a shorter period deletes: how many would go.
+    func testWhatAShorterPeriodWouldDelete() {
+        let h = store()
+        let now = Date()
+        h.append(ScreenTextEntry(id: "old", time: now.addingTimeInterval(-10 * 86400), translated: false, text: "old"), days: 30)
+        h.append(ScreenTextEntry(id: "new", time: now.addingTimeInterval(-86400), translated: false, text: "new"), days: 30)
+        XCTAssertEqual(h.wouldPrune(days: 30, now: now), 0)
+        XCTAssertEqual(h.wouldPrune(days: 7, now: now), 1)
+        XCTAssertEqual(h.wouldPrune(days: 0, now: now), 2)
+        XCTAssertEqual(h.wouldPrune(days: -1, now: now), 0)
+        XCTAssertEqual(h.load().count, 2, "asking deletes nothing")
+    }
+
     func testPreviewIsOneLine() {
         XCTAssertEqual(ScreenTextEntry.preview("a\n\n b \nc"), "a b c")
         XCTAssertEqual(ScreenTextEntry.preview(String(repeating: "x", count: 200), max: 10), "xxxxxxxxxx…")

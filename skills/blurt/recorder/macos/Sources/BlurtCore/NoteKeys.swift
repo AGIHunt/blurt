@@ -84,9 +84,12 @@ public enum NoteKeys {
         public var filing: Bool
         /// ⌘↩ may copy it and finish: a fresh snap in place, not one going into a recording
         public var canCopy: Bool
+        /// the field holds text — typed, or the words taken with Tab (which are not `typed`)
+        public var hasText: Bool
 
         public init(mode: Mode, voice: Voice = .none, typed: String = "", composing: Bool = false, picking: Bool = false,
-                    pickingKind: Bool = false, filing: Bool = true, canCopy: Bool = false) {
+                    pickingKind: Bool = false, filing: Bool = true, canCopy: Bool = false, hasText: Bool? = nil) {
+            self.hasText = hasText ?? !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             self.mode = mode
             self.voice = voice
             self.typed = typed
@@ -178,7 +181,8 @@ public enum NoteKeys {
         case .shiftReturn:
             guard s.mode == .fresh else { return .newLine }
             if s.wordsShowing { return .takeWords(newLine: true) }
-            return s.typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .ignore : .newLine
+            // the words taken with Tab are text in the field too: ⇧↩ after Tab ran the next line into them
+            return s.hasText ? .newLine : .ignore
         case .tab:
             switch s.mode {
             case .recording: return .pass

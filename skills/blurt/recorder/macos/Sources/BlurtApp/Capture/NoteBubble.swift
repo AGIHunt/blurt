@@ -1945,7 +1945,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let typedPart = (accepted || wordsInField != nil) && !typed ? "" : field.stringValue
         return NoteKeys.State(mode: mode == .listen ? .fresh : mode == .edit ? .edit : .recording, voice: v, typed: typedPart,
                               composing: (field.currentEditor() as? NSTextView)?.hasMarkedText() == true, picking: picking,
-                              pickingKind: pickingKind, filing: filing, canCopy: canCopyOut)
+                              pickingKind: pickingKind, filing: filing, canCopy: canCopyOut,
+                              hasText: !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     /// Does what NoteKeys decided; false when the key isn't the bubble's (it goes on to the field, the IME, the list).
