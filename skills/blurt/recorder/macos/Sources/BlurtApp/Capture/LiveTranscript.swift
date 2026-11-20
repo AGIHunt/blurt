@@ -474,7 +474,8 @@ final class LiveTextLines: NSView {
         let ns = text as NSString
         let out = lineRanges(ns, from: 0, width: width)
         guard out.count >= 2, let last = out.last?.1.trimmingCharacters(in: .whitespaces), last.count <= 2 else { return out }
-        let narrower = lineRanges(ns, from: 0, width: width - LiveTextLines.font.pointSize)
+        // a little more than one character: at exactly one em a full line of CJK still fits
+        let narrower = lineRanges(ns, from: 0, width: width - ceil(LiveTextLines.font.pointSize * 1.25))
         guard narrower.count == out.count, (narrower.last?.1.count ?? 0) > last.count else { return out }
         return narrower
     }
