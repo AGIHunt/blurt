@@ -9,11 +9,19 @@ final class AboutPanel: NSObject {
     static let shared = AboutPanel()
     @objc func orderFrontStandardAboutPanel(_ sender: Any?) {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        var opts: [NSApplication.AboutPanelOptionKey: Any] = [
-            .credits: NSAttributedString(string: T("menu.about.credits"), attributes: [
-                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()]),
-        ]
+        let credits = NSMutableAttributedString(string: T("menu.about.credits"), attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()])
+        // the site is a link, not plain text
+        let site = (credits.string as NSString).range(of: "blurt.work")
+        if site.location != NSNotFound, let u = URL(string: "https://blurt.work") { credits.addAttribute(.link, value: u, range: site) }
+        var opts: [NSApplication.AboutPanelOptionKey: Any] = [.credits: credits]
+        // "Version 1.1.0", not "Version 1.1.0 (1.1.0)": AppKit adds the build number in brackets, and ours is the
+        // version itself (dogfood 2026-11-21)
+        let info = Bundle.main.infoDictionary ?? [:]
+        if let short = info["CFBundleShortVersionString"] as? String, short == info["CFBundleVersion"] as? String {
+            opts[.version] = ""
+        }
         if let img = MascotLibrary.shared.image(.idle, points: 64, scale: 4, dark: dark, bleed: 0.1) {
             opts[.applicationIcon] = NSImage(cgImage: img, size: NSSize(width: 64, height: 64))
         }
