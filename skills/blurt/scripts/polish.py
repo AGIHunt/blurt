@@ -56,7 +56,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
 from _common import uv_bin  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, landed_in, load_json, progress_line,  # noqa: E402
-                     save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said)
+                     save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said, disk_full)
 from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent)
 
@@ -2251,11 +2251,15 @@ def main():
          "eval": cmd_eval, "translate": cmd_translate}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
-        emit({"ok": False, "error": str(e), "code": e.code})
+        emit({"ok": False, "error": str(e), "code": "disk_full" if disk_full(e) else e.code})
         if a.cmd == "serve":
             server_exit(e.exit_code)
         sys.exit(e.exit_code)
-    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+    except Exception as e:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd == "setup" and disk_full(e):
+            print(f"ERROR: {e}", file=sys.stderr)
+            emit({"ok": False, "error": str(e)[:300], "code": "disk_full"})
+            sys.exit(1)
         if a.cmd != "serve":
             raise
         import traceback

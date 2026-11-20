@@ -108,7 +108,7 @@ import dictation_vocab  # noqa: E402
 from _common import uv_bin  # noqa: E402
 from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
-                     server_exit, serve_exit_reason, serve_said, use_system_certs)
+                     server_exit, serve_exit_reason, serve_said, use_system_certs, disk_full)
 from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
 
@@ -4853,11 +4853,15 @@ def main():
          "dictation-models": cmd_dictation_models, "check-cloud": cmd_check_cloud, "voiceprint": cmd_voiceprint}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
-        emit({"ok": False, "error": str(e), "code": e.code})
+        emit({"ok": False, "error": str(e), "code": "disk_full" if disk_full(e) else e.code})
         if a.cmd == "serve":
             server_exit(e.exit_code)
         sys.exit(e.exit_code)
     except Exception as e:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd == "setup" and disk_full(e):
+            print(f"ERROR: {e}", file=sys.stderr)
+            emit({"ok": False, "error": str(e)[:300], "code": "disk_full"})
+            sys.exit(1)
         if a.cmd in ("note", "check-cloud"):
             # the app reads the last JSON line: a crash still says what it was (it read a bare "error" before)
             import traceback

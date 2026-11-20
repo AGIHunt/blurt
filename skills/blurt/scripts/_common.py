@@ -83,6 +83,21 @@ def use_system_certs() -> None:
         pass
 
 
+def disk_full(e: BaseException | None) -> bool:
+    """The disk filled up somewhere in this failure (ENOSPC, also when a download wrapped it into its own error): a
+    setup says {"code": "disk_full"}, and the app says how much is needed and free, not "network"."""
+    import errno
+    seen = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        if isinstance(e, OSError) and e.errno in (errno.ENOSPC, errno.EDQUOT):
+            return True
+        if "No space left on device" in str(e) or "[Errno 28]" in str(e):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
+
+
 def die(msg: str, code: int = 1) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(code)
