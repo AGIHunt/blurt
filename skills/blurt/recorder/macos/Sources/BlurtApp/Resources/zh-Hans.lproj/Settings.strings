@@ -374,6 +374,7 @@
 "settings.privacy.stay_with_agents" = "所有内容均存储在本机，仅交给 Agent 的内容会发送给它。";
 "settings.storage.model.vad_name" = "人声检测";
 "settings.storage.model.voiceprint_name" = "声纹匹配";
+"settings.storage.model.turns_name" = "说话人切分";
 "settings.storage.model.voiceprint" = "只识别我的声音，用于听写";
 "settings.storage.model.unused" = "当前版本不再使用";
 "settings.general.login_failed" = "无法更改，请在「系统设置」的「登录项」中修改。";

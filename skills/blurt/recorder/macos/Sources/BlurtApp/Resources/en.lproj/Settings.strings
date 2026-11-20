@@ -376,6 +376,7 @@
 "settings.privacy.stay_with_agents" = "Everything is stored on your Mac; your agent gets only what you send it.";
 "settings.storage.model.vad_name" = "Voice detector";
 "settings.storage.model.voiceprint_name" = "Voice match";
+"settings.storage.model.turns_name" = "Speaker turns";
 "settings.storage.model.voiceprint" = "Only my voice, for dictation";
 "settings.storage.model.unused" = "Not used by this version";
 "settings.general.login_failed" = "Couldn’t change this. Change it in System Settings, under Login Items.";

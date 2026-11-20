@@ -500,7 +500,9 @@ final class StorageModel: ObservableObject {
     /// folder's own name ("qwen3-asr-0.6b-mlx"; "Not used by this version" under it) — never a nameless "Older model".
     nonisolated static func displayName(_ folder: String) -> String {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad_name") }
-        if voiceprintFiles.contains(folder) { return T("settings.storage.model.voiceprint_name") }
+        if voiceprintFiles.contains(folder) {
+            return T(folder.hasPrefix("pyannote") ? "settings.storage.model.turns_name" : "settings.storage.model.voiceprint_name")
+        }
         return ModelCatalog.entry(folder: folder)?.name ?? folder
     }
 
