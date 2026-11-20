@@ -78,12 +78,13 @@ enum RemoteBanner {
         return (p, t)
     }
 
-    /// Top centre of the main display, just under the menu bar.
+    /// Top centre of the main display, just under the menu bar: centred on the whole screen (under the notch), not on the part the
+    /// Dock leaves, which a Dock at the side pushes off centre.
     private static func place() {
         guard let p = panel, let row, let s = NSScreen.screens.first else { return }
         let f = s.visibleFrame
         let w = min(ceil(row.fittingSize.width) + 18, f.width - 40)
-        p.setFrame(NSRect(x: f.midX - w / 2, y: f.maxY - 30 - 6, width: w, height: 30), display: true)
+        p.setFrame(NSRect(x: s.frame.midX - w / 2, y: f.maxY - 30 - 6, width: w, height: 30), display: true)
     }
 
     private final class Handler: NSObject {
