@@ -707,20 +707,34 @@ final class RemoteServer {
     }
     /// Settings → Remote Control: paired devices may see when this Mac went to sleep (its relay keeps the time); on unless turned off
     static var sayAsleep: Bool { Config.shared["record.remote.say_asleep"] as? Bool ?? true }
-    /// Settings → Phone: a paired phone may ask for the screen
-    /// The focused element is a password field (Accessibility; this Mac has it to take a phone's input). A terminal's Secure Keyboard
-    /// Entry doesn't count, so dictation still reaches one.
-    static var passwordFieldInFront: Bool {
+    enum FocusedField { case plain, password, unanswered }
+    /// Whether the focused element is a password field (Accessibility; this Mac has it to take a phone's input). A terminal's Secure
+    /// Keyboard Entry doesn't count, so dictation still reaches one. An app in front that doesn't answer within half a second (it hangs)
+    /// is `unanswered`: nothing is typed into a field nobody could look at. Asked on the input queue, never on `queue`, which answers the
+    /// pings: a hung app there held the whole session up for the system's 6 s per question, and the device dropped it.
+    static func focusedField() -> FocusedField {
+        #if DEBUG || BLURT_TEST_HOOKS
+        // tests: an app in front that hangs, without one (BLURT_TEST_FIELD_HANG=seconds)
+        if testing, let t = ProcessInfo.processInfo.environment["BLURT_TEST_FIELD_HANG"].flatMap(Double.init) {
+            Thread.sleep(forTimeInterval: t)
+            return .unanswered
+        }
+        #endif
+        let sys = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(sys, 0.5)
         var f: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &f) == .success,
-              let el = f, CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
-        let e = el as! AXUIElement
+        let r = AXUIElementCopyAttributeValue(sys, kAXFocusedUIElementAttribute as CFString, &f)
+        if r == .cannotComplete { return .unanswered }
+        guard r == .success, let el = f, CFGetTypeID(el) == AXUIElementGetTypeID() else { return .plain }
+        let e = el as! AXUIElement   // swiftlint:disable:this force_cast
+        AXUIElementSetMessagingTimeout(e, 0.5)
         var role: CFTypeRef?, sub: CFTypeRef?
-        AXUIElementCopyAttributeValue(e, kAXRoleAttribute as CFString, &role)
+        if AXUIElementCopyAttributeValue(e, kAXRoleAttribute as CFString, &role) == .cannotComplete { return .unanswered }
         AXUIElementCopyAttributeValue(e, kAXSubroleAttribute as CFString, &sub)
-        return (role as? String) == "AXSecureTextField" || (sub as? String) == (kAXSecureTextFieldSubrole as String)
+        return (role as? String) == "AXSecureTextField" || (sub as? String) == (kAXSecureTextFieldSubrole as String) ? .password : .plain
     }
 
+    /// Settings → Phone: a paired phone may ask for the screen
     static var screenAllowed: Bool { Config.shared["record.remote.screen"] as? Bool ?? true }
 
     func relayChanged() {
@@ -1208,12 +1222,16 @@ final class RemoteServer {
             if !keys.isEmpty { RemoteHUD.show(keys.joined(separator: " ")) }
         case let .text(t):
             guard t.utf8.count <= Self.maxText else { return }
-            // never into the lock screen's password or any secure field: a take may hold anything (remote-1.1.md §4)
-            if Self.screenLocked || Self.passwordFieldInFront {
-                emit(["event": "remote_text", "state": "refused"])
-                return s.channel.send(ToPhone.notice(T("remote.text.refused")))
+            // never into the lock screen's password or any secure field: a take may hold anything (remote-1.1.md §4). Looked at where
+            // it's typed, on the input queue: an app in front that hangs holds up the text, not the session
+            input.queue.async {
+                let field = Self.screenLocked ? .password : Self.focusedField()
+                guard field == .plain else {
+                    emit(["event": "remote_text", "state": "refused", "why": field == .password ? "password" : "unanswered"])
+                    return s.channel.send(ToPhone.notice(T(field == .password ? "remote.text.refused" : "remote.text.unanswered")))
+                }
+                RemoteText.type(t, input: input)
             }
-            input.queue.async { RemoteText.type(t, input: input) }
         case let .button(b, down):
             input.queue.async { input.button(b, down: down) }
         case .dragBegin:

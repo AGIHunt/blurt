@@ -163,6 +163,7 @@
 "viewer.privacy" = "隐私屏";
 "viewer.privacy.tip" = "遮住对方屏幕，并显示“正在被远程使用”。你这边照常看得到。";
 "remote.text.refused" = "没有输入：对方正在密码框或锁屏界面。";
+"remote.text.unanswered" = "没有输入：对方前台的应用没有响应，无法确认是不是密码框。";
 "phone.log.all" = "显示全部（%ld 条）";
 "phone.log.less" = "收起";
 "remote.file.received.title" = "收到「%@」发来的文件";

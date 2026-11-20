@@ -163,6 +163,7 @@
 "viewer.privacy" = "Black Out Remote Screen";
 "viewer.privacy.tip" = "Covers that computer’s screen with a note that it’s in use remotely. You still see everything.";
 "remote.text.refused" = "Not typed: a password field or the lock screen is in front.";
+"remote.text.unanswered" = "Not typed: the app in front isn’t responding, so Blurt can’t tell whether it’s a password field.";
 "phone.log.all" = "Show All (%ld)";
 "phone.log.less" = "Show Less";
 "remote.file.received.title" = "File from %@";
