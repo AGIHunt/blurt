@@ -59,7 +59,7 @@ small always-on-top window.
 - **Privilege split** (all services, from E and B): a small capture-and-input process with no network; networking and crypto in an
   unprivileged process; a local socket that checks who's calling, so no other local user can read the screen.
 - Only devices a logged-in user already paired; pairing is never offered at the login or lock screen.
-- Signed installer and signed updates (Authenticode; founder's call on the certificate, below).
+- Signed updates (the updater's own key). The installer stays unsigned for now (founder, 2026-11-21: no paid certificate, and not SignPath Foundation, which needs the founder's account and a click per release and shows SignPath as the publisher); the Defender gate (`scripts/defender-check.ps1`) runs on every release and false positives are reported.
 
 **How it's built (draft 4, 2026-11-20):**
 
