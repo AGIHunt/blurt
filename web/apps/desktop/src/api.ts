@@ -666,6 +666,13 @@ export const api = {
   remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),
   remoteCheckRelay: (address: string) => invoke<boolean>('remote_check_relay', { address }),
   remoteSetScreenAllowed: (on: boolean) => invoke<RemoteStatus>('remote_set_screen_allowed', { on }),
+  remoteSetStayAwake: (on: boolean) => invoke<RemoteStatus>('remote_set_stay_awake', { on }),
+  /** Windows: install (one UAC prompt) or remove the system service */
+  remoteSetService: (on: boolean) => invoke<RemoteStatus>('remote_set_service', { on }),
+  /** the "being controlled" bar's Disconnect: the device waits for its user instead of reconnecting */
+  remoteEndSession: () => invoke<void>('remote_end_session'),
+  /** 连接记录, newest first */
+  remoteConnections: (limit = 8) => invoke<RemoteConnection[]>('remote_connections', { limit }),
   /** Blurt's go-between for away from home (on by default); used only while no relay of the owner's is set */
   remoteSetGoBetween: (on: boolean) => invoke<RemoteStatus>('remote_set_go_between', { on }),
   /** the prompt for Claude Code or Codex that sets up a relay */
@@ -714,8 +721,15 @@ export interface RemoteStatus {
   connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
   /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
    *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: RemoteGoBetweenProblem | null };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: RemoteGoBetweenProblem | null;
+    /** the owner's relay is down and the go-between is used meanwhile */
+    fallback: boolean };
   screenAllowed: boolean;
+  /** 保持可连接; `battery`: a laptop, where it holds only while plugged in */
+  stayAwake: boolean;
+  battery: boolean;
+  /** Windows: the system service (lock and login screens) is on; null elsewhere */
+  service: boolean | null;
   /** false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows */
   canControl: boolean;
   /** a sentence for the user, localised */
@@ -730,6 +744,17 @@ export type DeviceKind = 'phone' | 'computer';
  *  go-between; relay: the owner's relay carries it; goBetween: Blurt's go-between, until the stream moves to the direct path */
 export type RemoteRoute = 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween';
 export type RemoteGoBetweenProblem = 'noDirect' | 'busy';
+
+/** One line of the connection log: a session (`end` null while it lasts) or a new pairing. Times in ms. */
+export interface RemoteConnection {
+  id: number;
+  deviceId: string;
+  name: string;
+  start: number;
+  end: number | null;
+  route: string | null;
+  paired: boolean;
+}
 
 export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
 

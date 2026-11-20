@@ -8,7 +8,7 @@ import Foundation
 
 /// The connection as the pad needs to know it. Nothing here comes from the wire that Link doesn't already publish.
 struct LinkStatus: Equatable {
-    enum Phase: Equatable { case unpaired, connecting, unreachable, connected, forgotten, replaced }
+    enum Phase: Equatable { case unpaired, connecting, unreachable, connected, forgotten, replaced, ended }
 
     var phase: Phase
     /// a session was up and went while the app was in use: it's coming back, not starting (StatusFollower)
@@ -28,7 +28,8 @@ struct LinkStatus: Equatable {
     /// go-between is busy today
     var away: Away?
 
-    enum Away: Equatable { case noDirect, busy }
+    /// `relayDown`: the computer's own relay doesn't answer; the public connection service is tried meanwhile (2026-11-20, the office)
+    enum Away: Equatable { case noDirect, busy, relayDown }
 }
 
 struct StatusBanner: Equatable {
@@ -39,9 +40,10 @@ struct StatusBanner: Equatable {
         case connecting, reconnecting
         case cantReach, checkNetwork, checkAwake
         /// the go-between: the direct path wouldn't open here / the free quota is spent for today
-        case noDirect, goBetweenBusy
+        case noDirect, goBetweenBusy, relayDown
         case needsPairing, forgotten
         case otherPhone, touchToTakeOver
+        case endedThere, touchToReconnect
         case pairFirst, whereTheCodeIs
         case waiting, allowOnComputer
         case pairingFailed, whyPairingFailed
@@ -70,6 +72,7 @@ struct StatusBanner: Equatable {
             let detail: Line = switch s.away {
             case .noDirect: .noDirect
             case .busy: .goBetweenBusy
+            case .relayDown: .relayDown
             case nil: s.hasRelay ? .checkAwake : .checkNetwork
             }
             b = StatusBanner(mark: .problem, title: .cantReach, detail: detail, action: .retry, second: s.otherComputers ? .another : nil)
@@ -77,6 +80,8 @@ struct StatusBanner: Equatable {
             b = StatusBanner(mark: .problem, title: .needsPairing, detail: .forgotten, action: .scan)
         case .replaced:
             b = StatusBanner(mark: .phone, title: .otherPhone, detail: .touchToTakeOver)
+        case .ended:
+            b = StatusBanner(mark: .phone, title: .endedThere, detail: .touchToReconnect)
         case .connected:
             if !s.canControl { b = StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl) }
             if s.screenError == "permission" { b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .allowScreen) }

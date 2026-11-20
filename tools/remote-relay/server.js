@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 8787);
 const crypto = require("crypto");
 const SECRET = process.env.RELAY_SECRET || "";
 if (SECRET && !/^[A-Za-z0-9_-]{16,}$/.test(SECRET)) { console.error("RELAY_SECRET: at least 16 of A-Z a-z 0-9 _ -"); process.exit(2); }
-const PATH = /^(?:\/([A-Za-z0-9_-]+))?\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone)$/;
+const PATH = /^(?:\/([A-Za-z0-9_-]+))?\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone|peek)$/;
 const same = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 // [room, role] when the path is a room and carries the secret (or none is set and it has no prefix)
 function route(url) {
@@ -43,6 +43,7 @@ const PHONE_LEFT = 4000;   // the Mac reconnects: the next phone starts a new se
 const MAC_GONE = 4001;     // the phone's "Mac isn't reachable"
 const REPLACED = 4002;     // a newer connection in the same role took over
 const OVER_BUDGET = 4003;  // BUDGET=1: "the go-between can't carry this", to both ends
+const ASLEEP = 4010;       // from a Mac: it's going to sleep (a peek then says since when)
 
 const BUDGET = process.env.BUDGET === "1";
 const KiB = 1024;
@@ -62,6 +63,10 @@ function spend(c, size, now) {
 }
 
 const rooms = new Map();   // room → { mac, phone }
+// room → { seen, asleep } (ms): when its Mac last left, and whether it said it was going to sleep. Only for `peek`, which only a
+// paired device can ask (the room comes from the pair's key); the oldest go past MAX_SEEN
+const seen = new Map();
+const MAX_SEEN = 4096;
 const perAddress = new Map();
 
 const server = http.createServer((req, res) => {
@@ -69,7 +74,14 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     return res.end("blurt go-between");
   }
-  const ok = route(req.url) !== null;
+  const r = route(req.url);
+  // GET …/v1/<room>/peek: is its Mac waiting, and if not, since when it's asleep or last seen (the computer cards' states)
+  if (r && r[1] === "peek" && req.method === "GET") {
+    const s = seen.get(r[0]) || {};
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    return res.end(JSON.stringify({ host: isOpen(rooms.get(r[0])?.mac), asleep: s.asleep ?? null, seen: s.seen ?? null }));
+  }
+  const ok = r !== null && r[1] !== "peek";
   res.writeHead(ok ? 426 : 404, { "Content-Type": "text/plain" });
   res.end(ok ? "Expected a WebSocket\n" : "Not found\n");
 });
@@ -79,7 +91,7 @@ server.on("upgrade", (req, socket, head) => {
   const m = route(req.url);
   const from = (TRUST_PROXY && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const held = perAddress.get(from) || 0;
-  if (!m || held >= MAX_PER_ADDRESS || (!rooms.has(m[0]) && rooms.size >= MAX_ROOMS)) return socket.destroy();
+  if (!m || m[1] === "peek" || held >= MAX_PER_ADDRESS || (!rooms.has(m[0]) && rooms.size >= MAX_ROOMS)) return socket.destroy();
   perAddress.set(from, held + 1);
   socket.once("close", () => {
     const n = perAddress.get(from) - 1;
@@ -115,7 +127,15 @@ function join(ws, id, role) {
     if (other.bufferedAmount > MAX_BEHIND) return other.terminate();
     other.send(data, { binary });
   });
-  ws.on("close", () => { clearTimeout(expire); left(id, room, role, ws); });
+  ws.on("close", (code) => {
+    clearTimeout(expire);
+    if (role === "mac" && room.mac === ws) {
+      seen.delete(id);
+      seen.set(id, { seen: Date.now(), asleep: code === ASLEEP ? Date.now() : null });
+      if (seen.size > MAX_SEEN) seen.delete(seen.keys().next().value);
+    }
+    left(id, room, role, ws);
+  });
   ws.on("error", () => ws.terminate());
 }
 

@@ -575,6 +575,13 @@
 "settings.remote.link_copied" = "已拷贝，10 分钟内有效";
 "settings.remote.section.computers" = "本机可控制的电脑";
 "settings.remote.remove" = "移除";
+"settings.remote.stay_awake" = "保持可连接";
+"settings.remote.stay_awake.laptop" = "插着电时电脑不睡眠，屏幕照常熄灭。合上盖子仍会睡眠。";
+"settings.remote.stay_awake.desktop" = "电脑不睡眠，屏幕照常熄灭。";
+"settings.remote.say_asleep" = "显示本机睡眠时间";
+"settings.remote.say_asleep.detail" = "你的设备会看到“已睡眠 · 10:42 起”。中转只记下这个时间。";
+"settings.kw.remote.say_asleep" = "睡眠 休眠 中转 设备";
+"settings.kw.remote.stay_awake" = "保持可连接, 睡眠, 唤醒, 插电, 远程";
 "settings.remote.hud" = "在屏幕上显示按键";
 "settings.remote.hud.detail" = "显示手机上按下的快捷键。";
 "settings.kw.remote.hud" = "提示, 浮层, 反馈";
@@ -589,6 +596,7 @@
 "settings.remote.ask.detail" = "%@ 显示相同的数字时才允许。";
 "settings.remote.ask.yes" = "允许";
 "settings.remote.ask.no" = "不允许";
+"settings.remote.ask.caution" = "只允许你自己或家人连接。警察、银行、客服不会让你安装或允许这个。";
 "settings.remote.last_used" = "上次使用：%@";
 "settings.remote.remove.title" = "移除 %@？";
 "settings.remote.remove.detail" = "移除后，它要重新扫码才能连接。";
@@ -616,6 +624,7 @@
 "settings.remote.path.go_between" = "公共连接服务";
 "settings.remote.path.none" = "未设置";
 "settings.remote.away.relay_down" = "自建中转无响应。请检查中转地址。";
+"settings.remote.away.relay_down_fallback" = "自建中转无响应，暂用公共连接服务。请检查中转地址。";
 "settings.remote.away.no_direct" = "无法直连。请在电脑上设置自建中转。";
 "settings.remote.away.busy" = "公共连接服务今日已达上限。请稍后再试，或使用自建中转。";
 "settings.remote.screen" = "在手机上显示 Mac 屏幕";

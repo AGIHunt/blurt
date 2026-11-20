@@ -18,6 +18,15 @@ pub struct Power {
     request: isize,
     system: bool,
     display: bool,
+    /// what `powercfg /requests` says it's for (default: a phone is connected)
+    reason: Option<&'static str>,
+}
+
+impl Power {
+    /// 保持可连接's request, apart from a session's: its own name in `powercfg /requests`.
+    pub fn standby() -> Power {
+        Power { reason: Some("Blurt: stay awake for remote access"), ..Power::default() }
+    }
 }
 
 const POWER_REQUEST_CONTEXT_VERSION: u32 = 0;
@@ -25,7 +34,7 @@ const POWER_REQUEST_CONTEXT_VERSION: u32 = 0;
 impl Power {
     fn handle(&mut self) -> Option<HANDLE> {
         if self.request == 0 {
-            let mut reason: Vec<u16> = "Blurt: a phone is connected".encode_utf16().chain(std::iter::once(0)).collect();
+            let mut reason: Vec<u16> = self.reason.unwrap_or("Blurt: a phone is connected").encode_utf16().chain(std::iter::once(0)).collect();
             let ctx = REASON_CONTEXT {
                 Version: POWER_REQUEST_CONTEXT_VERSION,
                 Flags: POWER_REQUEST_CONTEXT_SIMPLE_STRING,

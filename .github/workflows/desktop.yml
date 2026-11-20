@@ -149,6 +149,16 @@ jobs:
           cargo clippy --all-targets
           cargo test
 
+      # Windows: the system service (remote-1.1.md §2) ships next to Blurt; tauri.windows.conf.json bundles it as a resource
+      - name: Build the Windows system service
+        if: runner.os == 'Windows'
+        working-directory: crates/blurt-remote
+        shell: bash
+        run: |
+          cargo build --release --bin blurt-remote-service
+          mkdir -p ../../apps/desktop/src-tauri/binaries
+          cp target/release/blurt-remote-service.exe ../../apps/desktop/src-tauri/binaries/
+
       - name: Build installers (${{ matrix.bundles }})
         working-directory: apps/desktop
         env:

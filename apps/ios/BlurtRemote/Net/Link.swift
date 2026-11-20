@@ -45,6 +45,8 @@ final class Link: ObservableObject {
         case forgotten
         /// another phone is driving; this one waits to be touched, or the two would keep throwing each other off
         case replaced
+        /// the person at the computer ended the session; this one waits to be touched
+        case ended
     }
 
     @Published private(set) var state = State.unpaired
@@ -67,6 +69,8 @@ final class Link: ObservableObject {
     @Published private(set) var viaGoBetween = false
     /// why away from home didn't work with the go-between, for the pad's card
     @Published private(set) var away: LinkStatus.Away?
+    /// the computer's own words for this user (a new device paired there): the pad shows it once
+    @Published var notice: String?
     /// the go-between turned this phone away so many times in a row (busy), or met the computer with no direct path (noDirect), and isn't
     /// asked again before `meetQuietUntil`
     private var meetRefusals = 0
@@ -100,6 +104,10 @@ final class Link: ObservableObject {
     private var refused = false
     private var testRan = false
     private var lastRelayTry = Date.distantPast
+    /// the computer's own relay failed this many times in a row without opening: from 2, the public connection service is tried too
+    /// (its host waits there meanwhile), and the pad says why
+    private var relayFails = 0
+    private var lastMeetTry = Date.distantPast
     private var lastLocalTry = Date.distantPast
     /// a test run: only this way in
     private static let relayOnly = ProcessInfo.processInfo.environment["BLURT_RELAY_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
@@ -346,12 +354,13 @@ final class Link: ObservableObject {
         active = true
         joining?.since = Date()      // scanning with the Camera app, say
         UIApplication.shared.isIdleTimerDisabled = true
-        if state != .connected, state != .replaced { connect() }
+        if state != .connected, state != .replaced, state != .ended { connect() }
     }
 
     /// The user reached for this phone while another had the Mac: take it back.
     func touched() {
-        guard state == .replaced else { return }
+        guard state == .replaced || state == .ended else { return }
+        state = .connecting
         connect()
     }
 
@@ -378,7 +387,7 @@ final class Link: ObservableObject {
         send(.releaseAll)
         disconnect()
         // another phone has the Mac: coming back doesn't take it from them, a touch does
-        if current != nil, state != .replaced { state = .connecting }
+        if current != nil, state != .replaced, state != .ended { state = .connecting }
     }
 
     // MARK: connecting
@@ -388,10 +397,12 @@ final class Link: ObservableObject {
 
     private func connect() {
         guard active, Self.testHost == nil, !testAway, let mac = current, channel == nil, attempts.allSatisfy(\.isRelay) else { return }
+        // replaced or ended there: nothing until the user touches this phone, whatever retry was already queued
+        guard state != .replaced, state != .ended else { return }
         guard let key = Keychain.read(account: mac.deviceID) else { state = .forgotten; return }
         generation += 1
         if firstAttempt == nil { firstAttempt = Date() }
-        if state == .connected || state == .unpaired || state == .replaced { state = .connecting }
+        if state == .connected || state == .unpaired { state = .connecting }
         tryLocal(mac, key)
         // the relay a moment later, so at home it's never the one that wins; and not every round. The go-between only while it isn't
         // waiting out a refusal: a quota spent for the day doesn't come back for being asked again
@@ -403,6 +414,16 @@ final class Link: ObservableObject {
                       let c = RemoteRelay.connection(address: address, room: RemoteRelay.room(key: key), role: "phone") else { return }
                 self.lastRelayTry = Date()
                 self.attempt(c, relay: true, mac: mac, key: key, goBetween: RemoteRelay.isGoBetween(address))
+            }
+        }
+        if Self.relayOnly == nil, let own = mac.relayAddress, !RemoteRelay.isGoBetween(own), relayFails >= 2,
+           Date().timeIntervalSince(lastMeetTry) > 4, Date() >= meetQuietUntil {
+            let g0 = generation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self, self.channel == nil, self.active, g0 == self.generation,
+                      let c = RemoteRelay.connection(address: RemoteRelay.goBetween, room: RemoteRelay.room(key: key), role: "phone") else { return }
+                self.lastMeetTry = Date()
+                self.attempt(c, relay: true, mac: mac, key: key, goBetween: true)
             }
         }
         // keep trying while the app is open; say so after a while
@@ -516,6 +537,15 @@ final class Link: ObservableObject {
                 guard let self else { return }
                 self.attempts.removeAll { $0 === ch }
                 if failure?.kind == .notPaired { self.refused = true }
+                if relay, !goBetween, let ch {
+                    if ch.wasReady {
+                        self.relayFails = 0
+                        if self.away == .relayDown { self.away = nil }
+                    } else {
+                        self.relayFails += 1
+                        if self.relayFails >= 2, self.away == nil { self.away = .relayDown }
+                    }
+                }
                 if goBetween, let ch { self.goBetweenEnded(ch) }
                 guard let ch, self.channel === ch else { return }
                 self.lost()
@@ -539,6 +569,7 @@ final class Link: ObservableObject {
         attempts.removeAll { $0 === ch }
         cancelAttempts()
         channel = ch
+        if away == .relayDown { away = nil }
         route = ch.isRelay ? .relay : overlay != nil ? .overlay : .local
         overlayIsTailscale = overlay == .tailscale
         viaGoBetween = goBetween
@@ -617,7 +648,7 @@ final class Link: ObservableObject {
         ScreenStream.shared.connectionLost()
         dictation = .idle
         if waitingForMac { return joinFailed() }       // the Mac said no, or the way to it went
-        guard current != nil, state != .forgotten, state != .replaced else { return }
+        guard current != nil, state != .forgotten, state != .replaced, state != .ended else { return }
         state = .connecting
         connect()
     }
@@ -690,7 +721,8 @@ final class Link: ObservableObject {
                 MicStream.shared.stop(for: .note)
             }
         case let .level(l): level = l
-        case .typed, .notice: break
+        case .typed: break
+        case let .notice(t): notice = t
         case let .pong(t):
             lastPong = Date()
             rtt = CACurrentMediaTime() - t
@@ -744,10 +776,15 @@ final class Link: ObservableObject {
         case .replaced:
             state = .replaced
             disconnect()
+        case .ended:
+            state = .ended
+            disconnect()
+        case .fileProgress, .fileSaved, .fileFailed: break   // a phone sends no files
         case .noDirect:
             noDirect()
         case .streamMoved: break      // the channel reads it itself
         case .clipboard: break        // to a computer driving another (remote-desktop-viewer.md); a phone never asks for it
+        case .screenLocked: break     // the picture stops at a lock screen; the phone keeps its last frame
         }
     }
 

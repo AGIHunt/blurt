@@ -15,6 +15,8 @@ import SwiftUI
 @MainActor
 final class RemoteModel: ObservableObject {
     @Published var hud = RemoteHUD.enabled
+    @Published var stayAwake = RemoteStayAwake.enabled
+    @Published var sayAsleep = RemoteServer.sayAsleep
     @Published var relayText = Config.shared["record.remote.relay_url"] as? String ?? ""
     @Published var relayState = RelayState.idle
     private var committed = Config.shared["record.remote.relay_url"] as? String ?? ""
@@ -109,9 +111,9 @@ final class RemoteModel: ObservableObject {
 
     /// For the user's own coding agent: Blurt doesn't run a relay, and setting one up is a job for someone at a terminal.
     static let relayPrompt = """
-    Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
+    Set up a relay I own for Blurt's Remote Control, then give me its address to paste into Blurt.
 
-    Blurt on the phone turns a phone (iPhone, iPad or Android) into a trackpad and keyboard for a computer. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+    Blurt lets my phones and computers show and control my computers. When two of them can't connect directly (other networks, a strict firewall) they go through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
 
     The code and the full steps are here; read README.md first:
     https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
@@ -122,12 +124,23 @@ final class RemoteModel: ObservableObject {
 
     Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
 
-    If I'm in mainland China, prefer a server there: the round trip is far shorter. A domain served from a mainland server needs an ICP filing.
+    Where it runs decides how quick it feels: every move goes there and back. Don't assume where I am: ask where I and the computers I'll control usually are, and measure from this computer (a few timed HTTPS requests) to Cloudflare and to any server I have before choosing. Check the hosting rules where the server is (some countries require registering a website served from there) and tell me before relying on it.
 
     Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
     When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address with its secret, like wss://relay.example.com/<secret>, and that it goes in Blurt → Settings → Remote Control → Relay Address. Reply in the language I'm writing in.
     """
+
+    func setSayAsleep(_ on: Bool) {
+        sayAsleep = on
+        Config.shared.set("record.remote.say_asleep", on ? nil : false)
+    }
+
+    func setStayAwake(_ on: Bool) {
+        stayAwake = on
+        Config.shared.set("record.remote.stay_awake", on ? nil : false)
+        RemoteStayAwake.shared.settingChanged()
+    }
 
     func setHUD(_ on: Bool) {
         hud = on
@@ -160,13 +173,15 @@ struct RemotePane: View {
             return p == .meeting ? (.off, T("settings.remote.away.connecting", name), nil) : (.good, T("settings.remote.away.connected", name), nil)
         }
         if m.ownRelay {
-            return phone.relay == .failed ? (.warn, T("settings.remote.path.relay"), T("settings.remote.away.relay_down")) : (.good, T("settings.remote.path.relay"), nil)
+            // the host's own tries (st.away), or the check this pane ran; with the go-between on, the host waits there too meanwhile
+            guard phone.relay == .failed || st.away == .relayDown else { return (.good, T("settings.remote.path.relay"), nil) }
+            return (.warn, T("settings.remote.path.relay"), T(m.goBetween ? "settings.remote.away.relay_down_fallback" : "settings.remote.away.relay_down"))
         }
         guard m.goBetween else { return (.off, T("settings.remote.path.none"), nil) }
         switch st.away {
         case .busy?: return (.warn, T("settings.remote.path.go_between"), T("settings.remote.away.busy"))
         case .noDirect?: return (.warn, T("settings.remote.path.go_between"), T("settings.remote.away.no_direct"))
-        case nil: return (.good, T("settings.remote.path.go_between"), nil)
+        case nil, .relayDown?: return (.good, T("settings.remote.path.go_between"), nil)
         }
     }
 
@@ -189,6 +204,10 @@ struct RemotePane: View {
 
     @ViewBuilder private var groups: some View {
         SettingsGroup("remote.options") {
+            SettingToggle("remote.stay_awake", isOn: Binding(get: { m.stayAwake }, set: { m.setStayAwake($0) }),
+                          detail: T(RemoteStayAwake.hasBattery ? "settings.remote.stay_awake.laptop" : "settings.remote.stay_awake.desktop"))
+            SettingToggle("remote.say_asleep", isOn: Binding(get: { m.sayAsleep }, set: { m.setSayAsleep($0) }),
+                          detail: T("settings.remote.say_asleep.detail"))
             SettingToggle("remote.hud", isOn: Binding(get: { m.hud }, set: { m.setHUD($0) }))
             SettingToggle("remote.screen", isOn: Binding(get: { m.screen }, set: { m.setScreen($0) }))
         }

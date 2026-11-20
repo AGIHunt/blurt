@@ -169,9 +169,17 @@ final class PickerController {
         windows.removeAll()
         // the picker took the keyboard (Esc, ↩): the app the user was in gets it back, so a recording never starts
         // with Blurt in front (BA-12) — unless that app was Blurt itself. A snap's note bubble types next: it keeps it
-        if !snapMode, let pid = frontPID, pid != getpid(), NSApp.isActive,
+        if !snapMode, let pid = frontPID, pid != getpid(),
            let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
             app.activate()
+            // the click on Record can make Blurt active a moment after this (the panel doesn't activate; the mouse-up still can),
+            // and then Blurt's own windows (a viewer) sit over the picked app for the take's first seconds (2026-11-20): give it
+            // back again once that has settled
+            for delay in [0.15, 0.5] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    if NSApp.isActive, !app.isTerminated { app.activate() }
+                }
+            }
         }
     }
 

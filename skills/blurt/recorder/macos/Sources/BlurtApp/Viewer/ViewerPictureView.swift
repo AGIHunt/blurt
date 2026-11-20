@@ -8,6 +8,8 @@ import QuartzCore
 final class ViewerPictureView: NSView {
     weak var controller: ViewerWindowController?
     private let video = CALayer()
+    /// over a picture that stopped (the link dropped, the host locked): the last frame stays, darker, under what's said about it
+    private let dim = CALayer()
     private let cursorLayer = CALayer()
     private let hint = NSTextField(labelWithString: "")
     private var hintTimer: Timer?
@@ -44,6 +46,10 @@ final class ViewerPictureView: NSView {
         video.contentsGravity = .resize
         video.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
         layer?.addSublayer(video)
+        dim.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        dim.isHidden = true
+        dim.actions = ["bounds": NSNull(), "position": NSNull()]
+        layer?.addSublayer(dim)
         cursorLayer.contentsGravity = .resize
         cursorLayer.isHidden = true
         cursorLayer.actions = ["position": NSNull(), "bounds": NSNull(), "hidden": NSNull(), "contents": NSNull()]
@@ -68,6 +74,22 @@ final class ViewerPictureView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: files dropped on the picture go to the host's Downloads (ViewerFileSender)
+
+    func acceptFiles() { registerForDraggedTypes([.fileURL]) }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let files = urls.filter { !$0.hasDirectoryPath }
+        guard !files.isEmpty else { return false }
+        controller?.sendFiles(files)
+        return true
+    }
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -94,6 +116,7 @@ final class ViewerPictureView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         video.frame = pictureRect
+        dim.frame = bounds
         CATransaction.commit()
         placeCursor()
         window?.invalidateCursorRects(for: self)
@@ -101,7 +124,16 @@ final class ViewerPictureView: NSView {
 
     // MARK: the picture
 
+    /// A frame is up. Until then the shape is only a placeholder (16 × 10): no host pointer is drawn at its scale, and this Mac's own
+    /// pointer stays visible over a picture that isn't there (a screen that failed, one still on its way).
+    var hasPicture: Bool { video.contents != nil }
+
     func show(_ image: CVImageBuffer) {
+        let first = !hasPicture
+        defer {
+            if first { window?.invalidateCursorRects(for: self); placeCursor() }
+            if stale { stale = false }
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         video.contents = CVPixelBufferGetIOSurface(image)?.takeUnretainedValue()
@@ -111,7 +143,23 @@ final class ViewerPictureView: NSView {
     /// A still picture for the measured screenshots (`viewer demo`): what a frame would put there.
     func show(still: CGImage) { video.contents = still }
 
-    func clear() { video.contents = nil }
+    func clear() {
+        video.contents = nil
+        dim.isHidden = true
+        cursorLayer.isHidden = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    /// The picture stopped but stays, darker: the last thing seen of the host while it can't show more. A new frame lifts it.
+    var stale = false {
+        didSet {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            dim.isHidden = !stale || !hasPicture
+            CATransaction.commit()
+            if stale { cursorLayer.isHidden = true }
+        }
+    }
 
     // MARK: the host's pointer
 
@@ -138,7 +186,7 @@ final class ViewerPictureView: NSView {
             let wait = RemoteCursor.wait(host: hostSeq, sent: sent, quiet: CACurrentMediaTime() - ownAt, rtt: controller?.link.rtt ?? 0.02, lossless: false)
             if wait > 0 || hostPointer == nil { p = own }
         }
-        guard captured, let p, p.x >= 0, p.x <= 1, p.y >= 0, p.y <= 1, r.width > 0 else { cursorLayer.isHidden = true; return }
+        guard captured, hasPicture, let p, p.x >= 0, p.x <= 1, p.y >= 0, p.y <= 1, r.width > 0 else { cursorLayer.isHidden = true; return }
         // the host's pointer at the picture's scale
         let k = source.width > 0 ? r.width / source.width : 1
         CATransaction.begin()
@@ -177,7 +225,7 @@ final class ViewerPictureView: NSView {
     // MARK: the mouse
 
     override func resetCursorRects() {
-        if captured { addCursorRect(pictureRect, cursor: Self.blank) }
+        if captured, hasPicture { addCursorRect(pictureRect, cursor: Self.blank) }
     }
 
     override func updateTrackingAreas() {

@@ -92,5 +92,7 @@
   "agent.why.logged_out": " isn’t signed in",
   "agent.why.unusable": " can’t be used",
   "agent.list_sep": ", ",
-  "rec.request": "Process my Blurt recordings"
+  "rec.request": "Process my Blurt recordings",
+  "remote.notice.new_pairing": "New device paired with {host}: {devices}. If that wasn’t you or your family, remove it on that computer.",
+  "remote.file.received": "File from {from}"
 }

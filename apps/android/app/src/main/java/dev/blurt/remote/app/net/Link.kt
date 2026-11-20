@@ -85,6 +85,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         FORGOTTEN,
         /** another phone is driving; this one waits to be touched, or the two would keep throwing each other off */
         REPLACED,
+        /** the person at the computer ended the session: nothing more until the user touches this phone */
+        ENDED,
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -145,6 +147,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var generation = 0
     private var refused = false
     private var lastRelayTry = 0L
+    /** the computer's own relay failed this many times in a row without opening: from 2, the public connection service is tried too
+     * (its host waits there meanwhile), and the card says why */
+    private var relayFails = 0
+    private var lastMeetTry = 0L
     private var lastLocalTry = 0L
     private var pingCount = 0
     private var pendingMove: Pair<Float, Float>? = null
@@ -318,12 +324,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
         active = true
         cameBack = android.os.SystemClock.uptimeMillis()
         joining?.since = now()      // scanning with the camera app, say
-        if (_state.value != State.CONNECTED && _state.value != State.REPLACED) connect()
+        if (_state.value != State.CONNECTED && _state.value != State.REPLACED && _state.value != State.ENDED) connect()
     }
 
     /** The user reached for this phone while another had the computer: take it back. */
     fun touched() {
-        if (_state.value == State.REPLACED) connect()
+        if (_state.value != State.REPLACED && _state.value != State.ENDED) return
+        _state.value = State.CONNECTING
+        connect()
     }
 
     /**
@@ -351,7 +359,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         send(ToMac.ReleaseAll)
         disconnect()
         // another phone has the computer: coming back doesn't take it from them, a touch does
-        if (_current.value != null && _state.value != State.REPLACED) _state.value = State.CONNECTING
+        if (_current.value != null && _state.value != State.REPLACED && _state.value != State.ENDED) _state.value = State.CONNECTING
     }
 
     // MARK: connecting
@@ -359,10 +367,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private fun connect() {
         val mac = _current.value ?: return
         if (!active || channel != null || !attempts.all { it.isRelay }) return
+        // replaced or ended there: nothing until the user touches this phone, whatever retry was already queued
+        if (_state.value == State.REPLACED || _state.value == State.ENDED) return
         val key = vault.read(mac.deviceID) ?: run { _state.value = State.FORGOTTEN; return }
         generation += 1
         if (firstAttempt == null) firstAttempt = now()
-        if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED)) _state.value = State.CONNECTING
+        if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED, State.ENDED)) _state.value = State.CONNECTING
         tryLocal(mac, key)
         // the relay a moment later, so at home it's never the one that wins; and not every round. Overlay addresses alongside it.
         val address = RELAY_ONLY ?: mac.relayAddress
@@ -378,6 +388,15 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 lastRelayTry = now()
                 attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address))
             }, if (RELAY_ONLY != null) 0 else 1200)
+        }
+        if (RELAY_ONLY == null && address != null && !RemoteRelay.isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
+            mayTryRelay(RemoteRelay.GO_BETWEEN)) {
+            main.postDelayed({
+                if (channel != null || !active || g0 != generation) return@postDelayed
+                val url = RemoteRelay.url(RemoteRelay.GO_BETWEEN, RemoteRelay.room(key), "phone") ?: return@postDelayed
+                lastMeetTry = now()
+                attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = true)
+            }, 1200)
         }
         // keep trying while the app is open; say so after a while
         val g = generation
@@ -474,6 +493,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
         ch.onClose = { failure ->
             main.post {
                 attempts.remove(ch)
+                if (ch.isRelay && !ch.goBetween) {
+                    if (ch.wasReady) {
+                        relayFails = 0
+                        if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
+                    } else if (++relayFails >= 2 && away.value == null) away.value = AwayTrouble.RELAY_DOWN
+                }
                 if (ch.goBetween) {
                     if (ch.relayClose == RemoteRelay.BUDGET) noDirect()
                     // refused at the door (429, Cloudflare's 1015, any upgrade that didn't happen): out of today's quota, or rate-limited
@@ -502,6 +527,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         attempts.remove(ch)
         cancelAttempts()
         channel = ch
+        if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
         setPath(when {
             ch.goBetween -> LinkPath.GO_BETWEEN
             ch.isRelay -> LinkPath.OWN_RELAY
@@ -562,7 +588,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         Remote.screen.connectionLost()
         dictation.value = RemoteDictationPhase.IDLE
         if (waitingForMac.value) return joinFailed()       // the computer said no, or the way to it went
-        if (_current.value == null || _state.value == State.FORGOTTEN || _state.value == State.REPLACED) return
+        if (_current.value == null || _state.value == State.FORGOTTEN || _state.value == State.REPLACED || _state.value == State.ENDED) return
         _state.value = State.CONNECTING
         connect()
     }
@@ -637,7 +663,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 }
             }
             is ToPhone.Level -> level.value = m.level
-            is ToPhone.Typed, is ToPhone.Notice -> {}
+            is ToPhone.Typed -> {}
+            // the computer's own words for this user (a new device paired there)
+            is ToPhone.Notice -> android.widget.Toast.makeText(c, m.text, android.widget.Toast.LENGTH_LONG).show()
             is ToPhone.Pong -> {
                 lastPong = now()
                 rtt = Net.now() - m.t
@@ -660,6 +688,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.Displays -> displays.value = m.displays
             // a computer host sends its clipboard to computer viewers only; nothing for a phone to do
             is ToPhone.Clipboard -> {}
+            is ToPhone.ScreenLocked -> {}
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
@@ -688,6 +717,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
             ToPhone.Removed -> _current.value?.let { forget(it) }
             ToPhone.Replaced -> {
                 _state.value = State.REPLACED
+                disconnect()
+            }
+            ToPhone.Ended -> {
+                _state.value = State.ENDED
                 disconnect()
             }
         }

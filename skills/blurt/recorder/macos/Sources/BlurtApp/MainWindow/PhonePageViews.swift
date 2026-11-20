@@ -19,6 +19,8 @@ struct PhonePageView: View {
     @ObservedObject private var viewer = ViewerStore.shared
     @State private var removing: RemoteServer.Device?
     @State private var addingComputer = false
+    @State private var log = RemoteConnectionLog.all()
+    @State private var logOpen = false
 
     var body: some View {
         let f = m.facts
@@ -39,6 +41,7 @@ struct PhonePageView: View {
             }
             PhoneSection(T("phone.paired"), first: m.status.asking == nil) { controllers }
             PhoneSection(T("settings.remote.section.computers")) { computers }
+            if !log.isEmpty { PhoneSection(T("phone.log")) { connections } }
             PhoneSection(T("phone.mac")) { mac(f, problems) }
             if !tips.isEmpty {
                 PhoneSection(T("phone.tips")) {
@@ -48,6 +51,7 @@ struct PhonePageView: View {
             app
         }
         .phoneRemoveAlert($removing)
+        .onReceive(NotificationCenter.default.publisher(for: RemoteConnectionLog.changed)) { _ in log = RemoteConnectionLog.all() }
         .sheet(isPresented: $addingComputer) {
             AddComputerView { addingComputer = false; viewer.cancelPairing() }
         }
@@ -82,6 +86,30 @@ struct PhonePageView: View {
             }
         }
         .contextMenu { Button(T("phone.remove")) { removing = d } }
+    }
+
+    // MARK: who was in this Mac
+
+    /// The latest three sessions and pairings, newest first (RemoteConnectionLog); Show All opens the rest in a box that scrolls on its
+    /// own, so a long log never pushes the page down.
+    @ViewBuilder private var connections: some View {
+        ForEach(log.suffix(3).reversed()) { e in logRow(e) }
+        if log.count > 3 {
+            if logOpen {
+                ScrollView {
+                    VStack(spacing: 0) { ForEach(log.dropLast(3).reversed()) { e in logRow(e) } }
+                }
+                .frame(maxHeight: 260)
+            }
+            PhoneLine {
+                Button(T(logOpen ? "phone.log.less" : "phone.log.all", log.count)) { logOpen.toggle() }
+                    .buttonStyle(.plain).foregroundStyle(Color.brandInk).font(.system(size: SettingsMetrics.titleSize))
+            }
+        }
+    }
+
+    private func logRow(_ e: RemoteConnection) -> some View {
+        PhoneRow(symbol: e.paired ? "link" : "clock", title: PhoneStatus.name(e.name), detail: PhoneText.logLine(e)) { EmptyView() }
     }
 
     // MARK: computers this Mac controls
@@ -199,6 +227,23 @@ enum PhoneText {
     }
 
     /// "Last used 3 days ago"; a phone that has never been back since pairing: "Not connected".
+    /// "Paired · Today 10:40", "Today 10:42–11:05 · Same network", "Today 10:42 · Connected now"
+    static func logLine(_ e: RemoteConnection) -> String {
+        let day = DateFormatter()
+        day.locale = Loc.locale
+        day.dateStyle = .medium
+        day.timeStyle = .short
+        day.doesRelativeDateFormatting = true
+        let time = DateFormatter()
+        time.locale = Loc.locale
+        time.dateStyle = .none
+        time.timeStyle = .short
+        if e.paired { return T("phone.log.paired", day.string(from: e.start)) }
+        let span = e.end.map { "\(day.string(from: e.start))–\(time.string(from: $0))" } ?? T("phone.log.now", day.string(from: e.start))
+        guard let p = e.path.flatMap(RemoteServer.Path.init(rawValue:)) else { return span }
+        return "\(span) · \(path(p))"
+    }
+
     static func lastUsed(_ d: RemoteServer.Device) -> String {
         guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
         let f = RelativeDateTimeFormatter()
@@ -314,6 +359,23 @@ struct PhoneAsk: View {
     var answer: (Bool) -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            question
+            // anti-scam: said on every pairing, where the owner is looking (remote-1.1.md §3)
+            Label {
+                Text(T("settings.remote.ask.caution")).font(.system(size: SettingsMetrics.detailSize, weight: .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+        }
+        .phoneCard()
+    }
+
+    private var question: some View {
         HStack(alignment: .center, spacing: 14) {
             Image(systemName: "lock.shield").font(.system(size: 20)).foregroundStyle(Color.brandInk)
                 .frame(width: 28).accessibilityHidden(true)
@@ -332,7 +394,6 @@ struct PhoneAsk: View {
             Button(T("settings.remote.ask.no")) { answer(false) }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
             Button(T("settings.remote.ask.yes")) { answer(true) }.buttonStyle(SettingsPrimaryButtonStyle())
         }
-        .phoneCard()
     }
 
     static func grouped(_ c: String) -> String {

@@ -325,6 +325,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             Link.State.CONNECTED -> LinkPhase.CONNECTED
             Link.State.FORGOTTEN -> LinkPhase.FORGOTTEN
             Link.State.REPLACED -> LinkPhase.REPLACED
+            Link.State.ENDED -> LinkPhase.ENDED
         }
         val cue = follower.see(phase, l.current.value?.id, inFront)
         val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,

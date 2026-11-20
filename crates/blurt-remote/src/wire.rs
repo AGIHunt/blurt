@@ -98,7 +98,13 @@ fn system_name(m: SystemMove) -> &'static str {
         SystemMove::ZoomIn => "zoomIn",
         SystemMove::ZoomOut => "zoomOut",
         SystemMove::FindCursor => "findCursor",
+        SystemMove::SecureAttention => "secureAttention",
     }
+}
+
+/// A system move by its wire name ("secureAttention"…).
+pub fn system_move(s: &str) -> Option<SystemMove> {
+    system_from(s)
 }
 
 fn system_from(s: &str) -> Option<SystemMove> {
@@ -110,6 +116,7 @@ fn system_from(s: &str) -> Option<SystemMove> {
         "zoomIn" => SystemMove::ZoomIn,
         "zoomOut" => SystemMove::ZoomOut,
         "findCursor" => SystemMove::FindCursor,
+        "secureAttention" => SystemMove::SecureAttention,
         _ => return None,
     })
 }
@@ -240,6 +247,12 @@ pub enum ToMac {
     Clipboard(String),
     /// a viewer's keys are captured (true) or given back (false): the host sends its clipboard only in between
     KeysCaptured(bool),
+    /// 隐私屏: cover the host's own screen while controlled (hosts whose session lists `privacy`)
+    PrivacyScreen(bool),
+    /// a file to the host's Downloads: its name and size, its bytes in order, the end (hosts whose session lists `files`)
+    FileBegin { id: String, name: String, size: i64 },
+    FileChunk { id: String, data: Vec<u8> },
+    FileEnd { id: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -344,6 +357,14 @@ pub enum ToPhone {
     Removed,
     Relay(Option<String>),
     Replaced,
+    /// the person at the computer ended this session: don't reconnect until the user asks
+    Ended,
+    /// a file arriving: bytes written so far (paces the sender)
+    FileProgress { id: String, bytes: i64 },
+    /// written to the host's Downloads under this name
+    FileSaved { id: String, name: String },
+    /// not written: "space", "too_big", "write", "locked"
+    FileFailed { id: String, why: String },
     PairingWaits,
     Listen(bool),
     NewKey(Vec<u8>),
@@ -360,6 +381,8 @@ pub enum ToPhone {
     NoDirect,
     /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most `MAX_CLIPBOARD` bytes)
     Clipboard(String),
+    /// the host's screen locked (true) or opened again (false), and this host can't show its lock screen: no frames meanwhile. 1.1.0+
+    ScreenLocked(bool),
 }
 
 // ------------------------------------------------------------------ helpers
@@ -676,6 +699,10 @@ impl ToMac {
             ToMac::StreamMoved => case("streamMoved", vec![]),
             ToMac::Clipboard(t) => one("clipboard", json!(t)),
             ToMac::KeysCaptured(on) => one("keysCaptured", json!(on)),
+            ToMac::PrivacyScreen(on) => one("privacyScreen", json!(on)),
+            ToMac::FileBegin { id, name, size } => case("fileBegin", vec![("id", json!(id)), ("name", json!(name)), ("size", json!(size))]),
+            ToMac::FileChunk { id, data } => case("fileChunk", vec![("id", json!(id)), ("data", json!(b64(data)))]),
+            ToMac::FileEnd { id } => case("fileEnd", vec![("id", json!(id))]),
         }
     }
 
@@ -733,6 +760,10 @@ impl ToMac {
             "streamMoved" => ToMac::StreamMoved,
             "clipboard" => ToMac::Clipboard(string(x0()?)?),
             "keysCaptured" => ToMac::KeysCaptured(boolean(x0()?)?),
+            "privacyScreen" => ToMac::PrivacyScreen(boolean(x0()?)?),
+            "fileBegin" => ToMac::FileBegin { id: string(req(f, "id")?)?, name: string(req(f, "name")?)?, size: int(req(f, "size")?)? },
+            "fileChunk" => ToMac::FileChunk { id: string(req(f, "id")?)?, data: data(req(f, "data")?)? },
+            "fileEnd" => ToMac::FileEnd { id: string(req(f, "id")?)? },
             _ => return None,
         })
     }
@@ -764,6 +795,10 @@ impl ToPhone {
             ToPhone::Removed => case("removed", vec![]),
             ToPhone::Relay(a) => case("relay", a.iter().map(|a| ("_0", json!(a))).collect()),
             ToPhone::Replaced => case("replaced", vec![]),
+            ToPhone::Ended => case("ended", vec![]),
+            ToPhone::FileProgress { id, bytes } => case("fileProgress", vec![("id", json!(id)), ("bytes", json!(bytes))]),
+            ToPhone::FileSaved { id, name } => case("fileSaved", vec![("id", json!(id)), ("name", json!(name))]),
+            ToPhone::FileFailed { id, why } => case("fileFailed", vec![("id", json!(id)), ("why", json!(why))]),
             ToPhone::PairingWaits => case("pairingWaits", vec![]),
             ToPhone::Listen(on) => one("listen", json!(on)),
             ToPhone::NewKey(k) => one("newKey", json!(b64(k))),
@@ -790,6 +825,7 @@ impl ToPhone {
             ToPhone::StreamMoved => case("streamMoved", vec![]),
             ToPhone::NoDirect => case("noDirect", vec![]),
             ToPhone::Clipboard(t) => one("clipboard", json!(t)),
+            ToPhone::ScreenLocked(b) => one("screenLocked", json!(b)),
         }
     }
 
@@ -813,6 +849,10 @@ impl ToPhone {
             "removed" => ToPhone::Removed,
             "relay" => ToPhone::Relay(opt(f, "_0", string)?),
             "replaced" => ToPhone::Replaced,
+            "ended" => ToPhone::Ended,
+            "fileProgress" => ToPhone::FileProgress { id: string(req(f, "id")?)?, bytes: int(req(f, "bytes")?)? },
+            "fileSaved" => ToPhone::FileSaved { id: string(req(f, "id")?)?, name: string(req(f, "name")?)? },
+            "fileFailed" => ToPhone::FileFailed { id: string(req(f, "id")?)?, why: string(req(f, "why")?)? },
             "pairingWaits" => ToPhone::PairingWaits,
             "listen" => ToPhone::Listen(boolean(x0()?)?),
             "newKey" => ToPhone::NewKey(data(x0()?)?),
@@ -836,6 +876,7 @@ impl ToPhone {
             "streamMoved" => ToPhone::StreamMoved,
             "noDirect" => ToPhone::NoDirect,
             "clipboard" => ToPhone::Clipboard(string(x0()?)?),
+            "screenLocked" => ToPhone::ScreenLocked(boolean(x0()?)?),
             _ => return None,
         })
     }

@@ -90,7 +90,11 @@ class Channel(
 
     // MARK: Transport.Sink (any thread)
 
+    /** the transport opened (for a relay: the WebSocket), whether or not anyone answered in it */
+    @Volatile var wasReady = false
+
     override fun ready() {
+        wasReady = true
         h.post { if (!closed) transport.send(RemoteFrameReader.framed(handshake.hello())) }
     }
 
@@ -428,10 +432,10 @@ class Channel(
                 knockAll(theirs)
             }
         }
-        // the STUN server's name resolved off this thread
+        // the STUN servers' names resolved off this thread; asked together, the first answer taken (RemoteSTUN.SERVERS)
         Thread {
-            val to = runCatching { InetSocketAddress(InetAddress.getByName("stun.cloudflare.com"), 3478) }.getOrNull()
-            h.post { if (to != null && direct === s) sendUDP(s, RemoteSTUN.request(txn), to) }
+            val to = RemoteSTUN.SERVERS.mapNotNull { (host, port) -> runCatching { InetSocketAddress(InetAddress.getByName(host), port) }.getOrNull() }
+            h.post { if (direct === s) to.forEach { sendUDP(s, RemoteSTUN.request(txn), it) } }
         }.start()
         h.postDelayed({ if (direct === s) { stunTxn = null; stunDone?.invoke(null); stunDone = null } }, 2000)
     }

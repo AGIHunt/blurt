@@ -14,7 +14,7 @@ func table(of key: String) -> String {
     case "dictation": return "Dictation"
     case "home", "feature": return "Home"          // the Home page and the capabilities' names (Capabilities.swift)
     case "cards": return "Cards"                   // the Cards page
-    case "phone", "viewer": return "Phone"         // the Phone page; the computers this one drives (Viewer/)
+    case "phone", "viewer", "remote": return "Phone" // the Phone page; the computers this one drives (Viewer/); the host's bar
     default: return "Common"
     }
 }

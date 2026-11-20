@@ -725,3 +725,9 @@
   text-decoration-thickness: 1.5px;
   text-underline-offset: 2px;
 }
+
+/* the connection log's older lines: a box of its own that scrolls, so the page stays short */
+.ph-log-more {
+  max-height: 260px;
+  overflow-y: auto;
+}

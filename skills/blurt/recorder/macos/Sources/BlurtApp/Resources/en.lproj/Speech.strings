@@ -138,7 +138,7 @@
 "speech.limits.battery.detail" = "A smaller model for recordings when not plugged in.";
 "speech.limits.footer" = "Recordings are transcribed at low priority, so your apps stay responsive. Live captions and voice notes run at normal priority.";
 "speech.advanced.mirror" = "Download from hf-mirror.com";
-"speech.advanced.mirror.detail" = "Faster in mainland China.";
+"speech.advanced.mirror.detail" = "Turn on when Hugging Face is slow or unreachable from here.";
 
 /* Cloud */
 "speech.cloud.title" = "Cloud speech recognition";
@@ -246,7 +246,7 @@
 "speech.compare.cloud_asr" = "Cloud recognition";
 "speech.compare.cloud_asr.help" = "Uses Qwen3-ASR Flash on Alibaba Cloud Model Studio. Audio is uploaded.";
 "speech.compare.volcengine" = "Volcengine";
-"speech.compare.volcengine.help" = "Uses Doubao Seed-ASR 2.0 on Volcengine. Audio is uploaded while you speak. Names and terms are more accurate with cloud polish.";
+"speech.compare.volcengine.help" = "Uses Doubao Seed-ASR 2.0 on Volcengine. Audio is uploaded while you speak. Names and terms are more accurate with cloud polish. Needs a Volcengine account verified in mainland China.";
 "speech.compare.cloud_polish.help" = "Speech is recognized on your Mac by %@; only the text goes to the cloud.";
 "speech.compare.in_use" = "In Use";
 "speech.compare.needs_memory" = "Needs %@ of memory";

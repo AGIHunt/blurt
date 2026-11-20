@@ -71,3 +71,17 @@ describe('the picture', () => {
     expect(wheelPoints({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 800)).toEqual({ dx: -0, dy: -800 });
   });
 });
+
+describe('the cover over the picture', () => {
+  it('keeps the last picture, darker, through a drop and a lock', async () => {
+    const { coverFor } = await import('./ViewerWindow');
+    expect(coverFor('connecting', 'Studio', null, false, true)?.kind).toBe('connecting');
+    const drop = coverFor('connecting', 'Studio', null, false, true, false, true);
+    expect(drop?.kind).toBe('reconnecting');
+    expect(drop?.over).toBe(true);
+    const lock = coverFor('connected', 'Studio', null, false, true, true, true);
+    expect(lock?.kind).toBe('locked');
+    expect(lock?.over).toBe(true);
+    expect(coverFor('connected', 'Studio', null, false, true, false, true)).toBeNull();
+  });
+});

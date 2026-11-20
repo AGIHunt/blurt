@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "banner",
+  "description": "The bar on a computer being controlled (remote.rs banner): our own commands and events",
+  "windows": ["remote-banner"],
+  "permissions": ["core:default", "core:event:default"]
+}

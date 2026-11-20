@@ -1324,6 +1324,10 @@ pub fn run() {
             remote::remote_check_relay,
             remote::remote_set_screen_allowed,
             remote::remote_set_go_between,
+            remote::remote_set_stay_awake,
+            remote::remote_end_session,
+            remote::remote_connections,
+            remote::remote_set_service,
             remote::remote_relay_instructions,
             remote::remote_allow_firewall,
             viewer::computers_status,
@@ -1341,6 +1345,9 @@ pub fn run() {
             viewer::viewer_capture,
             viewer::viewer_options,
             viewer::viewer_show_display,
+            viewer::viewer_privacy,
+            viewer::viewer_system,
+            viewer::viewer_send_files,
             viewer::viewer_decode_failed,
         ])
         .build(tauri::generate_context!())

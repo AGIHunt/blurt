@@ -577,6 +577,13 @@
 "settings.remote.link_copied" = "Copied · Works for 10 Minutes";
 "settings.remote.section.computers" = "Computers You Can Control";
 "settings.remote.remove" = "Remove";
+"settings.remote.stay_awake" = "Stay awake for remote access";
+"settings.remote.stay_awake.laptop" = "While plugged in, this Mac doesn’t sleep. The screen still turns off, and closing the lid still sleeps it.";
+"settings.remote.stay_awake.desktop" = "This Mac doesn’t sleep. The screen still turns off.";
+"settings.remote.say_asleep" = "Show when this Mac sleeps";
+"settings.remote.say_asleep.detail" = "Your devices see “Asleep since 10:42”. The relay keeps only that time.";
+"settings.kw.remote.say_asleep" = "sleep asleep relay devices";
+"settings.kw.remote.stay_awake" = "stay awake, sleep, wake, power, remote";
 "settings.remote.hud" = "Show keys on screen";
 "settings.remote.hud.detail" = "Shows each shortcut pressed on the phone.";
 "settings.kw.remote.hud" = "HUD, bezel, overlay, feedback";
@@ -591,6 +598,7 @@
 "settings.remote.ask.detail" = "Allow only if %@ shows the same digits.";
 "settings.remote.ask.yes" = "Allow";
 "settings.remote.ask.no" = "Don’t Allow";
+"settings.remote.ask.caution" = "Allow only yourself or family. Police, banks and support staff never ask you to install or allow this.";
 "settings.remote.last_used" = "Last used %@";
 "settings.remote.remove.title" = "Remove %@?";
 "settings.remote.remove.detail" = "It won’t be able to connect until it scans a new code.";
@@ -618,6 +626,7 @@
 "settings.remote.path.go_between" = "Public connection service";
 "settings.remote.path.none" = "Not set";
 "settings.remote.away.relay_down" = "Own relay isn’t responding. Check the relay address.";
+"settings.remote.away.relay_down_fallback" = "Own relay isn’t responding; using the public connection service for now. Check the relay address.";
 "settings.remote.away.no_direct" = "Can’t connect directly. Set up your own relay on the computer.";
 "settings.remote.away.busy" = "The public connection service has reached today’s limit. Try again later, or use your own relay.";
 "settings.remote.screen" = "Show your Mac’s screen on the phone";

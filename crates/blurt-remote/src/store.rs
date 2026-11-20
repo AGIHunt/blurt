@@ -75,6 +75,10 @@ pub struct Settings {
     /// (docs/design/remote-go-between.md). On unless the owner turned it off.
     #[serde(rename = "goBetween", default = "yes")]
     pub go_between: bool,
+    /// 保持可连接 (docs/design/remote-1.1.md §1): while devices can connect, the computer doesn't idle-sleep (a laptop only while plugged
+    /// in); the screen still turns off. On unless the owner turned it off.
+    #[serde(rename = "stayAwake", default = "yes")]
+    pub stay_awake: bool,
 }
 
 fn yes() -> bool {
@@ -96,6 +100,22 @@ pub fn now_ms() -> i64 {
 }
 
 /// The folder and its two files.
+/// One line of the connection log: a session (start, end; `route` as Status says it) or a new pairing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Connection {
+    pub id: u64,
+    pub device_id: String,
+    pub name: String,
+    pub start: i64,
+    #[serde(default)]
+    pub end: Option<i64>,
+    #[serde(default)]
+    pub route: Option<String>,
+    #[serde(default)]
+    pub paired: bool,
+}
+
 pub struct Files {
     dir: PathBuf,
 }
@@ -131,6 +151,25 @@ impl Files {
         std::fs::read(self.dir.join("devices.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
     }
 
+    /// 连接记录 (remote-1.1.md §3): every session and pairing here, the last 200, owner-only.
+    pub fn connections(&self) -> Vec<Connection> {
+        std::fs::read(self.dir.join("connections.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    pub fn change_connections(&self, f: impl FnOnce(&mut Vec<Connection>)) {
+        let mut list = self.connections();
+        f(&mut list);
+        if list.len() > 200 {
+            let extra = list.len() - 200;
+            list.drain(..extra);
+        }
+        if let Ok(b) = serde_json::to_vec(&list) {
+            if let Err(e) = write_private(&self.dir.join("connections.json"), &b) {
+                eprintln!("blurt remote: connections.json: {e}");
+            }
+        }
+    }
+
     pub fn save_devices(&self, list: &[Device]) {
         if let Ok(b) = serde_json::to_vec_pretty(list) {
             if let Err(e) = write_private(&self.dir.join("devices.json"), &b) {
@@ -146,7 +185,7 @@ impl Files {
                 return s;
             }
         }
-        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true, go_between: true };
+        let s = Settings { id: crate::crypto::new_id(), port: 0, relay: None, relay_from_phone: false, screen: true, go_between: true, stay_awake: true };
         self.save_settings(&s);
         s
     }

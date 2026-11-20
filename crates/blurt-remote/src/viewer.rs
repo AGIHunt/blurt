@@ -319,6 +319,8 @@ pub enum Unreached {
     Busy,
     /// it answered and refused this computer's key: removed there, or a code gone stale
     NotPaired,
+    /// the computer's own relay doesn't answer (2026-11-20, the office)
+    RelayDown,
 }
 
 fn options(device: &str, go_between: bool) -> Options {
@@ -356,6 +358,23 @@ pub async fn open(
     relay: Option<&str>,
     go_between_at: Option<&str>,
 ) -> Result<(Phone, Route), Unreached> {
+    open_with(device, id, key, port, addresses, nearby, relay, go_between_at, false).await
+}
+
+/// `fallback`: the computer's own relay has been down; when it still doesn't answer, the public connection service is tried, where its
+/// host waits meanwhile.
+#[allow(clippy::too_many_arguments)]
+pub async fn open_with(
+    device: &str,
+    id: &str,
+    key: &[u8],
+    port: u16,
+    addresses: &[String],
+    nearby: &[IpAddr],
+    relay: Option<&str>,
+    go_between_at: Option<&str>,
+    fallback: bool,
+) -> Result<(Phone, Route), Unreached> {
     let tcp = targets(addresses, nearby, port);
     if let Some((a, s)) = tcp_first(tcp, Duration::from_millis(1500)).await {
         return match Phone::over_tcp(s, a, id, key, options(device, false)).await {
@@ -367,8 +386,9 @@ pub async fn open(
     let Some(r) = relay else {
         return Err(Unreached::Offline);
     };
-    let meet = is_go_between(r)
+    let mut meet = is_go_between(r)
         || go_between_at.is_some_and(|g| crate::relay::address(g) == crate::relay::address(r));
+    let mut fell_back = false;
     let address = if is_go_between(r) {
         go_between_at.unwrap_or(r)
     } else {
@@ -377,11 +397,22 @@ pub async fn open(
     let ws = match crate::relay::connect(address, &crate::relay::room(key), "phone").await {
         Ok(ws) => ws,
         Err(crate::relay::ConnectError::Refused(_)) if meet => return Err(Unreached::Busy),
-        Err(_) => return Err(Unreached::Offline),
+        Err(_) if meet => return Err(Unreached::Offline),
+        Err(_) if !fallback => return Err(Unreached::RelayDown),
+        Err(_) => {
+            meet = true;
+            fell_back = true;
+            match crate::relay::connect(go_between_at.unwrap_or(crate::relay::GO_BETWEEN), &crate::relay::room(key), "phone").await {
+                Ok(ws) => ws,
+                Err(crate::relay::ConnectError::Refused(_)) => return Err(Unreached::Busy),
+                Err(_) => return Err(Unreached::RelayDown),
+            }
+        }
     };
     match Phone::over_ws(ws, id, key, options(device, meet)).await {
         Ok(p) => Ok((p, if meet { Route::GoBetween } else { Route::Relay })),
         Err(e) if refused(&e) => Err(Unreached::NotPaired),
+        Err(_) if fell_back => Err(Unreached::RelayDown),
         // the room was empty: the host isn't waiting there (asleep, off, or not connected)
         Err(_) => Err(Unreached::Offline),
     }
@@ -664,10 +695,14 @@ pub enum Link {
     Busy,
     /// the direct path didn't open on the public connection service
     NoDirect,
+    /// the computer's own relay doesn't answer (the public connection service is tried meanwhile)
+    RelayDown,
     /// the host removed this computer (or never had it)
     Removed,
     /// another device took over there
     Replaced,
+    /// the person at the computer ended the session
+    Ended,
 }
 
 #[derive(Clone, Debug)]
@@ -703,6 +738,14 @@ pub enum Event {
     Clipboard(String),
     ScreenFailed(String),
     CanControl(bool),
+    /// the host's screen locked (true) or opened again (false) where the host can't show it: the last frame stays, said so
+    ScreenLocked(bool),
+    /// the host's own words for this user (a new device paired there): shown as a notification
+    Notice(String),
+    /// a file going to the host: written so far, saved (its name there), or not ("space", "too_big", "write", "locked")
+    FileProgress { id: String, bytes: i64 },
+    FileSaved { id: String, name: String },
+    FileFailed { id: String, why: String },
 }
 
 /// What the window asks for its picture.
@@ -743,6 +786,16 @@ pub struct Session {
     tx: mpsc::UnboundedSender<Command>,
 }
 
+#[derive(Clone)]
+pub struct Sender(mpsc::UnboundedSender<Command>);
+
+impl Sender {
+    /// false once the session is gone
+    pub fn send(&self, m: ToMac) -> bool {
+        self.0.send(Command::Send(m)).is_ok()
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.tx.send(Command::Close);
@@ -768,6 +821,11 @@ impl Session {
 
     pub fn send(&self, m: ToMac) {
         let _ = self.tx.send(Command::Send(m));
+    }
+
+    /// A handle that only sends (a file going out on a thread of its own); the session still ends with this one.
+    pub fn sender(&self) -> Sender {
+        Sender(self.tx.clone())
     }
 
     pub fn pointer(&self, p: PointerPacket) {
@@ -797,6 +855,8 @@ async fn run(
 ) {
     let mut want: Option<Want> = None;
     let mut tries = 0u32;
+    // the computer's own relay failed this many times in a row: from 2, the public connection service is tried too
+    let mut relay_fails = 0u32;
     loop {
         on(Event::Link {
             link: Link::Connecting,
@@ -804,12 +864,16 @@ async fn run(
         });
         let c = t.computer.clone();
         let opened = tokio::select! {
-            r = open(&t.device, &c.device_id, &t.key, c.port, &c.addresses, &t.nearby, c.relay.as_deref(), t.go_between_at.as_deref()) => r,
+            r = open_with(&t.device, &c.device_id, &t.key, c.port, &c.addresses, &t.nearby, c.relay.as_deref(), t.go_between_at.as_deref(),
+                relay_fails >= 2) => r,
             _ = closed(&mut rx, &mut want) => return,
         };
         let wait = match opened {
             Ok((phone, route)) => {
                 tries = 0;
+                if route == Route::Relay {
+                    relay_fails = 0;
+                }
                 match live(phone, route, &mut rx, &mut want, &on, &learned, &mut t).await {
                     End::Closed => return,
                     End::Removed => {
@@ -822,6 +886,13 @@ async fn run(
                     End::Replaced => {
                         on(Event::Link {
                             link: Link::Replaced,
+                            route: None,
+                        });
+                        return;
+                    }
+                    End::Ended => {
+                        on(Event::Link {
+                            link: Link::Ended,
                             route: None,
                         });
                         return;
@@ -842,6 +913,15 @@ async fn run(
                     route: None,
                 });
                 return;
+            }
+            Err(Unreached::RelayDown) => {
+                relay_fails += 1;
+                on(Event::Link {
+                    link: if relay_fails >= 2 { Link::RelayDown } else { Link::Offline },
+                    route: None,
+                });
+                tries += 1;
+                Duration::from_secs(RETRY[(tries as usize - 1).min(RETRY.len() - 1)])
             }
             Err(Unreached::Busy) => {
                 on(Event::Link {
@@ -883,6 +963,7 @@ enum End {
     Dropped,
     Removed,
     Replaced,
+    Ended,
     NoDirect,
 }
 
@@ -1019,8 +1100,14 @@ async fn live(
                         on(Event::ScreenFailed(w));
                     }
                     ToPhone::CanControl(b) => on(Event::CanControl(b)),
+                    ToPhone::ScreenLocked(b) => on(Event::ScreenLocked(b)),
+                    ToPhone::Notice(t) => on(Event::Notice(t)),
+                    ToPhone::FileProgress { id, bytes } => on(Event::FileProgress { id, bytes }),
+                    ToPhone::FileSaved { id, name } => on(Event::FileSaved { id, name }),
+                    ToPhone::FileFailed { id, why } => on(Event::FileFailed { id, why }),
                     ToPhone::Removed => return End::Removed,
                     ToPhone::Replaced => return End::Replaced,
+                    ToPhone::Ended => return End::Ended,
                     ToPhone::NoDirect => return End::NoDirect,
                     _ => {}
                 },

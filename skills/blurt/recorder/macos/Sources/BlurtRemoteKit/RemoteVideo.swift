@@ -96,6 +96,7 @@ public struct RemoteRate: Equatable, Sendable {
     public private(set) var bitrate: Int
     public private(set) var fps: Int
     private var calm = 0
+    private var longRTTs = 0
     private var bestRTT = Double.infinity
     /// reports to let a cut take effect before judging it
     private var wait = 0
@@ -139,7 +140,11 @@ public struct RemoteRate: Equatable, Sendable {
         recent.append((frames, lost))
         if recent.count > Self.window { recent.removeFirst() }
         let seen = recent.reduce(0) { $0 + $1.0 }, missing = recent.reduce(0) { $0 + $1.1 }
-        let queued = rtt.map { $0 > bestRTT * 3 + 0.1 } ?? false
+        // a round trip well over the best counts once it lasts two reports: a phone's hotspot or a relay swings by a few hundred ms on its
+        // own, and taking each swing for a queue brought the picture down to 200 kbps at 10 frames with nothing lost (2026-11-20)
+        let longer = rtt.map { $0 > bestRTT * 3 + 0.1 } ?? false
+        longRTTs = longer ? longRTTs + 1 : 0
+        let queued = longRTTs >= 2
         let lossy = missing >= 2 && missing * 20 >= seen + missing
         sinceTrouble += 1
         if sinceTrouble > Self.patience { troubleAt = Int.max }

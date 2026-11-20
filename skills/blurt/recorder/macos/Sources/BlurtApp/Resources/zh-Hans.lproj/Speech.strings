@@ -138,7 +138,7 @@
 "speech.limits.battery.detail" = "未接电源时，录屏使用更小的模型。";
 "speech.limits.footer" = "录屏以低优先级转写，其他 App 保持流畅；实时字幕和语音备注以正常优先级运行。";
 "speech.advanced.mirror" = "从 hf-mirror.com 下载";
-"speech.advanced.mirror.detail" = "在中国大陆更快。";
+"speech.advanced.mirror.detail" = "从这里连 Hugging Face 很慢或连不上时打开。";
 
 /* Cloud */
 "speech.cloud.title" = "云端语音识别";
@@ -246,7 +246,7 @@
 "speech.compare.cloud_asr" = "云端识别";
 "speech.compare.cloud_asr.help" = "使用阿里云百炼 Qwen3-ASR Flash，录音会上传。";
 "speech.compare.volcengine" = "火山引擎";
-"speech.compare.volcengine.help" = "使用火山引擎豆包 Seed-ASR 2.0，说话时录音会上传。配合云端润色，人名和术语更准。";
+"speech.compare.volcengine.help" = "使用火山引擎豆包 Seed-ASR 2.0，说话时录音会上传。配合云端润色，人名和术语更准。需要完成中国大陆实名认证的火山引擎账号。";
 "speech.compare.cloud_polish.help" = "语音在本机由 %@ 识别，云端只处理文字。";
 "speech.compare.in_use" = "使用中";
 "speech.compare.needs_memory" = "需要 %@ 内存";

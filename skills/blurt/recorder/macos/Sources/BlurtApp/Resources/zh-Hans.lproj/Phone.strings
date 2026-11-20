@@ -60,8 +60,8 @@
 "phone.tips" = "连不上时";
 "phone.tips.network" = "让手机和 Mac 连接同一个 Wi-Fi。";
 "phone.tips.open" = "在手机上打开口喷鸡，并确认 Mac 没有进入睡眠。";
-"phone.tips.vpn" = "关闭手机和 Mac 上的 VPN。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
-"phone.tips.vpn.local" = "关闭手机和 Mac 上的 VPN，并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
+"phone.tips.vpn" = "如果开着 VPN，请让它放行局域网流量，或先关掉试试。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
+"phone.tips.vpn.local" = "如果开着 VPN，请让它放行局域网流量，或先关掉试试。并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
 "phone.tips.away.none" = "不在同一网络时（如外出），手机需经你自己的中转连接，目前未设置。";
 "phone.tips.away.go_between" = "不在同一网络时，手机通过公共连接服务连接。无法直连时，请设置自建中转。";
 "phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
@@ -84,6 +84,7 @@
 "viewer.state.connected" = "已连接 · %@";
 "viewer.state.available" = "可连接 · %@";
 "viewer.state.offline" = "离线 · %@";
+"viewer.state.asleep" = "已睡眠 · %@ 起";
 "viewer.state.offline.never" = "离线";
 "viewer.state.no_direct" = "无法直连";
 "viewer.state.just_now" = "刚刚";
@@ -99,11 +100,21 @@
 "viewer.add.unreachable" = "无法连接 %@。";
 "viewer.connecting" = "正在连接…";
 "viewer.unreachable" = "无法连接 %@。";
+"viewer.unreachable.mac" = "无法连接 %@。如果它重启过且开了 FileVault，需要有人先在电脑前输一次密码。";
+"viewer.locked.linux" = "%@ 已锁屏，解锁后画面会自动恢复。想在登录界面也能连，请在它的“设置 → 系统 → 远程桌面”里打开“远程登录”。";
+"viewer.reconnecting" = "正在重新连接…";
+"viewer.quality.costs_data" = "正在消耗手机流量";
+"viewer.locked" = "%@ 已锁屏。解锁后画面会自动恢复。";
 "viewer.no_direct" = "无法直连。请在对方电脑上设置自建中转。";
 "viewer.busy" = "公共连接服务今日已达上限。请稍后再试，或使用自建中转。";
+"viewer.relay_down" = "%@ 的自建中转无响应，正在改用公共连接服务…";
+"viewer.relay_down.short" = "对方的自建中转无响应。";
+"viewer.state.relay_down" = "中转无响应";
 "viewer.retry" = "重试";
 "viewer.forgotten" = "%@ 已移除本机。重新添加后才能使用。";
 "viewer.replaced" = "另一台设备正在控制 %@。";
+"viewer.ended" = "%@ 那边断开了连接。";
+"viewer.reconnect" = "重新连接";
 "viewer.take_over" = "接管";
 "viewer.screen_off" = "%@ 未开启屏幕显示。请在它的设置中打开。";
 "viewer.screen_permission" = "%@ 需要屏幕录制权限。";
@@ -126,4 +137,30 @@
 "viewer.follow" = "跟着远端指针换屏";
 "viewer.new_window" = "在新窗口中打开";
 "viewer.release" = "按 ⌃⌘ 交还键盘和鼠标";
-"viewer.release.app_only" = "按 ⌃⌘ 交还键盘和鼠标。开启辅助功能权限前，系统快捷键仍在本机生效。";
+"viewer.release.app_only" = "按 ⌃⌘ 交还键盘和鼠标。在「输入监控」中允许口喷鸡之前，⌘Tab 等系统快捷键仍在本机生效。";
+"viewer.allow_shortcuts" = "发送系统快捷键…";
+
+/* the bar on the controlled Mac */
+"remote.banner.controlling" = "正在被「%@」控制";
+"remote.banner.disconnect" = "断开";
+
+/* the Remote Control page: who was in this Mac */
+"phone.log" = "连接记录";
+"phone.log.paired" = "配对 · %@";
+"phone.log.now" = "%@ · 当前已连接";
+"remote.notice.new_pairing" = "%2$@ 新配对了设备：%1$@。如果不是你或家人，请在那台电脑上移除它。";
+"remote.privacy.cover" = "正在被「%@」远程使用\n画面已隐藏";
+"viewer.privacy" = "隐私屏";
+"viewer.privacy.tip" = "遮住对方屏幕，并显示“正在被远程使用”。你这边照常看得到。";
+"remote.text.refused" = "没有输入：对方正在密码框或锁屏界面。";
+"phone.log.all" = "显示全部（%ld 条）";
+"phone.log.less" = "收起";
+"remote.file.received.title" = "收到「%@」发来的文件";
+"viewer.send_files" = "发送文件…";
+"viewer.file.sending" = "正在发送“%@”…";
+"viewer.file.saved" = "“%@”已存到对方的“下载”文件夹。";
+"viewer.file.failed.space" = "没有发送：对方空间不足。";
+"viewer.file.failed.too_big" = "没有发送：文件超过 4 GB。";
+"viewer.file.failed.locked" = "没有发送：对方已锁屏。";
+"viewer.file.failed.other" = "没有发送。";
+"viewer.ctrl_alt_del" = "发送 Ctrl+Alt+Del";

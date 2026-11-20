@@ -346,8 +346,11 @@ type MockRemote = {
   asking: null | { device: string; digits: string; viaRelay: boolean; kind?: 'phone' | 'computer' };
   devices: { id: string; name: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
   connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
-  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null };
+  relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null; fallback: boolean };
   screenAllowed: boolean;
+  stayAwake: boolean;
+  battery: boolean;
+  service: boolean | null;
   canControl: boolean;
   problem: string | null;
   firewall: 'ok' | 'blocked' | 'unknown';
@@ -374,9 +377,12 @@ const remote: MockRemote = {
     : [],
   connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true } : null,
   relay: paired && !away
-    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true, goBetween: true, goBetweenProblem: null }
-    : { address: null, fromPhone: false, reachable: null, goBetween: away !== 'off', goBetweenProblem: away === 'noDirect' || away === 'busy' ? away : null },
+    ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true, goBetween: true, goBetweenProblem: null, fallback: phoneStart === 'relayfail' }
+    : { address: null, fromPhone: false, reachable: null, goBetween: away !== 'off', goBetweenProblem: away === 'noDirect' || away === 'busy' ? away : null, fallback: false },
   screenAllowed: true,
+  stayAwake: true,
+  battery: true,
+  service: param('platform') === 'win' ? false : null,
   canControl: phoneStart !== 'nocontrol',
   problem: phoneStart === 'problem' ? L('Blurt can’t listen on this network: port 41833 is taken by another app.', '口喷鸡无法在这个网络上监听：端口 41833 已被其他应用占用。') : null,
   firewall: phoneStart === 'firewall' ? 'blocked' : 'ok',
@@ -465,10 +471,10 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
     case 'remote_set_relay': {
       const t = String(a.address ?? '').trim();
       const { goBetween, goBetweenProblem } = remote.relay;
-      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
+      if (!t) remote.relay = { address: null, fromPhone: false, reachable: null, goBetween, goBetweenProblem, fallback: false };
       else if (!/^wss?:\/\/[^\s/?#]+(\/[^\s?#]*)?$/.test(t)) throw new Error('not a relay address');
       else {
-        remote.relay = { address: t, fromPhone: false, reachable: null, goBetween, goBetweenProblem };
+        remote.relay = { address: t, fromPhone: false, reachable: null, goBetween, goBetweenProblem, fallback: false };
         remoteLater(900, () => remote.relay.address === t && (remote.relay.reachable = !/nothing|bad|invalid/.test(t)));
       }
       break;
@@ -478,6 +484,19 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
     case 'remote_set_go_between':
       remote.relay.goBetween = !!a.on;
       remote.relay.goBetweenProblem = null;
+      break;
+    case 'remote_connections':
+      return Array.from({ length: 12 }, (_, i) => i === 11
+        ? { id: 1, deviceId: 'p1', name: 'iPhone', start: Date.now() - 13 * 3_600_000, end: null, route: null, paired: true }
+        : { id: 20 - i, deviceId: 'p1', name: 'iPhone', start: Date.now() - (i + 1) * 3_600_000, end: Date.now() - (i + 1) * 3_600_000 + 900_000, route: 'local', paired: false });
+    case 'remote_end_session':
+      remote.connected = null;
+      break;
+    case 'remote_set_service':
+      remote.service = !!a.on;
+      break;
+    case 'remote_set_stay_awake':
+      remote.stayAwake = !!a.on;
       break;
     case 'remote_set_screen_allowed':
       remote.screenAllowed = !!a.on;
@@ -499,9 +518,9 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
   return remoteNow();
 }
 
-const MOCK_RELAY_PROMPT = `Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
+const MOCK_RELAY_PROMPT = `Set up a relay I own for Blurt's Remote Control, then give me its address to paste into Blurt.
 
-Blurt for phones turns an iPhone or Android phone into a trackpad and keyboard for a computer. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+Blurt lets my phones and computers show and control my computers. When two of them can't connect directly (other networks, a strict firewall) they go through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
 
 The code and the full steps are here; read README.md first:
 https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
@@ -512,7 +531,7 @@ B. A server with a public IP: run server.js as a service (Node 12 or later, one 
 
 Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
 
-If I'm in mainland China, prefer a server there: the round trip is far shorter. A domain served from a mainland server needs an ICP filing.
+Where it runs decides how quick it feels: every move goes there and back. Don't assume where I am: ask where I and the computers I'll control usually are, and measure from this computer (a few timed HTTPS requests) to Cloudflare and to any server I have before choosing. Check the hosting rules where the server is (some countries require registering a website served from there) and tell me before relying on it.
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 

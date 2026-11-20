@@ -184,7 +184,7 @@ private fun MacRow(m: PairedMac, current: Boolean, state: String, link: Link.Sta
                 Row(Modifier.padding(top = 2.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
                     when (link) {
                         Link.State.CONNECTING -> CircularProgressIndicator(Modifier.size(14.dp), color = MaterialTheme.colorScheme.onSurface, strokeWidth = 2.dp)
-                        Link.State.REPLACED -> Sym("info", 16.sp, MaterialTheme.colorScheme.onSurface)
+                        Link.State.REPLACED, Link.State.ENDED -> Sym("info", 16.sp, MaterialTheme.colorScheme.onSurface)
                         else -> ProblemMark(Modifier.size(16.dp))
                     }
                     Text(state, Modifier.padding(start = 6.dp), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
@@ -222,6 +222,7 @@ private fun stateOf(m: PairedMac, cur: PairedMac?, state: Link.State, path: Link
         Link.State.UNREACHABLE -> R.string.s_unreachable
         Link.State.FORGOTTEN -> R.string.s_forgotten
         Link.State.REPLACED -> R.string.s_replaced
+        Link.State.ENDED -> R.string.s_ended
         Link.State.UNPAIRED -> R.string.s_not_connected
     })
     return stringResource(if (m.id in nearby) R.string.s_on_network else if (m.relayAddress != null) R.string.s_uses_relay else R.string.s_not_on_network)

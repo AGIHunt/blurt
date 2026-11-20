@@ -78,6 +78,14 @@ public enum ToMac: Codable, Sendable {
     case clipboard(String)
     /// a viewer's keys are captured (true) or given back (false). The host sends its clipboard (ToPhone.clipboard) only in between
     case keysCaptured(Bool)
+    /// 隐私屏: the host covers its own screen with a sentence saying it's in use remotely (the picture still shows everything); off
+    /// with false or when the session ends. Only to a host whose session lists `privacy`
+    case privacyScreen(Bool)
+    /// a file from the viewer, to the host's Downloads (remote-1.1.md §6): its name and size, then its bytes in order, then the end.
+    /// The host answers fileProgress (paces the sender), then fileSaved or fileFailed. Only to a host whose session lists `files`
+    case fileBegin(id: String, name: String, size: Int)
+    case fileChunk(id: String, data: Data)
+    case fileEnd(id: String)
 }
 
 /// What one end can do beyond the base protocol, named in `ToMac.hello.features` and `RemoteSessionInfo.features`. Unknown names are ignored.
@@ -87,6 +95,10 @@ public enum RemoteFeature {
     /// a computer driving another (docs/design/remote-desktop-viewer.md): `hello.features` from a viewer, `session.features` from a host that
     /// takes its extras (the clipboard, `screen.window`, `keysCaptured`)
     public static let viewer = "viewer"
+    /// in `session.features`: the host can cover its screen while controlled (`privacyScreen`)
+    public static let privacy = "privacy"
+    /// in `session.features`: the host takes files (`fileBegin` …)
+    public static let files = "files"
     /// in a viewer's hello: another window of a viewer that has a session already (another display). The host keeps the first session
     public static let window = "window"
 }
@@ -100,6 +112,8 @@ public enum RemoteClipboard {
 
 public enum RemoteSystemMove: String, Codable, Sendable {
     case missionControl, appExpose, spaceLeft, spaceRight, zoomIn, zoomOut, findCursor
+    /// Ctrl+Alt+Del on a Windows host with the system service on
+    case secureAttention
 }
 
 public struct RemoteFront: Codable, Hashable, Sendable {
@@ -154,6 +168,14 @@ public enum ToPhone: Codable, Sendable {
     case relay(String?)
     /// another phone took over: don't reconnect until the user touches this one
     case replaced
+    /// the person at the computer ended this session (its "being controlled" bar): don't reconnect until the user asks
+    case ended
+    /// a file arriving (ToMac.fileBegin): bytes written so far; the sender keeps at most RemoteFiles.window ahead of it
+    case fileProgress(id: String, bytes: Int)
+    /// written to the host's Downloads under this name (quarantined: never opened by itself)
+    case fileSaved(id: String, name: String)
+    /// not written: "space", "too_big", "write", "locked"
+    case fileFailed(id: String, why: String)
     /// a code used over the relay: someone at the Mac has to say yes
     case pairingWaits
     /// a voice note started from the phone wants the phone's microphone (true), or is over (false)
@@ -175,6 +197,9 @@ public enum ToPhone: Codable, Sendable {
     case noDirect
     /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most RemoteClipboard.maxBytes)
     case clipboard(String)
+    /// the host's screen is locked (true) or open again (false), and this host can't show its lock screen: no frames come meanwhile.
+    /// Sent when it changes while the picture is on, and once when the picture starts. 1.1.0+
+    case screenLocked(Bool)
 }
 
 /// A frame's first byte says what follows.

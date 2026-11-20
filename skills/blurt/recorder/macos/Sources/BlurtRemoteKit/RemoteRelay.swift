@@ -44,6 +44,9 @@ public enum RemoteRelay {
         }
     }
 
+    /// A computer's close code when it's going to sleep: the relay keeps the time for `peek` ("asleep since")
+    public static let asleep: UInt16 = 4010
+
     /// Derived from the paired key: unguessable, and it says nothing about the pair.
     public static func room(key: Data) -> String {
         RemoteCrypto.base64url(Data(HMAC<SHA256>.authenticationCode(for: Data("blurt-relay-room".utf8), using: SymmetricKey(data: key))))
@@ -71,6 +74,32 @@ public enum RemoteRelay {
         ws.maximumMessageSize = 1 << 21
         params.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
         return NWConnection(to: .url(url), using: params)
+    }
+}
+
+/// What a relay says of a room's computer without joining it (`GET …/peek`): waiting there now, else since when it's asleep (it said so
+/// before sleeping) or last seen. Only a paired device can ask: the room comes from the pair's key.
+public struct RemotePresence: Equatable, Sendable {
+    public var host: Bool
+    public var asleep: Date?
+    public var seen: Date?
+    public init(host: Bool, asleep: Date? = nil, seen: Date? = nil) { self.host = host; self.asleep = asleep; self.seen = seen }
+}
+
+extension RemoteRelay {
+    /// The room's computer, as the relay at `address` knows it; nil when it can't say (an older relay, or no answer in 5 s).
+    public static func peek(address: String, room: String, done: @escaping @Sendable (RemotePresence?) -> Void) {
+        guard let a = self.address(address), var u = URLComponents(string: "\(a)/v1/\(room)/peek") else { return done(nil) }
+        u.scheme = u.scheme == "wss" ? "https" : "http"
+        guard let url = u.url else { return done(nil) }
+        var r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        r.httpMethod = "GET"
+        URLSession.shared.dataTask(with: r) { d, resp, _ in
+            guard (resp as? HTTPURLResponse)?.statusCode == 200, let d, let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let host = o["host"] as? Bool else { return done(nil) }
+            let date = { (k: String) in (o[k] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) } }
+            done(RemotePresence(host: host, asleep: date("asleep"), seen: date("seen")))
+        }.resume()
     }
 }
 
@@ -174,10 +203,44 @@ public final class RemoteSTUN {
 
     private init(queue: DispatchQueue) { self.queue = queue }
 
-    public static func ask(from localPort: UInt16, server: String = "stun.cloudflare.com", port: UInt16 = 3478, queue: DispatchQueue, done: @escaping (RemoteCandidate?) -> Void) {
+    /// Asked together, the first answer taken, as on Windows and Linux (crates/blurt-remote relay.rs STUN_SERVERS): Cloudflare's, and one
+    /// that answers from mainland China, where Cloudflare's doesn't (2026-11-09). Wherever the user is, one of them does.
+    public static let servers: [(host: String, port: UInt16)] = [("stun.cloudflare.com", 3478), ("stun.miwifi.com", 3478)]
+
+    /// `queue` must be serial: the answers are counted on it.
+    /// The first answer ends the others at once: they share the local port the direct path uses, and one left open takes its packets.
+    public static func ask(from localPort: UInt16, queue: DispatchQueue, done: @escaping (RemoteCandidate?) -> Void) {
+        var answered = false, left = servers.count
+        var all: [RemoteSTUN] = []
+        for s in servers {
+            all.append(ask(from: localPort, server: s.host, port: s.port, queue: queue) { c in
+                left -= 1
+                guard !answered else { return }
+                if let c {
+                    answered = true
+                    all.forEach { $0.cancel() }
+                    done(c)
+                } else if left == 0 {
+                    answered = true
+                    done(nil)
+                }
+            })
+        }
+    }
+
+    @discardableResult
+    public static func ask(from localPort: UInt16, server: String, port: UInt16, queue: DispatchQueue, done: @escaping (RemoteCandidate?) -> Void) -> RemoteSTUN {
         let s = RemoteSTUN(queue: queue)
         s.done = done
         s.start(localPort, server, port)
+        return s
+    }
+
+    /// No answer wanted any more: the port is let go now.
+    func cancel() {
+        done = nil
+        c?.cancel()
+        c = nil
     }
 
     private func finish(_ r: RemoteCandidate?) {

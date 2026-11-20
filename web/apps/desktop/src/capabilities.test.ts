@@ -81,8 +81,8 @@ describe("Home's Recent", () => {
 
 describe('the Phone page', () => {
   const base: RemoteStatus = {
-    listening: false, pairing: null, asking: null, devices: [], connected: null, relay: { address: null, fromPhone: false, reachable: null, goBetween: false, goBetweenProblem: null },
-    screenAllowed: true, canControl: true, problem: null, firewall: 'ok',
+    listening: false, pairing: null, asking: null, devices: [], connected: null, relay: { address: null, fromPhone: false, reachable: null, goBetween: false, goBetweenProblem: null, fallback: false },
+    screenAllowed: true, stayAwake: true, battery: false, service: null, canControl: true, problem: null, firewall: 'ok',
   };
   const phone = { id: 'p', name: 'Pixel', lastSeen: null };
   it('one headline', () => {

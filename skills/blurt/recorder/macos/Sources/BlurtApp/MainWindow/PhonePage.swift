@@ -287,6 +287,7 @@ extension PhonePage {
                     st.path = paths[v]
                 case "busy": st.away = .busy
                 case "nodirect": st.away = .noDirect
+                case "relaydown": st.away = .relayDown
                 case "asking":
                     st.asking = "Pixel 9"
                     st.askingCheck = "482713"

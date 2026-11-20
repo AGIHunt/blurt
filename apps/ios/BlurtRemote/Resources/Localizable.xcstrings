@@ -3228,6 +3228,46 @@
         }
       }
     },
+    "Its own relay isn’t responding. Trying the public connection service…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方的自建中转无响应，正在改用公共连接服务…"
+          }
+        }
+      }
+    },
+    "Someone at %@ ended the connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 那边断开了连接。"
+          }
+        }
+      }
+    },
+    "Touch to reconnect." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点这里重新连接。"
+          }
+        }
+      }
+    },
+    "Ended at the computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方已断开"
+          }
+        }
+      }
+    },
     "The public connection service has reached today’s limit. Try again later, or use your own relay." : {
       "localizations" : {
         "zh-Hans" : {

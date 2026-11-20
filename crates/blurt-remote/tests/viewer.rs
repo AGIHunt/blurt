@@ -783,3 +783,70 @@ async fn through_the_public_connection_service_then_direct() {
     drop(s);
     h.stop();
 }
+
+/// 2026-11-20, the office: the computer's own relay was dead. The viewer says so after two tries, and goes through the public
+/// connection service, where the host waits meanwhile.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dead_own_relay_goes_through_the_public_connection_service() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let r = match relay().await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, &meet);
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    // the owner's relay: nothing listens on port 9
+    h.set_relay(Some("ws://127.0.0.1:9")).unwrap();
+    until("host falls back", || h.status().relay.fallback.then_some(())).await;
+    let away = viewer::Computer { addresses: vec![], port: 9, relay: Some("ws://127.0.0.1:9".into()), ..c.clone() };
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target { computer: away, key, device: "Desk Laptop".into(), nearby: vec![], go_between_at: Some(meet.clone()) },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    until("connected", || {
+        seen.find(|e| if let Event::Link { link: Link::Connected, route } = e { *route } else { None })
+    })
+    .await;
+    assert!(seen.0.lock().unwrap().iter().any(|e| matches!(e, Event::Link { link: Link::RelayDown, .. })), "said why first");
+    drop(s);
+    h.stop();
+}
+
+/// Send Files (remote-1.1.md §6): a file goes, in chunks, to the host's Downloads under its own name, and the viewer hears it saved.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_goes_to_the_hosts_downloads() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, dir) = host(&w, "windows", true, "");
+    let downloads = dir.join("Downloads");
+    h.set_downloads(Some(downloads.clone()));
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target { computer: c.clone(), key, device: "Desk Laptop".into(), nearby: vec![IpAddr::from([127, 0, 0, 1])], go_between_at: None },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    let info = until("session", || seen.find(|e| if let Event::Session(i) = e { Some(i.clone()) } else { None })).await;
+    assert!(info.features.as_ref().is_some_and(|f| f.iter().any(|x| x == "files")), "a host with a Downloads folder takes files");
+    // 3 MB in 192 KB chunks: progress comes back every MB
+    let body: Vec<u8> = (0..3 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+    s.send(ToMac::FileBegin { id: "f1".into(), name: "../report.bin".into(), size: body.len() as i64 });
+    for c in body.chunks(192 * 1024) {
+        s.send(ToMac::FileChunk { id: "f1".into(), data: c.to_vec() });
+    }
+    s.send(ToMac::FileEnd { id: "f1".into() });
+    let name = until("saved", || seen.find(|e| if let Event::FileSaved { name, .. } = e { Some(name.clone()) } else { None })).await;
+    assert_eq!(name, "report.bin", "no folders in the name");
+    assert!(seen.find(|e| matches!(e, Event::FileProgress { bytes, .. } if *bytes >= 1 << 20).then_some(())).is_some());
+    assert_eq!(std::fs::read(downloads.join("report.bin")).unwrap(), body);
+    assert!(!downloads.join("report.bin.part").exists());
+    drop(s);
+    h.stop();
+}

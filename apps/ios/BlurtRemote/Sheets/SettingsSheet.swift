@@ -166,6 +166,7 @@ struct SettingsSheet: View {
             case .unreachable: return "Can’t reach it"
             case .forgotten: return "Needs pairing again"
             case .replaced: return "Another phone is using it"
+            case .ended: return "Ended at the computer"
             case .unpaired: return "Not connected"
             }
         }

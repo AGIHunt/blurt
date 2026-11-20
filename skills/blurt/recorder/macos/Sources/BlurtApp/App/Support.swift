@@ -84,7 +84,7 @@ func emit(_ obj: [String: Any]) {
     if let line = DragLog.line(obj, at: Date().timeIntervalSince1970) { DragLogFile.append(line) }
 }
 
-/// The phone's comings and goings, kept in the system log (`log show --predicate 'subsystem == "dev.blurt.recorder" AND category ==
+/// The phone's comings and goings, and this Mac's own viewer windows' (`viewer_*`), kept in the system log (`log show --predicate 'subsystem == "dev.blurt.recorder" AND category ==
 /// "remote"'`): a normal launch's stdout goes nowhere, and a phone that can't get in leaves nothing else to go on. States only; the
 /// every-two-seconds picture figures, the tests' input lines and anything with a pairing link in it (a test build prints one) stay
 /// on stdout.
@@ -93,7 +93,7 @@ enum RemoteLog {
     private static let kept: Set<String> = ["remote_screen_mac", "remote_screen_phone", "remote_input", "remote_pairing"]
 
     static func keeps(_ obj: [String: Any]) -> Bool {
-        guard let e = obj["event"] as? String, e.hasPrefix("remote_"), !kept.contains(e) else { return false }
+        guard let e = obj["event"] as? String, e.hasPrefix("remote_") || e.hasPrefix("viewer_"), !kept.contains(e) else { return false }
         return obj["link"] == nil && obj["url"] == nil
     }
 }

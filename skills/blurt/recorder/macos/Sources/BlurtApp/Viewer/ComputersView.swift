@@ -83,8 +83,8 @@ struct ComputerRow: View {
         HStack(spacing: 6) {
             switch row {
             case .connected: Button(T("viewer.open")) { store.open(computer) }
-            case .available, .noDirect: Button(T("viewer.connect")) { store.open(computer) }
-            case .offline: EmptyView()
+            case .available, .noDirect, .relayDown: Button(T("viewer.connect")) { store.open(computer) }
+            case .offline, .asleep: EmptyView()
             }
             RowMenu(label: T("viewer.more"), visible: true) {
                 if row.isOffline { Button(T("viewer.connect")) { store.open(computer) } }
@@ -97,8 +97,8 @@ struct ComputerRow: View {
         switch r {
         case .connected: .good
         case .available: .ready
-        case .noDirect: .warn
-        case .offline: .off
+        case .noDirect, .relayDown: .warn
+        case .offline, .asleep: .off
         }
     }
 }
@@ -266,5 +266,10 @@ final class ComputersWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension ViewerStore.Row {
-    var isOffline: Bool { if case .offline = self { true } else { false } }
+    var isOffline: Bool {
+        switch self {
+        case .offline, .asleep: true
+        default: false
+        }
+    }
 }

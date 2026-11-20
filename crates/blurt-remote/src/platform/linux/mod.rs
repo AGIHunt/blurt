@@ -99,6 +99,23 @@ mod imp {
     }
 
     impl Backend for LinuxBackend {
+        /// GNOME's screensaver is up (the lock): it ends screen sharing until unlocked. Asked at most every 2 s; None when there's no
+        /// GNOME screensaver to ask (another desktop).
+        fn locked(&self) -> Option<bool> {
+            // on the portal's runtime: this is called from inside the server's, where block_on would panic
+            super::portal::block(std::time::Duration::from_secs(2), async {
+                let c = tokio::time::timeout(std::time::Duration::from_secs(1), ashpd::zbus::Connection::session()).await.ok()?.ok()?;
+                let r = tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    c.call_method(Some("org.gnome.ScreenSaver"), "/org/gnome/ScreenSaver", Some("org.gnome.ScreenSaver"), "GetActive", &()),
+                )
+                .await
+                .ok()?
+                .ok()?;
+                r.body().deserialize::<bool>().ok()
+            })
+            .flatten()
+        }
         fn input(&mut self) -> &mut dyn Input {
             if !self.portal.is_open() {
                 self.input.forget();
@@ -147,6 +164,32 @@ mod imp {
 
         fn now(&self) -> f64 {
             now()
+        }
+
+        fn standby_awake(&mut self, on: bool) {
+            self.portal.standby_awake(on);
+        }
+
+        fn has_battery(&self) -> bool {
+            std::fs::read_dir("/sys/class/power_supply").is_ok_and(|d| {
+                d.flatten().any(|e| std::fs::read_to_string(e.path().join("type")).is_ok_and(|t| t.trim() == "Battery"))
+            })
+        }
+
+        /// A laptop on battery sleeps as usual: plugged in, or no battery at all (/sys/class/power_supply).
+        fn plugged_in(&self) -> bool {
+            let Ok(dir) = std::fs::read_dir("/sys/class/power_supply") else { return true };
+            let (mut battery, mut mains) = (false, false);
+            for e in dir.flatten() {
+                let p = e.path();
+                let kind = std::fs::read_to_string(p.join("type")).unwrap_or_default();
+                match kind.trim() {
+                    "Battery" => battery = true,
+                    "Mains" | "USB" => mains |= std::fs::read_to_string(p.join("online")).is_ok_and(|s| s.trim() == "1"),
+                    _ => {}
+                }
+            }
+            !battery || mains
         }
 
         fn keep_awake(&mut self, on: bool, display: bool) {

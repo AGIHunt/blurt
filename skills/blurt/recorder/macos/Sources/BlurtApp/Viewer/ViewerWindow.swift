@@ -37,6 +37,68 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         get { Config.shared["record.viewer.map_modifiers"] as? Bool ?? true }
         set { Config.shared.set("record.viewer.map_modifiers", newValue ? nil : false) }
     }
+    /// the app in front on the remote (its `front`): a terminal there takes dictation without a closing full stop
+    private var remoteFront: RemoteFront?
+    private var remoteCanControl = true
+    /// keys sent as a terminal's copy / paste: their release isn't sent again
+    private var terminalKeys: Set<UInt16> = []
+
+    /// Dictation with this window in front types on the remote (remote-1.1.md §4): the window in front, connected, allowed to control.
+    static func dictationTarget() -> ViewerWindowController? {
+        guard NSApp.isActive, let k = NSApp.keyWindow else { return nil }
+        return windows.first { $0.window === k && $0.link.state == .connected && $0.remoteCanControl }
+    }
+
+    /// Sends a take to the remote; the host types it (and refuses it at its lock screen or in a password field).
+    func typeOnRemote(_ text: String) {
+        var t = text
+        if let f = remoteFront, RemoteTerminals.isTerminal(f.bundle) {
+            while let last = t.last, "。.".contains(last) { t.removeLast() }
+        }
+        guard !t.isEmpty else { return }
+        link.send(.text(t))
+        emit(["event": "dictation_insert", "result": "remote", "chars": t.count])
+    }
+
+    private lazy var files: ViewerFileSender = {
+        let f = ViewerFileSender(link: link)
+        f.onState = { [weak self] state, what in
+            guard let self else { return }
+            switch state {
+            case "sending": self.picture.showHint(T("viewer.file.sending", what), seconds: nil)
+            case "saved": self.picture.showHint(T("viewer.file.saved", what), seconds: 5)
+            default:
+                let k = ["space", "too_big", "locked"].contains(what) ? what : "other"
+                self.picture.showHint(T("viewer.file.failed.\(k)"), seconds: 5)
+            }
+        }
+        return f
+    }()
+
+    /// The host takes files (its session lists `files`)
+    private var hostTakesFiles: Bool { link.session?.features?.contains(RemoteFeature.files) == true }
+
+    func sendFiles(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        guard hostTakesFiles else { return picture.showHint(T("viewer.file.failed.other"), seconds: 3) }
+        files.send(urls)
+    }
+
+    @objc private func sendSecureAttention() { link.send(.system(.secureAttention)) }
+
+    @objc private func chooseFiles() {
+        let p = NSOpenPanel()
+        p.allowsMultipleSelection = true
+        p.canChooseDirectories = false
+        guard let w = window else { return }
+        p.beginSheetModal(for: w) { [weak self] r in
+            if r == .OK { self?.sendFiles(p.urls) }
+        }
+    }
+
+    /// 隐私屏 asked of the host this session (off at every new session: the host drops it when a session ends)
+    private var privacy = false
+
     private var shareClipboard: Bool {
         get { Config.shared["record.viewer.clipboard"] as? Bool ?? true }
         set { Config.shared.set("record.viewer.clipboard", newValue ? nil : false) }
@@ -115,6 +177,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         picture.autoresizingMask = [.width, .height]
         picture.frame = content.bounds
         w.contentView = content
+        picture.acceptFiles()
         buildOverlay(in: content)
         buildToolbar(w)
         wire()
@@ -142,6 +205,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func heard(_ m: ToPhone) {
         switch m {
+        case .fileProgress, .fileSaved, .fileFailed:
+            files.heard(m)
+        case let .notice(text):
+            // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
+            Notify.post(title: link.computer.name, body: text, uid: "remote-notice-\(link.computer.id)")
         case let .screenView(w, h, codec, display, features):
             screen.view(codec: codec, features: features)
             fit(CGSize(width: w, height: h))
@@ -166,10 +234,26 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             let key = ["off": "viewer.screen_off", "permission": "viewer.screen_permission", "one_display": "viewer.one_display"][why]
             // Try Again asks for the screen once more: a permission given, or the host's Remote Desktop dialog answered since
             showOverlay(T(key ?? "viewer.screen_failed", name), button: why == "off" ? nil : (T("viewer.retry"), #selector(retryScreen)))
+        case let .screenLocked(locked):
+            // the stream stops at a lock screen this host can't show: the last picture stays, darker, and says why
+            guard screenOn else { return }
+            if locked {
+                picture.stale = true
+                // GNOME ends screen sharing at its lock; its own Remote Login reaches the login screen
+                showOverlay(T(host == .linux ? "viewer.locked.linux" : "viewer.locked", link.computer.name), button: nil)
+            } else {
+                hideOverlay()
+                link.send(.requestKeyframe)
+            }
+            emit(["event": "viewer_locked", "locked": locked])
+        case let .front(f):
+            remoteFront = f
         case let .canControl(ok):
+            remoteCanControl = ok
             // clicks and keys go nowhere until it's allowed there: said for as long as it lasts
             if ok { picture.hideHint() } else { picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil) }
         case let .session(i):
+            remoteCanControl = i.canControl
             window?.title = i.macName
             if !i.canControl { picture.showHint(T("viewer.no_control", i.macName), seconds: nil) }
             updateMore()
@@ -183,11 +267,13 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         switch s {
         case .connected: connected()
         case .connecting:
-            stopPicture()
-            showOverlay(T("viewer.connecting"), button: nil)
+            // a drop: the last picture stays, darker, while it comes back by itself (it never asks to pair again)
+            stopPicture(keep: true)
+            showOverlay(T(picture.hasPicture ? "viewer.reconnecting" : "viewer.connecting"), button: nil)
         case .unreachable:
-            stopPicture()
-            showOverlay(T("viewer.unreachable", name), button: (T("viewer.retry"), #selector(retry)))
+            stopPicture(keep: true)
+            // a Mac that restarted with FileVault on waits for its disk password at the computer: nothing reaches it before that
+            showOverlay(T(host == .mac ? "viewer.unreachable.mac" : "viewer.unreachable", name), button: (T("viewer.retry"), #selector(retry)))
         case .waiting: showOverlay(T("viewer.connecting"), button: nil)
         case .forgotten:
             stopPicture()
@@ -195,9 +281,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case .replaced:
             stopPicture()
             showOverlay(T("viewer.replaced", name), button: (T("viewer.take_over"), #selector(takeOver)))
+        case .ended:
+            stopPicture()
+            showOverlay(T("viewer.ended", name), button: (T("viewer.reconnect"), #selector(takeOver)))
         case .away(.noDirect):
             stopPicture()
             showOverlay(T("viewer.no_direct"), button: (T("viewer.retry"), #selector(retry)))
+        case .away(.relayDown):
+            // still trying, now through the public connection service as well
+            stopPicture(keep: true)
+            showOverlay(T("viewer.relay_down", name), button: (T("viewer.retry"), #selector(retry)))
         case .away(.busy):
             // over today's limit: it waits by itself (30 s, 2 min, 10 min, hourly); asking again now changes nothing
             stopPicture()
@@ -220,12 +313,15 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         startPicture()
         ViewerStore.shared.liveChanged(computer.id, route: link.route, rtt: link.rtt, open: !second)
         if let p = pinned { link.send(.showDisplay(p)) }
+        // after a drop the host has taken the cover down: asked again
+        if privacy { link.send(.privacyScreen(true)) }
         // a window that opens in front, captured: the mouse and keys go to the computer it shows
         if window?.isKeyWindow == true { setCaptured(true) }
     }
 
     private func routeChanged(_ r: RemoteViewerLink.Route?, _ rtt: Double?) {
         updateSubtitle()
+        updateQuality()      // another path may cost data, or no longer
         if link.state == .connected, !second { ViewerStore.shared.liveChanged(computer.id, route: r, rtt: rtt, open: true) }
         // away and back: the picture's ceiling changes with the path (a new round trip alone changes nothing)
         if screenOn, r != pictureRoute { askForPicture() }
@@ -294,11 +390,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         screen.change(plan())
     }
 
-    private func stopPicture() {
-        guard screenOn else { return }
+    /// `keep`: the last frame stays, darker (a drop, a lock), instead of a black window.
+    private func stopPicture(keep: Bool = false) {
+        guard screenOn else { if !keep { picture.clear() }; return }
         screenOn = false
         screen.stop(tell: link.state == .connected)
-        picture.clear()
+        if keep { picture.stale = true } else { picture.clear() }
         setCaptured(false)
     }
 
@@ -322,7 +419,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     /// Keys go only to the window in front: another window or app in front gives them back.
-    func windowDidResignKey(_ n: Notification) { setCaptured(false) }
+    func windowDidResignKey(_ n: Notification) {
+        // a helper panel (an input method's, the accent picker) taking the key status for a moment isn't leaving the window: checked once
+        // the new key window is known
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !ViewerKeyboard.holdsKeys(self.window) else { return }
+            self.setCaptured(false)
+        }
+    }
 
     func setCaptured(_ on: Bool) {
         guard on != captured, !on || link.state == .connected else { return }
@@ -375,6 +479,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         release.key()
         guard let name = RemoteViewerKeys.name(macKeyCode: e.code) else { return }
+        // ⌘C / ⌘V into a terminal on Windows or Linux: copy and paste there (Ctrl+Shift+C / V), not an interrupt (remote-1.1.md §5)
+        if e.down, host != .mac, mapping, name == "C" || name == "V", mods.subtracting(.function) == [.command],
+           let f = remoteFront, RemoteTerminals.isTerminal(f.bundle) {
+            link.send(.mods([.control, .shift]))
+            link.send(.key(RemoteChord([], name), down: nil))
+            link.send(.mods(sentMods))
+            terminalKeys.insert(e.code)
+            return
+        }
+        if !e.down, terminalKeys.remove(e.code) != nil { return }
         if e.down { held.insert(e.code) } else { held.remove(e.code) }
         // a key held down repeats as a key down again: the host presses it again (a posted key doesn't repeat by itself)
         link.send(.key(RemoteChord([], name), down: e.down))
@@ -505,6 +619,13 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             i.state = q == quality ? .on : .off
             m.addItem(i)
         }
+        // on a phone's hotspot or cellular: the picture costs data, and Data Saver is the choice that spends little
+        if NWPathLowData.costsData {
+            m.addItem(.separator())
+            let note = NSMenuItem(title: T("viewer.quality.costs_data"), action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            m.addItem(note)
+        }
         qualityButton.menu = m
         qualityButton.toolTip = T("viewer.quality")
     }
@@ -514,6 +635,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         quality = q
         updateQuality()
         askForPicture()
+    }
+
+    @objc private func allowShortcuts() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
     }
 
     private func updateMore() {
@@ -531,6 +656,32 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         clip.target = self
         clip.state = shareClipboard ? .on : .off
         m.addItem(clip)
+        // a Windows host: its lock and login screens want Ctrl+Alt+Del (sent by the system service where it's on)
+        if host == .windows {
+            let sas = NSMenuItem(title: T("viewer.ctrl_alt_del"), action: #selector(sendSecureAttention), keyEquivalent: "")
+            sas.target = self
+            m.addItem(sas)
+        }
+        if hostTakesFiles {
+            let f = NSMenuItem(title: T("viewer.send_files"), action: #selector(chooseFiles), keyEquivalent: "")
+            f.target = self
+            m.addItem(f)
+        }
+        // only where the host can (its session lists `privacy`)
+        if link.session?.features?.contains(RemoteFeature.privacy) == true {
+            let p = NSMenuItem(title: T("viewer.privacy"), action: #selector(togglePrivacy), keyEquivalent: "")
+            p.target = self
+            p.state = privacy ? .on : .off
+            p.toolTip = T("viewer.privacy.tip")
+            m.addItem(p)
+        }
+        // without Input Monitoring ⌘Tab and the like stay on this Mac: the way to change that, where it's missing
+        if !ViewerKeyboard.systemShortcuts {
+            m.addItem(.separator())
+            let allow = NSMenuItem(title: T("viewer.allow_shortcuts"), action: #selector(allowShortcuts), keyEquivalent: "")
+            allow.target = self
+            m.addItem(allow)
+        }
         moreButton.menu = m
         moreButton.toolTip = T("viewer.more")
     }
@@ -540,6 +691,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         updateMore()
         // what's held now is held as the new mapping says
         if captured { sentMods = []; link.send(.mods([])) }
+    }
+
+    @objc private func togglePrivacy() {
+        privacy.toggle()
+        link.send(.privacyScreen(privacy))
+        updateMore()
     }
 
     @objc private func toggleClipboard() {
@@ -618,17 +775,20 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     #endif
 }
 
-/// Low Data Mode, as macOS reports it for the path in use: Auto is Data Saver then.
+/// Low Data Mode, as macOS reports it for the path in use. Auto doesn't follow it (RemoteScreenPlan); the quality menu says the picture
+/// costs data on such a path (a phone's hotspot, cellular).
 enum NWPathLowData {
     private static let monitor: NWPathMonitorBox = NWPathMonitorBox()
     static var on: Bool { monitor.constrained }
+    static var costsData: Bool { monitor.constrained || monitor.expensive }
 }
 
 final class NWPathMonitorBox {
     private let m = NWPathMonitor()
     private(set) var constrained = false
+    private(set) var expensive = false
     init() {
-        m.pathUpdateHandler = { [weak self] p in self?.constrained = p.isConstrained }
+        m.pathUpdateHandler = { [weak self] p in self?.constrained = p.isConstrained; self?.expensive = p.isExpensive }
         m.start(queue: DispatchQueue(label: "blurt.viewer.path"))
     }
 }

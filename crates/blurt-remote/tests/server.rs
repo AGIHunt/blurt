@@ -398,3 +398,46 @@ async fn a_device_is_a_phone_or_a_computer() {
     tokio::task::spawn_blocking(move || drop((h, again))).await.unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Anti-scam (remote-1.1.md §3): a device paired while another was away is said to that one when it next comes in.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_pairing_is_said_to_the_devices_already_paired() {
+    use blurt_remote::phone::Options;
+    let dir = std::env::temp_dir().join(format!("blurt-remote-test-{}", blurt_remote::crypto::new_id()));
+    let h = host_answering(&dir, Lines::default(), Lines::default(), None);
+    let pair_as = async |opts: Options| {
+        h.show_pairing(true);
+        let (link, p) = until(|| h.status().pairing.map(|p| (p.url, h.status().port))).await;
+        let at: SocketAddr = format!("127.0.0.1:{p}").parse().unwrap();
+        let code = Pairing::parse(&link).unwrap();
+        let mut d = Phone::connect_with(at, &code.device_id, &code.key, opts).await.unwrap();
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("asks");
+        let asking = until(|| h.status().asking).await;
+        h.answer_pairing(true, Some(&asking.digits));
+        let key = d.wait(Duration::from_secs(3), |m| if let ToPhone::NewKey(k) = m { Some(k.clone()) } else { None }).await.expect("a key");
+        d.send(&ToMac::KeyStored).await;
+        d.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::Session(_)).then_some(())).await.expect("session");
+        (at, code.device_id, key, d)
+    };
+    let mine = Options { device: "Den PC".into(), ..Options::default() };
+    let (at, id, key, pc) = pair_as(mine.clone()).await;
+    drop(pc);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let (_, _, _, phone) = pair_as(Options { device: "Stranger".into(), ..Options::default() }).await;
+    drop(phone);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    let mut pc = Phone::connect_with(at, &id, &key, mine).await.unwrap();
+    let said = pc.wait(Duration::from_secs(3), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
+    assert!(said.as_deref().is_some_and(|t| t.contains("Stranger")), "{said:?}");
+    // said once: the next time it comes in, nothing
+    drop(pc);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    let mut pc = Phone::connect_with(at, &id, &key, Options { device: "Den PC".into(), ..Options::default() }).await.unwrap();
+    let again = pc.wait(Duration::from_secs(1), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
+    assert_eq!(again, None);
+    drop(pc);
+    h.stop();
+    tokio::task::spawn_blocking(move || drop(h)).await.unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}

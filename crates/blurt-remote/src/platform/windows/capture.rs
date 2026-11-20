@@ -87,6 +87,11 @@ pub enum Capture {
 impl Capture {
     /// The monitor's pictures, WGC first. `output`: the DXGI output of that monitor, for the fallback.
     pub fn monitor(device: &ID3D11Device, monitor: HMONITOR, output: Option<&IDXGIOutput1>, signal: Signal) -> Result<Capture, String> {
+        // the service's agent: Desktop Duplication only, the one that sees the lock screen and the UAC prompt
+        if super::desktop::agent() {
+            let o = output.ok_or("no DXGI output")?;
+            return Dup::new(device, o).map(Capture::Dup);
+        }
         let wgc_err = match Wgc::new(device, monitor, signal) {
             Ok(w) => return Ok(Capture::Wgc(w)),
             Err(e) => e,
@@ -225,6 +230,7 @@ pub struct Dup {
 
 impl Dup {
     fn new(device: &ID3D11Device, output: &IDXGIOutput1) -> Result<Dup, String> {
+        super::desktop::follow_input();
         let dup = unsafe { output.DuplicateOutput(device) }.map_err(|e| e.to_string())?;
         Ok(Dup { device: device.clone(), output: output.clone(), dup: Some(dup), holding: false })
     }
@@ -241,9 +247,24 @@ impl Dup {
     fn next(&mut self, timeout: Duration, signal: &Signal) -> Option<Frame> {
         // commands wait at most one short AcquireNextFrame (below)
         self.release();
+        // the agent: the input went to another desktop (the secure one, or back), where this duplication sees nothing more
+        if self.dup.is_some() && super::desktop::input_moved() {
+            super::desktop::note("input moved: duplicating again");
+            self.dup = None;
+        }
         if self.dup.is_none() {
-            // lost (a mode change, the secure desktop): try again now and then
-            self.dup = unsafe { self.output.DuplicateOutput(&self.device) }.ok();
+            // lost (a mode change, the secure desktop): try again now and then; the agent follows the input to its new desktop first
+            super::desktop::follow_input();
+            self.dup = match unsafe { self.output.DuplicateOutput(&self.device) } {
+                Ok(d) => {
+                    super::desktop::note("duplication again");
+                    Some(d)
+                }
+                Err(e) => {
+                    super::desktop::note(&format!("DuplicateOutput: {e}"));
+                    None
+                }
+            };
             if self.dup.is_none() {
                 signal.wait(timeout.max(Duration::from_millis(50)));
                 return None;
@@ -258,6 +279,7 @@ impl Dup {
             Ok(()) => self.holding = true,
             Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => return None,
             Err(e) if e.code() == DXGI_ERROR_ACCESS_LOST => {
+                super::desktop::note("duplication lost");
                 self.dup = None;
                 return None;
             }

@@ -38,6 +38,20 @@ try {
   second.close();
   expect("the Mac hears the phone left with", (await left).code, 4000);
 
+  // peek: the Mac there, then gone asleep (4010)
+  const http = base.replace(/^ws/, "http");
+  const peek = async () => (await fetch(`${http}/v1/${room}/peek`)).json();
+  const waiting = await open(url("mac"));   // the Mac's next waiting connection, as the apps make one
+  expect("a peek with the Mac there says host", (await peek()).host, true);
+  const shut = once(waiting, "close");
+  waiting.close(4010, "asleep");
+  await shut;
+  await new Promise((r) => setTimeout(r, 1500));   // a Durable Object hears the close a moment later
+  const p = await peek();
+  expect("then not there", p.host, false);
+  // its own clock: a local Worker's can run seconds apart from this one
+  expect("asleep, since when it left", typeof p.asleep === "number" && p.asleep === p.seen, true);
+
   const bad = await fetch(`${base.replace(/^ws/, "http")}/v1/short/mac`);
   expect("a bad room gets", bad.status, 404);
   console.log("PASSED");

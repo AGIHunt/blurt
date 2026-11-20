@@ -31,6 +31,8 @@ struct Viewers {
     rt: tokio::runtime::Runtime,
     computers: Computers,
     nearby: Mutex<Vec<Found>>,
+    /// what each computer's relay said lately (`peek`), while the list shows: asleep since, last seen
+    presence: Mutex<HashMap<String, blurt_remote::relay::Presence>>,
     browser: Mutex<Option<viewer::Browser>>,
     pairing: Mutex<Option<Pairing>>,
     pair_gen: AtomicU64,
@@ -62,6 +64,8 @@ struct Win {
     route: Option<Route>,
     /// the last clipboard text either way (not sent back)
     clip: Option<String>,
+    /// the dictation key, down and not sent yet: alone it's dictation here, with another key it goes on (AltGr+E still types €)
+    held_trigger: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -96,6 +100,7 @@ pub fn start(app: &AppHandle) {
         rt,
         computers: Computers::new(dir(), crate::remote::key_store()),
         nearby: Mutex::new(vec![]),
+        presence: Mutex::new(HashMap::new()),
         browser: Mutex::new(None),
         pairing: Mutex::new(None),
         pair_gen: AtomicU64::new(0),
@@ -183,16 +188,23 @@ fn status() -> ComputersStatus {
     let list = v.computers.list();
     let nearby = v.nearby.lock().unwrap().clone();
     let no_direct = v.no_direct.lock().unwrap().clone();
+    let presence = v.presence.lock().unwrap().clone();
     let ws = v.windows.lock().unwrap();
     let computers = list
         .iter()
         .map(|c| {
             let mine: Vec<&Win> = ws.values().filter(|w| w.host_id == c.host_id).collect();
             let live = mine.iter().find(|w| w.link == Link::Connected);
+            let mut last_seen = c.last_seen;
+            let gone = presence.get(&c.host_id).filter(|p| !p.host);
             let (state, route) = if let Some(w) = live {
                 ("connected", w.route)
             } else if nearby.iter().any(|n| n.host_id == c.host_id) {
                 ("available", Some(Route::Local))
+            } else if let Some(p) = gone {
+                // its relay says it isn't there: asleep since (it said so), else offline since it was last seen
+                last_seen = p.asleep.or(p.seen).or(c.last_seen);
+                (if p.asleep.is_some() { "asleep" } else { "offline" }, None)
             } else if no_direct.contains(&c.host_id) {
                 ("noDirect", None)
             } else if let Some(t) = c.addresses.iter().find_map(|a| a.parse().ok().and_then(|ip| blurt_remote::relay::overlay_of(ip, ""))) {
@@ -203,7 +215,7 @@ fn status() -> ComputersStatus {
             } else {
                 ("offline", None)
             };
-            ComputerUi { id: c.host_id.clone(), name: c.name.clone(), platform: c.platform.clone(), state, route, last_seen: c.last_seen, windows: mine.len() }
+            ComputerUi { id: c.host_id.clone(), name: c.name.clone(), platform: c.platform.clone(), state, route, last_seen, windows: mine.len() }
         })
         .collect();
     let paired: Vec<&str> = list.iter().map(|c| c.host_id.as_str()).collect();
@@ -242,12 +254,38 @@ pub fn computers_browse(on: bool) -> ComputersStatus {
                     emit();
                 }),
             );
+            peek_while_browsing();
         } else if !on {
             *b = None;
             v.nearby.lock().unwrap().clear();
         }
     }
     status()
+}
+
+/// While the list shows (browsing): each closed computer's relay is asked once a minute whether it's there (a few small requests).
+fn peek_while_browsing() {
+    std::thread::spawn(|| loop {
+        let Some(v) = viewers() else { return };
+        if v.browser.lock().unwrap().is_none() {
+            return;
+        }
+        let open: Vec<String> = v.windows.lock().unwrap().values().filter(|w| w.link == Link::Connected).map(|w| w.host_id.clone()).collect();
+        for c in v.computers.list() {
+            let (Some(relay), Some(key)) = (c.relay.clone(), v.computers.key(&c.host_id)) else { continue };
+            if open.contains(&c.host_id) {
+                continue;
+            }
+            let p = blurt_remote::relay::peek(&relay, &blurt_remote::relay::room(&key));
+            let mut m = v.presence.lock().unwrap();
+            match p {
+                Some(p) => m.insert(c.host_id.clone(), p),
+                None => m.remove(&c.host_id),
+            };
+        }
+        emit();
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    });
 }
 
 fn set_pairing(g: u64, f: impl FnOnce(&mut Option<Pairing>)) {
@@ -409,6 +447,7 @@ fn open_window(app: &AppHandle, id: &str) -> Result<(), String> {
             link: Link::Connecting,
             route: None,
             clip: None,
+            held_trigger: None,
         },
     );
     let url = format!("index.html?viewer={}", urlencode(&c.host_id));
@@ -504,7 +543,9 @@ fn on_event(label: String) -> viewer::OnEvent {
             Event::Rtt(ms) => send_json(&ch, json!({"type": "rtt", "ms": ms})),
             Event::Session(i) => {
                 w.platform = i.platform.clone().unwrap_or_else(|| "mac".into());
-                send_json(&ch, json!({"type": "session", "name": i.mac_name, "platform": i.platform, "canControl": i.can_control}));
+                let has = |n: &str| i.features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
+                send_json(&ch, json!({"type": "session", "name": i.mac_name, "platform": i.platform, "canControl": i.can_control,
+                    "privacy": has("privacy"), "files": has("files")}));
             }
             Event::Displays(l) => {
                 let l: Vec<_> = l.iter().map(|d| json!({"id": d.id, "name": d.name, "x": d.x, "y": d.y, "width": d.width, "height": d.height, "main": d.main})).collect();
@@ -530,6 +571,26 @@ fn on_event(label: String) -> viewer::OnEvent {
             }
             Event::ScreenFailed(why) => send_json(&ch, json!({"type": "screenFailed", "why": why})),
             Event::CanControl(b) => send_json(&ch, json!({"type": "canControl", "on": b})),
+            Event::ScreenLocked(b) => send_json(&ch, json!({"type": "screenLocked", "locked": b})),
+            Event::FileProgress { id, bytes } => {
+                if let Some(a) = outgoing().lock().unwrap().get(&id) {
+                    a.store(bytes, SeqCst);
+                }
+            }
+            Event::FileSaved { id, name } => {
+                outgoing().lock().unwrap().remove(&id);
+                send_json(&ch, json!({"type": "file", "state": "saved", "name": name}));
+            }
+            Event::FileFailed { id, why } => {
+                outgoing().lock().unwrap().remove(&id);
+                send_json(&ch, json!({"type": "file", "state": "failed", "why": why}));
+            }
+            Event::Notice(text) => {
+                // a notification, so it's seen even with this window behind
+                use tauri_plugin_notification::NotificationExt;
+                let title = v.computers.get(&w.host_id).map(|c| c.name).unwrap_or_else(|| "Blurt".into());
+                let _ = v.app.notification().builder().title(title).body(text).show();
+            }
         }
     })
 }
@@ -638,6 +699,18 @@ pub fn viewer_key(window: WebviewWindow, code: String, down: bool) -> bool {
     key_event(window.label(), &code, down)
 }
 
+/// The dictation key's codes (record.dictation.key, right Alt by default) while dictation is on: never sent alone to a remote.
+fn dictation_codes() -> &'static [&'static str] {
+    let d = crate::settings::read_config().pointer("/record/dictation").cloned().unwrap_or_default();
+    if d.get("enabled").and_then(serde_json::Value::as_bool) == Some(false) {
+        return &[];
+    }
+    match d.get("key").and_then(serde_json::Value::as_str) {
+        Some("either_option" | "either_alt") => &["AltLeft", "AltRight"],
+        _ => &["AltRight"],
+    }
+}
+
 fn key_event(label: &str, code: &str, down: bool) -> bool {
     let Some(v) = viewers() else { return false };
     let mapped = v.options.lock().unwrap().mapped;
@@ -645,6 +718,27 @@ fn key_event(label: &str, code: &str, down: bool) -> bool {
     let Some(w) = ws.get_mut(label) else { return false };
     if !w.captured {
         return false;
+    }
+    // the dictation key (remote-1.1.md §4): held back; let go alone it was dictation here and the remote never hears it
+    if dictation_codes().contains(&code) {
+        if down && w.held_trigger.is_none() {
+            w.held_trigger = Some(code.to_string());
+            return true;
+        }
+        if !down && w.held_trigger.as_deref() == Some(code) {
+            w.held_trigger = None;
+            return true;
+        }
+    } else if down {
+        if let Some(t) = w.held_trigger.take() {
+            // another key with it: a chord (AltGr+E), so it goes on first
+            let platform = w.platform.clone();
+            for x in w.keyboard.event(&t, true, &platform, mapped) {
+                if let (Sent::Message(m), Some(s)) = (x, &w.session) {
+                    s.send(m);
+                }
+            }
+        }
     }
     let mut released = false;
     let platform = w.platform.clone();
@@ -736,6 +830,104 @@ pub fn viewer_options(window: WebviewWindow, mapped: bool, clipboard: bool) -> O
 #[tauri::command]
 pub fn viewer_show_display(window: WebviewWindow, id: Option<String>) {
     send(&window, ToMac::ShowDisplay(id));
+}
+
+/// Dictation with a computer's window in front (remote-1.1.md §4): the take is typed on that computer, whose host refuses it at a
+/// lock screen or a password field. false: no such window, the take goes where it would have.
+pub fn type_on_remote(text: &str) -> bool {
+    let Some(v) = viewers() else { return false };
+    let ws = v.windows.lock().unwrap();
+    let Some(s) = ws.values().find(|w| w.focused && w.link == Link::Connected).and_then(|w| w.session.as_ref()) else { return false };
+    s.send(ToMac::Text(text.to_string()));
+    true
+}
+
+/// Files going out, by id: what the host has acknowledged writing (its fileProgress), so no more than WINDOW is ever in flight.
+fn outgoing() -> &'static Mutex<HashMap<String, Arc<std::sync::atomic::AtomicI64>>> {
+    static O: std::sync::OnceLock<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicI64>>>> = std::sync::OnceLock::new();
+    O.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Send Files… (and files dropped on the picture): each to the host's Downloads, in order, a chunk at a time and never more than
+/// 4 MB ahead of what it has written. The window hears each one saved or not (`{"type": "file"}`).
+#[tauri::command]
+pub fn viewer_send_files(window: WebviewWindow, paths: Option<Vec<String>>) {
+    let label = window.label().to_string();
+    std::thread::spawn(move || {
+        let paths: Vec<std::path::PathBuf> = match paths {
+            Some(p) => p.into_iter().map(Into::into).collect(),
+            None => {
+                use tauri_plugin_dialog::DialogExt;
+                let Some(v) = viewers() else { return };
+                v.app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect()
+            }
+        };
+        for p in paths {
+            let Some(v) = viewers() else { return };
+            let (sender, ch) = {
+                let ws = v.windows.lock().unwrap();
+                let Some(w) = ws.get(&label) else { return };
+                (w.session.as_ref().map(|s| s.sender()), w.channel.clone())
+            };
+            let (Some(sender), Some(ch)) = (sender, ch) else { return };
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
+            send_json(&ch, json!({"type": "file", "state": "sending", "name": name}));
+            if !send_file(&sender, &p, &name) {
+                send_json(&ch, json!({"type": "file", "state": "failed", "why": "read"}));
+            }
+        }
+    });
+}
+
+fn send_file(s: &blurt_remote::viewer::Sender, p: &std::path::Path, name: &str) -> bool {
+    use std::io::Read;
+    const CHUNK: usize = 192 * 1024;
+    const WINDOW: i64 = 4 << 20;
+    let Ok(mut f) = std::fs::File::open(p) else { return false };
+    let Ok(size) = f.metadata().map(|m| m.len() as i64) else { return false };
+    let id = blurt_remote::crypto::new_id();
+    let acked = Arc::new(std::sync::atomic::AtomicI64::new(0));
+    outgoing().lock().unwrap().insert(id.clone(), acked.clone());
+    if !s.send(ToMac::FileBegin { id: id.clone(), name: name.to_string(), size }) {
+        return false;
+    }
+    let mut sent = 0i64;
+    let mut buf = vec![0u8; CHUNK];
+    loop {
+        // the host is at most WINDOW behind; a minute without it moving and this one is given up
+        let mut waited = 0;
+        while sent - acked.load(SeqCst) > WINDOW {
+            if waited > 3000 || !outgoing().lock().unwrap().contains_key(&id) {
+                return true; // the host said why (fileFailed), or went quiet: the window says so either way
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            waited += 1;
+        }
+        let n = match f.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        if !s.send(ToMac::FileChunk { id: id.clone(), data: buf[..n].to_vec() }) {
+            return false;
+        }
+        sent += n as i64;
+    }
+    s.send(ToMac::FileEnd { id })
+}
+
+/// A named move of the host's OS from the ⋯ menu (Ctrl+Alt+Del: `secureAttention`).
+#[tauri::command]
+pub fn viewer_system(window: WebviewWindow, name: String) {
+    if let Some(m) = blurt_remote::wire::system_move(&name) {
+        send(&window, ToMac::System(m));
+    }
+}
+
+/// 隐私屏: the host covers its own screen (hosts whose session lists `privacy`).
+#[tauri::command]
+pub fn viewer_privacy(window: WebviewWindow, on: bool) {
+    send(&window, ToMac::PrivacyScreen(on));
 }
 
 /// The decoder refused a frame: a keyframe.

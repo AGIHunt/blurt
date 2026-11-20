@@ -34,9 +34,12 @@ pub fn mirror() -> bool {
         {
             return b;
         }
-        let region_cn = sys_locale::get_locale()
-            .is_some_and(|l| l.ends_with("-CN") || l.eq_ignore_ascii_case("zh-hans-cn"));
-        region_cn || china_time_zone()
+        let locale = sys_locale::get_locale().unwrap_or_default();
+        let region_cn = locale.ends_with("-CN") || locale.eq_ignore_ascii_case("zh-hans-cn");
+        // Windows' "China Standard Time" also covers Hong Kong (and Macau, Taipei sit next to it): a region set there wins, as on
+        // the Mac (ModelBundle.chinaTimeZones), where Hugging Face is reachable
+        let elsewhere = ["-HK", "-MO", "-TW"].iter().any(|r| locale.to_ascii_uppercase().ends_with(r));
+        region_cn || (china_time_zone() && !elsewhere)
     })
 }
 
@@ -58,8 +61,10 @@ fn china_time_zone() -> bool {
             [
                 "Asia/Shanghai",
                 "Asia/Chongqing",
+                "Asia/Chungking",
                 "Asia/Harbin",
                 "Asia/Urumqi",
+                "Asia/Kashgar",
                 "PRC",
             ]
             .iter()

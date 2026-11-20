@@ -102,9 +102,10 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertEqual([wide.width, wide.height, wide.bitrate], [2560, 1440, 7_447_272])
         let small = RemoteScreenPlan(.balanced, local: true, window: RemotePixelSize(width: 1000, height: 700))
         XCTAssertEqual([small.width, small.height, small.bitrate], [1000, 700, 4_000_000])
-        // Low Data Mode, or Data Saver: 1280 × 800 at most, 1 Mbps, 15 frames
-        let saver = RemoteScreenPlan(.auto, local: true, lowData: true, window: window)
+        // Data Saver: 1280 × 800 at most, 1 Mbps, 15 frames. Low Data Mode alone doesn't choose it: Auto stays Balanced away (a hotspot)
+        let saver = RemoteScreenPlan(.saver, local: true, window: window)
         XCTAssertEqual([saver.width, saver.height, saver.bitrate, saver.fps], [1280, 720, 1_000_000, 15])
+        XCTAssertEqual(RemoteScreenPlan(.auto, local: false, lowData: true, window: window), RemoteScreenPlan(.balanced, local: false, window: window))
         // Sharp away: the window, 8 Mbps, 30 frames
         let sharp = RemoteScreenPlan(.sharp, local: false, window: window)
         XCTAssertEqual([sharp.width, sharp.height, sharp.bitrate, sharp.fps], [2400, 1350, 8_000_000, 30])
@@ -174,7 +175,26 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertEqual(row(service, connected: true, route: .goBetween, failed: .noDirect), .connected(.goBetween))
         XCTAssertEqual(row(service, nearby: true, failed: .noDirect), .available(.local), "on the same network it doesn't need the service")
         XCTAssertEqual(row(own, failed: .noDirect), .available(.relay), "an own relay carries what the service can't")
+        // its own relay down (2026-11-20, the office): said on the card; the service is tried meanwhile
+        XCTAssertEqual(row(own, failed: .relayDown), .relayDown)
+        XCTAssertEqual(row(own, nearby: true, failed: .relayDown), .available(.local))
+        // what its relay says (peek): not waiting there is asleep (it said so) or offline, never "available"
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: false, asleep: t, seen: t)), .asleep(t))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: false, seen: t)), .offline(t))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: true)), .available(.relay))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: true, failed: nil, presence: RemotePresence(host: false, asleep: t)), .available(.local),
+                       "on the same network it answers whatever the relay says")
         XCTAssertEqual(row(tail), .available(.tailscale))
         XCTAssertEqual(row(none), .offline(now))
+    }
+
+    func testTerminalsOnTheRemote() {
+        XCTAssertTrue(RemoteTerminals.isTerminal("com.googlecode.iterm2"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("WindowsTerminal.exe"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("C:\\Windows\\System32\\cmd.exe"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("/usr/libexec/gnome-terminal-server"))
+        XCTAssertFalse(RemoteTerminals.isTerminal("notepad.exe"))
+        XCTAssertFalse(RemoteTerminals.isTerminal("com.apple.Safari"))
     }
 }

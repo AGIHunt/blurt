@@ -51,10 +51,13 @@ enum Words {
         case .checkAwake: return String(localized: "Check that the computer isn’t asleep and Blurt is running.")
         case .noDirect: return String(localized: "Can’t connect directly. Set up your own relay on the computer.")
         case .goBetweenBusy: return String(localized: "The public connection service has reached today’s limit. Try again later, or use your own relay.")
+        case .relayDown: return String(localized: "Its own relay isn’t responding. Trying the public connection service…")
         case .needsPairing: return String(localized: "Needs pairing again")
         case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) no longer knows this iPhone.")
         case .otherPhone: return String(localized: "Another phone is connected")
         case .touchToTakeOver: return String(localized: "Touch to take over.")
+        case .endedThere: return String(localized: "Someone at \(n) ended the connection.")
+        case .touchToReconnect: return String(localized: "Touch to reconnect.")
         case .pairFirst: return String(localized: "Pair with your computer")
         case .whereTheCodeIs: return whereTheCodeIs
         case .waiting: return String(localized: "Waiting for your computer")

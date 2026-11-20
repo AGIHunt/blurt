@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { invoke, listen, type RemoteRoute } from '../api';
 
 /** noDirect: the public connection service found no direct path last time (until it connects, or Connect tries again) */
-export type ComputerState = 'connected' | 'available' | 'noDirect' | 'offline';
+/** asleep: its relay says it went to sleep (lastSeen is then when) */
+export type ComputerState = 'connected' | 'available' | 'noDirect' | 'asleep' | 'offline';
 export interface ComputerRow {
   id: string;
   name: string;
@@ -72,6 +73,7 @@ export function rowPlan(c: ComputerRow): { state: string; route: RemoteRoute | n
   if (c.state === 'connected') return { state: 'computers.state.connected', route: c.route ?? 'local', when: null, action: 'open', warn: false };
   if (c.state === 'available') return { state: 'computers.state.available', route: c.route ?? 'local', when: null, action: 'connect', warn: false };
   if (c.state === 'noDirect') return { state: 'computers.state.no_direct', route: null, when: null, action: 'connect', warn: true };
+  if (c.state === 'asleep') return { state: 'computers.state.asleep', route: null, when: c.lastSeen, action: 'connect', warn: false };
   return { state: c.lastSeen ? 'computers.state.offline' : 'computers.state.offline_never', route: null, when: c.lastSeen, action: 'connect', warn: false };
 }
 

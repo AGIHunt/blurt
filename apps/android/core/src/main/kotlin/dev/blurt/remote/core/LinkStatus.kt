@@ -6,7 +6,7 @@
 // most one button for it.
 package dev.blurt.remote.core
 
-enum class LinkPhase { UNPAIRED, CONNECTING, UNREACHABLE, CONNECTED, FORGOTTEN, REPLACED }
+enum class LinkPhase { UNPAIRED, CONNECTING, UNREACHABLE, CONNECTED, FORGOTTEN, REPLACED, ENDED }
 
 /** The connection as the pad needs to know it. Nothing here comes from the wire that Link doesn't already publish. */
 data class LinkStatus(
@@ -34,6 +34,8 @@ enum class AwayTrouble {
     NO_DIRECT,
     /** out of today's free quota, or rate-limited */
     BUSY,
+    /** the computer's own relay doesn't answer; the public connection service is tried meanwhile (2026-11-20, the office) */
+    RELAY_DOWN,
 }
 
 /** what's drawn beside the words: a state is never told by colour alone */
@@ -44,12 +46,13 @@ enum class StatusLine {
     CANT_REACH, CHECK_NETWORK, CHECK_AWAKE,
     NEEDS_PAIRING, FORGOTTEN,
     OTHER_PHONE, TOUCH_TO_TAKE_OVER,
+    ENDED_THERE, TOUCH_TO_RECONNECT,
     PAIR_FIRST, WHERE_THE_CODE_IS,
     WAITING, ALLOW_ON_COMPUTER,
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
     CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF,
-    NO_DIRECT, GO_BETWEEN_BUSY,
+    NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
 
 enum class StatusAction { RETRY, SCAN, ANOTHER }
@@ -66,7 +69,11 @@ data class StatusBanner(
         fun of(s: LinkStatus): StatusBanner? {
             var b: StatusBanner? = if (s.phase == LinkPhase.UNREACHABLE && s.away != null) {
                 // the go-between said why it can't carry this: once nothing else has answered either, that's the one thing to say
-                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.away == AwayTrouble.NO_DIRECT) StatusLine.NO_DIRECT else StatusLine.GO_BETWEEN_BUSY,
+                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, when (s.away) {
+                    AwayTrouble.NO_DIRECT -> StatusLine.NO_DIRECT
+                    AwayTrouble.BUSY -> StatusLine.GO_BETWEEN_BUSY
+                    AwayTrouble.RELAY_DOWN -> StatusLine.RELAY_DOWN
+                },
                     StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
             } else when (s.phase) {
                 LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
@@ -75,6 +82,7 @@ data class StatusBanner(
                     StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
                 LinkPhase.FORGOTTEN -> StatusBanner(StatusMark.PROBLEM, StatusLine.NEEDS_PAIRING, StatusLine.FORGOTTEN, StatusAction.SCAN)
                 LinkPhase.REPLACED -> StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, StatusLine.TOUCH_TO_TAKE_OVER)
+                LinkPhase.ENDED -> StatusBanner(StatusMark.PHONE, StatusLine.ENDED_THERE, StatusLine.TOUCH_TO_RECONNECT)
                 LinkPhase.CONNECTED -> when {
                     s.screenError == "off" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.SCREEN_IS_OFF)
                     s.screenError == "permission" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.ALLOW_SCREEN)

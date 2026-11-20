@@ -73,13 +73,14 @@ export function ComputersGroup() {
 function ComputerLine({ c, onRemove }: { c: ComputerRow; onRemove: () => void }) {
   const p = rowPlan(c);
   const route = p.route ? S(`phone.route.${p.route}`) : '';
-  const when = p.when ? i18n().formatRelative(p.when) : '';
+  // asleep since a clock time ("10:42"); offline since a while ago ("3 hours ago")
+  const when = !p.when ? '' : c.state === 'asleep' ? i18n().formatDate(p.when, Date.now() - p.when < 20 * 3600_000 ? 'time' : 'datetime') : i18n().formatRelative(p.when);
   const stateText = S(p.state, p.route ? route : when);
   const label = S(p.action === 'open' ? 'computers.open' : 'computers.connect');
   const tone = c.state === 'connected' ? 'good' : p.warn ? 'warn' : c.state === 'available' ? 'ready' : 'off';
   const open = () => void applyComputers(computers.open(c.id)).catch(() => {});
   // offline: nothing to press at rest (a try is in ⋯); otherwise its one button
-  const offline = c.state === 'offline';
+  const offline = c.state === 'offline' || c.state === 'asleep';
   return (
     <DeviceRow icon="screen" name={c.name} testid={`computer-${c.id}`}
       state={<StateLine tone={tone} state={stateText} rest={c.platform ? SYSTEM[c.platform] : undefined} tip={p.warn ? S('computers.no_direct.detail') : undefined}

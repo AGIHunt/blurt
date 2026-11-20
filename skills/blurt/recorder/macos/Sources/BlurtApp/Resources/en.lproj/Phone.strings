@@ -60,8 +60,8 @@
 "phone.tips" = "If It Won’t Connect";
 "phone.tips.network" = "Put the phone and your Mac on the same Wi-Fi.";
 "phone.tips.open" = "Open Blurt on the phone and make sure your Mac isn’t asleep.";
-"phone.tips.vpn" = "Turn off VPN on both. If your Mac’s firewall is on, allow incoming connections for Blurt.";
-"phone.tips.vpn.local" = "Turn off VPN on both. On your Mac, allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
+"phone.tips.vpn" = "If a VPN is on, let it pass local network traffic, or try with it off. If your Mac’s firewall is on, allow incoming connections for Blurt.";
+"phone.tips.vpn.local" = "If a VPN is on, let it pass local network traffic, or try with it off. On your Mac, allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
 "phone.tips.away.none" = "On another network (for example, away from home), the phone connects through your own relay. None is set.";
 "phone.tips.away.go_between" = "On another network, the phone connects through the public connection service. If that network can’t connect directly, set up your own relay.";
 "phone.mac.ok.go_between" = "Away from home through the public connection service";
@@ -84,6 +84,7 @@
 "viewer.state.connected" = "Connected · %@";
 "viewer.state.available" = "Available · %@";
 "viewer.state.offline" = "Offline · %@";
+"viewer.state.asleep" = "Asleep · since %@";
 "viewer.state.offline.never" = "Offline";
 "viewer.state.no_direct" = "Can’t Connect Directly";
 "viewer.state.just_now" = "just now";
@@ -99,11 +100,21 @@
 "viewer.add.unreachable" = "Can’t reach %@.";
 "viewer.connecting" = "Connecting…";
 "viewer.unreachable" = "Can’t reach %@.";
+"viewer.unreachable.mac" = "Can’t reach %@. If it restarted with FileVault on, someone needs to enter its password at the computer first.";
+"viewer.locked.linux" = "%@ is locked. The picture comes back when it’s unlocked. To reach its login screen too, turn on Remote Login in its Settings → System → Remote Desktop.";
+"viewer.reconnecting" = "Reconnecting…";
+"viewer.quality.costs_data" = "Using mobile data";
+"viewer.locked" = "%@ is locked. The picture comes back once it’s unlocked.";
 "viewer.no_direct" = "Can’t connect directly. Set up your own relay on the other computer.";
 "viewer.busy" = "The public connection service has reached today’s limit. Try again later, or use your own relay.";
+"viewer.relay_down" = "%@’s own relay isn’t responding. Trying the public connection service…";
+"viewer.relay_down.short" = "Its own relay isn’t responding.";
+"viewer.state.relay_down" = "Relay Not Responding";
 "viewer.retry" = "Try Again";
 "viewer.forgotten" = "%@ removed this Mac. Add it again to use it.";
 "viewer.replaced" = "Another device is controlling %@.";
+"viewer.ended" = "Someone at %@ ended the connection.";
+"viewer.reconnect" = "Reconnect";
 "viewer.take_over" = "Take Over";
 "viewer.screen_off" = "%@ doesn’t show its screen. Turn it on in its Settings.";
 "viewer.screen_permission" = "%@ needs Screen Recording permission.";
@@ -126,4 +137,30 @@
 "viewer.follow" = "Follow the Pointer";
 "viewer.new_window" = "Open in New Window";
 "viewer.release" = "Press ⌃⌘ to release the keyboard and mouse";
-"viewer.release.app_only" = "Press ⌃⌘ to release the keyboard and mouse. System shortcuts stay on this Mac until Accessibility is on.";
+"viewer.release.app_only" = "Press ⌃⌘ to release the keyboard and mouse. ⌘Tab and other system shortcuts stay on this Mac until Blurt is allowed in Input Monitoring.";
+"viewer.allow_shortcuts" = "Send System Shortcuts…";
+
+/* the bar on the controlled Mac */
+"remote.banner.controlling" = "“%@” is controlling this Mac";
+"remote.banner.disconnect" = "Disconnect";
+
+/* the Remote Control page: who was in this Mac */
+"phone.log" = "Connection Log";
+"phone.log.paired" = "Paired · %@";
+"phone.log.now" = "%@ · Connected now";
+"remote.notice.new_pairing" = "New device paired with %2$@: %1$@. If that wasn’t you or your family, remove it on that computer.";
+"remote.privacy.cover" = "This Mac is being used remotely by %@.\nThe screen is hidden.";
+"viewer.privacy" = "Black Out Remote Screen";
+"viewer.privacy.tip" = "Covers that computer’s screen with a note that it’s in use remotely. You still see everything.";
+"remote.text.refused" = "Not typed: a password field or the lock screen is in front.";
+"phone.log.all" = "Show All (%ld)";
+"phone.log.less" = "Show Less";
+"remote.file.received.title" = "File from %@";
+"viewer.send_files" = "Send Files…";
+"viewer.file.sending" = "Sending “%@”…";
+"viewer.file.saved" = "“%@” is in Downloads there.";
+"viewer.file.failed.space" = "Not sent: not enough space there.";
+"viewer.file.failed.too_big" = "Not sent: larger than 4 GB.";
+"viewer.file.failed.locked" = "Not sent: that computer is locked.";
+"viewer.file.failed.other" = "Not sent.";
+"viewer.ctrl_alt_del" = "Send Ctrl+Alt+Del";

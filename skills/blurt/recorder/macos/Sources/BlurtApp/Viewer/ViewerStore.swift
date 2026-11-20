@@ -44,6 +44,9 @@ final class ViewerStore: ObservableObject {
     private var pairingLink: RemoteViewerLink?
     private var browser: NWBrowser?
     private var watchers: Set<String> = []
+    /// what each computer's relay said lately (`peek`), while a list of computers is on screen: asleep since, last seen
+    @Published private(set) var presence: [String: RemotePresence] = [:]
+    private var peekTimer: Timer?
 
     #if DEBUG || BLURT_TEST_HOOKS
     nonisolated static let testing = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
@@ -126,7 +129,8 @@ final class ViewerStore: ObservableObject {
     /// The way a computer that isn't open would be reached: the same network if it's here, else its relay or an overlay address.
     func row(_ c: RemoteComputer) -> Row {
         let l = live[c.id]
-        return RemoteViewerRow.of(c, connected: l != nil, route: l?.route, nearby: nearby.contains { $0.id == c.id }, failed: failed[c.id])
+        return RemoteViewerRow.of(c, connected: l != nil, route: l?.route, nearby: nearby.contains { $0.id == c.id }, failed: failed[c.id],
+                                  presence: presence[c.id])
     }
 
     /// The way being tried, before it's up: the public connection service until the move, the owner's relay, the same network.
@@ -143,9 +147,21 @@ final class ViewerStore: ObservableObject {
         case let .connected(p): T("viewer.state.connected", path(p))
         case let .available(p): T("viewer.state.available", trying(p))
         case .noDirect: T("viewer.state.no_direct")
+        case .relayDown: T("viewer.state.relay_down")
+        case let .asleep(d): T("viewer.state.asleep", Self.clock(d))
         case let .offline(d?): T("viewer.state.offline", Self.when(d))
         case .offline(nil): T("viewer.state.offline.never")
         }
+    }
+
+    /// "10:42", or "Yesterday 10:42" / "11月18日 10:42" further back
+    static func clock(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Loc.locale
+        f.timeStyle = .short
+        f.dateStyle = Calendar.current.isDateInToday(d) ? .none : .short
+        f.doesRelativeDateFormatting = true
+        return f.string(from: d)
     }
 
     static func when(_ d: Date) -> String {
@@ -176,6 +192,11 @@ final class ViewerStore: ObservableObject {
     /// The list or the Add Computer sheet came on show ("list", "settings", "add"): look for computers on this network while any does.
     func watch(_ who: String) {
         watchers.insert(who)
+        if peekTimer == nil {
+            peekAll()
+            // once a minute while a list shows: a few small requests, nothing while nobody's looking
+            peekTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in MainActor.assumeIsolated { ViewerStore.shared.peekAll() } }
+        }
         guard browser == nil else { return }
         #if DEBUG || BLURT_TEST_HOOKS
         if fakeNearby { return }       // the screenshots' made-up network: nothing real is listed
@@ -197,9 +218,22 @@ final class ViewerStore: ObservableObject {
         browser = b
     }
 
+    /// Asks each closed computer's relay whether it's there (a window that's open knows already).
+    func peekAll() {
+        for c in computers where live[c.id] == nil {
+            guard let a = c.relayAddress, let key = key(c) else { continue }
+            let id = c.id
+            RemoteRelay.peek(address: a, room: RemoteRelay.room(key: key)) { p in
+                DispatchQueue.main.async { MainActor.assumeIsolated { ViewerStore.shared.presence[id] = p } }
+            }
+        }
+    }
+
     func unwatch(_ who: String) {
         watchers.remove(who)
         guard watchers.isEmpty else { return }
+        peekTimer?.invalidate()
+        peekTimer = nil
         browser?.cancel()
         browser = nil
         #if DEBUG || BLURT_TEST_HOOKS
@@ -259,7 +293,7 @@ final class ViewerStore: ObservableObject {
                     emit(["event": "viewer_pairing", "state": "paired", "away": a.rawValue])
                     ViewerWindowController.open(link.computer, adopting: link)
                 case let .away(a):
-                    self.pairing?.failed = a == .busy ? T("viewer.busy") : T("viewer.no_direct")
+                    self.pairing?.failed = T(a == .busy ? "viewer.busy" : a == .relayDown ? "viewer.relay_down.short" : "viewer.no_direct")
                 default: break
                 }
             }

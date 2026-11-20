@@ -170,6 +170,8 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.FORGOTTEN -> c.getString(R.string.status_forgotten, n)
                 StatusLine.OTHER_PHONE -> c.getString(R.string.status_other_phone)
                 StatusLine.TOUCH_TO_TAKE_OVER -> c.getString(R.string.status_take_over)
+                StatusLine.ENDED_THERE -> c.getString(R.string.status_ended)
+                StatusLine.TOUCH_TO_RECONNECT -> c.getString(R.string.status_reconnect)
                 StatusLine.PAIR_FIRST -> c.getString(R.string.status_pair_first)
                 StatusLine.WHERE_THE_CODE_IS -> c.getString(R.string.status_unpaired)
                 StatusLine.WAITING -> c.getString(R.string.status_waiting_title)
@@ -183,6 +185,7 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.SCREEN_IS_OFF -> c.getString(R.string.status_screen_off)
                 StatusLine.NO_DIRECT -> c.getString(R.string.status_no_direct)
                 StatusLine.GO_BETWEEN_BUSY -> c.getString(R.string.status_go_between_busy)
+                StatusLine.RELAY_DOWN -> c.getString(R.string.status_relay_down)
             }
         }
 

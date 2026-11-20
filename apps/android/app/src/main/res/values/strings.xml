@@ -49,8 +49,11 @@
     <string name="status_check_awake">Check that the computer isn’t asleep and Blurt is running.</string>
     <string name="status_no_direct">Can’t connect directly. Set up your own relay on the computer.</string>
     <string name="status_go_between_busy">The public connection service has reached today’s limit. Try again later, or use your own relay.</string>
+    <string name="status_relay_down">Its own relay isn’t responding. Trying the public connection service…</string>
     <string name="status_other_phone">Another phone is connected</string>
     <string name="status_take_over">Touch to take over.</string>
+    <string name="status_ended">The computer ended the connection</string>
+    <string name="status_reconnect">Touch to reconnect.</string>
     <string name="status_pair_first">Pair with your computer</string>
     <string name="status_waiting_title">Waiting for your computer</string>
     <string name="status_pair_failed">Pairing didn’t work</string>
@@ -112,6 +115,7 @@
     <string name="s_unreachable">Can’t reach it</string>
     <string name="s_forgotten">Needs pairing again</string>
     <string name="s_replaced">Another phone is using it</string>
+    <string name="s_ended">Ended at the computer</string>
     <string name="s_not_connected">Not connected</string>
     <string name="s_on_network">On this network</string>
     <string name="s_uses_relay">Uses your relay</string>

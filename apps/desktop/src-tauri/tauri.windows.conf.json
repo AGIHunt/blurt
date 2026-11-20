@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "resources": {
+      "gen/skill/": "skill/",
+      "../../../skills/blurt/models/*": "models/",
+      "sounds/*.wav": "sounds/",
+      "binaries/blurt-remote-service.exe": "blurt-remote-service.exe"
+    }
+  }
+}

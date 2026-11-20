@@ -44,8 +44,11 @@
     <string name="status_check_awake">确认电脑没有进入睡眠，Blurt 在运行。</string>
     <string name="status_no_direct">无法直连。请在电脑上设置自建中转。</string>
     <string name="status_go_between_busy">公共连接服务今日已达上限。请稍后再试，或使用自建中转。</string>
+    <string name="status_relay_down">对方的自建中转无响应，正在改用公共连接服务…</string>
     <string name="status_other_phone">另一台手机已连接</string>
     <string name="status_take_over">轻点这里，换成这台手机。</string>
+    <string name="status_ended">电脑那边断开了连接</string>
+    <string name="status_reconnect">轻点这里重新连接。</string>
     <string name="status_pair_first">与电脑配对</string>
     <string name="status_waiting_title">等待电脑确认</string>
     <string name="status_pair_failed">配对没有成功</string>
@@ -105,6 +108,7 @@
     <string name="s_unreachable">连不上</string>
     <string name="s_forgotten">需要重新配对</string>
     <string name="s_replaced">另一台手机正在用</string>
+    <string name="s_ended">对方已断开</string>
     <string name="s_not_connected">未连接</string>
     <string name="s_on_network">在当前网络</string>
     <string name="s_uses_relay">使用你的中转</string>

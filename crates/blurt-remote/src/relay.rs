@@ -373,3 +373,53 @@ mod tests {
         assert_eq!(address(GO_BETWEEN).as_deref(), Some(GO_BETWEEN));
     }
 }
+
+// ------------------------------------------------------------------ peek
+
+/// What a relay says of a room's computer without joining it (`GET …/peek`, tools/remote-relay): waiting there now, else since when
+/// it's asleep (it said so before sleeping, close code 4010) or last seen (ms). Only a paired device can ask: the room comes from the
+/// pair's key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Presence {
+    pub host: bool,
+    pub asleep: Option<i64>,
+    pub seen: Option<i64>,
+}
+
+/// A computer's close code when it's going to sleep: the relay keeps the time for `peek`.
+pub const ASLEEP: u16 = 4010;
+
+/// Blocking (5 s at most): the room's computer as the relay at `address` knows it; None when it can't say (an older relay, no answer).
+pub fn peek(address: &str, room: &str) -> Option<Presence> {
+    use std::io::{Read, Write};
+    let url = room_url(address, room, "peek")?;
+    let (tls, rest) = if let Some(r) = url.strip_prefix("wss://") { (true, r) } else { (false, url.strip_prefix("ws://")?) };
+    let (hostport, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}")))?;
+    let host = hostport.rsplit_once(':').filter(|(_, p)| p.parse::<u16>().is_ok()).map_or(hostport, |(h, _)| h);
+    let port: u16 = hostport.rsplit_once(':').and_then(|(_, p)| p.parse().ok()).unwrap_or(if tls { 443 } else { 80 });
+    let addr = std::net::ToSocketAddrs::to_socket_addrs(&(host, port)).ok()?.next()?;
+    let mut tcp = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(5)).ok()?;
+    tcp.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+    tcp.set_write_timeout(Some(Duration::from_secs(5))).ok()?;
+    let req = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Blurt\r\nAccept: application/json\r\nConnection: close\r\n\r\n");
+    let mut body = Vec::new();
+    if tls {
+        let name = rustls::pki_types::ServerName::try_from(host.to_string()).ok()?;
+        let conn = rustls::ClientConnection::new(self::tls(), name).ok()?;
+        let mut s = rustls::StreamOwned::new(conn, tcp);
+        s.write_all(req.as_bytes()).ok()?;
+        let _ = s.read_to_end(&mut body);
+    } else {
+        tcp.write_all(req.as_bytes()).ok()?;
+        let _ = tcp.read_to_end(&mut body);
+    }
+    let text = String::from_utf8_lossy(&body);
+    let (head, json) = text.split_once("\r\n\r\n")?;
+    if !head.starts_with("HTTP/1.1 200") && !head.starts_with("HTTP/1.0 200") {
+        return None;
+    }
+    // a chunked answer (Cloudflare's): the JSON object is the part between the braces
+    let json = &json[json.find('{')?..=json.rfind('}')?];
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    Some(Presence { host: v["host"].as_bool()?, asleep: v["asleep"].as_i64(), seen: v["seen"].as_i64() })
+}

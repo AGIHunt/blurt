@@ -64,6 +64,9 @@ object RemoteRelay {
 object RemoteSTUN {
     const val SERVER = "stun.cloudflare.com"
     const val PORT = 3478
+    /** Asked together, the first answer taken, as every other Blurt does: Cloudflare's, and one that answers from mainland China, where
+     *  Cloudflare's doesn't. Wherever the user is, one of them does. */
+    val SERVERS = listOf("stun.cloudflare.com" to 3478, "stun.miwifi.com" to 3478)
     private val COOKIE = byteArrayOf(0x21, 0x12, 0xA4.toByte(), 0x42)
 
     fun newTransaction(): ByteArray = RemoteCrypto.random(12)

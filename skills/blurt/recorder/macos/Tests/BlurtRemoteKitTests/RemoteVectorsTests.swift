@@ -76,6 +76,10 @@ final class RemoteVectorsTests: XCTestCase {
             ("clipboard", .clipboard("复制 copied\n")),
             ("keys_captured", .keysCaptured(true)),
             ("keys_released", .keysCaptured(false)),
+            ("privacy_on", .privacyScreen(true)),
+            ("file_begin", .fileBegin(id: "f1", name: "notes.txt", size: 5)),
+            ("file_chunk", .fileChunk(id: "f1", data: Data("hello".utf8))),
+            ("file_end", .fileEnd(id: "f1")),
             ("key_f13_down", .key(RemoteChord([], "F13"), down: true)),
             ("key_keypad_enter", .key(RemoteChord([], "KeypadEnter"), down: nil)),
         ]
@@ -122,6 +126,11 @@ final class RemoteVectorsTests: XCTestCase {
                                                           candidates: [RemoteCandidate(host: "192.168.1.20", port: 50123)], displayAspect: 1.6,
                                                           platform: "mac", features: ["move", "viewer"]))),
             ("clipboard", .clipboard("host text")),
+            ("screen_locked", .screenLocked(true)),
+            ("ended", .ended),
+            ("file_progress", .fileProgress(id: "f1", bytes: 5)),
+            ("file_saved", .fileSaved(id: "f1", name: "notes.txt")),
+            ("file_failed", .fileFailed(id: "f1", why: "space")),
         ]
     }
 
