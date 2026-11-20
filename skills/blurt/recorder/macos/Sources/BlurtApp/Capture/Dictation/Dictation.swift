@@ -564,6 +564,7 @@ final class Dictation {
 
     /// Re-reads the settings: the tap on or off, the key and the mode.
     func apply() {
+        DictationFrontApp.watch()
         applied = Dictation.applySettings
         DictationHistory.shared.keepNothing = Dictation.retentionDays == 0
         let keyBefore = trigger.key
@@ -1050,7 +1051,7 @@ final class Dictation {
 
     /// The mic (or the test wav) → the wav file and the stream. On the key-down (pre-capture) or at the start.
     private func beginCapture() {
-        front = NSWorkspace.shared.frontmostApplication
+        front = DictationFrontApp.current          // never a background agent (UserNotificationCenter): DictationFrontApp
         frontKey = currentFrontKey
         runaway = DictationRunaway()
         startedAt = Date()

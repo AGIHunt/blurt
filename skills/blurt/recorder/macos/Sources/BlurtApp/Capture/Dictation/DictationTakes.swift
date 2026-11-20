@@ -454,7 +454,7 @@ extension Dictation {
         let fromHistory = take.frontKey == DictationTake.historyKey
         let appChanged = !fromHistory && take.frontKey != currentFrontKey
         // the app the text goes into: the one in front now when it changed (tests keep the take's: `dictation style app`)
-        let app = appChanged && !DictationInsert.testMode ? NSWorkspace.shared.frontmostApplication : take.front
+        let app = appChanged && !DictationInsert.testMode ? DictationFrontApp.current : take.front
         // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
         // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
         // field go, punctuation and spacing follow the sentence). A field whose text can't be read (WeChat) gets the
