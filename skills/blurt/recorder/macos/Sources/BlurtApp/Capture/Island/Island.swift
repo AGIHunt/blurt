@@ -11,7 +11,11 @@
 // beside the notch. A short done state is said in the ears, not a toast: "✓ Sent" after a double tap, "✓ Saved 0:42"
 // after a take (earMoment). A screen without a notch (an external display) gets the same island since v1.0.3: a notch
 // drawn in its menu bar's row, the built-in notch's width and the menu bar's height (it was a capsule 6 pt under the
-// menu bar, hidden when idle; that code is still there behind geo.notch == false). Hovering 180 ms (or a hotkey)
+// menu bar, hidden when idle; that code is still there behind geo.notch == false). A punch hole (the touch-screen
+// MacBook Pro: a 59 pt gap between the menu bar's halves, a 40 pt unsafe band under a 45 pt menu bar) is not a notch:
+// macOS draws its own island over it and grows it to about 140 pt while the microphone is on, so the island is hidden
+// at rest and, while live, is a capsule floating where macOS's is (5 pt down, 35 pt tall) with its ears outside 185 pt
+// (IslandLayout.cutout; ~/.blurt/config.json app.island_cutout_width tunes that width). Hovering 180 ms (or a hotkey)
 // opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves it and
 // the hanging cards (HangingCards.swift), which drop after the same rest (CardReveal.dwell, 180 ms: a brush past the
 // notch drops nothing). Resting on the cards' count opens the island after 450 ms (the cards are down by then).
@@ -145,6 +149,7 @@ final class Island: NSObject, IslandHosting {
         var row: CGFloat = 30          // height of the ears row
         var cx: CGFloat = 320          // centre x in the panel
         var drawn = false              // no notch on this screen: the island draws one in the menu bar's row
+        var rest: CGSize?              // a punch hole: the shape at rest is only the hole (IslandLayout.cutout)
     }
 
     /// "Show the notch when idle" (app.island_idle): off hides what stands at rest (see the header).
@@ -513,9 +518,17 @@ final class Island: NSObject, IslandHosting {
     static var builtInNotchWidth: CGFloat {
         if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }),
            let l = n.auxiliaryTopLeftArea, let r = n.auxiliaryTopRightArea {
-            return n.frame.width - l.width - r.width
+            return Island.cutout(on: n, left: l, right: r).live.width
         }
         return 185
+    }
+
+    /// The island's middle on a screen with a notch or a punch hole (IslandLayout.cutout). The width the ears keep
+    /// clear of beside a punch hole can be tuned in ~/.blurt/config.json: {"app": {"island_cutout_width": 200}}.
+    static func cutout(on s: NSScreen, left l: NSRect, right r: NSRect) -> IslandLayout.Cutout {
+        let live = (Config.shared["app.island_cutout_width"] as? Double).map { CGFloat($0) } ?? IslandLayout.punchHoleLiveWidth
+        return IslandLayout.cutout(gap: s.frame.width - l.width - r.width, safeTop: s.safeAreaInsets.top,
+                                   menuBar: max(s.frame.maxY - s.visibleFrame.maxY, 24), liveWidth: live)
     }
 
     private func ensurePanel(on s: NSScreen) {
@@ -524,9 +537,11 @@ final class Island: NSObject, IslandHosting {
         if #available(macOS 12.0, *), !Island.testNoNotch, s.safeAreaInsets.top > 0, let l = s.auxiliaryTopLeftArea,
            let r = s.auxiliaryTopRightArea {
             g.notch = true
-            g.notchW = s.frame.width - l.width - r.width
-            g.notchH = s.safeAreaInsets.top
-            g.top = 0
+            let c = Island.cutout(on: s, left: l, right: r)
+            g.notchW = c.live.width
+            g.notchH = c.live.height
+            if c.rest != c.live { g.rest = c.rest }
+            g.top = c.top                     // a punch hole: floating, as macOS's own island (IslandLayout.cutout)
             g.row = g.notchH
             g.cx = Island.panelSize.width / 2 + ((l.maxX + r.minX) / 2 - s.frame.midX)
         } else {
@@ -666,7 +681,10 @@ final class Island: NSObject, IslandHosting {
         if geo.notch {
             // each side as wide as its own content: "✓ Sent" widens the right ear only; a moment on one side grows that side
             let n = earNeed
-            return (geo.notchW + n.left + n.right, geo.notchH, 10, IslandLayout.earShift(left: n.left, right: n.right))
+            if n.left == 0, n.right == 0, let r = geo.rest { return (r.width, r.height, 10, 0) }
+            // beside a punch hole a capsule, as macOS's island it wraps; a notch's ears have 10 pt corners
+            return (geo.notchW + n.left + n.right, geo.notchH, geo.top > 0 ? geo.notchH / 2 : 10,
+                    IslandLayout.earShift(left: n.left, right: n.right))
         }
         var cw = max(120, (e.left ? left.width + 24 : 0) + (e.right ? right.width + 24 : 0) + (anyEar ? 8 : 0))
         // live text hangs under it: the capsule takes the panel's width family (as the notch with its ears does), so
@@ -690,8 +708,9 @@ final class Island: NSObject, IslandHosting {
     var onNotch: Bool { geo.notch }
 
     private var capsuleVisible: Bool {
-        // a drawn notch (no notch on this screen) is left out at rest when the user said so (app.island_idle)
-        (geo.notch && !(geo.drawn && !Island.showsAtRest)) || open || drawer != nil || toastNow != nil || revealed
+        // a drawn notch (no notch on this screen) is left out at rest when the user said so (app.island_idle); a punch
+        // hole floats under the menu bar's top edge, so a notch drawn flush around it at rest is left out too
+        (geo.notch && geo.rest == nil && !(geo.drawn && !Island.showsAtRest)) || open || drawer != nil || toastNow != nil || revealed
             || earsWanted.left || earsWanted.right
     }
 
@@ -741,7 +760,7 @@ final class Island: NSObject, IslandHosting {
         let outline = (rect: rect, radius: r.value, notch: geo.notch, lifted: lifted)
         if lastOutline.map({ $0 != outline }) ?? true {
             lastOutline = outline
-            let p = Island.path(rect, radius: r.value, shoulders: geo.notch)
+            let p = Island.path(rect, radius: r.value, shoulders: geo.notch && geo.top == 0)
             shape.path = p
             shape.shadowPath = lifted ? p : nil
         }
@@ -768,7 +787,9 @@ final class Island: NSObject, IslandHosting {
         let clipFrame = NSRect(x: rect.minX, y: geo.top, width: rect.width, height: rect.height)
         if clip.frame != clipFrame { clip.frame = clipFrame }
         let corner = min(r.value, rect.height / 2)
-        let corners: CACornerMask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        // a floating island (beside a punch hole) rounds its top corners too
+        let corners: CACornerMask = geo.top > 0 ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+                                                : [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         if let l = clip.layer, l.cornerRadius != corner || l.maskedCorners != corners {
             l.cornerRadius = corner
             l.maskedCorners = corners
@@ -1121,7 +1142,7 @@ final class Island: NSObject, IslandHosting {
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
         let inside = islandRect(margin: geo.notch && !open ? 4 : 2).contains(local) && vis.value > 0.5
         // capsule screens, and a notch hidden at rest (app.island_idle): the hot zone brings it out
-        if !geo.notch || !Island.showsAtRest, !capsuleVisible || quietAtRest || (revealed && !inside && !open) {
+        if !geo.notch || !Island.showsAtRest || geo.rest != nil, !capsuleVisible || quietAtRest || (revealed && !inside && !open) {
             // a notch hidden at rest: only over where it comes out (wider, the pointer would sit beside the bare notch
             // it brought out, which then went again after 0.4 s and came back: a flicker)
             let half: CGFloat = geo.notch ? geo.notchW / 2 : 160
