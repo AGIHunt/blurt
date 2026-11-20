@@ -31,7 +31,7 @@ enum LayoutCheck {
     private static var shrunk: [(NSWindow, NSRect)] = []
 
     static func run(_ arg: String) {
-        var delay = 0.35
+        var delay = wake() ? 1.2 : 0.35
         switch arg {
         case "min":
             restore()
@@ -40,15 +40,30 @@ enum LayoutCheck {
                 shrunk.append((w, f))
                 w.setFrame(NSRect(x: f.minX, y: f.maxY - w.minSize.height, width: w.minSize.width, height: w.minSize.height), display: true)
             }
-            delay = 0.9
+            delay = max(delay, 0.9)
         case "restore":
             restore()
-            delay = 0.9
+            delay = max(delay, 0.9)
         default: break
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             emit(["event": "layoutcheck", "arg": arg, "windows": windows().map { report($0, dump: arg == "dump") }])
         }
+    }
+
+    private static var awake = false
+
+    /// SwiftUI builds a window's accessibility tree only once an assistive client asks for it: until then a Settings
+    /// pane was two elements (the window's buttons), and the lint passed it having checked nothing. The app asks for
+    /// its own tree, as VoiceOver or an automation client would (AXManualAccessibility). true the first time: the
+    /// tree needs a moment to be built.
+    private static func wake() -> Bool {
+        guard !awake else { return false }
+        awake = true
+        let attr = "AXManualAccessibility"
+        NSApp.perform(NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: NSNumber(value: true), with: attr)
+        AXUIElementSetAttributeValue(AXUIElementCreateApplication(getpid()), attr as CFString, kCFBooleanTrue)
+        return true
     }
 
     private static func restore() {
@@ -81,14 +96,14 @@ enum LayoutCheck {
             let role = o.accessibilityRole?()?.rawValue ?? ""
             let subrole = o.accessibilitySubrole?()?.rawValue ?? ""
             let frame = local(o.accessibilityFrame?() ?? .zero)
-            var label = o.accessibilityLabel?() ?? ""
-            if label.isEmpty { label = o.accessibilityTitle?() ?? "" }
-            if label.isEmpty, let s = axValue(o) as? String { label = s }
+            var label = axText(o, "accessibilityLabel")
+            if label.isEmpty { label = axText(o, "accessibilityTitle") }
+            if label.isEmpty { label = text(axValue(o)) }
             label = String(label.replacingOccurrences(of: "\n", with: " ").prefix(80))
             let listy = inList || ["AXRow", "AXCell", "AXTable", "AXOutline", "AXList", "AXBrowser"].contains(role)
             var n = LayoutNode(role: role, subrole: subrole, label: label, frame: frame, clip: clip, parent: parent)
             // a text with a tooltip (.help) shows its whole self on hover: a path cut in the middle is by design there
-            let help = o.accessibilityHelp?() ?? ""
+            let help = axText(o, "accessibilityHelp")
             if role == "AXStaticText" || role == "AXTextField", !listy, help.isEmpty { n.truncated = truncated(o, frame: frame) }
             if LayoutLint.titled.contains(role), !listy { n.truncated = titleClipped(o, frame: frame, label: label) }
             nodes.append(n)
@@ -138,8 +153,9 @@ enum LayoutCheck {
             }
             return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: b.width, height: 100_000)).height > b.height + 1.5
         }
-        guard !(o is NSView), let s = axValue(o) as? String ?? o.accessibilityLabel?(), !s.isEmpty,
-              frame.width > 1, frame.height > 1 else { return false }
+        let value = text(axValue(o))
+        let s = value.isEmpty ? axText(o, "accessibilityLabel") : value
+        guard !(o is NSView), !s.isEmpty, frame.width > 1, frame.height > 1 else { return false }
         let len = (s as NSString).length
         guard let attr = o.accessibilityAttributedString?(for: NSRange(location: 0, length: len)), attr.length > 0,
               let font = font(attr) else { return false }
@@ -167,22 +183,41 @@ enum LayoutCheck {
             return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: 100_000, height: b.bounds.height)).width > b.bounds.width + 1.5
         }
         guard !(o is NSView), !(o is NSCell), !label.isEmpty, frame.width > 1, frame.height > 1 else { return false }
-        let id = o.accessibilityIdentifier?() ?? ""
+        let id = axText(o, "accessibilityIdentifier")
         let symbol = !id.isEmpty && NSImage(systemSymbolName: id, accessibilityDescription: nil) != nil
         guard !LayoutLint.iconOnly(frame: frame.size, symbolIdentifier: symbol) else { return false }
+        // a whole row made one element (a title, its description, a state and a button: several fonts in its label)
+        // isn't a title on one line: what it shows is read back from the rendering (cutTitles), not measured here
+        guard labelFonts(o) <= 1 else { return false }
         // SwiftUI tells a button's label font in its attributed description; else the control size its height implies
         let size = labelFontSize(o) ?? (frame.height >= 22 ? 13 : frame.height >= 17 ? 11 : 9)
         let width = NSAttributedString(string: label, attributes: [.font: NSFont.systemFont(ofSize: size)]).size().width
         return LayoutLint.controlTitleClipped(titleWidth: width, fontSize: size, frame: frame.size)
     }
 
-    private static func labelFontSize(_ o: AnyObject) -> CGFloat? {
+    private static func attributedDescription(_ o: AnyObject) -> NSAttributedString? {
         guard let n = o as? NSObject,
               let a = n.accessibilityAttributeValue(NSAccessibility.Attribute(rawValue: "AXAttributedDescription")) as? NSAttributedString,
-              a.length > 0,
+              a.length > 0 else { return nil }
+        return a
+    }
+
+    private static func labelFontSize(_ o: AnyObject) -> CGFloat? {
+        guard let a = attributedDescription(o),
               let d = a.attribute(NSAttributedString.Key(rawValue: "AXFont"), at: 0, effectiveRange: nil) as? [String: Any]
         else { return nil }
         return d["AXFontSize"] as? CGFloat
+    }
+
+    /// How many different fonts the label is drawn in (0 when the tree doesn't say).
+    private static func labelFonts(_ o: AnyObject) -> Int {
+        guard let a = attributedDescription(o) else { return 0 }
+        var fonts = Set<String>()
+        a.enumerateAttribute(NSAttributedString.Key(rawValue: "AXFont"), in: NSRange(location: 0, length: a.length)) { v, _, _ in
+            guard let d = v as? [String: Any] else { return }
+            fonts.insert("\(d["AXFontName"] ?? "")|\(d["AXFontSize"] ?? "")")
+        }
+        return fonts.count
     }
 
     /// The window's own rendering, read with Vision: each line of text and where it is (window points, top-left origin).
@@ -214,11 +249,42 @@ enum LayoutCheck {
         return n.perform(sel)?.takeUnretainedValue()
     }
 
+    /// A label, title, help or identifier, asked by selector and read as text: SwiftUI answers some of them with an
+    /// NSAttributedString, which the typed accessors (`String?`) take unchecked — the first use of it then threw
+    /// (-[NSConcreteAttributedString _fastCStringContents:], Settings → Dictation and → Text & Translation).
+    static func axText(_ o: AnyObject, _ selector: String) -> String {
+        let sel = NSSelectorFromString(selector)
+        guard let n = o as? NSObject, n.responds(to: sel) else { return "" }
+        return text(n.perform(sel)?.takeUnretainedValue())
+    }
+
+    static func text(_ v: Any?) -> String {
+        if let a = v as? NSAttributedString { return a.string }
+        if let s = v as? NSString { return s as String }
+        return ""
+    }
+
     private static func font(_ attr: NSAttributedString) -> NSFont? {
         if let f = attr.attribute(.font, at: 0, effectiveRange: nil) as? NSFont { return f }
         guard let d = attr.attribute(.accessibilityFont, at: 0, effectiveRange: nil)
                 as? [String: Any], let size = d["AXFontSize"] as? CGFloat else { return nil }
-        if let name = d["AXFontName"] as? String, let f = NSFont(name: name, size: size) { return f }
-        return NSFont.systemFont(ofSize: size)
+        guard let name = d["AXFontName"] as? String else { return NSFont.systemFont(ofSize: size) }
+        if name.hasPrefix(".") { return systemFont(name, size: size) }
+        return NSFont(name: name, size: size) ?? NSFont.systemFont(ofSize: size)
+    }
+
+    /// The system font the tree names privately (".SFNS-Semibold", ".SFNSMono-Regular", ".SFNS-RegularItalic"):
+    /// NSFont(name:) doesn't know those names and falls back to Times New Roman, which measured every SwiftUI text
+    /// narrower than it is drawn.
+    static func systemFont(_ name: String, size: CGFloat) -> NSFont {
+        let style = name.split(separator: "-").dropFirst().joined(separator: "-").lowercased()
+        let weights: [(String, NSFont.Weight)] = [("ultralight", .ultraLight), ("thin", .thin), ("light", .light),
+                                                  ("semibold", .semibold), ("medium", .medium), ("bold", .bold),
+                                                  ("heavy", .heavy), ("black", .black)]
+        let weight = weights.first { style.hasPrefix($0.0) }?.1 ?? .regular
+        var f = name.lowercased().contains("mono") ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+            : NSFont.systemFont(ofSize: size, weight: weight)
+        if style.contains("italic") { f = NSFontManager.shared.convert(f, toHaveTrait: .italicFontMask) }
+        return f
     }
 }
