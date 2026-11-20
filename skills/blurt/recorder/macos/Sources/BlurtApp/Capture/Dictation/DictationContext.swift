@@ -257,11 +257,8 @@ final class DictationWatch {
         guard let (text, _) = field.read() else { return }
         let ns = text as NSString, len = (inserted as NSString).length
         // the typed text where the cursor was, else nearby (a field that trims or reflows it)
-        var at = location
-        if at < 0 || at + len > ns.length || ns.substring(with: NSRange(location: at, length: len)) != inserted {
-            let lo = max(0, location - 200), r = ns.range(of: inserted, options: [], range: NSRange(location: lo, length: ns.length - lo))
-            guard r.location != NSNotFound else { return emit(["event": "dictation_watch", "state": "not_found"]) }
-            at = r.location
+        guard let at = TypedTextFind.find(inserted, in: text, near: location) else {
+            return emit(["event": "dictation_watch", "state": "not_found"])
         }
         prefix = ns.substring(with: NSRange(location: max(0, at - DictationWatch.anchor), length: at - max(0, at - DictationWatch.anchor)))
         let end = at + len

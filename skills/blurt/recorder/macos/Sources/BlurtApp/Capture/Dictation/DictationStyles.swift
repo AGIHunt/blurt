@@ -71,13 +71,7 @@ final class DictationLastPaste {
     func anchor() {
         guard let f = field, let loc = location, let (text, _) = f.read() else { return }
         let ns = text as NSString, len = (typed as NSString).length
-        var at = loc
-        if at < 0 || at + len > ns.length || ns.substring(with: NSRange(location: at, length: len)) != typed {
-            let lo = max(0, loc - 200)
-            let r = ns.range(of: typed, options: [], range: NSRange(location: lo, length: ns.length - lo))
-            guard r.location != NSNotFound else { location = nil; return }
-            at = r.location
-        }
+        guard let at = TypedTextFind.find(typed, in: text, near: loc) else { location = nil; return }
         location = at
         prefix = ns.substring(with: NSRange(location: max(0, at - 40), length: at - max(0, at - 40)))
         let end = at + len
