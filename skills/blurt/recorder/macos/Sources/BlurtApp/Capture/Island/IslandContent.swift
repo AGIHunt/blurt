@@ -858,7 +858,7 @@ final class IslandContent: NSView {
             any = true
         } else if penHintThisTake, !paused, !rec.inkOn, let key = rec.penKey?.1 {
             // (not while the key is held: "Hold for the pen" taught what the user was already doing)
-            // every key of the pen as one keycap per chord: the box and the ellipse are the pen key plus one more
+            // the pen's keys, a cap per key: the box and the ellipse are the pen key plus one more
             let ell = rec.penKind == .option ? "⌃" : "⌥"
             let h = KeyLine(KeyLine.pairs([(key, Loc.t("capture.rec.pen_hold", table: "Capture")),
                                            (KeyLine.chord(key, "⇧"), Loc.t("capture.rec.pen_box", table: "Capture")),
@@ -924,8 +924,8 @@ final class IslandContent: NSView {
             let p = ProjectStore.shared.current
             let goes = Loc.t("capture.rec.menu_goes_to", table: "Capture", p?.name ?? Loc.t("project.inbox"))
             let item = ClosureMenuItem(goes) { [weak self] in self?.island?.showSwitcher() }
-            // one mark per concept (IslandGlyph.place): the project's folder, Unassigned's dashed ring
-            item.image = IslandGlyph.place(p, size: 16)
+            // no image: the title names the place, and the only image in the menu pushed its title 22 pt right of
+            // every other's
             item.showHotkey(.project)
             menu.addItem(item)
         }
