@@ -101,3 +101,14 @@ describe("catalog checks", () => {
     expect(checkCatalogs({ "b_one": "one" }, { "b_one": "一" })).toEqual(["b_one: no _other form in en", "b_one: no _other form in zh-Hans"]);
   });
 });
+
+describe("the host's clock", () => {
+  it("formats every time in the hour cycle the host passes (a Mac on 24-hour time never shows 11:56 PM)", () => {
+    const at = new Date(2026, 10, 20, 23, 56);
+    const h23 = createI18n({}, "en", { region: "US", hourCycle: "h23" });
+    expect(h23.formatDate(at, "time")).toMatch(/23:56/);
+    expect(h23.formatDate(at, { dateStyle: "medium", timeStyle: "short" })).toMatch(/23:56/);
+    const h12 = createI18n({}, "en", { region: "US", hourCycle: "h12" });
+    expect(h12.formatDate(at, "time")).toMatch(/11:56/);
+  });
+});

@@ -517,7 +517,8 @@ body {
   gap: 10px;
   background: var(--panel);
   box-shadow: 0 0 0 1px var(--ring);
-  transition: transform 0.08s, background-color 0.15s;
+  /* the label's colour moves with its ground: never a frame where both are the same green */
+  transition: transform 0.08s, background-color 0.15s, color 0.15s;
 }
 [data-theme="dark"] .act {
   background: var(--panel-2);
@@ -2956,4 +2957,14 @@ html.mode-item[data-host="macos"] body,
   .act.ghost {
     display: none;
   }
+}
+
+/* the item's own state in Keep's place (past review): quiet, its ring in its colour */
+.act.state {
+  font-weight: 550;
+  color: var(--ink);
+}
+.act.state:disabled {
+  opacity: 1;
+  cursor: default;
 }

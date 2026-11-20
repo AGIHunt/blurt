@@ -16,7 +16,7 @@ import { MemStore, PROJECTS, V3_ITEMS } from "./v3store";
 Element.prototype.scrollIntoView ??= () => {};
 
 function v3Host(scope: Scope, extra: Partial<BlurtHost> = {}) {
-  const m = new MemStore(V3_ITEMS, PROJECTS, { title: "Batch", language: "en" });
+  const m = new MemStore(V3_ITEMS, PROJECTS, { title: "Batch", language: "en", agents: { codex: { name: "Codex" } } });
   const sent: UserOp[][] = [];
   const host: BlurtHost = {
     host: "macos",
@@ -354,6 +354,7 @@ describe("v3 UI", () => {
     expect(card.querySelectorAll("button .sring")).toHaveLength(0);
     expect(card.querySelector(":scope > .sring.s-to_verify")).not.toBeNull();
     expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
+    expect(card.textContent).not.toMatch(/by Agent/i); // an agent the doc can't name: no "by" part at all
     expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
     expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
     // ⋯: Won't Do (no Review Changes: no in-app sessions)

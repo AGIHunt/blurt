@@ -87,6 +87,9 @@ export interface I18n {
 export interface I18nOptions {
   /** region for formatting (default: the system's); pass "" for none */
   region?: string;
+  /** the system's clock (the Mac host passes its 24-hour setting): every time shown uses it, so a detail never says
+   *  11:56 PM next to a native list's 23:56 */
+  hourCycle?: "h12" | "h23";
 }
 
 /** Epoch numbers below 1e11 are seconds (v2 files and `_user`), larger ones milliseconds; strings are ISO 8601. */
@@ -119,7 +122,8 @@ export function createI18n(catalogs: Catalogs, lang: Lang | string, opts: I18nOp
   const dtf = (o: Intl.DateTimeFormatOptions) => {
     const k = JSON.stringify(o);
     let f = cache.get(k);
-    if (!f) cache.set(k, (f = new Intl.DateTimeFormat(locale, o)));
+    const timed = o.hour !== undefined || o.timeStyle !== undefined;
+    if (!f) cache.set(k, (f = new Intl.DateTimeFormat(locale, timed && opts.hourCycle ? { ...o, hourCycle: opts.hourCycle } : o)));
     return f;
   };
   const DATE_STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {

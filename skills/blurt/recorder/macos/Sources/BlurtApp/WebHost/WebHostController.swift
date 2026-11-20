@@ -311,9 +311,16 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         if case .session(let u) = scope { waiting = ReviewHandoff.waiting(u) }
         let info: [String: Any] = ["host": "macos", "methods": methods, "accent": Self.accentHex(), "scope": scope.json,
                                    "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item",
-                                   "agentWaiting": waiting]       // only then does confirming "hand it back"
+                                   "agentWaiting": waiting,       // only then does confirming "hand it back"
+                                   "clock": Self.hourCycle]       // the page's times in the system's 12/24-hour clock
         let json = (try? JSONSerialization.data(withJSONObject: info)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         ucc.addUserScript(WKUserScript(source: "window.blurtHostInfo = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    /// "h23" when the system shows 24-hour time (the native lists' DateFormatter follows it), else "h12".
+    static var hourCycle: String {
+        let f = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: Loc.locale) ?? ""
+        return f.contains("H") || f.contains("k") ? "h23" : "h12"
     }
 
     // MARK: what to show

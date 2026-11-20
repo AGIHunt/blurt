@@ -9,7 +9,7 @@ import { listKey, type ListKey } from "../listedit";
 import { isTitle, kindOf, SEV, type ReviewStore } from "../store";
 import { FileIcon, Icon, type IconName } from "./Icon";
 import { cx, useStore } from "./ctx";
-import { agentName, StateControl } from "./Queue";
+import { namedAgent, StateControl } from "./Queue";
 import { isMacLike } from "./TopBar";
 import { MovePicker } from "./Views";
 
@@ -379,7 +379,7 @@ function WorkPanel({ i }: { i: Item }) {
     if (back !== null) autosize(noteRef.current, 160);
   }, [back]);
   if (!rec || st === "new" || st === "discarded") return null;
-  const agent = rec.agent && rec.agent !== "human" ? agentName(s, rec.agent) : null;
+  const agent = namedAgent(s, rec.agent);
   const who = rec.by === "user" ? s.t("work.by_you") : agent ? s.t("work.by", { who: agent }) : "";
   const when = rec.at ? s.ago(rec.at) : "";
   // while it is with the agent a host banner may say so (the app windows)
@@ -570,7 +570,7 @@ function WorkHistory({ i }: { i: Item }) {
           <li key={n} className={"s-" + (f.state ?? "todo")}>
             <span className="wls">{s.stateLabel(f.state ?? "todo")}</span>
             {/* a hand-off was the user's, to the agent: "Handed off · to Claude Code", not "by" it */}
-            {f.agent && f.agent !== "human" ? <span className="wla">{s.t(f.state === "handed_off" ? "work.to" : "work.by", { who: agentName(s, f.agent) })}</span> : null}
+            {namedAgent(s, f.agent) ? <span className="wla">{s.t(f.state === "handed_off" ? "work.to" : "work.by", { who: namedAgent(s, f.agent)! })}</span> : null}
             {f.commit ? <code>{shortSha(f.commit)}</code> : null}
             {f.pr ? (
               <a href={f.pr} target="_blank" rel="noreferrer">

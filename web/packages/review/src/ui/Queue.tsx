@@ -55,6 +55,11 @@ export function StateControl({ i, variant = "pill", id, shortcuts = false, contr
 export const agentName = (s: ReviewStore, a: string | null | undefined) =>
   (a && s.data.agents?.[a]?.name) || s.t("agent.generic");
 
+/** The agent's name when the doc knows it, else null: a line that would only say "by Agent" (after "The agent says
+    it's fixed") leaves the "by" part out. */
+export const namedAgent = (s: ReviewStore, a: string | null | undefined) =>
+  (a && a !== "human" && s.data.agents?.[a]?.name) || null;
+
 export function Queue() {
   const s = useStore();
   const ref = useRef<HTMLElement>(null);
