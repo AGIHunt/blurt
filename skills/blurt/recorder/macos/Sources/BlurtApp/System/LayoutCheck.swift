@@ -24,6 +24,7 @@
 // (frames in window points, top-left origin).
 import AppKit
 import BlurtCore
+import BlurtObjC
 import Vision
 
 @MainActor
@@ -46,9 +47,51 @@ enum LayoutCheck {
             delay = max(delay, 0.9)
         default: break
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            emit(["event": "layoutcheck", "arg": arg, "windows": windows().map { report($0, dump: arg == "dump") }])
+        warmVision {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                emit(["event": "layoutcheck", "arg": arg, "windows": windows().map { report($0, dump: arg == "dump") }])
+            }
         }
+    }
+
+    private static var visionReady = false
+    /// checks waiting for the model while it's built
+    private static var waiting: [@MainActor () -> Void]?
+
+    /// Test builds start building Vision's model as their test channel opens (SelfTests.install): it's usually ready by the first check.
+    static func prepare() { warmVision {} }
+
+    /// Vision's first text request builds its model, 25–45 s for a fresh scratch copy of a test build: done once on another thread,
+    /// with the requests' own settings, so the main thread goes on answering (a phone's session, the being-controlled bar) instead of
+    /// stalling under the first check of a run.
+    private static func warmVision(then go: @escaping @MainActor () -> Void) {
+        if visionReady { return go() }
+        if waiting != nil { waiting?.append(go); return }
+        waiting = [go]
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let ctx = CGContext(data: nil, width: 64, height: 32, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
+                                   bitmapInfo: CGImageAlphaInfo.none.rawValue) {
+                ctx.setFillColor(gray: 1, alpha: 1)
+                ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 32))
+                if let image = ctx.makeImage() { try? VNImageRequestHandler(cgImage: image, options: [:]).perform([textRequest()]) }
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    visionReady = true
+                    let w = waiting ?? []
+                    waiting = nil
+                    w.forEach { $0() }
+                }
+            }
+        }
+    }
+
+    nonisolated private static func textRequest() -> VNRecognizeTextRequest {
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = false
+        req.recognitionLanguages = ["en-US", "zh-Hans"]
+        return req
     }
 
     private static var awake = false
@@ -56,13 +99,19 @@ enum LayoutCheck {
     /// SwiftUI builds a window's accessibility tree only once an assistive client asks for it: until then a Settings
     /// pane was two elements (the window's buttons), and the lint passed it having checked nothing. The app asks for
     /// its own tree, as VoiceOver or an automation client would (AXManualAccessibility). true the first time: the
-    /// tree needs a moment to be built.
+    /// tree needs a moment to be built. The client's request goes from another thread: the main thread is the one that answers
+    /// it, and asking from there stalled the app for the whole messaging timeout (25 s, the first layoutcheck of a run).
     private static func wake() -> Bool {
         guard !awake else { return false }
         awake = true
         let attr = "AXManualAccessibility"
         NSApp.perform(NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: NSNumber(value: true), with: attr)
-        AXUIElementSetAttributeValue(AXUIElementCreateApplication(getpid()), attr as CFString, kCFBooleanTrue)
+        let pid = getpid()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 1)
+            AXUIElementSetAttributeValue(app, attr as CFString, kCFBooleanTrue)
+        }
         return true
     }
 
@@ -156,9 +205,12 @@ enum LayoutCheck {
         let value = text(axValue(o))
         let s = value.isEmpty ? axText(o, "accessibilityLabel") : value
         guard !(o is NSView), !s.isEmpty, frame.width > 1, frame.height > 1 else { return false }
-        let len = (s as NSString).length
-        guard let attr = o.accessibilityAttributedString?(for: NSRange(location: 0, length: len)), attr.length > 0,
-              let font = font(attr) else { return false }
+        // only the first character's font is read. The attributed string is indexed over the element's own text, which can be
+        // shorter than its value or label (a question made one element, its digits as the value: asked for the label's length,
+        // SwiftUI raised NSRangeException and the app died): one character is asked for, and a raise is caught, not fatal
+        var got: NSAttributedString?
+        _ = BlurtTry({ got = o.accessibilityAttributedString?(for: NSRange(location: 0, length: 1)) }, nil)
+        guard let attr = got, attr.length > 0, let font = font(attr) else { return false }
         let text = NSAttributedString(string: s, attributes: [.font: font])
         let line = font.ascender - font.descender + font.leading
         if frame.height < line * 1.7 {
@@ -227,10 +279,7 @@ enum LayoutCheck {
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return [] }
         view.cacheDisplay(in: view.bounds, to: rep)
         guard let image = rep.cgImage else { return [] }
-        let req = VNRecognizeTextRequest()
-        req.recognitionLevel = .accurate
-        req.usesLanguageCorrection = false
-        req.recognitionLanguages = ["en-US", "zh-Hans"]
+        let req = textRequest()
         do { try VNImageRequestHandler(cgImage: image, options: [:]).perform([req]) } catch { return [] }
         let r = view.convert(view.bounds, to: nil)          // window base coordinates, bottom-left origin
         let wh = w.frame.height

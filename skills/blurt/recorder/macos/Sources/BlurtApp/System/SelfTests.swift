@@ -61,6 +61,7 @@ enum SelfTests {
             RunLoop.main.add(t, forMode: .common)
         }
         emit(["event": "wp6_ready", "channel": channel])
+        DispatchQueue.main.async { MainActor.assumeIsolated { LayoutCheck.prepare() } }
     }
 
     @MainActor
