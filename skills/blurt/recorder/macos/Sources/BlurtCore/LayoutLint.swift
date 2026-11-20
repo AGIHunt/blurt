@@ -200,6 +200,20 @@ public enum LayoutLint {
         return out
     }
 
+    /// The title a control was measured by is what it draws: the rendering read back in its box starts with it
+    /// (or, cut, with its beginning). A label that is only for VoiceOver (`.accessibilityLabel("Change in Dictation…")`
+    /// over a keycap) or a row's joined words isn't drawn as such — its width says nothing about a cut (dogfood
+    /// 2026-11-21: four false "truncated" buttons on Shortcuts and Privacy).
+    public static func labelDrawn(label: String, shown: [String]) -> Bool {
+        let l = normalized(label)
+        guard !l.isEmpty else { return false }
+        return shown.contains { s in
+            let t = normalized(s.replacingOccurrences(of: "…", with: "").replacingOccurrences(of: "...", with: ""))
+            guard t.count >= min(3, l.count) else { return false }
+            return l.hasPrefix(t) || t.hasPrefix(l) || t.contains(l)
+        }
+    }
+
     /// One is the other's ancestor.
     static func related(_ a: Int, _ b: Int, _ nodes: [LayoutNode]) -> Bool {
         func isAncestor(_ x: Int, of y: Int) -> Bool {

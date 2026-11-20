@@ -145,4 +145,15 @@ final class LayoutLintTests: XCTestCase {
         XCTAssertFalse(LayoutLint.showsCut(label: "Commit and Merge", shown: "Commit and Mer… then more words"))
         XCTAssertFalse(LayoutLint.showsCut(label: "Commit", shown: "C…"))                         // one letter says nothing
     }
+
+    func testAMeasuredTitleCountsOnlyWhenItIsWhatIsDrawn() {
+        // a VoiceOver label over a keycap: "Fn" is drawn, not "Change in Dictation…"
+        XCTAssertFalse(LayoutLint.labelDrawn(label: "Change in Dictation…", shown: ["Fn"]))
+        XCTAssertFalse(LayoutLint.labelDrawn(label: "Change in Dictation…", shown: []))
+        // a row's joined words start with what it draws first (rows with several fonts are left to cutTitles anyway)
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Screen Recording, Used to record, Not allowed", shown: ["Screen Recording"]))
+        // the title itself, whole or cut
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Open History…", shown: ["Open History..."]))
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Change in Models…", shown: ["Change in Mo…"]))
+    }
 }

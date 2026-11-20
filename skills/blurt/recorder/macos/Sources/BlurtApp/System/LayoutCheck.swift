@@ -133,6 +133,7 @@ enum LayoutCheck {
         w.layoutIfNeeded()
         let wf = w.frame
         var nodes: [LayoutNode] = []
+        var measured: [Int] = []            // SwiftUI titles found clipped by measuring their label (confirmed below)
         var visited = Set<ObjectIdentifier>()
 
         func local(_ r: NSRect) -> CGRect { CGRect(x: r.minX - wf.minX, y: wf.maxY - r.maxY, width: r.width, height: r.height) }
@@ -154,7 +155,11 @@ enum LayoutCheck {
             // a text with a tooltip (.help) shows its whole self on hover: a path cut in the middle is by design there
             let help = axText(o, "accessibilityHelp")
             if role == "AXStaticText" || role == "AXTextField", !listy, help.isEmpty { n.truncated = truncated(o, frame: frame) }
-            if LayoutLint.titled.contains(role), !listy { n.truncated = titleClipped(o, frame: frame, label: label) }
+            if LayoutLint.titled.contains(role), !listy {
+                n.truncated = titleClipped(o, frame: frame, label: label)
+                // measured from its label, not its drawing: confirmed against the rendering below
+                if n.truncated, !(o is NSView), !(o is NSCell) { measured.append(nodes.count) }
+            }
             nodes.append(n)
             let me = nodes.count - 1
             // web content is its own world (and another process)
@@ -166,8 +171,17 @@ enum LayoutCheck {
         }
         for c in w.accessibilityChildren() ?? [] { walk(c, parent: nil, clip: nil, inList: false, depth: 0) }
         // what geometry can't see (more in a label than its words): read the rendering back, once per window
+        var rendered: [(String, CGRect)]?
+        func texts() -> [(String, CGRect)] { if let r = rendered { return r }; let r = renderedTexts(w); rendered = r; return r }
+        // a SwiftUI control's width measured from its label only counts when that label is what it draws (not a
+        // VoiceOver label over keycaps, not a row's joined words)
+        for i in measured {
+            let box = nodes[i].frame.insetBy(dx: -2, dy: -2)
+            let shown = texts().filter { box.contains(CGPoint(x: $0.1.midX, y: $0.1.midY)) }.map(\.0)
+            if !LayoutLint.labelDrawn(label: nodes[i].label, shown: shown) { nodes[i].truncated = false }
+        }
         if nodes.contains(where: { LayoutLint.titled.contains($0.role) && !$0.truncated && !$0.label.isEmpty }) {
-            for i in LayoutLint.cutTitles(nodes, texts: renderedTexts(w)) { nodes[i].truncated = true }
+            for i in LayoutLint.cutTitles(nodes, texts: texts()) { nodes[i].truncated = true }
         }
 
         // the traffic lights, as one strip (the gaps between them too)
