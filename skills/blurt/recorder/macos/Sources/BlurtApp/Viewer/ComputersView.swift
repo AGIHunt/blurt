@@ -125,7 +125,7 @@ struct AddComputerView: View {
                 VStack(spacing: 0) {
                     if store.unpaired.isEmpty {
                         HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
+                            BrandSpinnerView(size: 14)
                             Text(T("viewer.add.looking")).font(.system(size: 12)).foregroundStyle(.secondary)
                             Spacer()
                         }
@@ -205,7 +205,7 @@ struct AddComputerView: View {
             }
         } else {
             HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
+                BrandSpinnerView(size: 14)
                 Text(T("viewer.add.connecting", p.name)).font(.system(size: 13))
             }
             HStack {
