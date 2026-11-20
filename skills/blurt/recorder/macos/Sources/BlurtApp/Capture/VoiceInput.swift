@@ -547,7 +547,8 @@ final class VoiceInput {
         if kept {
             if project.isInbox {
                 // a card: it shows the words heard so far at once, then its own (CardNote.heard) — the panel goes now,
-                // where it is, instead of lingering over the card row
+                // where it is, instead of lingering over the card row; the last piece's words go to the card only
+                st?.onLive = nil
                 LiveTranscript.shared.end(session: live, after: 0.3)
             } else {
                 // filed: the words stay a moment once the last piece is in

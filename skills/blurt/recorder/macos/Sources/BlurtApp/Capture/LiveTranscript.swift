@@ -31,7 +31,8 @@
 //    the panel would be, it sits at the bottom of the screen instead, like subtitles.
 //  • Nothing here changes what is typed or filed, or when: it only shows the pieces that were transcribed anyway.
 // Tests (test commands only): `live state` reports what it shows and where; `live caret X,Y,W,H` stands in for
-// dictation's caret (global top-left points), `live caret -` clears it; `live show COMMITTED|PENDING` puts words up.
+// dictation's caret (global top-left points), `live caret -` clears it; `live show COMMITTED|PENDING` puts words up;
+// `live late TEXT` ends the take, then its late words arrive (they must not bring the panel back).
 
 import AppKit
 import BlurtCore
@@ -133,7 +134,8 @@ final class LiveTranscript {
         end(session: s, after: hold)
     }
 
-    /// The take is over: the panel goes after `after` seconds (now: at once).
+    /// The take is over: the panel goes after `after` seconds (now: at once). Once it has gone, the take's session is
+    /// over too: its late words (a voice note's last piece, transcribed after the note ended) never bring it back.
     func end(session s: Int, after: Double = 0) {
         guard s == session else { return }
         view.setListening(false)            // the line is committed: the caret goes
@@ -142,6 +144,7 @@ final class LiveTranscript {
         let tok = hideToken
         let go = { [weak self] in
             guard let self = self, tok == self.hideToken, s == self.session else { return }
+            self.session += 1               // as islandMoved: nothing more for this take lands here
             self.source = nil
             self.hide(animated: true)
         }
@@ -278,6 +281,10 @@ final class LiveTranscript {
             update(String(parts.first ?? ""), pending: parts.count > 1 ? String(parts[1]) : "", session: session)
         case "end":
             end(session: session, after: 1.5)
+        case "late":                                    // late TEXT: the take ends (its panel goes at once), then its
+            let s = session                             // late words land, as a voice note's last piece does
+            end(session: s)
+            update(String(arg.dropFirst(4)), session: s)
         case "typed":                                   // typed TEXT (\n = a line break): as dictation's text going in
             if source == nil { begin(.dictation) }
             showTyped(String(arg.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"), session: session, seconds: 4)

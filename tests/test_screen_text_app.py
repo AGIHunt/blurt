@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -150,5 +151,49 @@ def test_translation_card_takes_esc_only_under_the_pointer():
             s = card("Another one")
             assert s["shown"] and not s["esc"], s
             assert not card("close")["esc"]
+        finally:
+            app.stop()
+
+
+def _started(tmp: Path) -> "gui.App":
+    """An isolated copy, started, its test channel answering. A fixture stands in for the screen (BLURT_TEST_STILL)."""
+    app_path = Path(os.environ["BLURT_GUI_APP"]) if os.environ.get("BLURT_GUI_APP") else gui.build_app(tmp)
+    app_path = gui.isolated_copy(app_path, tmp)
+    home, ws = gui.make_world(tmp)
+    app = gui.App(app_path, home, ws, "en", tmp / "app.log")
+    app.extra_env = {"BLURT_TEST_PASTEBOARD": PASTEBOARD, "BLURT_TEST_STILL": FIX / f"{CASES[0]['name']}.png"}
+    if os.environ.get("CFFIXED_USER_HOME"):     # a runner's own home for the app (its caches, its hotkey registry)
+        app.extra_env["CFFIXED_USER_HOME"] = os.environ["CFFIXED_USER_HOME"]
+    app.start()
+    for _ in range(20):
+        app.mark()
+        app.post("hello", "shell")
+        try:
+            app.wait("test_command", timeout=0.5)
+            break
+        except TimeoutError:
+            pass
+    return app
+
+
+def test_live_words_never_come_back_after_the_take():
+    """The words under the island: once a take's panel has gone, its late words (a voice note's last piece, transcribed
+    after the note went to Unassigned) don't bring it back, where it stayed for good and closed every ⌥C / ⌥T card."""
+    with tempfile.TemporaryDirectory() as t:
+        app = _started(Path(t).resolve())
+        try:
+            def live(cmd: str) -> dict:
+                app.mark()
+                app.post(f"live {cmd}", "shell")
+                return app.wait("live_state", timeout=5)
+
+            assert live("show Three things. First, the sign-up page")["shown"]
+            s = live("late Three things. First, the sign-up page loads slowly.")
+            assert not s["shown"], s
+            time.sleep(0.5)
+            app.mark()
+            app.post("textcard The replica is billed by the hour.", "shell")
+            assert app.wait("text_card_state", timeout=5)["shown"]           # a text card isn't closed by a stale panel
+            assert not live("caret -")["shown"]
         finally:
             app.stop()
