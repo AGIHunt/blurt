@@ -70,8 +70,13 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             case "sending": self.picture.showHint(T("viewer.file.sending", what), seconds: nil)
             case "saved": self.picture.showHint(T("viewer.file.saved", what), seconds: 5)
             default:
-                let k = ["space", "too_big", "locked"].contains(what) ? what : "other"
-                self.picture.showHint(T("viewer.file.failed.\(k)"), seconds: 5)
+                let key = switch what {
+                case "space": "viewer.file.failed.space"
+                case "too_big": "viewer.file.failed.too_big"
+                case "locked": "viewer.file.failed.locked"
+                default: "viewer.file.failed.other"
+                }
+                self.picture.showHint(T(key), seconds: 5)
             }
         }
         return f
@@ -843,12 +848,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func testOpenDisplays() { showDisplays(displayButton) }
 
-    /// the picture's hint, as the window shows it (`viewer hint KEY`)
+    /// the picture's hint, as the window shows it (`viewer hint KEY`: release, release.app_only, no_control, file)
     func testHint(_ key: String) {
         switch key {
+        case "release": picture.showHint(T("viewer.release"), seconds: nil)
+        case "release.app_only": picture.showHint(T("viewer.release.app_only"), seconds: nil)
         case "no_control": picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil)
         case "file": picture.showHint(T("viewer.file.sending", "Quarterly results for the board, final version (2).pdf"), seconds: nil)
-        default: picture.showHint(T("viewer.\(key)"), seconds: nil)
+        default: emit(["event": "viewer_hint", "unknown": key])
         }
     }
 
