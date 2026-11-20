@@ -136,7 +136,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let p = PickerController()
         p.onDone = { [weak self] r in
             guard let self = self else { return }
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            if !ScreenTextCopy.shared.picking { unregisterHotkey(.pickEsc) }     // shared with ⌥C's crosshair
             self.picker = nil
             guard let r = r else { self.busy = false; sessionEnded(2, ["event": "cancelled"]); return }
             self.begin(r)
@@ -579,6 +580,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func startRecording(useLast: Bool) {
+        // ⌥C's crosshair is up: one screen picker at a time (as ⌥C refuses while the area picker is up)
+        if ScreenTextCopy.shared.picking { emit(["event": "record_refused", "why": "text_picker"]); return }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         guard !busy else { return }
         MissingFolder.warnIfCurrentMissing(recording: true)     // its folder is gone: this one goes to Unassigned

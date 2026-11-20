@@ -575,6 +575,9 @@ public final class HotkeyCenter {
         return st
     }
 
+    /// tests: whether `id` is registered with Carbon now
+    public func isRegisteredRaw(_ id: UInt32) -> Bool { refs[id] != nil }
+
     public func unregisterRaw(_ id: UInt32) {
         if let r = refs.removeValue(forKey: id) { UnregisterEventHotKey(r) }
     }

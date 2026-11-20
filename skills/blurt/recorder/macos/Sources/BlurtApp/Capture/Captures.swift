@@ -93,6 +93,8 @@ final class Snapper {
     func hotkey() {
         guard let app = app, app.resident else { return }
         if app.picker != nil { return }
+        // ⌥C's crosshair is up: one screen picker at a time (as ⌥C refuses while this one is up)
+        if ScreenTextCopy.shared.picking { emit(["event": "snap_refused", "why": "text_picker"]); return }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         if let r = app.rec {
             guard r.sessionStart.isValid, !r.stopping, r.snaps != nil else { return }
@@ -155,7 +157,8 @@ final class Snapper {
         p.snapMode = true
         emit(["event": "snap_pick", "in_take": take != nil])
         p.onDone = { [weak self, weak app, weak take] r in
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            if !ScreenTextCopy.shared.picking { unregisterHotkey(.pickEsc) }     // shared with ⌥C's crosshair
             app?.picker = nil
             if app?.rec == nil { app?.busy = false }
             guard let r = r else { self?.restoreFocus(); return }

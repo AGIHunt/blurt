@@ -61,7 +61,18 @@ final class ScreenTextCopy {
         return (ScreenTextPaste.decide(now.situation), now.focus.role, now.front != nil && now.front?.processIdentifier != t.pid)
     }
 
-    func cancel() { drag?.close(); drag = nil }
+    /// Esc on the crosshair (its own key window, or the system-wide Esc): it goes, and so does that Esc — close() doesn't
+    /// call the picker's done, which was the only place it was unregistered (Esc stayed Blurt's in every app).
+    func cancel() {
+        guard let d = drag else { return }
+        d.close()
+        drag = nil
+        if app?.picker == nil { unregisterHotkey(.pickEsc) }     // shared with the area picker: never take its Esc
+    }
+
+    /// ⌥C / ⌥T's crosshair is up. One screen picker at a time: ⌥A and ⌥R wait until it is done, as this one waits for
+    /// theirs (`app.picker`).
+    var picking: Bool { drag != nil }
 
     func hotkey(via: String, translate: Bool = false) {
         guard let app = app, app.resident, app.picker == nil, drag == nil else { return }
@@ -81,7 +92,7 @@ final class ScreenTextCopy {
         DictationField.wakeWebAccessibility(NSWorkspace.shared.frontmostApplication)
         let target = Self.target()
         let p = TextDragPicker { [weak self] r, crop in
-            unregisterHotkey(.pickEsc)
+            if self?.app?.picker == nil { unregisterHotkey(.pickEsc) }     // shared with the area picker: never take its Esc
             self?.drag = nil
             guard let r = r else { return }
             self?.read(r, via: via, translate: translate, target: target, still: crop)

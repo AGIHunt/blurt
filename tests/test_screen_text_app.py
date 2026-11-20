@@ -176,6 +176,46 @@ def _started(tmp: Path) -> "gui.App":
     return app
 
 
+def test_one_screen_picker_at_a_time():
+    """⌥C's crosshair is up: ⌥A and ⌥R are refused, as ⌥C is while their area picker is up. Two pickers stacked left
+    the crosshair on screen when the other one ended, its system-wide Esc gone with the other's (they share it)."""
+    with tempfile.TemporaryDirectory() as t:
+        app = _started(Path(t).resolve())
+        try:
+            def pickers() -> dict:
+                app.mark()
+                app.post("pickers", "shell")
+                return app.wait("pickers", timeout=5)
+
+            def until(f, what: str) -> dict:
+                for _ in range(25):
+                    p = pickers()
+                    if f(p):
+                        return p
+                    time.sleep(0.2)
+                raise AssertionError(f"{what}: {p}")
+
+            app.post("screentext", "shell")                                  # ⌥C: the crosshair
+            until(lambda p: p["text"] and p["esc"], "the crosshair didn't come up")
+            for cmd, refused in (("snap", "snap_refused"), ("record", "record_refused")):
+                app.mark()
+                app.post(cmd, "shell")                                      # ⌥A / ⌥R over it
+                assert app.wait(refused, timeout=5)["why"] == "text_picker"
+                p = pickers()
+                assert p["text"] and not p["area"] and p["esc"], p
+            app.post("pickesc", "shell")                                     # Esc: the crosshair goes, and its Esc
+            until(lambda p: not p["text"] and not p["esc"], "Esc left the crosshair")
+            app.mark()
+            app.post("snap", "shell")                                        # ⌥A alone still opens its picker
+            app.wait("snap_pick", timeout=5)
+            p = until(lambda p: p["area"], "the snap picker didn't come up")
+            assert p["esc"] and not p["text"], p
+            app.post("pickercancel", "shell")
+            until(lambda p: not p["area"] and not p["esc"], "cancelling left the snap picker's Esc")
+        finally:
+            app.stop()
+
+
 def test_live_words_never_come_back_after_the_take():
     """The words under the island: once a take's panel has gone, its late words (a voice note's last piece, transcribed
     after the note went to Unassigned) don't bring it back, where it stayed for good and closed every ⌥C / ⌥T card."""
