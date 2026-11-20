@@ -25,7 +25,17 @@ func installHotkeyHandler() {
         // a capability that is off does nothing, whoever asks: its keys aren't held, and a paired phone's buttons and
         // the test channel come through here too
         guard Capability.allows(a, off: Hotkeys.shared.resident ? Capability.off : [], recording: appDelegate?.rec != nil) else {
-            return emit(["event": "capability_off", "action": a.rawValue])
+            emit(["event": "capability_off", "action": a.rawValue])
+            // (a key of an off capability isn't held at all — the front app gets it): what reaches here is a paired
+            // phone's button or a link, which said nothing — "Cards is off · Turn On"
+            if let c = Capability.owner(of: a), !c.isOn {
+                island.toast(T("feature.off_notice", T("feature.\(c.rawValue)")), key: "capability_off",
+                             actionTitle: T("feature.turn_on")) {
+                    Capability.set(c, on: true)
+                    emit(["event": "capability_turned_on", "capability": c.rawValue, "via": "toast"])
+                }
+            }
+            return
         }
         if let k = a.hk { hotkeyHandler?(k) } else if a == .openMain { AppEnvironment.mainWindow?.show() }
     }

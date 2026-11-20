@@ -9,6 +9,8 @@
 "feature.recording" = "Recording & Items";
 /* the one name of the feature (phones and computers): Home's row, the sidebar, the page, ⌘K, the Go menu, the Settings pane */
 "feature.phone" = "Remote Control";
+"feature.off_notice" = "%@ is off";
+"feature.turn_on" = "Turn On";
 
 /* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — two lines at most at the window's
    narrowest (900 pt), one at its usual width. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
