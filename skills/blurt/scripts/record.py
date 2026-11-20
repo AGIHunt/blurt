@@ -746,6 +746,8 @@ def native_binary(build: bool = True) -> Path | None:
         ip = APP_BUNDLE / "Contents" / "Info.plist"
         d = plistlib.loads(ip.read_bytes())
         d.pop("CFBundleURLTypes", None)
+        # and says it's a test copy wherever macOS names it (a crash dialog, the menu bar), never "Blurt" beside the user's own
+        d["CFBundleName"] = d["CFBundleDisplayName"] = "Blurt Test"
         ip.write_bytes(plistlib.dumps(d))
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     for lproj in sorted((SWIFT_DIR / "Sources" / "BlurtApp" / "Resources").glob("*.lproj")):   # K10 string tables
