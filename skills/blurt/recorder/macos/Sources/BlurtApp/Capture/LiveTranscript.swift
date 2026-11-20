@@ -379,8 +379,10 @@ final class LiveTextLines: NSView {
     private(set) var pendingText = ""
     /// the take listens: a flat 2 pt mint caret after the last word (steady: the island's level moves)
     var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
-    /// the text is what was typed: the ok check after the last word, where the caret was
-    var typed = false { didSet { if typed != oldValue { cached = nil; needsDisplay = true } } }
+    /// the text is what was typed: the ok check after the last word, where the caret was. The panel is sized again
+    /// for it: the no-shrink rule holds while listening, not for a typed text shorter than what showed live (an
+    /// empty black band under one line, dogfood 1.1.0)
+    var typed = false { didSet { if typed != oldValue { cached = nil; if typed { tallest = 1 }; needsDisplay = true } } }
     /// typed text with more lines than show (the last shown fades out; tests)
     private(set) var more = false
     /// there is text above the top line shown (tests)
@@ -440,7 +442,7 @@ final class LiveTextLines: NSView {
         // the island ticks this every frame while it moves: the same text at the same width is laid out once
         if let c = cached, c.text == text, c.width == width { return c.lines }
         // typed: the whole text from its start (it shows from the top); listening: the tail from the anchor
-        let out = typed ? lineRanges(text as NSString, from: 0, width: width) : layoutTail(width: width)
+        let out = typed ? typedLines(width: width) : layoutTail(width: width)
         cached = (text, width, out)
         return out
     }
@@ -463,6 +465,18 @@ final class LiveTextLines: NSView {
             out = Array(out.suffix(LiveTextLines.maxLines + 1))
         }
         return out
+    }
+
+    /// The typed text's lines, without a widow: a last line of one or two characters beside the check (「变/化 ✓」 —
+    /// Chinese breaks anywhere) is laid out again one character narrower, so a character goes down with it — when
+    /// that takes no more lines.
+    private func typedLines(width: CGFloat) -> [(NSRange, String)] {
+        let ns = text as NSString
+        let out = lineRanges(ns, from: 0, width: width)
+        guard out.count >= 2, let last = out.last?.1.trimmingCharacters(in: .whitespaces), last.count <= 2 else { return out }
+        let narrower = lineRanges(ns, from: 0, width: width - LiveTextLines.font.pointSize)
+        guard narrower.count == out.count, (narrower.last?.1.count ?? 0) > last.count else { return out }
+        return narrower
     }
 
     private func lineRanges(_ ns: NSString, from: Int, width: CGFloat) -> [(NSRange, String)] {
@@ -554,8 +568,7 @@ final class LiveTextLines: NSView {
         }
     }
 
-    /// SF checkmark, 11 pt semibold, in the island's ok.
-    private static let check: NSImage? = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [BrandColor.Island.ok])))
+    /// The island's own ok check (BlurtIcon's line family, as the ear's "Sent"), 11 pt, in the island's ok — not SF's
+    /// checkmark, whose stroke and ends differ from the check beside it.
+    private static let check: NSImage? = BlurtIcon.check.image(size: 11, color: BrandColor.Island.ok, weight: 1.3)
 }
