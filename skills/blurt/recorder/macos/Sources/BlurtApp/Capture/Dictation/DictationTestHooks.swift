@@ -63,14 +63,32 @@ extension App {
         case "front":               // front NAME: the app in front as the paste check sees it (a slow take's user moved on)
             d.testFront = rest.isEmpty ? "test-pad" : rest
             emit(["event": "dictation_test_front", "front": d.testFront])
-        case "models":              // models missing|vad|installed|-: what dictation-models said (- = ask it again;
-                                    // vad = the model is there, the VAD isn't)
-            if rest == "-" { d.refreshSpeechModels() } else {
+        case "models":
+            // models missing|vad|installed|-: what dictation-models said (- = ask it again; vad = the model is there,
+            // the VAD isn't) · models reload|state: dictation's recogniser as the key sees it (reload: read the list
+            // again first). One case: a second `case "models"` further down was never reached, and `state` faked an
+            // installed model. Anything else is an error, never a fake state.
+            switch rest {
+            case "-": d.refreshSpeechModels()
+            case "missing", "vad", "installed":
                 let ok = rest != "missing", vad = rest != "vad" && ok
                 d.setSpeechModels(["selected": "test-asr", "recommended": "test-asr", "ready": ok && vad,
                                    "selected_installed": ok,
                                    "missing": (vad ? [] : ["silero-vad"]) + (ok ? [] : ["test-asr"]),
                                    "models": [["id": "test-asr", "installed": ok]]])
+            case "reload", "state":
+                MainActor.assumeIsolated {
+                    Task { @MainActor in
+                        if rest == "reload" { await DictationModels.shared.load() }
+                        let m = DictationModels.shared
+                        emit(["event": "dictation_models_state", "ready": m.dictationReady.map { $0 as Any } ?? NSNull(),
+                              "selected": m.selectedASR?.id ?? NSNull(), "recommended": m.recommendedASR?.id ?? NSNull(),
+                              "owner": Dictation.shared.deferredTo.map { Int($0) } ?? NSNull()])
+                    }
+                }
+            default:
+                emit(["event": "dictation_test_error", "command": "models", "arg": rest,
+                      "error": "models missing|vad|installed|-|reload|state"])
             }
         case "retry": d.retry(rest, via: "test")    // retry ID: a failed take again (the island's / history's Retry)
         case "failed-line": d.toastFailed(rest.isEmpty ? "test" : rest, .timedOut)   // failed-line ID: the island's "not recognised" line, with Retry
@@ -230,16 +248,6 @@ extension App {
             }
         case "polish": MainActor.assumeIsolated { DictationModels.shared.testCommand(rest) }    // the model rows' buttons
         case "downloads": MainActor.assumeIsolated { ModelDownloads.shared.testCommand(rest) }  // the one download manager
-        case "models":              // models reload | state: dictation's recogniser as the key sees it
-            MainActor.assumeIsolated {
-                Task { @MainActor in
-                    if rest == "reload" { await DictationModels.shared.load() }
-                    let d = DictationModels.shared
-                    emit(["event": "dictation_models_state", "ready": d.dictationReady.map { $0 as Any } ?? NSNull(),
-                          "selected": d.selectedASR?.id ?? NSNull(), "recommended": d.recommendedASR?.id ?? NSNull(),
-                          "owner": Dictation.shared.deferredTo.map { Int($0) } ?? NSNull()])
-                }
-            }
         case "history":
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {

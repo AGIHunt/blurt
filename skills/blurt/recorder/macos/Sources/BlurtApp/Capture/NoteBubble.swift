@@ -161,10 +161,12 @@ final class NoteVoice {
 
     init(url: URL) { self.url = url }
 
-    /// Tests (test commands only): BLURT_TEST_MIC_DENIED=1 acts as if microphone access had been turned off.
+    /// Tests (test commands only): BLURT_TEST_MIC_DENIED=1 — or BLURT_TEST_MICROPHONE=denied, the variable onboarding's
+    /// permission rows read (SystemAccess.testMic) — acts as if microphone access had been turned off: one variable
+    /// simulates the denial everywhere (dogfood 1.1.0: with only the second set, dictation listened anyway).
     static let testDenied: Bool = {
         let env = ProcessInfo.processInfo.environment
-        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_MIC_DENIED"] == "1"
+        return env["BLURT_TEST_COMMANDS"] == "1" && (env["BLURT_TEST_MIC_DENIED"] == "1" || env["BLURT_TEST_MICROPHONE"] == "denied")
     }()
 
     /// Microphone access was turned off for Blurt (System Settings → Privacy & Security → Microphone).

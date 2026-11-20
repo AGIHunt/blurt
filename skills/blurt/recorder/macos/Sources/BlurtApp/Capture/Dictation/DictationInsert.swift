@@ -107,6 +107,9 @@ enum DictationInsert {
                 emit(["event": "dictation_insert", "result": "none", "why": "test_mode"])
                 return done(.none)
             }
+            // `no-field on`: as a real paste into a focus that isn't a text field — never confirmed as one (a confirmed
+            // paste with no field is a state the real path can't reach)
+            lastPasteConfirmed = !testNoField
             return paste(text, into: tv, window: tv.window, before: before ?? (tv.string, tv.selectedRange()), done: done)
         }
         // a computer's window in front, connected: the take is typed there (its host refuses it at a lock screen or a password field)
