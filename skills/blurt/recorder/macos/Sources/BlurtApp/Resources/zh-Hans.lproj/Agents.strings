@@ -81,6 +81,10 @@
 "install.row.failed.detail" = "%@ 报了错。执行的命令在「详细信息」里。";
 "install.row.about.skill" = "让 %@ 知道怎么处理你的事项，所有项目都生效";
 "install.row.about.mcp" = "让 %@ 能读取你的事项、汇报进度，所有项目都生效";
+"install.row.add.approve" = "允许直接汇报进度";
+"install.row.added.approve" = "已允许直接汇报进度";
+"install.row.in_place.approve" = "直接汇报进度";
+"install.row.about.approve" = "%@ 标记、读取和搜索事项时不用先问你，其余操作仍会询问。";
 "install.row.in_place.skill" = "口喷鸡技能";
 "install.row.in_place.mcp" = "口喷鸡 MCP 服务";
 "install.row.exists" = "已安装";

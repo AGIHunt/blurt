@@ -1295,6 +1295,99 @@ def _names_all(text: str, want: list[str]) -> bool:
     return all(w in leaves for w in want)
 
 
+def _approve_lines(server: str, tools: list[str]) -> list[str]:
+    return [f'[mcp_servers.{server}.tools.{t}] approval_mode = "approve"' for t in tools]
+
+
+def _approvals_missing(text: str, server: str, tools: list[str]) -> list[str]:
+    """The tools of `server` a Codex config.toml doesn't set to approval_mode = "approve" yet."""
+    try:
+        import tomllib  # noqa: PLC0415
+        try:
+            node = tomllib.loads(text)
+        except ValueError:
+            node = None
+        if node is not None:
+            got = ((node.get("mcp_servers") or {}).get(server) or {}).get("tools") or {}
+            return [t for t in tools if not (isinstance(got.get(t), dict) and got[t].get("approval_mode") == "approve")]
+    except ImportError:
+        pass
+    missing = []
+    for t in tools:
+        sec = re.search(rf"(?ms)^\s*\[mcp_servers\.{re.escape(server)}\.tools\.{re.escape(t)}\]\s*$(.*?)(?=^\s*\[|\Z)", text)
+        if not (sec and re.search(r'(?m)^\s*approval_mode\s*=\s*["\']approve["\']\s*$', sec.group(1))):
+            missing.append(t)
+    return missing
+
+
+def _with_approvals(text: str, server: str, tools: list[str]) -> str:
+    """`text` with [mcp_servers.<server>.tools.<t>] approval_mode = "approve" for each of `tools`: the line replaced in
+    a table that is already there, else the table appended. Everything else is left byte for byte."""
+    for t in tools:
+        head = re.compile(rf"(?m)^\s*\[mcp_servers\.{re.escape(server)}\.tools\.{re.escape(t)}\]\s*$")
+        m = head.search(text)
+        if not m:
+            text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + \
+                f'[mcp_servers.{server}.tools.{t}]\napproval_mode = "approve"\n'
+            continue
+        nxt = re.search(r"(?m)^\s*\[", text[m.end():])
+        end = m.end() + (nxt.start() if nxt else len(text) - m.end())
+        body = text[m.end():end]
+        if re.search(r"(?m)^\s*approval_mode\s*=", body):
+            body = re.sub(r"(?m)^(\s*)approval_mode\s*=.*$", r'\1approval_mode = "approve"', body, count=1)
+        else:
+            body = '\napproval_mode = "approve"' + body
+        text = text[:m.end()] + body + text[end:]
+    return text
+
+
+def _codex_approvals(spec: dict, bin_: str | None, check: list[str] | None, env: dict, dry_run: bool,
+                     registered: bool) -> dict:
+    """Connect's per-tool approval for the reporting tools only (agents.json mcp.approve: Codex's mark_fixed,
+    get_item, search_items): an unattended run with approval "never" refuses any MCP call that would ask, so the
+    agent's report never reached Blurt. Nothing that takes a key (setup_connect) is in the list: those still ask.
+    Written after the server is registered (`codex mcp add` rewrites the server's table and drops these; a tools table
+    for a server that isn't there yet stops Codex from loading its config), then checked by loading the config with
+    Codex itself — if that fails the file goes back as it was."""
+    path = expand(spec["path"], env)
+    server, tools = spec.get("server") or "blurt", list(spec.get("tools") or [])
+    try:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+    except OSError as e:
+        return {"action": "error", "what": "mcp", "path": str(path), "error": str(e)}
+    key = ["mcp_servers", server, "tools"]
+    missing = tools if not registered and dry_run else _approvals_missing(text, server, tools)
+    if not missing:
+        return {"action": "exists", "what": "mcp", "path": str(path), "key": key, "lines": _approve_lines(server, tools)}
+    ch = {"action": "toml_set", "what": "mcp", "path": str(path), "key": key, "tools": missing,
+          "lines": _approve_lines(server, missing)}
+    if dry_run:
+        return ch
+    if not registered:
+        ch.update(ok=False, error="the blurt MCP server isn't registered with Codex")
+        return ch
+    new = _with_approvals(text, server, missing)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(new, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        ch.update(ok=False, error=str(e))
+        return ch
+    if bin_ and check:
+        code, out = _run([bin_, *check], env, timeout=20)
+        if code != 0:  # Codex can't load it: put the user's file back exactly as it was
+            try:
+                path.write_text(text, encoding="utf-8")
+            except OSError:
+                pass
+            ch.update(ok=False, error=f"Codex didn't accept the change: {out[-300:]}")
+            return ch
+    ch["ok"] = True
+    return ch
+
+
 def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = False, env: dict | None = None,
             cfg: dict | None = None) -> dict:
     """Link the skill into the agent's skill dir and register the blurt MCP server with it. Never overwrites a
@@ -1356,6 +1449,7 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
                 # a moved skill) is written again
                 exists = code == 0 and _names_all(text, _fill(m.get("current") or [], vals))
                 stale = code == 0 and not exists
+            registered = exists
             if exists:
                 changes.append({"action": "exists", "argv": [bin_, *m["check"]]})
             else:
@@ -1371,6 +1465,11 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
                     code, text = _run(argv, env)
                     ch.update(ok=code == 0, exit=code, output=text[-2000:])
                     ok = ok and code == 0
+                    registered = code == 0
+                changes.append(ch)
+            if m.get("approve") and bin_:
+                ch = _codex_approvals(m["approve"], bin_, m.get("check"), env, dry_run, registered)
+                ok = ok and ch.get("ok") is not False and ch["action"] != "error"
                 changes.append(ch)
         elif m.get("json"):
             spec = m["json"]

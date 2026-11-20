@@ -1272,6 +1272,12 @@ struct InstallSheet: View {
             return Row(change: c, group: group, tone: .err, title: AL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
                        detail: AL("install.row.failed.detail", name))
         }
+        if c.isApproval {   // Codex: the reporting tools stop asking (an unattended run would refuse them)
+            let done = applied && c.ok == true
+            return Row(change: c, group: group, tone: c.action == "exists" ? .inPlace : done ? .added : .add,
+                       title: AL(c.action == "exists" ? "install.row.in_place.approve" : done ? "install.row.added.approve" : "install.row.add.approve"),
+                       detail: AL("install.row.about.approve", name))
+        }
         switch c.action {
         case "symlink", "run", "json_merge":
             let done = applied && c.ok == true

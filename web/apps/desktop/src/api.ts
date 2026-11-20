@@ -866,6 +866,9 @@ export interface InstallChange {
   how?: string;
   what?: string;
   command?: string[];
+  /** toml_set (Codex): the tools whose calls stop asking, and the config lines that say so */
+  tools?: string[];
+  lines?: string[];
 }
 export interface InstallPlan {
   ok?: boolean;

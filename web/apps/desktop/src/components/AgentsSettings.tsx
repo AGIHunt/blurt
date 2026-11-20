@@ -915,7 +915,15 @@ function DetailSheet({ m, id, close, onSignIn }: { m: Model; id: string; close: 
 }
 
 const tilde = (p: string) => p.replace(/^(C:\\Users\\[^\\]+|\/Users\/[^/]+|\/home\/[^/]+)/i, '~');
-const changesSomething = (c: InstallChange) => ['symlink', 'run', 'json_merge'].includes(c.action);
+const changesSomething = (c: InstallChange) => ['symlink', 'run', 'json_merge', 'toml_set'].includes(c.action);
+/** Codex's per-tool approval for the reporting tools (agents.json mcp.approve), to be written or already there */
+const isApproval = (c: InstallChange) => c.action === 'toml_set' || (c.action === 'exists' && !!c.lines);
+function approvalLine(c: InstallChange): string | null {
+  if (!c.path || !c.key) return null;
+  const names = c.tools ?? (c.lines ?? []).map((l) => l.split(']')[0].split('.').pop() ?? '');
+  if (!names.length) return null;
+  return `${tilde(c.path)}: ${c.key.join('.')}.${names.length === 1 ? names[0] : `{${names.join(',')}}`}.approval_mode = "approve"`;
+}
 const subject = (c: InstallChange) => (c.what ? (c.what === 'skill' ? 'skill' : 'mcp') : c.action === 'symlink' || c.action === 'conflict' ? 'skill' : c.action === 'exists' ? (!c.argv && !c.key ? 'skill' : 'mcp') : 'mcp');
 /** a conflict with another copy of Blurt (a checkout, an older install): it keeps working, so it is in place */
 const otherIsBlurt = (c: InstallChange) => c.action === 'conflict' && /([\\/]skills[\\/]blurt|[\\/]blurt)$/.test(c.points_to ?? '');
@@ -927,7 +935,8 @@ function technical(c: InstallChange): string | null {
     case 'conflict': return c.path ? `${tilde(c.path)} → ${tilde(c.points_to ?? '?')}` : null;
     case 'run': return c.argv ? words(c.argv) : null;
     case 'json_merge': return c.path ? `${tilde(c.path)}: ${(c.key ?? []).join('.')}` : null;
-    case 'exists': return c.argv ? words(c.argv) : c.path && c.key ? `${tilde(c.path)}: ${c.key.join('.')}` : c.path ? tilde(c.path) : null;
+    case 'toml_set': return approvalLine(c);
+    case 'exists': return c.lines ? approvalLine(c) : c.argv ? words(c.argv) : c.path && c.key ? `${tilde(c.path)}: ${c.key.join('.')}` : c.path ? tilde(c.path) : null;
     case 'manual': return c.command ? words(c.command) : null;
     default: return c.path ? tilde(c.path) : null;
   }
@@ -949,7 +958,11 @@ function InstallSheet({ m, close }: { m: Model; close: () => void }) {
     if (c.action === 'manual') r = { tone: 'attn', title: S(skill ? 'install.row.manual.skill' : 'install.row.manual.mcp'), detail: m.def(p.agent.id)?.fix?.[L] || c.how || S('install.row.manual.none', name) };
     else if (c.action === 'error') r = { tone: 'err', title: S(skill ? 'install.row.failed.skill' : 'install.row.failed.mcp'), detail: c.path ? S('install.error.path', tilde(c.path)) : S('install.error') };
     else if (c.ok === false) r = { tone: 'err', title: S(skill ? 'install.row.failed.skill' : 'install.row.failed.mcp'), detail: S('install.row.failed.detail', name) };
-    else if (changesSomething(c)) {
+    else if (isApproval(c)) {
+      // Codex: the reporting tools stop asking (an unattended run would refuse them)
+      const done = p.applied && c.ok === true;
+      r = { tone: c.action === 'exists' ? 'in' : done ? 'added' : 'add', title: S(c.action === 'exists' ? 'install.row.in_place.approve' : done ? 'install.row.added.approve' : 'install.row.add.approve'), detail: S('install.row.about.approve', name) };
+    } else if (changesSomething(c)) {
       const done = p.applied && c.ok === true;
       r = { tone: done ? 'added' : 'add', title: S(done ? (skill ? 'install.row.added.skill' : 'install.row.added.mcp') : skill ? 'install.row.add.skill' : 'install.row.add.mcp'), detail: about };
     } else if (c.action === 'conflict' && otherIsBlurt(c)) r = { tone: 'in', title: inPlace, detail: S('install.row.other_copy', tilde((c.points_to ?? '?').replace(/[\\/]skills[\\/]blurt$/, ''))) };
