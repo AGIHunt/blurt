@@ -307,7 +307,7 @@ fn supervise() {
             }
         }
         if standby.is_none() && want {
-            if let Some(src) = std::fs::read_to_string(d.join("standby.json")).ok() {
+            if let Ok(src) = std::fs::read_to_string(d.join("standby.json")) {
                 prepare_standby(&d.join("standby"), &src);
                 standby = launch_as_local_service(&me, "standby");
             }
