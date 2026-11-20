@@ -483,6 +483,8 @@ export const api = {
   addProject: (path: string) => invoke<{ project: ProjectRow }>('projects_add', { path }),
   useProject: (id: string) => invoke('projects_use', { id }),
   setProject: (id: string, patch: Record<string, unknown>) => invoke('projects_set', { id, patch }),
+  /** the user's order (the sidebar, dragged): these first — ⌘5–⌘9 follow it */
+  orderProjects: (ids: string[]) => invoke('projects_order', { ids }),
   openFolder: () => invoke<void>('projects_open_folder', { makeCurrent: false }),
   /** Locate… a project whose folder is gone: only its own folder is taken (pick "same") */
   locateProject: (id: string, title: string, near: string) => invoke<{ pick: 'same' | 'other' | 'empty' | 'cancel' }>('projects_locate', { id, title, near }),

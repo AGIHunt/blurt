@@ -1,6 +1,6 @@
 // The source list (the Mac's SidebarController), by capability (docs/design/capabilities.md): Home, then a page per
 // capability that is on — Dictation, Cards, Text & Translation (where the build has it), Phone —, then Recording & Items' two groups: Items (Inbox, In Progress,
-// Unassigned, All Items) and the projects; with Recording off neither group (nor + Open Folder…) shows. The projects: the folders opened in Blurt in the one project order (pinned, then the most recently used), with
+// Unassigned, All Items) and the projects; with Recording off neither group (nor + Open Folder…) shows. The projects: the folders opened in Blurt in the user's own order (pinned first; drag one to move it — using a project never does), with
 // "+ Open Folder…" at the bottom. A count is the Inbox's mint pill (what's new for you) or quiet digits; a project's
 // count is what needs you there. The current project carries the scope mark after its name. A project renames in place
 // (double-click, F2 — Windows' key for it — or Rename in its menu); its right-click menu is the Mac's. Items dragged
@@ -21,6 +21,9 @@ function Count({ n, mint }: { n: number; mint?: boolean }) {
   return <span className={mint ? 'mw-count mint' : 'mw-count'}>{i18n().formatNumber(n)}</span>;
 }
 
+/** A project row dragged within the sidebar (a new place in the user's order). */
+const PROJECT_DRAG = 'application/x-blurt-project';
+
 export function Sidebar({
   place,
   onGo,
@@ -37,6 +40,7 @@ export function Sidebar({
   dragging,
   fresh,
   onDropAt,
+  onReorder,
   off,
   screenText = false,
   cards = 0,
@@ -73,8 +77,13 @@ export function Sidebar({
   /** files, text or the island's cards dragged over / dropped on a project row (null: the sidebar, not a row — a
       folder drop): true when the app takes it (App.sidebarDrop) */
   onDropAt?: (e: React.DragEvent, project: string | null, phase: 'over' | 'drop' | 'leave') => boolean;
+  /** a project dragged onto another (before it, or after it when `after`) */
+  onReorder?: (moving: string, onto: string, after: boolean) => void;
 }) {
   const [over, setOver] = useState<string | null>(null);
+  /** a project being dragged to a new place, and where it would land */
+  const [moving, setMoving] = useState<string | null>(null);
+  const [lands, setLands] = useState<{ id: string; after: boolean } | null>(null);
   // folders dragged in from Explorer (the Mac's sidebar takes file URLs): the whole sidebar lights up, and on the drop
   // their File objects go to the app (folder_drop.rs reads the paths; a page can't). A drag of Blurt's own rows or
   // cards (files with a type) isn't a folder drag.
@@ -197,6 +206,31 @@ export function Sidebar({
               }}
               data-testid={`nav-project-${p.id}`}
               {...drop(p.id)}
+              draggable={!!onReorder && renaming !== p.id}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(PROJECT_DRAG, p.id);
+                e.dataTransfer.effectAllowed = 'move';
+                setMoving(p.id);
+              }}
+              onDragEnd={() => (setMoving(null), setLands(null))}
+              onDragOverCapture={(e) => {
+                if (!moving || !e.dataTransfer.types.includes(PROJECT_DRAG)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setLands({ id: p.id, after: e.clientY > box.top + box.height / 2 });
+              }}
+              onDropCapture={(e) => {
+                const id = e.dataTransfer.getData(PROJECT_DRAG);
+                if (!id) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                onReorder?.(id, p.id, e.clientY > box.top + box.height / 2);
+                setMoving(null);
+                setLands(null);
+              }}
+              style={lands?.id === p.id && moving !== p.id ? { boxShadow: `inset 0 ${lands.after ? -2 : 2}px 0 var(--brand-ink)` } : undefined}
             >
               <span className="mw-side-ic">{p.exists ? <ProjectGlyph id={p.id} size={16} /> : <MissingFolderGlyph size={16} />}</span>
               {renaming === p.id ? (

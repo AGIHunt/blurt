@@ -339,15 +339,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     // MARK: drags: projects reorder (Finder's Favorites); folders open as projects; items move
 
     func outlineView(_ o: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        // the projects keep the one order every list uses (pinned, then the most recently used: Pin to Top in their
-        // menu), so a project isn't dragged into an order of its own
+        // the user's own order: dragged like Finder's Favorites (pinned ones stay above the rest)
         guard Self.reorderByDrag, let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(id, forType: .blurtProject)
         return pb
     }
 
-    static let reorderByDrag = false
+    static let reorderByDrag = true
 
     /// The projects group node (where a dragged project lands); nil while there is none.
     private var projectsGroup: SidebarNode?

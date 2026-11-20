@@ -735,6 +735,9 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       projectEdits[args.id] = { ...projectEdits[args.id], ...args.patch };
       emit('projects://changed', {});
       return r({ ok: true });
+    case 'projects_order':
+      emit('projects://changed', {});
+      return r({ ok: true, order: args.ids });
     case 'projects_remove':
       removedProjects.add(args.id);
       emit('projects://changed', {});

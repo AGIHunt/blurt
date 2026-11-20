@@ -355,6 +355,13 @@ fn projects_set(state: tauri::State<'_, AppState>, id: String, patch: Value) -> 
     projects::set(&state.runner(), &id, &patch)
 }
 
+#[tauri::command(async)]
+fn projects_order(app: AppHandle, state: tauri::State<'_, AppState>, ids: Vec<String>) -> R<Value> {
+    let r = projects::order(&state.runner(), &ids)?;
+    island::refresh(&app);
+    Ok(r)
+}
+
 #[tauri::command]
 fn projects_open_folder(app: AppHandle, make_current: Option<bool>) {
     island::open_folder(&app, make_current.unwrap_or(false));
@@ -1226,6 +1233,7 @@ pub fn run() {
             projects_add,
             projects_use,
             projects_set,
+            projects_order,
             projects_open_folder,
             projects_locate,
             items_doc,

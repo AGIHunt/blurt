@@ -64,12 +64,23 @@ export function placeQuery(p: Place, f: PlaceFilter, text: string, sort: SortKey
 /** What needs you first, then what is moving, then what is new or waiting, then what is closed (ListSections.stateOrder). */
 export const STATE_ORDER: readonly State[] = ['to_verify', 'in_progress', 'handed_off', 'new', 'todo', 'done', 'wontfix', 'discarded'];
 
-/** The projects in the one order every list uses: pinned, then the most recently used (ProjectStore.projects). */
+/** The projects in the user's own order (ProjectStore.ordered): pinned first, then the registry's order — a folder
+ *  opened goes last, dragging in the sidebar reorders, using one never does, so Ctrl+5–9 keep their projects. */
 export function orderedProjects(ps: ProjectRow[]): ProjectRow[] {
-  return ps
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => Number(!!b.p.pinned) - Number(!!a.p.pinned) || (b.p.last_used ?? '').localeCompare(a.p.last_used ?? '') || a.i - b.i)
-    .map((x) => x.p);
+  return [...ps.filter((p) => p.pinned), ...ps.filter((p) => !p.pinned)];
+}
+
+/** A project dragged in the sidebar and dropped on `onto` (before it, or after it when `after`): the new order of
+ *  `ids`, pinned ones kept above the rest (null: nothing changes). */
+export function reorderedProjects(ps: ProjectRow[], moving: string, onto: string, after: boolean): string[] | null {
+  const ids = ps.map((p) => p.id);
+  const m = ps.find((p) => p.id === moving);
+  const o = ps.find((p) => p.id === onto);
+  if (!m || !o || moving === onto || !!m.pinned !== !!o.pinned) return null;
+  const rest = ids.filter((i) => i !== moving);
+  const at = rest.indexOf(onto) + (after ? 1 : 0);
+  const out = [...rest.slice(0, at), moving, ...rest.slice(at)];
+  return out.join() === ids.join() ? null : out;
 }
 
 export interface Section {

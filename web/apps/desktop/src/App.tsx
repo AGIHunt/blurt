@@ -36,6 +36,7 @@ import {
   NO_FILTER,
   needsYouParts,
   orderedProjects,
+  reorderedProjects,
   placeQuery,
   showsState,
   SORT_KEYS,
@@ -1832,6 +1833,10 @@ export default function App() {
               onMove={(u, p) => moveItems(u, p)}
               onDropAt={(e, p, phase) => sidebarDrop(e, p ?? listTarget, phase)}
               onOpenFolder={openFolder}
+              onReorder={(id, onto, after) => {
+                const ids = reorderedProjects(registered, id, onto, after);
+                if (ids) api.orderProjects(ids).then(refresh, (e) => showToast(`${t('main.project.save_failed')} — ${errText(e)}`));
+              }}
               onSettings={() => setScreen({ kind: 'settings' })}
               off={off}
               screenText={!!status && builds(status).screenText}

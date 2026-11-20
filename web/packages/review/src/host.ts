@@ -42,7 +42,7 @@ export interface WorkRecord {
   by?: "user" | "agent" | "app";
 }
 export interface ItemSource {
-  type?: "recording" | "snap" | "voice" | "dictation" | "url" | "import" | "service";
+  type?: "recording" | "snap" | "voice" | "dictation" | "url" | "import" | "service" | "manual";
   by?: string | null;
   role?: string | null;
   app?: string | null;
