@@ -634,7 +634,7 @@
 "settings.kw.remote.screen" = "screen, mirror, view, picture";
 /* Text & Translation → History */
 "settings.screen_text.section.history" = "History";
-"settings.screen_text.history" = "History";
+"settings.screen_text.history" = "Saved text and translations";
 "settings.screen_text.history.detail" = "The text ⌥C copied and ⌥T’s translations.";
 "settings.screen_text.history.keep" = "Keep history for";
 "settings.screen_text.history.forever" = "Forever";
@@ -645,5 +645,9 @@
 "settings.screen_text.history.clear.message" = "%ld entries will be deleted. This can’t be undone.";
 "settings.screen_text.history.clear.confirm" = "Clear";
 "settings.screen_text.history.cancel" = "Cancel";
+"settings.screen_text.history.shorten.title" = "Delete %ld entries?";
+"settings.screen_text.history.shorten.message" = "Entries older than %@ will be deleted now. This can’t be undone.";
+"settings.screen_text.history.shorten.off" = "History will no longer be kept, and all %ld entries will be deleted now. This can’t be undone.";
+"settings.screen_text.history.shorten.confirm" = "Delete";
 "settings.kw.screentext.history" = "history, kept, days, forever, don’t keep, clear, privacy";
 "settings.kw.screentext.history_keep" = "history, kept, days, forever, don’t keep";

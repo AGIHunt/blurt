@@ -390,9 +390,9 @@ public enum SettingsCatalog {
             row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
                 more: S("settings.screen_text.translate.hint")),
             row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
+            row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep"),
             row("screentext.history", "screentext.history_section", "settings.screen_text.history",
                 detail: S("settings.screen_text.history.detail")),
-            row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep", fold: "screentext.history"),
 
             // 手机和电脑
             row("remote.stay_awake", "remote.options", "settings.remote.stay_awake", detail: S("settings.remote.stay_awake.desktop")),

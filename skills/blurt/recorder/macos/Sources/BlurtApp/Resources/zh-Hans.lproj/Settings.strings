@@ -216,7 +216,7 @@
 "settings.general.features.footer" = "关闭的功能不占用快捷键，也不会出现在菜单、主窗口和设置中。";
 "settings.cards.section.snaps" = "截图";
 "settings.cards.section.drag" = "拖动卡片";
-"settings.cards.history" = "历史记录";
+"settings.cards.history" = "历史";
 "settings.cards.history.detail" = "拖入或粘贴到其他 App 的卡片在卡片页保留多久。";
 "settings.cards.history.days" = "%d 天";
 "settings.cards.history.forever" = "永久";
@@ -631,17 +631,21 @@
 "settings.remote.screen.detail" = "仅在已配对的手机上开启时显示。";
 "settings.kw.remote.screen" = "屏幕, 投屏, 画面, 远程";
 /* 取字与翻译 → 记录 */
-"settings.screen_text.section.history" = "记录";
-"settings.screen_text.history" = "取字记录";
+"settings.screen_text.section.history" = "历史";
+"settings.screen_text.history" = "已存的取字与翻译";
 "settings.screen_text.history.detail" = "保存 ⌥C 取到的文字和 ⌥T 的译文。";
-"settings.screen_text.history.keep" = "取字记录保留";
+"settings.screen_text.history.keep" = "历史保留";
 "settings.screen_text.history.forever" = "永久";
 "settings.screen_text.history.summary.off" = "不保存 · 复制后不留记录";
-"settings.screen_text.history.open" = "打开记录…";
-"settings.screen_text.history.clear" = "清空记录…";
-"settings.screen_text.history.clear.title" = "清空取字记录？";
+"settings.screen_text.history.open" = "打开历史…";
+"settings.screen_text.history.clear" = "清空历史…";
+"settings.screen_text.history.clear.title" = "清空历史？";
 "settings.screen_text.history.clear.message" = "将删除 %ld 条记录，删除后无法恢复。";
 "settings.screen_text.history.clear.confirm" = "清空";
 "settings.screen_text.history.cancel" = "取消";
+"settings.screen_text.history.shorten.title" = "删除 %ld 条记录？";
+"settings.screen_text.history.shorten.message" = "早于 %@ 的记录会立即删除，删除后无法恢复。";
+"settings.screen_text.history.shorten.off" = "将不再保存历史，并立即删除全部 %ld 条记录，删除后无法恢复。";
+"settings.screen_text.history.shorten.confirm" = "删除";
 "settings.kw.screentext.history" = "历史, 记录, 保留, 天数, 永久, 不保存, 清空, 隐私";
 "settings.kw.screentext.history_keep" = "历史, 记录, 保留, 天数, 永久, 不保存";

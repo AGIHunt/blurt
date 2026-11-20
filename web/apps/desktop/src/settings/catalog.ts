@@ -205,7 +205,9 @@ export const ENTRIES: Entry[] = (() => {
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
     row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
-    // how long the history keeps what was read (record.screen_text.history_days), Open History…, Clear History…
+    // how long the history keeps what was read (record.screen_text.history_days) in a popup in sight; then what is
+    // kept, Open History…, Clear History…
+    row('screentext.history_keep', 'screentext.history_section', 'settings.screen_text.history.keep'),
     row('screentext.history', 'screentext.history_section', 'settings.screen_text.history', { detail: 'settings.screen_text.history.detail' }),
     // Models
     whole('speech.services', 'models.services.detail'),
