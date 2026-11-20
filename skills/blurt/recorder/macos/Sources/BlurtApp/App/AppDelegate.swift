@@ -1121,9 +1121,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         none.image = IslandGlyph.place(nil, size: 16)    // Unassigned, as the island and the sidebar (the tray is the Inbox)
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
-            let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
+            let i = add(ProjectLook.menuTitle(p.name), #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
             i.image = IslandGlyph.place(p, size: 16)
-            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+            i.toolTip = ProjectLook.menuTip(p)
         }
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)

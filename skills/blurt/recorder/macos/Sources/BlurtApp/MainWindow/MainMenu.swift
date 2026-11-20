@@ -59,9 +59,9 @@ enum MainMenu {
 
         let recent = NSMenu()
         for p in ProjectStore.shared.projects.prefix(10) {
-            let i = item(p.name, #selector(MainWindowController.mGoProject(_:)), obj: p.id)
+            let i = item(ProjectLook.menuTitle(p.name), #selector(MainWindowController.mGoProject(_:)), obj: p.id)
             i.image = Look.symbol("folder", p.name)
-            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+            i.toolTip = ProjectLook.menuTip(p)
             recent.addItem(i)
         }
         let recentItem = NSMenuItem(title: T("menu.open_recent"), action: nil, keyEquivalent: "")
@@ -110,7 +110,9 @@ enum MainMenu {
                    item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all")]
             // ⌘5–⌘9: the same five projects the key handler goes to (MainWindowController.shortcutProjects)
             for (k, p) in c.shortcutProjects.enumerated() {
-                go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
+                let i = item(ProjectLook.menuTitle(p.name), #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id)
+                i.toolTip = ProjectLook.menuTip(name: p.name, path: p.path)
+                go.append(i)
             }
         }
         _ = menu(T("menu.go"), go)

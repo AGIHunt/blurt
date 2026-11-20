@@ -1622,7 +1622,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
         for p in ProjectStore.shared.projects {         // the one order: pinned, then the most recently used
-            let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
+            let i = add(m, ProjectLook.menuTitle(p.name), #selector(mMove(_:)), "folder", obj: p.id)
+            i.toolTip = ProjectLook.menuTip(p)
             i.state = here == [p.id] ? .on : .off
         }
         if !ProjectStore.shared.projects.isEmpty { m.addItem(.separator()) }
