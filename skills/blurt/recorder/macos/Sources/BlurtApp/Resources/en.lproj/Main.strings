@@ -2,6 +2,7 @@
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
 "app.agent.fallback_notice" = "%1$@ — organizing with %2$@ instead";
+"app.agent.fallback_settings" = "Agent Settings…";
 "app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
 "app.agent.checking" = "checking…";

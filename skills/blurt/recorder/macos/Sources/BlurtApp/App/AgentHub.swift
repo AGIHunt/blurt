@@ -522,8 +522,11 @@ extension App {
         App.fallbackNoted[job.id] = key
         job.set("organizer", ["agent": using.id, "instead_of": why] as [String: Any])
         emit(["event": "organize_fallback", "job": job.id, "agent": using.id, "instead_of": why])
+        // with the way to fix the one passed over (its sign-in, its install: Settings → Agents) — the switch is kept
         AppEnvironment.island?.toast(T("app.agent.fallback_notice", why.joined(separator: T("app.agent.list_sep")), using.name),
-                                     actionTitle: nil, action: nil)
+                                     actionTitle: T("app.agent.fallback_settings")) {
+            AppEnvironment.settings?.show(pane: "agents/agents.organize")
+        }
     }
     /// job id → the switch already said for it (running jobs only: pruned on every new switch)
     static var fallbackNoted: [String: String] = [:]

@@ -141,10 +141,13 @@
 "capture.note.ph_voice_busy" = "A voice note is recording. Type a note here";
 "capture.note.ph_mic_gone" = "Mic disconnected. Type a note";
 "capture.note.ph_no_mic" = "Mic unavailable. Type a note";
+"capture.note.ph_mic_off" = "Microphone is off for Blurt. Type a note";
 "capture.note.st_voice" = "Tab accept · type to replace";
+"capture.note.st_voice_short" = "Tab accept";
 "capture.note.st_pick" = "↑↓ choose · ↩ pick · Esc back";
 "capture.note.stage_hint" = "Drag to draw · ⇧ box · ⌥ ellipse · ⇧⌥ arrow · Esc discards";
 "capture.note.st_copy" = "↩ Save as Card · ⌘↩ Copy and Finish";
+"capture.note.st_copy_short" = "↩ Save · ⌘↩ Copy";
 "capture.ink.strip" = "Markup tools";
 "capture.ink.tool_pen" = "Pen";
 "capture.ink.tool_box" = "Box";
@@ -172,6 +175,7 @@
 "capture.note.st_rerecord" = "%@ · recording again";
 "capture.note.st_rerecord_tab" = "%@ · Tab to stop";
 "capture.picker.cancel" = "Cancel";
+"capture.picker.keys" = "Keys";
 "capture.picker.full_screen" = "Full screen";
 "capture.picker.last_area" = "Last area";
 "capture.picker.snap" = "Snap";

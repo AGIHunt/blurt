@@ -141,10 +141,13 @@
 "capture.note.ph_voice_busy" = "正在录制语音备注，可在此输入文字";
 "capture.note.ph_mic_gone" = "麦克风已断开，可输入文字";
 "capture.note.ph_no_mic" = "麦克风不可用，可输入文字";
+"capture.note.ph_mic_off" = "口喷鸡没有麦克风权限，可输入文字";
 "capture.note.st_voice" = "Tab 采用识别结果 · 直接打字可替换";
+"capture.note.st_voice_short" = "Tab 采用";
 "capture.note.st_pick" = "↑↓ 选择 · ↩ 确定 · Esc 返回";
 "capture.note.stage_hint" = "拖动绘制 · ⇧ 方框 · ⌥ 椭圆 · ⇧⌥ 箭头 · Esc 丢弃";
 "capture.note.st_copy" = "↩ 存为卡片 · ⌘↩ 复制并完成";
+"capture.note.st_copy_short" = "↩ 存卡片 · ⌘↩ 复制";
 "capture.ink.strip" = "标注工具";
 "capture.ink.tool_pen" = "画笔";
 "capture.ink.tool_box" = "方框";
@@ -172,6 +175,7 @@
 "capture.note.st_rerecord" = "%@ · 正在重录";
 "capture.note.st_rerecord_tab" = "%@ · Tab 停止";
 "capture.picker.cancel" = "取消";
+"capture.picker.keys" = "按键";
 "capture.picker.full_screen" = "全屏";
 "capture.picker.last_area" = "上次区域";
 "capture.picker.snap" = "截图";

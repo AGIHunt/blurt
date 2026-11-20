@@ -18,6 +18,19 @@ final class ToastQueueTests: XCTestCase {
         while t <= to { q.tick(now: t, paused: paused, canShow: canShow); t += 1.0 / 60 }
     }
 
+    /// The island idles between toasts: a toast posted after a long quiet gets its whole time (an Undo was up 4.5 s of 5).
+    func testATimeOfQuietBeforeAToastIsNotTimeOnScreen() {
+        let q = Q()
+        q.post(entry("Copied"), now: 0)
+        run(q, from: 0, to: 6)
+        XCTAssertNil(q.current)
+        q.post(entry("Snap discarded", seconds: 5, actionable: true), now: 30)
+        run(q, from: 30, to: 34.9)
+        XCTAssertEqual(q.current?.text, "Snap discarded", "still up just before its 5 s")
+        run(q, from: 34.9, to: 35.2)
+        XCTAssertNil(q.current)
+    }
+
     func testFirstToastShowsAtOnce() {
         let q = Q()
         XCTAssertEqual(q.post(entry("Copied"), now: 0), .shown)
