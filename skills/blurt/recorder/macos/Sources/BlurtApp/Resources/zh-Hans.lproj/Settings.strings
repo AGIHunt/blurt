@@ -559,7 +559,7 @@
 "onboarding.upgrade.resume" = "继续下载（还剩 %@）";
 "onboarding.start.ready.detail" = "系统自带，无需下载。";
 "onboarding.upgrade.better" = "%1$@（%2$@）：识别更准确，可离线使用。";
-"onboarding.upgrade.better_free" = "%1$@（%2$@）：识别更准确，可离线使用。这台 Mac 可用 %3$@。";
+"onboarding.upgrade.better_free" = "%1$@（%2$@）：识别更准确，可离线使用。本机可用 %3$@。";
 "onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），完成后自动启用。";
 "onboarding.key.compare" = "%1$@约 %2$@，录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";

@@ -364,8 +364,8 @@
 "capture.sort.set_up" = "Set Up…";
 "capture.keys.wont_work_many" = "%@ shortcuts are taken";
 "capture.keys.menu_not_working" = "%1$@ doesn’t work: %2$@. Change it in Settings, under Shortcuts.";
-"capture.action.cards.detail" = "Opens the Cards page. Press again to go back to the app you were in";
-"capture.action.reformat.detail" = "Rewrites the last dictation in the next style";
+"capture.action.cards.detail" = "Opens the Cards page. Press again to go back to the app you were in.";
+"capture.action.reformat.detail" = "Rewrites the last dictation in the next style.";
 "capture.keys.section.capture" = "Capture";
 "capture.keys.section.open" = "Open and switch";
 "capture.keys.dictation_key" = "Start dictation";
@@ -395,7 +395,7 @@
 /* Copy text from screen (⌥C, ScreenTextCopy.swift) */
 "capture.menu.text" = "Copy Text from Screen";
 "capture.action.text" = "Copy text from screen";
-"capture.action.text.detail" = "Copy text from any area of the screen; typed in when the cursor is in a text field";
+"capture.action.text.detail" = "Copy text from any area of the screen; typed in when the cursor is in a text field.";
 "capture.text.copied" = "Copied";
 "capture.text.none" = "No text found in that area";
 "capture.text.failed" = "Couldn’t read the screen";

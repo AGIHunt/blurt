@@ -35,7 +35,7 @@
 "home.dictation.downloading" = "Downloading speech model · %1$@ of %2$@";
 "home.dictation.better_downloading" = "Downloading a more accurate speech model · %1$@ of %2$@";
 "home.dictation.better_offer" = "Download a more accurate speech model · %@";
-"home.dictation.polish_offer" = "Download the polish model, for styles · %@";
+"home.dictation.polish_offer" = "Download the polish model for dictation styles · %@";
 "home.dictation.polish_downloading" = "Downloading the polish model · %1$@ of %2$@";
 "home.recording.no_agent" = "Say “Process my Blurt recordings” in your agent to organize.";
 "home.recording.set_up_agent" = "Set Up an Agent…";

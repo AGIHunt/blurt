@@ -364,8 +364,8 @@
 "capture.sort.set_up" = "设置…";
 "capture.keys.wont_work_many" = "%@ 个快捷键已被占用";
 "capture.keys.menu_not_working" = "%1$@ 无法使用：%2$@。可在「设置 > 快捷键」中更改。";
-"capture.action.cards.detail" = "打开卡片页，再按一次回到之前的 App";
-"capture.action.reformat.detail" = "将上一条听写改为下一种风格";
+"capture.action.cards.detail" = "打开卡片页，再按一次回到之前的 App。";
+"capture.action.reformat.detail" = "将上一条听写改为下一种风格。";
 "capture.keys.section.capture" = "录屏、截图、取字和语音备注";
 "capture.keys.section.open" = "打开与切换";
 "capture.keys.dictation_key" = "开始听写";
@@ -395,7 +395,7 @@
 /* 截图取字（⌥C，ScreenTextCopy.swift） */
 "capture.menu.text" = "截图取字";
 "capture.action.text" = "截图取字";
-"capture.action.text.detail" = "框选屏幕上的文字并复制；光标在输入框中时直接输入";
+"capture.action.text.detail" = "框选屏幕上的文字并复制；光标在输入框中时直接输入。";
 "capture.text.copied" = "已复制";
 "capture.text.none" = "该区域未识别到文字";
 "capture.text.failed" = "无法读取屏幕";
