@@ -377,7 +377,9 @@ struct HelperPanelView: View {
         .frame(minHeight: 44)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.04)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-        .accessibilityElement(children: .combine)
+        // the step's words and its control stay two elements (combined, step 3 read "…restart Blurt, Restart Blurt" and
+        // its button couldn't be reached on its own)
+        .accessibilityElement(children: .contain)
     }
 
     /// The step or the walk done: the ok disc (16 pt, the same check as everywhere) and one line, a quieter one under it.

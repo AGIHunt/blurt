@@ -133,18 +133,48 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
         openButton = open
         let root = NSView()
-        for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        // a hairline over the footer while rows go on under it: the last row cut by the list's edge read as drawn under
+        // "+ Open Folder…" at the window's smallest height
+        let rule = NSBox()
+        rule.boxType = .separator
+        rule.isHidden = true
+        footerRule = rule
+        for v in [scroll, rule, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -8),
+            rule.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            rule.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            rule.bottomAnchor.constraint(equalTo: scroll.bottomAnchor),
             open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(updateFooterRule), name: NSView.boundsDidChangeNotification,
+                                               object: scroll.contentView)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateFooterRule), name: NSView.frameDidChangeNotification,
+                                               object: outline)
+        listScroll = scroll
         view = root
         view.frame = NSRect(x: 0, y: 0, width: 220, height: 600)
     }
 
     @objc func openTapped() { actions?.openFolder() }
+
+    private var footerRule: NSBox?
+    private weak var listScroll: NSScrollView?
+
+    /// The footer's hairline shows while some row is below the list's visible bottom.
+    @objc private func updateFooterRule() {
+        guard let s = listScroll, let r = footerRule else { return }
+        let more = outline.bounds.height - s.contentView.documentVisibleRect.maxY > 1
+        if r.isHidden == more { r.isHidden = !more }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updateFooterRule()
+    }
 
     // MARK: rename in place
 
