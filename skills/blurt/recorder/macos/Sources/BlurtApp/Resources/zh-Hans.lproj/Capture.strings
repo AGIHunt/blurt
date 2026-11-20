@@ -15,6 +15,7 @@
 "capture.card.ax_move" = "移到 %@";
 "capture.card.ax_shot" = "截图";
 "capture.card.ax_shot_at" = "截图 · %@";
+"capture.card.ax_nth" = "%1$@，第 %2$ld 张，共 %3$ld 张";
 "capture.card.ax_voice" = "语音备注";
 "capture.card.ax_voice_at" = "语音备注 · %@";
 "capture.card.copied" = "已复制";

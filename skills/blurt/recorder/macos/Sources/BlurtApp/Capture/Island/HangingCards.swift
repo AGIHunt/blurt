@@ -17,7 +17,8 @@
 //  • the row (BlurtCore CardRow): newest first, left to right, centred under the island — every card (the newest
 //    100), nothing folded behind a count. A row longer than its window (at most 1040 pt) scrolls sideways in it — the
 //    trackpad's swipe or the wheel over the row, the keyboard bringing its card in — and the window's edges fade
-//    where more cards wait beyond them (`rowLayer`'s mask); each time the cards come down (or a capture is caught)
+//    where more cards wait beyond them (`rowLayer`'s mask), with "‹ +N" / "+N ›" over those ends (a click scrolls
+//    the row that way; VoiceOver has only the cards in the window, and the two ends); each time the cards come down (or a capture is caught)
 //    the newest is back at the left. A snap's card takes its picture's shape (BlurtCore CardShape: 84 pt high,
 //    84–150 wide; a toolbar or a sidebar shown whole). Every card at once is the main window's Cards page (the open
 //    island's cards row, ⌥H). Nothing pages or rotates: the order is always the time they were taken. The
@@ -62,10 +63,11 @@
 //    double-click interval has passed (DeferredClick): double-click = edit the note, and never copies first · ⌘-click =
 //    add the card to a selection that is copied as one (a neutral ring and an accent check in its corner, "✓ 2
 //    selected · Copied" under the row; a plain click or the cards going up ends it) — and moved as one: drag any card of it onto a project in the island, or Move N Cards To ▸ in its
-//    menu (withSelection) · right-click (HangingCards.cardMenu, this card or its selection): Copy Image / Copy Text
-//    (only with text), Copy All N Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in
-//    Finder, Move To ▸ (projects recently used first, then Unassigned), Organize (these cards: into Unassigned with a
-//    suggested project each), Delete · drag = into any app, or onto a project in the island: the thread stretches after
+//    menu (withSelection) · right-click (HangingCards.cardMenu): on one card Copy Image / Copy Text (only with text),
+//    Retry Transcription (after a failure), Edit Note…, Show in Finder, Move To ▸ (projects recently used first, then
+//    Unassigned), Organize (into Unassigned with a suggested project each), Delete; on a card of a ⌘-click selection
+//    every row is the selection's and counts it (Copy 3 Cards, Move 3 Cards To ▸, Organize 3 Cards, Delete 3 Cards) ·
+//    drag = into any app, or onto a project in the island: the thread stretches after
 //    it, then snaps and springs back up · × = the thread lets go and the card falls. Delete never asks: "Deleted · Undo"
 //    in the island for 5 s (Snapper.delete; the files stay until then). With Recording & Items off (Capabilities.swift)
 //    there is no Move To ▸ and no Organize anywhere — a card is copied, edited, shown or deleted; with Cards off none
@@ -363,6 +365,10 @@ final class HangingCards: NSObject {
     private var lipK: CGFloat = 0
     /// A ⌘-click selection's one line under the row: "2 selected · Copied".
     private let selPill = CALayer(), selText = CATextLayer(), selCheck = CALayer()
+    /// "+N ›" at the row's window's right end and "‹ +N" at its left while cards wait beyond them (a faint fade alone
+    /// said neither how many nor how to get there): a click scrolls the row that way.
+    private let moreL = CALayer(), moreLText = CATextLayer(), moreR = CALayer(), moreRText = CATextLayer()
+    private var moreCounts = (left: 0, right: 0)
     private var pickedCopied = false
     /// The row as laid out last (CardRow.layout): which cards hang, newest first, and the window it scrolls in.
     private var row = CardRow.Layout.empty
@@ -478,6 +484,18 @@ final class HangingCards: NSObject {
         selCheck.contentsGravity = .resizeAspect
         selPill.addSublayer(selCheck)
         stage.addSublayer(selPill)
+        for (pill, text) in [(moreL, moreLText), (moreR, moreRText)] {
+            pill.zPosition = 10_000
+            pill.cornerRadius = 11
+            pill.isHidden = true
+            pill.shadowOpacity = 0.2
+            pill.shadowRadius = 3
+            pill.shadowOffset = CGSize(width: 0, height: 2)
+            text.contentsScale = 2
+            text.alignmentMode = .center
+            pill.addSublayer(text)
+            stage.addSublayer(pill)
+        }
         tipMeta.truncationMode = .end           // (plain strings: setText)
         tipHint.truncationMode = .end
         for l in [tipMeta, tipHint] {
@@ -524,7 +542,7 @@ final class HangingCards: NSObject {
         for c in cards { style(c) }
         // the hover note and the selection line: one solid surface (a tip, radius 10) — the elevated #2A2A2A in dark,
         // never a translucent grey that reads as disabled
-        for l in [tip, selPill] {
+        for l in [tip, selPill, moreL, moreR] {
             l.backgroundColor = HangingCards.tipSurface(dark: dark).cgColor
             l.borderColor = HangingCards.hairline(dark: dark).cgColor
             l.borderWidth = 0.5
@@ -645,16 +663,16 @@ final class HangingCards: NSObject {
             } else {
                 c.face.contents = s.markedThumb ?? s.thumb
             }
-            layoutCaption(c, note, marks: HangingCards.marks(s))
+            layoutCaption(c, note, marks: HangingCards.marks(s, band: true))
         }
         c.card.shadowOpacity = dark ? HangingCards.shadowDark : HangingCards.shadowLight
         stylePick(c)                    // a ⌘-click selection's ring survives a restyle (appearance, a new note)
         // the mic mark: these words were spoken (or the audio waits for a retry) — never on a card without them
-        let marks = HangingCards.marks(s)
+        let banded = s.kind == .shot && !c.scrim.isHidden
+        let marks = HangingCards.marks(s, band: banded)
         // on a bare picture: the small capsule in its bottom right corner; with a band (a note, or only its status
         // line), the marks lead the band's first line (white, on the dark band) — a capsule moved to the top corner
         // covered what was there ("$24.00"), and one in the corner covered "Couldn't transcribe"
-        let banded = s.kind == .shot && !c.scrim.isHidden
         let w = c.size.width, h = c.size.height
         c.badge.contents = marks.isEmpty || banded ? nil : HangingCards.badgeImage(marks)
         c.badge.isHidden = marks.isEmpty || banded
@@ -669,8 +687,11 @@ final class HangingCards: NSObject {
     }
 
     /// What a card is marked with: its words were spoken (when they are here, or the audio waits for a retry), ink.
-    static func marks(_ s: Shot) -> [BlurtIcon] {
-        (s.kind == .shot ? CardKindMark.icon(s).map { [$0] } ?? [] : []) + (s.kind == .shot && s.note.marksMic ? [.mic] : [])
+    /// Its kind only on a bare picture's capsule: on the note's band (`band`) the marks are mic and ink alone
+    /// (system.md §3.2) — the kind's glyph there left a 112 pt card two words of its note ("The pay"). The kind is in
+    /// the hover note, on the Cards page's tile and in the card's spoken name.
+    static func marks(_ s: Shot, band: Bool = false) -> [BlurtIcon] {
+        (s.kind == .shot && !band ? CardKindMark.icon(s).map { [$0] } ?? [] : []) + (s.kind == .shot && s.note.marksMic ? [.mic] : [])
             + (s.marked != nil ? [.ink] : [])
     }
 
@@ -1046,6 +1067,41 @@ final class HangingCards: NSObject {
         layout()
     }
 
+    /// "‹ +N" / "+N ›" over the window's faded ends, centred on the cards, while cards wait beyond them.
+    private func updateMore() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard shown, let v = row.viewport else {
+            moreL.isHidden = true; moreR.isHidden = true; moreCounts = (0, 0); return
+        }
+        let cs = shownCards.filter { !$0.flying && !inView($0) }
+        let counts = (left: cs.filter { $0.x.value < v.lowerBound }.count, right: cs.filter { $0.x.value > v.upperBound }.count)
+        let dark = isDarkMode
+        let y = (shownCards.first.map { $0.grip.value + $0.size.height / 2 } ?? anchor.y + 42)
+        for (pill, text, n, right) in [(moreL, moreLText, counts.left, false), (moreR, moreRText, counts.right, true)] {
+            pill.isHidden = n == 0
+            guard n > 0 else { continue }
+            let s = NSAttributedString(string: right ? "+\(n) ›" : "‹ +\(n)",
+                                       attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                                                    .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
+            let w = ceil(s.size().width) + 18
+            pill.bounds = CGRect(x: 0, y: 0, width: w, height: 22)
+            text.string = s
+            text.frame = CGRect(x: 0, y: 3, width: w, height: 17)
+            pill.position = CGPoint(x: right ? v.upperBound - w / 2 - 2 : v.lowerBound + w / 2 + 2, y: y)
+        }
+        moreCounts = counts
+    }
+
+    /// The "+N" ends: the row scrolls a window's width (less its fades) that way.
+    func scrollMore(_ d: Int) {
+        guard let v = row.viewport else { return }
+        let step = (v.upperBound - v.lowerBound) - CardRow.fade * 2
+        scroll(to: scrollX + CGFloat(d) * step, rigid: false)
+        emit(["event": "cards_more", "dir": d > 0 ? "right" : "left", "scroll": Double(scrollX)])
+    }
+
     /// The fade at the window's edges where more cards wait beyond them (none while the whole row fits).
     private func updateRowMask() {
         guard let v = row.viewport, width > 0 else { rowLayer.mask = nil; return }
@@ -1100,6 +1156,7 @@ final class HangingCards: NSObject {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         updateRowMask()
+        updateMore()
         for (j, c) in shownCards.enumerated() {
             c.focusRing.isHidden = focus != j
             c.focusRing.borderColor = HangingCards.cardColor(BrandColor.accent, dark: isDarkMode)
@@ -1601,6 +1658,7 @@ final class HangingCards: NSObject {
         }
         stepLip()
         if row.viewport != nil { updateRowMask() }
+        updateMore()
         for c in cards { place(c, now: now) }
         for c in leaving { stepLeaving(c, now) }
         leaving.removeAll { c in
@@ -2128,16 +2186,23 @@ final class HangingCards: NSObject {
 
     private func positionSelection() {
         guard !selPill.isHidden else { return }
-        let xs = picked.map(\.x.value)
+        // under the picked cards that show; none in the row's window (scrolled past it): under the island, never alone
+        // at the screen's edge pointing at nothing
+        let xs = picked.filter(inView).map(\.x.value)
         let cx = xs.isEmpty ? anchor.x : (xs.min()! + xs.max()!) / 2
         let w = selPill.bounds.width
-        selPill.position = CGPoint(x: min(max(cx, w / 2 + 12), width - w / 2 - 12), y: (rowBottom ?? anchor.y + 84) + 12 + 13)
+        let lo = max(0, row.viewport?.lowerBound ?? 0), hi = min(width, row.viewport?.upperBound ?? width)
+        selPill.position = CGPoint(x: min(max(cx, lo + w / 2 + 12), hi - w / 2 - 12), y: (rowBottom ?? anchor.y + 84) + 12 + 13)
     }
 
 
     // MARK: mouse
 
     func mouseDown(_ e: NSEvent, at p: NSPoint) {
+        for (pill, d) in [(moreL, -1), (moreR, 1)] where !pill.isHidden && pill.frame.insetBy(dx: -4, dy: -4).contains(p) {
+            down = nil
+            return scrollMore(d)
+        }
         let c = card(at: p)
         down = (p, c, e, false)
         if let c = c {
@@ -2382,23 +2447,33 @@ final class HangingCards: NSObject {
     }
 
     /// A card's right-click menu (on its thread and in the overview): what to do with this card — Copy Image / Copy
-    /// Text, Copy All N Cards, Retry Transcription (after a failure), Edit Note…, Show in Finder · Move To ▸ and
-    /// Organize (this card, or its ⌘-click selection) · Delete (Undo in the island). What concerns every card at once —
+    /// Text, Retry Transcription (after a failure), Edit Note…, Show in Finder · Move To ▸ and Organize · Delete (Undo
+    /// in the island). On a card of a ⌘-click selection every row is about the selection, and says how many: Copy 3
+    /// Cards (in the order picked), Move 3 Cards To ▸, Organize 3 Cards, Delete 3 Cards (one Undo) — the menu mixed
+    /// scopes (Copy All 97 Cards, a Delete of the one card clicked). What concerns every card at once — Copy All,
     /// Organize All Cards, Delete All — is in the island's menu (islandMenuItems). `copy`: copies it with the feedback
     /// of where it was clicked.
     func cardMenu(_ s: Shot, copy: @escaping (Copy) -> Void) -> NSMenu {
         let m = NSMenu()
-        if s.kind == .shot, s.bestURL != nil { m.addItem(ClosureMenuItem(Loc.t("capture.card.copy_image", table: "Capture")) { copy(.image) }) }
-        if s.copyText != nil { m.addItem(ClosureMenuItem(Loc.t("capture.card.copy_text", table: "Capture")) { copy(.text) }) }
-        let all = cards.filter { $0.shot.isCard }.count
-        if all > 1 {
-            m.addItem(ClosureMenuItem(Loc.plural("capture.card.copy_all", table: "Capture", count: all)) { [weak self] in self?.copyAll() })
+        let these = withSelection(s)
+        let many = these.count > 1
+        let deleteItem = ClosureMenuItem(many ? Loc.plural("capture.card.delete_n", table: "Capture", count: these.count)
+                                              : Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(these) }
+        if many {
+            m.addItem(ClosureMenuItem(Loc.plural("capture.card.copy_n", table: "Capture", count: these.count)) { [weak self] in
+                guard let self = self else { return }
+                let cs = these.compactMap { sh in self.cards.first { $0.shot === sh } }
+                if self.copyCards(cs, pill: nil, quiet: true) { self.pickedCopied = true; self.updateSelection(); self.markUsed() }
+            })
+        } else {
+            if s.kind == .shot, s.bestURL != nil { m.addItem(ClosureMenuItem(Loc.t("capture.card.copy_image", table: "Capture")) { copy(.image) }) }
+            if s.copyText != nil { m.addItem(ClosureMenuItem(Loc.t("capture.card.copy_text", table: "Capture")) { copy(.text) }) }
+            if s.note.status.needsRetry {
+                m.addItem(ClosureMenuItem(Loc.t("capture.card.retry_transcribe", table: "Capture")) { snapper.retryWords(s) })
+            }
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
         }
-        if s.note.status.needsRetry {
-            m.addItem(ClosureMenuItem(Loc.t("capture.card.retry_transcribe", table: "Capture")) { snapper.retryWords(s) })
-        }
-        m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
-        m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
         m.addItem(.separator())
         // a snap taken while recording goes with the recording (its organizing run makes its item): no Move To / Organize
         if s.batch?.inRecording == true {
@@ -2406,16 +2481,15 @@ final class HangingCards: NSObject {
             i.isEnabled = false
             m.addItem(i)
             m.addItem(.separator())
-            m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+            m.addItem(deleteItem)
             return m
         }
         // Move To ▸ and Organize file a card as an item of a project: Recording & Items'. Without it a card is copied,
         // edited, shown or deleted — nothing else
         guard Capability.projectsShown else {
-            m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+            m.addItem(deleteItem)
             return m
         }
-        let these = withSelection(s)
         let move = NSMenuItem(title: these.count > 1 ? Loc.plural("capture.card.move_n", table: "Capture", count: these.count)
                                                      : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
@@ -2439,7 +2513,7 @@ final class HangingCards: NSObject {
         m.addItem(ClosureMenuItem(these.count > 1 ? Loc.plural("capture.card.organize_n", table: "Capture", count: these.count)
                                                   : Loc.t("capture.card.organize", table: "Capture")) { snapper.handToAI(shots: these) })
         m.addItem(.separator())
-        m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+        m.addItem(deleteItem)
         return m
     }
 
@@ -2474,7 +2548,7 @@ final class HangingCards: NSObject {
     func testPick(n: Int) -> Bool { cards.first { $0.shot.n == n }.map { pick($0); return true } ?? false }
     var pickedNumbers: [Int] { picked.map(\.shot.n) }
     /// Tests: a ⌘-click selection of these captures, without the copy a ⌘-click also makes (no clipboard touched).
-    func testSelect(_ ns: [Int]) { setPicked(cards.filter { ns.contains($0.shot.n) }) }
+    func testSelect(_ ns: [Int]) { setPicked(ns.compactMap { n in cards.first { $0.shot.n == n } }) }     // in the order given, as picks
     func testMenu(n: Int) -> [String] {
         cards.first { $0.shot.n == n }.map { cardMenu($0.shot) { _ in }.items.filter { !$0.isSeparatorItem }.map(\.title) } ?? []
     }
@@ -2760,7 +2834,11 @@ final class HangingCards: NSObject {
         if axFiling != Capability.projectsShown { axFiling = Capability.projectsShown; axCards = [:] }
         var out: [LayerAXElement] = []
         var keep: [ObjectIdentifier: LayerAXElement] = [:]
-        for c in shownCards where !c.flying {
+        // only the cards in the row's window: the ones scrolled past its edges are off screen (VoiceOver walked onto
+        // them); the "+N" ends bring them in
+        let visible = shownCards.filter { !$0.flying && inView($0) }
+        let names = visible.map { HangingCards.cardLabel($0.shot) }
+        for (j, c) in visible.enumerated() {
             let key = ObjectIdentifier(c)
             let e = axCards[key] ?? {
                 let e = LayerAXElement.make(role: .button, layer: c.card, host: v)
@@ -2768,15 +2846,26 @@ final class HangingCards: NSObject {
                 e.setAccessibilityCustomActions(HangingCards.axActions(c.shot))
                 return e
             }()
-            e.setAccessibilityLabel(HangingCards.cardLabel(c.shot))
+            // two cards with the same name (two snaps in one minute, no note): their place in the row tells them apart
+            let name = names[j]
+            e.setAccessibilityLabel(names.filter { $0 == name }.count > 1
+                ? Loc.t("capture.card.ax_nth", table: "Capture", name, j + 1, names.count) : name)
             e.setAccessibilityRoleDescription(Loc.t(c.shot.kind == .voice ? "capture.card.ax_voice" : "capture.card.ax_shot", table: "Capture"))
             e.setAccessibilityHelp(Loc.t("capture.card.ax_help", table: "Capture"))
             keep[key] = e
             out.append(e)
         }
         axCards = keep
+        for (pill, d) in [(moreL, -1), (moreR, 1)] where !pill.isHidden {
+            let e = morePillAX[d] ?? LayerAXElement.make(role: .button, layer: pill, host: v)
+            e.press = { [weak self] in self?.scrollMore(d) }
+            e.setAccessibilityLabel(Loc.plural("capture.cards.more_ax", table: "Capture", count: d < 0 ? moreCounts.left : moreCounts.right))
+            morePillAX[d] = e
+            if d < 0 { out.insert(e, at: 0) } else { out.append(e) }
+        }
         return out
     }
+    private var morePillAX: [Int: LayerAXElement] = [:]
 
     /// A card's actions for VoiceOver (on its thread and in the overview): edit the note, move it to a project, sort it
     /// with AI, delete it.
@@ -2795,8 +2884,13 @@ final class HangingCards: NSObject {
         return actions
     }
 
-    /// A card's spoken name: its words, or "Snap · 15:30" / "Voice note · 15:30" (Shot.plainName).
-    static func cardLabel(_ s: Shot) -> String { s.words ?? s.plainName }
+    /// A card's spoken name: its kind when the note gave it one, then its words, or "Snap · 15:30" / "Voice note ·
+    /// 15:30" (Shot.plainName) — the kind's glyph is no longer on the caption, so VoiceOver says it.
+    static func cardLabel(_ s: Shot) -> String {
+        let name = s.words ?? s.plainName
+        guard let k = s.itemKind else { return name }
+        return KindChip.name(k) + " · " + name
+    }
 }
 
 final class ClosureMenuItem: NSMenuItem {
