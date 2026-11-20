@@ -689,6 +689,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             // a computer host sends its clipboard to computer viewers only; nothing for a phone to do
             is ToPhone.Clipboard -> {}
             is ToPhone.ScreenLocked -> {}
+            is ToPhone.FileProgress, is ToPhone.FileSaved, is ToPhone.FileFailed -> {}     // a phone sends no files
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
