@@ -16,7 +16,7 @@
 "feature.cards.what" = "截图和语音备注保存为刘海下方的卡片，可拖入任何 App。";
 "feature.screen_text.what" = "框选屏幕上的文字，复制或翻译。";
 "feature.recording.what" = "边录屏边讲解，由 Agent 整理成事项，按项目归类。";
-"feature.phone.what" = "将手机用作 Mac 的触控板、键盘和麦克风，或在本机使用另一台电脑。";
+"feature.phone.what" = "用手机控制这台 Mac，或用这台 Mac 控制另一台电脑。";
 
 /* 一行能力：点这一行去它的页面；右键菜单打开它的设置；开关的提示按当前状态写 */
 "home.row.open" = "前往「%@」";

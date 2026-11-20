@@ -10,13 +10,13 @@
 /* the one name of the feature (phones and computers): Home's row, the sidebar, the page, ⌘K, the Go menu, the Settings pane */
 "feature.phone" = "Remote Control";
 
-/* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — it has to fit at the window's
-   narrowest. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
+/* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — two lines at most at the window's
+   narrowest (900 pt), one at its usual width. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
 "feature.dictation.what" = "Press %@ and speak to type at the cursor.";
 "feature.cards.what" = "Snaps and voice notes saved as cards under the notch. Drag them into any app.";
 "feature.screen_text.what" = "Copy or translate text from anywhere on screen.";
 "feature.recording.what" = "Record your screen while you talk. Your agent turns it into items, filed by project.";
-"feature.phone.what" = "Use your phone as your Mac’s trackpad, keyboard and microphone, or use another computer from this Mac.";
+"feature.phone.what" = "Use your phone to control this Mac, or this Mac to control another computer.";
 
 /* a capability's row: a click goes to its place; the context menu opens its settings; the switch's tooltip is
    written for its state */
