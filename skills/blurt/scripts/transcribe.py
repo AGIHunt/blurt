@@ -894,6 +894,25 @@ def _dictated_with() -> frozenset:
     return _DICTATED[1]
 
 
+def found_elsewhere(m: dict) -> bool:
+    """The model's files are here but not as Blurt's own (blurt_downloaded): never run by itself."""
+    inst = m.get("install") or {}
+    if not m.get("local", True) or m.get("builtin") or not inst.get("hf") or model_path(m) is None:
+        return False
+    return not blurt_downloaded(m)
+
+
+def adopt_snapshot(m: dict, snap: Path) -> None:
+    """A Download of a model whose files are already in the shared Hugging Face cache: that snapshot is Blurt's now
+    (the record setup writes when its own download finishes)."""
+    repo = ((m.get("install") or {}).get("hf")) or ""
+    if not repo or not snap.is_dir() or snap.resolve().is_relative_to(MODELS_DIR.resolve()):
+        return
+    write_text_atomic(_hf_record(repo), json.dumps(
+        {"snapshot": snap.name, "files": sorted(str(f.relative_to(snap)) for f in snap.rglob("*") if f.is_file()),
+         "adopted": True}))
+
+
 def installed(m: dict) -> bool:
     if not m.get("local", True):
         # every one of its variables when it needs a pair (Volcengine: App ID + Access Token), else any one
@@ -984,6 +1003,8 @@ def install_model(m: dict) -> Path:
         return MODELS_DIR
     have = model_path(m)
     if have:
+        if found_elsewhere(m):
+            adopt_snapshot(m, have)          # asked for by name: the copy found here is this model's download
         return have
     if os.environ.get("BLURT_NO_DOWNLOAD"):
         raise Fail(f"{m['id']} is not downloaded", "model_missing")
@@ -2783,8 +2804,10 @@ def select(purpose: str, a=None) -> dict:
                                                                      if c["fits"] and len(c["speaks"]) == len(rec["languages"])]
     apple = entry(APPLE)
     apple_ok = bool(apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]))
-    # a local model hears through the VAD (0.6 MB) too: one whose own files are already here from elsewhere (a Whisper
-    # in a shared Hugging Face cache) doesn't beat macOS's recogniser, which needs nothing, until the VAD is in
+    # only a model Blurt downloaded: one whose files are here from elsewhere (a Whisper in a shared Hugging Face cache,
+    # found_elsewhere) is never picked by itself — it cold-started a 1.6 GB model while setup said macOS's recogniser
+    # was ready (dogfood 2026-11-21). And a local model hears through the VAD (0.6 MB, shipped with the skill:
+    # bundled_vad): an install that lost it keeps macOS's recogniser, which needs nothing, until it is back.
     bundled_vad()
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     for mid in dict.fromkeys(order):
@@ -4426,8 +4449,9 @@ def cmd_models(_a):
         r = {k: v for k, v in m.items() if k not in ("install", "rtf_ref", "error_ref")}
         r["local"] = m.get("local", True)
         r["role"] = "asr"
-        r["installed"] = installed(m)
-        p = model_path(m) if r["local"] else None
+        # a copy Blurt didn't download (the shared Hugging Face cache) isn't installed, nor its size Blurt's
+        r["installed"] = installed(m) and (m["id"] in sel.values() or not found_elsewhere(m))
+        p = model_path(m) if r["local"] and r["installed"] else None
         if p:
             r["path"] = str(p)
             r["size_mb"], r["approx"] = _du_mb(p), False

@@ -842,6 +842,38 @@ class AppleSpeechSelect(unittest.TestCase):
         finally:
             T.installed = real
 
+    def test_a_whisper_in_the_shared_cache_is_never_picked_by_itself(self):
+        # someone else's whisper-large-v3-turbo in ~/.cache/huggingface: macOS's recogniser stays (the founder,
+        # 2026-11-21); its Download adopts the copy (the record), and then it runs
+        self.vad(True)
+        cache = Path(tempfile.mkdtemp(prefix="hf-"))
+        repo = T.entry("whisper-large-v3-turbo-mlx")["install"]["hf"]
+        snap = cache / ("models--" + repo.replace("/", "--")) / "snapshots" / "abc123"
+        snap.mkdir(parents=True)
+        (snap / "config.json").write_text("{}")
+        (snap / "weights.npz").write_bytes(b"w")
+        old = os.environ.get("HF_HUB_CACHE")
+        os.environ["HF_HUB_CACHE"] = str(cache)
+        self.addCleanup(lambda: os.environ.__setitem__("HF_HUB_CACHE", old) if old else os.environ.pop("HF_HUB_CACHE", None))
+        self.addCleanup(lambda: T._hf_record(repo).unlink(missing_ok=True))
+        real = T.installed
+        T.installed = lambda m: m["id"] == "apple-speech" or (m["id"] == "whisper-large-v3-turbo-mlx" and real(m))
+        try:
+            m = T.entry("whisper-large-v3-turbo-mlx")
+            self.assertTrue(T.installed(m))
+            self.assertTrue(T.found_elsewhere(m))
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.select("note")["id"], "apple-speech")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "apple-speech")
+                with config({"asr": {"languages": ["zh", "en"], "models": {"note": "whisper-large-v3-turbo-mlx"}}}):
+                    self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")     # picked by hand: it runs
+                T.adopt_snapshot(m, T.model_path(m))
+                self.assertFalse(T.found_elsewhere(m))
+                self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")         # downloaded through Blurt
+        finally:
+            T.installed = real
+
     def test_a_chosen_model_still_asks_for_the_vad(self):
         self.vad(False)
         real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
