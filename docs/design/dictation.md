@@ -2182,12 +2182,21 @@ one of them Chinese, English or Japanese.
   does a cloud polish model picked by hand (§Cloud polish: `record.cloud.jobs.polish`). An installed 0.6B keeps running
   on a Mac whose recommendation is now the 1.7B until the 1.7B is downloaded (Settings offers it); nothing downloads
   by itself for an existing install.
-- **At install** (`ModelSetup.startAtInstall`): with macOS's recogniser dictating from the first minute (the setup
-  assistant's "start now" step), this Mac's recogniser starts downloading in the background as soon as the model list is
-  read — the recogniser, then the polish model of this Mac's default (v1.0.8: Gemma 4 E2B from 16 GB; the voice-note
-  model stays the step's optional Download — and without polish every style read the same), once ever
-  (`first_download`), only while dictation is automatic and the Mac is online; a Stop is final. Before, nothing
-  downloaded until the user pressed Download on that optional row, and Apple Speech (Blurt 0 of 9, 45 % of terms) stayed.
+- **At install** — nothing downloads unasked (the founder, 2026-11-21). v1.0.8–1.0.27 started this Mac's recogniser
+  and then the polish model of its default in the background as soon as the setup assistant read the model list
+  (`ModelSetup.startAtInstall`, `first_download`): the 1.1.0 dogfood found Next on the first step committing 5.9 GB
+  with no size shown and no free-space check. Now the models step offers the recogniser alone (~2.5 GB) with its
+  size and the free space on the Mac ("Qwen3-ASR 1.7B (2.5 GB): more accurate, works offline. 120 GB free on this
+  Mac."); the polish model is offered later, on Home's Dictation row once the recogniser is in, with its own size
+  ("Download the polish model for dictation styles · 3.4 GB"). Every model download (the assistant, Settings, Home,
+  the dictation key, a resume at launch) first checks that what is left to fetch plus 2 GB is free, else it doesn't
+  start and says "4.5 GB needed, 3.1 GB free · Show Storage"; a setup that fills the disk anyway says the same
+  (`disk_full`). The same on Windows and Linux (setup.rs no longer starts a download; commands.rs `disk_short`).
+- **Only models Blurt downloaded** (the founder, 2026-11-21): a model whose files are in the shared Hugging Face cache
+  but that no Blurt `setup` finished (no `models/asr/.hf/<repo>.json` record: `transcribe.py found_elsewhere`) is never
+  picked by Automatic — the dogfood's first Try-it cold-started a 1.6 GB Whisper (31 s) while the step said macOS's
+  recogniser was ready. Its Download adopts the copy at once (the record is written, nothing fetched); one picked by
+  hand runs as it is.
 - **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
   `deepseek-v4.1-flash` on Model Studio, `deepseek-flash` on deepseek.com — for Auto; a model picked by hand stays (the
   founder's `qwen3.8-27b` measured 3.30 %, worse than no polish).
@@ -2543,7 +2552,7 @@ never touched.
 | `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (§Defaults by Mac: Qwen3-ASR 1.7B MLX on 16 GB+ Macs fast enough for it, else the 0.6B, when installed — an installed 0.6B runs until the 1.7B is in —, else the voice-note model) |
-| `first_download` | unset: the recogniser the setup assistant started downloading at install (§Defaults by Mac), once ever |
+| `first_download` | no longer written (1.1.0: nothing downloads unasked, §Defaults by Mac); an older install's value is ignored |
 | `context` | `true`: read the text around the cursor for polish and the speech model (§Context, §Field context) |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
