@@ -691,7 +691,7 @@ mod tests {
         assert_eq!(p.len(), 28);
         assert_eq!(p.len() % 4, 0);
         // a value outside the BMP is two units
-        let q = web_custom_data(&[(CARDS_MIME, "😀")]);
+        let q = web_custom_data(&[(CARDS_MIME, "😀")]); // glyph-ok: a test payload outside the BMP, not an icon
         assert_eq!(u32::from_le_bytes(q[q.len() - 8..q.len() - 4].try_into().unwrap()), 2);
     }
 
