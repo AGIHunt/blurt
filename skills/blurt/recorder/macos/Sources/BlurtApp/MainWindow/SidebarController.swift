@@ -76,6 +76,22 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// What a row takes besides its name, at the sidebar's width: the source list's insets round the row, the icon
+    /// (2 + 18 + 6), the gaps a hidden key, mark and empty count still keep (5 + 5 + 6 + 6), and a few points so the
+    /// name never meets "…" (measured: a 190 pt sidebar leaves a name 107.5 pt).
+    static let rowChrome: CGFloat = 88
+
+    /// The narrowest the sidebar may be: every built-in place's name whole, in this language, at the rows' font
+    /// (dogfood 1.1.0: "Text &…slation" at the window's minimum width, light and dark). Never under 190 pt; project
+    /// names, which can be any length, keep their middle truncation and tooltip.
+    static var minimumWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let names = [T("home.title"), T("dictation.history.sidebar"), T("cards.title"), T("feature.screen_text"), T("feature.phone"),
+                     T("main.place.inbox"), T("main.place.progress"), T("project.inbox"), T("main.place.all")]
+        let widest = names.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return max(190, ceil(widest) + rowChrome)
+    }
+
     override func loadView() {
         let scroll = NSScrollView()
         scroll.drawsBackground = false

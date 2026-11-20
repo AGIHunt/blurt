@@ -120,13 +120,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
 
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
-        side.minimumThickness = 190
+        // every built-in place's name whole (SidebarController.minimumWidth: 197 pt in English, 190 in Chinese); the
+        // detail column gives up what the sidebar takes over 190, so the window's minimum stays 900 pt
+        let sideMin = SidebarController.minimumWidth
+        side.minimumThickness = sideMin
         side.maximumThickness = 320
         side.canCollapse = true
         let content = NSSplitViewItem(contentListWithViewController: listColumn)
         content.minimumThickness = 330     // 190 + 330 + 380 = the window's 900 pt minimum
         let det = NSSplitViewItem(viewController: detailColumn)
-        det.minimumThickness = 380
+        det.minimumThickness = 380 - (sideMin - 190)
         det.canCollapse = true
         det.holdingPriority = .init(249)
         split.addSplitViewItem(side)
