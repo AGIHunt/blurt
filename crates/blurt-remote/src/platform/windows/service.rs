@@ -32,11 +32,11 @@ use ::windows::Win32::System::Pipes::{
 use ::windows::Win32::System::RemoteDesktop::{ProcessIdToSessionId, WTSGetActiveConsoleSessionId};
 use ::windows::Win32::System::Services::{
     ChangeServiceConfig2W, CloseServiceHandle, ControlService, CreateServiceW, DeleteService, OpenSCManagerW, OpenServiceW,
-    RegisterServiceCtrlHandlerExW, SetServiceStatus, StartServiceCtrlDispatcherW, StartServiceW, SC_ACTION, SC_ACTION_RESTART,
-    SC_MANAGER_ALL_ACCESS, SERVICE_ACCEPT_SESSIONCHANGE, SERVICE_ACCEPT_STOP, SERVICE_ALL_ACCESS, SERVICE_AUTO_START,
+    RegisterServiceCtrlHandlerExW, QueryServiceStatus, SetServiceStatus, StartServiceCtrlDispatcherW, StartServiceW, SC_ACTION, SC_ACTION_RESTART,
+    SC_MANAGER_ALL_ACCESS, SC_MANAGER_CONNECT, SERVICE_ACCEPT_SESSIONCHANGE, SERVICE_ACCEPT_STOP, SERVICE_ALL_ACCESS, SERVICE_AUTO_START,
     SERVICE_CONFIG_DESCRIPTION, SERVICE_CONFIG_FAILURE_ACTIONS, SERVICE_CONTROL_STOP, SERVICE_DESCRIPTIONW, SERVICE_ERROR_NORMAL,
     SERVICE_FAILURE_ACTIONSW, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STATUS_HANDLE, SERVICE_STOPPED,
-    SERVICE_STOP_PENDING, SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
+    SERVICE_QUERY_STATUS, SERVICE_STOP_PENDING, SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
 };
 use ::windows::Win32::System::Threading::{
     CreateProcessAsUserW, GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken, QueryFullProcessImageNameW,
@@ -103,9 +103,41 @@ fn icacls(path: &Path, grants: &[&str]) {
     let _ = std::process::Command::new("icacls").args(&a).output();
 }
 
-/// Whether the agent is there to connect to (the service is installed and running).
+/// Copies an earlier install moved aside while they still ran; one still running stays for next time.
+fn remove_old_copies(dest: &Path) {
+    let Ok(list) = std::fs::read_dir(dest.parent().unwrap()) else { return };
+    for e in list.flatten() {
+        if e.file_name().to_string_lossy().starts_with("blurt-remote-service.old-") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+/// Whether the service is installed and running (Settings' switch): asked of the Service Control Manager, which any user may.
+/// Not the pipe: it takes one client, and while this app is that client it reads as busy.
 pub fn agent_running() -> bool {
-    std::fs::metadata(PIPE).is_ok() || Path::new(PIPE).exists()
+    unsafe {
+        let Ok(scm) = OpenSCManagerW(None, None, SC_MANAGER_CONNECT) else { return false };
+        let on = match OpenServiceW(scm, &HSTRING::from(NAME), SERVICE_QUERY_STATUS) {
+            Ok(s) => {
+                let mut st = SERVICE_STATUS::default();
+                let r = QueryServiceStatus(s, &mut st).is_ok() && st.dwCurrentState == SERVICE_RUNNING;
+                let _ = CloseServiceHandle(s);
+                r
+            }
+            Err(_) => false,
+        };
+        let _ = CloseServiceHandle(scm);
+        on
+    }
+}
+
+/// The agent's pipe is there (a busy one too: ERROR_PIPE_BUSY): its process still holds the binary.
+fn pipe_up() -> bool {
+    match std::fs::metadata(PIPE) {
+        Ok(_) => true,
+        Err(e) => e.raw_os_error() == Some(231),
+    }
 }
 
 // ------------------------------------------------------------------ install
@@ -115,8 +147,23 @@ fn install() -> Result<(), String> {
     let dest = installed_path();
     let _ = uninstall_service(); // an older one goes first (its binary may be in use)
     std::fs::create_dir_all(dest.parent().unwrap()).map_err(|e| format!("{}: {e}", dest.display()))?;
+    remove_old_copies(&dest);
     if me != dest {
-        std::fs::copy(&me, &dest).map_err(|e| format!("copy to {}: {e}", dest.display()))?;
+        let mut copied = std::fs::copy(&me, &dest).map(|_| ());
+        for _ in 0..10 {
+            if copied.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(300));
+            copied = std::fs::copy(&me, &dest).map(|_| ());
+        }
+        if copied.is_err() {
+            // the old one still runs (its agent serving the session that approved this prompt): a running exe can't be overwritten
+            // but can be renamed; the renamed copy goes at the next install or uninstall
+            let old = dest.with_file_name(format!("blurt-remote-service.old-{}.exe", std::process::id()));
+            std::fs::rename(&dest, &old).map_err(|e| format!("move aside {}: {e}", dest.display()))?;
+            std::fs::copy(&me, &dest).map_err(|e| format!("copy to {}: {e}", dest.display()))?;
+        }
     }
     // services may press Ctrl+Alt+Del in software (SendSAS): 1 = services, 3 = services and accessibility apps
     let _ = std::process::Command::new("reg")
@@ -194,7 +241,7 @@ fn uninstall_service() -> Result<(), String> {
         let _ = CloseServiceHandle(scm);
         // the service and its agent let go of the binary
         for _ in 0..50 {
-            if !agent_running() {
+            if !pipe_up() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -206,8 +253,16 @@ fn uninstall_service() -> Result<(), String> {
 fn uninstall() -> Result<(), String> {
     uninstall_service()?;
     let _ = std::process::Command::new("netsh").args(["advfirewall", "firewall", "delete", "rule", "name=Blurt Remote (service)"]).output();
-    let _ = std::fs::remove_dir_all(data_dir());
+    // the standby host's keys and devices are SYSTEM's and LocalService's alone: an administrator takes them over to remove them
+    let data = data_dir();
+    if data.exists() {
+        let d = data.display().to_string();
+        let _ = std::process::Command::new("icacls").args([d.as_str(), "/setowner", "*S-1-5-32-544", "/t", "/c", "/q"]).output();
+        let _ = std::process::Command::new("icacls").args([d.as_str(), "/reset", "/t", "/c", "/q"]).output();
+        let _ = std::fs::remove_dir_all(&data);
+    }
     let dest = installed_path();
+    remove_old_copies(&dest);
     for _ in 0..30 {
         if std::fs::remove_file(&dest).is_ok() || !dest.exists() {
             break;
@@ -215,6 +270,16 @@ fn uninstall() -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(200));
     }
     let _ = std::fs::remove_dir(dest.parent().unwrap());
+    // run from that copy (the app's uninstaller does): a running exe can't remove itself, so a hidden cmd does once this exits
+    let dir = dest.parent().unwrap();
+    if dir.exists() {
+        use std::os::windows::process::CommandExt;
+        let d = dir.display().to_string();
+        let _ = std::process::Command::new("cmd")
+            .raw_arg(format!("/d /c ping -n 3 127.0.0.1 >nul & del /f /q \"{d}\\blurt-remote-service*.exe\" & rmdir \"{d}\""))
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .spawn();
+    }
     Ok(())
 }
 

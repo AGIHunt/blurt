@@ -17,6 +17,8 @@ type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
 
 export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => void }) {
   const r = useRemoteStatus();
+  // the service couldn't be installed or removed (a declined UAC prompt is the user's answer, not a failure)
+  const [svcFailed, setSvcFailed] = useState(false);
   if (!r) return <Page id="phone"><p className="st-lead">{S('settings.loading')}</p></Page>;
   return (
     <Page id="phone" lead={
@@ -28,8 +30,11 @@ export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => vo
     }>
       <Group id="phone.options">
         {r.service !== null && (
-          <Toggle id="phone.service" on={!!r.service} detail={S('phone.service.detail')}
-            set={(v) => void apply(api.remoteSetService(v)).catch(() => {})} />
+          <Toggle id="phone.service" on={!!r.service} detail={S(svcFailed ? 'phone.service.failed' : 'phone.service.detail')} warn={svcFailed}
+            set={(v) => {
+              setSvcFailed(false);
+              void apply(api.remoteSetService(v)).catch((e) => setSvcFailed(String(e) !== 'declined'));
+            }} />
         )}
         <Toggle id="phone.stay_awake" on={r.stayAwake} detail={S(r.battery ? 'phone.stay_awake.laptop' : 'phone.stay_awake.desktop')}
           set={(v) => void apply(api.remoteSetStayAwake(v)).catch(() => {})} />

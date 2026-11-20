@@ -232,6 +232,8 @@ export const ENTRIES: Entry[] = (() => {
     // Phone
     // the devices are on the Remote Control page: this row goes there
     row('phone.devices', null, 'phone.devices.show'),
+    row('phone.service', 'phone.options', 'phone.service', { detail: 'phone.service.detail' }),
+    row('phone.stay_awake', 'phone.options', 'phone.stay_awake', { detail: 'phone.stay_awake.desktop' }),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
     row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),
