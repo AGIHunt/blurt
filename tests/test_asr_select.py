@@ -858,6 +858,8 @@ class AppleSpeechSelect(unittest.TestCase):
         self.addCleanup(lambda: T._hf_record(repo).unlink(missing_ok=True))
         real = T.installed
         T.installed = lambda m: m["id"] == "apple-speech" or (m["id"] == "whisper-large-v3-turbo-mlx" and real(m))
+        T.blurt_downloaded = REAL_BLURT_DOWNLOADED          # the module's tests stub it; this one is about it
+        self.addCleanup(lambda: setattr(T, "blurt_downloaded", lambda m: True))
         try:
             m = T.entry("whisper-large-v3-turbo-mlx")
             self.assertTrue(T.installed(m))

@@ -2819,7 +2819,7 @@ def select(purpose: str, a=None) -> dict:
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     for mid in dict.fromkeys(order):
         m = entry(mid)
-        if m and m.get("local", True) and runs_here(m) and installed(m) and blurt_downloaded(m) \
+        if m and m.get("local", True) and runs_here(m) and installed(m) and (mid == chosen or blurt_downloaded(m)) \
                 and (vad or m.get("builtin") or not apple_ok):
             return m
         if m and not m.get("local", True) and not local_only() and installed(m) and mid == chosen:
