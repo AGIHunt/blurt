@@ -429,7 +429,7 @@ final class DictationHistoryModel: ObservableObject {
     /// model counts as much as the key's permission.
     @MainActor static func pageStatus(enabled: Bool, needsSetup: Bool) -> DictationPageStatus {
         let models = DictationModels.shared, dl = ModelDownloads.shared
-        let download = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? dl.progress(j.id) ?? (0, j.sizeMB) : nil }
+        let download = models.queuedJob.map { j in dl.progress(j.id) ?? (0, j.sizeMB) }
         return .of(enabled: enabled, needsSetup: needsSetup, modelReady: models.dictationReady, download: download)
     }
 
@@ -1145,7 +1145,7 @@ struct DictationStatusBanner: View {
         case .off: return T("main.dictation.off.detail")
         case .needsPermission: return T("dictation.menu.turn_on.tip", Dictation.keyInline)
         case .noModel:
-            return models.dictationJob.map { T("main.dictation.banner.no_model.detail", modelSize($0.sizeMB)) }
+            return models.offerJob.map { T("main.dictation.banner.no_model.detail", modelSize($0.sizeMB)) }
                 ?? T("main.dictation.banner.no_model.detail_plain")
         case let .downloading(done, total): return T("main.dictation.banner.downloading.detail", modelSize(done), modelSize(total))
         case .ready: return nil
@@ -1159,8 +1159,8 @@ struct DictationStatusBanner: View {
         case .needsPermission:
             Button(T("dictation.menu.turn_on")) { m.turnOn() }.buttonStyle(.brand)
         case .noModel:
-            if models.dictationJob != nil {
-                Button(T("main.dictation.banner.download")) { Dictation.getSpeechModel(from: "page") }.buttonStyle(.brand)
+            if let j = models.offerJob {
+                Button(T("main.dictation.banner.download")) { Dictation.getSpeechModel(from: "page", job: j) }.buttonStyle(.brand)
             } else {
                 Button(T("dictation.toast.no_model.settings")) { SpeechPane.showDictationModels() }
             }
@@ -1316,9 +1316,9 @@ struct DictationEmptyView: View {
             }
         case .noModel:
             VStack(spacing: 8) {
-                if let j = models.dictationJob {
+                if let j = models.offerJob {
                     pill(T("dictation.toast.no_model"), .warn)
-                    Button(T("dictation.toast.no_model.action_size", modelSize(j.sizeMB))) { Dictation.getSpeechModel(from: "page") }
+                    Button(T("dictation.toast.no_model.action_size", modelSize(j.sizeMB))) { Dictation.getSpeechModel(from: "page", job: j) }
                         .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                 } else {
                     // what is missing can't be fetched from here: the models' page
@@ -1969,7 +1969,7 @@ struct DictationDetailView: View {
     var bannerHasPrimary: Bool {
         switch DictationHistoryModel.pageStatus(enabled: m.enabled, needsSetup: m.needsSetup) {
         case .needsPermission: return true
-        case .noModel: return models.dictationJob != nil
+        case .noModel: return models.offerJob != nil
         default: return false
         }
     }

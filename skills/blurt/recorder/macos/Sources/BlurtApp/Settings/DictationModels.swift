@@ -154,6 +154,14 @@ final class DictationModels: ObservableObject {
         return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
     }
 
+    /// What every Download for dictation's missing recogniser offers — the island, the Dictation page's empty state
+    /// and banner, Home, the menu bar — one model and one size: the first, small model when this Mac has none at all
+    /// (`firstModelJob`), else `dictationJob`. Settings → Speech keeps offering the recommended one (dogfood 1.1.0:
+    /// the island offered 228 MB while the page and the menu offered 2.5 GB for the same missing model).
+    var offerJob: ModelDownloadQueue.Job? { firstModelJob ?? dictationJob }
+    /// The recogniser download under way, whichever of the two it is (the progress lines).
+    var queuedJob: ModelDownloadQueue.Job? { [firstModelJob, dictationJob].compactMap { $0 }.first { dl.queue.contains($0.id) } }
+
     /// silero_vad.onnx
     static let vadMB = 0.6
 

@@ -782,7 +782,7 @@ extension Dictation {
             let m = DictationModels.shared
             Task { @MainActor in
                 if m.asr == nil { await m.load() }
-                guard let j = job ?? m.dictationJob else {
+                guard let j = job ?? m.offerJob else {
                     emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": NSNull()])
                     return SpeechPane.showDictationModels()
                 }

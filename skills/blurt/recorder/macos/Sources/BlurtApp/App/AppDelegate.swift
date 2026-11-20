@@ -1016,7 +1016,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.set_up.subtitle") }
             menu.addItem(.separator())
         case .getModel?:
-            let size = MainActor.assumeIsolated { dm.dictationJob.map { modelSize($0.sizeMB) } }
+            let size = MainActor.assumeIsolated { dm.offerJob.map { modelSize($0.sizeMB) } }
             let d = add(T("dictation.menu.get_model"), #selector(mDictationGetModel))
             d.image = App.warningImage
             if #available(macOS 14.4, *) {

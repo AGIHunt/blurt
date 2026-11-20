@@ -333,7 +333,7 @@ final class HomeModel: ObservableObject {
                 r.fix = T("dictation.menu.set_up"); r.fixKind = "speech"
             case .getModel?:
                 r.tone = .trouble; r.text = T("main.dictation.banner.no_model")
-                if let j = dm.dictationJob {
+                if let j = dm.offerJob {
                     r.fix = T("dictation.toast.no_model.action_size", modelSize(j.sizeMB)); r.fixKind = "model"
                 } else {
                     r.fix = T("dictation.toast.no_model.settings"); r.fixKind = "choose_model"

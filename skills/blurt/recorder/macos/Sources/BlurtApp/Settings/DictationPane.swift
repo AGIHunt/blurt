@@ -920,7 +920,7 @@ struct DictationPane: View {
         let dl = ModelDownloads.shared
         let polish = m.style != .verbatim
         if models.asr == nil && models.polish == nil { return .loading }
-        let asrJob = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? j : nil }
+        let asrJob = models.queuedJob
             ?? dl.queue.pending.first { j in j.kind == .dictation && models.asr?.models.contains { $0.id == j.id } == true }
         if let j = asrJob ?? (polish ? dl.queue.pending.first { j in j.kind == .polish } : nil) { return .coming(j) }
         let missing = models.missingJobs(polish: polish)

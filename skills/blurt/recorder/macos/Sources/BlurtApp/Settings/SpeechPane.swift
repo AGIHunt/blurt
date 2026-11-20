@@ -810,7 +810,7 @@ struct SpeechPane: View {
 
     func dictationValue(_ a: DictationASRState) -> String {
         if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return d.asrName(a.selected) }
-        if let j = d.dictationJob, dl.queue.contains(j.id) { return S("speech.purpose.downloading", j.name) }
+        if let j = d.queuedJob { return S("speech.purpose.downloading", j.name) }
         return S("speech.purpose.none_yet")
     }
 
