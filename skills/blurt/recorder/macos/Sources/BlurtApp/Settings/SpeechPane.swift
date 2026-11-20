@@ -754,7 +754,7 @@ struct SpeechPane: View {
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)) ?? (m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p))),
+        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)) ?? (m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p, whole: true))),
                    icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
@@ -774,7 +774,7 @@ struct SpeechPane: View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
         let off = unused(.dictation, .cards, .recording)
-        return SettingRow("speech.recognition", detail: off ?? DictationSpeedText.withMeasured(autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)), model: d.asr?.selected),
+        return SettingRow("speech.recognition", detail: off ?? DictationSpeedText.withMeasured(autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note, whole: true)), model: d.asr?.selected),
                           icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
                        auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
@@ -787,10 +787,12 @@ struct SpeechPane: View {
 
     /// What a purpose runs on: the model's name once it is on this Mac; "· downloading" while it comes down, "none
     /// yet" before — never a model that isn't there as if it were in use.
-    func purposeValue(_ p: ASRPurpose) -> String {
+    /// `whole`: inside a sentence (the row's detail), the name kept whole on its line (ModelBundle.unbreakable).
+    func purposeValue(_ p: ASRPurpose, whole: Bool = false) -> String {
         guard let x = m.selected(p) else { return S("speech.purpose.none_yet") }
-        if x.installed || !x.local { return x.title }
-        return dl.queue.contains(x.id) ? S("speech.purpose.downloading", x.title) : S("speech.purpose.none_yet")
+        let name = whole ? ModelBundle.unbreakable(x.title) : x.title
+        if x.installed || !x.local { return name }
+        return dl.queue.contains(x.id) ? S("speech.purpose.downloading", name) : S("speech.purpose.none_yet")
     }
 
     /// Installed models that run here (cloud ones when a key is set and local-only is off).
@@ -801,7 +803,7 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", detail: unused(.dictation) ?? DictationSpeedText.withMeasured(d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) }, model: d.asr?.selected),
+        SettingRow("speech.dictation", detail: unused(.dictation) ?? DictationSpeedText.withMeasured(d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0, whole: true)) }, model: d.asr?.selected),
                    icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 // a model whose own files are in can be chosen (its setup then fetches only the VAD)
@@ -818,9 +820,10 @@ struct SpeechPane: View {
         .disabled(unused(.dictation) != nil)
     }
 
-    func dictationValue(_ a: DictationASRState) -> String {
-        if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return d.asrName(a.selected) }
-        if let j = d.queuedJob { return S("speech.purpose.downloading", j.name) }
+    func dictationValue(_ a: DictationASRState, whole: Bool = false) -> String {
+        let w: (String) -> String = { whole ? ModelBundle.unbreakable($0) : $0 }
+        if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return w(d.asrName(a.selected)) }
+        if let j = d.queuedJob { return S("speech.purpose.downloading", w(j.name)) }
         return S("speech.purpose.none_yet")
     }
 

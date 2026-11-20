@@ -63,6 +63,12 @@ public enum ModelBundle {
                timeZone: TimeZone.current.identifier)
     }
 
+    /// A model's name inside a sentence, kept whole on one line: its hyphens and spaces don't break ("Qwen3-" / "ASR
+    /// 1.7B" in a Chinese line: dogfood 2026-11-21) — it moves to the next line as one.
+    public static func unbreakable(_ name: String) -> String {
+        name.replacingOccurrences(of: "-", with: "\u{2011}").replacingOccurrences(of: " ", with: "\u{00A0}")
+    }
+
     /// What still has to be downloaded, in order.
     public static func pending(_ parts: [Part]) -> [Part] { parts.filter { !$0.installed } }
 

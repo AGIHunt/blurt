@@ -860,11 +860,12 @@ struct OnboardingView: View {
     var betterModel: String? {
         guard let p = models.parts.first(where: { $0.kind == .dictation }), let c = DictationChoice(rawValue: p.id), c.local else { return nil }
         let downloading = models.downloading && !(p.installed || models.finished.contains(p.id))
-        if downloading { return T("onboarding.upgrade.better_downloading", p.name, size(p.sizeMB)) }
+        let name = ModelBundle.unbreakable(p.name)
+        if downloading { return T("onboarding.upgrade.better_downloading", name, size(p.sizeMB)) }
         if let free = models.freeMB, !(p.installed || models.finished.contains(p.id)) {
-            return T("onboarding.upgrade.better_free", p.name, size(p.sizeMB), size(free))
+            return T("onboarding.upgrade.better_free", name, size(p.sizeMB), size(free))
         }
-        return T("onboarding.upgrade.better", p.name, size(p.sizeMB))
+        return T("onboarding.upgrade.better", name, size(p.sizeMB))
     }
 
     /// The cloud model row's line before a key is in: what a cloud model is used for, what it adds and costs.
