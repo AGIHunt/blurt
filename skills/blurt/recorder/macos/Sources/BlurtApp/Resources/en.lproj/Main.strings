@@ -214,6 +214,7 @@
 "main.inbox.verify" = "%ld to verify";
 "main.item.untitled" = "Untitled";
 
+"main.job.sign_in" = "Sign In…";
 "main.job.error.auth" = "The agent isn’t signed in.";
 "main.job.error.auth.named" = "%@ isn’t signed in.";
 "main.job.error.conflict" = "The changes conflict with yours.";
@@ -287,8 +288,8 @@
 "main.bundle.save" = "Export";
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
 "main.bundle.saved" = "Hand-off bundle saved: %@";
-"main.bundle.failed" = "Couldn’t export the hand-off bundle";
-"main.bundle.error.io" = "Couldn’t write there. Choose another folder.";
+"main.bundle.failed" = "Couldn’t save the bundle";
+"main.bundle.error.io" = "Can’t write to “%@”. Choose another folder.";
 "main.bundle.error.unreadable" = "A screenshot or clip couldn’t be read, so nothing was packed.";
 "main.bundle.error.no_items" = "There are no items to pack.";
 "main.bundle.packing" = "Packing the hand-off bundle (%@)…";

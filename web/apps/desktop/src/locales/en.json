@@ -413,7 +413,7 @@
   "main.bundle.error.io": "Couldn’t write there. Choose another folder.",
   "main.bundle.error.no_items": "There are no items to pack.",
   "main.bundle.error.unreadable": "A screenshot or clip couldn’t be read, so nothing was packed.",
-  "main.bundle.failed": "Couldn’t export the hand-off bundle",
+  "main.bundle.failed": "Couldn’t save the bundle",
   "main.bundle.saved": "Hand-off bundle saved: {a}",
   "main.cmd.copy_full": "Copy Full Text",
   "main.col.id": "ID",

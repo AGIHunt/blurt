@@ -1453,7 +1453,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                     emit(["event": "bundle_failed", "code": f.code, "error": f.message])
                     AppEnvironment.island?.dropToasts(key: "bundle")
                     NSLog("blurt bundle: %@: %@", f.code, f.message)
-                    let ours = Loc.has("main.bundle.error.\(f.code)", table: "Main") ? T("main.bundle.error.\(f.code)") : Self.errorSentence(f.code)
+                    // which folder couldn't be written, by name
+                    let ours = f.code == "io" ? T("main.bundle.error.io", url.deletingLastPathComponent().lastPathComponent)
+                        : Loc.has("main.bundle.error.\(f.code)", table: "Main") ? T("main.bundle.error.\(f.code)") : Self.errorSentence(f.code)
                     self?.alert(T("main.bundle.failed"), HandoffBundle.failureText(ours: ours, fallback: f.localized))
                     done?(nil)
                 }
@@ -1832,6 +1834,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             reveal(uid: String(a.dropFirst(5)))
         case "stop":                                     // an organising run: Stop in its detail (⌘.)
             JobStop.stop(job)
+        case "agents":                                   // a signed-out agent: Settings → Agents, where it signs in
+            AppEnvironment.settings?.show(pane: "agents")
         default: break
         }
     }

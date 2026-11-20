@@ -308,7 +308,8 @@ final class HomeModel: ObservableObject {
         // (a row shows two keys at most: "⌥A and ⌥V")
         r.text = labels.count == 1 ? T("home.keys.taken", labels[0])
             : T("home.keys.taken_many", labels.dropFirst().reduce(labels[0]) { T("home.keys.and", $0, $1) })
-        r.tip = Hotkeys.shared.state(first).text
+        // what the capability does stays one hover away (the line now says what's in its way)
+        r.tip = [what(r.capability), Hotkeys.shared.state(first).text].filter { !$0.isEmpty }.joined(separator: "\n")
         r.fix = T("home.keys.change")
         r.fixKind = "keys"
     }
@@ -445,6 +446,12 @@ final class HomeModel: ObservableObject {
         return out
     }
 
+    /// The try-line for a capability whose key is taken: what its row says about it, with the same fix.
+    private func taken(_ a: HotAction, _ r: HomeRow) -> HomeTry? {
+        guard Hotkeys.shared.state(a).isConflict, r.tone == .trouble else { return nil }
+        return HomeTry(id: r.capability.rawValue, trouble: r.text, fix: r.fix, capability: r.capability)
+    }
+
     /// The empty state's lines: per capability that is on, the one thing to try.
     var tries: [HomeTry] {
         rows.filter(\.on).compactMap { r in
@@ -459,9 +466,10 @@ final class HomeModel: ObservableObject {
                 // it can't run yet: the fix, not a promise
                 if r.tone == .trouble { return HomeTry(id: c.rawValue, trouble: r.text, fix: r.fix, capability: c) }
                 return line("home.try.dictation", r.keys.first?.caps ?? [])
-            case .cards: return line("home.try.cards", KeyCaps.split(hk(.snap)))
-            case .screenText: return line("home.try.screen_text", KeyCaps.split(hk(.text)))
-            case .recording: return line("home.try.recording", KeyCaps.split(hk(.toggleRecord)))
+            // a key that is taken would be a dead promise: the row's own "⌥A is taken · Change Key…" instead
+            case .cards: return taken(.snap, r) ?? line("home.try.cards", KeyCaps.split(hk(.snap)))
+            case .screenText: return taken(.text, r) ?? line("home.try.screen_text", KeyCaps.split(hk(.text)))
+            case .recording: return taken(.toggleRecord, r) ?? line("home.try.recording", KeyCaps.split(hk(.toggleRecord)))
             case .phone:
                 guard PhoneStatus.line == nil else { return nil }        // a phone is paired already
                 return HomeTry(id: c.rawValue, before: T("home.try.phone"), capability: c)

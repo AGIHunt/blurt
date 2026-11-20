@@ -214,6 +214,7 @@
 "main.inbox.verify" = "%ld 条待验证";
 "main.item.untitled" = "无标题";
 
+"main.job.sign_in" = "登录…";
 "main.job.error.auth" = "Agent 未登录。";
 "main.job.error.auth.named" = "%@ 未登录。";
 "main.job.error.conflict" = "改动与你的改动冲突。";
@@ -287,8 +288,8 @@
 "main.bundle.save" = "导出";
 "main.bundle.message" = "一个 .zip 文件，包含概要、每个事项的详情和截图，可在其他电脑上打开。";
 "main.bundle.saved" = "交接包已保存：%@";
-"main.bundle.failed" = "无法导出交接包";
-"main.bundle.error.io" = "无法写入此位置，请选择其他文件夹。";
+"main.bundle.failed" = "无法保存交接包";
+"main.bundle.error.io" = "无法写入「%@」，请选择其他文件夹。";
 "main.bundle.error.unreadable" = "无法读取某张截图或片段，未能打包。";
 "main.bundle.error.no_items" = "没有可打包的事项。";
 "main.bundle.packing" = "正在打包交接包（%@）…";

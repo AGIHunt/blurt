@@ -330,6 +330,20 @@ final class TitleCell: NSTableCellView, InlineEditable {
         suggest.isHidden = project == nil
         if let p = project { suggest.set(project: p) } else { suggest.attributedTitle = NSAttributedString(string: "") }
         suggest.onMove = move
+        needsLayout = true
+    }
+
+    /// The title keeps up to 45 % of the row (at least 160 pt, never more than it needs): the chip gets what is left
+    /// and shortens to fit ("Looks like X · Move" → "X · Move" → "Move"), so a narrow window never cuts the title to
+    /// one letter while the chip stays whole.
+    override func layout() {
+        if !suggest.isHidden {
+            let w = bounds.width - 2 - 8 - 4
+            let want = ceil(title.attributedStringValue.size().width) + 4
+            let keep = min(want, max(160, w * 0.45))
+            suggest.fit(w - keep)
+        }
+        super.layout()
     }
 
     /// unreadable: the item's file doesn't parse — a small warning mark before the title says so in the list,
