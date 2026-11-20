@@ -969,29 +969,36 @@ final class Dictation {
                 case .answers, .working:
                     _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30)
                 case .gone, .notAServer, .stuck:
-                    var result = "forgot"
-                    var oursStuck = false
-                    if case .stuck = h, let p = pid {
-                        // our `uv` only when the stuck process is its child (VoiceInput.replaceIfStuck); read on main
-                        let ours = VoiceInput.onMain { self?.polishServer?.isRunning == true ? self?.polishServer?.processIdentifier : nil }
-                        oursStuck = ours.map { VoiceInput.descends(p, from: $0) } ?? false
-                        if oursStuck, let u = ours { WarmSpawn.retire(u) }
-                        result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
-                    } else {
-                        WarmServer.forget("polish-serve", pid: pid)
-                    }
-                    emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result, "ours": oursStuck])
-                    DispatchQueue.main.async {
-                        guard let self = self else { return }
-                        if oursStuck, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
-                        // a server of ours still starting stays (it writes the run file in a moment)
-                        guard oursStuck || self.polishServer?.isRunning != true else { return }
-                        self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
-                    }
+                    self?.replacePolishServer(h, pid: pid)
                 }
             }
         } else if polishServer?.isRunning != true {
             polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
+        }
+    }
+
+    /// A polish server that is gone or stuck (`h`, from WarmServer.health) is replaced: a stuck one ended (its `uv` too
+    /// when it is ours), a stale file forgotten, and a fresh server preloaded. At key-down (warmPolish) and as soon as a
+    /// take's polish finds it stuck (Dictation.polishWait). Blocking (WarmServer.end): off the main thread.
+    func replacePolishServer(_ h: WarmServer.Health, pid: Int32?) {
+        var result = "forgot"
+        var oursStuck = false
+        if case .stuck = h, let p = pid {
+            // our `uv` only when the stuck process is its child (VoiceInput.replaceIfStuck); read on main
+            let ours = VoiceInput.onMain { self.polishServer?.isRunning == true ? self.polishServer?.processIdentifier : nil }
+            oursStuck = ours.map { VoiceInput.descends(p, from: $0) } ?? false
+            if oursStuck, let u = ours { WarmSpawn.retire(u) }
+            result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
+        } else {
+            WarmServer.forget("polish-serve", pid: pid)
+        }
+        emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result, "ours": oursStuck])
+        DispatchQueue.main.async {
+            if oursStuck, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+            // a server of ours still starting stays (it writes the run file in a moment)
+            guard oursStuck || self.polishServer?.isRunning != true else { return }
+            guard self.polishModel != nil || DictationCloud.ready else { return }
+            self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
         }
     }
 
@@ -1699,7 +1706,8 @@ final class Dictation {
         // the user's cloud model (DictationCloud), the local one when it fails: its time comes on top
         if let c = cloud { req["cloud"] = c }
         let extra = cloud == nil ? 0 : DictationCloud.requestBudget(chars: raw.count)
-        guard var r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra) else {
+        guard let limit = polishWait(timeout: timeout, loadBudget: loadBudget, extra: extra, cmd: "polish"),
+              var r = polishCall(req, limit: limit, cmd: "polish") else {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "timeout", "load_ms": waited]
         }
         guard r["ok"] as? Bool == true else { return nil }
@@ -1725,8 +1733,44 @@ final class Dictation {
         if let c = context { req["context"] = c }
         if let v = variant { req["variant"] = v }
         let extra = cloud == nil ? 0 : timeout + DictationCloud.requestBudget(chars: text.count)
-        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra), r["ok"] as? Bool == true else { return nil }
+        guard let limit = polishWait(timeout: timeout, loadBudget: loadBudget, extra: extra, cmd: "structure"),
+              let r = polishCall(req, limit: limit, cmd: "structure"), r["ok"] as? Bool == true else { return nil }
         return r
+    }
+
+    /// How long a request to the polish server may wait (PolishWait): a ping — answered at once, also while the model
+    /// preloads — says whether its model is loaded; with no answer its health decides. The Polish time limit holds once
+    /// the model is loaded; a stuck server is not asked and is replaced now, not at the next key-down. nil: don't ask.
+    /// Blocking: off the main thread.
+    private static func polishWait(timeout: Double, loadBudget: Double, extra: Double, cmd: String) -> Double? {
+        let pid = WarmServer.pid("polish-serve")
+        let ping = WarmServer.call("polish-serve", ["cmd": "ping"], timeout: 0.3)
+        let loaded = ping?["ok"] as? Bool == true ? ping?["loaded"] as? Bool ?? false : nil
+        let h = loaded == nil ? WarmServer.health("polish-serve", script: "polish.py") : nil
+        switch PolishWait.decide(loaded: loaded, health: h, timeout: timeout, loadBudget: loadBudget, extra: extra) {
+        case .wait(let s):
+            return s
+        case .giveUp:
+            emit(["event": "polish_wait", "cmd": cmd, "state": "given_up", "health": h.map { "\($0)" } ?? NSNull(), "pid": pid ?? NSNull()])
+            DispatchQueue.global(qos: .utility).async { shared.replacePolishServer(h ?? .gone, pid: pid) }
+            return nil
+        }
+    }
+
+    /// The request, waiting `limit` s at most. No answer: a server stuck since the ping is replaced (looked at off this
+    /// thread, so the text goes in now).
+    private static func polishCall(_ req: [String: Any], limit: Double, cmd: String) -> [String: Any]? {
+        let pid = WarmServer.pid("polish-serve")
+        let t0 = Date()
+        if let r = WarmServer.call("polish-serve", req, timeout: limit) { return r }
+        let waited = Int(Date().timeIntervalSince(t0) * 1000)
+        DispatchQueue.global(qos: .utility).async {
+            let h = WarmServer.health("polish-serve", script: "polish.py")
+            emit(["event": "polish_wait", "cmd": cmd, "state": "no_answer", "limit_ms": Int(limit * 1000), "waited_ms": waited,
+                  "health": "\(h)", "pid": pid ?? NSNull()])
+            if case .stuck = h, WarmServer.pid("polish-serve") == pid { shared.replacePolishServer(h, pid: pid) }
+        }
+        return nil
     }
 }
 

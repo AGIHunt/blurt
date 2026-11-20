@@ -137,4 +137,17 @@ final class WarmServerTests: XCTestCase {
         XCTAssertNil(WarmServer.record("x")?.loadingSince)
         XCTAssertFalse(WarmServer.loading("x"))
     }
+
+    /// PolishWait: the Polish time limit holds once the model is loaded; a load is waited for only when it may be ahead
+    func testPolishWaitsTheLimitOnceTheModelIsLoaded() {
+        // the dogfood case: a loaded server, stopped mid-take, held the text 3 + 12 + 1 = 16 s
+        XCTAssertEqual(PolishWait.decide(loaded: true, health: nil, timeout: 3, loadBudget: 12), .wait(4))
+        XCTAssertEqual(PolishWait.decide(loaded: true, health: nil, timeout: 3, loadBudget: 12, extra: 5), .wait(9))
+        // the model still loading (the preload, or none loaded yet): the load is waited for
+        XCTAssertEqual(PolishWait.decide(loaded: false, health: nil, timeout: 3, loadBudget: 12), .wait(16))
+        // no answer to the ping: busy (a cold load in the loop, another request) is waited for; stuck is not asked
+        XCTAssertEqual(PolishWait.decide(loaded: nil, health: .working, timeout: 3, loadBudget: 12), .wait(16))
+        XCTAssertEqual(PolishWait.decide(loaded: nil, health: .stuck(orphaned: false), timeout: 3, loadBudget: 12), .giveUp)
+        XCTAssertEqual(PolishWait.decide(loaded: nil, health: .gone, timeout: 3, loadBudget: 12), .giveUp)
+    }
 }

@@ -202,3 +202,27 @@ public final class CPUWatch {
         return 0
     }
 }
+
+/// How long a polish request waits for the warm polish server (Dictation.polish / structure). The Polish time limit
+/// (`timeout`) is the server's, applied to the generation once its model is loaded; the client waits a second more
+/// for the answer to come back. `loadBudget` (a model still loading) is added only when a load may be ahead of the
+/// request — a stopped server whose model was loaded long ago held a take 3 + 12 + 1 = 16 s although Settings says
+/// 3 s (dogfood 2026-11-21).
+/// `loaded`: the server's answer to a ping (`loaded`; nil: it didn't answer); `health`: asked only when it didn't.
+public enum PolishWait: Equatable {
+    /// wait this many seconds for the answer
+    case wait(Double)
+    /// no answer and no CPU (stuck), or no server: don't ask it; the text goes in unpolished
+    case giveUp
+
+    public static func decide(loaded: Bool?, health: WarmServer.Health?, timeout: Double, loadBudget: Double,
+                              extra: Double = 0) -> PolishWait {
+        let quick = timeout + 1 + extra, long = timeout + loadBudget + 1 + extra
+        if let l = loaded { return .wait(l ? quick : long) }
+        switch health {
+        case .stuck?, .gone?, .notAServer?: return .giveUp
+        // busy with a request that needs it (a cold load, another take's polish), or it can't be told
+        case .answers?, .working?, nil: return .wait(long)
+        }
+    }
+}
