@@ -197,8 +197,8 @@
 
 /* double tap = Return */
 "dictation.toast.sent" = "已发送";
-"dictation.settings.double_tap" = "按两下发送";
-"dictation.settings.double_tap.detail" = "连按两下听写键，打完字后按回车。";
+"dictation.settings.double_tap" = "双击发送";
+"dictation.settings.double_tap.detail" = "双击听写键，打完字后按回车。";
 
 /* 结构化 / 翻译：单独双击 ⇧ 或 ⌘ */
 "dictation.settings.modifier_tap" = "结构化 / 翻译快捷键";
@@ -465,7 +465,7 @@
 "dictation.style.cat.other" = "其他 App";
 "dictation.style.cat.other.detail" = "其余所有 App";
 "dictation.style.apps" = "单独设置的 App";
-"dictation.style.learned" = "学到的";
+"dictation.style.learned" = "自动学习";
 "dictation.style.reset" = "恢复默认";
 "dictation.style.reset.help" = "恢复为所属类别的风格";
 "dictation.style.suggest" = "内容像清单时，提示排成清单";
@@ -562,7 +562,7 @@
 "dictation.toast.apple_language.change" = "更改…";
 "dictation.toast.polish_cloud_key" = "云端润色的 Key 无效，本次未用云端润色";
 "dictation.toast.weaker_asr" = "未下载推荐的语音模型 · 名字可能不准确";
-"dictation.tip.send" = "按两下%@ 发送";
+"dictation.tip.send" = "双击%@ 发送";
 "dictation.tip.list" = "说话时双击 ⇧，排成清单";
 "dictation.tip.reformat" = "%@ 切换风格";
 "dictation.history.failed" = "没能识别";
@@ -579,7 +579,7 @@
 "dictation.words.duplicate" = "%@ 已在词库里";
 
 /* the speech model through the download manager, the key with another Blurt (shell) */
-"dictation.mode.send_suffix" = "按两下发送";
+"dictation.mode.send_suffix" = "双击发送";
 "dictation.models.downloading" = "正在下载 · %1$@ / %2$@";
 "dictation.status.other_instance" = "另一个口喷鸡正在使用听写键";
 "dictation.status.other_instance.detail" = "另一个退出后，此处自动接管。";
@@ -599,8 +599,8 @@
 "dictation.models.queued" = "等待下载 · %@";
 "dictation.models.show" = "查看";
 "dictation.mode.help" = "%1$@ 取消本次听写。要保存语音而不输入文字，请使用语音备注（%2$@）。";
-"dictation.settings.double_tap.key" = "连按两下%@，打完字后按回车。";
-"dictation.settings.double_tap.help" = "按一下结束，确认文字后按两下发送；也可直接按两下，结束并发送。";
+"dictation.settings.double_tap.key" = "双击%@，打完字后按回车。";
+"dictation.settings.double_tap.help" = "按一下结束，确认文字后双击发送；也可直接双击，结束并发送。";
 "dictation.settings.fn_clash.help" = "请退出该 App，或为其中一个更换按键。";
 "dictation.mic.auto" = "自动";
 "dictation.mic.mac" = "Mac 内置麦克风";

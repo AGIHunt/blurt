@@ -58,5 +58,7 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | Picture quality (as on the phone) | 画质：自动 · 清晰 · 均衡 · 省流量 | Quality: Auto · Sharp · Balanced · Data Saver |
 | Items not in a project | 未归类 | Unsorted |
 | Card tabs | 当前 / 历史 | Current / History |
+| A double tap of a key (Fn to send, ⇧, ⌘) | 双击 | double-tap |
+| One dictation (the thing in History; "take" stays inside the Dictation Lab) | 听写 | dictation |
 
 Add to this table whenever a new concept reaches the UI.

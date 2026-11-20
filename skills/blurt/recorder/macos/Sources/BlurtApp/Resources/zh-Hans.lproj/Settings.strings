@@ -155,9 +155,9 @@
 "onboarding.try.asr_downloading" = "语音模型正在下载";
 "onboarding.try.no_model" = "听写需要语音模型";
 "onboarding.try.polish_coming" = "听写已就绪。润色模型下载完成后自动启用（还剩 %@）。";
-"onboarding.try.send_next" = "试试发送：说完后连按两下%@。";
+"onboarding.try.send_next" = "试试发送：说完后双击%@。";
 "onboarding.try.sent" = "发送：在其他 App 中，文字输入后会自动按下回车。";
-"onboarding.use.dictation.detail" = "按一下开始，再按一下停止，按两下发送";
+"onboarding.use.dictation.detail" = "按一下开始，再按一下停止，双击发送";
 "onboarding.use.dictation.detail_plain" = "按一下开始，再按一下停止";
 "settings.storage.dictation_history" = "听写历史";
 "settings.storage.dictation_audio" = "听写录音";
@@ -390,7 +390,7 @@
 "onboarding.dictation.detail_done" = "所需权限已开启。";
 "onboarding.key.gesture" = "按一下开始、再按一下停止，也可以按住说话。";
 "onboarding.key.gesture_hold" = "按住说话，松开停止。";
-"onboarding.key.gesture_send" = "按两下发送。";
+"onboarding.key.gesture_send" = "双击发送。";
 "onboarding.key.fn" = "Fn";
 "onboarding.key.right_option" = "右 Option";
 "onboarding.key.either_option" = "任一 Option";

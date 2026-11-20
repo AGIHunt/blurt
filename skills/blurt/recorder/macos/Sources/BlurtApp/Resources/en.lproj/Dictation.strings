@@ -468,7 +468,7 @@
 "dictation.style.learned" = "Learned";
 "dictation.style.reset" = "Reset";
 "dictation.style.reset.help" = "Back to its category’s style";
-"dictation.style.suggest" = "Offer a list when a take sounds like one";
+"dictation.style.suggest" = "Offer a list when a dictation sounds like one";
 "dictation.style.learn_toggle" = "Remember Structured and Translate for each app";
 "dictation.style.learn_toggle.detail" = "Turned on with a double-tap of ⇧ or ⌘, it stays on in that app until you turn it off";
 "dictation.style.verbatim.detail" = "Exactly what the speech model heard. No polish.";
@@ -598,7 +598,7 @@
 "dictation.menu.get_model.subtitle_plain" = "Required for dictation";
 "dictation.models.queued" = "Waiting to download · %@";
 "dictation.models.show" = "Show";
-"dictation.mode.help" = "%1$@ cancels a take. To save what you say instead of typing it, use a voice note (%2$@).";
+"dictation.mode.help" = "%1$@ cancels dictation. To save what you say instead of typing it, use a voice note (%2$@).";
 "dictation.settings.double_tap.key" = "Double-tap %@ to press Return after the text.";
 "dictation.settings.double_tap.help" = "Tap to stop, check the text, then double-tap to send. Or double-tap to stop and send at once.";
 "dictation.settings.fn_clash.help" = "Quit that app, or set a different key for one of them.";
@@ -613,7 +613,7 @@
 "dictation.history.summary" = "%1$ld saved · deleted after %2$@";
 "dictation.history.dont_keep" = "Don’t keep";
 "dictation.history.summary.off" = "Not kept · each dictation is forgotten once it’s typed";
-"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A take that couldn’t be recognized keeps its recording for a day, for Retry.";
+"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A dictation that couldn’t be recognized keeps its recording for a day, for Retry.";
 "dictation.models.detail" = "The speech and polish models dictation runs on.";
 "dictation.models.missing" = "Not downloaded · %@";
 "dictation.models.download" = "Download";

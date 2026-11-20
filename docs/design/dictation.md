@@ -83,7 +83,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   (`record.dictation.modifier_tap`, default `double`; per key `modifier_tap_shift` / `modifier_tap_command` can put
   one back on `single`). Window 350 ms, cooldown 500 ms after a fire, a ⇧⌘ chord asks neither. A voice note's ⇧ uses
   the same window and cooldown.
-- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「按两下发送」
+- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击发送」
   / "Double-tap to send", the key named in its description ("Double-tap Fn to press Return after the text"). In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
   `doubleTapWindow` of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
