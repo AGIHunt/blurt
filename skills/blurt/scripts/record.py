@@ -739,6 +739,14 @@ def native_binary(build: bool = True) -> Path | None:
         shutil.copytree(fw, dest, symlinks=True)
         prune_sparkle(dest)
     shutil.copy(INFO_PLIST, APP_BUNDLE / "Contents" / "Info.plist")
+    if test_hooks():
+        # a build for tests claims no blurt:// links: LaunchServices would otherwise open a scratch copy of it for one, with none
+        # of its test environment, on the user's own ~/.blurt (main.swift also refuses to start one without BLURT_HOME)
+        import plistlib
+        ip = APP_BUNDLE / "Contents" / "Info.plist"
+        d = plistlib.loads(ip.read_bytes())
+        d.pop("CFBundleURLTypes", None)
+        ip.write_bytes(plistlib.dumps(d))
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     for lproj in sorted((SWIFT_DIR / "Sources" / "BlurtApp" / "Resources").glob("*.lproj")):   # K10 string tables
         shutil.copytree(lproj, APP_BUNDLE / "Contents" / "Resources" / lproj.name, dirs_exist_ok=True)
