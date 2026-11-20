@@ -487,7 +487,7 @@
 "main.dictation.mode.compare" = "改动";
 "main.dictation.typed" = "输入的文字";
 "main.dictation.heard" = "识别原文";
-"main.dictation.same" = "润色未做改动";
+"main.dictation.same" = "未改动";
 "main.dictation.copied" = "已复制";
 "main.dictation.corrected" = "改正后";
 "main.dictation.correct" = "改正";
@@ -514,6 +514,7 @@
 "main.dictation.info.not_typed" = "未输入";
 "main.dictation.info.polish" = "润色";
 "main.dictation.info.polish.off" = "关闭";
+"main.dictation.info.polish.not_used" = "未采用";
 "main.dictation.info.asr" = "语音模型";
 "main.dictation.info.language" = "语言";
 "main.dictation.info.terms" = "来自词库";

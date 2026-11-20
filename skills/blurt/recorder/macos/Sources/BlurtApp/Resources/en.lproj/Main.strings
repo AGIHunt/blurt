@@ -486,7 +486,7 @@
 "main.dictation.mode.compare" = "Changes";
 "main.dictation.typed" = "Typed";
 "main.dictation.heard" = "Heard";
-"main.dictation.same" = "unchanged by polish";
+"main.dictation.same" = "no changes";
 "main.dictation.copied" = "Copied";
 "main.dictation.corrected" = "Corrected";
 "main.dictation.correct" = "Correct";
@@ -513,6 +513,7 @@
 "main.dictation.info.not_typed" = "Not typed";
 "main.dictation.info.polish" = "Polish";
 "main.dictation.info.polish.off" = "Off";
+"main.dictation.info.polish.not_used" = "not used";
 "main.dictation.info.asr" = "Speech model";
 "main.dictation.info.language" = "Language";
 "main.dictation.info.terms" = "Words used";

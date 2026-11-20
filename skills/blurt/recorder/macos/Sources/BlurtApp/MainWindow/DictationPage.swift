@@ -2058,11 +2058,10 @@ struct DictationDetailView: View {
                 polishRow(e)
                 if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
                     // the style the text is in (what ran, not only what was asked for), and how often reformat-last
-                    // changed it (dictation-styles.md); a fall-back: the style asked for, "not polished" (the reason is
-                    // the line under the text)
+                    // changed it (dictation-styles.md); a fall-back: the style asked for — that it wasn't polished is
+                    // said once, in the line under the text (it was said four times)
                     let n = s.reformats.filter { $0.action == "reformat" }.count
-                    let name = e.fellBack ? Dictation.styleName(DictationStyle(rawValue: s.style) ?? .light) + " · " + T("dictation.history.badge.fell_back")
-                        : Dictation.styleName(ran)
+                    let name = e.fellBack ? Dictation.styleName(DictationStyle(rawValue: s.style) ?? .light) : Dictation.styleName(ran)
                     row(T("dictation.style.section"), name + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
                 }
                 if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
@@ -2118,7 +2117,9 @@ struct DictationDetailView: View {
                 let name = id.isEmpty ? T("dictation.history.badge.polished") : models.polishName(id)
                 row(T("main.dictation.info.polish"), DictationHistoryModel.differs(e) || e.corrected != nil ? name : name + " · " + T("main.dictation.same"))
             }
-        case .fellBack(let id): row(T("main.dictation.info.polish"), T("dictation.history.badge.fell_back") + (id.map { " · " + models.polishName($0) } ?? ""))
+        // the model and the outcome ("Gemma 4 E2B · not used"); why is the line under the text
+        case .fellBack(let id): row(T("main.dictation.info.polish"), id.map { models.polishName($0) + " · " + T("main.dictation.info.polish.not_used") }
+                                    ?? T("dictation.history.badge.fell_back"))
         case .short: row(T("main.dictation.info.polish"), T("main.dictation.info.polish.short"))
         case .off: row(T("main.dictation.info.polish"), T("main.dictation.info.polish.off"))
         case .noModel:
