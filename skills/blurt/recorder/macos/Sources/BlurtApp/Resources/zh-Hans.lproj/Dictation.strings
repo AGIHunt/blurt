@@ -113,7 +113,7 @@
 "dictation.history.clear.title" = "清空听写历史？";
 "dictation.history.clear.undo" = "此操作无法撤销。";
 "dictation.history.clear.confirm" = "清空历史";
-"dictation.history.shorten.days" = "超过%@的听写及其录音将被删除。";
+"dictation.history.shorten.days" = "超过 %@的听写及其录音将被删除。";
 "dictation.history.shorten.off" = "听写历史将关闭，已保存的听写及其录音都会被删除。";
 "dictation.history.shorten.confirm" = "删除";
 
