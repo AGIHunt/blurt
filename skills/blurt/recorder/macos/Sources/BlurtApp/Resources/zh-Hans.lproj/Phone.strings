@@ -137,7 +137,7 @@
 "viewer.follow" = "跟着远端指针换屏";
 "viewer.new_window" = "在新窗口中打开";
 "viewer.release" = "按 ⌃⌘ 交还键盘和鼠标";
-"viewer.release.app_only" = "按 ⌃⌘ 交还键盘和鼠标。在「输入监控」中允许口喷鸡之前，⌘Tab 等系统快捷键仍在本机生效。";
+"viewer.release.app_only" = "按 ⌃⌘ 交还键盘和鼠标。\n在「输入监控」中允许口喷鸡之前，⌘Tab 等系统快捷键仍在本机生效。";
 "viewer.allow_shortcuts" = "发送系统快捷键…";
 
 /* the bar on the controlled Mac */

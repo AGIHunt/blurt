@@ -15,6 +15,14 @@
 //   viewer point X Y             the pointer to X,Y (0…1 of the picture) and a click there
 //   viewer displays              the front viewer window's display switcher
 //   viewer capture on|off        Keys to Remote in the front viewer window
+//   viewer mods STEP…            modifier changes and keys into the front window, as captured, 0.05 s apart: a step is the modifiers
+//                                held (ctl+cmd, cmd, shift, none), kCODE (that key down and up) or click (a click where the pointer is)
+//   viewer active on|off|real    as if Blurt came to the front or went behind (it never does in a test build: the user's keys stay theirs);
+//                                real: NSApp.isActive again
+//   viewer key                   the front viewer window counts as key (an app behind others has none; no activation)
+//   viewer input ID              as if the user picked another input method (the test build's stand-in: the Mac's own is never touched)
+//   viewer size W H              the front viewer window's content size, in points
+//   viewer hint KEY              the picture's hint: release, release.app_only, no_control, file (a long file name being sent)
 //   viewer state                 what the store and the windows say ("viewer_state")
 //
 // This Mac is only ever the viewer in these: no session here drives this Mac.
@@ -88,8 +96,8 @@ enum ViewerTests {
                     }
                 }
             case "displays":
-                NSApp.activate(ignoringOtherApps: true)
-                ViewerWindowController.front?.window?.makeKeyAndOrderFront(nil)
+                // (no activation: a test build never comes in front of the user's apps, where it would take their keys)
+                ViewerWindowController.front?.window?.orderFront(nil)
                 ViewerWindowController.front?.testOpenDisplays()
             case "keys":
                 // a keyboard's own sequence into the front window, as the capture hands it over: ⌘C, F13, the keypad's Enter, ⌃⌘ alone
@@ -115,18 +123,59 @@ enum ViewerTests {
                 // the pointer to x,y (0…1 of the picture) and a click there
                 guard let w = ViewerWindowController.front, a.count > 2, let x = Float(a[1]), let y = Float(a[2]) else { break }
                 w.link.pointerTo(x: x, y: y)
+                w.beforeInput()
                 w.link.send(.button(.left, down: true))
                 w.link.send(.button(.left, down: false))
             case "capture":
                 ViewerWindowController.front?.setCaptured(a.count > 1 && a[1] == "on")
+            case "mods":
+                guard let w = ViewerWindowController.front else { break }
+                typealias E = ViewerKeyboard.Event
+                let bits: [String: CGEventFlags] = ["ctl": .maskControl, "cmd": .maskCommand, "shift": .maskShift, "opt": .maskAlternate, "fn": .maskSecondaryFn]
+                let codes: [(CGEventFlags, UInt16)] = [(.maskCommand, 55), (.maskShift, 56), (.maskAlternate, 58), (.maskControl, 59), (.maskSecondaryFn, 63)]
+                var flags: CGEventFlags = []
+                var steps: [() -> Void] = []
+                for t in a.dropFirst() {
+                    if t == "click" { steps.append { w.beforeInput(); w.link.send(.button(.left, down: true)); w.link.send(.button(.left, down: false)) }; continue }
+                    if t.hasPrefix("k"), let code = UInt16(t.dropFirst()) {
+                        let f = flags
+                        steps.append { w.key(E(code: code, down: true, repeating: false, flags: f, modifiersOnly: false)) }
+                        steps.append { w.key(E(code: code, down: false, repeating: false, flags: f, modifiersOnly: false)) }
+                        continue
+                    }
+                    var next: CGEventFlags = []
+                    for n in t.split(separator: "+") { if let b = bits[String(n)] { next.insert(b) } }
+                    // one flagsChanged per key that changed, as a keyboard sends them
+                    for (b, code) in codes where flags.contains(b) != next.contains(b) {
+                        if next.contains(b) { flags.insert(b) } else { flags.remove(b) }
+                        let f = flags, down = next.contains(b)
+                        steps.append { w.key(E(code: code, down: down, repeating: false, flags: f, modifiersOnly: true)) }
+                    }
+                }
+                for (i, step) in steps.enumerated() { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.05) { step() } }
+            case "active":
+                ViewerKeyboard.testActive = a.count > 1 && a[1] == "real" ? nil : a.count > 1 && a[1] == "on"
+                ViewerWindowController.activeChanged()
+            case "key":
+                ViewerKeyboard.testKey = ViewerWindowController.front?.window
+            case "input":
+                let id = a.count > 1 ? a[1] : InputMethod.testPlain
+                InputMethod.test = InputMethod.Source(id: id, plain: id.hasPrefix("com.apple.keylayout."))
+            case "size":
+                guard a.count > 2, let wd = Double(a[1]), let ht = Double(a[2]), let win = ViewerWindowController.front?.window else { break }
+                win.setContentSize(NSSize(width: wd, height: ht))
+            case "hint":
+                ViewerWindowController.front?.testHint(a.count > 1 ? a[1] : "release.app_only")
             default: break
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 MainActor.assumeIsolated {
                     emit(["event": "viewer_state", "computers": store.computers.map { [$0.name, ViewerStore.line(store.row($0))] },
                           "nearby": store.nearby.map(\.name), "pairing": store.pairing?.check ?? NSNull(),
+                          "active": ViewerKeyboard.appActive, "input": InputMethod.current()?.id ?? "",
                           "windows": NSApp.windows.compactMap { ($0.windowController as? ViewerWindowController).map { w in
-                              ["title": w.window?.title ?? "", "subtitle": w.window?.subtitle ?? "", "captured": w.captured, "overlay": w.testOverlay] } }])
+                              ["title": w.window?.title ?? "", "subtitle": w.window?.subtitle ?? "", "captured": w.captured, "key": ViewerKeyboard.isKey(w.window),
+                               "size": NSStringFromSize(w.window?.contentLayoutRect.size ?? .zero), "overlay": w.testOverlay, "hint": w.testHintState] } }])
                 }
             }
         }

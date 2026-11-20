@@ -104,7 +104,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         set { Config.shared.set("record.viewer.clipboard", newValue ? nil : false) }
     }
     private var sentMods: RemoteModifiers = []
-    private var release = RemoteReleaseChord()
+    /// the modifiers held here and what the host has of them: a press of ⌃ or ⌘ waits until it's clear it isn't the release
+    private var heldMods = RemoteHeldModifiers()
     private var screenOn = false
     /// the path the picture was last asked for on
     private var pictureRoute: RemoteViewerLink.Route?
@@ -126,10 +127,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// window on that display (Open in New Window).
     @MainActor
     static func open(_ c: RemoteComputer, adopting: RemoteViewerLink? = nil, display: String? = nil) {
+        watchActive()
         if display == nil, adopting == nil, let w = windows.first(where: { $0.computer.id == c.id }) {
             w.showWindow(nil)
             w.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            if !ViewerStore.testing { NSApp.activate(ignoringOtherApps: true) }
             return
         }
         let second = windows.contains { $0.computer.id == c.id }
@@ -142,13 +144,36 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         windows.append(w)
         w.showWindow(nil)
         w.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // (a test build stays behind the user's own apps: `viewer active` stands in for coming to the front)
+        if !ViewerStore.testing { NSApp.activate(ignoringOtherApps: true) }
         emit(["event": "viewer_window", "state": "open", "second": second, "platform": c.platform ?? ""])
     }
 
     /// the window in front, or the newest (tests)
     static var front: ViewerWindowController? {
         (NSApp.keyWindow?.windowController as? ViewerWindowController) ?? windows.last
+    }
+
+    private static var watching = false
+
+    /// Keys follow Blurt being the app in front: another app in front gives them back, and coming back to a window that's key takes them.
+    @MainActor private static func watchActive() {
+        guard !watching else { return }
+        watching = true
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { activeChanged() }
+        }
+        nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { activeChanged() }
+        }
+    }
+
+    /// Blurt came to the front or went behind (tests: `viewer active on|off`).
+    @MainActor static func activeChanged() {
+        for w in windows {
+            if w.wantsKeys { w.setCaptured(true) } else if w.captured, !ViewerKeyboard.holdsKeys(w.window) { w.setCaptured(false) }
+        }
     }
 
     static func closeAll(of id: String) { windows.filter { $0.computer.id == id }.forEach { $0.close() } }
@@ -315,8 +340,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         if let p = pinned { link.send(.showDisplay(p)) }
         // after a drop the host has taken the cover down: asked again
         if privacy { link.send(.privacyScreen(true)) }
-        // a window that opens in front, captured: the mouse and keys go to the computer it shows
-        if window?.isKeyWindow == true { setCaptured(true) }
+        // a window that opens in front, captured: the mouse and keys go to the computer it shows. Only with Blurt in front: a window
+        // that opens or reconnects behind another app leaves this Mac's keys and input method alone
+        if wantsKeys { setCaptured(true) }
     }
 
     private func routeChanged(_ r: RemoteViewerLink.Route?, _ rtt: Double?) {
@@ -414,8 +440,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     // MARK: keys
 
+    /// The window would take the keys now: connected, key, with Blurt in front. (A window of an app behind others can still be key.)
+    var wantsKeys: Bool { link.state == .connected && ViewerKeyboard.appActive && ViewerKeyboard.isKey(window) }
+
     func windowDidBecomeKey(_ n: Notification) {
-        if link.state == .connected, !captured { setCaptured(true) }
+        if wantsKeys, !captured { setCaptured(true) }
     }
 
     /// Keys go only to the window in front: another window or app in front gives them back.
@@ -435,7 +464,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         keysButton.state = on ? .on : .off
         if on {
             let system = ViewerKeyboard.shared.capture(for: self)
-            release = RemoteReleaseChord()
+            heldMods = RemoteHeldModifiers()
             sentMods = []
             held = []
             link.send(.keysCaptured(true))
@@ -460,24 +489,32 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     @objc private func toggleKeys() { setCaptured(!captured) }
 
+    /// A key, a click or a scroll is about to go: a ⌃ or ⌘ held back (it might have been the release) goes first.
+    func beforeInput() { heldMods.other().forEach(sendMods) }
+
+    private func sendMods(_ m: RemoteModifiers) {
+        let mapped = RemoteViewerKeys.map(m, from: .mac, to: host, mapping: mapping)
+        guard mapped != sentMods else { return }
+        sentMods = mapped
+        link.send(.mods(mapped))
+    }
+
     /// A key from the capture (ViewerKeyboard), on the main thread.
     func key(_ e: ViewerKeyboard.Event) {
         let mods = RemoteModifiers(e.flags)
         if e.modifiersOnly {
-            if release.modifiers(mods) {
+            switch heldMods.modifiers(mods) {
+            case .release:
                 setCaptured(false)
                 return
-            }
-            let mapped = RemoteViewerKeys.map(mods.subtracting(.function), from: .mac, to: host, mapping: mapping)
-            if mapped != sentMods {
-                sentMods = mapped
-                link.send(.mods(mapped))
+            case let .send(list): list.forEach(sendMods)
+            case .none: break
             }
             // Caps Lock toggles: a press each way
             if e.code == 57 { link.send(.key(RemoteChord([], "CapsLock"), down: nil)) }
             return
         }
-        release.key()
+        beforeInput()
         guard let name = RemoteViewerKeys.name(macKeyCode: e.code) else { return }
         // ⌘C / ⌘V into a terminal on Windows or Linux: copy and paste there (Ctrl+Shift+C / V), not an interrupt (remote-1.1.md §5)
         if e.down, host != .mac, mapping, name == "C" || name == "V", mods.subtracting(.function) == [.command],
@@ -765,6 +802,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     func testOpenDisplays() { showDisplays(displayButton) }
+
+    /// the picture's hint, as the window shows it (`viewer hint KEY`)
+    func testHint(_ key: String) {
+        switch key {
+        case "no_control": picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil)
+        case "file": picture.showHint(T("viewer.file.sending", "Quarterly results for the board, final version (2).pdf"), seconds: nil)
+        default: picture.showHint(T("viewer.\(key)"), seconds: nil)
+        }
+    }
+
+    var testHintState: [String: Any] { picture.testHint }
 
     /// what the overlay says and offers (`viewer state`)
     var testOverlay: [String: Any] {

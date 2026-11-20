@@ -11,7 +11,9 @@ final class ViewerPictureView: NSView {
     /// over a picture that stopped (the link dropped, the host locked): the last frame stays, darker, under what's said about it
     private let dim = CALayer()
     private let cursorLayer = CALayer()
-    private let hint = NSTextField(labelWithString: "")
+    /// the hint at the bottom (how to give the keys back, a file sent, no control there): wrapped inside the window at any width
+    private let hint = NSView()
+    private let hintText = NSTextField(wrappingLabelWithString: "")
     private var hintTimer: Timer?
     /// the host's display shown, in points: the picture keeps its shape
     var source = CGSize(width: 16, height: 10) { didSet { needsLayout = true } }
@@ -57,19 +59,28 @@ final class ViewerPictureView: NSView {
         cursorSize = NSCursor.arrow.image.size
         hot = NSCursor.arrow.hotSpot
         layer?.addSublayer(cursorLayer)
-        hint.font = .systemFont(ofSize: 13, weight: .medium)
-        hint.textColor = .white
-        hint.alignment = .center
+        hintText.font = .systemFont(ofSize: 13, weight: .medium)
+        hintText.textColor = .white
+        hintText.alignment = .center
+        hintText.maximumNumberOfLines = 4
+        hintText.lineBreakMode = .byWordWrapping
+        hintText.translatesAutoresizingMaskIntoConstraints = false
         hint.wantsLayer = true
         hint.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
         hint.layer?.cornerRadius = 8
         hint.isHidden = true
         hint.translatesAutoresizingMaskIntoConstraints = false
+        hint.addSubview(hintText)
         addSubview(hint)
         NSLayoutConstraint.activate([
+            hintText.leadingAnchor.constraint(equalTo: hint.leadingAnchor, constant: Self.hintPad.width),
+            hintText.trailingAnchor.constraint(equalTo: hint.trailingAnchor, constant: -Self.hintPad.width),
+            hintText.topAnchor.constraint(equalTo: hint.topAnchor, constant: Self.hintPad.height),
+            hintText.bottomAnchor.constraint(equalTo: hint.bottomAnchor, constant: -Self.hintPad.height),
             hint.centerXAnchor.constraint(equalTo: centerXAnchor),
             hint.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -24),
-            hint.heightAnchor.constraint(equalToConstant: 32),
+            hint.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: Self.hintMargin),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Self.hintMargin),
         ])
     }
 
@@ -111,7 +122,15 @@ final class ViewerPictureView: NSView {
         return RemotePixelSize(width: Int(r.width * s) / 2 * 2, height: Int(r.height * s) / 2 * 2)
     }
 
+    private static let hintPad = CGSize(width: 12, height: 8)
+    private static let hintMargin: CGFloat = 16
+    /// a line no longer than this reads in one glance; longer ones wrap
+    private static let hintMaxText: CGFloat = 640
+
     override func layout() {
+        // the hint's text wraps at the room the window leaves it
+        let room = min(Self.hintMaxText, bounds.width - 2 * (Self.hintMargin + Self.hintPad.width))
+        if hintText.preferredMaxLayoutWidth != room { hintText.preferredMaxLayoutWidth = max(80, room) }
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -204,14 +223,14 @@ final class ViewerPictureView: NSView {
 
     /// `seconds` nil: it stays until `hideHint`.
     func showHint(_ text: String, seconds: Double? = 3) {
-        hint.stringValue = "   \(text)   "
+        hintText.stringValue = text
         hint.isHidden = false
         hintTimer?.invalidate()
         hintTimer = nil
         guard let seconds else { lasting = text; return }
         hintTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             guard let self else { return }
-            if let l = self.lasting { self.hint.stringValue = "   \(l)   " } else { self.hint.isHidden = true }
+            if let l = self.lasting { self.hintText.stringValue = l } else { self.hint.isHidden = true }
         }
     }
 
@@ -221,6 +240,16 @@ final class ViewerPictureView: NSView {
         hintTimer = nil
         hint.isHidden = true
     }
+
+    #if DEBUG || BLURT_TEST_HOOKS
+    /// what the hint says and where it is, in the view's points (`viewer state`)
+    var testHint: [String: Any] {
+        ["shown": !hint.isHidden, "text": hintText.stringValue, "frame": NSStringFromRect(hint.frame), "view": NSStringFromRect(bounds),
+         "inside": hint.isHidden || bounds.insetBy(dx: Self.hintMargin - 1, dy: 0).contains(hint.frame),
+         "lines": hint.isHidden ? 0 : Int((hintText.frame.height / NSLayoutManager().defaultLineHeight(for: hintText.font ?? .systemFont(ofSize: 13))).rounded()),
+         "fits": hint.isHidden || hintText.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: hintText.frame.width, height: 10_000)).height ?? 0 <= hintText.frame.height + 1]
+    }
+    #endif
 
     // MARK: the mouse
 
@@ -286,6 +315,8 @@ final class ViewerPictureView: NSView {
         }
         guard place(e) != nil || !down else { return }
         pointer(e)
+        // ⌘-click, ⌃-click: a ⌘ or ⌃ held back as a possible release goes first
+        if down { c.beforeInput() }
         c.link.send(.button(b, down: down))
     }
 
@@ -302,6 +333,7 @@ final class ViewerPictureView: NSView {
     override func scrollWheel(with e: NSEvent) {
         guard captured, let c = controller, place(e) != nil else { return }
         if !e.momentumPhase.isEmpty { return }
+        c.beforeInput()
         let sign: CGFloat = e.isDirectionInvertedFromDevice ? 1 : -1
         let k: CGFloat = e.hasPreciseScrollingDeltas ? 1 : 12
         let dx = e.scrollingDeltaX * k * sign, dy = e.scrollingDeltaY * k * sign

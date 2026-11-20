@@ -35,13 +35,14 @@ final class ViewerKeyboard {
         owner = w
         plainKeys()
         // the tap sees ⌘Tab and letters only with Input Monitoring; with Accessibility alone it gets the modifiers and nothing else
-        // (measured 2026-11-20: listen false, ⌘Tab stayed on this Mac). Asked for once a launch; the window says what's missing
-        let listen = CGPreflightListenEventAccess()
-        if !listen, !Self.askedListen {
+        // (measured 2026-11-20: listen false, ⌘Tab stayed on this Mac). Asked for once a launch; the window says what's missing.
+        // A test build asks for nothing and makes no tap: it runs beside the user's own apps
+        let listen = !ViewerStore.testing && CGPreflightListenEventAccess()
+        if !listen, !Self.askedListen, !ViewerStore.testing {
             Self.askedListen = true
             CGRequestListenEventAccess()
         }
-        systemKeys = makeTap() && listen
+        systemKeys = !ViewerStore.testing && makeTap() && listen
         // The window's own keys too, with the tap on: a key the tap took never reaches the app, so nothing goes twice. Letters can come here
         // without passing the tap at all: on this Mac (2026-11-20) only the modifiers reached it while every letter went straight to the app
         // (WindowServer: keyboard focus "viewbridge-key-window"), so the other computer got ⌃⌘ and never a letter. UU Remote takes them here.
@@ -79,35 +80,51 @@ final class ViewerKeyboard {
     /// this Mac types plain keys: an input method here takes letters into its own composing window (a ViewBridge window that becomes the
     /// key window), the capture never sees them, and the other computer gets nothing (2026-11-20, Sogou Wubi on this Mac, nothing typed on
     /// the M1 Max's lock screen). The other computer's own input method does the composing.
-    private var savedInput: TISInputSource?
+    /// The choice is the whole Mac's, so capture starts only with Blurt in front (ViewerWindowController.wantsKeys), and at the end the
+    /// saved one comes back only if the plain one Blurt chose is still in use: one the user picked meanwhile stays.
+    private var savedInput: InputMethod.Source?
+    private var chosenPlain: String?
     private static var askedListen = false
     /// Input Monitoring is on: the system's shortcuts can go to the other computer.
     static var systemShortcuts: Bool { CGPreflightListenEventAccess() }
 
     private func plainKeys() {
-        guard savedInput == nil, let cur = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return }
-        if let t = TISGetInputSourceProperty(cur, kTISPropertyInputSourceType) {
-            let type = Unmanaged<CFString>.fromOpaque(t).takeUnretainedValue()
-            if CFEqual(type, kTISTypeKeyboardLayout) { return }     // a plain layout already (ABC, US, German…): left as it is
-        }
-        guard let plain = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue() else { return }
-        if TISSelectInputSource(plain) == noErr {
-            savedInput = cur
-            emit(["event": "viewer_keys", "input": "plain"])
-        }
+        guard savedInput == nil, let cur = InputMethod.current(), !cur.plain else { return }   // a plain layout already (ABC, US…): left as it is
+        guard let plain = InputMethod.selectPlain() else { return }
+        savedInput = cur
+        chosenPlain = plain
+        emit(["event": "viewer_keys", "input": "plain", "was": cur.id, "now": plain])
     }
 
     private func restoreInput() {
-        guard let s = savedInput else { return }
+        guard let saved = savedInput else { return }
         savedInput = nil
-        TISSelectInputSource(s)
+        defer { chosenPlain = nil }
+        let now = InputMethod.current()?.id
+        guard now == chosenPlain else {
+            emit(["event": "viewer_keys", "input": "kept", "now": now ?? ""])
+            return
+        }
+        InputMethod.select(saved)
+        emit(["event": "viewer_keys", "input": "restored", "now": InputMethod.current()?.id ?? ""])
+    }
+
+    /// Blurt is the app in front. A test build can say so without being in front (`viewer active on|off`): it never takes the user's keys.
+    static var appActive: Bool { testActive ?? NSApp.isActive }
+    static var testActive: Bool?
+    /// the window a test build counts as key (`viewer key`): an app behind others has no key window to make
+    static weak var testKey: NSWindow?
+
+    static func isKey(_ w: NSWindow?) -> Bool {
+        guard let w else { return false }
+        return w.isKeyWindow || ViewerStore.testing && testActive != nil && testKey === w
     }
 
     /// The window still has the keys: it's key, or a helper panel of this app is (an input method's, the system's accent picker) while
     /// it stays the main window.
     static func holdsKeys(_ w: NSWindow?) -> Bool {
-        guard let w, NSApp.isActive else { return false }
-        if w.isKeyWindow { return true }
+        guard let w, appActive else { return false }
+        if isKey(w) { return true }
         guard NSApp.mainWindow === w else { return false }
         guard let k = NSApp.keyWindow else { return true }
         return !(k.styleMask.contains(.titled) && k.canBecomeMain)
@@ -166,6 +183,47 @@ final class ViewerKeyboard {
 private func viewerTapCallback(_ proxy: CGEventTapProxy, _ type: CGEventType, _ event: CGEvent, _ me: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     guard let me else { return Unmanaged.passUnretained(event) }
     return Unmanaged<ViewerKeyboard>.fromOpaque(me).takeUnretainedValue().handle(type, event)
+}
+
+/// This Mac's input method, by its id (TIS). A test build has a stand-in instead (`viewer input ID`), so a test never changes the user's.
+enum InputMethod {
+    struct Source {
+        var id: String
+        /// a plain keyboard layout (ABC, US, German…), not an input method
+        var plain: Bool
+        var tis: TISInputSource?
+    }
+    /// the test build's stand-in
+    static var test = Source(id: "com.sogou.inputmethod.sogou.pinyin", plain: false)
+    static let testPlain = "com.apple.keylayout.ABC"
+
+    static func current() -> Source? {
+        if ViewerStore.testing { return test }
+        guard let cur = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(), let id = Self.id(cur) else { return nil }
+        var plain = false
+        if let t = TISGetInputSourceProperty(cur, kTISPropertyInputSourceType) {
+            plain = CFEqual(Unmanaged<CFString>.fromOpaque(t).takeUnretainedValue(), kTISTypeKeyboardLayout)
+        }
+        return Source(id: id, plain: plain, tis: cur)
+    }
+
+    /// The plain layout for this Mac's keyboard, selected: its id.
+    static func selectPlain() -> String? {
+        if ViewerStore.testing { test = Source(id: testPlain, plain: true); return testPlain }
+        guard let plain = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(), let id = Self.id(plain),
+              TISSelectInputSource(plain) == noErr else { return nil }
+        return id
+    }
+
+    static func select(_ s: Source) {
+        if ViewerStore.testing { test = s; return }
+        if let t = s.tis { TISSelectInputSource(t) }
+    }
+
+    private static func id(_ s: TISInputSource) -> String? {
+        guard let p = TISGetInputSourceProperty(s, kTISPropertyInputSourceID) else { return nil }
+        return Unmanaged<CFString>.fromOpaque(p).takeUnretainedValue() as String
+    }
 }
 
 extension RemoteModifiers {

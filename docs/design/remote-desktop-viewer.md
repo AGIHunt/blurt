@@ -136,10 +136,23 @@ first's.
 - The window: the host's shape (`contentAspectRatio`, no bars), title the computer's name, subtitle path · round trip (at least 1 ms).
   The display switcher (only with two displays or more) is a popover with the arrangement (`RemoteDisplayMap`), 跟着远端指针换屏 and
   在新窗口中打开 (also on a display's context menu). A window that becomes key captures; one that stops being key gives keys back;
-  clicking into the picture captures again (that click stays here).
+  clicking into the picture captures again (that click stays here). Capture needs Blurt in front as well (`wantsKeys`: connected, key,
+  `NSApp.isActive`): a window that opens or reconnects while another app is in front captures nothing, tells the host nothing and leaves
+  this Mac's input method alone; Blurt coming to the front captures for its key window, and going behind gives the keys back
+  (`didBecomeActive` / `didResignActive`). Fixed 2026-11-21 after the 1.1 dogfood run, where a window opening behind WeChat switched
+  this Mac to ABC and told the host `captured true`.
 - Keys: a session event tap (`ViewerKeyboard`) while capture is on and the window is key, so ⌘Tab, ⌘Space and ⌃← go to the host. Without
   Accessibility, an NSEvent monitor instead: the window's keys only, and the hint says system shortcuts stay here. ⌃⌘ pressed and let go
-  alone releases (⌃⌘F still reaches the host), hint for 3 s.
+  alone releases (⌃⌘F still reaches the host), hint for 3 s. The release sends the host nothing (`RemoteHeldModifiers`): a press of ⌃,
+  ⌘ or both waits until a key, a click, a scroll or another modifier says it's a shortcut, and then goes before it; ⌃ or ⌘ tapped alone
+  goes as a tap (⌃ alone is the Windows key: Start); letting go of what the host has goes at once. Before this a Windows host saw Win,
+  then Ctrl+Win, each time the keys came back.
+- The hint wraps (up to four lines, 640 pt of text at most, 16 pt from the window's edges, 12 × 8 padding, radius 8): at 480 pt the
+  Input Monitoring hint is three lines in English, two in Chinese; before, it was one line 875 pt wide, cut at both edges.
+- This Mac's input method while keys are captured: a plain layout (ABC), chosen only with Blurt in front; at the end the one before comes
+  back only if the plain one is still in use, so an input method the user picked meanwhile stays. A test build never touches the Mac's
+  input method or asks for Input Monitoring: `InputMethod` has a stand-in there (`viewer input ID`), and `viewer active on|off` /
+  `viewer key` stand in for Blurt coming to the front, since a test build stays behind the user's apps.
 - Pointer: `pointerTo` with numbers, as the phone's; over the relay 30 a second. The host's pointer drawn from the cursor stream at the
   picture's scale; this Mac's own place is shown until the host's word includes the last move (`RemoteCursor.wait`). Scrolling: trackpad
   phases go through, the trackpad's own coasting stays here and the host coasts from the speed the fingers left with (`scrollFling`);

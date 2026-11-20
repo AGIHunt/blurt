@@ -78,6 +78,53 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertTrue(w.modifiers([]))
     }
 
+    func testTheReleaseChordSendsNothing() {
+        // ⌃ down, ⌘ down, ⌘ up, ⌃ up (the dogfood run's R27: a Windows host saw Win, then Ctrl+Win, before the release)
+        var h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([.control, .command]), .none)
+        XCTAssertEqual(h.modifiers(.control), .release)
+        XCTAssertEqual(h.sent, [])
+        // the other order, and Fn held along
+        h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers([.command, .function]), .none)
+        XCTAssertEqual(h.modifiers([.command, .control, .function]), .none)
+        XCTAssertEqual(h.modifiers([.control, .function]), .release)
+    }
+
+    func testShortcutsStillGetTheirModifiers() {
+        // ⌘C: ⌘ waits, then goes before the C; letting go goes at once
+        var h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.other(), [.command])
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌃⌘F: both go before the F, and letting go after it isn't the release
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([.control, .command]), .none)
+        XCTAssertEqual(h.other(), [[.control, .command]])
+        XCTAssertEqual(h.modifiers(.control), .send([.control]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌘⇧: a modifier outside the chord sends at once
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.modifiers([.command, .shift]), .send([[.command, .shift]]))
+        XCTAssertEqual(h.modifiers(.command), .send([.command]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⇧ alone and ⌥ alone go as they come
+        XCTAssertEqual(h.modifiers(.shift), .send([.shift]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌃ alone, tapped: the Windows key's tap (Start) still reaches the host
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([]), .send([.control, []]))
+        // ⌘-click: the click sends ⌘ first; a ⌃ added while ⌘ is down waits, and let go is still the release (the window then lets go of
+        // the ⌘ the host has)
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.other(), [.command])
+        XCTAssertEqual(h.other(), [])
+        XCTAssertEqual(h.modifiers([.command, .control]), .none)
+        XCTAssertEqual(h.modifiers(.command), .release)
+        XCTAssertEqual(h.sent, .command)
+    }
+
     func testTheClipboardsLimit() {
         XCTAssertTrue(RemoteClipboard.fits("a"))
         XCTAssertFalse(RemoteClipboard.fits(""))

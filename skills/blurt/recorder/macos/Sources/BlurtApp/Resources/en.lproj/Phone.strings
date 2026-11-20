@@ -137,7 +137,7 @@
 "viewer.follow" = "Follow the Pointer";
 "viewer.new_window" = "Open in New Window";
 "viewer.release" = "Press ⌃⌘ to release the keyboard and mouse";
-"viewer.release.app_only" = "Press ⌃⌘ to release the keyboard and mouse. ⌘Tab and other system shortcuts stay on this Mac until Blurt is allowed in Input Monitoring.";
+"viewer.release.app_only" = "Press ⌃⌘ to release the keyboard and mouse.\n⌘Tab and other system shortcuts stay on this Mac until Blurt is allowed in Input Monitoring.";
 "viewer.allow_shortcuts" = "Send System Shortcuts…";
 
 /* the bar on the controlled Mac */
