@@ -862,6 +862,7 @@ final class JobDetailView: NSView {
             if j.state == .failed, j.error?.code == "auth" { controls.addArrangedSubview(plain(T("main.job.sign_in"), "agents")) }
             if j.state == .failed, !j.dismissed { controls.addArrangedSubview(plain(T("main.job.dismiss"), "dismiss")) }
         } else if j.state == .failed, !j.dismissed {
+            if j.error?.code == "auth" { controls.addArrangedSubview(plain(T("main.job.sign_in"), "agents")) }
             controls.addArrangedSubview(plain(T("main.job.dismiss"), "dismiss"))
         } else if j.state == .done, !j.items.isEmpty {
             controls.addArrangedSubview(plain(TP("main.job.show_items", j.items.count), "items"))
