@@ -9,7 +9,7 @@
 //   History         "Keep history for": a popup in sight (record.screen_text.history_days: 7, 30, forever, not kept),
 //                   as Settings → Cards → History — it was in the menu of Open History…, where no one found it. A
 //                   choice that would delete entries asks first ("Delete 12 entries?", founder 2026-11-21). Then the
-//                   saved text and translations: Open History… (the page that lists them, 2026-11-16), Clear History….
+//                   saved text and translations: Open History… (the page that lists them, 2026-11-16), Clear History… in its ⋯.
 // docs/design/screen-text.md §1f.
 import AppKit
 import SwiftUI
@@ -191,12 +191,13 @@ struct ScreenTextPane: View {
                         selection: Binding(get: { m.historyDays }, set: { m.pickHistoryDays($0) }), dividers: [3])
         }
         SettingRow("screentext.history") {
-            HStack(spacing: 8) {
-                Button(T("settings.screen_text.history.clear")) { m.askClear() }
-                    .buttonStyle(SettingsOutlinedButtonStyle()).fixedSize()
-                    .disabled(m.historyCount == 0)
+            // Clear History… in the row's ⋯ (a destructive action is never a button at rest, §3.4)
+            HStack(spacing: 6) {
                 Button(T("settings.screen_text.history.open")) { MainWindowController.shared.go(.screenText) }
                     .buttonStyle(SettingsOutlinedButtonStyle()).fixedSize()
+                RowMenu(label: T("settings.screen_text.history.clear"), visible: m.historyCount > 0) {
+                    Button(T("settings.screen_text.history.clear"), role: .destructive) { m.askClear() }
+                }
             }
         }
     }
