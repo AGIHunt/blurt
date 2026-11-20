@@ -323,6 +323,7 @@
  "st.dictation.history.reason.skipped": "Esc pressed during polish",
  "st.dictation.history.reason.timeout": "polish timed out",
  "st.dictation.history.reason.translated": "polish changed the language",
+ "st.dictation.history.reason.script_swap": "polish changed the language",
  "st.dictation.history.reason.unavailable": "the polish model wasn’t ready",
  "st.dictation.history.retry": "Retry",
  "st.dictation.history.saved": "History",

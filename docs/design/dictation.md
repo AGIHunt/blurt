@@ -1420,7 +1420,7 @@ no filler, correction-marker, question or preface word lists; what the words mea
 |---|---|
 | `empty` | the output has no units |
 | `term` | a custom word that was spoken (any case or spacing) is missing from the output |
-| `translated` | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
+| `script_swap` (was `translated` until 1.1.0: with Translate off it read as a translated take in History and in feedback reports; old entries keep it) | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
 | `shrunk` | loss > max(8 units, 25 % of the input); Structured: max(12, 40 %) + 2 per list line (the counting word its number stands for) |
 | `grew` | output > 1.25 × input + 8 units |
 | `chatty` | ≥ 3 units in a row at the start or the end of the output that follow nothing that was said (each unit and the next were never said one after the other, and neither is a custom or context word): a preface ("好的，下面是…", "Sure, here is…"), a sign-off ("Hope this helps"), an answer. A run ends at a line break: one-word list items ("1. Speed\n2. Cost") are neighbours only on the page |

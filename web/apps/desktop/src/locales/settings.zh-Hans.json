@@ -323,6 +323,7 @@
  "st.dictation.history.reason.skipped": "润色时按了 Esc",
  "st.dictation.history.reason.timeout": "润色超时",
  "st.dictation.history.reason.translated": "润色改变了语言",
+ "st.dictation.history.reason.script_swap": "润色改变了语言",
  "st.dictation.history.reason.unavailable": "润色模型未就绪",
  "st.dictation.history.retry": "重试",
  "st.dictation.history.saved": "听写历史",

@@ -207,6 +207,7 @@
   "dictation_page.reason.grew": "polish added words",
   "dictation_page.reason.novel": "polish changed words",
   "dictation_page.reason.translated": "polish changed the language",
+  "dictation_page.reason.script_swap": "polish changed the language",
   "dictation_page.reason.answered": "polish answered it instead of tidying it",
   "dictation_page.reason.chatty": "polish replied to it instead of tidying it",
   "dictation_page.reason.correction": "polish lost a correction",

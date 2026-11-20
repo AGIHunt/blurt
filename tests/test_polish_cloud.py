@@ -196,7 +196,7 @@ def test_cloud_polish_fixes_a_name_from_the_recent_dictations(api):
 @pytest.mark.parametrize("raw,reply,reason", [
     # an answer instead of the text (a request meant for someone else)
     ("帮我把这段话翻译成英文然后发给小李", "Sure! Here is the translation: Please send this to Xiao Li. Let me know if you need more help.",
-     "cloud_translated"),
+     "cloud_script_swap"),
     # a summary: a whole point gone
     ("第一是把测试环境搭好，第二是文档要更新一下然后发给小李，第三是周五之前把演示准备好这个比较急",
      "搭测试环境。", "cloud_shrunk"),
@@ -210,7 +210,7 @@ def test_the_guard_still_refuses_answers_and_summaries(api, raw, reply, reason):
 def test_the_cloud_guard_allows_a_misheard_word_in_the_other_script():
     raw = "比如请问二十七 B 的模型，可以用 Open Router 的 Key 去试一下"
     out = "比如 Qwen 27B 的模型，可以用 OpenRouter 的 Key 去试一下。"
-    assert polish.guard(raw, out)["reason"] == "translated"           # the local model's rule
+    assert polish.guard(raw, out)["reason"] == "script_swap"           # the local model's rule
     assert polish.guard(raw, out, cloud=True)["pass"]
 
 

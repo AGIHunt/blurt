@@ -233,7 +233,7 @@ def _cloud_verdict(core_u: list[str], out_u: list[str], n_raw: int, n_core: int,
     cjk = re.compile(rf"[{_CJK}]")
     share = lambda us: sum(1 for u in us if cjk.match(u)) / max(1, len(us))  # noqa: E731
     if core_u and out_u and abs(share(core_u) - share(out_u)) > CLOUD_SCRIPT_SHIFT:
-        return "translated"
+        return "script_swap"
     flat, ratio = STRUCT_SHRINK
     numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
     if n_core - n_out > max(flat, ratio * n_core) + numbered:
@@ -308,7 +308,7 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
         # turned into the other script is refused there: the local model isn't trusted with it)
         if n_core <= TRANSLATED_SPAN or _swapped_script(core_u, out_u, set(lost_latin), set(novel_cjk), set(lost_cjk),
                                                          set(novel_latin)):
-            return verdict("translated")
+            return verdict("script_swap")
     flat, ratio = STRUCT_SHRINK if mode == "structured" else (SHRINK_SLACK, SHRINK_RATIO)
     numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
     if n_core - n_out > max(flat, ratio * n_core) + numbered:

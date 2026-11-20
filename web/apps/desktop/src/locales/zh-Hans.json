@@ -203,6 +203,7 @@
   "dictation_page.reason.grew": "润色添加了内容",
   "dictation_page.reason.novel": "润色改了用词",
   "dictation_page.reason.translated": "润色改变了语言",
+  "dictation_page.reason.script_swap": "润色改变了语言",
   "dictation_page.reason.answered": "润色回答了它，而不是整理",
   "dictation_page.reason.chatty": "润色把它当成了要回答的话",
   "dictation_page.reason.correction": "润色丢失了改口",

@@ -154,6 +154,7 @@
 "dictation.history.reason.grew" = "polish added words";
 "dictation.history.reason.novel" = "polish changed words";
 "dictation.history.reason.translated" = "polish changed the language";
+"dictation.history.reason.script_swap" = "polish changed the language";
 "dictation.history.reason.answered" = "polish answered instead of tidying up";
 "dictation.history.reason.chatty" = "polish added a reply";
 "dictation.history.reason.correction" = "polish lost a correction";

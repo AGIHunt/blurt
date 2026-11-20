@@ -154,6 +154,7 @@
 "dictation.history.reason.grew" = "润色添加了内容";
 "dictation.history.reason.novel" = "润色改了用词";
 "dictation.history.reason.translated" = "润色改变了语言";
+"dictation.history.reason.script_swap" = "润色改变了语言";
 "dictation.history.reason.answered" = "润色回答了问题，而不是整理";
 "dictation.history.reason.chatty" = "润色添加了回复";
 "dictation.history.reason.correction" = "润色丢失了改口";
