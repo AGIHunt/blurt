@@ -59,6 +59,10 @@ pub struct Computer {
     /// the path its last session was on (the list says it rather than guessing from the relay it knows)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_route: Option<Route>,
+    /// the host removed this computer, said in a session it had opened: its key is gone, and it has to be added again (the Mac's
+    /// `RemoteComputer.removed`; absent in records from before 1.1)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed: bool,
 }
 
 pub struct Computers {
@@ -132,6 +136,12 @@ impl Computers {
             f(c);
             self.save(&list);
         }
+    }
+
+    /// The host removed this computer in a session: the key goes, the record stays, marked, so the list can offer Add Again.
+    pub fn mark_removed(&self, host_id: &str) {
+        self.keys.delete(&key_name(host_id));
+        self.update(host_id, |c| c.removed = true);
     }
 
     pub fn remove(&self, host_id: &str) {
@@ -425,24 +435,63 @@ pub enum PairWith {
     Nearby(Found),
 }
 
+/// How a pairing ended without a key. The host never says which (a bare close, or a refused handshake), so it's read from when
+/// (the Mac's `RemoteViewerLink.PairingFailure`, docs/design/remote-desktop-viewer.md §When it doesn't pair):
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PairError {
-    /// nothing answered (the link's addresses and relay, or the nearby computer)
+    /// nothing answered (the link's addresses and relay, or the nearby computer); only from `pair`, which tries once
     Unreachable,
-    /// it answered and wouldn't take this: a code expired or used, or a host that doesn't pair with computers nearby (an older
-    /// one: paste its link instead)
-    NotTaken,
-    /// the owner said no there, or nobody answered in time
+    /// refused before anyone was asked: a link's code ran out or was used already; nearby, the host isn't taking a new computer
+    /// now (it's asking about another, or was just told no), or it's an older host that doesn't pair nearby
+    Spent,
+    /// the question was asked and the host let go: its owner said no
     Declined,
+    /// the question was asked and nobody answered: the host gives up after its two minutes
+    Unanswered,
 }
 
+/// What a pairing that keeps trying (`pair_steps`) says on the way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PairStep {
+    /// nothing has answered for a while; still trying
+    Unreachable,
+    /// the host asks its owner now, with these six digits (whatever was said before: they take its place)
+    Asking(String),
+}
+
+/// How long a host asks its owner about a new device before it takes the silence as a no (server.rs `PAIRING_LIFE`): a close
+/// this late, 90 % of it or more, is "nobody answered", not "no".
+pub const QUESTION_LIFE: Duration = Duration::from_secs(120);
+/// Unreachable is said once nothing has answered for this long (the Mac's 8 s).
+const UNREACHABLE_AFTER: Duration = Duration::from_secs(8);
+
 /// Pairs with a computer: connects, shows the six digits (`digits`) while the host asks its owner, and once the owner says yes
-/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). `go_between_at`: tests only.
+/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests
+/// only.
 pub async fn pair(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
     digits: impl Fn(&str),
+) -> Result<(Computer, Vec<u8>), PairError> {
+    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, |s| {
+        if let PairStep::Asking(d) = s {
+            digits(&d)
+        }
+    })
+    .await
+}
+
+/// `pair`, for the Add Computer panel. `keep_trying`: while nothing answers it says `Unreachable` and goes on trying, so if the
+/// host turns up and asks, its digits replace that (the caller ends it by dropping or aborting the future). `question_life`: the
+/// host's (tests shorten it).
+pub async fn pair_steps(
+    with: PairWith,
+    device: &str,
+    go_between_at: Option<&str>,
+    question_life: Duration,
+    keep_trying: bool,
+    step: impl Fn(PairStep),
 ) -> Result<(Computer, Vec<u8>), PairError> {
     let (host_id, name, device_id, key, port, addresses, nearby, relay) = match with {
         PairWith::Link(p) => (
@@ -466,45 +515,69 @@ pub async fn pair(
             None,
         ),
     };
-    let (mut phone, route) = open(
-        device,
-        &device_id,
-        &key,
-        port,
-        &addresses,
-        &nearby,
-        relay.as_deref(),
-        go_between_at,
-    )
-    .await
-    .map_err(|e| match e {
-        Unreached::NotPaired => PairError::NotTaken,
-        _ => PairError::Unreachable,
-    })?;
-    let mut told = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(130);
+    let started = tokio::time::Instant::now();
+    let mut said_unreachable = false;
+    let (mut phone, route) = loop {
+        match open(
+            device,
+            &device_id,
+            &key,
+            port,
+            &addresses,
+            &nearby,
+            relay.as_deref(),
+            go_between_at,
+        )
+        .await
+        {
+            Ok(x) => break x,
+            Err(Unreached::NotPaired) => return Err(PairError::Spent),
+            Err(_) if !keep_trying => return Err(PairError::Unreachable),
+            Err(e) => {
+                if !said_unreachable && started.elapsed() >= UNREACHABLE_AFTER {
+                    said_unreachable = true;
+                    step(PairStep::Unreachable);
+                }
+                // a public connection service over its limit isn't asked again at once
+                let wait = if e == Unreached::Busy { 15 } else { 2 };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        }
+    };
+    // the host gives up on its question after `question_life`; this side, a little later
+    let patience = question_life + question_life / 12;
+    let mut asked: Option<tokio::time::Instant> = None;
+    let mut deadline = tokio::time::Instant::now() + patience;
     let new_key = loop {
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
         match phone.next(left.min(Duration::from_secs(1))).await {
             Some(PhoneEvent::Control(ToPhone::PairingWaits)) => {
-                told = true;
-                digits(&phone.check);
+                let now = tokio::time::Instant::now();
+                asked = Some(now);
+                deadline = now + patience;
+                step(PairStep::Asking(phone.check.clone()));
             }
             Some(PhoneEvent::Control(ToPhone::NewKey(k))) => break k,
             Some(PhoneEvent::Closed) => {
-                return Err(if told {
-                    PairError::Declined
-                } else {
-                    PairError::NotTaken
+                return Err(match asked {
+                    None => PairError::Spent,
+                    Some(t) if t.elapsed() >= question_life.mul_f64(0.9) => PairError::Unanswered,
+                    Some(_) => PairError::Declined,
                 })
             }
             Some(_) => {}
-            None if tokio::time::Instant::now() >= deadline => return Err(PairError::Declined),
+            None if tokio::time::Instant::now() >= deadline => {
+                return Err(if asked.is_some() {
+                    PairError::Unanswered
+                } else {
+                    PairError::Unreachable
+                })
+            }
             None => {}
         }
     };
     if new_key.len() != 32 {
-        return Err(PairError::NotTaken);
+        return Err(PairError::Spent);
     }
     phone.send(&ToMac::KeyStored).await;
     let info = phone
@@ -535,6 +608,7 @@ pub async fn pair(
         added: now_ms(),
         last_seen: Some(now_ms()),
         last_route: Some(route),
+        removed: false,
     };
     phone.send(&ToMac::ReleaseAll).await;
     Ok((c, new_key))
@@ -697,8 +771,11 @@ pub enum Link {
     NoDirect,
     /// the computer's own relay doesn't answer (the public connection service is tried meanwhile)
     RelayDown,
-    /// the host removed this computer (or never had it)
+    /// the host removed this computer, said in a session it had opened: so it is (the key can go)
     Removed,
+    /// the host refused this computer's key, with no session: it may have removed it, or never had it, but anyone on the network
+    /// can send a refusal, so the key is kept
+    Forgotten,
     /// another device took over there
     Replaced,
     /// the person at the computer ended the session
@@ -909,7 +986,7 @@ async fn run(
             }
             Err(Unreached::NotPaired) => {
                 on(Event::Link {
-                    link: Link::Removed,
+                    link: Link::Forgotten,
                     route: None,
                 });
                 return;
@@ -1325,6 +1402,7 @@ mod tests {
             added: 1,
             last_seen: None,
             last_route: None,
+            removed: false,
         };
         cs.add(c.clone(), &[7; 32]).unwrap();
         assert_eq!(cs.list(), vec![c.clone()]);
@@ -1341,6 +1419,20 @@ mod tests {
         cs.update("h", |c| c.last_route = Some(Route::Local));
         assert!(std::fs::read_to_string(d.join("computers.json")).unwrap().contains(r#""lastRoute": "local""#));
         assert_eq!(cs.get("h").unwrap().last_route, Some(Route::Local));
+        assert!(!std::fs::read_to_string(d.join("computers.json"))
+            .unwrap()
+            .contains("removed"));
+        // removed by the host in a session: the key goes, the record stays, marked; paired again, a fresh record with a key
+        cs.mark_removed("h");
+        assert!(cs.get("h").unwrap().removed && cs.key("h").is_none());
+        cs.add(c.clone(), &[8; 32]).unwrap();
+        assert!(!cs.get("h").unwrap().removed && cs.key("h") == Some(vec![8; 32]));
+        // a list from before 1.1 has no `removed`
+        let old: Vec<Computer> = serde_json::from_str(
+            r#"[{"hostId":"x","name":"Old","deviceId":"d","port":1,"added":1}]"#,
+        )
+        .unwrap();
+        assert!(!old[0].removed);
         cs.remove("h");
         assert!(cs.list().is_empty() && cs.key("h").is_none());
         let _ = std::fs::remove_dir_all(d);
