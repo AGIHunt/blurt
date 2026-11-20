@@ -191,3 +191,4 @@ def test_undo_skips_items_an_agent_moved(p2):
     assert out["kept"] == [{"uid": a["uid"], "id": a["id"], "state": "to_verify"}]
     assert [i["uid"] for i in out["items"]] == [b["uid"]]
     assert p2.get(a["uid"])["state"] == "to_verify" and p2.get(b["uid"])["state"] == "todo"
+    assert p2.get(b["uid"])["work"] == {"state": "todo"}  # (no work key) its first hand-off taken back: no hand-off record left behind

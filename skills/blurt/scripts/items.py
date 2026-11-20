@@ -954,6 +954,9 @@ def set_state(item: dict, state: str, given: dict, by: str, undo: bool = False, 
         if not hist:
             item.pop("work_history", None)
         return {**out, "work": item["work"]}
+    if undo and state not in WORK_TRACKED and not hist:
+        item.pop("work", None)  # ⌘Z on a first hand-off: back to new / to do as it was, with no hand-off record
+        return {**out, "work": None}
     given = {k: v for k, v in given.items() if v is not None}
     now = now_iso()
     if same and cur_work:
