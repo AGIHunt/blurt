@@ -69,8 +69,9 @@ enum Look {
     }
 
     static func symbol(_ name: String, _ label: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
+        // monochrome: outlines stay outlines (an iPhone's screen otherwise fills in, a slab among the sidebar's lines)
         NSImage(systemSymbolName: name, accessibilityDescription: label)?
-            .withSymbolConfiguration(.init(pointSize: size, weight: weight))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: weight).applying(.preferringMonochrome()))
     }
 
     private static var cache: [String: NSImage] = [:]

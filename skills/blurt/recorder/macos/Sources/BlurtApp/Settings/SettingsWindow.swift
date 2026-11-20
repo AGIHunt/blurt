@@ -631,7 +631,9 @@ final class SettingsPaneCell: NSTableCellView {
     /// count: nil = not searching; 0 = no match here (dimmed)
     func set(title t: String, symbol: String, count: Int?) {
         title.stringValue = t
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        // monochrome: one line weight in the column (the iPhone's screen was a filled slab among outlines)
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular).applying(.preferringMonochrome()))
         icon.setAccessibilityElement(false)
         title.setAccessibilityElement(false)
         let dim = count == 0

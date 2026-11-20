@@ -101,11 +101,13 @@ public enum SettingsCatalog {
         // phones, and the computers this Mac drives or that drive it (docs/design/remote-desktop-viewer.md)
         pane("remote", "feature.phone", "Home", "iphone", "features"),
         pane("general", "settings.kit.general", "Settings", "gearshape", "app"),
-        pane("speech", "settings.kit.speech", "Settings", "cpu", "app"),
-        pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "app"),
+        // sidebar glyphs with an empty inside and few details at 13 pt (dogfood 2026-11-21: cpu, keyboard and
+        // internaldrive read as fine grilles beside the outlines): a model is a cube, a shortcut ⌘, storage a drive
+        pane("speech", "settings.kit.speech", "Settings", "cube", "app"),
+        pane("shortcuts", "settings.kit.shortcuts", "Settings", "command", "app"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "app"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
-        pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
+        pane("storage", "settings.kit.storage", "Settings", "externaldrive", "mac"),
     ]
 
     /// The searches the no-match page offers (in the UI language): each finds rows in every language

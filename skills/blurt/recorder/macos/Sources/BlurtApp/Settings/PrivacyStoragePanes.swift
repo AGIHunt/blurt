@@ -458,10 +458,10 @@ final class StorageModel: ObservableObject {
     }
 
     /// A model's glyph by what it does, as the Models pane draws it: speech recognition the waveform, polish the wand
-    /// (an unknown folder: the generic chip).
+    /// (an unknown folder: the generic cube, the Models pane's glyph).
     nonisolated static func icon(_ folder: String) -> String {
         if folder == "silero_vad.onnx" { return "waveform" }
-        guard let e = ModelCatalog.entry(folder: folder) else { return "cpu" }
+        guard let e = ModelCatalog.entry(folder: folder) else { return "cube" }
         return e.polish ? "wand.and.stars" : "waveform"
     }
     nonisolated static func icon(_ k: ModelUsage.Kind) -> String { k == .polish ? "wand.and.stars" : "waveform" }
@@ -774,7 +774,7 @@ struct StoragePane: View {
             SettingsGroup("storage.models", note: AnyView(modelsFootnote), content: {
                 if m.loaded {
                     if m.models.isEmpty {
-                        StorageRow(icon: "cpu", title: T("settings.storage.model.none"), size: storageSize(0))
+                        StorageRow(icon: "cube", title: T("settings.storage.model.none"), size: storageSize(0))
                     }
                     // the voice detector is part of local speech recognition, not a model to choose: said on the
                     // recognition rows, never a row of its own
