@@ -122,7 +122,7 @@ struct HomeRow: Equatable, Identifiable {
         case .cards: return "rectangle.stack"
         case .screenText: return "text.viewfinder"
         case .recording: return "record.circle"
-        case .phone: return "iphone"
+        case .phone: return "laptopcomputer.and.iphone"
         }
     }
     /// its Settings pane (one that isn't there yet opens General: SettingsController.show)

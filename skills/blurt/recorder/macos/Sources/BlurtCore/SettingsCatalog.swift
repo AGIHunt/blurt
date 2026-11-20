@@ -99,7 +99,7 @@ public enum SettingsCatalog {
         pane("recording", "feature.recording", "Home", "record.circle", "features"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "features"),
         // phones, and the computers this Mac drives or that drive it (docs/design/remote-desktop-viewer.md)
-        pane("remote", "feature.phone", "Home", "iphone", "features"),
+        pane("remote", "feature.phone", "Home", "laptopcomputer.and.iphone", "features"),
         pane("general", "settings.kit.general", "Settings", "gearshape", "app"),
         // sidebar glyphs with an empty inside and few details at 13 pt (dogfood 2026-11-21: cpu, keyboard and
         // internaldrive read as fine grilles beside the outlines): a model is a cube, a shortcut ⌘, storage a drive

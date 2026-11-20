@@ -371,12 +371,14 @@ def test_mac_mascot_is_peep_frames():
 
 
 def _sf(icon: str) -> list[str]:
-    """The SF Symbols a family glyph stands for (sf-symbols.json, through its aliases)."""
+    """The SF Symbols a family glyph stands for (sf-symbols.json, through its aliases): a generic glyph's candidates,
+    or a brand glyph's one `nearest` symbol."""
     import json
 
     m = json.loads((ROOT / "assets/icons/sf-symbols.json").read_text())
     name = m["aliases"].get(icon, icon)
-    return m["generic"].get(name, []) + m["nearest"].get(name, [])
+    nearest = m["nearest"].get(name)
+    return m["generic"].get(name, []) + ([nearest] if nearest else [])
 
 
 # the SF Symbols that are one metaphor with another name ("terminal" and "apple.terminal" are both a prompt in a window)

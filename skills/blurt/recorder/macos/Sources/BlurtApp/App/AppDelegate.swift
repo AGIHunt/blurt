@@ -1159,7 +1159,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "mVideoOnly": "film", "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
             "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
-            "mCopyLastDictation": "doc.on.doc", "mPhone": "iphone",
+            "mCopyLastDictation": "doc.on.doc", "mPhone": "laptopcomputer.and.iphone",
             "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",

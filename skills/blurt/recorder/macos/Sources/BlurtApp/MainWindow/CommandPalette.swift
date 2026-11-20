@@ -329,7 +329,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         }
         if cards { out.append(e(T("cards.title"), "rectangle.stack", kind: .place, section: .go, pinned: true) { c.go(.cards) }) }
         if Capability.screenText.isOn { out.append(e(T("feature.screen_text"), "text.viewfinder", kind: .place, section: .go, pinned: true) { c.go(.screenText) }) }
-        if Capability.phone.isOn { out.append(e(T("feature.phone"), "iphone", kind: .place, section: .go, pinned: true) { c.go(.phone) }) }
+        if Capability.phone.isOn { out.append(e(T("feature.phone"), "laptopcomputer.and.iphone", kind: .place, section: .go, pinned: true) { c.go(.phone) }) }
         if recording {
             out += [
                 e(T("main.place.inbox"), "tray", "⌘1", kind: .place, section: .go, pinned: true) { c.go(.inbox) },
