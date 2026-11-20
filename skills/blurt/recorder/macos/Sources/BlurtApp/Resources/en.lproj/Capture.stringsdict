@@ -168,13 +168,13 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Another copy of Blurt is using one of these shortcuts</string><key>other</key><string>Another copy of Blurt is using %d of these shortcuts</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Another copy of Blurt has taken one of these shortcuts</string><key>other</key><string>Another copy of Blurt has taken %d of these shortcuts</string></dict>
   </dict>
   <key>capture.keys.taken_banner_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt are using one of these shortcuts</string><key>other</key><string>Other copies of Blurt are using %d of these shortcuts</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt have taken one of these shortcuts</string><key>other</key><string>Other copies of Blurt have taken %d of these shortcuts</string></dict>
   </dict>
 	<key>capture.drawer.hang_sub</key>
 	<dict>

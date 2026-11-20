@@ -560,8 +560,8 @@
 "app.toast.welcome_plain" = "Blurt is in the menu bar";
 "app.toast.welcome_setup" = "Blurt is in the menu bar · dictation is off";
 "app.toast.welcome_setup.action" = "Turn On…";
-"app.toast.welcome_taken" = "Blurt is in the menu bar · %@ is unavailable";
-"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts are unavailable";
+"app.toast.welcome_taken" = "Blurt is in the menu bar · %@ is taken";
+"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts are taken";
 "app.toast.welcome_snap_only" = "Blurt is in the menu bar · %@ to snap";
 "app.url.ask_record" = "A link wants to start a screen recording";
 "app.url.ask_snap" = "A link wants to take a snap";

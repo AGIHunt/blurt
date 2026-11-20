@@ -168,13 +168,13 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>另一个口喷鸡正在使用其中 %d 个快捷键</string><key>other</key><string>另一个口喷鸡正在使用其中 %d 个快捷键</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>另一个口喷鸡占用了其中 %d 个快捷键</string><key>other</key><string>另一个口喷鸡占用了其中 %d 个快捷键</string></dict>
   </dict>
   <key>capture.keys.taken_banner_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>其他口喷鸡正在使用其中 %d 个快捷键</string><key>other</key><string>其他口喷鸡正在使用其中 %d 个快捷键</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>其他口喷鸡占用了其中 %d 个快捷键</string><key>other</key><string>其他口喷鸡占用了其中 %d 个快捷键</string></dict>
   </dict>
 	<key>capture.drawer.hang_sub</key>
 	<dict>

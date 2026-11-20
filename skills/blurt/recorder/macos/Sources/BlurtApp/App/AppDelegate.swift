@@ -285,7 +285,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             postWelcome()
         } else {
             // a shortcut another app holds: the first line, and the way to change it (the reason is in Settings)
-            Hotkeys.shared.warnOnce { text in
+            let fnTaken = HotkeySettings.shared.dictationTaken && Capability.dictation.isOn ? 1 : 0
+            Hotkeys.shared.warnOnce(alsoTaken: fnTaken) { text in
                 var t = Island.Toast(text: text.components(separatedBy: "\n")[0], actionTitle: T("app.toast.change_shortcut")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
                 }

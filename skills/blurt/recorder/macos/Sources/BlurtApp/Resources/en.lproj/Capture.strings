@@ -92,7 +92,7 @@
 "capture.keys.unreadable" = "Couldn’t read “%@” in the settings file. Using the default.";
 "capture.keys.while_recording" = "While recording";
 "capture.keys.why" = "%1$@: %2$@";
-"capture.keys.wont_work" = "Shortcut %@ won’t work";
+"capture.keys.wont_work" = "%@ is taken";
 "capture.menu.live_caption" = "Live Caption";
 "capture.menu.organize_all" = "Organize All Cards";
 "capture.menu.snap" = "Snap";
@@ -362,7 +362,7 @@
 "capture.sort.request" = "Process my Blurt recordings";
 "capture.sort.request_copied" = "Copied. Paste it into %@’s chat.";
 "capture.sort.set_up" = "Set Up…";
-"capture.keys.wont_work_many" = "%@ shortcuts won’t work";
+"capture.keys.wont_work_many" = "%@ shortcuts are taken";
 "capture.keys.menu_not_working" = "%1$@ doesn’t work: %2$@. Change it in Settings, under Shortcuts.";
 "capture.action.cards.detail" = "Opens the Cards page. Press again to go back to the app you were in";
 "capture.action.reformat.detail" = "Rewrites the last dictation in the next style";

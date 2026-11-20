@@ -340,6 +340,23 @@ final class HomeModel: ObservableObject {
                     r.fix = T("dictation.toast.no_model.settings"); r.fixKind = "choose_model"
                 }
             case nil:
+                // another copy of Blurt hears the key (menuRow says nothing then): said here as the ⌥ rows say theirs,
+                // the key quiet, with the Dictation page's way out — not "Press Fn" (dogfood 2026-11-21)
+                if Dictation.shared.deferredTo != nil, !HotkeySettings.solo {
+                    let key = Dictation.keyShort.trimmingCharacters(in: .whitespaces)
+                    let keys = HotkeySettings.shared
+                    r.keys = [HomeKey(caps: [key], tip: T("dictation.status.other_instance_key", Dictation.keyInline), dim: true)]
+                    r.tone = .trouble
+                    r.text = T("home.keys.taken", key)
+                    r.tip = T("dictation.status.other_instance_key", Dictation.keyInline)
+                    if keys.otherApps.isEmpty {
+                        r.fix = T("home.keys.change"); r.fixKind = "dictation_settings"
+                    } else {
+                        r.fix = Loc.t(keys.others.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")
+                        r.fixKind = "quit_other"
+                    }
+                    break
+                }
                 // its model is on its way: how far, quietly (the Dictation page's banner says the same)
                 if case let .downloading(done, total) = DictationHistoryModel.pageStatus(enabled: true, needsSetup: false) {
                     r.tone = .note; r.text = T("home.dictation.downloading", modelSize(done), modelSize(total))
@@ -732,6 +749,8 @@ final class HomeModel: ObservableObject {
         case "choose_model": SpeechPane.showDictationModels()
         case "download": ModelDownloads.showProgress()
         case "stop_download": ModelDownloads.shared.stop()
+        case "quit_other": HotkeySettings.shared.quitOthers()
+        case "dictation_settings": AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue)
         case "better_models": downloadBetter()
         case "agent": AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
         case "keys": AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)

@@ -520,16 +520,18 @@ public final class HotkeyCenter {
     public func markWarned() { if !conflicts.isEmpty { Config.shared.set("record.hotkeys_warned", conflictSignature) } }
 
     /// A one-time toast per distinct set of conflicts (remembered in config, so it doesn't nag every launch).
-    public func warnOnce(_ toast: (String) -> Void) {
+    /// `alsoTaken`: other keys that don't work here, counted with them as Settings → Shortcuts and the welcome line
+    /// count them (the dictation key another copy of Blurt listens to) — one number everywhere.
+    public func warnOnce(alsoTaken: Int = 0, _ toast: (String) -> Void) {
         let c = conflicts
         let sig = conflictSignature
         guard !c.isEmpty, Config.shared["record.hotkeys_warned"] as? String != sig else { return }
         Config.shared.set("record.hotkeys_warned", sig)
         // the first line is what the island shows: one key by name, several by how many (the list is in Settings —
         // eleven names never fit the island's row)
-        let first = c[0], why = states[first]?.text ?? ""
-        let head = c.count == 1 ? Loc.t("capture.keys.wont_work", table: "Capture", label(first))
-            : Loc.t("capture.keys.wont_work_many", table: "Capture", "\(c.count)")
+        let first = c[0], why = states[first]?.text ?? "", n = c.count + max(alsoTaken, 0)
+        let head = n == 1 ? Loc.t("capture.keys.wont_work", table: "Capture", label(first))
+            : Loc.t("capture.keys.wont_work_many", table: "Capture", "\(n)")
         toast(head + "\n"
               + (c.count == 1 ? Loc.t("capture.keys.why", table: "Capture", label(first), why) : Loc.t("capture.keys.taken_or_twice", table: "Capture"))
               + Loc.t("capture.keys.change_it", table: "Capture"))

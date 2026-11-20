@@ -92,7 +92,7 @@
 "capture.keys.unreadable" = "无法读取设置文件中的 %@，已使用默认值";
 "capture.keys.while_recording" = "录屏时";
 "capture.keys.why" = "%1$@：%2$@";
-"capture.keys.wont_work" = "快捷键 %@ 无法使用";
+"capture.keys.wont_work" = "%@ 已被占用";
 "capture.menu.live_caption" = "实时字幕";
 "capture.menu.organize_all" = "整理全部卡片";
 "capture.menu.snap" = "截图";
@@ -362,7 +362,7 @@
 "capture.sort.request" = "处理我录的视频";
 "capture.sort.request_copied" = "已复制，请粘贴到 %@ 的对话中";
 "capture.sort.set_up" = "设置…";
-"capture.keys.wont_work_many" = "%@ 个快捷键用不了";
+"capture.keys.wont_work_many" = "%@ 个快捷键已被占用";
 "capture.keys.menu_not_working" = "%1$@ 无法使用：%2$@。可在「设置 > 快捷键」中更改。";
 "capture.action.cards.detail" = "打开卡片页，再按一次回到之前的 App";
 "capture.action.reformat.detail" = "将上一条听写改为下一种风格";
