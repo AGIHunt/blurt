@@ -87,11 +87,11 @@
 "main.action.record" = "Start Recording";
 "main.action.snap" = "Snap";
 
-"main.undo.kept" = "%@ changed since, so it wasn’t undone.";
+"main.undo.kept" = "%@ has changed since, so it wasn’t undone.";
 "main.banner.agent" = "an agent";
-"main.banner.ended" = "it stopped without reporting back";
+"main.banner.ended" = "stopped without reporting back";
 "main.banner.external" = "Handed off to your agent. Mark it done here when it’s finished.";
-"main.banner.quiet" = "Handed off %@ · no word from your agent yet";
+"main.banner.quiet" = "Handed off %@ · no report from your agent yet";
 "main.banner.working" = "%@ is working on it · started %@";
 "main.banner.working_now" = "%@ is working on it";
 "main.banner.your_agent" = "Your agent";

@@ -56,7 +56,7 @@ enum Words {
         case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) removed this iPhone.")
         case .otherPhone: return String(localized: "Another phone is connected")
         case .touchToTakeOver: return String(localized: "Touch to take over.")
-        case .endedThere: return String(localized: "Someone at \(n) ended the connection.")
+        case .endedThere: return String(localized: "\(n) ended the connection.")
         case .touchToReconnect: return String(localized: "Touch to reconnect.")
         case .pairFirst: return String(localized: "Pair with your computer")
         case .whereTheCodeIs: return whereTheCodeIs

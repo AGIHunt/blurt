@@ -296,7 +296,7 @@ final class Link: ObservableObject {
         return switch why {
         case .spent: PairFailure(why: why, title: String(localized: "This code has expired or was already used."), help: scan)
         case .declined: PairFailure(why: why, title: String(localized: "\(name) didn’t allow this iPhone."), help: scan)
-        case .unanswered: PairFailure(why: why, title: String(localized: "No one answered on \(name) in time."), help: scan)
+        case .unanswered: PairFailure(why: why, title: String(localized: "\(name) didn’t answer in time."), help: scan)
         case .left: PairFailure(why: why, title: String(localized: "Pairing stopped when Blurt left the screen."), help: scan)
         case .unreachable:
             PairFailure(why: why, title: String(localized: "Can’t reach \(name)."),

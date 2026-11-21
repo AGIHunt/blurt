@@ -98,7 +98,7 @@
 "dictation.perm.restart_hint" = "已允许，几秒内生效，无需重启。";
 
 "dictation.polish.timeout" = "润色等待上限";
-"dictation.polish.timeout.detail" = "润色超过这个时间，就直接输入识别出的原文。";
+"dictation.polish.timeout.detail" = "润色超时后，直接输入识别出的原文。";
 "dictation.polish.seconds" = "%@ 秒";
 "dictation.cancel" = "取消";
 
@@ -201,7 +201,7 @@
 /* double tap = Return */
 "dictation.toast.sent" = "已发送";
 "dictation.settings.double_tap" = "双击发送";
-"dictation.settings.double_tap.detail" = "双击听写键，打完字后按回车。";
+"dictation.settings.double_tap.detail" = "双击听写键，输入文字后按回车。";
 
 /* 结构化 / 翻译：单独双击 ⇧ 或 ⌘ */
 "dictation.settings.modifier_tap" = "结构化 / 翻译快捷键";
@@ -418,7 +418,7 @@
 "dictation.lab.tag.languages.zh" = "中文";
 "dictation.lab.tag.languages.zh-terms" = "中文夹英文术语";
 "dictation.lab.tag.languages.en" = "英文";
-"dictation.lab.tag.languages.mixed" = "中英混说";
+"dictation.lab.tag.languages.mixed" = "中英混合";
 "dictation.lab.tag.features.names" = "名字和术语";
 "dictation.lab.tag.features.numbers" = "数字";
 "dictation.lab.tag.features.correction" = "说错改口";
@@ -443,8 +443,8 @@
 "dictation.style.reformatted" = "已重排为%@";
 "dictation.style.copied" = "已按%@复制 · 输入框中的文字未更改";
 "dictation.style.copied.edited" = "已按%@复制修改后的文字 · 输入框中的文字未更改";
-"dictation.style.edited.failed" = "无法把改过的文字重排为%@ · 文字保持不变";
-"dictation.style.edited.same" = "按%@重排，改过的文字没有变化";
+"dictation.style.edited.failed" = "无法将修改后的文字重排为%@ · 文字保持不变";
+"dictation.style.edited.same" = "按%@重排后，文字没有变化";
 "dictation.style.copied.original" = "文字已修改，已按原始听写排成%@并复制";
 "dictation.style.undone" = "已还原为%@";
 "dictation.style.learn.auto" = "以后在%@里自动排成清单？";
@@ -602,7 +602,7 @@
 "dictation.models.queued" = "等待下载 · %@";
 "dictation.models.show" = "查看";
 "dictation.mode.help" = "%1$@ 取消本次听写。要保存语音而不输入文字，请使用语音备注（%2$@）。";
-"dictation.settings.double_tap.key" = "双击%@，打完字后按回车。";
+"dictation.settings.double_tap.key" = "双击%@，输入文字后按回车。";
 "dictation.settings.double_tap.help" = "按一下结束，确认文字后双击发送；也可直接双击，结束并发送。";
 "dictation.settings.fn_clash.help" = "请退出该 App，或为其中一个更换按键。";
 "dictation.mic.auto" = "自动";
@@ -616,7 +616,7 @@
 "dictation.history.summary" = "已存 %1$ld 条 · %2$@后删除";
 "dictation.history.dont_keep" = "不保存";
 "dictation.history.summary.off" = "不保存 · 文字输入后即不留记录";
-"dictation.history.keep_audio.detail.off" = "历史已关闭，什么都不保留。识别失败的那条会把录音留一天，方便重试。";
+"dictation.history.keep_audio.detail.off" = "历史已关闭，不保留任何内容。识别失败的听写会保留录音一天，以便重试。";
 "dictation.models.detail" = "听写用的语音模型和润色模型。";
 "dictation.models.missing" = "未下载 · %@";
 "dictation.models.download" = "下载";

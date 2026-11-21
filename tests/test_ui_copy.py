@@ -271,3 +271,27 @@ class OneWordPerConcept(unittest.TestCase):
             review = self.every(lang)["review"]
             for k in ("field.next", "field.next_step", "field.next_steps"):
                 self.assertEqual(review[k], review["field.next_steps"], (lang, k))
+
+
+class BannedWordsEverywhere(unittest.TestCase):
+    """docs/design/copy.md's banned words, over every string the apps show now (tools/copy-check.py checks a branch's new lines)."""
+
+    def test_no_banned_word_in_any_current_string(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("copy_check", ROOT / "tools" / "copy-check.py")
+        cc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cc)
+        files = [p for pat in ("**/*.strings", "**/*.stringsdict", "web/**/locales/*.json", "apps/android/**/strings.xml",
+                               "apps/ios/**/*.xcstrings")
+                 for p in ROOT.glob(pat) if "node_modules" not in p.parts and ".build" not in p.parts]
+        self.assertTrue(files)
+        bad = []
+        for p in files:
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                if line.strip().startswith(("/*", "//", "<!--", "#")):
+                    continue
+                rel = str(p.relative_to(ROOT))
+                hits = [w for w in cc.BANNED if w in line and not (rel.startswith(cc.PHONE_PATHS) and w in cc.PHONE_OK)] + (["product name in status"] if cc.PRODUCT_IN_STATUS.search(line) else [])
+                if hits:
+                    bad.append(f"{p.relative_to(ROOT)}:{n}: {line.strip()[:120]}  ← {', '.join(hits)}")
+        self.assertEqual(bad, [], "\n" + "\n".join(bad))

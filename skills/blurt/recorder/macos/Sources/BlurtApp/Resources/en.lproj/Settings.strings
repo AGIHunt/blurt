@@ -408,7 +408,7 @@
 "onboarding.use.phone.help" = "Install the Blurt app on your phone, then pair it on the %@ page.";
 "onboarding.cap.right_option" = "right ⌥";
 "onboarding.dictation.title" = "Set up dictation";
-"onboarding.dictation.detail" = "Choose a key, then let Blurt hear you and type for you.";
+"onboarding.dictation.detail" = "Choose a key, then allow Blurt to listen and type.";
 "onboarding.keyboard" = "Keyboard";
 "onboarding.key.gesture" = "Tap to start and stop, or hold while you talk.";
 "onboarding.key.gesture_hold" = "Hold while you talk, let go to stop.";
@@ -473,9 +473,9 @@
 "settings.general.agent_drag" = "Dragging a card into an agent";
 "settings.general.agent_drag.paths" = "Picture path + note";
 "settings.general.agent_drag.same" = "As in other apps";
-"settings.general.agent_drag.hint" = "Agents that work on this Mac’s files: Codex, Claude Code, WorkBuddy, QoderWork, Qoder, DoubaoWork, Kimi Code, Cursor, Trae and more; Agents… shows the list, and you can add any app to it. Picture path + note: each card goes in as one line, the picture’s path followed by its note, and the agent opens the picture from the path. With several cards, every picture stays next to its own words. ⌘V after copying cards does the same. As in other apps: what the row above says. Terminals always get the path and the note.";
+"settings.general.agent_drag.hint" = "Agents that can open this Mac’s files: Codex, Claude Code, WorkBuddy, QoderWork, Qoder, DoubaoWork, Kimi Code, Cursor, Trae and more. Agents… shows the list, and you can add any app. Picture path + note: each card becomes one line, the picture’s path followed by its note, so every picture stays next to its own words. Pasting copied cards with ⌘V works the same. As in other apps: follows the row above. Terminals always get the path and the note.";
 "settings.general.agent_apps.title" = "Agents";
-"settings.general.agent_apps.note" = "Apps whose agent can open files on this Mac. A card dragged into one of them is the picture’s path and its note. Add an app that isn’t listed; switch one off to give it the picture instead.";
+"settings.general.agent_apps.note" = "Agents in these apps can open files on this Mac, so a card dragged in arrives as the picture’s path and its note. Add any app that isn’t listed; turn one off to send it the picture instead.";
 "settings.general.agent_apps.codex_note" = "In Codex mode only";
 "settings.general.agent_apps.claude_note" = "In the Code tab only";
 "settings.general.agent_apps.not_installed" = "Not installed";
@@ -607,7 +607,7 @@
 "settings.remote.add" = "Add Device…";
 "settings.kw.remote.add" = "pair, QR code, connect, trackpad, touchpad";
 "settings.remote.scan" = "Scan with your phone";
-"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone. This Mac then asks you to allow it.";
+"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone, then click Allow on this Mac.";
 "settings.remote.connected" = "Connected";
 "settings.remote.not_connected" = "Not connected";
 "settings.remote.copy_link" = "Copy Link";
@@ -620,7 +620,7 @@
 "settings.remote.stay_awake.laptop.more" = "While plugged in, this Mac doesn’t sleep, so your phones and computers can reach it. The screen still turns off, and closing the lid still sleeps it.";
 "settings.remote.stay_awake.desktop.more" = "This Mac doesn’t sleep, so your phones and computers can reach it. The screen still turns off.";
 "settings.remote.say_asleep" = "Show when this Mac sleeps";
-"settings.remote.say_asleep.detail" = "Your devices see “Asleep since 10:42”. The relay keeps only that time.";
+"settings.remote.say_asleep.detail" = "Your devices show “Asleep · since 10:42”. The relay keeps only that time.";
 "settings.kw.remote.say_asleep" = "sleep asleep relay devices";
 "settings.kw.remote.stay_awake" = "stay awake, sleep, wake, power, remote";
 "settings.remote.hud" = "Show keys on screen";
@@ -632,7 +632,7 @@
 "settings.remote.relay.address.detail" = "Works on any network, with no daily limit.";
 "settings.kw.remote.relay.address" = "relay, own relay, relay address, set up a relay, cloudflare, internet, away, remote, public network, domain, server";
 "settings.remote.relay.checking" = "Checking…";
-"settings.remote.relay.from_phone" = "Filled in from your phone, and it works.";
+"settings.remote.relay.from_phone" = "Filled in from your phone and tested.";
 "settings.remote.ask.title" = "Allow %@ to control this Mac?";
 "settings.remote.ask.detail" = "Allow only if %@ shows the same digits.";
 "settings.remote.ask.yes" = "Allow";
@@ -643,7 +643,7 @@
 "settings.remote.remove.detail" = "It won’t be able to connect until it scans a new code.";
 "settings.remote.relay.ok" = "Works. Phones pick up the address the next time they connect.";
 "settings.remote.relay.failed" = "Nothing answers at this address.";
-"settings.remote.relay.invalid" = "Not a relay address. It looks like wss://relay.example.com.";
+"settings.remote.relay.invalid" = "Not a relay address. It should look like wss://relay.example.com.";
 "settings.remote.relay.help.detail" = "Claude Code or Codex can set one up on your domain or server.";
 "settings.remote.relay.copy" = "Copy Instructions";
 "settings.remote.relay.copied" = "Copied";
@@ -667,7 +667,7 @@
 "settings.remote.away.no_direct" = "Can’t connect directly. Set up your own relay on the computer.";
 "settings.remote.away.busy" = "Today’s limit is reached. Try again later, or use your own relay.";
 "settings.remote.screen" = "Allow viewing this screen";
-"settings.remote.screen.detail" = "A paired phone or computer can show this screen when you turn it on there.";
+"settings.remote.screen.detail" = "A paired phone or computer can then show this screen.";
 "settings.kw.remote.screen" = "screen, mirror, view, picture";
 /* Text & Translation → History */
 "settings.screen_text.section.history" = "History";

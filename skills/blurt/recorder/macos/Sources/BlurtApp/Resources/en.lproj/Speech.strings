@@ -166,7 +166,7 @@
 "speech.cloud.options.speed.15" = "Audio sped up 1.5×";
 "speech.cloud.options.speed.2" = "Audio sped up 2×";
 "speech.cloud.options.button" = "Options…";
-"speech.cloud.options.note" = "How cloud recognition hears your audio. Its API key is set in Cloud models.";
+"speech.cloud.options.note" = "The model and audio speed for cloud recognition. Its API key is set in Cloud models.";
 "speech.section.mac" = "On this Mac";
 "speech.section.jobs" = "Models by feature";
 "speech.machine.short" = "%1$@, %2$@";
