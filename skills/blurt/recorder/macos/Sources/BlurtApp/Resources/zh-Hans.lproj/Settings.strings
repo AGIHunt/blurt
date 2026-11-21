@@ -555,6 +555,7 @@
 "onboarding.local.detail" = "比 macOS 识别更准，可离线使用";
 "onboarding.local.downloading" = "正在下载，完成后自动启用。";
 "onboarding.local.low_space" = "本机仅剩 %@ 可用空间";
+"onboarding.local.with_free" = "%1$@ · 本机可用 %2$@";
 "onboarding.local.download" = "下载 %@";
 "onboarding.polish.title" = "云端润色";
 "onboarding.polish.detail" = "润色用词和标点，只发送文字，不上传录音";

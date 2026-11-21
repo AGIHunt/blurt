@@ -924,9 +924,9 @@ struct OnboardingView: View {
         }
     }
 
-    /// This Mac's own speech model, the optional upgrade: what it gets you in one line, the size once (on Download), and
-    /// the free space on the line only when it is short — always in the tooltip, with the model's name and size (the
-    /// founder, 2026-11-21: the size and the free space before anything starts).
+    /// This Mac's own speech model, the optional upgrade: what it gets you and the free space in one line, the size once
+    /// (on Download) — the founder, 2026-11-21: the size and the free space before anything starts; the free space in
+    /// attention ink when it is short. The tooltip names the model and its size.
     var localRow: some View {
         let low = lowSpace
         let free = models.freeMB.map { T("onboarding.models.free", size($0)) }
@@ -950,7 +950,10 @@ struct OnboardingView: View {
             let have = p.installed || models.finished.contains(p.id)
             if models.downloading && !have { return T("onboarding.local.downloading") }
             // "than macOS" only where the eval measured it (BlurtCore DictationChoices): every local model it measured beats it
-            return T(DictationChoice(rawValue: p.id)?.localModel == true ? "onboarding.local.detail" : "onboarding.upgrade.detail")
+            let what = T(DictationChoice(rawValue: p.id)?.localModel == true ? "onboarding.local.detail" : "onboarding.upgrade.detail")
+            // still to come: the room for it on the same line, before anything starts
+            if !have, let free = models.freeMB { return T("onboarding.local.with_free", what, size(free)) }
+            return what
         }
     }
 

@@ -558,6 +558,7 @@
 "onboarding.local.detail" = "More accurate than macOS, works offline";
 "onboarding.local.downloading" = "Downloading. It turns on when it’s done.";
 "onboarding.local.low_space" = "Only %@ free on this Mac";
+"onboarding.local.with_free" = "%1$@ · %2$@ free on this Mac";
 "onboarding.local.download" = "Download %@";
 "onboarding.polish.title" = "Cloud polish";
 "onboarding.polish.detail" = "Cleans up wording; only text is sent, never audio";
