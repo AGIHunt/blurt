@@ -701,6 +701,9 @@ def native_binary(build: bool = True) -> Path | None:
         return None
     print("building native recorder (one-time, ~1 min)…", file=sys.stderr, flush=True)
     # Package.swift reads BLURT_SPARKLE: separate scratch dirs so SwiftPM's cached manifest never mixes the two
+    if test_hooks() and BLURT_HOME.resolve() == (Path.home() / ".blurt").resolve():
+        # a test build lives in its own BLURT_HOME: in ~/.blurt it would stand in for the user's recorder (and refuse to start)
+        die("BLURT_TEST_HOOKS=1 needs BLURT_HOME=<a scratch dir>: a test build never goes into ~/.blurt")
     scratch = BLURT_HOME / "build" / ("swiftpm-sparkle" if sparkle else "swiftpm")
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
