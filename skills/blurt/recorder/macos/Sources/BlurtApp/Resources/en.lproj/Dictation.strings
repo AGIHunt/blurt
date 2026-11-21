@@ -109,6 +109,8 @@
 "dictation.history.keep_audio.detail" = "Recordings and the text around the cursor are kept with the history and deleted with it. When off, each recording is deleted once its text is typed.";
 "dictation.history.keep_audio.detail.days" = "Recordings and the text around the cursor are kept with the history and deleted after %@. When off, each recording is deleted once its text is typed, and the text around the cursor isn’t kept.";
 "dictation.history.open" = "Open History…";
+"dictation.history.keep_audio.short" = "Recordings are kept with the history and deleted after %@";
+"dictation.history.keep_audio.short.off" = "History is off, so no recordings are kept";
 "dictation.history.clear" = "Clear History…";
 "dictation.history.clear.title" = "Clear dictation history?";
 "dictation.history.clear.undo" = "You can’t undo this.";

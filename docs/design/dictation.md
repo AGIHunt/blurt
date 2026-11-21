@@ -1224,11 +1224,17 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   history, so the page shows the text as it stands, the first version under it.
 - **Clear History** (Settings) never deletes the audio of a take still listening or on its way
   (`DictationHistory.liveIDs`), and posts `DictationHistory.changed`: reformat-last and the after-typing watch forget
-  the cleared (or deleted) takes. It asks first in an alert sheet with the app icon (`DictationSettings.askClear`):
-  *Clear dictation history?*, how many go (a plural) and their recordings only when some are still on disk, then *You
-  can't undo this.* on its own line; Cancel is the default (↩ and Esc), *Clear History* the quiet red one.
+  the cleared (or deleted) takes. *Clear History…* is in the History row's ⋯ (on hover, and in the row's context menu)
+  beside its one button, *Open History…*: a destructive action is never a button at rest (system.md, Settings window).
+  It asks first in a sheet of our own (`DictationSettings.askClear`, `DictationQuestionSheet`), as the island's Discard
+  asks: the app icon, *Clear dictation history?* (15 pt semibold), then one short paragraph (12 pt secondary) — how
+  many go (a plural), their recordings only when some are still on disk, and *You can't undo this.*, no line break
+  between them. Cancel, on the right, is the one filled default (the light accent `#0B735E`, white title, ↩ and Esc);
+  *Clear History* is a plain button with its title in `err` — never the one that stands out. (Until 1.1.0 it was an
+  NSAlert: macOS 26 draws its destructive button as a red-tinted capsule, the loudest thing on the sheet, at about
+  2 : 1, and its default in the system accent, never the brand's.)
 - **How long it is kept** is a visible popup in Settings → Dictation (*Keep dictations for*: 7 / 30 / 90 / 365 days /
-  Don't keep), beside *Open History…* and *Clear History…* — as Settings → Cards → History (until 1.1.0 it was in Open
+  Don't keep), under *Open History…* — as Settings → Cards → History (until 1.1.0 it was in Open
   History…'s menu, and people looking for it didn't find it). A shorter period, or Don't keep, that would delete saved
   dictations asks first in the same sheet (`DictationSettings.chooseRetention`, `DictationHistory.wouldPrune`): *Delete
   12 dictations?*, which go, *You can't undo this.*; Cancel keeps the period it was (it used to delete at once while

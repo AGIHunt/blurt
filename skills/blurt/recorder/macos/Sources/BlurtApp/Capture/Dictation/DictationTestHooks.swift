@@ -238,11 +238,8 @@ extension App {
                                                 charactersIgnoringModifiers: esc ? "\u{1b}" : "\r", isARepeat: false, keyCode: esc ? 53 : 36) {
                         NSApp.postEvent(e, atStart: false)
                     }
-                case "click":           // clear click cancel|clear: the question's button, as a click would
-                    guard let w = NSApp.windows.first(where: { $0.isSheet && $0.isVisible && $0.sheetParent is SettingsWindow }) else { return }
-                    let title = T(a.count > 1 && a[1] == "clear" ? "dictation.history.clear.confirm" : "dictation.cancel")
-                    func buttons(_ v: NSView) -> [NSButton] { ((v as? NSButton).map { [$0] } ?? []) + v.subviews.flatMap(buttons) }
-                    buttons(w.contentView ?? NSView()).first { $0.title == title }?.performClick(nil)
+                case "click":           // clear click cancel|clear: the question's button, as a click would (its action)
+                    NotificationCenter.default.post(name: DictationPane.scrollRequest, object: a.count > 1 && a[1] == "clear" ? "answer:yes" : "answer:no")
                 default: break
                 }
             }
