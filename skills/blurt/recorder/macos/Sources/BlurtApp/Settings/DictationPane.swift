@@ -14,7 +14,7 @@
 //               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu ·
 //               Translate: Chinese ↔ English / into English / into Chinese (⌘ while talking turns it on), whether the
 //               cloud model translates, the apps where every take is translated (DictationTranslating.swift)
-//   History and models  History: Open History… (Clear History… in its ⋯, asking in a sheet) · Keep dictations for: a
+//   History and models  History: Clear History… (asking in a sheet) and Open History… · Keep dictations for: a
 //               popup (a shorter period asks before it deletes, in the same sheet) · the audio ·
 //               Models: the names in use, or what isn't on this Mac yet, in plain words — and always the one way on,
 //               a link to Settings → Speech, which chooses them and owns the one Download (DictationModels.swift)
@@ -217,7 +217,7 @@ final class DictationSettings: ObservableObject {
         return h.load().filter { e in e.audio.map { fm.fileExists(atPath: h.resolve($0).path) } ?? false }.count
     }
 
-    /// Clear History… (in the History row's ⋯): a sheet on the Settings window — the app icon, the question, then in one
+    /// Clear History…: a sheet on the Settings window — the app icon, the question, then in one
     /// short paragraph what goes (the count; the recordings only when some are kept) and that it can't be undone.
     /// Cancel is the default (↩ and Esc both keep the history); Clear History has to be clicked.
     func askClear() {
@@ -229,7 +229,7 @@ final class DictationSettings: ObservableObject {
         ask(DictationQuestion(title: T("dictation.history.clear.title"),
                               message: Self.paragraph(TP(audio > 0 ? "dictation.history.clear.message_audio" : "dictation.history.clear.message", n),
                                                       T("dictation.history.clear.undo")),
-                              confirm: T("dictation.history.clear.confirm"), fromHistoryMenu: true)) { [weak self] yes in
+                              confirm: T("dictation.history.clear.confirm"))) { [weak self] yes in
             emit(["event": "dictation_clear", "cleared": yes])
             if yes { self?.clearHistory() }
         }
@@ -275,8 +275,6 @@ struct DictationQuestion: Identifiable {
     var title: String
     var message: String
     var confirm: String
-    /// Clear History… asked it: the History row's ⋯ stays in sight under the sheet, where the question came from
-    var fromHistoryMenu = false
 }
 
 /// A question before something is deleted, as the island's Discard asks it (system.md §3.4): the app icon, the question
@@ -559,7 +557,6 @@ struct DictationPane: View {
     @ObservedObject var guide = PermissionGuide.shared
     @State var showByApp = false
     @State var lab = DictationLabModel.enabled
-    @State var historyHover = false
 
     private let nav = SettingsNavigator.shared       // not observed: the pane needn't redraw as the search is typed
 
@@ -898,24 +895,23 @@ struct DictationPane: View {
         }
     }
 
-    /// "9 saved · deleted after 30 days" and one control, Open History…; Clear History… is in the row's ⋯ (on hover, its
-    /// slot kept at rest) and its context menu — a destructive action is never a button at rest (system.md, Settings
-    /// window). Then how long it is kept (or Don't keep, issue #36) as a visible popup — as Settings → Cards → History
+    /// "9 saved · deleted after 30 days" with Clear History… and Open History… side by side — both visible at rest (in a
+    /// menu, people looking for the history controls didn't find them; it asks first, in a sheet), and in the row's
+    /// context menu too. Then how long it is kept (or Don't keep, issue #36) as a visible popup — as Settings → Cards → History
     /// (it was in Open History…'s menu, where people looking for it didn't find it). A period that would delete saved
     /// dictations asks first (`chooseRetention`). Keeping the audio is the row under it.
     @ViewBuilder var historyRow: some View {
         SettingRow("dictation.history_saved", detail: m.retention == 0 ? T("dictation.history.summary.off")
                        : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention))) {
-            HStack(spacing: 6) {
-                RowMenu(label: T("dictation.history.more"), visible: m.historyCount > 0 && (historyHover || m.question?.fromHistoryMenu == true)) {
-                    historyItems
-                }
+            HStack(spacing: 8) {
+                Button(T("dictation.history.clear")) { m.askClear() }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
+                    .disabled(m.historyCount == 0)
                 Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
                     .buttonStyle(SettingsOutlinedButtonStyle())
             }
             .fixedSize()
         }
-        .onHover { historyHover = $0 }
         .contextMenu {
             Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
             Divider()
