@@ -150,7 +150,7 @@
 "viewer.retry" = "Try Again";
 "viewer.forgotten" = "%@ removed this Mac. Add it again to use it.";
 "viewer.replaced" = "Another device is controlling %@.";
-"viewer.ended" = "Someone at %@ ended the connection.";
+"viewer.ended" = "%@ ended the connection.";
 "viewer.reconnect" = "Reconnect";
 "viewer.take_over" = "Take Over";
 "viewer.screen_off" = "%@ doesn’t show its screen. Turn it on in its Settings.";

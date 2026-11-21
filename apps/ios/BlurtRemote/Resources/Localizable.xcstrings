@@ -3208,12 +3208,12 @@
         }
       }
     },
-    "Someone at %@ ended the connection." : {
+    "%@ ended the connection." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 那边断开了连接。"
+            "value" : "%@ 断开了连接。"
           }
         }
       }
@@ -3363,7 +3363,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 那边没有人及时回应。"
+            "value" : "%@ 上没有人及时回应。"
           }
         }
       }

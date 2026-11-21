@@ -117,7 +117,7 @@
 "main.detail.none" = "没有选中事项";
 "main.detail.none.detail" = "在左侧选择一个事项。";
 "main.detail.parse_error" = "无法读取该事项的文件";
-"main.detail.parse_error.detail" = "文件格式无法识别，口喷鸡不会覆盖它。请在编辑器中修正并保存，之后会在这里显示。";
+"main.detail.parse_error.detail" = "文件格式无法识别，不会被覆盖。请在编辑器中修正并保存，之后会在这里显示。";
 "main.unreadable.fix_first" = "无法读取该事项的文件，请先在编辑器中修正。";
 "main.unreadable.open" = "在编辑器中打开";
 "main.unreadable.show" = "显示";

@@ -950,7 +950,7 @@
   "viewer.locked.linux": "“{1}” is locked. The picture comes back when it’s unlocked. To reach its login screen too, turn on Remote Login in its Settings → System → Remote Desktop.",
   "viewer.removed": "“{1}” removed this computer. Add it again to use it.",
   "viewer.replaced": "Another device is controlling “{1}”.",
-  "viewer.ended": "Someone at “{1}” ended the connection.",
+  "viewer.ended": "“{1}” ended the connection.",
   "remote.banner.controlling": "“{1}” is controlling this computer",
   "remote.banner.disconnect": "Disconnect",
   "phone.log": "Connection Log",

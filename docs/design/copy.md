@@ -23,15 +23,23 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 - **No product name inside status or error text.** 未经测试, not 未经口喷鸡测试.
 - **Never:** 这台 Mac (use 本机, or leave it out); counts phrased as 有 5 个 (write 已下载 5 个); fillers (好了, 换上, 认得, 都会, 再加, 随手,
   递给, 就出字); anthropomorphic lines about the system; 一键, 赋能, 丝滑, seamless, supercharge, unleash, magic.
+- **Say who or what, never where from the reader's side.** Name the device or the place: 「%@ 断开了连接。」, not 「%@ 那边断开了连接。」;
+  「对方屏幕」, 「本机」, not 「那边」「这边」「你这边」「那里」. In English, the device is the subject: "%@ ended the connection.", not "Someone
+  at %@ ended the connection.". (Founder, 2026-11-21: 「那边」 reads like chat, not like an app.)
+- **Write the Chinese, don't translate the English.** An English sentence carried over word for word reads wrong in Chinese (and the other
+  way round). Write each language as its own short sentence, the way System Settings says it in that language.
 - **Quality:** never state error counts or error rates. Say it as a level, or a positive word (识别更准), or not at all.
 - **Global first:** examples lead with globally known apps (Slack, Notion, Claude). Chinese apps can be among them.
 
 ## Before you send it
 
-1. Run `python3 tools/copy-check.py`. It prints every user-facing string your branch adds or changes, in each language, and fails on the
-   banned words above.
+1. Run `python3 tools/copy-check.py`. It prints every user-facing string your branch adds or changes, in each language (Mac `.strings` and
+   `.stringsdict`, the desktop app's locales, Android `strings.xml`, iOS `.xcstrings`), and fails on the banned words above.
+   `tests/test_ui_copy.py` runs the same banned-word check over every current string, so CI fails on them too.
 2. Read every line it prints, in both languages. Cut each one: shorter, more common words, no explaining.
 3. Where an older string already said it well, reuse it rather than writing a new one.
+4. Before a release, run `python3 tools/copy-check.py v<last release>` and read the whole list once more: agents write most strings, and a
+   reader who sees them all together catches what each change alone didn't.
 
 ## Agreed terms
 
