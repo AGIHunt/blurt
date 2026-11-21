@@ -119,7 +119,7 @@
 "settings.general.live_text" = "实时显示识别文字";
 "settings.general.live_text.hint" = "语音备注或听写进行时，已识别的文字显示在刘海下方的面板中。面板不会抢占焦点，会避开输入位置，也不会被录入录屏。";
 
-"onboarding.subtitle" = "不需要的功能可以先关掉，之后可在设置中随时更改。";
+"onboarding.subtitle" = "关闭不需要的功能，之后可在设置中更改。";
 "onboarding.use.dictation" = "听写";
 "onboarding.use.snap" = "截图";
 "onboarding.use.voice" = "语音备注";
@@ -160,7 +160,7 @@
 "onboarding.try.send" = "双击发送：在聊天中会同时按下回车。";
 "onboarding.try.item_done" = "已完成";
 "onboarding.try.item_todo" = "未完成";
-"onboarding.use.dictation.detail" = "按一下开始，再按一下停止，双击发送";
+"onboarding.use.dictation.detail" = "按一下开始，再按一下停止，双击发送。";
 "onboarding.use.dictation.detail_plain" = "按一下开始，再按一下停止";
 "settings.storage.dictation_history" = "听写历史";
 "settings.storage.dictation_audio" = "听写录音";
@@ -389,7 +389,7 @@
 "onboarding.use.translate.detail" = "框选文字，获取译文";
 /* 设置助理第一步：每项功能一行，放得进这一行（快捷键和它的作用在名字那一行）；列表下的脚注（%@ 是链接，
    onboarding.use.keys_note.link）；手机那一行的提示（%@ 是页面名） */
-"onboarding.use.dictation.line" = "文字直接输入到光标处，在任何 App 里都能用。";
+"onboarding.use.dictation.line" = "文字输入到光标处，适用于任何 App。";
 "onboarding.use.cards.line" = "截图和语音备注留在刘海下方，可拖入任何 App。";
 "onboarding.use.recording.line" = "边录屏边讲解，由编程 Agent 整理成问题和待办。";
 "onboarding.use.key.auto" = "按一下或按住说话";
@@ -405,7 +405,7 @@
 "onboarding.use.phone.help" = "在手机上安装口喷鸡 App 后，在「%@」页配对。";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";
-"onboarding.dictation.detail" = "选一个听写键，再允许口喷鸡听你说话、替你打字。";
+"onboarding.dictation.detail" = "选择听写键，然后允许口喷鸡使用麦克风和输入文字。";
 "onboarding.keyboard" = "键盘";
 "onboarding.key.gesture" = "按一下开始、再按一下停止，也可以按住说话。";
 "onboarding.key.gesture_hold" = "按住说话，松开停止。";
@@ -416,7 +416,7 @@
 "onboarding.fn.detail" = "Fn 键仅用于听写，不触发 macOS 的其他功能。";
 "onboarding.fn.ok" = "macOS 的地球仪键已设为「不执行任何操作」，Fn 只用来听写。";
 "onboarding.fn.clash" = "按 Fn 时，macOS 也会响应。";
-"onboarding.fn.fix" = "去关闭…";
+"onboarding.fn.fix" = "关闭…";
 "onboarding.perm.missing" = "未允许";
 "onboarding.perm.waiting" = "等待中…";
 "onboarding.perm.why.microphone" = "用于听写、语音备注和录屏讲解。";
@@ -470,9 +470,9 @@
 "settings.general.agent_drag" = "把卡片拖进 Agent";
 "settings.general.agent_drag.paths" = "图片路径 + 备注";
 "settings.general.agent_drag.same" = "和其他 App 一样";
-"settings.general.agent_drag.hint" = "指能直接读取本机文件的 Agent：Codex、Claude Code、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae 等；点「Agent 列表…」查看，也可以自己加 App。图片路径 + 备注：每张卡片是一行，先是图片路径，后面跟它的备注，Agent 按路径打开图片；拖进几张卡片，每张图都和自己的备注挨在一起。复制卡片后按 ⌘V 也一样。和其他 App 一样：按上面那一项来。终端始终是路径 + 备注。";
+"settings.general.agent_drag.hint" = "能直接读取本机文件的 Agent：Codex、Claude Code、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae 等。点「Agent 列表…」可查看，也可添加其他 App。图片路径 + 备注：每张卡片为一行，先是图片路径，后接备注，每张图都紧跟自己的备注。复制卡片后按 ⌘V 效果相同。与其他 App 相同：按上一项设置。终端始终使用路径 + 备注。";
 "settings.general.agent_apps.title" = "Agent 列表";
-"settings.general.agent_apps.note" = "这些 App 里的 Agent 能打开本机的文件，卡片拖进去是图片路径 + 备注。列表里没有的可以自己加；关掉某个，它就改收图片。";
+"settings.general.agent_apps.note" = "这些 App 中的 Agent 能打开本机文件，拖入卡片时发送图片路径 + 备注。可添加列表中没有的 App；关闭某个 App 后，改为发送图片。";
 "settings.general.agent_apps.codex_note" = "只在 Codex 模式下";
 "settings.general.agent_apps.claude_note" = "只在 Code 标签页里";
 "settings.general.agent_apps.not_installed" = "未安装";
@@ -546,8 +546,8 @@
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "已可开始听写。以下两项为可选，可提高准确度。";
 "onboarding.start.ready.title" = "macOS 语音识别";
-"onboarding.start.lead" = "现在就能听写。下面两项可选，能让识别更准。";
-"onboarding.start.ready.mixed" = "已就绪 · 句中的英文单词也能识别";
+"onboarding.start.lead" = "听写已可使用。以下两项可选，可让识别更准。";
+"onboarding.start.ready.mixed" = "已就绪 · 可识别句中的英文单词";
 "onboarding.start.ready.one" = "已就绪 · 系统自带，无需下载";
 "onboarding.start.assets.line" = "macOS 正在下载语音文件（约 400 MB）";
 "onboarding.optional" = "可选";
@@ -559,7 +559,7 @@
 "onboarding.local.download" = "下载 %@";
 "onboarding.polish.title" = "云端润色";
 "onboarding.polish.detail" = "润色用词和标点，只发送文字，不上传录音";
-"onboarding.polish.help" = "说完后润色标点和用词。只有识别出的文字会发给你选的服务。";
+"onboarding.polish.help" = "说完后润色标点和用词。仅识别出的文字会发送到你选择的服务。";
 "onboarding.polish.price" = "%1$@约 %2$@。";
 "onboarding.polish.add" = "添加 Key…";
 "onboarding.polish.change" = "更改 Key…";
@@ -604,20 +604,20 @@
 "settings.remote.add" = "添加设备…";
 "settings.kw.remote.add" = "配对, 二维码, 连接, 触摸板";
 "settings.remote.scan" = "用手机扫描";
-"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，本机随后会请你允许。";
+"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，然后在本机上点「允许」。";
 "settings.remote.connected" = "已连接";
 "settings.remote.not_connected" = "未连接";
 "settings.remote.copy_link" = "拷贝链接";
-"settings.remote.link_copied" = "已拷贝，10 分钟内有效";
+"settings.remote.link_copied" = "已拷贝 · 10 分钟内有效";
 "settings.remote.section.computers" = "本机可控制的电脑";
 "settings.remote.remove" = "移除";
 "settings.remote.stay_awake" = "保持本机唤醒";
-"settings.remote.stay_awake.laptop" = "插着电时有效。合上盖子仍会睡眠。";
+"settings.remote.stay_awake.laptop" = "接通电源时有效。合上盖子后仍会睡眠。";
 "settings.remote.stay_awake.desktop" = "本机不睡眠，屏幕照常熄灭。";
-"settings.remote.stay_awake.laptop.more" = "插着电时本机不睡眠，手机和电脑随时能连上。屏幕照常熄灭，合上盖子仍会睡眠。";
-"settings.remote.stay_awake.desktop.more" = "本机不睡眠，手机和电脑随时能连上。屏幕照常熄灭。";
+"settings.remote.stay_awake.laptop.more" = "接通电源时本机不睡眠，手机和电脑随时可以连接。屏幕照常熄灭，合上盖子后仍会睡眠。";
+"settings.remote.stay_awake.desktop.more" = "本机不睡眠，手机和电脑随时可以连接。屏幕照常熄灭。";
 "settings.remote.say_asleep" = "显示本机睡眠时间";
-"settings.remote.say_asleep.detail" = "你的设备会看到“已睡眠 · 10:42 起”。中转只记下这个时间。";
+"settings.remote.say_asleep.detail" = "你的设备上会显示「已睡眠 · 10:42 起」。中转只保存这个时间。";
 "settings.kw.remote.say_asleep" = "睡眠 休眠 中转 设备";
 "settings.kw.remote.stay_awake" = "保持可连接, 保持唤醒, 睡眠, 唤醒, 插电, 远程";
 "settings.remote.hud" = "在屏幕上显示按键";
@@ -626,21 +626,21 @@
 "settings.remote.cancel" = "取消";
 "settings.remote.section.relay" = "其他网络";
 "settings.remote.relay" = "中转地址";
-"settings.remote.relay.address.detail" = "任何网络都能连接，没有每日上限。";
+"settings.remote.relay.address.detail" = "适用于任何网络，没有每日上限。";
 "settings.kw.remote.relay.address" = "中转, 自建中转, 中转地址, 搭建中转, cloudflare, 公网, 外网, 远程, 外出, 域名, 服务器";
 "settings.remote.relay.checking" = "正在检查…";
-"settings.remote.relay.from_phone" = "由手机填入，检查可用。";
+"settings.remote.relay.from_phone" = "由手机填入，已测试可用。";
 "settings.remote.ask.title" = "允许 %@ 控制本机？";
 "settings.remote.ask.detail" = "%@ 显示相同的数字时才允许。";
 "settings.remote.ask.yes" = "允许";
 "settings.remote.ask.no" = "不允许";
-"settings.remote.ask.caution" = "只允许你自己或家人连接。警察、银行、客服不会让你安装或允许这个。";
+"settings.remote.ask.caution" = "只允许你自己或家人连接。警察、银行和客服不会要求你安装或允许此类连接。";
 "settings.remote.last_used" = "上次使用：%@";
 "settings.remote.remove.title" = "移除 %@？";
 "settings.remote.remove.detail" = "移除后，它要重新扫码才能连接。";
-"settings.remote.relay.ok" = "可用。手机下次连接时会记住地址。";
+"settings.remote.relay.ok" = "可用。手机下次连接时会获取此地址。";
 "settings.remote.relay.failed" = "这个地址没有响应。";
-"settings.remote.relay.invalid" = "这不是中转地址，格式类似 wss://relay.example.com。";
+"settings.remote.relay.invalid" = "这不是中转地址。格式应类似 wss://relay.example.com。";
 "settings.remote.relay.help.detail" = "Claude Code 或 Codex 可以在你的域名或服务器上搭建中转。";
 "settings.remote.relay.copy" = "复制说明";
 "settings.remote.relay.copied" = "已复制";
@@ -664,11 +664,11 @@
 "settings.remote.away.no_direct" = "无法直连。请在电脑上设置自建中转。";
 "settings.remote.away.busy" = "今日已达上限。请稍后再试，或使用自建中转。";
 "settings.remote.screen" = "允许查看本机屏幕";
-"settings.remote.screen.detail" = "在已配对的手机或电脑上打开后，可在上面查看本机屏幕。";
+"settings.remote.screen.detail" = "开启后，已配对的手机或电脑可以查看本机屏幕。";
 "settings.kw.remote.screen" = "屏幕, 投屏, 画面, 远程";
 /* 取字与翻译 → 记录 */
 "settings.screen_text.section.history" = "历史";
-"settings.screen_text.history" = "已存的取字与翻译";
+"settings.screen_text.history" = "已保存的取字与翻译";
 "settings.screen_text.history.detail" = "保存 ⌥C 取到的文字和 ⌥T 的译文。";
 "settings.screen_text.history.keep" = "历史保留";
 "settings.screen_text.history.forever" = "永久";

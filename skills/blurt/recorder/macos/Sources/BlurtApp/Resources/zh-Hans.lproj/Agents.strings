@@ -84,7 +84,7 @@
 "install.row.add.approve" = "允许直接汇报进度";
 "install.row.added.approve" = "已允许直接汇报进度";
 "install.row.in_place.approve" = "直接汇报进度";
-"install.row.about.approve" = "%@ 标记、读取和搜索事项时不用先问你，其余操作仍会询问。";
+"install.row.about.approve" = "%@ 可直接标记、读取和搜索事项，其他操作仍会先询问。";
 "install.row.in_place.skill" = "口喷鸡技能";
 "install.row.in_place.mcp" = "口喷鸡 MCP 服务";
 "install.row.exists" = "已安装";

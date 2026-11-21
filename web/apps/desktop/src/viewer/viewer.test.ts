@@ -62,7 +62,7 @@ describe('the list of computers', () => {
     expect(zh['computers.state.offline']).toMatch(/^离线/);
     expect([zh['computers.state.no_direct'], en['computers.state.no_direct']]).toEqual(['需要自建中转', 'Needs its own relay']);
     // the Mac's words (Phone.strings), "this Mac" as this computer
-    expect([en['computers.error.unanswered'], zh['computers.error.unanswered']]).toEqual(['No one answered on “{1}” in time.', '“{1}”上没有人及时回应。']);
+    expect([en['computers.error.unanswered'], zh['computers.error.unanswered']]).toEqual(['“{1}” didn’t answer in time.', '“{1}”未及时回应。']);
     expect([en['computers.state.removed'], zh['computers.state.removed'], zh['computers.add_again']]).toEqual(['Removed this computer', '已移除本机', '重新添加…']);
     for (const k of ['spent', 'new_link', 'not_now', 'declined', 'unreachable', 'unreachable.help', 'unreachable.help_link']) expect(en[`computers.error.${k}`], k).toBeTruthy();
     expect(en['computers.error.notTaken']).toBeUndefined();

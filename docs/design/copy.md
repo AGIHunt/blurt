@@ -28,6 +28,8 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
   at %@ ended the connection.". (Founder, 2026-11-21: 「那边」 reads like chat, not like an app.)
 - **Write the Chinese, don't translate the English.** An English sentence carried over word for word reads wrong in Chinese (and the other
   way round). Write each language as its own short sentence, the way System Settings says it in that language.
+- **Written negatives, not spoken ones.** 无法连接 %@, 未发送, 未及时回应, 适用于任何网络, not 连不上 %@, 没有发送, 没人及时回应, 都能连 / 也能连;
+  此 / 该 for 这个 / 那个 (此链接已过期, 该网络不允许直连); 接通电源时, not 插着电时.
 - **Quality:** never state error counts or error rates. Say it as a level, or a positive word (识别更准), or not at all.
 - **Global first:** examples lead with globally known apps (Slack, Notion, Claude). Chinese apps can be among them.
 

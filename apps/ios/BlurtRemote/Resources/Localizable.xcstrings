@@ -3073,7 +3073,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认 Blurt 在运行，两台设备在同一网络。\n要在外面连，先在电脑上设置中转。"
+            "value" : "请确认 Blurt 正在运行，且两台设备在同一网络。\n要从其他网络连接，请先在电脑上设置自建中转。"
           }
         }
       }
@@ -3223,12 +3223,12 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点这里重新连接。"
+            "value" : "轻点以重新连接。"
           }
         }
       }
     },
-    "Ended at the computer" : {
+    "Ended by the computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3343,7 +3343,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这个二维码已过期或已被用过。"
+            "value" : "此二维码已过期或已使用。"
           }
         }
       }
@@ -3353,17 +3353,17 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 %@ 上打开“添加设备”，扫描它现在显示的二维码。"
+            "value" : "请在 %@ 上打开「添加设备」，扫描它当前显示的二维码。"
           }
         }
       }
     },
-    "No one answered on %@ in time." : {
+    "%@ didn’t answer in time." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 上没有人及时回应。"
+            "value" : "%@ 未及时回应。"
           }
         }
       }
@@ -3373,7 +3373,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "口喷鸡离开了屏幕，配对已停止。"
+            "value" : "口喷鸡转入后台，配对已停止。"
           }
         }
       }
@@ -3383,7 +3383,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上 %@。"
+            "value" : "无法连接 %@。"
           }
         }
       }
@@ -3403,7 +3403,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认两台设备在同一网络；要在外面连，先在电脑上设置中转。"
+            "value" : "请确认两台设备在同一网络；要从其他网络连接，请先在电脑上设置自建中转。"
           }
         }
       }

@@ -83,7 +83,7 @@
 "home.screen_text.selected" = "已选 %ld 条";
 "home.screen_text.deleted.one" = "已删除 1 条";
 "home.screen_text.deleted.many" = "已删除 %ld 条";
-"home.screen_text.interrupted" = "翻译被中断";
+"home.screen_text.interrupted" = "翻译已中断";
 "home.screen_text.translate_again" = "重新翻译";
 "home.screen_text.action.copy" = "取字";
 "home.screen_text.action.translate" = "翻译";

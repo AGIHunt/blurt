@@ -50,7 +50,7 @@
 "phone.mac.relay.detail.fallback" = "Until it’s back, devices on another network connect through the public connection service. On the same Wi-Fi nothing changes.";
 "phone.mac.relay.again" = "Check Again";
 "phone.relay_settings" = "Relay Settings…";
-"phone.away.busy" = "Other networks can’t connect today";
+"phone.away.busy" = "Can’t connect from other networks today";
 "phone.away.busy.detail" = "The public connection service has reached today’s limit. On the same Wi-Fi, devices still connect. Try again later, or set up your own relay.";
 "phone.away.no_direct" = "A phone on another network couldn’t connect";
 "phone.away.no_direct.detail" = "That network doesn’t allow a direct connection. Your own relay works from any network. On the same Wi-Fi, devices still connect.";
@@ -124,13 +124,13 @@
 "viewer.add.expired" = "This link has expired or was already used.";
 "viewer.add.new_link" = "On %@, open Add Device, choose Copy Link and paste the new link here.";
 "viewer.add.not_now" = "%@ isn’t taking a new computer right now. Try again in a minute.";
-"viewer.add.unanswered" = "No one answered on %@ in time.";
+"viewer.add.unanswered" = "%@ didn’t answer in time.";
 "viewer.add.back" = "Back";
 "viewer.add_again" = "Add Again…";
 "viewer.state.removed" = "Removed this Mac";
 "viewer.connecting" = "Connecting…";
 "viewer.unreachable" = "Can’t reach %@";
-"viewer.unreachable.mac.detail" = "If it restarted with FileVault on, someone needs to enter its password at the computer first.";
+"viewer.unreachable.mac.detail" = "If it restarted with FileVault on, its password must first be entered at the computer.";
 "viewer.locked.title" = "%@ is locked";
 "viewer.locked.detail" = "The picture comes back once it’s unlocked.";
 "viewer.locked.linux.detail" = "The picture comes back when it’s unlocked. To reach its login screen too, turn on Remote Login in its Settings → System → Remote Desktop.";
@@ -174,7 +174,7 @@
 "viewer.map_modifiers" = "Use ⌘ as Ctrl";
 "viewer.map_modifiers.tip" = "On Windows and Linux, ⌘ works as Ctrl and Control as the Windows key.";
 "viewer.clipboard" = "Share Clipboard";
-"viewer.follow" = "Follow Remote Pointer";
+"viewer.follow" = "Follow the Pointer";
 "viewer.follow.tip" = "Show the display the remote pointer is on, and switch when it moves to another.";
 "viewer.display.main" = "Main";
 "viewer.display.pointer" = "The remote pointer is on this display";
@@ -211,7 +211,7 @@
 "viewer.file.count" = "%ld files";
 "viewer.file.stop" = "Stop Sending";
 "viewer.file.close" = "Close";
-"viewer.file.failed.space" = "Not sent: not enough space there.";
+"viewer.file.failed.space" = "Not sent: not enough space on that computer.";
 "viewer.file.failed.too_big" = "Not sent: larger than 4 GB.";
 "viewer.file.failed.locked" = "Not sent: that computer is locked.";
 "viewer.file.failed.other" = "Not sent.";

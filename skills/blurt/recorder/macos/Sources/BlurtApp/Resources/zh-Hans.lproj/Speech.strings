@@ -139,7 +139,7 @@
 "speech.limits.battery.detail" = "未接电源时，录屏使用更小的模型。";
 "speech.limits.footer" = "录屏以低优先级转写；实时字幕和语音备注按正常优先级运行。";
 "speech.advanced.mirror" = "通过镜像下载模型";
-"speech.advanced.mirror.detail" = "Hugging Face 很慢或连不上时，改从 hf-mirror.com 下载。";
+"speech.advanced.mirror.detail" = "Hugging Face 速度慢或无法访问时，改从 hf-mirror.com 下载。";
 
 /* Cloud */
 "speech.cloud.title" = "云端识别";
@@ -166,7 +166,7 @@
 "speech.cloud.options.speed.15" = "音频按 1.5 倍速发送";
 "speech.cloud.options.speed.2" = "音频按 2 倍速发送";
 "speech.cloud.options.button" = "选项…";
-"speech.cloud.options.note" = "设置云端识别的模型和音频速度。API 密钥在“云端模型”中设置。";
+"speech.cloud.options.note" = "云端识别的模型和音频速度。API Key 在「云端模型」中设置。";
 "speech.section.mac" = "本机";
 "speech.section.jobs" = "各功能使用的模型";
 "speech.machine.short" = "%1$@，%2$@";
@@ -248,12 +248,12 @@
 "speech.compare.needs_memory" = "需要 %@ 内存";
 "speech.compare.needs_apple" = "需要 Apple 芯片";
 "speech.compare.needs_macos" = "需要 macOS 26";
-"speech.compare.add_key" = "添加密钥…";
+"speech.compare.add_key" = "添加 Key…";
 "speech.compare.approx" = "约 %@";
 "speech.compare.section.local" = "本机";
 "speech.compare.section.local.note" = "免费，不上传任何内容";
 "speech.compare.section.cloud" = "云端";
-"speech.compare.section.cloud.note" = "使用你自己的密钥";
+"speech.compare.section.cloud.note" = "使用你自己的 API Key";
 "speech.compare.col.size" = "下载大小";
 "speech.compare.col.memory" = "内存";
 "speech.compare.col.memory.help" = "听写时模型占用的内存。";

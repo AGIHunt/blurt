@@ -84,7 +84,7 @@
   "dictation.toast.first_download": "Downloading the speech model · dictation works once it’s in",
   "dictation.toast.no_model.downloading": "Speech model still downloading",
   "screen_text.toast.copied": "Copied {n} lines of text",
-  "screen_text.toast.none": "No text found there",
+  "screen_text.toast.none": "No text found in the selection",
   "screen_text.toast.failed": "Couldn’t read the screen",
   "screen_text.toast.translated": "Translation copied",
   "screen_text.toast.no_cloud": "Text copied · translating needs a cloud service (Settings → Cloud)",

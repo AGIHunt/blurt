@@ -147,7 +147,7 @@
 "capture.note.st_pick" = "↑↓ 选择 · ↩ 确定 · Esc 返回";
 "capture.note.stage_hint" = "拖动绘制 · ⇧ 方框 · ⌥ 椭圆 · ⇧⌥ 箭头 · Esc 丢弃";
 "capture.note.st_copy" = "↩ 存为卡片 · ⌘↩ 复制并完成";
-"capture.note.st_copy_short" = "↩ 存卡片 · ⌘↩ 复制";
+"capture.note.st_copy_short" = "↩ 存为卡片 · ⌘↩ 复制";
 "capture.ink.strip" = "标注工具";
 "capture.ink.tool_pen" = "画笔";
 "capture.ink.tool_box" = "方框";
@@ -344,7 +344,7 @@
 "capture.voice.structured_off" = "已切回原话";
 "capture.voice.structure_failed" = "无法整理为结构化内容，已保留原话";
 "capture.voice.structuring" = "正在整理…";
-"capture.voice.structure_no_server" = "润色模型没有启动，已保留原话";
+"capture.voice.structure_no_server" = "润色模型未启动 · 已保留原话";
 "capture.voice.structure_needs_model" = "整理需要云端模型或本机润色模型，已保留原话";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";
