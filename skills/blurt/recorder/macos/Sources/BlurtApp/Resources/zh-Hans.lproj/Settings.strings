@@ -119,7 +119,7 @@
 "settings.general.live_text" = "实时显示识别文字";
 "settings.general.live_text.hint" = "语音备注或听写进行时，已识别的文字显示在刘海下方的面板中。面板不会抢占焦点，会避开输入位置，也不会被录入录屏。";
 
-"onboarding.subtitle" = "口喷鸡有以下五项功能。不需要的可以关闭，之后可在主页更改。";
+"onboarding.subtitle" = "不需要的功能可以先关掉，之后可在设置中随时更改。";
 "onboarding.use.dictation" = "听写";
 "onboarding.use.snap" = "截图";
 "onboarding.use.voice" = "语音备注";
@@ -386,8 +386,22 @@
 "onboarding.use.text.detail" = "框选文字即可复制；光标在输入框中时直接输入";
 "onboarding.use.translate" = "截图翻译";
 "onboarding.use.translate.detail" = "框选文字，获取译文";
-"onboarding.use.change" = "在设置里修改快捷键…";
-"onboarding.use.phone.detail" = "将手机用作 Mac 的触控板、键盘和麦克风。安装手机 App 后，在「%@」页配对。";
+/* 设置助理第一步：每项功能一行，放得进这一行（快捷键和它的作用在名字那一行）；列表下的脚注（%@ 是链接，
+   onboarding.use.keys_note.link）；手机那一行的提示（%@ 是页面名） */
+"onboarding.use.dictation.line" = "文字直接输入到光标处，在任何 App 里都能用。";
+"onboarding.use.cards.line" = "截图和语音备注留在刘海下方，可拖入任何 App。";
+"onboarding.use.recording.line" = "边录屏边讲解，由编程 Agent 整理成问题和待办。";
+"onboarding.use.key.auto" = "按一下或按住说话";
+"onboarding.use.key.tap" = "按一下说话";
+"onboarding.use.key.hold" = "按住说话";
+"onboarding.use.key.snap" = "截图";
+"onboarding.use.key.voice" = "语音备注";
+"onboarding.use.key.text" = "取字";
+"onboarding.use.key.translate" = "翻译";
+"onboarding.use.key.record" = "录屏";
+"onboarding.use.keys_note" = "快捷键可在「%@」中更改。";
+"onboarding.use.keys_note.link" = "设置 → 快捷键";
+"onboarding.use.phone.help" = "在手机上安装口喷鸡 App 后，在「%@」页配对。";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";
 "onboarding.dictation.detail" = "选择听写键，并开启所需权限。";

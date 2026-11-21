@@ -4,8 +4,11 @@
 // footer and the notice that stands in for a step's content when something blocks it.
 //
 //   OnbMetrics            the column, the glyph slot, the row height
-//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch); `muted`
-//                         for a capability switched off on the first step
+//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch)
+//   OnbGroup / OnbListRow the first step's list: one rounded box (System Settings' inset group, Settings' box metrics),
+//                         rows of an 18 pt glyph slot · the title (its keys after it, as quiet labelled hints) and one
+//                         line · one switch; hairlines inset to the text column; `muted` for a capability switched off
+//   OnbKeyHint            a shortcut and what it does, "⌥ A Snap": keycaps (one per key, tight) and a secondary word
 //   StepDots              the step count as dots (four; none when the assistant is one step); the current one is a
 //                         wider brand-ink capsule (a shape twin)
 //   StateLabel            one trailing state: a status dot and its word
@@ -21,6 +24,12 @@ enum OnbMetrics {
     static let rowHeight: CGFloat = 54
     static let rowPad: CGFloat = 6             // above and below a row's text: never touching a hairline
     static let sectionGap: CGFloat = 22
+    // the first step's grouped list (OnbGroup / OnbListRow): Settings' box and icon gutter (SettingsMetrics)
+    static let boxInset: CGFloat = 12          // the box's inner side inset: glyph slot and switch
+    static let boxRadius: CGFloat = 10
+    static let listGlyph: CGFloat = 18         // a bare glyph slot, the text 10 pt after it (inset + 28)
+    static let listGlyphGap: CGFloat = 10
+    static let listRow: CGFloat = 62           // every row one height: the title line and one line under it, with air
 }
 
 /// A neutral rounded tile with a glyph in it (a feature, a permission, a model): never brand colour.
@@ -190,5 +199,87 @@ struct OnbHeading: View {
         Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
             .padding(.bottom, 2)
+    }
+}
+
+/// The first step's list: its rows in one rounded box, as System Settings' inset groups and Settings' boxes (r 10, ink
+/// @ 3.5 %, a 0.5 pt ink @ 7 % edge).
+struct OnbGroup<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: OnbMetrics.boxRadius, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) { content }
+            .padding(.horizontal, OnbMetrics.boxInset)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(Color.primary.opacity(0.035)))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5).allowsHitTesting(false))
+    }
+}
+
+/// A row of an OnbGroup: a bare 18 pt glyph, the title with its accessory after it on the same line (the keys, as
+/// OnbKeyHints), one line under it that never wraps, and one trailing control (the switch). Every row is one height; the
+/// hairline above a row starts at the text column (not under the glyph) and ends at the box's inset.
+struct OnbListRow<Accessory: View, Trailing: View>: View {
+    var image: NSImage
+    var title: String
+    var detail: String
+    var first = false
+    var help: String?
+    /// what the row is about is switched off: its glyph, its name and its keys step back, the line stays readable
+    var muted = false
+    @ViewBuilder var accessory: Accessory
+    @ViewBuilder var trailing: Trailing
+    @Environment(\.displayScale) private var scale
+
+    var body: some View {
+        HStack(alignment: .center, spacing: OnbMetrics.listGlyphGap) {
+            Image(nsImage: image).renderingMode(.template).foregroundStyle(.secondary)
+                .frame(width: OnbMetrics.listGlyph, height: OnbMetrics.listGlyph)
+                .opacity(muted ? 0.45 : 1)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(muted ? .secondary : .primary)
+                        .lineLimit(1).fixedSize()
+                    accessory.opacity(muted ? 0.4 : 1)
+                }
+                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(help ?? "")
+            trailing.padding(.leading, 6)
+        }
+        .frame(height: OnbMetrics.listRow)
+        .overlay(alignment: .top) {
+            if !first {
+                Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1))
+                    .padding(.leading, OnbMetrics.listGlyph + OnbMetrics.listGlyphGap)
+                    .allowsHitTesting(false)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+extension OnbListRow where Accessory == EmptyView {
+    init(image: NSImage, title: String, detail: String, first: Bool = false, help: String? = nil, muted: Bool = false,
+         @ViewBuilder trailing: () -> Trailing) {
+        self.init(image: image, title: title, detail: detail, first: first, help: help, muted: muted,
+                  accessory: { EmptyView() }, trailing: trailing)
+    }
+}
+
+/// One shortcut and what it does, as quiet metadata after a row's title: its keycaps (one per key, tight, §2.7a) and a
+/// secondary word ("⌥ A Snap"). Several on a line are spaced apart, so two chords never read as one.
+struct OnbKeyHint: View {
+    var caps: [String]
+    var label: String
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            KeyCaps(caps, size: 11)
+            Text(label).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(caps.joined(separator: " "))")
     }
 }

@@ -119,7 +119,7 @@
 "settings.general.live_text" = "Show text as you speak";
 "settings.general.live_text.hint" = "During a voice note or dictation, recognized text appears in a panel under the notch. The panel never takes focus, stays clear of where you type, and isn’t captured in screen recordings.";
 
-"onboarding.subtitle" = "Blurt has five features. Turn off what you don’t need; you can change this on Home later.";
+"onboarding.subtitle" = "Turn off what you don’t need. You can change this later in Settings.";
 "onboarding.use.dictation" = "Dictation";
 "onboarding.use.snap" = "Snap";
 "onboarding.use.voice" = "Voice Note";
@@ -388,8 +388,23 @@
 "onboarding.use.text.detail" = "Drag over text; it’s copied, or typed where your cursor is.";
 "onboarding.use.translate" = "Translate from screen";
 "onboarding.use.translate.detail" = "Drag over text; you get the translation.";
-"onboarding.use.change" = "Change Shortcuts in Settings…";
-"onboarding.use.phone.detail" = "Use your phone as your Mac’s trackpad, keyboard and microphone. Pair it on the %@ page after installing the app.";
+/* the setup assistant's first step: one line per capability that fits its row (the keys are on the title's line, with
+   what each does), the footnote under the list (%@ is the link, onboarding.use.keys_note.link), the phone row's tooltip
+   (%@ is the page's name) */
+"onboarding.use.dictation.line" = "Your words are typed at the cursor, in any app.";
+"onboarding.use.cards.line" = "Snaps and voice notes stay under the notch; drag them into any app.";
+"onboarding.use.recording.line" = "Talk over a screen recording; your coding agent turns it into issues and tasks.";
+"onboarding.use.key.auto" = "Tap or hold to talk";
+"onboarding.use.key.tap" = "Tap to talk";
+"onboarding.use.key.hold" = "Hold to talk";
+"onboarding.use.key.snap" = "Snap";
+"onboarding.use.key.voice" = "Voice note";
+"onboarding.use.key.text" = "Copy text";
+"onboarding.use.key.translate" = "Translate";
+"onboarding.use.key.record" = "Record";
+"onboarding.use.keys_note" = "You can change these keys in %@.";
+"onboarding.use.keys_note.link" = "Settings → Shortcuts";
+"onboarding.use.phone.help" = "Install the Blurt app on your phone, then pair it on the %@ page.";
 "onboarding.cap.right_option" = "right ⌥";
 "onboarding.dictation.title" = "Set up dictation";
 "onboarding.dictation.detail" = "Choose a key, then allow what dictation needs.";

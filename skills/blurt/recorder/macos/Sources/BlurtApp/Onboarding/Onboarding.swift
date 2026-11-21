@@ -1,11 +1,16 @@
 // The setup assistant (docs/design/desktop-app.md §2.2, docs/design/capabilities.md) — four steps at most, every one
 // skippable (BlurtCore OnboardingFlow):
-//   1. what do you want to use — the five capabilities (BlurtCore Capabilities: Dictation, Cards, Screen Text,
-//      Recording & Items, Phone), each a row with its name, what it does in one line, its keys as keycaps and its
-//      switch. All on: a new user just presses Next; one who wants less turns the rest off here (Capability.set — the
-//      same switches as Home's and Settings → General's, so the keys are given back at once). A link to Settings →
-//      Shortcuts. Steps 2–4 are dictation's: with Dictation switched off this step is the whole assistant — its
-//      primary is Done and "Open Blurt at login" is its last row. On the first run nothing of dictation's is read
+//   1. what do you want to use — the five capabilities (BlurtCore Capabilities: Dictation, Cards, Text & Translation,
+//      Recording & Items, Remote Control) as one rounded list, System Settings' inset group (visual gate 2026-11-21):
+//      a row is its glyph, its name with its keys after it as quiet labelled hints ("⌥ A Snap  ⌥ V Voice note": which
+//      key does what, never four caps that read as one chord), one line that never wraps, and exactly one control on
+//      the right, its switch. Every row one height; the list in the middle of the space under the subtitle; a 12 pt
+//      footnote under it links to Settings → Shortcuts. All on: a new user just presses Next; one who wants less turns
+//      the rest off here (Capability.set — the same switches as Home's and Settings → General's, so the keys are given
+//      back at once). The phone's pairing is the phone row's tooltip (it happens on the Remote Control page). Steps
+//      2–4 are dictation's: with Dictation switched off this step is the whole assistant — its primary is Done and
+//      "Open Blurt at login" is the footer's checkbox where the step dots were (a row added under the list would move
+//      the list under the pointer as Dictation's switch flips). On the first run nothing of dictation's is read
 //      until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model list), and
 //      no model downloads unasked (the founder, 2026-11-21): the models step offers the recogniser with its size and
 //      the free space;
@@ -503,8 +508,15 @@ struct OnboardingView: View {
     /// Where you are (the dots), the one way out of the whole assistant, Back, and the one primary.
     var footer: some View {
         HStack(spacing: 8) {
-            // (one step — Dictation off — has nothing to count)
-            if m.steps > 1 { StepDots(step: m.step, count: m.steps) }
+            // (one step — Dictation off — has nothing to count: "Open Blurt at login" takes the place, as a Mac
+            // assistant's checkbox, so the first step's list never moves when Dictation is switched)
+            if m.steps > 1 {
+                StepDots(step: m.step, count: m.steps)
+            } else {
+                Toggle(T("settings.general.login"), isOn: $m.openAtLogin)
+                    .toggleStyle(.checkbox).font(.system(size: 12))
+                    .help(T("onboarding.login.detail_keys"))
+            }
             Spacer(minLength: 12)
             let nextTitle = last ? T("onboarding.done") : T("onboarding.next")
             if let a = action {
@@ -605,17 +617,39 @@ struct OnboardingView: View {
 
     var welcome: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(Capability.allCases.enumerated()), id: \.element) { i, c in
-                capabilityRow(c, first: i == 0)
+            // the list (and its footnote) in the middle of the space between the subtitle and the footer: never pressed
+            // up under the subtitle with an empty band over the footer
+            Spacer(minLength: 6)
+            OnbGroup {
+                ForEach(Array(Capability.allCases.enumerated()), id: \.element) { i, c in
+                    capabilityRow(c, first: i == 0)
+                }
             }
-            Button(T("onboarding.use.change")) { AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue) }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk)
-                .onHover { NSCursor.pointingHand.set(); if !$0 { NSCursor.arrow.set() } }
-                .padding(.top, 10)
-            Spacer(minLength: 14)
-            // Dictation off: this step is the whole assistant, so the login row is here
-            if last { loginRow }
+            // the keys are changed in Settings: a footnote of the list (12 pt secondary, the link in brand ink)
+            Text(keysNote).font(.system(size: 12)).foregroundStyle(.secondary).tint(Color.brandInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, OnbMetrics.boxInset).padding(.top, 8)
+                .environment(\.openURL, OpenURLAction { _ in
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                    return .handled
+                })
+            // (Dictation off, this step is the whole assistant: "Open Blurt at login" is the footer's checkbox, so turning
+            // Dictation off or on never moves the list under the pointer)
+            Spacer(minLength: 6)
         }
+    }
+
+    /// "You can change these keys in Settings → Shortcuts.", the pane's name a link to it.
+    var keysNote: AttributedString {
+        let mark = "\u{FFFC}"
+        let parts = T("onboarding.use.keys_note", mark).components(separatedBy: mark)
+        var a = AttributedString(parts.first ?? "")
+        var link = AttributedString(T("onboarding.use.keys_note.link"))
+        link.link = URL(string: "blurt-onboarding:shortcuts")
+        link.foregroundColor = Color.brandInk
+        a += link
+        if parts.count > 1 { a += AttributedString(parts.dropFirst().joined(separator: mark)) }
+        return a
     }
 
     /// The capability's glyph (the line family, as the rest of the assistant).
@@ -630,47 +664,59 @@ struct OnboardingView: View {
         }
     }
 
-    /// Its keys, one group of caps per shortcut (a shortcut that isn't set has none): fn · ⌥A ⌥V · ⌥C ⌥T · ⌥R · —.
-    func capabilityCaps(_ c: Capability) -> [[String]] {
+    /// Its keys, each with what it does (a shortcut that isn't set has none): Fn Tap or hold to talk · ⌥ A Snap,
+    /// ⌥ V Voice note · ⌥ C Copy text, ⌥ T Translate · ⌥ R Record · —.
+    func capabilityKeys(_ c: Capability) -> [(caps: [String], label: String)] {
+        func key(_ a: HotAction, _ label: String) -> (caps: [String], label: String)? {
+            let caps = KeyCaps.split(hk(a))
+            return caps.isEmpty ? nil : (caps, T(label))
+        }
         switch c {
-        case .dictation: return [OnboardingView.dictationCaps(m.dictationKey)]
-        case .cards: return [hk(.snap), hk(.voice)].map(KeyCaps.split).filter { !$0.isEmpty }
-        case .screenText: return [hk(.text), hk(.translateText)].map(KeyCaps.split).filter { !$0.isEmpty }
-        case .recording: return [hk(.toggleRecord)].map(KeyCaps.split).filter { !$0.isEmpty }
+        case .dictation:
+            let gesture: String
+            switch m.dictationMode {
+            case .hold: gesture = "onboarding.use.key.hold"
+            case .tap: gesture = "onboarding.use.key.tap"
+            case .auto: gesture = "onboarding.use.key.auto"
+            }
+            return [(OnboardingView.dictationCaps(m.dictationKey), T(gesture))]
+        case .cards: return [key(.snap, "onboarding.use.key.snap"), key(.voice, "onboarding.use.key.voice")].compactMap { $0 }
+        case .screenText: return [key(.text, "onboarding.use.key.text"), key(.translateText, "onboarding.use.key.translate")].compactMap { $0 }
+        case .recording: return [key(.toggleRecord, "onboarding.use.key.record")].compactMap { $0 }
         case .phone: return []
         }
     }
 
-    /// What it does, in one line (Home's words); the phone's also says where it is paired.
+    /// What it does, in one line that fits the row: Home's line where it fits and names no key, else the assistant's
+    /// own (the keys are on the title's line, so the line never names them).
     func capabilityWhat(_ c: Capability) -> String {
         switch c {
-        // (the key's short name as it is: in Chinese it brings its own leading space, "按 Fn", "按右 Option")
-        case .dictation: return T("feature.dictation.what", Dictation.keyShort(m.dictationKey))
-        case .phone: return T("onboarding.use.phone.detail", T("feature.phone"))
-        default: return T("feature.\(c.rawValue).what")
+        case .screenText, .phone: return T("feature.\(c.rawValue).what")
+        default: return T("onboarding.use.\(c.rawValue).line")
         }
     }
 
-    /// One capability: its glyph, name and line, its keys, its switch. Off: the glyph, the name and the keys step back
-    /// (the keys are given back to the other apps), the line stays readable.
+    /// One capability: its glyph, its name with its keys after it, one line, its switch. Off: the glyph, the name and
+    /// the keys step back (the keys are given back to the other apps), the line stays readable.
     func capabilityRow(_ c: Capability, first: Bool) -> some View {
         let on = !m.off.contains(c), name = T("feature.\(c.rawValue)")
-        return OnbRow(image: GlyphTile.brand(OnboardingView.capabilityIcon(c)), title: name, detail: capabilityWhat(c), first: first, muted: !on) {
-            HStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    ForEach(Array(capabilityCaps(c).enumerated()), id: \.offset) { _, caps in KeyCaps(caps) }
-                }
-                .opacity(on ? 1 : 0.35)
-                Toggle(name, isOn: Binding(get: { !m.off.contains(c) }, set: { m.setCapability(c, on: $0) })).labelsHidden()
-                    .toggleStyle(BrandSwitchStyle(label: name))
-                    .accessibilityHint(capabilityWhat(c))
+        // the phone's pairing is said where it happens (the Remote Control page): here it is the tooltip
+        let help = c == .phone ? T("onboarding.use.phone.help", T("feature.phone")) : nil
+        return OnbListRow(image: OnboardingView.capabilityIcon(c).image(size: 16), title: name, detail: capabilityWhat(c),
+                          first: first, help: help, muted: !on) {
+            // two shortcuts well apart, so ⌥ A Snap and ⌥ V Voice note never read as one chord
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                ForEach(Array(capabilityKeys(c).enumerated()), id: \.offset) { _, k in OnbKeyHint(caps: k.caps, label: k.label) }
             }
+        } trailing: {
+            Toggle(name, isOn: Binding(get: { !m.off.contains(c) }, set: { m.setCapability(c, on: $0) })).labelsHidden()
+                .toggleStyle(BrandSwitchStyle(label: name))
+                .accessibilityHint(capabilityWhat(c))
         }
-        // (58: five of them, the link and — with Dictation off — the login row fit the step with air between)
-        .frame(minHeight: 58)
     }
 
-    /// "Open Blurt at login": the last row of the last step (Try it — or the first step, with Dictation off).
+    /// "Open Blurt at login": the last row of the last step, Try it (with Dictation off the first step is the whole
+    /// assistant, and it is the footer's checkbox there).
     var loginRow: some View {
         OnbRow(image: GlyphTile.brand(.power), title: T("settings.general.login"),
                detail: T(m.dictationOn ? "onboarding.login.detail" : "onboarding.login.detail_keys")) {
@@ -1295,14 +1341,17 @@ struct OnboardingHero: View {
         let dark = scheme == .dark
         GeometryReader { g in
             ZStack {
-                // paper #F3EFE8 → #EDE8E0 (the brand book's backdrop), night #181D1E → #121516
-                LinearGradient(colors: dark ? [Color(red: 0.094, green: 0.114, blue: 0.118), Color(red: 0.071, green: 0.082, blue: 0.086)]
+                // paper #F3EFE8 → #EDE8E0 (the brand book's backdrop); night #1D1C1B → #151413, the temperature of the
+                // dark window beside it (a blue-grey night read as a second, colder surface next to the warm grey page)
+                LinearGradient(colors: dark ? [Color(red: 0.114, green: 0.110, blue: 0.106), Color(red: 0.082, green: 0.078, blue: 0.075)]
                                             : [Color(red: 0.953, green: 0.937, blue: 0.910), Color(red: 0.929, green: 0.910, blue: 0.878)],
                                startPoint: .top, endPoint: .bottom)
                 if !reduceTransparency {
-                    RadialGradient(colors: [Color(nsColor: BrandColor.srgb(0x61DBBD)).opacity(dark ? 0.16 : 0.26), .clear],
-                                   center: .center, startRadius: 0, endRadius: 120)
-                        .frame(width: 260, height: 260)
+                    // the mint light has to be seen on paper (at a quarter it was the paper's own colour): the panel is
+                    // Peep's place, not an empty margin
+                    RadialGradient(colors: [Color(nsColor: BrandColor.srgb(0x61DBBD)).opacity(dark ? 0.20 : 0.42), .clear],
+                                   center: .center, startRadius: 0, endRadius: 140)
+                        .frame(width: 300, height: 300)
                         .position(x: g.size.width / 2, y: g.size.height * 0.45)
                 }
                 // (the first step always says hello — also when, with Dictation off, it is the last)
