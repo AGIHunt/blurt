@@ -92,6 +92,16 @@ struct PadLayout {
     let hintArea: CGRect
     let fold: CGRect?
 
+    /// The local turn control: a thumb-sized hit area in the stage's top-right corner. It follows the stage as the keys come and go,
+    /// so it never crosses into the thumb's column or covers the computer's picture.
+    var turnButton: CGRect {
+        let side: CGFloat = 44
+        let inset: CGFloat = 8
+        let width = min(side, max(0, pad.width - inset * 2))
+        let height = min(side, max(0, pad.height - inset * 2))
+        return CGRect(x: pad.maxX - inset - width, y: pad.minY + inset, width: width, height: height)
+    }
+
     static let gap: CGFloat = 5
     /// tall enough for the arrow key's four edges
     static let stripHeight: CGFloat = 52

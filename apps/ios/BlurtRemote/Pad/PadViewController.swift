@@ -13,6 +13,15 @@ final class PadWindow: UIWindow {
     }
 }
 
+/// A control whose visible mark is smaller than the thumb-sized area that takes the touch.
+private final class TurnButton: UIButton {
+    var touchInset: CGFloat = 7
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -touchInset, dy: -touchInset).contains(point)
+    }
+}
+
 final class PadViewController: UIViewController {
     private let pad = TrackpadView()
     /// big screens: the trackpad between the thumbs, under the keys' halves
@@ -39,6 +48,9 @@ final class PadViewController: UIViewController {
     private let chips = UIStackView()
     private let keyboardButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
+    private let turnButton = TurnButton(type: .custom)
+    private let turnFace = UIView()
+    private let turnIcon = UIImageView()
     private let header = UILabel()
     /// the picture on and off, and with several displays, which one (DisplaySwitch.swift)
     private let screenButton = ScreenButton()
@@ -209,6 +221,19 @@ final class PadViewController: UIViewController {
         drawerButton.isHidden = true
         drawerButton.accessibilityLabel = String(localized: "Keys")
         drawerButton.addAction(UIAction { [weak self] _ in self?.toggleDrawer() }, for: .touchUpInside)
+        turnFace.isUserInteractionEnabled = false
+        turnFace.backgroundColor = Theme.slab
+        turnFace.layer.cornerRadius = 10
+        turnFace.layer.borderWidth = 0.75
+        turnFace.layer.borderColor = Theme.edge.cgColor
+        turnButton.insertSubview(turnFace, at: 0)
+        turnButton.tintColor = Theme.mark
+        turnIcon.isUserInteractionEnabled = false
+        turnIcon.contentMode = .scaleAspectFit
+        turnIcon.tintColor = Theme.mark
+        turnButton.addSubview(turnIcon)
+        turnButton.addAction(UIAction { [weak self] _ in self?.turnAround() }, for: .touchUpInside)
+        view.addSubview(turnButton)
         header.font = .systemFont(ofSize: 12, weight: .medium)
         header.textColor = Theme.faint
         liveText.font = .systemFont(ofSize: 15, weight: .regular)
@@ -652,6 +677,24 @@ final class PadViewController: UIViewController {
         UIView.animate(withDuration: 0.22) { self.view.layoutIfNeeded() }
     }
 
+    /// Turn to the other side without leaning the phone. The request waits for the touch to end: while it is down, the pad keeps the
+    /// current orientation so a thumb sliding on it can never spin the screen.
+    private func turnAround() {
+        guard view.window?.windowScene != nil else { return }
+        Haptics.tick()
+        let upright = view.bounds.width <= view.bounds.height
+        let target: UIInterfaceOrientationMask = upright
+            ? (Prefs.shared.lefty ? .landscapeLeft : .landscapeRight)
+            : .portrait
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let scene = self.view.window?.windowScene else { return }
+            self.setNeedsUpdateOfSupportedInterfaceOrientations()
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: target)) { error in
+                NSLog("BLURT_TURN %@", error.localizedDescription)
+            }
+        }
+    }
+
     /// Landscape, the keys put away: the modifiers went with them, so none stays held on the Mac out of sight. (Big screens keep the dock out.)
     private func keysPutAway() {
         guard !drawerOpen, PadLayout.mode(for: view.bounds.size) == .landscape, !Sticky.shared.held.isEmpty else { return }
@@ -768,6 +811,16 @@ final class PadViewController: UIViewController {
         screenButton.frame = l.screenButton
         screenButton.isHidden = typing
         screenButton.paint(showing: showing, railed: railed)
+        turnButton.frame = l.turnButton
+        turnButton.isHidden = typing || full
+        let upright = size.width <= size.height
+        let symbol = upright ? "rectangle.portrait.rotate" : "rectangle.landscape.rotate"
+        turnIcon.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .regular))
+        turnIcon.frame = turnButton.bounds
+        turnButton.accessibilityLabel = String(localized: upright ? "Turn to Landscape" : "Turn to Portrait")
+        turnFace.frame = CGRect(x: (turnButton.bounds.width - 34) / 2, y: (turnButton.bounds.height - 30) / 2,
+                                width: 34, height: 30)
+        view.bringSubviewToFront(turnButton)
         for b in [keyboardButton, settingsButton, findButton] {
             b.layer.cornerRadius = Theme.keyRadius
             b.backgroundColor = railed ? Theme.slab : .clear
@@ -788,7 +841,7 @@ final class PadViewController: UIViewController {
         exitFull.isHidden = !full
         talk.alpha = full ? 0.8 : 1
         if full {
-            for v in [thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
+            for v in [thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, turnButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
                 v.isHidden = true
             }
             dockCells.forEach { $0.isHidden = true }
