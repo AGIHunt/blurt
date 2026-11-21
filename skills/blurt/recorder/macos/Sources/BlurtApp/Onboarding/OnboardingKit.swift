@@ -4,12 +4,17 @@
 // footer and the notice that stands in for a step's content when something blocks it.
 //
 //   OnbMetrics            the column, the glyph slot, the row height
-//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch)
-//   OnbGroup / OnbListRow the first step's list: one rounded box (System Settings' inset group, Settings' box metrics),
-//                         rows of an 18 pt glyph slot · the title (its keys after it, as quiet labelled hints) and one
-//                         line · one switch; hairlines inset to the text column; `muted` for a capability switched off
+//   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch); `muted`
+//                         for a capability switched off on the first step; `note`: a line of its own under the detail
+//                         (the dictation key's globe-key line). Inside an OnbGroup: Settings' grid — no tile, a bare
+//                         glyph in an 18 pt slot (lists of things only), the hairline inset to the text column
+//   OnbGroup              a section as in Settings: a heading outside (an accessory at its right end), the rows in one
+//   OnbListRow            the first step's capability row in an OnbGroup: an 18 pt glyph slot · the title (its keys
+//                         after it, as quiet labelled hints) and one line · one switch
 //   OnbKeyHint            a shortcut and what it does, "⌥ A Snap": keycaps (one per key, tight) and a secondary word
-//   StepDots              the step count as dots (four; none when the assistant is one step); the current one is a
+//                         rounded box, a 12 pt footnote under it at the box's text inset
+//   OnbStatus             the trailing status column: one width for every word, the disc at one x down the page
+//   StepDots             the step count as dots (four; none when the assistant is one step); the current one is a
 //                         wider brand-ink capsule (a shape twin)
 //   StateLabel            one trailing state: a status dot and its word
 //   OnbNotice             a blocked step: an icon, a title, one line, an optional bar — the action is the footer's
@@ -24,12 +29,24 @@ enum OnbMetrics {
     static let rowHeight: CGFloat = 54
     static let rowPad: CGFloat = 6             // above and below a row's text: never touching a hairline
     static let sectionGap: CGFloat = 22
-    // the first step's grouped list (OnbGroup / OnbListRow): Settings' box and icon gutter (SettingsMetrics)
-    static let boxInset: CGFloat = 12          // the box's inner side inset: glyph slot and switch
+    // a group's box (OnbGroup; Settings' SettingsGroup): the text inset inside it, its corners, a row's glyph slot and
+    // the gap after it (the text column at boxInset + 28, as in Settings), the air above and below a row's text
+    static let boxInset: CGFloat = 12
     static let boxRadius: CGFloat = 10
-    static let listGlyph: CGFloat = 18         // a bare glyph slot, the text 10 pt after it (inset + 28)
-    static let listGlyphGap: CGFloat = 10
-    static let listRow: CGFloat = 62           // every row one height: the title line and one line under it, with air
+    static let boxGlyph: CGFloat = 18
+    static let boxGlyphGap: CGFloat = 10
+    static let listRow: CGFloat = 62           // the first step's rows: one height, the title line and one line under it
+    static let boxRowPad: CGFloat = 13
+    static let groupGap: CGFloat = 28
+}
+
+private struct OnbBoxedKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// rows inside an OnbGroup's box: Settings' grid
+    var onbBoxed: Bool {
+        get { self[OnbBoxedKey.self] }
+        set { self[OnbBoxedKey.self] = newValue }
+    }
 }
 
 /// A neutral rounded tile with a glyph in it (a feature, a permission, a model): never brand colour.
@@ -63,27 +80,53 @@ struct OnbRow<Trailing: View>: View {
     var help: String?
     /// what the row is about is switched off (a capability on the first step): its glyph and name step back
     var muted = false
+    /// a line of its own under the detail (the dictation key's globe-key line: a state of the key, not a row)
+    var note: AnyView?
     @ViewBuilder var trailing: Trailing
     @Environment(\.displayScale) private var scale
+    @Environment(\.onbBoxed) private var boxed
+
+    /// where the text starts: after the glyph (and its gap), or at the row's edge
+    private var textInset: CGFloat {
+        guard image != nil else { return 0 }
+        return boxed ? OnbMetrics.boxGlyph + OnbMetrics.boxGlyphGap : OnbMetrics.glyph + OnbMetrics.rowGap
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: OnbMetrics.rowGap) {
-            if let i = image { GlyphTile(image: i).opacity(muted ? 0.45 : 1) }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(muted ? .secondary : .primary)
-                if let d = detail, !d.isEmpty {
-                    Text(d).font(.system(size: 12)).foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .center, spacing: boxed ? OnbMetrics.boxGlyphGap : OnbMetrics.rowGap) {
+                if let i = image {
+                    if boxed {
+                        // Settings' list glyph: bare, secondary, in one 18 pt slot (never a tile inside a box)
+                        Image(nsImage: i).renderingMode(.template).foregroundStyle(.secondary)
+                            .frame(width: OnbMetrics.boxGlyph, height: OnbMetrics.boxGlyph)
+                            .opacity(muted ? 0.45 : 1)
+                            .accessibilityHidden(true)
+                    } else {
+                        GlyphTile(image: i).opacity(muted ? 0.45 : 1)
+                    }
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(muted ? .secondary : .primary)
+                    if let d = detail, !d.isEmpty {
+                        Text(d).font(.system(size: 12)).foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let n = note { n.padding(.top, 4) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
         // a two-line row keeps air above and below its hairlines (a one-line row is the row height anyway)
-        .padding(.vertical, OnbMetrics.rowPad)
+        .padding(.vertical, boxed ? OnbMetrics.boxRowPad : OnbMetrics.rowPad)
         .frame(minHeight: OnbMetrics.rowHeight)
         .overlay(alignment: .top) {
-            if !first { Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)) }
+            // in a box the hairline starts at the text column (Settings, System Settings): never under a glyph
+            if !first {
+                Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1))
+                    .padding(.leading, boxed ? textInset : 0)
+            }
         }
         .contentShape(Rectangle())
         .help(help ?? "")
@@ -93,6 +136,63 @@ struct OnbRow<Trailing: View>: View {
 extension OnbRow where Trailing == EmptyView {
     init(image: NSImage?, title: String, detail: String?, first: Bool = false) {
         self.init(image: image, title: title, detail: detail, first: first) { EmptyView() }
+    }
+}
+
+/// A section, as Settings' (SettingsGroup): its heading outside the box at the box's text inset (an accessory at its
+/// right end, never making the line taller), the rows in one rounded box (ink @ 3.5 %, a 0.5 pt ink @ 7 % edge) with
+/// hairlines between them, and an optional 12 pt footnote under the box, at its text inset.
+struct OnbGroup<Content: View, Accessory: View>: View {
+    var title: String?
+    var footnote: String?
+    @ViewBuilder var content: Content
+    @ViewBuilder var accessory: Accessory
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let t = title {
+                HStack(spacing: 8) {
+                    OnbHeading(text: t)
+                    Spacer(minLength: 8)
+                }
+                .overlay(alignment: .trailing) { accessory }
+                .padding(.horizontal, OnbMetrics.boxInset)
+                .padding(.bottom, 6)
+            }
+            let shape = RoundedRectangle(cornerRadius: OnbMetrics.boxRadius, style: .continuous)
+            VStack(alignment: .leading, spacing: 0) { content }
+                .environment(\.onbBoxed, true)
+                .padding(.horizontal, OnbMetrics.boxInset)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(shape.fill(Color.primary.opacity(0.035)))
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5).allowsHitTesting(false))
+            if let f = footnote {
+                Text(f).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, OnbMetrics.boxInset)
+                    .padding(.top, 7)
+            }
+        }
+    }
+}
+
+extension OnbGroup where Accessory == EmptyView {
+    init(title: String?, footnote: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: title, footnote: footnote, content: content) { EmptyView() }
+    }
+}
+
+/// The trailing status column: the state words of a list in one width (the longest of them), each word's disc first,
+/// so the discs stand at one x down the list whatever the word ("Allowed", "Not allowed"). A button in its place
+/// (Allow…) ends on the right edge.
+enum OnbStatus {
+    /// the slot for these words (StateLabel: a disc, 6 pt, the 12 pt word); none given: the longest word there is
+    static func width(_ words: [String]) -> CGFloat {
+        let all = words.isEmpty
+            ? ["settings.kit.allowed", "onboarding.perm.missing", "settings.perm.not_needed", "onboarding.perm.waiting"].map { T($0) } : words
+        let f = NSFont.systemFont(ofSize: 12)
+        let w = all.map { ($0 as NSString).size(withAttributes: [.font: f]).width }.max() ?? 60
+        return ceil(StatusDot.size + 6 + w + 1)
     }
 }
 
@@ -191,28 +291,14 @@ extension OnbNotice where Extra == EmptyView {
     }
 }
 
-/// A section heading inside a step: small and quiet (13 pt semibold, secondary), so the step's title stays the one
-/// headline.
+/// A section heading inside a step: small and quiet (12 pt semibold, secondary) — a level apart from the 13 pt medium
+/// row titles under it, so the step's title stays the one headline.
 struct OnbHeading: View {
     var text: String
     var body: some View {
-        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+        Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
             .accessibilityAddTraits(.isHeader)
             .padding(.bottom, 2)
-    }
-}
-
-/// The first step's list: its rows in one rounded box, as System Settings' inset groups and Settings' boxes (r 10, ink
-/// @ 3.5 %, a 0.5 pt ink @ 7 % edge).
-struct OnbGroup<Content: View>: View {
-    @ViewBuilder var content: Content
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: OnbMetrics.boxRadius, style: .continuous)
-        VStack(alignment: .leading, spacing: 0) { content }
-            .padding(.horizontal, OnbMetrics.boxInset)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(shape.fill(Color.primary.opacity(0.035)))
-            .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5).allowsHitTesting(false))
     }
 }
 
@@ -232,9 +318,9 @@ struct OnbListRow<Accessory: View, Trailing: View>: View {
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        HStack(alignment: .center, spacing: OnbMetrics.listGlyphGap) {
+        HStack(alignment: .center, spacing: OnbMetrics.boxGlyphGap) {
             Image(nsImage: image).renderingMode(.template).foregroundStyle(.secondary)
-                .frame(width: OnbMetrics.listGlyph, height: OnbMetrics.listGlyph)
+                .frame(width: OnbMetrics.boxGlyph, height: OnbMetrics.boxGlyph)
                 .opacity(muted ? 0.45 : 1)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
@@ -253,7 +339,7 @@ struct OnbListRow<Accessory: View, Trailing: View>: View {
         .overlay(alignment: .top) {
             if !first {
                 Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1))
-                    .padding(.leading, OnbMetrics.listGlyph + OnbMetrics.listGlyphGap)
+                    .padding(.leading, OnbMetrics.boxGlyph + OnbMetrics.boxGlyphGap)
                     .allowsHitTesting(false)
             }
         }

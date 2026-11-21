@@ -14,8 +14,11 @@
 //      until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model list), and
 //      no model downloads unasked (the founder, 2026-11-21): the models step offers the recogniser with its size and
 //      the free space;
-//   2. dictation — the key first (a pop-up, ChoicePopup as the language row; it decides which lines the list below has, so changing it never moves the
-//      control under the pointer), with Fn macOS's own Fn-key setting as a line of the key (not a permission), then
+//   2. dictation — two groups as Settings draws them (OnbGroup: a 12 pt heading, the rows in a box), Keyboard and
+//      Permissions; the lead says what the step is for, the rows carry the status. The key first (a pop-up as wide as
+//      its longest choice, ChoicePopup as the language row; it decides which lines the list below has, so changing it
+//      never moves the control under the pointer), with Fn macOS's own globe-key setting as a line of the key's row
+//      (a check, or what's wrong and Turn Off… — not a permission, not a row of its own), then
 //      the permissions it needs: the microphone and Accessibility, live; Input Monitoring only when it is needed
 //      (still missing with Accessibility on or after a walk, or a key other than Fn). "Set Up Permissions…" is the
 //      footer's primary while anything is missing: the permission guide's dictation walk (PermissionGuide.swift) with
@@ -511,37 +514,42 @@ struct OnboardingView: View {
             // (one step — Dictation off — has nothing to count: "Open Blurt at login" takes the place, as a Mac
             // assistant's checkbox, so the first step's list never moves when Dictation is switched)
             if m.steps > 1 {
-                StepDots(step: m.step, count: m.steps)
+                StepDots(step: m.step, count: m.steps).padding(.trailing, 10)
             } else {
                 Toggle(T("settings.general.login"), isOn: $m.openAtLogin)
                     .toggleStyle(.checkbox).font(.system(size: 12))
                     .help(T("onboarding.login.detail_keys"))
             }
-            Spacer(minLength: 12)
             let nextTitle = last ? T("onboarding.done") : T("onboarding.next")
+            // the one quiet way past sits on the left with the dots — the right keeps Back and the one primary
+            // (macOS Setup Assistant)
+            quietSkip
+            Spacer(minLength: 12)
+            if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
             if let a = action {
-                // one forward action, the step's own, and one quiet way past it: "Skip This Step" (the whole assistant
-                // ends with the window's close button) — never two grey skips side by side
-                Button(T("onboarding.skip_step")) { advance() }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
-                    .padding(.trailing, 8)
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
+                // one forward action: the step's own
                 Button(a.title) { a.run() }
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                     .disabled(!a.enabled).help(a.help ?? "")
             } else {
-                // on the last step Done says the same: one way out
-                if !last {
-                    Button(T("onboarding.skip_setup")) { m.finish() }
-                        .buttonStyle(.borderless).foregroundStyle(.secondary)
-                        .padding(.trailing, 8)
-                }
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
                 Button(nextTitle) { advance() }
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
             }
         }
         .padding(.horizontal, OnbMetrics.inset).padding(.top, 14).padding(.bottom, 18)
+    }
+
+    /// The footer's one quiet way past, a plain 12 pt text button: while the step's own action is the primary, going on
+    /// without it ("Skip This Step"; the whole assistant ends with the window's close button), else "Skip Setup" —
+    /// never two grey skips side by side. None on the last step: Done says the same.
+    @ViewBuilder var quietSkip: some View {
+        if pending {
+            Button(T("onboarding.skip_step")) { advance() }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+        } else if !last {
+            Button(T("onboarding.skip_setup")) { m.finish() }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: the download under every step
@@ -585,9 +593,8 @@ struct OnboardingView: View {
     var heading: (title: String, detail: String) {
         switch m.step {
         case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle"))
-        case 1:
-            return (T("onboarding.dictation.title"),
-                    T(guide.missing(.dictation).isEmpty ? "onboarding.dictation.detail_done" : "onboarding.dictation.detail"))
+        // what the step is for, in both states: the rows carry the status (and Next says it is done)
+        case 1: return (T("onboarding.dictation.title"), T("onboarding.dictation.detail"))
         // "on this Mac, nothing uploaded" only while that is true (not with the cloud key dictating on macOS 13–15)
         // without macOS's recogniser the step leads with the cloud keys: the line says both ways, not "nothing is uploaded"
         case 2: return (T("onboarding.models"), T(models.startNow || (speechKey && models.dictationReady) ? "onboarding.start.detail"
@@ -620,7 +627,7 @@ struct OnboardingView: View {
             // the list (and its footnote) in the middle of the space between the subtitle and the footer: never pressed
             // up under the subtitle with an empty band over the footer
             Spacer(minLength: 6)
-            OnbGroup {
+            OnbGroup(title: nil) {
                 ForEach(Array(Capability.allCases.enumerated()), id: \.element) { i, c in
                     capabilityRow(c, first: i == 0)
                 }
@@ -751,40 +758,75 @@ struct OnboardingView: View {
         return (m.dictationMode == .hold ? T("onboarding.key.gesture_hold") : T("onboarding.key.gesture")) + send
     }
 
+    /// The pop-up's width: its longest choice and the chevron, no wider (the step's one bordered control stays small).
+    static var keyPopupWidth: CGFloat {
+        let f = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let w = DictationTrigger.Key.allCases.map { (keyLabel($0) as NSString).size(withAttributes: [.font: f]).width }.max() ?? 80
+        return ceil(w) + 2 * DownChevronPopUpCell.inset + 18
+    }
+
+    /// Two groups of one kind (Settings' grid: a heading outside, the rows in a box): the key, then what macOS has to
+    /// allow. The key first: it decides which rows the permissions have, so changing it never moves this row.
     var permissions: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // the key first: it decides which lines the permissions below have, so changing it never moves this row
-            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.dictation_key"), detail: keyGesture, first: true) {
-                // the same pop-up as the language row and Settings
-                ChoicePopup(label: T("onboarding.dictation_key"),
-                            choices: DictationTrigger.Key.allCases.map { ($0, OnboardingView.keyLabel($0)) },
-                            selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) }), width: 120)
-            }
-            if m.dictationKey == .fn {
-                // macOS's own 🌐 key setting: not a permission, a line of the key (the walk sets it with the rest)
-                OnbRow(image: GlyphTile.brand(.globe), title: T("onboarding.fn.title"), detail: T("onboarding.fn.detail")) {
-                    if guide.running && guide.current == .fnKey {
-                        waiting
-                    } else if guide.satisfied(.fnKey) {
-                        StateLabel(tone: .good, text: T("onboarding.fn.set"))
-                    } else {
-                        StateLabel(tone: .warn, text: T("settings.kit.not_set"), color: .brandAttnInk)
-                    }
-                }
-                if !SystemAccess.fnClashApps.isEmpty {
-                    Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
-                        .font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
-                        .padding(.leading, OnbMetrics.glyph + OnbMetrics.rowGap).padding(.bottom, 6)
+            OnbGroup(title: T("onboarding.keyboard")) {
+                // a setting, not a thing: no glyph (Settings: only lists of things carry one)
+                OnbRow(image: nil, title: T("onboarding.dictation_key"), detail: keyGesture, first: true,
+                       note: m.dictationKey == .fn ? AnyView(fnLines) : nil) {
+                    // the same pop-up as the language row and Settings, as wide as its longest choice
+                    ChoicePopup(label: T("onboarding.dictation_key"),
+                                choices: DictationTrigger.Key.allCases.map { ($0, OnboardingView.keyLabel($0)) },
+                                selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) }), width: OnboardingView.keyPopupWidth)
                 }
             }
 
-            OnbHeading(text: T("onboarding.permissions")).padding(.top, OnbMetrics.sectionGap)
-            ForEach(Array(permissionKinds.enumerated()), id: \.element) { i, k in
-                OnbPermissionRow(kind: k, state: perms.state(k), first: i == 0)
+            OnbGroup(title: T("onboarding.permissions"), footnote: T("onboarding.permissions.screen_later")) {
+                ForEach(Array(permissionKinds.enumerated()), id: \.element) { i, k in
+                    OnbPermissionRow(kind: k, state: perms.state(k), first: i == 0, slot: statusSlot)
+                }
             }
-            Text(T("onboarding.permissions.screen_later")).font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
+            .padding(.top, OnbMetrics.groupGap)
+        }
+        .padding(.top, 6)
+    }
+
+    /// The status column's width: the longest word the rows say now — every disc at one x, and the words flush with
+    /// the pop-up's edge above while they are all one word ("Allowed").
+    var statusSlot: CGFloat {
+        OnbStatus.width(permissionKinds.compactMap { OnbPermissionRow.word(kind: $0, state: perms.state($0), guide: guide) })
+    }
+
+    /// With Fn: macOS's own "Press 🌐 key to" — a state of the key, not a permission and not a row of its own (the walk
+    /// sets it with the rest). Done: a small check and what it is set to; still to do: what happens, in attention ink,
+    /// and the way to fix it; another app on Fn: one more line.
+    @ViewBuilder var fnLines: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if guide.running && guide.current == .fnKey {
+                waiting
+            } else if guide.satisfied(.fnKey) {
+                HStack(alignment: .top, spacing: 6) {
+                    StatusDot(tone: .good).padding(.top, 3)
+                    Text(T("onboarding.fn.ok")).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            } else {
+                HStack(alignment: .top, spacing: 6) {
+                    StatusDot(tone: .warn).padding(.top, 3)
+                    Text(T("onboarding.fn.clash")).font(.system(size: 12)).foregroundStyle(Color.brandAttnInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // the walk to macOS's own setting, with the helper panel (Blurt never changes it)
+                    Button(T("onboarding.fn.fix")) { guide.start(.dictation, only: [.fnKey], source: .onboarding) }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk)
+                        .onHover { NSCursor.pointingHand.set(); if !$0 { NSCursor.arrow.set() } }
+                        .fixedSize()
+                }
+            }
+            if !SystemAccess.fnClashApps.isEmpty {
+                Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
+                    .font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                    .help(T("dictation.settings.fn_clash.help"))
+            }
         }
     }
 
@@ -1266,8 +1308,18 @@ struct OnbPermissionRow: View {
     var kind: PermissionKind
     var state: Permissions.State
     var first: Bool
+    /// the status column's width (OnbStatus): the same on every row of the list
+    var slot: CGFloat = OnbStatus.width([])
     @ObservedObject var guide = PermissionGuide.shared
     @State private var hover = false
+
+    /// The word a row says at rest (nil: a button says it — macOS won't ask again).
+    static func word(kind: PermissionKind, state: Permissions.State, guide: PermissionGuide) -> String? {
+        if guide.running && guide.current == kind { return T("onboarding.perm.waiting") }
+        if state == .granted { return T("settings.kit.allowed") }
+        if guide.satisfied(kind) { return T("settings.perm.not_needed") }
+        return state == .denied ? nil : T("onboarding.perm.missing")
+    }
 
     /// The family's own line glyphs, as every other row of the assistant (one family per surface).
     var icon: BlurtIcon {
@@ -1294,9 +1346,17 @@ struct OnbPermissionRow: View {
 
     func allow() { PermissionGuide.shared.start(.all, only: [kind], source: .onboarding) }
 
+    /// the trailing element is a state word (a disc and its word), not a button
+    var words: Bool {
+        if guide.running && guide.current == kind { return true }
+        if state == .granted || guide.satisfied(kind) { return true }
+        return state != .denied && !hover
+    }
+
     var body: some View {
         OnbRow(image: GlyphTile.brand(icon), title: PermissionGuide.name(kind), detail: why, first: first) {
-            trailing.frame(minWidth: 96, alignment: .trailing)
+            // one status column: a word in the slot's width, its disc at one x on every row; a button ends on the edge
+            if words { trailing.frame(width: slot, alignment: .leading) } else { trailing.frame(minWidth: slot, alignment: .trailing) }
         }
         .onHover { hover = $0 }
         .accessibilityElement(children: .combine)
