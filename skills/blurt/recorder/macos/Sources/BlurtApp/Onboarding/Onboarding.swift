@@ -47,15 +47,18 @@
 //      Mac comes back online. Its sentence blames the network only when macOS says the Mac is offline
 //      (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows Checking… for at least a second with
 //      the footer kept, and a retry still blocked says when it tried;
-//   4. try it — a practice card: the key as a keycap and what to do with it, the box the words land in, a check once
-//      the first dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the
-//      double tap came (Dictation.sendAttempts; no Return goes into Blurt's own window). While dictation can't be
-//      tried, the card is a notice that says why (permissions, the recogniser still coming down with its bar, no
-//      model, the tools) and the footer's primary is the fix — never a button that does nothing; with the recogniser
-//      in and polish still downloading it says dictation works already. While Cards is on, one row under the card
-//      teaches the card: ⌥A, it hangs under the notch, drag it into a chat (the gesture new users missed). "Open
-//      Blurt at login" is the step's last row
-//      (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies it and closes.
+//   4. try it — a practice card that hugs what it holds: the box the words land in, then a short checklist under a
+//      hairline — what to do (the key as a keycap by a hollow ring), swapped in place for "It works" with the ok check
+//      once the first dictation lands, then (double-tap send on) the second item: the double tap as two keycaps and
+//      what it does in a chat, checked once the double tap came (Dictation.sendAttempts; no Return goes into Blurt's
+//      own window). A soft accent ring only while the empty box waits; after, the neutral edge, so Done is the one
+//      colour left. While dictation can't be tried, the card is a notice that says why (permissions, the recogniser
+//      still coming down with its bar, no model, the tools) and the footer's primary is the fix — never a button that
+//      does nothing; with the recogniser in and polish still downloading it says dictation works already. While Cards
+//      is on, one quiet line under the card teaches the card: ⌥A as keycaps, snap, drag it into a chat (the gesture
+//      new users missed) — a tip, not a row. "Open Blurt at login" is the step's one row, a plain setting right under
+//      the practice (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies it and
+//      closes.
 // The headline is the welcome on the first step, then the step's own name and one line. Wherever the dictation key is
 // explained, so is the double tap (it presses Return). The models' downloads are the app's one download manager's
 // (App/ModelDownloads.swift): closing the assistant mid-download says they carry on, and where to see them. Sizes:
@@ -508,7 +511,8 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, OnbMetrics.inset).padding(.bottom, 12)
             }
-            Divider()
+            // the footer's rule on the content column, as the rows' hairlines (not from the hero's edge to the window's)
+            OnbHairline().padding(.horizontal, OnbMetrics.inset)
             footer
         }
     }
@@ -730,10 +734,10 @@ struct OnboardingView: View {
     }
 
     /// "Open Blurt at login": the last row of the last step, Try it (with Dictation off the first step is the whole
-    /// assistant, and it is the footer's checkbox there).
+    /// assistant, and it is the footer's checkbox there): a setting as in Settings, no glyph tile, no hairline over it.
     var loginRow: some View {
-        OnbRow(image: GlyphTile.brand(.power), title: T("settings.general.login"),
-               detail: T(m.dictationOn ? "onboarding.login.detail" : "onboarding.login.detail_keys")) {
+        OnbRow(image: nil, title: T("settings.general.login"),
+               detail: T(m.dictationOn ? "onboarding.login.detail" : "onboarding.login.detail_keys"), first: true) {
             Toggle(T("settings.general.login"), isOn: $m.openAtLogin).labelsHidden()
                 .toggleStyle(BrandSwitchStyle(label: T("settings.general.login")))
         }
@@ -1271,7 +1275,7 @@ struct OnboardingView: View {
 
     var tryIt: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // one place for the practice: the card, or (while it can't be tried) why, in the card's own size
+            // one place for the practice: the card, or (while it can't be tried) why, in about the card's own size
             if let b = tryBlock {
                 tryNotice(b).frame(height: OnboardingView.tryHeight)
             } else {
@@ -1280,18 +1284,24 @@ struct OnboardingView: View {
             if tryBlock == nil, !m.tried, models.downloading, models.dictationReady, !showsDownloadLine {
                 // dictation works already; polish (and the voice-note model) are still coming
                 Text(T("onboarding.try.polish_coming", size(models.restMB))).font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 10)
             }
-            Spacer(minLength: 16)
-            // the card, while Cards is on: the one gesture new users missed, in the row language — its key as caps
+            // the card, while Cards is on: the one gesture new users missed — one quiet line under the practice (a tip,
+            // not a row: the one row of this step is a setting)
             if OnboardingFlow.teachesCard(off: m.off, step: m.step) {
                 let caps = KeyCaps.split(hk(.snap))
-                OnbRow(image: GlyphTile.brand(.cards), title: T("onboarding.try.card.title"), detail: T("onboarding.try.card.detail")) {
+                HStack(alignment: .center, spacing: 8) {
                     if !caps.isEmpty { KeyCaps(caps) }
+                    Text(T("onboarding.try.card.detail")).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .padding(.top, 14)
                 .accessibilityElement(children: .combine)
             }
-            loginRow
+            // the one setting of the step follows the practice (one column, top down; the room left is under it, not
+            // a hole between the card and a row pushed down to the footer)
+            loginRow.padding(.top, 18)
+            Spacer(minLength: 0)
         }
         .onAppear {
             m.startTry()
@@ -1300,7 +1310,10 @@ struct OnboardingView: View {
         .onDisappear { m.stopTry() }
     }
 
-    static let tryHeight: CGFloat = 224
+    /// A notice standing in for the practice card (permissions, the recogniser coming down…): about the card's height.
+    static let tryHeight: CGFloat = 150
+    /// The card's text inset: the words and the checklist start on one column.
+    static let tryInset: CGFloat = 14
 
     @ViewBuilder func tryNotice(_ b: TryBlock) -> some View {
         switch b {
@@ -1327,43 +1340,59 @@ struct OnboardingView: View {
         }
     }
 
-    /// The practice card: the key as a keycap and what to do with it, the box the words land in, then the checks.
+    /// The practice card: the box the words land in, then a short checklist under a hairline — first what to do (the
+    /// key as a keycap by a hollow ring), swapped in place for "It works" with the ok check once the first dictation
+    /// lands; then (double-tap send on) the second item, the double tap as two keycaps, checked once it came. The card
+    /// hugs what it holds. Its edge is the inset box's neutral one (Settings' boxes); a soft accent ring only while the
+    /// empty box waits for the first dictation, so after it the one coloured thing left is Done.
     var practice: some View {
-        let key = Dictation.keyShort(m.dictationKey).trimmingCharacters(in: .whitespaces)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                KeyCaps(OnboardingView.dictationCaps(m.dictationKey), size: 13)
-                Text(T(m.dictationMode == .hold ? "onboarding.try.how.hold" : "onboarding.try.how"))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-            }
+        let caps = OnboardingView.dictationCaps(m.dictationKey)
+        let ringed = tryFocused && !m.tried
+        return VStack(alignment: .leading, spacing: 0) {
             TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
-                .lineLimit(3...5)
+                .lineLimit(m.tried ? 1...5 : 2...5)
                 .focused($tryFocused)
-            if m.tried {
-                VStack(alignment: .leading, spacing: 6) {
-                    check(T("onboarding.try.works"))
+                .padding(.horizontal, OnboardingView.tryInset).padding(.vertical, 12)
+            OnbHairline().padding(.horizontal, 12)
+            VStack(alignment: .leading, spacing: 8) {
+                if m.tried {
+                    tryItem(done: true, caps: nil, text: T("onboarding.try.works"))
                     // the second exercise: the double tap that sends (taught here, before it surprises in a chat)
                     if Dictation.doubleTapSend {
-                        if m.sendTried { check(T("onboarding.try.sent")) }
-                        else {
-                            Text(T("onboarding.try.send_next", key)).font(.system(size: 12)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.leading, StatusDot.size + 8)
-                        }
+                        tryItem(done: m.sendTried, caps: caps + caps, text: T("onboarding.try.send"))
                     }
+                } else {
+                    tryItem(done: false, caps: caps,
+                            text: T(m.dictationMode == .hold ? "onboarding.try.how.hold" : "onboarding.try.how"))
                 }
             }
+            .padding(.horizontal, OnboardingView.tryInset).padding(.vertical, 11)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: OnboardingView.tryHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)         // its own height, never stretched to the login row
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(tryFocused ? Color.brandAccent : Color.primary.opacity(0.12), lineWidth: tryFocused ? 1.5 : 0.5))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.035)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+        // the focus ring, as macOS draws one: a soft accent halo just outside the edge
+        .overlay(RoundedRectangle(cornerRadius: 11.5, style: .continuous).stroke(Color.brandAccent.opacity(0.4), lineWidth: 3)
+            .padding(-1.5).opacity(ringed ? 1 : 0))
         .contentShape(Rectangle())
         .onTapGesture { tryFocused = true }
+    }
+
+    /// One item of the practice checklist: a hollow ring that becomes the ok check (the shape twin), the keys as
+    /// keycaps, one line. Done reads in the primary ink, what is still to do in the secondary.
+    func tryItem(done: Bool, caps: [String]?, text: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            StatusDot(tone: done ? .good : .off, diameter: 13)
+            if let c = caps, !c.isEmpty { KeyCaps(c) }
+            Text(text).font(.system(size: 13)).foregroundStyle(done ? .primary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: 20)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(T(done ? "onboarding.try.item_done" : "onboarding.try.item_todo"))
     }
 }
 
@@ -1604,6 +1633,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         case "login": m.openAtLogin = a.count > 1 && a[1] == "on"
         // tried [TEXT…]: as if the first dictation had landed in the Try-it box (TEXT: what it typed there)
         case "tried": m.tried = true; m.tryText = a.dropFirst().joined(separator: " ")
+        // sent: as if the double tap that sends came after it (the second item checked)
+        case "sent": m.sendTried = true
         case "done": m.done()
         default: break
         }

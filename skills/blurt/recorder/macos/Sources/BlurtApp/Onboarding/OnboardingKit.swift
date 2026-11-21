@@ -152,6 +152,15 @@ struct OnbRow<Trailing: View>: View {
     }
 }
 
+/// The one hairline of the assistant: one device pixel of `separatorColor` (between rows, under the practice card's
+/// words, over the footer).
+struct OnbHairline: View {
+    @Environment(\.displayScale) private var scale
+    var body: some View {
+        Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).accessibilityHidden(true)
+    }
+}
+
 extension OnbRow where Trailing == EmptyView {
     init(image: NSImage?, title: String, detail: String?, first: Bool = false) {
         self.init(image: image, title: title, detail: detail, first: first) { EmptyView() }
