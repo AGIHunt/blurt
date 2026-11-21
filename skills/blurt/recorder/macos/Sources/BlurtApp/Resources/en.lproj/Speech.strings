@@ -183,14 +183,14 @@
 "speech.auto.footer" = "Automatic chooses models based on your Mac (%@), your languages and connected services.";
 
 /* Model library: what each model is for (v1.0.6) */
-"speech.lib.note2" = "Recommended models are picked for your Mac’s memory. Speed and memory are measured; ✓ means measured on your Mac.";
+"speech.lib.note2" = "Recommended models are picked for your Mac’s memory.";
 "speech.lib.more" = "More models (%d)";
 "speech.lib.in_use" = "In use: %@";
 "speech.tag.recommended" = "Recommended";
 "speech.tag.small_mac" = "For Macs with less memory";
 "speech.tag.apple-speech" = "Built in, no download; weaker on sound-alike words";
 "speech.tag.qwen3-asr-0.6b-mlx" = "Accurate, uses your Words";
-"speech.tag.qwen3-asr-1.7b-mlx" = "A little better at English; 2.5× the size";
+"speech.tag.qwen3-asr-1.7b-mlx" = "A little better at English than Qwen3-ASR 0.6B";
 "speech.tag.fun-asr-nano-mlx" = "Better at Chinese mixed with English; fast";
 "speech.tag.sensevoice-small" = "Smallest and fastest; doesn’t use your Words";
 "speech.tag.whisper-large-v3-turbo-mlx" = "The most languages";

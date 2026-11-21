@@ -1125,8 +1125,9 @@ private struct ModelLibrary: View {
                 }
             }
             note.padding(.top, 6).fixedSize(horizontal: false, vertical: true)
-            // a dozen rows at most: the sheet grows to fit them instead of scrolling
-            SettingsGroup("speech.models", title: "") {
+            // a dozen rows at most: the sheet grows to fit them instead of scrolling. Open, no box: the table shares the
+            // title's and Done's edges
+            SettingsGroup("speech.models", title: "", boxed: false) {
                 header
                 if tab == .asr {
                     ForEach(asrModels.filter(shown)) { asrRow($0) }
@@ -1138,19 +1139,24 @@ private struct ModelLibrary: View {
                     if !rest.isEmpty { moreToggle(rest.count); if more { ForEach(rest) { polishRow($0) } } }
                 }
             }
-            .padding(.top, -12)
+            .padding(.top, 16 - SettingsMetrics.groupGap)
             HStack(alignment: .center) {
                 if tab == .asr && m.models.contains(where: { $0.local && !($0.runsHere ?? true) }) {
                     Text(S("speech.models.elsewhere")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(S("speech.lib.done"), action: close).keyboardShortcut(.defaultAction)
+                Button(S("speech.lib.done"), action: close)
+                    .buttonStyle(.borderedProminent).tint(Color.settingsDefault)
+                    .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 14)
         }
         .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 820)
+        // 740 pt, as Dictation Choices: inside the Settings window at its 760 pt minimum
+        .frame(width: 740)
         .fixedSize(horizontal: false, vertical: true)
+        // screenshots of a test build in the background: drawn as the key sheet people see, Done filled
+        .modifier(TestKeyLook(on: SettingsTestKeyLook.on))
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
             Button(S("speech.cancel"), role: .cancel) { confirmRemove = nil }
@@ -1225,7 +1231,7 @@ private struct ModelLibrary: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 8).padding(.leading, SettingsMetrics.iconSlot + Col.gap)
+        .padding(.vertical, 8)
         .accessibilityLabel(S("speech.lib.more", n))
     }
 
@@ -1256,7 +1262,6 @@ private struct ModelLibrary: View {
 
     var header: some View {
         HStack(spacing: Col.gap) {
-            Color.clear.frame(width: SettingsMetrics.iconSlot)
             headerCell(S("speech.lib.col.model"), width: nil, trailing: false)
             headerCell(S("speech.lib.col.used"), width: Col.used, trailing: false)
             if tab == .asr {
@@ -1298,15 +1303,19 @@ private struct ModelLibrary: View {
         return row(id: x.id, installed: x.installed, name: x.title, help: describe(x), used: used, inUse: !uses.isEmpty) {
             MetricCell(text: speed.map { S("speech.metric.speed.value", decimal($0.value)) }, measured: speed?.measured == true,
                        width: Col.speed, dash: dash)
-            MetricCell(text: memory.map { modelSize($0.value) }, measured: memory?.measured == true, width: Col.memory, dash: dash)
-            MetricCell(text: modelSize(x.sizeMB), measured: false, width: Col.size, dash: "", seal: false)
+            // macOS Speech: built in, nothing to download and no model of ours in memory — never "0 MB"
+            MetricCell(text: memory.flatMap { $0.value > 0 ? modelSize($0.value) : nil }, measured: memory?.measured == true,
+                       width: Col.memory, dash: x.sizeMB > 0 ? dash : S("speech.compare.builtin"))
+            MetricCell(text: x.sizeMB > 0 ? modelSize(x.sizeMB) : S("speech.compare.builtin"), measured: false, width: Col.size,
+                       dash: "", seal: false)
         } action: {
             if m.download(x.id) != nil {
                 stopButton(x.id)
             } else if m.benching.contains(x.id) {
                 BrandSpinnerView(size: 12)
             } else if !x.installed {
-                if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { m.startDownload(x) } }
+                // a model not on this Mac shows its Download at rest: the one way to tell it from one that is
+                Button(S("speech.download.button")) { m.startDownload(x) }.controlSize(.small)
             } else if hover == x.id {
                 HStack(spacing: 6) {
                     if uses.count < everyJob { useButton { m.useEverywhere(x) } }
@@ -1356,7 +1365,7 @@ private struct ModelLibrary: View {
             if m.download(x.id) != nil {
                 stopButton(x.id)
             } else if !x.installed {
-                if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { d.download(x) } }
+                Button(S("speech.download.button")) { d.download(x) }.controlSize(.small)
             } else if hover == x.id && !inUse {
                 useButton { d.choose(x) }
             }
@@ -1392,10 +1401,8 @@ private struct ModelLibrary: View {
                                                          @ViewBuilder menu: () -> Items) -> some View {
         SettingsLine(padding: 5) {
             HStack(spacing: Col.gap) {
-                // the one install mark: a quiet check for a model on this Mac (what it does is in Used for)
-                Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                    .opacity(installed ? 1 : 0).frame(width: SettingsMetrics.iconSlot)
-                    .accessibilityHidden(true)
+                // no install mark of its own: a model not on this Mac shows Download at rest, one in use says so in About
+                // (a leading ✓ read as "measured", the seal's meaning)
                 // a long name ("Whisper large-v3-turbo (4-bit)") wraps rather than losing its end; the tooltip names it too
                 Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1403,15 +1410,19 @@ private struct ModelLibrary: View {
                     .help(help.isEmpty ? name : name + "\n" + help)
                 Group {
                     if used.jobs.isEmpty {
+                        // two lines rather than a cut ("Recommended · A little better at Eng…")
                         Text(used.text).font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
                             .foregroundStyle(used.err ? AnyShapeStyle(Color.brandErr) : AnyShapeStyle(.secondary))
-                            .lineLimit(1).truncationMode(.tail)
+                            .lineLimit(2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
                             .help(used.text)
                     } else {
                         // in words, not icons (v1.0.6: nobody could read the icon row): "In use: dictation, voice notes"
                         let names = Loc.list(used.jobs.enumerated().map { i, j in i == 0 ? j.title : j.title.lowercased(with: Loc.locale) })
-                        Text(S("speech.lib.in_use", names)).font(.system(size: SettingsMetrics.detailSize))
-                            .foregroundStyle(Color.brandInk).lineLimit(1).truncationMode(.tail)
+                        // the check in brand ink, the words in neutral ink (brand ink is a link's colour)
+                        (Text(Image(systemName: "checkmark")).foregroundColor(Color.brandInk)
+                            + Text(" " + S("speech.lib.in_use", names)).foregroundColor(.primary))
+                            .font(.system(size: SettingsMetrics.detailSize))
+                            .lineLimit(2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
                             .help(S("speech.lib.in_use", names))
                     }
                 }

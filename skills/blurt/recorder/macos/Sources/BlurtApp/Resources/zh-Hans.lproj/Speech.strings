@@ -183,14 +183,14 @@
 "speech.auto.footer" = "「自动」会根据你的 Mac（%@）、语言和已连接的服务选择模型。";
 
 /* Model library: what each model is for (v1.0.6) */
-"speech.lib.note2" = "推荐模型根据本机内存选择。速度和内存为实测值，带 ✓ 的在本机测得。";
+"speech.lib.note2" = "推荐模型根据本机内存选择。";
 "speech.lib.more" = "更多模型（%d）";
 "speech.lib.in_use" = "使用中：%@";
 "speech.tag.recommended" = "推荐";
 "speech.tag.small_mac" = "适合内存小的 Mac";
 "speech.tag.apple-speech" = "系统自带，无需下载；同音字识别较弱";
 "speech.tag.qwen3-asr-0.6b-mlx" = "准确，支持词库";
-"speech.tag.qwen3-asr-1.7b-mlx" = "英文稍好，体积是 0.6B 的 2.5 倍";
+"speech.tag.qwen3-asr-1.7b-mlx" = "英文比 Qwen3-ASR 0.6B 稍好";
 "speech.tag.fun-asr-nano-mlx" = "中英混说更准，速度快";
 "speech.tag.sensevoice-small" = "最小最快，不支持词库";
 "speech.tag.whisper-large-v3-turbo-mlx" = "支持的语言最多";
