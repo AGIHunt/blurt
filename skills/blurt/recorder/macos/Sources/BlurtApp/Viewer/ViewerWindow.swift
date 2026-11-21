@@ -1,5 +1,6 @@
 // A window per computer (docs/design/remote-desktop-viewer.md): the host's screen, sized to the window; a toolbar with the computer's name,
-// the path and round trip, the display switcher (two displays or more), Keys to Remote, the picture's quality and a ⋯ menu. Several
+// the path (and the round trip once it's slow), then a few small icons as Screen Sharing has them: Keys to Remote (a toggle that shows
+// whether it's on), the display switcher (two displays or more) and a ⋯ menu that holds the rest, the picture's quality included. Several
 // computers are several windows, and macOS merges them into tabs when asked. Keys go only to the window in front.
 //
 // Each window has its own link, so its own session: a second window on another display of the same computer is a second session, which
@@ -9,18 +10,18 @@ import BlurtCore
 import BlurtRemoteKit
 import Network
 
-final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuDelegate {
+final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuDelegate, NSPopoverDelegate {
     private static var windows: [ViewerWindowController] = []
 
     let computer: RemoteComputer
     let link: RemoteViewerLink
     private let screen: RemoteViewerScreen
     private let picture = ViewerPictureView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800))
-    private let overlay = NSStackView()
-    /// the overlay's dark card, behind the sentence and its button
-    private let overlayCard = NSView()
-    private let overlayText = NSTextField(wrappingLabelWithString: "")
-    private let overlayButton = NSButton(title: "", target: nil, action: nil)
+    /// the cover over a picture that stopped or never came: what's happening, how long, and the way on or out (ViewerCoverView)
+    private let cover = ViewerCoverView()
+    /// when the link went down (or the window began connecting): the cover's "trying for 0:12"
+    private var downSince: Double?
+    private var coverClock: Timer?
     /// another window of a computer already open: the host keeps it beside the first
     private let second: Bool
 
@@ -64,30 +65,34 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private lazy var files: ViewerFileSender = {
         let f = ViewerFileSender(link: link)
-        f.onState = { [weak self] state, what in
-            guard let self else { return }
-            switch state {
-            case "sending": self.picture.showHint(T("viewer.file.sending", what), seconds: nil)
-            case "saved": self.picture.showHint(T("viewer.file.saved", what), seconds: 5)
-            default:
-                let key = switch what {
-                case "space": "viewer.file.failed.space"
-                case "too_big": "viewer.file.failed.too_big"
-                case "locked": "viewer.file.failed.locked"
-                default: "viewer.file.failed.other"
-                }
-                self.picture.showHint(T(key), seconds: 5)
-            }
-        }
+        f.onEvent = { [weak self] e in self?.showFile(e) }
+        fileCard.onStop = { [weak f] in f?.stop() }
         return f
     }()
+
+    /// the file going there (or just through): its own card over the picture, apart from the keys hint
+    private let fileCard = ViewerFileCard()
+    private var fileCardBottom: NSLayoutConstraint?
+
+    private func showFile(_ e: ViewerFileSender.Event) {
+        fileCard.show(e, to: window?.title ?? link.computer.name)
+        placeFileCard()
+    }
+
+    /// The card keeps above the band where a host keeps its taskbar or Dock (about 7 % of its screen's height: Windows' taskbar
+    /// at 200 % on 1440 px, a Mac's Dock): 12 pt over that band, 64 pt at least.
+    private func placeFileCard() {
+        guard let content = window?.contentView else { return }
+        let band = (content.bounds.height * 0.075).rounded()
+        fileCardBottom?.constant = -max(64, band + 12)
+    }
 
     /// The host takes files (its session lists `files`)
     private var hostTakesFiles: Bool { link.session?.features?.contains(RemoteFeature.files) == true }
 
     func sendFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        guard hostTakesFiles else { return picture.showHint(T("viewer.file.failed.other"), seconds: 3) }
+        guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other")) }
         files.send(urls)
     }
 
@@ -121,12 +126,15 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var pasteboardSeen = 0
     private var held = Set<UInt16>()
 
-    // toolbar
-    private let displayButton = NSButton(title: "", target: nil, action: nil)
-    private let keysButton = NSButton(title: "", target: nil, action: nil)
-    private let qualityButton = NSPopUpButton(frame: .zero, pullsDown: true)
-    private let moreButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    // toolbar: icon-only items (no text, no chevrons), so the picture stays the window's one focus and the bar keeps one width in every
+    // language; each says what it does in its tooltip and, in the overflow menu, its label
     private var displayItem: NSToolbarItem?
+    private var keysItem: NSToolbarItem?
+    private let moreMenu = NSMenu()
+    /// the display switcher while it's open (kept current as the host's displays change)
+    private var displaysPopover: NSPopover?
+    private var displaysMap: ViewerDisplayMap?
+    private var displaysClosed = Date.distantPast
 
     // MARK: opening
 
@@ -210,11 +218,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         picture.frame = content.bounds
         w.contentView = content
         picture.acceptFiles()
-        buildOverlay(in: content)
+        // layer-backed, so the cover and its buttons draw over the picture's layer
+        content.wantsLayer = true
+        buildFileCard(in: content)
+        buildCover(in: content)
         buildToolbar(w)
+        // screenshots of a test build behind the user's apps: drawn as the key window (BLURT_TEST_KEY_LOOK), focus untouched
+        MainActor.assumeIsolated { SettingsTestKeyLook.apply(to: w) }
         wire()
         if link.state == .connected { connected() } else { stateChanged(link.state) }
         link.start()
+        updateControls()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -265,16 +279,18 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             // the host's own sentence is for phones (English only): the viewer says it in its own words
             let key = ["off": "viewer.screen_off", "permission": "viewer.screen_permission", "one_display": "viewer.one_display"][why]
             // Try Again asks for the screen once more: a permission given, or the host's Remote Desktop dialog answered since
-            showOverlay(T(key ?? "viewer.screen_failed", name), button: why == "off" ? nil : (T("viewer.retry"), #selector(retryScreen)))
+            showCover(.init(mark: .attention, title: T(key ?? "viewer.screen_failed", name),
+                            primary: why == "off" ? nil : (T("viewer.retry"), #selector(retryScreen))))
         case let .screenLocked(locked):
             // the stream stops at a lock screen this host can't show: the last picture stays, darker, and says why
             guard screenOn else { return }
             if locked {
                 picture.stale = true
                 // GNOME ends screen sharing at its lock; its own Remote Login reaches the login screen
-                showOverlay(T(host == .linux ? "viewer.locked.linux" : "viewer.locked", link.computer.name), button: nil)
+                showCover(.init(mark: .symbol("lock.fill"), title: T("viewer.locked.title", link.computer.name),
+                                detail: T(host == .linux ? "viewer.locked.linux.detail" : "viewer.locked.detail")))
             } else {
-                hideOverlay()
+                hideCover()
                 link.send(.requestKeyframe)
             }
             emit(["event": "viewer_locked", "locked": locked])
@@ -287,6 +303,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case let .session(i):
             remoteCanControl = i.canControl
             window?.title = i.macName
+            updateKeys()
             if !i.canControl { picture.showHint(T("viewer.no_control", i.macName), seconds: nil) }
             updateMore()
         default: break
@@ -296,45 +313,51 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private func stateChanged(_ s: RemoteViewerLink.State) {
         let name = link.computer.name
         emit(["event": "viewer_link", "state": "\(s)", "route": link.route.map { "\($0)" } ?? "", "trying": link.trying.map { "\($0)" } ?? "", "lost": link.lostWhy])
+        // the clock the cover counts from: the moment the link went down, or the window began connecting
+        if s == .connected { downSince = nil } else if downSince == nil { downSince = CACurrentMediaTime() }
         switch s {
         case .connected: connected()
-        case .connecting:
-            // a drop: the last picture stays, darker, while it comes back by itself (it never asks to pair again)
-            stopPicture(keep: true)
-            showOverlay(T(picture.hasPicture ? "viewer.reconnecting" : "viewer.connecting"), button: nil)
+        case .connecting, .waiting:
+            // a drop: the last picture stays, frozen, while it comes back by itself (it never asks to pair again)
+            if s == .connecting { stopPicture(keep: true) }
+            let again = picture.hasPicture
+            showCover(.init(mark: .working, title: T(again ? "viewer.reconnecting.to" : "viewer.connecting.to", name), timed: .trying))
         case .unreachable:
             stopPicture(keep: true)
-            // a Mac that restarted with FileVault on waits for its disk password at the computer: nothing reaches it before that
-            showOverlay(T(host == .mac ? "viewer.unreachable.mac" : "viewer.unreachable", name), button: (T("viewer.retry"), #selector(retry)))
-        case .waiting: showOverlay(T("viewer.connecting"), button: nil)
+            // it goes on trying by itself; a Mac that restarted with FileVault on waits for its disk password at the computer: nothing
+            // reaches it before that
+            showCover(.init(mark: .attention, title: T("viewer.unreachable", name), detail: host == .mac ? T("viewer.unreachable.mac.detail") : nil,
+                            timed: .stillTrying, primary: (T("viewer.retry"), #selector(retry))))
         case .forgotten, .removed:
             // its key is no good there now: the way back is to add it again (removed in a session is certain, and the list says so
             // until then; a refused key alone only for this run, the key kept)
             stopPicture()
             ViewerStore.shared.hostRemoved(computer.id, inSession: s == .removed)
-            showOverlay(T("viewer.forgotten", name), button: (T("viewer.add_again"), #selector(addAgain)))
+            showCover(.init(mark: .attention, title: T("viewer.forgotten", name), primary: (T("viewer.add_again"), #selector(addAgain))))
         case .pairingFailed:
             // a pairing's own end, said in the Add Computer sheet; a window only ever adopts a link that paired
             stopPicture()
-            showOverlay(T("viewer.forgotten", name), button: (T("viewer.add_again"), #selector(addAgain)))
+            showCover(.init(mark: .attention, title: T("viewer.forgotten", name), primary: (T("viewer.add_again"), #selector(addAgain))))
         case .replaced:
             stopPicture()
-            showOverlay(T("viewer.replaced", name), button: (T("viewer.take_over"), #selector(takeOver)))
+            showCover(.init(mark: .symbol("desktopcomputer"), title: T("viewer.replaced", name), primary: (T("viewer.take_over"), #selector(takeOver))))
         case .ended:
             stopPicture()
-            showOverlay(T("viewer.ended", name), button: (T("viewer.reconnect"), #selector(takeOver)))
+            showCover(.init(mark: .symbol("desktopcomputer"), title: T("viewer.ended", name), primary: (T("viewer.reconnect"), #selector(takeOver))))
         case .away(.noDirect):
             stopPicture()
-            showOverlay(T("viewer.no_direct"), button: (T("viewer.retry"), #selector(retry)))
+            showCover(.init(mark: .attention, title: T("viewer.no_direct"), primary: (T("viewer.retry"), #selector(retry))))
         case .away(.relayDown):
             // still trying, now through the public connection service as well
             stopPicture(keep: true)
-            showOverlay(T("viewer.relay_down", name), button: (T("viewer.retry"), #selector(retry)))
+            showCover(.init(mark: .working, title: T("viewer.relay_down", name), timed: .trying, primary: (T("viewer.retry"), #selector(retry))))
         case .away(.busy):
             // over today's limit: it waits by itself (30 s, 2 min, 10 min, hourly); asking again now changes nothing
             stopPicture()
-            showOverlay(T("viewer.busy"), button: nil)
+            showCover(.init(mark: .attention, title: T("viewer.busy")))
         }
+        updateControls()
+        updateMore()
         if !second {
             switch s {
             case let .away(a): ViewerStore.shared.awayChanged(computer.id, a)
@@ -347,7 +370,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     private func connected() {
-        hideOverlay()
+        hideCover()
         updateMore()
         startPicture()
         ViewerStore.shared.liveChanged(computer.id, route: link.route, rtt: link.rtt, open: !second)
@@ -361,50 +384,93 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func routeChanged(_ r: RemoteViewerLink.Route?, _ rtt: Double?) {
         updateSubtitle()
-        updateQuality()      // another path may cost data, or no longer
+        updateMore()      // another path may cost data, or no longer (the quality menu says so)
         if link.state == .connected, !second { ViewerStore.shared.liveChanged(computer.id, route: r, rtt: rtt, open: true) }
         // away and back: the picture's ceiling changes with the path (a new round trip alone changes nothing)
         if screenOn, r != pictureRoute { askForPicture() }
         pictureRoute = r
     }
 
-    /// The window takes the host's shape: no bars beside the picture, and resizing keeps it (full screen is the system's own).
+    /// The window takes the host's shape: no bars beside the picture, and every size keeps it, a drag (`contentAspectRatio`) and a size
+    /// set in code alike (`snap`); the system's full screen is its own.
     private func fit(_ size: CGSize) {
-        guard size.width > 0, size.height > 0 else { return }
-        let changed = picture.source != size
+        guard size.width > 0, size.height > 0, let w = window else { return }
         picture.source = size
-        guard changed, let w = window, !w.styleMask.contains(.fullScreen) else { return }
+        shaped = true
         w.contentAspectRatio = size
-        let content = w.contentRect(forFrameRect: w.frame)
-        var target = NSRect(x: content.minX, y: content.maxY, width: content.width, height: (content.width * size.height / size.width).rounded())
-        if let screen = w.screen?.visibleFrame, target.height > screen.height - 40 {
-            target.size.height = screen.height - 80
-            target.size.width = (target.height * size.width / size.height).rounded()
+        // the smallest window in the host's shape: 480 pt along its long side, 270 along its short one (a 16:9 host: 480 × 270)
+        let long = max(size.width, size.height), short = min(size.width, size.height)
+        let k = max(480 / long, 270 / short)
+        // the content's minimum only: AppKit derives the frame's
+        w.contentMinSize = NSSize(width: (size.width * k).rounded(), height: (size.height * k).rounded())
+        snap()
+    }
+
+    /// the host's shape is known (its first screenView): from then on every size of the window keeps it
+    private var shaped = false
+    private var snapping = false
+
+    /// The title bar and toolbar's height: the frame above the content.
+    private func chrome(_ w: NSWindow) -> CGFloat { w.frame.height - (w.contentView?.frame.height ?? w.contentLayoutRect.height) }
+
+    /// The content back in the host's shape at its width (its top edge kept), as large as the screen allows. Not in full screen, and not
+    /// for a window in a tab group: its tabs share one frame, and two hosts of two shapes would pull it back and forth.
+    private func snap() {
+        guard shaped, !snapping, let w = window, let content = w.contentView, !w.styleMask.contains(.fullScreen),
+              (w.tabbedWindows?.count ?? 1) <= 1 else { return }
+        let size = picture.source
+        let bar = chrome(w)
+        var width = content.frame.width
+        var height = (width * size.height / size.width).rounded()
+        if let screen = w.screen?.visibleFrame, height + bar > screen.height {
+            height = screen.height - bar - 40
+            width = (height * size.width / size.height).rounded()
         }
-        target.origin.y = content.maxY - target.height
-        w.setFrame(w.frameRect(forContentRect: target), display: true, animate: false)
+        let least = w.contentMinSize
+        if width < least.width || height < least.height { width = least.width; height = least.height }
+        guard abs(width - content.frame.width) > 0.5 || abs(height - content.frame.height) > 0.5 else { return }
+        let f = w.frame
+        snapping = true
+        w.setFrame(NSRect(x: f.minX, y: f.maxY - height - bar, width: width, height: height + bar), display: true, animate: false)
+        snapping = false
+    }
+
+    /// Zoom (a double-click on the title bar, ⌥ on the green button): the largest window in the host's shape on this screen.
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
+        guard shaped else { return defaultFrame }
+        let size = picture.source, bar = chrome(window)
+        let k = min(defaultFrame.width / size.width, (defaultFrame.height - bar) / size.height)
+        let w = (size.width * k).rounded(), h = (size.height * k).rounded()
+        return NSRect(x: defaultFrame.minX, y: defaultFrame.maxY - h - bar, width: w, height: h + bar)
     }
 
     private func updateSubtitle() {
         guard let w = window else { return }
-        // before it's up: the way being tried (公共连接服务 until the move), only while it is being tried; a state that waits on the user
-        // (can't reach, ended, removed…) names no path, which would read as if it worked. Then the real path and the round trip
+        // before it's up: what the cover says, in a word (the way being tried is on the cover, beside how long); a state that waits on the
+        // user names no path, which would read as if it worked. Then the real path and the round trip
         guard link.state == .connected else {
             switch link.state {
-            case .connecting, .waiting, .away(.relayDown): w.subtitle = ViewerStore.trying(link.trying)
-            default: w.subtitle = ""
+            case .connecting, .waiting, .away(.relayDown): w.subtitle = T(picture.hasPicture ? "viewer.reconnecting" : "viewer.connecting")
+            case .forgotten, .removed, .pairingFailed: w.subtitle = ""
+            default: w.subtitle = T("viewer.not_connected")
             }
             return
         }
+        // the round trip only once it's slow enough to feel (a fast one is noise under the name, as Screen Sharing shows none)
         let path = ViewerStore.path(link.route)
-        w.subtitle = link.rtt.map { T("viewer.path_rtt", path, max(1, Int(($0 * 1000).rounded()))) } ?? path
+        w.subtitle = link.rtt.flatMap { $0 >= Self.slowRTT ? T("viewer.path_rtt", path, Int(($0 * 1000).rounded())) : nil } ?? path
     }
+
+    /// a round trip from which the delay is felt under the pointer: said beside the path
+    static let slowRTT = 0.08
 
     @objc private func retry() {
         if !second { ViewerStore.shared.awayChanged(computer.id, nil) }
         link.tryAgain()
     }
     @objc private func takeOver() { link.takeBack() }
+    /// The way out of any cover (and the ⋯ menu's): the window closes, and with it the session and the retries.
+    @objc private func disconnect() { close() }
     /// The computer removed this Mac: this window has nothing more to show; Add Computer takes its place.
     @objc private func addAgain() {
         ViewerStore.shared.requestAdd()
@@ -412,7 +478,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
     @objc private func retryScreen() {
         guard link.state == .connected else { return retry() }
-        hideOverlay()
+        hideCover()
         startPicture()
     }
 
@@ -452,6 +518,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     func windowDidResize(_ n: Notification) {
+        // a size set in code (a drag keeps the shape by itself): back to the host's shape
+        if window?.inLiveResize == false { snap() }
+        placeFileCard()
         // resizing asks for a new size, once the window has settled
         resizeWait?.cancel()
         let w = DispatchWorkItem { [weak self] in
@@ -487,7 +556,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         guard on != captured, !on || link.state == .connected else { return }
         captured = on
         picture.captured = on
-        keysButton.state = on ? .on : .off
+        updateKeys()
         if on {
             let system = ViewerKeyboard.shared.capture(for: self)
             heldMods = RemoteHeldModifiers()
@@ -500,8 +569,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
                 link.send(.clipboard(t))
             }
             pasteboardSeen = pb.changeCount
-            picture.showHint(system ? T("viewer.release") : T("viewer.release.app_only"))
+            showReleaseHint(system: system)
         } else {
+            // "press ⌃⌘" is no longer true
+            picture.endHint(kind: "release")
             ViewerKeyboard.shared.release(self)
             // nothing stays held on the host
             if !sentMods.isEmpty { link.send(.mods([])) }
@@ -511,6 +582,19 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             link.send(.keysCaptured(false))
             link.send(.releaseAll)
         }
+    }
+
+    /// The keys just came here: the hint pill at the top of the picture, 3 s (6 s with the note on system shortcuts, which takes longer to
+    /// read): "Keyboard and mouse go to Office PC | [⌃][⌘] Release". The display switcher closes first: one floating thing at a time.
+    private func showReleaseHint(system: Bool) {
+        displaysPopover?.close()
+        picture.showHint(releaseHint(system: system), seconds: system ? 3 : 6)
+    }
+
+    /// `system`: the capture has system shortcuts (Input Monitoring); without it a note says they stay on this Mac.
+    private func releaseHint(system: Bool) -> ViewerPictureView.Hint {
+        ViewerPictureView.Hint(text: T("viewer.release.lead", window?.title ?? link.computer.name), keys: ["⌃", "⌘"],
+                               keysWord: T("viewer.release.word"), note: system ? nil : T("viewer.release.app_only.note"), kind: "release")
     }
 
     @objc private func toggleKeys() { setCaptured(!captured) }
@@ -557,65 +641,75 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         link.send(.key(RemoteChord([], name), down: e.down))
     }
 
-    // MARK: the overlay
+    // MARK: the file card
 
-    private func buildOverlay(in content: NSView) {
-        overlay.orientation = .vertical
-        overlay.alignment = .centerX
-        overlay.spacing = 12
-        overlayText.font = .systemFont(ofSize: 15, weight: .medium)
-        overlayText.textColor = .white
-        overlayText.alignment = .center
-        overlayText.preferredMaxLayoutWidth = 380
-        // the sentence and its button on one dark card (the capture surface's, system.md §3.1), so they read over any picture, a light
-        // window's too; drawn by its own layer: a standard bezel over the picture's layer didn't show (measured: attached, framed, not drawn)
-        overlay.wantsLayer = true
-        overlayCard.wantsLayer = true
-        overlayCard.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.88).cgColor
-        overlayCard.layer?.cornerRadius = 12
-        overlayCard.layer?.borderWidth = 0.5
-        overlayCard.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        // the button: the quiet pill (system.md §3.2), white 16 % with a white medium title
-        overlayButton.isBordered = false
-        overlayButton.wantsLayer = true
-        overlayButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.16).cgColor
-        overlayButton.layer?.cornerRadius = 7
-        overlayButton.translatesAutoresizingMaskIntoConstraints = false
-        overlayButton.heightAnchor.constraint(equalToConstant: 30).isActive = true
-        overlayButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
-        overlayButton.target = self
-        overlay.addArrangedSubview(overlayText)
-        overlay.addArrangedSubview(overlayButton)
-        overlay.translatesAutoresizingMaskIntoConstraints = false
-        overlayCard.translatesAutoresizingMaskIntoConstraints = false
-        overlayText.translatesAutoresizingMaskIntoConstraints = false
-        overlayCard.addSubview(overlay)
-        content.addSubview(overlayCard)
-        NSLayoutConstraint.activate([overlay.leadingAnchor.constraint(equalTo: overlayCard.leadingAnchor, constant: 20),
-                                     overlay.trailingAnchor.constraint(equalTo: overlayCard.trailingAnchor, constant: -20),
-                                     overlay.topAnchor.constraint(equalTo: overlayCard.topAnchor, constant: 16),
-                                     overlay.bottomAnchor.constraint(equalTo: overlayCard.bottomAnchor, constant: -16),
-                                     overlayText.widthAnchor.constraint(lessThanOrEqualToConstant: 380),
-                                     overlayCard.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-                                     overlayCard.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-                                     overlayCard.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32)])
+    private func buildFileCard(in content: NSView) {
+        fileCard.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(fileCard)
+        let bottom = fileCard.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -64)
+        let wide = fileCard.widthAnchor.constraint(equalToConstant: ViewerFileCard.width)
+        wide.priority = .defaultHigh
+        NSLayoutConstraint.activate([bottom, wide,
+                                     fileCard.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+                                     fileCard.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12)])
+        fileCardBottom = bottom
     }
 
-    private func showOverlay(_ text: String, button: (String, Selector)?) {
-        overlay.isHidden = false
-        overlayCard.isHidden = false
-        overlayText.stringValue = text
-        overlayButton.isHidden = button == nil
-        if let (t, a) = button {
-            overlayButton.attributedTitle = NSAttributedString(string: "  \(t)  ", attributes: [.foregroundColor: NSColor.white,
-                                                                                                .font: NSFont.systemFont(ofSize: 13, weight: .medium)])
-            overlayButton.action = a
+    // MARK: the cover
+
+    /// The cover's place: on the picture's optical centre (45 % down), above the host's taskbar or dock, the width of a sentence.
+    private func buildCover(in content: NSView) {
+        cover.translatesAutoresizingMaskIntoConstraints = false
+        cover.isHidden = true
+        cover.quiet.target = self
+        cover.quiet.action = #selector(disconnect)
+        cover.primary.target = self
+        content.addSubview(cover)
+        let upper = NSLayoutGuide()
+        content.addLayoutGuide(upper)
+        let wide = cover.widthAnchor.constraint(equalToConstant: ViewerCoverView.width)
+        wide.priority = .defaultHigh
+        let centre = cover.centerYAnchor.constraint(equalTo: upper.bottomAnchor)
+        centre.priority = .defaultHigh
+        NSLayoutConstraint.activate([upper.topAnchor.constraint(equalTo: content.topAnchor),
+                                     upper.heightAnchor.constraint(equalTo: content.heightAnchor, multiplier: 0.45),
+                                     cover.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+                                     centre,
+                                     cover.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: 12),
+                                     cover.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -12),
+                                     wide,
+                                     cover.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -32)])
+    }
+
+    private func showCover(_ c: ViewerCoverView.Cover) {
+        cover.show(c, elapsed: elapsed, route: ViewerStore.trying(link.trying))
+        coverClock?.invalidate()
+        coverClock = nil
+        guard c.timed != nil else { return }
+        // the count goes on by itself, so a retry that's alive never looks like one that hung
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.cover.tick(elapsed: self.elapsed, route: ViewerStore.trying(self.link.trying))
+            }
         }
+        RunLoop.main.add(t, forMode: .common)
+        coverClock = t
     }
 
-    private func hideOverlay() {
-        overlay.isHidden = true
-        overlayCard.isHidden = true
+    private var elapsed: Double { downSince.map { CACurrentMediaTime() - $0 } ?? 0 }
+
+    private func hideCover() {
+        coverClock?.invalidate()
+        coverClock = nil
+        cover.hide()
+    }
+
+    /// What can act only through a live link (the display switcher, Keys to Remote) is dimmed while there's none; ⋯ stays, with Try
+    /// Again and Disconnect in it.
+    private func updateControls() {
+        let up = link.state == .connected
+        for item in [displayItem, keysItem].compactMap({ $0 }) { item.isEnabled = up }
     }
 
     // MARK: the toolbar
@@ -623,7 +717,6 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private enum Item {
         static let displays = NSToolbarItem.Identifier("viewer.displays")
         static let keys = NSToolbarItem.Identifier("viewer.keys")
-        static let quality = NSToolbarItem.Identifier("viewer.quality")
         static let more = NSToolbarItem.Identifier("viewer.more")
     }
 
@@ -635,87 +728,97 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         w.toolbar = t
         w.toolbarStyle = .unified
         w.titleVisibility = .visible
-
-        displayButton.bezelStyle = .texturedRounded
-        displayButton.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: nil)
-        displayButton.imagePosition = .imageLeading
-        displayButton.target = self
-        displayButton.action = #selector(showDisplays(_:))
-
-        keysButton.setButtonType(.pushOnPushOff)
-        keysButton.bezelStyle = .texturedRounded
-        keysButton.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: T("viewer.keys"))
-        keysButton.title = T("viewer.keys")
-        keysButton.imagePosition = .imageLeading
-        keysButton.target = self
-        keysButton.action = #selector(toggleKeys)
-        keysButton.toolTip = T("viewer.release")
-
-        qualityButton.bezelStyle = .texturedRounded
-        qualityButton.menu?.delegate = self
-        moreButton.bezelStyle = .texturedRounded
-        moreButton.menu?.delegate = self
-        updateQuality()
+        moreMenu.delegate = self
+        moreMenu.autoenablesItems = false
         updateMore()
     }
 
+    /// Keys to Remote on its own (it tints while on, and a tinted item leaves its group: kept apart, the bar's shape stays the same),
+    /// then the display switcher (only while the host has two displays or more, updateDisplays) and ⋯ together; a space after them,
+    /// so the bar ends as far in from the right edge as the window's buttons start from the left
     func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Item.displays, Item.keys, Item.quality, Item.more]
+        [.flexibleSpace, Item.keys, .space] + (displays.count > 1 ? [Item.displays] : []) + [Item.more, .space]
     }
 
-    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(t) }
+    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, .space, Item.displays, Item.keys, Item.more]
+    }
+
+    private static func symbol(_ name: String, _ label: String) -> NSImage? {
+        // one line weight for all three: monochrome (display.2's hierarchical fill read heavier than the keyboard and ⋯ beside it)
+        NSImage(systemSymbolName: name, accessibilityDescription: label)?.withSymbolConfiguration(.preferringMonochrome())
+    }
 
     func toolbar(_ t: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        let item = NSToolbarItem(itemIdentifier: id)
         switch id {
         case Item.displays:
-            item.view = displayButton
+            let item = NSToolbarItem(itemIdentifier: id)
             item.label = T("viewer.display.label")
-            displayButton.isHidden = displays.count < 2
+            item.paletteLabel = item.label
+            item.image = Self.symbol("display.2", item.label)
+            item.toolTip = T("viewer.display.tip")
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(showDisplays(_:))
+            // enabled by the link's state (updateControls), not by the responder chain
+            item.autovalidates = false
+            item.isEnabled = link.state == .connected
             displayItem = item
+            return item
         case Item.keys:
-            item.view = keysButton
+            let item = NSToolbarItem(itemIdentifier: id)
             item.label = T("viewer.keys")
-        case Item.quality:
-            item.view = qualityButton
-            item.label = T("viewer.quality")
+            item.paletteLabel = item.label
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(toggleKeys)
+            item.autovalidates = false
+            item.isEnabled = link.state == .connected
+            keysItem = item
+            updateKeys()
+            return item
         case Item.more:
-            item.view = moreButton
+            // the ⋯ alone, as Finder's and Mail's: the ellipsis already says there's a menu
+            let item = NSMenuToolbarItem(itemIdentifier: id)
             item.label = T("viewer.more")
+            item.paletteLabel = item.label
+            item.image = Self.symbol("ellipsis.circle", item.label)
+            item.toolTip = T("viewer.more")
+            item.showsIndicator = false
+            item.menu = moreMenu
+            return item
         default: return nil
         }
-        return item
     }
 
-    private func updateQuality() {
-        let m = qualityButton.menu ?? NSMenu()
-        m.removeAllItems()
-        let head = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        head.image = NSImage(systemSymbolName: "dial.medium", accessibilityDescription: T("viewer.quality"))
-        head.title = T("viewer.quality.\(quality.rawValue)")
-        m.addItem(head)
-        for q in RemoteScreenQuality.allCases {
-            let i = NSMenuItem(title: T("viewer.quality.\(q.rawValue)"), action: #selector(chooseQuality(_:)), keyEquivalent: "")
-            i.target = self
-            i.representedObject = q.rawValue
-            i.state = q == quality ? .on : .off
-            m.addItem(i)
+    /// Keys to Remote: the keyboard outlined while this Mac keeps its keys; filled, in brand ink on the brand tint, while they go to the
+    /// computer (system.md §2: the tint behind the ink), so whether it's on shows at rest. Its tooltip names the computer and the way back.
+    private func updateKeys() {
+        guard let item = keysItem else { return }
+        let title = window?.title ?? ""
+        let name = title.isEmpty ? link.computer.name : title
+        if captured {
+            item.image = Self.symbol("keyboard.fill", item.label)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [BrandColor.ink]))
+            item.toolTip = T("viewer.keys.on", name)
+        } else {
+            item.image = Self.symbol("keyboard", item.label)
+            item.toolTip = T("viewer.keys.off", name)
         }
-        // on a phone's hotspot or cellular: the picture costs data, and Data Saver is the choice that spends little
-        if NWPathLowData.costsData {
-            m.addItem(.separator())
-            let note = NSMenuItem(title: T("viewer.quality.costs_data"), action: nil, keyEquivalent: "")
-            note.isEnabled = false
-            m.addItem(note)
+        if #available(macOS 26.0, *) {
+            item.backgroundTintColor = BrandColor.tint
+            item.style = captured ? .prominent : .plain
         }
-        qualityButton.menu = m
-        qualityButton.toolTip = T("viewer.quality")
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === moreMenu { fillMore() }
     }
 
     @objc private func chooseQuality(_ i: NSMenuItem) {
         guard let q = (i.representedObject as? String).flatMap(RemoteScreenQuality.init(rawValue:)) else { return }
         quality = q
-        updateQuality()
+        updateMore()
         askForPicture()
     }
 
@@ -723,49 +826,73 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
     }
 
-    private func updateMore() {
-        let m = moreButton.menu ?? NSMenu()
+    private func updateMore() { fillMore() }
+
+    private func menuItem(_ key: String, _ action: Selector?, on: Bool? = nil, tip: String? = nil) -> NSMenuItem {
+        let i = NSMenuItem(title: T(key), action: action, keyEquivalent: "")
+        i.target = self
+        if let on { i.state = on ? .on : .off }
+        i.toolTip = tip.map { T($0) }
+        return i
+    }
+
+    /// The ⋯ menu: what's set once and seldom touched (the picture's quality, ⌘ as Ctrl, the clipboard, the cover on the host's screen),
+    /// then what's done now and then (files, Ctrl+Alt+Del), then what's missing here.
+    private func fillMore() {
+        let m = moreMenu
         m.removeAllItems()
-        let head = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        head.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: T("viewer.more"))
-        m.addItem(head)
-        let map = NSMenuItem(title: T("viewer.map_modifiers"), action: host == .mac ? nil : #selector(toggleMapping), keyEquivalent: "")
-        map.target = self
-        map.state = mapping && host != .mac ? .on : .off
-        map.toolTip = T("viewer.map_modifiers.tip")
-        m.addItem(map)
-        let clip = NSMenuItem(title: T("viewer.clipboard"), action: #selector(toggleClipboard), keyEquivalent: "")
-        clip.target = self
-        clip.state = shareClipboard ? .on : .off
-        m.addItem(clip)
-        // a Windows host: its lock and login screens want Ctrl+Alt+Del (sent by the system service where it's on)
-        if host == .windows {
-            let sas = NSMenuItem(title: T("viewer.ctrl_alt_del"), action: #selector(sendSecureAttention), keyEquivalent: "")
-            sas.target = self
-            m.addItem(sas)
+        // the picture's quality: Auto picks for the path, the others hold
+        let q = NSMenuItem(title: T("viewer.quality"), action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        for each in RemoteScreenQuality.allCases {
+            let i = menuItem("viewer.quality.\(each.rawValue)", #selector(chooseQuality(_:)), on: each == quality,
+                             tip: each == .auto ? "viewer.quality.auto.tip" : nil)
+            i.representedObject = each.rawValue
+            sub.addItem(i)
         }
-        if hostTakesFiles {
-            let f = NSMenuItem(title: T("viewer.send_files"), action: #selector(chooseFiles), keyEquivalent: "")
-            f.target = self
-            m.addItem(f)
+        // on a phone's hotspot or cellular: the picture costs data, and Data Saver is the choice that spends little
+        if NWPathLowData.costsData {
+            sub.addItem(.separator())
+            let note = NSMenuItem(title: T("viewer.quality.costs_data"), action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            sub.addItem(note)
         }
+        q.submenu = sub
+        m.addItem(q)
+        m.addItem(.separator())
+        // ⌘ as Ctrl only means something on Windows and Linux
+        if host != .mac { m.addItem(menuItem("viewer.map_modifiers", #selector(toggleMapping), on: mapping, tip: "viewer.map_modifiers.tip")) }
+        m.addItem(menuItem("viewer.clipboard", #selector(toggleClipboard), on: shareClipboard))
         // only where the host can (its session lists `privacy`)
         if link.session?.features?.contains(RemoteFeature.privacy) == true {
-            let p = NSMenuItem(title: T("viewer.privacy"), action: #selector(togglePrivacy), keyEquivalent: "")
-            p.target = self
-            p.state = privacy ? .on : .off
-            p.toolTip = T("viewer.privacy.tip")
-            m.addItem(p)
+            m.addItem(menuItem("viewer.privacy", #selector(togglePrivacy), on: privacy, tip: "viewer.privacy.tip"))
+        }
+        var actions: [NSMenuItem] = []
+        if hostTakesFiles { actions.append(menuItem("viewer.send_files", #selector(chooseFiles))) }
+        // a Windows host: its lock and login screens want Ctrl+Alt+Del (sent by the system service where it's on)
+        if host == .windows { actions.append(menuItem("viewer.ctrl_alt_del", #selector(sendSecureAttention))) }
+        if !actions.isEmpty {
+            m.addItem(.separator())
+            actions.forEach(m.addItem)
         }
         // without Input Monitoring ⌘Tab and the like stay on this Mac: the way to change that, where it's missing
         if !ViewerKeyboard.systemShortcuts {
             m.addItem(.separator())
-            let allow = NSMenuItem(title: T("viewer.allow_shortcuts"), action: #selector(allowShortcuts), keyEquivalent: "")
-            allow.target = self
-            m.addItem(allow)
+            m.addItem(menuItem("viewer.allow_shortcuts", #selector(allowShortcuts)))
         }
-        moreButton.menu = m
-        moreButton.toolTip = T("viewer.more")
+        // the link's own: Try Again while it's down and can be asked again, and Disconnect always (the cover's way out, here too)
+        m.addItem(.separator())
+        switch link.state {
+        case .connecting, .unreachable, .away(.noDirect), .away(.relayDown):
+            let again = NSMenuItem(title: T("viewer.retry"), action: #selector(retry), keyEquivalent: "")
+            again.target = self
+            m.addItem(again)
+        default: break
+        }
+        let bye = NSMenuItem(title: T("viewer.disconnect"), action: #selector(disconnect), keyEquivalent: "")
+        bye.target = self
+        m.addItem(bye)
     }
 
     @objc private func toggleMapping() {
@@ -789,16 +916,36 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     // MARK: displays
 
     private func updateDisplays() {
-        // shown only when the host has more than one display (NSToolbarItem.isHidden is macOS 15's: the view goes instead)
-        displayButton.isHidden = displays.count < 2
-        if #available(macOS 15.0, *) { displayItem?.isHidden = displays.count < 2 }
-        let n = displays.firstIndex { $0.id == shownDisplay }.map { $0 + 1 } ?? 1
-        displayButton.title = T("viewer.display", n, displays.count)
+        // shown only when the host has more than one display: the item joins the bar before ⋯, or leaves it
+        if let t = window?.toolbar {
+            let at = t.items.firstIndex { $0.itemIdentifier == Item.displays }
+            if displays.count > 1, at == nil, let k = t.items.firstIndex(where: { $0.itemIdentifier == Item.more }) {
+                t.insertItem(withItemIdentifier: Item.displays, at: k)
+            } else if displays.count < 2, let i = at {
+                t.removeItem(at: i)
+                displayItem = nil
+            }
+        }
+        if let m = displaysMap?.model {
+            m.displays = displays
+            m.shown = shownDisplay
+            m.following = pinned == nil
+        }
+        if displays.count < 2 { displaysPopover?.close() }
     }
 
-    @objc private func showDisplays(_ sender: NSButton) {
+    @objc private func showDisplays(_ sender: Any?) {
+        // a second click on the item closes it (or the click outside closed it a moment before the item acts)
+        if let open = displaysPopover, open.isShown {
+            open.close()
+            displaysGone(open)
+            return
+        }
+        if Date().timeIntervalSince(displaysClosed) < 0.25 { return }
         let p = NSPopover()
         p.behavior = .transient
+        p.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        p.delegate = self
         let v = ViewerDisplayMap(displays: displays, shown: shownDisplay, following: pinned == nil) { [weak self, weak p] action in
             guard let self else { return }
             switch action {
@@ -811,10 +958,37 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             case let .newWindow(id):
                 ViewerWindowController.open(self.computer, display: id)
             }
-            p?.close()
+            if let p {
+                p.close()
+                self.displaysGone(p)
+            }
         }
         p.contentViewController = v
-        p.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
+        // one floating thing over the picture at a time: a short hint makes way (what lasts, no control there, stays)
+        picture.endHint()
+        displaysPopover = p
+        displaysMap = v
+        // under the item, its arrow on it
+        if #available(macOS 14.0, *), let item = displayItem, item.toolbar != nil {
+            p.show(relativeTo: item)
+        } else if let c = window?.contentView {
+            // macOS 13: under the bar's trailing end, where the item is
+            p.show(relativeTo: NSRect(x: c.bounds.maxX - 120, y: c.bounds.maxY - 1, width: 1, height: 1), of: c, preferredEdge: .minY)
+        }
+        emit(["event": "viewer_displays", "state": "open", "shown": shownDisplay ?? "", "following": pinned == nil])
+    }
+
+    func popoverDidClose(_ n: Notification) {
+        if let p = n.object as? NSPopover { displaysGone(p) }
+    }
+
+    /// The switcher closed: by a choice in it, a click outside or the item again (a close of our own isn't always told to the delegate)
+    private func displaysGone(_ p: NSPopover) {
+        guard p === displaysPopover else { return }
+        displaysPopover = nil
+        displaysMap = nil
+        displaysClosed = Date()
+        emit(["event": "viewer_displays", "state": "closed"])
     }
 
     // MARK: closing
@@ -833,7 +1007,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     #if DEBUG || BLURT_TEST_HOOKS
     /// `viewer demo`: the window as it looks connected, with a still picture and these displays (screenshots; no session behind it).
     func testShow(still: CGImage, size: CGSize, displays list: [RemoteDisplay], shown: String?, route: RemoteViewerLink.Route, rtt: Double) {
-        hideOverlay()
+        hideCover()
         displays = list
         shownDisplay = shown
         fit(size)
@@ -842,32 +1016,358 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         let path = ViewerStore.path(route)
         window?.subtitle = T("viewer.path_rtt", path, Int((rtt * 1000).rounded()))
         captured = true
-        keysButton.state = .on
-        picture.showHint(T("viewer.release"), seconds: 30)
+        updateKeys()
+        displaysPopover?.close()
+        picture.showHint(releaseHint(system: true), seconds: 30)
     }
 
-    func testOpenDisplays() { showDisplays(displayButton) }
+    /// `viewer displays [pin ID|follow] [hover ID|follow]`: the switcher, pinned to a display or following first, the pointer over a
+    /// display's tile and row (or the Follow row)
+    func testOpenDisplays(_ args: [String] = []) {
+        var hover: String?
+        var i = 0
+        while i < args.count {
+            let v = i + 1 < args.count ? args[i + 1] : ""
+            switch args[i] {
+            case "pin":
+                pinned = v
+                shownDisplay = v
+                link.send(.showDisplay(v))
+                i += 1
+            case "follow":
+                pinned = nil
+                link.send(.showDisplay(nil))
+            case "hover":
+                hover = v
+                i += 1
+            default: break
+            }
+            i += 1
+        }
+        let wait = displaysPopover == nil ? 0 : 0.5
+        if let open = displaysPopover {
+            open.close()
+            displaysGone(open)
+        }
+        updateDisplays()
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            self.displaysClosed = .distantPast
+            self.showDisplays(nil)
+            self.displaysMap?.model.hover = hover
+        }
+    }
 
-    /// the picture's hint, as the window shows it (`viewer hint KEY`: release, release.app_only, no_control, file)
+    /// the picture's hint, as the window shows it (`viewer hint KEY`: release, release.app_only, no_control); held up until the
+    /// next one, so a screenshot can't miss it. The display switcher closes, as it does when the keys come here. And the file card:
+    /// file (a long file name being sent, 3.2 of 8.4 MB there), file.start (before the host's first count), file.many (the second of
+    /// three), file.saved, file.failed (not enough space there), file.off.
     func testHint(_ key: String) {
+        displaysPopover?.close()
+        let name = "Quarterly results for the board, final version (2).pdf", size = 8_400_000
+        // the file card on its own (a release hint held up for an earlier shot goes)
+        if key.hasPrefix("file") { picture.hideHint() }
         switch key {
-        case "release": picture.showHint(T("viewer.release"), seconds: nil)
-        case "release.app_only": picture.showHint(T("viewer.release.app_only"), seconds: nil)
+        case "release", "release.app_only": picture.showHint(releaseHint(system: key == "release"), seconds: 600)
         case "no_control": picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil)
-        case "file": picture.showHint(T("viewer.file.sending", "Quarterly results for the board, final version (2).pdf"), seconds: nil)
+        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1))
+        case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1))
+        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3))
+        case "file.saved": showFile(.saved(name: name, index: 1, count: 1))
+        case "file.failed": showFile(.failed(name: name, why: "space"))
+        case "file.off": fileCard.hide()
         default: emit(["event": "viewer_hint", "unknown": key])
         }
     }
 
-    var testHintState: [String: Any] { picture.testHint }
+    var testHintState: [String: Any] { picture.testHint.merging(["file": fileCard.testState]) { a, _ in a } }
 
-    /// what the overlay says and offers (`viewer state`)
+    /// the bar's items and the ⋯ menu as they stand (`viewer state`): a check item is "[x] title", a submenu ["title >", its items]
+    var testToolbar: [String: Any] {
+        fillMore()
+        func line(_ i: NSMenuItem) -> Any {
+            if i.isSeparatorItem { return "—" }
+            let t = (i.state == .on ? "[x] " : "") + i.title
+            return i.submenu.map { [t + " >", $0.items.map(line)] as [Any] } ?? t
+        }
+        return ["items": window?.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [], "keysTip": keysItem?.toolTip ?? "",
+                "displayTip": displayItem?.toolTip ?? "", "more": moreMenu.items.map(line)]
+    }
+
+    /// what the cover says and offers, and which toolbar controls are live (`viewer state`)
     var testOverlay: [String: Any] {
-        ["shown": !overlay.isHidden, "text": overlayText.stringValue, "button": overlayButton.isHidden ? "" : overlayButton.title,
-         "buttonFrame": NSStringFromRect(overlayButton.frame), "attached": overlayButton.superview != nil,
-         "buttonInWindow": NSStringFromRect(overlayButton.convert(overlayButton.bounds, to: nil)), "stack": NSStringFromRect(overlay.frame)]
+        var st = cover.testState
+        st["controls"] = ["display": displayItem?.isEnabled ?? false, "keys": keysItem?.isEnabled ?? false, "more": true]
+        return st
     }
     #endif
+}
+
+/// The cover over the picture: one card for every state the link or the picture can be in, so it never changes shape or place between
+/// them, only its mark, words and buttons. The toast grid (system.md §3.2 "Toasts (all)"), as a sheet is laid out on a Mac: a leading
+/// slot (the brand spinner while it's trying, the amber ⚠ when it needs the user, else the state's own glyph), the title, a detail line in
+/// secondary ink (where it's trying and for how long), and the buttons on their own row ending at the right edge: Disconnect (esc), the
+/// way out, always; the state's one action (↩) after it, the primary. A sheet's own surface (light or dark with the window), nearly opaque: the frozen picture behind is already blurred, and
+/// the words have to read at a glance.
+final class ViewerCoverView: NSView {
+    enum Mark: Equatable { case working, attention, symbol(String) }
+    /// the detail's clock: "Same network · trying for 0:12" while it tries, "Still trying · 0:42" once it said it can't reach
+    enum Timed { case trying, stillTrying }
+    struct Cover {
+        var mark: Mark
+        var title: String
+        var detail: String? = nil
+        var timed: Timed? = nil
+        var primary: (String, Selector)? = nil
+    }
+
+    static let width: CGFloat = 400
+    private static let inset = NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 16)
+    private static let slot: CGFloat = 22
+    private static let gap: CGFloat = 12
+
+    private let card = NSView()
+    private let spinner = BrandSpinner(size: 18)
+    private let glyph = NSImageView()
+    private let titleLabel = NSTextField(wrappingLabelWithString: "")
+    private let detailLabel = NSTextField(wrappingLabelWithString: "")
+    private let text = NSStackView()
+    private let buttons = NSStackView()
+    /// Disconnect: closes the window, and with it the session and its retries
+    let quiet = ViewerQuietButton()
+    let primary = BrandButton(title: "", target: nil, action: nil)
+    private var current: Cover?
+
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 120))
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.32
+        layer?.shadowRadius = 22
+        layer?.shadowOffset = CGSize(width: 0, height: -8)
+
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 14
+        card.layer?.cornerCurve = .continuous
+        card.layer?.masksToBounds = true
+        card.layer?.borderWidth = 0.5
+        card.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(card)
+
+        glyph.imageScaling = .scaleProportionallyUpOrDown
+        glyph.symbolConfiguration = .init(pointSize: 17, weight: .medium)
+        for v in [spinner, glyph] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            card.addSubview(v)
+        }
+        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.maximumNumberOfLines = 4
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        detailLabel.font = .monospacedDigitSystemFont(ofSize: 12.5, weight: .regular)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.maximumNumberOfLines = 4
+        detailLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 4
+        text.detachesHiddenViews = true
+        text.addArrangedSubview(titleLabel)
+        text.addArrangedSubview(detailLabel)
+        text.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(text)
+
+        quiet.keyHint = "esc"
+        quiet.title = T("viewer.disconnect")
+        primary.keyHint = "↩"
+        primary.radius = 7
+        primary.hPad = 14
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+        buttons.detachesHiddenViews = true
+        buttons.addArrangedSubview(quiet)
+        buttons.addArrangedSubview(primary)
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(buttons)
+
+        let textLeft = Self.inset.left + Self.slot + Self.gap
+        NSLayoutConstraint.activate([
+            card.leadingAnchor.constraint(equalTo: leadingAnchor), card.trailingAnchor.constraint(equalTo: trailingAnchor),
+            card.topAnchor.constraint(equalTo: topAnchor), card.bottomAnchor.constraint(equalTo: bottomAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 18), spinner.heightAnchor.constraint(equalToConstant: 18),
+            spinner.centerXAnchor.constraint(equalTo: card.leadingAnchor, constant: Self.inset.left + Self.slot / 2),
+            spinner.centerYAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor, constant: -5),
+            glyph.widthAnchor.constraint(equalToConstant: Self.slot), glyph.heightAnchor.constraint(equalToConstant: Self.slot),
+            glyph.centerXAnchor.constraint(equalTo: spinner.centerXAnchor), glyph.centerYAnchor.constraint(equalTo: spinner.centerYAnchor),
+            text.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: textLeft),
+            text.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -Self.inset.left),
+            text.topAnchor.constraint(equalTo: card.topAnchor, constant: Self.inset.top),
+            buttons.topAnchor.constraint(equalTo: text.bottomAnchor, constant: 16),
+            buttons.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -Self.inset.right),
+            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: card.leadingAnchor, constant: textLeft),
+            buttons.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -Self.inset.bottom),
+            quiet.heightAnchor.constraint(equalToConstant: 28), primary.heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ c: Cover, elapsed: Double, route: String) {
+        current = c
+        titleLabel.stringValue = c.title
+        switch c.mark {
+        case .working:
+            glyph.isHidden = true
+            spinner.startAnimation()
+        case .attention:
+            spinner.stopAnimation()
+            glyph.isHidden = false
+            glyph.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+            glyph.contentTintColor = BrandColor.attn
+        case let .symbol(name):
+            spinner.stopAnimation()
+            glyph.isHidden = false
+            glyph.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            glyph.contentTintColor = .secondaryLabelColor
+        }
+        quiet.title = T("viewer.disconnect")
+        quiet.keyEquivalent = "\u{1b}"
+        if let (t, a) = c.primary {
+            primary.isHidden = false
+            primary.title = t
+            primary.action = a
+            primary.keyEquivalent = "\r"
+        } else {
+            primary.isHidden = true
+            primary.keyEquivalent = ""
+        }
+        tick(elapsed: elapsed, route: route)
+        isHidden = false
+        needsLayout = true
+    }
+
+    /// the detail again, its clock a second on
+    func tick(elapsed: Double, route: String) {
+        guard let c = current else { return }
+        let clock = Self.clock(elapsed)
+        var lines = [String]()
+        if let d = c.detail { lines.append(d) }
+        switch c.timed {
+        case .trying?: lines.append(T("viewer.cover.trying", route, clock))
+        case .stillTrying?: lines.append(T("viewer.cover.still_trying", clock))
+        case nil: break
+        }
+        detailLabel.stringValue = lines.joined(separator: "\n")
+        detailLabel.isHidden = lines.isEmpty
+    }
+
+    func hide() {
+        current = nil
+        isHidden = true
+        spinner.stopAnimation()
+        // a hidden cover's keys go nowhere: Esc and Return are the remote's again
+        quiet.keyEquivalent = ""
+        primary.keyEquivalent = ""
+    }
+
+    /// 0:07, 2:41, 1:02:09
+    static func clock(_ t: Double) -> String {
+        let s = max(0, Int(t))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    override func layout() {
+        // the words wrap at the card's width (it narrows with a small window)
+        let room = max(120, bounds.width - Self.inset.left - Self.slot - Self.gap - Self.inset.left)
+        for l in [titleLabel, detailLabel] where l.preferredMaxLayoutWidth != room {
+            l.preferredMaxLayoutWidth = room
+            l.invalidateIntrinsicContentSize()
+        }
+        super.layout()
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            // light: the sheet's near-white; dark: the raised surface (#2A2A2A); both 96 % so the edge sits softly on the picture
+            card.layer?.backgroundColor = (isDarkAppearance ? NSColor(srgbRed: 0x2A / 255.0, green: 0x2A / 255.0, blue: 0x2A / 255.0, alpha: 0.96)
+                                                            : NSColor(white: 0.985, alpha: 0.96)).cgColor
+            card.layer?.borderColor = (isDarkAppearance ? NSColor(white: 1, alpha: 0.16) : NSColor(white: 0, alpha: 0.12)).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsLayout = true
+    }
+
+    /// the picture under the cover takes no clicks while it shows
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, frame.contains(point) else { return nil }
+        return super.hitTest(point) ?? self
+    }
+
+    #if DEBUG || BLURT_TEST_HOOKS
+    var testState: [String: Any] {
+        ["shown": !isHidden, "text": titleLabel.stringValue, "detail": detailLabel.isHidden ? "" : detailLabel.stringValue,
+         "mark": current.map { "\($0.mark)" } ?? "", "button": primary.isHidden ? "" : primary.title, "quiet": quiet.title,
+         "frame": NSStringFromRect(frame), "buttons": NSStringFromRect(buttons.frame)]
+    }
+    #endif
+}
+
+/// The cover's quiet button (system.md §3.2 "quiet pill"): a film of the label colour, a medium title and its key after it, lighter.
+/// Drawn by its own layer (a standard bezel over the picture's layer was attached and laid out but never drawn).
+final class ViewerQuietButton: NSButton {
+    var keyHint: String? { didSet { updateTitle() } }
+    private var hovering = false { didSet { needsLayout = true } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        isBordered = false
+        bezelStyle = .regularSquare
+        setButtonType(.momentaryChange)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+        layer?.cornerCurve = .continuous
+        focusRingType = .default
+        updateTitle()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var title: String { didSet { updateTitle(); invalidateIntrinsicContentSize() } }
+    override var isHighlighted: Bool { didSet { needsLayout = true } }
+
+    private func updateTitle() {
+        let base = keyHint.map { k in title.hasSuffix("  " + k) ? String(title.dropLast(k.count + 2)) : title } ?? title
+        let t = NSMutableAttributedString(string: base, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor])
+        if let k = keyHint {
+            t.append(NSAttributedString(string: "  " + k, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .regular),
+                                                                     .foregroundColor: NSColor.tertiaryLabelColor]))
+        }
+        attributedTitle = t
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: ceil(attributedTitle.size().width + 28), height: 28) }
+
+    override func layout() {
+        super.layout()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let a: CGFloat = isHighlighted ? 0.16 : hovering ? 0.12 : 0.08
+            layer?.backgroundColor = (isDarkAppearance ? NSColor(white: 1, alpha: a + 0.04) : NSColor(white: 0, alpha: a)).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateTitle(); needsLayout = true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
 }
 
 /// Low Data Mode, as macOS reports it for the path in use. Auto doesn't follow it (RemoteScreenPlan); the quality menu says the picture

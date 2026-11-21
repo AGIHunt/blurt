@@ -46,18 +46,31 @@ What it doesn't need from the phone: the key deck, the touch gestures, the zoome
 **A window per computer.** Several computers at once means several windows. Keys go only to the window in front. On a Mac the windows
 can merge into tabs, the system's way.
 
-- **Toolbar:**
-  - the computer's name;
-  - the path and round trip, e.g. 直连 · 18 ms;
-  - the display switcher, e.g. 屏幕 1 / 2, shown only when the host has more than one display;
-  - 按键发往远端 / Keys to Remote, which shows whether keys are captured;
-  - picture quality (Auto, as on the phone);
-  - a ⋯ menu.
+- **Toolbar** (Mac, visual gate 1.1, `viewer.mac` r1; as Screen Sharing: the picture is the one focus, the chrome a few small icons):
+  - the computer's name, and under it the path (同一网络 / Same network); the round trip joins it only once it is slow enough to feel
+    (80 ms and up, e.g. 公共连接服务 · 140 毫秒): a fast one under the name every second was noise;
+  - icon-only items, no text and no chevrons, so the bar has one shape in every language; each says what it does in its tooltip
+    and, when the window is too narrow for them, its label in the overflow menu:
+    - 按键发往远端 / Keys to Remote: a keyboard, outlined while this Mac keeps its keys; filled in `brand.ink` on the `brand.tint`
+      wash while they go to the computer (macOS 26's prominent toolbar item), so whether it's on shows at rest. It stands on its
+      own (a tinted item leaves its group, so it never sits in one). Tooltip: 把按键发往 Studio / 键盘和鼠标正发往 Studio。按 ⌃⌘ 交还。;
+    - the display switcher (`display.2`), in the bar only while the host has more than one display: its popover draws the
+      arrangement (below); no 屏幕 1 / 2 counter at rest;
+    - ⋯ (`ellipsis.circle`, no indicator): 画质 ▸ 自动 (按连接情况自动调整) · 清晰 · 均衡 · 省流量 (with 正在消耗手机流量 under them
+      on a costly path) — set once and seldom touched, so no slot of its own —, then ⌘ 当作 Ctrl (Windows and Linux hosts only),
+      共享剪贴板, 隐私屏 (where the host can), then 发送文件… and 发送 Ctrl+Alt+Del (Windows), then 发送系统快捷键… where Input
+      Monitoring is missing.
+  - The window keeps the host's shape at every size, its smallest too (480 × 270 points of picture for 16:9), so there are never
+    bands beside the picture.
+  - Screenshots: the pretend host's screen is drawn by `skills/blurt/recorder/macos/Tests/make_host_screen.swift` (a Mac desktop:
+    menu bar with the Apple menu and clock, Terminal in zsh, an editor, the Dock), shown as `viewer fakehost PNG mac name=Studio`,
+    with BLURT_TEST_KEY_LOOK=1 so the window draws as the key window. Shots: promo/cases/visual-gate-1.1/fix/viewer/.
 - **Keyboard:**
   - While the window is in front and keys are captured, every key goes to the host, system shortcuts included: ⌘Tab, ⌘Space, Alt+Tab,
     the Windows key.
-  - ⌃⌘ on a Mac viewer, Ctrl+Alt on Windows and Linux, gives keys and the mouse back to this computer. A hint at the bottom of the
-    picture says so for 3 s after capture starts.
+  - ⌃⌘ on a Mac viewer, Ctrl+Alt on Windows and Linux, gives keys and the mouse back to this computer. A hint at the top of the
+    picture says so for 3 s after capture starts, and Keys to Remote shows its on state (the filled keyboard in brand ink) for as long
+    as it lasts.
   - Clicking into the picture captures again.
 - **Modifiers across systems:**
   - A Mac viewer driving Windows or Linux sends ⌘ as Ctrl, Ctrl as the Windows / Super key, and leaves ⌥ as Alt.
@@ -67,7 +80,7 @@ can merge into tabs, the system's way.
   and the host's pointer is drawn from the cursor stream, as on the phone. Wheel and trackpad scrolling go through as scrolling. Buttons
   and drags go through as they are.
 - **Displays:** the switcher draws the host's displays as they're arranged and switches with a click (`showDisplay`). By default, 跟着远端
-  指针换屏 / Follow the Pointer is on, as `showDisplay(nil)` already does. 在新窗口中打开 / Open in New Window shows another display in
+  指针换屏 / Follow Remote Pointer is on, as `showDisplay(nil)` already does. 在新窗口中打开 / Open in New Window shows another display in
   a second window, which needs a second session.
 - **Clipboard:** text only. It is sent to the host when keys are captured, and back from the host when its clipboard changes while
   captured. The ⋯ menu can turn it off.
@@ -75,6 +88,17 @@ can merge into tabs, the system's way.
   window asks for a new size. Full screen is the system's own.
 - **Paths:** the same as a phone, in the same order: same network, overlay, own relay, public connection service. The toolbar names
   the path in the agreed terms.
+- **The cover** (when the link is down or the picture stopped; `ViewerCoverView`): the last frame stays, frozen — blurred 14 pt,
+  greyed (saturation 0.35) and dimmed 45 % — so it reads as a picture that stopped and none of its text competes with the words. Over
+  it, one card for every state, the same width (400 pt, narrower in a small window) and place (centred 45 % down the picture, above
+  the host's taskbar or dock), so only its mark, words and buttons change between Reconnecting, Can't reach, Ended and the rest: the
+  toast grid (system.md §3.2) on a sheet's surface that follows light and dark: the brand spinner while it tries, the amber ⚠ when it
+  needs the user, else the state's glyph; the title (15 semibold) names the computer ("Reconnecting to Office PC…"); the detail
+  (12.5, secondary) says where it's trying and for how long ("Same network · trying for 0:12"), and once it says it can't reach it,
+  "Still trying · 0:42" (it goes on trying by itself). Its buttons on their own row at the right: Disconnect (esc), the way out,
+  always — it closes the window — and the state's one action (↩) after it as the primary: Try Again, Reconnect, Take Over, Add Again.
+  Meanwhile the subtitle says the state in a word (Reconnecting… / Not connected), the display switcher and Keys to Remote
+  are disabled, and ⋯ alone stays live, with Try Again and Disconnect at its end.
 
 ## Wire additions
 
@@ -152,9 +176,14 @@ first's.
   now: found by DNS-SD, or it has a relay / the public connection service / a Tailscale address; nothing is asked of it until Connect.
   A Windows computer's icon is `display`, not `pc` (whose face reads as Windows' crash screen). The host's 添加设备 has 拷贝链接 / Copy
   Link for pairing from another network.
-- The window: the host's shape (`contentAspectRatio`, no bars), title the computer's name, subtitle path · round trip (at least 1 ms).
-  The display switcher (only with two displays or more) is a popover with the arrangement (`RemoteDisplayMap`), 跟着远端指针换屏 and
-  在新窗口中打开 (also on a display's context menu). A window that becomes key captures; one that stops being key gives keys back;
+- The window: the host's shape (`contentAspectRatio`, no bars), title the computer's name, subtitle the path, with the round trip only from 80 ms.
+  The display switcher (only with two displays or more) is a popover under the display item (its arrow on it), on one solid
+  sheet (white / the elevated #2A2A2A: the remote picture never shows through it). The arrangement (`RemoteDisplayMap`) on top: neutral
+  tiles (black 6 % / white 10 %, a 0.5 pt hairline, the number), the host's main display with a menu-bar strip. Under it one list on the
+  Move popover's grid (28 pt rows): 跟着远端指针换屏 / Follow Remote Pointer, then a row per display (its number, its name, 主屏幕 / Main).
+  A tile and its row are one target. Pinned to a display: a 2 pt accent ring and the brand tint on its tile, a check on its row; following:
+  a check on Follow and only a small pointer on the display the pointer is on, so the two never look alike. 在新窗口中打开屏幕 2 / Open
+  Display 2 in New Window is a glyph on a row under the pointer (its tooltip names the display) and on every tile's and row's context menu. A window that becomes key captures; one that stops being key gives keys back;
   clicking into the picture captures again (that click stays here). Capture needs Blurt in front as well (`wantsKeys`: connected, key,
   `NSApp.isActive`): a window that opens or reconnects while another app is in front captures nothing, tells the host nothing and leaves
   this Mac's input method alone; Blurt coming to the front captures for its key window, and going behind gives the keys back
@@ -166,8 +195,24 @@ first's.
   ⌘ or both waits until a key, a click, a scroll or another modifier says it's a shortcut, and then goes before it; ⌃ or ⌘ tapped alone
   goes as a tap (⌃ alone is the Windows key: Start); letting go of what the host has goes at once. Before this a Windows host saw Win,
   then Ctrl+Win, each time the keys came back.
-- The hint wraps (up to four lines, 640 pt of text at most, 16 pt from the window's edges, 12 × 8 padding, radius 8): at 480 pt the
-  Input Monitoring hint is three lines in English, two in Chinese; before, it was one line 875 pt wide, cut at both edges.
+- The hint wraps (up to four lines, 640 pt of text at most, 16 pt from the window's edges): at 480 pt the Input Monitoring hint is
+  three lines in English, two in Chinese; before, it was one line 875 pt wide, cut at both edges.
+- The hint is the capture chrome's hint pill (system.md, Hint pill; `ViewerHintPill`), not a box of its own (visual gate 1.1, 2026-11-21):
+  the island's black with its hairline and soft shadow (`CaptureGlass`), centred **12 pt under the picture's top edge**, where a remote
+  desktop has title bars, never over its taskbar or Dock (it sat 24 pt above the bottom, on the Windows taskbar's icons). One sentence
+  (13 medium, white 92 %), a hairline, then the keys as keycaps, one per key, and their word (12, white 62 %): "Keyboard and mouse go
+  to Office PC | [⌃][⌘] Release" / "键盘和鼠标正发往 Office PC | [⌃][⌘] 交还本机" — no key typed into the sentence. Without
+  Input Monitoring a quieter note under it ("System shortcuts stay on this Mac until …"), 6 s. One row is a capsule (34 pt); a window
+  too narrow for it puts the keys under the sentence, 14 pt corners. It fades in (0.18 s) and out (0.25 s), never takes a click, and
+  the pointer resting on it keeps it up (1.5 s more after it leaves). Giving the keys back ends the release hint at once.
+- Files sent (Send Files… or dropped on the picture) show on a file card in the picture's bottom-left corner, 12 pt over the band where a
+  host keeps its taskbar or Dock (7.5 % of the picture's height, 64 pt at least): the file's icon, its name cut in the middle so the
+  extension stays, "Sending to Office PC · 3.2 MB of 8.4 MB" with a bar, and × to stop (`ViewerFileCard`). Saved and not-sent end on
+  the same card. It sat as a bare "Sending “…”…" sentence on the Windows taskbar's icons before.
+- The picture's ground is #1E1E1E, never pure black, for what shows beside it (full screen on a screen of another shape).
+- One floating thing over the picture at a time: the release hint closes the display switcher, and opening the switcher ends a short
+  hint (what lasts, no control there, stays). The switcher in the 1.1 gate's hint shots was the earlier `viewer displays` still open:
+  a transient popover only closes on a click outside, which a test build never gets; `viewer hint` now closes it as capturing does.
 - This Mac's input method while keys are captured: a plain layout (ABC), chosen only with Blurt in front; at the end the one before comes
   back only if the plain one is still in use, so an input method the user picked meanwhile stays. A test build never touches the Mac's
   input method or asks for Input Monitoring: `InputMethod` has a stand-in there (`viewer input ID`), and `viewer active on|off` /
@@ -196,8 +241,9 @@ on 正在连接… with an empty subtitle while the list still said 可连接 ·
   `testWhatAPublicServiceEndingSays`, `testTheListsStates`); `RemoteViewerSessionTests.testNoDirectPathIsSaidAndStays` (a host on a
   relay met as the service is: session, `noDirect`, close: the state goes to `away(noDirect)`, never `connected`, stays for 4 s with the
   relay asked once, and Try Again asks again) and `testBusyIsSaid` (an HTTP 429 to the upgrade: `away(busy)`, asked once).
-- The overlay's button is drawn by its own layer: a standard bezel over the picture's layer was attached and laid out but never drawn,
-  so Try Again and Take Over were missing before.
+- The cover's buttons are drawn by their own layers (`BrandButton`, `ViewerQuietButton`), and the window's content view is
+  layer-backed: a standard bezel over the picture's layer was attached and laid out but never drawn, so Try Again and Take Over were
+  missing before.
 
 **Measured / checked:**
 

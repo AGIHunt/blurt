@@ -5,18 +5,20 @@
 //                                nearby, as if real: nothing saved, nothing connected
 //   viewer list | add | settings the Computers window · its Add Computer sheet · Settings → 手机和电脑
 //   viewer pairing               the Add Computer sheet showing six digits
-//   viewer fakehost PNG [windows|linux|mac] [nodirect|no|silent|late=S|removed=S|link]   a pretend host (nodirect: it says the direct
+//   viewer fakehost PNG [windows|linux|mac] [nodirect|no|silent|late=S|removed=S|link|name=N]   a pretend host (nodirect: it says the direct
 //                                path didn't open, as the public connection service's host does, then takes no more sessions); on 127.0.0.1 in this process,
 //                                paired as a nearby computer is (its owner's yes comes by itself), whose screen is PNG encoded as H.264 and sent as a real
 //                                host sends it. no: its owner says no · silent: nobody answers, and it gives up asking after two minutes, as RemoteServer
 //                                does · late=S: it drops every connection for S seconds (not up yet) · removed=S: it removes this Mac S seconds into the
 //                                session · link: not paired by itself; its port and id come as `viewer_host` for a link to it. It posts no input
-//                                and captures nothing: what it is sent comes back as `viewer_host` events. Two displays, so the switcher shows
+//                                and captures nothing: what it is sent comes back as `viewer_host` events. Two displays, so the switcher shows.
+//                                name=N: its name (one word; Office PC otherwise), e.g. name=Studio for a Mac host's screen (Tests/make_host_screen.swift)
 //   viewer pair LINK|NAME        pair with a pasted blurtremote:// link, or the computer of that name found on this network
 //   viewer open NAME             a paired computer's window · viewer quality auto|sharp|balanced|saver (for the next request)
 //   viewer keys                  ⌘C (held, one repeat), F13, the keypad's Enter and ⌃⌘ alone into the front window, as captured
 //   viewer point X Y             the pointer to X,Y (0…1 of the picture) and a click there
-//   viewer displays              the front viewer window's display switcher
+//   viewer displays [pin ID|follow] [hover ID|follow]   the front viewer window's display switcher (pinned to display ID or
+//                                following the pointer first; the pointer over a display's tile and row, or the Follow row)
 //   viewer capture on|off        Keys to Remote in the front viewer window
 //   viewer mods STEP…            modifier changes and keys into the front window, as captured, 0.05 s apart: a step is the modifiers
 //                                held (ctl+cmd, cmd, shift, none), kCODE (that key down and up) or click (a click where the pointer is)
@@ -92,20 +94,21 @@ enum ViewerTests {
                 fakeHost?.stop()
                 let opts = Array(a.dropFirst(3))
                 func secs(_ k: String) -> Double? { opts.first { $0.hasPrefix(k + "=") }.flatMap { Double($0.dropFirst(k.count + 1)) } }
-                let h = ViewerFakeHost(image: img, platform: a.count > 2 ? a[2] : "windows", noDirect: opts.contains("nodirect"),
+                let name = opts.first { $0.hasPrefix("name=") }.map { String($0.dropFirst(5)) } ?? "Office PC"
+                let h = ViewerFakeHost(image: img, platform: a.count > 2 ? a[2] : "windows", name: name, noDirect: opts.contains("nodirect"),
                                        answer: opts.contains("no") ? .no : opts.contains("silent") ? .silent : .yes, late: secs("late"), removeAfter: secs("removed"))
                 fakeHost = h
                 h.start { port in
                     MainActor.assumeIsolated {
                         if opts.contains("link") { return emit(["event": "viewer_host", "port": Int(port), "id": h.id]) }
-                        let n = ViewerStore.Nearby(id: h.id, name: "Office PC", endpoint: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
+                        let n = ViewerStore.Nearby(id: h.id, name: name, endpoint: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!))
                         store.pair(n)
                     }
                 }
             case "displays":
                 // (no activation: a test build never comes in front of the user's apps, where it would take their keys)
                 ViewerWindowController.front?.window?.orderFront(nil)
-                ViewerWindowController.front?.testOpenDisplays()
+                ViewerWindowController.front?.testOpenDisplays(Array(a.dropFirst()))
             case "keys":
                 // a keyboard's own sequence into the front window, as the capture hands it over: ⌘C, F13, the keypad's Enter, ⌃⌘ alone
                 guard let w = ViewerWindowController.front else { break }
@@ -182,7 +185,7 @@ enum ViewerTests {
                           "active": ViewerKeyboard.appActive, "input": InputMethod.current()?.id ?? "",
                           "windows": NSApp.windows.compactMap { ($0.windowController as? ViewerWindowController).map { w in
                               ["title": w.window?.title ?? "", "subtitle": w.window?.subtitle ?? "", "captured": w.captured, "key": ViewerKeyboard.isKey(w.window),
-                               "size": NSStringFromSize(w.window?.contentLayoutRect.size ?? .zero), "overlay": w.testOverlay, "hint": w.testHintState] } }])
+                               "size": NSStringFromSize(w.window?.contentLayoutRect.size ?? .zero), "overlay": w.testOverlay, "hint": w.testHintState, "toolbar": w.testToolbar] } }])
                 }
             }
         }
@@ -205,6 +208,7 @@ final class ViewerFakeHost {
     private let udp: NWListener
     private let image: CGImage
     private let platform: String
+    private let name: String
     /// as the public connection service on a network with no direct path: `noDirect` a second after the session, then no more sessions
     private let noDirect: Bool
     /// its owner's answer to the pairing question: yes, no, or none (the host gives up asking after two minutes, a bare close as a no)
@@ -226,9 +230,10 @@ final class ViewerFakeHost {
     private var encodedSize = (0, 0)
     private var saw = false
 
-    init(image: CGImage, platform: String, noDirect: Bool = false, answer: Answer = .yes, late: Double? = nil, removeAfter: Double? = nil) {
+    init(image: CGImage, platform: String, name: String = "Office PC", noDirect: Bool = false, answer: Answer = .yes, late: Double? = nil, removeAfter: Double? = nil) {
         self.image = image
         self.platform = platform
+        self.name = name
         self.noDirect = noDirect
         self.answer = answer
         self.deafUntil = late.map { Date().addingTimeInterval($0) }
@@ -338,7 +343,7 @@ final class ViewerFakeHost {
 
     private func session(_ ch: RemoteChannel) {
         if noDirect {
-            ch.send(ToPhone.session(RemoteSessionInfo(macName: "Office PC", udpPort: 9, udpSession: 9, canControl: true, version: "test",
+            ch.send(ToPhone.session(RemoteSessionInfo(macName: name, udpPort: 9, udpSession: 9, canControl: true, version: "test",
                                                       relay: RemoteRelay.goBetween, platform: platform, features: [RemoteFeature.move, RemoteFeature.viewer])))
             q.asyncAfter(deadline: .now() + 1) {
                 self.note("noDirect")
@@ -348,7 +353,7 @@ final class ViewerFakeHost {
             }
             return
         }
-        ch.send(ToPhone.session(RemoteSessionInfo(macName: "Office PC", udpPort: udp.port?.rawValue ?? 0, udpSession: 9, canControl: true, version: "test",
+        ch.send(ToPhone.session(RemoteSessionInfo(macName: name, udpPort: udp.port?.rawValue ?? 0, udpSession: 9, canControl: true, version: "test",
                                                   candidates: [RemoteCandidate(host: "127.0.0.1", port: udp.port?.rawValue ?? 0)],
                                                   displayAspect: Double(image.width) / Double(image.height), platform: platform,
                                                   features: [RemoteFeature.move, RemoteFeature.viewer])))
