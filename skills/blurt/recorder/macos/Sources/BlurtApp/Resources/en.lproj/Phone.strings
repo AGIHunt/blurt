@@ -75,7 +75,6 @@
 "phone.tips.away.ok" = "On another network it connects through your relay. The phone only needs internet access.";
 
 /* Settings → Remote Control (Settings/RemotePane.swift): its lead, the way to this page */
-"phone.pane.see_page" = "The device list is on the %@ page in the main window.";
 "phone.pane.show" = "Show Devices";
 
 /* Computers this Mac drives (Viewer/, docs/design/remote-desktop-viewer.md). Agreed terms: docs/design/copy.md */

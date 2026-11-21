@@ -75,7 +75,6 @@
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
 /* 设置 → 远程控制（Settings/RemotePane.swift）开头指向这一页的一句 */
-"phone.pane.see_page" = "设备列表在主窗口的「%@」页。";
 "phone.pane.show" = "查看设备";
 
 /* 本机控制的电脑（Viewer/，docs/design/remote-desktop-viewer.md）。统一用语：docs/design/copy.md */

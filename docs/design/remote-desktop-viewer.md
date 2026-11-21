@@ -389,8 +389,9 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
   - 本机 / This Mac: unchanged — only what stands in a device's way (Accessibility, the port, Screen Recording, the relay); all well is
     one line.
   - Then 连不上时 while a phone should be connecting, and where the phone app comes from. 手机设置… on the title line opens Settings.
-- **Settings → 手机和电脑 is options only:** 连接时 (keys on screen, the screen on the phone) and 外出连接 (status, own relay, public
-  connection service, Set Up a Relay). Its lead says where the devices are, with 打开. The catalogue's `remote.phones` /
+- **Settings → 远程控制 is options only:** its first row says what is paired and who is connected, with 查看设备 (or, nothing paired,
+  添加设备…, which opens the page with the code up). Then 本机 (stay awake, sleep time, keys on screen, the screen) and 其他网络 (the
+  public connection service and the own relay, each with its state as the line under it; Copy Instructions is the footnote). The catalogue's `remote.phones` /
   `remote.computers` sections and their rows are gone, so search doesn't land on a list that isn't there.
 - **Device kind on the host:** `RemoteServer.Device.kind` is "computer" when the hello's `features` carry `viewer`
   (`RemoteFeature.viewer`), nil for a phone. It is written when a device pairs and again whenever it connects, so a record kept before

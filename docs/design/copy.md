@@ -49,7 +49,8 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The release hint | 按 ⌃⌘ 交还键盘和鼠标 (Windows/Linux: Ctrl+Alt) | Press ⌃⌘ to release the keyboard and mouse |
 | The feature, its main-window page with every paired device, and the Settings pane with its options (Home's row, the sidebar, the menu bar's row); on the Mac one key, `feature.phone` (2026-11-20, was 手机和电脑) | 远程控制 | Remote Control |
 | That page's empty lists | 还没有配对的设备 · 还没有添加电脑 | No devices paired yet · No computers added yet |
-| Settings → 远程控制's lead, the way to the page | 设备列表在主窗口的「远程控制」页。 查看设备 | The device list is on the Remote Control page in the main window. Show Devices |
+| Settings → 远程控制's first row, the way to the page (nothing paired · paired) | 还没有配对的设备 · 添加设备… · 已配对 2 台设备 · 查看设备 | No devices paired yet · Add Device… · 2 devices paired · Show Devices |
+| Settings → 远程控制's sections | 本机 · 其他网络 | On this Mac · Other networks |
 | A new device asking the host for a yes | 允许 %@ 控制本机？ · %@ 显示相同的数字时才允许。 · 不允许 · 允许 | Allow %@ to control this Mac? · Allow only if %@ shows the same digits. · Don't Allow · Allow |
 | Its two groups: what controls this computer · what this computer controls | 能控制本机的设备 · 本机可控制的电脑 | Devices That Can Control This Computer · Computers You Can Control |
 | Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |

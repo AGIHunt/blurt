@@ -58,5 +58,21 @@
 			<string>%ld 个视频</string>
 		</dict>
 	</dict>
+	<key>settings.remote.devices</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>已配对 %ld 台设备</string>
+			<key>other</key>
+			<string>已配对 %ld 台设备</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

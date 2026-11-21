@@ -247,8 +247,9 @@ public enum SettingsCatalog {
         sec("screentext.translation", "settings.screen_text.section.translate"),
         sec("screentext.history_section", "settings.screen_text.section.history"),
 
-        // 手机和电脑: what the Mac shows while a device drives it, and Away from home. The devices themselves are on the
-        // main window's page of the same name (docs/design/remote-desktop-viewer.md §One page for the devices).
+        // 远程控制 / Remote Control: On this Mac (what this Mac does for its devices) and Other networks (how one on another
+        // network gets here). The devices themselves are on the main window's page of the same name
+        // (docs/design/remote-desktop-viewer.md §One page for the devices); the pane's first row leads there.
         sec("remote.options", "settings.remote.section.options"),
         sec("remote.relay", "settings.remote.section.relay"),
 
@@ -396,15 +397,16 @@ public enum SettingsCatalog {
             row("screentext.history", "screentext.history_section", "settings.screen_text.history",
                 detail: S("settings.screen_text.history.detail")),
 
-            // 手机和电脑
-            row("remote.stay_awake", "remote.options", "settings.remote.stay_awake", detail: S("settings.remote.stay_awake.desktop")),
+            // 远程控制: the devices' row first (its title and line are live on the page), then the two sections
+            row("remote.devices", nil, "settings.remote.devices.title", detail: S("settings.remote.devices.detail")),
+            row("remote.stay_awake", "remote.options", "settings.remote.stay_awake", detail: S("settings.remote.stay_awake.desktop"),
+                more: S("settings.remote.stay_awake.desktop.more")),
             row("remote.say_asleep", "remote.options", "settings.remote.say_asleep", detail: S("settings.remote.say_asleep.detail")),
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
-            row("remote.away", "remote.relay", "settings.remote.away"),
-            row("remote.relay.address", "remote.relay", "settings.remote.relay", detail: S("settings.remote.relay.address.detail")),
             row("remote.go_between", "remote.relay", "settings.remote.go_between", detail: S("settings.remote.go_between.detail")),
-            row("remote.relay.help", "remote.relay", "settings.remote.relay.help", detail: S("settings.remote.relay.help.detail")),
+            // its footnote's Copy Instructions is found by this row's keywords (cloudflare, set up a relay…)
+            row("remote.relay.address", "remote.relay", "settings.remote.relay.own", detail: S("settings.remote.relay.address.detail")),
 
             // Speech
         ]
