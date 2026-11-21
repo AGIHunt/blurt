@@ -154,6 +154,8 @@ struct CloudServicesSection: View {
         let price = setup.services.isEmpty ? ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } : nil
         SettingsGroup("speech.services", footer: price) {
             ForEach(setup.services) { s in serviceLine(s) }
+            // the speech-only connections (an OpenAI-compatible recogniser): lines of this list, not a list of their own
+            CloudSpeechLines()
             // always there: the curated services, then every other one and the compatible endpoints (2026-11-16)
             addLine(empty: setup.services.isEmpty)
             // what an agent set up (Set Up with Agent…, or one the user allowed), as it happens
@@ -663,10 +665,18 @@ struct CloudServiceSheet: View {
                 GridRow {
                     label(M("models.sheet.service"))
                     VStack(alignment: .leading, spacing: 5) {
+                        // last, after a divider: speech recognition through an OpenAI-compatible API (OpenAI, Groq, any
+                        // address) — its own sheet (CloudSpeechSheet), so every key is added from here
+                        let speech = !keyFirst && CloudSpeech.addOffered
+                        let items = m.presets.map { ($0.id, $0.recommended ? M("models.preset.recommended", CloudStore.presetName($0.id)) : CloudStore.presetName($0.id)) }
                         ChoicePopup(label: M("models.sheet.service"),
-                                    choices: m.presets.map { ($0.id, $0.recommended ? M("models.preset.recommended", CloudStore.presetName($0.id)) : CloudStore.presetName($0.id)) },
-                                    selection: Binding(get: { m.preset }, set: { m.pick($0) }), width: 260,
-                                    dividers: m.presetDividers)
+                                    choices: items + (speech ? [(CloudSpeech.addChoice, CloudSpeech.addChoiceTitle)] : []),
+                                    selection: Binding(get: { m.preset }, set: { v in
+                                        guard v == CloudSpeech.addChoice else { return m.pick(v) }
+                                        close()
+                                        NotificationCenter.default.post(name: CloudSpeech.addRequest, object: nil)
+                                    }), width: 260,
+                                    dividers: speech ? m.presetDividers.union([items.count]) : m.presetDividers)
                         if m.info.recommended {
                             detail((ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } ?? ""))
                         }

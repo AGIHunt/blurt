@@ -305,7 +305,7 @@ extension Dictation {
         island.toast(text, key: Dictation.failedToastKey(id), icon: .warning, seconds: 8,
                      actionTitle: Loc.t(line.retryHelps ? "dictation.toast.retry" : "dictation.toast.asr_cloud_key.action", table: "Dictation"),
                      action: { [weak self] in
-            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.cloud") }
+            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.services") }
         })
     }
 
@@ -343,7 +343,7 @@ extension Dictation {
                 t.secondTitle = Loc.t("dictation.toast.no_model.cloud", table: "Dictation")
                 t.second = {
                     emit(["event": "dictation_no_model_cloud"])
-                    AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                    AppEnvironment.settings?.show(pane: "speech/speech.services")
                 }
                 t.key = Dictation.modelToastKey
                 t.icon = .warning

@@ -17,10 +17,13 @@
 //              each connected service's models. Every row's line says where its content goes ("Stays on this Mac.").
 //              A job whose model isn't on this Mac says "· downloading" or "None", never names it as if in use.
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
-//   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
-//              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
-//              mirror, one row per cloud service: whether it has a key, and Set Up… (CloudSpeechSheet: the key in the
-//              Keychain, never shown back; a key exported in the shell profile still counts).
+//   Advanced   folded at the page's foot (system.md §3.4: "› Advanced", closed at rest; a search or a link landing on
+//              one of its rows unfolds it): one box for this Mac — processor threads, transcriptions at a time, GPU
+//              memory, lighter models on battery — with the priority footnote right under it; then, each in a small
+//              box of its own and only where it means something, Cloud recognition (once a cloud recogniser has a
+//              key: its model and the audio speed, in CloudSpeechSheet) and the download mirror (in mainland China, once
+//              it was set by hand, after a failed download, or when a search asks for it). The cloud services' keys are
+//              never here: they live in Cloud services (CloudSpeechLines for the speech-only ones).
 //   library    a sheet (ModelLibrary): one 32 pt row per model that runs here, recognition or polish — what it is
 //              used for, accuracy for your languages, speed, memory, size as a table; numbers measured on this Mac
 //              (`transcribe.py bench`) carry the seal; Download on hover, Measure / Show in Finder / Move to Trash in
@@ -28,7 +31,8 @@
 // Every download goes through the app's one download manager (App/ModelDownloads.swift); this page is the one place
 // that offers the recommended download (Settings → Dictation links here).
 // Test hooks (BLURT_TEST_COMMANDS): `settings speech/speech.models` opens the library, `settings speech/speech.threads`
-// unfolds Advanced; BLURT_TEST_SPEECH_HOVER=ID shows a library row as hovered, BLURT_TEST_SPEECH_TAB=polish its tab.
+// (or `settings speech/speech.advanced`) unfolds Advanced; BLURT_TEST_SPEECH_ADVANCED=1 shows it open;
+// BLURT_TEST_SPEECH_HOVER=ID shows a library row as hovered, BLURT_TEST_SPEECH_TAB=polish its tab.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine
@@ -479,6 +483,12 @@ struct SpeechPane: View {
     @State private var compare = false
     /// the pointer is over the download row: its ⋯ shows
     @State private var hoveringDownload = false
+    /// Advanced, folded at rest (a search or a link landing inside unfolds it)
+    @State private var advanced = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_ADVANCED"] != nil
+    /// a search or a link asked for the mirror: its row shows wherever this Mac is
+    @State private var mirrorAsked = false
+    /// Cloud recognition's options (CloudSpeechSheet: the recogniser's model, the audio speed)
+    @State private var cloudOptions: String?
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
@@ -514,6 +524,10 @@ struct SpeechPane: View {
         .onReceive(SettingsFlash.shared.$request) { r in
             if r?.id == "speech.models" { library = true }
             if r?.id == "speech.compare" { compare = true }
+            if let id = r?.id, id == "speech.advanced" || SettingsCatalog.entry(id)?.section == "speech.advanced" {
+                advanced = true
+                if id == "speech.mirror" { mirrorAsked = true }
+            }
         }
     }
 
@@ -940,15 +954,21 @@ struct SpeechPane: View {
 
     // MARK: Advanced
 
-    /// Advanced: the resource limits, the download mirror and the cloud models — shown open, like every other section
-    /// of the pane (folded until v1.0.2).
+    /// Advanced: folded at the page's foot (system.md §3.4). Open, this Mac's limits in one box with the footnote that
+    /// explains them right under it; then Cloud recognition and the download mirror, each only where it applies.
     @ViewBuilder var advancedSection: some View {
-        SettingsGroup("speech.advanced", footer: S("speech.limits.footer")) {
+        SettingsGroup("speech.advanced", footer: m.state == nil ? nil : S("speech.limits.footer"), disclosure: $advanced) {
             resourceRows
-            SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
-            // Aliyun (Model Studio) first: the recommended speech key (the founder, 2026-10-29)
-            let cloud = m.models.filter { !$0.local }.sorted { ($0.backend == "dashscope" ? 0 : 1) < ($1.backend == "dashscope" ? 0 : 1) }
-            ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
+        }
+        if advanced {
+            if let id = cloudRecognizer {
+                SettingsGroup { cloudOptionsRow(id) }
+            }
+            if showMirror {
+                SettingsGroup {
+                    SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
+                }
+            }
         }
     }
 
@@ -977,24 +997,56 @@ struct SpeechPane: View {
                 }
             }
             SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }))
+        } else {
+            // the limits come with the models' read: a quiet line while it runs (a failed read says why at the top)
+            SettingsLine {
+                HStack(spacing: 8) {
+                    if m.loading { BrandSpinnerView(size: 10) }
+                    Text(S("speech.loading")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
-    /// One cloud service: whether its key is found, and how to set one (the variables' names) in a popover.
-    @ViewBuilder func cloudRow(_ x: ASRModel, first: Bool) -> some View {
-        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.backend == "dashscope" ? S("speech.cloud.name.dashscope")
-            : x.backend == "volcengine" ? S("speech.cloud.name.volcengine") : x.title
-        let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
-        // the first row is the catalogue's (search lands on it); the others are the same row for another service
-        if first {
-            SettingRow("speech.cloud", title: title, detail: detail) { CloudKey(model: x) }
-        } else if x.backend == "volcengine" {
-            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { VolcengineKey(model: x) }
-        } else {
-            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { CloudKey(model: x) }
+    /// The mirror's row only where it means something: mainland China (where it is on by itself), a setting made by
+    /// hand either way, a download that failed, or a search that asked for it — never an unexplained domain elsewhere.
+    var showMirror: Bool {
+        mirrorAsked || Config.shared["asr.hf_mirror"] != nil || !dl.failed.isEmpty
+            || ModelBundle.mirror(setting: nil, region: Locale.current.region?.identifier, timeZone: TimeZone.current.identifier)
+    }
+
+    /// The cloud recogniser whose options Cloud recognition opens: Model Studio's (it has a model to pick) before the
+    /// OpenAI-compatible one, then Volcengine (the speed alone) — nil while none has a key, or Privacy keeps speech here.
+    var cloudRecognizer: String? {
+        guard !m.localOnly else { return nil }
+        let ready = Set(m.models.filter { !$0.local && $0.installed }.map(\.backend))
+        if ready.contains("dashscope") { return CloudSpeech.dashScopeModel }
+        if ready.contains("openai") { return CloudSpeech.openAIModel }
+        if ready.contains("volcengine") { return VolcengineSpeech.modelID }
+        return nil
+    }
+
+    /// Cloud recognition: the model it runs and how fast its audio is sent ("Qwen3-ASR Flash · Normal speed"), and
+    /// Options… — the sheet with the model and the speed (the key stays in Cloud services).
+    func cloudOptionsRow(_ id: String) -> some View {
+        let speed = S("speech.cloud.options.speed.\(CloudSpeech.speedKey(CloudSpeech.speed))")
+        let model: String? = id == CloudSpeech.dashScopeModel ? CloudSpeech.dashScopeTitle
+            : id == CloudSpeech.openAIModel ? CloudSpeech.setup.effectiveModel : nil
+        return SettingRow("speech.cloud", detail: model.map { S("speech.cloud.options.detail", $0, speed) } ?? speed) {
+            Button(S("speech.cloud.options.button")) { cloudOptions = id }
+        }
+        .sheet(item: Binding(get: { cloudOptions.map(SheetID.init) }, set: { cloudOptions = $0?.id })) { s in
+            CloudSpeechSheet(modelID: s.id, title: S("speech.cloud.title"), options: true) { saved in
+                cloudOptions = nil
+                if saved { Task { await m.load() } }
+            }
+            .buttonStyle(.automatic)
         }
     }
 }
+
+/// A sheet's subject by its id (`.sheet(item:)` needs an Identifiable).
+struct SheetID: Identifiable { let id: String }
 
 // MARK: - Pieces
 
@@ -1036,69 +1088,6 @@ private struct ModelPopUp: View {
                                else if id == compareChoices, let c = compare { DispatchQueue.main.async(execute: c) }
                                else if id != current && !id.isEmpty { pick(id) }
                            }), checks: [auto], dividers: [split])
-    }
-}
-
-/// "✓ Set" (ok + check) or "Not set", and Set Up… — the key, and for the OpenAI-compatible service its address and
-/// model, in a sheet (CloudSpeechSheet). A key from the shell profile counts as set too.
-private struct CloudKey: View {
-    var model: ASRModel
-    @State private var sheet = false
-    var body: some View {
-        HStack(spacing: 10) {
-            if model.installed {
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
-                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
-                }
-            } else {
-                Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
-            }
-            Button(S("speech.cloud.setup")) { sheet = true }
-        }
-        // screenshots: open one service's sheet with the page
-        .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_CLOUD_SHEET"] == model.id { sheet = true } }
-        .sheet(isPresented: $sheet) {
-            CloudSpeechSheet(modelID: model.id, title: model.backend == "openai" ? S("speech.cloud.name.openai") : model.title) { saved in
-                sheet = false
-                guard saved else { return }
-                let m = SpeechModel.shared
-                // a job already on this service: its server started with the old key — the next take starts a new one
-                let inUse = ASRPurpose.allCases.contains { (m.state?.selected[$0.rawValue] ?? nil) == model.id }
-                    || DictationModels.shared.asr?.selected == model.id
-                if inUse { VoiceInput.endUnresponsiveServer(why: "cloud_key") }
-                Task { await m.load() }
-            }
-            .buttonStyle(.automatic)
-        }
-    }
-}
-
-/// Volcengine Speech's row: whether its App ID and Access Token are set, and Set Up… — the Cloud services sheet (the
-/// pair is a connected service there, not a key of this page's own).
-private struct VolcengineKey: View {
-    var model: ASRModel
-    @State private var sheet = false
-    var body: some View {
-        HStack(spacing: 10) {
-            if model.installed {
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
-                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
-                }
-            } else {
-                Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
-            }
-            Button(S("speech.cloud.setup")) { sheet = true }
-        }
-        .sheet(isPresented: $sheet) {
-            CloudServiceSheet(editing: CloudStore.setup.services.first { $0.preset == VolcengineSpeech.preset },
-                              preset: VolcengineSpeech.preset) {
-                sheet = false
-                Task { await SpeechModel.shared.load() }
-            }
-            .buttonStyle(.automatic)
-        }
     }
 }
 

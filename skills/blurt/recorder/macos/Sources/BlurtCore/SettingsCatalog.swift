@@ -428,6 +428,7 @@ public enum SettingsCatalog {
             row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
             row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
             row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
+            // cloud recognition's model and audio speed (its keys are Cloud services' lines: CloudSpeechLines)
             row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.note.cloud")),
             whole("speech.models", detail: P("speech.models.footer")),
             whole("speech.compare", detail: P("speech.compare.note")),

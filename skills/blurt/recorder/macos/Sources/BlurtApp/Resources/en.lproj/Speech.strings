@@ -89,7 +89,7 @@
 "speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words.";
 "speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: more accurate on names and in noisy rooms, about 25 ms slower per sentence.";
 "speech.note.fun_asr" = "Chinese, English and Japanese on the GPU, and it uses your Words.";
-"speech.note.cloud" = "Runs in the cloud with your own key.";
+"speech.note.cloud" = "The model and audio speed of cloud speech recognition.";
 "speech.note.apple" = "Built into macOS 26, nothing to download; less accurate on names than Qwen3-ASR";
 
 /* Actions */
@@ -137,19 +137,13 @@
 "speech.limits.memory.value" = "Up to %@";
 "speech.limits.battery" = "Lighter models on battery";
 "speech.limits.battery.detail" = "A smaller model for recordings when not plugged in.";
-"speech.limits.footer" = "Recordings are transcribed at low priority, so your apps stay responsive. Live captions and voice notes run at normal priority.";
-"speech.advanced.mirror" = "Download from hf-mirror.com";
-"speech.advanced.mirror.detail" = "Turn on when Hugging Face is slow or unreachable from here.";
+"speech.limits.footer" = "Recordings run at low priority; live captions and voice notes at normal priority.";
+"speech.advanced.mirror" = "Use a mirror for model downloads";
+"speech.advanced.mirror.detail" = "Downloads through hf-mirror.com when Hugging Face is slow or blocked.";
 
 /* Cloud */
-"speech.cloud.title" = "Cloud speech recognition";
-"speech.cloud.name.openai" = "OpenAI-compatible API";
-"speech.cloud.name.dashscope" = "Alibaba Cloud Model Studio · Qwen3-ASR (recommended)";
-"speech.cloud.name.volcengine" = "Volcengine · Doubao Seed-ASR 2.0";
-"speech.cloud.set" = "Set";
-"speech.cloud.not_set" = "Not set";
+"speech.cloud.title" = "Cloud recognition";
 "speech.cloud.off" = "Turned off in Privacy";
-"speech.cloud.setup" = "Set Up…";
 "speech.cloud.sheet.note" = "Recognize speech in the cloud with your own API key. The key is stored in Keychain. Audio is uploaded to this service.";
 "speech.cloud.speed.1" = "Normal (recommended)";
 "speech.cloud.speed" = "Speed";
@@ -163,6 +157,16 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";
 "speech.cloud.key.get" = "Get an API key";
+"speech.cloud.add.choice" = "OpenAI-compatible speech recognition…";
+"speech.cloud.add.title" = "OpenAI-compatible speech recognition";
+"speech.cloud.line.title" = "%1$@ · %2$@";
+"speech.cloud.line.only" = "Speech recognition only";
+"speech.cloud.options.detail" = "%1$@ · %2$@";
+"speech.cloud.options.speed.1" = "Audio at normal speed";
+"speech.cloud.options.speed.15" = "Audio sped up 1.5×";
+"speech.cloud.options.speed.2" = "Audio sped up 2×";
+"speech.cloud.options.button" = "Options…";
+"speech.cloud.options.note" = "How cloud recognition hears your audio. Its API key is set in Cloud models.";
 "speech.section.mac" = "On this Mac";
 "speech.section.jobs" = "Models by feature";
 "speech.machine.short" = "%1$@, %2$@";

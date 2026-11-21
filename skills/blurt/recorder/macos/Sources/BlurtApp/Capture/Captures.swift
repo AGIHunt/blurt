@@ -555,7 +555,7 @@ final class Snapper {
         case .cloudKey, .cloudModel:
             var t = Island.Toast(text: Loc.t(line.key, table: "Dictation"),
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
-                AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                AppEnvironment.settings?.show(pane: "speech/speech.services")
             }
             t.seconds = 8
             t.key = Snapper.wordsToastKey(s)

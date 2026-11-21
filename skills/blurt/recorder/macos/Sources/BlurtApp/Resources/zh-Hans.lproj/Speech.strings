@@ -89,7 +89,7 @@
 "speech.note.qwen3_mlx" = "用 GPU 运行，速度快，支持词库。";
 "speech.note.qwen3_mlx_17" = "更大的 Qwen3-ASR：专有名词和嘈杂环境下更准确，每句慢约 25 毫秒。";
 "speech.note.fun_asr" = "中文、英文、日文，用 GPU 运行，支持词库。";
-"speech.note.cloud" = "在云端运行，使用你自己的密钥。";
+"speech.note.cloud" = "云端语音识别的模型和音频速度。";
 "speech.note.apple" = "macOS 26 自带，无需下载；专有名词不如 Qwen3-ASR 准";
 
 /* Actions */
@@ -137,19 +137,13 @@
 "speech.limits.memory.value" = "最多 %@";
 "speech.limits.battery" = "用电池时使用更轻的模型";
 "speech.limits.battery.detail" = "未接电源时，录屏使用更小的模型。";
-"speech.limits.footer" = "录屏以低优先级转写，其他 App 保持流畅；实时字幕和语音备注以正常优先级运行。";
-"speech.advanced.mirror" = "从 hf-mirror.com 下载";
-"speech.advanced.mirror.detail" = "从这里连 Hugging Face 很慢或连不上时打开。";
+"speech.limits.footer" = "录屏以低优先级转写；实时字幕和语音备注按正常优先级运行。";
+"speech.advanced.mirror" = "通过镜像下载模型";
+"speech.advanced.mirror.detail" = "Hugging Face 很慢或连不上时，改从 hf-mirror.com 下载。";
 
 /* Cloud */
-"speech.cloud.title" = "云端语音识别";
-"speech.cloud.name.openai" = "OpenAI 兼容接口";
-"speech.cloud.name.dashscope" = "阿里云百炼 · Qwen3-ASR（推荐）";
-"speech.cloud.name.volcengine" = "火山引擎 · 豆包 Seed-ASR 2.0";
-"speech.cloud.set" = "已设置";
-"speech.cloud.not_set" = "未设置";
+"speech.cloud.title" = "云端识别";
 "speech.cloud.off" = "已在「隐私」里关闭";
-"speech.cloud.setup" = "设置…";
 "speech.cloud.sheet.note" = "使用你的 API Key 在云端识别。Key 保存在钥匙串中，录音会上传到该服务。";
 "speech.cloud.speed" = "倍速";
 "speech.cloud.speed.1" = "原速（推荐）";
@@ -163,6 +157,16 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "其他兼容 OpenAI 的服务";
 "speech.cloud.key.get" = "获取 API Key";
+"speech.cloud.add.choice" = "OpenAI 兼容的语音识别…";
+"speech.cloud.add.title" = "OpenAI 兼容的语音识别";
+"speech.cloud.line.title" = "%1$@ · %2$@";
+"speech.cloud.line.only" = "仅用于语音识别";
+"speech.cloud.options.detail" = "%1$@ · %2$@";
+"speech.cloud.options.speed.1" = "音频按原速发送";
+"speech.cloud.options.speed.15" = "音频按 1.5 倍速发送";
+"speech.cloud.options.speed.2" = "音频按 2 倍速发送";
+"speech.cloud.options.button" = "选项…";
+"speech.cloud.options.note" = "设置云端识别的模型和音频速度。API 密钥在“云端模型”中设置。";
 "speech.section.mac" = "本机";
 "speech.section.jobs" = "各功能使用的模型";
 "speech.machine.short" = "%1$@，%2$@";

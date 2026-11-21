@@ -330,7 +330,7 @@
 "settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "dictation model, speech model, download, Qwen";
 "settings.kw.speech.polish" = "polish model, tidy, punctuation, Gemma";
-"settings.kw.speech.services" = "cloud, API key, LLM, DeepSeek, Qwen, Model Studio, Doubao, Moonshot, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, base URL";
+"settings.kw.speech.services" = "cloud, API key, LLM, DeepSeek, Qwen, Model Studio, Doubao, Moonshot, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, base URL, Groq, Whisper, speech recognition";
 "settings.kw.speech.translate" = "translate, translation model, cloud, DeepSeek";
 "settings.kw.speech.vision" = "OCR, screenshot, image, vision model, Copy Text from Screen";
 "settings.kw.speech.compare" = "compare, accuracy, mistakes, delay, latency, cost, price, privacy, cloud, recommended, which model";
@@ -343,7 +343,7 @@
 "settings.kw.speech.concurrent" = "parallel, at a time, queue";
 "settings.kw.speech.memory" = "GPU, memory, RAM, VRAM";
 "settings.kw.speech.battery" = "battery, power, laptop";
-"settings.kw.speech.cloud" = "cloud, API key, OpenAI, DashScope, online";
+"settings.kw.speech.cloud" = "cloud, audio speed, speech model, Qwen3-ASR, online";
 "settings.kw.speech.language" = "recognition language, detect, auto detect";
 "settings.kw.speech.mirror" = "mirror, Hugging Face, China, download speed, hf-mirror";
 "settings.kw.shortcuts.restore" = "reset, defaults, restore";
