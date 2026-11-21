@@ -153,6 +153,36 @@ public enum DictationChoices {
         return 3
     }
 
+    /// The same reading in half marks (0–10), for the Compare sheet's five-segment meter: inside `level`'s bins, so a
+    /// meter never disagrees with it, but the top bin is split where the measurements split — 10 at ≤ 2.2 % (the cloud
+    /// rows: 2.0, 2.18, 2.20 %), 9 above it (the 1.7B's 2.50 %) — and the 4s at 3.4 % (0.6B, Fun-ASR-Nano: 8; nothing
+    /// measured sits at 7 yet). Four rows that all read "5" told the choices a user weighs apart not at all.
+    public static func halves(_ error: Double) -> Int {
+        guard error > 0 else { return 0 }
+        if error <= 0.022 { return 10 }
+        if error <= 0.027 { return 9 }
+        if error <= 0.034 { return 8 }
+        if error <= 0.04 { return 7 }
+        return 6
+    }
+
+    /// Cloud polish per dictation (§6.3 A: ~1,500 tokens ≈ ¥0.002, $0.0003) — not the per-use average in the table
+    /// (¥0.001, which counts the cheaper translations and screen text too).
+    public static let polishPerDictation = (cny: 0.002, usd: 0.0003)
+    /// Dictations in an hour of speech, for an hourly estimate of a per-dictation price: §6.3 prices a dictation as
+    /// ten seconds of speech ("≈ ¥0.0003 for a 10 s dictation"), so 360. Longer takes make polish cheaper per hour.
+    public static let dictationsPerHour = 360.0
+
+    /// What an hour of dictation costs, the Compare sheet's one unit for the cloud rows: a per-hour price as it is,
+    /// cloud polish as `polishPerDictation` × `dictationsPerHour` (≈ ¥0.72, $0.11). Nil for a free choice.
+    public static func perHour(_ f: DictationFacts) -> (cny: Double, usd: Double)? {
+        switch f.cost {
+        case .free: return nil
+        case .perHour(let cny, let usd): return (cny, usd)
+        case .perDictation: return (polishPerDictation.cny * dictationsPerHour, polishPerDictation.usd * dictationsPerHour)
+        }
+    }
+
     /// The language whose own line is shown beside the mixed one: the user's first language when it isn't Chinese and
     /// was measured; nil for Chinese speakers (the mixed line is theirs) and unmeasured languages.
     public static func ownLanguage(_ languages: [String]) -> String? {

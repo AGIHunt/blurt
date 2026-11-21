@@ -3,17 +3,26 @@
 //
 //   the lead     the Models page's one lead line: "Recommended for this Mac: Qwen3-ASR 1.7B", with Compare… at its
 //                right end (the page stays as it was under it).
-//   the sheet    "Dictation choices": this Mac (chip, memory) and how it was measured in one line, then one row per
-//                choice — macOS Speech, Qwen3-ASR 0.6B, Fun-ASR-Nano (Chinese / English / Japanese speakers only),
-//                1.7B, the local model + cloud polish, cloud recognition (Qwen3-ASR Flash), Doubao Seed-ASR 2.0 on
-//                Volcengine (Chinese speakers only: streamed while you talk, best with cloud polish) — with
-//                Accuracy (five stars, DictationChoices.level: how good, never a count of mistakes — in the
-//                user's own language when it isn't Chinese and was measured), Delay (after you stop talking), Cost (free + the download; per dictation; per hour)
-//                and what leaves the Mac (nothing / your text / your voice, and to whom). Under a row's name:
-//                Recommended (badge), In use (check, brand ink), or what it needs here (16 GB of memory, Apple
-//                silicon, macOS 26). Its action: Use, Download (the app's one download manager, used once it is in),
-//                its bar and Stop while it comes down, Add Key… for a cloud row with no service (Settings → Models'
-//                Add Service sheet; the row is used once the key is in). Done (Return) / Esc / a click outside close.
+//   the sheet    "Dictation Choices" and how it was measured in one line, then two open sections on one grid (the
+//                title, the headings, the names and Done share the sheet's 22 pt edges):
+//                  On this Mac — "Free, nothing leaves your Mac" said once under the heading — macOS Speech,
+//                    Qwen3-ASR 0.6B, Fun-ASR-Nano (Chinese / English / Japanese speakers only), Qwen3-ASR 1.7B, with
+//                    Accuracy, Delay, Download (its size, Downloaded, Built in) and Memory (while you dictate);
+//                  Cloud — "Uses your own API key" — Qwen3-ASR 1.7B + cloud polish, Qwen3-ASR Flash (Alibaba Cloud),
+//                    Doubao Seed-ASR 2.0 (Volcengine; Chinese speakers only: streamed while you talk, best with cloud
+//                    polish), with Accuracy, Delay, Cost per hour (one unit: cloud polish estimated from ten-second
+//                    dictations, its per-dictation figure in the cell's tooltip) and Uploaded ("Voice → Alibaba Cloud").
+//                Each section: the recommended row first, then by accuracy, then by delay. Accuracy is a five-segment
+//                meter in half steps (DictationChoices.halves: how good, never a count of mistakes — in the user's own
+//                language when it isn't Chinese and was measured), so the cloud's ≤ 2.2 % reads above the 1.7B's 2.5 %.
+//                After a name, on its line: the Recommended tag (neutral ink on brand tint) or what this Mac lacks for
+//                it (16 GB of memory, Apple silicon, macOS 26: the row goes secondary and has no action).
+//                One thing in the action column: In Use (a brand-ink check), or the row's action — Use, Download (the
+//                app's one download manager, used once it is in), Add Key… for a cloud row with no service (Settings →
+//                Models' Add Service sheet; used once the key is in). At rest only the recommended row shows its
+//                action; the others show theirs on hover (a faint row tint) or keyboard focus; a download in progress
+//                keeps its bar and Stop. Footer: this Mac (chip, memory) on the left, Done (the brand default, Return)
+//                on the right; Esc / a click outside also close.
 //   opened from  the lead's Compare…, the dictation row's pop-up ("Compare Choices…"), a search ("speech.compare").
 // The setup assistant's speech step names the same choices in its own lines (ChoiceText), without numbers.
 import AppKit
@@ -74,14 +83,14 @@ struct DictationNow {
 // MARK: - the words (shared with the setup assistant)
 
 enum ChoiceText {
-    /// A choice's name: the model's own, "1.7B + cloud polish", "Cloud recognition".
-    @MainActor static func name(_ c: DictationChoice, base: DictationChoice, short: Bool = true) -> String {
+    /// A choice's name: the model's own ("Qwen3-ASR Flash", "Doubao Seed-ASR 2.0"), or "Qwen3-ASR 1.7B + cloud polish"
+    /// ("1.7B + cloud polish" when `short`, where the row above names the model).
+    @MainActor static func name(_ c: DictationChoice, base: DictationChoice, short: Bool = false) -> String {
         switch c {
         case .cloudPolish:
             let b = model(base.rawValue)
             return S("speech.compare.cloud_polish", short ? b.replacingOccurrences(of: "Qwen3-ASR ", with: "") : b)
-        case .cloudRecognizer: return S("speech.compare.cloud_asr")
-        default: return model(c.rawValue)       // Volcengine's by its model: Doubao Seed-ASR 2.0
+        default: return model(c.rawValue)
         }
     }
 
@@ -109,54 +118,62 @@ enum ChoiceText {
         return f.string(from: v as NSNumber) ?? "\(v)"
     }
 
-    /// "~0.2 s", "0.2–0.3 s"
+    /// "≈ 0.2 s" / 「约 0.2 秒」, "0.2–0.3 s"
     static func delay(_ r: ClosedRange<Double>) -> String {
         r.lowerBound == r.upperBound ? S("speech.compare.delay.one", seconds(r.lowerBound))
             : S("speech.compare.delay.range", seconds(r.lowerBound), seconds(r.upperBound))
     }
 
-    /// The price in the money the service bills in here: yuan in mainland China, US dollars elsewhere.
-    static func money(cny: Double, usd: Double) -> String {
-        let china = CloudRegion.forSystem(Locale.current.region?.identifier) == .china
+    /// Whether prices are said in yuan (mainland China) or US dollars (elsewhere): the money the service bills in.
+    static var yuan: Bool { CloudRegion.forSystem(Locale.current.region?.identifier) == .china }
+
+    /// "¥0.8" / "$0.11": the price in the money the service bills in here, `digits` after the point at most.
+    static func amount(cny: Double, usd: Double, digits: Int = 4, minDigits: Int = 0) -> String {
         let f = NumberFormatter()
         f.locale = Loc.locale
         f.numberStyle = .decimal
-        f.maximumFractionDigits = 4
-        f.minimumFractionDigits = 0
-        let v = china ? cny : usd
-        return "≈ " + (china ? "¥" : "$") + (f.string(from: v as NSNumber) ?? "\(v)")
+        f.maximumFractionDigits = digits
+        f.minimumFractionDigits = minDigits
+        let v = yuan ? cny : usd
+        return (yuan ? "¥" : "$") + (f.string(from: v as NSNumber) ?? "\(v)")
     }
 
-    /// A per-use price as a whole number of a round batch, the figure a reader can hold without arithmetic: "≈ ¥1" per
-    /// 1,000 uses in China, "≈ $1" per 10,000 elsewhere (¥0.001 a use read as nothing and invited no comparison). Uses,
+    /// An estimate: "≈ ¥0.8" / 「约 ¥0.8」 (one marker for every approximate figure, the delays' too).
+    static func approx(_ s: String) -> String { S("speech.compare.approx", s) }
+
+    /// A per-use price as a whole number of a round batch, the figure a reader can hold without arithmetic: "¥1" per
+    /// 1,000 uses in China, "$1" per 10,000 elsewhere (¥0.001 a use read as nothing and invited no comparison). Uses,
     /// not dictations: the same cloud model translates and reads screen text too. `per`: "1,000 uses" / 「每千次」.
     static func batch(cny: Double, usd: Double) -> (amount: String, per: String) {
-        CloudRegion.forSystem(Locale.current.region?.identifier) == .china
-            ? (money(cny: cny * 1000, usd: usd * 1000), S("speech.compare.per_1000"))
-            : (money(cny: cny * 10000, usd: usd * 10000), S("speech.compare.per_10000"))
+        yuan ? (amount(cny: cny * 1000, usd: usd * 1000), S("speech.compare.per_1000"))
+            : (amount(cny: cny * 10000, usd: usd * 10000), S("speech.compare.per_10000"))
     }
 
-    /// DeepSeek's cloud polish as `batch`, its figure without the "≈" (the lines that show it say "about" themselves).
+    /// DeepSeek's cloud polish as `batch`, without "≈" (the lines that show it say "about" themselves): Settings →
+    /// Models' services and the setup assistant's cloud row.
     static var cloudPolishPrice: (amount: String, per: String)? {
         guard case .perDictation(let cny, let usd) = DictationChoices.facts(.cloudPolish).cost else { return nil }
-        let b = batch(cny: cny, usd: usd)
-        return (b.amount.replacingOccurrences(of: "≈ ", with: ""), b.per)
+        return batch(cny: cny, usd: usd)
     }
 
-    /// The cost cell: what it costs, and per what (or the download).
-    static func cost(_ f: DictationFacts, sizeMB: Double?, installed: Bool = false) -> (String, String) {
-        switch f.cost {
-        case .free:
-            if installed { return (S("speech.compare.free"), S("speech.compare.installed")) }
-            let mb = sizeMB ?? f.downloadMB
-            return (S("speech.compare.free"), mb > 0 ? S("speech.compare.download", modelSize(mb)) : S("speech.compare.builtin"))
-        case .perDictation(let cny, let usd): let b = batch(cny: cny, usd: usd); return (b.amount, b.per)
-        case .perHour(let cny, let usd): return (money(cny: cny, usd: usd), S("speech.compare.per_hour"))
-        }
+    /// The Cost per hour cell of a cloud row: "≈ ¥0.8", "≈ $0.11" (yuan to one decimal, dollars to the cent) — one unit
+    /// for every row, so they compare (DictationChoices.perHour); nil for a free one.
+    static func hourly(_ f: DictationFacts) -> String? {
+        DictationChoices.perHour(f).map { approx(amount(cny: $0.cny, usd: $0.usd, digits: yuan ? 1 : 2, minDigits: yuan ? 0 : 2)) }
     }
 
-    /// "to DeepSeek" / 「发往 DeepSeek」, 「发往阿里云」 (no space before a Chinese name).
-    static func to(_ name: String) -> String { tight(S("speech.compare.to", name), name) }
+    /// Cloud polish's hourly figure is an estimate: what one dictation costs, for its tooltip.
+    static var polishPerDictation: String {
+        let p = DictationChoices.polishPerDictation
+        return S("speech.compare.cost.polish.help", amount(cny: p.cny, usd: p.usd))
+    }
+
+    /// The Download cell of a local row: its size, "Downloaded", or "Built in" (macOS Speech).
+    static func download(_ f: DictationFacts, sizeMB: Double?, installed: Bool) -> String {
+        if installed { return S("speech.compare.installed") }
+        let mb = sizeMB ?? f.downloadMB
+        return mb > 0 ? modelSize(mb) : S("speech.compare.builtin")
+    }
 
     /// Chinese puts a space between Chinese and Latin words, none between two Chinese ones: 「发给 DeepSeek」,
     /// 「发给阿里云百炼」.
@@ -165,15 +182,17 @@ enum ChoiceText {
         return s.replacingOccurrences(of: " " + name, with: name)
     }
 
-    /// What leaves the Mac, and where it goes.
-    @MainActor static func leaves(_ f: DictationFacts) -> (String, String?) {
+    /// What a cloud row uploads and to whom, on one line: "Text → DeepSeek" (the polish service in use, else the first
+    /// connected one, else "your service"), "Voice → Alibaba Cloud", "Voice → Volcengine". Nil for a local row: its
+    /// section says nothing leaves the Mac.
+    @MainActor static func leaves(_ f: DictationFacts) -> String? {
         switch f.leaves {
-        case .nothing: return (S("speech.compare.leaves.nothing"), nil)
+        case .nothing: return nil
         case .text:
             let to = CloudStore.cloudModel(.polish)?.service ?? CloudRouting.ranked(CloudStore.connected).first.map(CloudStore.name)
-            return (S("speech.compare.leaves.text"), to.map(Self.to) ?? S("speech.compare.to.any"))
-        case .voice: return (S("speech.compare.leaves.voice"), to(S("speech.compare.alibaba")))
-        case .voiceToVolcengine: return (S("speech.compare.leaves.voice"), to(S("speech.compare.volcengine")))
+            return S("speech.compare.sends.text", to ?? S("speech.compare.your_service"))
+        case .voice: return S("speech.compare.sends.voice", S("speech.compare.alibaba"))
+        case .voiceToVolcengine: return S("speech.compare.sends.voice", S("speech.compare.volcengine"))
         }
     }
 
@@ -251,41 +270,69 @@ struct DictationCompareSheet: View {
     /// Add Key…: the service sheet, and the row to use once a key is in
     @State private var adding: Adding?
     struct Adding: Identifiable { var choice: DictationChoice; var id: String { choice.rawValue } }
+    /// the row under the pointer: its action shows (test builds: BLURT_TEST_COMPARE_HOVER=<choice id>)
+    @State private var hovered: DictationChoice? = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+        ? ProcessInfo.processInfo.environment["BLURT_TEST_COMPARE_HOVER"].flatMap(DictationChoice.init(rawValue:)) : nil
+    /// the row whose action has the keyboard's focus (Full Keyboard Access): it shows too
+    @FocusState private var focused: DictationChoice?
 
-    /// fixed columns, so the numbers line up from row to row
+    /// One grid for both sections, so a column's values line up from row to row and across the two: every column its
+    /// widest value in English and Chinese ("Voice → Alibaba Cloud" 126 pt, "添加密钥…" 86, "Cost per hour" 73) and
+    /// 12 pt apart, which leaves every visible gutter ≥ 16 pt; the name takes the rest (≈ 208 pt: "Qwen3-ASR 1.7B + cloud
+    /// polish" is 196). 740 pt wide, so the sheet stays inside the Settings window at its 760 pt minimum.
     enum Col {
-        static let accuracy: CGFloat = 158, delay: CGFloat = 66, cost: CGFloat = 96, leaves: CGFloat = 112
-        static let action: CGFloat = 86, gap: CGFloat = 10
+        static let accuracy: CGFloat = 66, delay: CGFloat = 64, third: CGFloat = 78, fourth: CGFloat = 132
+        static let action: CGFloat = 88, gap: CGFloat = 12
+        /// the sheet's edges: the title, the headings, the names, the actions and Done all start or end here
+        static let inset: CGFloat = 22
+        static let width: CGFloat = 740
+        static let row: CGFloat = 34
     }
+
+    enum Section: CaseIterable { case local, cloud }
 
     var body: some View {
         _ = ui.tick
         let now = DictationNow.read()
         let lang = DictationChoices.ownLanguage(m.languages.isEmpty ? Locale.preferredLanguages : m.languages)
+        let shown = DictationChoices.choices(now.mac, inUse: now.inUse == .cloudPolish ? now.base : now.inUse)
         return VStack(alignment: .leading, spacing: 0) {
             Text(S("speech.compare.title")).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            Text([now.machine.map { S("speech.compare.mac", $0) } ?? "", ChoiceText.note(lang)].filter { !$0.isEmpty }.joined(separator: " · "))
+            Text(ChoiceText.note(lang))
                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 6)
-            SettingsGroup("speech.compare", title: "") {
-                header
-                ForEach(DictationChoices.choices(now.mac, inUse: now.inUse == .cloudPolish ? now.base : now.inUse), id: \.self) { c in
-                    row(c, now: now, lang: lang)
+                .padding(.top, 4)
+            // the catalogue's section (a search for "accuracy" lands on this sheet), open: no box, no inset of its own,
+            // so the headings and names share the title's edge
+            SettingsGroup("speech.compare", title: "", boxed: false) {
+                ForEach(Section.allCases, id: \.self) { sec in
+                    let rows = order(shown.filter { sec == .local ? $0.local : !$0.local }, now: now, lang: lang)
+                    if !rows.isEmpty {
+                        section(sec, rows: rows, now: now, lang: lang)
+                            .padding(.top, sec == .local ? 0 : 24)
+                    }
                 }
             }
-            .padding(.top, -12)
-            HStack {
-                Spacer()
-                Button(S("speech.lib.done"), action: close).keyboardShortcut(.defaultAction)
+            .padding(.top, 18 - SettingsMetrics.groupGap)
+            HStack(alignment: .center, spacing: 12) {
+                if let mac = now.machine {
+                    Text(S("speech.compare.mac", mac)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Button(S("speech.lib.done"), action: close)
+                    .buttonStyle(.borderedProminent).tint(Color.settingsDefault)
+                    .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, 14)
+            .padding(.top, 22)
         }
-        .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 800)
+        .padding(.horizontal, Col.inset).padding(.top, 20).padding(.bottom, 18)
+        .frame(width: Col.width)
         .fixedSize(horizontal: false, vertical: true)
+        // screenshots of a test build in the background: drawn as the key sheet people see, Done filled
+        .modifier(TestKeyLook(on: SettingsTestKeyLook.on))
         .sheet(item: $adding) { a in
-            // Model Studio for cloud recognition (its key recognises speech), Volcengine Speech for its row; any service
+            // Model Studio for Qwen3-ASR Flash (its key recognises speech), Volcengine Speech for its row; any service
             // for polish
             CloudServiceSheet(editing: nil, preset: a.choice == .cloudRecognizer ? "dashscope"
                               : a.choice == .volcengine ? VolcengineSpeech.preset : nil) {
@@ -300,16 +347,51 @@ struct DictationCompareSheet: View {
         }
     }
 
-    var header: some View {
-        HStack(spacing: Col.gap) {
-            Color.clear.frame(maxWidth: .infinity)
-            headerCell(S("speech.compare.col.accuracy"), Col.accuracy)
-            headerCell(S("speech.compare.col.delay"), Col.delay, help: S("speech.compare.col.delay.help"))
-            headerCell(S("speech.compare.col.cost"), Col.cost)
-            headerCell(S("speech.compare.col.leaves"), Col.leaves)
-            Color.clear.frame(width: Col.action)
+    /// A section's rows: the recommended one first, then the more accurate, then the quicker (two rows that tie keep
+    /// the table's order); one this Mac can't run (16 GB of memory, Apple silicon, macOS 26) at the section's end.
+    func order(_ cs: [DictationChoice], now: DictationNow, lang: String?) -> [DictationChoice] {
+        func key(_ c: DictationChoice) -> [Double] {
+            let f = now.facts(c), fit = now.fit(c)
+            return [now.recommended == c ? 0 : 1, fit == .fits || fit == .needsKey ? 0 : 1,
+                    -Double(DictationChoices.halves(ChoiceText.error(f, lang))), f.delay.lowerBound, f.delay.upperBound]
         }
-        .padding(.bottom, 5)
+        return cs.enumerated().sorted { a, b in
+            let ka = key(a.element), kb = key(b.element)
+            return ka != kb ? ka.lexicographicallyPrecedes(kb) : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    // MARK: a section
+
+    /// The heading (13 pt semibold) with what the whole section shares under it in one quiet line, the column names
+    /// on that line's baseline, then the rows with hairlines between them (none under the heading).
+    func section(_ sec: Section, rows: [DictationChoice], now: DictationNow, lang: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: Col.gap) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(S(sec == .local ? "speech.compare.section.local" : "speech.compare.section.cloud"))
+                        .font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Text(S(sec == .local ? "speech.compare.section.local.note" : "speech.compare.section.cloud.note"))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                headerCell(S("speech.compare.col.accuracy"), Col.accuracy)
+                headerCell(S("speech.compare.col.delay"), Col.delay, help: S("speech.compare.col.delay.help"))
+                if sec == .local {
+                    headerCell(S("speech.compare.col.size"), Col.third)
+                    headerCell(S("speech.compare.col.memory"), Col.fourth, help: S("speech.compare.col.memory.help"))
+                } else {
+                    headerCell(S("speech.compare.col.cost"), Col.third, help: S("speech.compare.col.cost.help"))
+                    headerCell(S("speech.compare.col.leaves"), Col.fourth)
+                }
+                Color.clear.frame(width: Col.action, height: 1)
+            }
+            .padding(.bottom, 6)
+            ForEach(Array(rows.enumerated()), id: \.element) { i, c in
+                if i > 0 { Divider() }
+                row(c, now: now, lang: lang)
+            }
+        }
     }
 
     func headerCell(_ t: String, _ width: CGFloat, help: String = "") -> some View {
@@ -318,20 +400,16 @@ struct DictationCompareSheet: View {
             .help(help)
     }
 
-    /// A cell: the value, and one quiet line under it.
-    func cell(_ top: String, _ under: String?, _ width: CGFloat, help: String = "", dim: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(top).font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-            if let u = under {
-                Text(u).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
-            }
-        }
-        .lineLimit(2)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(width: width, alignment: .leading)
-        .help(help)
+    /// A value: 12 pt, tabular digits, one line; "—" in secondary for none.
+    func cell(_ t: String?, _ width: CGFloat, help: String = "", dim: Bool, quiet: Bool = false) -> some View {
+        Text(t ?? "—").font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
+            .foregroundStyle(dim || quiet || t == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .lineLimit(1)
+            .frame(width: width, alignment: .leading)
+            .help(help)
     }
+
+    // MARK: a row
 
     func row(_ c: DictationChoice, now: DictationNow, lang: String?) -> some View {
         let f = now.facts(c)
@@ -339,8 +417,6 @@ struct DictationCompareSheet: View {
         let runs = fit == .fits || fit == .needsKey
         let inUse = now.inUse == c
         let model = c.local ? d.asr?.models.first { $0.id == c.rawValue } : nil
-        let (cost, per) = ChoiceText.cost(f, sizeMB: model?.sizeMB, installed: model?.installed == true && c != .macOSSpeech)
-        let (leaves, to) = ChoiceText.leaves(f)
         let help: String = {
             switch c {
             case .cloudPolish: return S("speech.compare.cloud_polish.help", ChoiceText.model(now.base.rawValue))
@@ -349,82 +425,140 @@ struct DictationCompareSheet: View {
             default: return ""
             }
         }()
-        return SettingsLine(padding: 6) {
-            HStack(alignment: .center, spacing: Col.gap) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(ChoiceText.name(c, base: now.base)).font(.system(size: SettingsMetrics.titleSize)).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(runs ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    marks(c, now: now, fit: fit, inUse: inUse)
-                }
+        let lit = hovered == c || focused == c
+        let installed = model?.installed == true && c != .macOSSpeech
+        return HStack(alignment: .center, spacing: Col.gap) {
+            nameCell(c, now: now, fit: fit, runs: runs)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(help)
-                AccuracyMeter(level: DictationChoices.level(ChoiceText.error(f, lang)), dim: !runs)
-                    .frame(width: Col.accuracy, alignment: .leading)
-                cell(ChoiceText.delay(f.delay), nil, Col.delay, dim: !runs)
-                cell(cost, per, Col.cost, dim: !runs)
-                cell(leaves, to, Col.leaves, dim: !runs)
-                HStack(spacing: 0) { Spacer(minLength: 0); action(c, now: now, fit: fit, inUse: inUse) }.frame(width: Col.action)
+            AccuracyMeter(halves: DictationChoices.halves(ChoiceText.error(f, lang)), dim: !runs)
+                .frame(width: Col.accuracy, alignment: .leading)
+            cell(ChoiceText.delay(f.delay), Col.delay, dim: !runs)
+            if c.local {
+                cell(ChoiceText.download(f, sizeMB: model?.sizeMB, installed: installed), Col.third, dim: !runs,
+                     quiet: installed || c == .macOSSpeech)
+                cell(f.memoryGB > 0 ? ChoiceText.memory(f.memoryGB) : nil, Col.fourth, dim: !runs)
+            } else {
+                cell(ChoiceText.hourly(f), Col.third, help: c == .cloudPolish ? ChoiceText.polishPerDictation : "", dim: !runs)
+                cell(ChoiceText.leaves(f), Col.fourth, dim: !runs)
             }
-            .frame(minHeight: 34)
-            .accessibilityElement(children: .contain)
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                action(c, now: now, fit: fit, inUse: inUse, shown: lit || now.recommended == c)
+            }
+            .frame(width: Col.action)
         }
+        .padding(.vertical, 5)
+        .frame(minHeight: Col.row)
+        .background {
+            // the pointer's row: a faint tint just past the text's edges (as Linear's and Raycast's lists)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(hovered == c ? 0.045 : 0))
+                .padding(.horizontal, -8)
+        }
+        .contentShape(Rectangle())
+        .onHover { h in
+            if h { hovered = c } else if hovered == c { hovered = nil }
+        }
+        .accessibilityElement(children: .contain)
     }
 
-    /// Under the name: Recommended, In use, or what this Mac lacks for it.
-    @ViewBuilder func marks(_ c: DictationChoice, now: DictationNow, fit: DictationChoices.Fit, inUse: Bool) -> some View {
-        let rec = now.recommended == c
-        if let why = ChoiceText.fit(fit) {
-            Text(why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-        } else if rec || inUse {
-            HStack(spacing: 6) {
-                if rec { Badge(S("speech.tag.recommended")) }
-                if inUse {
-                    Label(S("speech.compare.in_use"), systemImage: "checkmark")
-                        .labelStyle(.titleAndIcon).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.brandInk)
+    /// The name, then on its line what this Mac lacks for it (secondary) or the Recommended tag — under the name only
+    /// when the two don't fit side by side.
+    @ViewBuilder func nameCell(_ c: DictationChoice, now: DictationNow, fit: DictationChoices.Fit, runs: Bool) -> some View {
+        let name = Text(ChoiceText.name(c, base: now.base)).font(.system(size: SettingsMetrics.titleSize))
+            .foregroundStyle(runs ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+        let why = ChoiceText.fit(fit)
+        if let w = why {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) { name.lineLimit(1).fixedSize(); whyText(w).fixedSize() }
+                VStack(alignment: .leading, spacing: 2) { name.lineLimit(2).fixedSize(horizontal: false, vertical: true); whyText(w) }
+            }
+        } else if now.recommended == c {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 6) { name.lineLimit(1).fixedSize(); ChoiceTag(S("speech.tag.recommended")).fixedSize() }
+                VStack(alignment: .leading, spacing: 3) {
+                    name.lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    ChoiceTag(S("speech.tag.recommended"))
                 }
             }
+        } else {
+            name.lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    @ViewBuilder func action(_ c: DictationChoice, now: DictationNow, fit: DictationChoices.Fit, inUse: Bool) -> some View {
+    func whyText(_ w: String) -> some View {
+        Text(w).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+    }
+
+    /// The one thing at a row's end: In Use, or its action — shown at rest on the recommended row, on the others while
+    /// the pointer or the keyboard is on them (still there for VoiceOver); a download keeps its bar and Stop.
+    @ViewBuilder func action(_ c: DictationChoice, now: DictationNow, fit: DictationChoices.Fit, inUse: Bool, shown: Bool) -> some View {
         if inUse {
-            EmptyView()
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.brandInk)
+                Text(S("speech.compare.in_use")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            }
+            .lineLimit(1).fixedSize()
+            .accessibilityElement(children: .combine)
         } else if fit == .needsKey {
-            Button(S("speech.compare.add_key")) { adding = Adding(choice: c) }.controlSize(.small)
+            reveal(S("speech.compare.add_key"), c, shown) { adding = Adding(choice: c) }
         } else if fit != .fits {
             EmptyView()
         } else if let id = DictationChoiceAction.downloading(c, now: now) {
             HStack(spacing: 6) {
                 let p = dl.progress(id)
-                ProgressView(value: min(p?.done ?? 0, p?.total ?? 1), total: max(p?.total ?? 1, 1)).controlSize(.small).frame(width: 56)
+                ProgressView(value: min(p?.done ?? 0, p?.total ?? 1), total: max(p?.total ?? 1, 1)).controlSize(.small).frame(width: 60)
                 Button { dl.stop(id) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                     .buttonStyle(.borderless).help(S("speech.download.stop")).accessibilityLabel(S("speech.download.stop"))
             }
         } else if DictationChoiceAction.needsDownload(c, now: now) {
-            Button(S("speech.download.button")) { DictationChoiceAction.use(c, now: now) }.controlSize(.small)
+            reveal(S("speech.download.button"), c, shown) { DictationChoiceAction.use(c, now: now) }
         } else {
-            Button(S("speech.lib.use")) { DictationChoiceAction.use(c, now: now) }.controlSize(.small)
+            reveal(S("speech.lib.use"), c, shown) { DictationChoiceAction.use(c, now: now) }
         }
     }
 
+    func reveal(_ title: String, _ c: DictationChoice, _ shown: Bool, _ act: @escaping () -> Void) -> some View {
+        Button(title, action: act)
+            .buttonStyle(.bordered).lineLimit(1).fixedSize()
+            .focused($focused, equals: c)
+            .opacity(shown ? 1 : 0)
+    }
 }
 
-/// Accuracy as five stars (DictationChoices.level), the way ratings are shown everywhere.
+/// "Recommended": neutral ink on the brand tint (system.md §2.1: text on tint stays ink), a caption's size.
+struct ChoiceTag: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Text(text).font(.system(size: 11, weight: .medium)).foregroundStyle(.primary)
+            .padding(.horizontal, 6).padding(.vertical, 1.5)
+            .background(Capsule().fill(Color.brandTint))
+    }
+}
+
+/// Accuracy as a five-segment meter in half steps (DictationChoices.halves): secondary ink on a faint track, a
+/// measured level rather than a star rating.
 struct AccuracyMeter: View {
-    let level: Int
+    let halves: Int
     var dim = false
+    static let segment = CGSize(width: 10, height: 5), spacing: CGFloat = 3
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { i in
-                Image(systemName: i <= level ? "star.fill" : "star")
-                    .font(.system(size: 11))
-                    .foregroundStyle(i <= level && !dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+        HStack(spacing: Self.spacing) {
+            ForEach(0..<5, id: \.self) { i in
+                let part = CGFloat(min(max(halves - i * 2, 0), 2)) / 2
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.12))
+                    Capsule().fill(Color.primary.opacity(dim ? 0.28 : 0.6))
+                        .mask(alignment: .leading) { Rectangle().frame(width: Self.segment.width * part) }
+                }
+                .frame(width: Self.segment.width, height: Self.segment.height)
             }
         }
         .accessibilityElement()
         .accessibilityLabel(S("speech.compare.col.accuracy"))
-        .accessibilityValue("\(level) / 5")
+        .accessibilityValue(S("speech.compare.accuracy.value", ChoiceText.seconds(Double(halves) / 2)))
     }
 }

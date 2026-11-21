@@ -1265,7 +1265,10 @@ struct ModelMenuPopup: NSViewRepresentable {
         menu.autoenablesItems = false
         // the pull-down's own title: the chosen item, plainly
         let chosen = items.first { $0.value == current }
-        let title = chosen.map { $0.title } ?? current.split(separator: "\t").last.map(String.init) ?? ""
+        // a value with no item of its own: a kept cloud model by its id; this Mac with no model in yet ("local:", or a
+        // model since removed) says Not set, never the raw value
+        let title = chosen.map { $0.title }
+            ?? (current.hasPrefix("local:") ? M("models.uses.none") : current.split(separator: "\t").last.map(String.init) ?? "")
         menu.addItem(NSMenuItem(title: title, action: nil, keyEquivalent: ""))
         for (i, it) in items.enumerated() {
             if it.isDivider { menu.addItem(.separator()); continue }
