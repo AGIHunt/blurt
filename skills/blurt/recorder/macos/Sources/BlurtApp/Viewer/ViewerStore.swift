@@ -103,10 +103,11 @@ final class ViewerStore: ObservableObject {
         }
     }
 
-    /// A computer heard from: its name, system, addresses and relay as it said them this session.
+    /// A computer heard from: its name, system, addresses and relay as it said them this session. The name the user gave it stays.
     func save(_ c: RemoteComputer) {
         var c = c
         if let i = computers.firstIndex(where: { $0.id == c.id }) {
+            c = computers[i].heard(c)
             // a window's late word on a computer that removed this Mac doesn't bring it back; pairing again (a new device id) does
             if computers[i].removed == true, computers[i].deviceID == c.deviceID { c.removed = true }
             // paired again (a new device id): the old key goes
@@ -116,6 +117,27 @@ final class ViewerStore: ObservableObject {
             computers.append(c)
         }
         persist()
+    }
+
+    /// Rename (a double-click on its name, or Rename… in its ⋯): what this Mac calls it, nothing sent, its id the same. An empty field,
+    /// or its own name, brings its own name back.
+    func rename(_ c: RemoteComputer, to text: String) {
+        guard let i = computers.firstIndex(where: { $0.id == c.id }) else { return }
+        let alias = RemoteAlias.typed(text, own: computers[i].name)
+        guard computers[i].alias != alias else { return }
+        computers[i].alias = alias
+        #if DEBUG || BLURT_TEST_HOOKS
+        if !fakeNearby { persist() }
+        #else
+        persist()
+        #endif
+        ViewerWindowController.renamed(c.id)
+        emit(["event": "viewer_computer", "state": "renamed", "alias": alias != nil])
+    }
+
+    /// What this Mac calls the computer of that id: the user's name for it, else `own` (what the host said of itself just now).
+    func name(of id: String, else own: String) -> String {
+        computers.first { $0.id == id }?.alias.flatMap { $0.isEmpty ? nil : $0 } ?? own
     }
 
     func remove(_ c: RemoteComputer) {
@@ -231,12 +253,12 @@ final class ViewerStore: ObservableObject {
 
     /// What VoiceOver says of a row, as one element: its name, its system, its state.
     static func spoken(_ c: RemoteComputer, _ r: Row) -> String {
-        "\(c.name), \(system(c)), \(line(r))"
+        "\(c.shownName), \(system(c)), \(line(r))"
     }
 
     /// The longer word on a state that needs the user (the state line's tooltip): why, and what to do.
     static func explain(_ c: RemoteComputer, _ r: Row) -> String? {
-        r == .noDirect ? T("viewer.no_direct.help", c.name) : nil
+        r == .noDirect ? T("viewer.no_direct.help", c.shownName) : nil
     }
 
     // MARK: open windows
@@ -330,7 +352,8 @@ final class ViewerStore: ObservableObject {
 
     private func startPairing(_ c: RemoteComputer, key: Data, endpoint: NWEndpoint?) {
         cancelPairing(keepLink: true)
-        pairing = Pairing(name: c.name)
+        // added again: the name the user gave it before
+        pairing = Pairing(name: name(of: c.id, else: c.name))
         pairingStart = (c, key, endpoint)
         let link = RemoteViewerLink(computer: c, key: key, deviceName: Host.current().localizedName ?? "Mac", pairing: true, endpoint: endpoint)
         link.onNewKey = { c, k in ViewerKeys.store(k, c.deviceID) }
@@ -338,7 +361,7 @@ final class ViewerStore: ObservableObject {
         link.onState = { [weak self, weak link] s in
             MainActor.assumeIsolated {
                 guard let self, let link, self.pairingLink === link else { return }
-                let name = link.computer.name
+                let name = self.name(of: link.computer.id, else: link.computer.name)
                 @MainActor func fail(_ text: String, _ help: String?, retry: Bool) {
                     self.pairing?.check = nil
                     self.pairing?.failed = text
@@ -408,7 +431,7 @@ final class ViewerStore: ObservableObject {
         link.onMessage = { [weak self, weak link] m in
             MainActor.assumeIsolated {
                 guard let self, let link, self.pairingLink === link, case let .session(i) = m else { return }
-                self.pairing?.name = i.macName
+                self.pairing?.name = self.name(of: link.computer.id, else: i.macName)
             }
         }
         pairingLink = link

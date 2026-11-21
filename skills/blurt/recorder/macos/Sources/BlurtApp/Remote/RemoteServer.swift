@@ -28,7 +28,12 @@ final class RemoteServer {
         var lastSeen: Date?
         /// "computer": another computer that drives this one (docs/design/remote-desktop-viewer.md); nil: a phone
         var kind: String?
+        /// the name the owner gave it here (remote-1.1.md §6): shown before `name`, never sent, kept when its hello says its own name
+        /// again; nil: its own name
+        var alias: String?
         var isComputer: Bool { kind == "computer" }
+        /// what this Mac calls it
+        var shown: String { RemoteAlias.shown(name, alias: alias) }
     }
 
     /// Published to whoever shows the phone (the Phone page, Settings → Phone, the menu-bar menu, Home), always on the
@@ -133,7 +138,7 @@ final class RemoteServer {
     /// `session` for the main thread (dictation's levels and words, the front app, Blurt's commands): it changes on `queue`
     private var current: Session? { sessionLock.lock(); defer { sessionLock.unlock() }; return mirrored }
     /// the connected phone's name, as it gave it ("iPad")
-    var phoneName: String? { current.map { $0.name.isEmpty ? nil : $0.name } ?? nil }
+    var phoneName: String? { current.map { $0.name.isEmpty ? nil : label($0) } ?? nil }
     private let sessionLock = NSLock()
     private var mirrored: Session?
     /// connections still in their handshake (a channel must outlive `tcpConnection`)
@@ -275,12 +280,19 @@ final class RemoteServer {
     func testFake(devices list: [Device], status st: Status) {
         guard Self.testing else { return }
         queue.async {
-            self.cacheLock.lock()
-            self.deviceCache = list
-            self.cacheLock.unlock()
+            self.faked = true
+            self.keep(list)
             self.status = st
-            DispatchQueue.main.async { self.tell(list) }
         }
+    }
+
+    /// the fake's devices: renamed in memory, nothing saved
+    private var faked = false
+    private func keep(_ list: [Device]) {
+        cacheLock.lock()
+        deviceCache = list
+        cacheLock.unlock()
+        DispatchQueue.main.async { self.tell(list) }
     }
     #endif
 
@@ -304,6 +316,34 @@ final class RemoteServer {
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         q[kSecAttrLabel as String] = Self.serviceKeychain
         SecItemAdd(q as CFDictionary, nil)
+    }
+
+    /// What this Mac calls a device: the owner's name for it, else the name its hello gave. Only ever shown here: what goes to other
+    /// devices (the anti-scam notice) keeps the names they gave.
+    func label(_ id: String?, _ name: String) -> String {
+        guard let id, let a = devices().first(where: { $0.id == id })?.alias, !a.isEmpty else { return name }
+        return a
+    }
+    private func label(_ s: Session) -> String { label(s.id, s.name) }
+
+    /// Rename (a double-click on its name, or Rename… in its ⋯): what this Mac calls it, nothing sent, its id the same. An empty
+    /// field, or its own name, brings its own name back.
+    func rename(_ id: String, to text: String) {
+        queue.async {
+            var list = self.devices()
+            guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+            let alias = RemoteAlias.typed(text, own: list[i].name)
+            guard list[i].alias != alias else { return }
+            list[i].alias = alias
+            #if DEBUG || BLURT_TEST_HOOKS
+            if self.faked { self.keep(list) } else { self.save(list) }
+            #else
+            self.save(list)
+            #endif
+            // the bar and the page name the connected one, the question the one asking
+            if self.status.connectedID == id { self.status.connected = self.label(id, self.session?.name ?? list[i].name) }
+            emit(["event": "remote_device", "state": "renamed", "alias": alias != nil])
+        }
     }
 
     func remove(_ id: String) {
@@ -1003,7 +1043,7 @@ final class RemoteServer {
         s.pasteboardTimer = nil
         keepAwake(false)
         if let e = s.logged { RemoteConnectionLog.ended(e); s.logged = nil }
-        if s.privacy { s.privacy = false; RemotePrivacy.set(false, who: s.name) }
+        if s.privacy { s.privacy = false; RemotePrivacy.set(false, who: label(s)) }
         s.files?.drop()
         status.connected = nil
         status.connectedID = nil
@@ -1130,7 +1170,7 @@ final class RemoteServer {
         case let .fileBegin(id, name, size):
             queue.async {
                 guard self.session === s || self.extras.contains(where: { $0 === s }) else { return }
-                if s.files == nil { s.files = RemoteFileReceiver(from: s.name) { [weak s] m in s?.channel.send(m) } }
+                if s.files == nil { s.files = RemoteFileReceiver(from: self.label(s)) { [weak s] m in s?.channel.send(m) } }
                 s.files?.begin(id: id, name: name, size: size)
             }
         case let .fileChunk(id, data):
@@ -1142,7 +1182,7 @@ final class RemoteServer {
                 guard self.session === s else { return }
                 s.privacy = on
                 RemotePrivacy.onChange = { [weak s] in s?.screen?.privacyChanged() }
-                RemotePrivacy.set(on, who: s.name)
+                RemotePrivacy.set(on, who: self.label(s))
             }
         case let .screen(r):
             // on the server's queue, where `closed` runs: a capture can't start for a session that has just ended
@@ -1322,7 +1362,7 @@ final class RemoteServer {
                 s.channel.close()
                 return closed(s)
             }
-            status.asking = s.name
+            status.asking = label(s)
             status.askingCheck = check
             status.askingNumber = s.number
             // nobody answers: after two minutes it's a no, so a question left open can't keep everyone else waiting
@@ -1402,7 +1442,7 @@ final class RemoteServer {
         s.greeted = true
         if session === s {
             status.viaRelay = s.channel.isRelay
-        status.connected = s.name
+        status.connected = label(s)
         status.connectedID = s.id
             status.path = Self.path(of: s)
             if s.logged == nil, let id = s.id { s.logged = RemoteConnectionLog.began(id, name: s.name, path: status.path?.rawValue) }

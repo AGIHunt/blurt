@@ -277,6 +277,8 @@ extension PhonePage {
     ///   ax on|off|clear         what Accessibility says · relay none|checking|ok|failed|clear   the relay's answer
     ///   tips open|closed        the page's "If It Won't Connect"
     ///   add · cancel            = Add a Phone… / Cancel · key return|esc   the key, as the window's key equivalent
+    ///   rename page|list ID start|type TEXT|return|esc   a row's name field (a device's id, or a computer's), as a double-click,
+    ///                           typing and the keys would
     ///   state                   what the page shows ("phone_page" event)
     static func testCommand(_ arg: String) {
         #if DEBUG || BLURT_TEST_HOOKS
@@ -333,6 +335,7 @@ extension PhonePage {
                     emit(["event": "phone_key", "key": v, "handled": w.performKeyEquivalent(with: e)])
                 }
             case "cancel": m.setAdding(false)
+            case "rename": RenameTests.post(a)
             default: break
             }
             // the fake goes through RemoteServer's queue and back: say what shows once it has landed
@@ -343,7 +346,8 @@ extension PhonePage {
                     emit(["event": "phone_page", "headline": "\(PhoneChecks.headline(f))", "problems": PhoneChecks.problems(f).map { "\($0)" },
                           "tips": PhoneChecks.tips(f).map { "\($0)" }, "adding": m.adding, "listening": RemoteServer.shared.shown.listening,
                           "link": RemoteServer.shared.shown.pairingLink != nil, "menu": PhoneStatus.menuTitle,
-                          "line": PhoneStatus.line ?? NSNull(), "attention": PhoneStatus.needsAttention])
+                          "line": PhoneStatus.line ?? NSNull(), "attention": PhoneStatus.needsAttention,
+                          "devices": m.devices.map { [$0.name, $0.alias ?? ""] }, "connected": m.status.connected ?? NSNull()])
                 }
             }
         }

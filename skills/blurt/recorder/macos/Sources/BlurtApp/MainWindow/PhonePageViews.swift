@@ -15,6 +15,7 @@ import AppKit
 import CoreImage
 import SwiftUI
 import BlurtCore
+import BlurtRemoteKit
 
 struct PhonePageView: View {
     @ObservedObject private var m = PhoneModel.shared
@@ -109,7 +110,10 @@ struct PhonePageView: View {
     }
 
     private func logRow(_ e: RemoteConnection) -> some View {
-        PhoneRow(symbol: e.paired ? "link" : "clock", title: PhoneStatus.name(e.name), detail: PhoneText.logLine(e)) { EmptyView() }
+        // the name this Mac calls it now, if it's still paired and was renamed
+        let d = m.devices.first { $0.id == e.deviceID }
+        return PhoneRow(symbol: e.paired ? "link" : "clock", title: PhoneStatus.name(RemoteAlias.shown(e.name, alias: d?.alias)),
+                        detail: PhoneText.logLine(e)) { EmptyView() }
     }
 
     // MARK: computers this Mac controls
@@ -491,7 +495,7 @@ extension View {
     /// "Remove iPhone?" — it has to scan a new code to come back.
     func phoneRemoveAlert(_ removing: Binding<RemoteServer.Device?>) -> some View {
         let d = removing.wrappedValue
-        return alert(T("settings.remote.remove.title", d.map { PhoneStatus.name($0.name) } ?? ""),
+        return alert(T("settings.remote.remove.title", d.map { PhoneStatus.name($0.shown) } ?? ""),
                      isPresented: Binding(get: { removing.wrappedValue != nil }, set: { if !$0 { removing.wrappedValue = nil } })) {
             Button(T("settings.remote.cancel"), role: .cancel) {}
             Button(T("settings.remote.remove"), role: .destructive) { if let d { RemoteServer.shared.remove(d.id) } }
@@ -634,8 +638,8 @@ struct PhoneNotice<Action: View>: View {
     private var tint: Color { tone == .bad ? .brandErr : .brandAttn }
 }
 
-/// A paired phone, tablet or computer: its mark, name and state, and its ⋯ (Remove…) only while the pointer is over the
-/// row, its slot kept at rest (Settings' RowMenu); the same item in the context menu.
+/// A paired phone, tablet or computer: its mark, name and state, and its ⋯ (Rename…, Remove…) only while the pointer is over the
+/// row, its slot kept at rest (Settings' RowMenu); the same items in the context menu. A double-click on the name renames it too.
 struct PhoneDeviceRow: View {
     var device: RemoteServer.Device
     var detail: String
@@ -643,16 +647,155 @@ struct PhoneDeviceRow: View {
     var remove: () -> Void
     @State private var hovering = false
 
+    @State private var renaming = false
+
     var body: some View {
-        PhoneRow(symbol: PhoneText.symbol(device), title: PhoneStatus.name(device.name), detail: detail, detailTone: tone) {
-            RowMenu(label: T("viewer.more"), visible: hovering) {
-                Button(T("phone.remove"), action: remove)
-                    .accessibilityLabel(T("phone.remove.named", PhoneStatus.name(device.name)))
-            }
+        let name = PhoneStatus.name(device.shown)
+        PhoneRow(symbol: PhoneText.symbol(device), title: name, detail: detail, detailTone: tone,
+                 rename: PhoneRow.Rename(id: device.id, own: PhoneStatus.name(device.name), editing: $renaming) {
+                     RemoteServer.shared.rename(device.id, to: $0)
+                 }) {
+            RowMenu(label: T("viewer.more"), visible: hovering) { items(name) }
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .contextMenu { Button(T("phone.remove"), action: remove) }
+        .contextMenu { items(name) }
+    }
+
+    /// The ⋯ and the context menu: Rename…, then Remove….
+    @ViewBuilder private func items(_ name: String) -> some View {
+        Button(T("phone.rename")) { renaming = true }
+            .accessibilityLabel(T("phone.rename.named", name))
+        Divider()
+        Button(T("phone.remove"), action: remove)
+            .accessibilityLabel(T("phone.remove.named", name))
+    }
+}
+
+/// A paired device's or computer's name in its row, renamed in place (remote-1.1.md §6: what this Mac calls it, nothing sent, its id the
+/// same). A double-click on the name (`doubleClick`) or Rename… in the row's ⋯ turns the words into a field where they stand, the text
+/// selected; Return keeps it, Esc puts it back, an empty field brings the device's own name back, and leaving the field keeps what's
+/// typed (Finder's rename). Renamed, the name's tooltip says its own name.
+struct RenamableName: View {
+    /// the record's id and where the row is ("page", "list"): for the tests' `rename` command
+    var id = ""
+    var place = "page"
+    var shown: String
+    var own: String
+    var size: CGFloat
+    /// the Computers window opens a computer on a double-click anywhere on its row: Rename… is its way in there
+    var doubleClick = true
+    @Binding var editing: Bool
+    var commit: (String) -> Void
+    @State private var text = ""
+    @State private var cancelled = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group { if editing { field } else { label } }
+            .modifier(RenameTestHook(id: id, place: place, editing: $editing, text: $text, finish: finish, cancel: cancel))
+    }
+
+    private func cancel() {
+        cancelled = true
+        editing = false
+    }
+
+    private var label: some View {
+        Text(shown).font(.system(size: size)).lineLimit(1).truncationMode(.middle)
+            .modifier(Tooltip(text: shown == own ? nil : T("phone.rename.own", own)))
+            .modifier(DoubleClick(on: doubleClick) { editing = true })
+    }
+
+    private var field: some View {
+        TextField(T("phone.rename"), text: $text, prompt: Text(own))
+            .textFieldStyle(.plain)
+            .font(.system(size: size))
+            .focused($focused)
+            .onSubmit(finish)
+            .onExitCommand(perform: cancel)
+            // clicked away (another field, another row's rename): kept, as Finder keeps it
+            .onChange(of: focused) { f in if !f, editing, !cancelled { finish() } }
+            // the words stay where they were: the box reaches out around them
+            .padding(.horizontal, 3).padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2))
+            .padding(.horizontal, -3).padding(.vertical, -1)
+            .frame(maxWidth: 280, alignment: .leading)
+            .accessibilityLabel(T("phone.rename"))
+            .onAppear {
+                // the tests' `rename … type` may have filled it in already
+                if text.isEmpty { text = shown }
+                cancelled = false
+                DispatchQueue.main.async { focused = true }
+            }
+            .onDisappear { text = "" }
+    }
+
+    private func finish() {
+        guard editing else { return }
+        editing = false
+        commit(text)
+    }
+
+    private struct DoubleClick: ViewModifier {
+        var on: Bool
+        var action: () -> Void
+        func body(content: Content) -> some View {
+            if on { content.onTapGesture(count: 2, perform: action) } else { content }
+        }
+    }
+}
+
+/// Tests (`phonepage rename …`, `viewer rename …`): the field started, typed into, and ended by Return or Esc, through the field's own
+/// handlers, as a double-click and the keys would. Nothing in a release build.
+private struct RenameTestHook: ViewModifier {
+    var id: String
+    var place: String
+    @Binding var editing: Bool
+    @Binding var text: String
+    var finish: () -> Void
+    var cancel: () -> Void
+
+    func body(content: Content) -> some View {
+        #if DEBUG || BLURT_TEST_HOOKS
+        content.onReceive(NotificationCenter.default.publisher(for: .remoteRenameTest)) { n in
+            guard let u = n.userInfo, u["id"] as? String == id, u["place"] as? String == place else { return }
+            switch u["do"] as? String {
+            case "start": editing = true
+            case "type": text = u["text"] as? String ?? ""
+            case "return": finish()
+            case "esc": cancel()
+            default: break
+            }
+            DispatchQueue.main.async { emit(["event": "rename_field", "id": id, "place": place, "editing": editing, "text": text]) }
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+extension Notification.Name {
+    /// tests: a row's name field (RenameTestHook)
+    static let remoteRenameTest = Notification.Name("blurt.remote.rename_test")
+}
+
+enum RenameTests {
+    /// `rename page|list ID start|type TEXT…|return|esc`
+    static func post(_ a: [String]) {
+        guard a.count >= 4 else { return }
+        NotificationCenter.default.post(name: .remoteRenameTest, object: nil,
+                                        userInfo: ["place": a[1], "id": a[2], "do": a[3], "text": a.dropFirst(4).joined(separator: " ")])
+    }
+}
+
+/// VoiceOver's Rename action on a row whose name can be renamed.
+struct RenameAction: ViewModifier {
+    var rename: (() -> Void)?
+    func body(content: Content) -> some View {
+        if let rename { content.accessibilityAction(named: T("phone.rename.action"), rename) } else { content }
     }
 }
 
@@ -709,7 +852,17 @@ struct PhoneRow<Control: View>: View {
     var detailTone: Tone?
     /// a list's empty state: said quietly, so it doesn't read as a device of that name
     var quiet = false
+    /// the title is a paired device's name, renamed in place (RenamableName)
+    var rename: Rename?
     @ViewBuilder var control: Control
+
+    struct Rename {
+        var id: String
+        /// the device's own name: an empty field brings it back
+        var own: String
+        var editing: Binding<Bool>
+        var commit: (String) -> Void
+    }
 
     var body: some View {
         PhoneLine {
@@ -725,8 +878,12 @@ struct PhoneRow<Control: View>: View {
                     }
                     .frame(width: SettingsMetrics.iconSlot, height: 18)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(quiet ? .secondary : .primary)
+                        if let r = rename {
+                            RenamableName(id: r.id, shown: title, own: r.own, size: SettingsMetrics.titleSize, editing: r.editing, commit: r.commit)
+                        } else {
+                            Text(title).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
+                                .foregroundStyle(quiet ? .secondary : .primary)
+                        }
                         if let d = detail, !d.isEmpty {
                             HStack(alignment: .center, spacing: 5) {
                                 if let t = detailTone { StatusDot(tone: t) }
@@ -735,8 +892,10 @@ struct PhoneRow<Control: View>: View {
                             }
                         }
                     }
-                    .accessibilityElement(children: .combine)
+                    // while renamed, the field is its own element
+                    .accessibilityElement(children: rename?.editing.wrappedValue == true ? .contain : .combine)
                     .accessibilityValue(spoken)
+                    .modifier(RenameAction(rename: rename.map { r in { r.editing.wrappedValue = true } }))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 control.buttonStyle(SettingsOutlinedButtonStyle(compact: true))

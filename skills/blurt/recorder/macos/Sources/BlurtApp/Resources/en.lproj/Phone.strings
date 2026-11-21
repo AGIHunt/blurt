@@ -24,6 +24,12 @@
 "phone.add.tip" = "Shows the pairing code: scan it with a phone, or copy the link for another computer";
 "phone.remove" = "Remove…";
 "phone.remove.named" = "Remove %@";
+/* a paired device or computer renamed on this Mac only (remote-1.1.md §6): the ⋯ item, its VoiceOver label and action, and the
+   renamed name's tooltip with the name the device gave itself */
+"phone.rename" = "Rename…";
+"phone.rename.named" = "Rename %@";
+"phone.rename.action" = "Rename";
+"phone.rename.own" = "Name on the device: %@";
 
 /* This Mac: only what stands in another device's way; one line when all is well */
 "phone.mac.ok" = "Other devices can control this Mac";

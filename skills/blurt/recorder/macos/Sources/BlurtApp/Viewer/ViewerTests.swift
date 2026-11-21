@@ -14,6 +14,7 @@
 //                                and captures nothing: what it is sent comes back as `viewer_host` events. Two displays, so the switcher shows.
 //                                name=N: its name (one word; Office PC otherwise), e.g. name=Studio for a Mac host's screen (Tests/make_host_screen.swift)
 //   viewer pair LINK|NAME        pair with a pasted blurtremote:// link, or the computer of that name found on this network
+//   viewer rename page|list ID start|type TEXT|return|esc   a computer's name field on the page or in the Computers window
 //   viewer open NAME             a paired computer's window · viewer quality auto|sharp|balanced|saver (for the next request)
 //   viewer keys                  ⌘C (held, one repeat), F13, the keypad's Enter and ⌃⌘ alone into the front window, as captured
 //   viewer point X Y             the pointer to X,Y (0…1 of the picture) and a click there
@@ -86,6 +87,7 @@ enum ViewerTests {
             case "open":
                 let name = a.dropFirst().joined(separator: " ")
                 if let c = store.computers.first(where: { $0.name == name }) { store.open(c) }
+            case "rename": RenameTests.post(a)      // = phonepage rename
             case "quality":
                 Config.shared.set("record.viewer.quality", a.count > 1 && a[1] != "auto" ? a[1] : nil)
             case "list": ComputersWindowController.shared.show()
@@ -187,7 +189,7 @@ enum ViewerTests {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 MainActor.assumeIsolated {
-                    emit(["event": "viewer_state", "computers": store.computers.map { [$0.name, ViewerStore.line(store.row($0))] },
+                    emit(["event": "viewer_state", "computers": store.computers.map { [$0.name, ViewerStore.line(store.row($0)), $0.alias ?? ""] },
                           "nearby": store.nearby.map(\.name), "pairing": store.pairing?.check ?? NSNull(),
                           "active": ViewerKeyboard.appActive, "input": InputMethod.current()?.id ?? "",
                           "windows": NSApp.windows.compactMap { ($0.windowController as? ViewerWindowController).map { w in

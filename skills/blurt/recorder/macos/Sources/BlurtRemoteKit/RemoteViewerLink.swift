@@ -24,11 +24,24 @@ public struct RemoteComputer: Codable, Hashable, Identifiable, Sendable {
     public var lastSeen: Date?
     /// the host removed this viewer, said in a session it had opened: its key is gone, and it has to be added again (nil before 1.1)
     public var removed: Bool?
+    /// the name the user gave it on this Mac (remote-1.1.md §6): shown before `name`, never sent, and kept when the host's hello or
+    /// DNS-SD says its own name again; nil: its own name
+    public var alias: String?
     public init(id: String, deviceID: String, name: String, port: UInt16, addresses: [String], relayAddress: String? = nil, platform: String? = nil, lastSeen: Date? = nil) {
         self.id = id; self.deviceID = deviceID; self.name = name; self.port = port; self.addresses = addresses; self.relayAddress = relayAddress
         self.platform = platform; self.lastSeen = lastSeen
     }
     public var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
+    /// what this Mac calls it: the user's name for it, else its own
+    public var shownName: String { RemoteAlias.shown(name, alias: alias) }
+
+    /// The same computer as just heard from (its hello, a pairing, DNS-SD), over the record kept: its own name, addresses and relay are
+    /// the new ones; the user's name for it stays.
+    public func heard(_ fresh: RemoteComputer) -> RemoteComputer {
+        var c = fresh
+        c.alias = alias
+        return c
+    }
 
     /// From a pairing link (the host's 添加设备 / Add Device), with the key in it.
     public init(pairing p: RemotePairing) {

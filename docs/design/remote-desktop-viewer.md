@@ -384,7 +384,9 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
     whose code (QR, the six digits, 拷贝链接 → 已拷贝，10 分钟内有效 for 4 s) takes its place while open. Nothing paired: one row that
     says so and carries 添加设备….
   - 本机可控制的电脑 / Computers You Can Control: ViewerStore's computers, drawn by the Computers window's `ComputerRow` in the page's
-    grid (`style: .page`): its state (已连接 · 可连接 · 离线 · 无法直连), 连接 or 打开窗口, and 移除… in the ⋯ menu (and the context menu).
+    grid (`style: .page`): its state (已连接 · 可连接 · 离线 · 无法直连), 连接 or 打开窗口, and 重命名… · 移除… in the ⋯ menu (and the
+    context menu). A double-click on a name on the page renames it in place (remote-1.1.md §6); the Computers window renames from
+    the ⋯ only, a double-click there opens the computer.
     添加电脑… at the bottom opens the same Add Computer sheet. The page watches ViewerStore while on show, so 可连接 is live.
   - 本机 / This Mac: unchanged — only what stands in a device's way (Accessibility, the port, Screen Recording, the relay); all well is
     one line.

@@ -142,10 +142,18 @@ on the picture or 发送文件…; Windows/Linux viewer: 发送文件…. Tests:
   断开时锁定对方, kept apart) · 显示网络状态 · 断开). "只看 / View only" is the one name everywhere.
 - The Remote Control page: computer cards with state and reason, time connected or last seen; the last picture only if turned on.
 - The viewer says which permissions it needs on this computer (Accessibility for Keys to Remote) before asking.
-- Rename (founder's call): double-click a paired device's or computer's name, or ⋯ → 重命名… / Rename…; Enter saves, Esc cancels, empty
-  goes back to its own name. A local alias kept beside the record (`Device.alias`, `Computer.alias`; old files load), shown first and
-  kept when the other side names itself again; never sent, the id unchanged. The asking card and the "being controlled" bar use it.
-  Windows/Linux: `remote_rename_device`, `computers_rename`; tests in store.rs, viewer.rs, tests/server.rs, web rename.test.ts.
+- **Rename (founder's call):** a paired device or computer gets a name of the user's own on this computer only: nothing is sent to the
+  other side, the record's id never changes, and the host's later hello or DNS-SD name never overwrites it (an `alias` kept beside the
+  record and shown first: Mac `RemoteServer.Device.alias`, `RemoteComputer.alias`). Inline, in place of the name: Return keeps it, Esc
+  puts it back, an empty field brings the device's own name back (and the renamed name's tooltip says that own name). Ways in: on
+  the Remote Control page a double-click on the name (both lists; elsewhere on a computer's row a double-click still opens it), and
+  重命名… / Rename… in every row's ⋯ and context menu; in the Computers window only the ⋯ and context menu, since a double-click
+  anywhere on a row opens the computer there (Finder's rule). The alias is what this Mac shows wherever it names the device: the
+  page, the "being controlled" bar, the pairing question, the privacy cover, a received file's notification, the viewer window's
+  title and its covers, Add Computer's pairing card when a computer is added again. The anti-scam notice sent to other devices keeps
+  the names they gave. Tests: `RemoteAliasTests`.
+  Windows/Linux: the same, with a double-click on the name in both lists (`Device.alias`, `Computer.alias`; old files load):
+  `remote_rename_device`, `computers_rename`; tests in store.rs, viewer.rs, tests/server.rs, web rename.test.ts.
 
 ### 7. Linux preview (opt-in, separate package)
 `blurt-system-service` deb, never enabled by the main package, `apt purge` removes everything: a privilege-split root service that reads

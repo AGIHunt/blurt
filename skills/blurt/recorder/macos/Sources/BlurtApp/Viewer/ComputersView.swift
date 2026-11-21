@@ -1,6 +1,6 @@
 // 电脑 / Computers (docs/design/remote-desktop-viewer.md): the computers this Mac can drive, from the menu bar, and the same rows on the
 // main window's Remote Control page. Each row: the computer's system as its glyph, its name, its state (已连接 · <path>, 可连接 · <path>,
-// 需要自建中转, 离线 · <when>) and at most one button (打开窗口, 连接, 重试 or 重新添加…), with ⋯ on hover.
+// 需要自建中转, 离线 · <when>) and at most one button (打开窗口, 连接, 重试 or 重新添加…), with ⋯ on hover (重命名…, 移除…).
 // 添加电脑 / Add Computer: one found on this network, or a pairing link pasted from another network.
 import AppKit
 import BlurtRemoteKit
@@ -33,6 +33,8 @@ struct ComputerRow: View {
     var addAgain: (() -> Void)?
     @State private var removing = false
     @State private var hovering = false
+    /// its name is a field (RenamableName)
+    @State private var renaming = false
 
     var body: some View {
         let row = store.row(computer)
@@ -44,9 +46,12 @@ struct ComputerRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2) { computer.removed == true ? add() : store.open(computer) }
+        .onTapGesture(count: 2) {
+            guard !renaming else { return }
+            computer.removed == true ? add() : store.open(computer)
+        }
         .contextMenu { menuItems(row) }
-        .alert(T("settings.remote.remove.title", computer.name), isPresented: $removing) {
+        .alert(T("settings.remote.remove.title", computer.shownName), isPresented: $removing) {
             Button(T("viewer.remove"), role: .destructive) { store.remove(computer) }
             Button(T("settings.remote.cancel"), role: .cancel) {}
         } message: {
@@ -85,7 +90,12 @@ struct ComputerRow: View {
     /// as wide as its widest line, and its joined words measured against that read as cut off), its words said once.
     private func text(_ row: ViewerStore.Row, title: CGFloat, detail: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(computer.name).font(.system(size: title)).lineLimit(1).truncationMode(.middle)
+            // the page: a double-click on the name renames it (elsewhere on the row it opens); the Computers window opens it on a
+            // double-click anywhere, as Finder opens what's double-clicked, and renames it from the ⋯ or the context menu
+            RenamableName(id: computer.id, place: style == .page ? "page" : "list", shown: computer.shownName, own: computer.name, size: title,
+                          doubleClick: style == .page, editing: $renaming) {
+                store.rename(computer, to: $0)
+            }
             HStack(alignment: .center, spacing: 5) {
                 StatusDot(tone: tone(row))
                 Text(ViewerStore.line(row)).font(.system(size: detail)).foregroundStyle(.secondary).lineLimit(1)
@@ -93,9 +103,11 @@ struct ComputerRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
+        // while renamed, the field is its own element
+        .accessibilityElement(children: renaming ? .contain : .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel(ViewerStore.spoken(computer, row))
+        .accessibilityAction(named: T("phone.rename.action")) { renaming = true }
         .modifier(Tooltip(text: ViewerStore.explain(computer, row)))
     }
 
@@ -125,7 +137,7 @@ struct ComputerRow: View {
         }
     }
 
-    /// The ⋯ and the context menu: the row's action, then Remove….
+    /// The ⋯ and the context menu: the row's action, Rename…, then Remove….
     @ViewBuilder private func menuItems(_ row: ViewerStore.Row) -> some View {
         if computer.removed == true {
             Button(T("viewer.add_again")) { add() }
@@ -136,6 +148,7 @@ struct ComputerRow: View {
             default: Button(T("viewer.connect")) { store.open(computer) }
             }
         }
+        Button(T("phone.rename")) { renaming = true }
         Divider()
         Button(T("phone.remove")) { removing = true }
     }
@@ -179,7 +192,7 @@ private struct RowButton: View {
 }
 
 /// A tooltip only where there is something more to say (an empty `.help` still counts as one to VoiceOver and the layout check).
-private struct Tooltip: ViewModifier {
+struct Tooltip: ViewModifier {
     var text: String?
     func body(content: Content) -> some View {
         if let text { content.help(text) } else { content }

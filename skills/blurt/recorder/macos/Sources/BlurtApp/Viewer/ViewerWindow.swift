@@ -75,7 +75,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private var fileCardBottom: NSLayoutConstraint?
 
     private func showFile(_ e: ViewerFileSender.Event) {
-        fileCard.show(e, to: window?.title ?? link.computer.name)
+        fileCard.show(e, to: window?.title ?? shownName)
         placeFileCard()
     }
 
@@ -193,6 +193,17 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     static func closeAll(of id: String) { windows.filter { $0.computer.id == id }.forEach { $0.close() } }
 
+    /// The user renamed the computer: its windows' titles (and the tooltips that name it) say the new name.
+    @MainActor static func renamed(_ id: String) {
+        for w in windows where w.computer.id == id {
+            w.window?.title = w.shownName
+            w.updateKeys()
+        }
+    }
+
+    /// What this Mac calls the computer: the user's name for it, else what it said of itself last.
+    private var shownName: String { MainActor.assumeIsolated { ViewerStore.shared.name(of: link.computer.id, else: link.computer.name) } }
+
     private init(_ c: RemoteComputer, link: RemoteViewerLink, second: Bool, display: String?) {
         computer = c
         self.link = link
@@ -201,7 +212,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         screen = RemoteViewerScreen(link: link)
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable],
                          backing: .buffered, defer: false)
-        w.title = c.name
+        w.title = c.shownName
         w.tabbingIdentifier = "blurt.viewer"
         w.tabbingMode = .automatic
         w.collectionBehavior.insert(.fullScreenPrimary)
@@ -255,7 +266,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             files.heard(m)
         case let .notice(text):
             // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
-            Notify.post(title: link.computer.name, body: text, uid: "remote-notice-\(link.computer.id)")
+            Notify.post(title: shownName, body: text, uid: "remote-notice-\(link.computer.id)")
         case let .screenView(w, h, codec, display, features):
             screen.view(codec: codec, features: features)
             fit(CGSize(width: w, height: h))
@@ -275,7 +286,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             pasteboardSeen = pb.changeCount
         case let .screenFailed(why):
             screenOn = false
-            let name = link.computer.name
+            let name = shownName
             // the host's own sentence is for phones (English only): the viewer says it in its own words
             let key = ["off": "viewer.screen_off", "permission": "viewer.screen_permission", "one_display": "viewer.one_display"][why]
             // Try Again asks for the screen once more: a permission given, or the host's Remote Desktop dialog answered since
@@ -287,7 +298,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             if locked {
                 picture.stale = true
                 // GNOME ends screen sharing at its lock; its own Remote Login reaches the login screen
-                showCover(.init(mark: .symbol("lock.fill"), title: T("viewer.locked.title", link.computer.name),
+                showCover(.init(mark: .symbol("lock.fill"), title: T("viewer.locked.title", shownName),
                                 detail: T(host == .linux ? "viewer.locked.linux.detail" : "viewer.locked.detail")))
             } else {
                 hideCover()
@@ -299,19 +310,19 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case let .canControl(ok):
             remoteCanControl = ok
             // clicks and keys go nowhere until it's allowed there: said for as long as it lasts
-            if ok { picture.hideHint() } else { picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil) }
+            if ok { picture.hideHint() } else { picture.showHint(T("viewer.no_control", shownName), seconds: nil) }
         case let .session(i):
             remoteCanControl = i.canControl
-            window?.title = i.macName
+            window?.title = ViewerStore.shared.name(of: link.computer.id, else: i.macName)
             updateKeys()
-            if !i.canControl { picture.showHint(T("viewer.no_control", i.macName), seconds: nil) }
+            if !i.canControl { picture.showHint(T("viewer.no_control", window?.title ?? i.macName), seconds: nil) }
             updateMore()
         default: break
         }
     }
 
     private func stateChanged(_ s: RemoteViewerLink.State) {
-        let name = link.computer.name
+        let name = shownName
         emit(["event": "viewer_link", "state": "\(s)", "route": link.route.map { "\($0)" } ?? "", "trying": link.trying.map { "\($0)" } ?? "", "lost": link.lostWhy])
         // the clock the cover counts from: the moment the link went down, or the window began connecting
         if s == .connected { downSince = nil } else if downSince == nil { downSince = CACurrentMediaTime() }
@@ -593,7 +604,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// `system`: the capture has system shortcuts (Input Monitoring); without it a note says they stay on this Mac.
     private func releaseHint(system: Bool) -> ViewerPictureView.Hint {
-        ViewerPictureView.Hint(text: T("viewer.release.lead", window?.title ?? link.computer.name), keys: ["⌃", "⌘"],
+        ViewerPictureView.Hint(text: T("viewer.release.lead", window?.title ?? shownName), keys: ["⌃", "⌘"],
                                keysWord: T("viewer.release.word"), note: system ? nil : T("viewer.release.app_only.note"), kind: "release")
     }
 
@@ -796,7 +807,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     private func updateKeys() {
         guard let item = keysItem else { return }
         let title = window?.title ?? ""
-        let name = title.isEmpty ? link.computer.name : title
+        let name = title.isEmpty ? shownName : title
         if captured {
             item.image = Self.symbol("keyboard.fill", item.label)?
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [BrandColor.ink]))
@@ -1069,7 +1080,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         if key.hasPrefix("file") { picture.hideHint() }
         switch key {
         case "release", "release.app_only": picture.showHint(releaseHint(system: key == "release"), seconds: 600)
-        case "no_control": picture.showHint(T("viewer.no_control", link.computer.name), seconds: nil)
+        case "no_control": picture.showHint(T("viewer.no_control", shownName), seconds: nil)
         case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1))
         case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1))
         case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3))

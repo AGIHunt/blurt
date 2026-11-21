@@ -24,6 +24,11 @@
 "phone.add.tip" = "显示配对二维码：用手机扫描，或拷贝链接给另一台电脑";
 "phone.remove" = "移除…";
 "phone.remove.named" = "移除 %@";
+/* 只在本机给配对的设备或电脑改名（remote-1.1.md §6）：⋯ 菜单项、旁白的标签和操作、改名后名称的提示（设备自己的名称） */
+"phone.rename" = "重命名…";
+"phone.rename.named" = "重命名 %@";
+"phone.rename.action" = "重命名";
+"phone.rename.own" = "设备上的名称：%@";
 
 /* 本机：只列出挡住其他设备的事，都没问题时只有一行 */
 "phone.mac.ok" = "其他设备可以控制本机";
