@@ -65,7 +65,7 @@ enum PhoneStatus {
         return PhoneFacts(paired: s.devices().count, connected: st.connected, viaRelay: st.viaRelay, canControl: canControl,
                           screenWanted: RemoteServer.screenAllowed, screenAllowed: SystemAccess.granted(.screen),
                           listening: st.listening, listenFailure: st.failure, pairing: st.pairingLink != nil,
-                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay)
+                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay, away: PhoneModel.away(st.away))
     }
 
     /// A phone's name as it gave it; one that gave none is "Phone".
@@ -111,6 +111,8 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var screenWanted = RemoteServer.screenAllowed
     @Published private(set) var screenAllowed = SystemAccess.granted(.screen)
     @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : PhoneModel.noRelay
+    /// the page's "If It Won't Connect" is open (closed until asked for; kept while the app runs)
+    @Published var tipsOpen = false
     /// with no relay of the owner's own: the public connection service, unless it's switched off
     nonisolated static var noRelay: PhoneFacts.Relay { RemoteServer.meetAddress != nil ? .goBetween : .none }
     #if DEBUG || BLURT_TEST_HOOKS
@@ -126,7 +128,17 @@ final class PhoneModel: ObservableObject {
     var facts: PhoneFacts {
         PhoneFacts(paired: devices.count, connected: status.connected, viaRelay: status.viaRelay, canControl: canControl,
                    screenWanted: screenWanted, screenAllowed: screenAllowed, listening: status.listening, listenFailure: status.failure,
-                   pairing: adding, relay: relay)
+                   pairing: adding, relay: relay, away: Self.away(status.away))
+    }
+
+    /// What this Mac's own tries found away from home, in BlurtCore's terms (Settings → Remote Control reads the same field).
+    nonisolated static func away(_ a: RemoteServer.AwayProblem?) -> PhoneFacts.Away? {
+        switch a {
+        case .busy?: .busy
+        case .noDirect?: .noDirect
+        case .relayDown?: .relayDown
+        case nil: nil
+        }
     }
 
     private var watchers: Set<String> = []
@@ -258,10 +270,12 @@ extension PhonePage {
     ///                           said "viewer"), none here · the iPhone connected on the local network ·
     ///                           … through the relay · a new phone waiting for a yes · the port could not be opened (`deaf other`: an error with no words of its own);
     ///                           also tailscale|meeting|gobetween (connected that way) and busy|nodirect (paired, and why the
-    ///                           go-between didn't work: Settings → Phone → Away from home);
+    ///                           go-between didn't work) · relaydown (paired, and this Mac's own tries to reach its
+    ///                           relay keep failing): the page's notice, as Settings → Remote Control → Status says it;
     ///                           `code`: with a pairing code on show that is no code (a picture of it gives nothing
     ///                           away: no key, no address, no name) and nothing listening for it
     ///   ax on|off|clear         what Accessibility says · relay none|checking|ok|failed|clear   the relay's answer
+    ///   tips open|closed        the page's "If It Won't Connect"
     ///   add · cancel            = Add a Phone… / Cancel · key return|esc   the key, as the window's key equivalent
     ///   state                   what the page shows ("phone_page" event)
     static func testCommand(_ arg: String) {
@@ -307,6 +321,7 @@ extension PhonePage {
             case "ax": PhoneStatus.testCanControl = v == "clear" ? nil : v == "on"
             case "relay":
                 m.testRelay = ["none": .none, "checking": .checking, "ok": .ok, "failed": .failed][v]
+            case "tips": m.tipsOpen = v == "open"
             case "add": m.setAdding(true)
             case "key":
                 // Return / Esc as the main window gets them first (key equivalents: the page's default and cancel buttons)

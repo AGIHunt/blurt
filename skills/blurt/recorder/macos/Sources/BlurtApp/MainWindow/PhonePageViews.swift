@@ -1,10 +1,12 @@
-// The 手机和电脑 / Phones and Computers page's views (PhonePage.swift has the model; docs/design/remote-desktop-viewer.md
-// §One page for the devices). Top to bottom: a new device waiting for a yes, then three groups — the devices that can
-// control this Mac (every paired phone and computer, then Add Device…, whose code takes its place while open), the
-// computers this Mac controls (ViewerStore's, the Computers window's rows, then Add Computer…), and this Mac (only what
-// stands in a device's way; all well is one line) — then what to try while a phone should be connecting and isn't, and
-// where the phone app comes from. What shows is PhoneChecks' decision (BlurtCore); the options (keys on screen, the
-// screen, the relay) stay in Settings → 手机和电脑, one button away. No device is listed anywhere else in Settings.
+// The 远程控制 / Remote Control page's views (PhonePage.swift has the model; docs/design/remote-desktop-viewer.md
+// §One page for the devices). Top to bottom: a new device waiting for a yes; this Mac's state — one quiet line while all
+// is well, or one notice per thing that stands in a device's way, each with its fix (system.md §3.4: a state that
+// concerns the whole page is said once, above the first section); the devices that can control this Mac (every paired
+// phone and computer, then Add Device…, whose code takes its place while open, and under it where the phone app comes
+// from); the computers this Mac controls (ViewerStore's, the Computers window's rows, then Add Computer…); and at the
+// foot, closed until asked for, what to try while a phone should be connecting and isn't. What shows is PhoneChecks'
+// decision (BlurtCore); the options (keys on screen, the screen, the relay) stay in Settings → 远程控制, one button
+// away. No device is listed anywhere else in Settings.
 //
 // The grid: the page's title, the headings and the rows' marks on the column's left edge; a row's text 28 pt in (an
 // 18 pt mark slot and 10), Settings' row metrics; every row's one button at the trailing edge, and a list's Add… under
@@ -39,16 +41,20 @@ struct PhonePageView: View {
             if let who = m.status.asking {
                 PhoneAsk(who: who, check: m.status.askingCheck ?? "") { m.answer($0) }.padding(.bottom, 4)
             }
-            PhoneSection(T("phone.paired"), first: m.status.asking == nil) { controllers }
-            PhoneSection(T("settings.remote.section.computers")) { computers }
+            // this Mac next: what a device that can't connect runs into is the first thing read
+            mac(f, problems)
+            PhoneSection(T("phone.paired"), first: m.status.asking == nil && !showsMac(f, problems)) {
+                controllers
+                app
+            }
+            PhoneSection(T("phone.section.computers")) { computers }
             if !log.isEmpty { PhoneSection(T("phone.log")) { connections } }
-            PhoneSection(T("phone.mac")) { mac(f, problems) }
+            // what to try, closed at the page's foot (Settings' Advanced): one line until it's wanted
             if !tips.isEmpty {
-                PhoneSection(T("phone.tips")) {
+                PhoneSection(T("phone.tips"), disclosure: $m.tipsOpen) {
                     ForEach(Array(tips.enumerated()), id: \.offset) { i, t in tip(i + 1, t) }
                 }
             }
-            app
         }
         .phoneRemoveAlert($removing)
         .onReceive(NotificationCenter.default.publisher(for: RemoteConnectionLog.changed)) { _ in log = RemoteConnectionLog.all() }
@@ -77,15 +83,9 @@ struct PhonePageView: View {
 
     private func device(_ d: RemoteServer.Device) -> some View {
         let on = m.status.connectedID == d.id
-        return PhoneRow(symbol: PhoneText.symbol(d), title: PhoneStatus.name(d.name),
-                        detail: on ? PhoneText.connected(m.status.path) : PhoneText.lastUsed(d), detailTone: on ? .good : .off) {
-            // the same trailing column as the computers' rows: Remove is a rare action, in the ⋯ menu
-            RowMenu(label: T("viewer.more"), visible: true) {
-                Button(T("phone.remove")) { removing = d }
-                    .accessibilityLabel(T("phone.remove.named", PhoneStatus.name(d.name)))
-            }
+        return PhoneDeviceRow(device: d, detail: on ? PhoneText.connected(m.status.path) : PhoneText.lastUsed(d), tone: on ? .good : .off) {
+            removing = d
         }
-        .contextMenu { Button(T("phone.remove")) { removing = d } }
     }
 
     // MARK: who was in this Mac
@@ -127,60 +127,95 @@ struct PhonePageView: View {
 
     // MARK: the phone app
 
-    /// Said plainly, in one line: it isn't in the stores, and these are the build steps.
+    /// Said plainly, in one footnote under the devices' list, next to Add Device… (a fact needed once, before the first
+    /// pairing, not a section of its own): it isn't in the stores, and these are the build steps.
     private var app: some View {
-        PhoneSection(T("phone.app")) {
-            PhoneRow(symbol: "hammer", title: T("phone.app.where")) {
-                HStack(spacing: 14) {
-                    PhoneLink(T("phone.app.ios"), url: PhoneLinks.ios)
-                    PhoneLink(T("phone.app.android"), url: PhoneLinks.android)
-                }
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(T("phone.app.where")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            PhoneLink(T("phone.app.ios"), url: PhoneLinks.ios).fixedSize()
+            PhoneLink(T("phone.app.android"), url: PhoneLinks.android).fixedSize()
         }
+        .padding(.leading, SettingsMetrics.iconSlot + SettingsMetrics.iconGap)
+        .padding(.bottom, 2)
     }
 
     // MARK: this Mac
 
+    /// Something shows for this Mac: a problem, or the all-well line once there is a device it is about.
+    private func showsMac(_ f: PhoneFacts, _ problems: [PhoneChecks.Problem]) -> Bool { !problems.isEmpty || !m.devices.isEmpty }
+
+    /// All well: one quiet line under the title (none before anything is paired: there is nothing yet that could control
+    /// this Mac). Otherwise one notice per thing in a device's way, most in the way first, each with its fix.
     @ViewBuilder private func mac(_ f: PhoneFacts, _ problems: [PhoneChecks.Problem]) -> some View {
         if problems.isEmpty {
-            PhoneRow(tone: .good, title: T("phone.mac.ok"), detail: works(f)) { EmptyView() }
+            if !m.devices.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: SettingsMetrics.iconGap) {
+                    StatusDot(tone: .good).frame(width: SettingsMetrics.iconSlot)
+                        // a disc has no baseline: its centre on the words' middle
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    (Text(T("phone.mac.ok")).foregroundColor(.primary) + Text("   " + works(f)).foregroundColor(.secondary))
+                        .font(.system(size: SettingsMetrics.detailSize + 0.5)).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityElement(children: .combine)
+                .padding(.bottom, 4)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(problems.enumerated()), id: \.offset) { _, p in notice(p) }
+            }
+            .padding(.bottom, 4)
         }
-        ForEach(Array(problems.enumerated()), id: \.offset) { _, p in
-            switch p {
-            case .accessibility:
-                PhoneRow(tone: .warn, title: T("phone.mac.accessibility"), detail: T("phone.mac.accessibility.detail")) {
-                    Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
+    }
+
+    @ViewBuilder private func notice(_ p: PhoneChecks.Problem) -> some View {
+        switch p {
+        case .accessibility:
+            PhoneNotice(title: T("phone.mac.accessibility"), detail: T("phone.mac.accessibility.detail")) {
+                Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .phone) }
+            }
+        case let .notListening(why):
+            // what to do, in words; macOS's own error only on hover (and in the log)
+            PhoneNotice(tone: .bad, title: T("phone.mac.deaf"), detail: PhoneText.listenFailure(why), help: why == RemoteServer.portInUse ? "" : why) {
+                Button(T("phone.mac.deaf.retry")) { m.listenAgain() }
+            }
+        case .screenRecording:
+            PhoneNotice(title: T("phone.mac.screen"), detail: T("phone.mac.screen.detail")) {
+                Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.screen], source: .phone) }
+            }
+        case .relayUnreachable:
+            // what still works, with the public connection service as the fallback or without it; the address on hover
+            PhoneNotice(title: T("phone.mac.relay"), detail: T(RemoteServer.goBetweenOn ? "phone.mac.relay.detail.fallback" : "phone.mac.relay.detail"),
+                        help: RemoteServer.relayAddress ?? "") {
+                HStack(spacing: 8) {
+                    Button(T("phone.mac.relay.again")) { m.checkRelay() }
+                    Button(T("phone.relay_settings")) { PhoneLinks.relaySettings() }
                 }
-            case let .notListening(why):
-                // what to do, in words; macOS's own error only on hover (and in the log)
-                PhoneRow(tone: .bad, title: T("phone.mac.deaf"), detail: PhoneText.listenFailure(why)) {
-                    Button(T("phone.mac.deaf.retry")) { m.listenAgain() }
-                }
-                .help(why == RemoteServer.portInUse ? "" : why)
-            case .screenRecording:
-                PhoneRow(tone: .warn, title: T("phone.mac.screen"), detail: T("phone.mac.screen.detail")) {
-                    Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.screen], source: .phone) }
-                }
-            case .relayUnreachable:
-                PhoneRow(tone: .warn, title: T("phone.mac.relay"), detail: T("phone.mac.relay.detail")) {
-                    HStack(spacing: 8) {
-                        Button(T("phone.mac.relay.again")) { m.checkRelay() }
-                        Button(T("phone.relay_settings")) { PhoneLinks.relaySettings() }
-                    }
-                }
+            }
+        case .goBetweenBusy:
+            PhoneNotice(title: T("phone.away.busy"), detail: T("phone.away.busy.detail")) {
+                Button(T("phone.relay_settings")) { PhoneLinks.relaySettings() }
+            }
+        case .noDirect:
+            PhoneNotice(title: T("phone.away.no_direct"), detail: T("phone.away.no_direct.detail")) {
+                Button(T("phone.relay_settings")) { PhoneLinks.relaySettings() }
             }
         }
     }
 
-    /// All well, and what that covers: "Pointer and keys · Screen · Away from home through your relay".
+    /// All well, and what that covers: "Pointer and keys · Screen · From other networks through your relay". While a
+    /// device is connected its row says the way it came, so the way in from elsewhere isn't said beside it.
     private func works(_ f: PhoneFacts) -> String {
         var parts = [T("phone.mac.ok.keys")]
         if f.screenWanted { parts.append(T("phone.mac.ok.screen")) }
-        switch f.relay {
-        case .ok: parts.append(T("phone.mac.ok.relay"))
-        case .checking: parts.append(T("phone.mac.ok.relay_checking"))
-        case .goBetween: parts.append(T("phone.mac.ok.go_between"))
-        case .none, .failed: break
+        if f.connected == nil {
+            switch f.relay {
+            case .ok: parts.append(T("phone.mac.ok.relay"))
+            case .checking: parts.append(T("phone.mac.ok.relay_checking"))
+            case .goBetween: parts.append(T("phone.mac.ok.go_between"))
+            case .none, .failed: break
+            }
         }
         return parts.joined(separator: " · ")
     }
@@ -255,7 +290,21 @@ enum PhoneText {
         guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
         let f = RelativeDateTimeFormatter()
         f.locale = Loc.locale
-        return T("settings.remote.last_used", f.localizedString(for: t, relativeTo: Date()))
+        f.unitsStyle = .full
+        return T("phone.last_used", spaced(f.localizedString(for: t, relativeTo: Date())))
+    }
+
+    /// 「2 小时前」, not the formatter's「2小时前」: a space between a number and Chinese, as the rest of the copy has it.
+    static func spaced(_ s: String) -> String {
+        func han(_ c: Character) -> Bool { c.unicodeScalars.first.map { (0x4E00...0x9FFF).contains($0.value) } ?? false }
+        func digit(_ c: Character) -> Bool { c.isASCII && c.isNumber }
+        var out = "", prev: Character?
+        for c in s {
+            if let p = prev, digit(p) && han(c) || han(p) && digit(c) { out.append(" ") }
+            out.append(c)
+            prev = c
+        }
+        return out
     }
 
     /// The connected device's line: "Connected · Same network" (the path in the agreed terms), "Connecting · Public
@@ -450,17 +499,21 @@ struct QRImage: View {
 // MARK: - the page's rows
 
 /// A section: its heading (Settings' size) on the column's edge with an optional small button at its end, then its
-/// rows with hairlines between them — never under the heading.
+/// rows with hairlines between them — never under the heading. `disclosure`: the heading opens and closes it, and its
+/// rows show only while open (Settings' Advanced).
 struct PhoneSection<Content: View, Accessory: View>: View {
     var title: String
     /// the page's first section, straight under the title: no gap of its own
     var first = false
+    var disclosure: Binding<Bool>?
     var content: Content
     var accessory: Accessory
 
-    init(_ title: String, first: Bool = false, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+    init(_ title: String, first: Bool = false, disclosure: Binding<Bool>? = nil, @ViewBuilder content: () -> Content,
+         @ViewBuilder accessory: () -> Accessory) {
         self.title = title
         self.first = first
+        self.disclosure = disclosure
         self.content = content()
         self.accessory = accessory()
     }
@@ -468,26 +521,109 @@ struct PhoneSection<Content: View, Accessory: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(title).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                if let d = disclosure {
+                    Button {
+                        withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.15)) {
+                            d.wrappedValue.toggle()
+                        }
+                    } label: {
+                        // "› If It Won't Connect", as Settings' Advanced heading: on the headings' edge
+                        HStack(spacing: 5) {
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(d.wrappedValue ? 90 : 0))
+                            Text(title).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
+                        }
+                        .foregroundStyle(.primary)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(d.wrappedValue ? "1" : "0")
+                    .accessibilityAddTraits(.isHeader)
+                } else {
+                    Text(title).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                }
                 Spacer(minLength: 8)
             }
             .frame(minHeight: 16)
             // over the heading's line, never making it taller: every heading starts at one height
             .overlay(alignment: .trailing) { accessory }
             .padding(.bottom, 4)
-            VStack(alignment: .leading, spacing: 0) { content }
-                // the first row's hairline lies on the top edge, where the clip takes it away
-                .padding(.top, -1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
+            if disclosure?.wrappedValue ?? true {
+                VStack(alignment: .leading, spacing: 0) { content }
+                    // the first row's hairline lies on the top edge, where the clip takes it away
+                    .padding(.top, -1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
+            }
         }
         .padding(.top, first ? 0 : SettingsMetrics.groupGap)
     }
 }
 
 extension PhoneSection where Accessory == EmptyView {
-    init(_ title: String, first: Bool = false, @ViewBuilder content: () -> Content) {
-        self.init(title, first: first, content: content) { EmptyView() }
+    init(_ title: String, first: Bool = false, disclosure: Binding<Bool>? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title, first: first, disclosure: disclosure, content: content) { EmptyView() }
+    }
+}
+
+/// One state that concerns the whole page (Settings' SettingsNotice, on this page's column): the 16 pt disc in the
+/// marks' slot, what is wrong over what it means and what still works, and its fix at the trailing edge. The tone only
+/// as a faint wash and a hairline; the text in the ordinary inks.
+struct PhoneNotice<Action: View>: View {
+    var tone: Tone = .warn
+    var title: String
+    var detail: String
+    /// what the words leave out (macOS's own error, the relay's address): on hover
+    var help: String = ""
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+        HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                StatusDot(tone: tone, diameter: 16).frame(width: SettingsMetrics.iconSlot)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                    Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(T("phone.ax.needs_you"))
+                .help(help)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            action.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+        }
+        // the disc in the column's mark slot, as every row's mark: the wash reaches out around it
+        .padding(.vertical, 10).padding(.horizontal, SettingsMetrics.boxInset)
+        .background(shape.fill(tint.opacity(0.08)))
+        .overlay(shape.strokeBorder(tint.opacity(0.3), lineWidth: 0.5))
+        .padding(.horizontal, -SettingsMetrics.boxInset)
+    }
+
+    private var tint: Color { tone == .bad ? .brandErr : .brandAttn }
+}
+
+/// A paired phone, tablet or computer: its mark, name and state, and its ⋯ (Remove…) only while the pointer is over the
+/// row, its slot kept at rest (Settings' RowMenu); the same item in the context menu.
+struct PhoneDeviceRow: View {
+    var device: RemoteServer.Device
+    var detail: String
+    var tone: Tone
+    var remove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        PhoneRow(symbol: PhoneText.symbol(device), title: PhoneStatus.name(device.name), detail: detail, detailTone: tone) {
+            RowMenu(label: T("viewer.more"), visible: hovering) {
+                Button(T("phone.remove"), action: remove)
+                    .accessibilityLabel(T("phone.remove.named", PhoneStatus.name(device.name)))
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .contextMenu { Button(T("phone.remove"), action: remove) }
     }
 }
 

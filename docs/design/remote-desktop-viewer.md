@@ -384,6 +384,21 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
   - **Renamed 远程控制 / Remote Control** (the founder, 2026-11-20): 手机和电脑 named two kinds of device, not what the feature does;
     the two groups keep their names (能控制本机的设备 · 本机可控制的电脑). The menu bar's row reads 远程控制：iPhone 已连接; the relay
     instructions say Settings → Remote Control → Relay Address; the phone apps point to the same names.
+  - **Visual fix pass (1.1.0, 2026-11-21).** The gate's judges agreed on four things; one pass fixed them:
+    - This Mac's state comes first, under the title (system.md §3.4). With all well and a device paired it is one quiet line
+      (其他设备可以控制本机 · what that covers); before anything is paired, nothing. Each problem is one notice there (`PhoneNotice`,
+      SettingsNotice's look on the page's column) with its fix. The 本机 / This Mac section is gone.
+    - The page now reads what this Mac's own tries found from other networks (`Status.away`, as Settings' Status row reads it):
+      `PhoneFacts.away` gives a relay-down notice (with an own relay set), and, through the public connection service, a
+      today's-limit notice (`goBetweenBusy`) and a no-direct-path one (`noDirect`). Each is said only while no device is connected.
+      Before, these states drew the green all-well line.
+    - One name for the machine in en: Devices That Can Control This Mac; the other list is `phone.section.computers` (Computers You
+      Can Control / 你能控制的电脑, no longer a near-anagram of 能控制本机的设备). Settings' own key is unchanged.
+    - 连不上时 / If It Won't Connect is closed at the page's foot (`phonepage tips open|closed`), so the page no longer ends on a tip
+      cut by the window's edge. It shows nothing when this Mac can't open its port (that cause is here, not on the phone). The phone
+      app's build links are a footnote under Add Device…. A device row's ⋯ shows on hover. zh: 上次使用 2 小时前 (no colon, a
+      space between the number and the Chinese).
+    Shots: `promo/cases/visual-gate-1.1/fix/remote-page/`.
 
 Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/mac/` — `page-empty`, `page-devices`, `page-add-device`,
 `page-asking`, `settings`. Hooks: `phonepage fake …` now includes a paired computer (MacBook Pro) beside the iPhone and iPad;

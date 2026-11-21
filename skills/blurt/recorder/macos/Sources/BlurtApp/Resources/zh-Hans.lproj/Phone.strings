@@ -1,7 +1,7 @@
 /* 远程控制页（MainWindow/PhonePage.swift、PhonePageViews.swift）。 */
 
 "phone.settings" = "设置…";
-"phone.settings.tip" = "屏幕按键提示、在手机上显示屏幕、外出连接用的中转";
+"phone.settings.tip" = "屏幕按键提示、允许查看本机屏幕、从其他网络连接";
 /* 没有报上名字的手机 */
 "phone.unnamed" = "手机";
 
@@ -25,36 +25,41 @@
 "phone.remove.named" = "移除 %@";
 
 /* 本机：只列出挡住其他设备的事，都没问题时只有一行 */
-"phone.mac" = "本机";
 "phone.mac.ok" = "其他设备可以控制本机";
 "phone.mac.ok.keys" = "指针和按键";
 "phone.mac.ok.screen" = "屏幕画面";
-"phone.mac.ok.relay" = "外出时经中转连接";
+"phone.mac.ok.relay" = "其他网络经自建中转连接";
 "phone.mac.ok.relay_checking" = "正在检查中转…";
 "phone.mac.accessibility" = "辅助功能未开启";
 "phone.mac.accessibility.detail" = "开启前，手机可以连接，但无法移动指针或按键。";
 "phone.mac.screen" = "屏幕录制未开启";
 "phone.mac.screen.detail" = "开启前，手机上无法显示屏幕。指针和按键不受影响。";
-"phone.mac.deaf" = "手机和电脑暂时连不上本机";
+"phone.mac.deaf" = "手机和电脑连不上本机";
 "phone.mac.deaf.in_use" = "另一个口喷鸡或其他应用占用了连接。退出它后点“重试”。";
 "phone.mac.deaf.other" = "macOS 没能打开连接。请点“重试”，不行就重启电脑。";
 "phone.mac.deaf.retry" = "重试";
-"phone.mac.relay" = "中转无响应";
-"phone.mac.relay.detail" = "其他网络中的手机无法连接；同一 Wi-Fi 下不受影响。";
+"phone.mac.relay" = "自建中转无响应";
+"phone.mac.relay.detail" = "恢复前，其他网络中的设备连不上本机；同一 Wi-Fi 下不受影响。";
+"phone.mac.relay.detail.fallback" = "恢复前，其他网络中的设备改经公共连接服务连接；同一 Wi-Fi 下不受影响。";
 "phone.mac.relay.again" = "再检查一次";
 "phone.relay_settings" = "中转设置…";
+"phone.away.busy" = "今天其他网络连不上";
+"phone.away.busy.detail" = "公共连接服务今日已达上限。同一 Wi-Fi 下照常连接。请稍后再试，或设置自建中转。";
+"phone.away.no_direct" = "其他网络中的手机没能连上";
+"phone.away.no_direct.detail" = "那个网络不允许直连。自建中转在任何网络下都能用；同一 Wi-Fi 下照常连接。";
 /* 旁白读一行状态时，在标题后面说的词 */
 "phone.ax.ok" = "正常";
 "phone.ax.needs_you" = "需要处理";
 
 "phone.paired" = "能控制本机的设备";
+"phone.section.computers" = "你能控制的电脑";
+"phone.last_used" = "上次使用 %@";
 "phone.none" = "还没有配对的设备";
 "phone.none.detail" = "配对后，手机、平板或另一台电脑可以控制本机。";
 "phone.computers.none" = "还没有添加电脑";
 
 /* 手机版从哪里来 */
-"phone.app" = "手机上的口喷鸡";
-"phone.app.where" = "尚未上架应用商店，需从源码构建。";
+"phone.app.where" = "手机上的口喷鸡尚未上架应用商店，需从源码构建：";
 "phone.app.ios" = "iPhone 和 iPad";
 "phone.app.android" = "Android";
 
@@ -64,9 +69,9 @@
 "phone.tips.open" = "在手机上打开口喷鸡，并确认 Mac 没有进入睡眠。";
 "phone.tips.vpn" = "如果开着 VPN，请让它放行局域网流量，或先关掉试试。如果 Mac 开启了防火墙，请允许口喷鸡的传入连接。";
 "phone.tips.vpn.local" = "如果开着 VPN，请让它放行局域网流量，或先关掉试试。并在 Mac 的防火墙和「系统设置 > 隐私与安全性 > 本地网络」中允许口喷鸡。";
-"phone.tips.away.none" = "不在同一网络时（如外出），手机需经你自己的中转连接，目前未设置。";
+"phone.tips.away.none" = "不在同一网络时，手机需经你自己的中转连接，目前未设置。";
 "phone.tips.away.go_between" = "不在同一网络时，手机通过公共连接服务连接。无法直连时，请设置自建中转。";
-"phone.mac.ok.go_between" = "外出时通过公共连接服务连接";
+"phone.mac.ok.go_between" = "其他网络经公共连接服务连接";
 "phone.tips.away.ok" = "不在同一网络时经你的中转连接，手机能上网即可。";
 
 /* 设置 → 远程控制（Settings/RemotePane.swift）开头指向这一页的一句 */
