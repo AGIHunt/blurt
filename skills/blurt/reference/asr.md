@@ -57,7 +57,8 @@ Models (`scripts/asr_models.json`):
 
 Packages are added automatically: the script re-runs itself with `uv run --with mlx-whisper` (or `faster-whisper`)
 when it needs one. Whisper weights live in the Hugging Face cache (`HF_HOME`). SenseVoice, Qwen3-ASR and the VAD go
-to `$BLURT_HOME/models`. In mainland China, set `BLURT_HF_MIRROR=1` to prefer hf-mirror.com.
+to `$BLURT_HOME/models`. In mainland China, set `BLURT_HF_MIRROR=1` to prefer hf-mirror.com. For Qwen3-ASR 0.6B
+(CPU), this selects the ModelScope mirror, with SHA-256 verification of each downloaded file.
 
 ## Configuration (`$BLURT_HOME/config.json` → `asr`)
 
