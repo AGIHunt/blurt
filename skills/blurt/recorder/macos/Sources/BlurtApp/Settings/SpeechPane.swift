@@ -3,19 +3,19 @@
 //
 //   lead       "Recommended for this Mac: Qwen3-ASR 1.7B" with Compare… at its end: dictation's
 //              choices side by side in a sheet (DictationCompare.swift; also the dictation pop-up's Compare Choices…).
-//   On this Mac  at most one recommendation, only while something recommended is missing (`transcribe.py models` for
-//              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
-//              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
-//              one primary Download and a "…" menu for one model at a time; while anything downloads it becomes that
-//              download's bar and Stop. Then Choose automatically (asr.auto, and dictation's two models unpinned:
-//              DictationModels.setAuto), its line naming this Mac — "Auto" is said there once, never on every job.
-//              Last, All models: Manage Models… opens the library.
+//   On this Mac  settings rows (no glyphs). At most one recommendation, only while something recommended is missing
+//              (`transcribe.py models` for recordings / live captions / voice notes, `dictation-models` + `polish.py
+//              models` for dictation): one row — the models by name, one line with the size and what they are for, the
+//              page's one primary Download, a ⋯ on hover for one model at a time; what each job will use is its
+//              tooltip. While anything downloads it becomes that download's bar and Stop. Then All models: Manage
+//              Models… opens the library.
 //   Cloud services  the services the user connected with their own key (CloudServicesPane.swift, CloudStore).
-//   Each job   one row per job — Recordings, Live captions, Voice notes, Dictation, then Polish, Translate, Copy Text
-//              from Screen —, each with its glyph and its model on the right: the name while automatic, a pop-up of
-//              the models on this Mac (and Get More Models…) when picked by hand; the text jobs also list each
-//              connected service's models, and say where their content goes. A job whose model isn't on this Mac says
-//              "· downloading" or "None yet", never names it as if in use.
+//   Each job   one row per job — Recordings, Live captions, Voice notes, Dictation (or one Speech recognition row
+//              while they share a model), then Polish, Translate, Copy Text from Screen —, each with its glyph, one
+//              line and the model in use in its pop-up; Choose Automatically (asr.auto, and dictation's two models
+//              unpinned: DictationModels.setAuto) is a check item at the speech pop-ups' foot. The text jobs also list
+//              each connected service's models. Every row's line says where its content goes ("Stays on this Mac.").
+//              A job whose model isn't on this Mac says "· downloading" or "None", never names it as if in use.
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
 //   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
 //              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
@@ -477,6 +477,8 @@ struct SpeechPane: View {
     @State private var library = false
     /// dictation's choices side by side (DictationCompare.swift)
     @State private var compare = false
+    /// the pointer is over the download row: its ⋯ shows
+    @State private var hoveringDownload = false
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
@@ -487,10 +489,18 @@ struct SpeechPane: View {
     var body: some View {
         SettingsPage(.speech, lead: lead) {
             useSection
-            CloudServicesSection()
+            // the page's one gradient primary is Download while it is there; Add Cloud Model… takes it only after
+            CloudServicesSection(primary: !dl.active && picks.isEmpty)
             jobsSection
             languagesSection
             advancedSection
+        }
+        // the bottom edge as the top (the search results' fade): a row the window ends on slips under it, never cut
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [SettingsMetrics.ground.opacity(0), SettingsMetrics.ground], startPoint: .top, endPoint: .bottom)
+                .frame(height: SettingsMetrics.bottomFade)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
         .task { await m.load() }
         .task { await d.load() }
@@ -640,21 +650,37 @@ struct SpeechPane: View {
         return out
     }
 
-    /// One line per group of jobs the download changes, in the jobs' own words: "Voice notes would use SenseVoice
-    /// Small", "Dictation would use Qwen3-ASR 1.7B and Gemma 4 E2B" — so the rows under it and this agree: they
-    /// say what is used now, this says what Download changes.
+    /// One sentence per group of jobs the download changes, in the jobs' own words ("Voice notes will use SenseVoice
+    /// Small."): the row's tooltip, so the row itself stays two lines.
     func pickLines(_ ps: [Pick]) -> [String] {
         var groups: [(uses: [String], names: [String])] = []
         for p in ps {
-            // a model's name never breaks over two lines
-            let name = p.job.name.replacingOccurrences(of: " ", with: "\u{00A0}")
-            if let i = groups.firstIndex(where: { $0.uses == p.uses }) { groups[i].names.append(name) }
-            else { groups.append((p.uses, [name])) }
+            if let i = groups.firstIndex(where: { $0.uses == p.uses }) { groups[i].names.append(p.job.name) }
+            else { groups.append((p.uses, [p.job.name])) }
         }
         return groups.map { g in
             let uses = Loc.list(g.uses.enumerated().map { i, u in i == 0 ? u : u.lowercased(with: Loc.locale) })
             return S("speech.rec.line", uses, Loc.list(g.names))
         }
+    }
+
+    /// The download row's title: the models by name ("Qwen3-ASR 1.7B + Gemma 4 E2B"), each kept whole.
+    func pickTitle(_ ps: [Pick]) -> String {
+        ps.map { ModelBundle.unbreakable($0.job.name) }.joined(separator: " + ")
+    }
+
+    /// The download row's one line: its size and what it is for, in two words where it can ("5.9 GB · For speech
+    /// recognition and dictation polish") — the four recognition jobs are one, Speech recognition.
+    func pickUses(_ ps: [Pick]) -> String {
+        var uses: [String] = []
+        for p in ps { for u in p.uses where !uses.contains(u) { uses.append(u) } }
+        let speech = ASRPurpose.allCases.map(\.title) + [S("speech.purpose.dictation")]
+        if speech.allSatisfy(uses.contains) {
+            uses = [S("speech.purpose.recognition")] + uses.filter { !speech.contains($0) }
+        }
+        let list = Loc.list(uses.map { $0.lowercased(with: Loc.locale) })
+        let size = modelSize(ps.reduce(0) { $0 + $1.job.sizeMB }).replacingOccurrences(of: " ", with: "\u{00A0}")
+        return S("speech.rec.for", size, list)
     }
 
     @ViewBuilder var recommendation: some View {
@@ -685,48 +711,43 @@ struct SpeechPane: View {
             let ps = picks
             if !ps.isEmpty {
                 let failed = ps.contains { dl.failed[$0.job.id] != nil }
-                let size = modelSize(ps.reduce(0) { $0 + $1.job.sizeMB }).replacingOccurrences(of: " ", with: "\u{00A0}")
+                // what Download changes, job by job, and the dictation model's published speed: the tooltip (Compare…
+                // has the numbers side by side)
+                let more = ((failed ? [S("speech.download.failed")] : []) + pickLines(ps)
+                            + [DictationSpeedText.reference(ps.filter { $0.uses.contains(S("speech.purpose.dictation")) }.map(\.job.id)),
+                               S("speech.rec.help")].compactMap { $0 }).joined(separator: "\n")
                 SettingsLine(flashID: "speech.download") {
                     HStack(alignment: .center, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(S("speech.rec.title_size", size)).font(.system(size: SettingsMetrics.titleSize))
-                                .gridProbe(.text, "recommended")
-                            // one line per job group: a structured list, never a sentence wrapped mid-name
-                            ForEach(pickLines(ps), id: \.self) { l in
-                                // wraps at the narrowest window rather than cutting a model's name off
-                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            // the models by name, on one line; a set too long for it says "Recommended models"
+                            ViewThatFits(in: .horizontal) {
+                                Text(pickTitle(ps)).lineLimit(1)
+                                Text(S("speech.rec.title.short")).lineLimit(1)
                             }
-                            // what the dictation model would be like: the published figure, said as not this Mac's
-                            if let r = DictationSpeedText.reference(ps.filter { $0.uses.contains(S("speech.purpose.dictation")) }.map(\.job.id)) {
-                                Text(r).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            .font(.system(size: SettingsMetrics.titleSize))
+                            .gridProbe(.text, "recommended")
                             if failed {
                                 // a full disk says how much is needed and free, with Show Storage
                                 let room = ps.compactMap { dl.failedText($0.job.id) }.first
                                 HStack(spacing: 6) {
-                                    Text(room ?? S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
-                                        .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                    Text(room ?? S("speech.download.failed.short")).font(.system(size: SettingsMetrics.detailSize))
+                                        .foregroundStyle(Color.brandErr).lineLimit(1)
                                     if room != nil {
-                                        Button(T("app.models.show_storage")) { ModelDownloads.showStorage() }
-                                            .buttonStyle(.link).font(.system(size: SettingsMetrics.detailSize))
+                                        TextLinkButton(T("app.models.show_storage")) { ModelDownloads.showStorage() }
+                                            .font(.system(size: SettingsMetrics.detailSize))
                                     }
                                 }
+                            } else {
+                                Text(pickUses(ps)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .help(S("speech.rec.help"))
-                        HStack(spacing: 4) {
+                        .help(more)
+                        HStack(spacing: 6) {
+                            // one model at a time: on hover, its slot kept (RowMenu); the same in the context menu
                             if ps.count > 1 {
-                                Menu {
-                                    ForEach(ps, id: \.job.id) { p in
-                                        Button(S("speech.rec.one", p.job.name, modelSize(p.job.sizeMB))) { get([p]) }
-                                    }
-                                } label: { Image(systemName: "ellipsis") }
-                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                                .frame(width: 22)
-                                .help(S("speech.rec.choose")).accessibilityLabel(S("speech.rec.choose"))
+                                RowMenu(label: S("speech.rec.choose"), visible: hoveringDownload) { pickItems(ps) }
                             }
                             // the page's one primary (system.md §9), and the app's one place to get these models
                             Button(failed ? S("speech.rec.retry") : S("speech.download.button")) { get(ps) }
@@ -734,8 +755,18 @@ struct SpeechPane: View {
                         }
                         .gridProbe(.trailing, "recommended")
                     }
+                    .contentShape(Rectangle())
+                    .onHover { hoveringDownload = $0 }
+                    .contextMenu { if ps.count > 1 { pickItems(ps) } }
                 }
             }
+        }
+    }
+
+    /// One model at a time ("Download Gemma 4 E2B · 1.6 GB"): the download row's ⋯ and context menu.
+    @ViewBuilder func pickItems(_ ps: [Pick]) -> some View {
+        ForEach(ps, id: \.job.id) { p in
+            Button(S("speech.rec.one", p.job.name, modelSize(p.job.sizeMB))) { get([p]) }
         }
     }
 
@@ -745,41 +776,53 @@ struct SpeechPane: View {
 
     // the jobs
 
-    /// An automatic row's line: what the row is for, then the model it runs on now ("…Now: Qwen3-ASR 0.6B") — the pop-up
-    /// itself says only "Automatic", so the model's name is never cut off in it.
-    func autoDetail(_ id: String, auto: Bool, _ value: String) -> String? {
-        guard auto else { return nil }
-        let base = SettingsCatalog.entry(id).flatMap(SettingsCatalog.detail) ?? ""
-        return S("speech.auto.using", base, value)
+    /// A speech row's line: where the voice goes — "Stays on this Mac." for a model here, "Voice goes to Alibaba
+    /// Cloud." for a cloud one (the text rows say the same of text). Nil before a model is known.
+    func voiceGoes(_ x: ASRModel?) -> String? {
+        guard let x = x else { return nil }
+        if x.local { return M("models.job.local") }
+        let to = x.backend == "dashscope" ? S("speech.compare.alibaba") : x.backend == "volcengine" ? S("speech.compare.volcengine")
+            : x.backend == "openai" ? S("speech.cloud.name.openai") : x.title
+        return ChoiceText.tight(S("speech.voice.goes", to), to)
     }
 
+    /// The pop-ups' "Choose Automatically" check item: on, every job goes back to the models picked for this Mac; off,
+    /// each keeps the one it uses now (`pin`).
+    /// (Not a catalogue setting of its own: the same item is in each speech pop-up.)
+    func autoCheck(_ on: Bool, pin: @escaping () -> Void) -> SettingMenuToggle {
+        SettingMenuToggle(Self.autoCheckID, isOn: Binding(get: { on }, set: { $0 ? m.useAuto() : pin() }), title: S("speech.auto.check"))
+    }
+    static let autoCheckID = "speech.choose_automatically"
+
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)) ?? (m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p, whole: true))),
-                   icon: p.symbol) {
+        SettingRow("speech.\(p.rawValue)", detail: unused(capability(p)), icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
             } else {
-                ModelPopUp(label: p.title, current: m.auto ? ModelPopUp.auto : m.selected(p)?.id,
-                           auto: purposeValue(p), choices: choices(p).map { ($0.id, $0.title) }, more: { library = true }) { id in
-                    if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.choose(x, for: p) }
+                ModelPopUp(label: p.title, current: m.selected(p)?.id, missing: purposeValue(p),
+                           choices: choices(p).map { ($0.id, $0.title) }, more: { library = true },
+                           auto: autoCheck(m.auto) { if let x = m.selected(p) { m.choose(x, for: p) } else { m.setAuto(false) } }) { id in
+                    if let x = m.model(id) { m.choose(x, for: p) }
                 }
             }
         }
         .disabled(unused(capability(p)) != nil)
     }
 
-    /// Every job on one model (Chinese and English on Apple silicon, by default): one row, its pop-up the models every
-    /// job can use. Picking one there (or the library's Use) gives it every job; Automatic gives them back to this Mac.
+    /// Every job on one model (Chinese and English on Apple silicon, by default): one row, its pop-up the model in use
+    /// and the others every job can use. Picking one there (or the library's Use) gives it every job; Choose
+    /// Automatically (a check item in it) gives them back to this Mac.
     func recognitionRow(_ one: ASRModel) -> some View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
         let off = unused(.dictation, .cards, .recording)
-        return SettingRow("speech.recognition", detail: off ?? DictationSpeedText.withMeasured(autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note, whole: true)), model: d.asr?.selected),
+        return SettingRow("speech.recognition", detail: off ?? voiceGoes(one),
+                          help: DictationSpeedText.withMeasured(S("speech.purpose.recognition.detail"), model: d.asr?.selected),
                           icon: "waveform") {
-            ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
-                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
-                       compare: { compare = true }) { id in
-                if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
+            ModelPopUp(label: S("speech.purpose.recognition"), current: one.id, missing: purposeValue(.note),
+                       choices: here.map { ($0.id, $0.title) }, more: { library = true }, compare: { compare = true },
+                       auto: autoCheck(m.auto && d.asrAuto) { m.useEverywhere(one) }) { id in
+                if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
         .disabled(off != nil)
@@ -803,15 +846,21 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", detail: unused(.dictation) ?? DictationSpeedText.withMeasured(d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0, whole: true)) }, model: d.asr?.selected),
+        SettingRow("speech.dictation", detail: unused(.dictation),
+                   help: DictationSpeedText.withMeasured(S("speech.purpose.dictation.detail"), model: d.asr?.selected),
                    icon: "character.cursor.ibeam") {
             if let a = d.asr {
-                // a model whose own files are in can be chosen (its setup then fetches only the VAD)
-                let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
-                ModelPopUp(label: S("speech.purpose.dictation"), current: m.auto && d.asrAuto ? ModelPopUp.auto : a.selected,
-                           auto: dictationValue(a), choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) },
-                           more: { library = true }, compare: { compare = true }) { id in
-                    if id == ModelPopUp.auto { m.useAuto() } else if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
+                // a model whose own files are in can be chosen (its setup then fetches only the VAD); one not here yet
+                // is "None" or "… · downloading", never named as if in use
+                let ready = a.selectedInstalled ?? d.selectedASR?.installed ?? false
+                let here = a.models.filter { $0.installed || $0.files == true || ($0.id == a.selected && ready) }
+                ModelPopUp(label: S("speech.purpose.dictation"), current: a.selected, missing: dictationValue(a),
+                           choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) },
+                           more: { library = true }, compare: { compare = true },
+                           auto: autoCheck(m.auto && d.asrAuto) {
+                               if let x = a.models.first(where: { $0.id == a.selected }) { d.chooseASR(x) }
+                           }) { id in
+                    if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
                 }
             } else {
                 BrandSpinnerView(size: 12)
@@ -831,16 +880,15 @@ struct SpeechPane: View {
     /// catalogue's "speech.models" is the library itself, which a search opens).
     var libraryRow: some View {
         let here = m.models.filter { $0.local && $0.installed }.count + (d.polish?.models.filter(\.installed).count ?? 0)
+        // a settings row like the download above it (no glyph: one box never mixes the two, system.md §3.4)
         return SettingsLine(flashID: "speech.library") {
             HStack(alignment: .center, spacing: 14) {
-                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
-                    SettingsIcon("square.stack.3d.up")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(S("speech.section.models")).font(.system(size: SettingsMetrics.titleSize))
-                            .gridProbe(.iconText, "all models")
-                        Text(here > 0 ? S("speech.manage.count", Loc.number(here)) : S("speech.manage.detail.none"))
-                            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(S("speech.section.models")).font(.system(size: SettingsMetrics.titleSize))
+                        .help(S("speech.manage.detail.none"))
+                        .gridProbe(.text, "all models")
+                    Text(here > 0 ? S("speech.manage.count", Loc.number(here)) : S("speech.manage.detail.none"))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Button(S("speech.manage.button")) { library = true }.gridProbe(.trailing, "all models")
@@ -961,24 +1009,23 @@ private struct ModelName: View {
     }
 }
 
-/// A job's model: the page's pop-up (one width) — Automatic (with what it picks: `auto`), the models on this Mac,
-/// then Get More Models… (the library). `current` is `ModelPopUp.auto` while the choice is automatic.
+/// A job's model: the page's pop-up (one width) showing the model the job runs on — automatic or picked — then the
+/// other models on this Mac, Get More Models… (the library) and, last, Choose Automatically as a check item (system.md
+/// §3.4: no "Automatic" value; the pop-up says what is in use). `missing`: what it says while the job's model isn't
+/// here ("None", "… · downloading").
 private struct ModelPopUp: View {
-    static let auto = "\u{1}auto"
     var label: String
     var current: String?
-    var auto: String
+    var missing: String
     var choices: [(id: String, name: String)]
     var more: () -> Void
     /// dictation's pop-ups: Compare Choices… after Get More Models…
     var compare: (() -> Void)? = nil
+    var auto: SettingMenuToggle
     var pick: (String) -> Void
     var body: some View {
-        // "Automatic" alone: the model it picked is the row's line (a long name cut off in the pop-up told nobody)
-        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.plain"))]
-        let top = items.count
-        let missing = current != ModelPopUp.auto && (current == nil || !choices.contains(where: { $0.id == current }))
-        if missing { items.append((current ?? "", S("speech.purpose.none_yet"))) }
+        var items: [(value: String, title: String)] = []
+        if current == nil || !choices.contains(where: { $0.id == current }) { items.append((current ?? "", missing)) }
         items += choices.map { ($0.id, $0.name) }
         let split = items.count
         items.append((moreModels, S("speech.purpose.more")))
@@ -988,7 +1035,7 @@ private struct ModelPopUp: View {
                                if id == moreModels { DispatchQueue.main.async(execute: more) }
                                else if id == compareChoices, let c = compare { DispatchQueue.main.async(execute: c) }
                                else if id != current && !id.isEmpty { pick(id) }
-                           }), dividers: [top, split])
+                           }), checks: [auto], dividers: [split])
     }
 }
 

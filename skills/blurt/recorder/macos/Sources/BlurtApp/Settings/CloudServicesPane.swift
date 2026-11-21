@@ -3,8 +3,9 @@
 //
 //   Cloud services   one line per connected service — its name (DeepSeek marked Recommended), where it is (China /
 //                    International, a custom service's host), whether its key does speech too, "Not tested by Blurt"
-//                    for a service the curated list doesn't use — and Edit…; then Add Service… while a curated
-//                    service is left to add. Empty: one line on what a key is for, and DeepSeek's price.
+//                    for a service the curated list doesn't use — and Edit…; then the add row: Add Cloud Model… (Set Up
+//                    with Agent… in its ⋯ on hover). Empty: "No cloud services yet", what a key is for, and DeepSeek's
+//                    price as the footnote under the box.
 //   the sheet        Service (the curated list's: DeepSeek, Model Studio), Region where a service has a China and an
 //                    international address (from the system region), the base URL filled in (editable), the API key
 //                    (Keychain; never shown back; a key with characters no key has is refused; another service's key,
@@ -126,9 +127,15 @@ enum CloudText {
 struct CloudServicesSection: View {
     /// open Add Service (the dictation reminder; the job rows' Add Service…)
     static let addRequest = Notification.Name("BlurtCloudServiceAdd")
+    /// Add Cloud Model… is the page's gradient primary: only while the list is empty and nothing else is (Speech's
+    /// recommended Download comes first; system.md §9: one per view)
+    var primary = false
     @ObservedObject var ui = CloudModelsUI.shared
     @ObservedObject var d = DictationModels.shared
     @State private var adding = ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_SHEET"]?.hasPrefix("add") == true
+    /// Set Up with Agent's sheet (the add row's ⋯ and context menu)
+    @State private var agent = false
+    @State private var hoveringAdd = false
     @State private var editing: CloudService?
     /// the services there when Add Cloud Model opened: one new after it closes may be asked about dictation
     @State private var before: Set<String> = []
@@ -143,7 +150,9 @@ struct CloudServicesSection: View {
 
     var body: some View {
         let setup = CloudStore.setup
-        SettingsGroup("speech.services") {
+        // the one price on the page, outside the box and only while nothing is connected (yuan in mainland China)
+        let price = setup.services.isEmpty ? ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } : nil
+        SettingsGroup("speech.services", footer: price) {
             ForEach(setup.services) { s in serviceLine(s) }
             // always there: the curated services, then every other one and the compatible endpoints (2026-11-16)
             addLine(empty: setup.services.isEmpty)
@@ -232,20 +241,19 @@ struct CloudServicesSection: View {
 
     func serviceLine(_ s: CloudService) -> some View {
         let (text, warn) = detail(s)
+        // a settings row, as the add row under it (Raycast's providers: name, one status line, Edit…): no glyph — the
+        // same cloud on every row said nothing, and one box never mixes rows with and without one
         return SettingsLine(flashID: "speech_service_" + s.id) {
             HStack(alignment: .center, spacing: 14) {
-                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
-                    SettingsIcon("cloud")
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(CloudStore.name(s)).font(.system(size: SettingsMetrics.titleSize))
-                                .gridProbe(.iconText, CloudStore.name(s))
-                            if s.info.recommended { Badge(M("models.recommended")) }
-                        }
-                        Text(text).font(.system(size: SettingsMetrics.detailSize))
-                            .foregroundStyle(warn ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
-                            .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(CloudStore.name(s)).font(.system(size: SettingsMetrics.titleSize))
+                            .gridProbe(.text, CloudStore.name(s))
+                        if s.info.recommended { Badge(M("models.recommended")) }
                     }
+                    Text(text).font(.system(size: SettingsMetrics.detailSize))
+                        .foregroundStyle(warn ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 8) {
@@ -261,26 +269,24 @@ struct CloudServicesSection: View {
         }
     }
 
+    /// The box's last row: what a key is for while nothing is connected ("No cloud services yet"), else what more can
+    /// be added — and Add Cloud Model…, the one button at rest. Set Up with Agent… (the user's own agent does it,
+    /// agent-setup.md §4) is the rarer way in: the row's ⋯ on hover and its context menu.
     func addLine(empty: Bool) -> some View {
         SettingsLine(flashID: "speech_service_add") {
             HStack(alignment: .center, spacing: 14) {
-                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
-                    SettingsIcon("plus.circle")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(M("models.services.add.title")).font(.system(size: SettingsMetrics.titleSize))
-                            .gridProbe(.iconText, "add service")
-                        if empty {
-                            Text(sentencesOf([M("models.services.empty"), (ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } ?? "")]))
-                                .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(M(empty ? "models.services.none.title" : "models.services.more.title"))
+                        .font(.system(size: SettingsMetrics.titleSize))
+                        .gridProbe(.text, "add service")
+                    Text(M(empty ? "models.services.none.detail" : "models.services.more.detail"))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 8) {
-                    // the user's own agent does it (agent-setup.md §4); hidden while none can run a session
-                    AgentSetupButton(look: .settings)
-                    if empty {
+                HStack(spacing: 6) {
+                    RowMenu(label: M("models.services.menu"), visible: hoveringAdd) { addItems }
+                    if empty && primary {
                         Button(M("models.services.add")) { adding = true }.buttonStyle(SettingsPrimaryButtonStyle())
                     } else {
                         Button(M("models.services.add")) { adding = true }.buttonStyle(SettingsOutlinedButtonStyle())
@@ -288,10 +294,17 @@ struct CloudServicesSection: View {
                 }
                 .gridProbe(.trailing, "add service")
             }
+            .contentShape(Rectangle())
+            .onHover { hoveringAdd = $0 }
+            .contextMenu { addItems }
         }
+        .sheet(isPresented: $agent) { AgentSetupSheet { agent = false }.buttonStyle(.automatic) }
     }
 
-    private func sentencesOf(_ p: [String]) -> String { CloudText.sentences(p) }
+    @ViewBuilder var addItems: some View {
+        Button(M("models.services.add")) { adding = true }
+        Button(M("models.agent.button")) { agent = true }
+    }
 }
 
 // MARK: - the sheet
@@ -836,7 +849,7 @@ struct JobModelControl: View {
 
     struct Adding: Identifiable { var preset: String; var id: String { preset } }
 
-    private static let custom = "custom", more = "more"
+    private static let custom = "custom", more = "more", unset = "unset", download = "download"
 
     var body: some View {
         _ = ui.tick
@@ -864,27 +877,44 @@ struct JobModelControl: View {
         .sheet(isPresented: $custom) { CustomModelSheet(job: job) { custom = false }.buttonStyle(.automatic) }
     }
 
-    /// The pop-up's value now: where the job runs (Auto shows the option it took).
+    /// The pop-up's value now: where the job runs (Auto shows the option it took) — always one of its items: a job on
+    /// this Mac with no model here yet is "Not Set" (never the raw "local:" in the button).
     var current: String {
         switch CloudStore.route(job) {
-        case .local: return "local:" + (job == .polish ? d.polish?.selected ?? "" : "")
+        case .local:
+            let v = "local:" + (job == .polish ? d.polish?.selected ?? "" : "")
+            return localItems.contains { $0.value == v } ? v : Self.unset
         case .cloud(let s, let m): return "cloud:\(s)\t\(m)"
         }
     }
 
-    var items: [ModelMenuPopup.Item] {
-        var out: [ModelMenuPopup.Item] = []
-        // this Mac
-        var local: [ModelMenuPopup.Item] = []
+    /// This Mac's models for the job (polish and translate: the polish models downloaded; Copy Text from Screen: its OCR).
+    var localItems: [ModelMenuPopup.Item] {
         switch job {
         case .polish:
-            if d.polish?.supported == true {
-                local = (d.polish?.models ?? []).filter(\.installed).map { .init(value: "local:" + $0.id, title: $0.name) }
-            }
+            guard d.polish?.supported == true else { return [] }
+            return (d.polish?.models ?? []).filter(\.installed).map { .init(value: "local:" + $0.id, title: $0.name) }
         case .translate:
-            if let n = CloudText.localModel(.translate) { local = [.init(value: "local:", title: n)] }
+            return CloudText.localModel(.translate).map { [.init(value: "local:", title: $0)] } ?? []
         case .vision:
-            local = [.init(value: "local:", title: "PaddleOCR-VL")]
+            return [.init(value: "local:", title: "PaddleOCR-VL")]
+        }
+    }
+
+    /// The polish model this Mac would download for the job (the recommended one), while none is here.
+    var downloadable: PolishModel? {
+        guard job != .vision, localItems.isEmpty, let p = d.recommendedPolish, !p.installed else { return nil }
+        return p
+    }
+
+    var items: [ModelMenuPopup.Item] {
+        var out: [ModelMenuPopup.Item] = []
+        // nothing to run on yet: the button says so, the items under it say how to get something
+        if current == Self.unset { out.append(.init(value: Self.unset, title: M("models.job.unset"))) }
+        // this Mac: its models, or the one to download
+        var local = localItems
+        if let p = downloadable {
+            local = [.init(value: Self.download, title: M("models.job.download", p.name), note: modelSize(p.sizeMB))]
         }
         if !local.isEmpty { out.append(.header(M("models.job.this_mac"))); out += local }
         // the curated models: on a connected service, or "No API key" (picking it adds the key)
@@ -918,6 +948,10 @@ struct JobModelControl: View {
         switch v {
         case Self.custom: custom = true
         case Self.more: library()
+        case Self.unset: break
+        case Self.download:
+            // the recommended polish model, used once it is in (the download manager; Speech's row shows its bar)
+            if let p = downloadable { d.install(p) }
         default:
             if v.hasPrefix("local:") {
                 set(.local)

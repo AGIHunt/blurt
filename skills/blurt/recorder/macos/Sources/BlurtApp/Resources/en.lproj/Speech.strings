@@ -163,11 +163,11 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";
 "speech.cloud.key.get" = "Get an API key";
-"speech.section.mac" = "On Your Mac";
-"speech.section.jobs" = "Models by Feature";
+"speech.section.mac" = "On this Mac";
+"speech.section.jobs" = "Models by feature";
 "speech.machine.short" = "%1$@, %2$@";
 "speech.rec.title_size" = "Recommended download · %@";
-"speech.rec.line" = "After it, %1$@ uses %2$@";
+"speech.rec.line" = "%1$@ will use %2$@.";
 "speech.rec.help" = "Downloads these models. Each feature switches to its model when its download finishes.";
 "speech.manage.count" = "%@ downloaded";
 
@@ -256,4 +256,8 @@
 "speech.compare.add_key" = "Add Key…";
 
 /* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
-"speech.speed.reference" = "%1$@: recognition about %2$@ (reference figure)";
+"speech.speed.reference" = "%1$@ recognizes speech in about %2$@ on our test Mac.";
+"speech.rec.for" = "%1$@ · For %2$@";
+"speech.rec.title.short" = "Recommended models";
+"speech.auto.check" = "Choose Automatically";
+"speech.voice.goes" = "Voice goes to %@.";

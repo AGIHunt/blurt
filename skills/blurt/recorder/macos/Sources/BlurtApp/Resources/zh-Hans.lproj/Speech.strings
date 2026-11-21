@@ -167,7 +167,7 @@
 "speech.section.jobs" = "各功能使用的模型";
 "speech.machine.short" = "%1$@，%2$@";
 "speech.rec.title_size" = "推荐下载 · %@";
-"speech.rec.line" = "下载后，%1$@改用 %2$@";
+"speech.rec.line" = "%1$@将改用 %2$@。";
 "speech.rec.help" = "下载以下模型，各功能在对应模型下载完成后自动启用。";
 "speech.manage.count" = "已下载 %@ 个";
 
@@ -256,4 +256,8 @@
 "speech.compare.add_key" = "添加 Key…";
 
 /* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
-"speech.speed.reference" = "%1$@：识别用时约 %2$@（参考值）";
+"speech.speed.reference" = "%1$@ 在我们的测试 Mac 上识别用时约 %2$@。";
+"speech.rec.for" = "%1$@ · 用于%2$@";
+"speech.rec.title.short" = "推荐模型";
+"speech.auto.check" = "自动选择";
+"speech.voice.goes" = "语音发往 %@。";

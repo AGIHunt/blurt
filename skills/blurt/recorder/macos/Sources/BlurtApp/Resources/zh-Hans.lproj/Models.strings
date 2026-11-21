@@ -1,7 +1,7 @@
 /* 设置 → 模型：用户用自己的 API Key 连接的云服务，以及文字类任务各用哪个模型（CloudServicesPane.swift、
    App/CloudStore.swift）。每行最多一句；只写 DeepSeek 的价格。 */
 
-"models.section.services" = "云端模型";
+"models.section.services" = "云端服务";
 "models.services.detail" = "使用你的 API Key 连接云端模型。";
 "models.services.add.title" = "添加云端模型";
 "models.services.add" = "添加云端模型…";
@@ -87,10 +87,10 @@
 "models.job.translate.detail" = "听写翻译（⌘）和截图翻译（⌥T）。";
 "models.job.vision" = "截图取字";
 "models.job.vision.detail" = "提高截图取字（⌥C）的准确度。";
-"models.job.goes.text" = "文字由 %@ 处理。";
-"models.job.goes.images" = "截图由 %@ 处理。";
-"models.job.local" = "在本机处理。";
-"models.job.none" = "未设置。可添加云端模型或下载本机模型。";
+"models.job.goes.text" = "文字发往 %@。";
+"models.job.goes.images" = "截图发往 %@。";
+"models.job.local" = "只在本机处理。";
+"models.job.none" = "可下载模型或添加 API Key。";
 "models.job.recommend" = "推荐：%@。";
 "models.job.switch" = "切换";
 "models.job.this_mac" = "本机";
@@ -149,3 +149,10 @@
 "models.sheet.use_for" = "用于";
 "models.check.job_failed" = "%1$@：%2$@";
 "models.sheet.note.other" = "口喷鸡没有测试过这个服务，连接前会用所选功能各试一次。API Key 保存在钥匙串中。";
+"models.services.none.title" = "还没有云端服务";
+"models.services.none.detail" = "用你自己的 API Key 润色和翻译。";
+"models.services.more.title" = "其他服务";
+"models.services.more.detail" = "其他服务商，或任何兼容的 API。";
+"models.services.menu" = "更多添加方式";
+"models.job.unset" = "未设置";
+"models.job.download" = "下载 %@";
