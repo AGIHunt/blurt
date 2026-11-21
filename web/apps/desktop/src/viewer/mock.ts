@@ -2,7 +2,7 @@
 // on the network, pairing with digits after a moment, and a computer's window with a made-up desktop that is really encoded
 // (WebCodecs VideoEncoder, H.264 Annex B) and sent through the same frames the app sends, so the window's decoding runs as in
 // the app. URL parameters:
-//   ?computers= none | some (default) | nodirect | removed   the list: none, or Connected / Available (nodirect: Can't Connect Directly;
+//   ?computers= none | some (default) | nodirect | removed   the list: none, or Connected / Available (nodirect: Needs its own relay;
 //                                                           removed: Removed this computer) / Offline rows
 //   ?computers_pairing= connecting | asking | failed        Add Computer… already pairing
 //   &computers_error= declined (default) | unanswered | spent | unreachable   &computers_link=1 (begun from a link)

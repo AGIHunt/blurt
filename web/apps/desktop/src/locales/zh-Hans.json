@@ -890,7 +890,7 @@
   "computers.state.offline": "离线 · {1}",
   "computers.state.asleep": "已睡眠 · {1} 起",
   "computers.state.offline_never": "离线",
-  "computers.state.no_direct": "无法直连",
+  "computers.state.no_direct": "需要自建中转",
   "computers.no_direct.detail": "无法直连。请在对方电脑上设置自建中转。",
   "computers.open": "打开窗口",
   "computers.connect": "连接",

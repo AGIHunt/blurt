@@ -210,12 +210,33 @@ final class ViewerStore: ObservableObject {
         return Date().timeIntervalSince(d) < 60 ? T("viewer.state.just_now") : f.localizedString(for: d, relativeTo: Date())
     }
 
+    /// The row's glyph: the Mac's monitor with its chin, a plain monitor for Windows (not "pc": its screen has a face that
+    /// reads as Windows' crash screen), a terminal for Linux (not a server rack: most are desktops and laptops).
     static func symbol(_ c: RemoteComputer) -> String {
         switch c.host {
         case .mac: "desktopcomputer"
-        case .windows: "display"      // not "pc": its screen has a face that reads as Windows' crash screen
-        case .linux: "server.rack"
+        case .windows: "display"
+        case .linux: "terminal.fill"
         }
+    }
+
+    /// The system's name, for the glyph's tooltip and VoiceOver.
+    static func system(_ c: RemoteComputer) -> String {
+        switch c.host {
+        case .mac: "macOS"
+        case .windows: "Windows"
+        case .linux: "Linux"
+        }
+    }
+
+    /// What VoiceOver says of a row, as one element: its name, its system, its state.
+    static func spoken(_ c: RemoteComputer, _ r: Row) -> String {
+        "\(c.name), \(system(c)), \(line(r))"
+    }
+
+    /// The longer word on a state that needs the user (the state line's tooltip): why, and what to do.
+    static func explain(_ c: RemoteComputer, _ r: Row) -> String? {
+        r == .noDirect ? T("viewer.no_direct.help", c.name) : nil
     }
 
     // MARK: open windows

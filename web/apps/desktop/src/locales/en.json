@@ -912,7 +912,7 @@
   "computers.state.offline": "Offline · {1}",
   "computers.state.asleep": "Asleep · since {1}",
   "computers.state.offline_never": "Offline",
-  "computers.state.no_direct": "Can’t Connect Directly",
+  "computers.state.no_direct": "Needs its own relay",
   "computers.no_direct.detail": "Can’t connect directly. Set up your own relay on the other computer.",
   "computers.open": "Open Window",
   "computers.connect": "Connect",

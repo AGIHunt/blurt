@@ -1,6 +1,6 @@
 // Remote Control → Computers You Can Control (docs/design/remote-desktop-viewer.md §The list of computers; the page,
 // PhonePage.tsx): the computers this one shows and drives. Each row: the name, its system, its state (Connected · <path>,
-// Available · <path>, Can't Connect Directly, Offline · <when last seen>, Removed this computer), its button (Open Window, Connect
+// Available · <path>, Needs its own relay, Offline · <when last seen>, Removed this computer), its button (Open Window, Connect
 // or Add Again…) and ⋯ with Remove. Add Computer… lists the Blurt computers found on this network (choosing one starts pairing)
 // and takes a pasted pairing link for one that's away. While pairing, the six digits the other computer asks with show here; a
 // pairing that fails says why and what to do next (Try Again, or Back with the link kept). The app's side: src-tauri/src/viewer.rs.

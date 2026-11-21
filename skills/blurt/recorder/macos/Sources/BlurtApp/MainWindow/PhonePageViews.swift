@@ -336,7 +336,8 @@ enum PhoneText {
 
 // MARK: - pieces Settings → Phone shows too
 
-/// The pairing code: the QR on its white plate, how to scan it, what went wrong opening the port, Cancel (Esc).
+/// The pairing code: the QR on its white plate with when it renews under it, what to do beside it, what went wrong opening the
+/// port, Copy Link for a computer on another network, and a quiet ✕ in the corner (Esc). The card is as wide as what it holds.
 struct PhonePairingCode: View {
     var link: URL?
     /// when this code gives way to the next: "1:40 left", ticking once a second while the card shows
@@ -347,44 +348,56 @@ struct PhonePairingCode: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 20) {
-            QRImage(link: link).frame(width: 124, height: 124)
-                .accessibilityLabel(T("settings.remote.scan"))
-            VStack(alignment: .leading, spacing: 6) {
-                Text(T("phone.add.title")).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
-                Text(T("settings.remote.scan.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 8) {
+                QRImage(link: link).frame(width: 148, height: 148)
+                    .accessibilityLabel(T("settings.remote.scan"))
                 if let renews, link != nil {
                     TimelineView(.periodic(from: .now, by: 1)) { t in
                         Text(T("phone.add.left", Self.left(renews, t.date)))
-                            .font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.secondary)
+                            .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
                     }
                     .accessibilityHidden(true)      // a number that changes every second is noise to VoiceOver
                 }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(T("phone.add.title")).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(T("settings.remote.scan.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let f = failure {
                     Text(PhoneText.listenFailure(f)).help(f == RemoteServer.portInUse ? "" : f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 8) {
-                    Button(T("settings.remote.cancel"), action: cancel)
-                        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-                        .keyboardShortcut(.cancelAction)
-                    // for another computer away from here (Add Computer takes it pasted): the same code, as text
-                    if let link {
-                        Button(copied ? T("settings.remote.link_copied") : T("settings.remote.copy_link")) {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(link.absoluteString, forType: .string)
-                            // the link copied outlives the code on screen (10 minutes), and says so
-                            RemoteServer.shared.pairingLinkCopied()
-                            copied = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { copied = false }
-                        }
-                        .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                // for another computer away from here (Add Computer takes it pasted): the same code, as text
+                if let link {
+                    Button(copied ? T("settings.remote.link_copied") : T("settings.remote.copy_link")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                        // the link copied outlives the code on screen (10 minutes), and says so
+                        RemoteServer.shared.pairingLinkCopied()
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { copied = false }
                     }
+                    .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                    .help(T("phone.pair.copy.tip"))
+                    .padding(.top, 8)
                 }
-                .padding(.top, 6)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: 280, alignment: .leading)
+            .padding(.trailing, 16)         // the ✕'s corner
         }
-        .phoneCard()
+        .phoneCard(hug: true)
+        .overlay(alignment: .topTrailing) {
+            Button(action: cancel) {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .help(T("settings.remote.cancel"))
+            .accessibilityLabel(T("settings.remote.cancel"))
+            .padding(8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -397,64 +410,80 @@ extension PhonePairingCode {
 }
 
 extension View {
-    /// The page's one quiet card (the code, a question): a soft fill and hairline edge, the same in both themes.
-    func phoneCard() -> some View {
+    /// The page's one quiet card (the code, a question): a soft fill and hairline edge, a step stronger in dark mode where
+    /// 3.5 % barely leaves the page. `hug`: as wide as what it holds, on the column's leading edge (no empty half).
+    func phoneCard(hug: Bool = false) -> some View { modifier(PhoneCard(hug: hug)) }
+}
+
+private struct PhoneCard: ViewModifier {
+    var hug: Bool
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
-        return padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(shape.fill(Color.primary.opacity(0.035)))
-            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        return content.padding(16)
+            .frame(maxWidth: hug ? nil : .infinity, alignment: .leading)
+            .background(shape.fill(Color.primary.opacity(scheme == .dark ? 0.06 : 0.035)))
+            .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.12 : 0.08), lineWidth: 0.5))
     }
 }
 
-/// A phone used the code from another network (through the relay) and waits: the six digits, large — the yes is for
-/// the phone showing the same ones. No default button: Return must not say yes.
+/// A device that scanned the code waits for a yes: one stack in the same order as the Windows / Linux sheet — the question,
+/// the six digits large with what to compare them with, the anti-scam line (remote-1.1.md §3) right above the buttons, then
+/// Don't Allow and Allow side by side, neither one highlighted. No default button: Return must not say yes.
 struct PhoneAsk: View {
     var who: String
     var check: String
     var answer: (Bool) -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            question
-            // anti-scam: said on every pairing, where the owner is looking (remote-1.1.md §3)
-            Label {
-                Text(T("settings.remote.ask.caution")).font(.system(size: SettingsMetrics.detailSize, weight: .medium))
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
-        }
-        .phoneCard()
-    }
+    private static let slot: CGFloat = 24, gap: CGFloat = 12
 
-    private var question: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "lock.shield").font(.system(size: 20)).foregroundStyle(Color.brandInk)
-                .frame(width: 28).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("settings.remote.ask.title", PhoneStatus.name(who))).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: Self.gap) {
+                Image(systemName: "lock.shield").font(.system(size: 18)).foregroundStyle(.secondary)
+                    .frame(width: Self.slot).accessibilityHidden(true)
+                Text(T("settings.remote.ask.title", PhoneStatus.name(who))).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                // grouped in threes, as the other device shows them, in the UI face's tabular digits
+                Text(verbatim: Self.grouped(check)).font(.system(size: 28, weight: .semibold).monospacedDigit()).tracking(1.5)
                 Text(T("settings.remote.ask.detail", PhoneStatus.name(who))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityValue(check)
-            // grouped in threes, as the other device shows them
-            Text(Self.grouped(check)).font(.system(size: 22, weight: .semibold, design: .monospaced))
-                .padding(.trailing, 14).accessibilityHidden(true)
-            Button(T("settings.remote.ask.no")) { answer(false) }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
-            Button(T("settings.remote.ask.yes")) { answer(true) }.buttonStyle(SettingsPrimaryButtonStyle())
+            // one element across the column: the digits one by one in their groups ("4 8 2, 7 1 3"), never as one number, then what to do
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: Self.spoken(check) + ". " + T("settings.remote.ask.detail", PhoneStatus.name(who))))
+            .padding(.leading, Self.slot + Self.gap).padding(.top, 10)
+            // anti-scam: said on every pairing, where the owner is looking, right above the yes
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
+                    .accessibilityHidden(true)
+                Text(T("settings.remote.ask.caution")).font(.system(size: SettingsMetrics.titleSize))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, Self.slot + Self.gap).padding(.top, 14)
+            HStack(spacing: 8) {
+                Spacer()
+                Button(T("settings.remote.ask.no")) { answer(false) }.buttonStyle(SettingsOutlinedButtonStyle())
+                Button(T("settings.remote.ask.yes")) { answer(true) }.buttonStyle(SettingsOutlinedButtonStyle())
+            }
+            .padding(.top, 14)
         }
+        .frame(maxWidth: 560, alignment: .leading)
+        .phoneCard(hug: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     static func grouped(_ c: String) -> String {
         guard c.count == 6 else { return c }
         return "\(c.prefix(3)) \(c.suffix(3))"
+    }
+
+    static func spoken(_ c: String) -> String {
+        grouped(c).split(separator: " ").map { $0.map(String.init).joined(separator: " ") }.joined(separator: ", ")
     }
 }
 

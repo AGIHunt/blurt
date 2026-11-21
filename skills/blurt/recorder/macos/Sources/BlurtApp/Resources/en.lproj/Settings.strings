@@ -607,7 +607,7 @@
 "settings.remote.add" = "Add Device…";
 "settings.kw.remote.add" = "pair, QR code, connect, trackpad, touchpad";
 "settings.remote.scan" = "Scan with your phone";
-"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone, then allow it here.";
+"settings.remote.scan.detail" = "Scan with Blurt or the Camera app on your phone. This Mac then asks you to allow it.";
 "settings.remote.connected" = "Connected";
 "settings.remote.not_connected" = "Not connected";
 "settings.remote.copy_link" = "Copy Link";

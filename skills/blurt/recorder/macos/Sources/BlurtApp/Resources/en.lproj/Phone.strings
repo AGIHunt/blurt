@@ -20,6 +20,7 @@
 "phone.add.title" = "Add Device";
 /* when the code on screen gives way to a new one, e.g. "New code in 1:40" (the one replaced still works 20 s more) */
 "phone.add.left" = "New code in %@";
+"phone.pair.copy.tip" = "For a computer on another network: paste it into Add Computer there. Works for 10 minutes.";
 "phone.add.tip" = "Shows the pairing code: scan it with a phone, or copy the link for another computer";
 "phone.remove" = "Remove…";
 "phone.remove.named" = "Remove %@";
@@ -92,16 +93,24 @@
 "viewer.state.offline" = "Offline · %@";
 "viewer.state.asleep" = "Asleep · since %@";
 "viewer.state.offline.never" = "Offline";
-"viewer.state.no_direct" = "Can’t Connect Directly";
+"viewer.state.no_direct" = "Needs its own relay";
 "viewer.state.just_now" = "just now";
-"viewer.add.nearby" = "Same network";
+"viewer.add.nearby" = "On this network";
 "viewer.add.looking" = "Looking for computers…";
-"viewer.add.nearby.detail" = "Computers running Blurt show up here once they have a device paired or Add Device open.";
-"viewer.add.link" = "Pairing link";
-"viewer.add.link.detail" = "On another network: on that computer, open Add Device, choose Copy Link and paste it here.";
+"viewer.add.link" = "On another network";
+"viewer.add.link.detail" = "On that computer, open Add Device and choose Copy Link.";
 "viewer.add.invalid" = "That isn’t a pairing link.";
 "viewer.add.connecting" = "Connecting to %@…";
-"viewer.add.check" = "Allow this Mac on %@ if it shows the same digits.";
+"viewer.add.looking_more" = "Looking for more computers…";
+"viewer.add.nearby.empty" = "Open Add Device in Blurt on the other computer to list it here.";
+"viewer.add.nearby.missing" = "Not listed? Open Add Device in Blurt on that computer.";
+"viewer.add.link.placeholder" = "Paste the link from the other computer";
+"viewer.add.to" = "Add %@";
+"viewer.add.check.title" = "Check the Digits on %@";
+"viewer.add.waiting" = "Waiting for %@";
+"viewer.add.failed.title" = "Couldn’t Add %@";
+"viewer.no_direct.help" = "%1$@ can’t be reached directly from this network. On %1$@, open Blurt Settings → Remote Control and set a relay address. On the same network, no relay is needed.";
+"viewer.add.check" = "Click Allow on %@ if it shows these digits.";
 "viewer.add.refused" = "%@ didn’t allow this Mac.";
 "viewer.add.unreachable" = "Can’t reach %@.";
 "viewer.add.unreachable.help" = "Make sure %@ is on and Blurt is open there.";
@@ -131,7 +140,7 @@
 "viewer.busy" = "The public connection service has reached today’s limit. Try again later, or use your own relay.";
 "viewer.relay_down" = "%@’s own relay isn’t responding. Trying the public connection service…";
 "viewer.relay_down.short" = "Its own relay isn’t responding.";
-"viewer.state.relay_down" = "Relay Not Responding";
+"viewer.state.relay_down" = "Relay not responding";
 "viewer.retry" = "Try Again";
 "viewer.forgotten" = "%@ removed this Mac. Add it again to use it.";
 "viewer.replaced" = "Another device is controlling %@.";

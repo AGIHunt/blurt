@@ -509,6 +509,24 @@ Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/desktop/
 firewall. Mock: `?view=phone&phone=paired` (two phones and a computer), `&computers=nodirect`, `&phone=asking_pc | asking_old`.
 
 
+## Pairing screens, visual pass (Mac, 2026-11-21)
+
+- **Computers window**: the rows sit in one rounded card, Add Computer… is its last line, and the window is as tall as its rows
+  (460–640 pt wide; while Add Computer shows it grows to the sheet's height, so the sheet never hangs past an edge). Each row's
+  button sits in a slot as wide as the widest row button; ⋯ shows on hover (the context menu has the same items). The text column
+  is one VoiceOver element across its full width ("Office PC, Windows, Needs its own relay").
+- **Needs its own relay** (was Can't Connect Directly): sentence case, amber, the reason and fix in the tooltip, and Try Again in
+  place of a Connect that reads as contradicting it. The Windows / Linux list says the same words.
+- **Add Computer**: 400 pt, always inside the window (min 460). "On this network" (each found computer with its Connect, then a
+  quiet "Looking for more computers…" row) and "On another network" (one full-width field; the footer's Connect is the sheet's
+  only default). The empty field takes no focus. Pairing is one centred card for connecting, the digits (SF Pro tabular, 3 + 3 in a
+  quiet well, a waiting spinner, read digit by digit) and a failure, with one width and height.
+- **The host's question (PhoneAsk)**: one stack in the Windows / Linux sheet's order — the question, the digits, what to compare,
+  the anti-scam line right above the buttons — and Don't Allow / Allow as two equal outlined buttons (Allow is never highlighted;
+  no default button).
+- **The pairing code (PhonePairingCode)**: the card is as wide as what it holds; the QR at 148 pt with "New code in 1:40" under it;
+  a quiet ✕ (Esc) in place of Cancel; Copy Link alone, its tooltip saying it is for a computer on another network.
+
 ## Tried on real machines (2026-11-19)
 
 Mac viewer (this repo's test build) on a home connection in China (China Mobile, symmetric CGNAT, no IPv6) → the 1.0.26 CI builds on

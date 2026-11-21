@@ -60,7 +60,7 @@ describe('the list of computers', () => {
     expect(zh['computers.state.connected']).toMatch(/^已连接/);
     expect(zh['computers.state.available']).toMatch(/^可连接/);
     expect(zh['computers.state.offline']).toMatch(/^离线/);
-    expect([zh['computers.state.no_direct'], en['computers.state.no_direct']]).toEqual(['无法直连', 'Can’t Connect Directly']);
+    expect([zh['computers.state.no_direct'], en['computers.state.no_direct']]).toEqual(['需要自建中转', 'Needs its own relay']);
     // the Mac's words (Phone.strings), "this Mac" as this computer
     expect([en['computers.error.unanswered'], zh['computers.error.unanswered']]).toEqual(['No one answered on “{1}” in time.', '“{1}”那边没有人及时回应。']);
     expect([en['computers.state.removed'], zh['computers.state.removed'], zh['computers.add_again']]).toEqual(['Removed this computer', '已移除本机', '重新添加…']);

@@ -42,7 +42,9 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The relay address field | 中转地址 | Relay Address |
 | Connection paths | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service |
 | One computer driving another (remote-desktop-viewer.md) | 电脑 · 添加电脑 · 打开窗口 · 连接 · 移除 | Computers · Add Computer · Open Window · Connect · Remove |
-| A computer's state in that list | 已连接 · 可连接 · 离线 · 无法直连 | Connected · Available · Offline · Can't Connect Directly |
+| A computer's state in that list (sentence case: a state line, not a label) | 已连接 · 可连接 · 离线 · 需要自建中转 · 中转无响应 | Connected · Available · Offline · Needs its own relay · Relay not responding |
+| That row's button and tooltip when it needs its own relay | 重试 · 从这个网络无法直接连到 X。请在 X 上打开口喷鸡设置 → 远程控制，填写中转地址。在同一网络下不需要中转。 | Try Again · X can't be reached directly from this network. On X, open Blurt Settings → Remote Control and set a relay address. On the same network, no relay is needed. |
+| Add Computer's two ways in, and the digits step | 同一网络 · 其他网络 · 核对 X 上的数字 · 如果 X 显示相同的数字，请在那台电脑上点「允许」。 | On this network · On another network · Check the Digits on X · Click Allow on X if it shows these digits. |
 | When the pairing code on screen gives way to a new one (the Mac renews it; the desktop app's expiring code says 还剩 1:40) | 1:40 后更换二维码 | New code in 1:40 |
 | The viewer, when the public connection service finds no direct path | 无法直连。请在对方电脑上设置自建中转。 | Can't connect directly. Set up your own relay on the other computer. |
 | The viewer's controls | 屏幕 · 按键发往远端 · 跟着远端指针换屏 · 在新窗口中打开 | Display · Keys to Remote · Follow the Pointer · Open in New Window |

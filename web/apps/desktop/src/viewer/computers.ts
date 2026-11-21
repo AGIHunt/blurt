@@ -90,7 +90,7 @@ export function useComputers(): ComputersStatus | null {
 export const applyComputers = (p: Promise<ComputersStatus>) => p.then((s) => (publishComputers(s), s));
 
 /** A row's state line and its button (the spec's table; Remove is in the row's menu): Connected · <path> → Open Window;
- *  Available · <path> → Connect; Can't Connect Directly → Connect (a fresh try); Offline · <when last seen> → Connect; Removed this
+ *  Available · <path> → Connect; Needs its own relay → Connect (a fresh try); Offline · <when last seen> → Connect; Removed this
  *  computer → Add Again… (Connect stays in ⋯ while the key is here: a refusal alone, said this run).
  *  Keys into the locale; `route` and `when` fill them. `warn`: the line is a problem. */
 export function rowPlan(c: ComputerRow): { state: string; route: RemoteRoute | null; when: number | null; action: 'open' | 'connect' | 'add'; warn: boolean } {

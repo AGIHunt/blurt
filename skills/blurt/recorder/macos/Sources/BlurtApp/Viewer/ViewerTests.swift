@@ -4,7 +4,7 @@
 //                                 (connected, available through the public connection service, offline) and one
 //                                nearby, as if real: nothing saved, nothing connected
 //   viewer list | add | settings the Computers window · its Add Computer sheet · Settings → 手机和电脑
-//   viewer pairing               the Add Computer sheet showing six digits
+//   viewer pairing [connecting|failed]   the Add Computer sheet showing six digits (or before they come, or after a no)
 //   viewer fakehost PNG [windows|linux|mac] [nodirect|no|silent|late=S|removed=S|link|name=N]   a pretend host (nodirect: it says the direct
 //                                path didn't open, as the public connection service's host does, then takes no more sessions); on 127.0.0.1 in this process,
 //                                paired as a nearby computer is (its owner's yes comes by itself), whose screen is PNG encoded as H.264 and sent as a real
@@ -62,7 +62,14 @@ enum ViewerTests {
                 store.testFake(computers: list, nearby: nearby, live: ["fake-studio": (.local, 0.004)], pairing: nil,
                                failed: a.count > 1 && a[1] == "nodirect" ? ["fake-office": .noDirect] : [:])
             case "pairing":
-                store.testFake(computers: store.computers, nearby: store.nearby, live: [:], pairing: .init(name: "MacBook Air", check: "482713"))
+                // `viewer pairing connecting|failed`: the same card before the digits come, and after a no
+                let step = a.count > 1 ? a[1] : "check"
+                let p: ViewerStore.Pairing = switch step {
+                case "connecting": .init(name: "MacBook Air")
+                case "failed": .init(name: "MacBook Air", failed: T("viewer.add.refused", "MacBook Air"), canRetry: true)
+                default: .init(name: "MacBook Air", check: "482713")
+                }
+                store.testFake(computers: store.computers, nearby: store.nearby, live: [:], pairing: p)
                 ComputersWindowController.shared.show()
             case "pair":
                 // a pasted pairing link (another network), or a computer found nearby by its name

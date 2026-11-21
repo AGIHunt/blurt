@@ -604,7 +604,7 @@
 "settings.remote.add" = "添加设备…";
 "settings.kw.remote.add" = "配对, 二维码, 连接, 触摸板";
 "settings.remote.scan" = "用手机扫描";
-"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，然后在此处允许。";
+"settings.remote.scan.detail" = "用手机上的口喷鸡或相机 App 扫描，本机随后会请你允许。";
 "settings.remote.connected" = "已连接";
 "settings.remote.not_connected" = "未连接";
 "settings.remote.copy_link" = "拷贝链接";
