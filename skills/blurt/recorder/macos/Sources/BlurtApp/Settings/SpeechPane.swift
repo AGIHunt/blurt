@@ -795,8 +795,9 @@ struct SpeechPane: View {
     func voiceGoes(_ x: ASRModel?) -> String? {
         guard let x = x else { return nil }
         if x.local { return M("models.job.local") }
+        // an OpenAI-compatible recogniser by its own title (its service and model, as the Cloud services list names it)
         let to = x.backend == "dashscope" ? S("speech.compare.alibaba") : x.backend == "volcengine" ? S("speech.compare.volcengine")
-            : x.backend == "openai" ? S("speech.cloud.name.openai") : x.title
+            : x.title
         return ChoiceText.tight(S("speech.voice.goes", to), to)
     }
 
