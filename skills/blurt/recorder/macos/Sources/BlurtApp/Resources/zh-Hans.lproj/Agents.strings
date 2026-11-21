@@ -145,6 +145,8 @@
 "agents.organize.follow" = "和全部相同（%@）";
 "agents.organize.follow_plain" = "和全部 Agent 相同";
 "agents.organize.inherit" = "默认（%@）";
+"agents.organize.inherit.default" = "Agent 默认模型";
+"agents.organize.inherit.cheapest" = "最便宜的模型";
 "agents.details.more" = "连接";
 
 /* Settings → Agents: section headings */

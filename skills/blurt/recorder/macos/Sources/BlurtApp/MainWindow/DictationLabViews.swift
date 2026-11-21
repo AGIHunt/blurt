@@ -361,7 +361,11 @@ private struct MetricRow: View {
             Text(v).fontWeight(.semibold).monospacedDigit()
         }
         .fixedSize()
-        .accessibilityElement(children: .combine)
+        // the name as its label, the number as its value (combined, the label gained a "、" it doesn't draw, and
+        // read as cut)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(k)
+        .accessibilityValue(v)
     }
 }
 

@@ -97,6 +97,14 @@ final class LayoutLintTests: XCTestCase {
         XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 99.6, fontSize: 11, frame: CGSize(width: 100, height: 20)))
     }
 
+    func testARowOfSeveralLinesIsNotMeasuredAsOneLineTitle() {
+        // Text & Translation at its minimum size: a 640 x 65 row (source, text, original) whose joined label is wider
+        // than the row on one line, though every line it draws fits
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 820, fontSize: 13, frame: CGSize(width: 640, height: 65)))
+        // a large bordered button (32 high) is still a one-line title
+        XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 142.0, fontSize: 13, frame: CGSize(width: 147, height: 32)))
+    }
+
     func testIconOnlyButtonsAreNotTitles() {
         XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 14, height: 14)))                      // square.and.pencil
         XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 42, height: 25)))                      // a template image

@@ -145,6 +145,8 @@
 "agents.organize.follow" = "Same as all (%@)";
 "agents.organize.follow_plain" = "Same as all agents";
 "agents.organize.inherit" = "Default (%@)";
+"agents.organize.inherit.default" = "Agent’s own";
+"agents.organize.inherit.cheapest" = "Cheapest";
 "agents.details.more" = "Connection";
 
 /* Settings → Agents: section headings */

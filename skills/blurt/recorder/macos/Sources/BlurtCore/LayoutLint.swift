@@ -153,10 +153,13 @@ public enum LayoutLint {
     /// line of its font and adds about its own height in side padding (measured: 16 pt mini, 20 small, 24 regular, 28
     /// large); three quarters of that is counted, so a button that fits is never flagged. A plain / borderless one is
     /// as tall as its line and adds nothing. Anything else in the label (an icon, a split button's chevron) only makes
-    /// the real need larger — that is cutTitles' to find.
+    /// the real need larger — that is cutTitles' to find. A button two lines of its font tall or more is a block of
+    /// lines (a history row made one element, its words joined into its label), not a one-line title: its label's
+    /// width on one line says nothing about a cut (a cut it draws still shows as "…": cutTitles).
     public static func controlTitleClipped(titleWidth: CGFloat, fontSize: CGFloat, frame: CGSize) -> Bool {
         guard titleWidth > 0, frame.width > 1, frame.height > 1 else { return false }
         let line = (fontSize * 1.25).rounded(.up)
+        guard frame.height < line * 2 + 4 else { return false }
         let chrome = frame.height >= line + 4 ? frame.height * 0.75 : 0
         return titleWidth + chrome > frame.width + 1.5
     }
