@@ -1,9 +1,10 @@
 // The setup assistant's models step (Onboarding.swift, docs/design/desktop-app.md §2.2): one Download for this Mac's
 // recogniser alone (the founder, 2026-11-21: only the recogniser, ~2.5 GB, comes down during setup; the polish model
-// is offered later on Home with its own size, HomePage.betterModels) — with its size and the free space on this Mac
-// before anything starts, then one progress bar (Stop ends it). The downloads themselves are the app's one download manager
-// (App/ModelDownloads.swift): they run one after another, carry on when the assistant closes (a line says so; the
-// menu-bar menu and Settings → Speech show the progress), and pick up again after a quit or a crash. When the set
+// is offered later on Home with its own size, HomePage.betterModels) — with its size before anything starts (the free
+// space on this Mac in its tooltip, and on its line when it is short), then one progress bar (Stop ends it). The
+// downloads themselves are the app's one download manager (App/ModelDownloads.swift): they run one after another,
+// carry on when the assistant closes (a line says so; the menu-bar menu and Settings → Speech show the progress), and
+// pick up again after a quit or a crash. When the set
 // didn't come down, SenseVoice Small alone is offered. A list that couldn't be read (`listRead` false) is the same
 // state as speech tools that didn't install (BlurtCore SpeechSetup .blocked): one sentence and one Try Again on the
 // step — never a set with a model quietly left out, never two errors. Read again each time the assistant opens.

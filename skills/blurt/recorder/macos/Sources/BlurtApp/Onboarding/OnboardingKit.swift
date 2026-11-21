@@ -3,16 +3,21 @@
 // the left, one trailing element on the shared right edge — plus keycaps for shortcuts, the quiet step dots in the
 // footer and the notice that stands in for a step's content when something blocks it.
 //
-//   OnbMetrics            the column, the glyph slot, the row height
+//   OnbMetrics            the column, the glyph slot, the row height, the trailing control's width
 //   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch); `muted`
 //                         for a capability switched off on the first step; `note`: a line of its own under the detail
 //                         (the dictation key's globe-key line). Inside an OnbGroup: Settings' grid — no tile, a bare
 //                         glyph in an 18 pt slot (lists of things only), the hairline inset to the text column
+//                         `mark` puts a state (✓, a spinner) before the line, so a row that says how it stands
+//                         still has one trailing control
 //   OnbGroup              a section as in Settings: a heading outside (an accessory at its right end), the rows in one
+//                         rounded box, a 12 pt footnote under it at the box's text inset
 //   OnbListRow            the first step's capability row in an OnbGroup: an 18 pt glyph slot · the title (its keys
 //                         after it, as quiet labelled hints) and one line · one switch
 //   OnbKeyHint            a shortcut and what it does, "⌥ A Snap": keycaps (one per key, tight) and a secondary word
-//                         rounded box, a 12 pt footnote under it at the box's text inset
+//   OnbBox                rows in one rounded box with no heading of its own (the models step): OnbGroup's look
+//   OnbButtonLabel        a trailing button's title at the column's width, so pop-ups and buttons share both edges
+//   OnbSplitButton        one outlined button with a chevron segment: its rarer way in lives in the chevron's menu
 //   OnbStatus             the trailing status column: one width for every word, the disc at one x down the page
 //   StepDots             the step count as dots (four; none when the assistant is one step); the current one is a
 //                         wider brand-ink capsule (a shape twin)
@@ -38,6 +43,8 @@ enum OnbMetrics {
     static let listRow: CGFloat = 62           // the first step's rows: one height, the title line and one line under it
     static let boxRowPad: CGFloat = 13
     static let groupGap: CGFloat = 28
+    /// the trailing column in a box: every pop-up and button one width (ChoicePopup's), so they share both edges
+    static let control: CGFloat = SettingsMetrics.controlWidth
 }
 
 private struct OnbBoxedKey: EnvironmentKey { static let defaultValue = false }
@@ -48,6 +55,9 @@ extension EnvironmentValues {
         set { self[OnbBoxedKey.self] = newValue }
     }
 }
+
+/// What a row's line says about how it stands, drawn before the line: done (the ok ✓ disc), or still working.
+enum OnbMark { case state(Tone), working }
 
 /// A neutral rounded tile with a glyph in it (a feature, a permission, a model): never brand colour.
 struct GlyphTile: View {
@@ -82,6 +92,8 @@ struct OnbRow<Trailing: View>: View {
     var muted = false
     /// a line of its own under the detail (the dictation key's globe-key line: a state of the key, not a row)
     var note: AnyView?
+    /// a state before the line ("✓ Ready · …", a spinner while it is checked): the trailing slot stays the control's
+    var mark: OnbMark?
     @ViewBuilder var trailing: Trailing
     @Environment(\.displayScale) private var scale
     @Environment(\.onbBoxed) private var boxed
@@ -109,8 +121,15 @@ struct OnbRow<Trailing: View>: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(muted ? .secondary : .primary)
                     if let d = detail, !d.isEmpty {
-                        Text(d).font(.system(size: 12)).foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        HStack(alignment: .center, spacing: 5) {
+                            switch mark {
+                            case .state(let t)?: StatusDot(tone: t)
+                            case .working?: BrandSpinnerView(size: StatusDot.size)
+                            case nil: EmptyView()
+                            }
+                            Text(d).font(.system(size: 12)).foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
+                                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     if let n = note { n.padding(.top, 4) }
                 }
@@ -193,6 +212,92 @@ enum OnbStatus {
         let f = NSFont.systemFont(ofSize: 12)
         let w = all.map { ($0 as NSString).size(withAttributes: [.font: f]).width }.max() ?? 60
         return ceil(StatusDot.size + 6 + w + 1)
+    }
+}
+
+/// Rows in one rounded box: the grouped form of System Settings and of Settings' panes (system.md §3.4) — r 10, ink @
+/// 3.5 % with a 0.5 pt ink @ 7 % edge, the rows 12 pt in from its sides, hairlines between them (OnbRow: none above the
+/// first). Its heading (OnbHeading) and footnote sit outside it, at the same 12 pt inset.
+struct OnbBox<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) { content }
+            .environment(\.onbBoxed, true)           // OnbGroup's grid: bare glyphs, hairlines at the text column
+            .padding(.horizontal, OnbMetrics.boxInset)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(Color.primary.opacity(0.035)))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5).allowsHitTesting(false))
+            .accessibilityElement(children: .contain)
+    }
+}
+
+/// A trailing button's title at the column's width (OnbMetrics.control, less the outlined style's 12 pt sides), so a
+/// box's buttons and its pop-up share both edges; a longer title ("Resume (2.1 GB left)") still shows whole.
+struct OnbButtonLabel: View {
+    var title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title).frame(minWidth: OnbMetrics.control - 24)
+    }
+}
+
+/// ChoicePopup's chevron (9 pt semibold), for OnbSplitButton's menu half.
+enum OnbChevron {
+    @MainActor static let image: NSImage = {
+        let i = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold)) ?? NSImage()
+        i.isTemplate = true
+        return i
+    }()
+}
+
+/// One outlined button (SettingsOutlinedButtonStyle's look, at the column's width) with a chevron segment on its right:
+/// the usual way in is the button, a rarer one (Set Up with Agent…) is in the chevron's menu — never a second button
+/// at rest (system.md §3.4: rare actions in a split button's menu).
+struct OnbSplitButton<Items: View>: View {
+    var title: String
+    /// the chevron's name for VoiceOver and its tooltip ("More ways to add a key")
+    var more: String
+    var action: () -> Void
+    @ViewBuilder var items: Items
+    @Environment(\.isEnabled) private var enabled
+    /// the button half: the outlined style's hover and press washes, inside the shared outline
+    private struct Half: ButtonStyle {
+        @Environment(\.isEnabled) private var enabled
+        @State private var hovering = false
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(Color.primary.opacity(configuration.isPressed ? 0.08 : hovering && enabled ? 0.04 : 0))
+                .onHover { hovering = $0 }
+        }
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        HStack(spacing: 0) {
+            Button(action: action) {
+                Text(title).font(.system(size: 13)).lineLimit(1)
+                    .foregroundStyle(enabled ? Color.primary : Color(nsColor: .tertiaryLabelColor))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(Half())
+            Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1).padding(.vertical, 6)
+                .accessibilityHidden(true)
+            Menu { items } label: {
+                // ChoicePopup's own chevron (9 pt semibold, secondary): the menu label draws an NSImage at its size
+                Image(nsImage: OnbChevron.image).renderingMode(.template).foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .frame(width: 26)
+            .help(more)
+            .accessibilityLabel(more)
+        }
+        .frame(width: OnbMetrics.control, height: OutlinedPopUpButton.height)
+        .background(shape.fill(Color(nsColor: .controlBackgroundColor)))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1).allowsHitTesting(false))
     }
 }
 

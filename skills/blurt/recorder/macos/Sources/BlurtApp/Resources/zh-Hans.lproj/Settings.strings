@@ -546,7 +546,23 @@
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "已可开始听写。以下两项为可选，可提高准确度。";
 "onboarding.start.ready.title" = "macOS 语音识别";
-"onboarding.start.ready.state" = "已就绪";
+"onboarding.start.lead" = "现在就能听写。下面两项可选，能让识别更准。";
+"onboarding.start.ready.mixed" = "已就绪 · 句中的英文单词也能识别";
+"onboarding.start.ready.one" = "已就绪 · 系统自带，无需下载";
+"onboarding.start.assets.line" = "macOS 正在下载语音文件（约 400 MB）";
+"onboarding.optional" = "可选";
+"onboarding.local.title" = "本机语音模型";
+"onboarding.local.detail" = "比 macOS 识别更准，可离线使用";
+"onboarding.local.downloading" = "正在下载，完成后自动启用。";
+"onboarding.local.low_space" = "本机仅剩 %@ 可用空间";
+"onboarding.local.download" = "下载 %@";
+"onboarding.polish.title" = "云端润色";
+"onboarding.polish.detail" = "润色用词和标点，只发送文字，不上传录音";
+"onboarding.polish.help" = "说完后润色标点和用词。只有识别出的文字会发给你选的服务。";
+"onboarding.polish.price" = "%1$@约 %2$@。";
+"onboarding.polish.add" = "添加 Key…";
+"onboarding.polish.change" = "更改 Key…";
+"onboarding.polish.more" = "更多添加方式";
 "onboarding.start.assets.title" = "macOS 正在下载语音文件";
 "onboarding.start.assets.detail" = "约 400 MB，只需下载一次，完成后即可听写";
 "onboarding.start.language.title" = "你说的语言";
@@ -559,7 +575,6 @@
 "onboarding.key.change" = "更改…";
 "onboarding.key.cloud.title" = "云端听写";
 "onboarding.key.cloud.detail" = "填入阿里云百炼 Key 即可听写，无需下载。";
-"onboarding.upgrade.title" = "本机语音模型（可选）";
 "onboarding.upgrade.detail" = "离线可用，支持词库，更准确。";
 "onboarding.upgrade.download" = "下载（%@）";
 "onboarding.upgrade.needs_uv" = "需要先安装 uv（运行本机模型的工具）";
@@ -575,10 +590,6 @@
 "settings.perm.screen.minus_button" = "减号按钮";
 "onboarding.models.resume" = "继续下载";
 "onboarding.upgrade.resume" = "继续下载（还剩 %@）";
-"onboarding.start.ready.detail" = "系统自带，无需下载。";
-"onboarding.upgrade.better" = "%1$@（%2$@）：识别更准确，可离线使用。";
-"onboarding.upgrade.better_free" = "%1$@（%2$@）：识别更准确，可离线使用。本机可用 %3$@。";
-"onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），完成后自动启用。";
 "onboarding.key.compare" = "%1$@约 %2$@，录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";

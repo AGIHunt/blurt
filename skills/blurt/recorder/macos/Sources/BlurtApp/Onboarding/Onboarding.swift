@@ -26,11 +26,14 @@
 //      itself when the walk ends with everything on. Screen Recording is not asked here: the first snap or recording
 //      asks for it (the toast's Allow… / the alert start the guide for it);
 //   3. models — with macOS 26's own recogniser in the user's language (ModelSetup.startNow,
-//      docs/design/first-minute-speech.md): "Dictation works now" (nothing to download), the one cloud key (Add… opens
-//      the cloud polish sheet: polish, voice notes, Copy Text from Screen; a Model Studio key is cloud speech's too),
-//      and this Mac's recogniser as one optional row — its name, its size and the free space on this Mac, its own
-//      Download — Next stays the primary. Only the recogniser comes down here; the polish model is offered later
-//      (Home's Dictation row, with its size).
+//      docs/design/first-minute-speech.md): "Dictation works now. Two optional extras…" in Settings' grammar
+//      (system.md §3.4, visual gate 2026-11-21): one box with macOS Speech Recognition — ✓ Ready before its line, the
+//      language it hears as its one control —, then "Optional" over one box of two rows: this Mac's speech model
+//      (Download with its size; the free space only when it is short, always in the tooltip with the model's name) and
+//      cloud polish (Add Key… opens the cloud polish sheet: polish, voice notes, Copy Text from Screen — a Model Studio
+//      key is cloud speech's too; Set Up with Agent… is on its chevron), and the footnote under that box. Next stays
+//      the primary. Only the recogniser comes down here; the polish model is offered later (Home's Dictation row, with
+//      its size).
 //      Without it (macOS 13–15, a language it doesn't speak): two groups — Cloud (the Model Studio speech key, the AI
 //      service key; the line under the title says both ways, never "nothing is uploaded" over them) and On this Mac:
 //      this Mac's recogniser (ModelSetup.swift) as a plain row (what it does; the model's name is the tooltip), the
@@ -390,6 +393,8 @@ struct OnboardingView: View {
     /// the cloud speech key (Model Studio) for a Mac without macOS's recogniser
     @State private var speechSheet = false
     @State private var speechKey = CloudStore.connected.contains { $0.preset == "dashscope" } || CloudSpeech.Key.has(CloudSpeech.dashScopeModel)
+    /// Set Up with Agent…'s sheet, from the cloud polish row's chevron
+    @State private var agentSheet = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -597,7 +602,9 @@ struct OnboardingView: View {
         case 1: return (T("onboarding.dictation.title"), T("onboarding.dictation.detail"))
         // "on this Mac, nothing uploaded" only while that is true (not with the cloud key dictating on macOS 13–15)
         // without macOS's recogniser the step leads with the cloud keys: the line says both ways, not "nothing is uploaded"
-        case 2: return (T("onboarding.models"), T(models.startNow || (speechKey && models.dictationReady) ? "onboarding.start.detail"
+        // start now: "Dictation works now. Two optional extras…", the step's two boxes say which two
+        case 2: return (T("onboarding.models"), T(models.startNow ? "onboarding.start.lead"
+                                                  : speechKey && models.dictationReady ? "onboarding.start.detail"
                                                   : "onboarding.models.detail_cloud"))
         default: return (T("onboarding.try"), T("onboarding.try.subtitle"))
         }
@@ -846,13 +853,18 @@ struct OnboardingView: View {
     var modelsStep: some View {
         VStack(alignment: .leading, spacing: 0) {
             if models.startNow {
+                // a short step: its two boxes and their footnote sit at the column's optical centre (a third of the
+                // spare height above, two thirds below), beside Peep — not hanging from the top over an empty band
+                Spacer(minLength: 0)
                 startNowRows
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
             } else {
                 classicModels
+                Spacer(minLength: 12)
+                Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 12)
-            Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(isPresented: $keySheet) {
             // one question: the key; its service is found from it (or picked), and every job stays on Auto
@@ -864,38 +876,106 @@ struct OnboardingView: View {
         }
     }
 
-    /// Start now: dictation on macOS's recogniser, the one cloud key, the local models as one optional row.
+    /// Start now (docs/design/first-minute-speech.md): "you're set, plus two optional extras", in Settings' grammar
+    /// (system.md §3.4: boxes with one control per row, the heading and the footnote outside them).
+    ///   the box on top    what dictates now: macOS's recogniser, how it stands before its line (✓ Ready, or a spinner
+    ///                     while macOS checks or fetches its files) and the language it listens for as its one control
+    ///   Optional          this Mac's speech model (Download with its size; the free space only when it is short) and
+    ///                     cloud polish (Add Key…, the agent's way in on the chevron's menu)
+    ///   the footnote      where all of it is changed later, under the box it is about
     @ViewBuilder var startNowRows: some View {
-        if models.system == .installed {
-            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.start.ready.title"),
-                   detail: T("onboarding.start.ready.detail"),
-                   first: true) {
-                StateLabel(tone: .good, text: T("onboarding.start.ready.state"))
-            }
-        } else if models.system == nil {
-            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.models.checking"), detail: nil, first: true) {
-                BrandSpinnerView(size: 10)
-            }
-        } else {
-            OnbRow(image: GlyphTile.brand(.characterCursor), title: T("onboarding.start.assets.title"),
-                   detail: T("onboarding.start.assets.detail"), first: true) {
-                BrandSpinnerView(size: 10)
-            }
+        OnbBox { recogniserRow }
+        OnbHeading(text: T("onboarding.optional")).padding(.horizontal, OnbMetrics.boxInset)
+            .padding(.top, OnbMetrics.sectionGap).padding(.bottom, 4)
+        OnbBox {
+            localRow
+            polishRow
+            // an agent at work through the endpoint: its live list, in the box under the row it fills
+            AgentSetupProgressView(look: .onboarding).padding(.bottom, 10)
+                .onReceive(NotificationCenter.default.publisher(for: CloudStore.changed)) { _ in
+                    // an agent connected a key: the row says so as it happens
+                    if AgentSetupProgress.shared.active { keyConnected() }
+                }
         }
-        // macOS's recogniser hears one language, no detection: say which, and let the user change it here
-        if let now = AppleSpeech.code(AppleSpeech.locale()) {
-            OnbRow(image: GlyphTile.brand(.languages), title: T("onboarding.start.language.title"),
-                   detail: T(AppleSpeech.mixed.contains(now) ? "onboarding.start.language.mixed" : "onboarding.start.language.one")) {
+        upgradeStatus.padding(.horizontal, OnbMetrics.boxInset).padding(.top, 10)
+        Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, OnbMetrics.boxInset).padding(.top, 7)
+    }
+
+    /// macOS's recogniser and the one language it hears (no detection), on one row: how it stands before its line,
+    /// the language as its one control. The longer word on the language is the row's tooltip.
+    var recogniserRow: some View {
+        let now = AppleSpeech.code(AppleSpeech.locale())
+        let mixed = now.map { AppleSpeech.mixed.contains($0) } ?? false
+        let line: (mark: OnbMark, text: String) = {
+            switch models.system {
+            case .installed?: return (.state(.good), T(mixed ? "onboarding.start.ready.mixed" : "onboarding.start.ready.one"))
+            case nil: return (.working, T("onboarding.models.checking"))
+            default: return (.working, T("onboarding.start.assets.line"))
+            }
+        }()
+        return OnbRow(image: GlyphTile.brand(.waveform), title: T("onboarding.start.ready.title"), detail: line.text, first: true,
+                      help: T(mixed ? "onboarding.start.language.mixed" : "onboarding.start.language.one"), mark: line.mark) {
+            if let now {
                 ChoicePopup(label: T("onboarding.start.language.title"), choices: models.systemLanguages.map { ($0, endonym($0)) },
-                            selection: Binding(get: { now }, set: { models.chooseLanguage($0) }), width: 120)
+                            selection: Binding(get: { now }, set: { models.chooseLanguage($0) }), width: OnbMetrics.control)
             }
         }
-        keyRow
-        OnbRow(image: GlyphTile.brand(.download), title: T("onboarding.upgrade.title"), detail: upgradeDetail,
-               help: models.parts.map(\.name).joined(separator: " · ")) {
+    }
+
+    /// This Mac's own speech model, the optional upgrade: what it gets you in one line, the size once (on Download), and
+    /// the free space on the line only when it is short — always in the tooltip, with the model's name and size (the
+    /// founder, 2026-11-21: the size and the free space before anything starts).
+    var localRow: some View {
+        let low = lowSpace
+        let free = models.freeMB.map { T("onboarding.models.free", size($0)) }
+        return OnbRow(image: GlyphTile.brand(.cpu), title: T("onboarding.local.title"), detail: low ?? localDetail,
+                      detailColor: low == nil ? nil : .brandAttnInk, first: true,
+                      help: (models.parts.map { "\($0.name) · \(size($0.sizeMB))" } + [free].compactMap { $0 }).joined(separator: "\n"),
+                      mark: localMark) {
             upgradeState
         }
-        upgradeStatus.padding(.top, 10)
+    }
+
+    /// "More accurate than macOS, works offline", or what stands in its way (uv, the check, a blocked setup), or that
+    /// it is coming down.
+    var localDetail: String {
+        switch m.speechStep {
+        case .needsUV: return T("onboarding.upgrade.needs_uv")
+        case .checking: return T("onboarding.models.checking")
+        case .blocked: return T(m.blockedCause == .offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title")
+        default:
+            guard let p = models.parts.first(where: { $0.kind == .dictation }) else { return T("onboarding.upgrade.detail") }
+            let have = p.installed || models.finished.contains(p.id)
+            if models.downloading && !have { return T("onboarding.local.downloading") }
+            // "than macOS" only where the eval measured it (BlurtCore DictationChoices): every local model it measured beats it
+            return T(DictationChoice(rawValue: p.id)?.localModel == true ? "onboarding.local.detail" : "onboarding.upgrade.detail")
+        }
+    }
+
+    /// "Only 3.1 GB free on this Mac", in attention ink: only while the model is still to come and the disk has less
+    /// than about twice what is left to fetch, plus the 2 GB the download manager keeps spare (ModelDownloads).
+    var lowSpace: String? {
+        guard let free = models.freeMB, models.loaded, !models.ready, !models.downloading, models.leftMB > 0,
+              free < 2 * models.leftMB + 2048 else { return nil }
+        return T("onboarding.local.low_space", size(free))
+    }
+
+    /// Cloud polish: what it does and that only text leaves the Mac; the price is its tooltip and the key sheet's.
+    /// One control: Add Key… (Change Key… once one is in), the agent's way in on its chevron.
+    var polishRow: some View {
+        let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? T("onboarding.polish.detail")
+        let price = ChoiceText.cloudPolishPrice.map { T("onboarding.polish.price", $0.per, $0.amount) }
+        return OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.polish.title"), detail: detail,
+                      help: [T("onboarding.polish.help"), price].compactMap { $0 }.joined(separator: " ")) {
+            OnbSplitButton(title: T(connected != nil ? "onboarding.polish.change" : "onboarding.polish.add"),
+                           more: T("onboarding.polish.more"), action: { keySheet = true }) {
+                // the user's own agent sets it up (agent-setup.md §4): the instruction to copy into it
+                Button(M("models.agent.button")) { agentSheet = true }
+            }
+            .sheet(isPresented: $agentSheet) { AgentSetupSheet { agentSheet = false }.buttonStyle(.automatic) }
+        }
     }
 
     /// The AI service key: the cloud glyph, as in Settings. Connected: which service ("On · DeepSeek").
@@ -927,62 +1007,45 @@ struct OnboardingView: View {
         Dictation.shared.refreshSpeechModels()
     }
 
-    var upgradeDetail: String {
-        switch m.speechStep {
-        case .needsUV: return T("onboarding.upgrade.needs_uv")
-        case .checking: return T("onboarding.models.checking")
-        case .blocked: return T(m.blockedCause == .offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title")
-        default: return betterModel ?? T("onboarding.upgrade.detail")
-        }
-    }
-
-    // what each choice gets right (BlurtCore DictationChoices, the 2026-10-31 eval; Settings → Models' Compare… has the
-    // whole table): the line under macOS's recogniser, the local model's, the key's
-
-    /// the user's own language when its numbers aren't the mixed Chinese + English ones (nil: Chinese, or unmeasured)
-    var compareLanguage: String? { DictationChoices.ownLanguage(SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages) }
-
-    /// "Qwen3-ASR 1.7B (2.5 GB): more accurate, works offline. 120 GB free on this Mac." — the size and the free space
-    /// before anything starts (the founder, 2026-11-21) — or "Downloading …" while it comes down; nil when
-    /// dictation's model isn't one the eval measured.
-    var betterModel: String? {
-        guard let p = models.parts.first(where: { $0.kind == .dictation }), let c = DictationChoice(rawValue: p.id), c.local else { return nil }
-        let downloading = models.downloading && !(p.installed || models.finished.contains(p.id))
-        let name = ModelBundle.unbreakable(p.name)
-        if downloading { return T("onboarding.upgrade.better_downloading", name, size(p.sizeMB)) }
-        if let free = models.freeMB, !(p.installed || models.finished.contains(p.id)) {
-            return T("onboarding.upgrade.better_free", name, size(p.sizeMB), size(free))
-        }
-        return T("onboarding.upgrade.better", name, size(p.sizeMB))
-    }
-
     /// The cloud model row's line before a key is in: what a cloud model is used for, what it adds and costs.
     var keyCompare: String {
         ChoiceText.cloudPolishPrice.map { T("onboarding.key.compare", $0.per, $0.amount) } ?? T("onboarding.key.detail")
     }
 
-    /// The local models' one trailing element: Install uv, Try Again, Download (size), a spinner, or installed.
+    /// This Mac's model's one trailing control, in the box's column (outlined, the pop-up's width): Install uv, Try Again,
+    /// Download 2.5 GB (Resume with what is left), or Installed; nothing while it is checked or comes down (the line
+    /// says so before it, and the bar under the box has Stop).
     @ViewBuilder var upgradeState: some View {
         switch m.speechStep {
         case .needsUV:
-            Button(T("onboarding.install_uv")) { m.installUV() }.controlSize(.small).disabled(m.installingUV)
+            Button { m.installUV() } label: { OnbButtonLabel(T("onboarding.install_uv")) }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.installingUV)
                 .help(OnboardingModel.uvInstallCommand)
         case .checking:
-            BrandSpinnerView(size: 10)
+            EmptyView()
         case .blocked:
-            Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.controlSize(.small).disabled(m.retrying)
+            Button { m.retrySetup(via: "models") } label: { OnbButtonLabel(T("onboarding.models.retry")) }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.retrying)
         default:
             if models.ready {
                 StateLabel(tone: .good, text: T("onboarding.models.installed"))
-            } else if models.downloading {
-                EmptyView()             // the bar under the rows says it, with Stop: no second spinner
-            } else if models.loaded, models.totalMB > 0 {
-                Button(downloadTitle) { models.start() }
-                    .controlSize(.small).disabled(m.online == false)
+            } else if models.downloading || !models.loaded || models.totalMB <= 0 {
+                EmptyView()
             } else {
-                BrandSpinnerView(size: 10)
+                Button { models.start() } label: {
+                    OnbButtonLabel(models.resumable ? T("onboarding.upgrade.resume", size(models.leftMB))
+                                                    : T("onboarding.local.download", size(models.totalMB)))
+                }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.online == false)
             }
         }
+    }
+
+    /// The local model row's state before its line: a spinner while the Mac is checked or the list is read.
+    var localMark: OnbMark? {
+        if m.speechStep == .checking { return .working }
+        if case .offer = m.speechStep, !models.loaded { return .working }
+        return nil
     }
 
     /// The local models' Download: the whole size, or — with part of it kept from a stopped download — what is left.

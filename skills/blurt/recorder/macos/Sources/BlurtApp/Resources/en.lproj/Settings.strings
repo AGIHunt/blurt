@@ -549,7 +549,23 @@
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "You can start dictating now. The options below can improve accuracy.";
 "onboarding.start.ready.title" = "macOS Speech Recognition";
-"onboarding.start.ready.state" = "Ready";
+"onboarding.start.lead" = "Dictation works now. Two optional extras can make it more accurate.";
+"onboarding.start.ready.mixed" = "Ready · English words are recognized too";
+"onboarding.start.ready.one" = "Ready · built in, nothing to download";
+"onboarding.start.assets.line" = "macOS is downloading its speech files (about 400 MB)";
+"onboarding.optional" = "Optional";
+"onboarding.local.title" = "Speech model on this Mac";
+"onboarding.local.detail" = "More accurate than macOS, works offline";
+"onboarding.local.downloading" = "Downloading. It turns on when it’s done.";
+"onboarding.local.low_space" = "Only %@ free on this Mac";
+"onboarding.local.download" = "Download %@";
+"onboarding.polish.title" = "Cloud polish";
+"onboarding.polish.detail" = "Cleans up wording; only text is sent, never audio";
+"onboarding.polish.help" = "Fixes punctuation and wording after you speak. Only the recognized text goes to the service you choose.";
+"onboarding.polish.price" = "About %2$@ per %1$@.";
+"onboarding.polish.add" = "Add Key…";
+"onboarding.polish.change" = "Change Key…";
+"onboarding.polish.more" = "More ways to add a key";
 "onboarding.start.assets.title" = "macOS is downloading speech files";
 "onboarding.start.assets.detail" = "About 400 MB, once. Dictation works when it’s done.";
 "onboarding.start.language.title" = "The language you speak";
@@ -562,7 +578,6 @@
 "onboarding.key.change" = "Change…";
 "onboarding.key.cloud.title" = "Cloud dictation";
 "onboarding.key.cloud.detail" = "Dictate with an Alibaba Cloud Model Studio key. No download needed.";
-"onboarding.upgrade.title" = "Local speech model (optional)";
 "onboarding.upgrade.detail" = "Works offline, uses your Words, and is more accurate.";
 "onboarding.upgrade.download" = "Download (%@)";
 "onboarding.upgrade.needs_uv" = "Local models need uv (the tool that runs them)";
@@ -578,10 +593,6 @@
 "settings.perm.screen.minus_button" = "Minus button";
 "onboarding.models.resume" = "Resume Download";
 "onboarding.upgrade.resume" = "Resume (%@ left)";
-"onboarding.start.ready.detail" = "Built in. No download needed.";
-"onboarding.upgrade.better" = "%1$@ (%2$@): more accurate, works offline.";
-"onboarding.upgrade.better_free" = "%1$@ (%2$@): more accurate, works offline. %3$@ free on this Mac.";
-"onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It turns on when done.";
 "onboarding.key.compare" = "About %2$@ per %1$@; audio isn’t uploaded.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";
 "onboarding.models.left_label" = "Left";

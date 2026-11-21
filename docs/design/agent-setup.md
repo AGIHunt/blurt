@@ -93,8 +93,9 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 
 ## 4. In the app
 
-- **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and beside *Add…* on onboarding's
-  cloud row, on every Mac (v1.0.10). The sheet gives an instruction to copy into any agent on the Mac
+- **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and in the chevron menu of
+  onboarding's *Add Key…* split button (cloud polish's row; beside *Add…* on the cloud row without macOS's recogniser),
+  on every Mac (v1.0.10). The sheet gives an instruction to copy into any agent on the Mac
   (`AgentSetupInstruction`: the guide and setup.py by absolute path) — Claude Code, Codex, Cursor, WorkBuddy, a
   conversation already open. Blurt detects and launches nothing. That agent has no token, so its first change makes
   Blurt ask Allow. When every curated service is in (the Add row is gone), the button keeps a row of its own ("Set Up

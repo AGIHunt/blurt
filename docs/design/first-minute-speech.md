@@ -302,7 +302,7 @@ qwen3.6-flash（看图的模型；百炼上的 DeepSeek 看图太慢），语音
 | 语音笔记 | 同上，在进程里识别；Python 那条路失败时也退回它 | `Capture/VoiceInput.swift` |
 | 录屏转写 | `transcribe.py` 的 `apple` 后端调用 app 自己的可执行文件 `blurt-recorder --speech WAV`（整段送进去，不用 VAD，所以连 0.6 MB 的 VAD 也不用下）；app 启动的脚本都带 `BLURT_APP_BIN` | `main.swift`、`AppleSpeech.runCLI`、`BlurtCore/Script.swift` |
 | 云端润色无本机模型也能跑 | 只开了云端润色、没有本机润色模型时也起润色服务（polish.py 从不自己下载模型） | `Dictation.warmPolish` |
-| 设置助手 | 有 Apple 引擎时：「听写现在就能用」、AI 服务的 Key（添加… 打开云端润色那张表）、「本机模型（可选）」一行自带下载按钮；主按钮是「下一步」；试一试只会被权限或系统语言包挡住 | `Onboarding/Onboarding.swift`、`ModelSetup.swift` |
+| 设置助手 | 有 Apple 引擎时：「现在就能听写」；上面一个框是 macOS 语音识别（✓ 已就绪，语言弹出菜单在同一行），下面「可选」一个框两行：本机语音模型（「下载 2.5 GB」，空间不够时才在行内说剩余空间）、云端润色（「添加 Key…」打开云端润色那张表，「通过 Agent 设置…」在它的下拉箭头里）；主按钮是「下一步」；试一试只会被权限或系统语言包挡住 | `Onboarding/Onboarding.swift`、`ModelSetup.swift` |
 | 阿里云百炼作为润色服务 | 云端润色的服务里有「阿里云百炼」（可选；默认仍是 DeepSeek）：润色和翻译用 DeepSeek V4.1 Flash，截图取字自动换成 qwen3.6-flash（`vision_model`），同一个 key 也给云端语音识别（`DASHSCOPE_API_KEY`）；百炼的请求都关掉思考；在表里填了新 key 就默认打开 | `polish_cloud.py`（PRESETS、`enable_thinking`）、`screen_text.py`（`read_cloud` 用 `vision_model`）、`DictationCloud.swift`、`DictationCloudSheet.swift`、`CloudSpeechSheet.swift` |
 | uv 静默安装 | 启动时和设置助手打开时：PATH、`~/.local/bin`、Homebrew、`~/.blurt/bin` 里有能跑（`uv --version`）的 uv 就用，没有才在后台用官方安装器装到 `~/.blurt/bin`（不改 shell 配置）；装好后重新读听写和润色模型；测试版不装 | `App/UVSetup.swift`、`AppDelegate.swift`、`Onboarding.swift` |
 | macOS 13–15：云端优先 | 没有 Apple 引擎时，设置助手第一行是「用云端听写：AI 服务的 Key」；`select()` 在 Apple 之后、下载之前选有 key 的云端服务；这时主按钮是「下一步」，本机模型单独一个下载按钮 | `transcribe.py`、`Onboarding.swift` |
