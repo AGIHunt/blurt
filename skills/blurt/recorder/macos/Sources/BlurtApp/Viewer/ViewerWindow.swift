@@ -816,10 +816,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             item.image = Self.symbol("keyboard", item.label)
             item.toolTip = T("viewer.keys.off", name)
         }
+        #if compiler(>=6.2)   // the macOS 26 SDK (Xcode 26); CI's Xcode 16 builds without the tint
         if #available(macOS 26.0, *) {
             item.backgroundTintColor = BrandColor.tint
             item.style = captured ? .prominent : .plain
         }
+        #endif
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
