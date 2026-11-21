@@ -24,21 +24,29 @@ use blurt_remote::wire::{Chord, Crop, ScreenReport, ScreenRequest, ToMac, ToPhon
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
     let arg = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
-    let link = arg("--link").expect("--link");
-    let p = Pairing::parse(&link).expect("a pairing link");
     let seconds: f64 = arg("--seconds").and_then(|s| s.parse().ok()).unwrap_or(6.0);
     let out = arg("--out").unwrap_or_else(|| "phone-test.h264".into());
-    let mut phone = match arg("--relay") {
-        Some(r) => Phone::connect_relay(&r, &p.device_id, &p.key).await.expect("relay"),
-        None => {
-            let at: SocketAddr = arg("--at").unwrap_or_else(|| format!("127.0.0.1:{}", p.port)).parse().unwrap();
-            Phone::connect(at, &p.device_id, &p.key).await.expect("connect")
-        }
+    // --device ID --key BASE64URL --at HOST:PORT: a device paired already (no code, no question)
+    let (mut phone, key) = if let (Some(d), Some(k)) = (arg("--device"), arg("--key")) {
+        let key = blurt_remote::crypto::unbase64url(&k).expect("--key: base64url");
+        let at: SocketAddr = arg("--at").expect("--at with --device").parse().unwrap();
+        (Phone::connect(at, &d, &key).await.expect("connect"), key)
+    } else {
+        let link = arg("--link").expect("--link");
+        let p = Pairing::parse(&link).expect("a pairing link");
+        let mut phone = match arg("--relay") {
+            Some(r) => Phone::connect_relay(&r, &p.device_id, &p.key).await.expect("relay"),
+            None => {
+                let at: SocketAddr = arg("--at").unwrap_or_else(|| format!("127.0.0.1:{}", p.port)).parse().unwrap();
+                Phone::connect(at, &p.device_id, &p.key).await.expect("connect")
+            }
+        };
+        println!("six digits on this phone: {}", phone.check);
+        phone.wait(Duration::from_secs(5), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("the host asks");
+        let key = phone.wait(Duration::from_secs(130), |m| if let ToPhone::NewKey(k) = m { Some(k.clone()) } else { None }).await.expect("a yes");
+        phone.send(&ToMac::KeyStored).await;
+        (phone, key)
     };
-    println!("six digits on this phone: {}", phone.check);
-    phone.wait(Duration::from_secs(5), |m| matches!(m, ToPhone::PairingWaits).then_some(())).await.expect("the host asks");
-    let key = phone.wait(Duration::from_secs(130), |m| if let ToPhone::NewKey(k) = m { Some(k.clone()) } else { None }).await.expect("a yes");
-    phone.send(&ToMac::KeyStored).await;
     let info = phone.wait(Duration::from_secs(5), |m| if let ToPhone::Session(i) = m { Some(i.clone()) } else { None }).await.expect("session");
     println!("session: {} ({:?}) udp {} candidates {:?} key {}", info.mac_name, info.platform, info.udp_port, info.candidates, blurt_remote::crypto::base64url(&key));
     if !phone.host.ip().is_unspecified() {

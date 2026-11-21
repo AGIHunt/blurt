@@ -176,8 +176,11 @@ class ShellCopy(unittest.TestCase):
     def test_the_setup_assistant_has_one_forward_action(self):
         src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Onboarding/Onboarding.swift").read_text(encoding="utf-8")
         footer = src[src.index("var footer: some View"):src.index("/// The headline and its line")]
-        # beside the step's own action, going on without it is the quiet Not Now — never a second bordered Next
-        self.assertIn('T("onboarding.not_now")', footer)
+        # beside the step's own action, going on without it is the quiet Skip This Step — never a second bordered Next,
+        # and never Skip Setup beside it (two grey skips nobody could tell apart: dogfood 2026-11-21)
+        self.assertIn('T("onboarding.skip_step")', footer)
+        with_action = footer[footer.index("if let a = action {"):footer.index("} else {", footer.index("if let a = action {"))]
+        self.assertNotIn("onboarding.skip_setup", with_action)
         self.assertNotIn("Button(nextTitle) { advance() }\n                Button(a.title)", footer)
         self.assertNotIn(".pickerStyle(.menu)", src, "the dictation key is a ChoicePopup, as the language row")
         self.assertNotIn("GlyphTile.symbol(", src, "one glyph family on every step: the line glyphs")
@@ -236,10 +239,13 @@ class OneWordPerConcept(unittest.TestCase):
     def test_the_variants_that_lost(self):
         zh_lost = {"语音便签": "语音备注", "截屏": "截图", "截取": "截图", "屏幕翻译": "截图翻译", "复制屏幕文字": "截图取字",
                    "翻译屏幕文字": "截图翻译", "听写快捷键": "听写键", "挂在": "留在", "交出": "复制指令给 Agent", "首页": "主页",
-                   "中继": "中转", "收件箱": "待处理", "未分类": "未归类"}
+                   "中继": "中转", "收件箱": "待处理", "未分类": "未归类", "历史记录": "历史", "取字记录": "历史"}
+        # Windows' own feature keeps its own name (剪贴板历史记录, the app list of the key catcher)
+        theirs = {"st.win.keys.app.clipboard_history"}
         for name, k, v in self.words("zh-Hans"):
             for lost, word in zh_lost.items():
-                self.assertNotIn(lost, v, f"{name} {k}: {word}, not {lost}")
+                if k not in theirs:
+                    self.assertNotIn(lost, v, f"{name} {k}: {word}, not {lost}")
         for name, k, v in self.words("en"):
             self.assertNotRegex(v, r"(?i:voice memo)|Away from Home|under Copy Text from Screen|\bhangs\b",
                                 f"{name} {k}")

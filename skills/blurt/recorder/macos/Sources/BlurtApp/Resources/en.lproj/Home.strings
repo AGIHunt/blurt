@@ -9,14 +9,16 @@
 "feature.recording" = "Recording & Items";
 /* the one name of the feature (phones and computers): Home's row, the sidebar, the page, ⌘K, the Go menu, the Settings pane */
 "feature.phone" = "Remote Control";
+"feature.off_notice" = "%@ is off";
+"feature.turn_on" = "Turn On";
 
-/* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — it has to fit at the window's
-   narrowest. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
+/* one sentence per capability: what it does, with its full stop (Settings, General shows it as a description too). The line under each name on Home — two lines at most at the window's
+   narrowest (900 pt), one at its usual width. %@ is the dictation key's short name (Dictation.keyShort: "Fn", "right Option") */
 "feature.dictation.what" = "Press %@ and speak to type at the cursor.";
 "feature.cards.what" = "Snaps and voice notes saved as cards under the notch. Drag them into any app.";
 "feature.screen_text.what" = "Copy or translate text from anywhere on screen.";
 "feature.recording.what" = "Record your screen while you talk. Your agent turns it into items, filed by project.";
-"feature.phone.what" = "Use your phone as your Mac’s trackpad, keyboard and microphone, or use another computer from this Mac.";
+"feature.phone.what" = "Use your phone to control this Mac, or this Mac to control another computer.";
 
 /* a capability's row: a click goes to its place; the context menu opens its settings; the switch's tooltip is
    written for its state */
@@ -33,6 +35,8 @@
 "home.dictation.downloading" = "Downloading speech model · %1$@ of %2$@";
 "home.dictation.better_downloading" = "Downloading a more accurate speech model · %1$@ of %2$@";
 "home.dictation.better_offer" = "Download a more accurate speech model · %@";
+"home.dictation.polish_offer" = "Download the polish model for dictation styles · %@";
+"home.dictation.polish_downloading" = "Downloading the polish model · %1$@ of %2$@";
 "home.recording.no_agent" = "Say “Process my Blurt recordings” in your agent to organize.";
 "home.recording.set_up_agent" = "Set Up an Agent…";
 "home.phone.needs_access" = "Phone can’t control your Mac yet";
@@ -79,6 +83,12 @@
 "home.screen_text.copy_original" = "Copy Original";
 "home.screen_text.delete" = "Delete";
 "home.screen_text.selected" = "%ld selected";
+"home.screen_text.deleted.one" = "Entry deleted";
+"home.screen_text.deleted.many" = "%ld entries deleted";
+"home.screen_text.interrupted" = "Translation interrupted";
+"home.screen_text.translate_again" = "Translate Again";
+"home.screen_text.action.copy" = "Copy text";
+"home.screen_text.action.translate" = "Translate";
 
 /* Home's timeline: a dictation that wasn't recognised */
 "home.entry.failed" = "Not recognized · recording %@";

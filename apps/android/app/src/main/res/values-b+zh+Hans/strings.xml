@@ -44,8 +44,11 @@
     <string name="status_check_awake">确认电脑没有进入睡眠，Blurt 在运行。</string>
     <string name="status_no_direct">无法直连。请在电脑上设置自建中转。</string>
     <string name="status_go_between_busy">公共连接服务今日已达上限。请稍后再试，或使用自建中转。</string>
+    <string name="status_relay_down">对方的自建中转无响应，正在改用公共连接服务…</string>
     <string name="status_other_phone">另一台手机已连接</string>
     <string name="status_take_over">轻点这里，换成这台手机。</string>
+    <string name="status_ended">电脑那边断开了连接</string>
+    <string name="status_reconnect">轻点这里重新连接。</string>
     <string name="status_pair_first">与电脑配对</string>
     <string name="status_waiting_title">等待电脑确认</string>
     <string name="status_pair_failed">配对没有成功</string>
@@ -55,8 +58,13 @@
     <string name="connected_to">已连接 %1$s</string>
     <string name="the_computer">电脑</string>
     <string name="pair_not_allowed">%1$s 没有允许这台手机。</string>
-    <string name="pair_unreachable_local">连不上 %1$s。确认两台设备在同一网络；要在外面连，先在电脑上设置中转。</string>
-    <string name="pair_unreachable_relay">连不上 %1$s。请在那台电脑上重新扫码。</string>
+    <string name="pair_unreachable">连不上 %1$s。</string>
+    <string name="pair_unreachable_local">确认两台设备在同一网络；要在外面连，先在电脑上设置中转。</string>
+    <string name="pair_unreachable_relay">请确认 %1$s 已开机，并且打开了口喷鸡。</string>
+    <string name="pair_spent">这个二维码已过期或已被用过。</string>
+    <string name="pair_unanswered">%1$s 那边没有人及时回应。</string>
+    <string name="pair_left">口喷鸡离开了屏幕，配对已停止。</string>
+    <string name="pair_scan_new">请在 %1$s 上打开“添加设备”，扫描它现在显示的二维码。</string>
 
     <string name="displays">显示器</string>
     <string name="displays_hint">点一台显示器即可显示它。轻点按钮会切到右边的下一台。</string>
@@ -104,7 +112,9 @@
     <string name="s_connecting">正在连接…</string>
     <string name="s_unreachable">连不上</string>
     <string name="s_forgotten">需要重新配对</string>
+    <string name="s_removed">已移除这台手机</string>
     <string name="s_replaced">另一台手机正在用</string>
+    <string name="s_ended">对方已断开</string>
     <string name="s_not_connected">未连接</string>
     <string name="s_on_network">在当前网络</string>
     <string name="s_uses_relay">使用你的中转</string>

@@ -24,6 +24,8 @@ mod capture;
 #[cfg(windows)]
 mod clipboard;
 #[cfg(windows)]
+pub mod desktop;
+#[cfg(windows)]
 mod convert;
 #[cfg(windows)]
 mod encoder;
@@ -35,6 +37,8 @@ pub mod monitors;
 mod power;
 #[cfg(windows)]
 pub mod screen;
+#[cfg(windows)]
+pub mod service;
 
 #[cfg(windows)]
 pub use self::imp::{backend, WinBackend};
@@ -55,12 +59,13 @@ mod imp {
         input: WinInput,
         screen: WinScreen,
         power: super::power::Power,
+        standby: super::power::Power,
     }
 
     impl WinBackend {
         pub fn new() -> Self {
             let shown: Shown = Arc::new(Mutex::new(None));
-            WinBackend { input: WinInput::new(shown.clone()), screen: WinScreen::new(shown), power: super::power::Power::default() }
+            WinBackend { input: WinInput::new(shown.clone()), screen: WinScreen::new(shown), power: super::power::Power::default(), standby: super::power::Power::standby() }
         }
 
         /// The concrete screen, for what the trait doesn't say (examples/win_smoke.rs reads its numbers).
@@ -99,6 +104,23 @@ mod imp {
         }
         fn keep_awake(&mut self, on: bool, display: bool) {
             self.power.set(on, display);
+        }
+        fn standby_awake(&mut self, on: bool) {
+            self.standby.set(on, false);
+        }
+        fn has_battery(&self) -> bool {
+            use ::windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+            let mut p = SYSTEM_POWER_STATUS::default();
+            unsafe { GetSystemPowerStatus(&mut p) }.is_ok() && p.BatteryFlag & 128 == 0 && p.BatteryFlag != 255
+        }
+        fn plugged_in(&self) -> bool {
+            use ::windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+            let mut p = SYSTEM_POWER_STATUS::default();
+            if unsafe { GetSystemPowerStatus(&mut p) }.is_err() {
+                return true;
+            }
+            // ACLineStatus 1: on mains, 255: unknown; BatteryFlag 128: no system battery (a desktop)
+            p.ACLineStatus != 0 || p.BatteryFlag & 128 != 0
         }
         /// Several displays: every monitor by its device name, in points (monitors.rs `frame_points`).
         fn displays(&self) -> Vec<DisplayInfo> {

@@ -401,21 +401,45 @@ final class SuggestChip: NSButton {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The project it suggests, and how much of "Looks like X · Move" the row has room for (TitleCell.fitChip):
+    /// 0 = all of it, 1 = "X · Move", 2 = "Move". The title keeps its share of the row; the chip gives way first.
+    private var name = ""
+    private(set) var form = 0
+
     /// "Looks like Atlas Web · Move" — the project quiet, the action in brand ink.
     func set(project name: String) {
-        // one line, always ending in "Move": a long name gives way, never the action
+        self.name = name
+        toolTip = T("main.list.move.tip", name)
+        setAccessibilityLabel(T("main.list.move.tip", name))
+        show(form: 0)
+    }
+
+    /// The title for one of the three forms (never shorter than "Move": the action stays).
+    func title(form f: Int) -> NSAttributedString {
         let short = name.count > Self.nameMax ? String(name.prefix(Self.nameMax - 1)) + "…" : name
-        let s = NSMutableAttributedString(string: T("main.list.suggested", short),
-                                          attributes: [.font: Look.subFont, .foregroundColor: NSColor.secondaryLabelColor])
-        s.append(NSAttributedString(string: " · ", attributes: [.font: Look.subFont, .foregroundColor: NSColor.tertiaryLabelColor]))
+        let s = NSMutableAttributedString()
+        let quiet: [NSAttributedString.Key: Any] = [.font: Look.subFont, .foregroundColor: NSColor.secondaryLabelColor]
+        if f == 0 { s.append(NSAttributedString(string: T("main.list.suggested", short), attributes: quiet)) }
+        if f == 1 { s.append(NSAttributedString(string: short, attributes: quiet)) }
+        if f < 2 { s.append(NSAttributedString(string: " · ", attributes: [.font: Look.subFont, .foregroundColor: NSColor.tertiaryLabelColor])) }
         s.append(NSAttributedString(string: T("main.list.move"), attributes: [.font: Look.smallFont, .foregroundColor: BrandColor.ink]))
         let p = NSMutableParagraphStyle()
         p.lineBreakMode = .byClipping
         s.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: s.length))
-        attributedTitle = s
-        toolTip = T("main.list.move.tip", name)
-        setAccessibilityLabel(T("main.list.move.tip", name))
+        return s
+    }
+
+    func show(form f: Int) {
+        form = f
+        attributedTitle = title(form: f)
         invalidateIntrinsicContentSize()
+    }
+
+    /// The longest form that fits in `width`.
+    func fit(_ width: CGFloat) {
+        guard !name.isEmpty else { return }
+        let f = (0...2).first { ceil(title(form: $0).size().width) + 6 <= width } ?? 2
+        if f != form { show(form: f) }
     }
 
     @objc private func tapped() { onMove?() }

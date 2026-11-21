@@ -30,10 +30,11 @@ extension InkPick {
         case .box: return "rectangle"
         case .ellipse: return "circle"
         case .arrow: return "arrow.up.right"
-        case .text: return "T"           // drawn as the letter (SF's text symbols turn into 格式 / 字 under zh)
-        case .mosaic:
-            return NSImage(systemSymbolName: "checkerboard.rectangle", accessibilityDescription: nil) != nil
-                ? "checkerboard.rectangle" : "square.grid.3x3"
+        // our own line glyphs (assets/icons letter-t, mosaic), drawn at the SF tools' size and weight: the typed 17 pt
+        // "T" and SF's filled checkerboard read as another set beside the thin outlines (SF's text symbols also turn
+        // into 格式 / 字 under zh)
+        case .text: return "brand:letter-t"
+        case .mosaic: return "brand:mosaic"
         }
     }
     var name: String { Loc.t("capture.ink.tool_\(rawValue)", table: "Capture") }
@@ -230,6 +231,13 @@ final class StripButton: NSView {
                 NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7).fill()
             }
             let tint = NSColor(white: 1, alpha: !enabled ? 0.3 : on || over ? 1 : 0.78)
+            if sym.hasPrefix("brand:"), let icon = BlurtIcon(rawValue: String(sym.dropFirst(6))) {
+                // a family glyph in the SF symbols' box: 18 pt draws its 17-unit live area as tall as a 14 pt symbol
+                let d: CGFloat = 18
+                icon.image(size: d, color: tint, weight: on ? 1.2 : 1)
+                    .draw(in: NSRect(x: (bounds.width - d) / 2, y: (bounds.height - d) / 2, width: d, height: d))
+                return
+            }
             if sym.count == 1 {
                 // a letter for a glyph (the text tool's T), the symbols' weight and size
                 let a = NSAttributedString(string: sym, attributes: [.font: NSFont.systemFont(ofSize: 17, weight: on ? .semibold : .regular),

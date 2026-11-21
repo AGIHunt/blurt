@@ -289,3 +289,32 @@ class SetupEndsWithItsApp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AFullDiskSaysSo(unittest.TestCase):
+    """A disk that fills up mid-download is `disk_full` (the app's "<size> needed, <free> free · Show Storage"), also
+    when a download helper wrapped the OSError into its own "network" failure."""
+
+    def test_enospc_is_found_through_the_chain(self):
+        import errno
+        self.assertTrue(C.disk_full(OSError(errno.ENOSPC, "No space left on device")))
+        try:
+            try:
+                raise OSError(errno.ENOSPC, "No space left on device")
+            except OSError as e:
+                raise T.Fail(f"could not download x: {e}", "network")
+        except T.Fail as f:
+            self.assertTrue(C.disk_full(f))
+        self.assertTrue(C.disk_full(P.Fail("could not download x: [Errno 28] No space left on device", "network")))
+        self.assertFalse(C.disk_full(T.Fail("could not download x: timed out", "network")))
+        self.assertFalse(C.disk_full(None))
+
+    def test_setup_says_disk_full(self):
+        import errno
+        out = io.StringIO()
+        with mock.patch.object(T, "install_model", side_effect=OSError(errno.ENOSPC, "No space left on device")), \
+                mock.patch.object(sys, "argv", ["transcribe.py", "setup", "--model-id", "sensevoice-small"]), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                T.main()
+        self.assertEqual(json.loads(out.getvalue().strip().splitlines()[-1])["code"], "disk_full")

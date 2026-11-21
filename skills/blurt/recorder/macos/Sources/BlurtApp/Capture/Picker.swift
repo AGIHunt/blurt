@@ -169,9 +169,17 @@ final class PickerController {
         windows.removeAll()
         // the picker took the keyboard (Esc, ↩): the app the user was in gets it back, so a recording never starts
         // with Blurt in front (BA-12) — unless that app was Blurt itself. A snap's note bubble types next: it keeps it
-        if !snapMode, let pid = frontPID, pid != getpid(), NSApp.isActive,
+        if !snapMode, let pid = frontPID, pid != getpid(),
            let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
             app.activate()
+            // the click on Record can make Blurt active a moment after this (the panel doesn't activate; the mouse-up still can),
+            // and then Blurt's own windows (a viewer) sit over the picked app for the take's first seconds (2026-11-20): give it
+            // back again once that has settled
+            for delay in [0.15, 0.5] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    if NSApp.isActive, !app.isTerminated { app.activate() }
+                }
+            }
         }
     }
 
@@ -645,7 +653,8 @@ final class PickerToolbar: NSView {
 }
 
 /// The picker's how-to (bottom centre, PickerView.layoutHint): the mode's glyph and one sentence, then — the first few
-/// times — the keys as keycaps after a hairline: [F] Full screen  [L] Last area  [esc] Cancel. Later just [esc] Cancel.
+/// times — the keys as keycaps after a hairline: [F] Full screen  [L] Last area  [esc] Cancel. Later [esc] Cancel
+/// [?] Keys (? shows the rest again; nothing said so).
 final class PickerHint: NSView {
     init(snap: Bool, hasLast: Bool, legend: Bool) {
         super.init(frame: .zero)
@@ -670,6 +679,8 @@ final class PickerHint: NSView {
             if hasLast { keys.append(("L", Loc.t("capture.picker.last_area", table: "Capture"))) }
         }
         keys.append(("esc", Loc.t("capture.picker.cancel", table: "Capture")))
+        // the legend put away (after the first few times): "?" brings it back — and now says so
+        if !legend { keys.append(("?", Loc.t("capture.picker.keys", table: "Capture"))) }
         let line = KeyLine([.divider] + KeyLine.pairs(keys), size: 12, color: NSColor(white: 1, alpha: 0.62))
         line.frame.origin = NSPoint(x: lead.frame.maxX - 2, y: ((h - line.frame.height) / 2).rounded())
         addSubview(line)

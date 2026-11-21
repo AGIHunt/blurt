@@ -97,6 +97,14 @@ final class LayoutLintTests: XCTestCase {
         XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 99.6, fontSize: 11, frame: CGSize(width: 100, height: 20)))
     }
 
+    func testARowOfSeveralLinesIsNotMeasuredAsOneLineTitle() {
+        // Text & Translation at its minimum size: a 640 x 65 row (source, text, original) whose joined label is wider
+        // than the row on one line, though every line it draws fits
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 820, fontSize: 13, frame: CGSize(width: 640, height: 65)))
+        // a large bordered button (32 high) is still a one-line title
+        XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 142.0, fontSize: 13, frame: CGSize(width: 147, height: 32)))
+    }
+
     func testIconOnlyButtonsAreNotTitles() {
         XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 14, height: 14)))                      // square.and.pencil
         XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 42, height: 25)))                      // a template image
@@ -144,5 +152,16 @@ final class LayoutLintTests: XCTestCase {
         XCTAssertTrue(LayoutLint.showsCut(label: "A very long popup choice title", shown: "A very l... ="))  // the arrows
         XCTAssertFalse(LayoutLint.showsCut(label: "Commit and Merge", shown: "Commit and Mer… then more words"))
         XCTAssertFalse(LayoutLint.showsCut(label: "Commit", shown: "C…"))                         // one letter says nothing
+    }
+
+    func testAMeasuredTitleCountsOnlyWhenItIsWhatIsDrawn() {
+        // a VoiceOver label over a keycap: "Fn" is drawn, not "Change in Dictation…"
+        XCTAssertFalse(LayoutLint.labelDrawn(label: "Change in Dictation…", shown: ["Fn"]))
+        XCTAssertFalse(LayoutLint.labelDrawn(label: "Change in Dictation…", shown: []))
+        // a row's joined words start with what it draws first (rows with several fonts are left to cutTitles anyway)
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Screen Recording, Used to record, Not allowed", shown: ["Screen Recording"]))
+        // the title itself, whole or cut
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Open History…", shown: ["Open History..."]))
+        XCTAssertTrue(LayoutLint.labelDrawn(label: "Change in Models…", shown: ["Change in Mo…"]))
     }
 }

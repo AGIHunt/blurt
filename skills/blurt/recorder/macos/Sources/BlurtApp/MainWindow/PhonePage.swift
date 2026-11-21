@@ -61,11 +61,11 @@ enum PhoneStatus {
 
     /// The facts that need no asking around (the relay's answer is the page's: PhoneModel).
     static var facts: PhoneFacts {
-        let s = RemoteServer.shared, st = s.status
+        let s = RemoteServer.shared, st = s.shown
         return PhoneFacts(paired: s.devices().count, connected: st.connected, viaRelay: st.viaRelay, canControl: canControl,
                           screenWanted: RemoteServer.screenAllowed, screenAllowed: SystemAccess.granted(.screen),
                           listening: st.listening, listenFailure: st.failure, pairing: st.pairingLink != nil,
-                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay)
+                          relay: RemoteServer.relayOn ? .checking : PhoneModel.noRelay, away: PhoneModel.away(st.away))
     }
 
     /// A phone's name as it gave it; one that gave none is "Phone".
@@ -74,6 +74,8 @@ enum PhoneStatus {
     /// The menu-bar menu's row: "Phone: iPhone Connected" · "Phone: Not Connected" (paired, none here now) ·
     /// "Phone: Needs Accessibility" (paired, and it could do nothing here) · "Add a Phone…" (none paired)
     static var menuTitle: String {
+        // a device waits for a yes: said here too, as the page says it
+        if let who = RemoteServer.shared.shown.asking { return T("phone.menu.asking", name(who)) }
         let f = facts
         switch PhoneChecks.headline(f) {
         case .nonePaired: return T("phone.menu.add")
@@ -101,7 +103,7 @@ enum PhoneStatus {
 final class PhoneModel: ObservableObject {
     static let shared = PhoneModel()
 
-    @Published private(set) var status = RemoteServer.shared.status
+    @Published private(set) var status = RemoteServer.shared.shown
     @Published private(set) var devices = RemoteServer.shared.devices()
     /// Add a Phone is open: the code is on show (and the port is open for it)
     @Published private(set) var adding = false
@@ -109,6 +111,8 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var screenWanted = RemoteServer.screenAllowed
     @Published private(set) var screenAllowed = SystemAccess.granted(.screen)
     @Published private(set) var relay: PhoneFacts.Relay = RemoteServer.relayOn ? .checking : PhoneModel.noRelay
+    /// the page's "If It Won't Connect" is open (closed until asked for; kept while the app runs)
+    @Published var tipsOpen = false
     /// with no relay of the owner's own: the public connection service, unless it's switched off
     nonisolated static var noRelay: PhoneFacts.Relay { RemoteServer.meetAddress != nil ? .goBetween : .none }
     #if DEBUG || BLURT_TEST_HOOKS
@@ -124,7 +128,17 @@ final class PhoneModel: ObservableObject {
     var facts: PhoneFacts {
         PhoneFacts(paired: devices.count, connected: status.connected, viaRelay: status.viaRelay, canControl: canControl,
                    screenWanted: screenWanted, screenAllowed: screenAllowed, listening: status.listening, listenFailure: status.failure,
-                   pairing: adding, relay: relay)
+                   pairing: adding, relay: relay, away: Self.away(status.away))
+    }
+
+    /// What this Mac's own tries found away from home, in BlurtCore's terms (Settings → Remote Control reads the same field).
+    nonisolated static func away(_ a: RemoteServer.AwayProblem?) -> PhoneFacts.Away? {
+        switch a {
+        case .busy?: .busy
+        case .noDirect?: .noDirect
+        case .relayDown?: .relayDown
+        case nil: nil
+        }
     }
 
     private var watchers: Set<String> = []
@@ -137,7 +151,7 @@ final class PhoneModel: ObservableObject {
     private init() {
         let c = NotificationCenter.default, s = RemoteServer.shared
         observers.append(c.addObserver(forName: RemoteServer.statusChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.statusChanged(s.status) }
+            MainActor.assumeIsolated { self?.statusChanged(s.shown) }
         })
         observers.append(c.addObserver(forName: RemoteServer.devicesChanged, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.devicesChanged(s.devices()) }
@@ -159,7 +173,7 @@ final class PhoneModel: ObservableObject {
     func watch(_ who: String) {
         let first = watchers.isEmpty
         watchers.insert(who)
-        status = RemoteServer.shared.status
+        status = RemoteServer.shared.shown
         devices = RemoteServer.shared.devices()
         refresh()
         // back on show with a relay that didn't answer last time: it may have been fixed since
@@ -254,13 +268,17 @@ extension PhonePage {
     ///   fake none|paired|connected|relay|asking|deaf [code]   devices and a connection as if real (RemoteServer.testFake):
     ///                           nothing paired · an iPhone, an iPad and a computer that controls this Mac (its hello
     ///                           said "viewer"), none here · the iPhone connected on the local network ·
-    ///                           … through the relay · a new phone waiting for a yes · the port could not be opened;
+    ///                           … through the relay · a new phone waiting for a yes · the port could not be opened (`deaf other`: an error with no words of its own);
     ///                           also tailscale|meeting|gobetween (connected that way) and busy|nodirect (paired, and why the
-    ///                           go-between didn't work: Settings → Phone → Away from home);
+    ///                           go-between didn't work) · relaydown (paired, and this Mac's own tries to reach its
+    ///                           relay keep failing): the page's notice, as Settings → Remote Control → Status says it;
     ///                           `code`: with a pairing code on show that is no code (a picture of it gives nothing
     ///                           away: no key, no address, no name) and nothing listening for it
     ///   ax on|off|clear         what Accessibility says · relay none|checking|ok|failed|clear   the relay's answer
+    ///   tips open|closed        the page's "If It Won't Connect"
     ///   add · cancel            = Add a Phone… / Cancel · key return|esc   the key, as the window's key equivalent
+    ///   rename page|list ID start|type TEXT|return|esc   a row's name field (a device's id, or a computer's), as a double-click,
+    ///                           typing and the keys would
     ///   state                   what the page shows ("phone_page" event)
     static func testCommand(_ arg: String) {
         #if DEBUG || BLURT_TEST_HOOKS
@@ -287,11 +305,13 @@ extension PhonePage {
                     st.path = paths[v]
                 case "busy": st.away = .busy
                 case "nodirect": st.away = .noDirect
+                case "relaydown": st.away = .relayDown
                 case "asking":
                     st.asking = "Pixel 9"
                     st.askingCheck = "482713"
                     st.askingNumber = 1
-                case "deaf": st.failure = "POSIXErrorCode(rawValue: 48): Address already in use"
+                // `deaf other`: an error the page has no words of its own for
+                case "deaf": st.failure = a.count > 2 && a[2] == "other" ? "POSIXErrorCode(rawValue: 13): Permission denied" : RemoteServer.portInUse
                 default: break
                 }
                 let code = a.count > 2 && a[2] == "code"
@@ -303,6 +323,7 @@ extension PhonePage {
             case "ax": PhoneStatus.testCanControl = v == "clear" ? nil : v == "on"
             case "relay":
                 m.testRelay = ["none": .none, "checking": .checking, "ok": .ok, "failed": .failed][v]
+            case "tips": m.tipsOpen = v == "open"
             case "add": m.setAdding(true)
             case "key":
                 // Return / Esc as the main window gets them first (key equivalents: the page's default and cancel buttons)
@@ -314,6 +335,7 @@ extension PhonePage {
                     emit(["event": "phone_key", "key": v, "handled": w.performKeyEquivalent(with: e)])
                 }
             case "cancel": m.setAdding(false)
+            case "rename": RenameTests.post(a)
             default: break
             }
             // the fake goes through RemoteServer's queue and back: say what shows once it has landed
@@ -322,9 +344,10 @@ extension PhonePage {
                     m.refresh()
                     let f = m.facts
                     emit(["event": "phone_page", "headline": "\(PhoneChecks.headline(f))", "problems": PhoneChecks.problems(f).map { "\($0)" },
-                          "tips": PhoneChecks.tips(f).map { "\($0)" }, "adding": m.adding, "listening": RemoteServer.shared.status.listening,
-                          "link": RemoteServer.shared.status.pairingLink != nil, "menu": PhoneStatus.menuTitle,
-                          "line": PhoneStatus.line ?? NSNull(), "attention": PhoneStatus.needsAttention])
+                          "tips": PhoneChecks.tips(f).map { "\($0)" }, "adding": m.adding, "listening": RemoteServer.shared.shown.listening,
+                          "link": RemoteServer.shared.shown.pairingLink != nil, "menu": PhoneStatus.menuTitle,
+                          "line": PhoneStatus.line ?? NSNull(), "attention": PhoneStatus.needsAttention,
+                          "devices": m.devices.map { [$0.name, $0.alias ?? ""] }, "connected": m.status.connected ?? NSNull()])
                 }
             }
         }

@@ -17,6 +17,8 @@ type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
 
 export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => void }) {
   const r = useRemoteStatus();
+  // the service couldn't be installed or removed (a declined UAC prompt is the user's answer, not a failure)
+  const [svcFailed, setSvcFailed] = useState(false);
   if (!r) return <Page id="phone"><p className="st-lead">{S('settings.loading')}</p></Page>;
   return (
     <Page id="phone" lead={
@@ -27,6 +29,15 @@ export function PhonePane({ onGo }: { status: AppStatus; onGo?: (p: Place) => vo
       </span>
     }>
       <Group id="phone.options">
+        {r.service !== null && (
+          <Toggle id="phone.service" on={!!r.service} detail={S(svcFailed ? 'phone.service.failed' : 'phone.service.detail')} warn={svcFailed}
+            set={(v) => {
+              setSvcFailed(false);
+              void apply(api.remoteSetService(v)).catch((e) => setSvcFailed(String(e) !== 'declined'));
+            }} />
+        )}
+        <Toggle id="phone.stay_awake" on={r.stayAwake} detail={S(r.battery ? 'phone.stay_awake.laptop' : 'phone.stay_awake.desktop')}
+          set={(v) => void apply(api.remoteSetStayAwake(v)).catch(() => {})} />
         <Toggle id="phone.screen" on={r.screenAllowed} set={(v) => void apply(api.remoteSetScreenAllowed(v)).catch(() => {})} />
       </Group>
 
@@ -178,7 +189,7 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
   else if (state === 'failed') (line = S('phone.relay.failed')), (warn = true);
   else if (state === 'invalid') (line = S('phone.relay.invalid')), (warn = true);
   else if (saved && r.relay.fromPhone) (line = S(r.relay.reachable === false ? 'phone.relay.from_phone_failed' : 'phone.relay.from_phone')), (warn = r.relay.reachable === false);
-  else if (saved && r.relay.reachable === false) (line = S('phone.relay.failed')), (warn = true);
+  else if (saved && r.relay.reachable === false) (line = S(r.relay.fallback ? 'phone.relay.failed_fallback' : 'phone.relay.failed')), (warn = true);
 
   const own = !!r.relay.address;
   return (
@@ -258,6 +269,8 @@ export function PhoneAsk() {
         <div className="phone-ask-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</div>
         {/* two sentences, one to a line: what to check, then where it is */}
         <p><span className="phone-ask-line">{S('phone.ask.detail', ask.device)}</span> <span className="phone-ask-line">{S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</span></p>
+        {/* anti-scam: said on every pairing, where the owner is looking (remote-1.1.md §3) */}
+        <p className="phone-ask-caution" data-testid="phone-ask-caution"><Icon name="warning" size={16} />{S('phone.ask.caution')}</p>
         <div className="dict-confirm-foot">
           <button autoFocus className="dict-confirm-cancel" onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
           <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-ask-allow">{S('phone.ask.yes')}</button>

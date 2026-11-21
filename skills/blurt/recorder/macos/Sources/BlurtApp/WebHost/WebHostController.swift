@@ -82,7 +82,7 @@ final class DetailWebView: WKWebView {
         if hint.superview == nil { addSubview(hint) }
         wantsLayer = true
         layer?.borderWidth = 2
-        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.borderColor = BrandColor.accent.cgColor }
         hint.show(T("main.drop.add_to", ItemListController.shortTitle(it)), at: convert(s.draggingLocation, from: nil), ok: true)
         return Island.shots(from: s.draggingPasteboard).isEmpty ? .copy : .move
     }
@@ -311,9 +311,16 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         if case .session(let u) = scope { waiting = ReviewHandoff.waiting(u) }
         let info: [String: Any] = ["host": "macos", "methods": methods, "accent": Self.accentHex(), "scope": scope.json,
                                    "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item",
-                                   "agentWaiting": waiting]       // only then does confirming "hand it back"
+                                   "agentWaiting": waiting,       // only then does confirming "hand it back"
+                                   "clock": Self.hourCycle]       // the page's times in the system's 12/24-hour clock
         let json = (try? JSONSerialization.data(withJSONObject: info)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         ucc.addUserScript(WKUserScript(source: "window.blurtHostInfo = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    /// "h23" when the system shows 24-hour time (the native lists' DateFormatter follows it), else "h12".
+    static var hourCycle: String {
+        let f = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: Loc.locale) ?? ""
+        return f.contains("H") || f.contains("k") ? "h23" : "h12"
     }
 
     // MARK: what to show
@@ -722,8 +729,11 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 /// The line above an item that tells you what it is waiting for, with the things you can do about it (K3 actions;
 /// the detail's state pill has the rest, and its work panel asks about an item waiting to be verified). Two buttons at
 /// most, the last one the primary:
-///   handed out     "Copied for your agent. Mark it done here when it’s finished."   [Won't Do] [Mark as Done]
-///   older session  "Handed off to Claude Code · Session ended without reporting back" [Take Back] [Mark as Done]
+///   handed out     "Handed off to your agent. Mark it done here when it’s finished."   [Take Back] [Mark as Done]
+///     an hour on   "Handed off 3 hr. ago · no word from your agent yet"                [Take Back] [Mark as Done]
+///   agent at work  "Codex is working on it · started 5 min. ago"                      [Take Back] [Mark as Done]
+///   older session  "Handed off to Claude Code · it stopped without reporting back"    [Take Back] [Mark as Done]
+/// (Won't Do is in the state pill's menu.)
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
     private let icon = NSImageView()
@@ -813,8 +823,18 @@ final class ItemBanner: NSView {
         case "external":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
-            text.stringValue = T("main.banner.external")
-            button(StateMenu.title("wontfix"), "wontfix")
+            // when the hand-off (or the agent's last word) happened: the item's own work record
+            let at = Self.workAt(it)
+            if it.state == "in_progress" {
+                let who = it.workAgent == nil || it.workAgent == "human" ? T("main.banner.your_agent") : (agent ?? T("main.banner.your_agent"))
+                text.stringValue = at.map { T("main.banner.working", who, Loc.relative($0)) } ?? T("main.banner.working_now", who)
+            } else if let at, Date().timeIntervalSince(at) >= Self.quietAfter {
+                // an hour and nothing from the agent: say so, so a refused report doesn't sit here looking fine
+                text.stringValue = T("main.banner.quiet", Loc.relative(at))
+            } else {
+                text.stringValue = T("main.banner.external")
+            }
+            button(StateMenu.title("take_back"), "take_back")
             button(StateMenu.title("done"), "done", primary: true)
         default:
             // the batch it came from is still being organised: the item fills in as the agent goes
@@ -839,6 +859,27 @@ final class ItemBanner: NSView {
     private func hide() {
         isHidden = true
         height.constant = 0
+    }
+
+    /// How long a hand-off may go without a word from the agent before the banner says so.
+    static let quietAfter: TimeInterval = 3600
+
+    /// work.at of the item's file: when it was handed off, or when the agent last reported.
+    static func workAt(_ it: ItemRow) -> Date? {
+        guard !it.readOnly, let fm = FixWatcher.frontMatter(it.fileURL), let w = fm["work"] as? [String: Any],
+              let s = w["at"] as? String else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+
+    /// One line where it fits: the text may use all the width the buttons leave.
+    override func layout() {
+        super.layout()
+        let w = max(80, bounds.width - 16 - 16 - 10 - 12 - 14 - buttons.fittingSize.width)
+        if abs(text.preferredMaxLayoutWidth - w) > 0.5 { text.preferredMaxLayoutWidth = w }
     }
 
     private func setWorking(_ on: Bool) {

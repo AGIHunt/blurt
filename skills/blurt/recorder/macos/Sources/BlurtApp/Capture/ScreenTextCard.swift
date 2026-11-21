@@ -22,8 +22,10 @@ import Carbon.HIToolbox
 
 final class ScreenTextCard {
     static let shared = ScreenTextCard()
-    /// how long it stays once the pointer isn't over it
+    /// how long it stays once the pointer isn't over it: 10 s for a few lines, longer for a long text (6 s + 0.8 s a
+    /// line, at most 30 s) — a 15-line translation that scrolls went after 10 s, unread
     static let seconds: Double = 10
+    static func dwell(lines: Int) -> Double { min(30, max(seconds, 6 + 0.8 * Double(lines))) }
     static let gap = LiveTranscript.gap
 
     private var panel: NSPanel?
@@ -39,6 +41,8 @@ final class ScreenTextCard {
         view.onCopy = { [weak self] in self?.copy(via: "button") }
         view.onClose = { [weak self] in self?.close(why: "close_button") }
         view.onPointer = { [weak self] inside in self?.pointer(inside: inside) }
+        // being scrolled (the wheel or a swipe, the pointer elsewhere a moment later): its time starts again
+        view.onScroll = { [weak self] in if self?.shown == true { self?.later() } }
     }
 
     private var pointerInside: Bool { testPointer ?? view.pointerInside }
@@ -111,12 +115,12 @@ final class ScreenTextCard {
 
     // MARK: going by itself
 
-    /// 10 s from now — unless the pointer is on it (then from when it leaves).
+    /// dwell(lines:) from now (10 s and up) — unless the pointer is on it (then from when it leaves).
     private func later() {
         hideToken += 1
         guard !pointerInside else { return }
         let tok = hideToken
-        DispatchQueue.main.asyncAfter(deadline: .now() + ScreenTextCard.seconds) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + ScreenTextCard.dwell(lines: view.lineCount)) { [weak self] in
             guard let self = self, tok == self.hideToken, !self.pointerInside else { return }
             self.close(why: "timeout")
         }
@@ -234,6 +238,7 @@ final class ScreenTextCardView: NSView {
     var onCopy: (() -> Void)?
     var onClose: (() -> Void)?
     var onPointer: ((Bool) -> Void)?
+    var onScroll: (() -> Void)?
     /// the pointer is over the card (set by its tracking area; ScreenTextCard sets it when the card shows)
     var pointerInside = false
     var radius: CGFloat = 14 { didSet { if radius != oldValue { layer?.cornerRadius = radius } } }
@@ -305,7 +310,7 @@ final class ScreenTextCardView: NSView {
     /// lines below the ones showing (the last one fades out; tests)
     var more: Bool { !fade.isHidden }
 
-    @objc private func scrolled() { updateFade() }
+    @objc private func scrolled() { updateFade(); onScroll?() }
 
     private func updateFade() {
         let below = textView.frame.height - scroll.contentView.bounds.maxY

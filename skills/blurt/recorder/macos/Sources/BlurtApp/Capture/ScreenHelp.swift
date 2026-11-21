@@ -15,13 +15,16 @@ import BlurtCore
 import ScreenCaptureKit
 
 enum ScreenHelp {
-    /// `text`: ⌥C / ⌥T read the screen — told as copying text, not as a snap (the dogfood's Copy Text said "Snapping
-    /// needs Screen Recording").
+    /// `text`: ⌥C reads the screen — told as copying text, not as a snap (the dogfood's Copy Text said "Snapping
+    /// needs Screen Recording"); `translate`: ⌥T's, told as translating (it said "Copying text…" to a Translate press).
     enum Use: String {
-        case snap, record, text
+        case snap, record, text, translate
         var missingKey: String { ["snap": "capture.snap.no_permission", "record": "capture.record.no_permission",
-                                  "text": "capture.text.no_permission"][rawValue]! }
-        var staleKey: String { ["snap": "capture.snap.stale", "record": "capture.record.stale", "text": "capture.text.stale"][rawValue]! }
+                                  "text": "capture.text.no_permission", "translate": "capture.text.translate_no_permission"][rawValue]! }
+        var staleKey: String { ["snap": "capture.snap.stale", "record": "capture.record.stale", "text": "capture.text.stale",
+                                "translate": "capture.text.stale"][rawValue]! }
+        /// reading the screen's text, by either key
+        var readsText: Bool { self == .text || self == .translate }
     }
 
     /// Does ScreenCaptureKit answer (main queue)? false: a stale grant when macOS says it is allowed.
@@ -40,7 +43,7 @@ enum ScreenHelp {
         emit(["event": "screen_help", "use": use.rawValue, "grant": grant.rawValue])
         switch grant {
         case .passing:
-            island.toast(Loc.t(use == .text ? "capture.text.failed" : "capture.snap.failed", table: "Capture"), key: nil, icon: .warning)
+            island.toast(Loc.t(use.readsText ? "capture.text.failed" : "capture.snap.failed", table: "Capture"), key: nil, icon: .warning)
         case .missing:
             var t = Island.Toast(text: Loc.t(use.missingKey, table: "Capture"),
                                  actionTitle: Loc.t("capture.snap.open_settings", table: "Capture")) {

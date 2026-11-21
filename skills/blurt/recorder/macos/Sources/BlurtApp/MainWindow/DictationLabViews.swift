@@ -251,7 +251,9 @@ struct LabDetailView: View {
         Group {
             if lab.pane == .regression { LabRegressionView(lab: lab) } else { LabWorkbench(lab: lab) }
         }
-        .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+        // no wider than the column's own minimum (373 pt in English, where the sidebar takes 197): wider, it spilled past
+        // the window's edge
+        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -361,7 +363,11 @@ private struct MetricRow: View {
             Text(v).fontWeight(.semibold).monospacedDigit()
         }
         .fixedSize()
-        .accessibilityElement(children: .combine)
+        // the name as its label, the number as its value (combined, the label gained a "、" it doesn't draw, and
+        // read as cut)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(k)
+        .accessibilityValue(v)
     }
 }
 
@@ -829,27 +835,37 @@ struct LabWorkbench: View {
             })
             TextField(T("dictation.lab.note.placeholder"), text: Binding(get: { lab.draft.note }, set: { v in lab.edit { $0.note = v } }), axis: .vertical)
                 .textFieldStyle(.roundedBorder).lineLimit(1...4)
-            HStack(spacing: 14) {
-                HStack(spacing: 2) {
-                    ForEach(1...5, id: \.self) { n in
-                        Button { lab.edit { $0.stars = $0.stars == n ? nil : n } } label: {
-                            Image(systemName: (lab.draft.stars ?? 0) >= n ? "star.fill" : "star")
-                                .foregroundStyle((lab.draft.stars ?? 0) >= n ? Color.brandAttn : Color.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(T("dictation.lab.stars", n))
-                    }
-                }
-                Picker("", selection: Binding(get: { lab.draft.good.map { $0 ? 1 : 0 } ?? -1 },
-                                              set: { v in lab.edit { $0.good = v < 0 ? nil : v == 1 } })) {
-                    Text(T("dictation.lab.rating.none")).tag(-1)
-                    Text(T("dictation.lab.rating.good")).tag(1)
-                    Text(T("dictation.lab.rating.bad")).tag(0)
-                }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            // the stars and the rating side by side, or one over the other where the column is too narrow for both (side
+            // by side they need 349 pt: the case pane spilled past the window's right edge in English)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) { stars; rating }
+                VStack(alignment: .leading, spacing: 8) { stars; rating }
             }
             .padding(.top, 2)
         }
+    }
+
+    var stars: some View {
+        HStack(spacing: 2) {
+            ForEach(1...5, id: \.self) { n in
+                Button { lab.edit { $0.stars = $0.stars == n ? nil : n } } label: {
+                    Image(systemName: (lab.draft.stars ?? 0) >= n ? "star.fill" : "star")
+                        .foregroundStyle((lab.draft.stars ?? 0) >= n ? Color.brandAttn : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(T("dictation.lab.stars", n))
+            }
+        }
+    }
+
+    var rating: some View {
+        Picker("", selection: Binding(get: { lab.draft.good.map { $0 ? 1 : 0 } ?? -1 },
+                                      set: { v in lab.edit { $0.good = v < 0 ? nil : v == 1 } })) {
+            Text(T("dictation.lab.rating.none")).tag(-1)
+            Text(T("dictation.lab.rating.good")).tag(1)
+            Text(T("dictation.lab.rating.bad")).tag(0)
+        }
+        .pickerStyle(.segmented).labelsHidden().fixedSize()
     }
 
     var learned: some View {

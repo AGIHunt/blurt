@@ -70,9 +70,12 @@ final class SettingsNavigator: ObservableObject {
     @Published private(set) var groups: [SettingsResultGroup] = []
     /// Every setting found, in the page's order (the sidebar's counts; tests).
     @Published private(set) var hits: [SettingsHit] = []
-    /// The keyboard's stops, in the page's order, and the page's lines.
-    @Published private(set) var items: [Item] = []
-    @Published private(set) var lines: [Line] = []
+    /// The keyboard's stops, in the page's order, and the page's lines: one value, published in one write, so the
+    /// results page never draws lines against the stops of another query (a line's row reads `items[i]`).
+    struct Page { var items: [Item] = []; var lines: [Line] = [] }
+    @Published private(set) var page = Page()
+    var items: [Item] { page.items }
+    var lines: [Line] { page.lines }
     /// panes found as a whole whose rows are all shown
     @Published private(set) var expanded: Set<String> = []
     @Published var selected = 0
@@ -135,8 +138,7 @@ final class SettingsNavigator: ObservableObject {
             }
             if folds { add(.more(g.pane)) }
         }
-        self.items = items
-        self.lines = lines
+        page = Page(items: items, lines: lines)
     }
 
     func count(_ p: SettingsPane) -> Int { hits.filter { $0.entry.pane == p.rawValue }.count }
@@ -279,13 +281,15 @@ struct SettingsSearchResults: View {
     /// the pen's hold key, shown on its row
     @ObservedObject private var keys = HotkeySettings.shared
 
-    /// The page's lines as boxes: each pane's heading, then its rows (indices into nav.lines).
-    var blocks: [(group: SettingsResultGroup, lines: [Int])] {
-        var out: [(group: SettingsResultGroup, lines: [Int])] = []
-        for (k, l) in nav.lines.enumerated() {
+    /// The page's lines as boxes: each pane's heading, then its rows — the lines themselves, keyed by their item, never
+    /// indices into nav.lines: SwiftUI can run a row of the last query against a shorter list of the next one (typing
+    /// "relay" → "中继" crashed on nav.lines[k] out of range).
+    var blocks: [(group: SettingsResultGroup, lines: [SettingsNavigator.Line])] {
+        var out: [(group: SettingsResultGroup, lines: [SettingsNavigator.Line])] = []
+        for l in nav.lines {
             switch l {
             case .group(let g): out.append((g, []))
-            case .item: if !out.isEmpty { out[out.count - 1].lines.append(k) }
+            case .item: if !out.isEmpty { out[out.count - 1].lines.append(l) }
             case .section: break
             }
         }
@@ -302,11 +306,11 @@ struct SettingsSearchResults: View {
                             .padding(.horizontal, SettingsMetrics.boxInset).padding(.top, SettingsMetrics.groupGap)
                     } else {
                         header
-                        ForEach(Array(blocks.enumerated()), id: \.element.group.pane) { _, b in
+                        ForEach(blocks, id: \.group.pane) { b in
                             groupHeading(b.group)
                             VStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(b.lines.enumerated()), id: \.element) { j, k in
-                                    lineView(nav.lines[k], hairline: j > 0)
+                                ForEach(b.lines) { l in
+                                    lineView(l, hairline: l.id != b.lines.first?.id)
                                 }
                             }
                             .clipShape(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous))
@@ -455,7 +459,7 @@ struct SettingsSearchResults: View {
             switch HotkeySettings.shared.drawKey {
             case "control": return ["⌃"]
             case "option": return ["⌥"]
-            case "fn": return ["fn"]
+            case "fn": return [Dictation.keyName(.fn)]          // "Fn", as every other keycap
             default: return []
             }
         default:

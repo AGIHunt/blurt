@@ -240,6 +240,39 @@ def rehear_groups(pieces: list[dict], window: float = REHEAR_WINDOW) -> list[lis
     return out
 
 
+REHEAR_SCRIPT_MIN = 3
+REHEAR_KEEP_SHARE = 0.6
+
+
+def rehear_loss(said: str, answer: str) -> str | None:
+    """DictationStitch.rehearLoss: whether a window heard again lost what its pieces heard (the model hears a window
+    under one language tag; English then Chinese came back as the Chinese only). Units only, no word lists: for each
+    script the pieces heard at least REHEAR_SCRIPT_MIN units of (Latin words; CJK characters), at least
+    REHEAR_KEEP_SHARE of those units must be in the answer too (as a multiset). None: the answer keeps; else the script
+    it lost ("latin" / "cjk"), and the pieces' own text is used."""
+    have: dict[str, int] = {}
+    for u in units(answer):
+        have[u] = have.get(u, 0) + 1
+    total = {"latin": 0, "cjk": 0}
+    kept = {"latin": 0, "cjk": 0}
+    for u in units(said):
+        if _is_cjk(u[0]):
+            k = "cjk"
+        elif u[0].isalpha():
+            k = "latin"
+        else:
+            continue            # digits: either script
+        hit = have.get(u, 0) > 0
+        if hit:
+            have[u] -= 1
+        total[k] += 1
+        kept[k] += int(hit)
+    for k in ("latin", "cjk"):
+        if total[k] >= REHEAR_SCRIPT_MIN and kept[k] < REHEAR_KEEP_SHARE * total[k]:
+            return k
+    return None
+
+
 # ------------------------------------------------------------------ DictationStream's polish windows
 def stream(pieces: list[dict], pauses: list[float | None], polish, guard=None, context: dict | None = None,
            structure=None) -> dict:

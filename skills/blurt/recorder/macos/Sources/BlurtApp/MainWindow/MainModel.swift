@@ -353,9 +353,9 @@ final class MainModel {
     func reloadSidebar() {
         let byID = Dictionary(((try? reader?.projects()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         counts = (try? reader?.counts()) ?? IndexCounts()
-        // the one project order everywhere (the pickers, the switcher, ⌘K, the Inbox's groups): pinned, then the most
-        // recently used
-        var list = ProjectStore.shared.projects.map { p -> ProjectEntry in
+        // the user's own order (ProjectStore.ordered): pinned, then as they dragged them, a folder opened last; using a
+        // project never moves it, so ⌘5–⌘9 keep going to the same five (the capture switcher keeps recency)
+        var list = ProjectStore.shared.ordered.map { p -> ProjectEntry in
             var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists && testMissing != p.id,
                                  pinned: p.pinned)
             e.open = byID[p.id]?.openItems ?? 0

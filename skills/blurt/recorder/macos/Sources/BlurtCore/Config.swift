@@ -118,6 +118,10 @@ public final class Config {
     /// the last version of the file that parsed (what reads give while it doesn't)
     private var lastGood: [String: Any]?
     private var backedUp: FileSig?
+    /// the copy made of that version, and whether `onUnreadable` heard about it: a copy made before anyone listened
+    /// (a launch migration's write, ahead of the launch's checkReadable) is still said (dogfood 2026-11-21)
+    private var backup: URL?
+    private var reported: FileSig?
 
     /// The file exists but doesn't parse; a write was refused (called with the backup's URL, once per bad version).
     public var onUnreadable: ((URL) -> Void)?
@@ -244,7 +248,11 @@ public final class Config {
     /// The file doesn't parse: keep a copy of it (once per version — also across launches: a config.json.bad-* with
     /// the same bytes is that copy) and leave it alone.
     private func refuse() {
-        guard let sig = FileSig(url), sig != backedUp else { return }
+        guard let sig = FileSig(url) else { return }
+        guard sig != backedUp else {
+            if reported != sig, let b = backup, let say = onUnreadable { reported = sig; say(b) }
+            return
+        }
         backedUp = sig
         let fm = FileManager.default
         let dir = url.deletingLastPathComponent()
@@ -253,13 +261,21 @@ public final class Config {
             .filter { $0.lastPathComponent.hasPrefix(url.lastPathComponent + ".bad-") }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .first { bytes != nil && (try? Data(contentsOf: $0)) == bytes }
-        if let bak = same { onUnreadable?(bak); return }
+        if let bak = same { told(sig, bak); return }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
         let bak = dir.appendingPathComponent("\(url.lastPathComponent).bad-\(f.string(from: Date()))")
         try? fm.copyItem(at: url, to: bak)
-        onUnreadable?(bak)
+        told(sig, bak)
+    }
+
+    /// The copy of this version is `bak`: said now if someone listens, else at the next checkReadable().
+    private func told(_ sig: FileSig, _ bak: URL) {
+        backup = bak
+        guard let say = onUnreadable else { return }
+        reported = sig
+        say(bak)
     }
 
     /// config["record"] as a dictionary ([:] when absent)

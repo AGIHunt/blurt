@@ -2,7 +2,10 @@
 # Release Blurt.app for macOS: universal build with Sparkle → Developer ID signing (hardened runtime) → DMG →
 # notarization + stapling → Sparkle update zip + EdDSA-signed appcast.xml.
 #
-#   scripts/release-mac.sh [--dry-run] [--version X.Y.Z] [--out DIR] [--archives DIR]
+#   scripts/release-mac.sh [--dry-run] [--version X.Y.Z] [--out DIR] [--archives DIR] [--sign-only]
+#
+# --sign-only stops once the app is built and signed (no DMG, notarization or appcast) and prints its path: a test build for a
+# test machine, copied over ssh (no quarantine), keeping the Screen Recording and Accessibility grants of the installed Blurt.
 #
 # --archives DIR keeps the update zips + appcast.xml of earlier releases (generate_appcast's archives directory):
 # with them there, Sparkle delta updates from those versions are generated too (*.delta, attach them as well).
@@ -31,12 +34,14 @@ DRY=0
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$MAC/Info.plist")
 OUT=$ROOT/dist/macos
 ARCHIVES=
+SIGN_ONLY=0
 while [ $# -gt 0 ]; do
   case $1 in
     --dry-run) DRY=1 ;;
     --version) VERSION=$2; shift ;;
     --out) OUT=$2; shift ;;
     --archives) ARCHIVES=$2; shift ;;
+    --sign-only) SIGN_ONLY=1 ;;
     -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -141,6 +146,7 @@ else
   would codesign --force --timestamp --options runtime --sign '"Developer ID Application: …"' "(Sparkle parts, then the app with $ENT)"
 fi
 codesign --verify --deep --strict "$APP"
+if [ $SIGN_ONLY = 1 ]; then echo "$APP"; exit 0; fi
 
 # ---------------------------------------------------------------- DMG
 say "DMG"

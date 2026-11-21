@@ -3,8 +3,9 @@
 // everything onto it. What passes is sealed end to end; nothing is stored. It is public, so there is no secret path, and it binds
 // nothing but its Durable Object.
 import { DurableObject } from "cloudflare:workers";
+import { noteMacLeft, peek } from "./index.js";
 
-const PATH = /^\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone)$/;
+const PATH = /^\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone|peek)$/;
 
 // the budget per WebSocket connection, counted on what that connection sends
 const KiB = 1024;
@@ -42,6 +43,8 @@ export default {
     // anything else that isn't a room costs no Durable Object request
     const m = path.match(PATH);
     if (!m) return new Response("Not found", { status: 404 });
+    // GET …/peek: is its computer waiting, and since when it's asleep or last seen (paired devices only know the room)
+    if (m[2] === "peek") return req.method === "GET" ? env.MEET.get(env.MEET.idFromName(m[1])).fetch("https://meet/peek") : new Response("Not found", { status: 404 });
     if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
     return env.MEET.get(env.MEET.idFromName(m[1])).fetch(new Request(`https://meet/${m[2]}`, req));
   },
@@ -50,6 +53,7 @@ export default {
 export class Meet extends DurableObject {
   async fetch(req) {
     const role = new URL(req.url).pathname.slice(1);
+    if (role === "peek") return peek(this);
     for (const old of this.ctx.getWebSockets(role)) { try { old.close(REPLACED, "replaced"); } catch {} }
     const other = this.open(role === "mac" ? "phone" : "mac");
     const pair = new WebSocketPair();
@@ -94,8 +98,8 @@ export class Meet extends DurableObject {
     if (ends.length) await this.ctx.storage.setAlarm(Math.min(...ends));
   }
 
-  webSocketClose(ws) { this.left(ws); }
-  webSocketError(ws) { this.left(ws); }
+  webSocketClose(ws, code) { noteMacLeft(this, ws, code); this.left(ws); }
+  webSocketError(ws) { noteMacLeft(this, ws, 1006); this.left(ws); }
 
   left(ws) {
     if (ws.deserializeAttachment()?.refused) return;

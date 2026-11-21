@@ -130,15 +130,12 @@ final class ProjectsModel: ObservableObject {
     func reveal(_ p: Project) { NSWorkspace.shared.activateFileViewerSelecting([p.path]) }
     func revealUnassigned() { NSWorkspace.shared.open(ProjectStore.shared.inbox.store) }
 
-    /// "~/…/proj/atlas-web": the home as ~, and past the first part only the last two folders (a long path would
-    /// outweigh the name; the whole one is in the tooltip).
+    /// "in ~/projects": where the folder is, as Finder would say it (the home as ~; a long location by its folder's
+    /// name) — not a half-elided path ("/…/projects/api": dogfood 2026-11-21). The whole path is the row's tooltip.
     static func shortPath(_ u: URL) -> String {
-        let t = (u.path as NSString).abbreviatingWithTildeInPath
-        let parts = t.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        let home = t.hasPrefix("~")
-        let shown = home ? parts.dropFirst() : parts[...]
-        guard shown.count > 3 else { return t }
-        return (home ? "~/…/" : "/…/") + shown.suffix(2).joined(separator: "/")
+        let parent = u.deletingLastPathComponent()
+        let t = (parent.path as NSString).abbreviatingWithTildeInPath
+        return T("settings.projects.in", t.count <= 36 ? t : FileManager.default.displayName(atPath: parent.path))
     }
 }
 
@@ -211,8 +208,10 @@ struct ProjectsPane: View {
         return SettingsLine(padding: 7) {
             HStack(spacing: 14) {
                 HStack(spacing: SettingsMetrics.iconGap) {
-                    Image(systemName: "folder.fill").font(.system(size: 14))
-                        .foregroundStyle(Color(nsColor: ProjectLook.color(p)).opacity(missing ? 0.4 : 1))
+                    // the project's one mark (the main window's sidebar, the island): its line folder with its colour
+                    // wash, or the missing folder — never a solid Finder folder (docs/design/system.md §3)
+                    Image(nsImage: (missing ? IslandGlyph.missing.image(size: 16, color: .secondaryLabelColor)
+                                    : IslandGlyph.project(ProjectLook.color(p)).image(size: 16, color: .labelColor)) ?? NSImage())
                         .frame(width: SettingsMetrics.iconSlot).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
                         if editing == p.id {

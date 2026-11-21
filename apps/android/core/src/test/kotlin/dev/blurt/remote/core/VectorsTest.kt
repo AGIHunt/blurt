@@ -61,7 +61,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(50, list.size)
+        assertEquals(54, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -74,7 +74,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(31, list.size)
+        assertEquals(36, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!

@@ -173,6 +173,7 @@
   "source.type.snap": "截图",
   "source.type.voice": "语音备注",
   "source.type.url": "网页",
+  "source.type.manual": "手动添加",
   "source.type.import": "导入",
   "source.type.service": "来自「服务」菜单",
   "source.at": "{time} 处",

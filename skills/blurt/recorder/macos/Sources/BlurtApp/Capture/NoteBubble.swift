@@ -161,10 +161,12 @@ final class NoteVoice {
 
     init(url: URL) { self.url = url }
 
-    /// Tests (test commands only): BLURT_TEST_MIC_DENIED=1 acts as if microphone access had been turned off.
+    /// Tests (test commands only): BLURT_TEST_MIC_DENIED=1 — or BLURT_TEST_MICROPHONE=denied, the variable onboarding's
+    /// permission rows read (SystemAccess.testMic) — acts as if microphone access had been turned off: one variable
+    /// simulates the denial everywhere (dogfood 1.1.0: with only the second set, dictation listened anyway).
     static let testDenied: Bool = {
         let env = ProcessInfo.processInfo.environment
-        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_MIC_DENIED"] == "1"
+        return env["BLURT_TEST_COMMANDS"] == "1" && (env["BLURT_TEST_MIC_DENIED"] == "1" || env["BLURT_TEST_MICROPHONE"] == "denied")
     }()
 
     /// Microphone access was turned off for Blurt (System Settings → Privacy & Security → Microphone).
@@ -1261,7 +1263,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         var leftEnd = textX, rightEnd = right
         if composer {
             doneBtn.title = Loc.t(mode == .edit ? "capture.note.save" : "capture.note.done", table: "Capture")
-            doneBtn.toolTip = Loc.t(mode == .edit ? "capture.note.save_tip" : "capture.note.done_tip", table: "Capture")
+            // the footer's whole line first (its slot may have room for the keys only)
+            doneBtn.toolTip = (mode == .listen && !statusLine.full.isEmpty ? statusLine.full + "\n" : "")
+                + Loc.t(mode == .edit ? "capture.note.save_tip" : "capture.note.done_tip", table: "Capture")
             // while the list is open its ↩ is the action: the primary steps back (system.md: neutral fill, no gradient)
             doneBtn.isEnabled = !picking && !pickingKind
             doneBtn.alphaValue = 1
@@ -1312,8 +1316,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         status.alignment = composer ? .right : .left
         let sh = ceil(status.attributedStringValue.size().height)
         status.frame = NSRect(x: leftEnd, y: midY - max(15, sh) / 2, width: max(0, rightEnd - leftEnd), height: max(15, sh))
-        // a line that doesn't fit beside the hover tools steps aside while they show (never cut mid-word)
-        status.isHidden = ceil(status.attributedStringValue.size().width) + 4 > status.frame.width
+        // a line that doesn't fit beside the hover tools says its keys alone, and only steps aside (never cut mid-word)
+        // when even they don't fit
+        fitStatus()
         pick.isHidden = !picking
         if picking {
             pick.frame = NSRect(x: x0, y: footY + footH + 4, width: inner, height: pick.height)
@@ -1549,6 +1554,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             guard !ok else { return }
             emit(["event": "note_voice_start_failed", "n": s.n, "why": v.failReason ?? "unknown", "mode": "\(self.mode)"])
             self.voice = nil; self.dropStream(); self.retakeFell(); self.refreshStatus()
+            // macOS blocks the mic for Blurt: said once a run, with the way to turn it on (the note only said "Mic
+            // unavailable", with no cause and no way to fix it)
+            if NoteVoice.denied, !NoteBubble.saidMicDenied {
+                NoteBubble.saidMicDenied = true
+                NoteVoice.toastUnavailable()
+            }
         }
         refreshStatus()
     }
@@ -1782,7 +1793,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             } else if micGone {
                 plainPlaceholder(Loc.t("capture.note.ph_mic_gone", table: "Capture"))
             } else if !voiceDone {
-                plainPlaceholder(Loc.t("capture.note.ph_no_mic", table: "Capture"))      // it never listened
+                // it never listened: macOS's switch for Blurt is off, or the mic didn't start
+                plainPlaceholder(Loc.t(NoteVoice.denied ? "capture.note.ph_mic_off" : "capture.note.ph_no_mic", table: "Capture"))
             } else {
                 plainPlaceholder(Loc.t("capture.note.placeholder_optional", table: "Capture"))
             }
@@ -1809,8 +1821,40 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         // (the slot is pinned against the primary: right-aligned, set on the string itself — an attributed value
         // carries its own paragraph style, the field's `alignment` alone doesn't hold)
-        status.attributedStringValue = NoteBubble.keyLine(line, alignment: mode == .recording ? .left : .right)
-        if status.frame.width > 0 { status.isHidden = ceil(status.attributedStringValue.size().width) + 4 > status.frame.width }
+        statusLine = (line, NoteBubble.shortLine(line), mode == .recording ? .left : .right)
+        status.attributedStringValue = NoteBubble.keyLine(line, alignment: statusLine.alignment)
+        if status.frame.width > 0 { fitStatus() }
+    }
+
+    /// The mic-off line went up once this run (the placeholder says it every time).
+    static var saidMicDenied = false
+
+    /// The footer's line as set (refreshStatus), with its keys-only form for a narrow slot.
+    private var statusLine: (full: String, short: String?, alignment: NSTextAlignment) = ("", nil, .right)
+
+    /// The line in the slot it has: whole, else its keys alone ("Tab accept", "↩ Save · ⌘↩ Copy") — the default
+    /// bubble's slot between the type chip and Done was narrower than either line, so the keys never showed — else
+    /// hidden.
+    private func fitStatus() {
+        let room = status.frame.width
+        let fits = { (a: NSAttributedString) in ceil(a.size().width) + 4 <= room }
+        let full = NoteBubble.keyLine(statusLine.full, alignment: statusLine.alignment)
+        if fits(full) || statusLine.full.isEmpty {
+            status.attributedStringValue = full
+            status.isHidden = !fits(full)
+            return
+        }
+        if let s = statusLine.short {
+            let short = NoteBubble.keyLine(s, alignment: statusLine.alignment)
+            if fits(short) { status.attributedStringValue = short; status.isHidden = false; return }
+        }
+        status.isHidden = true
+    }
+
+    /// The keys-only form of a footer line (nil: it has none).
+    static func shortLine(_ line: String) -> String? {
+        let pairs = [("capture.note.st_voice", "capture.note.st_voice_short"), ("capture.note.st_copy", "capture.note.st_copy_short")]
+        return pairs.first { Loc.t($0.0, table: "Capture") == line }.map { Loc.t($0.1, table: "Capture") }
     }
 
     /// The footer line, the way macOS menus set their keys: the keys (⏎ ↩ ⌘Z ↑↓ Esc …) in medium, the words regular,
@@ -1901,7 +1945,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let typedPart = (accepted || wordsInField != nil) && !typed ? "" : field.stringValue
         return NoteKeys.State(mode: mode == .listen ? .fresh : mode == .edit ? .edit : .recording, voice: v, typed: typedPart,
                               composing: (field.currentEditor() as? NSTextView)?.hasMarkedText() == true, picking: picking,
-                              pickingKind: pickingKind, filing: filing, canCopy: canCopyOut)
+                              pickingKind: pickingKind, filing: filing, canCopy: canCopyOut,
+                              hasText: !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     /// Does what NoteKeys decided; false when the key isn't the bubble's (it goes on to the field, the IME, the list).

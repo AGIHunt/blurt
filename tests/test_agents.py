@@ -303,12 +303,37 @@ def test_install_dry_run_and_real(env, tmp_path):
 
 def test_install_codex_uses_codex_home(env):
     """Regression: CODEX_HOME must reach `codex mcp add` (a stripped CODEX_HOME writes the user's ~/.codex)."""
+    dry = cli("install", "codex", "--mcp", "--dry-run")["changes"]
+    # Connect's preview lists the approval line with the server: the reporting tools only, nothing that takes a key
+    assert [c["action"] for c in dry] == ["run", "toml_set"]
+    assert dry[1]["lines"] == ['[mcp_servers.blurt.tools.mark_fixed] approval_mode = "approve"',
+                               '[mcp_servers.blurt.tools.get_item] approval_mode = "approve"',
+                               '[mcp_servers.blurt.tools.search_items] approval_mode = "approve"']
     out = cli("install", "codex", "--mcp")
     assert out["applied"]
     cfg = Path(os.environ["CODEX_HOME"]) / "config.toml"
     assert cfg.exists() and "mcp_server.py" in cfg.read_text()
+    assert cfg.read_text().count('approval_mode = "approve"') == 3 and "setup_connect" not in cfg.read_text()
     assert not (env["home"] / ".codex").exists()
     assert {c["action"] for c in cli("install", "codex", "--mcp")["changes"]} == {"exists"}
+
+
+def test_codex_approvals_in_toml(tmp_path):
+    """The approval tables go in without touching anything else; one already there is set, not repeated."""
+    tools = ["mark_fixed", "get_item", "search_items"]
+    text = ('model = "gpt-5"\n\n[mcp_servers.blurt]\ncommand = "uv"\nargs = ["run"]\n\n'
+            '[mcp_servers.blurt.tools.get_item]\napproval_mode = "prompt"\n\n[profiles.work]\nmodel = "o3"\n')
+    assert agents._approvals_missing(text, "blurt", tools) == tools
+    out = agents._with_approvals(text, "blurt", tools)
+    assert out.startswith(text.split("[mcp_servers.blurt.tools.get_item]")[0])
+    assert agents._approvals_missing(out, "blurt", tools) == [] and out.count("[mcp_servers.blurt.tools.get_item]") == 1
+    assert 'approval_mode = "prompt"' not in out and '[profiles.work]\nmodel = "o3"' in out
+    import tomllib
+    doc = tomllib.loads(out)
+    assert doc["model"] == "gpt-5" and doc["profiles"]["work"]["model"] == "o3"
+    assert {t: v["approval_mode"] for t, v in doc["mcp_servers"]["blurt"]["tools"].items()} == dict.fromkeys(tools, "approve")
+    assert agents._with_approvals(out, "blurt", tools) == out
+    assert agents._approvals_missing("", "blurt", tools) == tools
 
 
 def test_install_kimi_json_merge(env):
@@ -455,10 +480,10 @@ def test_install_rewrites_a_stale_mcp_entry(env):
     (codex_home / "blurt.json").write_text(json.dumps(
         {"name": "blurt", "transport": {"command": "uv", "args": ["run", "--script", str(agents.MCP_SERVER)]}}))
     dry = cli("install", "codex", "--mcp", "--dry-run")["changes"]
-    assert [c["action"] for c in dry] == ["run"] and dry[0]["replaces"] == "stale"
+    assert [c["action"] for c in dry] == ["run", "toml_set"] and dry[0]["replaces"] == "stale"
     out = cli("install", "codex", "--mcp")
     assert out["applied"] and json.loads((codex_home / "blurt.json").read_text())["transport"]["command"] == str(uv)
-    assert [c["action"] for c in cli("install", "codex", "--mcp")["changes"]] == ["exists"]
+    assert [c["action"] for c in cli("install", "codex", "--mcp")["changes"]] == ["exists", "exists"]
     (env["home"] / ".claude-mcp-blurt").write_text(f"--scope user blurt -- uv run --script {agents.MCP_SERVER}\n")
     out = cli("install", "claude", "--mcp")
     assert out["applied"] and out["changes"][0]["replaces"] == "stale"

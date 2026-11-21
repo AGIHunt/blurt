@@ -99,6 +99,8 @@ struct DictationFeedbackSheet: View {
         .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
         .frame(width: 580)
         .fixedSize(horizontal: false, vertical: true)
+        // Esc closes it wherever the focus is (Cancel's .cancelAction answers only while a button has it)
+        .onExitCommand { if f.phase != .sending { close() } }
     }
 
     // MARK: picking
@@ -123,6 +125,8 @@ struct DictationFeedbackSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(T("dictation.feedback.context"))      // the title; the description is its hint
+            .accessibilityHint(T("dictation.feedback.context.detail"))
             .accessibilityAddTraits(f.includeContext ? .isSelected : [])
             .padding(.horizontal, 10)
             .padding(.top, 12)
@@ -154,8 +158,17 @@ struct DictationFeedbackSheet: View {
     var list: some View {
         let tw = timeWidth
         return ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(f.entries) { e in row(e, timeWidth: tw) }
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(days, id: \.title) { d in
+                    // a day's heading ("Today", "Yesterday", "Oct 28") when the list spans more than one: each row's
+                    // time stays HH:mm and its text starts right after it
+                    if days.count > 1 {
+                        Text(d.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 2)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    ForEach(d.entries) { e in row(e, timeWidth: tw) }
+                }
             }
             .padding(.vertical, 4)
         }
@@ -164,8 +177,18 @@ struct DictationFeedbackSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
     }
 
-    /// The time column as wide as its longest time ("14:14", or "Oct 28 14:14" when older ones are listed): the text
-    /// starts right after it, no blank band.
+    /// The entries by day, newest first, each with its heading.
+    var days: [(title: String, entries: [DictationEntry])] {
+        var out: [(title: String, entries: [DictationEntry])] = []
+        for e in f.entries {
+            let t = DictationFeedbackSheet.day(e.time)
+            if out.last?.title == t { out[out.count - 1].entries.append(e) } else { out.append((t, [e])) }
+        }
+        return out
+    }
+
+    /// The time column as wide as its longest time ("14:14"; the day is the heading): the text starts right after it,
+    /// no blank band (an "Oct 28 14:14" further down used to set it for every row).
     var timeWidth: CGFloat {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let w = f.entries.map { (DictationFeedbackSheet.time($0.time) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
@@ -178,8 +201,10 @@ struct DictationFeedbackSheet: View {
                 DictationFeedbackSheet.box(f.checked.contains(e.id) ? .on : .off)
                 Text(DictationFeedbackSheet.time(e.time)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                     .lineLimit(1).frame(width: timeWidth, alignment: .leading)
-                Text(DictationEntry.preview(e.finalText)).lineLimit(1).truncationMode(.tail)
+                // two lines before "…", and the whole text on hover and for VoiceOver
+                Text(DictationEntry.preview(e.finalText)).lineLimit(2).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(f.hasAudio(e) ? Island.clock(e.duration) : T("dictation.feedback.text_only"))
                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -188,6 +213,8 @@ struct DictationFeedbackSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(e.finalText)
+        .accessibilityLabel(DictationFeedbackSheet.time(e.time) + ", " + e.finalText)
         .accessibilityAddTraits(f.checked.contains(e.id) ? .isSelected : [])
     }
 
@@ -253,7 +280,17 @@ struct DictationFeedbackSheet: View {
 
     static func time(_ d: Date) -> String {
         let f = DateFormatter()
-        f.setLocalizedDateFormatFromTemplate(Calendar.current.isDateInToday(d) ? "jmm" : "MMMdjmm")
+        f.setLocalizedDateFormatFromTemplate("jmm")
+        return f.string(from: d)
+    }
+
+    /// A day's heading: Today, Yesterday, else the date ("Oct 28").
+    static func day(_ d: Date) -> String {
+        let c = Calendar.current
+        if c.isDateInToday(d) { return T("dictation.history.today") }
+        if c.isDateInYesterday(d) { return T("dictation.history.yesterday") }
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate(c.isDate(d, equalTo: Date(), toGranularity: .year) ? "MMMd" : "yMMMd")
         return f.string(from: d)
     }
 }

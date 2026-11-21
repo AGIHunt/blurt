@@ -501,6 +501,49 @@ pub fn rehear_groups(pieces: &[Piece], window: f64) -> Vec<Range<usize>> {
     out
 }
 
+/// A window answer must cover its pieces (docs/design/dictation.md §hearing again, the Mac's `DictationStitch.rehearLoss`):
+/// of the letters-script words and the CJK characters the pieces heard, each script with at least 3 must keep 60 % in the
+/// answer, else that script is lost (`"latin"` / `"cjk"`). Counts only; digits count for neither. The shared fixture rows
+/// keep the ports equal; this app doesn't hear windows again yet.
+pub const REHEAR_SCRIPT_MIN: usize = 3;
+pub const REHEAR_KEEP_SHARE: f64 = 0.6;
+
+pub fn rehear_loss(said: &str, answer: &str) -> Option<&'static str> {
+    let mut have: std::collections::HashMap<String, usize> = Default::default();
+    for u in units(answer) {
+        *have.entry(u.value).or_default() += 1;
+    }
+    let (mut total, mut kept) = ((0usize, 0usize), (0usize, 0usize));
+    for u in units(said) {
+        let Some(c) = u.value.chars().next() else { continue };
+        let cjk = is_cjk(c);
+        if !cjk && !is_letter(c) {
+            continue;
+        }
+        let hit = match have.get_mut(&u.value) {
+            Some(n) if *n > 0 => {
+                *n -= 1;
+                true
+            }
+            _ => false,
+        };
+        if cjk {
+            total.1 += 1;
+            kept.1 += hit as usize;
+        } else {
+            total.0 += 1;
+            kept.0 += hit as usize;
+        }
+    }
+    if total.0 >= REHEAR_SCRIPT_MIN && (kept.0 as f64) < REHEAR_KEEP_SHARE * total.0 as f64 {
+        return Some("latin");
+    }
+    if total.1 >= REHEAR_SCRIPT_MIN && (kept.1 as f64) < REHEAR_KEEP_SHARE * total.1 as f64 {
+        return Some("cjk");
+    }
+    None
+}
+
 /// Numbered or bulleted lines ("1. …", "2、…", "- …" at a line start): Light must never write one; a structured text
 /// with ≥ 2 of them is a list. (The Mac's regex `^[ \t]*(?:[0-9]{1,2}(?:[.)）](?![0-9])|、)|[-•*](?=[ \t]))[ \t]*\S`,
 /// by hand: no regex crate here.)
@@ -877,6 +920,11 @@ mod tests {
                 "keepCase" => assert_eq!(
                     keep_case(&st(&r["input"]), &st(&r["output"])),
                     st(&r["want"]),
+                    "{r}"
+                ),
+                "rehearLoss" => assert_eq!(
+                    rehear_loss(&st(&r["said"]), &st(&r["answer"])),
+                    r["want"].as_str(),
                     "{r}"
                 ),
                 "windowInput" => assert_eq!(

@@ -122,6 +122,24 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 day ago</string><key>other</key><string>%d days ago</string></dict>
   </dict>
+  <key>capture.card.copy_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copy the Card</string><key>other</key><string>Copy %d Cards</string></dict>
+  </dict>
+  <key>capture.card.delete_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Delete the Card</string><key>other</key><string>Delete %d Cards</string></dict>
+  </dict>
+  <key>capture.cards.more_ax</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 more card</string><key>other</key><string>%d more cards</string></dict>
+  </dict>
   <key>capture.card.move_n</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -150,13 +168,13 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Another copy of Blurt is using one of these shortcuts</string><key>other</key><string>Another copy of Blurt is using %d of these shortcuts</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Another copy of Blurt has taken one of these shortcuts</string><key>other</key><string>Another copy of Blurt has taken %d of these shortcuts</string></dict>
   </dict>
   <key>capture.keys.taken_banner_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt are using one of these shortcuts</string><key>other</key><string>Other copies of Blurt are using %d of these shortcuts</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt have taken one of these shortcuts</string><key>other</key><string>Other copies of Blurt have taken %d of these shortcuts</string></dict>
   </dict>
 	<key>capture.drawer.hang_sub</key>
 	<dict>

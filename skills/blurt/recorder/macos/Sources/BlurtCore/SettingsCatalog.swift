@@ -99,13 +99,15 @@ public enum SettingsCatalog {
         pane("recording", "feature.recording", "Home", "record.circle", "features"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "features"),
         // phones, and the computers this Mac drives or that drive it (docs/design/remote-desktop-viewer.md)
-        pane("remote", "feature.phone", "Home", "iphone", "features"),
+        pane("remote", "feature.phone", "Home", "laptopcomputer.and.iphone", "features"),
         pane("general", "settings.kit.general", "Settings", "gearshape", "app"),
-        pane("speech", "settings.kit.speech", "Settings", "cpu", "app"),
-        pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "app"),
+        // sidebar glyphs with an empty inside and few details at 13 pt (dogfood 2026-11-21: cpu, keyboard and
+        // internaldrive read as fine grilles beside the outlines): a model is a cube, a shortcut ⌘, storage a drive
+        pane("speech", "settings.kit.speech", "Settings", "cube", "app"),
+        pane("shortcuts", "settings.kit.shortcuts", "Settings", "command", "app"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "app"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
-        pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
+        pane("storage", "settings.kit.storage", "Settings", "externaldrive", "mac"),
     ]
 
     /// The searches the no-match page offers (in the UI language): each finds rows in every language
@@ -245,8 +247,9 @@ public enum SettingsCatalog {
         sec("screentext.translation", "settings.screen_text.section.translate"),
         sec("screentext.history_section", "settings.screen_text.section.history"),
 
-        // 手机和电脑: what the Mac shows while a device drives it, and Away from home. The devices themselves are on the
-        // main window's page of the same name (docs/design/remote-desktop-viewer.md §One page for the devices).
+        // 远程控制 / Remote Control: On this Mac (what this Mac does for its devices) and Other networks (how one on another
+        // network gets here). The devices themselves are on the main window's page of the same name
+        // (docs/design/remote-desktop-viewer.md §One page for the devices); the pane's first row leads there.
         sec("remote.options", "settings.remote.section.options"),
         sec("remote.relay", "settings.remote.section.relay"),
 
@@ -365,7 +368,8 @@ public enum SettingsCatalog {
             row("dictation.suggest_lists", "dictation.text", D("dictation.style.suggest"), fold: "dictation.by_app"),
             row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
-            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
+            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), detail: D("dictation.polish.timeout.detail"),
+                fold: "dictation.by_app"),
             // translate mode (docs/design/dictation-translate.md): into what — its own, not ⌥T's (2026-10-30) — and the
             // model that translates (Settings → Models' Translate row, said here)
             row("dictation.translate", "dictation.translation", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
@@ -378,7 +382,7 @@ public enum SettingsCatalog {
             // the history's menu: how long it is kept, clearing it; keeping the audio is a row of its own (what is kept
             // is said where it is seen)
             row("dictation.history_saved", "dictation.data", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
-            row("dictation.history_keep", "dictation.data", D("dictation.history.keep"), fold: "dictation.history_saved"),
+            row("dictation.history_keep", "dictation.data", D("dictation.history.keep")),
             row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail")),
             // chosen and listed in Settings → Speech
             row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
@@ -389,17 +393,20 @@ public enum SettingsCatalog {
             row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
                 more: S("settings.screen_text.translate.hint")),
             row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
+            row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep"),
             row("screentext.history", "screentext.history_section", "settings.screen_text.history",
                 detail: S("settings.screen_text.history.detail")),
-            row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep", fold: "screentext.history"),
 
-            // 手机和电脑
+            // 远程控制: the devices' row first (its title and line are live on the page), then the two sections
+            row("remote.devices", nil, "settings.remote.devices.title", detail: S("settings.remote.devices.detail")),
+            row("remote.stay_awake", "remote.options", "settings.remote.stay_awake", detail: S("settings.remote.stay_awake.desktop"),
+                more: S("settings.remote.stay_awake.desktop.more")),
+            row("remote.say_asleep", "remote.options", "settings.remote.say_asleep", detail: S("settings.remote.say_asleep.detail")),
             row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
             row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
-            row("remote.away", "remote.relay", "settings.remote.away"),
-            row("remote.relay.address", "remote.relay", "settings.remote.relay", detail: S("settings.remote.relay.address.detail")),
             row("remote.go_between", "remote.relay", "settings.remote.go_between", detail: S("settings.remote.go_between.detail")),
-            row("remote.relay.help", "remote.relay", "settings.remote.relay.help", detail: S("settings.remote.relay.help.detail")),
+            // its footnote's Copy Instructions is found by this row's keywords (cloudflare, set up a relay…)
+            row("remote.relay.address", "remote.relay", "settings.remote.relay.own", detail: S("settings.remote.relay.address.detail")),
 
             // Speech
         ]
@@ -423,6 +430,7 @@ public enum SettingsCatalog {
             row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
             row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
             row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
+            // cloud recognition's model and audio speed (its keys are Cloud services' lines: CloudSpeechLines)
             row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.note.cloud")),
             whole("speech.models", detail: P("speech.models.footer")),
             whole("speech.compare", detail: P("speech.compare.note")),

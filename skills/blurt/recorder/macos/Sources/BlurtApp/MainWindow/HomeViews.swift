@@ -168,16 +168,18 @@ struct HomeCapabilityRow: View {
         }
     }
 
-    /// Under the name, one line: what it does (an off row too, dimmed), a quiet fact, or what stands in its way in
-    /// attention ink — and after it the one button that fixes that.
+    /// Under the name, a line: what it does (an off row too, dimmed), a quiet fact, or what stands in its way in
+    /// attention ink — and after it the one button that fixes that. A sentence too long for the column takes a second
+    /// line (the row's 56 pt hold the name and two) instead of ending in "…", the button on its last line.
     @ViewBuilder private var line: some View {
         let c = row.capability
-        HStack(spacing: 0) {
+        HStack(alignment: .lastTextBaseline, spacing: 0) {
             // (no text: the line is its button alone — an offer, "Download more accurate speech models · 5.9 GB")
             if !row.text.isEmpty {
                 Text(row.text)
                     .foregroundStyle(row.tone == .trouble ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
-                    .lineLimit(1).truncationMode(.tail)
+                    .lineLimit(2).truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
                     .help(row.tip ?? "")
             }
             if let f = row.fix {

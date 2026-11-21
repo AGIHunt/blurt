@@ -65,7 +65,8 @@ import java.util.concurrent.Executors
 @Composable
 fun PairSheet(onClose: () -> Unit) {
     val ctx = LocalContext.current
-    var link by remember { mutableStateOf("") }
+    // the link used last: after a pairing that didn't take, it's still here to try again or change
+    var link by remember { mutableStateOf(Remote.link.lastLink) }
     var failed by remember { mutableStateOf(false) }
     val hasCamera = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
@@ -93,7 +94,7 @@ fun PairSheet(onClose: () -> Unit) {
             Text(stringResource(R.string.status_unpaired), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             OutlinedTextField(link, { link = it; failed = false }, Modifier.widthIn(max = 420.dp).fillMaxWidth(), singleLine = true,
                 label = { Text(stringResource(R.string.pairing_link)) })
-            Button({ open(link) }, enabled = link.isNotBlank()) { Text(stringResource(R.string.connect)) }
+            Button({ if (open(link)) Remote.link.lastLink = link }, enabled = link.isNotBlank()) { Text(stringResource(R.string.connect)) }
             if (failed) Text(stringResource(R.string.not_blurt_code), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }

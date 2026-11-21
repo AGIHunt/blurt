@@ -122,7 +122,7 @@ struct HomeRow: Equatable, Identifiable {
         case .cards: return "rectangle.stack"
         case .screenText: return "text.viewfinder"
         case .recording: return "record.circle"
-        case .phone: return "iphone"
+        case .phone: return "laptopcomputer.and.iphone"
         }
     }
     /// its Settings pane (one that isn't there yet opens General: SettingsController.show)
@@ -308,7 +308,8 @@ final class HomeModel: ObservableObject {
         // (a row shows two keys at most: "⌥A and ⌥V")
         r.text = labels.count == 1 ? T("home.keys.taken", labels[0])
             : T("home.keys.taken_many", labels.dropFirst().reduce(labels[0]) { T("home.keys.and", $0, $1) })
-        r.tip = Hotkeys.shared.state(first).text
+        // what the capability does stays one hover away (the line now says what's in its way)
+        r.tip = [what(r.capability), Hotkeys.shared.state(first).text].filter { !$0.isEmpty }.joined(separator: "\n")
         r.fix = T("home.keys.change")
         r.fixKind = "keys"
     }
@@ -333,12 +334,29 @@ final class HomeModel: ObservableObject {
                 r.fix = T("dictation.menu.set_up"); r.fixKind = "speech"
             case .getModel?:
                 r.tone = .trouble; r.text = T("main.dictation.banner.no_model")
-                if let j = dm.dictationJob {
+                if let j = dm.offerJob {
                     r.fix = T("dictation.toast.no_model.action_size", modelSize(j.sizeMB)); r.fixKind = "model"
                 } else {
                     r.fix = T("dictation.toast.no_model.settings"); r.fixKind = "choose_model"
                 }
             case nil:
+                // another copy of Blurt hears the key (menuRow says nothing then): said here as the ⌥ rows say theirs,
+                // the key quiet, with the Dictation page's way out — not "Press Fn" (dogfood 2026-11-21)
+                if Dictation.shared.deferredTo != nil, !HotkeySettings.solo {
+                    let key = Dictation.keyShort.trimmingCharacters(in: .whitespaces)
+                    let keys = HotkeySettings.shared
+                    r.keys = [HomeKey(caps: [key], tip: T("dictation.status.other_instance_key", Dictation.keyInline), dim: true)]
+                    r.tone = .trouble
+                    r.text = T("home.keys.taken", key)
+                    r.tip = T("dictation.status.other_instance_key", Dictation.keyInline)
+                    if keys.otherApps.isEmpty {
+                        r.fix = T("home.keys.change"); r.fixKind = "dictation_settings"
+                    } else {
+                        r.fix = Loc.t(keys.others.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")
+                        r.fixKind = "quit_other"
+                    }
+                    break
+                }
                 // its model is on its way: how far, quietly (the Dictation page's banner says the same)
                 if case let .downloading(done, total) = DictationHistoryModel.pageStatus(enabled: true, needsSetup: false) {
                     r.tone = .note; r.text = T("home.dictation.downloading", modelSize(done), modelSize(total))
@@ -390,15 +408,21 @@ final class HomeModel: ObservableObject {
     /// the offer after a Stop, or the retry after it broke off.
     private func betterModels(_ dm: DictationModels, into r: inout HomeRow) {
         let dl = ModelDownloads.shared
-        let better = dm.recommendedASR, pair = [dm.recommendedASR?.id, dm.recommendedPolish?.id].compactMap { $0 }
+        let better = dm.recommendedASR
+        let betterMissing = better.map { !$0.installed && $0.builtin != true } ?? false
+        // the polish model, offered on its own once the recogniser is in (the assistant brings only the recogniser):
+        // while polish picks its model by itself and no cloud key polishes
+        let polish = dm.polishAuto && !DictationCloud.ready ? dm.recommendedPolish.flatMap { $0.installed ? nil : $0 } : nil
+        let offered = betterMissing ? better?.id : polish?.id
         let line = ModelDownloadNotice.home(ready: dm.dictationReady, downloading: dl.active, unpacking: dl.isUnpacking(dl.current ?? ""),
-                                            progress: dl.progress, automatic: dm.asrAuto,
-                                            betterMissing: better.map { !$0.installed && $0.builtin != true } ?? false,
-                                            missingMB: dm.recommendedMB.missing, failed: pair.contains { dl.failed[$0] != nil })
+                                            progress: dl.progress, automatic: dm.asrAuto, betterMissing: betterMissing,
+                                            missingMB: better?.sizeMB ?? 0, polishMB: polish?.sizeMB ?? 0,
+                                            failed: offered.map { dl.failed[$0] != nil } ?? false)
         switch line {
         case .usual: return
         case .downloading(let done, let total):
-            r.text = T("home.dictation.better_downloading", modelSize(done), modelSize(total))
+            let polishing = dl.queue.pending.first { $0.id == dl.current }?.kind == .polish
+            r.text = T(polishing ? "home.dictation.polish_downloading" : "home.dictation.better_downloading", modelSize(done), modelSize(total))
             r.fix = T("app.models.stop"); r.fixKind = "stop_download"
         case .unpacking:
             r.text = T("app.models.menu_unpacking")
@@ -410,6 +434,9 @@ final class HomeModel: ObservableObject {
             // the line is the offer itself, in link ink
             r.text = ""
             r.fix = T("home.dictation.better_offer", modelSize(mb)); r.fixKind = "better_models"
+        case .offerPolish(let mb):
+            r.text = ""
+            r.fix = T("home.dictation.polish_offer", modelSize(mb)); r.fixKind = "better_models"
         }
         r.tone = .note
     }
@@ -445,6 +472,12 @@ final class HomeModel: ObservableObject {
         return out
     }
 
+    /// The try-line for a capability whose key is taken: what its row says about it, with the same fix.
+    private func taken(_ a: HotAction, _ r: HomeRow) -> HomeTry? {
+        guard Hotkeys.shared.state(a).isConflict, r.tone == .trouble else { return nil }
+        return HomeTry(id: r.capability.rawValue, trouble: r.text, fix: r.fix, capability: r.capability)
+    }
+
     /// The empty state's lines: per capability that is on, the one thing to try.
     var tries: [HomeTry] {
         rows.filter(\.on).compactMap { r in
@@ -459,9 +492,10 @@ final class HomeModel: ObservableObject {
                 // it can't run yet: the fix, not a promise
                 if r.tone == .trouble { return HomeTry(id: c.rawValue, trouble: r.text, fix: r.fix, capability: c) }
                 return line("home.try.dictation", r.keys.first?.caps ?? [])
-            case .cards: return line("home.try.cards", KeyCaps.split(hk(.snap)))
-            case .screenText: return line("home.try.screen_text", KeyCaps.split(hk(.text)))
-            case .recording: return line("home.try.recording", KeyCaps.split(hk(.toggleRecord)))
+            // a key that is taken would be a dead promise: the row's own "⌥A is taken · Change Key…" instead
+            case .cards: return taken(.snap, r) ?? line("home.try.cards", KeyCaps.split(hk(.snap)))
+            case .screenText: return taken(.text, r) ?? line("home.try.screen_text", KeyCaps.split(hk(.text)))
+            case .recording: return taken(.toggleRecord, r) ?? line("home.try.recording", KeyCaps.split(hk(.toggleRecord)))
             case .phone:
                 guard PhoneStatus.line == nil else { return nil }        // a phone is paired already
                 return HomeTry(id: c.rawValue, before: T("home.try.phone"), capability: c)
@@ -693,6 +727,17 @@ final class HomeModel: ObservableObject {
         refresh()                 // (CapabilityWatch's notice follows on the next turn: the switch answers now)
     }
 
+    /// Home's offer, one model at a time with its own size: this Mac's recogniser while it is missing, then its
+    /// polish model (the download manager first checks it fits on the disk).
+    private func downloadBetter() {
+        let dm = DictationModels.shared
+        if let a = dm.recommendedASR, !a.installed, a.builtin != true {
+            ModelDownloads.shared.download([.init(id: a.id, kind: .dictation, name: a.name ?? a.id, sizeMB: a.sizeMB)], via: "home")
+        } else if let p = dm.recommendedPolish, !p.installed {
+            ModelDownloads.shared.download([.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB)], via: "home")
+        }
+    }
+
     /// The one button of a row's line.
     func fix(_ c: Capability) {
         guard let kind = rows.first(where: { $0.capability == c })?.fixKind else { return }
@@ -704,7 +749,9 @@ final class HomeModel: ObservableObject {
         case "choose_model": SpeechPane.showDictationModels()
         case "download": ModelDownloads.showProgress()
         case "stop_download": ModelDownloads.shared.stop()
-        case "better_models": DictationModels.shared.downloadRecommended()
+        case "quit_other": HotkeySettings.shared.quitOthers()
+        case "dictation_settings": AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue)
+        case "better_models": downloadBetter()
         case "agent": AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
         case "keys": AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
         case "phone": MainWindowController.shared.go(.phone)

@@ -36,6 +36,15 @@ private let launchOnly: Set<String> = ["BLURT_NOTE_WAV", "BLURT_AGENT_PATH", "BL
 for k in ProcessInfo.processInfo.environment.keys where k.hasPrefix("BLURT_TEST_") || k.hasPrefix("DYLD_") || launchOnly.contains(k) { unsetenv(k) }
 #endif
 
+// A build made for tests runs only in a home of its own: launched without BLURT_HOME (LaunchServices opening a scratch copy as the
+// blurt:// handler, a Finder double-click) it would share the user's ~/.blurt, index and hotkeys with their real Blurt (2026-11-21).
+#if BLURT_TEST_HOOKS
+if ProcessInfo.processInfo.environment["BLURT_HOME"] == nil, !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--speech") }) {
+    FileHandle.standardError.write(Data("blurt: a test build needs BLURT_HOME; not starting\n".utf8))
+    exit(0)
+}
+#endif
+
 // macOS's speech recognition for transcribe.py's `apple` backend (Capture/AppleSpeech.swift): answers and exits.
 switch CommandLine.arguments.dropFirst().first {
 case "--speech": AppleSpeech.runCLI(Array(CommandLine.arguments.dropFirst(2)))

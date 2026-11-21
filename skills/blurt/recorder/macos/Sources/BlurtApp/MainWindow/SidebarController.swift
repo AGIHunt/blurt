@@ -76,6 +76,22 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// What a row takes besides its name, at the sidebar's width: the source list's insets round the row, the icon
+    /// (2 + 18 + 6), the gaps a hidden key, mark and empty count still keep (5 + 5 + 6 + 6), and a few points so the
+    /// name never meets "…" (measured: a 190 pt sidebar leaves a name 107.5 pt).
+    static let rowChrome: CGFloat = 88
+
+    /// The narrowest the sidebar may be: every built-in place's name whole, in this language, at the rows' font
+    /// (dogfood 1.1.0: "Text &…slation" at the window's minimum width, light and dark). Never under 190 pt; project
+    /// names, which can be any length, keep their middle truncation and tooltip.
+    static var minimumWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let names = [T("home.title"), T("dictation.history.sidebar"), T("cards.title"), T("feature.screen_text"), T("feature.phone"),
+                     T("main.place.inbox"), T("main.place.progress"), T("project.inbox"), T("main.place.all")]
+        let widest = names.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return max(190, ceil(widest) + rowChrome)
+    }
+
     override func loadView() {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
@@ -117,18 +133,48 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
         openButton = open
         let root = NSView()
-        for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        // a hairline over the footer while rows go on under it: the last row cut by the list's edge read as drawn under
+        // "+ Open Folder…" at the window's smallest height
+        let rule = NSBox()
+        rule.boxType = .separator
+        rule.isHidden = true
+        footerRule = rule
+        for v in [scroll, rule, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -8),
+            rule.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            rule.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            rule.bottomAnchor.constraint(equalTo: scroll.bottomAnchor),
             open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(updateFooterRule), name: NSView.boundsDidChangeNotification,
+                                               object: scroll.contentView)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateFooterRule), name: NSView.frameDidChangeNotification,
+                                               object: outline)
+        listScroll = scroll
         view = root
         view.frame = NSRect(x: 0, y: 0, width: 220, height: 600)
     }
 
     @objc func openTapped() { actions?.openFolder() }
+
+    private var footerRule: NSBox?
+    private weak var listScroll: NSScrollView?
+
+    /// The footer's hairline shows while some row is below the list's visible bottom.
+    @objc private func updateFooterRule() {
+        guard let s = listScroll, let r = footerRule else { return }
+        let more = outline.bounds.height - s.contentView.documentVisibleRect.maxY > 1
+        if r.isHidden == more { r.isHidden = !more }
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        updateFooterRule()
+    }
 
     // MARK: rename in place
 
@@ -177,7 +223,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             pages.append(place(T("cards.title"), .cards, "rectangle.stack", n > 0 ? n : nil))
         }
         if Capability.screenText.isOn { pages.append(place(T("feature.screen_text"), .screenText, "text.viewfinder", nil)) }
-        if Capability.phone.isOn { pages.append(place(T("feature.phone"), .phone, "iphone", nil)) }
+        if Capability.phone.isOn { pages.append(place(T("feature.phone"), .phone, "laptopcomputer.and.iphone", nil)) }
         let recording = Capability.recording.isOn
         let itemPlaces = !recording ? [] : [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
@@ -293,15 +339,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     // MARK: drags: projects reorder (Finder's Favorites); folders open as projects; items move
 
     func outlineView(_ o: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        // the projects keep the one order every list uses (pinned, then the most recently used: Pin to Top in their
-        // menu), so a project isn't dragged into an order of its own
+        // the user's own order: dragged like Finder's Favorites (pinned ones stay above the rest)
         guard Self.reorderByDrag, let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(id, forType: .blurtProject)
         return pb
     }
 
-    static let reorderByDrag = false
+    static let reorderByDrag = true
 
     /// The projects group node (where a dragged project lands); nil while there is none.
     private var projectsGroup: SidebarNode?

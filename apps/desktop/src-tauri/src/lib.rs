@@ -355,6 +355,13 @@ fn projects_set(state: tauri::State<'_, AppState>, id: String, patch: Value) -> 
     projects::set(&state.runner(), &id, &patch)
 }
 
+#[tauri::command(async)]
+fn projects_order(app: AppHandle, state: tauri::State<'_, AppState>, ids: Vec<String>) -> R<Value> {
+    let r = projects::order(&state.runner(), &ids)?;
+    island::refresh(&app);
+    Ok(r)
+}
+
 #[tauri::command]
 fn projects_open_folder(app: AppHandle, make_current: Option<bool>) {
     island::open_folder(&app, make_current.unwrap_or(false));
@@ -1226,6 +1233,7 @@ pub fn run() {
             projects_add,
             projects_use,
             projects_set,
+            projects_order,
             projects_open_folder,
             projects_locate,
             items_doc,
@@ -1320,17 +1328,25 @@ pub fn run() {
             remote::remote_pairing_link_copied,
             remote::remote_answer_pairing,
             remote::remote_remove_device,
+            remote::remote_rename_device,
             remote::remote_set_relay,
             remote::remote_check_relay,
             remote::remote_set_screen_allowed,
             remote::remote_set_go_between,
+            remote::remote_set_stay_awake,
+            remote::remote_end_session,
+            remote::remote_connections,
+            remote::remote_set_service,
             remote::remote_relay_instructions,
             remote::remote_allow_firewall,
             viewer::computers_status,
             viewer::computers_browse,
             viewer::computers_pair,
             viewer::computers_cancel_pairing,
+            viewer::computers_retry_pairing,
+            viewer::computers_add_again,
             viewer::computers_remove,
+            viewer::computers_rename,
             viewer::computers_open,
             viewer::viewer_attach,
             viewer::viewer_screen,
@@ -1341,6 +1357,9 @@ pub fn run() {
             viewer::viewer_capture,
             viewer::viewer_options,
             viewer::viewer_show_display,
+            viewer::viewer_privacy,
+            viewer::viewer_system,
+            viewer::viewer_send_files,
             viewer::viewer_decode_failed,
         ])
         .build(tauri::generate_context!())

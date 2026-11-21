@@ -603,22 +603,54 @@ final class DictationStream {
         // only my voice: a window that was all someone else answers blank, and that is its text — not a failure
         let noneMine = (answer["speaker"] as? [String: Any])?["match"] as? Bool == false
         let ok = answer["ok"] as? Bool == true && (!text.isEmpty || noneMine)
+        // an answer that lost what the pieces heard (a language half of a mixed window): the pieces' text, already
+        // on the live panel as final, stays
+        let lost = ok && !noneMine ? DictationStitch.rehearLoss(said: said, answer: text) : nil
+        // the last piece, heard only in this window, has no text of its own: heard alone now
+        var rescued = true
+        if lost != nil {
+            for m in members where m.covered {
+                let a = max(0, m.start - w.start), b = min(samples.count, m.end - w.start)
+                guard b > a else { continue }
+                let mu = dir.appendingPathComponent("\(id)-p\(m.index).wav")
+                DictationStream.writeWav(Array(samples[a..<b]), to: mu)
+                let before = lock.locked { members.filter { $0.index < m.index }.map(\.raw) }
+                let r = Dictation.transcribe(mu, vocab: opt.vocab, language: opt.language,
+                                             prior: String((prior + DictationStitch.join(before)).suffix(200)), budget: 30,
+                                             hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                             before: lock.locked { context }?.asrBefore ?? "",
+                                             audioSeconds: Double(b - a) / NoteVoice.rate, voiceprint: opt.voiceGate ? false : nil)
+                try? FileManager.default.removeItem(at: mu)
+                w.loadMS += r["load_ms"] as? Int ?? 0
+                let t = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if r["ok"] as? Bool != true { rescued = false; continue }
+                lock.locked {
+                    m.raw = t
+                    m.asrText = (r["asr_text"] as? String ?? t).trimmingCharacters(in: .whitespacesAndNewlines)
+                    m.asr = r
+                }
+            }
+        }
         lock.locked {
-            if ok {
+            if ok, lost == nil {
                 w.raw = text
                 w.asrText = (answer["asr_text"] as? String ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
                 w.asr = answer
             } else {
                 // the pieces' own transcripts: never worse than before
-                w.raw = said; w.asrText = saidHeard; w.asr = members.first?.asr
-                if members.contains(where: \.covered) { w.asrFailed = true; w.asrCode = answer["code"] as? String ?? "error" }
+                let said = lost == nil ? said : DictationStitch.joinPieces(members.map(\.raw), pauses: mine)
+                let saidHeard = lost == nil ? saidHeard : DictationStitch.joinPieces(members.map(\.asrText), pauses: mine)
+                w.raw = said; w.asrText = saidHeard; w.asr = members.first?.asr; w.piecesText = said
+                if lost == nil || !rescued, members.contains(where: \.covered) {
+                    w.asrFailed = true; w.asrCode = answer["code"] as? String ?? "error"
+                }
             }
             w.asrDone = true
         }
         emit(["event": "dictation_rehear", "id": id, "window": w.index, "pieces": members.count,
               "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100,
               "ms": Int((w.asrSpan.1 - w.asrSpan.0) * 1000), "ok": ok, "code": ok ? NSNull() : answer["code"] ?? "empty",
-              "changed": ok && text != said])
+              "changed": ok && lost == nil && text != said, "lost": lost ?? NSNull()])
         polishQ.async { self.polish(w) }
     }
 

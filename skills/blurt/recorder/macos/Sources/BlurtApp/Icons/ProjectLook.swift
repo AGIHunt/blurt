@@ -18,6 +18,22 @@ enum ProjectLook {
         return palette[Int(h % UInt32(palette.count))]
     }
 
+    /// A project's name in a menu (the status menu's Project ▸, Open Recent, Go, Move to Project): cut in the middle
+    /// past 40 characters, "Customer Onboarding Redes…Q1 2027 Launch", so one long name doesn't widen the whole menu to
+    /// 600 pt (dogfood 2026-11-21); the item's tooltip carries the whole name.
+    static func menuTitle(_ name: String, limit: Int = 40) -> String {
+        guard name.count > limit else { return name }
+        let head = (limit - 1) * 3 / 5, tail = limit - 1 - head
+        return name.prefix(head).trimmingCharacters(in: .whitespaces) + "…" + name.suffix(tail).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The whole name when the menu shows it cut, then the folder.
+    static func menuTip(_ p: Project) -> String { menuTip(name: p.name, path: p.path) }
+    static func menuTip(name: String, path: URL) -> String {
+        let where_ = (path.path as NSString).abbreviatingWithTildeInPath
+        return menuTitle(name) == name ? where_ : name + "\n" + where_
+    }
+
     static let badgeFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
 
     static func badgeSize(_ key: String, height: CGFloat = 16) -> NSSize {

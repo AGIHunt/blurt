@@ -137,7 +137,8 @@ def test_all_tools_over_stdio(env):
         ["bundle", "bundle_items", {"uids": ["$uid"], "title": "Login issues", "out_dir": str(env["tmp"] / "bundles"),
                                     "lang": "en"}],
         ["bundle_project", "bundle_items", {"project": str(env["repo"]), "kind": ["issue"], "state": ["to_verify"],
-                                            "out_dir": str(env["tmp"] / "bundles" / "x.zip")}],
+                                            "output": str(env["tmp"] / "bundles" / "x.zip")}],  # the name an agent guessed
+        ["bundle_two", "bundle_items", {"uids": ["$uid"], "out_dir": str(env["tmp"]), "path": str(env["tmp"] / "y.zip")}],
         ["bundle_none", "bundle_items", {}],
         ["bundle_bad", "bundle_items", {"uids": ["nope"]}],
     ]
@@ -153,7 +154,8 @@ def test_all_tools_over_stdio(env):
                                 # model setup (agent-setup.md §5; tests/test_setup.py)
                                 "setup_status", "setup_recommend", "setup_connect", "setup_test", "setup_use",
                                 "setup_download", "setup_verify"}
-    assert r["_tools"]["bundle_items"]["params"] == ["kind", "lang", "out_dir", "project", "state", "title", "uids"]
+    assert r["_tools"]["bundle_items"]["params"] == ["kind", "lang", "out_dir", "output", "path", "project", "state",
+                                                     "title", "uids"]
     assert "once per group" in r["_tools"]["bundle_items"]["description"]
     b = text_json(r["bundle"])
     assert b["uids"] == [r["_uid"]] and b["title"] == "Login issues" and b["name"].endswith("-1-item.zip")
@@ -166,7 +168,7 @@ def test_all_tools_over_stdio(env):
     assert any("/frames/" in n for n in names) and str(env["tmp"]) not in summary
     bp = text_json(r["bundle_project"])
     assert bp["uids"] == [r["_uid"]] and bp["path"] == str((env["tmp"] / "bundles" / "x.zip").resolve())
-    assert r["bundle_none"]["is_error"] and r["bundle_bad"]["is_error"]
+    assert r["bundle_none"]["is_error"] and r["bundle_bad"]["is_error"] and r["bundle_two"]["is_error"]
     assert r["_tools"]["update_item"]["params"] == ["set", "uid", "unset"]
     assert r["_tools"]["mark_fixed"]["params"] == ["agent", "commit", "note", "pr", "state", "uid"]
     assert "work_state" in r["_tools"]["search_items"]["params"] and "state" in r["_tools"]["search_items"]["params"]
@@ -239,3 +241,17 @@ def test_builds_index_on_first_use(env):
     r = run_client(env, [["projects", "list_projects", {}]])
     assert any(p["kind"] == "inbox" for p in text_json(r["projects"]))
     assert (env["bh"] / "index.db").exists()
+
+
+def test_mark_fixed_names_the_client(env):
+    """No agent given and no $BLURT_AGENT: the report is credited to the MCP client's own name (clientInfo), mapped
+    through agents.json — never a made-up "mcp" placeholder for an agent that did say who it is."""
+    env["env"].pop("BLURT_AGENT", None)
+    r = run_client(env, [["search", "search_items", {"query": "登录按"}],
+                         ["fixing", "mark_fixed", {"uid": "$uid", "state": "fixing"}]])
+    w = text_json(r["fixing"])["work"]
+    assert w["agent"] == "mcp" and w["by"] == "agent"  # the test client's clientInfo.name
+    sys.path.insert(0, str(SCRIPTS))
+    import agents
+    defs = agents.definitions({})
+    assert agents.client_agent("codex-mcp-client", defs) == "codex" and agents.client_agent("claude-code", defs) == "claude"

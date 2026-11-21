@@ -2,6 +2,7 @@
    键和占位符与另一种语言一致（tests/test_l10n.py）。 */
 
 "app.agent.fallback_notice" = "%1$@，改用 %2$@ 整理";
+"app.agent.fallback_settings" = "Agent 设置…";
 "app.agent.list_sep" = "、";
 "app.agent.can_be_used" = " 无法使用";
 "app.agent.checking" = "检查中…";
@@ -86,9 +87,14 @@
 "main.action.record" = "开始录屏";
 "main.action.snap" = "截图";
 
+"main.undo.kept" = "%@ 之后有了变化，没有撤销。";
 "main.banner.agent" = "Agent";
-"main.banner.ended" = "会话已结束，Agent 未报告结果";
-"main.banner.external" = "已复制给你的 Agent。完成后请在这里标为完成。";
+"main.banner.ended" = "没有回报就结束了";
+"main.banner.external" = "已交给你的 Agent。做完后在这里标为完成。";
+"main.banner.quiet" = "%@交给你的 Agent · 还没有回报";
+"main.banner.working" = "%@ 正在处理 · %@开始";
+"main.banner.working_now" = "%@ 正在处理";
+"main.banner.your_agent" = "你的 Agent";
 "main.banner.organizing" = "正在整理 · %@";
 "main.banner.show_progress" = "查看进度";
 "main.banner.with_agent" = "已交给 %@ · %@";
@@ -208,6 +214,7 @@
 "main.inbox.verify" = "%ld 条待验证";
 "main.item.untitled" = "无标题";
 
+"main.job.sign_in" = "登录…";
 "main.job.error.auth" = "Agent 未登录。";
 "main.job.error.auth.named" = "%@ 未登录。";
 "main.job.error.conflict" = "改动与你的改动冲突。";
@@ -254,7 +261,8 @@
 "main.keys.back" = "退回或重新打开";
 "main.keys.back.note" = "已交给 Agent 的会收回，丢弃的会恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、待办";
-"main.keys.copy_instruction" = "复制指令";
+"main.keys.copy_full" = "复制全文";
+"main.keys.new_item" = "新建事项";
 "main.keys.move" = "移到项目";
 "main.keys.space" = "空格";
 "main.keys.copy_path" = "复制路径";
@@ -280,8 +288,8 @@
 "main.bundle.save" = "导出";
 "main.bundle.message" = "一个 .zip 文件，包含概要、每个事项的详情和截图，可在其他电脑上打开。";
 "main.bundle.saved" = "交接包已保存：%@";
-"main.bundle.failed" = "无法导出交接包";
-"main.bundle.error.io" = "无法写入此位置，请选择其他文件夹。";
+"main.bundle.failed" = "无法保存交接包";
+"main.bundle.error.io" = "无法写入「%@」，请选择其他文件夹。";
 "main.bundle.error.unreadable" = "无法读取某张截图或片段，未能打包。";
 "main.bundle.error.no_items" = "没有可打包的事项。";
 "main.bundle.packing" = "正在打包交接包（%@）…";
@@ -487,7 +495,7 @@
 "main.dictation.mode.compare" = "改动";
 "main.dictation.typed" = "输入的文字";
 "main.dictation.heard" = "识别原文";
-"main.dictation.same" = "润色未做改动";
+"main.dictation.same" = "未改动";
 "main.dictation.copied" = "已复制";
 "main.dictation.corrected" = "改正后";
 "main.dictation.correct" = "改正";
@@ -514,6 +522,7 @@
 "main.dictation.info.not_typed" = "未输入";
 "main.dictation.info.polish" = "润色";
 "main.dictation.info.polish.off" = "关闭";
+"main.dictation.info.polish.not_used" = "未采用";
 "main.dictation.info.asr" = "语音模型";
 "main.dictation.info.language" = "语言";
 "main.dictation.info.terms" = "来自词库";
@@ -543,6 +552,8 @@
 "app.models.show" = "查看";
 "app.models.menu_unpacking" = "正在解压语音模型…";
 "app.models.stop" = "停止";
+"app.models.disk_full" = "需要 %1$@，可用 %2$@";
+"app.models.show_storage" = "查看存储";
 "app.models.started" = "正在后台下载语音模型（%@）";
 "app.toast.welcome_dictation_only" = "口喷鸡在菜单栏里 · 按%@ 听写";
 "app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 未下载语音模型";
@@ -550,8 +561,8 @@
 "app.toast.welcome_plain" = "口喷鸡在菜单栏里";
 "app.toast.welcome_setup" = "口喷鸡在菜单栏里 · 听写未开启";
 "app.toast.welcome_setup.action" = "开启…";
-"app.toast.welcome_taken" = "口喷鸡在菜单栏里 · 快捷键 %@ 无法使用";
-"app.toast.welcome_taken_many" = "口喷鸡在菜单栏里 · %@ 个快捷键无法使用";
+"app.toast.welcome_taken" = "口喷鸡在菜单栏里 · %@ 已被占用";
+"app.toast.welcome_taken_many" = "口喷鸡在菜单栏里 · %@ 个快捷键已被占用";
 "app.toast.welcome_snap_only" = "口喷鸡在菜单栏里 · %@ 截图";
 "app.url.ask_record" = "一个链接想开始录屏";
 "app.url.ask_snap" = "一个链接想截图";
@@ -569,6 +580,8 @@
 // dogfood v0.9 review
 "app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写未设置";
 "app.toast.welcome_not_set_up.action" = "设置…";
+"app.toast.welcome_unreadable" = "口喷鸡在菜单栏里 · 无法读取语音模型";
+"app.toast.welcome_unreadable.action" = "重试";
 "app.config.show" = "显示文件";
 "app.models.offline" = "联网后将继续下载语音模型";
 "main.speech.recommended_recordings" = "推荐用于录屏的模型 · %@";
@@ -722,8 +735,8 @@
 "main.jobs.title.failed" = "失败";
 
 /* 会话没回报就结束了的事项 */
-"main.row.session_ended" = "会话已结束";
-"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent 会话，会话已结束，但没有报告完成。可以标记完成或收回。";
+"main.row.session_ended" = "未回报";
+"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent，Agent 没有回报就结束了。可以标为完成或收回。";
 
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";

@@ -101,7 +101,7 @@ final class AgentSetupTests: XCTestCase {
         let t = g.issue(now: now)
         XCTAssertEqual(t.count, 64)
         XCTAssertTrue(g.allows(token: t, now: now))
-        XCTAssertFalse(g.allows(token: String(t.dropLast()) + "0", now: now))
+        XCTAssertFalse(g.allows(token: String(t.dropLast()) + (t.hasSuffix("0") ? "1" : "0"), now: now))   // one character off (a token ending in 0 made this flaky)
         XCTAssertFalse(g.allows(token: "", now: now))
         XCTAssertFalse(g.allows(token: t, now: now.addingTimeInterval(AgentSetupGrant.sessionTTL + 1)))
         g.revoke(t)

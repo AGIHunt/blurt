@@ -112,6 +112,8 @@ pub struct Portal {
     changed: Condvar,
     controls: AtomicBool,
     inhibit: Mutex<Option<ashpd::desktop::Request<()>>>,
+    /// 保持可连接's own inhibitor: suspend only, held apart from a session's
+    standby: Mutex<Option<ashpd::desktop::Request<()>>>,
     /// the stream being shown (a StreamInfo id); None: the first
     current: Mutex<Option<String>>,
 }
@@ -129,7 +131,7 @@ fn words(e: &ashpd::Error) -> String {
 
 impl Portal {
     pub fn new() -> Arc<Portal> {
-        Arc::new(Portal { state: Mutex::new(State::Idle), changed: Condvar::new(), controls: AtomicBool::new(false), inhibit: Mutex::new(None), current: Mutex::new(None) })
+        Arc::new(Portal { state: Mutex::new(State::Idle), changed: Condvar::new(), controls: AtomicBool::new(false), inhibit: Mutex::new(None), standby: Mutex::new(None), current: Mutex::new(None) })
     }
 
     pub fn can_control(&self) -> bool {
@@ -348,6 +350,26 @@ impl Portal {
             }
         });
         Ok((tx, streams, session, controls))
+    }
+
+    /// 保持可连接: no automatic suspend while devices can connect. Only the inhibit portal: no screen cast, nothing on the panel.
+    pub fn standby_awake(self: &Arc<Self>, on: bool) {
+        let old = self.standby.lock().unwrap().take();
+        let me = self.clone();
+        rt().spawn(async move {
+            if let Some(r) = old {
+                let _ = r.close().await;
+            }
+            if !on {
+                return;
+            }
+            use ashpd::desktop::inhibit::{InhibitFlags, InhibitOptions, InhibitProxy};
+            let Ok(p) = InhibitProxy::new().await else { return };
+            match p.inhibit(None, InhibitFlags::Suspend.into(), InhibitOptions::default().set_reason("Blurt: stay awake for remote access")).await {
+                Ok(r) => *me.standby.lock().unwrap() = Some(r),
+                Err(e) => eprintln!("blurt-remote: standby inhibit: {e}"),
+            }
+        });
     }
 
     /// Keep the computer awake (and with `display`, the screen on) while a phone is connected.

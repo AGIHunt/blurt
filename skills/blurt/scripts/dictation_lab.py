@@ -904,8 +904,11 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
                     try:
                         r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"),
                                         **extra)
-                        if (r.get("text") or "").strip():
-                            w.update(raw=r["text"].strip(), asr_text=(r.get("asr_text") or r["text"]).strip(), tag=r.get("tag"))
+                        t = (r.get("text") or "").strip()
+                        # an answer that lost what the pieces heard (a language half): the pieces' text, as the app
+                        w["lost"] = stitch.rehear_loss(said, t) if t else None
+                        if t and not w["lost"]:
+                            w.update(raw=t, asr_text=(r.get("asr_text") or t).strip(), tag=r.get("tag"))
                     except Fail:
                         pass        # the pieces' own transcripts, as the app keeps them
                     w["asr_ms"] = int((time.perf_counter() - t1) * 1000)
@@ -1130,12 +1133,12 @@ def by_tag(rows: list[dict]) -> dict:
 # A pack: {"schema": 1, "id", "name", "name_zh"?, "description"?, "source": builtin|typeless-history|blurt-history|
 # generated|…, "created", "prompts": [{"id", "read": what to say aloud, "expected": what the dictation should type
 # (default: read — fillers and the corrected-away words left out), "tags": {"length": short|medium|long|xlong,
-# "scenario": chat|coding|email|notes|meeting, "languages": zh|zh-terms|en, "features": [names, numbers, correction,
+# "scenario": chat|coding|email|notes|meeting, "languages": zh|zh-terms|en|mixed, "features": [names, numbers, correction,
 # fillers, enumeration, question, run_on]}, "origin": seed|variant|generated, "note"?}]}.
 # Built-in packs: lab_packs/*.json next to this script; the user's: $BLURT_HOME/dictation/lab/packs/*.json (a user
 # pack with a built-in's id wins). A case recorded from a prompt carries {"prompt": {"pack", "id", "tags"}}.
 PACK_TAGS = {"length": ["short", "medium", "long", "xlong"], "scenario": ["chat", "coding", "email", "notes", "meeting"],
-             "languages": ["zh", "zh-terms", "en"],
+             "languages": ["zh", "zh-terms", "en", "mixed"],
              "features": ["names", "numbers", "correction", "fillers", "enumeration", "question", "run_on"]}
 
 
@@ -1252,7 +1255,7 @@ aloud; the app must type what they meant. Write {n} NEW scripts in the same voic
 own style: {lang_hint}), varied across these dimensions, and tag each one:
 - length: short (a few words) | medium (one or two sentences) | long (~20 s) | xlong (~60 s, a run-on with pauses)
 - scenario: chat | coding | email | notes | meeting
-- languages: zh | zh-terms (Chinese with English names / terms) | en
+- languages: zh | zh-terms (Chinese with English names / terms) | en | mixed (whole sentences in each)
 - features (any of): names (AI products, people), numbers (dates, money, versions), correction (a spoken
   self-correction like 「把这个，不对，这两个拿过去」), fillers (嗯, 那个, um), enumeration (一二三 / 首先其次 said as
   prose — it must NOT become a list), question, run_on

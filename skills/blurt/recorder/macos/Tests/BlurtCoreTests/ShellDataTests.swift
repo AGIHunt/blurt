@@ -119,6 +119,21 @@ final class ShellDataTests: XCTestCase {
         XCTAssertTrue(fresh.checkReadable())
     }
 
+    func testABackupMadeBeforeAnyoneListenedIsStillSaid() {
+        // a launch migration wrote first (refused: the copy made, nobody listening yet); the launch's check says it
+        let u = dir.appendingPathComponent("config.json")
+        try! #"{"record": {"#.write(to: u, atomically: true, encoding: .utf8)
+        let c = Config(url: u)
+        XCTAssertFalse(c.set("record.cloud", ["v": 2]))
+        var told: [URL] = []
+        c.onUnreadable = { told.append($0) }
+        XCTAssertFalse(c.checkReadable())
+        XCTAssertEqual(told.count, 1, "the early copy is said once someone listens")
+        XCTAssertFalse(c.checkReadable())
+        XCTAssertFalse(c.set("lang", "en"))
+        XCTAssertEqual(told.count, 1, "and only once")
+    }
+
     func testAFileThatBreaksWhileRunningKeepsTheLastSettings() {
         // a hand edit (or an editor's truncate-then-write) breaks the file while Blurt runs: the shortcuts it read stay,
         // the bad version is copied aside once, and nothing is written over it

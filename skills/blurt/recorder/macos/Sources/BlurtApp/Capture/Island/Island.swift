@@ -262,6 +262,9 @@ final class Island: NSObject, IslandHosting {
         /// Not a reply to what the user just did (a launch message, a job that finished, a reminder): it waits behind
         /// every reply instead of taking the slot (ToastQueue).
         var passive = false
+        /// Work still under way that the user just asked for ("Translating…"): the spinner in the leading slot and no
+        /// trailing dots, as a passive line at work has — a reply, so it takes the slot at once.
+        var working = false
         /// It went without being acted on (expired, replaced, superseded, stale, dropped — ToastQueue.onGone): the
         /// main window's page toast answers its page "gone" here, so the page never waits on an Undo that's gone.
         var gone: (() -> Void)?
@@ -1034,6 +1037,12 @@ final class Island: NSObject, IslandHosting {
                 // right — never one black slab hanging off one side of the notch
                 left.set(.mark(.inbox))
                 right.set(.text("+" + Loc.number(n), mono: true))
+            } else if revealed, !open, case .none = r {
+                // brought out by the pointer with "Show the notch when idle" off and nothing to say: Peep at rest in its
+                // ear, as the idle island's own mark — never a bare black tab that read as a glitch (dogfood
+                // 2026-11-21); resting on it opens the home row as usual
+                left.set(.peep(.idle))
+                right.set(.none)
             } else if peepAcross(r) {
                 // Peep's moments are told across the notch too: Peep on the left (where it talks and listens), the
                 // words or the count on the right — it never jumps from one side to the other between states
@@ -1697,12 +1706,29 @@ final class Island: NSObject, IslandHosting {
                 guard let self = self, Capability.recording.isOn else { return }
                 defer { self.reviewLoaded = true }
                 guard n != self.reviewCount else { return }
-                // more than before (not the first count at launch): that many just landed — said for a moment
-                if self.reviewLoaded, n > self.reviewCount { self.announceInbox(n - self.reviewCount) }
+                // more than before (not the first count at launch): that many just landed — said for a moment; the
+                // items a "Filed to X" just said are not news (the tray's "+1" read as "it went to the Inbox")
+                if self.reviewLoaded, n > self.reviewCount {
+                    let grew = n - self.reviewCount
+                    let filed = CACurrentMediaTime() < self.filedUntil ? min(self.filedCredit, grew) : 0
+                    self.filedCredit -= filed
+                    if grew - filed > 0 { self.announceInbox(grew - filed) }
+                    emit(["event": "island_inbox_grew", "n": grew, "filed": filed])
+                }
                 self.reviewCount = n
                 self.refresh()
             }
         }
+    }
+
+    /// Items a "Filed to X" toast has just named (Snapper.announceFiled): the to-review count's next rise by them is
+    /// not announced again as "+n" in the tray (for a while; a filing whose items never come leaves no credit behind).
+    private var filedCredit = 0
+    private var filedUntil: CFTimeInterval = 0
+    func expectFiled(_ n: Int) {
+        guard n > 0 else { return }
+        filedCredit = CACurrentMediaTime() < filedUntil ? filedCredit + n : n
+        filedUntil = CACurrentMediaTime() + 30
     }
 
     /// "+n" with the tray in the right ear for a few seconds (a second batch within them adds to it): the inbox grew.

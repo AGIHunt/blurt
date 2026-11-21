@@ -26,6 +26,55 @@ pub static READY: Mutex<Option<bool>> = Mutex::new(None);
 /// `dictation-models`' last answer: what Download… gets, whether a weaker model ran, whether the pick is a cloud one.
 pub static MODELS: Mutex<Option<Value>> = Mutex::new(None);
 
+/// Room left for everything else once a model is in (the founder, 2026-11-21: what is left + 2 GB; the Mac's
+/// ModelDownloadNotice.headroomMB).
+const HEADROOM_MB: f64 = 2048.0;
+
+/// Free space on the volume that holds `dir` (MB; the nearest folder that exists). None: it couldn't be read — never a
+/// refusal on a guess.
+pub fn free_mb(dir: &std::path::Path) -> Option<f64> {
+    let mut d = dir.to_path_buf();
+    while !d.exists() {
+        if !d.pop() {
+            return None;
+        }
+    }
+    free_mb_at(&d)
+}
+
+#[cfg(windows)]
+fn free_mb_at(d: &std::path::Path) -> Option<f64> {
+    use windows::core::HSTRING;
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let mut avail = 0u64;
+    unsafe { GetDiskFreeSpaceExW(&HSTRING::from(d.as_os_str()), Some(&mut avail), None, None) }.ok()?;
+    Some(avail as f64 / 1_048_576.0)
+}
+
+#[cfg(target_os = "linux")]
+fn free_mb_at(d: &std::path::Path) -> Option<f64> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(d.as_os_str().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    Some(st.f_bavail as f64 * st.f_frsize as f64 / 1_048_576.0)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn free_mb_at(_d: &std::path::Path) -> Option<f64> {
+    None
+}
+
+/// "disk_full:<need MB>:<free MB>" when a download of `size_mb` (plus the headroom) doesn't fit in `free`: the pages
+/// turn it into "4.5 GB needed, 3.1 GB free · Show Storage" (ModelDownload.tsx diskShort). None: it fits.
+pub fn disk_short(size_mb: f64, free: Option<f64>) -> Option<String> {
+    let free = free?;
+    let need = size_mb.max(0.0) + HEADROOM_MB;
+    (size_mb >= 1.0 && need > free).then(|| format!("disk_full:{}:{}", need.round(), free.max(0.0).round()))
+}
+
 fn remember_models(v: &Value) {
     *READY.lock().unwrap() = Some(v["ready"] == json!(true));
     *MODELS.lock().unwrap() = Some(v.clone());
@@ -110,6 +159,8 @@ pub fn dictation_models(state: tauri::State<'_, AppState>) -> R<Value> {
     remember_models(&v);
     v["downloading"] = json!(DOWNLOADING.lock().unwrap().clone());
     v["dashscope_model"] = json!(cloud::dashscope_speech_model());
+    // said beside the size before Download (the founder, 2026-11-21)
+    v["free_mb"] = json!(free_mb(&crate::paths::blurt_home().join("models")));
     Ok(v)
 }
 
@@ -141,6 +192,19 @@ pub fn dictation_dashscope_model(model: Option<String>) -> R<()> {
 /// Start downloading a speech model; progress arrives as `model-download` events {id, done_mb, total_mb, state}.
 #[tauri::command]
 pub fn model_download(app: AppHandle, id: String) -> R<()> {
+    // the size Download… promised (the catalogue's size_mb): the bar counts up to it even when the archive itself is
+    // smaller, so "x / y" never names a second size (the Mac's max(p.total, sizeMB))
+    let promised = MODELS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|v| v["models"].as_array().cloned())
+        .and_then(|ms| ms.iter().find(|m| m["id"] == json!(id)).and_then(|m| m["size_mb"].as_f64()))
+        .unwrap_or(0.0);
+    // it has to fit, with 2 GB to spare, before anything starts (every surface: the Welcome, Settings, the island)
+    if let Some(short) = disk_short(promised, free_mb(&crate::paths::blurt_home().join("models"))) {
+        return Err(short);
+    }
     {
         let mut d = DOWNLOADING.lock().unwrap();
         if d.is_some() {
@@ -165,15 +229,6 @@ pub fn model_download(app: AppHandle, id: String) -> R<()> {
             return Err(e.message);
         }
     };
-    // the size Download… promised (the catalogue's size_mb): the bar counts up to it even when the archive itself is
-    // smaller, so "x / y" never names a second size (the Mac's max(p.total, sizeMB))
-    let promised = MODELS
-        .lock()
-        .unwrap()
-        .as_ref()
-        .and_then(|v| v["models"].as_array().cloned())
-        .and_then(|ms| ms.iter().find(|m| m["id"] == json!(id)).and_then(|m| m["size_mb"].as_f64()))
-        .unwrap_or(0.0);
     std::thread::spawn(move || {
         // its own process group (Unix) / a tree taskkill ends (Windows): Stop ends uv and the Python under it
         let mut c = scripts::daemon_command(&argv);
@@ -236,6 +291,11 @@ pub fn model_download(app: AppHandle, id: String) -> R<()> {
             }
         };
         *DOWNLOADING.lock().unwrap() = None;
+        // the disk filled up on the way (the script's `disk_full`, ENOSPC): said as the refusal before a start is
+        if !ok && (last_err.contains("No space left on device") || last_err.contains("[Errno 28]") || last_err.contains("disk_full")) {
+            let free = free_mb(&crate::paths::blurt_home().join("models")).unwrap_or(0.0);
+            last_err = format!("disk_full:{}:{}", (promised + HEADROOM_MB).round(), free.round());
+        }
         if !ok {
             eprintln!("blurt: speech model download failed: {last_err}");
             // the island says so, with Retry (a take's "Download…" must not just go quiet)
@@ -529,4 +589,19 @@ pub fn dictation_mics() -> Value {
     }
     #[cfg(not(windows))]
     json!({"default": null, "devices": []})
+}
+
+#[cfg(test)]
+mod disk_tests {
+    use super::*;
+
+    #[test]
+    fn a_download_needs_its_size_and_two_gigabytes() {
+        assert_eq!(disk_short(2468.0, Some(10_240.0)), None);
+        assert_eq!(disk_short(2468.0, Some(4096.0)).as_deref(), Some("disk_full:4516:4096"));
+        assert_eq!(disk_short(2468.0, None), None, "unreadable: never refused on a guess");
+        assert_eq!(disk_short(0.0, Some(0.0)), None, "nothing to fetch");
+        #[cfg(any(windows, target_os = "linux"))]
+        assert!(free_mb(&std::env::temp_dir().join("no/such/dir")).is_some_and(|f| f > 0.0));
+    }
 }

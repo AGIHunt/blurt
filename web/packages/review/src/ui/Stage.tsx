@@ -1,9 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { StatusRing } from "@blurt/ui/react";
 import type { DragRect } from "../host";
 import type { Media, ReviewStore } from "../store";
 import { Icon } from "./Icon";
 import { Thinking } from "./TopBar";
 import { cx, useStore } from "./ctx";
+
+/** States past review: the focus view shows them as they are instead of a Keep that is already "on". */
+const PAST_REVIEW = new Set(["handed_off", "in_progress", "to_verify", "done", "wontfix"]);
+const REOPENS = new Set(["done", "wontfix"]);
 
 function guessAR(s: ReviewStore) {
   for (const r of s.ar.values()) if (r > 0) return r;
@@ -329,6 +334,7 @@ export function Stage() {
   const ref = useRef<HTMLElement>(null);
   const i = s.item;
   const st = i ? s.st(i) : "pending";
+  const real = i ? s.stateOf(i) : null;
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -378,11 +384,27 @@ export function Stage() {
             <span>{s.t("action.undo")}</span>
             <kbd>Z</kbd>
           </button>
-          <button className={cx("act keep", st === "keep" && "on")} id="keepBtn" onClick={() => s.decide("keep")}>
-            <Icon name="check" size={17} />
-            <span>{s.t("action.keep")}</span>
-            <kbd>A</kbd>
-          </button>
+          {real && PAST_REVIEW.has(real) ? (
+            // past review (won't do, done, with an agent…): the item's own state where Keep would be, never an "on"
+            // Keep that reads as To do; a closed one offers Reopen
+            <button
+              className="act ghost state"
+              id="keepBtn"
+              disabled={!REOPENS.has(real)}
+              onClick={() => s.actOnCurrent("reopen")}
+              aria-label={REOPENS.has(real) ? `${s.stateLabel(real)} · ${s.t("action.reopen")}` : s.stateLabel(real)}
+            >
+              <StatusRing state={real} size={16} />
+              <span>{s.stateLabel(real)}{REOPENS.has(real) ? ` · ${s.t("action.reopen")}` : ""}</span>
+              {REOPENS.has(real) && <kbd>R</kbd>}
+            </button>
+          ) : (
+            <button className={cx("act keep", st === "keep" && "on")} id="keepBtn" onClick={() => s.decide("keep")}>
+              <Icon name="check" size={17} />
+              <span>{s.t("action.keep")}</span>
+              <kbd>A</kbd>
+            </button>
+          )}
         </div>
       )}
     </section>

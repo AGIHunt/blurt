@@ -30,6 +30,8 @@ pub mod channel;
 pub mod credit;
 pub mod crypto;
 pub mod displays;
+pub mod agent;
+pub mod incoming;
 pub mod input;
 pub mod keys;
 pub mod mic;

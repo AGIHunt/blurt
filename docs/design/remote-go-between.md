@@ -112,11 +112,12 @@ no KV, only the Durable Object class `Meet` (SQLite-backed, hibernating).
 
 ## What each end shows
 
-- **Computer, Settings → Phone → Away from home:**
-  - a status line: the path in use (same network, direct, Tailscale, own relay, go-between), or why away doesn't work;
-  - the Relay Address field, marked recommended;
-  - the go-between switch, with its note (below);
-  - Copy Instructions, as today.
+- **Computer, Settings → Remote Control → Other networks** (2026-11-21):
+  - the go-between switch first, its line the state: in use, why it can't be now (over the limit, no direct path), standing in
+    while the own relay is down, or only used while it is;
+  - then Own relay with the Relay Address field (the page's control width, the whole address in its tooltip), its line what
+    the check found;
+  - Copy Instructions as the section's footnote. The path a connected device came by is on the page's first row.
 - **Phone:** the connection label names the path. On `noDirect` or 4003 it shows the no-direct line below, and on "busy" the
   over-the-limit line.
 
@@ -126,7 +127,7 @@ All copy is in English and Chinese, plain and concrete. "Go-between" is this doc
 |---|---|---|
 | The switch | Public connection service | 公共连接服务 |
 | Its note | Free, with no guarantee. If a network can't connect directly, set up your own relay. | 免费，不保证可用。无法直连时，请设置自建中转。 |
-| Own relay | Own relay (recommended) | 自建中转（推荐） |
+| Own relay | Own relay | 自建中转 |
 | Paths | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 |
 | No direct path | Can't connect directly. Set up your own relay on the computer. | 无法直连。请在电脑上设置自建中转。 |
 | Over the limit | The public connection service has reached today's limit. Try again later, or use your own relay. | 公共连接服务今日已达上限。请稍后再试，或使用自建中转。 |

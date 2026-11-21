@@ -23,22 +23,54 @@ What it doesn't need from the phone: the key deck, the touch gestures, the zoome
   - On the same network, nearby Blurt computers are listed, found by DNS-SD `_blurt-remote._tcp`. Choosing one starts pairing. The host
     shows six digits and asks for a yes, as for a new phone; the viewer shows the same six digits.
   - Away, the user pastes the pairing link from the host's 添加设备 / Add Device (`blurtremote://pair?…`).
+  - **When it doesn't pair** (1.1.0, Mac viewer; `RemoteViewerLink.State.pairingFailed`), the host never says why (a refused handshake
+    or a bare close), so the viewer reads it from when, and each case says what to do next. The sheet is never a dead end: Try Again
+    where the same link or nearby computer can still work, else Back to the link field with the link still in it; Cancel closes.
+    - refused before anyone was asked (`spent`): a link → 这个链接已过期或已被用过。 + how to get a new one (Back); nearby → the host
+      isn't taking a new computer now (it's asking about another, or was just told no) + Try Again.
+    - closed while the question was up (`declined`): %@ 未允许本机。 A close at 90 % of the host's 120 s question or later
+      (`unanswered`): %@ 那边没有人及时回应。 A link's code is spent either way (Back); nearby, Try Again asks again.
+    - can't reach it: 无法连接 %@。 + what to check (a copied link lasts 10 minutes) + Try Again / Back. The link keeps trying
+      meanwhile: if the host turns up and asks, its six digits replace the failure, so the anti-scam check can be done.
+  - **A computer that removed this Mac** (the host's `removed` in a session, `State.removed`): its key is deleted, the record kept with
+    `removed`, and its row says 已移除本机 with 重新添加… in place of Connect (the window's cover offers the same). A key refused with no
+    session (`forgotten`, which anyone on the network can send) says the same for this run only and keeps the key. Adding it again
+    replaces the record by the host's id. Tests: BlurtRemoteKitTests `RemoteViewerPairingTests`.
+  - **The same on every platform** (2026-11-21): the Windows/Linux viewer (blurt-remote `PairError` Spent / Declined / Unanswered /
+    Unreachable, `pair_steps`, `Link::Removed` apart from `Link::Forgotten`; the web's Add Computer panel and window cover) and both
+    phones (iOS `PairFailure`, Android `PairEnd`: the pad's card says the failure, then what to do, with Retry while a code can't be
+    reached and Scan Code otherwise; a computer's `removed` in a session keeps the record, marked, with its key gone). A phone also says
+    when the pairing stopped because the app left the screen while the computer was asking. Tests: blurt-remote tests/viewer.rs,
+    web viewer.test.ts, iOS LinkStatusTests, Android LinkStatusTest.
 
 **A window per computer.** Several computers at once means several windows. Keys go only to the window in front. On a Mac the windows
 can merge into tabs, the system's way.
 
-- **Toolbar:**
-  - the computer's name;
-  - the path and round trip, e.g. 直连 · 18 ms;
-  - the display switcher, e.g. 屏幕 1 / 2, shown only when the host has more than one display;
-  - 按键发往远端 / Keys to Remote, which shows whether keys are captured;
-  - picture quality (Auto, as on the phone);
-  - a ⋯ menu.
+- **Toolbar** (Mac, visual gate 1.1, `viewer.mac` r1; as Screen Sharing: the picture is the one focus, the chrome a few small icons):
+  - the computer's name, and under it the path (同一网络 / Same network); the round trip joins it only once it is slow enough to feel
+    (80 ms and up, e.g. 公共连接服务 · 140 毫秒): a fast one under the name every second was noise;
+  - icon-only items, no text and no chevrons, so the bar has one shape in every language; each says what it does in its tooltip
+    and, when the window is too narrow for them, its label in the overflow menu:
+    - 按键发往远端 / Keys to Remote: a keyboard, outlined while this Mac keeps its keys; filled in `brand.ink` on the `brand.tint`
+      wash while they go to the computer (macOS 26's prominent toolbar item), so whether it's on shows at rest. It stands on its
+      own (a tinted item leaves its group, so it never sits in one). Tooltip: 把按键发往 Studio / 键盘和鼠标正发往 Studio。按 ⌃⌘ 交还。;
+    - the display switcher (`display.2`), in the bar only while the host has more than one display: its popover draws the
+      arrangement (below); no 屏幕 1 / 2 counter at rest;
+    - ⋯ (`ellipsis.circle`, no indicator): 画质 ▸ 自动 (按连接情况自动调整) · 清晰 · 均衡 · 省流量 (with 正在消耗手机流量 under them
+      on a costly path) — set once and seldom touched, so no slot of its own —, then ⌘ 当作 Ctrl (Windows and Linux hosts only),
+      共享剪贴板, 隐私屏 (where the host can), then 发送文件… and 发送 Ctrl+Alt+Del (Windows), then 发送系统快捷键… where Input
+      Monitoring is missing.
+  - The window keeps the host's shape at every size, its smallest too (480 × 270 points of picture for 16:9), so there are never
+    bands beside the picture.
+  - Screenshots: the pretend host's screen is drawn by `skills/blurt/recorder/macos/Tests/make_host_screen.swift` (a Mac desktop:
+    menu bar with the Apple menu and clock, Terminal in zsh, an editor, the Dock), shown as `viewer fakehost PNG mac name=Studio`,
+    with BLURT_TEST_KEY_LOOK=1 so the window draws as the key window. Shots: promo/cases/visual-gate-1.1/fix/viewer/.
 - **Keyboard:**
   - While the window is in front and keys are captured, every key goes to the host, system shortcuts included: ⌘Tab, ⌘Space, Alt+Tab,
     the Windows key.
-  - ⌃⌘ on a Mac viewer, Ctrl+Alt on Windows and Linux, gives keys and the mouse back to this computer. A hint at the bottom of the
-    picture says so for 3 s after capture starts.
+  - ⌃⌘ on a Mac viewer, Ctrl+Alt on Windows and Linux, gives keys and the mouse back to this computer. A hint at the top of the
+    picture says so for 3 s after capture starts, and Keys to Remote shows its on state (the filled keyboard in brand ink) for as long
+    as it lasts.
   - Clicking into the picture captures again.
 - **Modifiers across systems:**
   - A Mac viewer driving Windows or Linux sends ⌘ as Ctrl, Ctrl as the Windows / Super key, and leaves ⌥ as Alt.
@@ -48,7 +80,7 @@ can merge into tabs, the system's way.
   and the host's pointer is drawn from the cursor stream, as on the phone. Wheel and trackpad scrolling go through as scrolling. Buttons
   and drags go through as they are.
 - **Displays:** the switcher draws the host's displays as they're arranged and switches with a click (`showDisplay`). By default, 跟着远端
-  指针换屏 / Follow the Pointer is on, as `showDisplay(nil)` already does. 在新窗口中打开 / Open in New Window shows another display in
+  指针换屏 / Follow Remote Pointer is on, as `showDisplay(nil)` already does. 在新窗口中打开 / Open in New Window shows another display in
   a second window, which needs a second session.
 - **Clipboard:** text only. It is sent to the host when keys are captured, and back from the host when its clipboard changes while
   captured. The ⋯ menu can turn it off.
@@ -56,6 +88,17 @@ can merge into tabs, the system's way.
   window asks for a new size. Full screen is the system's own.
 - **Paths:** the same as a phone, in the same order: same network, overlay, own relay, public connection service. The toolbar names
   the path in the agreed terms.
+- **The cover** (when the link is down or the picture stopped; `ViewerCoverView`): the last frame stays, frozen — blurred 14 pt,
+  greyed (saturation 0.35) and dimmed 45 % — so it reads as a picture that stopped and none of its text competes with the words. Over
+  it, one card for every state, the same width (400 pt, narrower in a small window) and place (centred 45 % down the picture, above
+  the host's taskbar or dock), so only its mark, words and buttons change between Reconnecting, Can't reach, Ended and the rest: the
+  toast grid (system.md §3.2) on a sheet's surface that follows light and dark: the brand spinner while it tries, the amber ⚠ when it
+  needs the user, else the state's glyph; the title (15 semibold) names the computer ("Reconnecting to Office PC…"); the detail
+  (12.5, secondary) says where it's trying and for how long ("Same network · trying for 0:12"), and once it says it can't reach it,
+  "Still trying · 0:42" (it goes on trying by itself). Its buttons on their own row at the right: Disconnect (esc), the way out,
+  always — it closes the window — and the state's one action (↩) after it as the primary: Try Again, Reconnect, Take Over, Add Again.
+  Meanwhile the subtitle says the state in a word (Reconnecting… / Not connected), the display switcher and Keys to Remote
+  are disabled, and ⋯ alone stays live, with Try Again and Disconnect at its end.
 
 ## Wire additions
 
@@ -133,13 +176,47 @@ first's.
   now: found by DNS-SD, or it has a relay / the public connection service / a Tailscale address; nothing is asked of it until Connect.
   A Windows computer's icon is `display`, not `pc` (whose face reads as Windows' crash screen). The host's 添加设备 has 拷贝链接 / Copy
   Link for pairing from another network.
-- The window: the host's shape (`contentAspectRatio`, no bars), title the computer's name, subtitle path · round trip (at least 1 ms).
-  The display switcher (only with two displays or more) is a popover with the arrangement (`RemoteDisplayMap`), 跟着远端指针换屏 and
-  在新窗口中打开 (also on a display's context menu). A window that becomes key captures; one that stops being key gives keys back;
-  clicking into the picture captures again (that click stays here).
+- The window: the host's shape (`contentAspectRatio`, no bars), title the computer's name, subtitle the path, with the round trip only from 80 ms.
+  The display switcher (only with two displays or more) is a popover under the display item (its arrow on it), on one solid
+  sheet (white / the elevated #2A2A2A: the remote picture never shows through it). The arrangement (`RemoteDisplayMap`) on top: neutral
+  tiles (black 6 % / white 10 %, a 0.5 pt hairline, the number), the host's main display with a menu-bar strip. Under it one list on the
+  Move popover's grid (28 pt rows): 跟着远端指针换屏 / Follow Remote Pointer, then a row per display (its number, its name, 主屏幕 / Main).
+  A tile and its row are one target. Pinned to a display: a 2 pt accent ring and the brand tint on its tile, a check on its row; following:
+  a check on Follow and only a small pointer on the display the pointer is on, so the two never look alike. 在新窗口中打开屏幕 2 / Open
+  Display 2 in New Window is a glyph on a row under the pointer (its tooltip names the display) and on every tile's and row's context menu. A window that becomes key captures; one that stops being key gives keys back;
+  clicking into the picture captures again (that click stays here). Capture needs Blurt in front as well (`wantsKeys`: connected, key,
+  `NSApp.isActive`): a window that opens or reconnects while another app is in front captures nothing, tells the host nothing and leaves
+  this Mac's input method alone; Blurt coming to the front captures for its key window, and going behind gives the keys back
+  (`didBecomeActive` / `didResignActive`). Fixed 2026-11-21 after the 1.1 dogfood run, where a window opening behind WeChat switched
+  this Mac to ABC and told the host `captured true`.
 - Keys: a session event tap (`ViewerKeyboard`) while capture is on and the window is key, so ⌘Tab, ⌘Space and ⌃← go to the host. Without
   Accessibility, an NSEvent monitor instead: the window's keys only, and the hint says system shortcuts stay here. ⌃⌘ pressed and let go
-  alone releases (⌃⌘F still reaches the host), hint for 3 s.
+  alone releases (⌃⌘F still reaches the host), hint for 3 s. The release sends the host nothing (`RemoteHeldModifiers`): a press of ⌃,
+  ⌘ or both waits until a key, a click, a scroll or another modifier says it's a shortcut, and then goes before it; ⌃ or ⌘ tapped alone
+  goes as a tap (⌃ alone is the Windows key: Start); letting go of what the host has goes at once. Before this a Windows host saw Win,
+  then Ctrl+Win, each time the keys came back.
+- The hint wraps (up to four lines, 640 pt of text at most, 16 pt from the window's edges): at 480 pt the Input Monitoring hint is
+  three lines in English, two in Chinese; before, it was one line 875 pt wide, cut at both edges.
+- The hint is the capture chrome's hint pill (system.md, Hint pill; `ViewerHintPill`), not a box of its own (visual gate 1.1, 2026-11-21):
+  the island's black with its hairline and soft shadow (`CaptureGlass`), centred **12 pt under the picture's top edge**, where a remote
+  desktop has title bars, never over its taskbar or Dock (it sat 24 pt above the bottom, on the Windows taskbar's icons). One sentence
+  (13 medium, white 92 %), a hairline, then the keys as keycaps, one per key, and their word (12, white 62 %): "Keyboard and mouse go
+  to Office PC | [⌃][⌘] Release" / "键盘和鼠标正发往 Office PC | [⌃][⌘] 交还本机" — no key typed into the sentence. Without
+  Input Monitoring a quieter note under it ("System shortcuts stay on this Mac until …"), 6 s. One row is a capsule (34 pt); a window
+  too narrow for it puts the keys under the sentence, 14 pt corners. It fades in (0.18 s) and out (0.25 s), never takes a click, and
+  the pointer resting on it keeps it up (1.5 s more after it leaves). Giving the keys back ends the release hint at once.
+- Files sent (Send Files… or dropped on the picture) show on a file card in the picture's bottom-left corner, 12 pt over the band where a
+  host keeps its taskbar or Dock (7.5 % of the picture's height, 64 pt at least): the file's icon, its name cut in the middle so the
+  extension stays, "Sending to Office PC · 3.2 MB of 8.4 MB" with a bar, and × to stop (`ViewerFileCard`). Saved and not-sent end on
+  the same card. It sat as a bare "Sending “…”…" sentence on the Windows taskbar's icons before.
+- The picture's ground is #1E1E1E, never pure black, for what shows beside it (full screen on a screen of another shape).
+- One floating thing over the picture at a time: the release hint closes the display switcher, and opening the switcher ends a short
+  hint (what lasts, no control there, stays). The switcher in the 1.1 gate's hint shots was the earlier `viewer displays` still open:
+  a transient popover only closes on a click outside, which a test build never gets; `viewer hint` now closes it as capturing does.
+- This Mac's input method while keys are captured: a plain layout (ABC), chosen only with Blurt in front; at the end the one before comes
+  back only if the plain one is still in use, so an input method the user picked meanwhile stays. A test build never touches the Mac's
+  input method or asks for Input Monitoring: `InputMethod` has a stand-in there (`viewer input ID`), and `viewer active on|off` /
+  `viewer key` stand in for Blurt coming to the front, since a test build stays behind the user's apps.
 - Pointer: `pointerTo` with numbers, as the phone's; over the relay 30 a second. The host's pointer drawn from the cursor stream at the
   picture's scale; this Mac's own place is shown until the host's word includes the last move (`RemoteCursor.wait`). Scrolling: trackpad
   phases go through, the trackpad's own coasting stays here and the host coasts from the speed the fingers left with (`scrollFling`);
@@ -164,8 +241,9 @@ on 正在连接… with an empty subtitle while the list still said 可连接 ·
   `testWhatAPublicServiceEndingSays`, `testTheListsStates`); `RemoteViewerSessionTests.testNoDirectPathIsSaidAndStays` (a host on a
   relay met as the service is: session, `noDirect`, close: the state goes to `away(noDirect)`, never `connected`, stays for 4 s with the
   relay asked once, and Try Again asks again) and `testBusyIsSaid` (an HTTP 429 to the upgrade: `away(busy)`, asked once).
-- The overlay's button is drawn by its own layer: a standard bezel over the picture's layer was attached and laid out but never drawn,
-  so Try Again and Take Over were missing before.
+- The cover's buttons are drawn by their own layers (`BrandButton`, `ViewerQuietButton`), and the window's content view is
+  layer-backed: a standard bezel over the picture's layer was attached and laid out but never drawn, so Try Again and Take Over were
+  missing before.
 
 **Measured / checked:**
 
@@ -306,13 +384,16 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
     whose code (QR, the six digits, 拷贝链接 → 已拷贝，10 分钟内有效 for 4 s) takes its place while open. Nothing paired: one row that
     says so and carries 添加设备….
   - 本机可控制的电脑 / Computers You Can Control: ViewerStore's computers, drawn by the Computers window's `ComputerRow` in the page's
-    grid (`style: .page`): its state (已连接 · 可连接 · 离线 · 无法直连), 连接 or 打开窗口, and 移除… in the ⋯ menu (and the context menu).
+    grid (`style: .page`): its state (已连接 · 可连接 · 离线 · 无法直连), 连接 or 打开窗口, and 重命名… · 移除… in the ⋯ menu (and the
+    context menu). A double-click on a name on the page renames it in place (remote-1.1.md §6); the Computers window renames from
+    the ⋯ only, a double-click there opens the computer.
     添加电脑… at the bottom opens the same Add Computer sheet. The page watches ViewerStore while on show, so 可连接 is live.
   - 本机 / This Mac: unchanged — only what stands in a device's way (Accessibility, the port, Screen Recording, the relay); all well is
     one line.
   - Then 连不上时 while a phone should be connecting, and where the phone app comes from. 手机设置… on the title line opens Settings.
-- **Settings → 手机和电脑 is options only:** 连接时 (keys on screen, the screen on the phone) and 外出连接 (status, own relay, public
-  connection service, Set Up a Relay). Its lead says where the devices are, with 打开. The catalogue's `remote.phones` /
+- **Settings → 远程控制 is options only:** its first row says what is paired and who is connected, with 查看设备 (or, nothing paired,
+  添加设备…, which opens the page with the code up). Then 本机 (stay awake, sleep time, keys on screen, the screen) and 其他网络 (the
+  public connection service and the own relay, each with its state as the line under it; Copy Instructions is the footnote). The catalogue's `remote.phones` /
   `remote.computers` sections and their rows are gone, so search doesn't land on a list that isn't there.
 - **Device kind on the host:** `RemoteServer.Device.kind` is "computer" when the hello's `features` carry `viewer`
   (`RemoteFeature.viewer`), nil for a phone. It is written when a device pairs and again whenever it connects, so a record kept before
@@ -320,7 +401,8 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
 
 - **The row grid, after three rounds of the visual gate:** every row's mark in one 18 pt slot at one size, the text 28 pt in, its state
   disc before every state line (hollow ring for 上次使用 / 可连接 / 离线, the check for 已连接), an offline computer's name quieter;
-  Remove… is in each row's ⋯ (one trailing column for both lists, Connect / Open Window before it); each list ends with an inline
+  Rename… and Remove… are in each row's ⋯ (one trailing column for both lists, Connect / Open Window before it; Rename… is also a
+  double-click on the name, remote-1.1.md §6); each list ends with an inline
   "+ 添加设备… / + 添加电脑…" line on the grid, empty or not; every bordered button on the page is the small size. The code is one quiet
   card (QR 124 pt, 添加设备 / Add Device, one line of how, 取消 · 拷贝链接); a device asking is a card of its own (lock, 允许 X 控制本机？,
   the digits in threes, 不允许 · 允许 with Allow the page's primary, and still no default: Return must not say yes). Copy cut on the way:
@@ -352,6 +434,21 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
   - **Renamed 远程控制 / Remote Control** (the founder, 2026-11-20): 手机和电脑 named two kinds of device, not what the feature does;
     the two groups keep their names (能控制本机的设备 · 本机可控制的电脑). The menu bar's row reads 远程控制：iPhone 已连接; the relay
     instructions say Settings → Remote Control → Relay Address; the phone apps point to the same names.
+  - **Visual fix pass (1.1.0, 2026-11-21).** The gate's judges agreed on four things; one pass fixed them:
+    - This Mac's state comes first, under the title (system.md §3.4). With all well and a device paired it is one quiet line
+      (其他设备可以控制本机 · what that covers); before anything is paired, nothing. Each problem is one notice there (`PhoneNotice`,
+      SettingsNotice's look on the page's column) with its fix. The 本机 / This Mac section is gone.
+    - The page now reads what this Mac's own tries found from other networks (`Status.away`, as Settings' Status row reads it):
+      `PhoneFacts.away` gives a relay-down notice (with an own relay set), and, through the public connection service, a
+      today's-limit notice (`goBetweenBusy`) and a no-direct-path one (`noDirect`). Each is said only while no device is connected.
+      Before, these states drew the green all-well line.
+    - One name for the machine in en: Devices That Can Control This Mac; the other list is `phone.section.computers` (Computers You
+      Can Control / 你能控制的电脑, no longer a near-anagram of 能控制本机的设备). Settings' own key is unchanged.
+    - 连不上时 / If It Won't Connect is closed at the page's foot (`phonepage tips open|closed`), so the page no longer ends on a tip
+      cut by the window's edge. It shows nothing when this Mac can't open its port (that cause is here, not on the phone). The phone
+      app's build links are a footnote under Add Device…. A device row's ⋯ shows on hover. zh: 上次使用 2 小时前 (no colon, a
+      space between the number and the Chinese).
+    Shots: `promo/cases/visual-gate-1.1/fix/remote-page/`.
 
 Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/mac/` — `page-empty`, `page-devices`, `page-add-device`,
 `page-asking`, `settings`. Hooks: `phonepage fake …` now includes a paired computer (MacBook Pro) beside the iPhone and iPad;
@@ -414,6 +511,24 @@ Screenshots (zh-Hans and en, light and dark): `promo/cases/devices-page/desktop/
 04 Add Computer, 05 a computer's ⋯ (无法直连), 06 Settings, 07 the question from a computer, 08 from a host that doesn't say, 09 Windows
 firewall. Mock: `?view=phone&phone=paired` (two phones and a computer), `&computers=nodirect`, `&phone=asking_pc | asking_old`.
 
+
+## Pairing screens, visual pass (Mac, 2026-11-21)
+
+- **Computers window**: the rows sit in one rounded card, Add Computer… is its last line, and the window is as tall as its rows
+  (460–640 pt wide; while Add Computer shows it grows to the sheet's height, so the sheet never hangs past an edge). Each row's
+  button sits in a slot as wide as the widest row button; ⋯ shows on hover (the context menu has the same items). The text column
+  is one VoiceOver element across its full width ("Office PC, Windows, Needs its own relay").
+- **Needs its own relay** (was Can't Connect Directly): sentence case, amber, the reason and fix in the tooltip, and Try Again in
+  place of a Connect that reads as contradicting it. The Windows / Linux list says the same words.
+- **Add Computer**: 400 pt, always inside the window (min 460). "On this network" (each found computer with its Connect, then a
+  quiet "Looking for more computers…" row) and "On another network" (one full-width field; the footer's Connect is the sheet's
+  only default). The empty field takes no focus. Pairing is one centred card for connecting, the digits (SF Pro tabular, 3 + 3 in a
+  quiet well, a waiting spinner, read digit by digit) and a failure, with one width and height.
+- **The host's question (PhoneAsk)**: one stack in the Windows / Linux sheet's order — the question, the digits, what to compare,
+  the anti-scam line right above the buttons — and Don't Allow / Allow as two equal outlined buttons (Allow is never highlighted;
+  no default button).
+- **The pairing code (PhonePairingCode)**: the card is as wide as what it holds; the QR at 148 pt with "New code in 1:40" under it;
+  a quiet ✕ (Esc) in place of Cancel; Copy Link alone, its tooltip saying it is for a computer on another network.
 
 ## Tried on real machines (2026-11-19)
 

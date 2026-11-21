@@ -104,7 +104,7 @@ def table_of(key: str) -> str:
     head = key.split(".")[0]
     return "Main" if head in ("main", "menu", "app", "notify") else "Settings" if head in ("settings", "onboarding") \
         else "Dictation" if head == "dictation" else "Home" if head in ("home", "feature") else "Cards" if head == "cards" \
-        else "Phone" if head in ("phone", "viewer") else "Common"
+        else "Phone" if head in ("phone", "viewer", "remote") else "Common"
 
 
 def keys(table: str, lang: str) -> dict:
@@ -133,17 +133,26 @@ def table_keys() -> dict:
 NOT_KEY_HEADS = {"list"}
 
 
+def settings_ids() -> set:
+    """The Settings catalog's row and section ids ("<pane>.<name>", e.g. "remote.relay.address"): ids, not keys — their
+    words are settings.<…> and settings.kw.<id> (SettingsCatalogTests checks those), so a pane named like a table's key
+    head (remote.*, the host's strings in Phone) doesn't make its ids read as keys."""
+    cat = (SOURCES / "BlurtCore" / "SettingsCatalog.swift").read_text(encoding="utf-8")
+    return set(re.findall(r'\b(?:row|sec)\("([a-z][a-z0-9_.]*)"', cat))
+
+
 def unknown_keys(sources: dict, have: dict) -> list:
     """Literals anywhere in `sources` that read like a key of our tables (a table's key head, three or more parts,
     written whole) but are missing from `have[lang]` — "file: key (lang)", sorted."""
     heads = {k.split(".")[0] for ks in have.values() for k in ks} - NOT_KEY_HEADS
+    ids = settings_ids()
     out = set()
     for name, code in sources.items():
         for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', code):
             s = m.group(1)
             if s.count(".") < 2 or s.split(".")[0] not in heads or not KEYISH.match(s) or "\\(" in s \
-                    or s.endswith((".", "_")):
-                continue        # not a key, or a glued piece (the scan above refuses those)
+                    or s.endswith((".", "_")) or s in ids:
+                continue        # not a key, or a glued piece (the scan above refuses those), or a setting's id
             out |= {f"{name}: {s} ({lang})" for lang in LANGS if s not in have[lang]}
     return sorted(out)
 

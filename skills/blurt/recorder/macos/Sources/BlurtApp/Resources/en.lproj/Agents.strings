@@ -81,6 +81,10 @@
 "install.row.failed.detail" = "%@ reported an error. Details shows the command that was run.";
 "install.row.about.skill" = "Shows %@ how to work with your items, in every project";
 "install.row.about.mcp" = "Lets %@ read your items and report progress, in every project";
+"install.row.add.approve" = "Allow reports without asking";
+"install.row.added.approve" = "Allowed reports without asking";
+"install.row.in_place.approve" = "Reports without asking";
+"install.row.about.approve" = "%@ can mark, read and search your items without asking you first. Anything else still asks.";
 "install.row.in_place.skill" = "Blurt skill";
 "install.row.in_place.mcp" = "Blurt MCP server";
 "install.row.exists" = "Already installed";
@@ -141,6 +145,8 @@
 "agents.organize.follow" = "Same as all (%@)";
 "agents.organize.follow_plain" = "Same as all agents";
 "agents.organize.inherit" = "Default (%@)";
+"agents.organize.inherit.default" = "Agent’s own";
+"agents.organize.inherit.cheapest" = "Cheapest";
 "agents.details.more" = "Connection";
 
 /* Settings → Agents: section headings */

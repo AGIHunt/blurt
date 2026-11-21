@@ -376,3 +376,68 @@ async fn a_busy_go_between_is_said_and_not_retried_in_a_loop() {
     h.stop();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// 2026-11-20, the office: the owner's relay was dead, and with a relay of one's own set nothing else was tried. Now, after two
+/// failures in a row, the host waits at the go-between as well and says so; the relay answering again ends that.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dead_own_relay_falls_back_to_the_go_between() {
+    let r = match relay().await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let (h, dir, device, key) = paired(&meet, Lines::default()).await;
+    // nothing listens on port 9
+    h.set_relay(Some("ws://127.0.0.1:9")).unwrap();
+    until(|| h.status().relay.fallback.then_some(())).await;
+    assert_eq!(h.status().relay.reachable, Some(false));
+
+    let (phone, _) = away(&meet, &device, &key, Options::go_between()).await;
+    until(|| h.status().connected.filter(|c| c.route == "goBetween")).await;
+    drop(phone);
+    until(|| h.status().connected.is_none().then_some(())).await;
+
+    // a working relay: the go-between is let go
+    h.set_relay(Some(&meet)).unwrap();
+    until(|| (!h.status().relay.fallback && h.status().relay.reachable == Some(true)).then_some(())).await;
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The computer cards' states (remote-1.1.md §1): a peek says the host is waiting in its room; once it's gone, since when.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_peek_says_whether_the_host_waits_and_since_when_it_left() {
+    let r = match relay().await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let (h, dir, _device, key) = paired(&meet, Lines::default()).await;
+    let room = blurt_remote::relay::room(&key);
+    let (m, rm) = (meet.clone(), room.clone());
+    let peek = move || {
+        let (m, rm) = (m.clone(), rm.clone());
+        async move { tokio::task::spawn_blocking(move || blurt_remote::relay::peek(&m, &rm)).await.unwrap() }
+    };
+    for _ in 0..100 {
+        if peek().await.is_some_and(|p| p.host) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(peek().await.map(|p| p.host), Some(true), "its waiting connection is in the room");
+    h.stop();
+    let mut gone = None;
+    for _ in 0..100 {
+        // gone, and its leaving written down (the relay sees it closing a moment before its close comes in)
+        gone = peek().await.filter(|p| !p.host && p.seen.is_some());
+        if gone.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let p = gone.expect("gone from the room");
+    assert!(p.seen.is_some() && p.asleep.is_none(), "{p:?}");
+    tokio::task::spawn_blocking(move || drop(h)).await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}

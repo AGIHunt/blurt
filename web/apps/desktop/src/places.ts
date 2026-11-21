@@ -64,12 +64,23 @@ export function placeQuery(p: Place, f: PlaceFilter, text: string, sort: SortKey
 /** What needs you first, then what is moving, then what is new or waiting, then what is closed (ListSections.stateOrder). */
 export const STATE_ORDER: readonly State[] = ['to_verify', 'in_progress', 'handed_off', 'new', 'todo', 'done', 'wontfix', 'discarded'];
 
-/** The projects in the one order every list uses: pinned, then the most recently used (ProjectStore.projects). */
+/** The projects in the user's own order (ProjectStore.ordered): pinned first, then the registry's order — a folder
+ *  opened goes last, dragging in the sidebar reorders, using one never does, so Ctrl+5–9 keep their projects. */
 export function orderedProjects(ps: ProjectRow[]): ProjectRow[] {
-  return ps
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => Number(!!b.p.pinned) - Number(!!a.p.pinned) || (b.p.last_used ?? '').localeCompare(a.p.last_used ?? '') || a.i - b.i)
-    .map((x) => x.p);
+  return [...ps.filter((p) => p.pinned), ...ps.filter((p) => !p.pinned)];
+}
+
+/** A project dragged in the sidebar and dropped on `onto` (before it, or after it when `after`): the new order of
+ *  `ids`, pinned ones kept above the rest (null: nothing changes). */
+export function reorderedProjects(ps: ProjectRow[], moving: string, onto: string, after: boolean): string[] | null {
+  const ids = ps.map((p) => p.id);
+  const m = ps.find((p) => p.id === moving);
+  const o = ps.find((p) => p.id === onto);
+  if (!m || !o || moving === onto || !!m.pinned !== !!o.pinned) return null;
+  const rest = ids.filter((i) => i !== moving);
+  const at = rest.indexOf(onto) + (after ? 1 : 0);
+  const out = [...rest.slice(0, at), moving, ...rest.slice(at)];
+  return out.join() === ids.join() ? null : out;
 }
 
 export interface Section {
@@ -204,7 +215,8 @@ export function needsYouParts(fresh: number, verify: number, t: (k: string, p?: 
 // ---------------------------------------------------------------- the line above an item (the Mac's ItemBanner)
 
 /** What the banner above an item's detail says and offers (WebHostController.ItemBanner):
-    - handed to the user's own agent (or set by hand): Mark as Done (primary) and Won't Do;
+    - handed to the user's own agent (or set by hand): Take Back and Mark as Done (primary); once the agent reports
+      In progress it says so ("Codex is working on it"), so a silent hand-off and a working agent never look alike;
     - its batch still being organised: Show Progress.
     To verify, new, closed and discarded items have no banner: the page's own work card asks. */
 export interface BannerPlan {
@@ -226,11 +238,14 @@ export function bannerPlan(r: ItemRow, jobs: Job[]): BannerPlan | null {
   if (r.state === 'discarded' || r.state === 'to_verify') return null;
   const active = r.state === 'handed_off' || r.state === 'in_progress';
   if (active && r.work_to === 'external') {
-    return { kind: 'external', tone: 'brand', icon: 'ring', text: { key: 'main.banner.external', args: [] }, actions: ['wontfix', 'done'], primary: 'done', more: [], job: null };
+    const text = r.state === 'in_progress'
+      ? { key: 'main.banner.working', args: [r.work_agent && r.work_agent !== 'human' ? r.work_agent : ''] }
+      : { key: 'main.banner.external', args: [] };
+    return { kind: 'external', tone: 'brand', icon: 'ring', text, actions: ['take_back', 'done'], primary: 'done', more: [], job: null };
   }
   // with an agent but not through a copied hand-off note (set by hand, or an agent session of an older Blurt): mark it
   // done here when it's finished
-  if (active) return { kind: 'external', tone: 'neutral', icon: 'ring', text: { key: 'main.banner.manual', args: [] }, actions: ['wontfix', 'done'], primary: 'done', more: [], job: null };
+  if (active) return { kind: 'external', tone: 'neutral', icon: 'ring', text: { key: 'main.banner.manual', args: [] }, actions: ['take_back', 'done'], primary: 'done', more: [], job: null };
   if (r.session_dir) {
     const p = jobs.find((j) => j.type === 'process' && (j.state === 'running' || j.state === 'queued') && j.session === r.session_dir);
     if (p) return { kind: 'organizing', tone: 'brand', icon: 'spinner', text: { key: 'main.banner.organizing', args: [] }, actions: ['progress'], primary: 'progress', more: [], job: p.id };

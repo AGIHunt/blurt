@@ -5,13 +5,13 @@
 // never a wall of checks). Then what to try when a phone won't connect. Settings → Remote Control keeps the options and
 // away from home.
 import { useEffect, useRef, useState } from 'react';
-import { api, type AppStatus, type RemoteStatus } from '../api';
+import { api, type AppStatus, type RemoteConnection, type RemoteStatus } from '../api';
 import { phoneProblems, phoneTips, type PhoneProblem } from '../capabilities';
 import { i18n, t } from '../i18n';
 import { apply, useRemoteStatus } from '../settings/phone';
 import { Confirm, PairPanel } from '../settings/PhonePane';
 import { ComputersGroup } from '../viewer/ComputersGroup';
-import { AddLine, DeviceRow, EmptyLine, RowMore, StateLine } from './DeviceRows';
+import { AddLine, DeviceRow, EmptyLine, renameEntry, RowMore, StateLine, type Rename } from './DeviceRows';
 import { StatusDot } from './StatusDot';
 import './pages.css';
 
@@ -125,6 +125,9 @@ export function PhonePage({ status, onSettings }: { status: AppStatus; onSetting
         {/* what this computer controls */}
         <ComputersGroup />
 
+        {/* who was in this computer, and when (remote-1.1.md §3) */}
+        <ConnectionLog r={r} />
+
         {/* this computer: all well is one quiet line at the end */}
         {problems.length === 0 && thisComputer}
 
@@ -164,10 +167,13 @@ function DeviceLine({ d, r, onRemove }: { d: Device; r: RemoteStatus; onRemove: 
   // state first, as the computers below: 已连接 · <path> · …, or 未连接 · 上次使用：<when>
   const state = on ? t('phone.connected', { 1: how }) : t('phone.not_connected');
   const rest = !on && d.lastSeen ? t('phone.last_used', { 1: i18n().formatRelative(d.lastSeen) }) : undefined;
+  // a name this computer alone uses: nothing is sent to the device
+  const [editing, setEditing] = useState(false);
+  const rename: Rename = { editing, setEditing, own: d.ownName || name, save: (n) => void apply(api.remoteRenameDevice(d.id, n)).catch(() => {}) };
   return (
-    <DeviceRow icon={computer ? 'screen' : 'phone'} name={name} testid={`device-${d.id}`} kind={computer ? 'computer' : 'phone'}
+    <DeviceRow icon={computer ? 'screen' : 'phone'} name={name} testid={`device-${d.id}`} kind={computer ? 'computer' : 'phone'} rename={rename}
       state={<StateLine tone={on ? 'good' : 'off'} state={state} rest={rest} />}>
-      <RowMore name={name} testid={`device-more-${d.id}`} entries={[{ label: t('phone.remove'), danger: true, run: onRemove }]} />
+      <RowMore name={name} testid={`device-more-${d.id}`} entries={[renameEntry(rename), { kind: 'separator' }, { label: t('phone.remove'), danger: true, run: onRemove }]} />
     </DeviceRow>
   );
 }
@@ -184,5 +190,42 @@ function Check({ title, detail, bad, children }: { title: string; detail?: strin
       </span>
       {children}
     </div>
+  );
+}
+
+/** 连接记录: the latest three sessions and pairings here, newest first; Show All opens the rest in a box that scrolls on its own, so
+ * a long log never pushes the page down. Read again whenever a session starts or ends. */
+function ConnectionLog({ r }: { r: RemoteStatus }) {
+  const [list, setList] = useState<RemoteConnection[]>([]);
+  const [open, setOpen] = useState(false);
+  const key = `${r.connected?.id ?? ''}|${r.devices.length}`;
+  useEffect(() => {
+    api.remoteConnections(200).then(setList, () => {});
+  }, [key]);
+  if (!list.length) return null;
+  const when = (ms: number) => i18n().formatDate(ms, 'datetime');
+  const line = (c: RemoteConnection) => {
+    if (c.paired) return t('phone.log.paired', { 1: when(c.start) });
+    const span = c.end ? `${when(c.start)}–${i18n().formatDate(c.end, 'time')}` : t('phone.log.now', { 1: when(c.start) });
+    return c.route ? `${span} · ${t(`phone.route.${c.route}`)}` : span;
+  };
+  const row = (c: RemoteConnection) => (
+    <DeviceRow key={`${c.id}-${c.paired}`} icon={c.paired ? 'plus' : r.devices.find((d) => d.id === c.deviceId)?.kind === 'computer' ? 'screen' : 'phone'}
+      name={r.devices.find((d) => d.id === c.deviceId)?.name || c.name || t('phonepage.unnamed')} state={<span className="pg-line-detail">{line(c)}</span>} />
+  );
+  return (
+    <>
+      <h2 className="pg-h2">{t('phone.log')}</h2>
+      <section className="pg-box" data-testid="phone-log">
+        {list.slice(0, 3).map(row)}
+        {open && list.length > 3 && <div className="ph-log-more">{list.slice(3).map(row)}</div>}
+        {list.length > 3 && (
+          <button type="button" className="pg-line ph-add" onClick={() => setOpen(!open)} data-testid="phone-log-all">
+            <span className="pg-line-ic" />
+            <span>{open ? t('phone.log.less') : t('phone.log.all', { 1: list.length })}</span>
+          </button>
+        )}
+      </section>
+    </>
   );
 }

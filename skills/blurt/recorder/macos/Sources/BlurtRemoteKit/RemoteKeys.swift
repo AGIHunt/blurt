@@ -52,7 +52,8 @@ public struct RemoteKey: Hashable, Sendable {
               k("NumLock", 71, "⌧"), k("Insert", 114, "Ins"), k("CapsLock", 57, "⇪"), k("Menu", 110, "≣"),
               // ISO and JIS keys: the extra one by the left Shift, ¥, ろ, 英数 and かな
               k("IntlBackslash", 10, "§"), k("IntlYen", 93, "¥"), k("IntlRo", 94, "_"), k("Lang2", 102, "英数"), k("Lang1", 104, "かな"),
-              k("VolumeUp", 72, "🔊"), k("VolumeDown", 73, "🔉"), k("Mute", 74, "🔇"),
+              // the media keys in words, as PrtSc and Ins: a keycap is text, and an emoji would be a colour icon on it
+              k("VolumeUp", 72, "Vol+"), k("VolumeDown", 73, "Vol\u{2212}"), k("Mute", 74, "Mute"),
               // a PC keyboard's: a Mac has F13–F15 in their place, so a Mac host presses those
               k("PrintScreen", 105, "PrtSc"), k("ScrollLock", 107, "ScrLk"), k("Pause", 113, "Pause")]
         return t

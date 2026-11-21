@@ -107,7 +107,15 @@ enum DictationInsert {
                 emit(["event": "dictation_insert", "result": "none", "why": "test_mode"])
                 return done(.none)
             }
+            // `no-field on`: as a real paste into a focus that isn't a text field — never confirmed as one (a confirmed
+            // paste with no field is a state the real path can't reach)
+            lastPasteConfirmed = !testNoField
             return paste(text, into: tv, window: tv.window, before: before ?? (tv.string, tv.selectedRange()), done: done)
+        }
+        // a computer's window in front, connected: the take is typed there (its host refuses it at a lock screen or a password field)
+        if let v = ViewerWindowController.dictationTarget() {
+            v.typeOnRemote(text)
+            return done(.pasted)
         }
         // one of our fields has the keyboard — the note bubble's (BA-69: a non-activating panel, so another app is in
         // front, yet the typing goes to the bubble), a sheet's, the command palette's: the take goes there too

@@ -120,13 +120,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
 
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
-        side.minimumThickness = 190
+        // every built-in place's name whole (SidebarController.minimumWidth: 197 pt in English, 190 in Chinese); the
+        // detail column gives up what the sidebar takes over 190, so the window's minimum stays 900 pt
+        let sideMin = SidebarController.minimumWidth
+        side.minimumThickness = sideMin
         side.maximumThickness = 320
         side.canCollapse = true
         let content = NSSplitViewItem(contentListWithViewController: listColumn)
         content.minimumThickness = 330     // 190 + 330 + 380 = the window's 900 pt minimum
         let det = NSSplitViewItem(viewController: detailColumn)
-        det.minimumThickness = 380
+        det.minimumThickness = 380 - (sideMin - 190)
         det.canCollapse = true
         det.holdingPriority = .init(249)
         split.addSplitViewItem(side)
@@ -814,8 +817,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
     }
 
-    /// ⌘↩, Hand Off: the instruction for your own agent on the clipboard (handoff.py --to external --mark).
-    func handOffSelection() {
+    /// ⌘↩, Hand Off: the instruction for your own agent on the clipboard (handoff.py --to external --mark); ⇧⌘C,
+    /// Copy Full Text: the whole note. Both say why when the selection can't go, with the way out.
+    func handOffSelection() { handOffSelection(what: "instruction") }
+    func handOffSelection(what: String) {
         let items = list.selectedItems
         guard !items.isEmpty else { NSSound.beep(); return }
         if let why = handOffBlocker(items) {
@@ -832,7 +837,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             }
             return
         }
-        handOff(uids: items.map(\.uid), what: "instruction") { _ in }
+        handOff(uids: items.map(\.uid), what: what) { _ in }
     }
 
     func renameSelection() {
@@ -875,6 +880,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let items = StateMenu.valid(action, self.model.items(uids: uids))
             guard !items.isEmpty else { return self.drop(step) }
             step.value = items.map { ($0.uid, $0.state) }
+            step.after = Dictionary(items.compactMap { it in Lifecycle.target(of: action, state: it.state).map { (it.uid, $0) } },
+                                    uniquingKeysWith: { a, _ in a })
             switch await Scripts.awaiting({ Scripts.state(items.map(\.uid), action: action, done: $0) }) {
             case .success:
                 self.wrote(items)
@@ -909,20 +916,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private func undoState(_ action: String, uids: [String], _ step: UndoStep<[(String, String)]>) {
         let redo = UndoStep<Void>()
         register(StateMenu.title(action), redo) { c, _ in c.apply(action, uids: uids, redoing: true) }
+        undoStates(step, redo: redo)
+    }
+
+    /// Each item back to the state it had before the step — only while it is still in the state the step left it in
+    /// (`step.after`): an item an agent has reported on since keeps that report (items.py --from-state), and a toast
+    /// says which ones weren't taken back.
+    private func undoStates(_ step: UndoStep<[(String, String)]>, redo: UndoStep<Void>?) {
         writes.run { [weak self] in
             guard let self = self, let before = step.value else { return }      // the action never ran: nothing to take back
-            for (state, group) in Dictionary(grouping: before, by: \.1) {
+            var kept: [String] = []
+            for (key, group) in Dictionary(grouping: before, by: { [$0.1, step.after[$0.0] ?? ""] }) {
                 let ids = group.map(\.0)
-                switch await Scripts.awaiting({ Scripts.undoState(ids, to: state, done: $0) }) {
-                case .success:
+                switch await Scripts.awaiting({ Scripts.undoState(ids, to: key[0], from: key[1].isEmpty ? nil : key[1], done: $0) }) {
+                case .success(let o):
+                    kept += (o["kept"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
                     self.wrote(self.model.items(uids: ids))
                     self.model.reloadAll()                  // back in this list (a discard undone): selected again
                     if ids.contains(where: { self.model.row(of: $0) != nil }) { self.list.reload(keep: ids) }
                 case .failure(let f):
-                    self.drop(redo)
+                    if let r = redo { self.drop(r) }
                     self.alert(T("main.error.save_title"), f.localized)
                 }
             }
+            if !kept.isEmpty { appDelegate?.toast(T("main.undo.kept", Loc.list(kept))) }
         }
     }
 
@@ -1344,27 +1361,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
     /// when you copy — that click is the hand-off.
+    ///
+    /// It runs with the window's other writes (after an A or D pressed just before it), one at a time — a second ⌘↩
+    /// while one is being written is ignored, never a second note — and it is a step of its own on the undo stack: ⌘Z
+    /// puts the items back where they were (not past the hand-off to an older step), and leaves alone any item the
+    /// agent has reported on since.
     func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void) {
         let items = model.items(uids: uids).filter { !$0.discarded && !$0.readOnly }
-        guard !items.isEmpty else { NSSound.beep(); return reply(nil) }
-        Scripts.handoff(items.map(\.uid)) { [weak self] r in
-            switch r {
+        guard !items.isEmpty, !handingOff else { NSSound.beep(); return reply(nil) }
+        handingOff = true
+        let step = UndoStep<[(String, String)]>()
+        register(StateMenu.title("hand_off"), step) { c, s in
+            let redo = UndoStep<Void>()
+            c.register(StateMenu.title("hand_off"), redo) { c, _ in c.handOff(uids: uids, what: what) { _ in } }
+            c.undoStates(s, redo: redo)
+        }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            defer { self.handingOff = false }
+            let now = self.model.items(uids: items.map(\.uid)).filter { !$0.discarded && !$0.readOnly }
+            // what handoff.py --mark moves: new, to do (and handed off again, which stays as it is)
+            let moving = now.filter { ["new", "todo"].contains($0.state) }
+            switch await Scripts.awaiting({ Scripts.handoff(now.map(\.uid), done: $0) }) {
             case .success(let o):
+                step.value = moving.map { ($0.uid, $0.state) }
+                step.after = Dictionary(moving.map { ($0.uid, "handed_off") }, uniquingKeysWith: { a, _ in a })
+                if moving.isEmpty { self.drop(step) }
                 let text = (what == "full" ? o["full"] : o["instruction"]) as? String ?? ""
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
+                let pb = DictationInsert.pasteboard        // a test build's own, never the user's clipboard
+                pb.clearContents()
+                pb.setString(text, forType: .string)
                 appDelegate?.toast(T(what == "full" ? "main.handoff.copied_full" : "main.handoff.copied"), icon: .check)
-                self?.wrote(items)
+                self.wrote(now)
                 reply(["id": o["id"] ?? "", "path": o["path"] ?? "", "text": text])
             case .failure(let f):
-                self?.alert(T("main.handoff.failed"), f.localized)
+                self.drop(step)
+                self.alert(T("main.handoff.failed"), f.localized)
                 reply(nil)
             }
         }
     }
+    /// A hand-off being written (⌘↩ pressed twice: one note).
+    private var handingOff = false
 
-    @objc func mCopyInstruction() { handOff(uids: list.selectedItems.map(\.uid), what: "instruction") { _ in } }
-    @objc func mCopyFull() { handOff(uids: list.selectedItems.map(\.uid), what: "full") { _ in } }
+    @objc func mCopyInstruction() { handOffSelection(what: "instruction") }
+    @objc func mCopyFull() { handOffSelection(what: "full") }
     @objc func mExportBundle() { exportBundle(uids: list.selectedItems.map(\.uid)) }
     /// The app's own sentence for a script's error code ("main.error.<code>"), nil when it has none.
     static func errorSentence(_ code: String) -> String? {
@@ -1412,7 +1453,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                     emit(["event": "bundle_failed", "code": f.code, "error": f.message])
                     AppEnvironment.island?.dropToasts(key: "bundle")
                     NSLog("blurt bundle: %@: %@", f.code, f.message)
-                    let ours = Loc.has("main.bundle.error.\(f.code)", table: "Main") ? T("main.bundle.error.\(f.code)") : Self.errorSentence(f.code)
+                    // which folder couldn't be written, by name
+                    let ours = f.code == "io" ? T("main.bundle.error.io", url.deletingLastPathComponent().lastPathComponent)
+                        : Loc.has("main.bundle.error.\(f.code)", table: "Main") ? T("main.bundle.error.\(f.code)") : Self.errorSentence(f.code)
                     self?.alert(T("main.bundle.failed"), HandoffBundle.failureText(ours: ours, fallback: f.localized))
                     done?(nil)
                 }
@@ -1483,7 +1526,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func itemActions(into m: NSMenu, items: [ItemRow]?, inSelection: Bool = false) {
         let one = items.map { $0.count == 1 } ?? true
         let bar = items == nil
-        if !inSelection { m.addItem(submenu(T("main.menu.move_to"), "arrow.turn.up.right", moveMenu())) }
+        if !inSelection { m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu())) }
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
         if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "text.badge.plus")
@@ -1499,12 +1542,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// Copy ▸: the instruction for your own agent first (⇧⌘C), then the item's text, its link and its file's path
-    /// (⌥⌘C). Words only — the parent row carries the copy glyph.
+    /// Copy ▸: the item's whole hand-off note (⇧⌘C), its link and its file's path (⌥⌘C). The instruction for your
+    /// own agent is Copy Instruction for Agent (⌘↩), one row above — one command, not a second name for it here.
+    /// Words only — the parent row carries the copy glyph.
     func copyMenu() -> NSMenu {
         let m = NSMenu()
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), key: "c", mods: [.command, .shift])
-        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull))
+        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), key: "c", mods: [.command, .shift])
         _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink))
         _ = add(m, T("action.copy_path"), #selector(mCopyPath), key: "c", mods: [.command, .option])
         return m
@@ -1579,7 +1622,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
         for p in ProjectStore.shared.projects {         // the one order: pinned, then the most recently used
-            let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
+            let i = add(m, ProjectLook.menuTitle(p.name), #selector(mMove(_:)), "folder", obj: p.id)
+            i.toolTip = ProjectLook.menuTip(p)
             i.state = here == [p.id] ? .on : .off
         }
         if !ProjectStore.shared.projects.isEmpty { m.addItem(.separator()) }
@@ -1692,7 +1736,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = why
             return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.readOnly }
         case #selector(mCopyInstruction), #selector(mCopyFull):
-            return Scripts.canWrite && items.contains { !$0.discarded && !$0.readOnly }
+            let why = handOffBlocker(items)
+            item.toolTip = why
+            return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.readOnly }
         case #selector(mExportBundle):
             return Scripts.canWrite && !bundling && items.contains { !$0.readOnly }
         case #selector(mState(_:)):
@@ -1789,6 +1835,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             reveal(uid: String(a.dropFirst(5)))
         case "stop":                                     // an organising run: Stop in its detail (⌘.)
             JobStop.stop(job)
+        case "agents":                                   // a signed-out agent: Settings → Agents, where it signs in
+            AppEnvironment.settings?.show(pane: "agents")
         default: break
         }
     }
@@ -1830,7 +1878,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             if e.keyCode == 36 || e.keyCode == 76, window?.firstResponder === list.table { handOffSelection(); return true }
         }
         if mods == [.command, .shift], ch == "r" { mReveal(); return true }
-        if mods == [.command, .shift], ch == "c", window?.firstResponder === list.table { mCopyInstruction(); return true }
+        if mods == [.command, .shift], ch == "c", window?.firstResponder === list.table { mCopyFull(); return true }
         if mods == [.command, .option], ch == "c" { copyPaths(); return true }
         return false
     }

@@ -93,8 +93,9 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 
 ## 4. In the app
 
-- **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and beside *Add…* on onboarding's
-  cloud row, on every Mac (v1.0.10). The sheet gives an instruction to copy into any agent on the Mac
+- **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and in the chevron menu of
+  onboarding's *Add Key…* split button (cloud polish's row; beside *Add…* on the cloud row without macOS's recogniser),
+  on every Mac (v1.0.10). The sheet gives an instruction to copy into any agent on the Mac
   (`AgentSetupInstruction`: the guide and setup.py by absolute path) — Claude Code, Codex, Cursor, WorkBuddy, a
   conversation already open. Blurt detects and launches nothing. That agent has no token, so its first change makes
   Blurt ask Allow. When every curated service is in (the Add row is gone), the button keeps a row of its own ("Set Up
@@ -197,3 +198,34 @@ From documentation: Kiro (`~/.kiro/settings/mcp.json`, `~/.kiro/skills`), Windsu
 Antigravity's skill / MCP paths (sources disagree), Windsurf's and Trae CN's skill folders, ZCode. Needs a Windows VM:
 the registry / shortcut lookup on a real install of WorkBuddy (both editions) and Cursor, Connect into
 `%USERPROFILE%\.workbuddy`, the skill copy at launch from Program Files, card drags into WorkBuddy AI.
+
+## 9. Reporting back from a hand-off (2026-11-21, 1.1.0 dogfood)
+
+The dogfood's Codex run (`codex exec`, approval `never`) did the work, but both `mark_fixed` calls were refused ("MCP
+tool call requires approval, but approval policy is never"); the note offered its `items.py` fallback only "without
+the MCP", so the item sat at *Handed off* with a banner that said "Copied for your agent". What changed:
+
+- **Connect writes per-tool approval for the reporting tools only** — `[mcp_servers.blurt.tools.<t>] approval_mode =
+  "approve"` for `mark_fixed`, `get_item`, `search_items` in `$CODEX_HOME/config.toml` (agents.json `mcp.approve`).
+  Nothing that takes a key (`setup_connect`) is in the list; every other tool still asks. Connect's preview lists it
+  as its own row ("Allow reports without asking") with the line under Details. Checked against codex-cli 0.165:
+  the shape is accepted (`auto | prompt | writes | approve`); a tools table written *before* `[mcp_servers.blurt]`
+  exists makes Codex refuse its whole config ("invalid transport"), and `codex mcp add` rewrites the server's table
+  and drops the tools tables — so the approvals go in after the add, every Connect checks them again, and the file is
+  loaded with `codex mcp get blurt --json` afterwards (put back byte for byte if Codex can't load it).
+- **The note** asks for `fixing` at the start and gives the `items.py` commands for "the tool isn't there **or a call
+  fails**", with the item's uid filled in (one item) and `--agent <name>`; the pasted instruction says the same in one
+  line. A task's `expected` is written as **Done when** (完成标准), after the details; the bundle does the same.
+- **Who reports** — `mark_fixed` without `agent` takes the MCP client's `clientInfo.name` mapped through agents.json
+  (`codex-mcp-client` → codex); an agent's report never inherits the user's `"human"` from the hand-off, and the
+  user's own change after it is the user's, never "Done by Codex". An agent the doc can't name gets no "by …" part.
+- **The banner** says which it is: *Handed off to your agent* (Take Back · Mark as Done); after an hour with no word,
+  *Handed off 3 hr. ago · no word from your agent yet*; once the agent reports, *Codex is working on it · started 5
+  min. ago*. One name for the state everywhere: Handed off / 已交给 Agent.
+- **⌘Z** — the hand-off is its own undo step; undoing a state step changes only items still in the state it left
+  them in (`items.py state --undo --from-state S`), so an agent's report that came in since is kept (the toast names
+  the items left alone).
+
+Verified 2026-11-21: a real `codex exec --sandbox workspace-write` (approval never) on a scratch repo and scratch
+`CODEX_HOME`, Connect run by `agents.py install codex --mcp`: both `mark_fixed` calls completed, the item went
+handed_off → in_progress (agent codex) → to_verify with Codex's note, `work.agent = "codex"` from clientInfo.

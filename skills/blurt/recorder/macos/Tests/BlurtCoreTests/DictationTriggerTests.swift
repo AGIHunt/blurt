@@ -242,10 +242,10 @@ final class DictationTriggerTests: XCTestCase {
         // the first tap started a dictation; the second, 120 ms after its release, cancels it and sends
         XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@210 fn-up@290"), [.arm, .start, .cancel, .send])
         XCTAssertEqual(run("ropt-down@0 ropt-up@90 ropt-down@200 ropt-up@280"), [.arm, .start, .cancel, .send])  // tap mode
-        // too slow for a double tap (the default window is 0.5 s): an ordinary stop
-        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@620 fn-up@700"), [.arm, .start, .stop])
+        // too slow for a double tap (the window is 0.65 s): an ordinary stop
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@760 fn-up@840"), [.arm, .start, .stop])
         // the window is from the first release to the second press
-        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@580 fn-up@660"), [.arm, .start, .cancel, .send])
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@730 fn-up@810"), [.arm, .start, .cancel, .send])
         // the audit's slow double tap (320 ms between the release and the next press) is one now
         XCTAssertEqual(auto("fn-down@0 fn-up@120 fn-down@440 fn-up@560"), [.arm, .start, .cancel, .send])
         // a triple tap: the third starts afresh
@@ -280,7 +280,7 @@ final class DictationTriggerTests: XCTestCase {
     func testHoldModeDoubleTapSends() {
         // taps start nothing in hold mode; two of them press Return
         XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@250 ropt-up@330", mode: .hold), [.arm, .send])
-        XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@700 ropt-up@780", mode: .hold), [.arm, .arm])
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@800 ropt-up@880", mode: .hold), [.arm, .arm])
         // holding the second press is push-to-talk as usual
         XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@250 tick@500 ropt-up@2000", mode: .hold), [.arm, .start, .stop])
     }
@@ -334,11 +334,14 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(t.run("fn-down@200 fn-up@280"), [.send])
     }
 
-    func testDoubleTapWindowFollowsDoubleClickInterval() {
-        XCTAssertEqual(DictationTrigger.window(doubleClickInterval: 0.5), 0.5)
-        XCTAssertEqual(DictationTrigger.window(doubleClickInterval: 0.4), 0.4)
-        XCTAssertEqual(DictationTrigger.window(doubleClickInterval: 0.15), 0.3)     // never under 0.3 s
-        XCTAssertEqual(DictationTrigger.window(doubleClickInterval: 5), 0.5)        // never over 0.5 s
+    func testDoubleTapWindowIsTheSendWindow() {
+        XCTAssertEqual(DictationTrigger.sendWindow, 0.65)
+        XCTAssertEqual(DictationTrigger().doubleTapWindow, 0.65)
+        // dogfood 1.1.0: stop, then the second tap 0.64 s after the stop tap's release — a send, not a new take
+        var d = DictationTrigger()
+        XCTAssertEqual(d.run("fn-down@0 fn-up@90 fn-down@3000 fn-up@3090"), [.arm, .start, .stop])
+        d.pending = true
+        XCTAssertEqual(d.run("fn-down@3730 fn-up@3800"), [.send])
         var t = DictationTrigger()
         t.doubleTapWindow = 0.3
         XCTAssertEqual(t.run("fn-down@0 fn-up@90 fn-down@420 fn-up@500"), [.arm, .start, .stop])
@@ -347,15 +350,15 @@ final class DictationTriggerTests: XCTestCase {
     // MARK: pending (the last take is still being transcribed, polished or pasted)
 
     func testTapWhilePendingStartsTheNextTake() {
-        // dogfood: stop, then a tap 650 ms later (past the double-tap window) to say the next thought - it starts a
+        // dogfood: stop, then a tap 800 ms later (past the double-tap window) to say the next thought - it starts a
         // new take at once (the app pastes in order), instead of being swallowed while the last one is still typed
         var t = DictationTrigger()
         XCTAssertEqual(t.run("fn-down@0 fn-up@80"), [.arm, .start])
         XCTAssertEqual(t.run("fn-down@10000 fn-up@10070"), [.stop])
         t.pending = true                                                    // the app: transcribing
-        XCTAssertEqual(t.run("fn-down@10720"), [.arm])                      // the mic opens on the key-down as usual
+        XCTAssertEqual(t.run("fn-down@10870"), [.arm])                      // the mic opens on the key-down as usual
         XCTAssertTrue(t.armedDown)
-        XCTAssertEqual(t.run("fn-up@10800"), [.start])
+        XCTAssertEqual(t.run("fn-up@10950"), [.start])
         XCTAssertTrue(t.active)
         // held instead: push-to-talk, also while pending
         var h = DictationTrigger()
@@ -379,7 +382,7 @@ final class DictationTriggerTests: XCTestCase {
         var s = DictationTrigger()
         XCTAssertEqual(s.run("fn-down@0 fn-up@90 fn-down@42500 fn-up@42580"), [.arm, .start, .stop])
         s.pending = true
-        XCTAssertEqual(s.run("fn-down@43200 fn-up@43280 fn-down@43400 fn-up@43480"), [.arm, .start, .cancel, .send])
+        XCTAssertEqual(s.run("fn-down@43300 fn-up@43380 fn-down@43500 fn-up@43580"), [.arm, .start, .cancel, .send])
         XCTAssertFalse(s.active)
     }
 
@@ -486,10 +489,10 @@ final class DictationTriggerTests: XCTestCase {
     }
 
     func testNearMissDoubleTapIsAQuickStop() {
-        // the second press 520 ms after the first release: outside the window, so the first tap's dictation stops —
+        // the second press 700 ms after the first release: outside the window, so the first tap's dictation stops —
         // but it was a near miss, and the app sends instead of "nothing heard" when nothing was
         var t = DictationTrigger()
-        XCTAssertEqual(t.run("fn-down@0 fn-up@120 fn-down@640 fn-up@760"), [.arm, .start, .stop])
+        XCTAssertEqual(t.run("fn-down@0 fn-up@120 fn-down@820 fn-up@940"), [.arm, .start, .stop])
         XCTAssertTrue(t.quickStop)
         // a real stop seconds later is not
         var s = DictationTrigger()
@@ -497,18 +500,18 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertFalse(s.quickStop)
         // nor one with a key between, nor a long stop press, nor with double tap off
         var k = DictationTrigger()
-        XCTAssertEqual(k.run("fn-down@0 fn-up@120 key:4@300 fn-down@640 fn-up@760"), [.arm, .start, .stop])
+        XCTAssertEqual(k.run("fn-down@0 fn-up@120 key:4@300 fn-down@820 fn-up@940"), [.arm, .start, .stop])
         XCTAssertFalse(k.quickStop)
         var l = DictationTrigger()
-        XCTAssertEqual(l.run("fn-down@0 fn-up@120 fn-down@640 fn-up@1400"), [.arm, .start, .stop])
+        XCTAssertEqual(l.run("fn-down@0 fn-up@120 fn-down@820 fn-up@1600"), [.arm, .start, .stop])
         XCTAssertFalse(l.quickStop)
         var o = DictationTrigger()
         o.doubleTap = false
-        XCTAssertEqual(o.run("fn-down@0 fn-up@120 fn-down@640 fn-up@760"), [.arm, .start, .stop])
+        XCTAssertEqual(o.run("fn-down@0 fn-up@120 fn-down@820 fn-up@940"), [.arm, .start, .stop])
         XCTAssertFalse(o.quickStop)
         // tap mode the same
         var m = DictationTrigger(key: .rightOption, mode: .tap)
-        XCTAssertEqual(m.run("ropt-down@0 ropt-up@100 ropt-down@650 ropt-up@740"), [.arm, .start, .stop])
+        XCTAssertEqual(m.run("ropt-down@0 ropt-up@100 ropt-down@830 ropt-up@920"), [.arm, .start, .stop])
         XCTAssertTrue(m.quickStop)
     }
 

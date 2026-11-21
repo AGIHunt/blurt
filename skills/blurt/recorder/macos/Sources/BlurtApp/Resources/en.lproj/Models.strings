@@ -1,7 +1,7 @@
 /* Settings → Models: the cloud services the user connects with their own API key, and the text jobs' rows
    (CloudServicesPane.swift, App/CloudStore.swift). One short line per row; DeepSeek's is the only price shown. */
 
-"models.section.services" = "Cloud models";
+"models.section.services" = "Cloud services";
 "models.services.detail" = "Connect cloud models with your API key.";
 "models.services.add.title" = "Add a cloud model";
 "models.services.add" = "Add Cloud Model…";
@@ -87,13 +87,13 @@
 "models.job.translate.detail" = "Dictation translation (⌘) and screen translation (⌥T).";
 "models.job.vision" = "Copy Text from Screen";
 "models.job.vision.detail" = "Makes Copy Text from Screen (⌥C) more accurate.";
-"models.job.goes.text" = "Text is processed by %@.";
-"models.job.goes.images" = "Screenshots are processed by %@.";
-"models.job.local" = "Processed on your Mac.";
-"models.job.none" = "Not set. Add a cloud model or download a model.";
+"models.job.goes.text" = "Text goes to %@.";
+"models.job.goes.images" = "Screenshots go to %@.";
+"models.job.local" = "Stays on this Mac.";
+"models.job.none" = "Download a model or add an API key.";
 "models.job.recommend" = "Recommended: %@.";
 "models.job.switch" = "Switch";
-"models.job.this_mac" = "On Your Mac";
+"models.job.this_mac" = "On this Mac";
 "models.job.advanced" = "Advanced";
 "models.job.custom" = "Custom Model…";
 "models.job.more" = "Get More Models…";
@@ -149,3 +149,10 @@
 "models.sheet.use_for" = "Use for";
 "models.check.job_failed" = "%1$@: %2$@";
 "models.sheet.note.other" = "Blurt hasn’t tested this service. Connect tries each feature you choose first. The API key is kept in Keychain.";
+"models.services.none.title" = "No cloud services yet";
+"models.services.none.detail" = "Polish and translate with your own API key.";
+"models.services.more.title" = "Another service";
+"models.services.more.detail" = "Another provider, or any compatible API.";
+"models.services.menu" = "More Ways to Add";
+"models.job.unset" = "Not Set";
+"models.job.download" = "Download %@";

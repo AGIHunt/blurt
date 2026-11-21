@@ -104,6 +104,9 @@ public final class ToastQueue<Payload> {
     /// A new toast. `canShowNow`: the island can take it at once (nothing showing, or this one may go over what is).
     @discardableResult
     public func post(_ e: Entry, now: Double, canShowNow: Bool = true) -> Outcome {
+        // the island idled with nothing up (its display link stops): the time since the last tick is no time on
+        // screen — the first tick counted up to half a second of it, so a 5 s Undo was up for 4.5
+        if current == nil { lastTick = now }
         var e = e
         e.posted = now
         e.shown = 0

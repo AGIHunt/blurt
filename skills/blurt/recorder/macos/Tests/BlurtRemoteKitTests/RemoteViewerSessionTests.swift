@@ -61,6 +61,14 @@ final class RemoteViewerSessionTests: XCTestCase {
         private var relay = false
         /// the public connection service's case where the direct path never opens: the session, then `noDirect`, then the end
         var noDirect = false
+        /// what the owner does with the pairing question: yes, no after a moment, or nothing until the host gives up asking (a bare close
+        /// either way, as RemoteServer's `answerPairing(false)`)
+        enum Answer { case yes, no, none(closeAfter: Double) }
+        var answer = Answer.yes
+        /// connections are taken and dropped at once until then (a host not up yet)
+        var deafUntil: Date?
+        /// the host removes this viewer this long after its session began (its owner's Remove)
+        var removeAfter: Double?
         let pictures: [(payload: Data, key: Bool)]
 
         init(pictures: [(payload: Data, key: Bool)]) throws {
@@ -80,7 +88,11 @@ final class RemoteViewerSessionTests: XCTestCase {
             }
             udp.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
             udp.start(queue: q)
-            tcp.newConnectionHandler = { [weak self] c in self?.wire(c, relay: false) }
+            tcp.newConnectionHandler = { [weak self] c in
+                guard let self else { return }
+                if let d = self.deafUntil, Date() < d { c.start(queue: self.q); return c.cancel() }
+                self.wire(c, relay: false)
+            }
             tcp.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
             tcp.start(queue: q)
             _ = ready.wait(timeout: .now() + 3)
@@ -127,10 +139,15 @@ final class RemoteViewerSessionTests: XCTestCase {
                     guard RemoteNearby.isNearby(id), let n = nonce, let check = ch.check(revealing: n) else { return ch.close() }
                     digits = check
                     ch.send(ToPhone.pairingWaits)
-                    let k = RemoteCrypto.newKey()
-                    newKey = k
-                    q.asyncAfter(deadline: .now() + 0.3) { ch.send(ToPhone.newKey(k)) }
-                    pairedID = id
+                    switch answer {
+                    case .yes:
+                        let k = RemoteCrypto.newKey()
+                        newKey = k
+                        q.asyncAfter(deadline: .now() + 0.3) { ch.send(ToPhone.newKey(k)) }
+                        pairedID = id
+                    case .no: q.asyncAfter(deadline: .now() + 0.3) { ch.close() }
+                    case let .none(after): q.asyncAfter(deadline: .now() + after) { ch.close() }
+                    }
                     return
                 }
                 session(ch)
@@ -182,6 +199,15 @@ final class RemoteViewerSessionTests: XCTestCase {
                                                       features: [RemoteFeature.move, RemoteFeature.viewer])))
             ch.send(ToPhone.displays([RemoteDisplay(id: "1", name: "One", x: 0, y: 0, width: 320, height: 180, main: true),
                                       RemoteDisplay(id: "2", name: "Two", x: 320, y: 0, width: 320, height: 180, main: false)]))
+            if let r = removeAfter {
+                q.asyncAfter(deadline: .now() + r) {
+                    // forgotten here, then told: what comes next with the old key is refused
+                    self.pairedID = nil
+                    self.pairedKey = nil
+                    ch.send(ToPhone.removed)
+                    self.q.asyncAfter(deadline: .now() + 0.2) { ch.close() }
+                }
+            }
         }
 
         /// The fixture's frames, over and over, as datagrams once the viewer's path is known (or in the stream on the same network until then).

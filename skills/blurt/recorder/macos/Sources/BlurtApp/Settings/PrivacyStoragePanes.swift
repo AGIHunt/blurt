@@ -440,8 +440,12 @@ final class StorageModel: ObservableObject {
         let dir = BlurtPaths.home.appendingPathComponent("models")
         var out: [Row] = []
         func model(_ u: URL) -> Row {
-            let f = u.lastPathComponent
-            return Row(name: displayName(f), path: u, bytes: diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
+            // a model linked in from elsewhere is named by what it links to (a Hugging Face snapshot by its repo)
+            let f = linkedFolder(u) ?? u.lastPathComponent
+            // a model linked in is measured where the link leads (the link itself is a few bytes: "0 KB")
+            let link = (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+            return Row(name: displayName(f), path: u, bytes: diskSize(link ? u.resolvingSymlinksInPath() : u), icon: icon(f),
+                       family: family(f), vad: f == "silero_vad.onnx")
         }
         for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
             where !e.lastPathComponent.hasPrefix(".") {
@@ -454,14 +458,33 @@ final class StorageModel: ObservableObject {
                 out.append(model(e))
             }
         }
-        return out
+        // nothing on disk (an empty folder, a link that leads nowhere): nothing to free, and a "0 KB" row only puzzled
+        // (dogfood 2026-11-21: two nameless "Older model · 0 KB" rows that were the models in use, linked in)
+        return out.filter { $0.bytes > 0 }
+    }
+
+    /// What a symbolic link in the models folder points at, as a folder name the catalogues know: the target's own
+    /// name, or for a Hugging Face snapshot (…/models--org--name/snapshots/<hash>) the repo's last part. nil: no link.
+    nonisolated static func linkedFolder(_ u: URL) -> String? {
+        guard (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true else { return nil }
+        let t = u.resolvingSymlinksInPath()
+        let parts = t.pathComponents
+        if let i = parts.lastIndex(where: { $0.hasPrefix("models--") }) {
+            return parts[i].components(separatedBy: "--").last
+        }
+        return t.lastPathComponent
     }
 
     /// A model's glyph by what it does, as the Models pane draws it: speech recognition the waveform, polish the wand
-    /// (an unknown folder: the generic chip).
+    /// (an unknown folder: the generic cube, the Models pane's glyph).
+    /// Only my voice's two models (transcribe.py VP_FILE, VP_SEG_FILE): no catalogue lists them, and they were shown
+    /// as "Not used by this version", free to delete (dogfood 2026-11-21).
+    nonisolated static let voiceprintFiles: Set<String> = ["3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+                                                           "pyannote-segmentation-3-0.int8.onnx"]
+
     nonisolated static func icon(_ folder: String) -> String {
-        if folder == "silero_vad.onnx" { return "waveform" }
-        guard let e = ModelCatalog.entry(folder: folder) else { return "cpu" }
+        if folder == "silero_vad.onnx" || voiceprintFiles.contains(folder) { return "waveform" }
+        guard let e = ModelCatalog.entry(folder: folder) else { return "cube" }
         return e.polish ? "wand.and.stars" : "waveform"
     }
     nonisolated static func icon(_ k: ModelUsage.Kind) -> String { k == .polish ? "wand.and.stars" : "waveform" }
@@ -469,14 +492,18 @@ final class StorageModel: ObservableObject {
     /// What a model folder is for, from the catalogues (nil: not known — annotateModels says it).
     nonisolated static func family(_ folder: String) -> String? {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad") }
+        if voiceprintFiles.contains(folder) { return T("settings.storage.model.voiceprint") }
         return ModelCatalog.entry(folder: folder).map { T($0.polish ? "settings.storage.model.polish" : "settings.storage.model.asr") }
     }
 
-    /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else as a
-    /// model this version doesn't use (the folder is in the row's tooltip, with its path).
+    /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else by its
+    /// folder's own name ("qwen3-asr-0.6b-mlx"; "Not used by this version" under it) — never a nameless "Older model".
     nonisolated static func displayName(_ folder: String) -> String {
         if folder == "silero_vad.onnx" { return T("settings.storage.model.vad_name") }
-        return ModelCatalog.entry(folder: folder)?.name ?? T("settings.storage.model.unknown")
+        if voiceprintFiles.contains(folder) {
+            return T(folder.hasPrefix("pyannote") ? "settings.storage.model.turns_name" : "settings.storage.model.voiceprint_name")
+        }
+        return ModelCatalog.entry(folder: folder)?.name ?? folder
     }
 
     /// Which model is which and what uses it (BlurtCore ModelUsage): transcribe.py models and dictation-models (speech
@@ -509,7 +536,7 @@ final class StorageModel: ObservableObject {
             guard let k = known[p] ?? knownResolved[r] else {
                 // a folder no script knows (a model an older version used): nothing uses it, it may go
                 let folder = rows[i].path.lastPathComponent
-                if folder != "silero_vad.onnx", ModelCatalog.entry(folder: folder) == nil {
+                if folder != "silero_vad.onnx", !StorageModel.voiceprintFiles.contains(folder), ModelCatalog.entry(folder: folder) == nil {
                     rows[i].family = nil
                     rows[i].detail = T("settings.storage.model.unused")
                     rows[i].removable = true
@@ -774,7 +801,7 @@ struct StoragePane: View {
             SettingsGroup("storage.models", note: AnyView(modelsFootnote), content: {
                 if m.loaded {
                     if m.models.isEmpty {
-                        StorageRow(icon: "cpu", title: T("settings.storage.model.none"), size: storageSize(0))
+                        StorageRow(icon: "cube", title: T("settings.storage.model.none"), size: storageSize(0))
                     }
                     // the voice detector is part of local speech recognition, not a model to choose: said on the
                     // recognition rows, never a row of its own

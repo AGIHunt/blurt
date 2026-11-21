@@ -93,6 +93,8 @@ final class Snapper {
     func hotkey() {
         guard let app = app, app.resident else { return }
         if app.picker != nil { return }
+        // ⌥C's crosshair is up: one screen picker at a time (as ⌥C refuses while this one is up)
+        if ScreenTextCopy.shared.picking { emit(["event": "snap_refused", "why": "text_picker"]); return }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         if let r = app.rec {
             guard r.sessionStart.isValid, !r.stopping, r.snaps != nil else { return }
@@ -155,7 +157,8 @@ final class Snapper {
         p.snapMode = true
         emit(["event": "snap_pick", "in_take": take != nil])
         p.onDone = { [weak self, weak app, weak take] r in
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            if !ScreenTextCopy.shared.picking { unregisterHotkey(.pickEsc) }     // shared with ⌥C's crosshair
             app?.picker = nil
             if app?.rec == nil { app?.busy = false }
             guard let r = r else { self?.restoreFocus(); return }
@@ -453,8 +456,10 @@ final class Snapper {
 
     /// A Structured voice note's words → the polish model's structuring pass (Dictation.structure: the request
     /// dictation's Structured makes — lists laid out, self-corrections settled, a paragraph left one). The card's note
-    /// is its text, the transcript stays as `said_raw` (BlurtCore VoiceNoteStructure); no model or a refusal: the
-    /// transcript, and the island says so.
+    /// is its text, the transcript stays as `said_raw` (BlurtCore VoiceNoteStructure). "Structuring…" is on the island
+    /// meanwhile (it showed only the card count for up to 12 s). A polish server that didn't come up (a uv failure, the
+    /// first use offline, its idle exit racing the note): `polish.py run --style structured` through the CLI, as ⌥T
+    /// does. No model: what it takes; still nothing: the transcript, why, and Try Again.
     private func structureWords(_ s: Shot, _ raw: String, key: ObjectIdentifier, take: Int, via: String) {
         let vocab = DictationVocabulary.shared.payload()
         let t0 = CACurrentMediaTime()
@@ -462,26 +467,59 @@ final class Snapper {
         let noModel = DictationCloud.payload() == nil && Dictation.shared.polishModel == nil
         s.transcription = .pending
         hanging.update(s)
+        var working = Island.Toast(text: Loc.t("capture.voice.structuring", table: "Capture"), actionTitle: nil, action: nil)
+        working.key = "voice-style"
+        working.working = true
+        working.seconds = Dictation.loadBudget + Dictation.structureTimeout + 60
+        if !noModel { island.toast(working) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
+            var viaCLI = false
+            var r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
                 ?? Dictation.structure(raw, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
                                        cloud: DictationCloud.payload())
-            let fellBack = r == nil || r?["fell_back"] as? Bool == true
+            // no server to ask (it never came up): the CLI loads the model itself
+            if r == nil, !noModel, Snapper.testStructure == nil, !WarmServer.running("polish-serve") {
+                viaCLI = true
+                let sem = DispatchSemaphore(value: 0)
+                Task {
+                    do {
+                        r = try await ScriptRunner.shared.json("polish.py", ["run", "--style", "structured", "--stdin", "--no-server"],
+                                                               stdin: Data(raw.utf8), timeout: 60)
+                    } catch ScriptError.failed(_, let stdout, _) {
+                        r = Scripts.json(stdout)
+                    } catch {}
+                    sem.signal()
+                }
+                sem.wait()
+                if r?["ok"] as? Bool != true, r?["code"] as? String != "model_missing" { r = nil }
+            }
+            let serverDown = !WarmServer.running("polish-serve")
+            let fellBack = r == nil || r?["fell_back"] as? Bool == true || r?["ok"] as? Bool == false
             let text = fellBack ? nil : r?["text"] as? String
             DispatchQueue.main.async {
                 let k = VoiceNoteStructure.keep(raw: raw, structured: text)
                 emit(["event": "voice_structure", "n": s.n, "ms": Int((CACurrentMediaTime() - t0) * 1000),
-                      "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? NSNull(),
-                      "changed": k.raw != nil])
+                      "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? r?["code"] ?? NSNull(),
+                      "changed": k.raw != nil, "cli": viaCLI])
                 s.saidRaw = k.raw
-                if r?["reason"] as? String == "model_missing" || (r == nil && noModel) {
+                if r?["reason"] as? String == "model_missing" || r?["code"] as? String == "model_missing" || (r == nil && noModel) {
                     // say what it takes, with the way there (a bare "couldn't" would fail the same way every note)
                     island.toast(Loc.t("capture.voice.structure_needs_model", table: "Capture"), key: "voice-style", seconds: 8,
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation"), action: {
                         AppEnvironment.settings?.show(pane: "speech/speech.polish")
                     })
-                } else if r == nil {
-                    island.toast(Loc.t("capture.voice.structure_failed", table: "Capture"), key: "voice-style", seconds: 5)
+                } else if fellBack {
+                    // why, and Try Again on the same words (the Structured choice isn't lost for this note)
+                    island.toast(Loc.t(serverDown ? "capture.voice.structure_no_server" : "capture.voice.structure_failed", table: "Capture"),
+                                 key: "voice-style", icon: .warning, seconds: 8,
+                                 actionTitle: Loc.t("capture.text.try_again", table: "Capture"), action: { [weak self] in
+                        guard let self = self, !s.deleted else { return }
+                        emit(["event": "voice_structure_retry", "n": s.n])
+                        Dictation.shared.warmPolish()
+                        self.structureWords(s, raw, key: key, take: take, via: "retry")
+                    })
+                } else {
+                    island.dropToasts(key: "voice-style")       // the note is its structured text now: nothing to say
                 }
                 self.wordsArrived(s, k.said, key: key, take: take, via: via, structured: true)
             }
@@ -517,7 +555,7 @@ final class Snapper {
         case .cloudKey, .cloudModel:
             var t = Island.Toast(text: Loc.t(line.key, table: "Dictation"),
                                  actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
-                AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                AppEnvironment.settings?.show(pane: "speech/speech.services")
             }
             t.seconds = 8
             t.key = Snapper.wordsToastKey(s)
@@ -773,12 +811,21 @@ final class Snapper {
     private func announceFiled(project: String, id: String?, uids: [String]) {
         let store = ProjectStore.shared
         let p = project == "inbox" ? store.inbox : store.project(id: project)
-        let name = p?.name ?? project
+        let full = p?.name ?? project
         let ids = (id ?? "") + (uids.count > 1 ? " +\(uids.count - 1)" : "")
-        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: Loc.t("capture.change", table: "Capture")) {
+        // a long name loses its middle so the line stays one line at the open island's width, as the sidebar shows it
+        // ("口喷鸡 i…试截断）"): wrapped, it left "断）" alone on a line and the ID on a third
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium), small = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let change = Loc.t("capture.change", table: "Capture")
+        let room = Island.openW - IslandLayout.textColumn - IslandLayout.toastInset - 16
+            - ceil((change as NSString).size(withAttributes: [.font: small]).width) - 28
+        let name = MiddleTruncate.fit(full, in: { Loc.t("capture.filed", table: "Capture", $0, ids) },
+                                      fits: { ceil(($0 as NSString).size(withAttributes: [.font: font]).width) <= room })
+        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: change) {
             Refile.items(uids, from: project)
         }
         t.badge = p.map { ($0.key, ProjectLook.color($0)) }
+        island.expectFiled(max(uids.count, id == nil ? 0 : 1))
         island.toast(t)
     }
 
@@ -895,14 +942,17 @@ final class Snapper {
     private var undoable = CardUndo<Shot>()
     private var trashedFiles: [ObjectIdentifier: [URL: URL]] = [:]
 
-    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them.
-    func delete(_ shots: [Shot]) {
+    /// Deletes `shots` (the Cards page's selection, Delete All): one "Deleted · Undo" for all of them. `undo`: the
+    /// window it was done in (the Cards page's): ⌘Z there brings them back too, and doesn't drop the cards under the
+    /// notch over the window; several at once keep their Undo 8 s (97 cards' went before it could be reached).
+    func delete(_ shots: [Shot], undo: UndoManager? = nil) {
         for s in shots where NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         // (a fresh shot's bubble discards it itself, with its own Undo)
         let gone = shots.filter { !$0.deleted && $0.batch != nil }
         guard !gone.isEmpty else { return }
         let live = island.toastLive(key: Snapper.deleteToast)
-        if !live { trashedFiles = [:] }
+        // (the Trash locations stay known while an Undo — the island's or a window's ⌘Z — may still ask for them)
+        if !live && undo == nil && !pageUndoPending { trashedFiles = [:] }
         let all = undoable.add(gone, live: live)
         for s in gone {
             hanging.drop(s)
@@ -912,22 +962,40 @@ final class Snapper {
               "sessions": Array(Set(gone.compactMap { $0.batch?.dir.path }))])
         let text = all.count == 1 ? Loc.t("capture.card.deleted", table: "Capture")
                                   : Loc.plural("capture.card.deleted_n", table: "Capture", count: all.count)
-        var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) { [weak self] in self?.undelete() }
-        t.seconds = CardDelete.undoSeconds
+        let fromPage = undo != nil
+        var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) { [weak self] in self?.undelete(fromPage: fromPage) }
+        t.seconds = all.count > 1 ? max(CardDelete.undoSeconds, 8) : CardDelete.undoSeconds
+        if let u = undo {
+            pageUndoPending = true
+            u.registerUndo(withTarget: self) { me in me.undelete(gone, fromPage: true) }
+            u.setActionName(Loc.t("capture.card.delete", table: "Capture"))
+        }
         t.overOpen = true               // the island may be open over the cards: the Undo shows at once all the same
         t.key = Snapper.deleteToast     // a delete while it shows joins it, and the toast says so
         island.toast(t)
     }
 
+    /// A window's ⌘Z may still bring deleted cards back (their Trash locations are kept for it).
+    private var pageUndoPending = false
+
     /// Undo of a delete: back on their threads, where they hung (the cards keep the order they were taken in).
-    private func undelete() {
-        let back = undoable.take().filter(\.deleted)
+    /// `these`: a window's ⌘Z, the cards that delete took; else the island's Undo, everything it covers. `fromPage`:
+    /// asked for on the Cards page — the cards don't come down under the notch over the window.
+    private func undelete(_ these: [Shot]? = nil, fromPage: Bool = false) {
+        let back: [Shot]
+        if let t = these {
+            back = t.filter(\.deleted)
+            _ = undoable.take()
+            island.dropToasts(key: Snapper.deleteToast)
+        } else {
+            back = undoable.take().filter(\.deleted)
+        }
         for s in back { s.batch?.undelete(s, from: trashedFiles.removeValue(forKey: ObjectIdentifier(s)) ?? [:]) }
         emit(["event": "undo_delete", "captures": back.map(\.n)])
         hanging.refresh()
         // a card used in another app comes back to the Cards panel's History, not to a thread
         if back.contains(where: { $0.taken != nil }) { takenChanged() }
-        if back.contains(where: { $0.taken == nil }) { hanging.show(peek: 2.5) }
+        if !fromPage, back.contains(where: { $0.taken == nil }) { hanging.show(peek: 2.5) }
     }
 
     /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 5 s (as long as a discarded voice
@@ -1287,21 +1355,24 @@ final class Snapper {
 
     // MARK: quitting
 
-    /// Blurt is quitting: the open note is saved, a voice note finished (its wav closed, its line written), words and
-    /// filings under way get a moment (`cap`), and every batch's shots.jsonl is flushed — then `done`. What is still
+    /// Blurt is quitting: the open note is saved, a voice note finished (its wav closed, its line written), words,
+    /// filings and ⌥T translations under way get a moment (`cap`), and every batch's shots.jsonl is flushed — then `done`. What is still
     /// on its way is picked up at the next launch (restore).
     func prepareForQuit(cap: Double = 3, _ done: @escaping () -> Void) {
         VoiceInput.shared.finishForQuit()
         NoteBubble.shared.commitNow()
         let until = Date().addingTimeInterval(cap)
-        emit(["event": "quit_wait", "words": pendingWords.count, "filing": filing])
+        let text = ScreenTextCopy.shared
+        emit(["event": "quit_wait", "words": pendingWords.count, "filing": filing, "translating": text.inFlight.count])
         // a run-loop timer in the common modes, not the main queue: AppKit waits for the reply in a modal loop, and
         // a quit that came from a main-queue block (a signal, a scripted command) never gets the main queue back
         let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return done() }
-            guard (self.pendingWords.isEmpty && self.filing == 0) || Date() >= until else { return }
+            guard (self.pendingWords.isEmpty && self.filing == 0 && text.inFlight.isEmpty) || Date() >= until else { return }
             t.invalidate()
-            emit(["event": "quit_ready", "words": self.pendingWords.count, "filing": self.filing])
+            emit(["event": "quit_ready", "words": self.pendingWords.count, "filing": self.filing, "translating": text.inFlight.count])
+            // an ⌥T still on its way: what was read is kept, marked interrupted (it went without a trace)
+            text.keepInterrupted()
             for b in self.cardBatches + Array(self.open.values) { b.flush() }       // every shots.jsonl line is on disk
             done()
         }

@@ -43,12 +43,29 @@ class LinkStatusTest {
         for (p in listOf(LinkPhase.UNPAIRED, LinkPhase.CONNECTING, LinkPhase.UNREACHABLE, LinkPhase.CONNECTED)) {
             assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER), banner(LinkStatus(p, waiting = true)), "$p")
         }
-        // one that didn't take: why, and what there was to do is still there to do
-        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN),
-            banner(LinkStatus(LinkPhase.UNPAIRED, pairFailed = true)))
-        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED), banner(LinkStatus(LinkPhase.CONNECTING, pairFailed = true)))
-        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.ANOTHER),
-            banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, otherComputers = true)))
+        // one that didn't take: why, and never a dead end: a new code, and what there was to do about the computer gone back to
+        val failed = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN)
+        assertEquals(failed, banner(LinkStatus(LinkPhase.UNPAIRED, pairFailed = true)))
+        assertEquals(failed, banner(LinkStatus(LinkPhase.CONNECTING, pairFailed = true)))
+        assertEquals(failed, banner(LinkStatus(LinkPhase.CONNECTED, pairFailed = true)))
+        assertEquals(failed.copy(second = StatusAction.RETRY), banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, otherComputers = true)))
+        // a code that can't be reached is still being tried: the same code again first, a new one second
+        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN),
+            banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true)))
+        // once the computer asks, its digits take the failure's place, so they can be compared
+        assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER),
+            banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true, waiting = true)))
+    }
+
+    /** Why a pairing ended is read from when, as the Mac viewer does: a spent code is not "didn't allow", and no answer is not a no. */
+    @Test fun whyAPairingEnded() {
+        val t = 1_000_000L
+        assertEquals(PairEnd.SPENT, PairEnd.of(null, t))
+        assertEquals(PairEnd.DECLINED, PairEnd.of(t - 5_000, t))
+        assertEquals(PairEnd.DECLINED, PairEnd.of(t - 107_000, t))
+        assertEquals(PairEnd.UNANSWERED, PairEnd.of(t - 108_000, t))
+        assertEquals(PairEnd.UNANSWERED, PairEnd.of(t - 121_000, t))
+        assertEquals(listOf(PairEnd.UNREACHABLE), PairEnd.entries.filter { it.canRetry })
     }
 
     @Test fun connectedButNotWorking() {

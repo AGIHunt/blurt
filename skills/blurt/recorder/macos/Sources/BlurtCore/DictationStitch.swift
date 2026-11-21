@@ -320,6 +320,35 @@ extension DictationStitch {
         return out
     }
 
+    /// A window heard again must still cover what its pieces heard: the model hears a window under one language tag,
+    /// and a window holding an English sentence then a Chinese one came back with the Chinese only — the English the
+    /// user had watched turn final was gone (dogfood 2026-11-21, 3 of 3 takes). Units only, no word lists: for each
+    /// script the pieces heard at least `rehearScriptMin` units of (Latin words; CJK characters), at least
+    /// `rehearKeepShare` of those units must be in the answer too (counted as a multiset, case and punctuation
+    /// ignored). Corrections (巨幅 → GIF, 强势了 → 尝试了), a word cut in half by a piece, and a double dropped at a
+    /// hard cut stay well inside it; a lost sentence doesn't.
+    /// → nil: the answer keeps; else the script it lost ("latin" / "cjk"), and the pieces' own text is used.
+    /// The Dictation Lab's port is dictation_stitch.rehear_loss.
+    public static let rehearScriptMin = 3
+    public static let rehearKeepShare = 0.6
+
+    public static func rehearLoss(said: String, answer: String) -> String? {
+        var have: [String: Int] = [:]
+        for u in units(answer) { have[u.value, default: 0] += 1 }
+        var total = (latin: 0, cjk: 0), kept = (latin: 0, cjk: 0)
+        for u in units(said) {
+            guard let s = u.value.unicodeScalars.first else { continue }
+            let cjk = isCJK(s)
+            guard cjk || u.value.first?.isLetter == true else { continue }      // digits: either script
+            let hit = (have[u.value] ?? 0) > 0
+            if hit { have[u.value]! -= 1 }
+            if cjk { total.cjk += 1; kept.cjk += hit ? 1 : 0 } else { total.latin += 1; kept.latin += hit ? 1 : 0 }
+        }
+        if total.latin >= rehearScriptMin, Double(kept.latin) < rehearKeepShare * Double(total.latin) { return "latin" }
+        if total.cjk >= rehearScriptMin, Double(kept.cjk) < rehearKeepShare * Double(total.cjk) { return "cjk" }
+        return nil
+    }
+
     /// Numbered or bulleted lines ("1. …", "2、…", "- …" at a line start): Light must never write one; a structured
     /// text with ≥ 2 of them is a list.
     public static func listLines(_ text: String) -> Int {

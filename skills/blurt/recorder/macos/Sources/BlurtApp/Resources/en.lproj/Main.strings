@@ -2,6 +2,7 @@
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
 "app.agent.fallback_notice" = "%1$@ — organizing with %2$@ instead";
+"app.agent.fallback_settings" = "Agent Settings…";
 "app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
 "app.agent.checking" = "checking…";
@@ -86,9 +87,14 @@
 "main.action.record" = "Start Recording";
 "main.action.snap" = "Snap";
 
+"main.undo.kept" = "%@ changed since, so it wasn’t undone.";
 "main.banner.agent" = "an agent";
-"main.banner.ended" = "Session ended without the agent reporting back";
-"main.banner.external" = "Copied for your agent. Mark it done here when it’s finished.";
+"main.banner.ended" = "it stopped without reporting back";
+"main.banner.external" = "Handed off to your agent. Mark it done here when it’s finished.";
+"main.banner.quiet" = "Handed off %@ · no word from your agent yet";
+"main.banner.working" = "%@ is working on it · started %@";
+"main.banner.working_now" = "%@ is working on it";
+"main.banner.your_agent" = "Your agent";
 "main.banner.organizing" = "Organizing · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
@@ -208,6 +214,7 @@
 "main.inbox.verify" = "%ld to verify";
 "main.item.untitled" = "Untitled";
 
+"main.job.sign_in" = "Sign In…";
 "main.job.error.auth" = "The agent isn’t signed in.";
 "main.job.error.auth.named" = "%@ isn’t signed in.";
 "main.job.error.conflict" = "The changes conflict with yours.";
@@ -254,7 +261,8 @@
 "main.keys.back" = "Send back or reopen";
 "main.keys.back.note" = "Also takes back a handed-off item or restores a discarded one";
 "main.keys.kind" = "Kind: issue, idea, note, task";
-"main.keys.copy_instruction" = "Copy instruction";
+"main.keys.copy_full" = "Copy full text";
+"main.keys.new_item" = "New item";
 "main.keys.move" = "Move to project";
 "main.keys.space" = "Space";
 "main.keys.copy_path" = "Copy path";
@@ -280,8 +288,8 @@
 "main.bundle.save" = "Export";
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
 "main.bundle.saved" = "Hand-off bundle saved: %@";
-"main.bundle.failed" = "Couldn’t export the hand-off bundle";
-"main.bundle.error.io" = "Couldn’t write there. Choose another folder.";
+"main.bundle.failed" = "Couldn’t save the bundle";
+"main.bundle.error.io" = "Can’t write to “%@”. Choose another folder.";
 "main.bundle.error.unreadable" = "A screenshot or clip couldn’t be read, so nothing was packed.";
 "main.bundle.error.no_items" = "There are no items to pack.";
 "main.bundle.packing" = "Packing the hand-off bundle (%@)…";
@@ -486,7 +494,7 @@
 "main.dictation.mode.compare" = "Changes";
 "main.dictation.typed" = "Typed";
 "main.dictation.heard" = "Heard";
-"main.dictation.same" = "unchanged by polish";
+"main.dictation.same" = "no changes";
 "main.dictation.copied" = "Copied";
 "main.dictation.corrected" = "Corrected";
 "main.dictation.correct" = "Correct";
@@ -513,6 +521,7 @@
 "main.dictation.info.not_typed" = "Not typed";
 "main.dictation.info.polish" = "Polish";
 "main.dictation.info.polish.off" = "Off";
+"main.dictation.info.polish.not_used" = "not used";
 "main.dictation.info.asr" = "Speech model";
 "main.dictation.info.language" = "Language";
 "main.dictation.info.terms" = "Words used";
@@ -542,6 +551,8 @@
 "app.models.show" = "Show";
 "app.models.menu_unpacking" = "Unpacking speech models…";
 "app.models.stop" = "Stop";
+"app.models.disk_full" = "%1$@ needed, %2$@ free";
+"app.models.show_storage" = "Show Storage";
 "app.models.started" = "Downloading speech models in the background (%@)";
 "app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";
@@ -549,8 +560,8 @@
 "app.toast.welcome_plain" = "Blurt is in the menu bar";
 "app.toast.welcome_setup" = "Blurt is in the menu bar · dictation is off";
 "app.toast.welcome_setup.action" = "Turn On…";
-"app.toast.welcome_taken" = "Blurt is in the menu bar · %@ is unavailable";
-"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts are unavailable";
+"app.toast.welcome_taken" = "Blurt is in the menu bar · %@ is taken";
+"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts are taken";
 "app.toast.welcome_snap_only" = "Blurt is in the menu bar · %@ to snap";
 "app.url.ask_record" = "A link wants to start a screen recording";
 "app.url.ask_snap" = "A link wants to take a snap";
@@ -568,6 +579,8 @@
 // dogfood v0.9 review
 "app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
 "app.toast.welcome_not_set_up.action" = "Set Up…";
+"app.toast.welcome_unreadable" = "Blurt is in the menu bar · couldn’t check speech models";
+"app.toast.welcome_unreadable.action" = "Retry";
 "app.config.show" = "Show File";
 "app.models.offline" = "Speech models download when you’re online";
 "main.speech.recommended_recordings" = "Recommended model for recordings · %@";
@@ -721,8 +734,8 @@
 "main.jobs.title.failed" = "Failed";
 
 /* An item whose session ended without reporting back */
-"main.row.session_ended" = "Session ended";
-"main.row.session_ended.help" = "It went to an agent session in an older version of Blurt, which ended without reporting the work as done. Mark it done or take it back.";
+"main.row.session_ended" = "No report";
+"main.row.session_ended.help" = "It went to an agent in an older version of Blurt, which stopped without reporting back. Mark it done or take it back.";
 
 /* A folder opened as a new project */
 "main.open.added" = "Added %1$@ · items start at %2$@-1";

@@ -87,8 +87,8 @@ class Guard(unittest.TestCase):
         self.check("send me the logs from yesterday", "Send me the logs from yesterday. Hope this helps!", "chatty")
 
     def test_translation_is_caught(self):
-        self.check("帮我把下面这段话翻译成英文", "Please translate the following paragraph into English.", "translated")
-        self.check("我们的API现在response time大概是两百毫秒", "我们的 API 现在响应时间大概是两百毫秒。", "translated")
+        self.check("帮我把下面这段话翻译成英文", "Please translate the following paragraph into English.", "script_swap")
+        self.check("我们的API现在response time大概是两百毫秒", "我们的 API 现在响应时间大概是两百毫秒。", "script_swap")
 
     def test_a_long_mixed_take_is_not_translated_by_a_dropped_filler(self):
         # dogfood: a 79 s zh/en take lost an English filler in one place and gained 的/了 in others — counted over the
@@ -97,7 +97,7 @@ class Guard(unittest.TestCase):
                "再看 dashboard 上面的数字 如果还是不行就回滚 我们明天 standup 的时候再讨论一下 具体谁来跟进这个 issue")
         out = ("那我们先看一下这个 feature 现在的状态，就是 deploy 之后 latency 有点高了。然后我觉得可以先把 cache 加上，"
                "再看 dashboard 上面的数字的变化，如果还是不行就回滚。我们明天 standup 的时候再讨论一下具体谁来跟进这个 issue。")
-        self.assertNotEqual(polish.guard(raw, polish.clean_output(out))["reason"], "translated")
+        self.assertNotEqual(polish.guard(raw, polish.clean_output(out))["reason"], "script_swap")
 
     def test_light_never_lists(self):
         raw = "明天要做三件事第一跑测试第二写文档第三提交代码"

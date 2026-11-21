@@ -2836,7 +2836,9 @@ fn deliver(app: &AppHandle, d: Done) -> Delivered {
         island::send(app, json!({"op": "live", "text": text, "typed": true}));
         crate::remote::typed(&text); // Blurt on the phone: what the take typed
     }
-    let result: &str = match decision {
+    // a computer's window of ours in front, connected: typed on that computer instead
+    let remote = ours && crate::viewer::type_on_remote(&text);
+    let result: &str = if remote { "pasted" } else { match decision {
         Decision::Paste { confirmed: c } => {
             let mut on_return = || {
                 if !wants_send() {
@@ -2884,7 +2886,7 @@ fn deliver(app: &AppHandle, d: Done) -> Delivered {
             asked.set(wants_send());
             "copied"
         }
-    };
+    } };
     let a2 = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(1500));

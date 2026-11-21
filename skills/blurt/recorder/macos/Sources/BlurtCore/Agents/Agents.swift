@@ -317,7 +317,7 @@ public struct AgentCommand: Decodable {
 
 /// One entry of `agents.py install` → changes
 public struct InstallChange: Decodable, Hashable {
-    public var action: String         // symlink | exists | conflict | run | json_merge | error | manual
+    public var action: String         // symlink | exists | conflict | run | json_merge | toml_set | error | manual
     public var path: String?
     public var target: String?
     public var pointsTo: String?
@@ -330,8 +330,11 @@ public struct InstallChange: Decodable, Hashable {
     public var what: String?
     /// manual: what the user would run themselves (the MCP server's own command line)
     public var command: [String]?
+    /// toml_set (Codex): the tools whose calls stop asking for approval, and the config lines that say so
+    public var tools: [String]?
+    public var lines: [String]?
 
-    enum CodingKeys: String, CodingKey { case action, path, target, argv, key, ok, error, output, how, what, command, pointsTo = "points_to" }
+    enum CodingKeys: String, CodingKey { case action, path, target, argv, key, ok, error, output, how, what, command, tools, lines, pointsTo = "points_to" }
 
     public init(action: String, path: String? = nil, target: String? = nil, pointsTo: String? = nil, argv: [String]? = nil,
                 key: [String]? = nil, ok: Bool? = nil, what: String? = nil, how: String? = nil, command: [String]? = nil) {
@@ -339,7 +342,17 @@ public struct InstallChange: Decodable, Hashable {
         self.key = key; self.ok = ok; self.what = what; self.how = how; self.command = command
     }
 
-    public var changesSomething: Bool { action == "symlink" || action == "run" || action == "json_merge" }
+    public var changesSomething: Bool { action == "symlink" || action == "run" || action == "json_merge" || action == "toml_set" }
+    /// Codex's per-tool approval for the reporting tools (agents.json mcp.approve), to be written or already there
+    public var isApproval: Bool { action == "toml_set" || (action == "exists" && lines != nil) }
+    /// "~/.codex/config.toml: mcp_servers.blurt.tools.{mark_fixed,get_item}.approval_mode = "approve""
+    func approvalLine(_ t: (String) -> String) -> String? {
+        guard let p = path, let k = key else { return nil }
+        let names = tools ?? (lines ?? []).compactMap { l in l.split(separator: "]").first.map { String($0.split(separator: ".").last ?? "") } }
+        guard !names.isEmpty else { return nil }
+        let set = names.count == 1 ? names[0] : "{\(names.joined(separator: ","))}"
+        return "\(t(p)): \(k.joined(separator: ".")).\(set).approval_mode = \"approve\""
+    }
 
     /// What the change is about. agents.py names it only for `manual`; the rest follows from the shape: a link in the
     /// agent's skill folder is the skill, a command line or a config key is the MCP server.
@@ -377,6 +390,8 @@ public struct InstallChange: Decodable, Hashable {
         case "conflict": return path.map { "\(t($0)) → \(t(pointsTo ?? "?"))" }
         case "run": return argv.map(words)
         case "json_merge": return path.map { "\(t($0)): \((key ?? []).joined(separator: "."))" }
+        case "toml_set": return approvalLine(t)
+        case "exists" where lines != nil: return approvalLine(t)
         case "exists":
             if let a = argv { return words(a) }
             if let p = path, let k = key { return "\(t(p)): \(k.joined(separator: "."))" }

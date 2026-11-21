@@ -24,6 +24,27 @@ final class DictationChoicesTests: XCTestCase {
         XCTAssertEqual(DictationChoices.table.map(\.choice), C.allCases)
     }
 
+    func testTheMeterSplitsTheTopTierInHalfSteps() {
+        // the cloud (≤ 2.2 %) a whole step above nothing, the 1.7B half a step under it
+        let h = C.allCases.map { DictationChoices.halves(DictationChoices.facts($0).mixed) }
+        XCTAssertEqual(h, [6, 8, 8, 9, 10, 10, 10])
+        // never across `level`'s bins
+        for e in stride(from: 0.001, through: 0.09, by: 0.0005) {
+            XCTAssertEqual((DictationChoices.halves(e) + 1) / 2, DictationChoices.level(e), "\(e)")
+        }
+        XCTAssertEqual(DictationChoices.halves(0), 0)
+    }
+
+    func testEveryCloudRowCostsPerHour() {
+        XCTAssertNil(DictationChoices.perHour(DictationChoices.facts(.qwenLarge)))
+        XCTAssertEqual(DictationChoices.perHour(DictationChoices.facts(.cloudRecognizer))?.cny, 0.8)
+        XCTAssertEqual(DictationChoices.perHour(DictationChoices.facts(.volcengine))?.cny, 1.0)
+        // polish: ¥0.002 a ten-second dictation, 360 an hour
+        let p = DictationChoices.perHour(DictationChoices.facts(.cloudPolish))!
+        XCTAssertEqual(p.cny, 0.72, accuracy: 1e-9)
+        XCTAssertEqual(p.usd, 0.108, accuracy: 1e-9)
+    }
+
     func testTheOwnLanguageLineIsForNonChineseSpeakersWithANumber() {
         XCTAssertNil(DictationChoices.ownLanguage(["zh", "en"]))
         XCTAssertNil(DictationChoices.ownLanguage(["zh-Hans"]))

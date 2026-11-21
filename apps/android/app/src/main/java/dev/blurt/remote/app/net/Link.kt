@@ -24,6 +24,7 @@ import dev.blurt.remote.core.AwayTrouble
 import dev.blurt.remote.core.GoBetweenBackoff
 import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.LinkRoute
+import dev.blurt.remote.core.PairEnd
 import dev.blurt.remote.core.PhoneHandshake
 import dev.blurt.remote.core.RemoteBlurtCommand
 import dev.blurt.remote.core.RemoteDictationPhase
@@ -60,21 +61,27 @@ data class PairedMac(
     val platform: String? = null,
     /** the addresses it last listed that may be reachable away from home over an overlay (Tailscale, ZeroTier): tried at `port` */
     val candidates: List<String> = emptyList(),
+    /** the computer removed this phone, said in a session it had opened: its key is gone, and it has to be paired again */
+    val removed: Boolean = false,
 ) {
     val title: String get() = nickname?.takeIf { it.isNotEmpty() } ?: name
     val host: RemoteHost get() = RemoteHost.from(platform)
 
     fun json(): JSONObject = JSONObject().put("id", id).put("deviceID", deviceID).put("name", name).put("port", port)
         .put("addresses", JSONArray(addresses)).put("relayAddress", relayAddress).put("nickname", nickname).put("platform", platform)
-        .put("candidates", JSONArray(candidates))
+        .put("candidates", JSONArray(candidates)).apply { if (removed) put("removed", true) }
 
     companion object {
         fun from(o: JSONObject) = PairedMac(o.getString("id"), o.getString("deviceID"), o.getString("name"), o.getInt("port"),
             (0 until (o.optJSONArray("addresses")?.length() ?: 0)).map { o.getJSONArray("addresses").getString(it) },
             o.optString("relayAddress").ifEmpty { null }, o.optString("nickname").ifEmpty { null }, o.optString("platform").ifEmpty { null },
-            (0 until (o.optJSONArray("candidates")?.length() ?: 0)).map { o.getJSONArray("candidates").getString(it) })
+            (0 until (o.optJSONArray("candidates")?.length() ?: 0)).map { o.getJSONArray("candidates").getString(it) },
+            o.optBoolean("removed", false))
     }
 }
+
+/** A pairing that didn't take: what went wrong, what to do next; `why.canRetry`: the same code can still work (Try Again). */
+data class PairFailure(val why: PairEnd, val title: String, val help: String)
 
 class Link(private val c: Context, private val vault: KeyVault) {
     enum class State {
@@ -85,6 +92,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         FORGOTTEN,
         /** another phone is driving; this one waits to be touched, or the two would keep throwing each other off */
         REPLACED,
+        /** the person at the computer ended the session: nothing more until the user touches this phone */
+        ENDED,
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -130,7 +139,11 @@ class Link(private val c: Context, private val vault: KeyVault) {
     var pairCheck: String? = null
         private set
     /** a pairing that didn't take, for the pad to say */
-    val pairFailed = MutableStateFlow<String?>(null)
+    val pairFailed = MutableStateFlow<PairFailure?>(null)
+    /** the last pairing link typed into the sheet: the sheet shows it again after a failure */
+    var lastLink = ""
+    /** when the computer began asking about the code in hand (ms) */
+    private var askedAt: Long? = null
 
     private val discovery = Discovery(c)
     private var browse: Discovery.Browse? = null
@@ -145,6 +158,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var generation = 0
     private var refused = false
     private var lastRelayTry = 0L
+    /** the computer's own relay failed this many times in a row without opening: from 2, the public connection service is tried too
+     * (its host waits there meanwhile), and the card says why */
+    private var relayFails = 0
+    private var lastMeetTry = 0L
     private var lastLocalTry = 0L
     private var pingCount = 0
     private var pendingMove: Pair<Float, Float>? = null
@@ -219,20 +236,37 @@ class Link(private val c: Context, private val vault: KeyVault) {
         switchTo(m)
     }
 
-    /** The code never got an answer, or a refusal: back where things were, and say why. */
-    private fun joinFailed() {
+    /** What a pairing that didn't take says: the failure, then what to do next (as the Mac viewer says it). */
+    private fun failure(why: PairEnd, m: PairedMac): PairFailure {
+        val scan = c.getString(R.string.pair_scan_new, m.name)
+        return when (why) {
+            PairEnd.SPENT -> PairFailure(why, c.getString(R.string.pair_spent), scan)
+            PairEnd.DECLINED -> PairFailure(why, c.getString(R.string.pair_not_allowed, m.name), scan)
+            PairEnd.UNANSWERED -> PairFailure(why, c.getString(R.string.pair_unanswered, m.name), scan)
+            PairEnd.LEFT -> PairFailure(why, c.getString(R.string.pair_left), scan)
+            PairEnd.UNREACHABLE -> PairFailure(why, c.getString(R.string.pair_unreachable, m.name),
+                if (m.relayAddress == null) c.getString(R.string.pair_unreachable_local) else c.getString(R.string.pair_unreachable_relay, m.name))
+        }
+    }
+
+    /** The code in hand can't be reached yet: said, and it goes on trying; if the computer turns up and asks, its digits take this one's
+     *  place, so they can be compared. */
+    private fun joinUnreachable() {
         val j = joining ?: return
-        val asked = waitingForMac.value
+        if (pairFailed.value == null) pairFailed.value = failure(PairEnd.UNREACHABLE, j.mac)
+    }
+
+    /** The code never got an answer, or a refusal: back where things were, and say why, with Scan Code for a new one. Said for a while
+     *  over the computer gone back to (it may be in use), or until the next pairing begins. */
+    private fun joinFailed(why: PairEnd) {
+        val j = joining ?: return
         joining = null
         waitingForMac.value = false
+        askedAt = null
         vault.remove(j.mac.deviceID)
-        val t = when {
-            asked -> c.getString(R.string.pair_not_allowed, j.mac.name)
-            j.mac.relayAddress == null -> c.getString(R.string.pair_unreachable_local, j.mac.name)
-            else -> c.getString(R.string.pair_unreachable_relay, j.mac.name)
-        }
+        val t = failure(why, j.mac)
         pairFailed.value = t
-        main.postDelayed({ if (pairFailed.value == t) pairFailed.value = null }, 8000)
+        main.postDelayed({ if (pairFailed.value == t) pairFailed.value = null }, 12_000)
         leave()
         setCurrent(_macs.value.firstOrNull { it.id == j.back?.id } ?: _macs.value.firstOrNull())
         _state.value = if (_current.value == null) State.UNPAIRED else State.CONNECTING
@@ -250,6 +284,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = null
         waitingForMac.value = false
+        askedAt = null
+        pairFailed.value = null
     }
 
     private fun switchTo(m: PairedMac?) {
@@ -298,6 +334,17 @@ class Link(private val c: Context, private val vault: KeyVault) {
         nearbyBrowse = discovery.browse({ f -> nearby.value = nearby.value + f.id }, { id -> nearby.value = nearby.value - id })
     }
 
+    /** The computer removed this phone in a session: its key is deleted and the record kept, marked removed, so the pad and the list say
+     *  so and offer a new code. Pairing again replaces the record by the computer's id. */
+    private fun removedHere(m: PairedMac) {
+        vault.remove(m.deviceID)
+        _macs.value = _macs.value.map { if (it.id == m.id && it.deviceID == m.deviceID) it.copy(removed = true) else it }
+        if (_current.value?.id == m.id) setCurrent(_macs.value.firstOrNull { it.id == m.id } ?: m.copy(removed = true))
+        saveMacs()
+        _state.value = State.FORGOTTEN
+        disconnect()
+    }
+
     fun forget(m: PairedMac) {
         if (_current.value?.id == m.id && _state.value == State.CONNECTED) send(ToMac.Unpair)
         vault.remove(m.deviceID)
@@ -318,12 +365,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
         active = true
         cameBack = android.os.SystemClock.uptimeMillis()
         joining?.since = now()      // scanning with the camera app, say
-        if (_state.value != State.CONNECTED && _state.value != State.REPLACED) connect()
+        if (_state.value != State.CONNECTED && _state.value != State.REPLACED && _state.value != State.ENDED) connect()
     }
 
     /** The user reached for this phone while another had the computer: take it back. */
     fun touched() {
-        if (_state.value == State.REPLACED) connect()
+        if (_state.value != State.REPLACED && _state.value != State.ENDED) return
+        _state.value = State.CONNECTING
+        connect()
     }
 
     /**
@@ -331,8 +380,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
      * while they run. It was already trying every 3 s; this is for the moment the user has just woken the computer or started Blurt.
      */
     fun tryAgain() {
-        if (!active || _current.value == null || _state.value != State.UNREACHABLE) return
+        val sameCode = joining != null && pairFailed.value?.why?.canRetry == true
+        if (!active || _current.value == null || (_state.value != State.UNREACHABLE && !sameCode)) return
         firstAttempt = null
+        // a code that couldn't be reached: the same code once more; what went wrong is gone until it goes wrong again
+        if (sameCode) {
+            pairFailed.value = null
+            joining?.since = now()
+        }
         _state.value = State.CONNECTING
         // the user may have changed networks: the go-between gets another go, unless it said it's out of today's quota
         noDirectUntil = 0
@@ -346,12 +401,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     fun background() {
         active = false
-        if (waitingForMac.value) joinFailed()      // nobody's there to see it, and the code is spent
+        if (waitingForMac.value) joinFailed(PairEnd.LEFT)      // nobody's there to see it, and the code is spent
         Remote.sticky.clear()
         send(ToMac.ReleaseAll)
         disconnect()
         // another phone has the computer: coming back doesn't take it from them, a touch does
-        if (_current.value != null && _state.value != State.REPLACED) _state.value = State.CONNECTING
+        if (_current.value != null && _state.value != State.REPLACED && _state.value != State.ENDED) _state.value = State.CONNECTING
     }
 
     // MARK: connecting
@@ -359,10 +414,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private fun connect() {
         val mac = _current.value ?: return
         if (!active || channel != null || !attempts.all { it.isRelay }) return
+        // replaced or ended there: nothing until the user touches this phone, whatever retry was already queued
+        if (_state.value == State.REPLACED || _state.value == State.ENDED) return
         val key = vault.read(mac.deviceID) ?: run { _state.value = State.FORGOTTEN; return }
         generation += 1
         if (firstAttempt == null) firstAttempt = now()
-        if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED)) _state.value = State.CONNECTING
+        if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED, State.ENDED)) _state.value = State.CONNECTING
         tryLocal(mac, key)
         // the relay a moment later, so at home it's never the one that wins; and not every round. Overlay addresses alongside it.
         val address = RELAY_ONLY ?: mac.relayAddress
@@ -379,12 +436,25 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address))
             }, if (RELAY_ONLY != null) 0 else 1200)
         }
+        if (RELAY_ONLY == null && address != null && !RemoteRelay.isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
+            mayTryRelay(RemoteRelay.GO_BETWEEN)) {
+            main.postDelayed({
+                if (channel != null || !active || g0 != generation) return@postDelayed
+                val url = RemoteRelay.url(RemoteRelay.GO_BETWEEN, RemoteRelay.room(key), "phone") ?: return@postDelayed
+                lastMeetTry = now()
+                attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = true)
+            }, 1200)
+        }
         // keep trying while the app is open; say so after a while
         val g = generation
         val r = Runnable {
             if (channel != null || !active || g != generation) return@Runnable
             val j = joining
-            if (j != null && !waitingForMac.value && (refused || now() - j.since > 15_000)) return@Runnable joinFailed()
+            // a code refused before anyone was asked has run out or was used; one that can't be reached is said, and tried on
+            if (j != null && !waitingForMac.value) {
+                if (refused) return@Runnable joinFailed(PairEnd.SPENT)
+                if (now() - j.since > 15_000) joinUnreachable()
+            }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
             if (refused) _state.value = State.FORGOTTEN
             else if (firstAttempt?.let { now() - it > 8000 } == true) _state.value = State.UNREACHABLE
@@ -474,6 +544,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
         ch.onClose = { failure ->
             main.post {
                 attempts.remove(ch)
+                if (ch.isRelay && !ch.goBetween) {
+                    if (ch.wasReady) {
+                        relayFails = 0
+                        if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
+                    } else if (++relayFails >= 2 && away.value == null) away.value = AwayTrouble.RELAY_DOWN
+                }
                 if (ch.goBetween) {
                     if (ch.relayClose == RemoteRelay.BUDGET) noDirect()
                     // refused at the door (429, Cloudflare's 1015, any upgrade that didn't happen): out of today's quota, or rate-limited
@@ -502,6 +578,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         attempts.remove(ch)
         cancelAttempts()
         channel = ch
+        if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
         setPath(when {
             ch.goBetween -> LinkPath.GO_BETWEEN
             ch.isRelay -> LinkPath.OWN_RELAY
@@ -516,7 +593,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         // a code that keeps getting sessions which never come to a question is being tried for digits: give up on it
         if (joining != null) {
             joinOpens += 1
-            if (joinOpens > 3) { ch.close(); return joinFailed() }
+            if (joinOpens > 3) { ch.close(); return joinFailed(PairEnd.SPENT) }
         }
         ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOf(RemoteFeature.MOVE)))
         val p = object : Runnable {
@@ -561,8 +638,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
         Remote.mic.stop()
         Remote.screen.connectionLost()
         dictation.value = RemoteDictationPhase.IDLE
-        if (waitingForMac.value) return joinFailed()       // the computer said no, or the way to it went
-        if (_current.value == null || _state.value == State.FORGOTTEN || _state.value == State.REPLACED) return
+        // the computer let go while it was asking: its owner said no, or nobody answered in its two minutes
+        if (waitingForMac.value) return joinFailed(PairEnd.of(askedAt, now()))
+        if (_current.value == null || _state.value == State.FORGOTTEN || _state.value == State.REPLACED || _state.value == State.ENDED) return
         _state.value = State.CONNECTING
         connect()
     }
@@ -637,7 +715,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 }
             }
             is ToPhone.Level -> level.value = m.level
-            is ToPhone.Typed, is ToPhone.Notice -> {}
+            is ToPhone.Typed -> {}
+            // the computer's own words for this user (a new device paired there)
+            is ToPhone.Notice -> android.widget.Toast.makeText(c, m.text, android.widget.Toast.LENGTH_LONG).show()
             is ToPhone.Pong -> {
                 lastPong = now()
                 rtt = Net.now() - m.t
@@ -660,13 +740,18 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.Displays -> displays.value = m.displays
             // a computer host sends its clipboard to computer viewers only; nothing for a phone to do
             is ToPhone.Clipboard -> {}
+            is ToPhone.ScreenLocked -> {}
+            is ToPhone.FileProgress, is ToPhone.FileSaved, is ToPhone.FileFailed -> {}     // a phone sends no files
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
                 pairCheck = channel?.check
                 waitingForMac.value = true
+                askedAt = now()
+                // the computer asks now, whatever was said before (it may have turned up after "Can't reach"): the digits take its place
+                pairFailed.value = null
                 val d = joining?.mac?.deviceID
-                main.postDelayed({ if (waitingForMac.value && joining?.mac?.deviceID == d) joinFailed() }, 120_000)
+                main.postDelayed({ if (waitingForMac.value && joining?.mac?.deviceID == d) joinFailed(PairEnd.UNANSWERED) }, PairEnd.QUESTION_LIFE_MS)
             }
             is ToPhone.NewKey -> {
                 val cur = _current.value ?: return
@@ -674,6 +759,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 if (joining != null) {
                     joining = null
                     waitingForMac.value = false
+                    askedAt = null
+                    pairFailed.value = null
+                    lastLink = ""
                     _macs.value.firstOrNull { it.id == cur.id }?.let { old ->
                         if (old.deviceID != cur.deviceID) {
                             vault.remove(old.deviceID)
@@ -685,9 +773,15 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 }
                 send(ToMac.KeyStored)
             }
-            ToPhone.Removed -> _current.value?.let { forget(it) }
+            // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused key
+            // with no session (anyone on the network can send one) only says so, the key kept (`refused` → FORGOTTEN)
+            ToPhone.Removed -> _current.value?.let { removedHere(it) }
             ToPhone.Replaced -> {
                 _state.value = State.REPLACED
+                disconnect()
+            }
+            ToPhone.Ended -> {
+                _state.value = State.ENDED
                 disconnect()
             }
         }

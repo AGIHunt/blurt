@@ -736,6 +736,41 @@
     },
     {
       "json" : {
+        "privacyScreen" : {
+          "_0" : true
+        }
+      },
+      "name" : "privacy_on"
+    },
+    {
+      "json" : {
+        "fileBegin" : {
+          "id" : "f1",
+          "name" : "notes.txt",
+          "size" : 5
+        }
+      },
+      "name" : "file_begin"
+    },
+    {
+      "json" : {
+        "fileChunk" : {
+          "data" : "aGVsbG8=",
+          "id" : "f1"
+        }
+      },
+      "name" : "file_chunk"
+    },
+    {
+      "json" : {
+        "fileEnd" : {
+          "id" : "f1"
+        }
+      },
+      "name" : "file_end"
+    },
+    {
+      "json" : {
         "key" : {
           "_0" : {
             "key" : "F13",
@@ -1116,6 +1151,49 @@
         }
       },
       "name" : "clipboard"
+    },
+    {
+      "json" : {
+        "screenLocked" : {
+          "_0" : true
+        }
+      },
+      "name" : "screen_locked"
+    },
+    {
+      "json" : {
+        "ended" : {
+
+        }
+      },
+      "name" : "ended"
+    },
+    {
+      "json" : {
+        "fileProgress" : {
+          "bytes" : 5,
+          "id" : "f1"
+        }
+      },
+      "name" : "file_progress"
+    },
+    {
+      "json" : {
+        "fileSaved" : {
+          "id" : "f1",
+          "name" : "notes.txt"
+        }
+      },
+      "name" : "file_saved"
+    },
+    {
+      "json" : {
+        "fileFailed" : {
+          "id" : "f1",
+          "why" : "space"
+        }
+      },
+      "name" : "file_failed"
     }
   ],
   "version" : 1,

@@ -2,15 +2,19 @@
 // (BlurtCore ScreenTextHistory), as the Dictation page keeps what was dictated. Before, the capability had no place in
 // the window: what it gave was on the clipboard and then gone.
 //
-//   the head     the page's name, its two keys, and how long the history keeps things (Settings… changes it)
-//   search       over the text and, for a translation, its original
+//   the head     the page's name; a row with the search (over the text and, for a translation, its original) and, at
+//                its right end, Copy Text ⌥C and Translate ⌥T as the Cards page has Voice Note ⌥V and Snap ⌥A; under
+//                it how long the history keeps things (Settings… changes it). All on the title's edge, as on Cards.
 //   the list     newest first under their days: the read or translate glyph, "Translate Text from Screen · Safari",
 //                the text in up to three lines, a translation's original under it in one quiet line, the time — under
 //                the pointer Copy instead
 //
 // Selection as everywhere on the Mac: a click, ⌘-click adds or removes one, ⇧-click a range; ↑ ↓ move, ⇧↑ ⇧↓ extend,
-// ⌘A all. A double-click copies the row, ⌘C the selection (a blank line between texts), ⌫ deletes it.
-// Test commands (`screentextpage …`): state | select <id,…> | key <name> | copy | delete | query <text>.
+// ⌘A all. A double-click copies the row, ⌘C the selection (a blank line between texts), ⌫ deletes it — with Undo in the
+// island and ⌘Z, as the Dictation page's delete (it was gone at once).
+// A translation Blurt quit before it came back is kept as the text read, "Translation interrupted", with Translate Again.
+// Test commands (`screentextpage …`): state | select <id,…> | key <name> | copy | delete | undo | translate_again <id> |
+// query <text>.
 import AppKit
 import Combine
 import SwiftUI
@@ -23,11 +27,20 @@ final class ScreenTextPage: FullPage {
 
     func didShow() { MainActor.assumeIsolated { ScreenTextPageModel.shared.reload() } }
 
-    /// "Translate Text from Screen · Safari": what made it and where it went.
+    /// "Translate Text from Screen · Safari": what made it and where it went (an interrupted translation says so).
     static func source(_ e: ScreenTextEntry) -> String {
-        let what = Loc.t(e.translated ? "capture.menu.translate" : "capture.menu.text", table: "Capture")
-        guard let app = AppNames.display(name: e.app, bundle: e.bundle) else { return what }
-        return what + " · " + app
+        let what = Loc.t(e.translated || e.wasInterrupted ? "capture.menu.translate" : "capture.menu.text", table: "Capture")
+        var parts = [what]
+        if let app = AppNames.display(name: e.app, bundle: e.bundle) { parts.append(app) }
+        if e.wasInterrupted { parts.append(T("home.screen_text.interrupted")) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// What VoiceOver reads for a row: what made it, then the whole text (the row shows three lines of it).
+    static func spoken(_ e: ScreenTextEntry) -> String {
+        var s = source(e) + ": " + e.text
+        if e.translated, let o = e.source { s += ". " + T("home.screen_text.original") + ": " + o }
+        return s
     }
 }
 
@@ -144,13 +157,50 @@ final class ScreenTextPageModel: ObservableObject {
         emit(["event": "screen_text_page", "action": "copy", "count": s.count])
     }
 
+    /// The main window's: what ⌘Z in its Edit menu reaches.
+    private var undo: UndoManager? { MainWindowController.shared.window?.undoManager }
+
+    /// ⌘Z — or the island's "Deleted · Undo" — puts them back (as the Dictation page's delete does).
     func delete(_ ids: [String]) {
-        guard !ids.isEmpty else { return }
-        ScreenTextHistory.shared.delete(ids)
+        let gone = entries.filter { ids.contains($0.id) }
+        guard !gone.isEmpty else { return }
+        ScreenTextHistory.shared.delete(gone.map(\.id))
         selection.subtract(ids)
-        emit(["event": "screen_text_page", "action": "delete", "count": ids.count])
+        emit(["event": "screen_text_page", "action": "delete", "count": gone.count])
         reload()
+        let undo = self.undo
+        island.toast(gone.count == 1 ? T("home.screen_text.deleted.one") : T("home.screen_text.deleted.many", gone.count),
+                     key: "screen_text_deleted", seconds: 5, actionTitle: T("dictation.toast.undo")) { [weak undo] in
+            if let u = undo, u.canUndo { u.undo() }
+        }
+        undo?.registerUndo(withTarget: self) { m in
+            MainActor.assumeIsolated { m.restore(gone) }
+        }
+        undo?.setActionName(T("home.screen_text.delete"))
     }
+
+    private func restore(_ es: [ScreenTextEntry]) {
+        ScreenTextHistory.shared.restore(es)
+        reload()
+        selection = Set(es.map(\.id))
+        emit(["event": "screen_text_page", "action": "undo_delete", "count": es.count])
+        // registered while undoing: ⇧⌘Z deletes them again
+        undo?.registerUndo(withTarget: self) { m in MainActor.assumeIsolated { m.delete(es.map(\.id)) } }
+        undo?.setActionName(T("home.screen_text.delete"))
+    }
+
+    /// An interrupted translation's Translate Again: the text as read, translated as a fresh ⌥T's (onto the clipboard);
+    /// its row goes once the new one is in.
+    func translateAgain(_ id: String) {
+        guard let e = entries.first(where: { $0.id == id }) else { return }
+        emit(["event": "screen_text_page", "action": "translate_again", "id": id])
+        ScreenTextHistory.shared.delete([id])
+        reload()
+        ScreenTextCopy.shared.translateAgain(e.text)
+    }
+
+    func copyText() { ScreenTextCopy.shared.hotkey(via: "text_page") }
+    func translateText() { ScreenTextCopy.shared.hotkey(via: "text_page", translate: true) }
 
     func deleteSelection() { delete(selected.map(\.id)) }
 
@@ -161,7 +211,7 @@ final class ScreenTextPageModel: ObservableObject {
         }
     }
 
-    func openSettings() { AppEnvironment.settings?.show(pane: "screentext/screentext.history") }
+    func openSettings() { AppEnvironment.settings?.show(pane: "screentext/screentext.history_keep") }
 
     // MARK: tests
 
@@ -180,6 +230,8 @@ final class ScreenTextPageModel: ObservableObject {
             }
         case "copy": copySelection()
         case "delete": deleteSelection()
+        case "undo": if undo?.canUndo == true { undo?.undo() }
+        case "translate_again": if p.count > 1 { translateAgain(p[1]) }
         case "query": query = p.count > 1 ? p[1] : ""
         case "reload": reload()
         default: break
@@ -207,17 +259,16 @@ struct ScreenTextPageView: View {
         FullPageFrame(title: T("feature.screen_text")) {
             VStack(alignment: .leading, spacing: 0) {
                 head
-                if !m.entries.isEmpty {
-                    SearchBox(text: $m.query)
-                        .padding(.top, 16)
-                }
                 if m.entries.isEmpty {
                     empty
                 } else if m.shown.isEmpty {
                     Text(T("home.screen_text.none_found")).font(.system(size: 13)).foregroundStyle(.secondary)
-                        .padding(.leading, HomeMetrics.inset).padding(.top, 24)
+                        .padding(.top, 24)
                 } else {
                     list
+                        // the rows' hover wash reaches out past the column, their glyphs stay on the title's edge
+                        // (as the Cards page's tiles)
+                        .padding(.horizontal, -HomeMetrics.inset)
                 }
             }
             .focusable()
@@ -232,12 +283,23 @@ struct ScreenTextPageView: View {
         .onAppear { m.reload() }
     }
 
-    /// The keys and how long things are kept, with Settings….
+    /// The Cards page's row: the search, and at its right end the two keys as buttons; then how long things are kept,
+    /// with Settings….
     private var head: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 14) {
-                keyLine(.text, "capture.menu.text")
-                keyLine(.translateText, "capture.menu.translate")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if !m.entries.isEmpty {
+                    ScreenTextSearchField(text: $m.query).frame(minWidth: 120, maxWidth: 280)
+                }
+                Spacer(minLength: 4)
+                Button { m.copyText() } label: {
+                    CardsKeyedLabel(title: Look.menuCase(T("home.screen_text.action.copy")), key: hk(.text))
+                }
+                .buttonStyle(SettingsOutlinedButtonStyle()).help(Loc.t("capture.menu.text", table: "Capture"))
+                Button { m.translateText() } label: {
+                    CardsKeyedLabel(title: Look.menuCase(T("home.screen_text.action.translate")), key: hk(.translateText))
+                }
+                .buttonStyle(SettingsOutlinedButtonStyle()).help(Loc.t("capture.menu.translate", table: "Capture"))
             }
             HStack(spacing: 6) {
                 Text(m.summary).foregroundStyle(.secondary)
@@ -245,22 +307,13 @@ struct ScreenTextPageView: View {
             }
             .font(.system(size: SettingsMetrics.detailSize))
         }
-        .padding(.leading, HomeMetrics.inset)
-    }
-
-    @ViewBuilder private func keyLine(_ a: HotAction, _ name: String) -> some View {
-        let label = hk(a)
-        HStack(spacing: 6) {
-            if !label.isEmpty { KeyCaps(KeyCaps.split(label), size: 11) }
-            Text(Loc.t(name, table: "Capture")).font(.system(size: 13))
-        }
     }
 
     private var empty: some View {
         Text(m.keepDays == 0 ? T("home.screen_text.empty.off") : T("home.screen_text.empty", hk(.text), hk(.translateText)))
             .font(.system(size: 13)).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.leading, HomeMetrics.inset).padding(.top, 28)
+            .padding(.top, 28)
     }
 
     private var list: some View {
@@ -280,23 +333,44 @@ struct ScreenTextPageView: View {
     }
 }
 
-/// The page's search field: the system's look, Esc clears it.
-private struct SearchBox: View {
+/// The page's search field: the Cards page's (a system search field, as tall as the buttons at the row's other end;
+/// Esc and its × clear it) — it was a filled box of its own.
+private struct ScreenTextSearchField: NSViewRepresentable {
     @Binding var text: String
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.system(size: 12))
-            TextField(T("home.screen_text.search"), text: $text).textFieldStyle(.plain).font(.system(size: 13))
-                .onExitCommand { text = "" }
-            if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain).accessibilityLabel(T("home.screen_text.clear_search"))
-            }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let f = NSSearchField()
+        f.placeholderString = T("home.screen_text.search")
+        f.sendsSearchStringImmediately = true
+        f.sendsWholeSearchString = false
+        f.controlSize = .large
+        f.font = .systemFont(ofSize: 13)
+        f.setAccessibilityLabel(T("home.screen_text.search"))
+        f.delegate = context.coordinator
+        f.target = context.coordinator
+        f.action = #selector(Coordinator.sent(_:))
+        return f
+    }
+
+    func updateNSView(_ f: NSSearchField, context: Context) {
+        context.coordinator.parent = self
+        if f.stringValue != text { f.stringValue = text }
+    }
+
+    @available(macOS 13.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSearchField, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 200, height: max(nsView.intrinsicContentSize.height, OutlinedPopUpButton.height))
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var parent: ScreenTextSearchField
+        init(_ p: ScreenTextSearchField) { parent = p }
+        @objc func sent(_ f: NSSearchField) { parent.text = f.stringValue }
+        func controlTextDidChange(_ n: Notification) {
+            if let f = n.object as? NSSearchField { parent.text = f.stringValue }
         }
-        .padding(.horizontal, 8).frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.05)))
-        .frame(maxWidth: 320)
-        .padding(.leading, HomeMetrics.inset)
     }
 }
 
@@ -309,7 +383,7 @@ private struct ScreenTextRow: View {
     var body: some View {
         let selected = m.selection.contains(e.id), pointed = m.pointed == e.id, copied = m.copied == e.id
         HStack(alignment: .top, spacing: HomeMetrics.gap) {
-            ScreenTextMark(translated: e.translated).frame(width: HomeMetrics.slot)
+            ScreenTextMark(translated: e.translated || e.wasInterrupted).frame(width: HomeMetrics.slot)
             VStack(alignment: .leading, spacing: 2) {
                 Text(ScreenTextPage.source(e)).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
                     .frame(minHeight: 16)
@@ -355,14 +429,19 @@ private struct ScreenTextRow: View {
         .contextMenu {
             Button(T("dictation.history.copy")) { m.copy(e.id) }
             if e.translated { Button(T("home.screen_text.copy_original")) { m.copy(e.id, original: true) } }
+            if e.wasInterrupted { Button(T("home.screen_text.translate_again")) { m.translateAgain(e.id) } }
             Divider()
             Button(T("home.screen_text.delete"), role: .destructive) {
                 m.delete(m.selection.contains(e.id) && m.selection.count > 1 ? m.selected.map(\.id) : [e.id])
             }
         }
-        .accessibilityElement(children: .combine)
+        // the whole text, not the three-line preview combine read (VoiceOver heard a cut-off row)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(ScreenTextPage.spoken(e))
+        .accessibilityValue(DictationHistoryModel.time(e.time))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { m.copy(e.id) }
+        .accessibilityAction(named: T("dictation.history.copy")) { m.copy(e.id) }
     }
 }
 

@@ -11,7 +11,8 @@ import UniformTypeIdentifiers
 import BlurtCore
 
 struct NewItemSheet: View {
-    enum Kind: String, CaseIterable, Identifiable { case issue, idea, task, note; var id: String { rawValue } }
+    /// the app's one kind order (KindStyle.builtIn, the filters, the 1–4 keys): issue, idea, note, task
+    enum Kind: String, CaseIterable, Identifiable { case issue, idea, note, task; var id: String { rawValue } }
 
     /// What ⌘V or a drop on the list brought: text (its first line the title) and pictures.
     struct Prefill {
@@ -127,15 +128,18 @@ struct NewItemSheet: View {
     var pictures: some View {
         HStack(spacing: 8) {
             ForEach(images.urls, id: \.self) { u in
+                // the × straddles the thumbnail's corner inside the stack's own frame (the thumbnail is inset by
+                // 6 pt), so it never reaches up into the Details box above
                 ZStack(alignment: .topTrailing) {
                     Image(nsImage: NSImage(contentsOf: u) ?? NSImage()).resizable().aspectRatio(contentMode: .fill)
                         .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+                        .padding(.top, 6).padding(.trailing, 6)
                     Button { images.urls.removeAll { $0 == u } } label: {
                         Image(nsImage: BlurtIcon.x.symbolImage(pointSize: 7, weight: .bold)).frame(width: 15, height: 15)
                             .background(Circle().fill(.regularMaterial))
                     }
-                    .buttonStyle(.plain).offset(x: 5, y: -5)
+                    .buttonStyle(.plain)
                     .accessibilityLabel(T("main.new_item.remove_image"))
                 }
             }
@@ -156,7 +160,8 @@ struct NewItemSheet: View {
         guard !t.isEmpty, !saving else { return }
         saving = true
         error = nil
-        var item: [String: Any] = ["kind": kind.rawValue, "title": t]
+        // typed in here: "Added by hand", never "Imported"
+        var item: [String: Any] = ["kind": kind.rawValue, "title": t, "source": ["type": "manual"]]
         let d = details.trimmingCharacters(in: .whitespacesAndNewlines)
         if !d.isEmpty { item["details"] = d }          // the item's Details section (store.BODY)
         // copied into the store — from a copy of our own, so `items.py add` never hard-links the user's original

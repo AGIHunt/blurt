@@ -168,7 +168,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         w.toolbarStyle = .unified
         w.titleVisibility = .visible
         w.titlebarAppearsTransparent = true
-        w.minSize = NSSize(width: 760, height: 520)
+        w.minSize = NSSize(width: Self.minWidth, height: Self.minHeight)
         w.setContentSize(NSSize(width: 860, height: 620))
         w.isReleasedWhenClosed = false
         w.delegate = self
@@ -178,6 +178,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         window = w
         sidebar = side
         detail = page
+        fitMinimum()
         // the last pane, for next time (a pane chosen while the window is open counts, not only the one at closing)
         nav.$pane.removeDuplicates().sink { p in Config.shared.set("app.settings_pane", p.rawValue) }.store(in: &subs)
         // while searching, the query is the page's title ("“short”"): the results page doesn't say it twice
@@ -191,12 +192,38 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
             .store(in: &subs)
     }
 
+    static let minWidth: CGFloat = 760
+    /// The least height of any sidebar; the real minimum is what the sidebar needs (fitMinimum).
+    static let minHeight: CGFloat = 520
+
+    /// The window's minimum height is the sidebar's: the search field and every pane listed, the last one whole — at
+    /// the smallest size no pane is cut by the window's bottom edge (Storage was, at the old fixed 760 × 520). It
+    /// follows the panes shown (a capability turned off lowers it); a window smaller than that
+    /// (an autosaved frame from before) grows to it, its top edge kept.
+    @MainActor
+    private func fitMinimum() {
+        guard let w = window, let side = sidebar else { return }
+        w.layoutIfNeeded()
+        let need = max(Self.minHeight, side.neededHeight.rounded(.up))
+        w.minSize = NSSize(width: Self.minWidth, height: need)
+        // with the toolbar showing, AppKit adds its height to the minimum it is given (520 came back as 554): take
+        // that off, so the window stops where the last pane ends
+        let over = w.minSize.height - need
+        if over > 0 { w.minSize = NSSize(width: Self.minWidth, height: need - over) }
+        if w.frame.height < need {
+            let f = w.frame
+            w.setFrame(NSRect(x: f.minX, y: f.maxY - need, width: f.width, height: need), display: true)
+        }
+        emit(["event": "settings_min_size", "size": [Double(w.minSize.width), Double(w.minSize.height)]])
+    }
+
     /// The sidebar and the search follow the switches; a pane that just went away leaves for General, at its
     /// capability's switch (while the window is closed: General, quietly), and its page is let go.
     @MainActor
     private func capabilitiesChanged() {
         SettingsNavigator.shared.capabilitiesChanged(visible: window?.isVisible == true)
         sidebar?.rebuild()
+        fitMinimum()
         detail?.prune()
         emit(["event": "settings_features", "off": Capability.off.map(\.rawValue).sorted(), "pane": SettingsNavigator.shared.pane.rawValue])
     }
@@ -436,6 +463,17 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         reflect(pane: SettingsNavigator.shared.pane)
     }
 
+    /// The height the sidebar needs to list every pane whole: from the window's top (it runs full height, under the
+    /// toolbar) to the list's top, then its rows, with the list's own top margin repeated under the last one.
+    @MainActor var neededHeight: CGFloat {
+        view.layoutSubtreeIfNeeded()
+        let rows = outline.numberOfRows
+        guard rows > 0, let scroll = outline.enclosingScrollView else { return 0 }
+        let first = outline.rect(ofRow: 0), last = outline.rect(ofRow: rows - 1)
+        let top = view.isFlipped ? scroll.frame.minY : view.bounds.height - scroll.frame.maxY
+        return top + scroll.contentInsets.top + last.maxY + max(8, first.minY)
+    }
+
     @MainActor func focusSearch() {
         view.window?.makeFirstResponder(search)
         search.currentEditor()?.selectAll(nil)
@@ -593,7 +631,9 @@ final class SettingsPaneCell: NSTableCellView {
     /// count: nil = not searching; 0 = no match here (dimmed)
     func set(title t: String, symbol: String, count: Int?) {
         title.stringValue = t
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        // monochrome: one line weight in the column (the iPhone's screen was a filled slab among outlines)
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular).applying(.preferringMonochrome()))
         icon.setAccessibilityElement(false)
         title.setAccessibilityElement(false)
         let dim = count == 0

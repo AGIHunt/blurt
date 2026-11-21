@@ -136,7 +136,7 @@ test("handoff: copy the instruction for your own agent", async ({ page, server, 
   await expect(page.locator("#toast")).toContainText("Instruction copied · H-0013");
   expect(server.handoffs).toEqual([{ uids: [U(3)], what: "instruction" }]);
   await expect(page.locator("#statePill .sring")).toHaveClass(/s-handed_off/, { timeout: 4000 });
-  await expect(page.locator("#statePill")).toContainText("Copied to your agent");
+  await expect(page.locator("#statePill")).toContainText("Handed off");
   if (browserName === "chromium") expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("H-0013.md");
 });
 

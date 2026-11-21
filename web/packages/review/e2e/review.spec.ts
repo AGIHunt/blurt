@@ -318,10 +318,11 @@ test("severity and kind chips, 1–4 set the kind, language switch", async ({ pa
   await page.keyboard.press("1");
   await expect(page.locator("#sevChip")).toHaveValue("high");
   await until(() => session.item("I-001")?.kind === "issue");
+  // I-001 is past review (to verify): the button shows its state where Keep was (30e63c00), in the page's language
   await page.locator("#langBtn").click();
-  await expect(page.locator("#keepBtn")).toContainText("Accept");
+  await expect(page.locator("#keepBtn")).toContainText("To verify");
   await page.locator("#langBtn").click();
-  await expect(page.locator("#keepBtn")).toContainText("要做");
+  await expect(page.locator("#keepBtn")).toContainText("待验证");
 });
 
 test.describe("screenshots session (no recording)", () => {

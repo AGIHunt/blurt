@@ -77,6 +77,9 @@ final class NoteKeysTests: XCTestCase {
         // a bare line break would hide "Say it or type…" and the words to come behind an invisible character
         XCTAssertEqual(NoteKeys.action(.shiftReturn, S(mode: .fresh, voice: .listening)), .ignore)
         XCTAssertEqual(NoteKeys.action(.shiftReturn, S(mode: .fresh)), .ignore)
+        // the words taken with Tab are in the field (not typed): ⇧↩ starts the next line after them (the dogfood's
+        // "…shows up.Seen on Safari 18.")
+        XCTAssertEqual(NoteKeys.action(.shiftReturn, S(mode: .fresh, hasText: true)), .newLine)
     }
 
     // MARK: typing — replaces the grey words

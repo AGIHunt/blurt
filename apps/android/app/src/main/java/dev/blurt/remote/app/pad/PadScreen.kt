@@ -325,11 +325,13 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             Link.State.CONNECTED -> LinkPhase.CONNECTED
             Link.State.FORGOTTEN -> LinkPhase.FORGOTTEN
             Link.State.REPLACED -> LinkPhase.REPLACED
+            Link.State.ENDED -> LinkPhase.ENDED
         }
         val cue = follower.see(phase, l.current.value?.id, inFront)
         val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,
             otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value,
-            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null, away = l.away.value))
+            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null,
+            pairRetry = l.pairFailed.value?.why?.canRetry == true, away = l.away.value))
         shownBanner = banner
         fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value)
         card.show(banner?.mark, banner?.let { b ->

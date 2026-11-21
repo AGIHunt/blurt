@@ -70,4 +70,24 @@ final class PhoneChecksTests: XCTestCase {
         XCTAssertEqual(PhoneChecks.problems(down), [.relayUnreachable])
         XCTAssertEqual(PhoneChecks.tips(down), [.sameNetwork, .appOpenMacAwake, .vpnFirewall])
     }
+
+    func testWhatThisMacsOwnTriesFoundAwayFromHome() {
+        // an own relay this Mac can't reach: the same notice as the page's own check failing, and the away tip isn't said
+        let down = PhoneFacts(paired: 1, listening: true, relay: .ok, away: .relayDown)
+        XCTAssertEqual(PhoneChecks.problems(down), [.relayUnreachable])
+        XCTAssertEqual(PhoneChecks.tips(down), [.sameNetwork, .appOpenMacAwake, .vpnFirewall])
+        // the public connection service, when it is the way in
+        XCTAssertEqual(PhoneChecks.problems(PhoneFacts(paired: 1, listening: true, relay: .goBetween, away: .busy)), [.goBetweenBusy])
+        XCTAssertEqual(PhoneChecks.problems(PhoneFacts(paired: 1, listening: true, relay: .goBetween, away: .noDirect)), [.noDirect])
+        XCTAssertEqual(PhoneChecks.tips(PhoneFacts(paired: 1, listening: true, relay: .goBetween, away: .busy)).last, .vpnFirewall)
+        // …and not when an own relay is set, or once a device is connected (it says how it came)
+        XCTAssertEqual(PhoneChecks.problems(PhoneFacts(paired: 1, listening: true, relay: .ok, away: .busy)), [])
+        XCTAssertEqual(PhoneChecks.problems(PhoneFacts(paired: 1, connected: "iPhone", listening: true, relay: .goBetween, away: .noDirect)), [])
+        // the pointer and the keys still work on the same network
+        XCTAssertFalse(PhoneChecks.needsAttention(down))
+    }
+
+    func testNoTipsWhileThisMacCantOpenItsPort() {
+        XCTAssertEqual(PhoneChecks.tips(PhoneFacts(paired: 1, listening: false, listenFailure: "EADDRINUSE")), [])
+    }
 }

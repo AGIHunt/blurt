@@ -13,6 +13,11 @@ os.environ["BLURT_HOME"] = os.path.join(_root, "home")
 os.environ["BLURT_WORKSPACE"] = os.path.join(_root, "ws")
 os.makedirs(os.environ["BLURT_HOME"], exist_ok=True)
 os.makedirs(os.environ["BLURT_WORKSPACE"], exist_ok=True)
+# and an empty Hugging Face cache: a Whisper or Qwen in this Mac's own ~/.cache/huggingface is a model Blurt didn't
+# download (transcribe.py found_elsewhere), and it must not decide what a test sees. The opt-in runs on real models
+# (BLURT_ASR_SLOW, BLURT_E2E) keep the real cache.
+if not (os.environ.get("BLURT_ASR_SLOW") or os.environ.get("BLURT_E2E")):
+    os.environ["HF_HUB_CACHE"] = os.path.join(_root, "hf")
 
 
 def pytest_configure(config):

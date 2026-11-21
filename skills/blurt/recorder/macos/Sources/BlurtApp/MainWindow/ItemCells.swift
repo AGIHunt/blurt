@@ -69,8 +69,9 @@ enum Look {
     }
 
     static func symbol(_ name: String, _ label: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
+        // monochrome: outlines stay outlines (an iPhone's screen otherwise fills in, a slab among the sidebar's lines)
         NSImage(systemSymbolName: name, accessibilityDescription: label)?
-            .withSymbolConfiguration(.init(pointSize: size, weight: weight))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: weight).applying(.preferringMonochrome()))
     }
 
     private static var cache: [String: NSImage] = [:]
@@ -300,11 +301,13 @@ final class TitleCell: NSTableCellView, InlineEditable {
         }
         for v in [editFrame, editor, hint] as [NSView] { v.isHidden = true }
         textField = title
+        // beside a shown chip the title stops before it; alone, it may run to the cell's end
+        titleToChip = title.trailingAnchor.constraint(lessThanOrEqualTo: suggest.leadingAnchor, constant: -8)
         editorToHint = editor.trailingAnchor.constraint(equalTo: hint.leadingAnchor, constant: -10)
         editorToFrame = editor.trailingAnchor.constraint(equalTo: editFrame.trailingAnchor, constant: -TitleRenameFrame.pad)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: suggest.leadingAnchor, constant: -8),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
             rowMiddle(title, in: self),
             suggest.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             rowMiddle(suggest, in: self),
@@ -327,9 +330,32 @@ final class TitleCell: NSTableCellView, InlineEditable {
 
     /// The row's suggested project (nil: none, or not an Unassigned row); `move` moves this row's item there.
     func setSuggestion(_ project: String?, move: (() -> Void)?) {
+        hasSuggestion = project != nil
         suggest.isHidden = project == nil
+        titleToChip.isActive = project != nil
         if let p = project { suggest.set(project: p) } else { suggest.attributedTitle = NSAttributedString(string: "") }
         suggest.onMove = move
+        needsLayout = true
+    }
+    private var hasSuggestion = false
+    private var titleToChip: NSLayoutConstraint!
+
+    /// The title keeps up to 45 % of the row (at least 160 pt, never more than it needs): the chip gets what is left
+    /// and shortens to fit ("Looks like X · Move" → "X · Move" → "Move"), so a narrow window never cuts the title to
+    /// one letter while the chip stays whole.
+    /// Too narrow for even "Move" beside 140 pt of title: the row shows its title alone — the group header above it
+    /// names the project and has Move All, and the detail has Move to Project….
+    override func layout() {
+        if hasSuggestion {
+            let w = bounds.width - 2 - 8 - 4
+            let want = ceil(title.attributedStringValue.size().width) + 4
+            let keep = min(want, max(160, w * 0.45))
+            suggest.fit(w - keep)
+            let move = ceil(suggest.title(form: 2).size().width) + 6
+            suggest.isHidden = w - move < min(want, 140)
+        }
+        titleToChip.isActive = !suggest.isHidden
+        super.layout()
     }
 
     /// unreadable: the item's file doesn't parse — a small warning mark before the title says so in the list,

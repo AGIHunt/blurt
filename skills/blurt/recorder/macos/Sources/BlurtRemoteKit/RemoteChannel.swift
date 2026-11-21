@@ -689,6 +689,21 @@ public final class RemoteChannel {
         queue.async { self.shut(failure) }
     }
 
+    /// A relay connection's close with an app close code the relay reads (RemoteRelay.asleep: the computer is going to sleep), then shut.
+    public func close(code: UInt16) {
+        queue.async {
+            guard self.isRelay, !self.closed else { return self.shut(nil) }
+            let m = NWProtocolWebSocket.Metadata(opcode: .close)
+            m.closeCode = .privateCode(code)
+            let ctx = NWConnection.ContentContext(identifier: "close", metadata: [m])
+            self.connection.send(content: nil, contentContext: ctx, isComplete: true, completion: .contentProcessed { [weak self] _ in
+                self?.queue.async { self?.shut(nil) }
+            })
+            // a sleeping Mac doesn't wait long for it
+            self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.shut(nil) }
+        }
+    }
+
     private func shut(_ failure: RemoteHandshakeError?) {
         guard !closed else { return }
         closed = true

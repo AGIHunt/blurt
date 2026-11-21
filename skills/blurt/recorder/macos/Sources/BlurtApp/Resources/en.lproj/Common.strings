@@ -18,7 +18,7 @@
 "state.todo" = "To do";
 "state.handed_off" = "Handed off";
 "state.handed_off.session" = "Handed off to %@";
-"state.handed_off.external" = "Copied to your agent";
+"state.handed_off.external" = "Handed off";
 "state.in_progress" = "In progress";
 "state.to_verify" = "To verify";
 "state.done" = "Done";

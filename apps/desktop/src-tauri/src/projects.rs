@@ -143,6 +143,14 @@ pub fn set(runner: &Runner, id: &str, patch: &Value) -> Result<Value, String> {
     runner.run("projects.py", &["set".into(), id.into(), "--json".into(), patch.to_string()], None, Duration::from_secs(20)).map_err(String::from)
 }
 
+/// The user's order (the sidebar, dragged): these first, in this order — ⌘5–⌘9 follow it; using a project never
+/// reorders (projects.py order).
+pub fn order(runner: &Runner, ids: &[String]) -> Result<Value, String> {
+    let mut args = vec!["order".to_string()];
+    args.extend(ids.iter().cloned());
+    runner.run("projects.py", &args, None, Duration::from_secs(20)).map_err(String::from)
+}
+
 /// Remove from Blurt (the folder and its items stay): the answer carries the entry as it was, for `restore`.
 pub fn remove(runner: &Runner, id: &str) -> Result<Value, String> {
     runner.run("projects.py", &["remove".into(), id.into()], None, Duration::from_secs(20)).map_err(String::from)

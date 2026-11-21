@@ -14,7 +14,8 @@
 //               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu ·
 //               Translate: Chinese ↔ English / into English / into Chinese (⌘ while talking turns it on), whether the
 //               cloud model translates, the apps where every take is translated (DictationTranslating.swift)
-//   History and models  History: Open History…, with how long it is kept, the audio and Clear History… in its menu ·
+//   History and models  History: Clear History… (asking in a sheet) and Open History… · Keep dictations for: a
+//               popup (a shorter period asks before it deletes, in the same sheet) · the audio ·
 //               Models: the names in use, or what isn't on this Mac yet, in plain words — and always the one way on,
 //               a link to Settings → Speech, which chooses them and owns the one Download (DictationModels.swift)
 //   Advanced    folded at the foot (open while it is on): Show the Dictation Lab (record.dictation.lab), for developers
@@ -128,6 +129,24 @@ final class DictationSettings: ObservableObject {
     func setModifierTap(_ v: DictationTrigger.ModifierTap) { modifierTap = v; save("modifier_tap", v == DictationTrigger.shippedModifierTap ? nil : v.rawValue) }
     func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
+    /// The retention popup: a shorter period, or Don't keep, that would delete saved dictations asks first ("Delete 12
+    /// dictations?", Cancel the default) — before, the choice deleted them at once while Clear History… asked (the
+    /// founder, 2026-11-21). A longer one, or one that deletes nothing, applies at once.
+    func chooseRetention(_ d: Int) {
+        guard d != retention else { return }
+        let n = d < retention || d == 0 ? DictationHistory.shared.wouldPrune(days: d) : 0
+        guard n > 0, question == nil else { return setRetention(d) }
+        emit(["event": "dictation_retention_ask", "days": d, "count": n])
+        ask(DictationQuestion(title: TP("dictation.history.shorten.title", n),
+                              message: Self.paragraph(d == 0 ? T("dictation.history.shorten.off")
+                                                      : T("dictation.history.shorten.days", T("dictation.history.days", d)),
+                                                      T("dictation.history.clear.undo")),
+                              confirm: T("dictation.history.shorten.confirm"))) { [weak self] yes in
+            emit(["event": "dictation_retention", "days": d, "deleted": yes ? n : 0, "answer": yes ? "delete" : "cancel"])
+            if yes { self?.setRetention(d) } else { self?.objectWillChange.send() }      // the popup shows the old period again
+        }
+    }
+
     func setRetention(_ d: Int) {
         retention = d
         save("retention_days", d == 30 ? nil : d)
@@ -198,51 +217,107 @@ final class DictationSettings: ObservableObject {
         return h.load().filter { e in e.audio.map { fm.fileExists(atPath: h.resolve($0).path) } ?? false }.count
     }
 
-    /// The clear question while it shows: one at a time.
-    private(set) var asking: NSAlert?
-
-    /// Clear History…: an alert sheet on the Settings window, like System Settings' own — the app icon, the question,
-    /// what goes (the count; the recordings only when some are kept) and that it can't be undone, on its own line.
-    /// Cancel is the default (↩ and Esc both keep the history); Clear History is the red one and has to be clicked.
+    /// Clear History…: a sheet on the Settings window — the app icon, the question, then in one
+    /// short paragraph what goes (the count; the recordings only when some are kept) and that it can't be undone.
+    /// Cancel is the default (↩ and Esc both keep the history); Clear History has to be clicked.
     func askClear() {
         refresh()
         let n = historyCount
-        guard n > 0, asking == nil else { return }
+        guard n > 0, question == nil else { return }
         let audio = savedRecordings()
-        let a = NSAlert()
-        a.alertStyle = .warning
-        a.icon = NSApp.applicationIconImage
-        a.messageText = T("dictation.history.clear.title")
-        a.informativeText = TP(audio > 0 ? "dictation.history.clear.message_audio" : "dictation.history.clear.message", n)
-            + "\n" + T("dictation.history.clear.undo")
-        let cancel = a.addButton(withTitle: T("dictation.cancel"))       // first: the default (↩, drawn filled)
-        cancel.keyEquivalent = "\r"
-        let clear = a.addButton(withTitle: T("dictation.history.clear.confirm"))
-        clear.keyEquivalent = ""
-        // the system's quiet red (its own capsule; macOS 26 ignores a title colour or tint on alert buttons): next to
-        // the filled Cancel it never stands out (system.md: a destructive button is never the one that does)
-        clear.hasDestructiveAction = true
-        asking = a
         emit(["event": "dictation_clear_ask", "count": n, "recordings": audio])
-        // Esc answers Cancel as well: NSAlert gives Esc only to a Cancel that isn't also the ↩ default
-        let esc = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak a] e in
-            guard e.keyCode == 53, let a = a, e.window === a.window else { return e }
-            a.buttons.first?.performClick(nil)
+        ask(DictationQuestion(title: T("dictation.history.clear.title"),
+                              message: Self.paragraph(TP(audio > 0 ? "dictation.history.clear.message_audio" : "dictation.history.clear.message", n),
+                                                      T("dictation.history.clear.undo")),
+                              confirm: T("dictation.history.clear.confirm"))) { [weak self] yes in
+            emit(["event": "dictation_clear", "cleared": yes])
+            if yes { self?.clearHistory() }
+        }
+    }
+
+    // MARK: the page's one question at a time (DictationQuestionSheet)
+
+    /// The question showing (Clear History…, a shorter period), as a sheet on the Settings window.
+    @Published var question: DictationQuestion?
+    private var answered: ((Bool) -> Void)?
+    private var keys: Any?
+
+    /// Two sentences as one paragraph: a space between them in English, none in Chinese.
+    static func paragraph(_ a: String, _ b: String) -> String { a + (Loc.isChinese ? "" : " ") + b }
+
+    func ask(_ q: DictationQuestion, then: @escaping (Bool) -> Void) {
+        answered = then
+        question = q
+        // ↩ and Esc both answer Cancel, wherever the focus is in the sheet (a SwiftUI button takes only one of the two)
+        keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard [36, 53, 76].contains(e.keyCode), e.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+                  e.window?.sheetParent is SettingsWindow, let self = self, self.question != nil else { return e }
+            self.answer(false)
             return nil
         }
-        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
-            if let m = esc { NSEvent.removeMonitor(m) }
-            guard let self = self else { return }
-            self.asking = nil
-            let yes = r == .alertSecondButtonReturn
-            emit(["event": "dictation_clear", "cleared": yes])
-            if yes { self.clearHistory() }
+    }
+
+    /// The answer, once: the sheet closes and the asker hears yes (the destructive button) or no (Cancel, ↩, Esc, or
+    /// the sheet closed any other way).
+    func answer(_ yes: Bool) {
+        if let k = keys { NSEvent.removeMonitor(k); keys = nil }
+        let then = answered
+        answered = nil
+        question = nil
+        then?(yes)
+    }
+}
+
+/// What a DictationQuestionSheet asks: the question, one short paragraph (what goes, that it can't be undone) and
+/// the destructive button's title.
+struct DictationQuestion: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String
+    var confirm: String
+}
+
+/// A question before something is deleted, as the island's Discard asks it (system.md §3.4): the app icon, the question
+/// in 15 pt semibold, one 12 pt secondary paragraph; Cancel on the right is the one filled default (the light accent,
+/// white title, ↩), the destructive answer left of it a plain button with its title in `err` — never the one that
+/// stands out.
+struct DictationQuestionSheet: View {
+    var q: DictationQuestion
+    var answer: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(nsImage: NSApp.applicationIconImage ?? NSImage()).resizable().interpolation(.high)
+                    .frame(width: 48, height: 48)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(q.title).font(.system(size: 15, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(q.message).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .lineSpacing(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button { answer(true) } label: { Text(q.confirm).foregroundStyle(Color.brandErr) }
+                // white on the light accent in both appearances (≥ 4.5 : 1; the dark accent is 3.19 : 1, §9)
+                Button(T("dictation.cancel")) { answer(false) }
+                    .buttonStyle(.borderedProminent).tint(Color.settingsDefault)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.regular)
+            .padding(.top, 20)
         }
+        // the sheet's corners are round and wide (macOS 26): the buttons keep clear of them
+        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 20)
+        .frame(width: 400)
         // test screenshots taken in the background: the sheet drawn as the user sees it, Cancel filled as the default
-        if SettingsTestKeyLook.on { SettingsTestKeyLook.apply(to: a.window) }
-        if let w = NSApp.windows.first(where: { $0 is SettingsWindow && $0.isVisible }) {
-            a.beginSheetModal(for: w, completionHandler: done)
-        } else { done(a.runModal()) }
+        .modifier(TestKeyLook(on: SettingsTestKeyLook.on))
     }
 }
 
@@ -495,8 +570,11 @@ struct DictationPane: View {
             SettingsGroup("dictation.data") {
                 historyRow
                 // "Don't keep": nothing to keep the audio with — the switch shows off and can't be turned on
+                // one line under the title; the whole story (the text around the cursor, what Off does) is its tooltip
                 SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio && m.retention > 0 }, set: { m.setKeepAudio($0) }),
-                              detail: m.retention > 0 ? T("dictation.history.keep_audio.detail.days", T("dictation.history.days", m.retention))
+                              detail: m.retention > 0 ? T("dictation.history.keep_audio.short", T("dictation.history.days", m.retention))
+                                  : T("dictation.history.keep_audio.short.off"),
+                              help: m.retention > 0 ? T("dictation.history.keep_audio.detail.days", T("dictation.history.days", m.retention))
                                   : T("dictation.history.keep_audio.detail.off"))
                     .disabled(m.retention == 0)
                 modelsRow
@@ -514,6 +592,12 @@ struct DictationPane: View {
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             guard let id = n.object as? String else { return }
             if id == "style" { showByApp = true }
+            if id.hasPrefix("retention:"), let d = Int(id.dropFirst("retention:".count)) {   // tests: the popup's choice
+                nav.reveal("dictation.history_keep")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { m.chooseRetention(d) }
+                return
+            }
+            if id.hasPrefix("answer:") { m.answer(id == "answer:yes"); return }    // tests: `dictation clear click clear|cancel`
             if id == "voiceprint-start" { vp.start(); return }     // tests: the sheet's Start Recording / Done
             if id == "voiceprint-done" { vp.finish(); return }
             if id == "voiceprint" {     // tests: `dictation settings-scroll voiceprint` — Only my voice's sheet
@@ -533,6 +617,10 @@ struct DictationPane: View {
         .onReceive(SettingsFlash.shared.$request) { r in
             guard let id = r?.id else { return }
             if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
+        }
+        // Clear History…, a shorter period: the page's one question, as a sheet on the window
+        .sheet(item: Binding(get: { m.question }, set: { if $0 == nil, m.question != nil { m.answer(false) } })) { q in
+            DictationQuestionSheet(q: q) { m.answer($0) }
         }
         .onAppear { m.start(); perms.start(); vp.refresh() }
         .onDisappear { m.stop(); perms.stop() }
@@ -759,6 +847,10 @@ struct DictationPane: View {
                             selection: Binding(get: { m.styles.categories[c] }, set: { m.setStyle($0, for: c) }))
             }
         }
+        // the keys that change the style of one take, under the style rows (it was the time limit's description)
+        SettingsLine(padding: 8) {
+            Hint(hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat)))
+        }
         if !m.styles.apps.isEmpty {
             SettingsLine(padding: 8) { Hint(T("dictation.style.apps")) }
             ForEach(m.styles.apps.keys.sorted(), id: \.self) { b in
@@ -776,8 +868,7 @@ struct DictationPane: View {
         }
         SettingToggle("dictation.suggest_lists", isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
         SettingToggle("dictation.learn_styles", isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) }))
-        SettingRow("dictation.polish_timeout",
-                   detail: hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat))) {
+        SettingRow("dictation.polish_timeout") {
             HStack(spacing: 6) {
                 Text(T("dictation.polish.seconds", seconds(m.timeout))).foregroundStyle(.secondary).monospacedDigit()
                 Stepper(T("dictation.polish.timeout"), value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5)
@@ -804,26 +895,38 @@ struct DictationPane: View {
         }
     }
 
-    /// "9 saved · deleted after 30 days", Open History… — how long (or Don't keep, issue #36) and the destructive
-    /// Clear History… are in its menu, never a button at rest; keeping the audio is the row under it.
-    var historyRow: some View {
+    /// "9 saved · deleted after 30 days" with Clear History… and Open History… side by side — both visible at rest (in a
+    /// menu, people looking for the history controls didn't find them; it asks first, in a sheet), and in the row's
+    /// context menu too. Then how long it is kept (or Don't keep, issue #36) as a visible popup — as Settings → Cards → History
+    /// (it was in Open History…'s menu, where people looking for it didn't find it). A period that would delete saved
+    /// dictations asks first (`chooseRetention`). Keeping the audio is the row under it.
+    @ViewBuilder var historyRow: some View {
         SettingRow("dictation.history_saved", detail: m.retention == 0 ? T("dictation.history.summary.off")
-                       : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention)),
-                   hosts: ["dictation.history_keep"]) {
-            Menu {
-                SettingMenuPicker("dictation.history_keep", selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
-                    ForEach([7, 30, 90, 365], id: \.self) { d in Text(T("dictation.history.days", d)).tag(d) }
-                    Divider()
-                    Text(T("dictation.history.dont_keep")).tag(0)
-                }
-                Divider()
-                Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }
+                       : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention))) {
+            HStack(spacing: 8) {
+                Button(T("dictation.history.clear")) { m.askClear() }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
                     .disabled(m.historyCount == 0)
-            } label: {
-                Text(T("dictation.history.open"))
-            } primaryAction: { DictationHistoryWindow.shared.show() }
+                Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
+            }
             .fixedSize()
         }
+        .contextMenu {
+            Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
+            Divider()
+            historyItems
+        }
+        SettingRow("dictation.history_keep") {
+            ChoicePopup(label: T("dictation.history.keep"),
+                        choices: [7, 30, 90, 365].map { ($0, T("dictation.history.days", $0)) } + [(0, T("dictation.history.dont_keep"))],
+                        selection: Binding(get: { m.retention }, set: { m.chooseRetention($0) }), dividers: [4])
+        }
+    }
+
+    @ViewBuilder var historyItems: some View {
+        Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }
+            .disabled(m.historyCount == 0)
     }
 
     // MARK: models (chosen in Settings → Speech)
@@ -858,8 +961,12 @@ struct DictationPane: View {
         return SettingRow("dictation.models", detail: detail) {
             switch s {
             case .loading: BrandSpinnerView()
-            case .missing: TextLinkButton(T("dictation.models.get_in_speech")) { SpeechPane.showDictationModels() }
-            case .coming, .ready: TextLinkButton(T("dictation.models.change")) { SpeechPane.showDictationModels() }
+            // a row's action is a bordered button, as Change… and Open History… two rows away; link ink is for links in
+            // running text (dogfood 2026-11-21)
+            case .missing: Button(T("dictation.models.get_in_speech")) { SpeechPane.showDictationModels() }
+                .buttonStyle(SettingsOutlinedButtonStyle())
+            case .coming, .ready: Button(T("dictation.models.change")) { SpeechPane.showDictationModels() }
+                .buttonStyle(SettingsOutlinedButtonStyle())
             }
         }
     }
@@ -871,7 +978,7 @@ struct DictationPane: View {
         let dl = ModelDownloads.shared
         let polish = m.style != .verbatim
         if models.asr == nil && models.polish == nil { return .loading }
-        let asrJob = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? j : nil }
+        let asrJob = models.queuedJob
             ?? dl.queue.pending.first { j in j.kind == .dictation && models.asr?.models.contains { $0.id == j.id } == true }
         if let j = asrJob ?? (polish ? dl.queue.pending.first { j in j.kind == .polish } : nil) { return .coming(j) }
         let missing = models.missingJobs(polish: polish)

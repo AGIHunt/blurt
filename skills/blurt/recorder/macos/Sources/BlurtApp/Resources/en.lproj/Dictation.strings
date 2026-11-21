@@ -98,6 +98,7 @@
 "dictation.perm.restart_hint" = "Allowed. Takes effect within a few seconds, no restart needed.";
 
 "dictation.polish.timeout" = "Polish time limit";
+"dictation.polish.timeout.detail" = "If polish takes longer, the text is typed as heard.";
 "dictation.polish.seconds" = "%@ s";
 "dictation.cancel" = "Cancel";
 
@@ -108,10 +109,15 @@
 "dictation.history.keep_audio.detail" = "Recordings and the text around the cursor are kept with the history and deleted with it. When off, each recording is deleted once its text is typed.";
 "dictation.history.keep_audio.detail.days" = "Recordings and the text around the cursor are kept with the history and deleted after %@. When off, each recording is deleted once its text is typed, and the text around the cursor isn’t kept.";
 "dictation.history.open" = "Open History…";
+"dictation.history.keep_audio.short" = "Recordings are kept with the history and deleted after %@";
+"dictation.history.keep_audio.short.off" = "History is off, so no recordings are kept";
 "dictation.history.clear" = "Clear History…";
 "dictation.history.clear.title" = "Clear dictation history?";
 "dictation.history.clear.undo" = "You can’t undo this.";
 "dictation.history.clear.confirm" = "Clear History";
+"dictation.history.shorten.days" = "Dictations older than %@ are deleted, with their recordings.";
+"dictation.history.shorten.off" = "History turns off, and every saved dictation is deleted with its recording.";
+"dictation.history.shorten.confirm" = "Delete";
 
 /* the history window */
 "dictation.history.title" = "Dictation History";
@@ -150,6 +156,7 @@
 "dictation.history.reason.grew" = "polish added words";
 "dictation.history.reason.novel" = "polish changed words";
 "dictation.history.reason.translated" = "polish changed the language";
+"dictation.history.reason.script_swap" = "polish changed the language";
 "dictation.history.reason.answered" = "polish answered instead of tidying up";
 "dictation.history.reason.chatty" = "polish added a reply";
 "dictation.history.reason.correction" = "polish lost a correction";
@@ -411,6 +418,7 @@
 "dictation.lab.tag.languages.zh" = "Chinese";
 "dictation.lab.tag.languages.zh-terms" = "Chinese with English terms";
 "dictation.lab.tag.languages.en" = "English";
+"dictation.lab.tag.languages.mixed" = "English and Chinese";
 "dictation.lab.tag.features.names" = "Names and terms";
 "dictation.lab.tag.features.numbers" = "Numbers";
 "dictation.lab.tag.features.correction" = "Self-correction";
@@ -433,8 +441,10 @@
 "dictation.style.reformat.same" = "Same result in every style";
 "dictation.style.needs_polish" = "Changing styles needs a polish model";
 "dictation.style.reformatted" = "Reformatted as %@";
-"dictation.style.copied" = "Copied as %@ — the text in the field is unchanged";
-"dictation.style.copied.edited" = "Copied your edited text as %@ — the field is unchanged";
+"dictation.style.copied" = "Copied as %@ · the text in the field is unchanged";
+"dictation.style.copied.edited" = "Copied your edited text as %@ · the field is unchanged";
+"dictation.style.edited.failed" = "Couldn’t reformat your edited text as %@ · it stays as it is";
+"dictation.style.edited.same" = "%@ doesn’t change your edited text";
 "dictation.style.copied.original" = "The text was edited — copied the original dictation as %@";
 "dictation.style.undone" = "Back to %@";
 "dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
@@ -461,7 +471,7 @@
 "dictation.style.learned" = "Learned";
 "dictation.style.reset" = "Reset";
 "dictation.style.reset.help" = "Back to its category’s style";
-"dictation.style.suggest" = "Offer a list when a take sounds like one";
+"dictation.style.suggest" = "Offer a list when a dictation sounds like one";
 "dictation.style.learn_toggle" = "Remember Structured and Translate for each app";
 "dictation.style.learn_toggle.detail" = "Turned on with a double-tap of ⇧ or ⌘, it stays on in that app until you turn it off";
 "dictation.style.verbatim.detail" = "Exactly what the speech model heard. No polish.";
@@ -529,13 +539,13 @@
 "dictation.toast.no_vad" = "Speech detection file missing";
 "dictation.toast.no_vad.kept" = "Speech detection file missing · recording kept";
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
-"dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
-"dictation.toast.asr_slow" = "The speech model didn’t respond — the recording is kept";
-"dictation.toast.asr_cloud_key" = "The cloud speech key isn’t valid — the recording is kept";
+"dictation.toast.asr_failed" = "Couldn’t recognize that · recording kept";
+"dictation.toast.asr_slow" = "The speech model didn’t respond · recording kept";
+"dictation.toast.asr_cloud_key" = "The cloud speech key isn’t valid · recording kept";
 "dictation.toast.asr_cloud_key.action" = "Settings…";
-"dictation.toast.asr_cloud_model" = "Model Studio can’t transcribe with this model — the recording is kept";
-"dictation.toast.asr_cloud_offline" = "Couldn’t connect to the cloud speech service — the recording is kept";
-"dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota — the recording is kept";
+"dictation.toast.asr_cloud_model" = "Model Studio can’t transcribe with this model · recording kept";
+"dictation.toast.asr_cloud_offline" = "Couldn’t connect to the cloud speech service · recording kept";
+"dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota · recording kept";
 "dictation.toast.slow.asr" = "Still recognizing… %@ to cancel";
 "dictation.toast.fn_clash" = "%@ also uses Fn — text may be typed twice";
 "dictation.toast.fn_clash.switch" = "Use Right Option";
@@ -550,9 +560,11 @@
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (you can switch to tap in Settings)";
 "dictation.toast.tap_mode" = "Let go, then tap %@ to start talking (you can switch to hold in Settings)";
-"dictation.toast.no_polish" = "No polish model downloaded — typed without polish";
+"dictation.toast.no_polish" = "Typed without polish · no polish model";
+"dictation.toast.apple_language" = "Recognized in %@";
+"dictation.toast.apple_language.change" = "Change…";
 "dictation.toast.polish_cloud_key" = "The cloud polish key isn’t valid · not used this time";
-"dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may be less accurate";
+"dictation.toast.weaker_asr" = "Recommended speech model not downloaded · names may be less accurate";
 "dictation.tip.send" = "Double-tap %@ to send";
 "dictation.tip.list" = "Double-tap ⇧ while you talk for a list";
 "dictation.tip.reformat" = "%@ switches style";
@@ -589,7 +601,7 @@
 "dictation.menu.get_model.subtitle_plain" = "Required for dictation";
 "dictation.models.queued" = "Waiting to download · %@";
 "dictation.models.show" = "Show";
-"dictation.mode.help" = "%1$@ cancels a take. To save what you say instead of typing it, use a voice note (%2$@).";
+"dictation.mode.help" = "%1$@ cancels dictation. To save what you say instead of typing it, use a voice note (%2$@).";
 "dictation.settings.double_tap.key" = "Double-tap %@ to press Return after the text.";
 "dictation.settings.double_tap.help" = "Tap to stop, check the text, then double-tap to send. Or double-tap to stop and send at once.";
 "dictation.settings.fn_clash.help" = "Quit that app, or set a different key for one of them.";
@@ -604,7 +616,7 @@
 "dictation.history.summary" = "%1$ld saved · deleted after %2$@";
 "dictation.history.dont_keep" = "Don’t keep";
 "dictation.history.summary.off" = "Not kept · each dictation is forgotten once it’s typed";
-"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A take that couldn’t be recognized keeps its recording for a day, for Retry.";
+"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A dictation that couldn’t be recognized keeps its recording for a day, for Retry.";
 "dictation.models.detail" = "The speech and polish models dictation runs on.";
 "dictation.models.missing" = "Not downloaded · %@";
 "dictation.models.download" = "Download";

@@ -40,7 +40,14 @@ final class RemoteRateTests: XCTestCase {
         XCTAssertTrue(a.update(frames: 20, lost: 3, busy: 0, rtt: 0.05, sent: 3_000_000))
         var b = RemoteRate(bitrate: 4_000_000, fps: 30)
         _ = b.update(frames: 30, lost: 0, busy: 0, rtt: 0.05, sent: 3_000_000)
-        XCTAssertTrue(b.update(frames: 30, lost: 0, busy: 0, rtt: 0.6, sent: 3_000_000))
+        XCTAssertFalse(b.update(frames: 30, lost: 0, busy: 0, rtt: 0.6, sent: 3_000_000), "one long round trip is a swing")
+        XCTAssertTrue(b.update(frames: 30, lost: 0, busy: 0, rtt: 0.6, sent: 3_000_000), "two in a row are a queue")
+    }
+
+    func testAHotspotsSwingingRoundTripKeepsThePicture() {
+        var r = RemoteRate(bitrate: 4_000_000, fps: 30, away: true)
+        for i in 0..<40 { _ = r.update(frames: 30, lost: 0, busy: 0, rtt: i % 2 == 0 ? 0.06 : 0.32, sent: r.bitrate) }
+        XCTAssertGreaterThanOrEqual(r.bitrate, 2_000_000)
     }
 
     func testItDoesntClimbStraightBackIntoTrouble() {

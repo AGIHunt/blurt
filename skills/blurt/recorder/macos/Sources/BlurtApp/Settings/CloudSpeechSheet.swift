@@ -1,9 +1,17 @@
-// Settings → Models → Advanced → the cloud recognition services (v1.0.4): each row's Set Up… opens this sheet (the
-// speech model, the speed, a Groq or other OpenAI-compatible address). A Model Studio or OpenAI key connected under
-// Cloud services (CloudStore) recognises speech too, with nothing to set here; a key set here wins. The sheet: the
-// service (OpenAI, Groq or another OpenAI-compatible API: base URL and model; or DashScope), the API key (kept in the login Keychain, service "Blurt Cloud Speech", account = the model's id; the field never
-// shows it back). Before, these keys only came from the user's shell profile (`export GROQ_API_KEY=…`), which a person
-// who doesn't live in a terminal could not set; those variables still work when nothing is set here.
+// Settings → Models: speech recognition in the cloud with a key of its own (v1.0.4; one place since 1.1, system.md §3.4).
+// The keys live where every other key does — the Cloud services list:
+//   CloudSpeechLines  in that list, one line per speech-only connection that has its key (an OpenAI-compatible service —
+//                     OpenAI, Groq or any other address —, and a Model Studio key set for speech alone before Cloud
+//                     services existed): the cloud glyph, "Vendor · Model", one line (what uses it, its address) and
+//                     Edit…. Nothing stands there while none is set: Add Cloud Model…'s Service list ends with
+//                     "OpenAI-compatible speech recognition…", which opens this sheet (CloudSpeech.addRequest).
+//   the sheet         the service (OpenAI, Groq or another OpenAI-compatible API: base URL and model; or DashScope), the
+//                     audio speed, the API key (kept in the login Keychain, service "Blurt Cloud Speech", account = the
+//                     model's id; the field never shows it back). `options`: Advanced → Cloud recognition's Options… —
+//                     the recogniser's model and the speed; a key that comes from Cloud services is said, not asked for.
+// A Model Studio or OpenAI key connected under Cloud services (CloudStore) recognises speech too, with nothing to set
+// here. Before, these keys only came from the user's shell profile (`export GROQ_API_KEY=…`), which a person who
+// doesn't live in a terminal could not set; those variables still work when nothing is set here.
 //
 // transcribe.py still reads the environment: every script the app starts (ScriptRunner) gets the keys set here as
 // BLURT_ASR_API_KEY / BLURT_ASR_BASE_URL / BLURT_ASR_MODEL (the OpenAI-compatible service) and DASHSCOPE_API_KEY —
@@ -17,6 +25,14 @@ enum CloudSpeech {
     /// the registry's two cloud entries (asr_models.json)
     static let openAIModel = "openai-compatible"
     static let dashScopeModel = "qwen3-asr-flash"
+
+    /// Add Cloud Model…'s "OpenAI-compatible speech recognition…": its sheet closes, this one opens (CloudSpeechLines)
+    static let addRequest = Notification.Name("BlurtCloudSpeechAdd")
+    /// the Service list's item for it (a value no preset has)
+    static let addChoice = "\u{1}speech"
+    static var addChoiceTitle: String { Loc.string("speech.cloud.add.choice", table: "Speech") }
+    /// offered while no OpenAI-compatible speech key is set (there is one such connection: its Edit… changes it)
+    static var addOffered: Bool { !Key.has(openAIModel) }
 
     enum Service: String, CaseIterable, Identifiable {
         case openai, groq, custom
@@ -67,6 +83,17 @@ enum CloudSpeech {
     static var dashScopeChoice: String {
         ((Config.shared["asr.cloud"] as? [String: Any])?[dashScopeModel] as? [String: Any])?["model"] as? String ?? ""
     }
+    /// Model Studio's speech model by its name ("Qwen3-ASR Flash"; a custom id as typed).
+    static var dashScopeTitle: String {
+        let id = dashScopeChoice.trimmingCharacters(in: .whitespaces)
+        let choices = CloudModels.choices(.speech, provider: "dashscope")
+        let pick = id.isEmpty ? CloudModels.defaultID(.speech, provider: "dashscope") : id
+        return choices.first { $0.id == pick }?.title ?? pick
+    }
+
+    /// Model Studio is connected under Cloud services: its key is the one speech sends (environment()).
+    static var dashScopeConnected: Bool { CloudStore.setup.services.contains { $0.preset == "dashscope" } }
+
     static func saveDashScope(model: String) {
         var all = Config.shared["asr.cloud"] as? [String: Any] ?? [:]
         let t = trimmed(model)
@@ -174,10 +201,12 @@ enum CloudSpeech {
     /// with these choices; a key typed and not saved yet goes on stdin (never on the command line or in a log), else
     /// the saved one (from the environment, as every script gets it). `done` on the main queue. UI-free: the cloud
     /// settings can move without it.
-    static func check(modelID: String, typedKey: String, setup: Setup, dsModel: String,
+    static func check(modelID: String, typedKey: String, setup: Setup, dsModel: String, inherited: Bool = false,
                       done: @escaping (CloudSpeechCheck.Result) -> Void) {
         guard let typed = CloudSpeechCheck.clean(typedKey) else { return done(.failed("speech.cloud.check.bad_key")) }
         guard typed.isEmpty else { return run(modelID, ["key": typed], setup, dsModel, done) }
+        // the key is Cloud services' (Model Studio connected there): the scripts already have it
+        if inherited { return run(modelID, [:], setup, dsModel, done) }
         // the saved key: read off the main thread (a Keychain read can wait for macOS to ask)
         DispatchQueue.global(qos: .userInitiated).async {
             let saved = Key.read(modelID) ?? (modelID == dashScopeModel ? DictationCloud.Key.read(.dashscope) : nil) ?? ""
@@ -279,12 +308,18 @@ private func S(_ key: String, _ args: CVarArg...) -> String {
     return args.isEmpty ? fmt : String(format: fmt, locale: Loc.locale, arguments: args)
 }
 
-/// One cloud service's sheet: the OpenAI-compatible one has a service, an address and a model; DashScope only a key.
-/// Nothing changes until Done; Done with a new key restarts the recognition server when a job uses this service.
+/// One cloud service's sheet: the OpenAI-compatible one has a service, an address and a model; DashScope a model and a
+/// key — none when Model Studio is connected under Cloud services, whose key it uses; Volcengine (Options… only) just
+/// the speed. Nothing changes until Done; Done with a new key restarts the recognition server when a job uses this
+/// service.
 struct CloudSpeechSheet: View {
     let modelID: String
     let title: String
+    /// Advanced → Cloud recognition's Options…: the recogniser's model and the speed (its own note)
+    var options = false
     var close: (_ saved: Bool) -> Void
+    /// the pop-ups' width: a model with its "(default)" ("whisper-large-v3-turbo (default)") whole, in both languages
+    static let field: CGFloat = 300
     @State private var setup = CloudSpeech.setup
     @State private var speed = CloudSpeech.speed
     @State private var dsModel = CloudSpeech.dashScopeChoice
@@ -294,35 +329,47 @@ struct CloudSpeechSheet: View {
     @State private var checked: CloudSpeechCheck.Result?
     @State private var testing = false
 
-    init(modelID: String, title: String, close: @escaping (_ saved: Bool) -> Void) {
+    init(modelID: String, title: String, options: Bool = false, close: @escaping (_ saved: Bool) -> Void) {
         self.modelID = modelID
         self.title = title
+        self.options = options
         self.close = close
         _stored = State(initialValue: CloudSpeech.Key.has(modelID))
     }
 
     private var openAI: Bool { modelID == CloudSpeech.openAIModel }
+    /// Volcengine Speech: its App ID and token are Cloud services'; here only the speed
+    private var speedOnly: Bool { modelID == VolcengineSpeech.modelID }
+    /// Model Studio connected under Cloud services: its key is the one sent (CloudSpeech.environment)
+    private var keyElsewhere: Bool { modelID == CloudSpeech.dashScopeModel && CloudSpeech.dashScopeConnected }
+    private var hasKey: Bool { stored || keyElsewhere }
     private var keyPage: URL? {
         openAI ? setup.service.keyPage : URL(string: "https://bailian.console.aliyun.com/")
     }
     /// a Model Studio model typed under Custom… (not one of the picker's)
     private var customDashScope: Bool {
         let m = dsModel.trimmingCharacters(in: .whitespaces)
-        return !openAI && !m.isEmpty && !CloudModels.choices(.speech, provider: "dashscope").contains { $0.id == m }
+        return !openAI && !speedOnly && !m.isEmpty && !CloudModels.choices(.speech, provider: "dashscope").contains { $0.id == m }
     }
     private var canSave: Bool { !openAI || setup.complete || (key.isEmpty && !stored) }
+    private var note: String {
+        if speedOnly || keyElsewhere { return S("speech.cloud.options.note") }
+        return S("speech.cloud.sheet.note")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            Text(S("speech.cloud.sheet.note"))
+            Text(note)
                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 6)
             form.padding(.top, 16)
             HStack(spacing: 10) {
-                Button(T("dictation.cloud.test")) { test() }
-                    .disabled(testing || (!stored && key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || (openAI && !setup.complete))
+                if !speedOnly {
+                    Button(T("dictation.cloud.test")) { test() }
+                        .disabled(testing || (!hasKey && key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || (openAI && !setup.complete))
+                }
                 if testing { BrandSpinnerView(size: 12) }
                 if let c = checked, !testing {
                     Group {
@@ -358,7 +405,7 @@ struct CloudSpeechSheet: View {
                                 selection: Binding(get: { setup.service }, set: {
                                     if $0 != setup.service { setup.model = "" }     // that service's own default
                                     setup.service = $0
-                                }), width: 220)
+                                }), width: Self.field)
                 }
                 GridRow {
                     label("dictation.cloud.base_url")
@@ -367,13 +414,13 @@ struct CloudSpeechSheet: View {
                 }
                 GridRow {
                     label("dictation.cloud.model")
-                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: setup.service.rawValue, model: $setup.model)
+                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: setup.service.rawValue, model: $setup.model, width: Self.field)
                         .id("speech-\(setup.service.rawValue)")
                 }
-            } else {
+            } else if !speedOnly {
                 GridRow {
                     label("dictation.cloud.model")
-                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: "dashscope", model: $dsModel)
+                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: "dashscope", model: $dsModel, width: Self.field)
                 }
             }
             GridRow {
@@ -381,32 +428,36 @@ struct CloudSpeechSheet: View {
                 VStack(alignment: .leading, spacing: 5) {
                     ChoicePopup(label: S("speech.cloud.speed"),
                                 choices: CloudSpeech.speeds.map { ($0, S("speech.cloud.speed.\(CloudSpeech.speedKey($0))")) },
-                                selection: $speed, width: 220)
+                                selection: $speed, width: Self.field)
                     Text(S("speech.cloud.speed.line", S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint"), S("speech.cloud.speed.all")))
                         .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, SettingsMetrics.fieldTextInset)
                 }
             }
-            GridRow {
-                label("dictation.cloud.key")
-                VStack(alignment: .leading, spacing: 5) {
-                    SecureField(stored ? T("dictation.cloud.key.stored") : T("dictation.cloud.key.placeholder"), text: $key)
-                        .textFieldStyle(.roundedBorder)
-                    HStack(spacing: 12) {
-                        if let u = keyPage { TextLinkButton(S("speech.cloud.key.get")) { NSWorkspace.shared.open(u) } }
-                        if stored {
-                            TextLinkButton(T("dictation.cloud.key.forget"), tint: .secondary) {
-                                CloudSpeech.Key.write(modelID, "")
-                                stored = false
-                                key = ""
-                                emit(["event": "speech_cloud", "action": "forget_key", "model": modelID])
-                            }
+            if !speedOnly && !keyElsewhere { keyRow }
+        }
+    }
+
+    var keyRow: some View {
+        GridRow {
+            label("dictation.cloud.key")
+            VStack(alignment: .leading, spacing: 5) {
+                SecureField(stored ? T("dictation.cloud.key.stored") : T("dictation.cloud.key.placeholder"), text: $key)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 12) {
+                    if let u = keyPage { TextLinkButton(S("speech.cloud.key.get")) { NSWorkspace.shared.open(u) } }
+                    if stored {
+                        TextLinkButton(T("dictation.cloud.key.forget"), tint: .secondary) {
+                            CloudSpeech.Key.write(modelID, "")
+                            stored = false
+                            key = ""
+                            emit(["event": "speech_cloud", "action": "forget_key", "model": modelID])
                         }
                     }
-                    .font(.system(size: SettingsMetrics.detailSize))
-                    .padding(.leading, SettingsMetrics.fieldTextInset)      // under the field's text, not its outline
                 }
+                .font(.system(size: SettingsMetrics.detailSize))
+                .padding(.leading, SettingsMetrics.fieldTextInset)      // under the field's text, not its outline
             }
         }
     }
@@ -416,7 +467,7 @@ struct CloudSpeechSheet: View {
     func test() {
         testing = true
         emit(["event": "speech_cloud", "action": "test", "model": modelID])
-        CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
+        CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel, inherited: keyElsewhere && !stored) { r in
             testing = false
             checked = r
             emit(["event": "speech_cloud", "action": "tested", "model": modelID, "ok": { if case .ok = r { return true }; return false }()])
@@ -429,9 +480,9 @@ struct CloudSpeechSheet: View {
         // a service or model Blurt didn't test (OpenAI, Groq, another address; a Model Studio id typed under Custom…):
         // saved only once its clip comes back (Settings → Models' Custom Model rule, docs/design/first-minute-speech.md
         // §10.5) — a model the service won't take this way says so here, not at the first dictation
-        if (openAI || customDashScope) && (!k.isEmpty || stored) {
+        if (openAI || customDashScope) && (!k.isEmpty || hasKey) {
             testing = true
-            CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
+            CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel, inherited: keyElsewhere && !stored) { r in
                 testing = false
                 checked = r
                 emit(["event": "speech_cloud", "action": "save_tested", "model": modelID, "ok": { if case .ok = r { return true }; return false }()])
@@ -445,10 +496,111 @@ struct CloudSpeechSheet: View {
     private func commit(_ k: String) {
         if openAI { CloudSpeech.save(setup) }
         if speed != CloudSpeech.speed { CloudSpeech.setSpeed(speed) }
-        if !openAI, dsModel != CloudSpeech.dashScopeChoice { CloudSpeech.saveDashScope(model: dsModel) }
+        if !openAI && !speedOnly, dsModel != CloudSpeech.dashScopeChoice { CloudSpeech.saveDashScope(model: dsModel) }
         if !k.isEmpty { CloudSpeech.Key.write(modelID, k) }
-        emit(["event": "speech_cloud", "action": "save", "model": modelID, "service": openAI ? setup.service.rawValue : "dashscope",
+        emit(["event": "speech_cloud", "action": "save", "model": modelID, "service": openAI ? setup.service.rawValue : speedOnly ? "volcengine" : "dashscope",
               "key": !k.isEmpty, "speed": speed])
         close(true)
+    }
+}
+
+// MARK: - In the Cloud services list
+
+/// The speech-only connections, as lines of the Cloud services list (CloudServicesSection puts them after the services):
+/// one per connection whose key is set here — an OpenAI-compatible service, and a Model Studio key set for speech alone
+/// while Model Studio isn't connected there —, each like a service's line: the cloud glyph, "Vendor · Model", one line
+/// (what uses it, its address) and Edit…. None while none is set: Add Cloud Model…'s last item adds one.
+struct CloudSpeechLines: View {
+    @ObservedObject private var speech = SpeechModel.shared
+    @ObservedObject private var d = DictationModels.shared
+    @ObservedObject private var ui = CloudModelsUI.shared
+    /// the connections whose key is set here (read off the main thread: a Keychain read can wait)
+    @State private var own: Set<String> = []
+    @State private var editing: SheetID?
+
+    var body: some View {
+        _ = ui.tick
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(shown, id: \.self) { line($0) }
+        }
+        .task { await refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: CloudSpeech.addRequest)) { _ in
+            // after Add Cloud Model's sheet has gone: one sheet at a time
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { editing = SheetID(id: CloudSpeech.openAIModel) }
+        }
+        .onAppear {
+            // screenshots: open one connection's sheet with the page
+            if let id = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_CLOUD_SHEET"] { editing = SheetID(id: id) }
+        }
+        .sheet(item: $editing) { s in
+            CloudSpeechSheet(modelID: s.id, title: own.contains(s.id) ? title(s.id) : S("speech.cloud.add.title")) { saved in
+                editing = nil
+                Task { await refresh() }
+                guard saved else { return }
+                // a job already on this service: its server started with the old key — the next take starts a new one
+                let m = SpeechModel.shared
+                let inUse = ASRPurpose.allCases.contains { (m.state?.selected[$0.rawValue] ?? nil) == s.id }
+                    || DictationModels.shared.asr?.selected == s.id
+                if inUse { VoiceInput.endUnresponsiveServer(why: "cloud_key") }
+                Task { await m.load() }
+            }
+            .buttonStyle(.automatic)
+        }
+    }
+
+    var shown: [String] {
+        var out: [String] = []
+        if own.contains(CloudSpeech.openAIModel) { out.append(CloudSpeech.openAIModel) }
+        if own.contains(CloudSpeech.dashScopeModel) && !CloudSpeech.dashScopeConnected { out.append(CloudSpeech.dashScopeModel) }
+        return out
+    }
+
+    func refresh() async {
+        let ids = [CloudSpeech.openAIModel, CloudSpeech.dashScopeModel]
+        let set = await Task.detached(priority: .userInitiated) { Set(ids.filter { CloudSpeech.Key.has($0) }) }.value
+        own = set
+    }
+
+    /// "Groq · whisper-large-v3-turbo", "Alibaba Cloud Model Studio · Qwen3-ASR Flash": the vendor, then the model.
+    func title(_ id: String) -> String {
+        if id == CloudSpeech.dashScopeModel { return S("speech.cloud.line.title", CloudStore.presetName("dashscope"), CloudSpeech.dashScopeTitle) }
+        let s = CloudSpeech.setup
+        let vendor = s.service == .custom ? (URL(string: s.effectiveBaseURL)?.host ?? S("speech.cloud.service.custom"))
+            : S("speech.cloud.service.\(s.service.rawValue)")
+        return s.effectiveModel.isEmpty ? vendor : S("speech.cloud.line.title", vendor, s.effectiveModel)
+    }
+
+    /// What uses it ("Used for Dictation" / "Not in use"), then where the audio goes (its host), and that it only
+    /// recognises speech.
+    func detail(_ id: String) -> String {
+        var uses: [String] = []
+        if d.asr?.selected == id { uses.append(SettingsCatalog.entry("speech.dictation").map(SettingsCatalog.title) ?? "") }
+        for p in ASRPurpose.allCases where (speech.state?.selected[p.rawValue] ?? nil) == id { uses.append(p.title) }
+        var parts = [uses.isEmpty ? M("models.service.unused")
+                     : M("models.service.uses", CloudServiceUse.list(uses.filter { !$0.isEmpty }, chinese: Loc.isChinese))]
+        if id == CloudSpeech.openAIModel, let h = URL(string: CloudSpeech.setup.effectiveBaseURL)?.host { parts.append(h) }
+        parts.append(S("speech.cloud.line.only"))
+        if speech.localOnly { parts = [S("speech.cloud.off")] }
+        return parts.joined(separator: " · ")
+    }
+
+    func line(_ id: String) -> some View {
+        SettingsLine(flashID: "speech_cloud_" + id) {
+            HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    SettingsIcon("cloud")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title(id)).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1).truncationMode(.middle)
+                            .gridProbe(.iconText, title(id))
+                        Text(detail(id)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button(M("models.service.edit")) { editing = SheetID(id: id) }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
+                    .gridProbe(.trailing, title(id))
+            }
+        }
     }
 }

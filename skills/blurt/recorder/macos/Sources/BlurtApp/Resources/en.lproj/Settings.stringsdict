@@ -66,5 +66,21 @@
 			<string>%ld videos</string>
 		</dict>
 	</dict>
+	<key>settings.remote.devices</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld device paired</string>
+			<key>other</key>
+			<string>%ld devices paired</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

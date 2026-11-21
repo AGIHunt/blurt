@@ -1830,6 +1830,24 @@
 .phone-ask-line {
   display: block;
 }
+.sheet.phone-ask-sheet p.phone-ask-caution {
+  margin: -12px 24px 20px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--chip);
+  color: var(--ink);
+  font-weight: 500;
+  text-align: start;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.phone-ask-caution > .ico,
+.phone-ask-caution > svg:first-child {
+  flex: none;
+  color: var(--attn);
+  margin-top: 2px;
+}
 .phone-ask-icon .ico {
   width: 28px;
   height: 28px;

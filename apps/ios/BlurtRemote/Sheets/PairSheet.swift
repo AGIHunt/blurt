@@ -3,7 +3,8 @@ import SwiftUI
 
 struct PairSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var link = ""
+    /// the link used last: after a pairing that didn't take, it's still here to try again or change
+    @State private var link = Link.shared.lastLink
     @State private var failed = false
     private let hasCamera = AVCaptureDevice.default(for: .video) != nil
 
@@ -20,7 +21,7 @@ struct PairSheet: View {
                 if !hasCamera {
                     TextField("Pairing link", text: $link)
                         .textFieldStyle(.roundedBorder).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button("Connect") { if open(link) { dismiss() } }.disabled(link.isEmpty)
+                    Button("Connect") { if open(link) { Link.shared.lastLink = link; dismiss() } }.disabled(link.isEmpty)
                 }
                 if failed { Text("This code isn’t from Blurt.").font(.footnote).foregroundStyle(.orange) }
                 Spacer()

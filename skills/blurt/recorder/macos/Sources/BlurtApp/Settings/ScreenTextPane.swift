@@ -6,8 +6,10 @@
 //                   translates (Settings → Models' Translate row, shared with dictation). Reading foreign text into your
 //                   own language usually goes the other way from dictation's ⌘ (writing your own words in another
 //                   language), so the two don't share a target. Under Auto, a line says where other languages go.
-//   History         how long what was read is kept (record.screen_text.history_days: 7, 30, forever, not kept), with
-//                   the page that lists it (2026-11-16) and Clear History….
+//   History         "Keep history for": a popup in sight (record.screen_text.history_days: 7, 30, forever, not kept),
+//                   as Settings → Cards → History — it was in the menu of Open History…, where no one found it. A
+//                   choice that would delete entries asks first ("Delete 12 entries?", founder 2026-11-21). Then the
+//                   saved text and translations: Open History… (the page that lists them, 2026-11-16), Clear History… in its ⋯.
 // docs/design/screen-text.md §1f.
 import AppKit
 import SwiftUI
@@ -46,6 +48,39 @@ final class ScreenTextModel: ObservableObject {
         ScreenTextCopy.setTranslateConfig(c)
         translate = c
         emit(["event": "screen_text_setting", "key": "translate", "target": c.target.rawValue])
+    }
+
+    /// A shorter period, or Don't keep, that would delete entries asks first; Cancel keeps the period as it was.
+    func pickHistoryDays(_ d: Int) {
+        guard d != historyDays else { return }
+        let n = ScreenTextHistory.shared.wouldPrune(days: d)
+        emit(["event": "screen_text_setting", "key": "history_days_asked", "days": d, "would_delete": n])
+        guard n == 0 || confirmShorten(d, deleting: n) else {
+            objectWillChange.send()         // the popup shows the period kept again
+            emit(["event": "screen_text_setting", "key": "history_days_cancelled", "days": d])
+            return
+        }
+        setHistoryDays(d)
+    }
+
+    /// "Delete 12 entries?" — those older than the new period, or all of them for Don't keep. Test builds answer with
+    /// BLURT_TEST_CONFIRM (yes | no) instead of the alert.
+    private func confirmShorten(_ d: Int, deleting n: Int) -> Bool {
+        if let a = ProcessInfo.processInfo.environment["BLURT_TEST_CONFIRM"], ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
+            return a == "yes"
+        }
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.icon = NSApp.applicationIconImage
+        a.messageText = T("settings.screen_text.history.shorten.title", n)
+        a.informativeText = d == 0 ? T("settings.screen_text.history.shorten.off", n)
+            : T("settings.screen_text.history.shorten.message", T("dictation.history.days", d))
+        let cancel = a.addButton(withTitle: T("settings.screen_text.history.cancel"))
+        cancel.keyEquivalent = "\r"
+        let del = a.addButton(withTitle: T("settings.screen_text.history.shorten.confirm"))
+        del.hasDestructiveAction = true
+        del.keyEquivalent = ""
+        return a.runModal() == .alertSecondButtonReturn
     }
 
     func setHistoryDays(_ d: Int) {
@@ -142,28 +177,28 @@ struct ScreenTextPane: View {
         }
     }
 
-    /// "12 saved · deleted after 30 days", Open History… — how long, and Clear History…, in its menu (Dictation's
-    /// history row's way).
-    var historyRow: some View {
+    /// "Keep history for" in sight, as Settings → Cards → History (it hid in Open History…'s menu); under it what is
+    /// kept, with the page that lists it and Clear History….
+    @ViewBuilder var historyRow: some View {
         let d = m.historyDays
         let detail = d == 0 ? T("settings.screen_text.history.summary.off")
             : d < 0 ? T("home.screen_text.summary.forever", m.historyCount)
             : T("home.screen_text.summary", m.historyCount, T("dictation.history.days", d))
-        return SettingRow("screentext.history", detail: detail, hosts: ["screentext.history_keep"]) {
-            Menu {
-                SettingMenuPicker("screentext.history_keep", selection: Binding(get: { m.historyDays }, set: { m.setHistoryDays($0) })) {
-                    ForEach([7, 30], id: \.self) { n in Text(T("dictation.history.days", n)).tag(n) }
-                    Text(T("settings.screen_text.history.forever")).tag(-1)
-                    Divider()
-                    Text(T("dictation.history.dont_keep")).tag(0)
+        SettingRow("screentext.history_keep", detail: detail) {
+            ChoicePopup(label: T("settings.screen_text.history.keep"),
+                        choices: [(7, T("dictation.history.days", 7)), (30, T("dictation.history.days", 30)),
+                                  (-1, T("settings.screen_text.history.forever")), (0, T("dictation.history.dont_keep"))],
+                        selection: Binding(get: { m.historyDays }, set: { m.pickHistoryDays($0) }), dividers: [3])
+        }
+        SettingRow("screentext.history") {
+            // Clear History… in the row's ⋯ (a destructive action is never a button at rest, §3.4)
+            HStack(spacing: 6) {
+                Button(T("settings.screen_text.history.open")) { MainWindowController.shared.go(.screenText) }
+                    .buttonStyle(SettingsOutlinedButtonStyle()).fixedSize()
+                RowMenu(label: T("settings.screen_text.history.clear"), visible: m.historyCount > 0) {
+                    Button(T("settings.screen_text.history.clear"), role: .destructive) { m.askClear() }
                 }
-                Divider()
-                Button(T("settings.screen_text.history.clear"), role: .destructive) { m.askClear() }
-                    .disabled(m.historyCount == 0)
-            } label: {
-                Text(T("settings.screen_text.history.open"))
-            } primaryAction: { MainWindowController.shared.go(.screenText) }
-            .fixedSize()
+            }
         }
     }
 }

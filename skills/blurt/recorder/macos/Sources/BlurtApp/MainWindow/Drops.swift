@@ -204,7 +204,9 @@ final class DropHint: NSView {
             if ok { NSAccessibility.post(element: sv, notification: .announcementRequested,
                                          userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue]) }
         }
-        layer?.backgroundColor = (ok ? NSColor.controlAccentColor : NSColor.secondaryLabelColor).withAlphaComponent(ok ? 0.95 : 0.85).cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = (ok ? BrandColor.accent : NSColor.secondaryLabelColor).withAlphaComponent(ok ? 0.95 : 0.85).cgColor
+        }
         label.textColor = .white
         let size = NSSize(width: ceil(label.intrinsicContentSize.width) + 20, height: 22)
         var o = NSPoint(x: p.x + 14, y: sv.isFlipped ? p.y + 18 : p.y - 18 - size.height)
@@ -257,11 +259,14 @@ final class DropBand: NSView {
     private func style() {
         layer?.cornerRadius = 8
         layer?.borderWidth = active ? 2 : 1
-        layer?.borderColor = (active ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
-        // (opaque: what it covers — the search field — must not show through)
-        let base = NSColor.windowBackgroundColor
-        layer?.backgroundColor = (active ? (base.blended(withFraction: 0.12, of: .controlAccentColor) ?? base) : base).cgColor
-        label.textColor = active ? .controlAccentColor : .secondaryLabelColor
+        // a drop target in the brand (docs/design/system.md §2: the accent's edge, a mint wash, brand ink for the words)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = (active ? BrandColor.accent : NSColor.separatorColor).cgColor
+            // (opaque: what it covers — the search field — must not show through)
+            let base = NSColor.windowBackgroundColor
+            layer?.backgroundColor = (active ? (base.blended(withFraction: 0.12, of: BrandColor.accent) ?? base) : base).cgColor
+        }
+        label.textColor = active ? BrandColor.ink : .secondaryLabelColor
     }
 
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); style() }

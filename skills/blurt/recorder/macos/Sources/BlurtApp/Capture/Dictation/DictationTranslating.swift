@@ -93,6 +93,7 @@ extension Dictation {
         var t = Island.Toast(text: text, actionTitle: nil, action: nil)
         t.key = Dictation.styleToastKey
         t.seconds = 3
+        t.icon = .languages
         // counted when it is seen, not when it is posted (one that waited and went stale was never read)
         if translating.on { t.onShown = Dictation.countOnce("translate_hint_shown") }
         island.toast(t)

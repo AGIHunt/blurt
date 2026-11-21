@@ -42,6 +42,8 @@ def test_note_and_instruction_en(p2):
                                                                               "path": proj["path"]}
     assert f"# 2 items for {proj['name']}" in text and f"Project folder: {proj['path']}" in text
     assert "`mark_fixed`" in text and "items.py' state <uid> --state to_verify --claim fixed" in text
+    # the fallback is for a call that fails too (Codex with approval "never"), and it starts with In progress
+    assert "a call fails" in text and "items.py' state <uid> --state in_progress --agent <name>" in text
     assert "Don't push" in text
     assert f"## 1. {a['id']} · Login button 0" in text and "uid " + a["uid"] + " · issue · high · module auth" in text
     assert "**They said**\n> I click login and nothing happens" in text and "1. Open the page\n2. Click Login" in text
@@ -50,13 +52,16 @@ def test_note_and_instruction_en(p2):
     assert len(images) == 2 and images[0][0] == "Frame 1 · 0:14 — login button greyed out"
     for _, path in images:  # absolute, and they exist
         assert Path(path).is_absolute() and Path(path).is_file()
-    assert out["instruction"] == (f"Please handle these 2 items — details and screenshots are in {note}. When you're done, "
-                                  "call mark_fixed for each if the blurt MCP is available.")
+    assert out["instruction"] == (f"Please handle these 2 items — details and screenshots are in {note}. Report back on "
+                                  "each with the blurt MCP tool mark_fixed when you start and when you're done; if that "
+                                  "fails, run the command in the note.")
     assert out["full"] == text.split("---\n", 2)[2].lstrip("\n") and not out["full"].startswith("---")
     one = p2.run("handoff.py", "create", "--items", a["uid"], "--lang", "en")
     assert one["id"] != out["id"] and one["instruction"] == (
-        f"Please handle {a['id']} — details and screenshots are in {one['path']}. When you're done, call mark_fixed if "
-        "the blurt MCP is available.")
+        f"Please handle {a['id']} — details and screenshots are in {one['path']}. Report back with the blurt MCP tool "
+        "mark_fixed when you start and when you're done; if that fails, run the command in the note.")
+    # one item: its own uid in the commands, nothing to fill in but the agent's name
+    assert f"items.py' state {a['uid']} --state to_verify --claim fixed" in Path(one["path"]).read_text()
     assert p2.get(a["uid"])["state"] == "new"  # not marked without --mark
     got = p2.run("handoff.py", "get", out["id"])
     assert {k: got[k] for k in ("id", "path", "instruction", "full", "items")} == \
@@ -67,7 +72,8 @@ def test_zh_and_mark(p2):
     proj = p2.project(p2.repo())
     (a,) = items_with_frames(p2, proj["id"], 1)
     out = p2.run("handoff.py", "create", "--items", a["uid"], "--lang", "zh", "--mark")
-    assert out["instruction"] == f"请处理 {a['id']}，详情和截图见 {out['path']}。做完后如果有 blurt MCP，调用 mark_fixed。"
+    assert out["instruction"] == (f"请处理 {a['id']}，详情和截图见 {out['path']}。开始和做完时用 blurt MCP 工具 mark_fixed "
+                                  "报告；调用失败就运行说明里的命令。")
     text = Path(out["path"]).read_text()
     assert "项目文件夹：" in text and "**原话**" in text and "**复现步骤**" in text and "截图 1 · 0:14" in text
     assert "uid " + a["uid"] + " · 问题 · 高 · 模块 auth" in text
@@ -75,7 +81,7 @@ def test_zh_and_mark(p2):
     assert p2.get(a["uid"])["state"] == "handed_off"
     assert w["to"] == "external" and w["handoff"] == out["id"] and w["by"] == "user"
     many = p2.run("handoff.py", "create", "--items", a["uid"], p2.item(proj["id"])["uid"], "--lang", "zh")
-    assert many["instruction"].startswith("请处理这 2 个事项，详情和截图见 ") and "逐条调用 mark_fixed" in many["instruction"]
+    assert many["instruction"].startswith("请处理这 2 个事项，详情和截图见 ") and "逐条报告" in many["instruction"]
 
 
 def test_ids_never_repeat(p2):
@@ -144,3 +150,45 @@ def test_work_title_rules():
     assert agents.work_title([one, {**one, "id": "AW-13"}], "Atlas Web", "en") == "2 items · Atlas Web (Blurt hand-off)"
     assert agents.work_title([one, one, one], "口喷鸡 iOS", "zh") == "3 个事项 · 口喷鸡 iOS（口喷鸡交接）"
     assert agents.work_title([one, one], None, "en") == "2 items (Blurt hand-off)"
+
+
+def test_done_when_and_who_reports(p2):
+    """A task's Done when (its `expected`, as the page names it) reaches the agent under that name; the fallback's
+    report names the agent that ran it, and the user's own hand-off never credits one."""
+    proj = p2.project(p2.repo())
+    task = p2.run("items.py", "add", "--project", proj["id"], "--json", json.dumps(
+        {"kind": "task", "title": "Write hello", "details": "Add hello.txt", "expected": "hello.txt says hi"}))
+    out = p2.run("handoff.py", "create", "--items", task["uid"], "--lang", "en", "--mark")
+    text = Path(out["path"]).read_text()
+    assert "**Done when**\nhello.txt says hi" in text and "**Expected**" not in text
+    assert text.index("**Details**") < text.index("**Done when**")
+    zh = Path(p2.run("handoff.py", "create", "--items", task["uid"], "--lang", "zh")["path"]).read_text()
+    assert "**完成标准**\nhello.txt says hi" in zh
+    issue = p2.item(proj["id"], expected="It signs in")
+    assert "**Expected**\nIt signs in" in Path(p2.run("handoff.py", "create", "--items", issue["uid"], "--lang", "en")["path"]).read_text()
+    w = p2.get(task["uid"])["work"]
+    assert w["agent"] == "human" and w["by"] == "user"
+    # the note's fallback without --agent: no name, never the user's "human"
+    p2.run("items.py", "state", task["uid"], "--state", "in_progress")
+    assert p2.get(task["uid"])["work"]["agent"] is None
+    p2.run("items.py", "state", task["uid"], "--state", "to_verify", "--claim", "fixed", "--agent", "codex")
+    assert p2.get(task["uid"])["work"]["agent"] == "codex"
+    # the user's own change after it is the user's, not "Done by Codex"
+    p2.run("items.py", "state", task["uid"], "--action", "done", "--by", "user")
+    w = p2.get(task["uid"])["work"]
+    assert w["agent"] == "human" and w["by"] == "user"
+
+
+def test_undo_skips_items_an_agent_moved(p2):
+    """⌘Z's state step names the state it left the item in: an item an agent has moved on since keeps its report."""
+    proj = p2.project(p2.repo())
+    a, b = p2.item(proj["id"]), p2.item(proj["id"])
+    p2.run("items.py", "state", a["uid"], b["uid"], "--action", "keep", "--by", "user")
+    p2.run("handoff.py", "create", "--items", a["uid"], b["uid"], "--mark")
+    p2.run("items.py", "state", a["uid"], "--state", "to_verify", "--claim", "fixed", "--agent", "codex")
+    out = p2.run("items.py", "state", a["uid"], b["uid"], "--state", "todo", "--by", "user", "--undo",
+                 "--from-state", "handed_off")
+    assert out["kept"] == [{"uid": a["uid"], "id": a["id"], "state": "to_verify"}]
+    assert [i["uid"] for i in out["items"]] == [b["uid"]]
+    assert p2.get(a["uid"])["state"] == "to_verify" and p2.get(b["uid"])["state"] == "todo"
+    assert p2.get(b["uid"])["work"] == {"state": "todo"}  # (no work key) its first hand-off taken back: no hand-off record left behind

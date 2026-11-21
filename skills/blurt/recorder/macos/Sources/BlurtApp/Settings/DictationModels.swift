@@ -154,23 +154,30 @@ final class DictationModels: ObservableObject {
         return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
     }
 
+    /// What every Download for dictation's missing recogniser offers — the island, the Dictation page's empty state
+    /// and banner, Home, the menu bar — one model and one size: the first, small model when this Mac has none at all
+    /// (`firstModelJob`), else `dictationJob`. Settings → Speech keeps offering the recommended one (dogfood 1.1.0:
+    /// the island offered 228 MB while the page and the menu offered 2.5 GB for the same missing model).
+    var offerJob: ModelDownloadQueue.Job? { firstModelJob ?? dictationJob }
+    /// The recogniser download under way, whichever of the two it is (the progress lines).
+    var queuedJob: ModelDownloadQueue.Job? { [firstModelJob, dictationJob].compactMap { $0 }.first { dl.queue.contains($0.id) } }
+
     /// silero_vad.onnx
     static let vadMB = 0.6
 
     func load() async {
         loaded = true
-        async let a = SkillCLI.shared.read("transcribe.py", ["dictation-models"], timeout: 120)
         async let p = SkillCLI.shared.read("polish.py", ["models"], timeout: 60)
-        var timedOut = false, detail = ""
-        do {
-            let r = try await a
-            asr = r.decode(DictationASRState.self)
-            if asr == nil { detail = r.errorText }
-        } catch {
-            asr = nil
-            if case ScriptError.timeout = error { timedOut = true }
-            detail = "\(error)"
+        var (state, timedOut, detail) = await readASR()
+        // a failure while online (`uv run` busy or slow — several Blurts starting at once, a cold cache) is often gone
+        // a moment later: read once more after 3 s before dictation is called not set up (dogfood 1.1.0: a welcome
+        // line said "dictation isn't set up yet" on a Mac where everything was in)
+        if state == nil, !timedOut, SpeechSetup.listFailure(timedOut: false, online: NetworkWatch.shared.isOnline) == .error {
+            emit(["event": "dictation_models_retry", "detail": detail.isEmpty ? NSNull() : String(detail.suffix(400))])
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            (state, timedOut, detail) = await readASR()
         }
+        asr = state
         polish = (try? await p)?.decode(PolishState.self)
         asrFailure = asr != nil ? nil : SpeechSetup.listFailure(timedOut: timedOut, online: NetworkWatch.shared.isOnline)
         let unreadable = SpeechSetup.refusesDictation(asrFailure)
@@ -179,6 +186,18 @@ final class DictationModels: ObservableObject {
                   "detail": detail.isEmpty ? NSNull() : String(detail.suffix(400))])
         }
         asrUnreadable = unreadable
+    }
+
+    /// `transcribe.py dictation-models`, read: the state, whether it ran out of time, and what went wrong.
+    private func readASR() async -> (DictationASRState?, Bool, String) {
+        do {
+            let r = try await SkillCLI.shared.read("transcribe.py", ["dictation-models"], timeout: 120)
+            let a = r.decode(DictationASRState.self)
+            return (a, false, a == nil ? r.errorText : "")
+        } catch {
+            if case ScriptError.timeout = error { return (nil, true, "\(error)") }
+            return (nil, false, "\(error)")
+        }
     }
 
     /// Once per run (the history's names); Settings reloads whenever it opens.

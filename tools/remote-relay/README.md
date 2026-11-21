@@ -9,7 +9,7 @@ sealed end to end with keys only the two devices have (docs/design/remote.md §S
 | Cloudflare Worker | A domain on Cloudflare, a free account | No server to keep. Screen over the relay for about 8 hours a day on the free plan |
 | Your own server | A server with a public IP; a domain if you want `wss://` | No quota, and the shortest path if the server is near you |
 
-From mainland China, a server there is far faster than Cloudflare's free network. A domain served from a mainland server needs an ICP filing.
+Which is faster depends on where you and your computers are: time a few HTTPS requests from here to Cloudflare and to your server, and pick the shorter round trip. Check the rules where the server is, too: some countries require registering a website served from there (mainland China's ICP filing, for one).
 The picture over a relay follows what the link carries, up to 4 Mbps by default; 2 Mbps out for each person using it at once is plenty.
 
 **Give it a secret path.** Anyone who finds the relay's host can otherwise use it as a free pipe for their own traffic (they can't

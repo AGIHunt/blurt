@@ -59,6 +59,8 @@
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
 //     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
+//     pickers · pickesc       which screen pickers are up (area, ⌥C's crosshair) and whether their Esc is registered ·
+//                             the system-wide Esc they share
 //     recwriterfail · recstreamstop CODE   a real take's writer fails (a new piece takes over) / its stream stops
 //                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
@@ -454,6 +456,10 @@ extension App {
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
         case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
+        case "pickesc": hotkey(.pickEsc)                 // = the system-wide Esc while a screen picker is up (area or ⌥C's crosshair)
+        case "pickers":                                 // which screen pickers are up, and whether their Esc is registered
+            emit(["event": "pickers", "area": picker != nil, "snap": picker?.snapMode ?? false, "text": ScreenTextCopy.shared.picking,
+                  "esc": HotkeyCenter.shared.isRegisteredRaw(HK.pickEsc.rawValue), "busy": busy])
         case "pickerlegend": picker?.toggleLegend()     // = ? in the area picker: the key legend back (or away)
         case "countdown":                               // countdown N X,Y,W,H [hold] [of=T] | close: the 3-2-1 over that area
             if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; MenuGlyph.shared.countdown = false; return }   // alone (no take); hold:

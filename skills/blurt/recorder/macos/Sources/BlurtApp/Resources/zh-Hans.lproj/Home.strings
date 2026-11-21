@@ -9,6 +9,8 @@
 "feature.recording" = "录屏与事项";
 /* 远程控制的唯一名称：主页、侧栏、页面标题、⌘K、前往菜单、设置面板 */
 "feature.phone" = "远程控制";
+"feature.off_notice" = "%@ 已关闭";
+"feature.turn_on" = "打开";
 
 /* 每项能力一句话：它做什么，带句号（设置 > 通用里也当说明用）。主页上每行名字下面的那一行，要在窗口最窄时也放得下。%@ 是听写键的短名（Dictation.keyShort：
    「 Fn」「右 Option」，Fn 自带前面的空格） */
@@ -16,7 +18,7 @@
 "feature.cards.what" = "截图和语音备注保存为刘海下方的卡片，可拖入任何 App。";
 "feature.screen_text.what" = "框选屏幕上的文字，复制或翻译。";
 "feature.recording.what" = "边录屏边讲解，由 Agent 整理成事项，按项目归类。";
-"feature.phone.what" = "将手机用作 Mac 的触控板、键盘和麦克风，或在本机使用另一台电脑。";
+"feature.phone.what" = "用手机控制这台 Mac，或用这台 Mac 控制另一台电脑。";
 
 /* 一行能力：点这一行去它的页面；右键菜单打开它的设置；开关的提示按当前状态写 */
 "home.row.open" = "前往「%@」";
@@ -32,6 +34,8 @@
 "home.dictation.downloading" = "正在下载语音模型 · %1$@ / %2$@";
 "home.dictation.better_downloading" = "正在下载更准确的语音模型 · %1$@ / %2$@";
 "home.dictation.better_offer" = "下载更准确的语音模型 · %@";
+"home.dictation.polish_offer" = "下载润色模型，供听写风格使用 · %@";
+"home.dictation.polish_downloading" = "正在下载润色模型 · %1$@ / %2$@";
 "home.recording.no_agent" = "在 Agent 中说「处理我录的视频」来整理。";
 "home.recording.set_up_agent" = "设置 Agent…";
 "home.phone.needs_access" = "手机暂无法控制 Mac";
@@ -63,7 +67,7 @@
 "home.try.phone" = "在手机上安装口喷鸡，扫码配对";
 
 /* 取字与翻译页（ScreenTextPage.swift） */
-"home.all.screen_text" = "查看全部取字记录";
+"home.all.screen_text" = "查看全部取字与翻译";
 "home.screen_text.summary" = "已存 %1$ld 条 · %2$@后删除";
 "home.screen_text.summary.forever" = "已存 %ld 条 · 一直保留";
 "home.screen_text.summary.off" = "不保存记录";
@@ -77,6 +81,12 @@
 "home.screen_text.copy_original" = "复制原文";
 "home.screen_text.delete" = "删除";
 "home.screen_text.selected" = "已选 %ld 条";
+"home.screen_text.deleted.one" = "已删除 1 条";
+"home.screen_text.deleted.many" = "已删除 %ld 条";
+"home.screen_text.interrupted" = "翻译被中断";
+"home.screen_text.translate_again" = "重新翻译";
+"home.screen_text.action.copy" = "取字";
+"home.screen_text.action.translate" = "翻译";
 
 /* 主页时间线里没能识别的听写 */
 "home.entry.failed" = "没能识别 · 录音 %@";

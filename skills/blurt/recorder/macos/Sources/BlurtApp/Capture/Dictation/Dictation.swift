@@ -564,13 +564,14 @@ final class Dictation {
 
     /// Re-reads the settings: the tap on or off, the key and the mode.
     func apply() {
+        DictationFrontApp.watch()
         applied = Dictation.applySettings
         DictationHistory.shared.keepNothing = Dictation.retentionDays == 0
         let keyBefore = trigger.key
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         trigger.doubleTap = Dictation.doubleTapSend
-        trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
+        trigger.doubleTapWindow = DictationTrigger.sendWindow
         trigger.modifierTapShift = Dictation.modifierTapShift
         trigger.modifierTapCommand = Dictation.modifierTapCommand
         trigger.modifierDoubleTapWindow = Dictation.modifierDoubleTapWindow
@@ -969,29 +970,36 @@ final class Dictation {
                 case .answers, .working:
                     _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30)
                 case .gone, .notAServer, .stuck:
-                    var result = "forgot"
-                    var oursStuck = false
-                    if case .stuck = h, let p = pid {
-                        // our `uv` only when the stuck process is its child (VoiceInput.replaceIfStuck); read on main
-                        let ours = VoiceInput.onMain { self?.polishServer?.isRunning == true ? self?.polishServer?.processIdentifier : nil }
-                        oursStuck = ours.map { VoiceInput.descends(p, from: $0) } ?? false
-                        if oursStuck, let u = ours { WarmSpawn.retire(u) }
-                        result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
-                    } else {
-                        WarmServer.forget("polish-serve", pid: pid)
-                    }
-                    emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result, "ours": oursStuck])
-                    DispatchQueue.main.async {
-                        guard let self = self else { return }
-                        if oursStuck, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
-                        // a server of ours still starting stays (it writes the run file in a moment)
-                        guard oursStuck || self.polishServer?.isRunning != true else { return }
-                        self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
-                    }
+                    self?.replacePolishServer(h, pid: pid)
                 }
             }
         } else if polishServer?.isRunning != true {
             polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
+        }
+    }
+
+    /// A polish server that is gone or stuck (`h`, from WarmServer.health) is replaced: a stuck one ended (its `uv` too
+    /// when it is ours), a stale file forgotten, and a fresh server preloaded. At key-down (warmPolish) and as soon as a
+    /// take's polish finds it stuck (Dictation.polishWait). Blocking (WarmServer.end): off the main thread.
+    func replacePolishServer(_ h: WarmServer.Health, pid: Int32?) {
+        var result = "forgot"
+        var oursStuck = false
+        if case .stuck = h, let p = pid {
+            // our `uv` only when the stuck process is its child (VoiceInput.replaceIfStuck); read on main
+            let ours = VoiceInput.onMain { self.polishServer?.isRunning == true ? self.polishServer?.processIdentifier : nil }
+            oursStuck = ours.map { VoiceInput.descends(p, from: $0) } ?? false
+            if oursStuck, let u = ours { WarmSpawn.retire(u) }
+            result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
+        } else {
+            WarmServer.forget("polish-serve", pid: pid)
+        }
+        emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result, "ours": oursStuck])
+        DispatchQueue.main.async {
+            if oursStuck, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+            // a server of ours still starting stays (it writes the run file in a moment)
+            guard oursStuck || self.polishServer?.isRunning != true else { return }
+            guard self.polishModel != nil || DictationCloud.ready else { return }
+            self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
         }
     }
 
@@ -1043,7 +1051,7 @@ final class Dictation {
 
     /// The mic (or the test wav) → the wav file and the stream. On the key-down (pre-capture) or at the start.
     private func beginCapture() {
-        front = NSWorkspace.shared.frontmostApplication
+        front = DictationFrontApp.current          // never a background agent (UserNotificationCenter): DictationFrontApp
         frontKey = currentFrontKey
         runaway = DictationRunaway()
         startedAt = Date()
@@ -1074,7 +1082,7 @@ final class Dictation {
             if e == .maxed {
                 // the 5-minute limit: said, and the user's next tap (meant as the stop) doesn't start a new take
                 self.trigger.endedByItself(at: CACurrentMediaTime())
-                self.toast("dictation.toast.limit", key: Dictation.listeningToastKey, seconds: DictationTrigger.limitGrace)      // in place of "still listening"
+                self.toast("dictation.toast.limit", key: Dictation.listeningToastKey, seconds: DictationTrigger.limitGrace, icon: .mic)      // in place of "still listening"
                 emit(["event": "dictation_limit", "id": self.entryID, "seconds": DictationRunaway.limit])
             } else {
                 self.trigger.reset(active: false)
@@ -1318,19 +1326,39 @@ final class Dictation {
         }
         trigger.reset(active: false)
         var kept = false
-        if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
-                                           retentionDays: Dictation.retentionDays), let v = voice, let url = wav {
+        // one Esc still discards what was said, but for `undoSeconds` Undo brings it back: the take as it would have
+        // been, typed where the user is (the founder, 2026-11-21). Its recording waits that long — then goes, unless
+        // the history keeps it (with Retry)
+        var undo: DictationTake?
+        if heardSpeech, !quietly, let v = voice, let url = wav, let s = stream {
             let duration = v.elapsed
             v.stop(keep: true)
-            voice = nil         // discard() below ends the rest: the stream, the live text — not this recording
-            appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
-                                reason: DictationHistory.cancelledReason, wav: url)
-            kept = true
+            voice = nil         // discard() below ends the rest: the live text — not this recording, nor its stream
+            stream = nil
+            s.cancel()
+            let t = take(duration: duration, wav: url, stream: s, keyUp: CACurrentMediaTime(), switches: nil)
+            t.cancelled = true
+            cancelledTakes[t.id] = t
+            undo = t
+            if DictationHistory.keepsCancelled(heardSpeech: heardSpeech, quietly: quietly, keepAudio: Dictation.keepAudio,
+                                               retentionDays: Dictation.retentionDays) {
+                appendAwaitingRetry(id: entryID, started: startedAt, front: front, bundle: styleBundle, duration: duration,
+                                    reason: DictationHistory.cancelledReason, wav: url)
+                kept = true
+            }
+            let keep = kept
+            DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.undoSeconds + 1) { [weak self] in
+                guard let self = self, self.cancelledTakes[t.id] === t else { return }
+                self.cancelledTakes[t.id] = nil
+                if !keep { try? FileManager.default.removeItem(at: url) }
+            }
         }
-        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept])
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": kept, "undo": undo != nil])
         discard(quietly: true)
         if !quietly { DictationSound.cancel.play() }
-        if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
+        if let t = undo { toastCancelled([t.id]) } else if !quietly {
+            toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2)
+        }
     }
 
     /// A double tap: Return in the app in front ("send"). After the takes still on their way, once the last one has
@@ -1417,19 +1445,23 @@ final class Dictation {
         switch n {
         case .stillListening:
             emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
-            toast("dictation.toast.still_listening", Dictation.keyShort, Dictation.cancelKey.label, key: Dictation.listeningToastKey, seconds: 4, passive: true)
+            // a reply to the take in progress, not a tip: shown while it listens (a passive line waits until it ends,
+            // and these two only matter while it listens — dogfood 1.1.0: neither ever showed)
+            toast("dictation.toast.still_listening", Dictation.keyShort, Dictation.cancelKey.label, key: Dictation.listeningToastKey,
+                  seconds: 4, icon: .mic)
         case .endsSoon:
             emit(["event": "dictation_runaway", "notice": "ends_soon", "id": entryID, "elapsed": Int(v.elapsed)])
             island.dictationChanged()
             // one quiet line with the clock turning to the attention colour: the limit is coming
-            toast("dictation.toast.ends_soon", key: Dictation.listeningToastKey, seconds: 3, passive: true)
+            toast("dictation.toast.ends_soon", key: Dictation.listeningToastKey, seconds: 3, icon: .mic)
         }
     }
 
     /// One quiet line on the island from this table (`name`), about `key` (Island.toast: a newer one with the same key
     /// replaces it at once). `passive`: not a reply to what the user just did (a reminder, a tip) — it waits behind
-    /// replies. Every toast stays at least ToastQueue.minSeconds, whatever `seconds` asks.
-    func toast(_ name: String, _ args: CVarArg..., key: String?, seconds: Double = 2.4, icon: BlurtIcon? = nil,
+    /// replies. Every toast stays at least ToastQueue.minSeconds, whatever `seconds` asks. `icon`: its mark — dictation's
+    /// own glyph (the keyboard) unless the line is done (✓) or needs the user (⚠).
+    func toast(_ name: String, _ args: CVarArg..., key: String?, seconds: Double = 2.4, icon: BlurtIcon = .keyboard,
                passive: Bool = false) {
         let fmt = Loc.string(name, table: "Dictation")
         var t = Island.Toast(text: args.isEmpty ? fmt : String(format: fmt, locale: Loc.locale, arguments: args),
@@ -1451,7 +1483,7 @@ final class Dictation {
               "peak": Double(levels.max() ?? 0)])
         // about the last take (Dictation.toastKey): the next take's start drops it
         island.toast(Loc.t(NothingHeard.key(why, hasName: name != nil), table: "Dictation", name ?? ""), key: Dictation.toastKey,
-                     actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
+                     icon: .warning, actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
             AppEnvironment.settings?.show(pane: "dictation/mic")
         }
     }
@@ -1497,7 +1529,16 @@ final class Dictation {
             updatePhase()
             return toastNothing()
         }
-        let switches = switchesAtStop()     // a ⇧ / ⌘ switch stays on in this app once typed (DictationRemembering)
+        let take = self.take(duration: duration, wav: url, stream: s, keyUp: keyUp,
+                             switches: switchesAtStop())    // a ⇧ / ⌘ switch stays on in this app once typed (DictationRemembering)
+        emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
+              "pending": queue.count])
+        enqueue(take)
+    }
+
+    /// The take that is listening now, as it goes on its way once stopped (or waits for Esc's Undo).
+    private func take(duration: Double, wav url: URL, stream s: DictationStream, keyUp: CFTimeInterval,
+                      switches: DictationSwitches?) -> DictationTake {
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish
@@ -1509,9 +1550,7 @@ final class Dictation {
         take.mic = micName
         take.switches = switches
         take.translate = translateJob(style: styleDecision?.style ?? .light)
-        emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
-              "pending": queue.count])
-        enqueue(take)
+        return take
     }
 
     /// The warm server (no process start; waiting up to `budget` for one starting), else `transcribe.py note
@@ -1544,14 +1583,19 @@ final class Dictation {
         if !before.isEmpty { req["before"] = before }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
-        var restarted = false
+        var restarted = false, replaced = false
         while WarmServer.running("asr-serve"), !serverGivenUp {
             let t0 = Date()
-            let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)
-            // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit
-            let watch = WarmServer.pid("asr-serve").map { CPUWatch(pid: $0) }
+            // a model still loading (the server's run file says so) gets the time a cold load takes on top
+            let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds,
+                                                          loading: WarmServer.loading("asr-serve"))
+            // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit;
+            // never while its model loads (a load waiting on the disk shows no CPU): the CPU is watched from its end
+            let pid = WarmServer.pid("asr-serve")
+            var watch = pid.map { CPUWatch(pid: $0) }
             let (answer, hung) = WarmServer.call("asr-serve", req, timeout: limit) { waited in
-                watch.map { DictationASRFailure.hung(waited: waited, cpuIdle: $0.idle()) } ?? false
+                if WarmServer.loading("asr-serve") { watch = pid.map { CPUWatch(pid: $0) }; return false }
+                return watch.map { DictationASRFailure.hung(waited: waited, cpuIdle: $0.idle()) } ?? false
             }
             if let r = answer {
                 if r["ok"] as? Bool == true { return r }
@@ -1571,6 +1615,16 @@ final class Dictation {
                 }
             } else if hung || Date().timeIntervalSince(t0) >= limit - 0.5 {
                 giveUpOnServer(hung: hung, waited: Date().timeIntervalSince(t0))
+                // a hung server is replaced by a fresh one that loads the model now: this request waits for it rather
+                // than loading the same model in the CLI beside it (two cold loads at once), once
+                if hung, !replaced {
+                    replaced = true
+                    let back = Date().addingTimeInterval(10)
+                    func up() -> Bool { WarmServer.running("asr-serve") && WarmServer.pid("asr-serve") != pid }
+                    while !up() && Date() < back && VoiceInput.serverStarting { usleep(100_000) }
+                    emit(["event": "dictation_asr_server", "state": "replaced", "back": up()])
+                    if up() { continue }
+                }
             }
             break
         }
@@ -1684,7 +1738,8 @@ final class Dictation {
         // the user's cloud model (DictationCloud), the local one when it fails: its time comes on top
         if let c = cloud { req["cloud"] = c }
         let extra = cloud == nil ? 0 : DictationCloud.requestBudget(chars: raw.count)
-        guard var r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra) else {
+        guard let limit = polishWait(timeout: timeout, loadBudget: loadBudget, extra: extra, cmd: "polish"),
+              var r = polishCall(req, limit: limit, cmd: "polish") else {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "timeout", "load_ms": waited]
         }
         guard r["ok"] as? Bool == true else { return nil }
@@ -1710,8 +1765,44 @@ final class Dictation {
         if let c = context { req["context"] = c }
         if let v = variant { req["variant"] = v }
         let extra = cloud == nil ? 0 : timeout + DictationCloud.requestBudget(chars: text.count)
-        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra), r["ok"] as? Bool == true else { return nil }
+        guard let limit = polishWait(timeout: timeout, loadBudget: loadBudget, extra: extra, cmd: "structure"),
+              let r = polishCall(req, limit: limit, cmd: "structure"), r["ok"] as? Bool == true else { return nil }
         return r
+    }
+
+    /// How long a request to the polish server may wait (PolishWait): a ping — answered at once, also while the model
+    /// preloads — says whether its model is loaded; with no answer its health decides. The Polish time limit holds once
+    /// the model is loaded; a stuck server is not asked and is replaced now, not at the next key-down. nil: don't ask.
+    /// Blocking: off the main thread.
+    private static func polishWait(timeout: Double, loadBudget: Double, extra: Double, cmd: String) -> Double? {
+        let pid = WarmServer.pid("polish-serve")
+        let ping = WarmServer.call("polish-serve", ["cmd": "ping"], timeout: 0.3)
+        let loaded = ping?["ok"] as? Bool == true ? ping?["loaded"] as? Bool ?? false : nil
+        let h = loaded == nil ? WarmServer.health("polish-serve", script: "polish.py") : nil
+        switch PolishWait.decide(loaded: loaded, health: h, timeout: timeout, loadBudget: loadBudget, extra: extra) {
+        case .wait(let s):
+            return s
+        case .giveUp:
+            emit(["event": "polish_wait", "cmd": cmd, "state": "given_up", "health": h.map { "\($0)" } ?? NSNull(), "pid": pid ?? NSNull()])
+            DispatchQueue.global(qos: .utility).async { shared.replacePolishServer(h ?? .gone, pid: pid) }
+            return nil
+        }
+    }
+
+    /// The request, waiting `limit` s at most. No answer: a server stuck since the ping is replaced (looked at off this
+    /// thread, so the text goes in now).
+    private static func polishCall(_ req: [String: Any], limit: Double, cmd: String) -> [String: Any]? {
+        let pid = WarmServer.pid("polish-serve")
+        let t0 = Date()
+        if let r = WarmServer.call("polish-serve", req, timeout: limit) { return r }
+        let waited = Int(Date().timeIntervalSince(t0) * 1000)
+        DispatchQueue.global(qos: .utility).async {
+            let h = WarmServer.health("polish-serve", script: "polish.py")
+            emit(["event": "polish_wait", "cmd": cmd, "state": "no_answer", "limit_ms": Int(limit * 1000), "waited_ms": waited,
+                  "health": "\(h)", "pid": pid ?? NSNull()])
+            if case .stuck = h, WarmServer.pid("polish-serve") == pid { shared.replacePolishServer(h, pid: pid) }
+        }
+        return nil
     }
 }
 

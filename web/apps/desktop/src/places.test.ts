@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ItemRow, Job, ProjectRow } from './api';
-import { actionForListKey, bannerPlan, bySuggestion, group, grouping, handOffBlock, listDate, orderedProjects, placeQuery, NO_FILTER } from './places';
+import { actionForListKey, bannerPlan, bySuggestion, group, grouping, handOffBlock, listDate, orderedProjects, placeQuery, reorderedProjects, NO_FILTER } from './places';
 
 const row = (uid: string, state: ItemRow['state'], project = 'p1', more: Partial<ItemRow> = {}) => ({ uid, state, project_id: project, item_id: uid.toUpperCase(), title: uid, ...more }) as ItemRow;
 const proj = (id: string, more: Partial<ProjectRow> = {}) => ({ id, name: id, key: id.toUpperCase(), ...more }) as ProjectRow;
@@ -28,9 +28,16 @@ describe('places (MainModel.query)', () => {
     // one run alone has no header
     expect(group([row('a', 'new'), row('b', 'new')], 'state', []).sections.size).toBe(0);
   });
-  it('orders projects pinned first, then the most recently used', () => {
+  it("orders projects pinned first, then in the user's own order (using one never moves it)", () => {
     const ps = [proj('a', { last_used: '2026-10-01' }), proj('b', { last_used: '2026-10-05' }), proj('c', { pinned: true, last_used: '2026-01-01' })];
-    expect(orderedProjects(ps).map((p) => p.id)).toEqual(['c', 'b', 'a']);
+    expect(orderedProjects(ps).map((p) => p.id)).toEqual(['c', 'a', 'b']);
+  });
+  it('a project dragged onto another lands before or after it, never across the pinned line', () => {
+    const ps = [proj('p', { pinned: true }), proj('a'), proj('b'), proj('c')];
+    expect(reorderedProjects(ps, 'c', 'a', false)).toEqual(['p', 'c', 'a', 'b']);
+    expect(reorderedProjects(ps, 'a', 'c', true)).toEqual(['p', 'b', 'c', 'a']);
+    expect(reorderedProjects(ps, 'a', 'b', false)).toBeNull();
+    expect(reorderedProjects(ps, 'a', 'p', false)).toBeNull();
   });
   it('puts suggested Unassigned items first, by project name', () => {
     const rows = [row('a', 'new', 'inbox'), row('b', 'new', 'inbox', { suggested_project: 'zed' }), row('c', 'new', 'inbox', { suggested_project: 'atlas' })];
@@ -86,8 +93,10 @@ describe('the item banner (WebHostController.ItemBanner)', () => {
   const job = (more: Partial<Job>): Job =>
     ({ id: 'j1', type: 'process', state: 'running', project: 'p1', session: null, title: null, items: ['a'], steps: [], progress: null, created: '2026-11-02T10:00:00Z', started: '2026-11-02T10:00:01Z', ended: null, error: null, ...more }) as Job;
   const item = (state: ItemRow['state'], more: Partial<ItemRow> = {}) => row('a', state, 'p1', { work_to: 'external', ...more });
-  it("the user's own agent: Won't Do, then Mark as Done as the primary", () => {
-    expect(bannerPlan(item('handed_off'), [])).toMatchObject({ kind: 'external', tone: 'brand', actions: ['wontfix', 'done'], primary: 'done' });
+  it("the user's own agent: Take Back, then Mark as Done as the primary; In progress says the agent is on it", () => {
+    expect(bannerPlan(item('handed_off'), [])).toMatchObject({ kind: 'external', tone: 'brand', text: { key: 'main.banner.external' }, actions: ['take_back', 'done'], primary: 'done' });
+    expect(bannerPlan(item('in_progress', { work_agent: 'codex' }), [])).toMatchObject({ text: { key: 'main.banner.working', args: ['codex'] }, actions: ['take_back', 'done'] });
+    expect(bannerPlan(item('in_progress', { work_agent: 'human' }), [])).toMatchObject({ text: { key: 'main.banner.working', args: [''] } });
   });
   it('with an agent some other way (set by hand, an older session): the same, quieter', () => {
     expect(bannerPlan(item('in_progress', { work_to: 'session', work_agent: 'claude' }), [])).toMatchObject({ kind: 'external', tone: 'neutral', text: { key: 'main.banner.manual' }, primary: 'done' });

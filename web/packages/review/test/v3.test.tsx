@@ -16,7 +16,7 @@ import { MemStore, PROJECTS, V3_ITEMS } from "./v3store";
 Element.prototype.scrollIntoView ??= () => {};
 
 function v3Host(scope: Scope, extra: Partial<BlurtHost> = {}) {
-  const m = new MemStore(V3_ITEMS, PROJECTS, { title: "Batch", language: "en" });
+  const m = new MemStore(V3_ITEMS, PROJECTS, { title: "Batch", language: "en", agents: { codex: { name: "Codex" } } });
   const sent: UserOp[][] = [];
   const host: BlurtHost = {
     host: "macos",
@@ -354,6 +354,7 @@ describe("v3 UI", () => {
     expect(card.querySelectorAll("button .sring")).toHaveLength(0);
     expect(card.querySelector(":scope > .sring.s-to_verify")).not.toBeNull();
     expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
+    expect(card.textContent).not.toMatch(/by Agent/i); // an agent the doc can't name: no "by" part at all
     expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
     expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
     // ⋯: Won't Do (no Review Changes: no in-app sessions)
@@ -430,7 +431,7 @@ describe("v3 UI", () => {
     expect(cards.map((c) => c.querySelector(".sring")!.getAttribute("class"))).toEqual(["sring s-to_verify", "sring s-new",
       "sring s-handed_off", "sring s-new", "sring s-wontfix", "sring s-in_progress", "sring s-done"]);
     expect(cards[1].querySelector(".spill-ring")?.getAttribute("aria-label")).toBe("新 · 更改状态");
-    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 Agent");
+    expect(cards[2].querySelector(".wk")?.textContent).toBe("已交给 Agent");
     expect(cards[5].querySelector(".wk")?.textContent).toBe("进行中");
     await act(async () => (cards[0].querySelector(".pickbox") as HTMLButtonElement).click());
     await act(async () => (cards[2].querySelector(".pickbox") as HTMLButtonElement).click());

@@ -61,13 +61,24 @@ final class ScreenTextCopy {
         return (ScreenTextPaste.decide(now.situation), now.focus.role, now.front != nil && now.front?.processIdentifier != t.pid)
     }
 
-    func cancel() { drag?.close(); drag = nil }
+    /// Esc on the crosshair (its own key window, or the system-wide Esc): it goes, and so does that Esc — close() doesn't
+    /// call the picker's done, which was the only place it was unregistered (Esc stayed Blurt's in every app).
+    func cancel() {
+        guard let d = drag else { return }
+        d.close()
+        drag = nil
+        if app?.picker == nil { unregisterHotkey(.pickEsc) }     // shared with the area picker: never take its Esc
+    }
+
+    /// ⌥C / ⌥T's crosshair is up. One screen picker at a time: ⌥A and ⌥R wait until it is done, as this one waits for
+    /// theirs (`app.picker`).
+    var picking: Bool { drag != nil }
 
     func hotkey(via: String, translate: Bool = false) {
         guard let app = app, app.resident, app.picker == nil, drag == nil else { return }
         guard Snapper.screenAllowed else {
-            emit(["event": "screen_text_failed", "screen_recording": false, "stage": "picker"])
-            return ScreenHelp.show(.text, grant: .missing)
+            emit(["event": "screen_text_failed", "screen_recording": false, "stage": "picker", "translate": translate])
+            return ScreenHelp.show(translate ? .translate : .text, grant: .missing)
         }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         ScreenTextCard.shared.close(why: "new_capture")
@@ -80,8 +91,8 @@ final class ScreenTextCopy {
         // then the paste can be confirmed
         DictationField.wakeWebAccessibility(NSWorkspace.shared.frontmostApplication)
         let target = Self.target()
-        let p = TextDragPicker { [weak self] r, crop in
-            unregisterHotkey(.pickEsc)
+        let p = TextDragPicker(use: translate ? .translate : .text) { [weak self] r, crop in
+            if self?.app?.picker == nil { unregisterHotkey(.pickEsc) }     // shared with the area picker: never take its Esc
             self?.drag = nil
             guard let r = r else { return }
             self?.read(r, via: via, translate: translate, target: target, still: crop)
@@ -100,7 +111,7 @@ final class ScreenTextCopy {
         }
         take { [weak self] img, _ in
             guard let self = self else { return }
-            guard let img = img else { return snapper.snapFailed(use: .text) }
+            guard let img = img else { return snapper.snapFailed(use: translate ? .translate : .text) }
             let words = Array(DictationVocabulary.shared.active().prefix(100).map(\.term))
             let shot = CACurrentMediaTime()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -265,8 +276,46 @@ final class ScreenTextCopy {
         if WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve") != nil { warmSpawned = CACurrentMediaTime() }
     }
 
-    private func translate(_ text: String, image: CGImage, target: Target?) {
-        island.toast(Loc.t("capture.text.translating", table: "Capture"), key: Self.toastKey, seconds: 30)
+    /// How long a translation can take at most: the wait for a server this press started, the server's allowance, and
+    /// the CLI's when there was no server. "Translating…" stays up that long (it went at 30 s while a cold model's
+    /// translation landed at 42 s: the island said nothing for 12 s and looked failed).
+    static let serverAllowance: Double = 40
+    static let cliAllowance: Double = 60
+    static var translateBudget: Double { serverWait + serverAllowance + cliAllowance + 5 }
+    /// After this long, the line says "Still translating…" (a cold model; the spinner alone looked stuck).
+    static let stillAfter: Double = 12
+
+    /// Translations under way (quitting waits for them a moment: Captures.prepareForQuit), with their original text:
+    /// one the quit cut short is kept in the history as the text read, marked interrupted (it went without a trace).
+    private(set) var inFlight: [Int: (text: String, into: String)] = [:]
+    private var nextFlight = 0
+
+    /// A translation the quit didn't wait for: what was read goes into the history, marked interrupted (its row says
+    /// so and offers Translate Again).
+    func keepInterrupted() {
+        for (_, f) in inFlight.sorted(by: { $0.key < $1.key }) {
+            remember(ScreenTextEntry(translated: false, text: f.text, target: f.into, outcome: ScreenTextEntry.interrupted))
+        }
+        if !inFlight.isEmpty { emit(["event": "screen_translate_interrupted", "count": inFlight.count]) }
+        inFlight.removeAll()
+    }
+
+    /// The Text & Translation page's Translate Again (an interrupted entry): the text as read, translated as a fresh
+    /// ⌥T's would be, onto the clipboard only (no field is waiting for it).
+    func translateAgain(_ text: String) {
+        Self.warmTranslator()
+        translate(text, image: nil, target: nil)
+    }
+
+    private func translate(_ text: String, image: CGImage?, target: Target?) {
+        let working = { (key: String) in
+            var t = Island.Toast(text: Loc.t(key, table: "Capture"), actionTitle: nil, action: nil)
+            t.key = Self.toastKey
+            t.working = true
+            t.seconds = Self.translateBudget
+            island.toast(t)
+        }
+        working("capture.text.translating")
         let cloud = Self.translateCloud
         // "⌥T translates into": Auto (your own language ↔ the other one, "auto:H|O"), or a language — always that
         // language: a text already in it comes back as it is (`X|keep`, 2026-10-30)
@@ -279,26 +328,40 @@ final class ScreenTextCopy {
             return alreadyIn(x, text)
         case .send(let r): into = r
         }
+        let flight = nextFlight
+        nextFlight += 1
+        inFlight[flight] = (text, into)
         let t0 = CACurrentMediaTime()
+        // a cold model: the line says it is still at it (the result's line replaces it, by its key)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.stillAfter) { [weak self] in
+            guard self?.inFlight[flight] != nil, island.toastLive(key: Self.toastKey) else { return }
+            working("capture.text.still_translating")
+        }
         // the server this press started: wait for it (from the key-down), not the CLI — the dogfood's first ⌥T after
         // every launch checked once, found nothing yet, and fell to the CLI
         let until = Self.warmSpawned.map { $0 + Self.serverWait } ?? 0
         DispatchQueue.global(qos: .userInitiated).async {
             var r: [String: Any]?
+            var serverTimedOut = false
             while !WarmServer.running("polish-serve") && CACurrentMediaTime() < until { usleep(50_000) }
             if WarmServer.running("polish-serve") {
                 var req: [String: Any] = ["cmd": "translate", "text": text, "target": into]
                 if let c = cloud { req["cloud"] = c }
-                r = WarmServer.call("polish-serve", req, timeout: 40)
+                let c0 = CACurrentMediaTime()
+                // a server that goes away mid-request ends the wait at once (then the CLI below)
+                r = WarmServer.call("polish-serve", req, timeout: Self.serverAllowance) { _ in !WarmServer.running("polish-serve") }.answer
+                // a live server that didn't answer in time is still at it: a second copy of the model through the CLI
+                // would double the memory and the wait — the translation failed (Try Again)
+                serverTimedOut = r == nil && WarmServer.running("polish-serve") && CACurrentMediaTime() - c0 >= Self.serverAllowance - 1
             }
-            if r == nil {       // no server (yet): the CLI, the key on stdin
+            if r == nil && !serverTimedOut {       // no server (or it went away): the CLI, the key on stdin
                 var o: [String: Any] = ["text": text, "target": into]
                 if let c = cloud { o["cloud"] = c }
                 let body = try? JSONSerialization.data(withJSONObject: o)
                 let sem = DispatchSemaphore(value: 0)
                 Task {
                     do {
-                        r = try await ScriptRunner.shared.json("polish.py", ["translate", "--stdin"], stdin: body, timeout: 60)
+                        r = try await ScriptRunner.shared.json("polish.py", ["translate", "--stdin"], stdin: body, timeout: Self.cliAllowance)
                     } catch ScriptError.failed(_, let stdout, _) {
                         r = Scripts.json(stdout)        // {"ok": false, "code": …}: why, for the line below
                     } catch {}
@@ -307,15 +370,19 @@ final class ScreenTextCopy {
                 sem.wait()
             }
             DispatchQueue.main.async {
+                // quitting kept it as interrupted already: nothing more to say
+                guard self.inFlight.removeValue(forKey: flight) != nil else { return }
                 let out = (r?["ok"] as? Bool == true ? r?["text"] as? String : nil) ?? ""
                 let kept = out.isEmpty ? nil : DictationTranslateRoute.keptAsIs(request: into, source: text, output: out)
                 var ev: [String: Any] = ["event": "screen_translate", "ok": !out.isEmpty, "ms": Int((CACurrentMediaTime() - t0) * 1000),
                                          "cloud": r?["cloud"] ?? NSNull(), "model": r?["model"] ?? NSNull(), "target": into,
-                                         "detected": detected ?? NSNull(), "already": kept?.rawValue ?? NSNull()]
+                                         "detected": detected ?? NSNull(), "already": kept?.rawValue ?? NSNull(),
+                                         "server_timed_out": serverTimedOut]
                 if let e = r?["cloud_error"] { ev["cloud_error"] = e }
                 if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { ev["text"] = out }
                 emit(ev)
                 guard !out.isEmpty else {
+                    if serverTimedOut { return self.failed(text, image: image, target: target) }
                     let why = TranslateFailure(r?["code"] as? String)
                     // nothing here can translate (no cloud model, no local one downloaded yet): say what it takes, with
                     // the way there — "failed" with Try Again would only fail again
@@ -341,7 +408,7 @@ final class ScreenTextCopy {
     /// The translation failed: the text itself still helps — copied, and said so, with Try Again on the same text (a
     /// server still loading answers the next try). Never pasted: it isn't what was asked for.
     /// `why`: the cloud's key refused (Settings, not Try Again), out of quota, unreachable — said in the line.
-    private func failed(_ text: String, image: CGImage, target: Target?, why: TranslateFailure = .other) {
+    private func failed(_ text: String, image: CGImage?, target: Target?, why: TranslateFailure = .other) {
         let key = [TranslateFailure.key: "capture.text.translate_key", .quota: "capture.text.translate_quota",
                    .offline: "capture.text.translate_offline"][why] ?? "capture.text.translate_failed"
         deliver(text, target: nil) { _ in
@@ -390,6 +457,8 @@ final class ScreenTextCopy {
 final class TextDragPicker {
     private var windows: [KeyWindow] = []
     private let done: (CGRect?, CGImage?) -> Void
+    /// ⌥C's or ⌥T's: what a stale grant's line names
+    private let use: ScreenHelp.Use
     private var finished = false
     var start: NSPoint?
     var current: NSPoint?
@@ -401,7 +470,7 @@ final class TextDragPicker {
         return NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
     }
 
-    init(done: @escaping (CGRect?, CGImage?) -> Void) { self.done = done }
+    init(use: ScreenHelp.Use = .text, done: @escaping (CGRect?, CGImage?) -> Void) { self.use = use; self.done = done }
 
     func show() {
         for screen in NSScreen.screens {
@@ -426,7 +495,7 @@ final class TextDragPicker {
             self.windows.forEach { $0.alphaValue = 1 }
             self.redraw()
             // no still at all with Screen Recording allowed: a stale grant, said before the drag
-            Snapper.checkStills(self.stills.stills.count, use: .text) { [weak self] in
+            Snapper.checkStills(self.stills.stills.count, use: self.use) { [weak self] in
                 guard let self = self, !self.finished else { return }
                 self.start = nil
                 self.finish()

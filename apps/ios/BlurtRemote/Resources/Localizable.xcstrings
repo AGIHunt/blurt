@@ -378,16 +378,6 @@
         }
       }
     },
-    "%@ no longer knows this iPhone." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 已不再认识这台 iPhone。"
-          }
-        }
-      }
-    },
     "%@ · Direct" : {
       "localizations" : {
         "zh-Hans" : {
@@ -984,16 +974,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "终端里复制"
-          }
-        }
-      }
-    },
-    "Couldn’t reach %@. Scan a fresh code on that computer." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连不上 %@。请在那台电脑上重新扫码。"
           }
         }
       }
@@ -3118,16 +3098,6 @@
         }
       }
     },
-    "Couldn’t reach %@. Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连不上 %@。确认两台设备在同一网络；要在外面连，先在电脑上设置中转。"
-          }
-        }
-      }
-    },
     "Pair with your computer" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3228,6 +3198,46 @@
         }
       }
     },
+    "Its own relay isn’t responding. Trying the public connection service…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方的自建中转无响应，正在改用公共连接服务…"
+          }
+        }
+      }
+    },
+    "Someone at %@ ended the connection." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 那边断开了连接。"
+          }
+        }
+      }
+    },
+    "Touch to reconnect." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点这里重新连接。"
+          }
+        }
+      }
+    },
+    "Ended at the computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对方已断开"
+          }
+        }
+      }
+    },
     "The public connection service has reached today’s limit. Try again later, or use your own relay." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3324,6 +3334,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "免费，不保证可用。无法直连时，请设置自建中转。"
+          }
+        }
+      }
+    },
+    "This code has expired or was already used." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个二维码已过期或已被用过。"
+          }
+        }
+      }
+    },
+    "On %@, open Add Device and scan the code it shows now." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@ 上打开“添加设备”，扫描它现在显示的二维码。"
+          }
+        }
+      }
+    },
+    "No one answered on %@ in time." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 那边没有人及时回应。"
+          }
+        }
+      }
+    },
+    "Pairing stopped when Blurt left the screen." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "口喷鸡离开了屏幕，配对已停止。"
+          }
+        }
+      }
+    },
+    "Can’t reach %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上 %@。"
+          }
+        }
+      }
+    },
+    "Make sure %@ is on and Blurt is open there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请确认 %@ 已开机，并且打开了口喷鸡。"
+          }
+        }
+      }
+    },
+    "Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认两台设备在同一网络；要在外面连，先在电脑上设置中转。"
+          }
+        }
+      }
+    },
+    "%@ removed this iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已移除这台 iPhone。"
+          }
+        }
+      }
+    },
+    "Removed this iPhone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除这台 iPhone"
           }
         }
       }

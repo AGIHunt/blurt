@@ -94,7 +94,7 @@ final class KeyLine: NSView {
                 afterKey = false
             case .key(let k):
                 let cap = KeyCap(k)
-                if x > 0, !afterKey { x += 3 }
+                if x > 0 { x += 3 }               // after a word, or between the keys of one chord
                 cap.frame.origin = NSPoint(x: x, y: ((lineH - KeyLine.capH) / 2).rounded())
                 addSubview(cap)
                 x = cap.frame.maxX
@@ -128,12 +128,14 @@ final class KeyLine: NSView {
         return String(order.filter { held.contains($0) })
     }
 
-    /// "[F] Full screen   [esc] Cancel": key + word pairs, 12 pt apart.
+    /// "[F] Full screen   [esc] Cancel": key + word pairs, 12 pt apart. A chord is a cap per key ("[⌥][⇧][P] Pause"),
+    /// as the main window and Settings show every shortcut (system.md §2.7a): the island drew one cap per chord, the
+    /// windows one per key, and the same ⌥P looked like two products.
     static func pairs(_ p: [(key: String, word: String)]) -> [Run] {
         var runs: [Run] = []
         for (i, kw) in p.enumerated() {
             if i > 0 { runs.append(.gap(12)) }
-            runs.append(.key(kw.key))
+            for k in KeyCaps.split(kw.key) { runs.append(.key(k)) }
             runs.append(.text(kw.word))
         }
         return runs

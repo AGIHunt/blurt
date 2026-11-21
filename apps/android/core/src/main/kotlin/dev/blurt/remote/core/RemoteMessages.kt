@@ -53,7 +53,7 @@ enum class RemoteBlurtCommand(val raw: String) {
 /** A three- or four-finger swipe and the like, as named moves; each host maps them to its own. */
 enum class RemoteSystemMove(val raw: String) {
     MISSION_CONTROL("missionControl"), APP_EXPOSE("appExpose"), SPACE_LEFT("spaceLeft"), SPACE_RIGHT("spaceRight"), ZOOM_IN("zoomIn"),
-    ZOOM_OUT("zoomOut"), FIND_CURSOR("findCursor");
+    ZOOM_OUT("zoomOut"), FIND_CURSOR("findCursor"), SECURE_ATTENTION("secureAttention");
 
     companion object { fun from(raw: String?): RemoteSystemMove? = entries.firstOrNull { it.raw == raw } }
 }
@@ -232,6 +232,16 @@ sealed class ToMac {
     data class Clipboard(val text: String) : ToMac()
     /** a viewer took the keys (true) or gave them back */
     data class KeysCaptured(val on: Boolean) : ToMac()
+    /** 隐私屏: cover the host's own screen while controlled */
+    data class PrivacyScreen(val on: Boolean) : ToMac()
+    /** a file to the host's Downloads: its name and size, its bytes, the end */
+    data class FileBegin(val id: String, val name: String, val size: Long) : ToMac()
+    class FileChunk(val id: String, val data: ByteArray) : ToMac() {
+        override fun equals(other: Any?): Boolean = other is FileChunk && other.id == id && other.data.contentEquals(data)
+        override fun hashCode(): Int = id.hashCode() * 31 + data.contentHashCode()
+        override fun toString(): String = "FileChunk(id=$id, ${data.size} bytes)"
+    }
+    data class FileEnd(val id: String) : ToMac()
 
     fun toJson(): JsonObject = when (this) {
         is Key -> J.case("key", "_0" to chord.toJson(), "down" to J.bool(down))
@@ -267,6 +277,10 @@ sealed class ToMac {
         StreamMoved -> J.case("streamMoved")
         is Clipboard -> J.case("clipboard", "_0" to J.str(text))
         is KeysCaptured -> J.case("keysCaptured", "_0" to J.bool(on))
+        is PrivacyScreen -> J.case("privacyScreen", "_0" to J.bool(on))
+        is FileBegin -> J.case("fileBegin", "id" to J.str(id), "name" to J.str(name), "size" to J.int(size))
+        is FileChunk -> J.case("fileChunk", "id" to J.str(id), "data" to J.data(data))
+        is FileEnd -> J.case("fileEnd", "id" to J.str(id))
     }
 
     /** UTF-8 JSON, the body of a control frame (after its kind byte). */
@@ -313,6 +327,10 @@ sealed class ToMac {
                 "streamMoved" -> StreamMoved
                 "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
                 "keysCaptured" -> KeysCaptured(J.bool(o, "_0") ?: return null)
+                "privacyScreen" -> PrivacyScreen(J.bool(o, "_0") ?: return null)
+                "fileBegin" -> FileBegin(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.long(o, "size") ?: return null)
+                "fileChunk" -> FileChunk(J.str(o, "id") ?: return null, J.data(o, "data") ?: return null)
+                "fileEnd" -> FileEnd(J.str(o, "id") ?: return null)
                 else -> null
             }
         }
@@ -339,6 +357,11 @@ sealed class ToPhone {
     data class Relay(val address: String?) : ToPhone()
     /** another phone took over: don't reconnect until the user touches this one */
     data object Replaced : ToPhone()
+    /** the person at the computer ended this session: don't reconnect until the user asks */
+    data object Ended : ToPhone()
+    data class FileProgress(val id: String, val bytes: Long) : ToPhone()
+    data class FileSaved(val id: String, val name: String) : ToPhone()
+    data class FileFailed(val id: String, val why: String) : ToPhone()
     /** a code used over the relay: someone at the host has to say yes */
     data object PairingWaits : ToPhone()
     /** a voice note started from the phone wants the phone's microphone (true), or is over (false) */
@@ -372,6 +395,8 @@ sealed class ToPhone {
     data object NoDirect : ToPhone()
     /** a computer host's clipboard text, while a viewer has the keys (phones never see it) */
     data class Clipboard(val text: String) : ToPhone()
+    /** the host's screen locked (true) or opened again (false), and it can't show its lock screen: no frames meanwhile. 1.1.0+ */
+    data class ScreenLocked(val locked: Boolean) : ToPhone()
 
     fun toJson(): JsonObject = when (this) {
         is Session -> J.case("session", "_0" to info.toJson())
@@ -387,6 +412,10 @@ sealed class ToPhone {
         Removed -> J.case("removed")
         is Relay -> J.case("relay", "_0" to J.str(address))
         Replaced -> J.case("replaced")
+        Ended -> J.case("ended")
+        is FileProgress -> J.case("fileProgress", "id" to J.str(id), "bytes" to J.int(bytes))
+        is FileSaved -> J.case("fileSaved", "id" to J.str(id), "name" to J.str(name))
+        is FileFailed -> J.case("fileFailed", "id" to J.str(id), "why" to J.str(why))
         PairingWaits -> J.case("pairingWaits")
         is Listen -> J.case("listen", "_0" to J.bool(on))
         is NewKey -> J.case("newKey", "_0" to J.data(key))
@@ -400,6 +429,7 @@ sealed class ToPhone {
         StreamMoved -> J.case("streamMoved")
         NoDirect -> J.case("noDirect")
         is Clipboard -> J.case("clipboard", "_0" to J.str(text))
+        is ScreenLocked -> J.case("screenLocked", "_0" to J.bool(locked))
     }
 
     fun encode(): ByteArray = J.bytes(toJson())
@@ -424,6 +454,10 @@ sealed class ToPhone {
                 "removed" -> Removed
                 "relay" -> Relay(if (J.has(o, "_0")) J.str(o, "_0") ?: return null else null)
                 "replaced" -> Replaced
+                "ended" -> Ended
+                "fileProgress" -> FileProgress(J.str(o, "id") ?: return null, J.long(o, "bytes") ?: return null)
+                "fileSaved" -> FileSaved(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null)
+                "fileFailed" -> FileFailed(J.str(o, "id") ?: return null, J.str(o, "why") ?: return null)
                 "pairingWaits" -> PairingWaits
                 "listen" -> Listen(J.bool(o, "_0") ?: return null)
                 "newKey" -> NewKey(J.data(o, "_0") ?: return null)
@@ -437,6 +471,7 @@ sealed class ToPhone {
                 "streamMoved" -> StreamMoved
                 "noDirect" -> NoDirect
                 "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
+                "screenLocked" -> ScreenLocked(J.bool(o, "_0") ?: return null)
                 else -> null
             }
         }

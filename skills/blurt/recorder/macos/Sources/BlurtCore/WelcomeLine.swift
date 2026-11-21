@@ -12,9 +12,12 @@ import Foundation
 public enum WelcomeLine {
     /// Where dictation stands at that launch. `unknown`: its models couldn't be read (the speech tools couldn't be
     /// set up — offline on a first run): its key isn't advertised, and the line says dictation isn't set up yet.
-    public enum Dictation: Equatable { case works, needsSetup, noModel, unknown, off }
+    /// `unreadable`: the list failed while online, even read again (a script error, not a missing setup): the line
+    /// says the speech models couldn't be checked, with Try Again — not "isn't set up", which sent people to set up
+    /// what was there.
+    public enum Dictation: Equatable { case works, needsSetup, noModel, unknown, unreadable, off }
     /// The line's button.
-    public enum Action: String, Equatable { case turnOnDictation, downloadModel, setUpDictation, changeShortcut }
+    public enum Action: String, Equatable { case turnOnDictation, downloadModel, setUpDictation, readModelsAgain, changeShortcut }
 
     public struct Line: Equatable {
         public var key: String
@@ -43,6 +46,8 @@ public enum WelcomeLine {
             line = Line(key: "app.toast.welcome_no_model", args: [], conflicts: [], action: .downloadModel)
         case .unknown:
             line = Line(key: "app.toast.welcome_not_set_up", args: [], conflicts: [], action: .setUpDictation)
+        case .unreadable:
+            line = Line(key: "app.toast.welcome_unreadable", args: [], conflicts: [], action: .readModelsAgain)
         case .off:
             if let s = snap, let r = record { line = Line(key: "app.toast.welcome_no_dictation", args: [s, r], conflicts: [], action: nil) }
             else if let s = snap { line = Line(key: "app.toast.welcome_snap_only", args: [s], conflicts: [], action: nil) }

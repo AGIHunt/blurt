@@ -643,7 +643,10 @@ private struct ProjectWordsChip: View {
         }
         .help(tip)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep")))
+        // the words dictation is told, as drawn: the name as the label, the key as the value (one joined label
+        // "Landing Page, LP" was measured with a ", " the chip doesn't draw, and read as cut)
+        .accessibilityLabel(g.terms.filter { $0.term != g.key }.map(\.term).joined(separator: T("dictation.vocab.list_sep")))
+        .accessibilityValue(g.terms.contains { $0.term == g.key } ? g.key : "")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default) { w.selected = g.terms.first?.term }
         .accessibilityAction(named: T("dictation.vocab.remove")) { w.remove(g.terms) }

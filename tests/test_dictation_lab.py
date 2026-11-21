@@ -311,18 +311,32 @@ def test_rehear_hears_the_pieces_again_in_windows(home):
     """rehear (the app's default since v1.0.4): the pieces once more in ~10 s windows, closed only at a pause cut, the
     windows' text so far as context; polish then works window by window. A window the model gives nothing for keeps
     its pieces' text."""
-    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 16.0, "pause_after": 0.7},
-            {"start": 16.0, "end": 20.0, "pause_after": None}]
+    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 15.9, "pause_after": 0.7},
+            {"start": 15.9, "end": 20.0, "pause_after": None}]
     c = make_case(home, "r1", 20.0, "豆包也被忽悠了，尝试了第二次才找对。", segs)
-    fake = FakePipeline({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    fake = FakePipeline({8.0: "豆宝也被忽悠了，", 7.9: "强势了第二次", 4.1: "才找对。", 15.9: "豆包也被忽悠了，尝试了第二次"})
     r = L.run_case(c, L.parse_spec("mode=windows"), fake)
     asr = [x for x in fake.calls if "secs" in x]
-    assert [x["secs"] for x in asr] == [8.0, 8.0, 4.0, 16.0]          # the pieces, then the first window (0–16 s)
+    assert [x["secs"] for x in asr] == [8.0, 7.9, 4.1, 15.9]          # the pieces, then the first window (0–15.9 s)
     assert asr[-1]["prior"] == ""
     assert [w["pieces"] for w in r["outputs"]["rehear"]] == [[0, 1], [2]]
     assert r["outputs"]["raw"].startswith("豆包也被忽悠了，尝试了第二次")
     assert [x["polish"] for x in fake.calls if "polish" in x][0].startswith("豆包也被忽悠了")
     assert r["outputs"]["timings"]["windows"] == 2
+
+
+def test_a_window_that_lost_a_language_keeps_its_pieces(home):
+    """The model hears a window under one language tag: an English sentence then a Chinese one came back as the
+    Chinese alone (1.1.0 dogfood). The pieces' text stays (dictation_stitch.rehear_loss, as the app)."""
+    segs = [{"start": 0, "end": 4.3, "pause_after": 0.6}, {"start": 4.3, "end": 9.6, "pause_after": None}]
+    c = make_case(home, "mx", 9.6, "Let me check the build logs first. 然后我再把发布说明写好。", segs)
+    fake = FakePipeline({4.3: "Let me check the build logs first.", 5.3: "然后我再把发布说明写好。",
+                         9.6: "然后我再把发布说明写好。"})
+    r = L.run_case(c, L.parse_spec("mode=windows"), fake)
+    w = r["outputs"]["rehear"][0]
+    assert w["pieces"] == [0, 1] and w["lost"] == "latin"
+    assert r["outputs"]["raw"].startswith("Let me check the build logs first")
+    assert "然后我再把发布说明写好" in r["outputs"]["raw"]
 
 
 def test_windows_are_the_models_length(home):

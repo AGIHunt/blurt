@@ -116,6 +116,8 @@ pub fn system_chord(m: SystemMove) -> (u8, &'static str) {
         SystemMove::ZoomOut => (mods::CONTROL, "-"),
         // a lone Ctrl: GNOME's "Locate Pointer" when it's on (Settings → Accessibility), else nothing
         SystemMove::FindCursor => (mods::CONTROL, ""),
+        // no such thing for an unprivileged host on Linux
+        SystemMove::SecureAttention => (0, ""),
     }
 }
 

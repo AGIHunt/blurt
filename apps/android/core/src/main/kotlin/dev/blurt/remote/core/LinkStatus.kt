@@ -6,7 +6,7 @@
 // most one button for it.
 package dev.blurt.remote.core
 
-enum class LinkPhase { UNPAIRED, CONNECTING, UNREACHABLE, CONNECTED, FORGOTTEN, REPLACED }
+enum class LinkPhase { UNPAIRED, CONNECTING, UNREACHABLE, CONNECTED, FORGOTTEN, REPLACED, ENDED }
 
 /** The connection as the pad needs to know it. Nothing here comes from the wire that Link doesn't already publish. */
 data class LinkStatus(
@@ -22,11 +22,44 @@ data class LinkStatus(
     val screenError: String? = null,
     /** the computer is asking its owner about this phone's code */
     val waiting: Boolean = false,
-    /** a pairing just didn't take; Link has the sentence */
+    /** a pairing just didn't take; Link has the sentences */
     val pairFailed: Boolean = false,
+    /** the code that didn't take can still work (it couldn't be reached, and is still being tried): Try Again */
+    val pairRetry: Boolean = false,
     /** why away doesn't work through Blurt's go-between; said once nothing else has answered (remote-go-between.md §What each end shows) */
     val away: AwayTrouble? = null,
 )
+
+/**
+ * How a pairing ended without a key. The computer never says why (a refused handshake, or a bare close), so it's read from when, as the Mac
+ * viewer does (docs/design/remote-desktop-viewer.md). iOS: Link.swift `PairFailure.Why`.
+ */
+enum class PairEnd {
+    /** refused before anyone was asked: the code ran out or was used already */
+    SPENT,
+    /** the question was asked and the computer let go: its owner said no */
+    DECLINED,
+    /** closed at 90 % of the computer's two-minute question or later: nobody answered */
+    UNANSWERED,
+    /** the app went to the background while the computer was asking: the code is spent */
+    LEFT,
+    /** nothing answered; still trying, and the digits take this one's place as soon as the computer asks */
+    UNREACHABLE;
+
+    val canRetry: Boolean get() = this == UNREACHABLE
+
+    companion object {
+        /** how long a computer asks its owner about a new device before it takes the silence as a no (the hosts' pairing life) */
+        const val QUESTION_LIFE_MS = 120_000L
+
+        /** `askedAt`: when the computer began asking (null: it never did). */
+        fun of(askedAt: Long?, now: Long): PairEnd = when {
+            askedAt == null -> SPENT
+            now - askedAt >= QUESTION_LIFE_MS * 9 / 10 -> UNANSWERED
+            else -> DECLINED
+        }
+    }
+}
 
 /** What Blurt's go-between couldn't do */
 enum class AwayTrouble {
@@ -34,6 +67,8 @@ enum class AwayTrouble {
     NO_DIRECT,
     /** out of today's free quota, or rate-limited */
     BUSY,
+    /** the computer's own relay doesn't answer; the public connection service is tried meanwhile (2026-11-20, the office) */
+    RELAY_DOWN,
 }
 
 /** what's drawn beside the words: a state is never told by colour alone */
@@ -44,12 +79,13 @@ enum class StatusLine {
     CANT_REACH, CHECK_NETWORK, CHECK_AWAKE,
     NEEDS_PAIRING, FORGOTTEN,
     OTHER_PHONE, TOUCH_TO_TAKE_OVER,
+    ENDED_THERE, TOUCH_TO_RECONNECT,
     PAIR_FIRST, WHERE_THE_CODE_IS,
     WAITING, ALLOW_ON_COMPUTER,
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
     CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF,
-    NO_DIRECT, GO_BETWEEN_BUSY,
+    NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
 
 enum class StatusAction { RETRY, SCAN, ANOTHER }
@@ -66,7 +102,11 @@ data class StatusBanner(
         fun of(s: LinkStatus): StatusBanner? {
             var b: StatusBanner? = if (s.phase == LinkPhase.UNREACHABLE && s.away != null) {
                 // the go-between said why it can't carry this: once nothing else has answered either, that's the one thing to say
-                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.away == AwayTrouble.NO_DIRECT) StatusLine.NO_DIRECT else StatusLine.GO_BETWEEN_BUSY,
+                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, when (s.away) {
+                    AwayTrouble.NO_DIRECT -> StatusLine.NO_DIRECT
+                    AwayTrouble.BUSY -> StatusLine.GO_BETWEEN_BUSY
+                    AwayTrouble.RELAY_DOWN -> StatusLine.RELAY_DOWN
+                },
                     StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
             } else when (s.phase) {
                 LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
@@ -75,6 +115,7 @@ data class StatusBanner(
                     StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
                 LinkPhase.FORGOTTEN -> StatusBanner(StatusMark.PROBLEM, StatusLine.NEEDS_PAIRING, StatusLine.FORGOTTEN, StatusAction.SCAN)
                 LinkPhase.REPLACED -> StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, StatusLine.TOUCH_TO_TAKE_OVER)
+                LinkPhase.ENDED -> StatusBanner(StatusMark.PHONE, StatusLine.ENDED_THERE, StatusLine.TOUCH_TO_RECONNECT)
                 LinkPhase.CONNECTED -> when {
                     s.screenError == "off" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.SCREEN_IS_OFF)
                     s.screenError == "permission" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.ALLOW_SCREEN)
@@ -82,12 +123,15 @@ data class StatusBanner(
                     else -> null
                 }
             }
-            // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing
-            if (s.waiting) b = StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER)
+            // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
+            // once the computer asks, whatever went wrong before is past
+            if (s.waiting) return StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER)
             if (s.pairFailed) {
-                // what there was to do about the computer in hand is still there to do
-                b = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED,
-                    if (s.waiting) null else b?.action, if (s.waiting) null else b?.second)
+                // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the
+                // computer gone back to is still there to do
+                b = if (s.pairRetry) StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN)
+                else StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN,
+                    b?.action?.takeIf { it != StatusAction.SCAN })
             }
             return b
         }

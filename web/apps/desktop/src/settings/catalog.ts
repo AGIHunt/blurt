@@ -55,7 +55,7 @@ export const PANES: PaneInfo[] = [
   // page's, Home's row and the sidebar's: renaming the feature is that one string
   { id: 'phone', title: 'feature.phone', icon: 'devices', group: 'features' },
   { id: 'general', title: 'settings.kit.general', icon: 'settings', group: 'app' },
-  { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'app' },
+  { id: 'speech', title: 'settings.kit.speech', icon: 'cube', group: 'app' },
   { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'app' },
   { id: 'agents', title: 'settings.kit.agents', icon: 'terminal', group: 'app' },
   { id: 'privacy', title: 'settings.kit.privacy', icon: 'hand', group: 'mac' },
@@ -205,7 +205,9 @@ export const ENTRIES: Entry[] = (() => {
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
     row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
-    // how long the history keeps what was read (record.screen_text.history_days), Open History…, Clear History…
+    // how long the history keeps what was read (record.screen_text.history_days) in a popup in sight; then what is
+    // kept, Open History…, Clear History…
+    row('screentext.history_keep', 'screentext.history_section', 'settings.screen_text.history.keep'),
     row('screentext.history', 'screentext.history_section', 'settings.screen_text.history', { detail: 'settings.screen_text.history.detail' }),
     // Models
     whole('speech.services', 'models.services.detail'),
@@ -232,6 +234,8 @@ export const ENTRIES: Entry[] = (() => {
     // Phone
     // the devices are on the Remote Control page: this row goes there
     row('phone.devices', null, 'phone.devices.show'),
+    row('phone.service', 'phone.options', 'phone.service', { detail: 'phone.service.detail' }),
+    row('phone.stay_awake', 'phone.options', 'phone.stay_awake', { detail: 'phone.stay_awake.desktop' }),
     row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
     row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
     row('phone.go_between', 'phone.relay', 'phone.go_between', { detail: 'phone.go_between.detail' }),

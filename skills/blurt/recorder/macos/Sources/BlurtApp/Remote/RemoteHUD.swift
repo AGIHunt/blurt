@@ -28,9 +28,8 @@ enum RemoteHUD {
         bg.state = .active
         bg.blendingMode = .behindWindow
         bg.appearance = NSAppearance(named: .darkAqua)
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = 14
-        bg.layer?.masksToBounds = true
+        // a behind-window blur ignores the layer's corner radius (the corners showed white): a mask image rounds it
+        bg.maskImage = .roundedMask(14)
         let t = NSTextField(labelWithString: "")
         t.font = .monospacedSystemFont(ofSize: 24, weight: .medium)
         t.textColor = .white
@@ -122,4 +121,19 @@ enum RemoteHUD {
         }
     }
     private static var findWindow: NSPanel?
+}
+
+extension NSImage {
+    /// A stretchable rounded-rectangle mask for NSVisualEffectView.maskImage: a behind-window blur is only rounded this way.
+    static func roundedMask(_ r: CGFloat) -> NSImage {
+        let side = r * 2 + 1
+        let i = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r).fill()
+            return true
+        }
+        i.capInsets = NSEdgeInsets(top: r, left: r, bottom: r, right: r)
+        i.resizingMode = .stretch
+        return i
+    }
 }

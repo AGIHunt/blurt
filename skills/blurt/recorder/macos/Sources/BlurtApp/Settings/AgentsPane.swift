@@ -599,15 +599,17 @@ struct AgentsPane: View {
         }
     }
 
-    /// Check Again, at the right end of the page's lead (a spinner beside it while a check runs).
+    /// Check Again, at the right end of the page's lead (a spinner beside it while a check runs). The button's text is
+    /// the lead's baseline whether or not the spinner shows: the spinner is drawn beside it, not stacked with it (it has
+    /// no text baseline, and its bottom edge dropped the button ~10 pt while a check ran: dogfood 2026-11-21).
     var checkAgain: some View {
-        HStack(spacing: 6) {
-            if m.loading { BrandSpinnerView(size: 10, label: AL("agents.state.checking")) }
-            Button(AL("agents.check_again")) { m.recheck() }
-                .buttonStyle(.plain)
-                .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
-                .disabled(m.loading)
-        }
+        Button(AL("agents.check_again")) { m.recheck() }
+            .buttonStyle(.plain)
+            .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
+            .disabled(m.loading)
+            .overlay(alignment: .leading) {
+                if m.loading { BrandSpinnerView(size: 10, label: AL("agents.state.checking")).offset(x: -16) }
+            }
     }
 
     /// The agents that aren't installed: one folded line ("Not installed · Gemini CLI, ZCode"); open, a row each.
@@ -1113,7 +1115,9 @@ struct AgentDetailSheet: View {
     func modelChoices(_ k: ProcessingKind, _ ms: AgentModels) -> [(value: String, title: String)] {
         let shared = m.sharedSetting(k).model
         let named: String? = shared == "cheapest" ? ms.name(ms.cheapest) : ms.name(ms.cliDefault)
-        let follow = AL("agents.organize.inherit", named ?? AL(shared == "cheapest" ? "agents.processing.cheapest" : "agents.processing.default"))
+        // no model name known: the page's choice in its short words ("Default (Agent’s default model)" is cut at the
+        // column's width)
+        let follow = AL("agents.organize.inherit", named ?? AL(shared == "cheapest" ? "agents.organize.inherit.cheapest" : "agents.organize.inherit.default"))
         let cli = ms.name(ms.cliDefault).map { AL("agents.processing.default_named", $0) } ?? AL("agents.processing.default")
         let cheap = ms.name(ms.cheapest).map { AL("agents.processing.cheapest_named", $0) } ?? AL("agents.processing.cheapest")
         var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", cli), ("cheapest", cheap)]
@@ -1272,6 +1276,12 @@ struct InstallSheet: View {
             return Row(change: c, group: group, tone: .err, title: AL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
                        detail: AL("install.row.failed.detail", name))
         }
+        if c.isApproval {   // Codex: the reporting tools stop asking (an unattended run would refuse them)
+            let done = applied && c.ok == true
+            return Row(change: c, group: group, tone: c.action == "exists" ? .inPlace : done ? .added : .add,
+                       title: AL(c.action == "exists" ? "install.row.in_place.approve" : done ? "install.row.added.approve" : "install.row.add.approve"),
+                       detail: AL("install.row.about.approve", name))
+        }
         switch c.action {
         case "symlink", "run", "json_merge":
             let done = applied && c.ok == true
@@ -1421,13 +1431,27 @@ struct InstallSheet: View {
 
     // MARK: Details: the exact commands and paths, on request
 
+    /// A chevron and "Details", the page's fold (foldLine), not a DisclosureGroup: SwiftUI reports that one's triangle
+    /// ~22 pt left of where it draws it, outside the sheet (layoutcheck).
     var details: some View {
-        DisclosureGroup(isExpanded: $m.installDetails) {
-            InstallDetailsWell(lines: technical).padding(.top, 8)
-        } label: {
-            Text(AL("install.details")).font(.system(size: 12)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.15)) {
+                    m.installDetails.toggle()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(m.installDetails ? 90 : 0))
+                        .frame(width: 12)
+                    Text(AL("install.details")).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
                 .contentShape(Rectangle())
-                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { m.installDetails.toggle() } }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(AL("install.details"))
+            .accessibilityValue(m.installDetails ? "1" : "0")
+            if m.installDetails { InstallDetailsWell(lines: technical).padding(.top, 8) }
         }
     }
 

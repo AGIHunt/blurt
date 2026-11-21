@@ -83,13 +83,16 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   (`record.dictation.modifier_tap`, default `double`; per key `modifier_tap_shift` / `modifier_tap_command` can put
   one back on `single`). Window 350 ms, cooldown 500 ms after a fire, a ⇧⌘ chord asks neither. A voice note's ⇧ uses
   the same window and cooldown.
-- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「按两下发送」
+- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击发送」
   / "Double-tap to send", the key named in its description ("Double-tap Fn to press Return after the text"). In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
   `doubleTapWindow` of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
-  The window is macOS's own double-click interval (`NSEvent.doubleClickInterval`, System Settings → Accessibility →
-  Pointer Control) clamped to 0.3–0.5 s — 0.5 s by default. It was a fixed 300 ms, and a Fn tap with the little
-  finger is slower than a mouse click: the audit's real "double taps" were 320 ms apart and missed.
+  The window is 0.65 s (`DictationTrigger.sendWindow`; the founder, 2026-11-21), for the send gesture only (⇧ / ⌘ keep
+  350 ms). It was a fixed 300 ms — a Fn tap with the little finger is slower than a mouse click: the audit's real
+  "double taps" were 320 ms apart and missed — then macOS's double-click interval clamped to 0.3–0.5 s (0.5 s by
+  default), where the 1.1.0 dogfood's finger double tap after a stop, 0.64 s apart, started a new take instead of
+  sending. Two separate taps (stop, then the next take) are further apart than 0.65 s; the near miss (below, 0.8 s)
+  still covers a slower one when nothing was said.
   The first tap is never delayed: it does what it always did, at once, and the second one decides:
   - **idle** (auto / tap mode): the first tap started a dictation; the second cancels it (`.cancel`: audio dropped,
     nothing pasted, no history entry) and Return goes to the app in front now;
@@ -509,6 +512,14 @@ without one; `record.dictation.rehear`, and `rehear_window_s` overrides the mode
 - A window of one piece keeps that piece's transcript (the same audio); one the model fails on, or answers nothing for,
   keeps its pieces' (`dictation_rehear`: `ok`, `changed`); a covered piece in a failed window sends the take down the
   safety path (the whole recording), as a failed piece does.
+- **A window answer must cover its pieces** (1.1.0, `DictationStitch.rehearLoss`): the model hears a window under one
+  language tag, and an English sentence followed by a Chinese one came back as the Chinese alone — the English the
+  user had watched turn final was lost (en+zh: the English gone; en+zh+en: the first English gone; zh+en kept both).
+  For each script the pieces heard ≥ 3 units of (Latin words, CJK characters), ≥ 60 % of those units (as a multiset)
+  must be in the answer, else the pieces' own text stays (`dictation_rehear` `lost`: `latin` / `cjk`). Counts only, no
+  word lists; corrections (巨幅 → GIF) and doubles dropped at a hard cut stay well inside it. A covered piece in such a
+  window is then heard alone. Voice notes apply the same check (`voice_rehear` `lost`); the Lab's port is
+  `dictation_stitch.rehear_loss` (shared fixture rows), and the built-in pack has two mixed prompts (b032, b033).
 - The history keeps both: `pieces` (each with `hard`, `covered`) and `windows` (`pieces`, `pieces_text`, `raw`,
   `asr_ms`), and `timing` has `windows` and `rehear_ms_all`. The Lab replays it (`rehear=on`, the default;
   `dictation_stitch.rehear_groups` is the port, the same cases in both test suites).
@@ -1093,8 +1104,10 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently). Once
-  something was said, its recording stays in the history as "已取消：录音已保留" with Retry
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently), and once
+  something was said it has the same **Undo for a full 5 s** (the founder, 2026-11-21: one Esc still discards, Undo
+  brings the take back as it would have been typed; its recording waits that long in `cancelledTakes`). Once
+  something was said, its recording also stays in the history as "已取消：录音已保留" with Retry
   (`DictationHistory.cancelledReason`, #54): an Esc meant for the app in front no longer costs what was said. Only
   while the history keeps recordings (`keepsCancelled`): "Don't keep" or Keep Recordings off keeps nothing, nor does a
   take that heard nothing or the double tap's own cancel. A paste already under way (⌘V until it has landed) can't be
@@ -1114,7 +1127,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   list (`DictationModels.$asr`); BlurtCore's `DictationSpeechModels` reads it. Its `ready` says whether a take can run
   with nothing downloaded: the selected model (local and on this Mac, or a cloud one with its key — judged by itself,
   not by being one of the Settings rows) **and** the VAD every take goes through (`silero_vad.onnx`, 0.6 MB, in
-  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). `missing` lists what a
+  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). Only models Blurt
+  downloaded run unasked (`transcribe.py blurt_downloaded`: under `$BLURT_HOME/models`, or a Hugging Face snapshot a
+  Blurt `setup` saw finish — its `models/asr/.hf/<repo>.json`): a Whisper another tool left in the shared cache is no
+  row's "installed" and never the automatic pick — 1.1.0's dogfood found one silently running dictation (a 31 s cold
+  start) while setup said macOS speech was ready. Downloading it from Blurt takes seconds (the files are there) and
+  makes it Blurt's; a model the user configures is used as it is. `missing` lists what a
   download would bring. `transcribe.py dictation-models` is read once, by `DictationModels` (Settings' rows, the
   download manager's sizes, `dictationReady` for the welcome line and the assistant), and Dictation follows its
   `$asr` — one answer for every surface. Not ready: the key doesn't listen (no mic, no warm-up) and the island says
@@ -1206,9 +1224,33 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   history, so the page shows the text as it stands, the first version under it.
 - **Clear History** (Settings) never deletes the audio of a take still listening or on its way
   (`DictationHistory.liveIDs`), and posts `DictationHistory.changed`: reformat-last and the after-typing watch forget
-  the cleared (or deleted) takes. It asks first in an alert sheet with the app icon (`DictationSettings.askClear`):
-  *Clear dictation history?*, how many go (a plural) and their recordings only when some are still on disk, then *You
-  can't undo this.* on its own line; Cancel is the default (↩ and Esc), *Clear History* the quiet red one.
+  the cleared (or deleted) takes. *Clear History…* is a button at rest beside *Open History…* (and in the row's context
+  menu): the history controls stay in sight (in a menu, people looking for them didn't find them). It asks first in a sheet of our own (`DictationSettings.askClear`, `DictationQuestionSheet`), as the island's Discard
+  asks: the app icon, *Clear dictation history?* (15 pt semibold), then one short paragraph (12 pt secondary) — how
+  many go (a plural), their recordings only when some are still on disk, and *You can't undo this.*, no line break
+  between them. Cancel, on the right, is the one filled default (the light accent `#0B735E`, white title, ↩ and Esc);
+  *Clear History* is a plain button with its title in `err` — never the one that stands out. (Until 1.1.0 it was an
+  NSAlert: macOS 26 draws its destructive button as a red-tinted capsule, the loudest thing on the sheet, at about
+  2 : 1, and its default in the system accent, never the brand's.)
+- **How long it is kept** is a visible popup in Settings → Dictation (*Keep dictations for*: 7 / 30 / 90 / 365 days /
+  Don't keep), under *Clear History…* and *Open History…* — as Settings → Cards → History (until 1.1.0 it was in Open
+  History…'s menu, and people looking for it didn't find it). A shorter period, or Don't keep, that would delete saved
+  dictations asks first in the same sheet (`DictationSettings.chooseRetention`, `DictationHistory.wouldPrune`): *Delete
+  12 dictations?*, which go, *You can't undo this.*; Cancel keeps the period it was (it used to delete at once while
+  Clear History asked).
+- **Every island line about dictation has its mark** (IslandContent's leading slot): ⚠ for a failure or something
+  missing (not recognised, no speech, not sent, no polish model), the mic while a take listens (Still listening, the
+  5-minute lines), languages for Translate and for macOS speech's language, the list for Structured, else dictation's
+  keyboard — a line with an empty slot read as broken next to one with a mark (1.1.0 dogfood). Two-clause lines are
+  *headline · detail* ("没有润色模型 · …" → "本次未润色 · 未下载润色模型"), so they fit one line instead of leaving one word on
+  the second. "Still listening" and "close to the 5-minute limit" are replies to the take in progress, not passive
+  tips: they show while it listens (passive lines wait for the take to end, so they never showed).
+- **macOS speech names its language.** It listens in one language (`AppleSpeech`: no detection); "Automatic" is the
+  first language people mix English into among the system's languages **and the keyboard input sources turned on**
+  (Pinyin → 中文, Kotoeri → 日本語; `AppleSpeech.inputSourceLanguages`), so a Chinese speaker on an English Mac is heard in
+  Chinese. After a take it typed, the first line names the language it listened in, with Change… (Settings → Speech →
+  the recognition language) — once a day for each language, before any polish line: the 1.1.0 dogfood's first take
+  came out as pinyin-like English under "No polish model downloaded", which blamed the wrong thing.
 
 ## Polish
 
@@ -1409,7 +1451,7 @@ no filler, correction-marker, question or preface word lists; what the words mea
 |---|---|
 | `empty` | the output has no units |
 | `term` | a custom word that was spoken (any case or spacing) is missing from the output |
-| `translated` | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
+| `script_swap` (was `translated` until 1.1.0: with Translate off it read as a translated take in History and in feedback reports; old entries keep it) | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
 | `shrunk` | loss > max(8 units, 25 % of the input); Structured: max(12, 40 %) + 2 per list line (the counting word its number stands for) |
 | `grew` | output > 1.25 × input + 8 units |
 | `chatty` | ≥ 3 units in a row at the start or the end of the output that follow nothing that was said (each unit and the next were never said one after the other, and neither is a custom or context word): a preface ("好的，下面是…", "Sure, here is…"), a sign-off ("Hope this helps"), an answer. A run ends at a line break: one-word list items ("1. Speed\n2. Cost") are neighbours only on the page |
@@ -2145,12 +2187,21 @@ one of them Chinese, English or Japanese.
   does a cloud polish model picked by hand (§Cloud polish: `record.cloud.jobs.polish`). An installed 0.6B keeps running
   on a Mac whose recommendation is now the 1.7B until the 1.7B is downloaded (Settings offers it); nothing downloads
   by itself for an existing install.
-- **At install** (`ModelSetup.startAtInstall`): with macOS's recogniser dictating from the first minute (the setup
-  assistant's "start now" step), this Mac's recogniser starts downloading in the background as soon as the model list is
-  read — the recogniser, then the polish model of this Mac's default (v1.0.8: Gemma 4 E2B from 16 GB; the voice-note
-  model stays the step's optional Download — and without polish every style read the same), once ever
-  (`first_download`), only while dictation is automatic and the Mac is online; a Stop is final. Before, nothing
-  downloaded until the user pressed Download on that optional row, and Apple Speech (Blurt 0 of 9, 45 % of terms) stayed.
+- **At install** — nothing downloads unasked (the founder, 2026-11-21). v1.0.8–1.0.27 started this Mac's recogniser
+  and then the polish model of its default in the background as soon as the setup assistant read the model list
+  (`ModelSetup.startAtInstall`, `first_download`): the 1.1.0 dogfood found Next on the first step committing 5.9 GB
+  with no size shown and no free-space check. Now the models step offers the recogniser alone (~2.5 GB) with its
+  size and the free space on the Mac ("Qwen3-ASR 1.7B (2.5 GB): more accurate, works offline. 120 GB free on this
+  Mac."); the polish model is offered later, on Home's Dictation row once the recogniser is in, with its own size
+  ("Download the polish model for dictation styles · 3.4 GB"). Every model download (the assistant, Settings, Home,
+  the dictation key, a resume at launch) first checks that what is left to fetch plus 2 GB is free, else it doesn't
+  start and says "4.5 GB needed, 3.1 GB free · Show Storage"; a setup that fills the disk anyway says the same
+  (`disk_full`). The same on Windows and Linux (setup.rs no longer starts a download; commands.rs `disk_short`).
+- **Only models Blurt downloaded** (the founder, 2026-11-21): a model whose files are in the shared Hugging Face cache
+  but that no Blurt `setup` finished (no `models/asr/.hf/<repo>.json` record: `transcribe.py found_elsewhere`) is never
+  picked by Automatic — the dogfood's first Try-it cold-started a 1.6 GB Whisper (31 s) while the step said macOS's
+  recogniser was ready. Its Download adopts the copy at once (the record is written, nothing fetched); one picked by
+  hand runs as it is.
 - **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
   `deepseek-v4.1-flash` on Model Studio, `deepseek-flash` on deepseek.com — for Auto; a model picked by hand stays (the
   founder's `qwen3.8-27b` measured 3.30 %, worse than no polish).
@@ -2506,7 +2557,7 @@ never touched.
 | `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (§Defaults by Mac: Qwen3-ASR 1.7B MLX on 16 GB+ Macs fast enough for it, else the 0.6B, when installed — an installed 0.6B runs until the 1.7B is in —, else the voice-note model) |
-| `first_download` | unset: the recogniser the setup assistant started downloading at install (§Defaults by Mac), once ever |
+| `first_download` | no longer written (1.1.0: nothing downloads unasked, §Defaults by Mac); an older install's value is ignored |
 | `context` | `true`: read the text around the cursor for polish and the speech model (§Context, §Field context) |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
@@ -2656,7 +2707,7 @@ by tag (`length:short`, `feature:correction` …).
 {"schema": 1, "id": "typeless-history", "name": "…", "name_zh": "…", "description": "…", "source": "builtin|typeless-history|…",
  "created": "…", "prompts": [{"id": "t001", "read": "what to say aloud", "expected": "what should be typed (optional)",
    "tags": {"length": "short|medium|long|xlong", "scenario": "chat|coding|email|notes|meeting",
-            "languages": "zh|zh-terms|en",
+            "languages": "zh|zh-terms|en|mixed",
             "features": ["names", "numbers", "correction", "fillers", "enumeration", "question", "run_on"]},
    "origin": "seed|variant|generated"}]}
 ```

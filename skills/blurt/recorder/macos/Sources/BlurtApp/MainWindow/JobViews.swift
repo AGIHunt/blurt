@@ -25,7 +25,7 @@ enum JobLook {
     /// captured ("口喷鸡还在整理今天 19:40 的内容。") — never the job's own title, which starts with "整理" again.
     static func quitTitle(_ j: Job) -> String {
         if let s = j.session, let t = batchTitle(s) { return T("app.quit.organizing.title", t) }
-        if let s = j.session { return T("app.quit.organizing.title_at", sessionLabel(s)) }
+        if let s = j.session { return T("app.quit.organizing.title_at", sessionLabel(s, inSentence: true)) }
         return T("app.quit.organizing.title_n", 1)
     }
 
@@ -38,8 +38,9 @@ enum JobLook {
         return nil
     }
 
-    /// A session dir's batch title, else its time stamp as a date.
-    static func sessionLabel(_ dir: URL) -> String {
+    /// A session dir's batch title, else its time stamp as a date. inSentence: the date goes inside a sentence
+    /// ("…what you captured yesterday at 08:36"), so its relative word isn't capitalised.
+    static func sessionLabel(_ dir: URL, inSentence: Bool = false) -> String {
         if let t = batchTitle(dir) { return t }
         let name = dir.lastPathComponent
         let f = DateFormatter()
@@ -47,13 +48,13 @@ enum JobLook {
         f.dateFormat = "yyyyMMdd-HHmmss"
         // never the folder's own name: when it was made, else just "a capture"
         let made = (try? FileManager.default.attributesOfItem(atPath: dir.path)[.creationDate]) as? Date
-        return (f.date(from: String(name.prefix(15))) ?? made).map(Loc.dateTime) ?? T("main.job.capture")
+        return (f.date(from: String(name.prefix(15))) ?? made).map(inSentence ? Loc.dateTimeInSentence : Loc.dateTime) ?? T("main.job.capture")
     }
 
     /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
     /// the same thing.
     static func errorText(_ j: Job) -> String? {
-        j.error.map { errorText($0, agent: j.usage?.agent.map(AgentNames.name)) }
+        j.error.map { errorText($0, agent: j.usage?.agent.map(AgentNames.name) ?? agentName(j)) }
     }
 
     /// A failed job's reason in words: its hint, else the sentence composed when it failed (which agent, why, the fix
@@ -133,7 +134,7 @@ extension JobLook {
     static func detailTitle(_ j: Job) -> String {
         if j.type == .process, let s = j.session {
             if let t = batchTitle(s) { return T("main.job.title.organizing", t) }
-            return T("main.job.title.organizing_at", sessionLabel(s))
+            return T("main.job.title.organizing_at", sessionLabel(s, inSentence: true))
         }
         return title(j)
     }
@@ -348,6 +349,7 @@ final class JobsSection: NSView {
             text.append(NSAttributedString(attachment: a))
         }
         header.label.attributedStringValue = text
+        header.onTitle = true          // on the title column, as the list's own section headers are
         header.toolTip = folds ? jobs.map { JobLook.title($0) }.joined(separator: "\n") : nil
         setAccessibilityLabel(Self.headerText(jobs))
         stack.addArrangedSubview(header)
@@ -513,8 +515,10 @@ final class JobRow: NSView {
         }
         title.toolTip = name
         title.attributedStringValue = t
-        status.stringValue = JobLook.rowStatus(j)
-        status.textColor = JobLook.statusColor(j)
+        // a failure is already said by the header and the red mark: its time column says when, like an item's
+        let failed = j.state == .failed
+        status.stringValue = failed ? Loc.listDate(j.ended ?? j.created) : JobLook.rowStatus(j)
+        status.textColor = failed ? .secondaryLabelColor : JobLook.statusColor(j)
         status.font = JobLook.fraction(j) != nil ? Look.monoSub : Look.subFont
         let busy = j.state == .running
         aiWorking = busy && (j.type == .process || j.type == .route)
@@ -528,7 +532,7 @@ final class JobRow: NSView {
         mark.image = j.state == .failed ? Look.symbol("xmark.circle.fill", T("job.state.failed"), size: 13) : nil
         mark.contentTintColor = BrandColor.err
         needsLayout = true
-        setAccessibilityLabel("\(name), \(status.stringValue)")
+        setAccessibilityLabel("\(name), \(JobLook.rowStatus(j))")
     }
 
     private func updateWorking() { working.set(active: aiWorking && !selected) }
@@ -854,8 +858,11 @@ final class JobDetailView: NSView {
             b.hPad = 12
             b.radius = 6
             controls.addArrangedSubview(b)
-            if j.state == .failed, !j.dismissed { more.append((T("main.job.dismiss"), "dismiss")) }
+            // a signed-out agent: the way to sign in, next to Try Again; Dismiss in sight, not behind ⋯
+            if j.state == .failed, j.error?.code == "auth" { controls.addArrangedSubview(plain(T("main.job.sign_in"), "agents")) }
+            if j.state == .failed, !j.dismissed { controls.addArrangedSubview(plain(T("main.job.dismiss"), "dismiss")) }
         } else if j.state == .failed, !j.dismissed {
+            if j.error?.code == "auth" { controls.addArrangedSubview(plain(T("main.job.sign_in"), "agents")) }
             controls.addArrangedSubview(plain(T("main.job.dismiss"), "dismiss"))
         } else if j.state == .done, !j.items.isEmpty {
             controls.addArrangedSubview(plain(TP("main.job.show_items", j.items.count), "items"))

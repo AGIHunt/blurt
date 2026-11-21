@@ -184,6 +184,8 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
   const [undo, setUndo] = useState<Undo | null>(null);
   const [menu, setMenu] = useState<MenuAt | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  // a shorter period (or Don't keep) that would delete saved dictations asks first (the Mac's chooseRetention)
+  const [askKeep, setAskKeep] = useState<{ days: number; n: number } | null>(null);
   const [error, setError] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -332,6 +334,12 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
     }
   };
 
+  const chooseKeep = (days: number) => {
+    const cur = data?.retention_days ?? 30;
+    const n = (days < cur || days === 0) && data ? D.wouldPrune(data.entries, days) : 0;
+    if (n > 0) setAskKeep({ days, n });
+    else setKeep(days);
+  };
   const setKeep = async (days: number) => {
     const d = cfg.record?.dictation ?? {};
     const patch = { record: { dictation: { ...d, retention_days: days === 30 ? null : days } } };
@@ -632,9 +640,9 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
         <Menu at={keepMenu} onClose={() => setKeepMenu(null)}>
           <div className="dict-mhead">{t('dictation_page.keep')}</div>
           {[...new Set([...KEEP, data?.retention_days || 30])].sort((a, b) => a - b).map((d) => (
-            <MenuItem key={d} label={plural('dictation_page.days', d)} checked={(data?.retention_days ?? 30) === d} onClick={() => setKeep(d)} />
+            <MenuItem key={d} label={plural('dictation_page.days', d)} checked={(data?.retention_days ?? 30) === d} onClick={() => chooseKeep(d)} />
           ))}
-          <MenuItem label={t('dictation_page.dont_keep')} checked={data?.retention_days === 0} onClick={() => setKeep(0)} />
+          <MenuItem label={t('dictation_page.dont_keep')} checked={data?.retention_days === 0} onClick={() => chooseKeep(0)} />
           <div className="dict-sep" />
           <MenuItem label={t('dictation_page.clear')} danger testId="dictation-clear" onClick={() => setConfirmClear(true)} />
         </Menu>
@@ -892,6 +900,25 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
             <div className="dict-confirm-foot">
               <button autoFocus className="dict-confirm-cancel" onClick={() => setConfirmClear(false)}>{t('dictation_page.clear.cancel')}</button>
               <button className="dict-danger-tint" onClick={clearAll}>{t('dictation_page.clear.confirm')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {askKeep && (
+        <div className="overlay" onClick={() => setAskKeep(null)}>
+          <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.key === 'Escape' && setAskKeep(null)}>
+            <h3>{plural('dictation_page.keep.title', askKeep.n)}</h3>
+            <p>{askKeep.days === 0 ? t('dictation_page.keep.off') : t('dictation_page.keep.days', { days: plural('dictation_page.days', askKeep.days) })}
+              {' '}{t('dictation_page.clear.undo')}</p>
+            <div className="dict-confirm-foot">
+              <button autoFocus className="dict-confirm-cancel" onClick={() => setAskKeep(null)}>{t('dictation_page.clear.cancel')}</button>
+              <button className="dict-danger-tint" onClick={async () => {
+                const v = askKeep.days;
+                setAskKeep(null);
+                await setKeep(v);
+                await reload();
+              }}>{t('dictation_page.keep.confirm')}</button>
             </div>
           </div>
         </div>

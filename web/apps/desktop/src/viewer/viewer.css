@@ -186,6 +186,16 @@
   color: var(--ink-2);
   text-align: center;
 }
+.vw-cover.over {
+  background: rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.8);
+}
+.vw-cover.over .vw-cover-title {
+  color: #fff;
+}
+.vw-cover.over .vw-cover-detail {
+  color: rgba(255, 255, 255, 0.7);
+}
 .vw-cover.warn > svg {
   color: var(--attn);
 }
@@ -243,4 +253,50 @@
   gap: 6px;
   margin-top: 12px;
   color: var(--ink-2);
+}
+
+/* the bar on a computer being controlled (RemoteBanner.tsx): the whole window */
+.remote-banner {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 14px;
+  background: #1d1d1f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+.remote-banner-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9f0a;
+}
+.remote-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.remote-banner button {
+  flex: none;
+  -webkit-app-region: no-drag;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.remote-banner button:hover {
+  background: rgba(255, 255, 255, 0.26);
 }

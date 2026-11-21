@@ -78,6 +78,53 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertTrue(w.modifiers([]))
     }
 
+    func testTheReleaseChordSendsNothing() {
+        // ⌃ down, ⌘ down, ⌘ up, ⌃ up (the dogfood run's R27: a Windows host saw Win, then Ctrl+Win, before the release)
+        var h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([.control, .command]), .none)
+        XCTAssertEqual(h.modifiers(.control), .release)
+        XCTAssertEqual(h.sent, [])
+        // the other order, and Fn held along
+        h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers([.command, .function]), .none)
+        XCTAssertEqual(h.modifiers([.command, .control, .function]), .none)
+        XCTAssertEqual(h.modifiers([.control, .function]), .release)
+    }
+
+    func testShortcutsStillGetTheirModifiers() {
+        // ⌘C: ⌘ waits, then goes before the C; letting go goes at once
+        var h = RemoteHeldModifiers()
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.other(), [.command])
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌃⌘F: both go before the F, and letting go after it isn't the release
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([.control, .command]), .none)
+        XCTAssertEqual(h.other(), [[.control, .command]])
+        XCTAssertEqual(h.modifiers(.control), .send([.control]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌘⇧: a modifier outside the chord sends at once
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.modifiers([.command, .shift]), .send([[.command, .shift]]))
+        XCTAssertEqual(h.modifiers(.command), .send([.command]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⇧ alone and ⌥ alone go as they come
+        XCTAssertEqual(h.modifiers(.shift), .send([.shift]))
+        XCTAssertEqual(h.modifiers([]), .send([[]]))
+        // ⌃ alone, tapped: the Windows key's tap (Start) still reaches the host
+        XCTAssertEqual(h.modifiers(.control), .none)
+        XCTAssertEqual(h.modifiers([]), .send([.control, []]))
+        // ⌘-click: the click sends ⌘ first; a ⌃ added while ⌘ is down waits, and let go is still the release (the window then lets go of
+        // the ⌘ the host has)
+        XCTAssertEqual(h.modifiers(.command), .none)
+        XCTAssertEqual(h.other(), [.command])
+        XCTAssertEqual(h.other(), [])
+        XCTAssertEqual(h.modifiers([.command, .control]), .none)
+        XCTAssertEqual(h.modifiers(.command), .release)
+        XCTAssertEqual(h.sent, .command)
+    }
+
     func testTheClipboardsLimit() {
         XCTAssertTrue(RemoteClipboard.fits("a"))
         XCTAssertFalse(RemoteClipboard.fits(""))
@@ -102,9 +149,10 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertEqual([wide.width, wide.height, wide.bitrate], [2560, 1440, 7_447_272])
         let small = RemoteScreenPlan(.balanced, local: true, window: RemotePixelSize(width: 1000, height: 700))
         XCTAssertEqual([small.width, small.height, small.bitrate], [1000, 700, 4_000_000])
-        // Low Data Mode, or Data Saver: 1280 × 800 at most, 1 Mbps, 15 frames
-        let saver = RemoteScreenPlan(.auto, local: true, lowData: true, window: window)
+        // Data Saver: 1280 × 800 at most, 1 Mbps, 15 frames. Low Data Mode alone doesn't choose it: Auto stays Balanced away (a hotspot)
+        let saver = RemoteScreenPlan(.saver, local: true, window: window)
         XCTAssertEqual([saver.width, saver.height, saver.bitrate, saver.fps], [1280, 720, 1_000_000, 15])
+        XCTAssertEqual(RemoteScreenPlan(.auto, local: false, lowData: true, window: window), RemoteScreenPlan(.balanced, local: false, window: window))
         // Sharp away: the window, 8 Mbps, 30 frames
         let sharp = RemoteScreenPlan(.sharp, local: false, window: window)
         XCTAssertEqual([sharp.width, sharp.height, sharp.bitrate, sharp.fps], [2400, 1350, 8_000_000, 30])
@@ -174,7 +222,26 @@ final class RemoteViewerTests: XCTestCase {
         XCTAssertEqual(row(service, connected: true, route: .goBetween, failed: .noDirect), .connected(.goBetween))
         XCTAssertEqual(row(service, nearby: true, failed: .noDirect), .available(.local), "on the same network it doesn't need the service")
         XCTAssertEqual(row(own, failed: .noDirect), .available(.relay), "an own relay carries what the service can't")
+        // its own relay down (2026-11-20, the office): said on the card; the service is tried meanwhile
+        XCTAssertEqual(row(own, failed: .relayDown), .relayDown)
+        XCTAssertEqual(row(own, nearby: true, failed: .relayDown), .available(.local))
+        // what its relay says (peek): not waiting there is asleep (it said so) or offline, never "available"
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: false, asleep: t, seen: t)), .asleep(t))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: false, seen: t)), .offline(t))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: false, failed: nil, presence: RemotePresence(host: true)), .available(.relay))
+        XCTAssertEqual(RemoteViewerRow.of(own, connected: false, route: nil, nearby: true, failed: nil, presence: RemotePresence(host: false, asleep: t)), .available(.local),
+                       "on the same network it answers whatever the relay says")
         XCTAssertEqual(row(tail), .available(.tailscale))
         XCTAssertEqual(row(none), .offline(now))
+    }
+
+    func testTerminalsOnTheRemote() {
+        XCTAssertTrue(RemoteTerminals.isTerminal("com.googlecode.iterm2"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("WindowsTerminal.exe"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("C:\\Windows\\System32\\cmd.exe"))
+        XCTAssertTrue(RemoteTerminals.isTerminal("/usr/libexec/gnome-terminal-server"))
+        XCTAssertFalse(RemoteTerminals.isTerminal("notepad.exe"))
+        XCTAssertFalse(RemoteTerminals.isTerminal("com.apple.Safari"))
     }
 }

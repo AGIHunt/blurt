@@ -78,4 +78,10 @@ FunctionEnd
   StrCmp $0 "0" 0 blurt_firewall_done
   ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall delete rule name="Blurt (phone)" dir=in' SW_HIDE
   blurt_firewall_done:
+  ; the system service (lock and login screens, remote-1.1.md §2), when it was turned on: its copy in Program Files removes the
+  ; service and itself, after one UAC prompt; never in a silent run (an update keeps it)
+  IfSilent blurt_service_done
+  IfFileExists "$PROGRAMFILES64\Blurt Remote\blurt-remote-service.exe" 0 blurt_service_done
+  ExecShellWait "runas" "$PROGRAMFILES64\Blurt Remote\blurt-remote-service.exe" "uninstall" SW_HIDE
+  blurt_service_done:
 !macroend

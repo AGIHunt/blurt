@@ -60,6 +60,8 @@ final class RemoteInput {
         e?.post(tap: .cghidEventTap)
     }
 
+    // MARK: the lock screen's password field (test builds; remove before 1.1.0 ships)
+
     // MARK: keys
 
     private func postKey(_ code: CGKeyCode, down: Bool, mods: RemoteModifiers, repeating: Bool = false) {

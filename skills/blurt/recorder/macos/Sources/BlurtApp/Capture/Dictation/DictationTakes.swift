@@ -233,13 +233,13 @@ extension Dictation {
         return stopped
     }
 
-    /// How long "Cancelled" offers Undo for takes stopped on their way.
+    /// How long "Cancelled" offers Undo — for takes stopped on their way, and for one Esc stopped while it listened.
     static let undoSeconds = 5.0
 
     /// "Cancelled", with Undo when takes on their way were stopped (they go on as if Esc hadn't come).
     func toastCancelled(_ stopped: [String]) {
         guard !stopped.isEmpty else { return toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
-        island.toast(Loc.t("dictation.toast.cancelled", table: "Dictation"), key: Dictation.cancelToastKey,
+        island.toast(Loc.t("dictation.toast.cancelled", table: "Dictation"), key: Dictation.cancelToastKey, icon: .keyboard,
                      seconds: Dictation.undoSeconds,
                      actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: { [weak self] in
             guard let self = self else { return }
@@ -302,10 +302,10 @@ extension Dictation {
             Dictation.retryLaterSaid = true
             text += "\n" + Loc.t("dictation.toast.retry_later", table: "Dictation")
         }
-        island.toast(text, key: Dictation.failedToastKey(id), seconds: 8,
+        island.toast(text, key: Dictation.failedToastKey(id), icon: .warning, seconds: 8,
                      actionTitle: Loc.t(line.retryHelps ? "dictation.toast.retry" : "dictation.toast.asr_cloud_key.action", table: "Dictation"),
                      action: { [weak self] in
-            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.cloud") }
+            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.services") }
         })
     }
 
@@ -343,7 +343,7 @@ extension Dictation {
                 t.secondTitle = Loc.t("dictation.toast.no_model.cloud", table: "Dictation")
                 t.second = {
                     emit(["event": "dictation_no_model_cloud"])
-                    AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                    AppEnvironment.settings?.show(pane: "speech/speech.services")
                 }
                 t.key = Dictation.modelToastKey
                 t.icon = .warning
@@ -454,7 +454,7 @@ extension Dictation {
         let fromHistory = take.frontKey == DictationTake.historyKey
         let appChanged = !fromHistory && take.frontKey != currentFrontKey
         // the app the text goes into: the one in front now when it changed (tests keep the take's: `dictation style app`)
-        let app = appChanged && !DictationInsert.testMode ? NSWorkspace.shared.frontmostApplication : take.front
+        let app = appChanged && !DictationInsert.testMode ? DictationFrontApp.current : take.front
         // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
         // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
         // field go, punctuation and spacing follow the sentence). A field whose text can't be read (WeChat) gets the
@@ -566,7 +566,7 @@ extension Dictation {
                 // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
                 // carries the ok check as every done line
                 if let k = line.copyKey {
-                    self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : nil)
+                    self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : .warning)
                 }
             case .notSent:
                 self.sendSkipped(nil)               // nothing went in: "Not sent"
@@ -589,7 +589,7 @@ extension Dictation {
                 // ⇧ (or the island) asked for a list and the structuring pass fell back: say so, or it looks
                 // as if ⇧ did nothing (issue #14: the reason was only in the history)
                 if take.explicit?.style == .structured, r.structureReason != nil {
-                    self.toast("dictation.toast.no_list", key: Dictation.toastKey, seconds: 3)
+                    self.toast("dictation.toast.no_list", key: Dictation.toastKey, seconds: 3, icon: .warning)
                     emit(["event": "dictation_no_list", "id": id, "reason": r.structureReason ?? ""])
                 }
             }
@@ -643,13 +643,13 @@ extension Dictation {
     func sendSkipped(_ why: String?) {
         switch why {
         case "no_accessibility"?:
-            island.toast(Loc.t("dictation.toast.not_sent.ax", table: "Dictation"), key: Dictation.toastKey,
+            island.toast(Loc.t("dictation.toast.not_sent.ax", table: "Dictation"), key: Dictation.toastKey, icon: .warning,
                          actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: {
                 Dictation.shared.openSetup(from: "island")
             })
-        case "secure_input"?: toast("dictation.toast.not_sent.secure", key: Dictation.toastKey, seconds: 3)
-        case "not_pasted"?: toast("dictation.toast.not_sent.copied", key: Dictation.toastKey, seconds: 3)
-        default: toast("dictation.toast.not_sent", key: Dictation.toastKey, seconds: 2.4)
+        case "secure_input"?: toast("dictation.toast.not_sent.secure", key: Dictation.toastKey, seconds: 3, icon: .warning)
+        case "not_pasted"?: toast("dictation.toast.not_sent.copied", key: Dictation.toastKey, seconds: 3, icon: .warning)
+        default: toast("dictation.toast.not_sent", key: Dictation.toastKey, seconds: 2.4, icon: .warning)
         }
     }
 
@@ -695,6 +695,16 @@ extension Dictation {
         var tips = Config.shared["app.dictation_tips"] as? [String: Int] ?? [:]
         tips["takes", default: 0] += 1
         Config.shared.set("app.dictation_tips", tips)
+        // macOS's recogniser hears one language (AppleSpeech: no detection): the language it listened in, with the
+        // way to change it — first, so a take heard in the wrong language is never put down to polish (dogfood 1.1.0:
+        // a Chinese take on an English Mac came out as pinyin-like English under "No polish model downloaded"). The
+        // polish line waits for a later take. Once a day for each language, so a change of language is said too.
+        if r.asrModel == AppleSpeech.modelID, let code = r.language, !code.isEmpty, Dictation.onceADay("apple_language.\(code)") {
+            emit(["event": "dictation_notice", "notice": "apple_language", "language": code])
+            let name = Loc.locale.localizedString(forLanguageCode: code) ?? code
+            return notice("dictation.toast.apple_language", name, button: "dictation.toast.apple_language.change", icon: .languages,
+                          action: { AppEnvironment.settings?.show(pane: "speech/speech.language") })
+        }
         // the polish model isn't there: the words went in as said, and the style control isn't what ran
         if Dictation.polishOn, polishModel == nil, take.style?.base.polishes ?? true, Dictation.onceADay("polish_missing") {
             emit(["event": "dictation_notice", "notice": "polish_missing"])
@@ -736,10 +746,13 @@ extension Dictation {
     }
 
     /// `button`: "Download…" when it opens Settings, "Download" when the download just starts (the speech model).
-    private func notice(_ key: String, button: String, action: @escaping () -> Void) {
+    /// `icon`: the line's mark (every dictation line has one: the attention triangle for what was missing or refused).
+    private func notice(_ key: String, _ args: CVarArg..., button: String, icon: BlurtIcon = .warning, action: @escaping () -> Void) {
         // not a reply to what the user just did: it waits behind any reply (ToastQueue's passive lines)
-        var t = Island.Toast(text: Loc.t(key, table: "Dictation"),
+        let fmt = Loc.string(key, table: "Dictation")
+        var t = Island.Toast(text: args.isEmpty ? fmt : String(format: fmt, locale: Loc.locale, arguments: args),
                              actionTitle: Loc.t(button, table: "Dictation"), action: action)
+        t.icon = icon
         t.seconds = 6
         t.key = Dictation.noticeToastKey
         t.passive = true
@@ -769,7 +782,7 @@ extension Dictation {
             let m = DictationModels.shared
             Task { @MainActor in
                 if m.asr == nil { await m.load() }
-                guard let j = job ?? m.dictationJob else {
+                guard let j = job ?? m.offerJob else {
                     emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": NSNull()])
                     return SpeechPane.showDictationModels()
                 }

@@ -59,6 +59,21 @@ pub struct Computer {
     /// the path its last session was on (the list says it rather than guessing from the relay it knows)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_route: Option<Route>,
+    /// the host removed this computer, said in a session it had opened: its key is gone, and it has to be added again (the Mac's
+    /// `RemoteComputer.removed`; absent in records from before 1.1)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed: bool,
+    /// the owner's own name for it (double-click the name, or ⋯ → Rename…; remote-1.1.md §6): shown in `name`'s place, kept when
+    /// a session names it again and when it is paired again, never sent; `host_id` is never touched. Lists from before have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+}
+
+impl Computer {
+    /// What this computer calls it: the owner's name for it, else the one its sessions give.
+    pub fn shown(&self) -> &str {
+        self.alias.as_deref().unwrap_or(&self.name)
+    }
 }
 
 pub struct Computers {
@@ -114,11 +129,14 @@ impl Computers {
         self.keys.get(&key_name(host_id))
     }
 
-    /// Paired (again): the key first, so a computer is never listed without one.
-    pub fn add(&self, c: Computer, key: &[u8]) -> Result<(), String> {
+    /// Paired (again): the key first, so a computer is never listed without one. Paired again, it keeps the name given it here.
+    pub fn add(&self, mut c: Computer, key: &[u8]) -> Result<(), String> {
         self.keys.put(&key_name(&c.host_id), key)?;
         let _g = self.lock.lock().unwrap();
         let mut list = self.read();
+        if c.alias.is_none() {
+            c.alias = list.iter().find(|x| x.host_id == c.host_id).and_then(|x| x.alias.clone());
+        }
         list.retain(|x| x.host_id != c.host_id);
         list.push(c);
         self.save(&list);
@@ -132,6 +150,17 @@ impl Computers {
             f(c);
             self.save(&list);
         }
+    }
+
+    /// The owner's own name for it; empty (or its own name) goes back to the name its sessions give. Nothing is sent to it.
+    pub fn rename(&self, host_id: &str, name: &str) {
+        self.update(host_id, |c| c.alias = crate::store::alias(name, &c.name));
+    }
+
+    /// The host removed this computer in a session: the key goes, the record stays, marked, so the list can offer Add Again.
+    pub fn mark_removed(&self, host_id: &str) {
+        self.keys.delete(&key_name(host_id));
+        self.update(host_id, |c| c.removed = true);
     }
 
     pub fn remove(&self, host_id: &str) {
@@ -319,6 +348,8 @@ pub enum Unreached {
     Busy,
     /// it answered and refused this computer's key: removed there, or a code gone stale
     NotPaired,
+    /// the computer's own relay doesn't answer (2026-11-20, the office)
+    RelayDown,
 }
 
 fn options(device: &str, go_between: bool) -> Options {
@@ -356,6 +387,23 @@ pub async fn open(
     relay: Option<&str>,
     go_between_at: Option<&str>,
 ) -> Result<(Phone, Route), Unreached> {
+    open_with(device, id, key, port, addresses, nearby, relay, go_between_at, false).await
+}
+
+/// `fallback`: the computer's own relay has been down; when it still doesn't answer, the public connection service is tried, where its
+/// host waits meanwhile.
+#[allow(clippy::too_many_arguments)]
+pub async fn open_with(
+    device: &str,
+    id: &str,
+    key: &[u8],
+    port: u16,
+    addresses: &[String],
+    nearby: &[IpAddr],
+    relay: Option<&str>,
+    go_between_at: Option<&str>,
+    fallback: bool,
+) -> Result<(Phone, Route), Unreached> {
     let tcp = targets(addresses, nearby, port);
     if let Some((a, s)) = tcp_first(tcp, Duration::from_millis(1500)).await {
         return match Phone::over_tcp(s, a, id, key, options(device, false)).await {
@@ -367,8 +415,9 @@ pub async fn open(
     let Some(r) = relay else {
         return Err(Unreached::Offline);
     };
-    let meet = is_go_between(r)
+    let mut meet = is_go_between(r)
         || go_between_at.is_some_and(|g| crate::relay::address(g) == crate::relay::address(r));
+    let mut fell_back = false;
     let address = if is_go_between(r) {
         go_between_at.unwrap_or(r)
     } else {
@@ -377,11 +426,22 @@ pub async fn open(
     let ws = match crate::relay::connect(address, &crate::relay::room(key), "phone").await {
         Ok(ws) => ws,
         Err(crate::relay::ConnectError::Refused(_)) if meet => return Err(Unreached::Busy),
-        Err(_) => return Err(Unreached::Offline),
+        Err(_) if meet => return Err(Unreached::Offline),
+        Err(_) if !fallback => return Err(Unreached::RelayDown),
+        Err(_) => {
+            meet = true;
+            fell_back = true;
+            match crate::relay::connect(go_between_at.unwrap_or(crate::relay::GO_BETWEEN), &crate::relay::room(key), "phone").await {
+                Ok(ws) => ws,
+                Err(crate::relay::ConnectError::Refused(_)) => return Err(Unreached::Busy),
+                Err(_) => return Err(Unreached::RelayDown),
+            }
+        }
     };
     match Phone::over_ws(ws, id, key, options(device, meet)).await {
         Ok(p) => Ok((p, if meet { Route::GoBetween } else { Route::Relay })),
         Err(e) if refused(&e) => Err(Unreached::NotPaired),
+        Err(_) if fell_back => Err(Unreached::RelayDown),
         // the room was empty: the host isn't waiting there (asleep, off, or not connected)
         Err(_) => Err(Unreached::Offline),
     }
@@ -394,24 +454,63 @@ pub enum PairWith {
     Nearby(Found),
 }
 
+/// How a pairing ended without a key. The host never says which (a bare close, or a refused handshake), so it's read from when
+/// (the Mac's `RemoteViewerLink.PairingFailure`, docs/design/remote-desktop-viewer.md §When it doesn't pair):
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PairError {
-    /// nothing answered (the link's addresses and relay, or the nearby computer)
+    /// nothing answered (the link's addresses and relay, or the nearby computer); only from `pair`, which tries once
     Unreachable,
-    /// it answered and wouldn't take this: a code expired or used, or a host that doesn't pair with computers nearby (an older
-    /// one: paste its link instead)
-    NotTaken,
-    /// the owner said no there, or nobody answered in time
+    /// refused before anyone was asked: a link's code ran out or was used already; nearby, the host isn't taking a new computer
+    /// now (it's asking about another, or was just told no), or it's an older host that doesn't pair nearby
+    Spent,
+    /// the question was asked and the host let go: its owner said no
     Declined,
+    /// the question was asked and nobody answered: the host gives up after its two minutes
+    Unanswered,
 }
 
+/// What a pairing that keeps trying (`pair_steps`) says on the way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PairStep {
+    /// nothing has answered for a while; still trying
+    Unreachable,
+    /// the host asks its owner now, with these six digits (whatever was said before: they take its place)
+    Asking(String),
+}
+
+/// How long a host asks its owner about a new device before it takes the silence as a no (server.rs `PAIRING_LIFE`): a close
+/// this late, 90 % of it or more, is "nobody answered", not "no".
+pub const QUESTION_LIFE: Duration = Duration::from_secs(120);
+/// Unreachable is said once nothing has answered for this long (the Mac's 8 s).
+const UNREACHABLE_AFTER: Duration = Duration::from_secs(8);
+
 /// Pairs with a computer: connects, shows the six digits (`digits`) while the host asks its owner, and once the owner says yes
-/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). `go_between_at`: tests only.
+/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests
+/// only.
 pub async fn pair(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
     digits: impl Fn(&str),
+) -> Result<(Computer, Vec<u8>), PairError> {
+    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, |s| {
+        if let PairStep::Asking(d) = s {
+            digits(&d)
+        }
+    })
+    .await
+}
+
+/// `pair`, for the Add Computer panel. `keep_trying`: while nothing answers it says `Unreachable` and goes on trying, so if the
+/// host turns up and asks, its digits replace that (the caller ends it by dropping or aborting the future). `question_life`: the
+/// host's (tests shorten it).
+pub async fn pair_steps(
+    with: PairWith,
+    device: &str,
+    go_between_at: Option<&str>,
+    question_life: Duration,
+    keep_trying: bool,
+    step: impl Fn(PairStep),
 ) -> Result<(Computer, Vec<u8>), PairError> {
     let (host_id, name, device_id, key, port, addresses, nearby, relay) = match with {
         PairWith::Link(p) => (
@@ -435,45 +534,69 @@ pub async fn pair(
             None,
         ),
     };
-    let (mut phone, route) = open(
-        device,
-        &device_id,
-        &key,
-        port,
-        &addresses,
-        &nearby,
-        relay.as_deref(),
-        go_between_at,
-    )
-    .await
-    .map_err(|e| match e {
-        Unreached::NotPaired => PairError::NotTaken,
-        _ => PairError::Unreachable,
-    })?;
-    let mut told = false;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(130);
+    let started = tokio::time::Instant::now();
+    let mut said_unreachable = false;
+    let (mut phone, route) = loop {
+        match open(
+            device,
+            &device_id,
+            &key,
+            port,
+            &addresses,
+            &nearby,
+            relay.as_deref(),
+            go_between_at,
+        )
+        .await
+        {
+            Ok(x) => break x,
+            Err(Unreached::NotPaired) => return Err(PairError::Spent),
+            Err(_) if !keep_trying => return Err(PairError::Unreachable),
+            Err(e) => {
+                if !said_unreachable && started.elapsed() >= UNREACHABLE_AFTER {
+                    said_unreachable = true;
+                    step(PairStep::Unreachable);
+                }
+                // a public connection service over its limit isn't asked again at once
+                let wait = if e == Unreached::Busy { 15 } else { 2 };
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+            }
+        }
+    };
+    // the host gives up on its question after `question_life`; this side, a little later
+    let patience = question_life + question_life / 12;
+    let mut asked: Option<tokio::time::Instant> = None;
+    let mut deadline = tokio::time::Instant::now() + patience;
     let new_key = loop {
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
         match phone.next(left.min(Duration::from_secs(1))).await {
             Some(PhoneEvent::Control(ToPhone::PairingWaits)) => {
-                told = true;
-                digits(&phone.check);
+                let now = tokio::time::Instant::now();
+                asked = Some(now);
+                deadline = now + patience;
+                step(PairStep::Asking(phone.check.clone()));
             }
             Some(PhoneEvent::Control(ToPhone::NewKey(k))) => break k,
             Some(PhoneEvent::Closed) => {
-                return Err(if told {
-                    PairError::Declined
-                } else {
-                    PairError::NotTaken
+                return Err(match asked {
+                    None => PairError::Spent,
+                    Some(t) if t.elapsed() >= question_life.mul_f64(0.9) => PairError::Unanswered,
+                    Some(_) => PairError::Declined,
                 })
             }
             Some(_) => {}
-            None if tokio::time::Instant::now() >= deadline => return Err(PairError::Declined),
+            None if tokio::time::Instant::now() >= deadline => {
+                return Err(if asked.is_some() {
+                    PairError::Unanswered
+                } else {
+                    PairError::Unreachable
+                })
+            }
             None => {}
         }
     };
     if new_key.len() != 32 {
-        return Err(PairError::NotTaken);
+        return Err(PairError::Spent);
     }
     phone.send(&ToMac::KeyStored).await;
     let info = phone
@@ -504,6 +627,8 @@ pub async fn pair(
         added: now_ms(),
         last_seen: Some(now_ms()),
         last_route: Some(route),
+        removed: false,
+        alias: None,
     };
     phone.send(&ToMac::ReleaseAll).await;
     Ok((c, new_key))
@@ -664,10 +789,17 @@ pub enum Link {
     Busy,
     /// the direct path didn't open on the public connection service
     NoDirect,
-    /// the host removed this computer (or never had it)
+    /// the computer's own relay doesn't answer (the public connection service is tried meanwhile)
+    RelayDown,
+    /// the host removed this computer, said in a session it had opened: so it is (the key can go)
     Removed,
+    /// the host refused this computer's key, with no session: it may have removed it, or never had it, but anyone on the network
+    /// can send a refusal, so the key is kept
+    Forgotten,
     /// another device took over there
     Replaced,
+    /// the person at the computer ended the session
+    Ended,
 }
 
 #[derive(Clone, Debug)]
@@ -703,6 +835,14 @@ pub enum Event {
     Clipboard(String),
     ScreenFailed(String),
     CanControl(bool),
+    /// the host's screen locked (true) or opened again (false) where the host can't show it: the last frame stays, said so
+    ScreenLocked(bool),
+    /// the host's own words for this user (a new device paired there): shown as a notification
+    Notice(String),
+    /// a file going to the host: written so far, saved (its name there), or not ("space", "too_big", "write", "locked")
+    FileProgress { id: String, bytes: i64 },
+    FileSaved { id: String, name: String },
+    FileFailed { id: String, why: String },
 }
 
 /// What the window asks for its picture.
@@ -743,6 +883,16 @@ pub struct Session {
     tx: mpsc::UnboundedSender<Command>,
 }
 
+#[derive(Clone)]
+pub struct Sender(mpsc::UnboundedSender<Command>);
+
+impl Sender {
+    /// false once the session is gone
+    pub fn send(&self, m: ToMac) -> bool {
+        self.0.send(Command::Send(m)).is_ok()
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.tx.send(Command::Close);
@@ -768,6 +918,11 @@ impl Session {
 
     pub fn send(&self, m: ToMac) {
         let _ = self.tx.send(Command::Send(m));
+    }
+
+    /// A handle that only sends (a file going out on a thread of its own); the session still ends with this one.
+    pub fn sender(&self) -> Sender {
+        Sender(self.tx.clone())
     }
 
     pub fn pointer(&self, p: PointerPacket) {
@@ -797,6 +952,8 @@ async fn run(
 ) {
     let mut want: Option<Want> = None;
     let mut tries = 0u32;
+    // the computer's own relay failed this many times in a row: from 2, the public connection service is tried too
+    let mut relay_fails = 0u32;
     loop {
         on(Event::Link {
             link: Link::Connecting,
@@ -804,12 +961,16 @@ async fn run(
         });
         let c = t.computer.clone();
         let opened = tokio::select! {
-            r = open(&t.device, &c.device_id, &t.key, c.port, &c.addresses, &t.nearby, c.relay.as_deref(), t.go_between_at.as_deref()) => r,
+            r = open_with(&t.device, &c.device_id, &t.key, c.port, &c.addresses, &t.nearby, c.relay.as_deref(), t.go_between_at.as_deref(),
+                relay_fails >= 2) => r,
             _ = closed(&mut rx, &mut want) => return,
         };
         let wait = match opened {
             Ok((phone, route)) => {
                 tries = 0;
+                if route == Route::Relay {
+                    relay_fails = 0;
+                }
                 match live(phone, route, &mut rx, &mut want, &on, &learned, &mut t).await {
                     End::Closed => return,
                     End::Removed => {
@@ -826,6 +987,13 @@ async fn run(
                         });
                         return;
                     }
+                    End::Ended => {
+                        on(Event::Link {
+                            link: Link::Ended,
+                            route: None,
+                        });
+                        return;
+                    }
                     End::NoDirect => {
                         on(Event::Link {
                             link: Link::NoDirect,
@@ -838,10 +1006,19 @@ async fn run(
             }
             Err(Unreached::NotPaired) => {
                 on(Event::Link {
-                    link: Link::Removed,
+                    link: Link::Forgotten,
                     route: None,
                 });
                 return;
+            }
+            Err(Unreached::RelayDown) => {
+                relay_fails += 1;
+                on(Event::Link {
+                    link: if relay_fails >= 2 { Link::RelayDown } else { Link::Offline },
+                    route: None,
+                });
+                tries += 1;
+                Duration::from_secs(RETRY[(tries as usize - 1).min(RETRY.len() - 1)])
             }
             Err(Unreached::Busy) => {
                 on(Event::Link {
@@ -883,6 +1060,7 @@ enum End {
     Dropped,
     Removed,
     Replaced,
+    Ended,
     NoDirect,
 }
 
@@ -1019,8 +1197,14 @@ async fn live(
                         on(Event::ScreenFailed(w));
                     }
                     ToPhone::CanControl(b) => on(Event::CanControl(b)),
+                    ToPhone::ScreenLocked(b) => on(Event::ScreenLocked(b)),
+                    ToPhone::Notice(t) => on(Event::Notice(t)),
+                    ToPhone::FileProgress { id, bytes } => on(Event::FileProgress { id, bytes }),
+                    ToPhone::FileSaved { id, name } => on(Event::FileSaved { id, name }),
+                    ToPhone::FileFailed { id, why } => on(Event::FileFailed { id, why }),
                     ToPhone::Removed => return End::Removed,
                     ToPhone::Replaced => return End::Replaced,
+                    ToPhone::Ended => return End::Ended,
                     ToPhone::NoDirect => return End::NoDirect,
                     _ => {}
                 },
@@ -1238,6 +1422,8 @@ mod tests {
             added: 1,
             last_seen: None,
             last_route: None,
+            removed: false,
+            alias: None,
         };
         cs.add(c.clone(), &[7; 32]).unwrap();
         assert_eq!(cs.list(), vec![c.clone()]);
@@ -1254,8 +1440,61 @@ mod tests {
         cs.update("h", |c| c.last_route = Some(Route::Local));
         assert!(std::fs::read_to_string(d.join("computers.json")).unwrap().contains(r#""lastRoute": "local""#));
         assert_eq!(cs.get("h").unwrap().last_route, Some(Route::Local));
+        assert!(!std::fs::read_to_string(d.join("computers.json"))
+            .unwrap()
+            .contains("removed"));
+        // removed by the host in a session: the key goes, the record stays, marked; paired again, a fresh record with a key
+        cs.mark_removed("h");
+        assert!(cs.get("h").unwrap().removed && cs.key("h").is_none());
+        cs.add(c.clone(), &[8; 32]).unwrap();
+        assert!(!cs.get("h").unwrap().removed && cs.key("h") == Some(vec![8; 32]));
+        // a list from before 1.1 has no `removed`
+        let old: Vec<Computer> = serde_json::from_str(
+            r#"[{"hostId":"x","name":"Old","deviceId":"d","port":1,"added":1}]"#,
+        )
+        .unwrap();
+        assert!(!old[0].removed);
+        assert_eq!((old[0].alias.as_deref(), old[0].shown()), (None, "Old"));
         cs.remove("h");
         assert!(cs.list().is_empty() && cs.key("h").is_none());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_renamed_computer_keeps_its_name_when_the_host_says_its_own() {
+        let d = std::env::temp_dir().join(format!("blurt-viewer-alias-{}", crate::crypto::new_id()));
+        let keys: Arc<dyn KeyStore> = Arc::new(crate::store::FileKeyStore::new(d.join("keys.json")));
+        let cs = Computers::new(&d, keys);
+        let c = Computer {
+            host_id: "h".into(),
+            name: "DESKTOP-7Q2".into(),
+            platform: Some("windows".into()),
+            device_id: "d".into(),
+            port: 4242,
+            addresses: vec![],
+            relay: None,
+            added: 1,
+            last_seen: None,
+            last_route: None,
+            removed: false,
+            alias: None,
+        };
+        cs.add(c.clone(), &[7; 32]).unwrap();
+        assert!(!std::fs::read_to_string(d.join("computers.json")).unwrap().contains("alias"));
+        cs.rename("h", " Studio PC ");
+        assert_eq!(cs.get("h").unwrap().shown(), "Studio PC");
+        // a session says the host's own name (the app's `learned`): the name follows, the alias stays first, the id untouched
+        cs.update("h", |c| c.name = "Workshop".into());
+        let got = cs.get("h").unwrap();
+        assert_eq!((got.host_id.as_str(), got.name.as_str(), got.shown()), ("h", "Workshop", "Studio PC"));
+        // read back from disk, and paired again (a fresh record from pair_steps): still the owner's name
+        assert!(std::fs::read_to_string(d.join("computers.json")).unwrap().contains(r#""alias": "Studio PC""#));
+        cs.add(c.clone(), &[8; 32]).unwrap();
+        assert_eq!(cs.get("h").unwrap().shown(), "Studio PC");
+        // emptied: the host's own name again
+        cs.rename("h", "  ");
+        assert_eq!(cs.get("h").unwrap().alias, None);
+        assert_eq!(cs.get("h").unwrap().shown(), "DESKTOP-7Q2");
         let _ = std::fs::remove_dir_all(d);
     }
 }

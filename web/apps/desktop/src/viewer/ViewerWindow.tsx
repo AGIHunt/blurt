@@ -17,7 +17,8 @@ import { pathLine } from './computers';
 import './viewer.css';
 
 type Quality = 'auto' | 'sharp' | 'balanced' | 'saver';
-type Link = 'connecting' | 'connected' | 'offline' | 'busy' | 'noDirect' | 'removed' | 'replaced';
+/** removed: the host said so in a session (the key is gone); forgotten: it refused the key with no session (kept, said this run) */
+type Link = 'connecting' | 'connected' | 'offline' | 'busy' | 'noDirect' | 'relayDown' | 'removed' | 'forgotten' | 'replaced' | 'ended';
 interface Display {
   id: string;
   name: string;
@@ -38,13 +39,15 @@ interface Init {
 type Message =
   | { type: 'link'; link: Link; route: RemoteRoute | null }
   | { type: 'rtt'; ms: number }
-  | { type: 'session'; name: string; platform: Init['platform']; canControl: boolean }
+  | { type: 'session'; name: string; platform: Init['platform']; canControl: boolean; privacy?: boolean; files?: boolean }
+  | { type: 'file'; state: 'sending' | 'saved' | 'failed'; name?: string; why?: string }
   | { type: 'displays'; displays: Display[] }
   | { type: 'view'; width: number; height: number; family: string; display: string | null }
   | { type: 'cursor'; x: number; y: number }
   | { type: 'cursorShape'; png: string; hotX: number; hotY: number; width: number; height: number }
   | { type: 'screenFailed'; why: string }
   | { type: 'canControl'; on: boolean }
+  | { type: 'screenLocked'; locked: boolean }
   | { type: 'released' };
 
 const HINT_MS = 3000;
@@ -82,6 +85,19 @@ export function ViewerWindow({ id }: { id: string }) {
   // asked for the screen again (Try Again after a failure, e.g. once the host's Remote Desktop dialog is answered)
   const [screenTry, setScreenTry] = useState(0);
   const [canControl, setCanControl] = useState(true);
+  // 隐私屏: the host can (its session says), and it was asked this session (asked again after a drop)
+  const [canPrivacy, setCanPrivacy] = useState(false);
+  // files: the host takes them (its session says); what the last one did, said for a few seconds
+  const [canFiles, setCanFiles] = useState(false);
+  const [fileNote, setFileNote] = useState<string | null>(null);
+  const fileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const privacy = useRef(false);
+  const [, setPrivacyTick] = useState(0);
+  // the host's screen is locked where it can't show it: the last frame stays under a darker cover that says so
+  const [locked, setLocked] = useState(false);
+  // a frame has been seen: a drop keeps it, darker, instead of a blank window
+  const [hadPicture, setHadPicture] = useState(false);
+  const hadPictureRef = useRef(false);
   const [noDecoder, setNoDecoder] = useState(false);
   const [codecs, setCodecs] = useState<string[] | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -119,7 +135,13 @@ export function ViewerWindow({ id }: { id: string }) {
   const onMessage = useCallback((m: Message | ArrayBuffer) => {
     if (m instanceof ArrayBuffer) {
       const f = parseFrame(m);
-      if (f) picture.current?.frame(f);
+      if (f) {
+        picture.current?.frame(f);
+        if (!hadPictureRef.current) {
+          hadPictureRef.current = true;
+          setHadPicture(true);
+        }
+      }
       return;
     }
     switch (m.type) {
@@ -143,7 +165,11 @@ export function ViewerWindow({ id }: { id: string }) {
       case 'session':
         setName(m.name);
         setCanControl(m.canControl);
+        setCanPrivacy(!!m.privacy);
+        setCanFiles(!!m.files);
+        if (m.privacy && privacy.current) void invoke('viewer_privacy', { on: true }).catch(() => {});
         setFailed(null);
+        setLocked(false);
         break;
       case 'displays':
         setDisplays(m.displays);
@@ -163,6 +189,18 @@ export function ViewerWindow({ id }: { id: string }) {
       case 'canControl':
         setCanControl(m.on);
         break;
+      case 'screenLocked':
+        setLocked(m.locked);
+        break;
+      case 'file': {
+        const text = m.state === 'sending' ? t('viewer.file.sending', { 1: m.name ?? '' })
+          : m.state === 'saved' ? t('viewer.file.saved', { 1: m.name ?? '' })
+          : t(`viewer.file.failed.${m.why === 'space' || m.why === 'too_big' || m.why === 'locked' ? m.why : 'other'}`);
+        setFileNote(text);
+        if (fileTimer.current) clearTimeout(fileTimer.current);
+        if (m.state !== 'sending') fileTimer.current = setTimeout(() => setFileNote(null), 5000);
+        break;
+      }
       case 'released':
         setCaptured(false);
         setHint(false);
@@ -352,6 +390,14 @@ export function ViewerWindow({ id }: { id: string }) {
   const moreEntries: MenuEntry[] = tidy([
     host === 'mac' && init?.os !== 'mac' && { label: t('viewer.mapping'), checked: options.mapped, run: () => setOpts({ mapped: !options.mapped }), testId: 'viewer-mapping' },
     { label: t('viewer.clipboard'), checked: options.clipboard, run: () => setOpts({ clipboard: !options.clipboard }), testId: 'viewer-clipboard' },
+    host === 'windows' && { label: t('viewer.ctrl_alt_del'), testId: 'viewer-cad', run: () => void invoke('viewer_system', { name: 'secureAttention' }).catch(() => {}) },
+    canFiles && { label: t('viewer.send_files'), testId: 'viewer-send-files', run: () => void invoke('viewer_send_files', { paths: null }).catch(() => {}) },
+    canPrivacy && { label: t('viewer.privacy'), checked: privacy.current, testId: 'viewer-privacy',
+      run: () => {
+        privacy.current = !privacy.current;
+        setPrivacyTick((n) => n + 1);
+        void invoke('viewer_privacy', { on: privacy.current }).catch(() => {});
+      } },
     init?.systemShortcuts === 'local' && { label: t('viewer.shortcuts_local'), disabled: true },
     { kind: 'separator' },
     { label: t('viewer.full_screen'), keys: init?.os === 'mac' ? undefined : 'F11', run: () => void fullScreen() },
@@ -373,7 +419,7 @@ export function ViewerWindow({ id }: { id: string }) {
   const index = displays.findIndex((d) => d.id === shown);
   const box = picSize && stage.current ? contained(stage.current.clientWidth, stage.current.clientHeight, picSize.w, picSize.h) : null;
   const showCursor = live && cursor && box && cursor.x >= 0 && cursor.y >= 0 && cursor.x <= 1 && cursor.y <= 1;
-  const cover = coverFor(link, name, failed, noDecoder, canControl);
+  const cover = coverFor(link, name, failed, noDecoder, canControl, locked, hadPicture, host);
   void langTick;
 
   return (
@@ -424,12 +470,18 @@ export function ViewerWindow({ id }: { id: string }) {
         )}
         {showCursor && !shape && <span className="vw-cursor arrow" style={{ left: box.x + cursor.x * box.w, top: box.y + cursor.y * box.h }} />}
         {hint && live && <div className="vw-hint" role="status" data-testid="viewer-hint">{t('viewer.hint')}</div>}
+        {fileNote && live && <div className="vw-hint" role="status" data-testid="viewer-file">{fileNote}</div>}
         {cover && (
-          <div className={`vw-cover ${cover.warn ? 'warn' : ''}`} role="status" data-testid="viewer-cover" data-cover={cover.kind}>
-            {cover.kind === 'connecting' ? <span className="st-spin" aria-hidden /> : cover.warn ? <Icon name="warning" size={20} /> : null}
+          <div className={`vw-cover ${cover.warn ? 'warn' : ''} ${cover.over ? 'over' : ''}`} role="status" data-testid="viewer-cover" data-cover={cover.kind}>
+            {cover.kind === 'connecting' || cover.kind === 'reconnecting' ? <span className="st-spin" aria-hidden /> : cover.warn ? <Icon name="warning" size={20} /> : null}
             <div className="vw-cover-title">{cover.title}</div>
             {cover.detail && <div className="vw-cover-detail">{cover.detail}</div>}
             {cover.kind === 'replaced' && <button className="primary" onClick={attach}>{t('computers.connect')}</button>}
+            {cover.kind === 'ended' && <button className="primary" onClick={attach}>{t('viewer.reconnect')}</button>}
+            {/* its key is no good there now: the way back is to add it again, in the main window (this one closes) */}
+            {cover.kind === 'removed' && (
+              <button className="primary" onClick={() => void invoke('computers_add_again').catch(() => {})} data-testid="viewer-add-again">{t('computers.add_again')}</button>
+            )}
             {cover.kind === 'screenFailed' && failed !== 'off' && (
               <button onClick={() => { setFailed(null); setScreenTry((n) => n + 1); }}>{t('viewer.retry')}</button>
             )}
@@ -449,23 +501,35 @@ export function ViewerWindow({ id }: { id: string }) {
 }
 
 /** What covers the picture when there's none to show: connecting, or why not, in the window's words. */
-export function coverFor(link: Link, name: string, failed: string | null, noDecoder: boolean, canControl: boolean): null | { kind: string; title: string; detail?: string; warn: boolean } {
+export function coverFor(link: Link, name: string, failed: string | null, noDecoder: boolean, canControl: boolean, locked = false,
+  hadPicture = false, host: string = 'mac'): null | { kind: string; title: string; detail?: string; warn: boolean; over?: boolean } {
   const n = name || t('computers.this');
   switch (link) {
     case 'connecting':
+      // a drop: it comes back by itself, over the last picture (never a new pairing)
+      if (hadPicture) return { kind: 'reconnecting', title: t('viewer.reconnecting'), warn: false, over: true };
       return { kind: 'connecting', title: t('viewer.connecting'), warn: false };
     case 'offline':
-      return { kind: 'offline', title: t('viewer.offline', { 1: n }), detail: t('viewer.offline.detail'), warn: true };
+      // a Mac that restarted with FileVault on waits for its disk password at the computer
+      return { kind: 'offline', title: t('viewer.offline', { 1: n }), detail: t(host === 'mac' ? 'viewer.offline.detail.mac' : 'viewer.offline.detail'), warn: true };
     case 'busy':
       return { kind: 'busy', title: t('phone.away.busy'), warn: true };
     case 'noDirect':
       return { kind: 'noDirect', title: t('phone.away.no_direct'), warn: true };
+    case 'relayDown':
+      // still trying, through the public connection service as well
+      return { kind: 'relayDown', title: t('viewer.relay_down', { 1: n }), warn: true, over: hadPicture };
     case 'removed':
+    case 'forgotten':
       return { kind: 'removed', title: t('viewer.removed', { 1: n }), warn: true };
     case 'replaced':
       return { kind: 'replaced', title: t('viewer.replaced', { 1: n }), warn: false };
+    case 'ended':
+      return { kind: 'ended', title: t('viewer.ended', { 1: n }), warn: false };
   }
   if (noDecoder) return { kind: 'noDecoder', title: t('viewer.no_decoder'), warn: true };
+  // GNOME ends screen sharing at its lock; its own Remote Login reaches the login screen
+  if (locked) return { kind: 'locked', title: t(host === 'linux' ? 'viewer.locked.linux' : 'viewer.locked', { 1: n }), warn: false, over: hadPicture };
   // the host's own sentence is for phones (English only): the viewer says it in its own words
   if (failed) return { kind: 'screenFailed', title: t(SCREEN_FAILED[failed] ?? 'viewer.screen_failed', { 1: n }), warn: true };
   if (!canControl) return { kind: 'noControl', title: t('viewer.no_control', { 1: n }), warn: true };

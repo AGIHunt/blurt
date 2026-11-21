@@ -63,6 +63,13 @@ pub fn start(app: &AppHandle) {
     #[cfg(target_os = "linux")]
     linux_setup(app);
     let backend: Box<dyn Backend> = blurt_remote::platform::backend();
+    // the system service is on (Settings → Remote Control): its agent owns the screen and the input, on the lock and login screens
+    // and in UAC prompts too; everything else stays here (remote-1.1.md §2)
+    #[cfg(windows)]
+    let backend: Box<dyn Backend> = match blurt_remote::platform::windows::service::connect() {
+        Some(p) => Box::new(p),
+        None => backend,
+    };
     let test_answer = if testing() {
         match std::env::var("BLURT_TEST_PAIR_ANSWER").as_deref() {
             Ok("yes") => Some(true),
@@ -86,7 +93,17 @@ pub fn start(app: &AppHandle) {
         keys,
         Box::new(Desktop { app: app.clone() }),
     );
+    // files from viewers go to Downloads (quarantined there: incoming.rs)
+    h.set_downloads(dirs::download_dir());
     let _ = HOST.set(h);
+    // 保持可连接 on a laptop holds only while plugged in: look at the power source once a minute
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        if let Some(h) = host() {
+            h.power_changed();
+            h.sync_standby();
+        }
+    });
 }
 
 /// Linux, before the backend exists (remote-linux.md §For the app): the portal's restore token next to the app's own
@@ -192,6 +209,10 @@ pub struct RemoteStatus {
     connected: Option<ConnectedUi>,
     relay: RelayUi,
     screen_allowed: bool,
+    stay_awake: bool,
+    battery: bool,
+    /// Windows: the system service is on (null elsewhere)
+    service: Option<bool>,
     can_control: bool,
     problem: Option<String>,
     /// "ok", "blocked" (Windows Defender Firewall keeps phones out on this network: `remote_allow_firewall`) or "unknown"
@@ -220,7 +241,10 @@ struct AskingUi {
 #[serde(rename_all = "camelCase")]
 struct DeviceUi {
     id: String,
+    /// what this computer calls it: the owner's name for it (remote_rename_device), else its own
     name: String,
+    /// the name it gives itself (the rename field's placeholder: emptied, the row says it again)
+    own_name: String,
     last_seen: Option<i64>,
     /// "phone", or "computer": a computer driving this one (docs/design/remote-desktop-viewer.md)
     kind: &'static str,
@@ -245,6 +269,8 @@ struct RelayUi {
     go_between: bool,
     /// why the go-between couldn't carry the last session it tried: "noDirect" or "busy"; None: fine, or not tried
     go_between_problem: Option<&'static str>,
+    /// the owner's relay is down and the go-between is used meanwhile
+    fallback: bool,
 }
 
 /// The pairing link as a QR code: a complete <svg>, dark on light whatever the theme (cameras read it either way, and the
@@ -298,7 +324,7 @@ fn to_ui(s: &Status) -> RemoteStatus {
         listening: s.listening,
         pairing,
         asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay, kind: a.kind.as_str() }),
-        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
+        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.shown().to_string(), own_name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
         connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
         relay: RelayUi {
             address: s.relay.address.clone(),
@@ -309,8 +335,12 @@ fn to_ui(s: &Status) -> RemoteStatus {
                 GoBetweenProblem::NoDirect => "noDirect",
                 GoBetweenProblem::Busy => "busy",
             }),
+            fallback: s.relay.fallback,
         },
         screen_allowed: s.screen_allowed,
+        stay_awake: s.stay_awake,
+        battery: s.battery,
+        service: if cfg!(windows) { Some(service_on()) } else { None },
         can_control: s.can_control,
         problem: s.problem.as_ref().map(problem),
         firewall: firewall::state(),
@@ -417,6 +447,15 @@ pub fn remote_remove_device(id: String) -> RemoteStatus {
     now_status()
 }
 
+/// The owner's own name for a paired device (remote-1.1.md §6): shown here only, nothing sent; "" goes back to its own name.
+#[tauri::command]
+pub fn remote_rename_device(id: String, name: String) -> RemoteStatus {
+    if let Some(h) = host() {
+        h.rename_device(&id, &name);
+    }
+    now_status()
+}
+
 /// "" clears it; Err with a sentence when it can't be a relay's address.
 #[tauri::command]
 pub fn remote_set_relay(address: String) -> Result<RemoteStatus, String> {
@@ -448,6 +487,163 @@ pub fn remote_set_go_between(on: bool) -> RemoteStatus {
     now_status()
 }
 
+/// 连接记录: sessions and pairings on this computer, newest first, the last `limit`.
+#[tauri::command]
+pub fn remote_connections(limit: Option<usize>) -> Vec<blurt_remote::store::Connection> {
+    let mut l = host().map(|h| h.connections()).unwrap_or_default();
+    l.reverse();
+    l.truncate(limit.unwrap_or(8));
+    l
+}
+
+/// Settings → Remote Control → "At the lock and login screens" (Windows): installs the system service (one UAC prompt) or removes
+/// it, then this host's screen and input go through its agent, or back to this app. Err: what went wrong, said in Settings.
+#[tauri::command]
+pub async fn remote_set_service(app: AppHandle, on: bool) -> Result<RemoteStatus, String> {
+    #[cfg(windows)]
+    {
+        use tauri::Manager;
+        let exe = app.path().resource_dir().map_err(|e| e.to_string())?.join("blurt-remote-service.exe");
+        let code = tauri::async_runtime::spawn_blocking(move || elevated(&exe, if on { "install" } else { "uninstall" }))
+            .await
+            .map_err(|e| e.to_string())??;
+        if code != 0 {
+            return Err(format!("exit {code}"));
+        }
+        // the agent comes up a moment after the service starts
+        let mut proxy = None;
+        for _ in 0..30 {
+            if !on {
+                break;
+            }
+            proxy = blurt_remote::platform::windows::service::connect();
+            if proxy.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        if let Some(h) = host() {
+            match proxy {
+                Some(p) => {
+                    h.replace_backend(Box::new(p));
+                    h.sync_standby();
+                }
+                None => h.replace_backend(blurt_remote::platform::backend()),
+            }
+        }
+        Ok(now_status())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, on);
+        Err("Windows only".into())
+    }
+}
+
+fn service_on() -> bool {
+    #[cfg(windows)]
+    {
+        blurt_remote::platform::windows::service::agent_running()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+/// Runs `exe arg` as an administrator (the UAC prompt) and waits: its exit code. Err when the prompt was declined.
+#[cfg(windows)]
+fn elevated(exe: &std::path::Path, arg: &str) -> Result<u32, String> {
+    use windows::core::HSTRING;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+    let (verb, file, params) = (HSTRING::from("runas"), HSTRING::from(exe.as_os_str()), HSTRING::from(arg));
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: windows::core::PCWSTR(verb.as_ptr()),
+        lpFile: windows::core::PCWSTR(file.as_ptr()),
+        lpParameters: windows::core::PCWSTR(params.as_ptr()),
+        nShow: 0,
+        ..Default::default()
+    };
+    unsafe {
+        ShellExecuteExW(&mut info).map_err(|_| "declined".to_string())?;
+        let mut code = 1u32;
+        if !info.hProcess.is_invalid() {
+            WaitForSingleObject(info.hProcess, INFINITE);
+            let _ = GetExitCodeProcess(info.hProcess, &mut code);
+            let _ = CloseHandle(info.hProcess);
+        }
+        Ok(code)
+    }
+}
+
+/// The "being controlled" bar's Disconnect.
+#[tauri::command]
+pub fn remote_end_session() {
+    if let Some(h) = host() {
+        h.end_session();
+    }
+}
+
+/// The bar on this computer while a device controls it (remote-1.1.md §3): which device, and Disconnect. A small window of its
+/// own (index.html?banner=1), always on top at the top of the primary display, never in the taskbar; gone when the session ends.
+fn banner(app: &AppHandle, who: Option<String>) {
+    use tauri::Manager;
+    static SHOWN: Mutex<Option<String>> = Mutex::new(None);
+    {
+        let mut shown = SHOWN.lock().unwrap();
+        if *shown == who {
+            return;
+        }
+        *shown = who.clone();
+    }
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        const LABEL: &str = "remote-banner";
+        let Some(_) = who else {
+            if let Some(w) = a.get_webview_window(LABEL) {
+                let _ = w.close();
+            }
+            return;
+        };
+        if a.get_webview_window(LABEL).is_some() {
+            return; // the page follows the status itself
+        }
+        let (w, h) = (380.0, 38.0);
+        let (x, y) = match a.primary_monitor().ok().flatten() {
+            Some(m) => {
+                let s = m.scale_factor();
+                let (p, z) = (m.position(), m.size());
+                (p.x as f64 / s + (z.width as f64 / s - w) / 2.0, p.y as f64 / s + 8.0)
+            }
+            None => (200.0, 8.0),
+        };
+        let _ = tauri::WebviewWindowBuilder::new(&a, LABEL, tauri::WebviewUrl::App("index.html?banner=1".into()))
+            .title("Blurt")
+            .inner_size(w, h)
+            .position(x, y)
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .visible_on_all_workspaces(true)
+            .build();
+    });
+}
+
+/// 保持可连接 (on by default).
+#[tauri::command]
+pub fn remote_set_stay_awake(on: bool) -> RemoteStatus {
+    if let Some(h) = host() {
+        h.set_stay_awake(on);
+    }
+    now_status()
+}
+
 #[tauri::command]
 pub fn remote_set_screen_allowed(on: bool) -> RemoteStatus {
     if let Some(h) = host() {
@@ -462,9 +658,9 @@ pub fn remote_relay_instructions() -> String {
     RELAY_PROMPT.to_string()
 }
 
-const RELAY_PROMPT: &str = "Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
+const RELAY_PROMPT: &str = "Set up a relay I own for Blurt's Remote Control, then give me its address to paste into Blurt.
 
-Blurt for phones turns an iPhone or Android phone into a trackpad and keyboard for a computer. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+Blurt lets my phones and computers show and control my computers. When two of them can't connect directly (other networks, a strict firewall) they go through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
 
 The code and the full steps are here; read README.md first:
 https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
@@ -475,7 +671,7 @@ B. A server with a public IP: run server.js as a service (Node 12 or later, one 
 
 Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
 
-If I'm in mainland China, prefer a server there: the round trip is far shorter. A domain served from a mainland server needs an ICP filing.
+Where it runs decides how quick it feels: every move goes there and back. Don't assume where I am: ask where I and the computers I'll control usually are, and measure from this computer (a few timed HTTPS requests) to Cloudflare and to any server I have before choosing. Check the hosting rules where the server is (some countries require registering a website served from there) and tell me before relying on it.
 
 Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
@@ -488,10 +684,21 @@ struct Desktop {
 }
 
 impl App for Desktop {
+    fn file_received(&self, from: &str, name: &str) {
+        use tauri_plugin_notification::NotificationExt;
+        let title = crate::l10n::tf("remote.file.received", &[("from", from.to_string())]);
+        let _ = self.app.notification().builder().title(title).body(name).show();
+    }
+
+    fn new_pairing_notice(&self, devices: &str, host: &str) -> String {
+        crate::l10n::tf("remote.notice.new_pairing", &[("devices", devices.to_string()), ("host", host.to_string())])
+    }
+
     fn status(&self, s: &Status) {
         if s.listening {
             firewall_watch(); // Windows: is the firewall letting phones in?
         }
+        banner(&self.app, s.connected.as_ref().map(|c| c.name.clone()));
         let _ = self.app.emit("remote://status", to_ui(s));
     }
 

@@ -1,7 +1,7 @@
 // K10 shorthands for P4's string tables (Sources/BlurtApp/Resources/{en,zh-Hans}.lproj): the key's first part picks
 // the table — main.* / menu.* / app.* / notify.* → Main, settings.* / onboarding.* → Settings, anything else
 // (kind.*, work.*, session.*, project.*, job.*, action.*…) → Common; dictation.* → Dictation; home.* / feature.* → Home;
-// cards.* → Cards; phone.* → Phone.
+// cards.* → Cards; phone.* / viewer.* / remote.* → Phone.
 //   T("main.place.inbox")                   Loc.t("main.place.inbox", table: "Main")
 //   T("main.open.failed", name)             %@ / %ld placeholders
 //   TP("main.items.count", n)               Loc.plural(…, count: n) — the .stringsdict entry
@@ -14,7 +14,7 @@ func table(of key: String) -> String {
     case "dictation": return "Dictation"
     case "home", "feature": return "Home"          // the Home page and the capabilities' names (Capabilities.swift)
     case "cards": return "Cards"                   // the Cards page
-    case "phone", "viewer": return "Phone"         // the Phone page; the computers this one drives (Viewer/)
+    case "phone", "viewer", "remote": return "Phone" // the Phone page; the computers this one drives (Viewer/); the host's bar
     default: return "Common"
     }
 }

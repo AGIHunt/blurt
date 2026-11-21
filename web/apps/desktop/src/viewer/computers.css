@@ -78,3 +78,12 @@
 .st-computers-pair .grow {
   flex: 1;
 }
+/* a pairing that didn't pair: the same block, neutral, its mark in the attention ink (system.md: a state is never told by colour
+   alone, the sentence says it) */
+.st-computers-pair[data-state='failed'] {
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.st-computers-pair[data-state='failed'] .st-phone-ask-icon {
+  color: var(--attn-ink);
+}

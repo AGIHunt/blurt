@@ -9,11 +9,19 @@ final class AboutPanel: NSObject {
     static let shared = AboutPanel()
     @objc func orderFrontStandardAboutPanel(_ sender: Any?) {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        var opts: [NSApplication.AboutPanelOptionKey: Any] = [
-            .credits: NSAttributedString(string: T("menu.about.credits"), attributes: [
-                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()]),
-        ]
+        let credits = NSMutableAttributedString(string: T("menu.about.credits"), attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()])
+        // the site is a link, not plain text
+        let site = (credits.string as NSString).range(of: "blurt.work")
+        if site.location != NSNotFound, let u = URL(string: "https://blurt.work") { credits.addAttribute(.link, value: u, range: site) }
+        var opts: [NSApplication.AboutPanelOptionKey: Any] = [.credits: credits]
+        // "Version 1.1.0", not "Version 1.1.0 (1.1.0)": AppKit adds the build number in brackets, and ours is the
+        // version itself (dogfood 2026-11-21)
+        let info = Bundle.main.infoDictionary ?? [:]
+        if let short = info["CFBundleShortVersionString"] as? String, short == info["CFBundleVersion"] as? String {
+            opts[.version] = ""
+        }
         if let img = MascotLibrary.shared.image(.idle, points: 64, scale: 4, dark: dark, bleed: 0.1) {
             opts[.applicationIcon] = NSImage(cgImage: img, size: NSSize(width: 64, height: 64))
         }
@@ -59,9 +67,9 @@ enum MainMenu {
 
         let recent = NSMenu()
         for p in ProjectStore.shared.projects.prefix(10) {
-            let i = item(p.name, #selector(MainWindowController.mGoProject(_:)), obj: p.id)
+            let i = item(ProjectLook.menuTitle(p.name), #selector(MainWindowController.mGoProject(_:)), obj: p.id)
             i.image = Look.symbol("folder", p.name)
-            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+            i.toolTip = ProjectLook.menuTip(p)
             recent.addItem(i)
         }
         let recentItem = NSMenuItem(title: T("menu.open_recent"), action: nil, keyEquivalent: "")
@@ -110,7 +118,9 @@ enum MainMenu {
                    item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all")]
             // ⌘5–⌘9: the same five projects the key handler goes to (MainWindowController.shortcutProjects)
             for (k, p) in c.shortcutProjects.enumerated() {
-                go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
+                let i = item(ProjectLook.menuTitle(p.name), #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id)
+                i.toolTip = ProjectLook.menuTip(name: p.name, path: p.path)
+                go.append(i)
             }
         }
         _ = menu(T("menu.go"), go)
@@ -305,8 +315,9 @@ enum ShortcutsSheet {
                 Row(label: T("main.keys.kind"), keys: [["1", "–", "4"]]),
             ]),
             (T("main.keys.section.item"), [
+                Row(label: T("main.keys.new_item"), keys: [["⌘N"]]),
                 Row(label: plain(T("action.hand_off")), keys: [["⌘↩"]]),
-                Row(label: T("main.keys.copy_instruction"), keys: [["⇧⌘C"]]),
+                Row(label: T("main.keys.copy_full"), keys: [["⇧⌘C"]]),
                 Row(label: plain(T("main.menu.rename")), keys: [["E"]]),
                 Row(label: T("main.keys.move"), keys: [["M"]]),
                 Row(label: T("main.menu.quick_look"), keys: [[T("main.keys.space")]]),

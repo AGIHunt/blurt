@@ -22,6 +22,8 @@ public enum WarmServer {
         /// the app that started it (it ends when that app is gone); nil: started by hand, the Lab, the CLI
         public var parent: Int32?
         public var started: Date?
+        /// its model has been loading since then (transcribe.py serve_loading): no answer meanwhile is no hang
+        public var loadingSince: Date? = nil
     }
 
     public static func record(_ name: String) -> Record? {
@@ -31,8 +33,21 @@ public enum WarmServer {
         let iso = ISO8601DateFormatter()
         return Record(pid: (o["pid"] as? NSNumber)?.int32Value, port: port, token: o["token"] as? String ?? "",
                       parent: (o["parent"] as? NSNumber)?.int32Value,
-                      started: (o["started"] as? String).flatMap { iso.date(from: $0) })
+                      started: (o["started"] as? String).flatMap { iso.date(from: $0) },
+                      loadingSince: (o["loading_since"] as? String).flatMap { iso.date(from: $0) })
     }
+
+    /// A load is believed this long at most (a 1.7B speech model loaded in 15 s from a busy disk): a server that says
+    /// it has been loading for longer is judged like any other.
+    public static let loadTrusted = 90.0
+
+    /// The run file says its model is loading, and not for implausibly long (pure: WarmServerTests).
+    public static func loading(_ r: Record?, now: Date = Date()) -> Bool {
+        guard let since = r?.loadingSince else { return false }
+        return now.timeIntervalSince(since) < loadTrusted
+    }
+
+    public static func loading(_ name: String) -> Bool { loading(record(name)) }
 
     /// The server's address, when its file is there and its process is alive.
     public static func info(_ name: String) -> (port: UInt16, token: String)? {
@@ -115,7 +130,7 @@ public enum WarmServer {
     /// The verdict from the facts (pure: WarmServerTests). `argv`: the process's command line (nil: unreadable);
     /// `cpu`: the CPU seconds it used while the ping waited (nil: unreadable).
     public static func verdict(record: Record?, alive: Bool, argv: [String]?, script: String, processStarted: Date?,
-                               answered: Bool, cpu: Double?, parentAlive: Bool) -> Health {
+                               answered: Bool, cpu: Double?, parentAlive: Bool, loading: Bool = false) -> Health {
         guard let r = record, r.pid != nil else { return .gone }
         guard alive else { return .gone }
         if answered { return .answers }
@@ -124,6 +139,8 @@ public enum WarmServer {
         // a process that started well after its file was written isn't the one that wrote it
         let reused = r.started.flatMap { s in processStarted.map { $0.timeIntervalSince(s) > 5 } } ?? false
         if !isServer || reused { return .notAServer }
+        // its model loading: no answer until it is done, and a load waiting on the disk or the GPU shows no CPU
+        if loading { return .working }
         guard let c = cpu, c < 0.01 else { return .working }
         return .stuck(orphaned: !parentAlive)
     }
@@ -143,7 +160,7 @@ public enum WarmServer {
         let cpu = c0.flatMap { a in c1.map { $0 - a } }
         return verdict(record: r, alive: alive, argv: ProcessProbe.arguments(pid), script: script,
                        processStarted: ProcessProbe.started(pid), answered: answered, cpu: cpu,
-                       parentAlive: r.parent.map(ProcessProbe.alive) ?? false)
+                       parentAlive: r.parent.map(ProcessProbe.alive) ?? false, loading: loading(r))
     }
 
     /// The run file goes when it still names `pid` (a newer server's file is left alone).
@@ -183,5 +200,29 @@ public final class CPUWatch {
         last = c
         since = now
         return 0
+    }
+}
+
+/// How long a polish request waits for the warm polish server (Dictation.polish / structure). The Polish time limit
+/// (`timeout`) is the server's, applied to the generation once its model is loaded; the client waits a second more
+/// for the answer to come back. `loadBudget` (a model still loading) is added only when a load may be ahead of the
+/// request — a stopped server whose model was loaded long ago held a take 3 + 12 + 1 = 16 s although Settings says
+/// 3 s (dogfood 2026-11-21).
+/// `loaded`: the server's answer to a ping (`loaded`; nil: it didn't answer); `health`: asked only when it didn't.
+public enum PolishWait: Equatable {
+    /// wait this many seconds for the answer
+    case wait(Double)
+    /// no answer and no CPU (stuck), or no server: don't ask it; the text goes in unpolished
+    case giveUp
+
+    public static func decide(loaded: Bool?, health: WarmServer.Health?, timeout: Double, loadBudget: Double,
+                              extra: Double = 0) -> PolishWait {
+        let quick = timeout + 1 + extra, long = timeout + loadBudget + 1 + extra
+        if let l = loaded { return .wait(l ? quick : long) }
+        switch health {
+        case .stuck?, .gone?, .notAServer?: return .giveUp
+        // busy with a request that needs it (a cold load, another take's polish), or it can't be told
+        case .answers?, .working?, nil: return .wait(long)
+        }
     }
 }

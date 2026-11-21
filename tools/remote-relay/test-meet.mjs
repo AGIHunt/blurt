@@ -61,7 +61,8 @@ try {
   {
     const s = await pair();
     s.phone.send(new Uint8Array(16 * KiB));
-    await wait(300);
+    // as soon as it's through (a far network takes longer than a near one), at most 5 s
+    for (let t = 0; t < 50 && s.got.bytes < 16 * KiB; t++) await wait(100);
     expect("a 16 KiB message passes, bytes through", s.got.bytes, 16 * KiB);
     s.phone.send(new Uint8Array(20 * KiB));
     expect("a 20 KiB message: the sender is closed with", await s.phoneClosed, 4003);

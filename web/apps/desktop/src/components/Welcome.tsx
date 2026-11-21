@@ -25,7 +25,7 @@ import { CAPS, SHOWN_KEYS, type Capability } from '../capabilities';
 import { CAP_ICON } from './SettingsView';
 import { setCapability, useOff } from './useCapabilities';
 import { AddCloudModel, AddSpeechCloud, dictateInCloud, presetName, speechOffers, useCurated } from './DictationSettings';
-import { mb, ModelProgress, useDictationModels } from './ModelDownload';
+import { mb, ModelProgress, roomLine, useDictationModels } from './ModelDownload';
 
 export type StepId = 'welcome' | 'dictation' | 'models' | 'try';
 
@@ -131,7 +131,7 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
   const [retrying, setRetrying] = useState(false);
   /** the speech tools (uv) coming down: MB so far / in all (setup.rs; total 0 = not known) */
   const [uvProg, setUvProg] = useState<{ done: number; total: number } | null>(null);
-  const { models, err, dl, failed, load, download } = useDictationModels();
+  const { models, err, dl, failed, room, load, download } = useDictationModels();
   const win = onb.dictation.available;
   /** the key went down while the try card showed: a paste after it is the first dictation */
   const pressedHere = useRef(false);
@@ -442,10 +442,19 @@ export function Welcome({ onb: initial, firstRun, onDone, onToast, onSettings }:
               <ModelProgress dl={dl} total={modelSize} wide onStop={() => api.modelDownloadCancel().catch(() => {})} />
               <span className="dim small">{t('welcome.models.background')}</span>
             </>
+          ) : ms === 'failed' && room ? (
+            // not enough space: nothing started — how much is needed and free, and where to make room
+            <span className="warn small" data-testid="welcome-model-room">
+              {roomLine(room)}
+              {onSettings && <> · <button type="button" className="wl-link" onClick={() => onSettings('storage')}>{t('models.show_storage')}</button></>}
+            </span>
           ) : ms === 'failed' ? (
             <span className="warn small">{t('welcome.models.failed')}</span>
           ) : (
-            <span className="dim small">{t('welcome.models.needed')}</span>
+            // its size and the free space before anything starts (the founder, 2026-11-21)
+            <span className="dim small">
+              {models?.free_mb != null ? t('welcome.models.needed_free', { size: mb(rec.size_mb), free: mb(models.free_mb) }) : t('welcome.models.needed')}
+            </span>
           )}
         </div>
       )}

@@ -42,14 +42,17 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The relay address field | 中转地址 | Relay Address |
 | Connection paths | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service |
 | One computer driving another (remote-desktop-viewer.md) | 电脑 · 添加电脑 · 打开窗口 · 连接 · 移除 | Computers · Add Computer · Open Window · Connect · Remove |
-| A computer's state in that list | 已连接 · 可连接 · 离线 · 无法直连 | Connected · Available · Offline · Can't Connect Directly |
+| A computer's state in that list (sentence case: a state line, not a label) | 已连接 · 可连接 · 离线 · 需要自建中转 · 中转无响应 | Connected · Available · Offline · Needs its own relay · Relay not responding |
+| That row's button and tooltip when it needs its own relay | 重试 · 从这个网络无法直接连到 X。请在 X 上打开口喷鸡设置 → 远程控制，填写中转地址。在同一网络下不需要中转。 | Try Again · X can't be reached directly from this network. On X, open Blurt Settings → Remote Control and set a relay address. On the same network, no relay is needed. |
+| Add Computer's two ways in, and the digits step | 同一网络 · 其他网络 · 核对 X 上的数字 · 如果 X 显示相同的数字，请在那台电脑上点「允许」。 | On this network · On another network · Check the Digits on X · Click Allow on X if it shows these digits. |
 | When the pairing code on screen gives way to a new one (the Mac renews it; the desktop app's expiring code says 还剩 1:40) | 1:40 后更换二维码 | New code in 1:40 |
 | The viewer, when the public connection service finds no direct path | 无法直连。请在对方电脑上设置自建中转。 | Can't connect directly. Set up your own relay on the other computer. |
 | The viewer's controls | 屏幕 · 按键发往远端 · 跟着远端指针换屏 · 在新窗口中打开 | Display · Keys to Remote · Follow the Pointer · Open in New Window |
 | The release hint | 按 ⌃⌘ 交还键盘和鼠标 (Windows/Linux: Ctrl+Alt) | Press ⌃⌘ to release the keyboard and mouse |
 | The feature, its main-window page with every paired device, and the Settings pane with its options (Home's row, the sidebar, the menu bar's row); on the Mac one key, `feature.phone` (2026-11-20, was 手机和电脑) | 远程控制 | Remote Control |
 | That page's empty lists | 还没有配对的设备 · 还没有添加电脑 | No devices paired yet · No computers added yet |
-| Settings → 远程控制's lead, the way to the page | 设备列表在主窗口的「远程控制」页。 查看设备 | The device list is on the Remote Control page in the main window. Show Devices |
+| Settings → 远程控制's first row, the way to the page (nothing paired · paired) | 还没有配对的设备 · 添加设备… · 已配对 2 台设备 · 查看设备 | No devices paired yet · Add Device… · 2 devices paired · Show Devices |
+| Settings → 远程控制's sections | 本机 · 其他网络 | On this Mac · Other networks |
 | A new device asking the host for a yes | 允许 %@ 控制本机？ · %@ 显示相同的数字时才允许。 · 不允许 · 允许 | Allow %@ to control this Mac? · Allow only if %@ shows the same digits. · Don't Allow · Allow |
 | Its two groups: what controls this computer · what this computer controls | 能控制本机的设备 · 本机可控制的电脑 | Devices That Can Control This Computer · Computers You Can Control |
 | Pairing a new phone or computer on the host | 添加设备… · 拷贝链接 | Add Device… · Copy Link |
@@ -58,5 +61,7 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | Picture quality (as on the phone) | 画质：自动 · 清晰 · 均衡 · 省流量 | Quality: Auto · Sharp · Balanced · Data Saver |
 | Items not in a project | 未归类 | Unsorted |
 | Card tabs | 当前 / 历史 | Current / History |
+| A double tap of a key (Fn to send, ⇧, ⌘) | 双击 | double-tap |
+| One dictation (the thing in History; "take" stays inside the Dictation Lab) | 听写 | dictation |
 
 Add to this table whenever a new concept reaches the UI.

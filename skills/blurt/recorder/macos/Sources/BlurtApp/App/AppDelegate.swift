@@ -31,6 +31,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var resident: Bool { opts.standalone }
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        if resident {
+            // first: a hand edit gone wrong is said at launch, before a migration below writes to the file (its
+            // refused write made the backup unheard, and "12 shortcuts won't work" went up instead: dogfood 2026-11-21)
+            LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+            Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
+            Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
+            Config.shared.checkReadable()   // (defaults until fixed), not at the first write
+        }
         CloudSpeech.install()
         UVSetup.ensure(via: "launch")           // quietly, only when no usable uv is there (first-minute-speech.md)
         for sig in [SIGTERM, SIGINT] {
@@ -136,7 +144,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let p = PickerController()
         p.onDone = { [weak self] r in
             guard let self = self else { return }
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
+            if !ScreenTextCopy.shared.picking { unregisterHotkey(.pickEsc) }     // shared with ⌥C's crosshair
             self.picker = nil
             guard let r = r else { self.busy = false; sessionEnded(2, ["event": "cancelled"]); return }
             self.begin(r)
@@ -220,15 +229,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: menu-bar app
 
     func startResident() {
-        LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+        // (LaunchMessages and the config's checks started first thing: applicationDidFinishLaunching)
         for (name, active) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in App.activeSince = active ? Date() : nil }
         }
         FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
-        Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
-        Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
-        Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
-        ScreenTextCopy.migrateTranslateConfig()     // ⌥T's own translate settings, once (from dictation's)
+        // ⌥T's own translate settings, once (from dictation's) — never from defaults read off a file that doesn't parse
+        if Config.shared.readable { ScreenTextCopy.migrateTranslateConfig() }
         watchNetwork()
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
@@ -267,6 +274,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         RemoteServer.shared.install()   // the iPhone remote: listens once a phone is paired
+        RemoteBanner.start()            // while a device controls this Mac, a bar says which, with Disconnect
         // the setup assistant greets a first run itself: no second hello next to it
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
@@ -277,7 +285,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             postWelcome()
         } else {
             // a shortcut another app holds: the first line, and the way to change it (the reason is in Settings)
-            Hotkeys.shared.warnOnce { text in
+            let fnTaken = HotkeySettings.shared.dictationTaken && Capability.dictation.isOn ? 1 : 0
+            Hotkeys.shared.warnOnce(alsoTaken: fnTaken) { text in
                 var t = Island.Toast(text: text.components(separatedBy: "\n")[0], actionTitle: T("app.toast.change_shortcut")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
                 }
@@ -322,8 +331,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // it is read or said
             let off = Capability.off
             if !off.contains(.dictation) { await DictationModels.shared.load() }         // has dictation a speech model?
-            let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
-                : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
+            // another Blurt has the key (a dev build next to the release): nothing to set up here — the key works
+            // there, and the conflicts below name it; a list that failed while online isn't "not set up" either
+            let models = DictationModels.shared
+            let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.deferredTo != nil ? .works
+                : Dictation.shared.needsSetup ? .needsSetup
+                : models.asrUnreadable ? (models.asrFailure == .error ? .unreadable : .unknown)
+                : models.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
             // counted as Settings → Shortcuts counts them: the dictation key another copy listens to is one of them
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
@@ -342,6 +356,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_no_model.action")) { Dictation.getSpeechModel(from: "welcome") }
             case .setUpDictation?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_not_set_up.action")) { Onboarding.shared.show(step: 2) }
+            case .readModelsAgain?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_unreadable.action")) { Dictation.shared.refreshSpeechModels() }
+                t.icon = .warning
             case .changeShortcut?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.change_shortcut")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
@@ -350,7 +367,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t = Island.Toast(text: text, actionTitle: nil, action: nil)
             }
             t.seconds = 7
-            emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts])
+            emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts,
+                  "models_failure": models.asrFailure?.rawValue ?? NSNull(), "deferred_to": Dictation.shared.deferredTo.map { Int($0) } ?? NSNull()])
             LaunchMessages.shared.post(.welcome, t, shown: {
                 setRecordConfig("welcomed", true)
                 if saysConflicts { Hotkeys.shared.markWarned() }     // named here: no second line for them
@@ -578,6 +596,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func startRecording(useLast: Bool) {
+        // ⌥C's crosshair is up: one screen picker at a time (as ⌥C refuses while the area picker is up)
+        if ScreenTextCopy.shared.picking { emit(["event": "record_refused", "why": "text_picker"]); return }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         guard !busy else { return }
         MissingFolder.warnIfCurrentMissing(recording: true)     // its folder is gone: this one goes to Unassigned
@@ -1003,7 +1023,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.set_up.subtitle") }
             menu.addItem(.separator())
         case .getModel?:
-            let size = MainActor.assumeIsolated { dm.dictationJob.map { modelSize($0.sizeMB) } }
+            let size = MainActor.assumeIsolated { dm.offerJob.map { modelSize($0.sizeMB) } }
             let d = add(T("dictation.menu.get_model"), #selector(mDictationGetModel))
             d.image = App.warningImage
             if #available(macOS 14.4, *) {
@@ -1101,9 +1121,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         none.image = IslandGlyph.place(nil, size: 16)    // Unassigned, as the island and the sidebar (the tray is the Inbox)
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
-            let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
+            let i = add(ProjectLook.menuTitle(p.name), #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
             i.image = IslandGlyph.place(p, size: 16)
-            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+            i.toolTip = ProjectLook.menuTip(p)
         }
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
@@ -1139,7 +1159,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "mVideoOnly": "film", "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
             "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
-            "mCopyLastDictation": "doc.on.doc", "mPhone": "iphone",
+            "mCopyLastDictation": "doc.on.doc", "mPhone": "laptopcomputer.and.iphone",
             "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",

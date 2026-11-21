@@ -24,7 +24,7 @@ use blurt_remote::keys::{Keyboard, Sent};
 use blurt_remote::pairing::Pairing;
 use blurt_remote::store::FileKeyStore;
 use blurt_remote::viewer::{
-    self, Event, Found, Link, PairError, PairWith, Quality, Route, Session, Target, Want,
+    self, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want,
 };
 use blurt_remote::wire::ToMac;
 use blurt_remote::{App, Host, HostConfig};
@@ -221,6 +221,16 @@ fn host(
     answer: bool,
     go_between: &str,
 ) -> (Host, std::path::PathBuf) {
+    host_on(w, platform, answer, go_between, 0)
+}
+
+fn host_on(
+    w: &World,
+    platform: &'static str,
+    answer: bool,
+    go_between: &str,
+    port: u16,
+) -> (Host, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!(
         "blurt-remote-viewer-{}",
         blurt_remote::crypto::new_id()
@@ -231,7 +241,7 @@ fn host(
             name: "Studio PC".into(),
             version: "1.0.27".into(),
             test_answer: Some(answer),
-            port: 0,
+            port,
             go_between: Some(go_between.into()),
         },
         Box::new(Back(
@@ -634,7 +644,11 @@ async fn pair_with_a_computer_found_nearby() {
     let r = viewer::pair(PairWith::Nearby(found.clone()), "Desk Laptop", None, |_| {}).await;
     assert_eq!(r.err(), Some(PairError::Declined));
     let r = viewer::pair(PairWith::Nearby(found), "Desk Laptop", None, |_| {}).await;
-    assert_eq!(r.err(), Some(PairError::NotTaken), "paused after a no");
+    assert_eq!(
+        r.err(),
+        Some(PairError::Spent),
+        "paused after a no: not taking a new computer now"
+    );
     // an id the host doesn't know, without the nearby prefix, is not_paired as it always was (a removed phone hears that)
     let r = blurt_remote::phone::Phone::connect(
         format!("127.0.0.1:{port}").parse::<SocketAddr>().unwrap(),
@@ -643,6 +657,191 @@ async fn pair_with_a_computer_found_nearby() {
     )
     .await;
     assert!(r.err().is_some_and(|e| e.contains("NotPaired")));
+    h.stop();
+}
+
+// ------------------------------------------------------------------ how a pairing ends when it doesn't pair
+
+/// A pasted link whose code the host no longer takes (used already): refused before anyone was asked, not "didn't allow".
+#[tokio::test(flavor = "multi_thread")]
+async fn a_spent_link_is_not_a_refusal() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, "");
+    h.show_pairing(true);
+    let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
+    viewer::pair(
+        PairWith::Link(Pairing::parse(&link).unwrap()),
+        "Desk Laptop",
+        None,
+        |_| {},
+    )
+    .await
+    .expect("the first time");
+    let asked = Arc::new(AtomicBool::new(false));
+    let a2 = asked.clone();
+    let r = viewer::pair(
+        PairWith::Link(Pairing::parse(&link).unwrap()),
+        "Desk Laptop",
+        None,
+        move |_| a2.store(true, SeqCst),
+    )
+    .await;
+    assert_eq!(r.err(), Some(PairError::Spent));
+    assert!(!asked.load(SeqCst), "nobody was asked");
+    h.stop();
+}
+
+/// The owner said no (here 3 s after the question, the test host's answer): declined. The same close at 90 % of the host's question
+/// or later is nobody answering (the question's life cut to 3 s here).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_no_and_no_answer() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    for (life, want) in [
+        (viewer::QUESTION_LIFE, PairError::Declined),
+        (Duration::from_secs(3), PairError::Unanswered),
+    ] {
+        let w = World::default();
+        let (h, _dir) = host(&w, "windows", false, "");
+        h.show_pairing(true);
+        let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
+        let steps = Arc::new(Mutex::new(vec![]));
+        let s2 = steps.clone();
+        let r = viewer::pair_steps(
+            PairWith::Link(Pairing::parse(&link).unwrap()),
+            "Desk Laptop",
+            None,
+            life,
+            true,
+            move |s| s2.lock().unwrap().push(s),
+        )
+        .await;
+        assert_eq!(r.err(), Some(want));
+        assert!(
+            matches!(steps.lock().unwrap().as_slice(), [PairStep::Asking(d)] if d.len() == 6),
+            "{:?}",
+            steps.lock().unwrap()
+        );
+        h.stop();
+    }
+}
+
+/// Nothing there at first: it says so and goes on trying; once the host is up and asks, the digits come (they replace "can't
+/// reach" in the panel), and a yes pairs.
+#[tokio::test(flavor = "multi_thread")]
+async fn unreachable_then_asked() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let found = Found {
+        host_id: "x".into(),
+        name: "Studio PC".into(),
+        addresses: vec![IpAddr::from([127, 0, 0, 1])],
+        port,
+    };
+    let steps = Arc::new(Mutex::new(vec![]));
+    let s2 = steps.clone();
+    let pairing = tokio::spawn(async move {
+        viewer::pair_steps(
+            PairWith::Nearby(found),
+            "Desk Laptop",
+            None,
+            viewer::QUESTION_LIFE,
+            true,
+            move |s| s2.lock().unwrap().push(s),
+        )
+        .await
+    });
+    let unreachable = || {
+        steps
+            .lock()
+            .unwrap()
+            .contains(&PairStep::Unreachable)
+            .then_some(())
+    };
+    for _ in 0..60 {
+        if unreachable().is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(unreachable().is_some(), "{:?}", steps.lock().unwrap());
+    let w = World::default();
+    let (h, _dir) = host_on(&w, "windows", true, "", port);
+    h.show_pairing(true);
+    let (c, _key) = tokio::time::timeout(Duration::from_secs(20), pairing)
+        .await
+        .expect("in time")
+        .unwrap()
+        .expect("paired");
+    assert!(c.device_id.starts_with("nearby-"));
+    assert!(
+        matches!(
+            steps.lock().unwrap().as_slice(),
+            [PairStep::Unreachable, PairStep::Asking(_)]
+        ),
+        "{:?}",
+        steps.lock().unwrap()
+    );
+    h.stop();
+}
+
+/// A key the host refuses with no session (anyone on the network can send that): `Forgotten`, not the `Removed` a session says.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_key_is_forgotten_not_removed() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, "");
+    h.show_pairing(true);
+    let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
+    let (c, _key) = viewer::pair(
+        PairWith::Link(Pairing::parse(&link).unwrap()),
+        "Desk Laptop",
+        None,
+        |_| {},
+    )
+    .await
+    .expect("paired");
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: c,
+            key: vec![9; 32],
+            device: "Desk Laptop".into(),
+            nearby: vec![IpAddr::from([127, 0, 0, 1])],
+            go_between_at: None,
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    until("forgotten", || {
+        seen.find(|e| {
+            matches!(
+                e,
+                Event::Link {
+                    link: Link::Forgotten,
+                    ..
+                }
+            )
+            .then_some(())
+        })
+    })
+    .await;
+    assert!(seen
+        .find(|e| matches!(
+            e,
+            Event::Link {
+                link: Link::Removed,
+                ..
+            }
+        )
+        .then_some(()))
+        .is_none());
+    drop(s);
     h.stop();
 }
 
@@ -773,13 +972,165 @@ async fn through_the_public_connection_service_then_direct() {
     // far more than the service's budget went (frames), and the session is still up
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(h.status().connected.is_some());
-    assert!(!seen.0.lock().unwrap().iter().any(|e| matches!(
+    // once connected, never dropped (a first try before the host waits in its room may say Offline: that's the start, not a drop)
+    let events = seen.0.lock().unwrap().clone();
+    let up = events
+        .iter()
+        .position(|e| {
+            matches!(
+                e,
+                Event::Link {
+                    link: Link::Connected,
+                    ..
+                }
+            )
+        })
+        .expect("connected");
+    assert!(!events[up..].iter().any(|e| matches!(
         e,
         Event::Link {
             link: Link::NoDirect | Link::Offline,
             ..
         }
     )));
+    drop(s);
+    h.stop();
+}
+
+/// 2026-11-20, the office: the computer's own relay was dead. The viewer says so after two tries, and goes through the public
+/// connection service, where the host waits meanwhile.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dead_own_relay_goes_through_the_public_connection_service() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let r = match relay().await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, &meet);
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    // the owner's relay: nothing listens on port 9
+    h.set_relay(Some("ws://127.0.0.1:9")).unwrap();
+    until("host falls back", || {
+        h.status().relay.fallback.then_some(())
+    })
+    .await;
+    let away = viewer::Computer {
+        addresses: vec![],
+        port: 9,
+        relay: Some("ws://127.0.0.1:9".into()),
+        ..c.clone()
+    };
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: away,
+            key,
+            device: "Desk Laptop".into(),
+            nearby: vec![],
+            go_between_at: Some(meet.clone()),
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    until("connected", || {
+        seen.find(|e| {
+            if let Event::Link {
+                link: Link::Connected,
+                route,
+            } = e
+            {
+                *route
+            } else {
+                None
+            }
+        })
+    })
+    .await;
+    assert!(
+        seen.0.lock().unwrap().iter().any(|e| matches!(
+            e,
+            Event::Link {
+                link: Link::RelayDown,
+                ..
+            }
+        )),
+        "said why first"
+    );
+    drop(s);
+    h.stop();
+}
+
+/// Send Files (remote-1.1.md §6): a file goes, in chunks, to the host's Downloads under its own name, and the viewer hears it saved.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_goes_to_the_hosts_downloads() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, dir) = host(&w, "windows", true, "");
+    let downloads = dir.join("Downloads");
+    h.set_downloads(Some(downloads.clone()));
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: c.clone(),
+            key,
+            device: "Desk Laptop".into(),
+            nearby: vec![IpAddr::from([127, 0, 0, 1])],
+            go_between_at: None,
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    let info = until("session", || {
+        seen.find(|e| {
+            if let Event::Session(i) = e {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+    })
+    .await;
+    assert!(
+        info.features
+            .as_ref()
+            .is_some_and(|f| f.iter().any(|x| x == "files")),
+        "a host with a Downloads folder takes files"
+    );
+    // 3 MB in 192 KB chunks: progress comes back every MB
+    let body: Vec<u8> = (0..3 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+    s.send(ToMac::FileBegin {
+        id: "f1".into(),
+        name: "../report.bin".into(),
+        size: body.len() as i64,
+    });
+    for c in body.chunks(192 * 1024) {
+        s.send(ToMac::FileChunk {
+            id: "f1".into(),
+            data: c.to_vec(),
+        });
+    }
+    s.send(ToMac::FileEnd { id: "f1".into() });
+    let name = until("saved", || {
+        seen.find(|e| {
+            if let Event::FileSaved { name, .. } = e {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+    })
+    .await;
+    assert_eq!(name, "report.bin", "no folders in the name");
+    assert!(seen
+        .find(|e| matches!(e, Event::FileProgress { bytes, .. } if *bytes >= 1 << 20).then_some(()))
+        .is_some());
+    assert_eq!(std::fs::read(downloads.join("report.bin")).unwrap(), body);
+    assert!(!downloads.join("report.bin.part").exists());
     drop(s);
     h.stop();
 }

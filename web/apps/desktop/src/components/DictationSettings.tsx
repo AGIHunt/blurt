@@ -12,11 +12,13 @@
 // What the Mac has here that Windows doesn't (yet): docs/design/windows-parity/settings.md.
 import { useEffect, useRef, useState } from 'react';
 import { api, builds, listen, type AgentSetupState, type AgentSetupStep, type AppStatus, type AsrModel, type CloudSummary, type CuratedOption, type DictationHistory, type VoiceprintEvent, type VoiceprintStatus } from '../api';
-import { t } from '../i18n';
+import { plural, t } from '../i18n';
+import { wouldPrune } from '../dictation';
 import { Icon } from '@blurt/icons';
 import { Group, lang, Line, Page, Popup, Row, S, Switch, TextLink, Toggle } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
-import { mb, ModelProgress, useDictationModels } from './ModelDownload';
+import { mb, ModelProgress, roomLine, useDictationModels } from './ModelDownload';
+import { goSettingsPane } from './SettingsView';
 import { openWordsTab } from './DictationView';
 import { Menu, type MenuAt, type MenuEntry } from './Menu';
 import { KeyCaps } from './SettingsView';
@@ -122,6 +124,14 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
   const [words, setWords] = useState<{ term: string; state: string; source?: string }[] | null>(null);
   const [byApp, setByApp] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  // a shorter period (or Don't keep) that would delete saved dictations: asked first, as Clear History is (the Mac's
+  // chooseRetention) — it used to delete them at once
+  const [askKeep, setAskKeep] = useState<{ days: number; n: number } | null>(null);
+  const chooseKeep = (v: number) => {
+    const n = (v < days || v === 0) && hist ? wouldPrune(hist.entries, v) : 0;
+    if (n > 0) setAskKeep({ days: v, n });
+    else set({ retention_days: v === 30 ? undefined : v });
+  };
   const loadHist = () => api.dictationHistory().then(setHist, () => {});
   const loadWords = () => api.dictationWords().then((w) => setWords(w.terms), () => {});
   useEffect(() => {
@@ -308,8 +318,27 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf, portalK
           <Popup label={S('dictation.history.keep')} value={days} dividers={hist?.entries.length ? [4, 5] : [4]}
             choices={[...[7, 30, 90, 365].map((n) => [n, S('dictation.history.days', n)] as [number, string]), [0, S('dictation.history.dont_keep')] as [number, string],
               ...(hist?.entries.length ? [[-1, S('dictation.history.clear')] as [number, string]] : [])]}
-            onChange={(v) => (v === -1 ? setConfirmClear(true) : set({ retention_days: v === 30 ? undefined : v }))} />
+            onChange={(v) => (v === -1 ? setConfirmClear(true) : chooseKeep(v))} />
         </Row>
+        {askKeep && (
+          <div className="overlay" onClick={() => setAskKeep(null)}>
+            <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.key === 'Escape' && setAskKeep(null)}>
+              <h3>{plural('dictation_page.keep.title', askKeep.n)}</h3>
+              <p>{askKeep.days === 0 ? t('dictation_page.keep.off') : t('dictation_page.keep.days', { days: plural('dictation_page.days', askKeep.days) })}
+                {' '}{t('dictation_page.clear.undo')}</p>
+              <div className="dict-confirm-foot">
+                <button autoFocus className="dict-confirm-cancel" onClick={() => setAskKeep(null)}>{t('dictation_page.clear.cancel')}</button>
+                <button className="dict-danger-tint" onClick={async () => {
+                  const v = askKeep.days;
+                  setAskKeep(null);
+                  await set({ retention_days: v === 30 ? undefined : v });
+                  loadHist();
+                }}>{t('dictation_page.keep.confirm')}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {confirmClear && (
           <div className="overlay" onClick={() => setConfirmClear(false)}>
             <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
@@ -464,8 +493,12 @@ export function ScreenTextPane({ cfg, save, goTranslate, openHistory, linux = fa
   // -1 forever, 0 not kept), how many; reading it prunes it to what is kept
   const days: number = typeof st.history_days === 'number' ? st.history_days : 30;
   const [count, setCount] = useState<number | null>(null);
+  const [times, setTimes] = useState<number[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
-  const loadCount = () => api.screenTextHistory().then((h) => setCount(h.count), () => setCount(0));
+  // a shorter period, or Don't keep, that would delete entries asks first ("Delete 12 entries?", 2026-11-21)
+  const [confirmDays, setConfirmDays] = useState<{ days: number; n: number } | null>(null);
+  const loadCount = () => api.screenTextHistory().then((h) => { setCount(h.count); setTimes(h.entries.map((e) => e.time)); },
+    () => setCount(0));
   useEffect(() => {
     void loadCount();
     return listen('screen-text://changed', () => void loadCount());
@@ -473,6 +506,13 @@ export function ScreenTextPane({ cfg, save, goTranslate, openHistory, linux = fa
   const setDays = (d: number) => {
     const { history_days: _, ...rest } = st;
     void save({ record: { screen_text: { ...rest, ...(d === 30 ? {} : { history_days: d }) } } });
+  };
+  const wouldDelete = (d: number) => d < 0 ? 0 : d === 0 ? times.length : times.filter((t) => t < Date.now() / 1000 - d * 86400).length;
+  const pickDays = (d: number) => {
+    if (d === days) return;
+    const n = wouldDelete(d);
+    if (n > 0) setConfirmDays({ days: d, n });
+    else setDays(d);
   };
   const CLEAR = -9;
   // Linux: GNOME asks once before Blurt may take screenshots, and only with Blurt in front — so it is asked here
@@ -537,18 +577,40 @@ export function ScreenTextPane({ cfg, save, goTranslate, openHistory, linux = fa
         </Row>
       </Group>
       <Group id="screentext.history_section">
-        <Row id="screentext.history"
+        {/* how long, and — under a line, last — Clear History… (as dictation's history row: never a destructive
+            button at rest) */}
+        <Row id="screentext.history_keep"
           detail={days === 0 ? S('settings.screen_text.history.summary.off') : count === null ? undefined
             : days < 0 ? S('settings.screen_text.history.summary.forever', count) : S('settings.screen_text.history.summary', count, S('dictation.history.days', days))}>
-          {openHistory && days !== 0 && <button onClick={openHistory}>{S('settings.screen_text.history.open')}</button>}
-          {/* how long, and — under a line, last — Clear History… (as dictation's history row: never a destructive
-              button at rest) */}
           <Popup label={S('settings.screen_text.history.keep')} value={days} dividers={count ? [3, 4] : [3]}
             choices={[[7, S('dictation.history.days', 7)] as [number, string], [30, S('dictation.history.days', 30)] as [number, string],
               [-1, S('settings.screen_text.history.forever')] as [number, string], [0, S('dictation.history.dont_keep')] as [number, string],
               ...(count ? [[CLEAR, S('settings.screen_text.history.clear')] as [number, string]] : [])]}
-            onChange={(v) => (v === CLEAR ? setConfirmClear(true) : setDays(v))} />
+            onChange={(v) => (v === CLEAR ? setConfirmClear(true) : pickDays(v))} />
         </Row>
+        {openHistory && days !== 0 && (
+          <Row id="screentext.history">
+            <button onClick={openHistory}>{S('settings.screen_text.history.open')}</button>
+          </Row>
+        )}
+        {confirmDays && (
+          <div className="overlay" onClick={() => setConfirmDays(null)}>
+            <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.key === 'Escape' && setConfirmDays(null)}>
+              <h3>{S('settings.screen_text.history.shorten.title', confirmDays.n)}</h3>
+              <p>{confirmDays.days === 0 ? S('settings.screen_text.history.shorten.off', confirmDays.n)
+                : S('settings.screen_text.history.shorten.message', S('dictation.history.days', confirmDays.days))}</p>
+              <div className="dict-confirm-foot">
+                <button autoFocus className="dict-confirm-cancel" onClick={() => setConfirmDays(null)}>{S('settings.screen_text.history.cancel')}</button>
+                <button className="dict-danger-tint" onClick={() => {
+                  const d = confirmDays.days;
+                  setConfirmDays(null);
+                  setDays(d);
+                }}>{S('settings.screen_text.history.shorten.confirm')}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {confirmClear && (
           <div className="overlay" onClick={() => setConfirmClear(false)}>
             <div className="sheet dict-confirm" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
@@ -670,7 +732,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
   useEffect(() => {
     api.detect({ login: false }).then((d) => setHasAgent(d.agents.some((a) => a.installed)), () => {});
   }, []);
-  const { models, err, dl, failed, failedId, load, download } = useDictationModels();
+  const { models, err, dl, failed, failedId, room, load, download } = useDictationModels();
   const rec = models?.models.find((m) => m.id === models.recommended);
   // Add Cloud Model: every service not added yet (the curated ones first), its 用于 boxes the text jobs built here
   const { curated: addCurated, others: addOthers } = addSheetServices(sum?.services.map((s) => s.preset) ?? [], volcOffered());
@@ -816,9 +878,11 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
           {/* with no speech model on this PC at all, dictation can't run: the line says so in the attention mark (the
               Dictation pane's notice), the Download beside it the one way out */}
           <Line title={S('speech.rec.title_size', mb(rec.size_mb))}
-            detail={failed && failedId === rec.id ? S('win.models.failed_row') : !installed.length && !dl ? S('dictation.nomodel.notice', rec.name) : S('speech.rec.line', S('speech.purpose.dictation'), rec.name)}
+            detail={failed && failedId === rec.id ? (room ? roomLine(room) : S('win.models.failed_row')) : !installed.length && !dl ? S('dictation.nomodel.notice', rec.name) : S('speech.rec.line', S('speech.purpose.dictation'), rec.name)}
             warn={(failed && failedId === rec.id) || (!installed.length && !dl)}>
-            {dl?.id === rec.id ? <><ModelProgress dl={dl} /><StopDownload /></> : <button className="primary" disabled={!!dl} onClick={() => download(rec.id)}>{S(failed && failedId === rec.id ? 'speech.rec.retry' : 'speech.download.button')}</button>}
+            {dl?.id === rec.id ? <><ModelProgress dl={dl} /><StopDownload /></>
+              : failed && failedId === rec.id && room ? <button onClick={() => goSettingsPane('storage')}>{S('models.show_storage')}</button>
+              : <button className="primary" disabled={!!dl} onClick={() => download(rec.id)}>{S(failed && failedId === rec.id ? 'speech.rec.retry' : 'speech.download.button')}</button>}
           </Line>
         </Group>
       )}

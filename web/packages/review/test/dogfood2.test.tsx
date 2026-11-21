@@ -57,7 +57,7 @@ describe("the item detail", () => {
     };
     const s = new ReviewStore(host(doc), { lang: "zh" });
     await s.load();
-    expect(stateText(s, s.data.items[0])).toBe("已复制给你的 Agent");
+    expect(stateText(s, s.data.items[0])).toBe("已交给 Agent");
     expect(stateText(s, s.data.items[1])).toBe("已交给 Agent");
     expect(agentName(s, "opencode")).toBe("OpenCode");
     expect(agentName(s, "zcode")).toBe("Agent");
@@ -103,5 +103,32 @@ describe("the item detail", () => {
     expect(b.el.textContent).not.toMatch(/items\.py|Traceback|exit 1/);
     b.done();
     bad.dispose();
+  });
+});
+
+describe("the review page's focus view", () => {
+  it("shows a won't-do item as it is (with Reopen), never as an accepted Keep", async () => {
+    const doc: ReviewDoc = {
+      schema: 3,
+      items: [
+        { id: "IN-10", uid: "w1", kind: "issue", title: "Old idea", state: "wontfix" },
+        { id: "IN-11", uid: "n1", kind: "issue", title: "Fresh", state: "new" },
+      ],
+    };
+    const s = new ReviewStore(host(doc), { lang: "zh" });
+    await s.load();
+    const { Stage } = await import("../src/ui/Stage");
+    const { el, done } = await render(s, <Stage />);
+    const at = (uid: string) => act(() => s.go(s.data.items.findIndex((i) => i.uid === uid)));
+    await at("w1");
+    let keep = el.querySelector<HTMLButtonElement>("#keepBtn")!;
+    expect(keep.className).not.toMatch(/\bon\b/);
+    expect(keep.textContent).toContain("不做");
+    expect(keep.textContent).toContain("重新打开");
+    await at("n1");
+    keep = el.querySelector<HTMLButtonElement>("#keepBtn")!;
+    expect(keep.className).toContain("keep");
+    done();
+    s.dispose();
   });
 });

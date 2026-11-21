@@ -9,11 +9,14 @@ export const meta = {
   ],
 }
 
-// args: { base: '<sha or branch>', note: 'what changed / what is being redesigned elsewhere', out: 'promo/cases/<dir>' }
-const A = args || {}
-const SP = '/private/tmp/claude-501/-Users-john-workspace-bug-agent/8c47c519-267a-43f5-a42d-afd466477cd9/scratchpad'
-const REPO = '/Users/john/workspace/bug-agent'
-const OUT = `${REPO}/${A.out || 'promo/cases/dogfood'}`
+// args: { repo: '<worktree to build and test; default this repo>', note: 'what changed / what is being redesigned elsewhere', out: 'promo/cases/<dir>',
+//         domains: ['remote', …] (default all), sp: '<scratchpad with the harness>', harness: '<text replacing the harness lines when they are gone>' }
+// (a string args is taken as the note)
+const A = typeof args === 'string' ? { note: args } : (args || {})
+const SP = A.sp || '/private/tmp/claude-501/-Users-john-workspace-bug-agent/8c47c519-267a-43f5-a42d-afd466477cd9/scratchpad'
+const REPO = A.repo || '/Users/john/workspace/bug-agent'
+// evidence stays in this repo's untracked promo/, whichever worktree is tested
+const OUT = `/Users/john/workspace/bug-agent/${A.out || 'promo/cases/dogfood'}`
 
 const CONTEXT = `
 Product: **Blurt (口喷鸡)**. It is an open-source Agent Skill (skills/blurt, Python scripts) plus a native macOS menu-bar app (Swift; skills/blurt/recorder/macos).
@@ -30,8 +33,7 @@ Features:
 Docs: docs/guide.md (en and zh), docs/design/*.md (system.md = the design system).
 ${A.note ? 'Context for this run: ' + A.note : ''}`
 
-const SAFETY = `
-Testing tools: ${SP}/agents/audit-base/fix.sh. Read it first. It builds and runs an isolated scratch copy of the app:
+const TOOLS = A.harness ? `Repo under test: ${REPO} (build and run THIS tree, not another checkout).\n${A.harness}\n` : `Testing tools: ${SP}/agents/audit-base/fix.sh. Read it first. It builds and runs an isolated scratch copy of the app:
 - \`ROLE=<role> REPO=${REPO} fix.sh build|run|stop|log|ev|shell|wins|shot|ax|x|py\`
 - Build with BLURT_TEST_HOOKS=1 in the environment (\`BLURT_TEST_HOOKS=1 record.py build\`): only such a build honours BLURT_TEST_*. A normal
   build drops them at launch (main.swift), so the hooks below do nothing there.
@@ -40,12 +42,14 @@ Testing tools: ${SP}/agents/audit-base/fix.sh. Read it first. It builds and runs
 - Test hooks are in BlurtApp SelfTest.swift, System/SelfTests.swift and *TestHooks.swift.
 - More tools: ${SP}/agents/e2e-v07/tools (post, winlist, ax, mouse, mock agents).
 - For audio, use \`say -o x.aiff\` → wav with BLURT_TEST_MIC_WAV or the dictation test hooks. Use real models, symlinked read-only from ~/.blurt/models into your scratch home.
-STRICT safety (the user's real machine and real Blurt are in use):
+`
+const SAFETY = `
+${TOOLS}STRICT safety (the user's real machine and real Blurt are in use):
 - Never write ~/.blurt, ~/Applications/Blurt.app, ~/Blurt, ~/Desktop or ~/.claude.
 - ~/.codex: only what running the codex CLI writes by itself. Never answer its update prompt with anything but Esc, so you don't change the user's settings.
 - Never kill processes you didn't start.
 - No real mic.
-- Never post key or mouse events into other apps, and never read other apps' AX. Your own app's windows are fine, under \`python3 ${SP}/gui_lock.py -- <cmd>\`, after checking the window owner pid.
+- Never post key or mouse events into other apps, and never read other apps' AX. Your own app's windows are fine${A.harness ? '' : ', under \`python3 ' + SP + '/gui_lock.py -- <cmd>\`'}, after checking the window owner pid.
 - Never touch the general clipboard.
 - No localhost ports that may be the user's.
 - Screenshots only of your own app's windows.
@@ -79,8 +83,9 @@ const FIND = { type: 'object', properties: { findings: { type: 'array', items: {
 const DOMAINS = {
   dictation: 'Dictation end to end. Cover each of these:\n- First use, and the key in every mode, including double-tap Return in a real chat-like text field of your own test pad.\n- What the user sees at every moment while talking: live text, island states, the mascot. Compare with Typeless and Wispr Flow. Does the user always know what was heard before they double-tap to send?\n- Long takes, pauses, mixed zh/en, and styles (⇧, ⌥⇧L).\n- Words list, learning, the Dictation page and history.\n- Errors: no model, slow model, polish timeout.\n- Latency at every step.',
   capture: 'Snap, Voice Note and Record from start to card. Cover each of these:\n- The note bubble and the picker.\n- The island in every state, and the hanging cards with 1, 5 and 12 cards.\n- Copy, paste and drag-out: verify the payloads per target class via the test hooks.\n- Recently Dragged Out, undo paths, and cancel/Esc paths.\n- Multi-display assumptions, from code.\n- Light/dark and zh/en.',
-  work: 'Items, projects, inbox, AI sort, the main window, and the original screen-recording → items pipeline, using the fixtures in tests/fixtures. Also the review page and export.\nHand-off to coding agents:\n- Copy an item's instruction (and the full note) from your scratch app and give it to a REAL Codex and a REAL Claude Code run, once each, on a scratch git repo, with a trivial task ("create hello.txt containing hi, then mark the item fixed").\n- Check the item moves to In progress, then To verify, through the blurt MCP (and the items.py fallback in the note).\n- Check Take Back and Mark as Done on an item whose agent never reports.',
+  work: 'Items, projects, inbox, AI sort, the main window, and the original screen-recording → items pipeline, using the fixtures in tests/fixtures. Also the review page and export.\nHand-off to coding agents:\n- Copy an item\'s instruction (and the full note) from your scratch app and give it to a REAL Codex and a REAL Claude Code run, once each, on a scratch git repo, with a trivial task ("create hello.txt containing hi, then mark the item fixed").\n- Check the item moves to In progress, then To verify, through the blurt MCP (and the items.py fallback in the note).\n- Check Take Back and Mark as Done on an item whose agent never reports.',
   shell: 'First run, from install to onboarding, permissions, the menu-bar icon and menu, Settings (every pane), updates, storage, help and quit/relaunch.\n- What happens on a reboot or login, or when permissions are revoked mid-use.\n- Note: the onboarding mascot and the Settings layout are being redesigned in parallel. Judge their function and flows; do not report their old visual design.',
+  remote: 'Blurt Remote 1.1 on the Mac (the host side and the viewer side), end to end:\n- Settings → Remote Control: every row incl. Stay awake (laptop and desktop wording) and Show when this Mac sleeps; search finds each row.\n- The Remote Control page: paired devices, adding a phone (the QR) and a computer, the connection log (latest 3, Show All in its box), computer cards in every state (online, asleep, offline, relay down).\n- A new device asks: the pairing question with its six digits and the anti-scam line; Allow is never the default.\n- While a device controls the host: the "being controlled by …" bar centred under the notch, its Disconnect, the key HUD, and what the device sees when the host ends the session.\n- The viewer window (this Mac viewing another computer): its menus (Send Files…, privacy screen, Ctrl+Alt+Del for a Windows host), file drops and their progress/saved/failed notes, and the covers for reconnecting, ended, relay down, locked (Mac and Linux wording) and offline.\nHow to drive it safely:\n- The host is an isolated test instance with BLURT_TEST_REMOTE=1: input from a device is logged as remote_input and never posted. The device is crates/blurt-remote/examples/phone.rs (see its --device/--key/--at paired mode) or a second isolated instance as the viewer.\n- Any relay is tools/remote-relay/server.js run locally on a random high port. Never use the owner\'s own relay or read its address from their config, and keep calls to the public meet.blurt.work to a handful.\n- Never pair with, connect to, or show the founder\'s real Blurt or this Mac\'s real screen to anything but your own test instances.\n- Real Windows and Linux hosts are tested elsewhere; judge their surfaces as the Mac viewer shows them.',
 }
 
 phase('Catalogue')
@@ -88,7 +93,8 @@ const cat = await agent(CONTEXT + `
 Build the scenario catalogue (the inventory: include one "layoutcheck" scenario per window and state, in zh and en and at the
 window's minimum size; the runners run the layout lint on every screen they shoot): every user-facing feature × every way to start it (menu, hotkey, island, main window, palette, URL, CLI) × the states that matter (first time, empty, many, slow, failure, offline, permission missing, light/dark, zh/en).
 Derive it from the code (menus, hotkeys, Settings rows, test hooks, URL routes, CLI commands), docs/guide.md and SKILL.md, not from memory.
-Group the scenarios into these domains: ${Object.keys(DOMAINS).join(', ')}.
+Read the code of the repo under test: ${REPO}.
+Group the scenarios into these domains: ${(A.domains || Object.keys(DOMAINS)).join(', ')}.
 Write the full catalogue to ${OUT}/scenarios.md, and return it. Keep each scenario to one line, concrete and checkable, about 25–60 per domain.
 Read-only on the repo.`, { label: 'catalogue', phase: 'Catalogue', schema: SCEN })
 
@@ -98,7 +104,7 @@ const LENSES = [
   { key: 'robust', prompt: 'ROBUSTNESS lens. Check:\n- Races, slow or failed external tools (models, uv, codex/claude CLIs, git), restarts, and stale data.\n- Recovery: undo, retry, clear errors.\n- Data loss, and resource use over time.\n- For each P0/P1, give the root cause from the code.' },
 ]
 
-const keys = Object.keys(DOMAINS)
+const keys = A.domains || Object.keys(DOMAINS)
 const out = await pipeline(keys,
   k => {
     const sc = ((cat && cat.domains) || []).find(d => d.key === k)

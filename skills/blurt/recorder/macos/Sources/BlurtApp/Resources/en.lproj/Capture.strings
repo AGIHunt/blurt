@@ -15,6 +15,7 @@
 "capture.card.ax_move" = "Move to %@";
 "capture.card.ax_shot" = "snap";
 "capture.card.ax_shot_at" = "Snap · %@";
+"capture.card.ax_nth" = "%1$@, %2$ld of %3$ld";
 "capture.card.ax_voice" = "voice note";
 "capture.card.ax_voice_at" = "Voice note · %@";
 "capture.card.copied" = "Copied";
@@ -91,7 +92,7 @@
 "capture.keys.unreadable" = "Couldn’t read “%@” in the settings file. Using the default.";
 "capture.keys.while_recording" = "While recording";
 "capture.keys.why" = "%1$@: %2$@";
-"capture.keys.wont_work" = "Shortcut %@ won’t work";
+"capture.keys.wont_work" = "%@ is taken";
 "capture.menu.live_caption" = "Live Caption";
 "capture.menu.organize_all" = "Organize All Cards";
 "capture.menu.snap" = "Snap";
@@ -140,10 +141,13 @@
 "capture.note.ph_voice_busy" = "A voice note is recording. Type a note here";
 "capture.note.ph_mic_gone" = "Mic disconnected. Type a note";
 "capture.note.ph_no_mic" = "Mic unavailable. Type a note";
+"capture.note.ph_mic_off" = "Microphone is off for Blurt. Type a note";
 "capture.note.st_voice" = "Tab accept · type to replace";
+"capture.note.st_voice_short" = "Tab accept";
 "capture.note.st_pick" = "↑↓ choose · ↩ pick · Esc back";
 "capture.note.stage_hint" = "Drag to draw · ⇧ box · ⌥ ellipse · ⇧⌥ arrow · Esc discards";
 "capture.note.st_copy" = "↩ Save as Card · ⌘↩ Copy and Finish";
+"capture.note.st_copy_short" = "↩ Save · ⌘↩ Copy";
 "capture.ink.strip" = "Markup tools";
 "capture.ink.tool_pen" = "Pen";
 "capture.ink.tool_box" = "Box";
@@ -171,6 +175,7 @@
 "capture.note.st_rerecord" = "%@ · recording again";
 "capture.note.st_rerecord_tab" = "%@ · Tab to stop";
 "capture.picker.cancel" = "Cancel";
+"capture.picker.keys" = "Keys";
 "capture.picker.full_screen" = "Full screen";
 "capture.picker.last_area" = "Last area";
 "capture.picker.snap" = "Snap";
@@ -331,13 +336,15 @@
 "capture.voice.words_failed" = "Couldn’t transcribe";
 "capture.voice.needs_model" = "Voice notes need a speech model · recording kept";
 "capture.voice.structured" = "Structured";
-"capture.voice.structured_tip" = "Turns into a list when you finish, keeping only your corrections (or double-tap ⇧)";
+"capture.voice.structured_tip" = "Becomes a list when you finish, with your spoken corrections applied (or double-tap ⇧)";
 "capture.voice.structured_off_tip" = "Back to your own words (or double-tap ⇧)";
 "capture.voice.structured_ax_on" = "on";
 "capture.voice.structured_ax_off" = "off";
-"capture.voice.structured_on" = "Structured: a list when you finish, keeping only your corrections · double-tap ⇧ to go back";
+"capture.voice.structured_on" = "Structured: a list when you finish, with your corrections applied · double-tap ⇧ to go back";
 "capture.voice.structured_off" = "Back to your own words";
 "capture.voice.structure_failed" = "Couldn’t structure it. Kept as you said it.";
+"capture.voice.structuring" = "Structuring…";
+"capture.voice.structure_no_server" = "The polish model didn’t start · kept as you said it";
 "capture.voice.structure_needs_model" = "Structuring needs a cloud model or a local polish model · kept as said";
 "capture.live.ax" = "What you’ve said so far";
 "capture.live.more" = "… %ld more lines";
@@ -355,10 +362,10 @@
 "capture.sort.request" = "Process my Blurt recordings";
 "capture.sort.request_copied" = "Copied. Paste it into %@’s chat.";
 "capture.sort.set_up" = "Set Up…";
-"capture.keys.wont_work_many" = "%@ shortcuts won’t work";
+"capture.keys.wont_work_many" = "%@ shortcuts are taken";
 "capture.keys.menu_not_working" = "%1$@ doesn’t work: %2$@. Change it in Settings, under Shortcuts.";
-"capture.action.cards.detail" = "Opens the Cards page. Press again to go back to the app you were in";
-"capture.action.reformat.detail" = "Rewrites the last dictation in the next style";
+"capture.action.cards.detail" = "Opens the Cards page. Press again to go back to the app you were in.";
+"capture.action.reformat.detail" = "Rewrites the last dictation in the next style.";
 "capture.keys.section.capture" = "Capture";
 "capture.keys.section.open" = "Open and switch";
 "capture.keys.dictation_key" = "Start dictation";
@@ -388,7 +395,7 @@
 /* Copy text from screen (⌥C, ScreenTextCopy.swift) */
 "capture.menu.text" = "Copy Text from Screen";
 "capture.action.text" = "Copy text from screen";
-"capture.action.text.detail" = "Copy text from any area of the screen; typed in when the cursor is in a text field";
+"capture.action.text.detail" = "Copy text from any area of the screen; typed in when the cursor is in a text field.";
 "capture.text.copied" = "Copied";
 "capture.text.none" = "No text found in that area";
 "capture.text.failed" = "Couldn’t read the screen";
@@ -397,6 +404,7 @@
 "capture.menu.translate" = "Translate Text from Screen";
 "capture.text.typed" = "Pasted";
 "capture.text.translating" = "Translating…";
+"capture.text.still_translating" = "Still translating…";
 "capture.text.translate_failed" = "Couldn’t translate · original copied";
 "capture.text.translate_needs_model" = "Translating needs a cloud model or a local polish model";
 "capture.text.translate_key" = "The translation key isn’t valid · original copied";
@@ -404,6 +412,7 @@
 "capture.text.translate_offline" = "Can’t reach the translation service · original copied";
 "capture.text.try_again" = "Try Again";
 "capture.text.no_permission" = "Copying text from the screen needs Screen Recording";
+"capture.text.translate_no_permission" = "Translating text from the screen needs Screen Recording";
 "capture.text.stale" = "Can’t read the screen — allow Screen Recording again";
 "capture.text.copied_paste" = "Copied · ⌘V to paste";
 "capture.text.translation_pasted" = "Translation pasted";

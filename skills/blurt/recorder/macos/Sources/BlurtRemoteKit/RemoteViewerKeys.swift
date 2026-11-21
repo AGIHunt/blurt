@@ -43,6 +43,64 @@ public struct RemoteReleaseChord: Sendable {
     public mutating func key() { armed = false }
 }
 
+/// What the host hears of the viewer's modifiers. A press of the release chord's keys alone (⌃, ⌘, or both) waits here: it may be the
+/// release, which sends nothing, and a Windows host would otherwise see the Windows key and Ctrl+Windows go by each time the keys come
+/// back. It goes once something says it's a shortcut: a key, a click or a scroll (`other`), or a modifier outside the chord. Let go
+/// alone without becoming the chord, it goes as a tap (⌃ alone is the Windows key: Start). Letting go of keys the host has goes at once.
+/// Modifiers as pressed here (Fn apart); the window maps them for the host.
+public struct RemoteHeldModifiers: Sendable {
+    public enum Change: Equatable, Sendable {
+        /// nothing for the host now
+        case none
+        /// these, in order
+        case send([RemoteModifiers])
+        /// the release chord: the keys come back, and the host is sent nothing of it
+        case release
+    }
+
+    private var chord: RemoteReleaseChord
+    /// what the host was last sent
+    public private(set) var sent: RemoteModifiers = []
+    /// a press of the chord's keys not sent yet
+    public private(set) var waiting: RemoteModifiers?
+
+    public init(_ chord: RemoteReleaseChord = RemoteReleaseChord()) { self.chord = chord }
+
+    public mutating func modifiers(_ m: RemoteModifiers) -> Change {
+        let held = m.subtracting(.function)
+        if chord.modifiers(m) { waiting = nil; return .release }
+        if held.isEmpty {
+            // a lone ⌃ or ⌘ let go: a tap for the host
+            let tap = waiting.map { [$0] } ?? []
+            waiting = nil
+            return send(tap + [[]])
+        }
+        if chord.chord.isSuperset(of: held), !sent.isSuperset(of: held) {
+            waiting = held
+            return .none
+        }
+        waiting = nil
+        return send([held])
+    }
+
+    /// A key, a click or a scroll: what waits goes first. Returns what to send before it.
+    public mutating func other() -> [RemoteModifiers] {
+        chord.key()
+        guard let w = waiting else { return [] }
+        waiting = nil
+        sent = w
+        return [w]
+    }
+
+    private mutating func send(_ list: [RemoteModifiers]) -> Change {
+        var out: [RemoteModifiers] = []
+        for m in list where m != (out.last ?? sent) { out.append(m) }
+        guard let last = out.last else { return .none }
+        sent = last
+        return .send(out)
+    }
+}
+
 /// How a viewer pairs with a computer it found on the same network, with no code to scan: a device id with this prefix and a key everyone
 /// knows. The key buys nothing on its own: the host asks its owner for a yes, showing the six digits the viewer shows too, which only match
 /// when no one sits between them (RemoteCrypto.check). Only on the host's own network listener, never over a relay.
@@ -74,7 +132,9 @@ public struct RemoteScreenPlan: Equatable, Sendable {
             return (Int(Double(w) * k) / 2 * 2, Int(Double(h) * k) / 2 * 2)
         }
         var tier = q
-        if q == .auto { tier = lowData ? .saver : local ? .sharp : .balanced }
+        // Auto follows the path, not Low Data Mode: on a phone's hotspot (which macOS marks Low Data) Data Saver's picture was too soft to
+        // use, and UU Remote's wasn't (2026-11-20). The window says the hotspot costs data instead; Data Saver stays one click away.
+        if q == .auto { tier = local ? .sharp : .balanced }
         switch tier {
         case .saver:
             (width, height) = size(1280, 800)
@@ -101,3 +161,20 @@ public struct RemoteScreenPlan: Equatable, Sendable {
                             display: display, features: features, window: window)
     }
 }
+
+/// Terminals on the remote, by what its host reports as the app in front: a Mac's bundle id, Windows' and Linux's program name. A
+/// take typed into one loses its closing full stop; ⌘C / ⌘V there are copy and paste (Ctrl+Shift+C / V), never an interrupt.
+public enum RemoteTerminals {
+    public static let ids: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
+                                   "net.kovidgoyal.kitty", "io.alacritty", "com.github.wez.wezterm", "co.zeit.hyper", "org.tabby"]
+    public static let programs: Set<String> = ["windowsterminal", "cmd", "powershell", "pwsh", "conhost", "openconsole", "wezterm-gui", "alacritty",
+                                        "kitty", "gnome-terminal-server", "gnome-terminal", "kgx", "ptyxis", "konsole", "xterm", "tilix",
+                                        "terminator", "xfce4-terminal", "foot", "ghostty", "warp", "tabby", "hyper", "mintty"]
+    public static func isTerminal(_ front: String) -> Bool {
+        if ids.contains(front) { return true }
+        var p = (front.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent.lowercased()
+        if p.hasSuffix(".exe") { p.removeLast(4) }
+        return programs.contains(p)
+    }
+}
+

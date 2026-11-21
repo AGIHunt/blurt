@@ -410,6 +410,12 @@ final class PadViewController: UIViewController {
         Publishers.CombineLatest(l.$route, l.$displayAspect).receive(on: RunLoop.main).sink { [weak self] _, _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
+        l.$notice.compactMap { $0 }.receive(on: RunLoop.main).sink { [weak self] t in
+            Link.shared.notice = nil
+            let a = UIAlertController(title: Link.shared.current?.name, message: t, preferredStyle: .alert)
+            a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default))
+            self?.present(a, animated: true)
+        }.store(in: &bag)
         l.$screenError.receive(on: RunLoop.main).sink { [weak self] e in
             guard let e else { return }
             // the computer doesn't show its screen: don't ask again by itself next time
@@ -458,11 +464,13 @@ final class PadViewController: UIViewController {
         case .connected: .connected
         case .forgotten: .forgotten
         case .replaced: .replaced
+        case .ended: .ended
         }
         let cue = follower.see(phase, computer: l.current?.id, inUse: UIApplication.shared.applicationState != .background)
         var banner = StatusBanner.of(LinkStatus(phase: phase, dropped: follower.dropped, hasRelay: l.current?.relayAddress != nil,
                                                 otherComputers: l.macs.count > 1, canControl: l.canControl, screenError: l.screenError,
-                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil, away: l.away))
+                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil,
+                                                pairRetry: l.pairFailed?.canRetry == true, away: l.away))
         var ready = l.state == .connected
         #if DEBUG
         if Pretend.connected { banner = nil; ready = true }

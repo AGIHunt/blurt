@@ -57,6 +57,24 @@ final class InstallPlanTests: XCTestCase {
         XCTAssertEqual(InstallChange.tilde("/private/tmp/x", home: home + "/"), "/private/tmp/x")
     }
 
+    /// Codex: the reporting tools' approval is its own change in the preview, with the config line under Details.
+    func testCodexApprovalLine() throws {
+        let p = try decode("""
+        {"applied": false, "changes": [
+          {"action": "toml_set", "what": "mcp", "path": "/Users/me/.codex/config.toml", "key": ["mcp_servers", "blurt", "tools"],
+           "tools": ["mark_fixed", "get_item", "search_items"], "lines": ["[mcp_servers.blurt.tools.mark_fixed] approval_mode = \\"approve\\""]},
+          {"action": "exists", "what": "mcp", "path": "/Users/me/.codex/config.toml", "key": ["mcp_servers", "blurt", "tools"],
+           "lines": ["[mcp_servers.blurt.tools.mark_fixed] approval_mode = \\"approve\\""]}
+        ]}
+        """)
+        XCTAssertTrue(p.changes[0].isApproval && p.changes[0].changesSomething)
+        XCTAssertEqual(p.changes[0].group(otherIsBlurt: false), .change)
+        XCTAssertEqual(p.changes[0].technicalLine(home: home),
+                       "~/.codex/config.toml: mcp_servers.blurt.tools.{mark_fixed,get_item,search_items}.approval_mode = \"approve\"")
+        XCTAssertTrue(p.changes[1].isApproval && !p.changes[1].changesSomething)
+        XCTAssertEqual(p.changes[1].technicalLine(home: home), "~/.codex/config.toml: mcp_servers.blurt.tools.mark_fixed.approval_mode = \"approve\"")
+    }
+
     func testConflictIsBlurtReadsTheOtherSkill() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("install-\(UUID().uuidString)")
         let blurt = dir.appendingPathComponent("blurt"), other = dir.appendingPathComponent("other")

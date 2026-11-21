@@ -15,6 +15,7 @@
 "capture.card.ax_move" = "移到 %@";
 "capture.card.ax_shot" = "截图";
 "capture.card.ax_shot_at" = "截图 · %@";
+"capture.card.ax_nth" = "%1$@，第 %2$ld 张，共 %3$ld 张";
 "capture.card.ax_voice" = "语音备注";
 "capture.card.ax_voice_at" = "语音备注 · %@";
 "capture.card.copied" = "已复制";
@@ -91,7 +92,7 @@
 "capture.keys.unreadable" = "无法读取设置文件中的 %@，已使用默认值";
 "capture.keys.while_recording" = "录屏时";
 "capture.keys.why" = "%1$@：%2$@";
-"capture.keys.wont_work" = "快捷键 %@ 无法使用";
+"capture.keys.wont_work" = "%@ 已被占用";
 "capture.menu.live_caption" = "实时字幕";
 "capture.menu.organize_all" = "整理全部卡片";
 "capture.menu.snap" = "截图";
@@ -140,10 +141,13 @@
 "capture.note.ph_voice_busy" = "正在录制语音备注，可在此输入文字";
 "capture.note.ph_mic_gone" = "麦克风已断开，可输入文字";
 "capture.note.ph_no_mic" = "麦克风不可用，可输入文字";
+"capture.note.ph_mic_off" = "口喷鸡没有麦克风权限，可输入文字";
 "capture.note.st_voice" = "Tab 采用识别结果 · 直接打字可替换";
+"capture.note.st_voice_short" = "Tab 采用";
 "capture.note.st_pick" = "↑↓ 选择 · ↩ 确定 · Esc 返回";
 "capture.note.stage_hint" = "拖动绘制 · ⇧ 方框 · ⌥ 椭圆 · ⇧⌥ 箭头 · Esc 丢弃";
 "capture.note.st_copy" = "↩ 存为卡片 · ⌘↩ 复制并完成";
+"capture.note.st_copy_short" = "↩ 存卡片 · ⌘↩ 复制";
 "capture.ink.strip" = "标注工具";
 "capture.ink.tool_pen" = "画笔";
 "capture.ink.tool_box" = "方框";
@@ -171,6 +175,7 @@
 "capture.note.st_rerecord" = "%@ · 正在重录";
 "capture.note.st_rerecord_tab" = "%@ · Tab 停止";
 "capture.picker.cancel" = "取消";
+"capture.picker.keys" = "按键";
 "capture.picker.full_screen" = "全屏";
 "capture.picker.last_area" = "上次区域";
 "capture.picker.snap" = "截图";
@@ -338,6 +343,8 @@
 "capture.voice.structured_on" = "结构化：结束后整理成清单，仅保留更正后的说法 · 再双击 ⇧ 切回";
 "capture.voice.structured_off" = "已切回原话";
 "capture.voice.structure_failed" = "无法整理为结构化内容，已保留原话";
+"capture.voice.structuring" = "正在整理…";
+"capture.voice.structure_no_server" = "润色模型没有启动，已保留原话";
 "capture.voice.structure_needs_model" = "整理需要云端模型或本机润色模型，已保留原话";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";
@@ -355,10 +362,10 @@
 "capture.sort.request" = "处理我录的视频";
 "capture.sort.request_copied" = "已复制，请粘贴到 %@ 的对话中";
 "capture.sort.set_up" = "设置…";
-"capture.keys.wont_work_many" = "%@ 个快捷键用不了";
+"capture.keys.wont_work_many" = "%@ 个快捷键已被占用";
 "capture.keys.menu_not_working" = "%1$@ 无法使用：%2$@。可在「设置 > 快捷键」中更改。";
-"capture.action.cards.detail" = "打开卡片页，再按一次回到之前的 App";
-"capture.action.reformat.detail" = "将上一条听写改为下一种风格";
+"capture.action.cards.detail" = "打开卡片页，再按一次回到之前的 App。";
+"capture.action.reformat.detail" = "将上一条听写改为下一种风格。";
 "capture.keys.section.capture" = "录屏、截图、取字和语音备注";
 "capture.keys.section.open" = "打开与切换";
 "capture.keys.dictation_key" = "开始听写";
@@ -388,7 +395,7 @@
 /* 截图取字（⌥C，ScreenTextCopy.swift） */
 "capture.menu.text" = "截图取字";
 "capture.action.text" = "截图取字";
-"capture.action.text.detail" = "框选屏幕上的文字并复制；光标在输入框中时直接输入";
+"capture.action.text.detail" = "框选屏幕上的文字并复制；光标在输入框中时直接输入。";
 "capture.text.copied" = "已复制";
 "capture.text.none" = "该区域未识别到文字";
 "capture.text.failed" = "无法读取屏幕";
@@ -397,6 +404,7 @@
 "capture.menu.translate" = "截图翻译";
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
+"capture.text.still_translating" = "仍在翻译…";
 "capture.text.translate_failed" = "翻译失败，已复制原文";
 "capture.text.translate_needs_model" = "翻译需要云端模型或本机润色模型";
 "capture.text.translate_key" = "翻译服务的 Key 无效，已复制原文";
@@ -404,6 +412,7 @@
 "capture.text.translate_offline" = "无法连接翻译服务，已复制原文";
 "capture.text.try_again" = "再试一次";
 "capture.text.no_permission" = "截图取字需要「屏幕录制」权限";
+"capture.text.translate_no_permission" = "截图翻译需要「屏幕录制」权限";
 "capture.text.stale" = "无法读取屏幕，请重新授权「屏幕录制」";
 "capture.text.copied_paste" = "已复制 · ⌘V 粘贴";
 "capture.text.translation_pasted" = "已粘贴译文";

@@ -1,15 +1,24 @@
 // The setup assistant (docs/design/desktop-app.md §2.2, docs/design/capabilities.md) — four steps at most, every one
 // skippable (BlurtCore OnboardingFlow):
-//   1. what do you want to use — the five capabilities (BlurtCore Capabilities: Dictation, Cards, Screen Text,
-//      Recording & Items, Phone), each a row with its name, what it does in one line, its keys as keycaps and its
-//      switch. All on: a new user just presses Next; one who wants less turns the rest off here (Capability.set — the
-//      same switches as Home's and Settings → General's, so the keys are given back at once). A link to Settings →
-//      Shortcuts. Steps 2–4 are dictation's: with Dictation switched off this step is the whole assistant — its
-//      primary is Done and "Open Blurt at login" is its last row. On the first run nothing of dictation's is read or
-//      fetched until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model
-//      list — and with the list the recogniser that starts downloading by itself, ModelSetup.startAtInstall);
-//   2. dictation — the key first (a pop-up, ChoicePopup as the language row; it decides which lines the list below has, so changing it never moves the
-//      control under the pointer), with Fn macOS's own Fn-key setting as a line of the key (not a permission), then
+//   1. what do you want to use — the five capabilities (BlurtCore Capabilities: Dictation, Cards, Text & Translation,
+//      Recording & Items, Remote Control) as one rounded list, System Settings' inset group (visual gate 2026-11-21):
+//      a row is its glyph, its name with its keys after it as quiet labelled hints ("⌥ A Snap  ⌥ V Voice note": which
+//      key does what, never four caps that read as one chord), one line that never wraps, and exactly one control on
+//      the right, its switch. Every row one height; the list in the middle of the space under the subtitle; a 12 pt
+//      footnote under it links to Settings → Shortcuts. All on: a new user just presses Next; one who wants less turns
+//      the rest off here (Capability.set — the same switches as Home's and Settings → General's, so the keys are given
+//      back at once). The phone's pairing is the phone row's tooltip (it happens on the Remote Control page). Steps
+//      2–4 are dictation's: with Dictation switched off this step is the whole assistant — its primary is Done and
+//      "Open Blurt at login" is the footer's checkbox where the step dots were (a row added under the list would move
+//      the list under the pointer as Dictation's switch flips). On the first run nothing of dictation's is read
+//      until this step is left with Dictation on (`startDictationSetup`: macOS's language files, the model list), and
+//      no model downloads unasked (the founder, 2026-11-21): the models step offers the recogniser with its size and
+//      the free space;
+//   2. dictation — two groups as Settings draws them (OnbGroup: a 12 pt heading, the rows in a box), Keyboard and
+//      Permissions; the lead says what the step is for, the rows carry the status. The key first (a pop-up as wide as
+//      its longest choice, ChoicePopup as the language row; it decides which lines the list below has, so changing it
+//      never moves the control under the pointer), with Fn macOS's own globe-key setting as a line of the key's row
+//      (a check, or what's wrong and Turn Off… — not a permission, not a row of its own), then
 //      the permissions it needs: the microphone and Accessibility, live; Input Monitoring only when it is needed
 //      (still missing with Accessibility on or after a walk, or a key other than Fn). "Set Up Permissions…" is the
 //      footer's primary while anything is missing: the permission guide's dictation walk (PermissionGuide.swift) with
@@ -17,13 +26,18 @@
 //      itself when the walk ends with everything on. Screen Recording is not asked here: the first snap or recording
 //      asks for it (the toast's Allow… / the alert start the guide for it);
 //   3. models — with macOS 26's own recogniser in the user's language (ModelSetup.startNow,
-//      docs/design/first-minute-speech.md): "Dictation works now" (nothing to download), the one cloud key (Add… opens
-//      the cloud polish sheet: polish, voice notes, Copy Text from Screen; a Model Studio key is cloud speech's too),
-//      and the models below as one optional "Local models" row with its own Download — Next stays the primary.
+//      docs/design/first-minute-speech.md): "Dictation works now. Two optional extras…" in Settings' grammar
+//      (system.md §3.4, visual gate 2026-11-21): one box with macOS Speech Recognition — ✓ Ready before its line, the
+//      language it hears as its one control —, then "Optional" over one box of two rows: this Mac's speech model
+//      (Download with its size; the free space only when it is short, always in the tooltip with the model's name) and
+//      cloud polish (Add Key… opens the cloud polish sheet: polish, voice notes, Copy Text from Screen — a Model Studio
+//      key is cloud speech's too; Set Up with Agent… is on its chevron), and the footnote under that box. Next stays
+//      the primary. Only the recogniser comes down here; the polish model is offered later (Home's Dictation row, with
+//      its size).
 //      Without it (macOS 13–15, a language it doesn't speak): two groups — Cloud (the Model Studio speech key, the AI
 //      service key; the line under the title says both ways, never "nothing is uploaded" over them) and On this Mac:
-//      the three models for this Mac (ModelSetup.swift: dictation, polish, voice notes) as plain rows (what
-//      each does; the model's name is the tooltip), the total to download, then one progress bar (and Stop); it
+//      this Mac's recogniser (ModelSetup.swift) as a plain row (what it does; the model's name is the tooltip), the
+//      size to download and the free space, then one progress bar (and Stop); it
 //      carries on in the background. "Download Models" is the footer's primary; offline it waits, and a line says the
 //      Mac is offline before anything was tried (NetworkWatch). uv is found, or — one sentence, Install uv as the
 //      primary — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
@@ -33,15 +47,18 @@
 //      Mac comes back online. Its sentence blames the network only when macOS says the Mac is offline
 //      (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows Checking… for at least a second with
 //      the footer kept, and a retry still blocked says when it tried;
-//   4. try it — a practice card: the key as a keycap and what to do with it, the box the words land in, a check once
-//      the first dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the
-//      double tap came (Dictation.sendAttempts; no Return goes into Blurt's own window). While dictation can't be
-//      tried, the card is a notice that says why (permissions, the recogniser still coming down with its bar, no
-//      model, the tools) and the footer's primary is the fix — never a button that does nothing; with the recogniser
-//      in and polish still downloading it says dictation works already. While Cards is on, one row under the card
-//      teaches the card: ⌥A, it hangs under the notch, drag it into a chat (the gesture new users missed). "Open
-//      Blurt at login" is the step's last row
-//      (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies it and closes.
+//   4. try it — a practice card that hugs what it holds: the box the words land in, then a short checklist under a
+//      hairline — what to do (the key as a keycap by a hollow ring), swapped in place for "It works" with the ok check
+//      once the first dictation lands, then (double-tap send on) the second item: the double tap as two keycaps and
+//      what it does in a chat, checked once the double tap came (Dictation.sendAttempts; no Return goes into Blurt's
+//      own window). A soft accent ring only while the empty box waits; after, the neutral edge, so Done is the one
+//      colour left. While dictation can't be tried, the card is a notice that says why (permissions, the recogniser
+//      still coming down with its bar, no model, the tools) and the footer's primary is the fix — never a button that
+//      does nothing; with the recogniser in and polish still downloading it says dictation works already. While Cards
+//      is on, one quiet line under the card teaches the card: ⌥A as keycaps, snap, drag it into a chat (the gesture
+//      new users missed) — a tip, not a row. "Open Blurt at login" is the step's one row, a plain setting right under
+//      the practice (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies it and
+//      closes.
 // The headline is the welcome on the first step, then the step's own name and one line. Wherever the dictation key is
 // explained, so is the double tap (it presses Return). The models' downloads are the app's one download manager's
 // (App/ModelDownloads.swift): closing the assistant mid-download says they carry on, and where to see them. Sizes:
@@ -55,9 +72,9 @@
 // a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
 // then the steps: the title in gradient text and one line, the step's rows (OnboardingKit.swift: one row language,
 // rows over hairlines as in Settings, a neutral glyph column, one trailing element on one right edge), and the footer:
-// the step dots, Skip Setup (neutral; the one skip — none per step), Back, and one brand primary: the step's own
-// action while it is still to do (a quiet "Not Now" beside Skip Setup goes on without it — one forward action per
-// footer), else Next / Done. Every row's glyph is the line family (BlurtIcon: the text cursor is dictation, the
+// the step dots, one quiet way past, Back, and one brand primary: the step's own action while it is still to do, with
+// "Skip This Step" beside it (going on without it; the window's close button ends the whole assistant), else Next /
+// Done with "Skip Setup" (dogfood 2026-11-21: Skip Setup and Not Now side by side couldn't be told apart). Every row's glyph is the line family (BlurtIcon: the text cursor is dictation, the
 // keyboard only Input Monitoring; globe, mic, accessibility, screen, cloud, power), one weight on every step. Done closes
 // (Peep already peeps and hops on the last step; no bloom). The window is sized before it is centred (it opened
 // against the menu bar, its left edge on the screen's middle, when centred at zero size).
@@ -198,8 +215,8 @@ final class OnboardingModel: ObservableObject {
     /// Dictation is on and — on the first run — the step that asks about it is behind (BlurtCore OnboardingFlow).
     var wantsDictationSetup: Bool { OnboardingFlow.setsUpDictation(off: Capability.off, firstRun: firstRun, step: step) }
 
-    /// Dictation's own setup: macOS's language files, the model list (ModelSetup.load — which also starts this Mac's
-    /// recogniser downloading in the background, once: startAtInstall). Not before the first run's first step is
+    /// Dictation's own setup: macOS's language files, the model list (ModelSetup.load; nothing downloads until the
+    /// user asks on the models step). Not before the first run's first step is
     /// answered, and never with Dictation off. `leaving`: the assistant is closing from that first step (Skip Setup,
     /// the close button) with Dictation still on — as if it had been passed.
     func startDictationSetup(leaving: Bool = false) {
@@ -297,8 +314,9 @@ final class OnboardingModel: ObservableObject {
             retrying = false
             if speechStep == .blocked { retriedAt = Date() }
             emit(["event": "onboarding_retry_done", "via": via, "step": "\(speechStep)", "cause": "\(blockedCause)"])
+            // carried through: a download the user asked for that broke off — never one nobody asked for
             let ms = ModelSetup.shared
-            if warm == "done", ms.listRead, !ms.pending.isEmpty, !ms.downloading { ms.start() }
+            if warm == "done", ms.listRead, ms.failed, !ms.pending.isEmpty, !ms.downloading { ms.start() }
         }
     }
 
@@ -378,6 +396,8 @@ struct OnboardingView: View {
     /// the cloud speech key (Model Studio) for a Mac without macOS's recogniser
     @State private var speechSheet = false
     @State private var speechKey = CloudStore.connected.contains { $0.preset == "dashscope" } || CloudSpeech.Key.has(CloudSpeech.dashScopeModel)
+    /// Set Up with Agent…'s sheet, from the cloud polish row's chevron
+    @State private var agentSheet = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -434,8 +454,8 @@ struct OnboardingView: View {
                 return StepAction(title: T("onboarding.install_uv"), enabled: !m.installingUV, help: OnboardingModel.uvInstallCommand) { m.installUV() }
             case .offer:
                 // offline, the download can't start: the line above says so and the button waits for the network
-                return StepAction(title: T(models.resumable ? "onboarding.models.resume" : "onboarding.models.download"),
-                                  enabled: m.online != false) { models.start() }
+                // the size on the button: what Download fetches, or what is left of it
+                return StepAction(title: downloadTitle, enabled: m.online != false) { models.start() }
             default:
                 return StepAction(title: T("onboarding.models.retry"), enabled: !m.retrying) { m.retrySetup(via: "models") }
             }
@@ -491,7 +511,8 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, OnbMetrics.inset).padding(.bottom, 12)
             }
-            Divider()
+            // the footer's rule on the content column, as the rows' hairlines (not from the hero's edge to the window's)
+            OnbHairline().padding(.horizontal, OnbMetrics.inset)
             footer
         }
     }
@@ -499,32 +520,45 @@ struct OnboardingView: View {
     /// Where you are (the dots), the one way out of the whole assistant, Back, and the one primary.
     var footer: some View {
         HStack(spacing: 8) {
-            // (one step — Dictation off — has nothing to count)
-            if m.steps > 1 { StepDots(step: m.step, count: m.steps) }
-            Spacer(minLength: 12)
-            // on the last step Done says the same: one way out
-            if !last {
-                Button(T("onboarding.skip_setup")) { m.finish() }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
-                    .padding(.trailing, 8)
+            // (one step — Dictation off — has nothing to count: "Open Blurt at login" takes the place, as a Mac
+            // assistant's checkbox, so the first step's list never moves when Dictation is switched)
+            if m.steps > 1 {
+                StepDots(step: m.step, count: m.steps).padding(.trailing, 10)
+            } else {
+                Toggle(T("settings.general.login"), isOn: $m.openAtLogin)
+                    .toggleStyle(.checkbox).font(.system(size: 12))
+                    .help(T("onboarding.login.detail_keys"))
             }
             let nextTitle = last ? T("onboarding.done") : T("onboarding.next")
+            // the one quiet way past sits on the left with the dots — the right keeps Back and the one primary
+            // (macOS Setup Assistant)
+            quietSkip
+            Spacer(minLength: 12)
+            if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
             if let a = action {
-                // one forward action: the step's own; going on without it is a quiet "Not Now" beside Skip Setup
-                Button(T("onboarding.not_now")) { advance() }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
-                    .padding(.trailing, 8)
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
+                // one forward action: the step's own
                 Button(a.title) { a.run() }
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                     .disabled(!a.enabled).help(a.help ?? "")
             } else {
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
                 Button(nextTitle) { advance() }
                     .buttonStyle(.brand).keyboardShortcut(.defaultAction)
             }
         }
         .padding(.horizontal, OnbMetrics.inset).padding(.top, 14).padding(.bottom, 18)
+    }
+
+    /// The footer's one quiet way past, a plain 12 pt text button: while the step's own action is the primary, going on
+    /// without it ("Skip This Step"; the whole assistant ends with the window's close button), else "Skip Setup" —
+    /// never two grey skips side by side. None on the last step: Done says the same.
+    @ViewBuilder var quietSkip: some View {
+        if pending {
+            Button(T("onboarding.skip_step")) { advance() }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+        } else if !last {
+            Button(T("onboarding.skip_setup")) { m.finish() }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: the download under every step
@@ -554,7 +588,9 @@ struct OnboardingView: View {
                 }
                 .font(.system(size: 12))
                 if ModelDownloadNotice.saysPurpose(systemReady: models.systemReady, dictationReady: DictationModels.shared.dictationReady) {
-                    Text(T("onboarding.background_download.why")).font(.system(size: 12)).foregroundStyle(.tertiary)
+                    // "You can dictate now" only once dictation is allowed (the microphone, Accessibility…)
+                    Text(T(guide.missing(.dictation).isEmpty ? "onboarding.background_download.why" : "onboarding.background_download.why_later"))
+                        .font(.system(size: 12)).foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -566,12 +602,13 @@ struct OnboardingView: View {
     var heading: (title: String, detail: String) {
         switch m.step {
         case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle"))
-        case 1:
-            return (T("onboarding.dictation.title"),
-                    T(guide.missing(.dictation).isEmpty ? "onboarding.dictation.detail_done" : "onboarding.dictation.detail"))
+        // what the step is for, in both states: the rows carry the status (and Next says it is done)
+        case 1: return (T("onboarding.dictation.title"), T("onboarding.dictation.detail"))
         // "on this Mac, nothing uploaded" only while that is true (not with the cloud key dictating on macOS 13–15)
         // without macOS's recogniser the step leads with the cloud keys: the line says both ways, not "nothing is uploaded"
-        case 2: return (T("onboarding.models"), T(models.startNow || (speechKey && models.dictationReady) ? "onboarding.start.detail"
+        // start now: "Dictation works now. Two optional extras…", the step's two boxes say which two
+        case 2: return (T("onboarding.models"), T(models.startNow ? "onboarding.start.lead"
+                                                  : speechKey && models.dictationReady ? "onboarding.start.detail"
                                                   : "onboarding.models.detail_cloud"))
         default: return (T("onboarding.try"), T("onboarding.try.subtitle"))
         }
@@ -590,7 +627,7 @@ struct OnboardingView: View {
     /// The dictation key as keycaps.
     static func dictationCaps(_ k: DictationTrigger.Key) -> [String] {
         switch k {
-        case .fn: return ["fn"]
+        case .fn: return [Dictation.keyName(.fn)]          // "Fn", as on Home, Shortcuts and the menus
         case .rightOption: return [T("onboarding.cap.right_option")]
         case .eitherOption: return ["⌥"]
         }
@@ -598,74 +635,109 @@ struct OnboardingView: View {
 
     var welcome: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(Capability.allCases.enumerated()), id: \.element) { i, c in
-                capabilityRow(c, first: i == 0)
+            // the list (and its footnote) in the middle of the space between the subtitle and the footer: never pressed
+            // up under the subtitle with an empty band over the footer
+            Spacer(minLength: 6)
+            OnbGroup(title: nil) {
+                ForEach(Array(Capability.allCases.enumerated()), id: \.element) { i, c in
+                    capabilityRow(c, first: i == 0)
+                }
             }
-            Button(T("onboarding.use.change")) { AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue) }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk)
-                .onHover { NSCursor.pointingHand.set(); if !$0 { NSCursor.arrow.set() } }
-                .padding(.top, 10)
-            Spacer(minLength: 14)
-            // Dictation off: this step is the whole assistant, so the login row is here
-            if last { loginRow }
+            // the keys are changed in Settings: a footnote of the list (12 pt secondary, the link in brand ink)
+            Text(keysNote).font(.system(size: 12)).foregroundStyle(.secondary).tint(Color.brandInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, OnbMetrics.boxInset).padding(.top, 8)
+                .environment(\.openURL, OpenURLAction { _ in
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                    return .handled
+                })
+            // (Dictation off, this step is the whole assistant: "Open Blurt at login" is the footer's checkbox, so turning
+            // Dictation off or on never moves the list under the pointer)
+            Spacer(minLength: 6)
         }
+    }
+
+    /// "You can change these keys in Settings → Shortcuts.", the pane's name a link to it.
+    var keysNote: AttributedString {
+        let mark = "\u{FFFC}"
+        let parts = T("onboarding.use.keys_note", mark).components(separatedBy: mark)
+        var a = AttributedString(parts.first ?? "")
+        var link = AttributedString(T("onboarding.use.keys_note.link"))
+        link.link = URL(string: "blurt-onboarding:shortcuts")
+        link.foregroundColor = Color.brandInk
+        a += link
+        if parts.count > 1 { a += AttributedString(parts.dropFirst().joined(separator: mark)) }
+        return a
     }
 
     /// The capability's glyph (the line family, as the rest of the assistant).
     static func capabilityIcon(_ c: Capability) -> BlurtIcon {
         switch c {
-        case .dictation: return .textCursor
+        // the metaphors Home, General and the sidebars use (character.cursor.ibeam, text.viewfinder), in our line family
+        case .dictation: return .characterCursor
         case .cards: return .cards
-        case .screenText: return .copy
+        case .screenText: return .textViewfinder
         case .recording: return .record
         case .phone: return .phone
         }
     }
 
-    /// Its keys, one group of caps per shortcut (a shortcut that isn't set has none): fn · ⌥A ⌥V · ⌥C ⌥T · ⌥R · —.
-    func capabilityCaps(_ c: Capability) -> [[String]] {
+    /// Its keys, each with what it does (a shortcut that isn't set has none): Fn Tap or hold to talk · ⌥ A Snap,
+    /// ⌥ V Voice note · ⌥ C Copy text, ⌥ T Translate · ⌥ R Record · —.
+    func capabilityKeys(_ c: Capability) -> [(caps: [String], label: String)] {
+        func key(_ a: HotAction, _ label: String) -> (caps: [String], label: String)? {
+            let caps = KeyCaps.split(hk(a))
+            return caps.isEmpty ? nil : (caps, T(label))
+        }
         switch c {
-        case .dictation: return [OnboardingView.dictationCaps(m.dictationKey)]
-        case .cards: return [hk(.snap), hk(.voice)].map(KeyCaps.split).filter { !$0.isEmpty }
-        case .screenText: return [hk(.text), hk(.translateText)].map(KeyCaps.split).filter { !$0.isEmpty }
-        case .recording: return [hk(.toggleRecord)].map(KeyCaps.split).filter { !$0.isEmpty }
+        case .dictation:
+            let gesture: String
+            switch m.dictationMode {
+            case .hold: gesture = "onboarding.use.key.hold"
+            case .tap: gesture = "onboarding.use.key.tap"
+            case .auto: gesture = "onboarding.use.key.auto"
+            }
+            return [(OnboardingView.dictationCaps(m.dictationKey), T(gesture))]
+        case .cards: return [key(.snap, "onboarding.use.key.snap"), key(.voice, "onboarding.use.key.voice")].compactMap { $0 }
+        case .screenText: return [key(.text, "onboarding.use.key.text"), key(.translateText, "onboarding.use.key.translate")].compactMap { $0 }
+        case .recording: return [key(.toggleRecord, "onboarding.use.key.record")].compactMap { $0 }
         case .phone: return []
         }
     }
 
-    /// What it does, in one line (Home's words); the phone's also says where it is paired.
+    /// What it does, in one line that fits the row: Home's line where it fits and names no key, else the assistant's
+    /// own (the keys are on the title's line, so the line never names them).
     func capabilityWhat(_ c: Capability) -> String {
         switch c {
-        // (the key's short name as it is: in Chinese it brings its own leading space, "按 Fn", "按右 Option")
-        case .dictation: return T("feature.dictation.what", Dictation.keyShort(m.dictationKey))
-        case .phone: return T("onboarding.use.phone.detail", T("feature.phone"))
-        default: return T("feature.\(c.rawValue).what")
+        case .screenText, .phone: return T("feature.\(c.rawValue).what")
+        default: return T("onboarding.use.\(c.rawValue).line")
         }
     }
 
-    /// One capability: its glyph, name and line, its keys, its switch. Off: the glyph, the name and the keys step back
-    /// (the keys are given back to the other apps), the line stays readable.
+    /// One capability: its glyph, its name with its keys after it, one line, its switch. Off: the glyph, the name and
+    /// the keys step back (the keys are given back to the other apps), the line stays readable.
     func capabilityRow(_ c: Capability, first: Bool) -> some View {
         let on = !m.off.contains(c), name = T("feature.\(c.rawValue)")
-        return OnbRow(image: GlyphTile.brand(OnboardingView.capabilityIcon(c)), title: name, detail: capabilityWhat(c), first: first, muted: !on) {
-            HStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    ForEach(Array(capabilityCaps(c).enumerated()), id: \.offset) { _, caps in KeyCaps(caps) }
-                }
-                .opacity(on ? 1 : 0.35)
-                Toggle(name, isOn: Binding(get: { !m.off.contains(c) }, set: { m.setCapability(c, on: $0) })).labelsHidden()
-                    .toggleStyle(BrandSwitchStyle(label: name))
-                    .accessibilityHint(capabilityWhat(c))
+        // the phone's pairing is said where it happens (the Remote Control page): here it is the tooltip
+        let help = c == .phone ? T("onboarding.use.phone.help", T("feature.phone")) : nil
+        return OnbListRow(image: OnboardingView.capabilityIcon(c).image(size: 16), title: name, detail: capabilityWhat(c),
+                          first: first, help: help, muted: !on) {
+            // two shortcuts well apart, so ⌥ A Snap and ⌥ V Voice note never read as one chord
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                ForEach(Array(capabilityKeys(c).enumerated()), id: \.offset) { _, k in OnbKeyHint(caps: k.caps, label: k.label) }
             }
+        } trailing: {
+            Toggle(name, isOn: Binding(get: { !m.off.contains(c) }, set: { m.setCapability(c, on: $0) })).labelsHidden()
+                .toggleStyle(BrandSwitchStyle(label: name))
+                .accessibilityHint(capabilityWhat(c))
         }
-        // (58: five of them, the link and — with Dictation off — the login row fit the step with air between)
-        .frame(minHeight: 58)
     }
 
-    /// "Open Blurt at login": the last row of the last step (Try it — or the first step, with Dictation off).
+    /// "Open Blurt at login": the last row of the last step, Try it (with Dictation off the first step is the whole
+    /// assistant, and it is the footer's checkbox there): a setting as in Settings, no glyph tile, no hairline over it.
     var loginRow: some View {
-        OnbRow(image: GlyphTile.brand(.power), title: T("settings.general.login"),
-               detail: T(m.dictationOn ? "onboarding.login.detail" : "onboarding.login.detail_keys")) {
+        OnbRow(image: nil, title: T("settings.general.login"),
+               detail: T(m.dictationOn ? "onboarding.login.detail" : "onboarding.login.detail_keys"), first: true) {
             Toggle(T("settings.general.login"), isOn: $m.openAtLogin).labelsHidden()
                 .toggleStyle(BrandSwitchStyle(label: T("settings.general.login")))
         }
@@ -697,40 +769,75 @@ struct OnboardingView: View {
         return (m.dictationMode == .hold ? T("onboarding.key.gesture_hold") : T("onboarding.key.gesture")) + send
     }
 
+    /// The pop-up's width: its longest choice and the chevron, no wider (the step's one bordered control stays small).
+    static var keyPopupWidth: CGFloat {
+        let f = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let w = DictationTrigger.Key.allCases.map { (keyLabel($0) as NSString).size(withAttributes: [.font: f]).width }.max() ?? 80
+        return ceil(w) + 2 * DownChevronPopUpCell.inset + 18
+    }
+
+    /// Two groups of one kind (Settings' grid: a heading outside, the rows in a box): the key, then what macOS has to
+    /// allow. The key first: it decides which rows the permissions have, so changing it never moves this row.
     var permissions: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // the key first: it decides which lines the permissions below have, so changing it never moves this row
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.dictation_key"), detail: keyGesture, first: true) {
-                // the same pop-up as the language row and Settings
-                ChoicePopup(label: T("onboarding.dictation_key"),
-                            choices: DictationTrigger.Key.allCases.map { ($0, OnboardingView.keyLabel($0)) },
-                            selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) }), width: 120)
-            }
-            if m.dictationKey == .fn {
-                // macOS's own 🌐 key setting: not a permission, a line of the key (the walk sets it with the rest)
-                OnbRow(image: GlyphTile.brand(.globe), title: T("onboarding.fn.title"), detail: T("onboarding.fn.detail")) {
-                    if guide.running && guide.current == .fnKey {
-                        waiting
-                    } else if guide.satisfied(.fnKey) {
-                        StateLabel(tone: .good, text: T("onboarding.fn.set"))
-                    } else {
-                        StateLabel(tone: .warn, text: T("settings.kit.not_set"), color: .brandAttnInk)
-                    }
-                }
-                if !SystemAccess.fnClashApps.isEmpty {
-                    Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
-                        .font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
-                        .padding(.leading, OnbMetrics.glyph + OnbMetrics.rowGap).padding(.bottom, 6)
+            OnbGroup(title: T("onboarding.keyboard")) {
+                // a setting, not a thing: no glyph (Settings: only lists of things carry one)
+                OnbRow(image: nil, title: T("onboarding.dictation_key"), detail: keyGesture, first: true,
+                       note: m.dictationKey == .fn ? AnyView(fnLines) : nil) {
+                    // the same pop-up as the language row and Settings, as wide as its longest choice
+                    ChoicePopup(label: T("onboarding.dictation_key"),
+                                choices: DictationTrigger.Key.allCases.map { ($0, OnboardingView.keyLabel($0)) },
+                                selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) }), width: OnboardingView.keyPopupWidth)
                 }
             }
 
-            OnbHeading(text: T("onboarding.permissions")).padding(.top, OnbMetrics.sectionGap)
-            ForEach(Array(permissionKinds.enumerated()), id: \.element) { i, k in
-                OnbPermissionRow(kind: k, state: perms.state(k), first: i == 0)
+            OnbGroup(title: T("onboarding.permissions"), footnote: T("onboarding.permissions.screen_later")) {
+                ForEach(Array(permissionKinds.enumerated()), id: \.element) { i, k in
+                    OnbPermissionRow(kind: k, state: perms.state(k), first: i == 0, slot: statusSlot)
+                }
             }
-            Text(T("onboarding.permissions.screen_later")).font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
+            .padding(.top, OnbMetrics.groupGap)
+        }
+        .padding(.top, 6)
+    }
+
+    /// The status column's width: the longest word the rows say now — every disc at one x, and the words flush with
+    /// the pop-up's edge above while they are all one word ("Allowed").
+    var statusSlot: CGFloat {
+        OnbStatus.width(permissionKinds.compactMap { OnbPermissionRow.word(kind: $0, state: perms.state($0), guide: guide) })
+    }
+
+    /// With Fn: macOS's own "Press 🌐 key to" — a state of the key, not a permission and not a row of its own (the walk
+    /// sets it with the rest). Done: a small check and what it is set to; still to do: what happens, in attention ink,
+    /// and the way to fix it; another app on Fn: one more line.
+    @ViewBuilder var fnLines: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if guide.running && guide.current == .fnKey {
+                waiting
+            } else if guide.satisfied(.fnKey) {
+                HStack(alignment: .top, spacing: 6) {
+                    StatusDot(tone: .good).padding(.top, 3)
+                    Text(T("onboarding.fn.ok")).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            } else {
+                HStack(alignment: .top, spacing: 6) {
+                    StatusDot(tone: .warn).padding(.top, 3)
+                    Text(T("onboarding.fn.clash")).font(.system(size: 12)).foregroundStyle(Color.brandAttnInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // the walk to macOS's own setting, with the helper panel (Blurt never changes it)
+                    Button(T("onboarding.fn.fix")) { guide.start(.dictation, only: [.fnKey], source: .onboarding) }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk)
+                        .onHover { NSCursor.pointingHand.set(); if !$0 { NSCursor.arrow.set() } }
+                        .fixedSize()
+                }
+            }
+            if !SystemAccess.fnClashApps.isEmpty {
+                Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
+                    .font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                    .help(T("dictation.settings.fn_clash.help"))
+            }
         }
     }
 
@@ -750,13 +857,18 @@ struct OnboardingView: View {
     var modelsStep: some View {
         VStack(alignment: .leading, spacing: 0) {
             if models.startNow {
+                // a short step: its two boxes and their footnote sit at the column's optical centre (a third of the
+                // spare height above, two thirds below), beside Peep — not hanging from the top over an empty band
+                Spacer(minLength: 0)
                 startNowRows
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
             } else {
                 classicModels
+                Spacer(minLength: 12)
+                Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 12)
-            Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(isPresented: $keySheet) {
             // one question: the key; its service is found from it (or picked), and every job stays on Auto
@@ -768,38 +880,109 @@ struct OnboardingView: View {
         }
     }
 
-    /// Start now: dictation on macOS's recogniser, the one cloud key, the local models as one optional row.
+    /// Start now (docs/design/first-minute-speech.md): "you're set, plus two optional extras", in Settings' grammar
+    /// (system.md §3.4: boxes with one control per row, the heading and the footnote outside them).
+    ///   the box on top    what dictates now: macOS's recogniser, how it stands before its line (✓ Ready, or a spinner
+    ///                     while macOS checks or fetches its files) and the language it listens for as its one control
+    ///   Optional          this Mac's speech model (Download with its size; the free space only when it is short) and
+    ///                     cloud polish (Add Key…, the agent's way in on the chevron's menu)
+    ///   the footnote      where all of it is changed later, under the box it is about
     @ViewBuilder var startNowRows: some View {
-        if models.system == .installed {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.start.ready.title"),
-                   detail: T("onboarding.start.ready.detail"),
-                   first: true) {
-                StateLabel(tone: .good, text: T("onboarding.start.ready.state"))
-            }
-        } else if models.system == nil {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.models.checking"), detail: nil, first: true) {
-                BrandSpinnerView(size: 10)
-            }
-        } else {
-            OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.start.assets.title"),
-                   detail: T("onboarding.start.assets.detail"), first: true) {
-                BrandSpinnerView(size: 10)
-            }
+        OnbBox { recogniserRow }
+        OnbHeading(text: T("onboarding.optional")).padding(.horizontal, OnbMetrics.boxInset)
+            .padding(.top, OnbMetrics.sectionGap).padding(.bottom, 4)
+        OnbBox {
+            localRow
+            polishRow
+            // an agent at work through the endpoint: its live list, in the box under the row it fills
+            AgentSetupProgressView(look: .onboarding).padding(.bottom, 10)
+                .onReceive(NotificationCenter.default.publisher(for: CloudStore.changed)) { _ in
+                    // an agent connected a key: the row says so as it happens
+                    if AgentSetupProgress.shared.active { keyConnected() }
+                }
         }
-        // macOS's recogniser hears one language, no detection: say which, and let the user change it here
-        if let now = AppleSpeech.code(AppleSpeech.locale()) {
-            OnbRow(image: GlyphTile.brand(.languages), title: T("onboarding.start.language.title"),
-                   detail: T(AppleSpeech.mixed.contains(now) ? "onboarding.start.language.mixed" : "onboarding.start.language.one")) {
+        upgradeStatus.padding(.horizontal, OnbMetrics.boxInset).padding(.top, 10)
+        Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, OnbMetrics.boxInset).padding(.top, 7)
+    }
+
+    /// macOS's recogniser and the one language it hears (no detection), on one row: how it stands before its line,
+    /// the language as its one control. The longer word on the language is the row's tooltip.
+    var recogniserRow: some View {
+        let now = AppleSpeech.code(AppleSpeech.locale())
+        let mixed = now.map { AppleSpeech.mixed.contains($0) } ?? false
+        let line: (mark: OnbMark, text: String) = {
+            switch models.system {
+            case .installed?: return (.state(.good), T(mixed ? "onboarding.start.ready.mixed" : "onboarding.start.ready.one"))
+            case nil: return (.working, T("onboarding.models.checking"))
+            default: return (.working, T("onboarding.start.assets.line"))
+            }
+        }()
+        return OnbRow(image: GlyphTile.brand(.waveform), title: T("onboarding.start.ready.title"), detail: line.text, first: true,
+                      help: T(mixed ? "onboarding.start.language.mixed" : "onboarding.start.language.one"), mark: line.mark) {
+            if let now {
                 ChoicePopup(label: T("onboarding.start.language.title"), choices: models.systemLanguages.map { ($0, endonym($0)) },
-                            selection: Binding(get: { now }, set: { models.chooseLanguage($0) }), width: 120)
+                            selection: Binding(get: { now }, set: { models.chooseLanguage($0) }), width: OnbMetrics.control)
             }
         }
-        keyRow
-        OnbRow(image: GlyphTile.brand(.download), title: T("onboarding.upgrade.title"), detail: upgradeDetail,
-               help: models.parts.map(\.name).joined(separator: " · ")) {
+    }
+
+    /// This Mac's own speech model, the optional upgrade: what it gets you and the free space in one line, the size once
+    /// (on Download) — the founder, 2026-11-21: the size and the free space before anything starts; the free space in
+    /// attention ink when it is short. The tooltip names the model and its size.
+    var localRow: some View {
+        let low = lowSpace
+        let free = models.freeMB.map { T("onboarding.models.free", size($0)) }
+        return OnbRow(image: GlyphTile.brand(.cpu), title: T("onboarding.local.title"), detail: low ?? localDetail,
+                      detailColor: low == nil ? nil : .brandAttnInk, first: true,
+                      help: (models.parts.map { "\($0.name) · \(size($0.sizeMB))" } + [free].compactMap { $0 }).joined(separator: "\n"),
+                      mark: localMark) {
             upgradeState
         }
-        upgradeStatus.padding(.top, 10)
+    }
+
+    /// "More accurate than macOS, works offline", or what stands in its way (uv, the check, a blocked setup), or that
+    /// it is coming down.
+    var localDetail: String {
+        switch m.speechStep {
+        case .needsUV: return T("onboarding.upgrade.needs_uv")
+        case .checking: return T("onboarding.models.checking")
+        case .blocked: return T(m.blockedCause == .offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title")
+        default:
+            guard let p = models.parts.first(where: { $0.kind == .dictation }) else { return T("onboarding.upgrade.detail") }
+            let have = p.installed || models.finished.contains(p.id)
+            if models.downloading && !have { return T("onboarding.local.downloading") }
+            // "than macOS" only where the eval measured it (BlurtCore DictationChoices): every local model it measured beats it
+            let what = T(DictationChoice(rawValue: p.id)?.localModel == true ? "onboarding.local.detail" : "onboarding.upgrade.detail")
+            // still to come: the room for it on the same line, before anything starts
+            if !have, let free = models.freeMB { return T("onboarding.local.with_free", what, size(free)) }
+            return what
+        }
+    }
+
+    /// "Only 3.1 GB free on this Mac", in attention ink: only while the model is still to come and the disk has less
+    /// than about twice what is left to fetch, plus the 2 GB the download manager keeps spare (ModelDownloads).
+    var lowSpace: String? {
+        guard let free = models.freeMB, models.loaded, !models.ready, !models.downloading, models.leftMB > 0,
+              free < 2 * models.leftMB + 2048 else { return nil }
+        return T("onboarding.local.low_space", size(free))
+    }
+
+    /// Cloud polish: what it does and that only text leaves the Mac; the price is its tooltip and the key sheet's.
+    /// One control: Add Key… (Change Key… once one is in), the agent's way in on its chevron.
+    var polishRow: some View {
+        let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? T("onboarding.polish.detail")
+        let price = ChoiceText.cloudPolishPrice.map { T("onboarding.polish.price", $0.per, $0.amount) }
+        return OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.polish.title"), detail: detail,
+                      help: [T("onboarding.polish.help"), price].compactMap { $0 }.joined(separator: " ")) {
+            OnbSplitButton(title: T(connected != nil ? "onboarding.polish.change" : "onboarding.polish.add"),
+                           more: T("onboarding.polish.more"), action: { keySheet = true }) {
+                // the user's own agent sets it up (agent-setup.md §4): the instruction to copy into it
+                Button(M("models.agent.button")) { agentSheet = true }
+            }
+            .sheet(isPresented: $agentSheet) { AgentSetupSheet { agentSheet = false }.buttonStyle(.automatic) }
+        }
     }
 
     /// The AI service key: the cloud glyph, as in Settings. Connected: which service ("On · DeepSeek").
@@ -831,56 +1014,45 @@ struct OnboardingView: View {
         Dictation.shared.refreshSpeechModels()
     }
 
-    var upgradeDetail: String {
-        switch m.speechStep {
-        case .needsUV: return T("onboarding.upgrade.needs_uv")
-        case .checking: return T("onboarding.models.checking")
-        case .blocked: return T(m.blockedCause == .offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title")
-        default: return betterModel ?? T("onboarding.upgrade.detail")
-        }
-    }
-
-    // what each choice gets right (BlurtCore DictationChoices, the 2026-10-31 eval; Settings → Models' Compare… has the
-    // whole table): the line under macOS's recogniser, the local model's, the key's
-
-    /// the user's own language when its numbers aren't the mixed Chinese + English ones (nil: Chinese, or unmeasured)
-    var compareLanguage: String? { DictationChoices.ownLanguage(SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages) }
-
-    /// "Qwen3-ASR 0.6B (1.0 GB) recognizes better and works offline." — or "Downloading …" while it comes down;
-    /// nil when dictation's model isn't one the eval measured.
-    var betterModel: String? {
-        guard let p = models.parts.first(where: { $0.kind == .dictation }), let c = DictationChoice(rawValue: p.id), c.local else { return nil }
-        let downloading = models.downloading && !(p.installed || models.finished.contains(p.id))
-        return T(downloading ? "onboarding.upgrade.better_downloading" : "onboarding.upgrade.better", p.name, size(p.sizeMB))
-    }
-
     /// The cloud model row's line before a key is in: what a cloud model is used for, what it adds and costs.
     var keyCompare: String {
         ChoiceText.cloudPolishPrice.map { T("onboarding.key.compare", $0.per, $0.amount) } ?? T("onboarding.key.detail")
     }
 
-    /// The local models' one trailing element: Install uv, Try Again, Download (size), a spinner, or installed.
+    /// This Mac's model's one trailing control, in the box's column (outlined, the pop-up's width): Install uv, Try Again,
+    /// Download 2.5 GB (Resume with what is left), or Installed; nothing while it is checked or comes down (the line
+    /// says so before it, and the bar under the box has Stop).
     @ViewBuilder var upgradeState: some View {
         switch m.speechStep {
         case .needsUV:
-            Button(T("onboarding.install_uv")) { m.installUV() }.controlSize(.small).disabled(m.installingUV)
+            Button { m.installUV() } label: { OnbButtonLabel(T("onboarding.install_uv")) }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.installingUV)
                 .help(OnboardingModel.uvInstallCommand)
         case .checking:
-            BrandSpinnerView(size: 10)
+            EmptyView()
         case .blocked:
-            Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.controlSize(.small).disabled(m.retrying)
+            Button { m.retrySetup(via: "models") } label: { OnbButtonLabel(T("onboarding.models.retry")) }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.retrying)
         default:
             if models.ready {
                 StateLabel(tone: .good, text: T("onboarding.models.installed"))
-            } else if models.downloading {
-                BrandSpinnerView(size: 10)
-            } else if models.loaded, models.totalMB > 0 {
-                Button(downloadTitle) { models.start() }
-                    .controlSize(.small).disabled(m.online == false)
+            } else if models.downloading || !models.loaded || models.totalMB <= 0 {
+                EmptyView()
             } else {
-                BrandSpinnerView(size: 10)
+                Button { models.start() } label: {
+                    OnbButtonLabel(models.resumable ? T("onboarding.upgrade.resume", size(models.leftMB))
+                                                    : T("onboarding.local.download", size(models.totalMB)))
+                }
+                .buttonStyle(SettingsOutlinedButtonStyle()).disabled(m.online == false)
             }
         }
+    }
+
+    /// The local model row's state before its line: a spinner while the Mac is checked or the list is read.
+    var localMark: OnbMark? {
+        if m.speechStep == .checking { return .working }
+        if case .offer = m.speechStep, !models.loaded { return .working }
+        return nil
     }
 
     /// The local models' Download: the whole size, or — with part of it kept from a stopped download — what is left.
@@ -967,10 +1139,10 @@ struct OnboardingView: View {
 
     func kindIcon(_ k: ModelBundle.Kind) -> NSImage {
         switch k {
-        case .dictation: return GlyphTile.brand(.textCursor)
+        case .dictation: return GlyphTile.brand(.characterCursor)
         case .polish: return GlyphTile.brand(.wand)
         case .note: return GlyphTile.brand(.mic)
-        case .screenText: return GlyphTile.brand(.copy)
+        case .screenText: return GlyphTile.brand(.textViewfinder)
         }
     }
 
@@ -1007,6 +1179,11 @@ struct OnboardingView: View {
                 } else {
                     Text(T("onboarding.models.total_label")).font(.system(size: 12)).foregroundStyle(.secondary)
                     Text(size(models.totalMB)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+                }
+                // and the room for it, before anything starts
+                if let free = models.freeMB {
+                    Text(T("onboarding.models.free", size(free))).font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(.secondary).padding(.leading, 8)
                 }
             }
             .padding(.top, 8)
@@ -1051,6 +1228,13 @@ struct OnboardingView: View {
             }
         } else if models.ready {
             check(T("onboarding.models.ready"))
+        } else if models.failed, let room = models.parts.compactMap({ ModelDownloads.shared.failedText($0.id) }).first {
+            // not enough space: how much is needed and free, nothing started; Show Storage
+            HStack(spacing: 8) {
+                Text(room).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.brandErr)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(T("app.models.show_storage")) { ModelDownloads.showStorage() }.controlSize(.small)
+            }
         } else if models.failed {
             VStack(alignment: .leading, spacing: 8) {
                 Text(T("onboarding.models.failed")).font(.system(size: 12)).foregroundStyle(Color.brandErr)
@@ -1091,7 +1275,7 @@ struct OnboardingView: View {
 
     var tryIt: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // one place for the practice: the card, or (while it can't be tried) why, in the card's own size
+            // one place for the practice: the card, or (while it can't be tried) why, in about the card's own size
             if let b = tryBlock {
                 tryNotice(b).frame(height: OnboardingView.tryHeight)
             } else {
@@ -1100,18 +1284,24 @@ struct OnboardingView: View {
             if tryBlock == nil, !m.tried, models.downloading, models.dictationReady, !showsDownloadLine {
                 // dictation works already; polish (and the voice-note model) are still coming
                 Text(T("onboarding.try.polish_coming", size(models.restMB))).font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 10)
             }
-            Spacer(minLength: 16)
-            // the card, while Cards is on: the one gesture new users missed, in the row language — its key as caps
+            // the card, while Cards is on: the one gesture new users missed — one quiet line under the practice (a tip,
+            // not a row: the one row of this step is a setting)
             if OnboardingFlow.teachesCard(off: m.off, step: m.step) {
                 let caps = KeyCaps.split(hk(.snap))
-                OnbRow(image: GlyphTile.brand(.cards), title: T("onboarding.try.card.title"), detail: T("onboarding.try.card.detail")) {
+                HStack(alignment: .center, spacing: 8) {
                     if !caps.isEmpty { KeyCaps(caps) }
+                    Text(T("onboarding.try.card.detail")).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .padding(.top, 14)
                 .accessibilityElement(children: .combine)
             }
-            loginRow
+            // the one setting of the step follows the practice (one column, top down; the room left is under it, not
+            // a hole between the card and a row pushed down to the footer)
+            loginRow.padding(.top, 18)
+            Spacer(minLength: 0)
         }
         .onAppear {
             m.startTry()
@@ -1120,7 +1310,10 @@ struct OnboardingView: View {
         .onDisappear { m.stopTry() }
     }
 
-    static let tryHeight: CGFloat = 224
+    /// A notice standing in for the practice card (permissions, the recogniser coming down…): about the card's height.
+    static let tryHeight: CGFloat = 150
+    /// The card's text inset: the words and the checklist start on one column.
+    static let tryInset: CGFloat = 14
 
     @ViewBuilder func tryNotice(_ b: TryBlock) -> some View {
         switch b {
@@ -1147,43 +1340,59 @@ struct OnboardingView: View {
         }
     }
 
-    /// The practice card: the key as a keycap and what to do with it, the box the words land in, then the checks.
+    /// The practice card: the box the words land in, then a short checklist under a hairline — first what to do (the
+    /// key as a keycap by a hollow ring), swapped in place for "It works" with the ok check once the first dictation
+    /// lands; then (double-tap send on) the second item, the double tap as two keycaps, checked once it came. The card
+    /// hugs what it holds. Its edge is the inset box's neutral one (Settings' boxes); a soft accent ring only while the
+    /// empty box waits for the first dictation, so after it the one coloured thing left is Done.
     var practice: some View {
-        let key = Dictation.keyShort(m.dictationKey).trimmingCharacters(in: .whitespaces)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                KeyCaps(OnboardingView.dictationCaps(m.dictationKey), size: 13)
-                Text(T(m.dictationMode == .hold ? "onboarding.try.how.hold" : "onboarding.try.how"))
-                    .font(.system(size: 13)).foregroundStyle(.secondary)
-            }
+        let caps = OnboardingView.dictationCaps(m.dictationKey)
+        let ringed = tryFocused && !m.tried
+        return VStack(alignment: .leading, spacing: 0) {
             TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
-                .lineLimit(3...5)
+                .lineLimit(m.tried ? 1...5 : 2...5)
                 .focused($tryFocused)
-            if m.tried {
-                VStack(alignment: .leading, spacing: 6) {
-                    check(T("onboarding.try.works"))
+                .padding(.horizontal, OnboardingView.tryInset).padding(.vertical, 12)
+            OnbHairline().padding(.horizontal, 12)
+            VStack(alignment: .leading, spacing: 8) {
+                if m.tried {
+                    tryItem(done: true, caps: nil, text: T("onboarding.try.works"))
                     // the second exercise: the double tap that sends (taught here, before it surprises in a chat)
                     if Dictation.doubleTapSend {
-                        if m.sendTried { check(T("onboarding.try.sent")) }
-                        else {
-                            Text(T("onboarding.try.send_next", key)).font(.system(size: 12)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.leading, StatusDot.size + 8)
-                        }
+                        tryItem(done: m.sendTried, caps: caps + caps, text: T("onboarding.try.send"))
                     }
+                } else {
+                    tryItem(done: false, caps: caps,
+                            text: T(m.dictationMode == .hold ? "onboarding.try.how.hold" : "onboarding.try.how"))
                 }
             }
+            .padding(.horizontal, OnboardingView.tryInset).padding(.vertical, 11)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: OnboardingView.tryHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)         // its own height, never stretched to the login row
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(tryFocused ? Color.brandAccent : Color.primary.opacity(0.12), lineWidth: tryFocused ? 1.5 : 0.5))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.035)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+        // the focus ring, as macOS draws one: a soft accent halo just outside the edge
+        .overlay(RoundedRectangle(cornerRadius: 11.5, style: .continuous).stroke(Color.brandAccent.opacity(0.4), lineWidth: 3)
+            .padding(-1.5).opacity(ringed ? 1 : 0))
         .contentShape(Rectangle())
         .onTapGesture { tryFocused = true }
+    }
+
+    /// One item of the practice checklist: a hollow ring that becomes the ok check (the shape twin), the keys as
+    /// keycaps, one line. Done reads in the primary ink, what is still to do in the secondary.
+    func tryItem(done: Bool, caps: [String]?, text: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            StatusDot(tone: done ? .good : .off, diameter: 13)
+            if let c = caps, !c.isEmpty { KeyCaps(c) }
+            Text(text).font(.system(size: 13)).foregroundStyle(done ? .primary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: 20)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(T(done ? "onboarding.try.item_done" : "onboarding.try.item_todo"))
     }
 }
 
@@ -1194,8 +1403,18 @@ struct OnbPermissionRow: View {
     var kind: PermissionKind
     var state: Permissions.State
     var first: Bool
+    /// the status column's width (OnbStatus): the same on every row of the list
+    var slot: CGFloat = OnbStatus.width([])
     @ObservedObject var guide = PermissionGuide.shared
     @State private var hover = false
+
+    /// The word a row says at rest (nil: a button says it — macOS won't ask again).
+    static func word(kind: PermissionKind, state: Permissions.State, guide: PermissionGuide) -> String? {
+        if guide.running && guide.current == kind { return T("onboarding.perm.waiting") }
+        if state == .granted { return T("settings.kit.allowed") }
+        if guide.satisfied(kind) { return T("settings.perm.not_needed") }
+        return state == .denied ? nil : T("onboarding.perm.missing")
+    }
 
     /// The family's own line glyphs, as every other row of the assistant (one family per surface).
     var icon: BlurtIcon {
@@ -1222,9 +1441,17 @@ struct OnbPermissionRow: View {
 
     func allow() { PermissionGuide.shared.start(.all, only: [kind], source: .onboarding) }
 
+    /// the trailing element is a state word (a disc and its word), not a button
+    var words: Bool {
+        if guide.running && guide.current == kind { return true }
+        if state == .granted || guide.satisfied(kind) { return true }
+        return state != .denied && !hover
+    }
+
     var body: some View {
         OnbRow(image: GlyphTile.brand(icon), title: PermissionGuide.name(kind), detail: why, first: first) {
-            trailing.frame(minWidth: 96, alignment: .trailing)
+            // one status column: a word in the slot's width, its disc at one x on every row; a button ends on the edge
+            if words { trailing.frame(width: slot, alignment: .leading) } else { trailing.frame(minWidth: slot, alignment: .trailing) }
         }
         .onHover { hover = $0 }
         .accessibilityElement(children: .combine)
@@ -1269,14 +1496,17 @@ struct OnboardingHero: View {
         let dark = scheme == .dark
         GeometryReader { g in
             ZStack {
-                // paper #F3EFE8 → #EDE8E0 (the brand book's backdrop), night #181D1E → #121516
-                LinearGradient(colors: dark ? [Color(red: 0.094, green: 0.114, blue: 0.118), Color(red: 0.071, green: 0.082, blue: 0.086)]
+                // paper #F3EFE8 → #EDE8E0 (the brand book's backdrop); night #1D1C1B → #151413, the temperature of the
+                // dark window beside it (a blue-grey night read as a second, colder surface next to the warm grey page)
+                LinearGradient(colors: dark ? [Color(red: 0.114, green: 0.110, blue: 0.106), Color(red: 0.082, green: 0.078, blue: 0.075)]
                                             : [Color(red: 0.953, green: 0.937, blue: 0.910), Color(red: 0.929, green: 0.910, blue: 0.878)],
                                startPoint: .top, endPoint: .bottom)
                 if !reduceTransparency {
-                    RadialGradient(colors: [Color(nsColor: BrandColor.srgb(0x61DBBD)).opacity(dark ? 0.16 : 0.26), .clear],
-                                   center: .center, startRadius: 0, endRadius: 120)
-                        .frame(width: 260, height: 260)
+                    // the mint light has to be seen on paper (at a quarter it was the paper's own colour): the panel is
+                    // Peep's place, not an empty margin
+                    RadialGradient(colors: [Color(nsColor: BrandColor.srgb(0x61DBBD)).opacity(dark ? 0.20 : 0.42), .clear],
+                                   center: .center, startRadius: 0, endRadius: 140)
+                        .frame(width: 300, height: 300)
                         .position(x: g.size.width / 2, y: g.size.height * 0.45)
                 }
                 // (the first step always says hello — also when, with Dictation off, it is the last)
@@ -1403,6 +1633,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         case "login": m.openAtLogin = a.count > 1 && a[1] == "on"
         // tried [TEXT…]: as if the first dictation had landed in the Try-it box (TEXT: what it typed there)
         case "tried": m.tried = true; m.tryText = a.dropFirst().joined(separator: " ")
+        // sent: as if the double tap that sends came after it (the second item checked)
+        case "sent": m.sendTried = true
         case "done": m.done()
         default: break
         }

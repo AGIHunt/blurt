@@ -137,6 +137,8 @@ impl WinInput {
         if inputs.is_empty() {
             return;
         }
+        // the service's agent types into whichever desktop has the input (the lock screen, a UAC prompt)
+        super::desktop::follow_input();
         // one call: nothing the user does gets in between
         unsafe { SendInput(inputs, std::mem::size_of::<INPUT>() as i32) };
     }
@@ -539,6 +541,21 @@ impl Input for WinInput {
                 let vk = if m == SystemMove::ZoomIn { keymap::VK_OEM_PLUS } else { keymap::VK_OEM_MINUS };
                 let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) } as u16;
                 self.kb.press_key(Some(Key { vk, scan, extended: false, positional: false }), CONTROL)
+            }
+            SystemMove::SecureAttention => {
+                // Ctrl+Alt+Del: only SendSAS makes it (a synthetic Ctrl+Alt+Del does nothing), and only a service may call it
+                // (the agent runs as LocalSystem; install allows software SAS for services)
+                unsafe {
+                    use ::windows::core::{s, w};
+                    use ::windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+                    if let Ok(lib) = LoadLibraryW(w!("sas.dll")) {
+                        if let Some(f) = GetProcAddress(lib, s!("SendSAS")) {
+                            let send: extern "system" fn(i32) = std::mem::transmute(f);
+                            send(0);
+                        }
+                    }
+                }
+                Vec::new()
             }
             SystemMove::FindCursor => {
                 // "Show the location of the pointer when I press the Ctrl key", if it's on

@@ -401,9 +401,10 @@ final class RemoteKitTests: XCTestCase {
         XCTAssertFalse(r.update(frames: 6, lost: 0, busy: 0, rtt: 0.4, sent: 3_000_000, delivered: 2_100_000, probed: 5_800_000), "no cut for asking")
         XCTAssertEqual(r.bitrate, 4_000_000)
         XCTAssertEqual(r.probe, 4_000_000, "and the next still picture goes at the rate")
-        // trouble without a question is still trouble
+        // trouble without a question is still trouble, once the long round trip lasts (one alone is a hotspot's swing)
         var plain = RemoteRate(bitrate: 8_000_000, fps: 30, away: true)
         _ = plain.update(frames: 6, lost: 0, busy: 0, rtt: 0.05, sent: 0, delivered: 0)
+        XCTAssertFalse(plain.update(frames: 6, lost: 0, busy: 0, rtt: 0.4, sent: 4_000_000, delivered: 4_000_000), "one long round trip is a swing")
         XCTAssertTrue(plain.update(frames: 6, lost: 0, busy: 0, rtt: 0.4, sent: 4_000_000, delivered: 4_000_000))
         XCTAssertLessThan(plain.bitrate, 4_000_000)
         // after a while it may ask again
