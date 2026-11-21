@@ -63,6 +63,17 @@ pub struct Computer {
     /// `RemoteComputer.removed`; absent in records from before 1.1)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub removed: bool,
+    /// the owner's own name for it (double-click the name, or ⋯ → Rename…; remote-1.1.md §6): shown in `name`'s place, kept when
+    /// a session names it again and when it is paired again, never sent; `host_id` is never touched. Lists from before have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+}
+
+impl Computer {
+    /// What this computer calls it: the owner's name for it, else the one its sessions give.
+    pub fn shown(&self) -> &str {
+        self.alias.as_deref().unwrap_or(&self.name)
+    }
 }
 
 pub struct Computers {
@@ -118,11 +129,14 @@ impl Computers {
         self.keys.get(&key_name(host_id))
     }
 
-    /// Paired (again): the key first, so a computer is never listed without one.
-    pub fn add(&self, c: Computer, key: &[u8]) -> Result<(), String> {
+    /// Paired (again): the key first, so a computer is never listed without one. Paired again, it keeps the name given it here.
+    pub fn add(&self, mut c: Computer, key: &[u8]) -> Result<(), String> {
         self.keys.put(&key_name(&c.host_id), key)?;
         let _g = self.lock.lock().unwrap();
         let mut list = self.read();
+        if c.alias.is_none() {
+            c.alias = list.iter().find(|x| x.host_id == c.host_id).and_then(|x| x.alias.clone());
+        }
         list.retain(|x| x.host_id != c.host_id);
         list.push(c);
         self.save(&list);
@@ -136,6 +150,11 @@ impl Computers {
             f(c);
             self.save(&list);
         }
+    }
+
+    /// The owner's own name for it; empty (or its own name) goes back to the name its sessions give. Nothing is sent to it.
+    pub fn rename(&self, host_id: &str, name: &str) {
+        self.update(host_id, |c| c.alias = crate::store::alias(name, &c.name));
     }
 
     /// The host removed this computer in a session: the key goes, the record stays, marked, so the list can offer Add Again.
@@ -609,6 +628,7 @@ pub async fn pair_steps(
         last_seen: Some(now_ms()),
         last_route: Some(route),
         removed: false,
+        alias: None,
     };
     phone.send(&ToMac::ReleaseAll).await;
     Ok((c, new_key))
@@ -1403,6 +1423,7 @@ mod tests {
             last_seen: None,
             last_route: None,
             removed: false,
+            alias: None,
         };
         cs.add(c.clone(), &[7; 32]).unwrap();
         assert_eq!(cs.list(), vec![c.clone()]);
@@ -1433,8 +1454,47 @@ mod tests {
         )
         .unwrap();
         assert!(!old[0].removed);
+        assert_eq!((old[0].alias.as_deref(), old[0].shown()), (None, "Old"));
         cs.remove("h");
         assert!(cs.list().is_empty() && cs.key("h").is_none());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_renamed_computer_keeps_its_name_when_the_host_says_its_own() {
+        let d = std::env::temp_dir().join(format!("blurt-viewer-alias-{}", crate::crypto::new_id()));
+        let keys: Arc<dyn KeyStore> = Arc::new(crate::store::FileKeyStore::new(d.join("keys.json")));
+        let cs = Computers::new(&d, keys);
+        let c = Computer {
+            host_id: "h".into(),
+            name: "DESKTOP-7Q2".into(),
+            platform: Some("windows".into()),
+            device_id: "d".into(),
+            port: 4242,
+            addresses: vec![],
+            relay: None,
+            added: 1,
+            last_seen: None,
+            last_route: None,
+            removed: false,
+            alias: None,
+        };
+        cs.add(c.clone(), &[7; 32]).unwrap();
+        assert!(!std::fs::read_to_string(d.join("computers.json")).unwrap().contains("alias"));
+        cs.rename("h", " Studio PC ");
+        assert_eq!(cs.get("h").unwrap().shown(), "Studio PC");
+        // a session says the host's own name (the app's `learned`): the name follows, the alias stays first, the id untouched
+        cs.update("h", |c| c.name = "Workshop".into());
+        let got = cs.get("h").unwrap();
+        assert_eq!((got.host_id.as_str(), got.name.as_str(), got.shown()), ("h", "Workshop", "Studio PC"));
+        // read back from disk, and paired again (a fresh record from pair_steps): still the owner's name
+        assert!(std::fs::read_to_string(d.join("computers.json")).unwrap().contains(r#""alias": "Studio PC""#));
+        cs.add(c.clone(), &[8; 32]).unwrap();
+        assert_eq!(cs.get("h").unwrap().shown(), "Studio PC");
+        // emptied: the host's own name again
+        cs.rename("h", "  ");
+        assert_eq!(cs.get("h").unwrap().alias, None);
+        assert_eq!(cs.get("h").unwrap().shown(), "DESKTOP-7Q2");
         let _ = std::fs::remove_dir_all(d);
     }
 }

@@ -212,6 +212,14 @@ async fn pairing_a_session_keys_and_the_pointer() {
     assert!(input.take().contains(&"release".to_string()));
     app.wait("dictation false").await;
 
+    // renamed here (remote-1.1.md §6): the list, the bar and the mic's name say it at once; the id stays
+    app.take();
+    h.rename_device(&device, "  Kitchen tablet ");
+    let d = h.status().devices[0].clone();
+    assert_eq!((d.id.as_str(), d.name.as_str(), d.shown()), (device.as_str(), "Test Phone", "Kitchen tablet"));
+    assert_eq!(h.status().connected.map(|c| c.name).as_deref(), Some("Kitchen tablet"));
+    app.wait("session Some(\"Kitchen tablet\")").await;
+
     // the spent code opens nothing any more; the new key does, and takes over from the old session
     let p = blurt_remote::pairing::Pairing::parse(&link).unwrap();
     assert!(Phone::connect(at, &p.device_id, &p.key).await.is_err());
@@ -219,6 +227,13 @@ async fn pairing_a_session_keys_and_the_pointer() {
     let info2 = again.wait(Duration::from_secs(3), |m| if let ToPhone::Session(i) = m { Some(i.clone()) } else { None }).await;
     assert!(info2.is_some());
     assert!(info2.unwrap().udp_session != info.udp_session);
+    // its hello named it again: the alias still shows, and is what the new session is called here
+    until(|| h.status().connected.filter(|c| c.name == "Kitchen tablet")).await;
+    assert_eq!(h.status().devices[0].alias.as_deref(), Some("Kitchen tablet"));
+    // emptied: its own name again
+    h.rename_device(&device, "");
+    assert_eq!(h.status().devices[0].shown(), "Test Phone");
+    assert_eq!(h.status().connected.map(|c| c.name).as_deref(), Some("Test Phone"));
 
     // removed here: the phone hears so, and the key is gone
     h.remove_device(&device);

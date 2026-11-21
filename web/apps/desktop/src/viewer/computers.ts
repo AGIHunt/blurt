@@ -9,7 +9,10 @@ import { invoke, listen, type RemoteRoute } from '../api';
 export type ComputerState = 'connected' | 'available' | 'noDirect' | 'asleep' | 'offline' | 'removed';
 export interface ComputerRow {
   id: string;
+  /** what this computer calls it: the owner's name for it (rename), else the one its sessions give */
   name: string;
+  /** the name the host gives itself: an emptied rename goes back to it */
+  ownName?: string;
   platform: 'mac' | 'windows' | 'linux' | null;
   state: ComputerState;
   /** its key is still here (false once it removed this computer in a session) */
@@ -56,6 +59,8 @@ export const computers = {
   /** a computer's window: its computer removed this one; the main window's list opens Add Computer, and the window closes */
   addAgain: () => invoke<ComputersStatus>('computers_add_again'),
   remove: (id: string) => invoke<ComputersStatus>('computers_remove', { id }),
+  /** a name this computer alone uses (nothing is sent); '' goes back to the host's own */
+  rename: (id: string, name: string) => invoke<ComputersStatus>('computers_rename', { id, name }),
   /** Open Window / Connect */
   open: (id: string) => invoke<ComputersStatus>('computers_open', { id }),
 };

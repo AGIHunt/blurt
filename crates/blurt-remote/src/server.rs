@@ -496,6 +496,25 @@ impl Host {
         self.core.remove(id);
     }
 
+    /// The owner's own name for a paired device (remote-1.1.md §6): this computer's lists, its question and its "being controlled"
+    /// bar show it; nothing is sent, the id stays. Empty (or the device's own name) goes back to its own name.
+    pub fn rename_device(&self, id: &str, name: &str) {
+        let c = &self.core;
+        let mut s = c.st.lock().unwrap();
+        let Some(d) = s.devices.iter_mut().find(|d| d.id == id) else { return };
+        let alias = crate::store::alias(name, &d.name);
+        if d.alias == alias {
+            return;
+        }
+        d.alias = alias;
+        c.files.save_devices(&s.devices);
+        // the mic's name and the bar follow at once when it's the one connected
+        if let Some(n) = s.current.and_then(|sid| s.sessions.get(&sid)).filter(|x| x.chan.greeted.load(SeqCst) && x.id.as_deref() == Some(id)).map(|x| shown(&s, x)) {
+            c.post(move |a| a.session(Some(&n)));
+        }
+        c.publish(&mut s);
+    }
+
     /// The person at this computer ended the session (the "being controlled" bar): the device hears `ended` first, so it waits for
     /// its user instead of connecting again at once. It stays paired.
     pub fn end_session(&self) {
@@ -757,12 +776,12 @@ impl Core {
             }),
             asking: s.asking.and_then(|id| s.sessions.get(&id)).and_then(|a| {
                 let digits = a.nonce.as_ref().and_then(|n| check_digits(a, n))?;
-                Some(Asking { device: a.name.clone(), digits, via_relay: a.chan.relay, kind: DeviceKind::of_hello(a.viewer), number: a.chan.number })
+                Some(Asking { device: shown(s, a), digits, via_relay: a.chan.relay, kind: DeviceKind::of_hello(a.viewer), number: a.chan.number })
             }),
             devices: s.devices.clone(),
             connected: current.filter(|c| c.chan.greeted.load(SeqCst)).map(|c| Connected {
                 id: c.id.clone().unwrap_or_default(),
-                name: c.name.clone(),
+                name: shown(s, c),
                 route: route_of(&c.chan),
                 screen: c.screen.is_some(),
             }),
@@ -1900,7 +1919,7 @@ impl Core {
                 return;
             };
             let number = x.chan.number;
-            let name = x.name.clone();
+            let name = shown(s, x);
             x.chan.send(&ToPhone::PairingWaits);
             self.log(json!({"event": "remote_pairing_asks", "relay": x.chan.relay}));
             self.publish(s);
@@ -1976,6 +1995,7 @@ impl Core {
             added: now_ms(),
             last_seen: Some(now_ms()),
             kind,
+            alias: None,
         });
         self.files.save_devices(&s.devices);
         let name = s.devices.last().map(|d| d.name.clone()).unwrap_or_default();
@@ -2009,7 +2029,7 @@ impl Core {
         }
         let x = &s.sessions[&sid];
         let chan = x.chan.clone();
-        let name = x.name.clone();
+        let name = shown(s, x);
         let moves = x.moves;
         chan.greeted.store(true, SeqCst);
         chan.heard();
@@ -2545,6 +2565,11 @@ fn check_digits(x: &Sess, nonce: &[u8]) -> Option<String> {
 }
 
 /// How a session came in, as Status and the connection log say it.
+/// What this computer calls a session's device: the owner's name for it if it's paired and renamed here, else what its hello said.
+fn shown(s: &State, x: &Sess) -> String {
+    x.id.as_deref().and_then(|id| s.devices.iter().find(|d| d.id == id)).and_then(|d| d.alias.clone()).unwrap_or_else(|| x.name.clone())
+}
+
 fn route_of(chan: &Chan) -> &'static str {
     if !chan.relay {
         chan.overlay.lock().unwrap().unwrap_or("local")

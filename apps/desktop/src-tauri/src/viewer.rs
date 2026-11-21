@@ -170,7 +170,10 @@ pub fn window_focused(label: &str, focused: bool) {
 #[serde(rename_all = "camelCase")]
 pub struct ComputerUi {
     id: String,
+    /// what this computer calls it: the owner's name for it (computers_rename), else the one its sessions give
     name: String,
+    /// the name the host gives itself (the rename field's placeholder)
+    own_name: String,
     platform: Option<String>,
     /// "connected" (a window shows it), "available" (found nearby, or reachable through its relay), "noDirect" (the public
     /// connection service found no direct path last time), "asleep", "offline", "removed" (it removed this computer: Add Again)
@@ -253,7 +256,7 @@ fn status() -> ComputersStatus {
                 ("offline", None)
             };
             let key = !c.removed;
-            ComputerUi { id: c.host_id.clone(), name: c.name.clone(), platform: c.platform.clone(), state, key, route, last_seen, windows: mine.len() }
+            ComputerUi { id: c.host_id.clone(), name: c.shown().to_string(), own_name: c.name.clone(), platform: c.platform.clone(), state, key, route, last_seen, windows: mine.len() }
         })
         .collect();
     // one that removed this computer (or refused its key this run) is offered again: it's added again
@@ -380,10 +383,12 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
         },
     };
     *v.pair_last.lock().unwrap() = Some(from);
-    let name = match &with {
-        PairWith::Link(p) => p.name.clone(),
-        PairWith::Nearby(f) => f.name.clone(),
+    let (host_id, name) = match &with {
+        PairWith::Link(p) => (&p.host_id, &p.name),
+        PairWith::Nearby(f) => (&f.host_id, &f.name),
     };
+    // one paired before (Add Again…) is named as this computer calls it
+    let name = v.computers.get(host_id).and_then(|c| c.alias).unwrap_or_else(|| name.clone());
     let g = v.pair_gen.fetch_add(1, SeqCst) + 1;
     *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link });
     emit();
@@ -516,6 +521,25 @@ pub fn computers_remove(id: String) -> ComputersStatus {
     status()
 }
 
+/// The owner's own name for a computer (remote-1.1.md §6): kept here only, nothing sent; "" goes back to the host's own name. Its
+/// open windows take the new title.
+#[tauri::command]
+pub fn computers_rename(id: String, name: String) -> ComputersStatus {
+    if let Some(v) = viewers() {
+        v.computers.rename(&id, &name);
+        if let Some(c) = v.computers.get(&id) {
+            let labels: Vec<String> = v.windows.lock().unwrap().iter().filter(|(_, w)| w.host_id == id).map(|(l, _)| l.clone()).collect();
+            for l in labels {
+                if let Some(w) = v.app.get_webview_window(&l) {
+                    let _ = w.set_title(c.shown());
+                }
+            }
+        }
+    }
+    emit();
+    status()
+}
+
 /// Open Window / Connect: the computer's window comes forward, or opens and connects. Async on purpose: a webview built inside a
 /// synchronous command deadlocks on Windows (the window opens white and never answers).
 #[tauri::command]
@@ -562,7 +586,7 @@ fn open_window(app: &AppHandle, id: &str) -> Result<(), String> {
     );
     let url = format!("index.html?viewer={}", urlencode(&c.host_id));
     WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-        .title(&c.name)
+        .title(c.shown())
         .inner_size(1280.0, 840.0)
         .min_inner_size(480.0, 320.0)
         .disable_drag_drop_handler()
@@ -663,7 +687,9 @@ fn on_event(label: String) -> viewer::OnEvent {
             Event::Session(i) => {
                 w.platform = i.platform.clone().unwrap_or_else(|| "mac".into());
                 let has = |n: &str| i.features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
-                send_json(&ch, json!({"type": "session", "name": i.mac_name, "platform": i.platform, "canControl": i.can_control,
+                // the window's title is the name this computer gives it: the host's own only when it has none here
+                let name = v.computers.get(&w.host_id).and_then(|c| c.alias).unwrap_or_else(|| i.mac_name.clone());
+                send_json(&ch, json!({"type": "session", "name": name, "platform": i.platform, "canControl": i.can_control,
                     "privacy": has("privacy"), "files": has("files")}));
             }
             Event::Displays(l) => {
@@ -707,7 +733,7 @@ fn on_event(label: String) -> viewer::OnEvent {
             Event::Notice(text) => {
                 // a notification, so it's seen even with this window behind
                 use tauri_plugin_notification::NotificationExt;
-                let title = v.computers.get(&w.host_id).map(|c| c.name).unwrap_or_else(|| "Blurt".into());
+                let title = v.computers.get(&w.host_id).map(|c| c.shown().to_string()).unwrap_or_else(|| "Blurt".into());
                 let _ = v.app.notification().builder().title(title).body(text).show();
             }
         }
@@ -753,7 +779,7 @@ pub fn viewer_attach(window: WebviewWindow, channel: Channel<InvokeResponseBody>
         w.session = Some(s);
     }
     let os = if cfg!(windows) { "windows" } else if cfg!(target_os = "linux") { "linux" } else { "mac" };
-    Ok(ViewerInit { id: c.host_id, name: c.name, platform: c.platform, options: *v.options.lock().unwrap(), system_shortcuts: crate::viewer_keys::system_shortcuts(), os })
+    Ok(ViewerInit { id: c.host_id.clone(), name: c.shown().to_string(), platform: c.platform, options: *v.options.lock().unwrap(), system_shortcuts: crate::viewer_keys::system_shortcuts(), os })
 }
 
 fn with_win<T>(window: &WebviewWindow, f: impl FnOnce(&mut Win) -> T) -> Option<T> {
@@ -1101,6 +1127,7 @@ mod tests {
             computers: vec![ComputerUi {
                 id: "h".into(),
                 name: "Studio PC".into(),
+                own_name: "DESKTOP-7Q2".into(),
                 platform: Some("windows".into()),
                 state: "available",
                 key: true,
@@ -1116,6 +1143,7 @@ mod tests {
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["computers"][0]["route"], "goBetween");
+        assert_eq!(v["computers"][0]["ownName"], "DESKTOP-7Q2");
         assert_eq!(v["computers"][0]["lastSeen"], serde_json::Value::Null);
         assert_eq!(v["pairing"]["digits"], "123456");
         assert_eq!(v["pairing"]["link"], false);

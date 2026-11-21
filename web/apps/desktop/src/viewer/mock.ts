@@ -99,6 +99,14 @@ export function mockComputers(cmd: string, a: Record<string, any>, emit: Emit): 
       timers = [];
       state.pairing = null;
       break;
+    case 'computers_rename': {
+      const c = state.computers.find((x) => x.id === a.id);
+      if (!c) break;
+      const own = c.ownName ?? c.name;
+      c.ownName = own;
+      c.name = String(a.name ?? '').trim().slice(0, 64) || own;
+      break;
+    }
     case 'computers_remove':
       state.computers = state.computers.filter((c) => c.id !== a.id);
       break;

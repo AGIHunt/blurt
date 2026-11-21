@@ -857,6 +857,8 @@
   "phone.last_used": "Last used {1}",
   "phone.not_connected": "Not connected",
   "phone.remove": "Remove",
+  "phone.rename": "Rename…",
+  "phone.rename.named": "Rename {1}",
   "phone.remove.title": "Remove “{1}”?",
   "phone.remove.detail": "It won’t be able to connect until it scans a new code.",
   "phone.service": "Allow at the lock and login screens",

@@ -142,6 +142,10 @@ on the picture or 发送文件…; Windows/Linux viewer: 发送文件…. Tests:
   断开时锁定对方, kept apart) · 显示网络状态 · 断开). "只看 / View only" is the one name everywhere.
 - The Remote Control page: computer cards with state and reason, time connected or last seen; the last picture only if turned on.
 - The viewer says which permissions it needs on this computer (Accessibility for Keys to Remote) before asking.
+- Rename (founder's call): double-click a paired device's or computer's name, or ⋯ → 重命名… / Rename…; Enter saves, Esc cancels, empty
+  goes back to its own name. A local alias kept beside the record (`Device.alias`, `Computer.alias`; old files load), shown first and
+  kept when the other side names itself again; never sent, the id unchanged. The asking card and the "being controlled" bar use it.
+  Windows/Linux: `remote_rename_device`, `computers_rename`; tests in store.rs, viewer.rs, tests/server.rs, web rename.test.ts.
 
 ### 7. Linux preview (opt-in, separate package)
 `blurt-system-service` deb, never enabled by the main package, `apt purge` removes everything: a privilege-split root service that reads

@@ -399,7 +399,8 @@ that controls this Mac showed under a phone heading with a phone icon. Now:
 
 - **The row grid, after three rounds of the visual gate:** every row's mark in one 18 pt slot at one size, the text 28 pt in, its state
   disc before every state line (hollow ring for 上次使用 / 可连接 / 离线, the check for 已连接), an offline computer's name quieter;
-  Remove… is in each row's ⋯ (one trailing column for both lists, Connect / Open Window before it); each list ends with an inline
+  Rename… and Remove… are in each row's ⋯ (one trailing column for both lists, Connect / Open Window before it; Rename… is also a
+  double-click on the name, remote-1.1.md §6); each list ends with an inline
   "+ 添加设备… / + 添加电脑…" line on the grid, empty or not; every bordered button on the page is the small size. The code is one quiet
   card (QR 124 pt, 添加设备 / Add Device, one line of how, 取消 · 拷贝链接); a device asking is a card of its own (lock, 允许 X 控制本机？,
   the digits in threes, 不允许 · 允许 with Allow the page's primary, and still no default: Return must not say yes). Copy cut on the way:

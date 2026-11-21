@@ -344,7 +344,7 @@ type MockRemote = {
   listening: boolean;
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
   asking: null | { device: string; digits: string; viaRelay: boolean; kind?: 'phone' | 'computer' };
-  devices: { id: string; name: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
+  devices: { id: string; name: string; ownName?: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
   connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
   relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null; fallback: boolean };
   screenAllowed: boolean;
@@ -461,6 +461,17 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       remote.listening = true;
       remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false };
       if (ask.viaRelay) remoteLater(4000, () => remote.connected?.id === id && (remote.connected.route = 'direct'));
+      break;
+    }
+    case 'remote_rename_device': {
+      // the owner's name for it, here only; '' (or its own name) goes back to the one it gives itself
+      const d = remote.devices.find((x) => x.id === a.id);
+      if (!d) break;
+      const own = d.ownName ?? d.name;
+      const v = String(a.name ?? '').trim().slice(0, 64);
+      d.ownName = own;
+      d.name = v || own;
+      if (remote.connected?.id === d.id) remote.connected.name = d.name;
       break;
     }
     case 'remote_remove_device':

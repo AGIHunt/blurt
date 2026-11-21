@@ -24,6 +24,24 @@ pub struct Device {
     /// a phone, or a computer driving this one (its hello listed `viewer`); records from before say nothing: a phone
     #[serde(default, skip_serializing_if = "DeviceKind::is_phone")]
     pub kind: DeviceKind,
+    /// the owner's own name for it (double-click the name, or ⋯ → Rename…; remote-1.1.md §6): shown in `name`'s place, kept when
+    /// its hello names it again, never sent anywhere; the id is never touched. Records from before have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+}
+
+impl Device {
+    /// What this computer calls it: the owner's name for it, else its own.
+    pub fn shown(&self) -> &str {
+        self.alias.as_deref().unwrap_or(&self.name)
+    }
+}
+
+/// A name typed for a paired device or computer, as kept: trimmed, at most 64 characters; empty (or the device's own name) is
+/// none, so its own name shows again.
+pub fn alias(typed: &str, own: &str) -> Option<String> {
+    let a: String = typed.trim().chars().take(64).collect();
+    (!a.is_empty() && a != own).then_some(a)
 }
 
 /// What a paired device is (the UI's icon and words): on disk `"kind": "computer"`, nothing for a phone.
@@ -268,6 +286,7 @@ mod tests {
             added: 1,
             last_seen: None,
             kind: DeviceKind::Phone,
+            alias: None,
         }]);
         assert_eq!(f.devices().len(), 1);
         // a phone's record says nothing of its kind; one from before kinds reads as a phone, a computer's says so
@@ -275,6 +294,36 @@ mod tests {
         std::fs::write(d.join("devices.json"), r#"[{"id":"a","name":"Pixel","added":1},{"id":"b","name":"Den PC","added":2,"kind":"computer"}]"#).unwrap();
         let kinds: Vec<DeviceKind> = f.devices().iter().map(|d| d.kind).collect();
         assert_eq!(kinds, [DeviceKind::Phone, DeviceKind::Computer]);
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn an_alias_is_kept_beside_the_name_and_old_records_load() {
+        let d = std::env::temp_dir().join(format!("blurt-remote-alias-{}", crate::crypto::new_id()));
+        let f = Files::new(&d);
+        // a devices.json from before aliases: no alias, its own name shows
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("devices.json"), r#"[{"id":"a","name":"Pixel 9","added":1,"lastSeen":5}]"#).unwrap();
+        let mut list = f.devices();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].alias, None);
+        assert_eq!(list[0].shown(), "Pixel 9");
+        // renamed here; saved and read again, the id and its own name untouched
+        list[0].alias = alias("  Kitchen phone ", &list[0].name);
+        f.save_devices(&list);
+        let mut list = f.devices();
+        assert_eq!((list[0].id.as_str(), list[0].name.as_str(), list[0].shown()), ("a", "Pixel 9", "Kitchen phone"));
+        // its hello names it again (greet): the name follows, the alias stays first
+        list[0].name = "Pixel 9 Pro".into();
+        assert_eq!(list[0].shown(), "Kitchen phone");
+        // empty, or its own name typed back: none, its own name shows
+        assert_eq!(alias("   ", "Pixel 9 Pro"), None);
+        assert_eq!(alias("Pixel 9 Pro", "Pixel 9 Pro"), None);
+        assert_eq!(alias(&"x".repeat(80), "y").map(|a| a.chars().count()), Some(64));
+        // a record without an alias writes none
+        list[0].alias = None;
+        f.save_devices(&list);
+        assert!(!std::fs::read_to_string(d.join("devices.json")).unwrap().contains("alias"));
         let _ = std::fs::remove_dir_all(d);
     }
 }

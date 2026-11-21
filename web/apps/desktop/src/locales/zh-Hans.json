@@ -835,6 +835,8 @@
   "phone.last_used": "上次使用：{1}",
   "phone.not_connected": "未连接",
   "phone.remove": "移除",
+  "phone.rename": "重命名…",
+  "phone.rename.named": "重命名 {1}",
   "phone.remove.title": "移除“{1}”？",
   "phone.remove.detail": "移除后，它要重新扫码才能连接。",
   "phone.service": "锁屏和登录界面也能连接",

@@ -11,7 +11,7 @@ import { i18n, t } from '../i18n';
 import { apply, useRemoteStatus } from '../settings/phone';
 import { Confirm, PairPanel } from '../settings/PhonePane';
 import { ComputersGroup } from '../viewer/ComputersGroup';
-import { AddLine, DeviceRow, EmptyLine, RowMore, StateLine } from './DeviceRows';
+import { AddLine, DeviceRow, EmptyLine, renameEntry, RowMore, StateLine, type Rename } from './DeviceRows';
 import { StatusDot } from './StatusDot';
 import './pages.css';
 
@@ -167,10 +167,13 @@ function DeviceLine({ d, r, onRemove }: { d: Device; r: RemoteStatus; onRemove: 
   // state first, as the computers below: 已连接 · <path> · …, or 未连接 · 上次使用：<when>
   const state = on ? t('phone.connected', { 1: how }) : t('phone.not_connected');
   const rest = !on && d.lastSeen ? t('phone.last_used', { 1: i18n().formatRelative(d.lastSeen) }) : undefined;
+  // a name this computer alone uses: nothing is sent to the device
+  const [editing, setEditing] = useState(false);
+  const rename: Rename = { editing, setEditing, own: d.ownName || name, save: (n) => void apply(api.remoteRenameDevice(d.id, n)).catch(() => {}) };
   return (
-    <DeviceRow icon={computer ? 'screen' : 'phone'} name={name} testid={`device-${d.id}`} kind={computer ? 'computer' : 'phone'}
+    <DeviceRow icon={computer ? 'screen' : 'phone'} name={name} testid={`device-${d.id}`} kind={computer ? 'computer' : 'phone'} rename={rename}
       state={<StateLine tone={on ? 'good' : 'off'} state={state} rest={rest} />}>
-      <RowMore name={name} testid={`device-more-${d.id}`} entries={[{ label: t('phone.remove'), danger: true, run: onRemove }]} />
+      <RowMore name={name} testid={`device-more-${d.id}`} entries={[renameEntry(rename), { kind: 'separator' }, { label: t('phone.remove'), danger: true, run: onRemove }]} />
     </DeviceRow>
   );
 }
@@ -208,7 +211,7 @@ function ConnectionLog({ r }: { r: RemoteStatus }) {
   };
   const row = (c: RemoteConnection) => (
     <DeviceRow key={`${c.id}-${c.paired}`} icon={c.paired ? 'plus' : r.devices.find((d) => d.id === c.deviceId)?.kind === 'computer' ? 'screen' : 'phone'}
-      name={c.name || t('phonepage.unnamed')} state={<span className="pg-line-detail">{line(c)}</span>} />
+      name={r.devices.find((d) => d.id === c.deviceId)?.name || c.name || t('phonepage.unnamed')} state={<span className="pg-line-detail">{line(c)}</span>} />
   );
   return (
     <>

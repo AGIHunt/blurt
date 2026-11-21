@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { i18n } from '../i18n';
-import { AddLine, DeviceRow, EmptyLine, RowMore, StateLine } from '../components/DeviceRows';
+import { AddLine, DeviceRow, EmptyLine, renameEntry, RowMore, StateLine, type Rename } from '../components/DeviceRows';
 import { S } from '../settings/kit';
 import { Confirm } from '../settings/PhonePane';
 import { groupDigits } from '../settings/phone';
@@ -96,13 +96,17 @@ function ComputerLine({ c, onRemove, onAdd }: { c: ComputerRow; onRemove: () => 
   const offline = c.state === 'offline' || c.state === 'asleep';
   const removed = c.state === 'removed';
   const remove = { label: S('phone.remove'), danger: true, run: onRemove };
+  // a name this computer alone uses: nothing is sent to the host
+  const [editing, setEditing] = useState(false);
+  const rename: Rename = { editing, setEditing, own: c.ownName || c.name, save: (n) => void applyComputers(computers.rename(c.id, n)).catch(() => {}) };
+  const sep = { kind: 'separator' as const };
   const more = offline
-    ? [{ label, run: open }, { kind: 'separator' as const }, remove]
+    ? [{ label, run: open }, renameEntry(rename), sep, remove]
     : removed && c.key
-      ? [{ label: S('computers.connect'), run: open }, { kind: 'separator' as const }, remove]
-      : [remove];
+      ? [{ label: S('computers.connect'), run: open }, renameEntry(rename), sep, remove]
+      : [renameEntry(rename), sep, remove];
   return (
-    <DeviceRow icon="screen" name={c.name} testid={`computer-${c.id}`}
+    <DeviceRow icon="screen" name={c.name} testid={`computer-${c.id}`} rename={rename}
       state={<StateLine tone={tone} state={stateText} rest={c.platform ? SYSTEM[c.platform] : undefined} tip={p.warn ? S('computers.no_direct.detail') : undefined}
         testid={`computer-state-${c.id}`} data={c.state} />}>
       {!offline && <button className="ph-act" onClick={removed ? onAdd : open} aria-label={`${label} ${c.name}`} data-testid={`computer-action-${c.id}`}>{label}</button>}

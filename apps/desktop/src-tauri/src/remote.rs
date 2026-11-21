@@ -241,7 +241,10 @@ struct AskingUi {
 #[serde(rename_all = "camelCase")]
 struct DeviceUi {
     id: String,
+    /// what this computer calls it: the owner's name for it (remote_rename_device), else its own
     name: String,
+    /// the name it gives itself (the rename field's placeholder: emptied, the row says it again)
+    own_name: String,
     last_seen: Option<i64>,
     /// "phone", or "computer": a computer driving this one (docs/design/remote-desktop-viewer.md)
     kind: &'static str,
@@ -321,7 +324,7 @@ fn to_ui(s: &Status) -> RemoteStatus {
         listening: s.listening,
         pairing,
         asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay, kind: a.kind.as_str() }),
-        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
+        devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.shown().to_string(), own_name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
         connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
         relay: RelayUi {
             address: s.relay.address.clone(),
@@ -440,6 +443,15 @@ pub fn remote_answer_pairing(yes: bool, digits: Option<String>) -> RemoteStatus 
 pub fn remote_remove_device(id: String) -> RemoteStatus {
     if let Some(h) = host() {
         h.remove_device(&id);
+    }
+    now_status()
+}
+
+/// The owner's own name for a paired device (remote-1.1.md §6): shown here only, nothing sent; "" goes back to its own name.
+#[tauri::command]
+pub fn remote_rename_device(id: String, name: String) -> RemoteStatus {
+    if let Some(h) = host() {
+        h.rename_device(&id, &name);
     }
     now_status()
 }

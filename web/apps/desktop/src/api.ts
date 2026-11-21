@@ -668,6 +668,8 @@ export const api = {
   /** the yes or no for the phone in `asking` */
   remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
   remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),
+  /** a name this computer alone uses for a paired device (nothing is sent); '' goes back to its own */
+  remoteRenameDevice: (id: string, name: string) => invoke<RemoteStatus>('remote_rename_device', { id, name }),
   /** "" clears it; rejects with the reason when it doesn't parse */
   remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),
   remoteCheckRelay: (address: string) => invoke<boolean>('remote_check_relay', { address }),
@@ -723,7 +725,7 @@ export interface RemoteStatus {
   /** a new device waits for a yes; the yes is for the one showing the same digits. `kind` from its hello (missing: not known) */
   asking: null | { device: string; digits: string; viaRelay: boolean; kind?: DeviceKind };
   /** every device that can control this computer: phones, and computers driving it (docs/design/remote-desktop-viewer.md) */
-  devices: { id: string; name: string; lastSeen: number | null; kind?: DeviceKind }[];
+  devices: { id: string; name: string; /** the name it gives itself (`name` is the owner's for it, once renamed) */ ownName?: string; lastSeen: number | null; kind?: DeviceKind }[];
   connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
   /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
    *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */
