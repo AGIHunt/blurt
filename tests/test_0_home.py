@@ -7,6 +7,9 @@ real config.json, voiceprint.json and models/silero_vad.onnx — each put back, 
 restore — and read the real dictation history: three tests failed there that pass on a fresh account.
 
 Tests that need a fresh home still make their own; this is only the floor.
+
+One module by name under unittest (`python -m unittest tests.test_live`) loads nothing else, so it has no floor: run it
+with pytest, or point BLURT_HOME, BLURT_WORKSPACE and HF_HUB_CACHE at a scratch folder first.
 """
 import os
 import sys
