@@ -21,9 +21,9 @@
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
 	<key>LSRequiresIPhoneOS</key><true/>
 	<key>NSBonjourServices</key><array><string>_blurt-remote._tcp</string></array>
-	<key>NSCameraUsageDescription</key><string>Scan the code Blurt shows on your Mac to pair.</string>
-	<key>NSLocalNetworkUsageDescription</key><string>Connect to Blurt on your Mac.</string>
-	<key>NSMicrophoneUsageDescription</key><string>Dictate into your Mac through this iPhone’s microphone.</string>
+	<key>NSCameraUsageDescription</key><string>Scan the QR code Blurt shows on your computer to pair.</string>
+	<key>NSLocalNetworkUsageDescription</key><string>Find and connect to Blurt on your computer.</string>
+	<key>NSMicrophoneUsageDescription</key><string>Send dictation audio from this device to your paired computer.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key><true/>
 	<key>UIStatusBarHidden</key><true/>
 	<key>UISupportedInterfaceOrientations</key>

@@ -7,6 +7,7 @@ struct SettingsSheet: View {
     @ObservedObject private var p = Prefs.shared
     @ObservedObject private var l = Link.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     @State private var pairing = false
     @State private var details: PairedMac?
     @ObservedObject private var use = ScreenStream.shared.use
@@ -19,6 +20,10 @@ struct SettingsSheet: View {
                     Button("Add Computer") { pairing = true }
                 } header: { Text("Computers") } footer: {
                     if l.macs.count > 1 { Text("Tap a computer to switch to it. On the main screen, hold the settings button to switch without coming here.") }
+                }
+                Section {
+                    SwiftUI.Link("Support", destination: supportURL("support"))
+                    SwiftUI.Link("Privacy Policy", destination: supportURL("privacy"))
                 }
                 Section {
                     Picker("Quality", selection: $p.quality) {
@@ -69,7 +74,7 @@ struct SettingsSheet: View {
                     Toggle("Haptics", isOn: $p.haptics)
                 }
                 Section {
-                    Toggle("Use iPhone Microphone", isOn: $p.micOnPhone)
+                    Toggle("Use This Device’s Microphone", isOn: $p.micOnPhone)
                         .onChange(of: p.micOnPhone) { _, _ in Link.shared.send(.setMicOnPhone(MicStream.shared.usable)) }
                 } header: { Text("Dictation") } footer: {
                     Text(l.host == .mac ? "Off: Blurt listens through your Mac’s microphone." : "Off: Blurt listens through your computer’s microphone.")
@@ -111,6 +116,12 @@ struct SettingsSheet: View {
             .onAppear { l.watchNearby(true) }
             .onDisappear { l.watchNearby(false) }
         }
+    }
+
+    private func supportURL(_ page: String) -> URL {
+        let language = locale.language.languageCode?.identifier
+        let section = language == "zh" ? "#zh-Hans" : ""
+        return URL(string: "https://blurt.work/\(page)/\(section)")!
     }
 
     private func macRow(_ m: PairedMac) -> some View {

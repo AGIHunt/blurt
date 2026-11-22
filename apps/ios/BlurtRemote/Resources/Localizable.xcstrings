@@ -221,6 +221,16 @@
         }
       }
     },
+    "Privacy Policy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私政策"
+          }
+        }
+      }
+    },
     "Project" : {
       "localizations" : {
         "zh-Hans" : {
@@ -247,6 +257,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "表格"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "支持"
           }
         }
       }
@@ -2808,12 +2828,12 @@
         }
       }
     },
-    "Use iPhone Microphone" : {
+    "Use This Device’s Microphone" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 iPhone 麦克风"
+            "value" : "使用本机麦克风"
           }
         }
       }
