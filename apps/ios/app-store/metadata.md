@@ -1,6 +1,6 @@
 # Blurt for iPhone and iPad
 
-Bundle ID `dev.blurt.remote`. The current iOS project version is 0.1.0, build 1. The product page can use English (U.S.) as its primary language with Simplified Chinese as a localization.
+App Store bundle ID `work.blurt.remote`. The current iOS project version is 0.1.0, build 1. The product page can use English (U.S.) as its primary language with Simplified Chinese as a localization.
 
 ## English (U.S.)
 
