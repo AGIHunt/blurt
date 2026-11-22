@@ -25,6 +25,33 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertEqual(rightOuter - count, IslandLayout.earInset)
     }
 
+    /// A notch stays as macOS reports it; beside the touch-screen MacBook Pro's 59 pt punch hole (40 pt unsafe band
+    /// under a 45 pt menu bar) the ears clear macOS's grown island (185 pt, the menu bar's height) and at rest the
+    /// island is only the hole.
+    func testPunchHoleClearsTheSystemIslandWhileLive() {
+        let notch = IslandLayout.cutout(gap: 185, safeTop: 32, menuBar: 37)
+        XCTAssertEqual(notch.live, CGSize(width: 185, height: 32))
+        XCTAssertEqual(notch.rest, notch.live)
+        XCTAssertFalse(notch.floats)
+        let hole = IslandLayout.cutout(gap: 59, safeTop: 40, menuBar: 45)
+        XCTAssertEqual(hole.live, CGSize(width: IslandLayout.punchHoleLiveWidth, height: 35))
+        XCTAssertEqual(hole.top, 5)
+        XCTAssertEqual(hole.top + hole.live.height / 2, 45 / 2)      // centred on the menu bar's row
+        XCTAssertEqual(hole.rest, CGSize(width: 59, height: 40))
+        XCTAssertEqual(IslandLayout.cutout(gap: 59, safeTop: 40, menuBar: 45, liveWidth: 200).live.width, 200)
+    }
+
+    /// A notch is a notch at every display scale: with Larger Text on, a 16" MacBook Pro reports its 185 × 32 pt notch
+    /// as about 110 × 19 pt (1024 × 663), fewer points than 120 and the same shape.
+    func testANotchStaysANotchInALargerTextDisplayMode() {
+        let scaled = IslandLayout.cutout(gap: 110, safeTop: 19, menuBar: 20)
+        XCTAssertEqual(scaled.live, CGSize(width: 110, height: 19))
+        XCTAssertEqual(scaled.rest, scaled.live)
+        XCTAssertFalse(scaled.floats)
+        let hole = IslandLayout.cutout(gap: 35, safeTop: 24, menuBar: 27)     // the punch hole in the same mode
+        XCTAssertTrue(hole.floats)
+    }
+
     func testWideEarContentGivesUpTheInsetBeforeTheNotch() {
         let x = IslandLayout.earOrigin(.left, width: 50, outer: 0, inner: IslandLayout.earWidth)
         XCTAssertLessThan(x, IslandLayout.earInset)

@@ -90,6 +90,39 @@ public enum IslandLayout {
         max(earWidth, min(earWidth(content: width), shape))
     }
 
+    /// A camera cutout less wide than this many times its own height is a punch hole, not a notch: the touch-screen
+    /// MacBook Pro's hole is 59 × 40 pt (1.5), a 14" MacBook Pro's notch 185 × 32 pt (5.8). A ratio, not a width: in a
+    /// Larger Text display mode everything is fewer points, and that notch is about 110 pt at 1024 × 663.
+    public static let punchHoleMaxAspectRatio: CGFloat = 3
+    /// The middle the ears keep clear of beside a punch hole while something is live. macOS draws its own island over
+    /// the hole and grows it to about 140 pt while the microphone or camera is on (the indicator shows in it), so the
+    /// ears stand where they would beside a 14" MacBook Pro's notch.
+    public static let punchHoleLiveWidth: CGFloat = 185
+
+    public struct Cutout: Equatable {
+        /// The middle while the ears, a toast or the open island show.
+        public var live: CGSize
+        /// The middle at rest (nothing in the ears).
+        public var rest: CGSize
+        /// The island's top edge, down from the screen's: 0 flush with a notch; beside a punch hole the island floats
+        /// as macOS's own does, a capsule from here to the unsafe band's bottom.
+        public var top: CGFloat = 0
+        public var floats: Bool { top > 0 }
+    }
+
+    /// The island's middle on a screen whose gap between the menu bar's two halves is `gap` wide, its unsafe band
+    /// `safeTop` tall and its menu bar `menuBar` tall: a notch as it is, live or at rest. A punch hole: at rest only the
+    /// hole (under macOS's own island, no drawn notch beside it); live `liveWidth` wide, a capsule floating as macOS's
+    /// island does — from the menu bar's extra height (45 − 40 = 5 pt) down to the unsafe band's bottom — so the black
+    /// lines up with macOS's grown island and the ears sit outside it, centred on the menu bar's row.
+    public static func cutout(gap: CGFloat, safeTop: CGFloat, menuBar: CGFloat,
+                              liveWidth: CGFloat = punchHoleLiveWidth) -> Cutout {
+        let hole = CGSize(width: gap, height: safeTop)
+        guard gap < safeTop * punchHoleMaxAspectRatio else { return Cutout(live: hole, rest: hole) }
+        let top = max(1, menuBar - safeTop)
+        return Cutout(live: CGSize(width: max(gap, liveWidth), height: max(1, safeTop - top)), rest: hole, top: top)
+    }
+
     /// The narrowest a toast's shape is: the notch with both ears, or the capsule's minimum.
     public static func toastFloor(notchWidth: CGFloat?) -> CGFloat {
         notchWidth.map { $0 + 2 * earWidth } ?? capsuleToastWidth
