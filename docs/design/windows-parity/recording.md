@@ -186,6 +186,9 @@
   `--processing recording|cards` 按 Mac 的 ProcessingSpec.kind 分。
 - **成功 = 这次写了事项。** 跑之前记下 batch.json / items.json / items.ingested.json 的修改时间和 batch 里已有的事项；跑完有文件
   变了才算整理过，事项 = 它报给任务的 + batch 里新出现的。写了但没有事项：任务 done、items 为空，岛上「没整理出事项」（Mac 同）。
+  例外（11-22，#107，只改了 Mac）：写了空 batch，而这段录屏该有转写却没有 `transcript.json`（没装 ffmpeg 时 `transcribe.py run` 报错退出，
+  Agent 接着写了空清单，任务却显示完成）。现在不算 done：任务失败，原因说明缺的是什么（`OrganizeSteps.emptyBatchFailed`）；提示词里
+  也加了一句，某一步失败就停下。Windows 的 `decide` 还是上面那样，没改。
   没写：`agents.py classify` 看这次的输出（agents.json failures，和 Mac 的 classify 同一套）；auth / quota / model 且后面还有能用的
   Agent → 换下一个（岛上「Claude Code 登录失效，改用 Codex 整理」，任务记 `organizer`）；否则失败，代码是那一类，认不出是
   `agent_exit`。纯函数 `agents::decide` / `filed_items` 有单测。

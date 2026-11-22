@@ -106,8 +106,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
 from _common import uv_bin  # noqa: E402
-from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
+from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, find_tool, fmt_ts,  # noqa: E402
+                     global_config, landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
                      server_exit, serve_exit_reason, serve_said, use_system_certs, disk_full)
 from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
@@ -3088,13 +3088,26 @@ def live_transcript(src: Path, out: Path, a, explicit: dict, wait: float = 180) 
         return None
     if explicit.get("prompt") and data.get("backend") != "sensevoice":
         return None  # a glossary helps Whisper / API backends (live.py has none): redo with it
-    try:
-        dur = probe_duration(src)
-    except Exception:
-        return None
-    if abs(dur - float(data.get("duration") or 0)) > max(2.0, 0.02 * dur):
+    dur = take_duration(src)
+    if dur <= 0 or abs(dur - float(data.get("duration") or 0)) > max(2.0, 0.02 * dur):
         return None  # another take (restart) or a cut-short live run
     return data
+
+
+def take_duration(src: Path) -> float:
+    """The recording's length in seconds: ffprobe's, else what meta.json says (0 when neither is there). A Mac without
+    ffmpeg can't measure the video, and the live transcript is then every word this take will get (2026-11-19, #107:
+    `transcribe.py run` stopped on the missing ffprobe, the agent filed nothing, and the job said done)."""
+    if find_tool("ffprobe"):
+        try:
+            return probe_duration(src)
+        except Exception:
+            return 0.0
+    meta = load_json(src.parent / "meta.json", None)
+    try:
+        return float(meta.get("duration") or 0) if isinstance(meta, dict) else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # ------------------------------------------------------------------ shots (snap mode): voice notes → "said"
@@ -3195,7 +3208,10 @@ def cmd_run(a):
     explicit = {"backend": a.backend, "model": a.model, "prompt": a.prompt}
 
     data = live_transcript(src, out, a, explicit)
-    n_tracks = max(1, audio_tracks(src))
+    # how many audio tracks there are takes ffmpeg (the mic is track 0, system audio track 1); without it the live
+    # transcript is used as it is, and a whole-file run stops on the missing ffmpeg with the line that says how to
+    # install it
+    n_tracks = max(1, audio_tracks(src)) if find_tool("ffmpeg") else 1
     if data is not None and (n_tracks == 1 or any(s.get("speaker") == "system" for s in data["segments"])):
         files = [str(out / "transcript.json"), str(out / "transcript.txt")]
         if not (out / "transcript.txt").exists():

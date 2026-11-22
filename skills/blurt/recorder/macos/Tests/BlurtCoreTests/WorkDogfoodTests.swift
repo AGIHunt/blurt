@@ -23,6 +23,30 @@ final class WorkDogfoodTests: XCTestCase {
         XCTAssertEqual(OrganizeSteps.onFailure(failureClass: nil, transcribed: false).map(\.step), ["transcribe"])
     }
 
+    /// #107: on a Mac without ffmpeg, `transcribe.py run` stopped on the missing ffprobe, the agent wrote an empty
+    /// batch, and the job said done with no items. Without the recording's words that is a failure; with them, or where
+    /// no words were expected, an empty batch is an honest "nothing to file".
+    func testAnEmptyBatchWithoutTheWordsIsAFailure() {
+        XCTAssertTrue(OrganizeSteps.emptyBatchFailed(captures: false, shots: false, videoOnly: false, transcribed: false))
+        // the words are there (an empty transcript counts): nothing to file
+        XCTAssertFalse(OrganizeSteps.emptyBatchFailed(captures: false, shots: false, videoOnly: false, transcribed: true))
+        // no words to miss: a few captures, a shots session, a video kept without its mic
+        XCTAssertFalse(OrganizeSteps.emptyBatchFailed(captures: true, shots: false, videoOnly: false, transcribed: false))
+        XCTAssertFalse(OrganizeSteps.emptyBatchFailed(captures: false, shots: true, videoOnly: false, transcribed: false))
+        XCTAssertFalse(OrganizeSteps.emptyBatchFailed(captures: false, shots: false, videoOnly: true, transcribed: false))
+    }
+
+    func testAMissingToolsLineIsReadFromTheRunsOutput() {
+        let plain = OrganizeSteps.missingTool(in: "exit code 1\nERROR: ffprobe not found on PATH. Install it first: brew install ffmpeg\n")
+        XCTAssertEqual(plain?.tool, "ffprobe")
+        XCTAssertEqual(plain?.install, "brew install ffmpeg")
+        // quoted in an agent's log: the \n that ends the line there is not part of the hint
+        let quoted = OrganizeSteps.missingTool(in: "stderr: \"ERROR: ffmpeg not found on PATH. Install it first: winget install Gyan.FFmpeg\\n\"\n")
+        XCTAssertEqual(quoted?.tool, "ffmpeg")
+        XCTAssertEqual(quoted?.install, "winget install Gyan.FFmpeg")
+        XCTAssertNil(OrganizeSteps.missingTool(in: "exit code 1\nnothing about a tool\n"))
+    }
+
     func testAJobKeepsItsReasonForPeopleApartFromItsRawMessage() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-workdf-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

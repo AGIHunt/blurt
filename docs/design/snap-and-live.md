@@ -192,6 +192,7 @@ App 里没有「之后再整理」的入口（检查过：只有失败录屏的�
 - `status.json`：`{"asr":"running|done|off|error","updated":<epoch>,"note":"…"}`。
 - （`drafts.jsonl` 是 L2 的草稿，2026-11-09 起不再写；旧录屏里留着的没人读。）
 - `stop`：录制器停止时创建。`live.py` 处理完剩下的音频，写出最终的 `<session>/transcript.json`（格式和 `transcribe.py run` 完全一致），然后退出。
+  本机没装 ffmpeg 时 `transcribe.py run` 也能复用它：量不了视频的时长，就对 `meta.json` 里记的时长（11-22，#107）。
 
 截图：
 

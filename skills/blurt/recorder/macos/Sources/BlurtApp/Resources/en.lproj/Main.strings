@@ -17,6 +17,8 @@
 "app.agent.not_logged" = "not signed in";
 "app.agent.unfinished" = "%@ stopped before it finished";
 "app.agent.couldnt_start" = "%@ couldn’t start. Check that it runs in a terminal, then retry.";
+"app.agent.no_transcript" = "The recording wasn’t transcribed, and no items were written. See the log for what’s missing, then retry.";
+"app.agent.no_transcript_tool" = "Organizing needs %@, which isn’t installed. Install it (%@), then retry.";
 
 "app.menu.after.keep" = "Keep the video only";
 "app.menu.after.organize" = "Organize into items";
