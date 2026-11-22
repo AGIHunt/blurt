@@ -161,16 +161,20 @@ class GateInNote(unittest.TestCase):
     """note() consults the gate before the model is loaded, for dictation only."""
 
     def setUp(self):
-        self.patches = {"BACKENDS": T.BACKENDS, "vad_segments": T.vad_segments, "gate": T.Voiceprint.gate}
+        self.patches = {"BACKENDS": T.BACKENDS, "vad_segments": T.vad_segments}
         T.vad_segments = lambda x, **k: [(0.0, len(x) / SR)]
         T.BACKENDS = {**self.patches["BACKENDS"], "sensevoice": Quick}
         self.real_installed = A.fake_installed("sensevoice-small")
         self.wav = A.write_wav(A.Path(A.tempfile.mkdtemp()) / "w.wav", 1.0)
         self.asked = []
+        # the gate is a class method: it goes back on the class. (Put back as T.gate it wasn't, and the last fake
+        # stayed for every test after: GateMath, which unittest runs after this class, failed 10 of 10.)
+        self.real_gate = T.Voiceprint.gate
 
     def tearDown(self):
         for k, v in self.patches.items():
             setattr(T, k, v)
+        T.Voiceprint.gate = self.real_gate
         T.installed = self.real_installed
 
     def fake_gate(self, match: bool):

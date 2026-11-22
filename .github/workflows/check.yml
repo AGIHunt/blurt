@@ -1,7 +1,9 @@
 name: check
 
-# Cheap smoke check: people install the skill straight from main, so main must never be broken.
-# Runs only when the skill or tests change; Linux + Windows (paths, encodings, console code pages differ), ~1 min each.
+# People install the skill straight from main, so main must never be broken: the Python suite (tests/, unittest and
+# pytest files alike) runs on every change to the skill or the tests, in a scratch BLURT_HOME (tests/conftest.py; for
+# a bare `python -m unittest`, tests/test_0_home.py). Linux + Windows wait for the repo variable CROSS_PLATFORM_CI
+# (the smoke job below: those ports are still in development).
 on:
   push:
     branches: [main]
@@ -17,6 +19,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Syntax
+        run: uv run -q python -m compileall -q skills/blurt/scripts tests
+      - name: Tests
+        run: uv run -q --with numpy --with pillow --with pytest python -m pytest tests -q -p no:cacheprovider
+
   smoke:
     # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
     if: vars.CROSS_PLATFORM_CI == 'true'
