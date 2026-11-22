@@ -28,7 +28,10 @@ jobs:
       - name: Syntax
         run: uv run -q python -m compileall -q skills/blurt/scripts tests
       - name: Tests
-        run: uv run -q --with numpy --with pillow --with pytest python -m pytest tests -q -p no:cacheprovider
+        # the dependencies the scripts declare (their `# /// script` blocks): tests of the MCP server, of script
+        # conversion and of the decoders import them
+        run: |
+          uv run -q             --with "numpy==2.3.4; python_version >= '3.11'" --with "numpy==2.2.6; python_version < '3.11'"             --with "pillow==12.1.0" --with "sherpa-onnx==1.13.8" --with "opencc-python-reimplemented==0.1.7"             --with "mcp==1.26.0" --with pytest             python -m pytest tests -q -p no:cacheprovider
 
   smoke:
     # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
