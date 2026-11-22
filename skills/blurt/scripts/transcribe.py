@@ -823,6 +823,8 @@ def model_path(m: dict) -> Path | None:
     if inst.get("archive"):
         d = MODELS_DIR / inst["dir"]
         need = [d / k.rstrip("/") for k in inst.get("keep", [])]
+        if inst.get("modelscope"):
+            return d if folder_complete(d, legacy=lambda _: all(p.exists() for p in need)) else None
         return d if d.is_dir() and all(p.exists() for p in need) else None
     if inst.get("hf"):
         own = MODELS_DIR / "asr" / inst["hf"].split("/")[-1]       # a ModelScope download (the mirror)
@@ -1030,7 +1032,11 @@ def _install_unlocked(m: dict) -> Path:
         for rel in inst["files"]:
             download(rel)
     elif inst.get("archive"):
-        _install_archive(m)
+        mirror = inst.get("modelscope")
+        if mirror and os.environ.get("BLURT_HF_MIRROR"):
+            _modelscope(mirror["repo"], float(m["size_mb"]), dest=MODELS_DIR / inst["dir"], files=mirror["files"])
+        else:
+            _install_archive(m)
     elif inst.get("hf"):
         ensure_package(m)
         os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")  # our "  N/M MB" lines are the progress
@@ -1064,32 +1070,44 @@ def _install_unlocked(m: dict) -> Path:
     return path
 
 
-def _modelscope(repo: str, total_mb: float) -> Path:
-    """An mlx-community repo from ModelScope's mirror → MODELS_DIR/asr/<name>: the manifest and the download marker
-    first (the folder is a model only once every file is in: folder_complete), each file through <name>.part,
-    continued where a cut-short download left it."""
-    dest = MODELS_DIR / "asr" / repo.split("/")[-1]
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _modelscope(repo: str, total_mb: float, *, dest: Path | None = None,
+                files: dict[str, dict[str, str]] | None = None) -> Path:
+    """Download a ModelScope repo or a pinned subset, using the download marker and resumable .part files."""
+    dest = dest if dest is not None else MODELS_DIR / "asr" / repo.split("/")[-1]
     api = f"https://modelscope.cn/api/v1/models/{repo}/repo/files?Recursive=true"
     try:
         with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "blurt"}), timeout=30) as r:
-            files = json.load(r)["Data"]["Files"]
+            listing = json.load(r)["Data"]["Files"]
     except Exception as e:  # noqa: BLE001
         raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
-    want = [x for x in files if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))]
+    blobs = {x["Path"]: x for x in listing if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))}
+    want = {local: spec["path"] for local, spec in files.items()} if files is not None else {name: name for name in blobs}
+    if not want or any(name not in blobs for name in want.values()):
+        raise Fail(f"ModelScope is missing required files for {repo}", "network")
     try:
-        begin_download(dest, [{"path": x["Path"], "size": x.get("Size")} for x in want])
+        begin_download(dest, [{"path": local, "size": blobs[remote].get("Size")} for local, remote in want.items()])
     except ValueError as e:
         raise Fail(f"invalid ModelScope manifest: {e}", "network") from None
     done = 0.0
     serve_said(f"downloading {repo} (ModelScope)")
-    for x in want:
-        p = download_path(dest, x["Path"])
-        if p.exists() and p.stat().st_size == x.get("Size"):
-            done += p.stat().st_size / 2**20
+    for local, remote in want.items():
+        p = download_path(dest, local)
+        size = blobs[remote].get("Size")
+        expected = files[local]["sha256"] if files is not None else None
+        if p.is_file() and p.stat().st_size == size and (expected is None or _sha256(p) == expected):
+            done += size / 2**20
             continue
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_name(p.name + ".part")
-        url = f"https://modelscope.cn/models/{repo}/resolve/master/{x['Path']}"
+        url = f"https://modelscope.cn/models/{repo}/resolve/master/{urllib.parse.quote(remote)}"
         t0 = [time.time()]
 
         def progress(have: int, _total: int) -> None:
@@ -1099,15 +1117,18 @@ def _modelscope(repo: str, total_mb: float) -> Path:
         got = 0
         for attempt in range(3):
             try:
-                got = fetch(url, tmp, x.get("Size"), progress)       # each try continues the last one's bytes
+                got = fetch(url, tmp, size, progress)       # each try continues the last one's bytes
             except Exception as e:  # noqa: BLE001
                 if attempt == 2:
                     raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
                 continue
-            if not x.get("Size") or got == x["Size"]:          # a dropped connection can end the read quietly
+            if not size or got == size:          # a dropped connection can end the read quietly
                 break
             if attempt == 2:
-                raise Fail(f"could not download {repo} from ModelScope: {x['Path']} came short", "network")
+                raise Fail(f"could not download {repo} from ModelScope: {remote} came short", "network")
+        if expected is not None and _sha256(tmp) != expected:
+            tmp.unlink(missing_ok=True)
+            raise Fail(f"could not download {repo} from ModelScope: SHA-256 mismatch for {local}", "network")
         done += got / 2**20
         os.replace(tmp, p)
     end_download(dest)
