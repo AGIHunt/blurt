@@ -733,6 +733,10 @@ final class Link: ObservableObject {
         if waitingForMac { return joinFailed(Self.ending(asked: askedAt)) }
         guard current != nil, state != .forgotten, state != .replaced, state != .ended else { return }
         state = .connecting
+        // over the relay, ping() looks for the same network every 10 s; one of those local attempts may still be running. connect() won't
+        // start a round while one is, and nothing else would call it again: the pad stayed at "Reconnecting" until the app was reopened.
+        // Let them go as the 3 s retry does
+        cancelAttempts(keepRelay: Date().timeIntervalSince(lastRelayTry) < 9)
         connect()
     }
 
