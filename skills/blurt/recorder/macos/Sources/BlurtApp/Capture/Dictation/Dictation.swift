@@ -3,8 +3,10 @@
 //
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
-//    to talk. Esc cancels — while listening, and while the text is still on its way (it is then never pasted). With Fn
-//    and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
+//    to talk. Esc cancels — while listening, and while the text is still on its way (it is then never pasted). While
+//    it listens, that Esc is Blurt's alone: the app in front sees neither the press nor the release (holdEsc, and the
+//    Fn filter: DictationKeys.keepEsc). With Fn and Accessibility, the tap is an active filter that keeps the Fn press
+//    from macOS.
 //    A double tap presses Return (record.dictation.double_tap_send, on; the window is macOS's double-click interval,
 //    0.3–0.5 s): idle, it cancels the dictation its first tap started and sends; right after a dictation stopped
 //    (a tap, or letting go of push-to-talk and then a double tap), Return goes in once the paste has landed. So there
@@ -169,6 +171,8 @@ final class Dictation {
     private var frontKey = ""
     private var holdTimer: Timer?
     private var escRegistered = false
+    /// the take is over: the Esc hotkeys go back once this says the press is over (BlurtCore DictationEscHold)
+    private var escRelease: Timer?
     var polishServer: Process?
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
@@ -265,6 +269,8 @@ final class Dictation {
         case esc, controlEsc = "ctrl_esc", shiftEsc = "shift_esc"
         /// Carbon modifiers for the system hotkey
         var carbonMods: Int { switch self { case .esc: return 0; case .controlEsc: return controlKey; case .shiftEsc: return shiftKey } }
+        /// the same modifier as a CGEvent's flags have it (the Fn filter: BlurtCore DictationEscFilter)
+        var flagBits: UInt64 { switch self { case .esc: return 0; case .controlEsc: return 0x4_0000; case .shiftEsc: return 0x2_0000 } }
         func matches(_ f: NSEvent.ModifierFlags) -> Bool {
             switch self { case .esc: return true; case .controlEsc: return f.contains(.control); case .shiftEsc: return f.contains(.shift) }
         }
@@ -1254,13 +1260,12 @@ final class Dictation {
         updatePhase()
         captureContext()
         readCaret()
-        // Esc also as a system hotkey, whatever the listener (escFromHotkey) — never in a test build (a scripted take
-        // would take the real user's Esc in every app; scripts reach Esc through `dictation keys`), unless
-        // BLURT_TEST_REAL_HOTKEYS=1
-        if !escRegistered, !DictationInsert.testMode || ProcessInfo.processInfo.environment["BLURT_TEST_REAL_HOTKEYS"] == "1" {
-            escRegistered = registerHotkey(.dictationEsc, key: kVK_Escape, mods: Dictation.cancelKey.carbonMods) == noErr
-            if !escRegistered { emit(["event": "dictation_esc_hotkey_failed"]) }
-        }
+        // While the take listens, Esc is Blurt's: the app in front sees neither the press nor the release (in Claude
+        // Code an Esc that gets through stops the running turn). The Fn filter keeps it where it runs (`holdEsc` has
+        // the rest) — never in a test build (a scripted take would take the real user's Esc in every app; scripts reach
+        // Esc through `dictation keys`), unless BLURT_TEST_REAL_HOTKEYS=1
+        keys.keepEsc(true, needs: Dictation.cancelKey.flagBits)
+        if !DictationInsert.testMode || ProcessInfo.processInfo.environment["BLURT_TEST_REAL_HOTKEYS"] == "1" { holdEsc() }
         if IsSecureEventInputEnabled() { emit(["event": "dictation_secure_input", "id": entryID, "listener": keys.installed]) }
         // what the island said about the last take (its Undo, the list chip, "nothing heard", its tip, the 5-minute
         // limit, "still recognizing") is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore
@@ -1405,10 +1410,11 @@ final class Dictation {
         }
     }
 
-    /// Esc as a system hotkey (Carbon), held while a dictation listens or is on its way — beside the key listener, not
-    /// only without it: with secure input on somewhere (Terminal's Secure Keyboard Entry, a password manager, a password
-    /// field) the listener still hears Fn (a modifier) but no other key, so Esc did nothing on some Macs (v1.0.2
-    /// report) — a hotkey still fires then. The same press reaching both counts once (`escTwin`).
+    /// Esc as a system hotkey (Carbon), held while a dictation listens — beside the key listener, not only without
+    /// it: with secure input on somewhere (Terminal's Secure Keyboard Entry, a password manager, a password field) the
+    /// listener still hears Fn (a modifier) but no other key, so Esc did nothing on some Macs (v1.0.2 report) — a hotkey
+    /// still fires then. It also keeps the key from the app in front where the Fn filter doesn't run. The same press
+    /// reaching both counts once (`escTwin`).
     static let escTwin: CFTimeInterval = 0.4
     private var escAt: CFTimeInterval = 0
 
@@ -1420,8 +1426,45 @@ final class Dictation {
         cancel()
     }
 
+    /// A hotkey matches its exact modifiers: with an ⌥ as the dictation key, held in push-to-talk, plain Esc's hotkey
+    /// doesn't match ⌥Esc — it gets its own. (A take that starts before the last press is over keeps the hotkeys:
+    /// `releaseEsc`'s wait is called off.)
+    private func holdEsc() {
+        escRelease?.invalidate()
+        escRelease = nil
+        guard !escRegistered else { return }
+        let plain = registerHotkey(.dictationEsc, key: kVK_Escape, mods: Dictation.cancelKey.carbonMods)
+        var option: OSStatus = OSStatus(paramErr)     // not asked for: no key of ours is in
+        if Dictation.cancelKey == .esc, trigger.key != .fn {
+            option = registerHotkey(.dictationEscOption, key: kVK_Escape, mods: optionKey)
+        }
+        escRegistered = plain == noErr || option == noErr     // dropEsc gives both back, whichever is in
+        if plain != noErr { emit(["event": "dictation_esc_hotkey_failed"]) }
+    }
+
+    /// The take is over: Esc goes back to the other apps — not before the press that ended it is over. Dropped the moment
+    /// the take ends, which is the moment Blurt hears Esc, the press or its release reaches the app in front after all
+    /// (BlurtCore DictationEscHold has the numbers). A key the Fn filter kept never shows as down, so that press ends
+    /// the wait at `settle`: the filter has the repeats and the release.
     private func releaseEsc() {
-        if escRegistered { unregisterHotkey(.dictationEsc); escRegistered = false }
+        keys.keepEsc(false, needs: Dictation.cancelKey.flagBits)
+        guard escRegistered, escRelease == nil else { return }
+        var hold = DictationEscHold(since: CACurrentMediaTime())
+        let t = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
+            guard hold.canRelease(now: CACurrentMediaTime(), keyDown: CGEventSource.keyState(.hidSystemState, key: CGKeyCode(kVK_Escape))) else { return }
+            self?.dropEsc()
+        }
+        RunLoop.main.add(t, forMode: .common)       // a menu open at that moment must not keep Esc from every app
+        escRelease = t
+    }
+
+    private func dropEsc() {
+        escRelease?.invalidate()
+        escRelease = nil
+        guard escRegistered else { return }
+        unregisterHotkey(.dictationEsc)
+        unregisterHotkey(.dictationEscOption)
+        escRegistered = false
     }
 
     private func discard(quietly: Bool) {
