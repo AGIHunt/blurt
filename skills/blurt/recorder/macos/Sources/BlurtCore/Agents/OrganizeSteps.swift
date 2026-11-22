@@ -43,4 +43,22 @@ public enum OrganizeSteps {
         }
         return (group(1), group(2))
     }
+
+    public enum EmptyRun: Equatable {
+        case missingTool(tool: String, install: String)
+        case noTranscript
+    }
+
+    /// An organising run filed no item: why it failed, when its own output says. A missing tool comes first, before
+    /// whatever else the agent said and before the next agent is tried: nothing comes of the run until the tool is
+    /// installed, and it is the same for every agent. It is read whether or not a batch was written, and whether or not
+    /// the live transcript was there: the recording's frames need ffmpeg too (frames.py), so a transcript that got past
+    /// transcribe.py doesn't make the run a success. nil when the empty batch is an honest "nothing to file" (the words
+    /// were there, or none were expected): that is still "done, 0 items".
+    public static func emptyRun(hasBatch: Bool, output: String, captures: Bool, shots: Bool, videoOnly: Bool,
+                                transcribed: Bool) -> EmptyRun? {
+        if let tool = missingTool(in: output) { return .missingTool(tool: tool.tool, install: tool.install) }
+        if hasBatch, emptyBatchFailed(captures: captures, shots: shots, videoOnly: videoOnly, transcribed: transcribed) { return .noTranscript }
+        return nil
+    }
 }

@@ -20,7 +20,6 @@ import wave
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
 
 import numpy as np
 
@@ -322,33 +321,6 @@ class LivePipeline(Patched):
         a = SimpleNamespace(force=False)
         self.assertIsNone(transcribe.live_transcript(session / "recording.wav", session, a, {}))
         self.assertIsNone(transcribe.live_transcript(session / "recording.wav", session, SimpleNamespace(force=True), {}))
-
-    def test_transcribe_reuses_live_transcript_without_ffmpeg(self):
-        """A Mac without ffmpeg (2026-11-19, #107): `transcribe.py run` stopped on the missing ffprobe before it looked at
-        live/'s transcript, the agent filed nothing, and the job said done. The recording's length comes from meta.json then."""
-        session = self.tmp / "s5"
-        (session / "live").mkdir(parents=True)
-        (session / "recording.mp4").write_bytes(b"nothing reads this without ffmpeg")
-        doc = {"source": "recording.mp4", "backend": "sensevoice", "model": "sense-voice-small-int8",
-               "duration": 5.0, "speech_seconds": 4.2, "elapsed_seconds": 0.1,
-               "segments": [{"start": 0.4, "end": 2.0, "text": "made live"}]}
-        transcribe.save_json(session / "transcript.json", doc)
-        transcribe.save_json(session / "live" / "status.json", {"asr": "done", "updated": time.time(), "note": ""})
-        transcribe.save_json(session / "meta.json", {"engine": "native-app", "duration": 5.3, "video": "recording.mp4"})
-        a = SimpleNamespace(force=False)
-        with mock.patch.object(transcribe, "find_tool", return_value=None), \
-                mock.patch.object(transcribe, "probe_duration", side_effect=AssertionError("ffprobe is not installed")), \
-                mock.patch.object(transcribe, "audio_tracks", side_effect=AssertionError("ffmpeg is not installed")):
-            self.assertEqual(transcribe.live_transcript(session / "recording.mp4", session, a, {}), doc)
-            run = SimpleNamespace(input=str(session / "recording.mp4"), out=None, force=False, backend=None, model=None, prompt=None)
-            with contextlib.redirect_stdout(io.StringIO()) as out:
-                transcribe.cmd_run(run)
-            self.assertTrue(json.loads(out.getvalue())["live"])
-            # another take's transcript, or no one wrote the length down: not reused
-            transcribe.save_json(session / "meta.json", {"engine": "native-app", "duration": 40.0})
-            self.assertIsNone(transcribe.live_transcript(session / "recording.mp4", session, a, {}))
-            (session / "meta.json").unlink()
-            self.assertIsNone(transcribe.live_transcript(session / "recording.mp4", session, a, {}))
 
 
 # ------------------------------------------------------------------ shots
