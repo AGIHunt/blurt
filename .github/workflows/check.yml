@@ -21,7 +21,7 @@ concurrency:
 jobs:
   tests:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30      # 16 on a cold uv cache: half of it fetching the wheels
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
