@@ -77,7 +77,9 @@ class Interim(unittest.TestCase):
 
     def note(self, seconds, **kw):
         return T._server_call({"cmd": "note", "wav": str(A.write_wav(self.tmp / f"{seconds}-{time.time()}.wav", seconds)),
-                               "language": "auto", "purpose": None, **kw}, timeout=10)
+                               "language": "auto", "purpose": None, **kw},
+                               # the interim decode alone takes 3 s here; 10 s wasn't enough on a CI runner
+                               timeout=30)
 
     def test_a_final_piece_never_waits_for_an_interim_decode(self):
         with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):

@@ -2,6 +2,7 @@
 and no UI source uses emoji or text glyphs as icons (assets/icons/tools/check_glyphs.py)."""
 from __future__ import annotations
 
+import platform
 import re
 import subprocess
 import sys
@@ -152,7 +153,9 @@ def test_app_icon_has_a_dark_appearance_for_macos_26():
     assert re.search(r"<key>CFBundleIconName</key>\s*<string>AppIcon</string>", plist)
     assert re.search(r"<key>CFBundleIconFile</key>\s*<string>AppIcon</string>", plist)
     car = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Assets.car"
-    if subprocess.run(["which", "assetutil"], capture_output=True).returncode == 0:
+    # read with the assetutil of macOS 26 or later: a macOS 15 one (the CI runner) lists none of the stack's looks
+    macos = int((platform.mac_ver()[0] or "0").split(".")[0] or 0) if sys.platform == "darwin" else 0
+    if macos >= 26 and subprocess.run(["which", "assetutil"], capture_output=True).returncode == 0:
         info = json.loads(subprocess.run(["assetutil", "--info", str(car)], capture_output=True, text=True).stdout)
         looks = {e.get("Appearance") for e in info if e.get("Name") == "AppIcon" and e.get("AssetType") == "IconImageStack"}
         assert {"NSAppearanceNameAqua", "NSAppearanceNameDarkAqua"} <= looks, looks

@@ -1,7 +1,10 @@
 name: check
 
-# Cheap smoke check: people install the skill straight from main, so main must never be broken.
-# Runs only when the skill or tests change; Linux + Windows (paths, encodings, console code pages differ), ~1 min each.
+# People install the skill straight from main, so main must never be broken: the Python suite (tests/, unittest and
+# pytest files alike) runs on every change to the skill or the tests, in a scratch BLURT_HOME (tests/conftest.py; for
+# `python -m unittest discover -s tests`, tests/test_0_home.py — one module by name under unittest loads nothing else,
+# so that form has no floor). Linux + Windows wait for the repo variable CROSS_PLATFORM_CI (the smoke job below: those
+# ports are still in development).
 on:
   push:
     branches: [main]
@@ -17,6 +20,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests:
+    runs-on: macos-15
+    timeout-minutes: 30      # 16 on a cold uv cache: half of it fetching the wheels
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Syntax
+        run: uv run -q python -m compileall -q skills/blurt/scripts tests
+      - name: Tests
+        # the dependencies the scripts declare (their `# /// script` blocks), pinned as they pin them: tests/test_ci_pins.py
+        # fails when the two drift. Tests of the MCP server, of script conversion and of the decoders import them.
+        run: |
+          uv run -q \
+            --with "numpy==2.3.4; python_version >= '3.11'" \
+            --with "numpy==2.2.6; python_version < '3.11'" \
+            --with "pillow==12.1.0" \
+            --with "sherpa-onnx==1.13.8" \
+            --with "opencc-python-reimplemented==0.1.7" \
+            --with "mcp==1.26.0" \
+            --with pytest \
+            python -m pytest tests -q -p no:cacheprovider
+
   smoke:
     # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
     if: vars.CROSS_PLATFORM_CI == 'true'

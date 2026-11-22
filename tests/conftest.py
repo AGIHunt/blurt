@@ -4,6 +4,9 @@ _common.py (and transcribe.py, which copies it) reads $BLURT_HOME once, at impor
 imported a script without the variable set left the whole session pointed at the real ~/.blurt — the full suite was
 writing jobs/*.events.jsonl, config.json and run/ files there (seen in the v0.7 end-to-end run). Tests that need a
 fresh home still make their own; this is only the floor.
+
+python -m unittest loads no conftest: tests/test_0_home.py lays the same floor for a full `discover -s tests` (one
+module by name under unittest loads nothing else: that form is said there).
 """
 import os
 import tempfile

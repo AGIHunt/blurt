@@ -245,13 +245,15 @@ class DictationNeedsTheVad(unittest.TestCase):
     server answers model_missing under BLURT_NO_DOWNLOAD — so it isn't "installed" for the dictation key."""
 
     def test_files_without_the_vad_are_not_installed(self):
-        vad = T.MODELS_DIR / "silero_vad.onnx"
-        had = vad.read_bytes() if vad.is_file() else None
-        self.addCleanup(lambda: vad.write_bytes(had) if had is not None else vad.unlink(missing_ok=True))
-        vad.unlink(missing_ok=True)
+        # a models folder of this test's own, and every model counted as Blurt's: the test used the folder itself,
+        # removing its silero_vad.onnx for a moment, and stood only after test_asr_select had left its stub of
+        # blurt_downloaded in (alone it failed: nothing was in the folder)
+        models = Path(tempfile.mkdtemp(prefix="blurt-vad-"))
+        vad = models / "silero_vad.onnx"
         # without the copy the skill ships (v1.0.6): what an install that lost it would see
-        with mock.patch.object(T, "installed", return_value=True), \
-                mock.patch.object(T, "BUNDLED_VAD", T.MODELS_DIR / "no-such-vad.onnx"):
+        with mock.patch.object(T, "MODELS_DIR", models), mock.patch.object(T, "blurt_downloaded", return_value=True), \
+                mock.patch.object(T, "installed", return_value=True), \
+                mock.patch.object(T, "BUNDLED_VAD", models / "no-such-vad.onnx"):
             d = T.dictation_models()
             self.assertFalse(d["vad"])
             local = [r for r in d["models"] if r["files"]]

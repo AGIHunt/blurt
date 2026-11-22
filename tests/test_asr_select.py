@@ -75,6 +75,18 @@ def config(cfg: dict):
             path.write_bytes(old)
 
 
+@contextlib.contextmanager
+def machine(hw: dict):
+    """The Mac the rules see for the block: select() and recommend() ask probe(), which looks at this machine once
+    and keeps the answer (on a CI runner with 7 GB none of the big models fit, and macOS's recogniser won everywhere)."""
+    real = T._HW
+    T._HW = hw
+    try:
+        yield
+    finally:
+        T._HW = real
+
+
 def fake_installed(*ids):
     """Patch T.installed so exactly these registry ids count as downloaded."""
     real = T.installed
@@ -743,6 +755,14 @@ class Install(unittest.TestCase):
 class AppleSpeechSelect(unittest.TestCase):
     """Nothing downloaded: macOS 26's SpeechTranscriber runs dictation, voice notes and recordings; a local model takes
     over as soon as one is installed; never for a language it doesn't speak."""
+
+    def setUp(self):
+        # a 128 GB Mac, whatever runs the test: select("note") reads the machine's memory through probe()
+        self.m = machine(hw())
+        self.m.__enter__()
+
+    def tearDown(self):
+        self.m.__exit__(None, None, None)
 
     def test_it_runs_when_nothing_is_downloaded(self):
         real = fake_installed("apple-speech")
