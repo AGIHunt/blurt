@@ -90,9 +90,10 @@ public enum IslandLayout {
         max(earWidth, min(earWidth(content: width), shape))
     }
 
-    /// A camera cutout narrower than this is a punch hole (the touch-screen MacBook Pro's: 59 pt), not a notch (a 14"
-    /// MacBook Pro's: 185 pt).
-    public static let punchHoleMaxWidth: CGFloat = 120
+    /// A camera cutout less wide than this many times its own height is a punch hole, not a notch: the touch-screen
+    /// MacBook Pro's hole is 59 × 40 pt (1.5), a 14" MacBook Pro's notch 185 × 32 pt (5.8). A ratio, not a width: in a
+    /// Larger Text display mode everything is fewer points, and that notch is about 110 pt at 1024 × 663.
+    public static let punchHoleMaxAspectRatio: CGFloat = 3
     /// The middle the ears keep clear of beside a punch hole while something is live. macOS draws its own island over
     /// the hole and grows it to about 140 pt while the microphone or camera is on (the indicator shows in it), so the
     /// ears stand where they would beside a 14" MacBook Pro's notch.
@@ -117,7 +118,7 @@ public enum IslandLayout {
     public static func cutout(gap: CGFloat, safeTop: CGFloat, menuBar: CGFloat,
                               liveWidth: CGFloat = punchHoleLiveWidth) -> Cutout {
         let hole = CGSize(width: gap, height: safeTop)
-        guard gap < punchHoleMaxWidth else { return Cutout(live: hole, rest: hole) }
+        guard gap < safeTop * punchHoleMaxAspectRatio else { return Cutout(live: hole, rest: hole) }
         let top = max(1, menuBar - safeTop)
         return Cutout(live: CGSize(width: max(gap, liveWidth), height: max(1, safeTop - top)), rest: hole, top: top)
     }
