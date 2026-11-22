@@ -640,16 +640,47 @@ extension App {
             // items.py ingest turns items.json into Markdown (renaming it) and writes batch.json
             let fm = FileManager.default
             let hasItems = ["batch.json", "items.json", "items.ingested.json"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
+            // a sandboxed run can't append to its job (ingest's event names the items): the batch does
+            let uids = (try? Data(contentsOf: dir.appendingPathComponent("batch.json")))
+                .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })?["items"] as? [String] ?? []
+            let meta = (try? Data(contentsOf: dir.appendingPathComponent("meta.json")))
+                .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+            // nothing was filed and the run's own output says why: a script stopped on a tool this Mac hasn't got (a Mac
+            // without ffmpeg, #107), or a batch written with no item while the recording's words never arrived. Not
+            // "done, 0 items", and no reason to try the next agent
+            if uids.isEmpty, let why = OrganizeSteps.emptyRun(hasBatch: hasItems, output: tail, captures: captures != nil, shots: isShotsSession(dir),
+                                                               videoOnly: meta?["video_only"] as? Bool ?? false,
+                                                               transcribed: fm.fileExists(atPath: dir.appendingPathComponent("transcript.json").path)) {
+                let reason: String, cls: String, said: String
+                switch why {
+                case .missingTool(let tool, let install):
+                    reason = T("app.agent.missing_tool", tool, install)
+                    cls = "missing_tool"
+                    said = "\(tool) not installed, no items"
+                case .noTranscript:
+                    reason = T("app.agent.no_transcript")
+                    cls = "no_transcript"
+                    said = "no transcript, no items"
+                }
+                appendLog(log, "── blurt \(nowStamp()) · failed: \(said)\n")
+                self.processing.removeAll { $0 == dir.path }
+                updateMeta(dir) { m in
+                    m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(
+                        ["result": "failed", "class": cls, "short": T("job.state.failed"), "reason": reason,
+                         "exit": Int(status), "done_at": nowStamp()]) { _, n in n }
+                }
+                for (s, st) in OrganizeSteps.onFailure(failureClass: nil, transcribed: false) { job.step(s, st) }
+                job.finish(.failed, error: JobError(code: "unknown", message: said, hintKey: nil, reason: reason))
+                Refile.runEnded(dir)
+                self.refreshStatus()
+                return
+            }
             if hasItems {
                 self.processing.removeAll { $0 == dir.path }
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
                 appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
                 for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
-                // a sandboxed run can't append to its job (ingest's event names the items): the batch does
-                if let uids = (try? Data(contentsOf: dir.appendingPathComponent("batch.json")))
-                    .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })?["items"] as? [String], !uids.isEmpty {
-                    job.setItems(uids)
-                }
+                if !uids.isEmpty { job.setItems(uids) }
                 job.finish(.done)
                 Scripts.indexUpdate([dir])
                 // a recording re-filed while it ran ("Filed to X · Change"): its items go where the user said

@@ -3,7 +3,7 @@
   "recording": "Use the blurt skill to process this recording: {session}",
   "shots": "Use the blurt skill to process this batch of captures: {session}\nIt is a shots session (no video): each shot anchors one item and is that item's primary frame; voice-only lines (type voice) are items of their own; voice notes are transcribed first; .marked.png files carry the user's ink.",
   "captures": "\nOnly these captures (shots.jsonl n): {captures}.",
-  "run": "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences.",
+  "run": "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences. If a script stops because a tool it needs isn't installed (its line says which one and how to install it), go no further: write no items.json, and end with that line.",
   "skill": "\nThe blurt skill: {skill_md}",
   "scripts": "\nRun the skill's scripts exactly as `uv run {scripts}/<name>.py …` (no other form, no other command is allowed).",
   "code": "\nThe project's code (read it, change nothing there): {code}",

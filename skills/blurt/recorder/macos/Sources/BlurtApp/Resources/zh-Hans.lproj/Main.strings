@@ -17,6 +17,8 @@
 "app.agent.not_logged" = "未登录";
 "app.agent.unfinished" = "%@ 未完成整理就停止了";
 "app.agent.couldnt_start" = "%@ 无法启动。请确认它能在终端中正常运行，然后重试。";
+"app.agent.no_transcript" = "这段录屏没有转写，也没有写出事项。请查看日志，补上缺少的部分后重试。";
+"app.agent.missing_tool" = "整理需要 %@，本机没有安装。请先安装（%@），再重试。";
 
 "app.menu.after.keep" = "只保存视频";
 "app.menu.after.organize" = "整理成事项";
