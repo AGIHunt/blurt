@@ -23,12 +23,14 @@ r1 写了「安装 Blurt 1.0.x」，但从 1.0.12 起装出来的都是「安装
 （2.12 里在第 36 行），之后才 `!define VERSION`（第 43 行），hooks 里写到 `${VERSION}` 的时候它还不存在。NSIS 不报错：`LangString` 的值
 原样存进语言表，连警告都没有（换成别的运行时字符串才会有一行 `unknown variable` 的警告）。在 Mac 上编测试脚本「没有错误」，说的只是这个。
 
-现在版本号从安装包自己的版本信息里来（模板的 `VIProductVersion`，如 `1.1.0.0`）：`BlurtGuiInit` 用 `GetDllVersion "$EXEPATH"` 读出主版本、
-次版本和修订号，放进 `$BlurtVersion`；标题的语言字符串写「安装 Blurt $BlurtVersion」，显示的时候才把变量换掉（语言字符串里的变量是运行时
-展开的：exehead `util.c` 的 `GetNSISString`）。
-在 Mac 上验证的办法（Tauri 2.12 自带的和 Homebrew 的都是 NSIS 3.13）：按模板的顺序编一个测试脚本，把生成的 exe 的头部解出来，看标题那一串
-的字节：旧的是 ` ${VERSION}` 原文，新的是变量码 `0x0003` 加变量下标。`tests/test_windows_installer.py` 看着 hooks 里不再用 Tauri 后来才
-定义的那些名字。
+现在版本号在编安装包的时候就读进来：hooks 用 `!searchparse /file` 读旁边 `tauri.conf.json` 里的 `"version"`，也就是 `tauri build` 放进
+安装包版本信息的那个数，照原样写（`1.1.0`，预发布的 `1.0.13-alpha.1` 也是完整的）。读不到就 `!error`，编不过，不会带着错的标题发出去。
+不从安装包的版本信息里反过来读：那里只有四段数字（`1.1.0.0`），预发布的那一截就丢了。
+`tests/test_windows_installer.py` 守着两处：hooks 里不再用 Tauri 后来才定义的名字；hooks 读的还是 `tauri.conf.json`，文件里第一个 `"version"`
+就是应用自己的版本，平台自己的配置（`tauri.windows.conf.json`）里没有另写一个。
+在 Mac 上验证的办法（Tauri 2.12 自带的和 Homebrew 的都是 NSIS 3.13）：按模板的顺序编一个测试脚本（hooks 在前，`VERSION` 在后），把生成的
+exe 的头部解出来，看语言表里那一串。现在的配置、预发布版本号、Windows 换行符、带空格的路径都试过，标题是「安装 Blurt 1.1.0」这样的定稿；
+去掉版本号、拿走配置文件，编到 hooks 就停了。
 还没在 Windows 上看装好的欢迎页。
 
 还没改的（要换 Tauri 模板或 `customLanguageFiles` 整份语言文件）：维护页的「添加/重新安装组件」和它没有新版本号的说明；

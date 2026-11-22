@@ -25,12 +25,17 @@ ShowUninstDetails nevershow
 
 !define MUI_HEADERIMAGE_RIGHT
 
-; The version comes from the installer's own version resource when the installer starts (BlurtGuiInit). Not ${VERSION}:
-; Tauri includes this file before its template defines VERSION, so that stayed as text on the welcome page ("安装 Blurt
-; ${VERSION}") in every installer since 1.0.12 (#110), and compiling the hooks on the Mac says nothing about it.
-Var BlurtVersion
-LangString BlurtWelcomeTitle 1033 "Install Blurt $BlurtVersion"
-LangString BlurtWelcomeTitle 2052 "安装 Blurt $BlurtVersion"
+; The version on the welcome page is read while the installer is compiled, from tauri.conf.json next to this file's
+; folder: the version Tauri builds, as written there (1.1.0, 1.0.13-alpha.1). Not ${VERSION}: Tauri includes this file
+; before its template defines VERSION, so that stayed as text on the welcome page ("安装 Blurt ${VERSION}") in every
+; installer since 1.0.12 (#110), and compiling the hooks on the Mac said nothing about it. A config this can't read
+; stops the build (tests/test_windows_installer.py keeps the two in step).
+!searchparse /noerrors /file "${__FILEDIR__}/../tauri.conf.json" '"version": "' BLURT_VERSION '"'
+!ifndef BLURT_VERSION
+  !error "Blurt's installer hooks could not read the version from tauri.conf.json"
+!endif
+LangString BlurtWelcomeTitle 1033 "Install Blurt ${BLURT_VERSION}"
+LangString BlurtWelcomeTitle 2052 "安装 Blurt ${BLURT_VERSION}"
 LangString BlurtWelcomeText 1033 "Blurt goes on this PC for your Windows account. No administrator rights needed, and nothing else needs to close."
 LangString BlurtWelcomeText 2052 "Blurt 会装在这台电脑上，只给当前 Windows 账户用。不需要管理员权限，也不用关闭别的程序。"
 LangString BlurtFolderText 1033 "Blurt goes in this folder, for your account only."
@@ -59,17 +64,6 @@ LangString BlurtRunText 2052 "打开 Blurt"
 
 Function BlurtGuiInit
   !insertmacro BLURT_HIDE_BRANDING
-  ; VIProductVersion is the app's version then 0 (1.1.0.0): major and minor in the high word, the revision in the low one's
-  ClearErrors
-  GetDllVersion "$EXEPATH" $R0 $R1
-  ${If} ${Errors}
-    StrCpy $BlurtVersion ""
-  ${Else}
-    IntOp $R2 $R0 >> 16
-    IntOp $R3 $R0 & 0xFFFF
-    IntOp $R4 $R1 >> 16
-    StrCpy $BlurtVersion "$R2.$R3.$R4"
-  ${EndIf}
 FunctionEnd
 
 Function un.BlurtGuiInit
