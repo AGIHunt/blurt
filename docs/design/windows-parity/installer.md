@@ -30,7 +30,8 @@ r1 写了「安装 Blurt 1.0.x」，但从 1.0.12 起装出来的都是「安装
 就是应用自己的版本，平台自己的配置（`tauri.windows.conf.json`）里没有另写一个。
 在 Mac 上验证的办法（Tauri 2.12 自带的和 Homebrew 的都是 NSIS 3.13）：按模板的顺序编一个测试脚本（hooks 在前，`VERSION` 在后），把生成的
 exe 的头部解出来，看语言表里那一串。现在的配置、预发布版本号、Windows 换行符、带空格的路径都试过，标题是「安装 Blurt 1.1.0」这样的定稿；
-去掉版本号、拿走配置文件，编到 hooks 就停了。
+去掉版本号、拿走配置文件，编到 hooks 就停了。Windows 上也真的编过一次（`desktop.yml` 手动跑在分支上，NSIS 和 MSI 都出了）：把那个安装包的
+头部解出来，语言表里是「安装 Blurt 1.1.0」和「Install Blurt 1.1.0」。
 还没在 Windows 上看装好的欢迎页。
 
 还没改的（要换 Tauri 模板或 `customLanguageFiles` 整份语言文件）：维护页的「添加/重新安装组件」和它没有新版本号的说明；
