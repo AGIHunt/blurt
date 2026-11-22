@@ -1,0 +1,56 @@
+.support-page {
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 40px 24px 72px;
+}
+
+.support-page a {
+  color: var(--mint-ink);
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+.support-page nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 42px;
+}
+
+.support-page h1,
+.support-page h2,
+.support-page h3 {
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+
+.support-page h1,
+.support-page h2 {
+  font-size: clamp(2rem, 7vw, 3.2rem);
+}
+
+.support-page h3 {
+  font-size: 1.2rem;
+  margin-top: 1.7em;
+}
+
+.support-page .translation {
+  border-top: 1px solid var(--line);
+  margin-top: 4rem;
+  padding-top: 1.4rem;
+}
+
+.support-page h1 + p,
+.support-page h2 + p,
+.support-page p + p {
+  margin-top: .85em;
+}
+
+.support-page ol {
+  list-style: decimal;
+  padding-inline-start: 1.4em;
+}
+
+.support-page li + li {
+  margin-top: .5em;
+}

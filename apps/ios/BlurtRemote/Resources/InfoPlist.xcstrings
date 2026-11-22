@@ -8,13 +8,13 @@
     "en": {
      "stringUnit": {
       "state": "translated",
-      "value": "Scan the code Blurt shows on your Mac to pair."
+      "value": "Scan the QR code Blurt shows on your computer to pair."
      }
     },
     "zh-Hans": {
      "stringUnit": {
       "state": "translated",
-      "value": "扫描 Mac 上 Blurt 显示的二维码以配对。"
+      "value": "扫描电脑端口喷鸡显示的二维码以配对。"
      }
     }
    }
@@ -25,13 +25,13 @@
     "en": {
      "stringUnit": {
       "state": "translated",
-      "value": "Connect to Blurt on your Mac."
+      "value": "Find and connect to Blurt on your computer."
      }
     },
     "zh-Hans": {
      "stringUnit": {
       "state": "translated",
-      "value": "连接 Mac 上的 Blurt。"
+      "value": "查找并连接电脑端的口喷鸡。"
      }
     }
    }
@@ -42,13 +42,13 @@
     "en": {
      "stringUnit": {
       "state": "translated",
-      "value": "Dictate into your Mac through this iPhone’s microphone."
+      "value": "Send dictation audio from this device to your paired computer."
      }
     },
     "zh-Hans": {
      "stringUnit": {
       "state": "translated",
-      "value": "通过 iPhone 麦克风向 Mac 听写。"
+      "value": "把本机麦克风录到的听写音频发送到已配对的电脑。"
      }
     }
    }
