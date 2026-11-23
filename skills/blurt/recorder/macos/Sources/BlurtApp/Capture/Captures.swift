@@ -238,7 +238,15 @@ final class Snapper {
     func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil, remember: Bool = false, take: Recorder? = nil) {
         let ns = toNS(region)
         let t = take.map { $0.elapsed() }          // the moment of the snap on the video's clock
-        captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
+        // a busy Mac (2026-11-23: another app held the GPU) can keep ScreenCaptureKit from answering for seconds: after
+        // `snapWait` the still the picker took as it opened stands in (the screen as the user saw it then), so the snap
+        // isn't lost
+        let standIn = { () -> (CGImage, CGFloat)? in
+            guard let c = picker?.stills.cropped(ns) else { return nil }
+            emit(["event": "snap_still_fallback"])
+            return (c.image, c.scale)
+        }
+        captureStill(rect: region, showsCursor: false, within: Self.snapWait, standIn: standIn) { [weak self] img, scale in
             guard let self = self else { picker?.closeWindows(); return }
             guard let img = img else {
                 picker?.closeWindows()
@@ -279,6 +287,10 @@ final class Snapper {
             self.present(shot, img: img, ns: ns, withNote: withNote, picker: picker)
         }
     }
+
+    /// How long ⌥A's capture of the area may take before the picker's own still stands in (without one it is waited
+    /// for up to 10 s; the dim stays meanwhile).
+    static let snapWait = 2.5
 
     /// A fresh snap on screen: frozen in place with the pen and its note (`withNote`), or straight onto its thread.
     private func present(_ shot: Shot, img: CGImage, ns: NSRect, withNote: Bool, picker: PickerController?) {

@@ -1727,6 +1727,9 @@ final class Dictation {
             return r
         }
         let t0 = Date()
+        // tests: BLURT_TEST_POLISH_DELAY=<s> makes polish that slow (a busy GPU), to see "Still polishing… Type Now"
+        if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1",
+           let d = ProcessInfo.processInfo.environment["BLURT_TEST_POLISH_DELAY"].flatMap(Double.init) { Thread.sleep(forTimeInterval: d) }
         let until = t0.addingTimeInterval(loadBudget)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
         guard WarmServer.running("polish-serve") else {

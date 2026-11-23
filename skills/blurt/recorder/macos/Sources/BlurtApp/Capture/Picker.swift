@@ -127,6 +127,39 @@ final class PickerController {
         placeToolbar()
     }
 
+    /// While a drag draws, moves or resizes the selection: only around the old and new selection is drawn again (its
+    /// dim edge, the size label above it). Redrawing every screen's whole dim on each drag event fell behind the
+    /// pointer on a busy Mac and the dim smeared after it (2026-11-23).
+    func refreshSelection(from old: NSRect?) {
+        guard let old = old, let new = selection, hovered == nil else { return refresh() }
+        let dirty = old.union(new).insetBy(dx: -140, dy: -60)
+        for w in windows {
+            guard let v = w.contentView as? PickerView else { continue }
+            let local = dirty.offsetBy(dx: -w.frame.minX, dy: -w.frame.minY).intersection(v.bounds)
+            if !local.isEmpty { v.setNeedsDisplay(local) }
+            v.syncOutline()
+        }
+        placeToolbar()
+    }
+
+    /// The on-screen windows, read at most every 0.3 s while the pointer moves (each read asks the window server for
+    /// every window, on the main thread), and which apps are background ones (asked once per app).
+    private var windowList: (at: CFTimeInterval, list: [[String: Any]])?
+    private var backgroundApps: [pid_t: Bool] = [:]
+    func onScreenWindows() -> [[String: Any]] {
+        let now = CACurrentMediaTime()
+        if let c = windowList, now - c.at < 0.3 { return c.list }
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        windowList = (now, list)
+        return list
+    }
+    func isBackgroundApp(_ pid: pid_t) -> Bool {
+        if let b = backgroundApps[pid] { return b }
+        let b = NSRunningApplication(processIdentifier: pid)?.activationPolicy != .regular
+        backgroundApps[pid] = b
+        return b
+    }
+
     func placeToolbar() {
         toolbar.removeFromSuperview()
         // snapping: letting go takes the shot, so no toolbar while the drag draws (as ⌘⇧4)
@@ -154,7 +187,7 @@ final class PickerController {
             toolbar.removeFromSuperview()
             windows.forEach { $0.ignoresMouseEvents = true }
             refresh()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.closeWindows() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 11) { [weak self] in self?.closeWindows() }
             onDone?(result)
             return
         }
@@ -362,8 +395,7 @@ final class PickerView: NSView {
 
     func windowRect(at p: NSPoint) -> NSRect? {
         let cg = CGPoint(x: p.x, y: primaryHeight - p.y)
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]] else { return nil }
+        guard let list = controller?.onScreenWindows() else { return nil }
         let me = Int(getpid())
         for w in list {
             guard (w[kCGWindowLayer as String] as? Int) == 0, let pid = w[kCGWindowOwnerPID as String] as? Int,
@@ -371,8 +403,7 @@ final class PickerView: NSView {
             // windows you can't see: fully transparent ones, and windows of background apps (agents / helpers
             // such as MobileDeviceUpdater keep an "on-screen" window you never see) unless that app is in front
             if (w[kCGWindowAlpha as String] as? Double ?? 1) < 0.05 { continue }
-            if pid != me, pid_t(pid) != controller?.frontPID,
-               NSRunningApplication(processIdentifier: pid_t(pid))?.activationPolicy != .regular { continue }
+            if pid != me, pid_t(pid) != controller?.frontPID, controller?.isBackgroundApp(pid_t(pid)) ?? true { continue }
             let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
             if r.width > 40, r.height > 40, r.contains(cg) {
                 return toNS(r).intersection(controller!.screenFrame(containing: p))
@@ -399,6 +430,7 @@ final class PickerView: NSView {
         guard let c = controller else { return }
         let p = global(e)
         pointerMoved(to: p)
+        let before = c.selection
         let bounds = c.screenFrame(containing: downAt)
         switch mode {
         case .create(let s):
@@ -422,7 +454,7 @@ final class PickerView: NSView {
         case .none: break
         }
         if case .none = mode {} else { c.dragging = c.selection != nil }
-        c.refresh()
+        c.refreshSelection(from: before)
     }
 
     func drawRect(from s: NSPoint, to p: NSPoint, in bounds: NSRect) {

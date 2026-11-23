@@ -176,12 +176,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         guard !watching else { return }
         watching = true
         let nc = NotificationCenter.default
-        nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { activeChanged() }
-        }
+        // checked a turn later: on activation AppKit first makes the last key window key again (often the viewer) before the window
+        // the user clicked or brought forward takes over; and any of Blurt's windows taking the key status (the notch, a card, the
+        // main window) is checked too, not only the viewer's own key changes
+        let later = { DispatchQueue.main.async { MainActor.assumeIsolated { activeChanged() } } }
+        nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in later() }
         nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { activeChanged() }
         }
+        nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { _ in later() }
+        nc.addObserver(forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main) { _ in later() }
     }
 
     /// Blurt came to the front or went behind (tests: `viewer active on|off`).
@@ -547,7 +551,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     // MARK: keys
 
     /// The window would take the keys now: connected, key, with Blurt in front. (A window of an app behind others can still be key.)
-    var wantsKeys: Bool { link.state == .connected && ViewerKeyboard.appActive && ViewerKeyboard.isKey(window) }
+    var wantsKeys: Bool {
+        link.state == .connected && ViewerKeyboard.appActive && ViewerKeyboard.isKey(window) && window.map(ViewerKeyboard.inFront) ?? false
+    }
 
     func windowDidBecomeKey(_ n: Notification) {
         if wantsKeys, !captured { setCaptured(true) }

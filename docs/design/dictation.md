@@ -1172,8 +1172,15 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   length (`DictationASRFailure.hung`, `CPUWatch`) — a server that is loading or decoding keeps its CPU moving (~0.5 s
   of CPU per 0.5 s on a 4-minute file) and is waited for, up to `serverTimeout`; waiting half the audio as well held a
   stopped server's 20 s take 9.5 s. 3 s after the stop a take still on its way says so,
-  with the way out: "还在识别… Esc 取消" / "还在润色… Esc 取消" (`Dictation.slowToastKey`; gone when it lands or is
+  with the way out: "还在识别… Esc 取消" / "还在润色… 按 Esc 跳过润色" (`Dictation.slowToastKey`; gone when it lands or is
   cancelled).
+- **The way out follows the stage (2026-11-23).** The founder's takes on 11-23 were slow in both stages at once (asr
+  median 441 ms, p90 total 8.9 s, 10 polish timeouts in 90 takes vs 0–2 a day before): another app held the GPU (WindowServer
+  ~85 % GPU, sampled from `AGXDeviceUserClient` accumulatedGPUTime), and MLX's speech and polish models share it. The one
+  line shown at 3 s was the recognising stage's "Esc 取消" (which throws the take away), so the existing Esc-types-it-as-heard
+  went unseen. Now a take that reaches polish says "还在润色…" with a 「直接输入」 button after 1 s there (at once if it was
+  already slow to recognise); the button and Esc both type what was heard (`DictationTakes.skipPolishing`, reason
+  "skipped"). Not a second double-tap of the key: a tap after the stop starts the next take, and a double tap sends.
 - **A stuck server is replaced, also one an earlier app left behind.** Servers end with `os._exit` after removing
   their run file (`_common.server_exit`; a preload that fails is inside the same `finally`): three servers of apps
   long gone sat deadlocked in Python's teardown for hours here, still holding their models, one still listening with

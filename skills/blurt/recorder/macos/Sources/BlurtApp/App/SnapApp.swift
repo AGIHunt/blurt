@@ -456,6 +456,8 @@ extension App {
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
         case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
+        case "pickertake": picker?.finish(true)         // = ↩ in the area picker: the selection is taken
+        case "stilldelay": setenv("BLURT_TEST_STILL_DELAY", arg, 1)   // stilldelay S: screen captures answer S s late from now on
         case "pickesc": hotkey(.pickEsc)                 // = the system-wide Esc while a screen picker is up (area or ⌥C's crosshair)
         case "pickers":                                 // which screen pickers are up, and whether their Esc is registered
             emit(["event": "pickers", "area": picker != nil, "snap": picker?.snapMode ?? false, "text": ScreenTextCopy.shared.picking,

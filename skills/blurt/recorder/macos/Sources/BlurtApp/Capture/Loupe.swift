@@ -6,6 +6,10 @@
 // picker itself — the first loupe, drawn black before there was anything to magnify, came back inside the loupe when
 // the pointer crossed that spot (ScreenCaptureKit doesn't list a window ordered front a moment ago, so it isn't
 // excluded). No still (no Screen Recording, a capture that failed): the windows show after 0.6 s, without a loupe.
+// A still that comes back after the windows showed is dropped (2026-11-23): on a busy Mac (the GPU taken by another
+// app) ScreenCaptureKit answered after the 0.6 s, its still held the picker's black first loupe right where the drag
+// started, and ⌥C read that box instead of the text under it ("no text"). Without a still ⌥C and ⌥A capture the area
+// once the picker is gone.
 import AppKit
 import BlurtCore
 
@@ -16,30 +20,42 @@ final class LoupeStills {
     /// One still per screen, then `done` (main queue) once all are in or 0.6 s passed, whichever is first.
     func capture(_ screens: [NSScreen], done: @escaping () -> Void) {
         var left = screens.count, called = false
+        let t0 = CACurrentMediaTime()
         let finish = { if !called { called = true; done() } }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { finish() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.wait) { finish() }
         for s in screens {
             let frame = s.frame
             captureStill(rect: toCG(frame), showsCursor: false) { [weak self] img, scale in
                 guard let self = self, !self.cancelled else { return }
-                if let img = img { self.stills.append((frame, img, scale)) }
                 left -= 1
+                // the windows show once `done` ran: a still that answers after that may hold the picker itself
+                if called {
+                    emit(["event": "still_late", "ms": Int((CACurrentMediaTime() - t0) * 1000), "got": img != nil])
+                    return
+                }
+                if let img = img { self.stills.append((frame, img, scale)) }
                 if left == 0 { finish() }
             }
         }
         if screens.isEmpty { finish() }
     }
 
+    /// How long the picker stays invisible waiting for its stills.
+    static let wait = 0.6
+
     func cancel() { cancelled = true }
 
     func still(at p: NSPoint) -> (frame: NSRect, image: CGImage, scale: CGFloat)? { stills.first { $0.frame.contains(p) } }
 
     /// The selection (global AppKit points) cut out of the still it lies in; nil across screens or without one.
-    func crop(_ s: NSRect) -> CGImage? {
+    func crop(_ s: NSRect) -> CGImage? { cropped(s)?.image }
+
+    /// `crop` with the still's pixels per point.
+    func cropped(_ s: NSRect) -> (image: CGImage, scale: CGFloat)? {
         guard let st = stills.first(where: { $0.frame.contains(s) }) else { return nil }
         let px = CGRect(x: (s.minX - st.frame.minX) * st.scale, y: (st.frame.maxY - s.maxY) * st.scale,
                         width: s.width * st.scale, height: s.height * st.scale).integral
-        return st.image.cropping(to: px)
+        return st.image.cropping(to: px).map { ($0, st.scale) }
     }
 }
 

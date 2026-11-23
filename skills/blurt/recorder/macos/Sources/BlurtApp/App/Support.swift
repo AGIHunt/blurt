@@ -80,8 +80,26 @@ func emit(_ obj: [String: Any]) {
         print(s)
         fflush(stdout)
         if RemoteLog.keeps(obj) { RemoteLog.logger.notice("\(s, privacy: .public)") }
+        else if let c = CaptureLog.line(obj) { CaptureLog.logger.notice("\(c, privacy: .public)") }
     }
     if let line = DragLog.line(obj, at: Date().timeIntervalSince1970) { DragLogFile.append(line) }
+}
+
+/// Screen captures that failed or were slow (⌥A, ⌥C / ⌥T) and dictations slow to come, kept in the system log
+/// (`log show --predicate 'subsystem == "dev.blurt.recorder" AND category == "capture"'`): a report of "no screenshot" or
+/// "no text" on a busy Mac (2026-11-23) had nothing to go on. Timings and outcomes only, never the text.
+enum CaptureLog {
+    static let logger = Logger(subsystem: "dev.blurt.recorder", category: "capture")
+    static let events: Set<String> = ["snap_failed", "screen_help", "still_late", "still_timeout", "snap_still_fallback", "screen_text",
+                                      "screen_text_failed", "dictation_slow", "dictation_polish_skip", "dictation_polish_skipped"]
+
+    static func line(_ obj: [String: Any]) -> String? {
+        guard let e = obj["event"] as? String, events.contains(e) else { return nil }
+        var o = obj
+        o["text"] = nil
+        guard let d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) else { return nil }
+        return String(data: d, encoding: .utf8)
+    }
 }
 
 /// The phone's comings and goings, and this Mac's own viewer windows' (`viewer_*`), kept in the system log (`log show --predicate 'subsystem == "dev.blurt.recorder" AND category ==

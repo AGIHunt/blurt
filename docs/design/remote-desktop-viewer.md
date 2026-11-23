@@ -189,6 +189,11 @@ first's.
   this Mac's input method alone; Blurt coming to the front captures for its key window, and going behind gives the keys back
   (`didBecomeActive` / `didResignActive`). Fixed 2026-11-21 after the 1.1 dogfood run, where a window opening behind WeChat switched
   this Mac to ABC and told the host `captured true`.
+  2026-11-23 (founder): with the main window or the notch in front, ⌘Tab and Space still went to the remote computer until ⌃⌘. The
+  "a helper panel holds key while the viewer stays main" exemption also covered Blurt's own panels (notch, cards, palette, preview)
+  and "no key window"; and a main window brought forward without taking key left the viewer key behind it. Now the viewer holds the
+  keys only while it is the front document window on this Space (`ViewerKeyboard.inFront`) and, when it isn't key, only for a
+  system panel (`isOurs` = a class of this app gives the keys back). Every window's key/main change re-checks, a turn later.
 - Keys: a session event tap (`ViewerKeyboard`) while capture is on and the window is key, so ⌘Tab, ⌘Space and ⌃← go to the host. Without
   Accessibility, an NSEvent monitor instead: the window's keys only, and the hint says system shortcuts stay here. ⌃⌘ pressed and let go
   alone releases (⌃⌘F still reaches the host), hint for 3 s. The release sends the host nothing (`RemoteHeldModifiers`): a press of ⌃,

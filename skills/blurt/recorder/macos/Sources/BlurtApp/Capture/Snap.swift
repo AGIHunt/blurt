@@ -103,6 +103,11 @@ func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], c
     // tests: BLURT_TEST_STILL=<png> stands in for the screen (no Screen Recording grant, nothing private captured);
     // BLURT_TEST_STILL=none: the capture fails, as it does without the grant
     let env = ProcessInfo.processInfo.environment
+    // tests: BLURT_TEST_STILL_DELAY=<s> answers that late (ScreenCaptureKit on a busy Mac)
+    let late = env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_STILL_DELAY"].flatMap(Double.init) ?? 0 : 0
+    let completion: (CGImage?, CGFloat) -> Void = late <= 0 ? completion : { img, scale in
+        DispatchQueue.main.asyncAfter(deadline: .now() + late) { completion(img, scale) }
+    }
     if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_TEST_STILL"] == "none" {
         DispatchQueue.main.async { completion(nil, 2) }
         return
@@ -138,6 +143,35 @@ func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], c
         } else {
             OneShotCapture.run(filter: filter, cfg: cfg) { img in completion(img, scale) }
         }
+    }
+}
+
+/// `captureStill`, answered within `seconds`: past that (a busy Mac) `standIn` is asked for a picture to use instead —
+/// when it has none, the capture is waited for up to `limit` s before it counts as failed. A late picture is dropped.
+/// Main thread.
+func captureStill(rect: CGRect, showsCursor: Bool, within seconds: Double, limit: Double = 10,
+                  standIn: @escaping () -> (CGImage, CGFloat)?, completion: @escaping (CGImage?, CGFloat) -> Void) {
+    var answered = false
+    let t0 = CACurrentMediaTime()
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+        guard !answered, let s = standIn() else { return }
+        answered = true
+        emit(["event": "still_timeout", "seconds": seconds, "stand_in": true])
+        completion(s.0, s.1)
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + limit) {
+        guard !answered else { return }
+        answered = true
+        emit(["event": "still_timeout", "seconds": limit, "stand_in": false])
+        completion(nil, 2)
+    }
+    captureStill(rect: rect, showsCursor: showsCursor) { img, scale in
+        guard !answered else {
+            emit(["event": "still_late", "ms": Int((CACurrentMediaTime() - t0) * 1000), "got": img != nil])
+            return
+        }
+        answered = true
+        completion(img, scale)
     }
 }
 

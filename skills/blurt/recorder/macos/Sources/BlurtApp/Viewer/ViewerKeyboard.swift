@@ -120,14 +120,28 @@ final class ViewerKeyboard {
         return w.isKeyWindow || ViewerStore.testing && testActive != nil && testKey === w
     }
 
-    /// The window still has the keys: it's key, or a helper panel of this app is (an input method's, the system's accent picker) while
-    /// it stays the main window.
+    /// The window still has the keys: it's key and in front of Blurt's other windows, or a system helper panel is key (an input
+    /// method's, the accent picker) while it stays the main window. Blurt's own panels (the notch, the cards, the palette, the preview)
+    /// and no key window at all give the keys back (2026-11-23: switching to Blurt with the main window or the notch in front still sent
+    /// ⌘Tab to the remote computer until ⌃⌘).
     static func holdsKeys(_ w: NSWindow?) -> Bool {
-        guard let w, appActive else { return false }
+        guard let w, appActive, inFront(w) else { return false }
         if isKey(w) { return true }
-        guard NSApp.mainWindow === w else { return false }
-        guard let k = NSApp.keyWindow else { return true }
-        return !(k.styleMask.contains(.titled) && k.canBecomeMain)
+        guard NSApp.mainWindow === w, let k = NSApp.keyWindow else { return false }
+        return !isOurs(k) && !(k.styleMask.contains(.titled) && k.canBecomeMain)
+    }
+
+    /// One of Blurt's own windows (a class of this app), not a system one shown in its process.
+    static func isOurs(_ k: NSWindow) -> Bool { Bundle(for: type(of: k)) == Bundle.main }
+
+    /// No other window of Blurt's (the main window, Settings) is in front of it on this Space: one brought forward without taking the
+    /// key status leaves the viewer key behind it.
+    static func inFront(_ w: NSWindow) -> Bool {
+        // document-like windows only: the notch, cards and other panels float above everything and don't count
+        guard let first = NSApp.orderedWindows.first(where: {
+            $0.isVisible && !$0.isMiniaturized && $0.isOnActiveSpace && !($0 is NSPanel) && $0.level == .normal && $0.styleMask.contains(.titled)
+        }) else { return true }
+        return first === w
     }
 
     private static func isDown(_ code: UInt16, _ f: NSEvent.ModifierFlags) -> Bool {

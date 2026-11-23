@@ -550,7 +550,8 @@
 "dictation.toast.fn_clash" = "%@ 也在使用 Fn，文字可能输入两次";
 "dictation.toast.fn_clash.switch" = "改用右 Option";
 "dictation.toast.fn_clash.settings" = "设置…";
-"dictation.toast.slow.polish" = "还在润色… 按 %@ 不润色直接输入";
+"dictation.toast.slow.polish" = "还在润色… 按 %@ 跳过润色";
+"dictation.toast.slow.polish.now" = "直接输入";
 "dictation.toast.retry" = "重试";
 "dictation.toast.retry_gone" = "录音已不存在";
 "dictation.toast.not_sent" = "未发送";
