@@ -239,13 +239,14 @@ public enum AgentWindow {
     }
 
     /// The window is an agent's: in the Claude app, a page of Claude Code (claude.ai/epitaxy/…, its Code tab; a chat
-    /// is claude.ai/chat/…); in the Codex app, the mode switch says Codex ("Switch mode, current mode: Codex"; in
+    /// is claude.ai/chat/…; another profile's window serves the same pages as app://localhost/epitaxy/…, seen 2026-11-23); in the Codex app, the mode switch says Codex ("Switch mode, current mode: Codex"; in
     /// chat mode it names ChatGPT). Anything else, or nothing found: not an agent (the chat layout, as before).
     public static func isAgent(bundleID: String?, _ f: Facts) -> Bool {
         switch bundleID {
         case claude?:
             return f.urls.contains { u in
-                guard let c = URLComponents(string: u), let h = c.host, h == "claude.ai" || h.hasSuffix(".claude.ai") else { return false }
+                guard let c = URLComponents(string: u), let h = c.host,
+                      h == "claude.ai" || h.hasSuffix(".claude.ai") || (c.scheme == "app" && h == "localhost") else { return false }
                 return c.path.hasPrefix("/epitaxy") || c.path.hasPrefix("/code")
             }
         case codex?:

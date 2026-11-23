@@ -147,6 +147,16 @@ enum DropProbe {
         case "agent":
             if a.count > 2, let pid = pid_t(a[1]) { AgentProbe.testAgent[pid] = a[2] == "on" }
         case "clear": testMap = [:]; testFixed = nil; AgentProbe.testAgent = [:]
+        case "probe":                                   // probe PID BUNDLE: the real Accessibility probe of a running app (read-only
+            guard a.count > 2, let pid = pid_t(a[1]) else { return }      // but for AXManualAccessibility, as a drag does)
+            AgentProbe.realInTests = true
+            let first = AgentProbe.isAgent(pid: pid, bundleID: a[2])
+            emit(["event": "agent_probe_test", "pid": Int(pid), "first": first])
+            // the answer kept, after the background look (≤ 1.5 s)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                AgentProbe.realInTests = false
+                emit(["event": "agent_probe_test", "pid": Int(pid), "kept": AgentProbe.keptAnswer(pid) ?? NSNull()])
+            }
         default: break
         }
         cache = [:]
@@ -189,17 +199,15 @@ enum AgentProbe {
     static func isAgent(pid: pid_t, bundleID: String) -> Bool {
         guard list.contains(bundleID) else { return false }
         if !AgentWindow.checksWindow(bundleID) { return true }
-        if DropProbe.testMode { return testAgent[pid] ?? false }
+        if DropProbe.testMode && !realInTests { return testAgent[pid] ?? false }
         guard let k = kept[pid] else {
             // never looked at (no cards came down since it started): one look now, on the spot — a Chromium-based app
             // reads the whole drag as the pointer enters it (Codex took the picture file 76 ms before the rewrite to
             // path + note reached it, 2026-11-15), so a guess of "chat" here can't be taken back later
             guard AXIsProcessTrusted() else { return false }
             let app = AXUIElementCreateApplication(pid)
-            if woken[pid] == nil {
-                AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-                woken[pid] = CACurrentMediaTime()
-            }
+            AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            if woken[pid] == nil { woken[pid] = CACurrentMediaTime() }
             let agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
             kept[pid] = (agent, CACurrentMediaTime() - (agent ? 0 : 2))     // not an agent yet: looked at again behind
             if !agent { probe(pid: pid, bundleID: bundleID) }
@@ -228,29 +236,40 @@ enum AgentProbe {
         if woken[pid] == nil { woken[pid] = CACurrentMediaTime() }
         queue.async {
             let app = AXUIElementCreateApplication(pid)
-            var agent = false
-            if wake {
-                // Electron builds its tree only once asked (AXManualAccessibility): look again until it shows an
-                // agent's page or 1.5 s have passed
-                AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-                let until = CACurrentMediaTime() + 1.5
-                repeat {
-                    agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
-                    if agent { break }
-                    Thread.sleep(forTimeInterval: 0.15)
-                } while CACurrentMediaTime() < until
-            } else {
-                agent = AgentWindow.isAgent(bundleID: bundleID, facts(app))
+            // Electron builds its tree only once asked (AXManualAccessibility), and Chromium turns it off again after a
+            // while nobody reads it: asked before every look (2026-11-23: Claude's tree went dark mid-session, the one
+            // ask per process was long spent, and cards went into its Code tab as files). Looked at again until it
+            // shows an agent's page or 1.5 s have passed — on a first look, or while the tree shows nothing at all
+            AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            var f = facts(app)
+            var agent = AgentWindow.isAgent(bundleID: bundleID, f)
+            // a tree switched back on can take a few seconds on a busy Mac (2.6 s seen 2026-11-23): longer while it reads blank
+            let t0 = CACurrentMediaTime()
+            while !agent, CACurrentMediaTime() < t0 + (AgentProbe.unreadable(f) ? 4 : wake ? 1.5 : 0) {
+                Thread.sleep(forTimeInterval: 0.15)
+                f = facts(app)
+                agent = AgentWindow.isAgent(bundleID: bundleID, f)
             }
+            let blank = AgentProbe.unreadable(f)
             DispatchQueue.main.async {
                 probing.remove(pid)
                 let before = kept[pid]?.agent
-                kept[pid] = (agent, CACurrentMediaTime())
-                emit(["event": "agent_probe", "pid": Int(pid), "bundle": bundleID, "agent": agent])
-                if before != agent { onAnswer?(pid) }
+                // a tree that shows nothing says nothing about the tab: the last answer stands
+                let answer = blank && before == true ? true : agent
+                kept[pid] = (answer, CACurrentMediaTime())
+                emit(["event": "agent_probe", "pid": Int(pid), "bundle": bundleID, "agent": answer, "unreadable": blank,
+                      "urls": f.urls.count, "popups": f.popUps.count])
+                if before != answer { onAnswer?(pid) }
             }
         }
     }
+
+    /// tests: `droptarget probe` runs the real probe
+    static var realInTests = false
+    static func keptAnswer(_ pid: pid_t) -> Bool? { kept[pid]?.agent }
+
+    /// Nothing of the window's web content could be read (its tree is off): no page, no menu.
+    static func unreadable(_ f: AgentWindow.Facts) -> Bool { f.urls.isEmpty && f.popUps.isEmpty }
 
     /// The facts of the app's focused (else main, else first) window.
     static func facts(_ app: AXUIElement) -> AgentWindow.Facts {
@@ -286,7 +305,7 @@ enum AgentProbe {
 /// Electron's web content shown to Accessibility for the note's paste after a drop (BA-54: a card dragged into the
 /// Claude desktop app left the picture alone when the pointer wasn't over its composer — Electron builds its
 /// Accessibility tree only once a client sets AXManualAccessibility, so the follow-up found no composer to focus).
-/// The same wake dictation does (DictationField.wakeWebAccessibility: Electron apps only, once per process, never
+/// The same wake dictation does (DictationField.wakeWebAccessibility: Electron apps only, again after `reask`, never
 /// Chrome's or Safari's AXEnhancedUserInterface): asked when a drag enters a web app's window (CardDrag.moved), and
 /// again by the follow-up (DragNoteFollowUp.focus), which waits what is left of `settle` after the first ask.
 enum WebAXWake {
@@ -299,11 +318,14 @@ enum WebAXWake {
     @discardableResult
     static func wake(_ pid: pid_t) -> CFTimeInterval {
         let now = CACurrentMediaTime()
-        if let t = asked[pid] { return max(0, (feishu.contains(pid) ? feishuSettle : settle) - (now - t)) }
+        // asked again once `DictationField.reask` has passed: Chromium turns an unread tree off again
+        if let t = asked[pid], feishu.contains(pid) || now - t < DictationField.reask {
+            return max(0, (feishu.contains(pid) ? feishuSettle : settle) - (now - t))
+        }
         guard !DictationInsert.testMode, AXIsProcessTrusted(), let app = NSRunningApplication(processIdentifier: pid) else { return 0 }
         if DropTargets.isFeishu(app.bundleIdentifier) { return wakeFeishu(app, now) }
         guard DictationField.isElectron(app) else { return 0 }
-        DictationField.wakeWebAccessibility(app)
+        DictationField.wakeWebAccessibility(app, force: true)
         asked[pid] = now
         emit(["event": "drag_web_ax", "pid": Int(pid), "bundle": app.bundleIdentifier ?? NSNull()])
         return settle

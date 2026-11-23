@@ -59,15 +59,23 @@ final class DictationField {
     /// the fit at the cursor couldn't see the 。 already after it and typed another (「结尾。。」, v1.0.4 report). Asked on
     /// the key-down (`Dictation.arm`), once per process: the tree is there by the time the context is read. Read-only for
     /// the app; Chromium only turns its tree on. Never our own process, never test builds.
-    private static var woken = Set<pid_t>()
-    static func wakeWebAccessibility(_ app: NSRunningApplication?) {
+    /// Asked again after `reask` (2026-11-23): Chromium turns a tree off again after a while nobody reads it — Claude's
+    /// went dark mid-session, every later dictation read only its window ("Claude — |") and cards dropped into its Code
+    /// tab went in as files. `force`: a drag asks now (its own `reask` rule decides when).
+    private static var woken: [pid_t: CFTimeInterval] = [:]
+    static let reask: CFTimeInterval = 20
+    static func wakeWebAccessibility(_ app: NSRunningApplication?, force: Bool = false) {
+        let now = CACurrentMediaTime()
         guard !DictationInsert.testMode, let a = app, a.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-              !woken.contains(a.processIdentifier), isElectron(a), AXIsProcessTrusted() else { return }
-        woken.insert(a.processIdentifier)
+              force || woken[a.processIdentifier].map({ now - $0 >= reask }) ?? true, isElectron(a), AXIsProcessTrusted() else { return }
+        let first = woken[a.processIdentifier] == nil
+        woken[a.processIdentifier] = now
         let el = AXUIElementCreateApplication(a.processIdentifier)
         AXUIElementSetMessagingTimeout(el, 0.25)
         let r = AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-        emit(["event": "dictation_web_ax", "app": a.localizedName ?? "", "ok": r == .success, "code": Int(r.rawValue)])
+        if first || r != .success {
+            emit(["event": "dictation_web_ax", "app": a.localizedName ?? "", "ok": r == .success, "code": Int(r.rawValue)])
+        }
     }
 
     static func isElectron(_ a: NSRunningApplication) -> Bool {

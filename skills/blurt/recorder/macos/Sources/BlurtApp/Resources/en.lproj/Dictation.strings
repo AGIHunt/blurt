@@ -550,7 +550,8 @@
 "dictation.toast.fn_clash" = "%@ also uses Fn — text may be typed twice";
 "dictation.toast.fn_clash.switch" = "Use Right Option";
 "dictation.toast.fn_clash.settings" = "Settings…";
-"dictation.toast.slow.polish" = "Still polishing… %@ types it unpolished";
+"dictation.toast.slow.polish" = "Still polishing… %@ skips polish";
+"dictation.toast.slow.polish.now" = "Type Now";
 "dictation.toast.retry" = "Retry";
 "dictation.toast.retry_gone" = "The recording no longer exists";
 "dictation.toast.not_sent" = "Not sent";

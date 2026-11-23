@@ -20,6 +20,8 @@ public enum DragLog {
         // v1.0.23: drops from other apps (the island's catcher, the main window's list and detail)
         "drop_watch", "drop_external", "drop_hang", "main_drop_over", "main_drop", "detail_drop_over", "detail_drop",
         "item_drop_add", "main_paste",
+        // 2026-11-23: what the agent probe saw (Claude's window gone dark to Accessibility sent cards as files)
+        "agent_probe",
     ]
 
     /// Fields that may carry what the card says.

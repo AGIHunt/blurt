@@ -58,6 +58,8 @@ final class DictationTake {
     var cancelled = false
     /// Esc came while it polished: it goes in as heard (DictationStream.skipPolish)
     var skippedPolish = false
+    /// "Still polishing… Type Now" was said for it
+    var slowSaid = false
     var result: DictationStream.Result?
     /// recognition failed with this (DictationASRFailure.code): kept for Retry
     var failure: String?
@@ -115,8 +117,13 @@ extension Dictation {
         take.stream.setContext(take.context)
         take.stream.onStage = { [weak self, weak take] stage in
             guard let self = self, let take = take, !take.cancelled else { return }
+            let was = take.stage
             take.stage = stage == "polish" ? .polishing : .transcribing
             self.updatePhase()
+            // the way out follows the stage: a take that was slow to recognise said "Esc to cancel"; once it only
+            // waits for polish, the island says so with "Type now" (2026-11-23: a busy GPU made both slow, and the
+            // only line shown was the one that throws the take away)
+            if was != .polishing, take.stage == .polishing { self.slowPolishHint(take) }
         }
         updatePhase()
         take.stream.finish(keyUp: take.keyUp, structure: take.structure, onlyForLists: take.style?.style == .auto,
@@ -128,14 +135,58 @@ extension Dictation {
         DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.slowAfter) { [weak self, weak take] in
             guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
                   take.failure == nil else { return }
+            if take.stage == .polishing, take.slowSaid { return }     // the polish hint is up already
             emit(["event": "dictation_slow", "id": take.id, "stage": take.stage.rawValue])
-            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr", Dictation.cancelKey.label,
-                       key: Dictation.slowToastKey, seconds: 60)
+            if take.stage == .polishing { take.slowSaid = true; self.showSlowPolish() }
+            else { self.toast("dictation.toast.slow.asr", Dictation.cancelKey.label, key: Dictation.slowToastKey, seconds: 60) }
         }
     }
 
     /// How long after the stop a take still on its way says so (and how to cancel it).
     static let slowAfter = 3.0
+    /// How long polish may take before the island offers to type the take as heard (the usual polish is 0.1–0.4 s).
+    static let slowPolishAfter = 1.0
+
+    /// A take has just reached polish: once it has waited `slowPolishAfter` there (or at once, when it was already slow to
+    /// recognise), the island offers to type it as heard.
+    private func slowPolishHint(_ take: DictationTake) {
+        let late = CACurrentMediaTime() - take.keyUp >= Dictation.slowAfter
+        DispatchQueue.main.asyncAfter(deadline: .now() + (late ? 0 : Dictation.slowPolishAfter)) { [weak self, weak take] in
+            guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
+                  take.failure == nil, take.stage == .polishing, !take.skippedPolish else { return }
+            emit(["event": "dictation_slow", "id": take.id, "stage": "polishing", "late": late])
+            take.slowSaid = true
+            self.showSlowPolish()
+        }
+    }
+
+    /// "Still polishing… Esc types it as heard · Type Now": the button (or a click on the line) does what Esc does.
+    private func showSlowPolish() {
+        let fmt = Loc.string("dictation.toast.slow.polish", table: "Dictation")
+        var t = Island.Toast(text: String(format: fmt, locale: Loc.locale, Dictation.cancelKey.label),
+                             actionTitle: Loc.string("dictation.toast.slow.polish.now", table: "Dictation"),
+                             action: { [weak self] in self?.skipPolishing(via: "island") })
+        t.seconds = 60
+        t.icon = .keyboard
+        t.key = Dictation.slowToastKey
+        island.toast(t)
+    }
+
+    /// The takes still polishing go in as heard, without waiting for the polish (DictationStream.skipPolish). Returns
+    /// their ids.
+    @discardableResult
+    func skipPolishing(via: String) -> [String] {
+        var ids: [String] = []
+        for id in queue.ids where id != queue.delivering {
+            guard let t = takes[id], t.stage == .polishing, t.result == nil, t.failure == nil, !t.skippedPolish else { continue }
+            t.skippedPolish = true
+            t.stream.skipPolish()
+            ids.append(id)
+            emit(["event": "dictation_polish_skip", "id": id, "via": via])
+        }
+        if !ids.isEmpty { island.dropToasts(key: Dictation.slowToastKey) }
+        return ids
+    }
 
     /// A take's text is in (or recognition failed, or there were no words).
     private func landed(_ take: DictationTake, _ r: DictationStream.Result) {
