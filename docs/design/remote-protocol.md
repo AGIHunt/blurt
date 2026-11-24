@@ -223,3 +223,12 @@ type Route = "local" | "tailscale" | "overlay" | "direct" | "relay" | "goBetween
 Settings → Phone → Away from home shows one status line from `connected` and `relay` (`awayLine` in `settings/phone.ts`): the
 path a connected phone uses; else the owner's relay (or that it isn't answering); else the go-between (or `noDirect` / `busy`);
 else only the same network or an overlay. The go-between switch is dimmed and says it isn't used while a relay address is set.
+
+## Keyboard legends and held keys (2026-11-24)
+
+- `ToPhone.legends {"_0": {"source": "German", "keys": {"Y": {"base": "z", "shift": "Z"}, "Q": {"base": "q", "shift": "Q", "altGr": "@"}}}}`: what the
+  computer's layout prints on its keys, by wire name; keys it can't tell are left out. Sent once a session is up and whenever it changes. Older phones
+  drop it; from older hosts it doesn't come.
+- `ToMac.key` with `down: true` for a key already down is that key repeating: a Mac posts an autorepeat, Windows another key-down, Linux nothing (the
+  desktop repeats held keys).
+- `"AltGr"` is a key name (Windows: right Alt; Linux: KEY_RIGHTALT), held with `down`. A host that doesn't know it ignores it.

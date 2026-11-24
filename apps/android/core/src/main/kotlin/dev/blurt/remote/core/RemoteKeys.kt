@@ -75,7 +75,11 @@ class RemoteKey private constructor(val name: String, val code: Int, val glyph: 
                 k("Up", 126, "↑"), k("Home", 115, "↖", "Home"), k("End", 119, "↘", "End"), k("PageUp", 116, "⇞", "PgUp"),
                 k("PageDown", 121, "⇟", "PgDn"),
                 k("-", 27), k("=", 24), k("[", 33), k("]", 30), k(";", 41), k("'", 39), k(",", 43), k(".", 47), k("/", 44), k("\\", 42), k("`", 50),
+                // a full keyboard's, for the computer keyboard (a Mac has F13–F15 and Help in the PC keys' places)
+                k("Insert", 114, "Ins", "Ins"), k("CapsLock", 57, "⇪", "Caps"), k("Menu", 110, "≣", "Menu"),
+                k("PrintScreen", 105, "PrtSc", "PrtSc"), k("Pause", 113, "Pause", "Pause"), k("AltGr", 61, "AltGr", "AltGr"),
             ))
+            listOf(105, 107, 113, 106, 64, 79, 80, 90).forEachIndexed { i, c -> add(k("F${i + 13}", c)) }
         }
 
         private val byName: Map<String, RemoteKey> = all.associateBy { it.name }

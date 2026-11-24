@@ -83,8 +83,16 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private val arrowCell = KeyCell(c)
     /** landscape: with the keys away there's still a picture to leave */
     private val appsCell = KeyCell(c)
-    private val allCells get() = dockCells + listOf(arrowCell, appsCell) + list.cells
+    private val allCells get() = dockCells + listOf(arrowCell, appsCell) + list.cells + quickCells
     private val strip = PageStrip(c)
+    /** the computer keyboard, which keyboard it is, and on a big screen the shortcuts over it */
+    private val board = dev.blurt.remote.app.keys.FullBoard(c)
+    private val keyboardSwitch = dev.blurt.remote.app.keys.KeyboardSwitch(c)
+    private val quickCells = List(6) { KeyCell(c) }
+    private var boardOpen = false
+    private var restored = false
+    /** the computer keyboard opened or closed: Back closes it while it's open */
+    var onBoard: ((Boolean) -> Unit)? = null
     private val chips = listOf(
         Chip(c, c.getString(R.string.chip_cancel)) { Remote.link.send(ToMac.Blurt(RemoteBlurtCommand.DICTATION_CANCEL)) },
         Chip(c, c.getString(R.string.chip_structured)) { Remote.link.send(ToMac.Blurt(RemoteBlurtCommand.DICTATION_STRUCTURED)) },
@@ -105,10 +113,9 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     /** the app is in front (MainActivity says): left and come back to, the connection starts again, and that's not a drop to tell the thumb */
     var inFront = false
         set(v) { field = v; if (!v) follower = StatusFollower() }
-    private val edgeMark = View(c)
-    private val edgeLook = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 1.5f.dp }
-    /** one finger is scrolling along the edge: its mark stays lit over the picture */
-    private var edgeScrolling = false
+    /** where one finger scrolls, on the stage and on the panel's own pad; lit while it does */
+    private val edgeMark = EdgeMark(c)
+    private val edgeMark2 = EdgeMark(c)
     /** the first time the picture showed: a line on what two fingers do there, then gone */
     private val tip = TextView(c)
     /** full screen: the one way back to the keys, in the top corner away from the talk key */
@@ -117,7 +124,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private var full = false
     private val dim = View(c)
     val field = TypeField(c)
-    private val modRow = ModifierRow(c) { field.hide() }
+    private val modRow = ModifierRow(c, { keyboard(true) }) { field.hide() }
 
     /** landscape: the keys are out. Out for the trackpad, put away when there's a picture to see */
     private var drawerOpen = true
@@ -160,14 +167,14 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             setPadding(12.dp.toInt(), 7.dp.toInt(), 12.dp.toInt(), 7.dp.toInt())
             visibility = GONE
         }
-        edgeLook()
-        edgeMark.background = edgeLook
+        pad2.addView(edgeMark2)
         for (p in listOf(pad, pad2)) {
             p.onHaptic = { h -> when (h) { PadHaptic.TAP -> Haptics.tick(); PadHaptic.GRAB -> Haptics.grab(); PadHaptic.RELEASE -> Haptics.release(); PadHaptic.STEP -> Haptics.step() } }
             p.onClick = { Remote.sticky.used() }
             p.onViewEnd = { applyPrefs() }
         }
-        pad.onEdgeScroll = { on -> edgeScroll(on) }
+        pad.onEdgeScroll = { on -> edgeMark.lit = on }
+        pad2.onEdgeScroll = { on -> edgeMark2.lit = on }
         // ⌘ held (Ctrl on a PC), on the dock or a keyboard: a pinch over the picture zooms the computer, as it does with the picture off
         pad.engine.computerZoomHeld = { ((Remote.sticky.held or HardwareKeys.held) and zoomModifier(host)) != 0 }
 
@@ -198,6 +205,12 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         findButton.onTap = { Haptics.tick(); Remote.link.send(ToMac.System(RemoteSystemMove.FIND_CURSOR)) }
         strip.onSelect = { go(it) }
         addView(strip)
+        board.onKey = { touched() }
+        addView(board)
+        keyboardSwitch.onText = { keyboard(false) }
+        addView(keyboardSwitch)
+        for (k in quickCells) { k.onCycle = { on -> cycling(on, k) }; addView(k) }
+        showQuick()
         chips.forEach { it.visibility = GONE; addView(it) }
         addView(field)
         field.onSent = { touched() }
@@ -207,7 +220,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         dim.alpha = 0f
         dim.isClickable = false
         addView(dim)
-        Remote.sticky.listeners += { allCells.forEach { it.invalidate() }; modRow.refresh() }
+        Remote.sticky.listeners += { allCells.forEach { it.invalidate() }; modRow.refresh(); board.invalidate(); keyboardSwitch.refresh() }
         applyPrefs()
         showDeck()
         touched()
@@ -249,6 +262,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
                     deck = loadDeck(h)
                     showDeck()
                     modRow.rebuild()
+                    showQuick()
                     requestLayout()
                 }
             }
@@ -275,6 +289,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         scope.launch { l.level.collect { talk.level(it) } }
         scope.launch { Remote.prefs.changed.collect { applyPrefs() } }
         scope.launch { l.displayAspect.collect { requestLayout() } }
+        scope.launch { l.legends.collect { board.invalidate() } }
+        scope.launch { Remote.updates.state.collect { settingsButton.dot = it.newer != null } }
         scope.launch {
             combine(l.displays, l.shownDisplay) { _, shown -> shown }.collect { shown ->
                 displayButton.number = l.displaysInOrder.indexOfFirst { it.id == shown } + 1
@@ -385,36 +401,11 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         Remote.screen.resetView()
         applyPrefs()
         if (on) Remote.screen.start() else Remote.screen.stop()
-        edgeLook()
-        // over the picture the edge's mark hides, after showing where it is each time the picture comes
-        main.removeCallbacks(edgeFade)
-        edgeMark.animate().cancel()
-        edgeMark.alpha = 1f
-        if (on) main.postDelayed(edgeFade, 1500)
+        edgeMark.overPicture = on
         if (on && !Remote.prefs.pictureHintShown) showTip()
         if (!on) hideTip()
         status()
         requestLayout()
-    }
-
-    private val edgeFade = Runnable { if (showing && !edgeScrolling) edgeMark.animate().alpha(0f).setDuration(300).start() }
-
-    private fun edgeScroll(on: Boolean) {
-        edgeScrolling = on
-        if (!showing) return
-        main.removeCallbacks(edgeFade)
-        if (on) {
-            edgeMark.animate().cancel()
-            edgeMark.alpha = 1f
-        } else {
-            edgeFade.run()
-        }
-    }
-
-    /** the mark: a hairline on the glass; over the picture, white with a dark edge, so it reads on any picture */
-    private fun edgeLook() {
-        edgeLook.setColor(if (showing) Color.argb(204, 255, 255, 255) else Theme.hairline)
-        edgeLook.setStroke(if (showing) max(1, 0.5f.dp.toInt()) else 0, Color.argb(110, 0, 0, 0))
     }
 
     private val tipFade = Runnable { tip.animate().alpha(0f).setDuration(300).withEndAction { tip.visibility = GONE }.start() }
@@ -438,6 +429,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     }
 
     private fun toggleDrawer() {
+        if (layout?.board != null) return keyboard(false)
         Haptics.tick()
         drawerOpen = !drawerOpen
         keysPutAway()
@@ -516,6 +508,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         pad2.letGo()
         talk.letGo()
         allCells.forEach { it.letGo() }
+        board.letGo()
+        Remote.sticky.letGo()
         Remote.sticky.clear()
         HardwareKeys.forget()
     }
@@ -525,13 +519,52 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         drawerOpen = !showing
         pad.letGo()
         pad2.letGo()
+        board.letGo()
+        if (boardOpen) Remote.sticky.letGo()
     }
 
     // MARK: keyboard
 
     private fun toggleKeyboard() {
         Haptics.tick()
-        if (field.open) field.hide() else field.show()
+        when {
+            field.open -> field.hide()
+            boardOpen -> setBoard(false)
+            else -> keyboard(Remote.prefs.computerKeyboard)
+        }
+    }
+
+    /** One of the two keyboards: the computer's keys, or the phone's own, for text. */
+    private fun keyboard(computer: Boolean) {
+        Remote.prefs.computerKeyboard = computer
+        if (computer) { field.hide(); setBoard(true) } else { setBoard(false); field.show() }
+    }
+
+    private fun setBoard(on: Boolean) {
+        Remote.prefs.boardOpen = on
+        if (on == boardOpen) return
+        boardOpen = on
+        onBoard?.invoke(on)
+        if (!on) board.letGo()
+        Remote.sticky.letGo()
+        requestLayout()
+    }
+
+    /** Back closes the computer keyboard, as it does the phone's. */
+    fun back(): Boolean {
+        if (!boardOpen) return false
+        setBoard(false)
+        return true
+    }
+
+    /** Over a big screen's: the apps key, and what hands do most. */
+    private fun showQuick() {
+        val m = if (host == RemoteHost.MAC) RemoteModifiers.COMMAND else RemoteModifiers.CONTROL
+        fun key(k: String, mods: Int = m) = dev.blurt.remote.core.KeySlot(dev.blurt.remote.core.KeyAction.Chord(dev.blurt.remote.core.RemoteChord(mods, k), false))
+        val redo = if (host == RemoteHost.WINDOWS) key("Y") else key("Z", m or RemoteModifiers.SHIFT)
+        val keys = listOf(appsCell.slot) + listOf("C", "V", "X", "Z").map { key(it) } + redo
+        quickCells.forEachIndexed { i, c -> c.host = host; c.slot = keys[i] }
+        keyboardSwitch.host = host
     }
 
     // MARK: layout
@@ -561,8 +594,11 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val h = height / d
         val typing = imeHeight > 0
         val l = PadLayout(w, h, safe.left / d, safe.top / d, safe.right / d, safe.bottom / d, Remote.prefs.lefty, drawerOpen, fold,
-            displays = showing && Remote.link.displays.value.size >= 2, thumbs = PadLayout.thumbs(deck.dock))
+            displays = showing && Remote.link.displays.value.size >= 2, thumbs = PadLayout.thumbs(deck.dock),
+            withBoard = boardOpen && !typing && !(showing && Remote.prefs.fullScreen && fold == null), aspect = Remote.link.displayAspect.value.toFloat())
         layout = l
+        val onBoard = l.board != null
+        val bigBoard = l.board?.quick?.isNotEmpty() == true
         // full screen: the picture takes it all, inside the cutouts; a fold half open keeps its halves
         val fullNow = showing && Remote.prefs.fullScreen && !typing && fold == null
         if (fullNow != full) {
@@ -596,27 +632,43 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         place(pad, padFrame)
         show(pad2, keys && !typing && l.pad2 != null)
         if (!typing) place(pad2, l.pad2)
+        pad.bandsArePad = l.board?.bandsArePad == true
         show(talk, !typing && !talkFrame.isEmpty)
         place(talk, talkFrame)
         val railed = l.rail != null
-        val keysOut = keys && !typing && (!railed || drawerOpen)
+        val keysOut = keys && !typing && !onBoard && (!railed || drawerOpen)
+        show(board, keys && onBoard)
+        l.board?.let { b ->
+            place(board, b.frame)
+            board.arrange(b.frame.width, b.tier, b.heights, host)
+            talk.bringToFront()
+            dim.bringToFront()
+        }
+        quickCells.forEachIndexed { i, k -> show(k, keys && bigBoard && i < (l.board?.quick?.size ?: 0)); place(k, l.board?.quick?.getOrNull(i)) }
+        show(keyboardSwitch, keys && onBoard && !l.landscape && !l.strip.isEmpty)
+        place(keyboardSwitch, l.strip)
         show(list, keysOut)
         place(list, l.list)
         list.arrange(l.keyW * d, l.keyH * d, PadLayout.GAP * d, if (l.landscape) 1.4f else null)
         for ((i, k) in dockCells.withIndex()) {
             place(k, l.dock[i])
-            show(k, keys && !typing && (keysOut || l.staysOut(i)))
+            show(k, keys && !typing && !bigBoard && (keysOut || l.staysOut(i) || (onBoard && !l.landscape)))
         }
-        show(arrowCell, keys && !typing)
+        show(arrowCell, keys && !typing && !bigBoard)
         place(arrowCell, l.arrowKey)
         place(appsCell, l.appsKey)
         show(appsCell, keys && !typing && railed)
-        pad.engine.scrollEdge = l.scrollEdge(padFrame.width)
+        // full screen the thumb is with the talk key
+        val edgeLeft = if (fullNow) l.lefty else l.scrollsLeft
+        pad.engine.scrollEdge = l.scrollEdge(padFrame.width, edgeLeft)
         l.pad2?.let { pad2.engine.scrollEdge = l.scrollEdge(it.width) }
         place(drawerButton, l.drawerButton)
         show(drawerButton, keys && railed && !typing)
+        // with the computer keyboard out, its place is the way to the other keyboard
         drawerButton.slab = true
-        drawerButton.lit = drawerOpen
+        drawerButton.lit = drawerOpen && !onBoard
+        drawerButton.icon = if (onBoard) "edit" else DRAWER_ICON
+        drawerButton.contentDescription = context.getString(if (onBoard) R.string.keyboard_text else R.string.keys)
         place(screenButton, l.screenButton)
         show(screenButton, keys && !typing)
         // lit while it's on, as a modifier is: a crossed-out eye over a live picture reads as off
@@ -632,8 +684,14 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         show(displayButton, keys && !typing && !l.displayButton.isEmpty)
         if (!l.displayButton.isEmpty) place(displayButton, l.displayButton)
         displayButton.slab = railed
+        strip.largest = if (l.bigTabs) 17f else 13f
         place(strip, l.strip)
         show(strip, !typing && keysOut)
+        // a big screen opens as it was left; a phone never with the computer keyboard out
+        if (!restored && w > 0) {
+            restored = true
+            if (Remote.prefs.boardOpen && (l.mode == PadLayout.Mode.SPLIT || l.mode == PadLayout.Mode.STACK)) post { setBoard(true) }
+        }
         // over the bottom of the pad, not over keys that are still in use while talking; in full screen, above the talk key
         val chipsW = min(padFrame.width - 16, 300f)
         val cw = (chipsW - 12) / 3
@@ -656,13 +714,14 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val pw = padFrame.width
         val ph = padFrame.height
         Remote.screen.layout(pw.toDouble(), ph.toDouble(), if (fullNow) 0.5 else l.alignY.toDouble())
+        Remote.screen.fillWidth(onBoard && l.landscape && showing)
         place(stage, Frame(0f, 0f, pw, ph))
         // a SurfaceView clears the glass under it: only there while the picture is
         show(stage, showing)
         cursor.measure(MeasureSpec.makeMeasureSpec((64 * d).toInt(), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec((64 * d).toInt(), MeasureSpec.EXACTLY))
         cursor.layout(0, 0, (64 * d).toInt(), (64 * d).toInt())
-        // over the picture it's there but see-through, lit as the picture comes and while the edge scrolls (setShowing, edgeScroll)
-        place(edgeMark, if (Remote.prefs.lefty) Frame(7f, ph / 2 - 34, 10f, ph / 2 + 34) else Frame(pw - 10, ph / 2 - 34, pw - 7, ph / 2 + 34))
+        place(edgeMark, PadLayout.edgeMark(pw, ph, edgeLeft))
+        l.pad2?.let { place(edgeMark2, PadLayout.edgeMark(it.width, it.height, l.scrollsLeft)) }
         place(header, Frame(16f, 12f, pw - 16, 30f))
         // the first time's line, at the top of the picture, under the way out of full screen
         val tipW = min(pw - 32, 420f)
@@ -699,6 +758,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         /** long enough that it never happens in use: this only protects a phone left on the desk */
         const val IDLE_DIM = 300_000L
         const val IDLE_PACE = 45_000L
+        const val DRAWER_ICON = "apps"
         /** the modifier the computer's own zoom keys use: ⌘ on a Mac (⌘= ⌘−), Ctrl elsewhere */
         fun zoomModifier(h: RemoteHost) = if (h == RemoteHost.MAC) RemoteModifiers.COMMAND else RemoteModifiers.CONTROL
         @Suppress("unused") private fun now() = SystemClock.uptimeMillis()

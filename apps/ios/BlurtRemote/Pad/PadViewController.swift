@@ -34,8 +34,14 @@ final class PadViewController: UIViewController {
     private let arrowCell = KeyCell()
     /// landscape: with the keys away there's still a picture to leave
     private let appsCell = KeyCell()
-    private var allCells: [KeyCell] { dockCells + [arrowCell, appsCell] + list.cells }
+    private var allCells: [KeyCell] { dockCells + [arrowCell, appsCell] + list.cells + quickCells }
     private let strip = PageStrip()
+    /// the computer keyboard, which keyboard it is, and on a big screen the shortcuts over it
+    private let board = FullBoard()
+    private let keyboardSwitch = KeyboardSwitch()
+    private var quickCells = (0..<6).map { _ in KeyCell() }
+    private var boardOpen = false
+    private var boardNow: Bool { boardOpen && keyboardHeight == 0 && !fullNow }
     private let chips = UIStackView()
     private let keyboardButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
@@ -48,9 +54,9 @@ final class PadViewController: UIViewController {
     private var drawerOpen = true
     /// the pad has the Mac's shape and shows its screen
     private var showing = false
-    private let edgeMark = UIView()
-    /// one finger is scrolling along the edge now
-    private var edgeLit = false
+    /// where one finger scrolls, on the stage and on the pad between the thumbs; lit while it does
+    private let edgeMark = EdgeMark()
+    private let thumbEdgeMark = EdgeMark()
     /// the first time the picture comes on: two fingers scroll, and the zoom key with a pinch zooms the computer
     private let tip = UILabel()
     private let tipBack = UIView()
@@ -81,6 +87,7 @@ final class PadViewController: UIViewController {
         }
     }
     private var keyboardHeight: CGFloat = 0
+    private var turn = Prefs.shared.turn
     /// the key a cycle is running on, while it runs
     private weak var cycleKey: KeyCell?
     private var idle: Timer?
@@ -97,14 +104,34 @@ final class PadViewController: UIViewController {
     override var editingInteractionConfiguration: UIEditingInteractionConfiguration { .none }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        let allowed = Prefs.shared.turn.mask
         // leaning back mustn't rotate the screen under a thumb. Otherwise every way Info.plist allows (an iPad: all four)
-        guard touching, let o = view.window?.windowScene?.interfaceOrientation else { return .all }
-        switch o {
-        case .portraitUpsideDown: return .portraitUpsideDown
-        case .landscapeLeft: return .landscapeLeft
-        case .landscapeRight: return .landscapeRight
-        default: return .portrait
+        guard touching, let o = view.window?.windowScene?.interfaceOrientation else { return allowed }
+        let now: UIInterfaceOrientationMask = switch o {
+        case .portraitUpsideDown: .portraitUpsideDown
+        case .landscapeLeft: .landscapeLeft
+        case .landscapeRight: .landscapeRight
+        default: .portrait
         }
+        return allowed.contains(now) ? now : allowed
+    }
+
+    /// The way the screen is to be turned changed (Settings, the screen button's map). An app that only does one way is turned that way
+    /// whatever the phone's own rotation lock says, so that's all it takes; back to Auto, it goes the way the phone is held.
+    private func turned() {
+        let t = Prefs.shared.turn
+        guard t != turn else { return }
+        turn = t
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+        presentedViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        guard t.applies, let s = view.window?.windowScene else { return }
+        let to: UIInterfaceOrientationMask = switch (t, UIDevice.current.orientation) {
+        case (.auto, .landscapeLeft): .landscapeRight      // the device's left is the interface's right
+        case (.auto, .landscapeRight): .landscapeLeft
+        case (.auto, _): .portrait
+        default: t.mask
+        }
+        s.requestGeometryUpdate(.iOS(interfaceOrientations: to))
     }
 
     // MARK: a keyboard on the iPad
@@ -177,9 +204,7 @@ final class PadViewController: UIViewController {
         liveBack.layer.cornerRadius = 12
         liveBack.layer.cornerCurve = .continuous
         liveBack.isUserInteractionEnabled = false
-        edgeMark.backgroundColor = Theme.hairline
-        edgeMark.layer.cornerRadius = 1.5
-        edgeMark.isUserInteractionEnabled = false
+        thumbPad.addSubview(thumbEdgeMark)
         screenButton.layer.cornerRadius = Theme.keyRadius
         screenButton.onToggle = { [weak self] in self?.toggleScreen() }
         screenButton.onPick = { [weak self] c in self?.pickDisplay(c) }
@@ -242,6 +267,18 @@ final class PadViewController: UIViewController {
         view.addSubview(screenButton)
         strip.onSelect = { [weak self] i in self?.tab(i) }
         view.addSubview(strip)
+        view.addSubview(board)
+        board.isHidden = true
+        board.onKey = { [weak self] in self?.touched() }
+        view.addSubview(keyboardSwitch)
+        keyboardSwitch.isHidden = true
+        keyboardSwitch.onPick = { [weak self] k in self?.keyboard(k) }
+        for c in quickCells {
+            view.addSubview(c)
+            c.isHidden = true
+            c.onCycle = { [weak self, weak c] on in self?.cycling(on, by: c) }
+        }
+        showQuick()
         chips.axis = .horizontal
         chips.distribution = .fillEqually
         chips.spacing = 6
@@ -268,6 +305,7 @@ final class PadViewController: UIViewController {
         field.inputAccessoryView = modRow
         field.onSent = { [weak self] _ in self?.touched() }      // the keyboard's touches don't come through the window
         modRow.onClose = { [weak self] in self?.field.resignFirstResponder() }
+        modRow.onComputer = { [weak self] in self?.keyboard(.computer) }
 
         dim.backgroundColor = .black
         dim.alpha = 0
@@ -291,10 +329,8 @@ final class PadViewController: UIViewController {
                 return Sticky.shared.held.union(HardwareKeys.shared.sent).isSuperset(of: k)
             }
         }
-        pad.onEdgeScroll = { [weak self] on in
-            self?.edgeLit = on
-            self?.markEdge()
-        }
+        pad.onEdgeScroll = { [weak self] on in self?.edgeMark.lit = on }
+        thumbPad.onEdgeScroll = { [weak self] on in self?.thumbEdgeMark.lit = on }
         pad.onTouch = { [weak self] in
             guard let self, !self.padTouched else { return }
             self.padTouched = true
@@ -305,6 +341,8 @@ final class PadViewController: UIViewController {
         Sticky.shared.onChange = { [weak self] in
             self?.allCells.forEach { $0.refresh() }
             self?.modRow.refresh()
+            self?.board.refresh()
+            self?.keyboardSwitch.refresh()
         }
         applyPrefs()
         showDeck()
@@ -327,6 +365,8 @@ final class PadViewController: UIViewController {
             self?.pad.letGo()
             self?.thumbPad.letGo()
             HardwareKeys.shared.letGo()
+            self?.board.letGo()
+            Sticky.shared.letGo()
             Sticky.shared.clear()
         }
         // left and come back to, the connection starts again: that's not a drop to tell the thumb about
@@ -340,6 +380,7 @@ final class PadViewController: UIViewController {
         touched()
         #if DEBUG
         if Pretend.screen { setShowing(true) }
+        if Pretend.board { boardOpen = true }
         DisplayTest.pad = self
         #endif
     }
@@ -398,6 +439,7 @@ final class PadViewController: UIViewController {
             guard let self else { return }
             self.deck = Deck.load(for: h)
             self.appsCell.slot = Deck.appsKey(for: h)
+            self.showQuick()
             self.showDeck()
             self.allCells.forEach { $0.refresh() }
             self.modRow.refresh()
@@ -444,12 +486,16 @@ final class PadViewController: UIViewController {
             self.view.setNeedsLayout()
             self.touched()
         }.store(in: &bag)
+        l.$legends.receive(on: RunLoop.main).sink { [weak self] _ in DispatchQueue.main.async { self?.board.refresh() } }.store(in: &bag)
         l.$level.receive(on: RunLoop.main).sink { [weak self] v in self?.talk.level(v) }.store(in: &bag)
         Publishers.CombineLatest3(l.$displays, l.$shownDisplay, l.$pinnedDisplay).receive(on: RunLoop.main).sink { [weak self] d, s, p in
             self?.screenButton.update(displays: d, shown: s, pinned: p)
         }.store(in: &bag)
         Prefs.shared.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
-            DispatchQueue.main.async { self?.applyPrefs() }
+            DispatchQueue.main.async {
+                self?.applyPrefs()
+                self?.turned()
+            }
         }.store(in: &bag)
     }
 
@@ -566,6 +612,10 @@ final class PadViewController: UIViewController {
     /// asking to see it.
     private func pickDisplay(_ c: DisplayChoice) {
         if c == .fullScreen { return setFullScreen(!Prefs.shared.fullScreen) }
+        if c == .turn {
+            Prefs.shared.turn = view.bounds.width > view.bounds.height ? .portrait : .landscape
+            return
+        }
         Link.shared.screenError = nil
         Link.shared.showDisplay(c.id)
         if !showing { setShowing(true) }
@@ -596,20 +646,6 @@ final class PadViewController: UIViewController {
         return (view, r)
     }
 
-    /// The edge where one finger scrolls. On the plain pad its mark stays; over the picture it would hide a strip of it, so it shows as the
-    /// picture comes on and while one finger scrolls there, then fades.
-    private func markEdge(flash: Bool = false) {
-        edgeMark.layer.removeAllAnimations()
-        edgeMark.backgroundColor = showing ? UIColor(white: 1, alpha: 0.8) : Theme.hairline
-        // over a white page as well as a dark one
-        edgeMark.layer.borderWidth = showing ? 0.5 : 0
-        edgeMark.layer.borderColor = UIColor(white: 0, alpha: 0.4).cgColor
-        guard showing else { edgeMark.alpha = 1; return }
-        if flash || edgeLit { edgeMark.alpha = 1 }
-        guard !edgeLit else { return }
-        UIView.animate(withDuration: 0.3, delay: flash ? 1.5 : 0.3, options: [.allowUserInteraction, .beginFromCurrentState]) { self.edgeMark.alpha = 0 }
-    }
-
     /// Once, the first time the picture is on: the two things a hand tries on a picture and doesn't find.
     private func tipOnce() {
         guard !Prefs.shared.pictureTipShown else { return }
@@ -637,7 +673,7 @@ final class PadViewController: UIViewController {
         ScreenStream.shared.resetView()
         applyPrefs()
         if on { ScreenStream.shared.start() } else { ScreenStream.shared.stop() }
-        markEdge(flash: on)
+        edgeMark.overPicture = on
         if on { tipOnce() } else { tipBack.alpha = 0 }
         status()
         view.setNeedsLayout()
@@ -645,6 +681,7 @@ final class PadViewController: UIViewController {
     }
 
     private func toggleDrawer() {
+        if boardNow { return keyboard(.text) }
         Haptics.tick()
         drawerOpen.toggle()
         keysPutAway()
@@ -710,7 +747,7 @@ final class PadViewController: UIViewController {
             islandLeft = c.midX < size.width / 2
         }
         let l = PadLayout(size: size, safe: Self.safeInsets(view), lefty: Prefs.shared.lefty, islandLeft: islandLeft, drawerOpen: drawerOpen,
-                          surround: surround, aspect: Link.shared.displayAspect, showing: showing)
+                          surround: surround, aspect: Link.shared.displayAspect, showing: showing, board: boardNow)
         layout = l
         let typing = keyboardHeight > 0
         var padFrame = l.pad
@@ -743,31 +780,51 @@ final class PadViewController: UIViewController {
         talk.frame = l.talk
         talk.isHidden = typing
         let railed = l.rail != nil
-        let keysOut = !typing && l.keysOut
+        let onBoard = l.board != nil && boardNow
+        let keysOut = !typing && l.keysOut && !onBoard
         list.isHidden = !keysOut
+        board.isHidden = !onBoard
+        pad.bandsArePad = onBoard && l.board?.bandsArePad == true
+        // the whole dock stays with the phone's, and goes with the big screen's, which has those keys itself
+        let bigBoard = onBoard && l.mode == .big && !(l.board?.quick.isEmpty ?? true)
+        if onBoard, let b = l.board {
+            board.frame = b.frame
+            board.arrange(tier: b.tier, heights: b.heights, host: RemoteHost.shown)
+            view.insertSubview(talk, aboveSubview: board)
+        }
+        for (i, c) in quickCells.enumerated() {
+            c.isHidden = !bigBoard || i >= (l.board?.quick.count ?? 0)
+            if !c.isHidden { c.frame = l.board!.quick[i] }
+        }
+        keyboardSwitch.isHidden = !onBoard || l.strip.isEmpty || l.mode == .landscape
+        keyboardSwitch.frame = l.strip
         list.frame = l.list
         list.arrange(key: l.keySize, gap: PadLayout.gap, tallest: l.mode != .portrait ? KeyList.tallest : nil, split: l.listSplit)
         for (i, c) in dockCells.enumerated() {
-            c.isHidden = typing || !(keysOut || PadLayout.staysOut(i) || l.mode == .big)
-            c.frame = l.dock[i]
+            c.isHidden = typing || bigBoard || !(keysOut || PadLayout.staysOut(i) || l.mode == .big || (onBoard && l.mode == .portrait))
+            if l.dock.indices.contains(i) { c.frame = l.dock[i] }
         }
-        arrowCell.isHidden = typing
-        arrowCell.frame = l.arrowKey
+        arrowCell.isHidden = typing || bigBoard
+        if !l.arrowKey.isEmpty { arrowCell.frame = l.arrowKey }
         appsCell.isHidden = typing || l.appsKey.isEmpty
         appsCell.frame = l.appsKey
+        var edgeInset: CGFloat = 0
         // the keyboard may have changed it
-        pad.engine.scrollEdge = typing ? PadLayout.scrollEdge(width: padFrame.width, lefty: Prefs.shared.lefty) : l.scrollEdge
+        pad.engine.scrollEdge = typing ? PadLayout.scrollEdge(width: padFrame.width, left: l.scrollsLeft) : l.scrollEdge
         pad.engine.scrollEdgeY = typing ? nil : l.scrollEdgeY
         drawerButton.frame = l.drawerButton
         drawerButton.isHidden = !railed || typing
         // open is how it starts: a dark key like the rest, the grid filled while the keys are out. Lit white it outshone everything
         drawerButton.tintColor = drawerOpen ? Theme.mark : Theme.caption
         drawerButton.backgroundColor = Theme.slab
-        drawerButton.setImage(UIImage(systemName: drawerOpen ? "square.grid.3x3.fill" : "square.grid.3x3",
+        // with the computer keyboard out, its place is the way to the other keyboard
+        drawerButton.accessibilityLabel = onBoard ? String(localized: "keyboard.text", defaultValue: "Text") : String(localized: "Keys")
+        drawerButton.setImage(UIImage(systemName: onBoard ? "character.cursor.ibeam" : drawerOpen ? "square.grid.3x3.fill" : "square.grid.3x3",
                                       withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         screenButton.frame = l.screenButton
         screenButton.isHidden = typing
         screenButton.paint(showing: showing, railed: railed)
+        screenButton.turnsTo = ScreenTurn.auto.applies ? (size.width > size.height ? .portrait : .landscape) : nil
         for b in [keyboardButton, settingsButton, findButton] {
             b.layer.cornerRadius = Theme.keyRadius
             b.backgroundColor = railed ? Theme.slab : .clear
@@ -775,7 +832,7 @@ final class PadViewController: UIViewController {
         view.bringSubviewToFront(dim)
         strip.frame = l.strip
         // big screens: the tabs stay with the keys put away, and bring them back
-        strip.isHidden = typing || !(keysOut || (l.mode == .big && !l.strip.isEmpty))
+        strip.isHidden = typing || onBoard || !(keysOut || (l.mode == .big && !l.strip.isEmpty))
         strip.showsSelection = keysOut
         keyboardButton.frame = l.keyboardButton
         settingsButton.frame = l.settingsButton
@@ -788,14 +845,14 @@ final class PadViewController: UIViewController {
         exitFull.isHidden = !full
         talk.alpha = full ? 0.8 : 1
         if full {
-            for v in [thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
+            for v in [board, keyboardSwitch, thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
                 v.isHidden = true
             }
-            dockCells.forEach { $0.isHidden = true }
+            (dockCells + quickCells).forEach { $0.isHidden = true }
             glassOutline.isHidden = true
             screenButton.closeMap()
             // the keys that showed a ⌘ held are gone: nothing stays held unseen
-            if !Sticky.shared.held.isEmpty { Sticky.shared.release(Sticky.shared.held) }
+            if !Sticky.shared.held.isEmpty || Sticky.shared.altGr { Sticky.shared.letGo() }
             let s = view.safeAreaInsets, m: CGFloat = 12, k: CGFloat = 60, b = view.bounds, lefty = Prefs.shared.lefty
             talk.isHidden = false
             talk.frame = CGRect(x: lefty ? max(s.left, m) : b.width - max(s.right, m) - k, y: b.height - max(s.bottom, m) - k, width: k, height: k)
@@ -803,11 +860,13 @@ final class PadViewController: UIViewController {
             exitFull.frame = CGRect(x: lefty ? b.width - max(s.right, m) - e.width : max(s.left, m), y: max(s.top, m), width: e.width, height: e.height)
             view.insertSubview(talk, belowSubview: dim)
             view.insertSubview(exitFull, belowSubview: dim)
-            pad.engine.scrollEdge = PadLayout.scrollEdge(width: padFrame.width, lefty: lefty)
+            edgeInset = lefty ? s.left : s.right
+            pad.engine.scrollEdge = PadLayout.scrollEdge(width: padFrame.width, left: lefty, inset: edgeInset)
             pad.engine.scrollEdgeY = nil
         }
 
         ScreenStream.shared.layout(pad.bounds, alignY: full ? 0.5 : l.stageAlignY)
+        ScreenStream.shared.fillWidth(onBoard && l.mode == .landscape && showing)
         #if DEBUG
         if Pretend.screen {
             ScreenStream.shared.standsIn = true
@@ -831,7 +890,9 @@ final class PadViewController: UIViewController {
         let chipsW = min(hint.width - 16, 300)
         chips.frame = CGRect(x: padFrame.minX + hint.midX - chipsW / 2, y: padFrame.minY + hint.maxY - 8 - 32, width: chipsW, height: 32)
         let edge = pad.engine.scrollEdge ?? (0...0), ys = pad.engine.scrollEdgeY ?? (0...pad.bounds.height)
-        edgeMark.frame = CGRect(x: edge.lowerBound < 1 ? 7 : pad.bounds.maxX - 10, y: (ys.lowerBound + ys.upperBound) / 2 - 34, width: 3, height: 68)
+        edgeMark.frame = PadLayout.edgeMark(edge, y: ys, width: pad.bounds.width, inset: edgeInset)
+        if let t = thumbPad.engine.scrollEdge { thumbEdgeMark.frame = PadLayout.edgeMark(t, y: 0...max(0, thumbPad.bounds.height), width: thumbPad.bounds.width) }
+        thumbEdgeMark.isHidden = thumbPad.engine.scrollEdge == nil
         let tipW = min(hint.width - 32, 420)
         let tipFit = ceil(tip.sizeThatFits(CGSize(width: tipW - 24, height: .greatestFiniteMagnitude)).height)
         tipBack.frame = CGRect(x: hint.midX - tipW / 2, y: hint.minY + 16, width: tipW, height: tipFit + 16)
@@ -896,9 +957,16 @@ final class PadViewController: UIViewController {
         if PadLayout.mode(for: size) != PadLayout.mode(for: view.bounds.size) { drawerOpen = !showing }
         pad.letGo()
         thumbPad.letGo()
+        board.letGo()
+        if boardOpen { Sticky.shared.letGo() }
     }
 
     // MARK: keys
+
+    /// a big screen opens as it was left; a phone never with the computer keyboard out
+    private func restoreBoard() {
+        if !boardOpen, Prefs.shared.boardOpen, PadLayout.mode(for: view.bounds.size) == .big { boardOpen = true; view.setNeedsLayout() }
+    }
 
     private func showDeck() {
         list.show(deck.sections)
@@ -974,7 +1042,40 @@ final class PadViewController: UIViewController {
 
     private func toggleKeyboard() {
         Haptics.tick()
-        if field.isFirstResponder { field.resignFirstResponder() } else { field.becomeFirstResponder() }
+        if field.isFirstResponder { field.resignFirstResponder() }
+        else if boardOpen { setBoard(false) }
+        else { keyboard(Prefs.shared.keyboardKind) }
+    }
+
+    /// One of the two keyboards: the phone's own, for text, or the computer's keys.
+    private func keyboard(_ k: KeyboardKind) {
+        Prefs.shared.keyboardKind = k
+        if k == .computer {
+            field.resignFirstResponder()
+            setBoard(true)
+        } else {
+            setBoard(false)
+            field.becomeFirstResponder()
+        }
+    }
+
+    private func setBoard(_ on: Bool) {
+        Prefs.shared.boardOpen = on
+        guard on != boardOpen else { return }
+        boardOpen = on
+        if !on { board.letGo() }
+        Sticky.shared.letGo()
+        screenButton.closeMap()
+        view.setNeedsLayout()
+        UIView.animate(withDuration: 0.22) { self.view.layoutIfNeeded() }
+    }
+
+    /// Over a big screen's: the apps key, and what hands do most.
+    private func showQuick() {
+        let h = Link.shared.host, m: RemoteModifiers = h == .mac ? .command : .control
+        let keys = [Deck.appsKey(for: h)] + [("C", m), ("V", m), ("X", m), ("Z", m)].map { KeySlot(.chord(RemoteChord($0.1, $0.0), cycle: false)) }
+            + [KeySlot(.chord(h == .windows ? RemoteChord(m, "Y") : RemoteChord(m.union(.shift), "Z"), cycle: false))]
+        for (i, c) in quickCells.enumerated() { c.slot = keys[i] }
     }
 
     private func keyboardChanged(_ n: Notification) {

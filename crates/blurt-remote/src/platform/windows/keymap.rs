@@ -55,6 +55,7 @@ pub const VK_F1: u16 = 0x70;
 pub const VK_LSHIFT: u16 = 0xA0;
 pub const VK_LCONTROL: u16 = 0xA2;
 pub const VK_LMENU: u16 = 0xA4;
+pub const VK_RMENU: u16 = 0xA5;
 pub const VK_OEM_1: u16 = 0xBA; // ;
 pub const VK_OEM_PLUS: u16 = 0xBB; // =
 pub const VK_OEM_COMMA: u16 = 0xBC;
@@ -138,6 +139,7 @@ pub fn key(name: &str) -> Option<Key> {
         "Space" => plain(VK_SPACE, 0x39),
         "Delete" => plain(VK_BACK, 0x0E), // the wire's Delete is the Mac's: backspace
         "Escape" => plain(VK_ESCAPE, 0x01),
+        "AltGr" => ext(VK_RMENU, 0x38),
         "ForwardDelete" => ext(VK_DELETE, 0x53),
         "Insert" => ext(VK_INSERT, 0x52), // not on the phone's keys yet; a real keyboard's Insert
         "Left" => ext(VK_LEFT, 0x4B),

@@ -107,6 +107,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
     val current: StateFlow<PairedMac?> = _current
     val canControl = MutableStateFlow(true)
     val front = MutableStateFlow<RemoteFront?>(null)
+    /** what the computer's layout prints on its keys; null until it says, or from a host that can't */
+    val legends = MutableStateFlow<dev.blurt.remote.core.RemoteLegends?>(null)
     val dictation = MutableStateFlow(RemoteDictationPhase.IDLE)
     /** the words so far: what's final, then what's still being said */
     val live = MutableStateFlow("" to "")
@@ -307,6 +309,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         dictation.value = RemoteDictationPhase.IDLE
         live.value = "" to ""
         front.value = null
+        legends.value = null
         screenError.value = null
         displays.value = emptyList()
         shownDisplay.value = null
@@ -693,6 +696,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             }
             is ToPhone.CanControl -> canControl.value = m.on
             is ToPhone.Front -> front.value = m.front
+            is ToPhone.Legends -> legends.value = m.legends
             is ToPhone.Dictation -> {
                 dictation.value = m.phase
                 if (m.phase != RemoteDictationPhase.LISTENING) level.value = 0f

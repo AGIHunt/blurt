@@ -14,6 +14,8 @@ pub mod cursor_image;
 pub mod geometry;
 pub mod keyboard;
 pub mod keymap;
+#[cfg(windows)]
+pub mod layout;
 pub mod ltr;
 pub mod nv12;
 pub mod pacing;
@@ -87,6 +89,9 @@ mod imp {
     impl Backend for WinBackend {
         fn input(&mut self) -> &mut dyn Input {
             &mut self.input
+        }
+        fn legends(&self) -> Option<crate::wire::Legends> {
+            super::layout::legends()
         }
         fn screen(&mut self) -> Option<&mut dyn Screen> {
             Some(&mut self.screen)

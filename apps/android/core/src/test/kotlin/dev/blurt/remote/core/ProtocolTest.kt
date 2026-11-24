@@ -233,7 +233,7 @@ class ProtocolTest {
         assertEquals("Alt+←", RemoteChord(RemoteModifiers.OPTION, "Left").label(RemoteHost.LINUX))
         assertEquals(RemoteHost.LINUX, RemoteHost.from("linux"))
         assertEquals(RemoteHost.MAC, RemoteHost.from("amiga"))
-        assertEquals(73, RemoteKey.all.size)
+        assertEquals(87, RemoteKey.all.size)
         assertEquals(36, RemoteKey.named("Return")?.code)
         assertNull(RemoteKey.named("Hyper"))
     }

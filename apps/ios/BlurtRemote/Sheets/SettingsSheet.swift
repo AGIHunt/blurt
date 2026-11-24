@@ -50,6 +50,15 @@ struct SettingsSheet: View {
                     Text(l.host == .mac ? "On the Mac’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad."
                         : "On the computer’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad.")
                 }
+                if p.turn.applies {
+                    Section {
+                        Picker("Orientation", selection: $p.turn) {
+                            ForEach(ScreenTurn.allCases) { Text($0.name).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    } header: { Text("Orientation") }
+                }
                 Section("Keys") {
                     NavigationLink("Edit Keys") { KeyEditor(deck: Deck.load(for: l.host), onChange: onDeck) }
                 }

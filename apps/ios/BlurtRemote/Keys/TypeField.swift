@@ -64,6 +64,8 @@ final class TypeField: UITextView, UITextViewDelegate {
 /// The row above the keyboard: what a phone keyboard doesn't have.
 final class ModifierRow: UIInputView {
     var onClose: (() -> Void)?
+    /// the computer's keyboard instead
+    var onComputer: (() -> Void)?
     private var buttons: [(UIButton, RemoteModifiers?)] = []
 
     init() {
@@ -93,6 +95,11 @@ final class ModifierRow: UIInputView {
             row.addArrangedSubview(b)
             buttons.append((b, mods))
         }
+        add("") { [weak self] in Haptics.tick(); self?.onComputer?() }
+        if let b = buttons.first?.0 {
+            b.configuration?.image = UIImage(systemName: "laptopcomputer", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+            b.accessibilityLabel = String(localized: "Computer")
+        }
         // in the order and with the names of the computer in hand, set in refresh: ⌃⌥⇧⌘ on a Mac, Ctrl Win Alt Shift on Windows
         for i in 0..<4 {
             add("", mods: []) { let m = RemoteHost.shown.modifierOrder[i]; Sticky.shared.tap(m, at: CACurrentMediaTime()); Haptics.grab() }
@@ -109,7 +116,7 @@ final class ModifierRow: UIInputView {
 
     func refresh() {
         let h = RemoteHost.shown
-        for (i, (b, m)) in buttons.enumerated() {
+        for (i, (b, m)) in buttons.filter({ $0.1 != nil }).enumerated() {
             guard m != nil else { continue }
             let m = h.modifierOrder[i]
             let on = Sticky.shared.held.isSuperset(of: m)

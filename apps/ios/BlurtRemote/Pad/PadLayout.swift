@@ -80,8 +80,13 @@ struct PadLayout {
     let drawerMatters: Bool
     /// the pages are showing
     let keysOut: Bool
+    /// the computer keyboard, open: where it goes, how many keys across and how tall each row is. The list, and on a big screen the halves
+    /// and the dock, give it their place
+    let board: Board?
     /// where one finger scrolls on the pad, across it
     let scrollEdge: ClosedRange<CGFloat>
+    /// that's the left side
+    let scrollsLeft: Bool
     /// and down it: never across the fold
     let scrollEdgeY: ClosedRange<CGFloat>?
     /// the same on the thumb pad
@@ -91,6 +96,16 @@ struct PadLayout {
     /// on the stage: where words, chips and a message go, clear of the fold, on the thumb's side
     let hintArea: CGRect
     let fold: CGRect?
+
+    struct Board: Equatable {
+        var frame: CGRect
+        var tier: FullTier
+        var heights: [CGFloat]
+        /// the stage's bands beside the picture are a trackpad: there's no other by the keys
+        var bandsArePad = false
+        /// a row of its own over the keys, with the controls in it
+        var quick: [CGRect] = []
+    }
 
     static let gap: CGFloat = 5
     /// tall enough for the arrow key's four edges
@@ -107,7 +122,12 @@ struct PadLayout {
     static let wideKeyShape: CGFloat = 1.25
     /// portrait with the picture: keys grow a little into the room it leaves, no more (taller, they look empty and toy-like)
     static let pictureKeyHeight: CGFloat = 56
-    static let scrollEdgeWidth: CGFloat = 26
+    /// wide enough to find with a thumb that isn't looked at (26 was the first value: a slide begun a little inside was the pointer)
+    static func scrollEdgeWidth(_ pad: CGFloat) -> CGFloat { min(44, max(32, pad * 0.09)) }
+    /// the computer keyboard's keys, upright on a phone
+    static let boardKeyHeight: CGFloat = 44
+    /// a trackpad under it needs this much
+    static let boardPadHeight: CGFloat = 96
     /// the keys beside the picture
     static let wideKeysWidth: CGFloat = 340
     /// portrait: the keys are a phone's, however wide the window
@@ -135,7 +155,7 @@ struct PadLayout {
 
     /// `islandLeft`: which end has the camera in landscape. `aspect`: the computer's screen, width ÷ height. `showing`: the picture is on
     init(size: CGSize, safe: UIEdgeInsets, lefty: Bool, islandLeft: Bool = true, drawerOpen: Bool = true,
-         surround: PadSurround = .none, aspect: CGFloat = 1.6, showing: Bool = false) {
+         surround: PadSurround = .none, aspect: CGFloat = 1.6, showing: Bool = false, board: Bool = false) {
         let mode = Self.mode(for: size)
         switch mode {
         case .landscape:
@@ -146,7 +166,7 @@ struct PadLayout {
             // a window's controls along the top (iPadOS): everything starts below them
             let top = safe.top
             var p = Parts.landscape(size: CGSize(width: size.width, height: size.height - top), safe: safe, islandLeft: islandLeft,
-                                    drawerOpen: drawerOpen, camera: camera?.offsetBy(dx: 0, dy: -top))
+                                    drawerOpen: drawerOpen, camera: camera?.offsetBy(dx: 0, dy: -top), board: board)
             if top > 0 { p.shift(dy: top) }
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
         case .portrait:
@@ -157,10 +177,10 @@ struct PadLayout {
             var frame = CGRect(x: max(8, known ? 0 : safe.left), y: max(safe.top - 6, 16), width: 0, height: 0)
             frame.size = CGSize(width: size.width - frame.minX - max(8, known ? 0 : safe.right), height: size.height - frame.minY - max(safe.bottom - 6, 12))
             for o in surround.occlusions where o.intersects(frame) && o.minY <= frame.minY + 1 { frame = frame.divided(atDistance: o.maxY + 4 - frame.minY, from: .minYEdge).remainder }
-            let p = Parts.portrait(in: frame, lefty: lefty, picture: showing ? aspect : nil)
+            let p = Parts.portrait(in: frame, lefty: lefty, picture: showing ? aspect : nil, board: board)
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
         case .big:
-            let p = Parts.big(size: size, safe: safe, lefty: lefty, drawerOpen: drawerOpen, surround: surround, aspect: aspect)
+            let p = Parts.big(size: size, safe: safe, lefty: lefty, drawerOpen: drawerOpen, surround: surround, aspect: aspect, board: board)
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
         }
     }
@@ -171,23 +191,36 @@ struct PadLayout {
         pad = p.pad; thumbPad = p.thumbPad; talk = p.talk; list = p.list; listSplit = p.listSplit; keySize = p.keySize; dock = p.dock
         arrowKey = p.arrowKey; appsKey = p.appsKey; strip = p.strip; keyboardButton = p.keyboardButton; settingsButton = p.settingsButton
         screenButton = p.screenButton; findButton = p.findButton; rail = p.rail; drawerButton = p.drawerButton; drawer = p.drawer
+        board = p.board
         halves = p.halves; drawerMatters = p.drawerMatters; keysOut = p.keysOut; stageAlignY = p.stageAlignY
         // one finger scrolls along the side by the thumb, unless the fold is there: then along the other
-        var side = lefty
-        if let f = fold, f.height > f.width, abs(lefty ? f.maxX - p.pad.minX : p.pad.maxX - f.minX) < Self.scrollEdgeWidth * 2 { side.toggle() }
-        scrollEdge = Self.scrollEdge(width: p.pad.width, lefty: side)
+        // (on its side a phone's thumb is at the end without the island, whichever hand)
+        var side = mode == .landscape ? p.appsKey.midX < p.pad.midX : lefty
+        if let f = fold, f.height > f.width, abs(side ? f.maxX - p.pad.minX : p.pad.maxX - f.minX) < Self.scrollEdgeWidth(p.pad.width) * 2 { side.toggle() }
+        scrollsLeft = side
+        scrollEdge = Self.scrollEdge(width: p.pad.width, left: side)
         // across the fold the strip would straddle it: the part nearer the thumb, below it
         if let f = fold, f.width > f.height, f.minY > p.pad.minY, f.maxY < p.pad.maxY {
             scrollEdgeY = (f.maxY - p.pad.minY)...p.pad.height
         } else {
             scrollEdgeY = nil
         }
-        thumbScrollEdge = p.thumbPad.map { Self.scrollEdge(width: $0.width, lefty: lefty) }
+        thumbScrollEdge = p.thumbPad.map { Self.scrollEdge(width: $0.width, left: lefty) }
         hintArea = Self.clear(p.pad, of: fold, lefty: lefty)
     }
 
-    static func scrollEdge(width: CGFloat, lefty: Bool) -> ClosedRange<CGFloat> {
-        lefty ? 0...scrollEdgeWidth : (width - scrollEdgeWidth)...width
+    /// `inset`: what's lost at that side to the island, with the pad under it (full screen)
+    static func scrollEdge(width: CGFloat, left: Bool, inset: CGFloat = 0) -> ClosedRange<CGFloat> {
+        let w = scrollEdgeWidth(width) + inset
+        return left ? 0...w : (width - w)...width
+    }
+
+    /// The edge's mark, in the pad's coordinates: half the strip's height, so it reads as something to slide along, and clear of what
+    /// stands in the corners.
+    static func edgeMark(_ edge: ClosedRange<CGFloat>, y: ClosedRange<CGFloat>, width: CGFloat, inset: CGFloat = 0) -> CGRect {
+        let room = y.upperBound - y.lowerBound, w: CGFloat = 4, off: CGFloat = 6
+        let h = max(0, min(room - 24, max(96, min(360, room * 0.5))))
+        return CGRect(x: edge.lowerBound <= 0 ? inset + off : width - inset - off - w, y: (y.lowerBound + y.upperBound - h) / 2, width: w, height: h)
     }
 
     /// The part of the stage, in its own coordinates, that a fold doesn't cross: the side nearer the thumb (below, or towards the hand).
@@ -207,7 +240,7 @@ private struct Parts {
     var pad = CGRect.zero, thumbPad: CGRect?, talk = CGRect.zero, list = CGRect.zero, listSplit: (at: CGFloat, width: CGFloat)?
     var keySize = CGSize.zero, dock: [CGRect] = [], arrowKey = CGRect.zero, appsKey = CGRect.zero, strip = CGRect.zero
     var keyboardButton = CGRect.zero, settingsButton = CGRect.zero, screenButton = CGRect.zero, findButton = CGRect.zero
-    var rail: CGRect?, drawerButton = CGRect.zero, drawer = CGRect.zero, halves: [CGRect] = []
+    var rail: CGRect?, drawerButton = CGRect.zero, drawer = CGRect.zero, halves: [CGRect] = [], board: PadLayout.Board?
     var drawerMatters = false, keysOut = true, stageAlignY: CGFloat = 1
 
     static let gap = PadLayout.gap
@@ -221,6 +254,11 @@ private struct Parts {
         dock = dock.map { $0.offsetBy(dx: 0, dy: dy) }
         rail = rail?.offsetBy(dx: 0, dy: dy)
         thumbPad = thumbPad?.offsetBy(dx: 0, dy: dy)
+        if var b = board {
+            b.frame = b.frame.offsetBy(dx: 0, dy: dy)
+            b.quick = b.quick.map { $0.offsetBy(dx: 0, dy: dy) }
+            board = b
+        }
     }
     static func keys(_ width: CGFloat, _ cols: Int = Deck.columns) -> CGFloat { (width - gap * CGFloat(cols - 1)) / CGFloat(cols) }
 
@@ -230,7 +268,7 @@ private struct Parts {
     /// `picture`: the computer's screen is showing, this wide for its height. Across a phone it's far shorter than the pad: the keys take
     /// a little of the room, as taller keys rather than more of them, and the picture sits in the middle of what's left, so the black
     /// is split above and below it instead of one band over it.
-    static func portrait(in frame: CGRect, lefty: Bool, picture: CGFloat? = nil) -> Parts {
+    static func portrait(in frame: CGRect, lefty: Bool, picture: CGFloat? = nil, board: Bool = false) -> Parts {
         var p = Parts()
         let width = min(frame.width, PadLayout.blockWidth)
         let rows = CGFloat(PadLayout.visibleRows)
@@ -242,8 +280,16 @@ private struct Parts {
             let most = min(PadLayout.pictureKeyHeight, keys(width) * PadLayout.wideKeyShape)
             if spare > 0 { h = max(h, min(most, h + spare / (rows + 1))) }
         }
-        let listH = rows * h + (rows - 1) * gap
-        let total = total(h)
+        // the computer keyboard: five rows of ten in the list's place, the keys a little lower, the dock as it is
+        var heights: [CGFloat] = []
+        if board {
+            h = PadLayout.keyHeight
+            let rest = t + drop + h + 4 * gap
+            let key = min(PadLayout.boardKeyHeight, max(36, floor((frame.height - rest - 140) / 5)))
+            heights = Array(repeating: key, count: 5)
+        }
+        let listH = board ? FullKeys.height(heights) : rows * h + (rows - 1) * gap
+        let total = t + listH + drop + h
         let block = CGRect(x: frame.midX - width / 2, y: frame.maxY - total, width: width, height: total)
         p.drawer = block
         p.pad = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: block.minY - frame.minY - Self.padGap)
@@ -261,6 +307,7 @@ private struct Parts {
         let stripX = lefty ? p.arrowKey.maxX : p.settingsButton.maxX
         p.strip = CGRect(x: stripX, y: block.minY, width: p.findButton.minX - stripX, height: t - 2)
         p.list = CGRect(x: block.minX, y: block.minY + t, width: width, height: listH)
+        if board { p.board = PadLayout.Board(frame: p.list, tier: .ten, heights: heights) }
 
         // the dock: ten even parts, the last the talk key
         let dockY = block.maxY - h, n = Deck.dockCount + 1
@@ -275,7 +322,7 @@ private struct Parts {
 
     // MARK: landscape
 
-    static func landscape(size: CGSize, safe: UIEdgeInsets, islandLeft: Bool, drawerOpen: Bool, camera: CGRect? = nil) -> Parts {
+    static func landscape(size: CGSize, safe: UIEdgeInsets, islandLeft: Bool, drawerOpen: Bool, camera: CGRect? = nil, board: Bool = false) -> Parts {
         var p = Parts()
         let margin = islandLeft ? safe.left : safe.right
         func fromIsland(_ inset: CGFloat, _ w: CGFloat, _ y: CGFloat, _ h: CGFloat) -> CGRect {
@@ -354,18 +401,26 @@ private struct Parts {
             return CGRect(x: block.minX + CGFloat(column) * (keyW + gap), y: rowY, width: keyW, height: h)
         }
 
-        let reach = inner + (drawerOpen ? w + 6 : 0)
+        let reach = inner + (drawerOpen && !board ? w + 6 : 0)
         let padX = islandLeft ? ctrlEnd + 6 : reach
         p.pad = CGRect(x: padX, y: 6, width: size.width - ctrlEnd - 6 - reach, height: size.height - 12)
         p.drawerMatters = true
-        p.keysOut = drawerOpen
+        p.keysOut = drawerOpen && !board
+        if board {
+            // five rows between the two columns, which stay; the stage over them keeps not much less than half the height
+            let bottom = max(6, min(safe.bottom, 10)), key = max(32, min(40, floor((size.height * 0.55 - 4 * gap) / 5)))
+            let heights = Array(repeating: key, count: 5), tall = FullKeys.height(heights)
+            let f = CGRect(x: p.pad.minX, y: size.height - bottom - tall, width: p.pad.width, height: tall)
+            p.board = PadLayout.Board(frame: f, tier: .thirteen, heights: heights)
+            p.pad.size.height = f.minY - 8 - p.pad.minY
+        }
         p.stageAlignY = 0.5
         return p
     }
 
     // MARK: big
 
-    static func big(size: CGSize, safe: UIEdgeInsets, lefty: Bool, drawerOpen: Bool, surround s: PadSurround, aspect: CGFloat) -> Parts {
+    static func big(size: CGSize, safe: UIEdgeInsets, lefty: Bool, drawerOpen: Bool, surround s: PadSurround, aspect: CGFloat, board: Bool = false) -> Parts {
         let m: CGFloat = 10
         let inner = CGRect(x: safe.left + m, y: max(safe.top, m), width: size.width - safe.left - safe.right - m * 2,
                            height: size.height - max(safe.top, m) - max(safe.bottom - 4, m))
@@ -377,13 +432,14 @@ private struct Parts {
             let leftPage = CGRect(x: inner.minX, y: inner.minY, width: f.minX - 8 - inner.minX, height: inner.height)       // a little off the fold
             let rightPage = CGRect(x: f.maxX + 8, y: inner.minY, width: inner.maxX - f.maxX - 8, height: inner.height)
             let remote = lefty ? leftPage : rightPage
-            p = portrait(in: remote, lefty: lefty)
+            p = portrait(in: remote, lefty: lefty, board: board)
             p.thumbPad = p.pad
             p.pad = lefty ? rightPage : leftPage
             p.stageAlignY = 0.5
             return p
         }
 
+        if board { return bigBoard(inner: inner, lefty: lefty, surround: s, aspect: aspect) }
         var p = Parts()
         let h = PadLayout.keyHeight, drop: CGFloat = 6
         let rows = CGFloat(PadLayout.visibleRows)
@@ -475,6 +531,60 @@ private struct Parts {
         }
         p.dock = (0..<Deck.dockCount).map { i in x(i < leftCount ? spot(leftHalf, i, of: leftCount) : spot(rightHalf, i - leftCount, of: rightCount)) }
         p.talk = x(spot(rightHalf, rightCount - 1, of: rightCount))
+        return p
+    }
+
+    /// The computer keyboard on a big screen: as wide as the screen, under the stage, a row of controls over it. What the halves and the
+    /// trackpad between them took is about its height, so the picture keeps its own. Where a whole picture leaves a band under it (upright),
+    /// the band is a trackpad under the keys, as on a laptop; where it leaves bands at its sides, those are the trackpad.
+    static func bigBoard(inner: CGRect, lefty: Bool, surround s: PadSurround, aspect: CGFloat) -> Parts {
+        var p = Parts()
+        let laptop = s.laptop && s.fold != nil
+        // a fold that runs down the middle, lying flat: the keys go across it, as they do on any one screen
+        let tier = FullTier.big(width: inner.width), strip: CGFloat = 44, drop: CGFloat = 6, padGap: CGFloat = 8
+        let upright = inner.height > inner.width
+        let below = laptop ? inner.maxY - s.fold!.maxY - 4 : inner.height
+        let unit = FullTier.unit(inner.width, tier)
+        var key: CGFloat = upright ? min(56, max(44, unit * 1.2)) : 48, f: CGFloat = upright ? 40 : 36
+        func tall() -> CGFloat { strip + drop + f + 5 * key + 5 * gap }
+        // never more than two thirds of a short window, and under a laptop's fold all it can
+        let room = laptop ? below : min(inner.height * 0.62, inner.height - 140)
+        if tall() > room { key = max(34, floor((room - strip - drop - f - 5 * gap) / 5)) }
+        if tall() > room { f = max(28, f - (tall() - room)) }
+        let heights = [f] + Array(repeating: key, count: 5), boardH = FullKeys.height(heights), deckH = strip + drop + boardH
+        // a band under the whole picture
+        let band = laptop ? 0 : inner.height - inner.width / max(aspect, 0.5) - padGap - deckH - padGap
+        let pad = band >= PadLayout.boardPadHeight ? band : 0
+        let deckY = laptop ? s.fold!.maxY + 4 : inner.maxY - deckH - (pad > 0 ? pad + padGap : 0)
+        let stageBottom = laptop ? s.fold!.minY : deckY - padGap
+        p.pad = CGRect(x: inner.minX, y: inner.minY, width: inner.width, height: stageBottom - inner.minY)
+        p.stageAlignY = laptop ? 0.5 : 1
+        if pad > 0 { p.thumbPad = CGRect(x: inner.minX, y: inner.maxY - pad, width: inner.width, height: pad) }
+
+        // the controls, which keyboard and what's held, and the shortcuts: one row
+        let c: CGFloat = 42
+        var x = inner.minX
+        func next(_ w: CGFloat, _ after: CGFloat = 4) -> CGRect {
+            defer { x += w + after }
+            return CGRect(x: x, y: deckY, width: w, height: strip)
+        }
+        p.settingsButton = next(c)
+        p.findButton = next(c)
+        p.screenButton = next(c)
+        p.keyboardButton = next(c, 10)
+        let quickW: CGFloat = min(64, max(44, (inner.maxX - x - 320 - 5 * gap) / 6)), quicks = inner.maxX - x - 320 - 5 * gap >= 44 * 6 ? 6 : 4
+        let quickTotal = CGFloat(quicks) * quickW + CGFloat(quicks - 1) * gap
+        p.strip = CGRect(x: x, y: deckY, width: max(0, inner.maxX - quickTotal - 10 - x), height: strip)
+        let qx = inner.maxX - quickTotal
+        let quick = (0..<quicks).map { CGRect(x: qx + CGFloat($0) * (quickW + gap), y: deckY, width: quickW, height: strip) }
+        let frame = CGRect(x: inner.minX, y: deckY + strip + drop, width: inner.width, height: boardH)
+        p.board = PadLayout.Board(frame: frame, tier: tier, heights: heights, bandsArePad: pad == 0, quick: quick)
+        p.drawer = CGRect(x: inner.minX, y: deckY, width: inner.width, height: deckH)
+        p.drawerMatters = false
+        p.keysOut = false
+        // the talk key is one of the board's
+        let spots = FullKeys.place(FullKeys.rows(tier, for: .mac), in: frame, tier: tier, heights: heights)
+        p.talk = spots.first { $0.key.kind == .talk }?.rect ?? .zero
         return p
     }
 }

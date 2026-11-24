@@ -87,6 +87,8 @@ final class Link: ObservableObject {
     @Published private(set) var live = ""
     @Published private(set) var liveFinal = ""
     @Published private(set) var level: Float = 0
+    /// what the computer's layout prints on its keys; nil until it says, or from a host that can't
+    @Published private(set) var legends: RemoteLegends?
     @Published private(set) var rtt: Double?
     enum Route { case local, relay, direct, overlay }
     @Published private(set) var route = Route.local
@@ -364,6 +366,7 @@ final class Link: ObservableObject {
         live = ""
         liveFinal = ""
         front = nil
+        legends = nil
         screenError = nil
         displays = []
         shownDisplay = nil
@@ -782,6 +785,7 @@ final class Link: ObservableObject {
             }
             // the Mac let go of everything when the last session ended
             send(.mods(Sticky.shared.held))
+        case let .legends(l): legends = l
         case let .canControl(ok): canControl = ok
         case let .front(f): front = f
         case let .dictation(p):

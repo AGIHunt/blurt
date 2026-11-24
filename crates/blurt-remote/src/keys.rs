@@ -131,6 +131,8 @@ pub const ALL: &[&str] = &[
     "PrintScreen",
     "ScrollLock",
     "Pause",
+    // the right Alt, which types a key's third character: no modifier bit, a key held by name
+    "AltGr",
 ];
 
 /// How many of `ALL` a phone's deck sends (everything up to "`").
@@ -546,7 +548,7 @@ mod tests {
 
     #[test]
     fn the_names_are_the_swift_lists() {
-        assert_eq!(ALL.len(), 114);
+        assert_eq!(ALL.len(), 115);
         assert_eq!(ALL[DECK - 1], "`");
         let mut seen = std::collections::HashSet::new();
         for n in ALL {

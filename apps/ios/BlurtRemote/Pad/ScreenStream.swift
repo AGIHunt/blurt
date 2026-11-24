@@ -291,6 +291,18 @@ final class ScreenStream {
         askForView()
     }
 
+    /// the view was widened for a low stage, and goes back with it
+    private var filled = false
+    func fillWidth(_ on: Bool) {
+        guard on != filled else { return }
+        filled = on
+        guard on else { return resetView() }
+        wholeUnderneath()
+        port.fillWidth(around: pointerKnown ? pointer : nil)
+        place(animated: true)
+        askForView(now: true)
+    }
+
     func gestureEnded() {
         port.settle()
         place(animated: true)
@@ -376,6 +388,7 @@ final class ScreenStream {
 
     /// The view back to the whole screen and nothing left of the last one.
     func resetView() {
+        filled = false      // the next layout widens it again if it should be
         port = ViewPort()
         reshape()
         shown = .whole
@@ -466,11 +479,13 @@ final class ScreenStream {
     }
 
     /// The view has moved off the pointer and the finger is about to use it: it comes into view, where the eyes are.
-    func bringPointerIntoView() {
+    @discardableResult
+    func bringPointerIntoView() -> Bool {
         let v = port.visible
         // its edges count as inside: the pointer stops on the very edge of the screen
-        guard on, !port.isWhole, pointerKnown, pointer.x < v.minX || pointer.x > v.maxX || pointer.y < v.minY || pointer.y > v.maxY else { return }
+        guard on, !port.isWhole, pointerKnown, pointer.x < v.minX || pointer.x > v.maxX || pointer.y < v.minY || pointer.y > v.maxY else { return false }
         move(to: CGPoint(x: v.midX, y: v.midY))
+        return true
     }
 
     func cursor(_ d: Data) {

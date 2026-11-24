@@ -147,7 +147,7 @@ for a slide sideways there, so a thumb meaning to scroll sends nothing. In the d
 | Plain | Fires on lift, slide off cancels, held still does nothing | A misplaced thumb costs nothing |
 | Cycle (⌘⇥, ⌃⇥, ⌘\`) | Press holds the modifier and steps once; slide steps on, 22 pt per detent, left goes back; at the screen edge it keeps stepping, seven a second; lift lets go. The other keys dim and are out of play | A quick tap is "back to the last app"; holding reaches any of twenty apps |
 | Arrows | One slot: drag for ticks every 24 pt; past 72 pt repeats, faster with distance; tap then drag adds ⇧ | No tiny D-pad, and text selection is one gesture |
-| Sticky (⌘ ⇧ ⌥ ⌃) | Tap: next key or click. Double tap: locked. The Mac really holds it. Held 0.45 s: pressed on its own, down and up, and the Mac shows it | One thumb can't chord; ⌘-click and ⇧-arrows work everywhere. A lone ⇧ switches a Chinese or Japanese input method to English (founder, 2026-11-08: a tap only held it, so 。 kept coming out) |
+| Sticky (⌘ ⇧ ⌥ ⌃) | Tap: next key or click. Double tap: locked. The Mac really holds it. Held while another key or the pad is touched: held for it. Held alone: pressed on its own as it lifts, and the Mac shows it (§Computer keyboard, 2026-11-24) | One thumb can't chord; ⌘-click and ⇧-arrows work everywhere. A lone ⇧ switches a Chinese or Japanese input method to English (founder, 2026-11-08: a tap only held it, so 。 kept coming out) |
 | Sequence | Runs on the Mac in one go | Esc Esc's timing can't depend on Wi-Fi |
 | Text | Types a string, Return if asked | `/compact` and the like |
 | Repeating | ⌫ and arrows fire on press and repeat | Nothing destructive repeats: never Esc, ⌃C or Return (⌃C twice exits Claude Code) |
@@ -181,6 +181,59 @@ keys, and the arrow key turns slides. Decided:
 Left for later: on an iPad with the pages put away, back / close tab / next tab are out of reach; space in full screen for a video; the arrow
 key as two big ← → in landscape for slides. Not checked on a phone in the hand.
 
+## Computer keyboard
+
+2026-11-24. The founder asked for a full keyboard, optional, on phones too: keys hard to find on the pages, the habit of a real one, and any
+combination. Five role-played users (a terminal developer on a phone, a product manager on an iPad with the Mac's pinyin, an admin of Windows and
+Linux on small Android phones, a low-vision one-handed writer, a lecturer with a phone on its side) read the docs, the code and renders and each
+worked it through apart. They agreed on: optional, off by default, never opening by itself on a phone, never without a trackpad on a phone, held
+modifiers always visible. Taps saved are few (their counts: 0–6 a task); what it gives is every key with no page turned, bigger keys on a tablet,
+and real holding. A low-vision user wants fewer, larger keys instead, which this isn't.
+
+**Where it goes** (`FullTier`, by the width there is; the tests run every room, left-handed, with and without the picture):
+
+| Room | Keys across | Key | What gives way |
+|---|---|---|---|
+| A phone upright, a narrow window | 10 (symbols on the top row, then 1–0 and the letters; the dock below as it is) | 33–35×44 | the pages. Pad and picture stay, 346 pt of keys for 313 |
+| A phone on its side | 13, between the two columns, which stay | 52×40 (iPhone 17 Pro) | height: the stage keeps 155 of 390 pt. The picture widens to it around the pointer (`ViewPort.fillWidth`) and goes back after |
+| A tablet under 779 pt across, the Duo | 15 | 36–44 | as below; Home and the like on fn |
+| A tablet | 16, with a Home–End column | 70 (11" on its side), 46 (upright) | the halves and the pad between them. Deck 351 pt, as before |
+
+On a big screen a whole picture leaves a band: at its sides, and then the bands are the trackpad (a tap there clicks where the pointer is, a drag
+moves it, `TrackpadView.bandsArePad`); or under it, and then the band is a trackpad under the keys.
+
+Rejected: a whole keyboard upright on a phone (22 pt keys), translucent keys over the picture, halves at the ends in landscape (34 pt keys and a
+picture no bigger), scrolling rows, a trackpad by holding two fingers or space (Figma pans with space), a number pad.
+
+**Opening.** The keyboard button opens the one last used; a switch says 文字 · 电脑键盘 in both (in landscape, the keys' switch becomes the way back to
+text). The same button closes it, on Android Back too. A tablet opens as it was left. No setting.
+
+**Pressing** (`FullTyping`, `FullTyping.kt`: the same rules and tests):
+- A key acts as its finger lifts, and sliding off cancels. The next key landing sends the one before at once and holds it, so fast typing keeps its
+  order and two held keys are two held keys (W and A).
+- Held 0.4 s it goes down on the computer and repeats (20 a second). Nothing destructive, and with ⌘ or Ctrl only zooming and moving.
+- **Modifiers, here and on the pages** (`Sticky`, `HeldModifiers`): until now a modifier acted as it lifted, and held 0.45 s it was pressed alone, so
+  holding ⌘ and tapping C sent a plain C, against what this page said. Now one held while another key or the pad is touched is held for it; a tap is
+  still for the next key; held alone it's pressed on its own as it lifts. Landing together (60 ms) counts as held whichever the system tells of first;
+  landing after doesn't (typing fast, the next letter's ⇧ lands before this letter lifts). Lifting first, ⌘ sends the key still under a finger before
+  letting go.
+- What's held for the next key shows over the keys with ✕, which lets go of everything; so do closing, turning and leaving the app.
+- fn: the F-keys, Insert, PrtSc, Pause, Menu, and on the smaller ones Home, End, PgUp, PgDn. On a Mac ⌃Space (next input source) has Caps Lock's
+  place: raw keys go through the Mac's input method, so `:wq` composes in pinyin until it's switched.
+- AltGr is a key held by name on the wire ("AltGr"), no modifier bit.
+
+**What the keys say** comes from the computer (`ToPhone.legends`, RemoteLegends; additive): the layout's characters by US position, and the input
+source's name. Mac: UCKeyTranslate on the layout under the input method. Windows: ToUnicodeEx for the window in front, every 2 s. Linux and Windows'
+system service don't say, and the phone shows a US keyboard. The pages' keys still press US positions: on a German computer Undo is the key where a
+US keyboard has Z.
+
+**The computer's side.** The on-screen key hint no longer shows what types a character (a password typed key by key read out on the screen).
+Windows: a key sent down again while down repeats (it was dropped). On Linux the desktop repeats a held key by itself.
+
+Checked: the iOS and Android tests; an iPhone simulator and Android emulators against `apps/android/fakehost` (it prints what it gets: ⌘ held with C,
+both lifting together → ⌘ down, C, ⌘ up; S and A held together; AltGr, fn, hold-to-repeat, slide-off); the Mac's legends on this Mac. Not checked: a
+hand on a phone, typing speed, a Windows or Linux computer (the Windows code type-checks), AltGr on a real layout, VoiceOver and TalkBack.
+
 ## Trackpad
 
 Raw touches into `PadEngine`, a pure state machine with tests (no gesture recognisers: they add delay). Tap click; tap, tap
@@ -213,7 +266,7 @@ user sketches (an iPad reader, an iPhone developer at a big screen, a lecturer a
 13" iPad) split on one finger scrolling the picture: kept as it is, since in Touch Mode a slide of one finger is the only way to move the
 pointer without a click, which is what hover needs (menus and buttons that appear under the pointer, link previews, a hidden Dock). Decided
 with the founder:
-- **The edge stays on over the picture** and its mark shows when it matters: as the picture comes on (1.5 s, then it fades) and while one finger
+- **The edge stays on over the picture** and its mark shows when it matters (changed 2026-11-24, below: it's always there): as the picture comes on (1.5 s, then it fades) and while one finger
   scrolls there. Over the picture a standing line would hide a strip of it. What it takes away is only a quick vertical slide that starts in the
   strip, which as a pointer move works as well from anywhere else (the pointer moves relatively), and a sideways slide from it is still the pointer.
 - **The gesture list says what is true**: two fingers first, then 「单指沿拇指一侧边缘上下滑 → 在光标处滚动」. The first time the picture comes on, a
@@ -233,9 +286,31 @@ with the founder:
 Checked: the iOS (144) and Android (168) tests, including a full-screen layout test, and the iPhone and iPad simulators (map, full screen
 portrait and landscape, the tip). Not checked: a hand on a real iPad, Android on a device or emulator, the relay.
 
+**The scroll edge, seen and easier to hit (2026-11-24).** The founder, on an iPad and a phone: the strip "is mostly invisible though it works", should
+stay lit and be longer, and "doesn't feel sensitive". The strip already ran the pad's whole height; only its mark was 68 pt, and over the picture it
+faded after 1.5 s. What made it miss, from the code (not measured with a hand):
+- 26 pt wide, so a slide begun a little inside was the pointer. Now 9 % of the pad, between 32 and 44 pt (`PadLayout.scrollEdgeWidth`).
+- A slide had to go further down than across; a thumb moves in an arc. Now it may lean half as far again sideways (`PadEngine.edgeLean`), and once
+  it scrolls, only up and down counts.
+- A thumb that rested 0.4 s first became a drag. On the edge an up-or-down slide still scrolls; lifting is still a right click, across still a drag.
+  In Touch Mode the pointer isn't brought to the edge as the phone taps back, since the scroll is at the pointer.
+- One thumb's stroke is short: it scrolls 1.5 times as far as two fingers (`edgeGain`).
+- It scrolls at the pointer. Zoomed in with the pointer out of view, nothing seen moved: the pointer now comes into view as the scroll begins.
+- In landscape the strip was on the right whichever way the phone was turned; it's now at the thumb's end (`scrollsLeft`).
+
+The mark is half the strip's height (96–360 pt) and always there, on the pad between the thumbs too: 28 % white on the glass, 50 % with a dark rim
+over the picture, 90 % while it scrolls. This undoes 2026-11-18's "a standing line would hide a strip of it", at the founder's asking.
+Not checked with a finger on a real device.
+
 Pointer gain rises smoothly from 1× for a slow finger to 5.5× for a fast one, because the glass is a tenth of a trackpad and
 the target may be 4K; reviews of other apps single out steep curves and bad slow-speed precision. Scrolling is
 continuous-phase CGEvents so apps rubber-band as with a trackpad; the coast runs on the Mac at 120 Hz.
+
+**Turning the screen (2026-11-24).** The screen follows the phone, and with the phone's rotation lock on it couldn't be turned at all. Settings →
+Orientation is Auto, Portrait or Landscape (remembered), and holding the screen button offers the other way beside Full Screen. An app that allows one
+way is turned that way whatever the lock says (`ScreenTurn`; Android's `requestedOrientation`). Phones only: iPadOS and Android 16 on large screens
+size and turn windows themselves. Checked: an iPhone simulator held upright turns and comes back with Auto; an Android emulator with its rotation lock on
+turns both ways. Not checked: a real iPhone with its lock on.
 
 iOS: `preferredScreenEdgesDeferringSystemGestures = .all`, status bar off, idle timer off while open, no rotation during a
 touch, large contacts ignored as palms. The screen stays on while the app is open and dims only after 5 minutes idle, for a phone left on the desk
@@ -667,6 +742,9 @@ The keys stay phone-sized and never stretch.
   system keyboard), with ⌘Tab nearest the middle so its slide can run over the trackpad. The other half has the arrow key nearest the
   middle, then the tabs. The arrow key gets room every way: never at an edge, never in the bottom row. The row is 90 pt tall so the arrow
   key is 88 pt square, 44 pt to each edge, with ⌘Tab as big across from it and the four controls two by two (2026-11-11, see "The arrow key").
+- **The tabs two by two** (2026-11-24). Beside the 88 pt arrow key, one line of 13 pt names stood in an empty box; the founder could read them but
+  found them small. A strip tall enough for two lines is a grid at the one size that fits every name, up to 17 pt (`PageStrip.arrange`): 72×44 pt
+  a tab. A phone's strip stays one line. Android's big panel has its tabs on a line of their own: there they grow to 17.
 - **A trackpad between the thumbs.** On anything this big, the stage is out of the thumbs' reach. With no picture, the stage and this pad
   are one glass with one outline, a T that reaches down to the thumbs. With the picture showing they're two things: a screen and a trackpad.
   A pinch on the trackpad zooms the view about its middle, and the pointer moves the view.

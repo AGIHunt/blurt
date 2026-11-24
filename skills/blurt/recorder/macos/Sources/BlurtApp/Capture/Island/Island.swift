@@ -670,6 +670,13 @@ final class Island: NSObject, IslandHosting {
     /// The shape's left edge in the panel (its centre is the notch's, moved by `dx` while one ear shows).
     private var shapeMinX: CGFloat { geo.cx + dx.value - w.value / 2 }
 
+    /// The middle of the shape now, in the screen's coordinates, when the island is on that screen and shows: what hangs under it lines up
+    /// with it (RemoteBanner).
+    func shapeMidX(on s: NSScreen) -> CGFloat? {
+        guard let panel, let screen, screen.frame == s.frame, capsuleVisible else { return nil }
+        return panel.frame.minX + geo.cx + dx.value
+    }
+
     /// The shape's target: (width, height, corner radius, centre offset). `toast`: false — what it would be without
     /// the toast showing (the live-text panel's width goes by that).
     private func target(toast: Bool = true) -> (w: CGFloat, h: CGFloat, r: CGFloat, dx: CGFloat) {
@@ -825,6 +832,7 @@ final class Island: NSObject, IslandHosting {
         hanging.islandMoved()
         LiveTranscript.shared.islandMoved()
         ScreenTextCard.shared.islandMoved()
+        RemoteBanner.islandMoved()
         let moving = !w.resting || !h.resting || !r.resting || !dx.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
         // While the shape grows, AppKit draws the open content piece by piece as the clip uncovers it; the seams of
         // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.

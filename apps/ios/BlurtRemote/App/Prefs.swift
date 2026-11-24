@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// The phone's settings.
 final class Prefs: ObservableObject {
@@ -30,6 +30,13 @@ final class Prefs: ObservableObject {
     /// the first picture's tip (two fingers scroll, the zoom key with a pinch) has been shown
     var pictureTipShown: Bool { didSet { d.set(pictureTipShown, forKey: "pictureTipShown") } }
 
+    /// which keyboard the keyboard button opens: the one last used
+    var keyboardKind: KeyboardKind { didSet { d.set(keyboardKind.rawValue, forKey: "keyboardKind") } }
+    /// the computer keyboard was open when last left. On a big screen it's open again; a phone never starts with it
+    var boardOpen: Bool { didSet { d.set(boardOpen, forKey: "boardOpen") } }
+    /// which way the screen is turned
+    @Published var turn: ScreenTurn { didSet { d.set(turn.rawValue, forKey: "turn") } }
+
     private init() {
         pointerSpeed = d.object(forKey: "pointerSpeed") as? Double ?? 1
         scrollSpeed = d.object(forKey: "scrollSpeed") as? Double ?? 1
@@ -44,5 +51,35 @@ final class Prefs: ObservableObject {
         screenFound = d.bool(forKey: "screenFound")
         fullScreen = d.bool(forKey: "fullScreen")
         pictureTipShown = d.bool(forKey: "pictureTipShown")
+        keyboardKind = d.string(forKey: "keyboardKind").flatMap(KeyboardKind.init) ?? .text
+        boardOpen = d.bool(forKey: "boardOpen")
+        turn = d.string(forKey: "turn").flatMap(ScreenTurn.init) ?? .auto
     }
+}
+
+/// Which way the screen is turned. A phone only: an iPad's window is turned and sized by iPadOS, whatever an app says.
+enum ScreenTurn: String, CaseIterable, Identifiable {
+    case auto, portrait, landscape
+    var id: String { rawValue }
+
+    var applies: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+
+    var mask: UIInterfaceOrientationMask {
+        guard applies else { return .all }
+        return switch self {
+        case .auto: .all
+        case .portrait: .portrait
+        case .landscape: .landscape
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .auto: String(localized: "Auto")
+        case .portrait: String(localized: "Portrait")
+        case .landscape: String(localized: "Landscape")
+        }
+    }
+
+    var icon: String { self == .landscape ? "rectangle.landscape.rotate" : "rectangle.portrait.rotate" }
 }

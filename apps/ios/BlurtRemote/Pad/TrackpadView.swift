@@ -36,6 +36,10 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
     private var palms = Set<ObjectIdentifier>()
     /// the touch landed off the picture, where there's nothing to click
     private var offPicture = false
+    /// off the picture is a trackpad (the computer keyboard out on a big screen, with no other pad by it): a tap there clicks where the
+    /// pointer is, and a drag there moves it
+    var bandsArePad = false
+    private var bandDrag: CGPoint?
     private var dragOff = false
     /// this scroll began where the pointer was just put
     private var scrollPlaced = false
@@ -199,6 +203,7 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
         if !buttons.isEmpty { buttonsBegan(Array(buttons), e) }
         let t = all.subtracting(buttons)
         guard !t.isEmpty else { return }
+        Sticky.shared.engage()      // a modifier under another finger is held for this: ⌘-click, ⌥-drag
         onTouch?()
         light(t.first, on: true)
         // zoomed in, with the glass as the screen, the picture is a photo under one finger; a touch anywhere stops it coasting
@@ -268,7 +273,7 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
 
     private func apply(_ out: [PadOutput]) {
         let link = Link.shared
-        var placed = false
+        var placed = false, broughtIn = false
         for o in out {
             switch o {
             case let .move(x, y):
@@ -288,10 +293,19 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
             case let .viewCoast(vx, vy):
                 if isStage { ScreenStream.shared.coastView(vx: vx, vy: vy) }
             case let .pointAt(p):
-                offPicture = !ScreenStream.shared.placePointer(at: p)
+                let on = ScreenStream.shared.placePointer(at: p)
+                offPicture = !on && !bandsArePad
+                bandDrag = !on && bandsArePad ? p : nil
                 placed = true
             case let .dragTo(p):
-                if !dragOff { ScreenStream.shared.dragPointer(to: p) }
+                if let from = bandDrag {
+                    let (x, y) = engine.curve.apply(dx: Float(p.x - from.x), dy: Float(p.y - from.y), dt: 1 / 60)
+                    link.pointer(.move(dx: x, dy: y))
+                    ScreenStream.shared.predict(dx: x, dy: y)
+                    bandDrag = p
+                } else if !dragOff {
+                    ScreenStream.shared.dragPointer(to: p)
+                }
             case let .click(b):
                 if offPicture, engine.touchMode { continue }    // a double tap off the picture is two of nothing
                 ScreenStream.shared.bringPointerIntoView()
@@ -312,7 +326,7 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
             case let .scroll(x, y, p):
                 if p == .began {
                     // a scroll that starts where the pointer was just put: in order behind it, and not at all off the picture
-                    scrollPlaced = placed
+                    scrollPlaced = placed || broughtIn
                     scrollOff = placed && offPicture && engine.touchMode
                 }
                 if scrollOff { continue }
@@ -327,7 +341,10 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
                 link.send(.system(m))
                 // a ⌘ or Ctrl held for one go is spent by the zoom it made
                 if m == .zoomIn || m == .zoomOut { onClick?() }
-            case let .edgeScroll(on): onEdgeScroll?(on)
+            case let .edgeScroll(on):
+                // it scrolls where the pointer is. Zoomed in with the pointer out of view, that was somewhere unseen
+                if on { broughtIn = ScreenStream.shared.bringPointerIntoView() }
+                onEdgeScroll?(on)
             case let .haptic(h): onHaptic?(h)
             }
         }

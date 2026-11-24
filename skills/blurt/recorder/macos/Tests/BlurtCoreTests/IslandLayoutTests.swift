@@ -258,4 +258,19 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertFalse(IslandLayout.livePanelGoes(laidOutOpen: true, open: true))
         XCTAssertFalse(IslandLayout.livePanelGoes(laidOutOpen: false, open: false), "dictation's panel under the ears stays")
     }
+
+    /// The being-controlled bar lines up with the island's shape, one ear or two (the founder's snap of 2026-11-24: the cards' count alone in
+    /// the left ear on a 2560 pt display, the shape's middle at 1252, the bar's at 1279.5).
+    func testWhatHangsUnderTheIslandLinesUpWithItsShape() {
+        let screen = CGRect(x: 0, y: 0, width: 2560, height: 1440)
+        for (l, r) in [(56, 0), (0, 56), (56, 56), (0, 0), (83, 56)] as [(CGFloat, CGFloat)] {
+            let mid = screen.midX + IslandLayout.earShift(left: l, right: r)
+            for w in [217, 218, 301] as [CGFloat] {
+                let x = IslandLayout.hangX(under: mid, width: w, in: screen, scale: 2)
+                XCTAssertEqual(x + w / 2, mid, accuracy: 0.5)
+                XCTAssertEqual(x * 2, (x * 2).rounded())
+            }
+        }
+        XCTAssertEqual(IslandLayout.hangX(under: 20, width: 217, in: screen, scale: 2), 0, "never off the screen")
+    }
 }

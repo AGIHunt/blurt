@@ -56,6 +56,15 @@ class ViewPort {
     }
 
     /** The fingers lifted: past the whole screen it comes back. */
+    /** As wide as the stage, around the pointer: a stage with a keyboard under it is a low band, where the whole picture is a stamp. */
+    fun fillWidth(around: PadPoint?) {
+        if (!isWhole || shape <= SNAP) return
+        val z = min(CLOSEST, shape)
+        val s = size(z)
+        val c = around ?: PadPoint(0.5, 0.5)
+        set(z, c.x - s.width / 2, c.y - s.height / 2)
+    }
+
     fun settle() {
         if (zoom < SNAP) set(1.0, 0.0, 0.0)
     }

@@ -80,6 +80,36 @@ data class RemoteFront(val bundle: String, val name: String) {
  * One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as the arrangement in the
  * computer's display settings), so the phone can draw the arrangement to scale.
  */
+data class RemoteLegend(
+    val base: String,
+    val shift: String,
+    /** with AltGr; null where the key has no third character */
+    val altGr: String? = null,
+)
+
+/** What the computer's keyboard layout prints on its keys, by wire name (a US position), and the input source's own name. */
+data class RemoteLegends(val source: String, val keys: Map<String, RemoteLegend>) {
+    operator fun get(name: String): RemoteLegend? = keys[name]
+
+    fun toJson(): JsonObject = J.obj("source" to J.str(source), "keys" to JsonObject(keys.mapValues { (_, k) ->
+        J.obj("base" to J.str(k.base), "shift" to J.str(k.shift), "altGr" to k.altGr?.let { J.str(it) })
+    }))
+
+    companion object {
+        /** the keys a layout may print something else on */
+        val names: List<String> = "`1234567890-=QWERTYUIOP[]\\ASDFGHJKL;'ZXCVBNM,./".map { it.toString() }
+
+        fun fromJson(e: JsonElement?): RemoteLegends? {
+            val o = e as? JsonObject ?: return null
+            val keys = o["keys"] as? JsonObject ?: return null
+            return RemoteLegends(J.str(o, "source") ?: return null, keys.mapValues { (_, v) ->
+                val k = v as? JsonObject ?: return null
+                RemoteLegend(J.str(k, "base") ?: return null, J.str(k, "shift") ?: return null, J.str(k, "altGr"))
+            })
+        }
+    }
+}
+
 data class RemoteDisplay(
     /** stable while the display stays connected */
     val id: String,
@@ -382,6 +412,8 @@ sealed class ToPhone {
     ) : ToPhone()
     /** every display the computer has, whenever that changes (and once a session is up); only from hosts that can show more than one. 1.0.15+ */
     data class Displays(val displays: List<RemoteDisplay>) : ToPhone()
+    /** what the computer's keyboard layout prints on its keys: once a session is up and whenever it changes, from hosts that can tell. 1.2+ */
+    data class Legends(val legends: RemoteLegends) : ToPhone()
     class CursorShape(val png: ByteArray, val hotX: Double, val hotY: Double, val width: Double, val height: Double) : ToPhone() {
         override fun equals(other: Any?): Boolean = other is CursorShape && other.png.contentEquals(png) && other.hotX == hotX && other.hotY == hotY &&
             other.width == width && other.height == height
@@ -423,6 +455,7 @@ sealed class ToPhone {
         is ScreenFailed -> J.case("screenFailed", "_0" to J.str(text))
         is ScreenView -> J.case("screenView", "width" to J.double(width), "height" to J.double(height), "codec" to J.str(codec), "display" to J.str(display),
             "features" to J.list(features) { JsonPrimitive(it) })
+        is Legends -> J.case("legends", "_0" to legends.toJson())
         is Displays -> J.case("displays", "_0" to J.list(displays) { it.toJson() })
         is CursorShape -> J.case("cursorShape", "png" to J.data(png), "hotX" to J.double(hotX), "hotY" to J.double(hotY), "width" to J.double(width),
             "height" to J.double(height))
@@ -465,6 +498,7 @@ sealed class ToPhone {
                 "screenFailed" -> ScreenFailed(J.str(o, "_0") ?: return null)
                 "screenView" -> ScreenView(J.double(o, "width") ?: return null, J.double(o, "height") ?: return null, J.str(o, "codec"), J.str(o, "display"),
                     if (J.has(o, "features")) J.list(o, "features") { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return null else null)
+                "legends" -> Legends(RemoteLegends.fromJson(o["_0"]) ?: return null)
                 "displays" -> Displays(J.list(o, "_0") { RemoteDisplay.fromJson(it) } ?: return null)
                 "cursorShape" -> CursorShape(J.data(o, "png") ?: return null, J.double(o, "hotX") ?: return null, J.double(o, "hotY") ?: return null,
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)

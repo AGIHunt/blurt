@@ -9,6 +9,7 @@ enum RemoteBanner {
     private static var label: NSTextField?
     private static var row: NSStackView?
     private static var shownFor: String?
+    private static var pretended: String?
 
     static func start() {
         NotificationCenter.default.addObserver(forName: RemoteServer.statusChanged, object: nil, queue: .main) { _ in update() }
@@ -21,7 +22,7 @@ enum RemoteBanner {
     /// From what the main thread was told (`shown`), on every status change: a bar that should show and doesn't (ordered out by
     /// something else, or never ordered in) comes back on the next one, not only when the name changes.
     private static func update() {
-        let who = RemoteServer.shared.shown.connected
+        let who = pretended ?? RemoteServer.shared.shown.connected
         guard who != shownFor || (who != nil && panel?.isVisible != true) else { return }
         shownFor = who
         guard let who else {
@@ -32,6 +33,15 @@ enum RemoteBanner {
         t.stringValue = T("remote.banner.controlling", PhoneStatus.name(who))
         place()
         panel?.orderFrontRegardless()
+    }
+
+    /// Test commands only: the bar as if this device controlled the Mac. Nothing does. Says where the bar and the island's middles are.
+    static func pretend(_ who: String?) {
+        pretended = who
+        update()
+        guard let p = panel, let s = NSScreen.screens.first else { return }
+        emit(["event": "remote_bar", "window": p.windowNumber, "visible": p.isVisible, "bar_mid": Double(p.frame.midX),
+              "island_mid": island.shapeMidX(on: s).map { Double($0) } ?? NSNull(), "screen_mid": Double(s.frame.midX)])
     }
 
     private static func make() -> (NSPanel, NSTextField) {
@@ -80,13 +90,21 @@ enum RemoteBanner {
         return (p, t)
     }
 
-    /// Top centre of the main display, just under the menu bar: centred on the whole screen (under the notch), not on the part the
-    /// Dock leaves, which a Dock at the side pushes off centre.
+    /// Top of the main display, just under the menu bar and centred under the island's shape, which is off the screen's middle while only
+    /// one of its ears shows (28 pt with the cards' count). Centred on the screen, the two read as one of them being off. No island on this
+    /// display: the screen's middle, not the middle of what a Dock at the side leaves.
     private static func place() {
         guard let p = panel, let row, let s = NSScreen.screens.first else { return }
         let f = s.visibleFrame
-        let w = min(ceil(row.fittingSize.width) + 18, f.width - 40)
-        p.setFrame(NSRect(x: s.frame.midX - w / 2, y: f.maxY - 30 - 6, width: w, height: 30), display: true)
+        let w = min(ceil((row.fittingSize.width + 18) / 2) * 2, f.width - 40)       // even: centred on a whole point
+        let x = IslandLayout.hangX(under: island.shapeMidX(on: s) ?? s.frame.midX, width: w, in: s.frame, scale: s.backingScaleFactor)
+        let at = NSRect(x: x, y: f.maxY - 30 - 6, width: w, height: 30)
+        if p.frame != at { p.setFrame(at, display: true) }
+    }
+
+    /// The island's shape moved (an ear came or went, it opened): the bar goes with it.
+    static func islandMoved() {
+        if panel?.isVisible == true { place() }
     }
 
     private final class Handler: NSObject {

@@ -341,6 +341,11 @@ pub trait Backend: Send {
     fn displays(&self) -> Vec<DisplayInfo> {
         Vec::new()
     }
+    /// What the keyboard layout in use prints on its keys (ToPhone.legends). Asked every 2 s while a phone is connected; None (the
+    /// default): it can't tell, and the phone shows a US keyboard's.
+    fn legends(&self) -> Option<crate::wire::Legends> {
+        None
+    }
 }
 
 /// No screen, no keys: for the Mac build of this crate and for tests.

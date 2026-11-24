@@ -8,7 +8,8 @@
 //   `panView`    and zoomed in, the picture is a photo: one finger moves it, and a flick sends it coasting. What's too small to hit
 //                is what the zoom is for; the pointer by itself is the pad between the thumbs, a mouse
 //   hold still   `HOLD_TIME` (the phone taps back), then move = drag; or lift = right click
-//   the edge     one finger along the side by the thumb = scroll
+//   the edge     one finger along the side by the thumb = scroll. A thumb slides in an arc, so leaning is still up or down (EDGE_LEAN), and
+//                one that rested there first scrolls too. Its stroke is shorter than two fingers', so it goes further (EDGE_GAIN)
 //   two fingers  move = scroll what's under the pointer, both ways; tap = right click; pinch = zoom the app on the host. With the screen
 //                showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers, unless the host's zoom
 //                modifier is held (⌘ on a Mac, Ctrl elsewhere): then the pinch is the computer's zoom, as with the picture off. A scroll
@@ -65,6 +66,10 @@ class PadEngine {
         const val SWIPE_TRIP = 40.0
         /** how far fingers moving the view must come apart or together before it's a pinch */
         const val PINCH_RATIO = 0.14
+        /** along the edge: a slide may lean this much further sideways than it goes up or down and still scroll */
+        const val EDGE_LEAN = 1.5
+        /** and it scrolls this much further than two fingers do */
+        const val EDGE_GAIN = 1.5
 
         /**
          * How far two fingers must come apart or together to count as a pinch for the host, and then for each zoom step. Both follow how
@@ -150,6 +155,18 @@ class PadEngine {
 
     private fun dist(a: PadPoint, b: PadPoint) = hypot(a.x - b.x, a.y - b.y)
 
+    private fun onEdge(p: PadPoint) = scrollEdge?.let { p.x in it } ?: false
+
+    /** a slide that started on the edge and goes up or down */
+    private fun scrollsEdge(start: PadPoint, p: PadPoint) = onEdge(start) && abs(p.y - start.y) * EDGE_LEAN > abs(p.x - start.x)
+
+    private fun beginEdgeScroll(p: PadPoint): List<PadOutput> {
+        samples = mutableListOf()
+        lastTap = null
+        state = State.Scrolling(p, false)
+        return listOf(PadOutput.EdgeScroll(true), PadOutput.Scroll(0f, 0f, RemoteScrollPhase.BEGAN))
+    }
+
     /** a pinch zooms the picture on the phone: it's showing, and the computer's zoom isn't asked for */
     private fun zoomsView() = pinchZoomsView && !computerZoomHeld()
 
@@ -215,11 +232,8 @@ class PadEngine {
         val out = mutableListOf<PadOutput>()
         when (val s = state) {
             is State.One -> if (dist(p, s.start) > SLOP) {
-                val e = scrollEdge
-                if (e != null && s.start.x in e && abs(p.y - s.start.y) > abs(p.x - s.start.x)) {
-                    samples = mutableListOf()
-                    out += listOf(PadOutput.Scroll(0f, 0f, RemoteScrollPhase.BEGAN), PadOutput.EdgeScroll(true))
-                    state = State.Scrolling(p, false)
+                if (scrollsEdge(s.start, p)) {
+                    out += beginEdgeScroll(p)
                 } else if (panView) {
                     samples = mutableListOf()
                     state = State.Panning(p)
@@ -255,9 +269,12 @@ class PadEngine {
                 }
                 state = State.Dragging(p)
             }
-            is State.Held -> if (dist(p, s.start) > SLOP) {
+            is State.Held -> if (dist(p, s.start) > SLOP && scrollsEdge(s.start, p)) {
+                out += beginEdgeScroll(p)
+            } else if (dist(p, s.start) > SLOP) {
                 lastTap = null
                 lastMoveAt = now
+                if (touchMode && onEdge(s.start)) out += PadOutput.PointAt(s.start)
                 out += PadOutput.Button(RemoteMouseButton.LEFT, true)
                 state = State.Dragging(p)
             }
@@ -271,8 +288,10 @@ class PadEngine {
                     out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.ENDED)
                     state = State.View(spread, p, spread, true)
                 } else {
-                    val dx = p.x - s.last.x
+                    // along the edge only up and down: a thumb's arc isn't a sideways scroll
+                    val dx = if (s.two) p.x - s.last.x else 0.0
                     val dy = p.y - s.last.y
+                    val gain = if (s.two) scrollGain else scrollGain * EDGE_GAIN
                     scrollTravel += hypot(dx, dy)
                     // fingers that drifted before they spread started as a scroll: once they have come apart further than the scroll
                     // has gone, it was a pinch (a real scroll has travelled much further than its fingers drift)
@@ -284,7 +303,7 @@ class PadEngine {
                     } else {
                         samples += Sample(now, dx, dy)
                         samples.removeAll { now - it.t > 0.09 }
-                        out += PadOutput.Scroll((dx * scrollGain).toFloat(), (dy * scrollGain).toFloat(), RemoteScrollPhase.CHANGED)
+                        out += PadOutput.Scroll((dx * gain).toFloat(), (dy * gain).toFloat(), RemoteScrollPhase.CHANGED)
                         state = State.Scrolling(p, s.two)
                     }
                 }
@@ -389,12 +408,16 @@ class PadEngine {
             } else {
                 dragLetGo = now
             }
-            is State.Held -> if (now - s.at < HOLD_LIMIT) out += listOf(PadOutput.Click(RemoteMouseButton.RIGHT), PadOutput.Haptic(PadHaptic.TAP))
+            is State.Held -> if (now - s.at < HOLD_LIMIT) {
+                if (touchMode && onEdge(s.start)) out += PadOutput.PointAt(s.start)
+                out += listOf(PadOutput.Click(RemoteMouseButton.RIGHT), PadOutput.Haptic(PadHaptic.TAP))
+            }
             is State.Scrolling -> {
                 out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.ENDED)
                 if (!s.two) out += PadOutput.EdgeScroll(false)
                 releaseVelocity()?.let { v ->
-                    out += PadOutput.Fling((v.first * scrollGain).toFloat(), (v.second * scrollGain).toFloat())
+                    val gain = if (s.two) scrollGain else scrollGain * EDGE_GAIN
+                    out += PadOutput.Fling((v.first * gain).toFloat(), (v.second * gain).toFloat())
                     coastUntil = now + COAST_TIME
                 }
             }
@@ -429,7 +452,8 @@ class PadEngine {
         val s = state
         if (s is State.One && now - s.at >= HOLD_TIME) {
             state = State.Held(s.start, now)
-            if (touchMode) out += PadOutput.PointAt(s.start)    // the pointer comes to the finger as the phone taps back
+            // the pointer comes to the finger as the phone taps back; on the edge it may yet be a scroll, which is where the pointer is
+            if (touchMode && !onEdge(s.start)) out += PadOutput.PointAt(s.start)
             out += PadOutput.Haptic(PadHaptic.GRAB)
         }
         dragLetGo?.let { g ->

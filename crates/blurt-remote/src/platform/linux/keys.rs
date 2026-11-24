@@ -77,6 +77,7 @@ pub const KEYS: &[(&str, i32)] = &[
     ("Insert", 110),
     ("CapsLock", 58),
     ("Menu", 127),
+    ("AltGr", 100), // KEY_RIGHTALT
     ("IntlBackslash", 86),
     ("IntlYen", 124),
     ("IntlRo", 89),

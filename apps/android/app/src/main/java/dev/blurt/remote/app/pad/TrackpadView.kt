@@ -44,6 +44,10 @@ class TrackpadView(c: Context) : FrameLayout(c) {
     var onEdgeScroll: ((Boolean) -> Unit)? = null
     /** this pad shows the picture (the stage); a second pad beside the keys never does */
     var isStage = true
+    /** off the picture is a trackpad (the computer keyboard out on a big screen, with no other pad by it): a tap there clicks where the
+     *  pointer is, and a drag there moves it */
+    var bandsArePad = false
+    private var bandDrag: dev.blurt.remote.core.PadPoint? = null
     /** what it looks like: the glass with a hairline, or the picture's black with small corners */
     var showing = false
         set(v) { field = v; invalidate() }
@@ -121,6 +125,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    Remote.sticky.engage()      // a modifier under another finger is held for this: Ctrl-click, Alt-drag
                     if (Build.VERSION.SDK_INT >= 30) requestUnbufferedDispatch(e)
                     parent?.requestDisallowInterceptTouchEvent(true)
                     palms.clear()
@@ -192,6 +197,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
         val link = Remote.link
         val screen = Remote.screen
         var placed = false
+        var broughtIn = false
         val stage = isStage && screen.on
         for (o in out) {
             when (o) {
@@ -207,10 +213,22 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 }
                 is PadOutput.ViewCoast -> if (stage) screen.coastView(o.vx, o.vy)
                 is PadOutput.PointAt -> {
-                    offPicture = !(stage && screen.placePointer(o.point))
+                    val on = stage && screen.placePointer(o.point)
+                    offPicture = !on && !bandsArePad
+                    bandDrag = if (!on && bandsArePad) o.point else null
                     placed = true
                 }
-                is PadOutput.DragTo -> if (!dragOff && stage) screen.dragPointer(o.point)
+                is PadOutput.DragTo -> {
+                    val from = bandDrag
+                    if (from != null) {
+                        val (x, y) = engine.curve.apply((o.point.x - from.x).toFloat(), (o.point.y - from.y).toFloat(), 1f / 60)
+                        link.pointer(RemotePointerPacket.Move(x, y))
+                        screen.predict(x, y)
+                        bandDrag = o.point
+                    } else if (!dragOff && stage) {
+                        screen.dragPointer(o.point)
+                    }
+                }
                 is PadOutput.Click -> {
                     if (offPicture && engine.touchMode) continue      // a double tap off the picture is two of nothing
                     screen.bringPointerIntoView()
@@ -233,7 +251,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 is PadOutput.Scroll -> {
                     if (o.phase == RemoteScrollPhase.BEGAN) {
                         // a scroll that starts where the pointer was just put: in order behind it, and not at all off the picture
-                        scrollPlaced = placed
+                        scrollPlaced = placed || broughtIn
                         scrollOff = placed && offPicture && engine.touchMode
                     }
                     if (scrollOff) continue
@@ -251,7 +269,11 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                     // a ⌘ tapped once for the pinch is used by its first step, as a click uses it
                     if (o.move == RemoteSystemMove.ZOOM_IN || o.move == RemoteSystemMove.ZOOM_OUT) onClick?.invoke()
                 }
-                is PadOutput.EdgeScroll -> onEdgeScroll?.invoke(o.on)
+                is PadOutput.EdgeScroll -> {
+                    // it scrolls where the pointer is. Zoomed in with the pointer out of view, that was somewhere unseen
+                    if (o.on) broughtIn = screen.bringPointerIntoView()
+                    onEdgeScroll?.invoke(o.on)
+                }
                 is PadOutput.Haptic -> onHaptic?.invoke(o.haptic)
             }
         }

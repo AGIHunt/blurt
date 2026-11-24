@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import dev.blurt.remote.app.BuildConfig
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
+import dev.blurt.remote.app.ScreenTurn
 import dev.blurt.remote.app.keys.DeckText
 import dev.blurt.remote.app.net.Link
 import dev.blurt.remote.app.net.PairedMac
@@ -94,10 +95,14 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
         onDispose { l.watchNearby(false) }
     }
     changed.hashCode()
+    val update by Remote.updates.state.collectAsState()
+    val newer = update.newer != null
 
     Column(Modifier.fillMaxSize()) {
         SheetTop(stringResource(R.string.settings), actions = { TextButton(onClose) { Text(stringResource(R.string.done)) } })
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
+            // a newer version first, where the dot on the settings button leads; otherwise at the foot
+            if (Remote.updates.offered && newer) UpdateSection()
             Section(stringResource(R.string.computers), if (macs.size > 1) stringResource(R.string.computers_footer) else null) {
                 for (m in macs) {
                     MacRow(m, m.id == cur?.id, stateOf(m, cur, state, path, nearby), if (m.id == cur?.id) state else null, onPick = { if (m.id != cur?.id) { l.choose(m); onClose() } }, onInfo = { onDetails(m) })
@@ -124,6 +129,9 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
             }
             Section(footer = stringResource(R.string.touch_mode_footer)) {
                 ToggleRow(stringResource(R.string.touch_mode), p.tapWhereTouched) { p.tapWhereTouched = it }
+            }
+            if (ScreenTurn.applies(ctx)) {
+                Section(stringResource(R.string.orientation)) { TurnRow(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) }
             }
             Section(stringResource(R.string.keys)) {
                 Row2(stringResource(R.string.edit_keys), modifier = Modifier.clickable(onClick = onEdit)) { Sym("keyboard_arrow_right", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -167,6 +175,7 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
                     R.string.g_talk_hold to R.string.g_talk_held, R.string.g_talk_double to R.string.g_send,
                 )) GestureRow(stringResource(a), stringResource(b))
             }
+            if (Remote.updates.offered && !newer) UpdateSection()
             Text(stringResource(R.string.version, BuildConfig.VERSION_NAME), Modifier.fillMaxWidth().padding(16.dp), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

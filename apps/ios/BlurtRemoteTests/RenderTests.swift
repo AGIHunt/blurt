@@ -1,6 +1,7 @@
 // The real main screen, laid out at each room's size in a window of that size, drawn to a PNG: how it looks on devices this Mac
 // can't run (the Duo's folds) and every iPad multitasking size, to judge by eye. Set TEST_RUNNER_BLURT_RENDER_DIR to keep the images;
 // a magenta band marks where the fold is.
+import BlurtRemoteKit
 import XCTest
 @testable import BlurtRemote
 
@@ -10,17 +11,20 @@ final class RenderTests: XCTestCase {
     }
 
     @MainActor
-    private func render(_ room: Rooms.Room, screen: Bool, lefty: Bool = false) throws -> UIImage {
+    private func render(_ room: Rooms.Room, screen: Bool, lefty: Bool = false, board: Bool = false, host: RemoteHost = .mac) throws -> UIImage {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { throw XCTSkip("no scene") }
         Pretend.connected = true
         Pretend.screen = screen
+        Pretend.board = board
+        let wasHost = RemoteHost.shown
+        RemoteHost.shown = host
         Pretend.surround = room.surround
         // the room's own safe area, not that of the simulator the tests run on (the Duo's outer display has a band down one side)
         Pretend.safe = room.safe
         let wasLefty = Prefs.shared.lefty, wasFull = Prefs.shared.fullScreen
         Prefs.shared.lefty = lefty
         Prefs.shared.fullScreen = false
-        defer { Prefs.shared.lefty = wasLefty; Prefs.shared.fullScreen = wasFull; Pretend.surround = nil; Pretend.safe = nil; Pretend.screen = false }
+        defer { Prefs.shared.lefty = wasLefty; Prefs.shared.fullScreen = wasFull; Pretend.surround = nil; Pretend.safe = nil; Pretend.screen = false; Pretend.board = false; RemoteHost.shown = wasHost }
         let w = UIWindow(windowScene: scene)
         w.frame = CGRect(origin: .zero, size: room.size)
         let c = PadViewController()
@@ -49,6 +53,24 @@ final class RenderTests: XCTestCase {
         }
         w.isHidden = true
         return image
+    }
+
+    @MainActor
+    func testRenderTheComputerKeyboard() throws {
+        for room in Rooms.all {
+            for screen in [false, true] {
+                let i = try render(room, screen: screen, board: true)
+                XCTAssertEqual(i.size, room.size)
+                if let d = dir {
+                    try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+                    try i.pngData()?.write(to: d.appendingPathComponent("board-\(room.name)\(screen ? "-screen" : "").png"))
+                }
+            }
+        }
+        for room in Rooms.all where ["iphone17pro-portrait", "iphone17pro-landscape", "ipad11-landscape"].contains(room.name) {
+            let i = try render(room, screen: true, board: true, host: .windows)
+            if let d = dir { try i.pngData()?.write(to: d.appendingPathComponent("board-\(room.name)-windows.png")) }
+        }
     }
 
     @MainActor

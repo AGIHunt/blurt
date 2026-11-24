@@ -404,6 +404,9 @@ final class RemoteServer {
         observers.append(w.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
             self?.sendFront()
         })
+        observers.append(DistributedNotificationCenter.default().addObserver(forName: RemoteLayout.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.sendLegends()
+        })
         // whatever was open has died in the sleep, and a timer may be well into a long wait: back on the relay now
         // going to sleep: the waiting connections say so, so paired devices see "asleep since" instead of a guess (remote-1.1.md §1)
         observers.append(w.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -1249,7 +1252,8 @@ final class RemoteServer {
             input.queue.async { if let down { input.hold(c, down: down) } else { input.press(c) } }
             // a modifier pressed on its own shows too: it may have switched the input method. Not at the lock screen: the keys go to its
             // password field, and nothing of Blurt's may show there or take them (2026-11-20: keys arrived, nothing was typed)
-            if down != false, !Self.screenLocked, !c.key.isEmpty || (down == nil && !c.mods.isEmpty) { RemoteHUD.show(c.label) }
+            // and never what types a character: a password goes by one key after another
+            if down != false, !Self.screenLocked, !c.types, !c.key.isEmpty || (down == nil && !c.mods.isEmpty) { RemoteHUD.show(c.label) }
         case let .mods(mods):
             input.queue.async { input.setSticky(mods) }
             if !Self.screenLocked { RemoteHUD.sticky(mods) }
@@ -1258,7 +1262,7 @@ final class RemoteServer {
             let waits = steps.reduce(0) { if case let .wait(ms) = $1 { $0 + min(max(ms, 0), Self.maxWaitMs + 1) } else { $0 } }   // no overflow
             guard waits <= Self.maxWaitMs else { return }
             input.queue.async { input.run(steps) }
-            let keys = steps.compactMap { if case let .key(c) = $0 { c.label } else { nil } }
+            let keys = steps.compactMap { if case let .key(c) = $0, !c.types { c.label } else { nil } }
             if !keys.isEmpty { RemoteHUD.show(keys.joined(separator: " ")) }
         case let .text(t):
             guard t.utf8.count <= Self.maxText else { return }
@@ -1466,6 +1470,7 @@ final class RemoteServer {
                 info(list)
                 s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
                 self.sendFront()
+                self.sendLegends()
                 DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
             }
             return
@@ -1474,6 +1479,7 @@ final class RemoteServer {
         info(Self.addresses().map { RemoteCandidate(host: $0, port: udpPort) })
         s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
         sendFront()
+        sendLegends()
         DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
     }
 
@@ -1593,6 +1599,14 @@ final class RemoteServer {
     }
 
     // MARK: what the phone is told
+
+    /// what the keys of this Mac's keyboard say, for the phone's computer keyboard
+    private func sendLegends() {
+        DispatchQueue.main.async {
+            guard let l = RemoteLayout.legends() else { return }
+            self.current?.channel.send(ToPhone.legends(l))
+        }
+    }
 
     private func sendFront() {
         guard let a = NSWorkspace.shared.frontmostApplication, let b = a.bundleIdentifier else { return }

@@ -59,6 +59,9 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The text form of the pairing code | 配对链接 | Pairing link |
 | The viewer's ⋯ menu | ⌘ 当作 Ctrl · 共享剪贴板 | Use ⌘ as Ctrl · Share Clipboard |
 | Picture quality (as on the phone) | 画质：自动 · 清晰 · 均衡 · 省流量 | Quality: Auto · Sharp · Balanced · Data Saver |
+| The phone's two keyboards | 文字 · 电脑键盘 | Text · Computer |
+| Which way the phone's screen is turned | 屏幕方向 · 自动 · 竖屏 · 横屏 | Orientation · Auto · Portrait · Landscape |
+| The Android app's updates | 更新 · 检查更新 · 自动检查更新 · 安装 | Updates · Check for Updates · Check Automatically · Install |
 | Items not in a project | 未归类 | Unsorted |
 | Card tabs | 当前 / 历史 | Current / History |
 | A double tap of a key (Fn to send, ⇧, ⌘) | 双击 | double-tap |
