@@ -30,12 +30,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.blurt.remote.app.Haptics
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
+import dev.blurt.remote.app.ScreenTurn
 import kotlin.math.min
 
 @Composable
@@ -107,6 +109,7 @@ fun DisplayMap(onClose: () -> Unit) {
                     Text(stringResource(R.string.full_screen), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     Switch(full, null)
                 }
+                if (ScreenTurn.applies(LocalContext.current)) TurnRow()
             }
         },
         confirmButton = {

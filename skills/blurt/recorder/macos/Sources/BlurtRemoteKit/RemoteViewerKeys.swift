@@ -5,7 +5,11 @@ import Foundation
 
 public enum RemoteViewerKeys {
     /// A Mac key code (kVK_*) to its wire name; nil for a modifier (they travel as `mods`) or a key with no name.
-    public static func name(macKeyCode code: UInt16) -> String? { RemoteKey.named(code: code)?.name }
+    /// AltGr has a name but is the right Option key here, a modifier like the left one.
+    public static func name(macKeyCode code: UInt16) -> String? {
+        guard let key = RemoteKey.named(code: code), key.name != "AltGr" else { return nil }
+        return key.name
+    }
 
     /// The modifiers held on the viewer's keyboard, as the host's keyboard has them. A Mac driving Windows or Linux sends ⌘ as Ctrl and ⌃
     /// as the Windows / Super key, ⌥ staying Alt; Windows or Linux driving a Mac the reverse: Ctrl as ⌘, the Windows / Super key as ⌃. On

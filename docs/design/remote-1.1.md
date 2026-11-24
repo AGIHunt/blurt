@@ -106,6 +106,10 @@ UAC prompt, `replace_backend`, `sync_standby`), Windows 11's Hello PIN, clippy o
   device's name.
 - Every new pairing **notifies every already-paired device** and goes in the host's log. **需要已配对设备批准新配对** is a switch on the
   host (suggested when setting up someone else's computer; changing it needs the host's admin password).
+- The Mac's bar hangs under the island's own middle (2026-11-24). On 2026-11-20 it was moved to the screen's middle on the guess that a Dock at the side
+  pushed it off; the founder's two snaps, before and after, show the same 27.5 pt. The bar was centred (1279.5 of 1280); the island's shape wasn't
+  (1252): with only the cards' count it grows on the left alone (`IslandLayout.earShift`). `RemoteBanner.place` now follows `Island.shapeMidX`, as the
+  shape moves. Checked in an isolated app on a 2560 pt display (`remotebar` test command): with and without the ear, bar and shape within 0.1 pt.
 - Built: the pairing question carries the anti-scam line (Mac card, Windows/Linux sheet). The host's bar (Mac: a panel under the menu
   bar; Windows/Linux: a small always-on-top window) shows while a device is connected; 断开 sends `ended` (wire, vectors), and every
   viewer stops and offers 重新连接 instead of reconnecting by itself.

@@ -150,4 +150,44 @@ class PadLayoutTest {
         val crowded = listOf(d[7]) + d.subList(0, 5) + listOf(d[8], d[5], Deck.standard().sections[0].slots[0])
         assertEquals("esc's place has return: the last free one", PadLayout.Thumbs(8, 0, 6), PadLayout.thumbs(crowded))
     }
+
+    /** The computer keyboard at every size: in view, over nothing, its keys big enough, and a trackpad left. */
+    @Test fun theComputerKeyboardFitsEverywhere() {
+        val fold = PadLayout.Fold(Frame(0f, 440f, 800f, 440f), vertical = false, halfOpened = true)
+        val book = PadLayout.Fold(Frame(420f, 0f, 420f, 800f), vertical = true, halfOpened = true)
+        for ((w, h, f) in listOf(Triple(412f, 915f, null), Triple(360f, 780f, null), Triple(360f, 640f, null), Triple(915f, 412f, null), Triple(780f, 360f, null),
+            Triple(1280f, 800f, null), Triple(800f, 1280f, null), Triple(600f, 960f, null), Triple(840f, 800f, null), Triple(800f, 880f, fold), Triple(840f, 800f, book))) {
+            for (lefty in listOf(false, true)) for (displays in listOf(false, true)) {
+                val l = PadLayout(w, h, if (w > h && h < 480) 40f else 0f, if (w < h) 30f else 0f, 0f, 0f, lefty, drawerOpen = true, fold = f, displays = displays, withBoard = true)
+                val b = l.board!!
+                val big = b.quick.isNotEmpty()
+                val all = mutableListOf("pad" to l.pad, "board" to b.frame, "settings" to l.settingsButton, "find" to l.findButton, "screen" to l.screenButton, "keyboard" to l.keyboardButton)
+                l.pad2?.let { all += "pad2" to it }
+                if (displays) all += "display" to l.displayButton
+                b.quick.forEachIndexed { i, q -> all += "quick$i" to q }
+                if (!l.landscape) all += "switch" to l.strip
+                if (!big) {
+                    all += "talk" to l.talk
+                    all += "arrow" to l.arrowKey
+                    l.dock.forEachIndexed { i, d -> if (!l.landscape || l.staysOut(i)) all += "dock$i" to d }
+                }
+                val at = "${w}x$h lefty=$lefty displays=$displays"
+                for ((n, r) in all) {
+                    assertTrue("$at: $n $r in view", r.left >= -0.01f && r.top >= -0.01f && r.right <= w + 0.01f && r.bottom <= h + 0.01f)
+                    assertFalse("$at: $n $r empty", r.isEmpty)
+                }
+                for (i in all.indices) for (j in i + 1 until all.size) {
+                    val x = all[i].second
+                    val y = all[j].second
+                    val over = minOf(x.right, y.right) - maxOf(x.left, y.left) > 0.5f && minOf(x.bottom, y.bottom) - maxOf(x.top, y.top) > 0.5f
+                    assertFalse("$at: ${all[i]} overlaps ${all[j]}", over)
+                }
+                val unit = dev.blurt.remote.core.FullTier.unit(b.frame.width, b.tier)
+                assertTrue("$at: keys $unit wide", unit >= if (w < 380) 28f else 31f)
+                assertTrue("$at: keys ${b.heights} tall", b.heights.drop(1).min() >= 32f)
+                assertTrue("$at: the stage ${l.pad}", l.pad.height >= 100f)
+                if (big) assertTrue("$at: one trackpad or the other", b.bandsArePad != (l.pad2 != null))
+            }
+        }
+    }
 }

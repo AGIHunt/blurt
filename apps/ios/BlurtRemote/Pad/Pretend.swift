@@ -8,6 +8,8 @@ import UIKit
 enum Pretend {
     static var connected = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND"] != nil
     static var screen = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND"] == "screen"
+    /// `BLURT_REMOTE_PRETEND_BOARD=1`: with the computer keyboard out
+    static var board = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_BOARD"] != nil
     /// stands in for UIKit's reserved regions
     static var surround: PadSurround?
     /// and for the safe area: a render of another device's room on whatever simulator runs the tests

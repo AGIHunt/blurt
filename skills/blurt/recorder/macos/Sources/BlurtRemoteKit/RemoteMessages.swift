@@ -122,6 +122,25 @@ public struct RemoteFront: Codable, Hashable, Sendable {
     public init(bundle: String, name: String) { self.bundle = bundle; self.name = name }
 }
 
+/// The characters on a keyboard's keys, by wire name (a US position): what a phone's computer keyboard prints on them. `source`: the input
+/// source's own name, as the computer's menus have it ("ABC", "简体拼音", "German").
+public struct RemoteLegends: Codable, Hashable, Sendable {
+    public struct Key: Codable, Hashable, Sendable {
+        public var base: String
+        public var shift: String
+        /// with AltGr (⌥ on a Mac isn't one): nil where the key has no third character
+        public var altGr: String?
+        public init(base: String, shift: String, altGr: String? = nil) { self.base = base; self.shift = shift; self.altGr = altGr }
+    }
+    public var source: String
+    public var keys: [String: Key]
+    public init(source: String, keys: [String: Key]) { self.source = source; self.keys = keys }
+    public subscript(name: String) -> Key? { keys[name] }
+
+    /// The keys a layout may print something else on: the letters, the digits and the marks of a US keyboard.
+    public static let names: [String] = "`1234567890-=QWERTYUIOP[]\\ASDFGHJKL;'ZXCVBNM,./".map { String($0) }
+}
+
 public enum RemoteDictationPhase: String, Codable, Sendable { case idle, listening, transcribing, polishing, unavailable }
 
 public struct RemoteSessionInfo: Codable, Hashable, Sendable {
@@ -195,6 +214,9 @@ public enum ToPhone: Codable, Sendable {
     case streamMoved
     /// the direct path didn't open in time on the go-between: this session can't go on there (docs/design/remote-go-between.md)
     case noDirect
+    /// what this computer's keyboard layout prints on its keys, and the input source in use (docs/design/remote.md §Computer keyboard). Sent once a
+    /// session is up and whenever it changes, by hosts that can tell. 1.2+
+    case legends(RemoteLegends)
     /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most RemoteClipboard.maxBytes)
     case clipboard(String)
     /// the host's screen is locked (true) or open again (false), and this host can't show its lock screen: no frames come meanwhile.

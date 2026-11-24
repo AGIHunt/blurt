@@ -293,6 +293,8 @@ struct State {
     standby_awake: bool,
     /// the displays the phone was last told of
     displays_sent: Option<Vec<DisplayInfo>>,
+    /// what the phone was last told is on the keys
+    legends_sent: Option<crate::wire::Legends>,
     /// the lock the viewer was last told of (`Backend::locked`)
     locked_sent: Option<bool>,
     problem: Option<Problem>,
@@ -384,6 +386,7 @@ impl Host {
             awake: false,
             standby_awake: false,
             displays_sent: None,
+            legends_sent: None,
             locked_sent: None,
             problem: None,
             off: false,
@@ -1357,6 +1360,7 @@ impl Core {
         let g = s.watch_gen;
         s.last_control = true; // a phone starts out assuming it may control: the first tick says otherwise
         s.displays_sent = None;
+        s.legends_sent = None;
         let me = self.arc();
         self.rt.spawn(async move {
             let mut t = tokio::time::interval(Duration::from_millis(500));
@@ -1368,6 +1372,7 @@ impl Core {
                 // the displays, every 2 s (and on the first tick): told to the phone when they change
                 if n % 4 == 1 {
                     me.poll_displays(g);
+                    me.poll_legends(g);
                     me.poll_locked(g);
                 }
                 let mut s = me.st.lock().unwrap();
@@ -1418,6 +1423,21 @@ impl Core {
         x.chan.send(&ToPhone::ScreenLocked(l));
         s.locked_sent = Some(l);
         self.log(json!({"event": "remote_locked", "locked": l}));
+    }
+
+    /// The keyboard layout, as the displays are: told once a session is up and whenever it changes.
+    fn poll_legends(&self, g: u64) {
+        let Some(now) = self.backend.lock().unwrap().legends() else { return };
+        let mut s = self.st.lock().unwrap();
+        if s.watch_gen != g {
+            return;
+        }
+        let Some(x) = s.current.and_then(|sid| s.sessions.get(&sid)) else { return };
+        if !x.chan.greeted.load(SeqCst) || !x.told || s.legends_sent.as_ref() == Some(&now) {
+            return;
+        }
+        x.chan.send(&ToPhone::Legends(now.clone()));
+        s.legends_sent = Some(now);
     }
 
     fn poll_displays(&self, g: u64) {
@@ -1749,7 +1769,8 @@ impl Core {
             }
             ToMac::Key { chord, down } => {
                 // a modifier pressed on its own shows too: it may have switched the input method
-                if down != Some(false) && (!chord.key.is_empty() || (down.is_none() && chord.mods != 0)) {
+                // not what types a character: a password goes by one key after another
+                if down != Some(false) && !input::types(&chord) && (!chord.key.is_empty() || (down.is_none() && chord.mods != 0)) {
                     let l = input::label(&chord, windows);
                     self.post(move |a| a.hud(&l));
                 }
@@ -2106,6 +2127,7 @@ impl Core {
                 s.watch_gen
             };
             me.poll_displays(g); // several displays: the list right after the session, not 2 s later
+            me.poll_legends(g);
             let me2 = me.clone();
             me.post(move |a| {
                 if let Some(f) = a.front() {

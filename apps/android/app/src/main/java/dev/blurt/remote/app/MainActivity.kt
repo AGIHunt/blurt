@@ -42,6 +42,10 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     private lateinit var sheetView: ComposeView
     private val sheets = Sheets()
     private var touching = 0
+    /** Back closes the computer keyboard */
+    private val boardBack = object : androidx.activity.OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() { screen.back() }
+    }
 
     private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         // the computer now knows which microphone to use
@@ -75,6 +79,9 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
             insets
         }
         screen.bind(lifecycleScope)
+        onBackPressedDispatcher.addCallback(this, boardBack)
+        screen.onBoard = { boardBack.isEnabled = it }
+        lifecycleScope.launch { Remote.prefs.changed.collect { turn() } }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 WindowInfoTracker.getOrCreate(this@MainActivity).windowLayoutInfo(this@MainActivity).collect { info ->
@@ -125,6 +132,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
         immersive()
         screen.inFront = true
         Remote.link.foreground()
+        Remote.updates.auto()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -146,6 +154,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         screen.reshaped()
+        turn()
         // a new shape: the stream is asked for what fits it
         Remote.screen.planChanged()
     }
@@ -155,9 +164,15 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> { touching = 1; requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { touching = 0; requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { touching = 0; turn() }
         }
         return super.dispatchTouchEvent(e)
+    }
+
+    /** The way the settings ask for. */
+    private fun turn() {
+        val t = if (ScreenTurn.applies(this)) Remote.prefs.turn else ScreenTurn.AUTO
+        if (touching == 0 && requestedOrientation != t.orientation) requestedOrientation = t.orientation
     }
 
     // MARK: a keyboard on a tablet goes to the computer

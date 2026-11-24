@@ -1081,6 +1081,32 @@
     },
     {
       "json" : {
+        "legends" : {
+          "_0" : {
+            "keys" : {
+              "-" : {
+                "altGr" : "\\",
+                "base" : "ß",
+                "shift" : "?"
+              },
+              "Q" : {
+                "altGr" : "@",
+                "base" : "q",
+                "shift" : "Q"
+              },
+              "Y" : {
+                "base" : "z",
+                "shift" : "Z"
+              }
+            },
+            "source" : "German"
+          }
+        }
+      },
+      "name" : "legends"
+    },
+    {
+      "json" : {
         "displays" : {
           "_0" : [
             {
@@ -1718,6 +1744,10 @@
       {
         "macCode" : 113,
         "name" : "Pause"
+      },
+      {
+        "macCode" : 61,
+        "name" : "AltGr"
       }
     ],
     "modifierMap" : [

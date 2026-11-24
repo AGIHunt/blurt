@@ -30,6 +30,9 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
         set(v) { field = v; invalidate() }
     var tint = Theme.caption
         set(v) { field = v; invalidate() }
+    /** a dot at its corner: something waits behind it */
+    var dot = false
+        set(v) { if (field != v) { field = v; invalidate() } }
     var onTap: (() -> Unit)? = null
     var onHold: (() -> Unit)? = null
     private var down = false
@@ -54,6 +57,10 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
         p.color = if (lit) Color.BLACK else tint
         val fm = p.fontMetrics
         canvas.drawText(Icons.char(icon), width / 2f, height / 2f - (fm.ascent + fm.descent) / 2, p)
+        if (dot) {
+            p.color = Theme.attn
+            canvas.drawCircle(width / 2f + 12.dp, height / 2f - 10.dp, 3.5f.dp, p)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -125,7 +132,7 @@ class Chip(c: Context, val text: String, private val ink: Int = Theme.mint, priv
 }
 
 /** The row above the phone's keyboard: what a phone keyboard doesn't have. */
-class ModifierRow(c: Context, private val onClose: () -> Unit) : LinearLayout(c) {
+class ModifierRow(c: Context, private val onComputer: () -> Unit, private val onClose: () -> Unit) : LinearLayout(c) {
     private val mods = mutableListOf<Pair<Key, Int>>()
 
     inner class Key(val label: String, val icon: String?, val act: () -> Unit) : View(context) {
@@ -176,6 +183,7 @@ class ModifierRow(c: Context, private val onClose: () -> Unit) : LinearLayout(c)
         fun add(k: Key) {
             addView(k, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply { marginStart = 3.dp.toInt(); marginEnd = 3.dp.toInt() })
         }
+        add(Key(context.getString(dev.blurt.remote.app.R.string.keyboard_computer), "keyboard") { Haptics.tick(); onComputer() })
         for ((m, g) in RemoteModifiers.ordered(host)) {
             val k = Key(g, dev.blurt.remote.app.keys.Icons.modifierFaces[g]) { Remote.sticky.tap(m, SystemClock.uptimeMillis() / 1000.0); Haptics.grab() }
             mods += k to m

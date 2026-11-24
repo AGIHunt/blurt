@@ -9,8 +9,9 @@
 //   very middle is nobody's. Or drag, one step per 24 pt, keeping to the way it set off until it clearly turns; past 72 pt, or at the
 //   screen's edge, it repeats, faster with distance. Tap and then drag does the same with ⇧. (The arithmetic: ArrowStroke, below.)
 //   a repeating key (⌫, an arrow) fires at once and repeats while held. Nothing destructive repeats: never Esc, ⌃C or Return.
-//   a modifier (⇧ ⌘ ⌥ ⌃) tapped holds for the next key; held a moment, it's pressed on its own instead, the way a lone ⇧ switches
-//   a Chinese or Japanese input method between its own letters and English.
+//   a modifier (⇧ ⌘ ⌥ ⌃) tapped holds for the next key; held while another key is pressed or the pad is touched, it's held for that, as on
+//   any keyboard; held a moment and lifted with nothing else, it's pressed on its own, the way a lone ⇧ switches a Chinese or Japanese
+//   input method between its own letters and English.
 //
 //   In the list a thumb may land on any of these meaning to scroll. So there, the keys that act at once wait to be sure: a moment held,
 //   or a slide sideways, or a lift. Until then a scroll may take the touch and nothing has happened. In the dock they act at once.
@@ -42,6 +43,7 @@ final class KeyCell: UIView {
     /// a modifier held long enough to be pressed on its own
     private var loneTimer: Timer?
     private var wentAlone = false
+    private var beganAt = 0.0
     private static let loneAfter = 0.45
 
     private struct Cycle {
@@ -131,7 +133,7 @@ final class KeyCell: UIView {
         var latched = false, once = false
         if case let .sticky(m) = s.action {
             latched = held.locked.isSuperset(of: m)
-            once = held.once.isSuperset(of: m) && !latched
+            once = held.once.union(held.chord).isSuperset(of: m) && !latched
         }
         var strong = false
         if case let .chord(c, _) = s.action, c.mods.isEmpty, c.key == "Return" { strong = true }
@@ -212,6 +214,8 @@ final class KeyCell: UIView {
         if on { backgroundColor = Theme.slabPressed } else { refresh() }
     }
 
+    private var isModifier: Bool { if case .sticky? = slot?.action { true } else { false } }
+
     override func touchesBegan(_ t: Set<UITouch>, with e: UIEvent?) {
         guard let p = t.first?.location(in: self) else { return }
         start = p
@@ -222,7 +226,20 @@ final class KeyCell: UIView {
         press(true)
         committed = true
         wentAlone = false
+        beganAt = CACurrentMediaTime()
+        if !isModifier {
+            Sticky.shared.engage()
+            if !actsAtOnce(s) {
+                Sticky.shared.wait(self) { [weak self] in
+                    guard let self, self.armed, !self.cancelled, let s = self.slot else { return }
+                    self.armed = false
+                    Sticky.shared.engage(with: self.beganAt)
+                    self.tapped(s)
+                }
+            }
+        }
         if case let .sticky(m) = s.action {
+            Sticky.shared.press(m)
             loneTimer = Timer.scheduledTimer(withTimeInterval: Self.loneAfter, repeats: false) { [weak self] _ in self?.alone(m) }
         }
         guard inList, actsAtOnce(s) else { return act(s, at: p) }
@@ -345,12 +362,18 @@ final class KeyCell: UIView {
     }
 
     override func touchesEnded(_ t: Set<UITouch>, with e: UIEvent?) {
+        Sticky.shared.done(self)
         commit()
         stopRepeat()
         stopLone()
         press(false)
         guard let s = slot else { return }
-        if wentAlone { wentAlone = false; return }
+        if case let .sticky(m) = s.action, Sticky.shared.lift(m) { wentAlone = false; return }    // held with another key: that was it
+        if wentAlone {
+            wentAlone = false
+            if case let .sticky(m) = s.action, !cancelled { Sticky.shared.pressAlone(m) }
+            return
+        }
         if cycle != nil {
             endCycle()
             Sticky.shared.used()
@@ -368,6 +391,7 @@ final class KeyCell: UIView {
             return
         }
         guard armed, !cancelled else { return }
+        if !isModifier { Sticky.shared.engage(with: beganAt) }
         tapped(s)
     }
 
@@ -383,8 +407,10 @@ final class KeyCell: UIView {
     }
 
     private func letGo() {
+        Sticky.shared.done(self)
         stopLone()
         wentAlone = false
+        if case let .sticky(m)? = slot?.action { Sticky.shared.lift(m) }
         commitTimer?.invalidate()
         commitTimer = nil
         committed = true
@@ -455,19 +481,13 @@ final class KeyCell: UIView {
         }
     }
 
-    /// Held: the modifier by itself, down and up, and not held for the next key.
+    /// Held a moment with nothing else: lifted now, it's the modifier by itself. Not before: another key may still come, and then it's ⌘C,
+    /// not a lone ⌘ and a C.
     private func alone(_ m: RemoteModifiers) {
         loneTimer = nil
-        guard armed, !cancelled else { return }
+        guard armed, !cancelled, !Sticky.shared.chord.isSuperset(of: m) else { return }
         wentAlone = true
         Haptics.grab()
-        // already held on the Mac: letting it go is the press on its own. Another down and up would switch the input method back
-        if Sticky.shared.held.isSuperset(of: m) {
-            Sticky.shared.release(m)
-        } else {
-            Sticky.shared.release(m)
-            Link.shared.send(.key(RemoteChord(m, ""), down: nil))
-        }
         UIView.animate(withDuration: 0.12, animations: { self.backgroundColor = Theme.slabLatched }) { _ in
             guard self.wentAlone else { return self.refresh() }     // lifted meanwhile
             UIView.animate(withDuration: 0.2) { self.backgroundColor = Theme.slabPressed }

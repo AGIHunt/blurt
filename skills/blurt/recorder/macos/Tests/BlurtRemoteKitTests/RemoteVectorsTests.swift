@@ -119,6 +119,8 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen_view_old_mac", .screenView(width: 1512, height: 982)),
             ("screen_view_display", .screenView(width: 2560, height: 1440, codec: "hevc", display: "69733382")),
             ("screen_view_repairs", .screenView(width: 1512, height: 982, codec: "hevc", display: "1", features: ["nack", "ltr"])),
+            ("legends", .legends(RemoteLegends(source: "German", keys: ["Y": .init(base: "z", shift: "Z"), "Q": .init(base: "q", shift: "Q", altGr: "@"),
+                                                                          "-": .init(base: "ß", shift: "?", altGr: "\\")]))),
             ("displays", .displays([RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1512, height: 982, main: true),
                                     RemoteDisplay(id: "69733382", name: "DELL U2723QE", x: 1512, y: -458, width: 2560, height: 1440, main: false)])),
             ("cursor_shape", .cursorShape(png: Data([0x89, 0x50]), hotX: 1, hotY: 2, width: 16, height: 24)),
@@ -299,6 +301,16 @@ final class RemoteVectorsTests: XCTestCase {
         XCTAssertNil(i.features)
         // the move's frames open in order on the other end: the stream continues the old one's counters
         XCTAssertEqual(try JSONDecoder().decode(ToPhone.self, from: Data(#"{"noDirect":{}}"#.utf8)).isNoDirect, true)
+    }
+
+    /// What types a character is never shown on the computer's screen: a password goes by one key after another.
+    func testWhatTypesACharacter() {
+        for c in [RemoteChord([], "A"), RemoteChord(.shift, "1"), RemoteChord(.option, "E"), RemoteChord([.shift, .option], "/"), RemoteChord([], "Space"), RemoteChord([], "Keypad5")] {
+            XCTAssertTrue(c.types, c.label)
+        }
+        for c in [RemoteChord(.command, "C"), RemoteChord(.control, "C"), RemoteChord([], "Return"), RemoteChord([], "F5"), RemoteChord(.shift, "Tab"), RemoteChord(.shift, "")] {
+            XCTAssertFalse(c.types, c.label)
+        }
     }
 }
 

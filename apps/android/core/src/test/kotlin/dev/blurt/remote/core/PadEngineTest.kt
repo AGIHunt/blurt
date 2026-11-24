@@ -125,10 +125,39 @@ class PadEngineTest {
         val e = PadEngine()
         e.scrollEdge = 374.0..400.0
         e.began(listOf(t(1, 390, 100)), 0.0)
-        assertEquals(listOf(scroll(began), PadOutput.EdgeScroll(true)), e.moved(listOf(t(1, 390, 120)), 0.05))
-        val o = e.moved(listOf(t(1, 390, 130)), 0.07).firstOrNull()
-        assertTrue(o is Scroll && o.phase == RemoteScrollPhase.CHANGED, "$o")
+        assertEquals(listOf(PadOutput.EdgeScroll(true), scroll(began)), e.moved(listOf(t(1, 390, 120)), 0.05))
+        // further than two fingers go, and only up and down: a thumb's arc is no sideways scroll
+        assertEquals(listOf<PadOutput>(Scroll(0f, (10 * e.scrollGain * PadEngine.EDGE_GAIN).toFloat(), RemoteScrollPhase.CHANGED)), e.moved(listOf(t(1, 384, 130)), 0.07))
         assertEquals(listOf(scroll(ended), PadOutput.EdgeScroll(false)), e.ended(listOf(1), 0.5), "the edge's mark hears it end")
+    }
+
+    @Test fun aLeaningThumbAlongTheEdgeScrolls() {
+        val e = PadEngine()
+        e.scrollEdge = 366.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        assertEquals(PadOutput.EdgeScroll(true), e.moved(listOf(t(1, 378, 110)), 0.05).first(), "12 across and 10 down")
+    }
+
+    @Test fun aThumbThatRestedOnTheEdgeScrolls() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.scrollEdge = 366.0..400.0
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        assertEquals(listOf<PadOutput>(PadOutput.Haptic(PadHaptic.GRAB)), e.tick(0.45), "the pointer stays: it may yet be a scroll, at the pointer")
+        assertEquals(listOf(PadOutput.EdgeScroll(true), scroll(began)), e.moved(listOf(t(1, 390, 120)), 0.8))
+    }
+
+    @Test fun heldOnTheEdgeIsStillARightClickAndADragAcross() {
+        val e = PadEngine()
+        e.touchMode = true
+        e.scrollEdge = 366.0..400.0
+        val p = PadPoint(390.0, 100.0)
+        e.began(listOf(t(1, 390, 100)), 0.0)
+        e.tick(0.45)
+        assertEquals(listOf(PadOutput.PointAt(p), Click(RemoteMouseButton.RIGHT), tap), e.ended(listOf(1), 0.6))
+        e.began(listOf(t(2, 390, 100)), 2.0)
+        e.tick(2.45)
+        assertEquals(listOf(PadOutput.PointAt(p), Button(left, true)), e.moved(listOf(t(2, 370, 101)), 2.6))
     }
 
     @Test fun twoFingersScrollingIsNoEdgeScroll() {

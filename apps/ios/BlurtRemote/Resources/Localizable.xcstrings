@@ -41,6 +41,16 @@
         }
       }
     },
+    "Computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑键盘"
+          }
+        }
+      }
+    },
     "Design" : {
       "localizations" : {
         "zh-Hans" : {
@@ -121,12 +131,78 @@
         }
       }
     },
+    "Held" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已按住"
+          }
+        }
+      }
+    },
     "Italic" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "斜体"
+          }
+        }
+      }
+    },
+    "keyboard.text" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字"
+          }
+        }
+      }
+    },
+    "Landscape" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "横屏"
+          }
+        }
+      }
+    },
+    "Locked" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已锁定"
+          }
+        }
+      }
+    },
+    "Next Input Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换输入法"
+          }
+        }
+      }
+    },
+    "Let Go of %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "松开 %@"
           }
         }
       }
@@ -147,6 +223,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "单指沿拇指一侧边缘上下滑"
+          }
+        }
+      }
+    },
+    "Orientation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕方向"
           }
         }
       }
@@ -197,6 +283,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从当前页播放"
+          }
+        }
+      }
+    },
+    "Portrait" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "竖屏"
           }
         }
       }

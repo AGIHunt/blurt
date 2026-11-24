@@ -55,7 +55,9 @@ public struct RemoteKey: Hashable, Sendable {
               // the media keys in words, as PrtSc and Ins: a keycap is text, and an emoji would be a colour icon on it
               k("VolumeUp", 72, "Vol+"), k("VolumeDown", 73, "Vol\u{2212}"), k("Mute", 74, "Mute"),
               // a PC keyboard's: a Mac has F13–F15 in their place, so a Mac host presses those
-              k("PrintScreen", 105, "PrtSc"), k("ScrollLock", 107, "ScrLk"), k("Pause", 113, "Pause")]
+              k("PrintScreen", 105, "PrtSc"), k("ScrollLock", 107, "ScrLk"), k("Pause", 113, "Pause"),
+              // a PC keyboard's right Alt, which types a key's third character. No modifier bit: a key held by name
+              k("AltGr", 61, "AltGr")]
         return t
     }()
 
@@ -74,4 +76,10 @@ public struct RemoteChord: Codable, Hashable, Sendable {
     public init(_ mods: RemoteModifiers = [], _ key: String) { self.mods = mods; self.key = key }
 
     public var label: String { mods.glyphs + (RemoteKey.named(key)?.glyph ?? key) }
+
+    /// It types a character (⇧ and ⌥ only choose which): letters of a password, one after another. Never shown on the computer's screen.
+    public var types: Bool {
+        guard mods.isSubset(of: [.shift, .option]) else { return false }
+        return key.count == 1 || key == "Space" || key.hasPrefix("Keypad") || key.hasPrefix("Intl")
+    }
 }

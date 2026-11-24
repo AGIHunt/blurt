@@ -82,6 +82,12 @@ public enum IslandLayout {
     /// The shape's centre offset from the notch's with ears `left` and `right` wide (each side its own).
     public static func earShift(left: CGFloat, right: CGFloat) -> CGFloat { (right - left) / 2 }
 
+    /// Where something `width` wide starts to hang centred under the island's middle `mid`: on the pixel grid, and on the screen.
+    public static func hangX(under mid: CGFloat, width: CGFloat, in screen: CGRect, scale: CGFloat) -> CGFloat {
+        let k = max(1, scale)
+        return min(max(((mid - width / 2) * k).rounded() / k, screen.minX), max(screen.minX, screen.maxX - width))
+    }
+
     /// How far from the notch an ear's content measures its outer edge, while the shape's ear is `shape` wide (as it
     /// springs): its own need (`earWidth(content:)`), never more — so when the *other* ear widens ("✓ Sent", a clock
     /// past 9:59) this one's glyph stays where it was and the extra black is outside it; and never beyond the shape,

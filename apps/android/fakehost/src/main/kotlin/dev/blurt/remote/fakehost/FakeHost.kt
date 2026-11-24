@@ -63,6 +63,11 @@ private var address = "10.0.2.2"
 private var stateFile = File("build/fakehost.json")
 private var ask = false
 private var twoDisplays = false
+/** a German keyboard's keys, for the phone's computer keyboard */
+private var german = false
+private val GERMAN = dev.blurt.remote.core.RemoteLegends("German", mapOf("Y" to dev.blurt.remote.core.RemoteLegend("z", "Z"),
+    "Z" to dev.blurt.remote.core.RemoteLegend("y", "Y"), "Q" to dev.blurt.remote.core.RemoteLegend("q", "Q", "@"),
+    "-" to dev.blurt.remote.core.RemoteLegend("ß", "?", "\\"), ";" to dev.blurt.remote.core.RemoteLegend("ö", "Ö")))
 private var scroll = false
 private var maxFps = 60
 private var forceCodec: String? = null
@@ -98,6 +103,7 @@ fun main(args: Array<String>) {
             "--state" -> stateFile = File(args[++i])
             "--ask" -> ask = true
             "--two-displays" -> twoDisplays = true
+            "--german" -> german = true
             "--scroll" -> scroll = true
             "--port" -> tcpPort = args[++i].toInt()
             "--fps" -> maxFps = args[++i].toInt()
@@ -361,6 +367,7 @@ private class Session(val socket: Socket) {
         send(ToPhone.Front(RemoteFront(if (platform == "mac") "com.apple.Terminal" else "WindowsTerminal.exe", "Terminal")))
         send(ToPhone.Dictation(RemoteDictationPhase.IDLE))
         if (twoDisplays) send(ToPhone.Displays(DISPLAYS))
+        if (german) send(ToPhone.Legends(GERMAN))
     }
 
     // MARK: the picture

@@ -271,6 +271,18 @@ class ScreenStream(private val c: Context) {
         askForView()
     }
 
+    /** the view was widened for a low stage, and goes back with it */
+    private var filled = false
+    fun fillWidth(on: Boolean) {
+        if (on == filled) return
+        filled = on
+        if (!on) return resetView()
+        if (port.isWhole) stage?.wantBackdrop = true
+        port.fillWidth(if (px >= 0) PadPoint(px, py) else null)
+        place()
+        askForView(now = true)
+    }
+
     fun gestureEnded() {
         port.settle()
         place()
@@ -375,6 +387,7 @@ class ScreenStream(private val c: Context) {
 
     /** The view back to the whole screen and nothing left of the last one. */
     fun resetView() {
+        filled = false      // the next layout widens it again if it should be
         port = ViewPort()
         reshape()
         shown = RemoteCrop.WHOLE
@@ -439,10 +452,13 @@ class ScreenStream(private val c: Context) {
     }
 
     /** The view has moved off the pointer and the finger is about to use it: it comes into view, where the eyes are. */
-    fun bringPointerIntoView() {
+    /** true: it was out of view, and has moved */
+    fun bringPointerIntoView(): Boolean {
         val v = port.visible
-        if (!on || port.isWhole || px < 0) return
-        if (px < v.minX || px > v.maxX || py < v.minY || py > v.maxY) move(v.midX, v.midY)
+        if (!on || port.isWhole || px < 0) return false
+        if (px in v.minX..v.maxX && py in v.minY..v.maxY) return false
+        move(v.midX, v.midY)
+        return true
     }
 
     fun cursor(d: ByteArray) {

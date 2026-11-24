@@ -288,3 +288,25 @@ Measured 2026-11-09 on the Android 16 emulator (Pixel 9, Pixel Tablet, 7.6" fold
 
 Not tried yet: a real phone (Wi-Fi, mobile data, a real relay, direct paths through NAT, hardware decoders and their low-latency keys),
 a real camera reading a code, hardware keyboards and mice on a tablet, a cover screen (the AVD has one panel), TalkBack.
+
+## Updates
+
+2026-11-24. The app is installed as an APK, so nothing updated it. It looks on GitHub (`core/AppUpdate.kt`, `app/Updates.kt`), and neither the check nor
+the download touches blurt.work, whose bandwidth the founder wants kept for the site.
+
+- **Finding one:** `HEAD github.com/AGIHunt/blurt/releases/latest` redirects to the latest release's page; its tag is the version. No API (60 calls an
+  hour per address, shared behind a carrier's NAT) and no feed to keep in step. Then `HEAD` the APK's own address, so a release without an APK is no
+  update. Once a day with the app in front, saying nothing unless there's one: a dot on the settings button, and the row at the top of Settings. The
+  check can be turned off.
+- **Getting it:** only when asked. Every hop must be https on github.com or *.githubusercontent.com; a file cut short or over 100 MB is thrown away.
+- **Installing it:** `PackageInstaller`, after the package name and a higher versionCode are checked. Android asks the user, asks once for
+  "install unknown apps", and refuses an APK not signed with the installed one's key. Releases are signed with the release Mac's debug keystore
+  (`app/build.gradle.kts`): **lose `~/.android/debug.keystore` and every phone has to uninstall and pair again.**
+- **The asset's name is part of it:** `Blurt-<version>-android.apk` on the tag `v<version>`.
+- Installed by Google Play it stays out of the way. Play also refuses `REQUEST_INSTALL_PACKAGES` for an app that isn't an installer: a Play build has to
+  drop it.
+- Where GitHub can't be reached (much of the mainland), the check fails quietly and by hand says so; nothing else is tried. The desktop feed has a
+  Cloudflare Pages mirror (dl.blurt.work) that could hold the 5.5 MB APK.
+
+Checked on an Android 16 emulator: a build of 1.0.0 found 1.1.1 by itself, downloaded it, asked, and was 1.1.1 afterwards; in airplane mode the check
+says why. Not checked: a maker's own installer (MIUI, HarmonyOS), a phone.

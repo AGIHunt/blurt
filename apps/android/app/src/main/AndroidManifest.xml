@@ -9,6 +9,9 @@
     <!-- reading the pairing code, asked for when the scanner opens -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- an update the user asked for, handed to Android's installer, which asks again (Updates.kt) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -16,7 +19,7 @@
     <!-- a relay the owner runs themselves may be ws:// (plain HTTP) when they have no domain for wss://.
          The frames are sealed on the phone, so nobody on the way reads or forges them; the address (the
          relay's secret), the room and the hello do travel in the clear (docs/design/remote.md). Android
-         blocks plain sockets from API 28 unless the app asks for them here; this app has no other HTTP. -->
+         blocks plain sockets from API 28 unless the app asks for them here; this app's only other HTTP is https to GitHub. -->
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -53,5 +56,6 @@
                 <data android:scheme="blurtremote" android:host="pair" />
             </intent-filter>
         </activity>
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
     </application>
 </manifest>

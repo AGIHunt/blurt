@@ -321,6 +321,25 @@ pub const MAX_CLIPBOARD: usize = 64 * 1024;
 pub fn clipboard_fits(s: &str) -> bool {
     !s.is_empty() && s.len() <= MAX_CLIPBOARD
 }
+/// What one key of the computer's layout types (RemoteLegends.Key).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Legend {
+    pub base: String,
+    pub shift: String,
+    /// with AltGr; None where the key has no third character
+    pub alt_gr: Option<String>,
+}
+
+/// What the computer's keyboard layout prints on its keys, by wire name, and the input source's own name (RemoteLegends).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Legends {
+    pub source: String,
+    pub keys: std::collections::BTreeMap<String, Legend>,
+}
+
+/// The keys a layout may print something else on (RemoteLegends.names).
+pub const LEGEND_NAMES: &str = "`1234567890-=QWERTYUIOP[]\\ASDFGHJKL;'ZXCVBNM,./";
+
 /// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as in the
 /// computer's display settings), so the phone can draw the arrangement (RemoteDisplay).
 #[derive(Clone, Debug, PartialEq)]
@@ -374,6 +393,8 @@ pub enum ToPhone {
     ScreenView { width: f64, height: f64, codec: Option<String>, display: Option<String>, features: Option<Vec<String>> },
     /// every display the computer has, whenever that changes (and once a session is up)
     Displays(Vec<Display>),
+    /// what this computer's keyboard layout prints on its keys. Once a session is up and whenever it changes. 1.2+
+    Legends(Legends),
     CursorShape { png: Vec<u8>, hot_x: f64, hot_y: f64, width: f64, height: f64 },
     /// the host's last frame on the old stream: what follows comes in kind-7 datagrams
     StreamMoved,
@@ -554,6 +575,35 @@ fn pixel_size_from(v: &Value) -> Option<PixelSize> {
         width: int(req(o, "width")?)?,
         height: int(req(o, "height")?)?,
     })
+}
+
+fn legends_json(l: &Legends) -> Value {
+    let keys: serde_json::Map<String, Value> = l
+        .keys
+        .iter()
+        .map(|(k, v)| {
+            let mut o = json!({"base": v.base, "shift": v.shift});
+            if let Some(a) = &v.alt_gr {
+                o["altGr"] = json!(a);
+            }
+            (k.clone(), o)
+        })
+        .collect();
+    json!({"source": l.source, "keys": keys})
+}
+
+fn legends_from(v: &Value) -> Option<Legends> {
+    let o = v.as_object()?;
+    let mut keys = std::collections::BTreeMap::new();
+    for (k, x) in req(o, "keys")?.as_object()? {
+        let x = x.as_object()?;
+        let alt_gr = match x.get("altGr") {
+            Some(a) => Some(string(a)?),
+            None => None,
+        };
+        keys.insert(k.clone(), Legend { base: string(req(x, "base")?)?, shift: string(req(x, "shift")?)?, alt_gr });
+    }
+    Some(Legends { source: string(req(o, "source")?)?, keys })
 }
 
 fn display_json(d: &Display) -> Value {
@@ -817,6 +867,7 @@ impl ToPhone {
                 }
                 case("screenView", f)
             }
+            ToPhone::Legends(l) => one("legends", legends_json(l)),
             ToPhone::Displays(l) => one("displays", Value::Array(l.iter().map(display_json).collect())),
             ToPhone::CursorShape { png, hot_x, hot_y, width, height } => case(
                 "cursorShape",
@@ -865,6 +916,7 @@ impl ToPhone {
                 display: opt(f, "display", string)?,
                 features: opt(f, "features", |v| list(v, string))?,
             },
+            "legends" => ToPhone::Legends(legends_from(x0()?)?),
             "displays" => ToPhone::Displays(list(x0()?, display_from)?),
             "cursorShape" => ToPhone::CursorShape {
                 png: data(req(f, "png")?)?,

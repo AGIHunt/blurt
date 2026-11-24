@@ -102,10 +102,40 @@ final class PadEngineTests: XCTestCase {
         let e = PadEngine()
         e.scrollEdge = 374...400
         _ = e.began([t(1, 390, 100)], at: 0)
-        XCTAssertEqual(e.moved([t(1, 390, 120)], at: 0.05), [.scroll(0, 0, .began), .edgeScroll(true)])
-        guard case .scroll(_, _, .changed)? = e.moved([t(1, 390, 130)], at: 0.07).first else { return XCTFail() }
+        XCTAssertEqual(e.moved([t(1, 390, 120)], at: 0.05), [.edgeScroll(true), .scroll(0, 0, .began)])
+        // further than two fingers go, and only up and down: a thumb's arc is no sideways scroll
+        XCTAssertEqual(e.moved([t(1, 384, 130)], at: 0.07), [.scroll(0, Float(10 * e.scrollGain * PadEngine.edgeGain), .changed)])
         // its mark goes out with it; a two-finger scroll never lights it
         XCTAssertEqual(e.ended([1], at: 0.5).prefix(2), [.scroll(0, 0, .ended), .edgeScroll(false)])
+    }
+
+    func testALeaningThumbAlongTheEdgeScrolls() {
+        let e = PadEngine()
+        e.scrollEdge = 366...400
+        _ = e.began([t(1, 390, 100)], at: 0)
+        XCTAssertEqual(e.moved([t(1, 378, 110)], at: 0.05).first, .edgeScroll(true), "12 across and 10 down")
+    }
+
+    func testAThumbThatRestedOnTheEdgeScrolls() {
+        let e = PadEngine()
+        e.touchMode = true
+        e.scrollEdge = 366...400
+        _ = e.began([t(1, 390, 100)], at: 0)
+        XCTAssertEqual(e.tick(at: 0.45), [.haptic(.grab)], "the pointer stays: it may yet be a scroll, at the pointer")
+        XCTAssertEqual(e.moved([t(1, 390, 120)], at: 0.8), [.edgeScroll(true), .scroll(0, 0, .began)])
+    }
+
+    func testHeldOnTheEdgeIsStillARightClickAndADragAcross() {
+        let e = PadEngine()
+        e.touchMode = true
+        e.scrollEdge = 366...400
+        let p = CGPoint(x: 390, y: 100)
+        _ = e.began([t(1, 390, 100)], at: 0)
+        _ = e.tick(at: 0.45)
+        XCTAssertEqual(e.ended([1], at: 0.6), [.pointAt(p), .click(.right), .haptic(.tap)])
+        _ = e.began([t(2, 390, 100)], at: 2)
+        _ = e.tick(at: 2.45)
+        XCTAssertEqual(e.moved([t(2, 370, 101)], at: 2.6), [.pointAt(p), .button(.left, down: true)])
     }
 
     func testTwoFingerScrollIsNoEdgeScroll() {

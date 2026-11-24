@@ -100,6 +100,10 @@ impl Keyboard {
         let id = if name.is_empty() { format!("mods:{mods}") } else { name.to_string() };
         if down {
             if self.held.iter().any(|(i, _)| *i == id) {
+                // down again while down is the key repeating, as a real keyboard sends it
+                if let Some(k) = key.filter(|_| name != "AltGr") {
+                    out.push(KeyEvent { key: k, down: true });
+                }
                 return out;
             }
             self.held.push((id, mods));

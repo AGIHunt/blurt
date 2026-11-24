@@ -47,6 +47,13 @@ struct ViewPort: Equatable {
         set(z, x: world.x - (anchor.x + move.x) * s.width, y: world.y - (anchor.y + move.y) * s.height)
     }
 
+    /// As wide as the stage, around the pointer: a stage with a keyboard under it is a low band, where the whole picture is a stamp.
+    mutating func fillWidth(around p: CGPoint?) {
+        guard isWhole, shape > Self.snap else { return }
+        let z = min(Self.closest, shape), s = size(z), c = p ?? CGPoint(x: 0.5, y: 0.5)
+        set(z, x: c.x - s.width / 2, y: c.y - s.height / 2)
+    }
+
     /// The fingers lifted: past the whole screen it comes back.
     mutating func settle() {
         if zoom < Self.snap { set(1, x: 0, y: 0) }

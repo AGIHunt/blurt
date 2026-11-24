@@ -8,8 +8,9 @@
 //   middle is nobody's. Or drag, one step per 24 dp, keeping to the way it set off until it clearly turns; past 72 dp, or at the screen's
 //   edge, it repeats, faster with distance. Tap and then drag does the same with ⇧. (The arithmetic: ArrowStroke, below.)
 //   a repeating key (⌫, an arrow) fires at once and repeats while held. Nothing destructive repeats: never Esc, ⌃C or Return.
-//   a modifier tapped holds for the next key; held a moment, it's pressed on its own instead, the way a lone ⇧ switches a Chinese or
-//   Japanese input method between its own letters and English.
+//   a modifier tapped holds for the next key; held while another key is pressed or the pad is touched, it's held for that, as on any
+//   keyboard; held a moment and lifted with nothing else, it's pressed on its own, the way a lone ⇧ switches a Chinese or Japanese input
+//   method between its own letters and English.
 //
 //   In the list a thumb may land on any of these meaning to scroll. So there, the keys that act at once wait to be sure: a moment held, or a
 //   slide sideways, or a lift. Until then the list may take the touch and nothing has happened. In the dock they act at once.
@@ -64,6 +65,7 @@ class KeyCell(c: Context) : View(c) {
     private var cancelled = false
     private var armed = false
     private var wentAlone = false
+    private var beganAt = 0.0
     private var lonePending = false
     private var flash = 0     // 1 latched flash while a modifier goes alone
 
@@ -124,7 +126,7 @@ class KeyCell(c: Context) : View(c) {
         val a = s.action
         if (a is KeyAction.Sticky) {
             latched = (held.locked and a.mods) == a.mods
-            once = (held.once and a.mods) == a.mods && !latched
+            once = ((held.once or held.chord) and a.mods) == a.mods && !latched
         }
         val strong = a is KeyAction.Chord && a.chord.mods == 0 && a.chord.key == "Return"
         paint.style = Paint.Style.FILL
@@ -221,7 +223,14 @@ class KeyCell(c: Context) : View(c) {
         committed = true
         wentAlone = false
         val a = s.action
-        if (a is KeyAction.Sticky) {
+        beganAt = now()
+        if (a !is KeyAction.Sticky) {
+            Remote.sticky.engage()
+            if (!actsAtOnce(s)) Remote.sticky.wait(this) {
+                if (armed && !cancelled) { armed = false; Remote.sticky.engage(beganAt); tapped(s) }
+            }
+        } else {
+            Remote.sticky.press(a.mods, now())
             lonePending = true
             main.postDelayed(lone, (LONE_AFTER * 1000).toLong())
         }
@@ -344,12 +353,21 @@ class KeyCell(c: Context) : View(c) {
     }
 
     private fun ended() {
+        Remote.sticky.done(this)
         commit()
         stopRepeat()
         stopLone()
         press(false)
         val s = slot ?: return
-        if (wentAlone) { wentAlone = false; flash = 0; invalidate(); return }
+        val mod = s.action as? KeyAction.Sticky
+        if (mod != null && Remote.sticky.lift(mod.mods)) { wentAlone = false; flash = 0; invalidate(); return }     // held with another key: that was it
+        if (wentAlone) {
+            wentAlone = false
+            flash = 0
+            invalidate()
+            if (mod != null && !cancelled) Remote.sticky.alone(mod.mods)
+            return
+        }
         if (cycle != null) {
             endCycle()
             Remote.sticky.used()
@@ -367,6 +385,7 @@ class KeyCell(c: Context) : View(c) {
             return
         }
         val go = armed && !cancelled
+        if (go && mod == null) Remote.sticky.engage(beganAt)
         armed = false
         if (go) tapped(s)
     }
@@ -377,8 +396,10 @@ class KeyCell(c: Context) : View(c) {
     }
 
     fun letGo() {
+        Remote.sticky.done(this)
         stopLone()
         wentAlone = false
+        (slot?.action as? KeyAction.Sticky)?.let { Remote.sticky.lift(it.mods) }
         flash = 0
         main.removeCallbacks(commitTimer)
         committed = true
@@ -444,20 +465,15 @@ class KeyCell(c: Context) : View(c) {
         }
     }
 
-    /** Held: the modifier by itself, down and up, and not held for the next key. */
+    /** Held a moment with nothing else. */
     private val lone = Runnable {
         lonePending = false
         val a = slot?.action as? KeyAction.Sticky ?: return@Runnable
         if (!armed || cancelled) return@Runnable
+        // lifted now, it's the modifier by itself. Not before: another key may still come, and then it's Ctrl+C, not a lone Ctrl and a C
+        if ((Remote.sticky.chord and a.mods) == a.mods) return@Runnable
         wentAlone = true
         Haptics.grab()
-        // already held on the computer: letting it go is the press on its own. Another down and up would switch the input method back
-        if ((Remote.sticky.held and a.mods) == a.mods) {
-            Remote.sticky.release(a.mods)
-        } else {
-            Remote.sticky.release(a.mods)
-            Remote.link.send(ToMac.Key(RemoteChord(a.mods, ""), null))
-        }
         flash = 1
         invalidate()
         main.postDelayed({ if (wentAlone) { flash = 0; invalidate() } }, 140)

@@ -8,7 +8,9 @@
 //   `panView`    and zoomed in, the picture is a photo: one finger moves it, and a flick sends it coasting. What's too small to hit
 //                is what the zoom is for; the pointer by itself is the pad between the thumbs, a mouse, the Pencil
 //   hold still   `holdTime` (the phone taps back), then move = drag, the same press-and-drag as any mouse; or lift = right click
-//   the edge     one finger along the side by the thumb = scroll, for when there's only the one thumb
+//   the edge     one finger along the side by the thumb = scroll, for when there's only the one thumb. A thumb slides in an arc, so
+//                leaning is still up or down (`edgeLean`), and one that rested there first scrolls too. Its stroke is shorter than two
+//                fingers', so it goes further (`edgeGain`)
 //   two fingers  move = scroll what's under the pointer, as on the Mac's trackpad, both ways; tap = right click; pinch = zoom the app
 //                on the Mac. With the screen showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers.
 //                Two fingers moving together never stay exactly the same distance apart: a scroll stays a scroll until they clearly pinch.
@@ -66,6 +68,10 @@ final class PadEngine {
     static let swipeTrip: CGFloat = 40
     /// how far fingers moving the view must come apart or together before it's a pinch
     static let pinchRatio: CGFloat = 0.14
+    /// along the edge: a slide may lean this much further sideways than it goes up or down and still scroll
+    static let edgeLean: CGFloat = 1.5
+    /// and it scrolls this much further than two fingers do
+    static let edgeGain: CGFloat = 1.5
 
     /// How far two fingers must come apart or together to count as a pinch for the Mac, and then for each zoom step. Both follow how far
     /// apart the fingers started: a spread starts with them close and a pinch with them wide, so fixed distances asked a spread to nearly
@@ -134,6 +140,18 @@ final class PadEngine {
 
     private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
 
+    private func onEdge(_ p: CGPoint) -> Bool { scrollEdge?.contains(p.x) == true && scrollEdgeY?.contains(p.y) ?? true }
+
+    /// A slide that started on the edge and goes up or down.
+    private func scrollsEdge(_ start: CGPoint, _ p: CGPoint) -> Bool { onEdge(start) && abs(p.y - start.y) * Self.edgeLean > abs(p.x - start.x) }
+
+    private func beginEdgeScroll(_ p: CGPoint) -> [PadOutput] {
+        samples = []
+        lastTap = nil
+        state = .scrolling(last: p, two: false)
+        return [.edgeScroll(true), .scroll(0, 0, .began)]
+    }
+
     func began(_ ts: [PadTouch], at now: Double) -> [PadOutput] {
         guard !ts.isEmpty else { return [] }    // a palm, filtered out by the view
         var out: [PadOutput] = []
@@ -198,10 +216,8 @@ final class PadEngine {
         switch state {
         case let .one(start, _, _):
             if dist(p, start) > Self.slop {
-                if let e = scrollEdge, e.contains(start.x), scrollEdgeY?.contains(start.y) ?? true, abs(p.y - start.y) > abs(p.x - start.x) {
-                    samples = []
-                    out += [.scroll(0, 0, .began), .edgeScroll(true)]
-                    state = .scrolling(last: p, two: false)
+                if scrollsEdge(start, p) {
+                    out += beginEdgeScroll(p)
                 } else if panView {
                     samples = []
                     state = .panning(last: p)
@@ -235,9 +251,12 @@ final class PadEngine {
             }
             state = .dragging(last: p)
         case let .held(start, _):
-            if dist(p, start) > Self.slop {
+            if dist(p, start) > Self.slop, scrollsEdge(start, p) {
+                out += beginEdgeScroll(p)
+            } else if dist(p, start) > Self.slop {
                 lastTap = nil
                 lastMoveAt = now
+                if touchMode, onEdge(start) { out.append(.pointAt(start)) }
                 out.append(.button(.left, down: true))
                 state = .dragging(last: p)
             }
@@ -249,7 +268,8 @@ final class PadEngine {
                 state = .view(spread: spread, center: p, from: spread, zooming: true)
                 break
             }
-            let dx = p.x - last.x, dy = p.y - last.y
+            let dx = two ? p.x - last.x : 0, dy = p.y - last.y       // along the edge only up and down: a thumb's arc isn't a sideways scroll
+            let gain = two ? scrollGain : scrollGain * Self.edgeGain
             scrollTravel += hypot(dx, dy)
             // fingers that drifted before they spread started as a scroll: once they have come apart further than the scroll has gone,
             // it was a pinch (a real scroll has travelled much further than its fingers drift)
@@ -261,7 +281,7 @@ final class PadEngine {
             }
             samples.append((now, dx, dy))
             samples.removeAll { now - $0.t > 0.09 }
-            out.append(.scroll(Float(dx * scrollGain), Float(dy * scrollGain), .changed))
+            out.append(.scroll(Float(dx * gain), Float(dy * gain), .changed))
             state = .scrolling(last: p, two: two)
         case let .two(start, s, _):
             guard touches.count >= 2 else { break }
@@ -355,13 +375,17 @@ final class PadEngine {
             } else {
                 dragLetGo = now
             }
-        case let .held(_, at):
-            if now - at < Self.holdLimit { out += [.click(.right), .haptic(.tap)] }
+        case let .held(start, at):
+            if now - at < Self.holdLimit {
+                if touchMode, onEdge(start) { out.append(.pointAt(start)) }
+                out += [.click(.right), .haptic(.tap)]
+            }
         case let .scrolling(_, two):
             out.append(.scroll(0, 0, .ended))
             if !two { out.append(.edgeScroll(false)) }
             if let v = releaseVelocity() {
-                out.append(.fling(Float(v.dx * scrollGain), Float(v.dy * scrollGain)))
+                let gain = two ? scrollGain : scrollGain * Self.edgeGain
+                out.append(.fling(Float(v.dx * gain), Float(v.dy * gain)))
                 coastUntil = now + Self.coastTime
             }
         case let .two(start, _, at):
@@ -393,7 +417,8 @@ final class PadEngine {
         var out: [PadOutput] = []
         if case let .one(start, _, at) = state, now - at >= Self.holdTime {
             state = .held(start: start, at: now)
-            if touchMode { out.append(.pointAt(start)) }    // the pointer comes to the finger as the phone taps back
+            // the pointer comes to the finger as the phone taps back; on the edge it may yet be a scroll, which is where the pointer is
+            if touchMode, !onEdge(start) { out.append(.pointAt(start)) }
             out.append(.haptic(.grab))
         }
         if let g = dragLetGo, now - g >= Self.dragGrace {

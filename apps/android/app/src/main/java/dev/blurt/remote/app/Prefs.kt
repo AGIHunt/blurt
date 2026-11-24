@@ -4,9 +4,27 @@ package dev.blurt.remote.app
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ActivityInfo
 import dev.blurt.remote.core.ScreenQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+
+/** Which way the screen is turned. Auto follows the phone, and the phone's own rotation lock. */
+enum class ScreenTurn {
+    AUTO, PORTRAIT, LANDSCAPE;
+
+    /** Portrait and landscape hold whatever the rotation lock says; landscape still turns end over end. */
+    val orientation: Int get() = when (this) {
+        AUTO -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    companion object {
+        /** A phone's. On a tablet or an open foldable Android 16 ignores what an app asks for. */
+        fun applies(c: Context) = c.resources.configuration.smallestScreenWidthDp < 600
+    }
+}
 
 class Prefs(c: Context) {
     private val d: SharedPreferences = c.getSharedPreferences("prefs", Context.MODE_PRIVATE)
@@ -45,6 +63,26 @@ class Prefs(c: Context) {
     var fullScreen: Boolean
         get() = d.getBoolean("fullScreen", false)
         set(v) { d.edit().putBoolean("fullScreen", v).apply(); bump() }
+    /** which way the screen is turned */
+    var turn: ScreenTurn
+        get() = runCatching { ScreenTurn.valueOf(d.getString("turn", null) ?: "AUTO") }.getOrDefault(ScreenTurn.AUTO)
+        set(v) { d.edit().putString("turn", v.name).apply(); bump() }
+    /** which keyboard the keyboard button opens: the computer's keys, or the phone's own for text. The one last used */
+    var computerKeyboard: Boolean
+        get() = d.getBoolean("computerKeyboard", false)
+        set(v) { d.edit().putBoolean("computerKeyboard", v).apply() }
+    /** it was open when last left: on a big screen it's open again; a phone never starts with it */
+    var boardOpen: Boolean
+        get() = d.getBoolean("boardOpen", false)
+        set(v) { d.edit().putBoolean("boardOpen", v).apply() }
+    /** look for a newer version on GitHub once a day (Updates.kt) */
+    var autoUpdateCheck: Boolean
+        get() = d.getBoolean("autoUpdateCheck", true)
+        set(v) { d.edit().putBoolean("autoUpdateCheck", v).apply(); bump() }
+    /** when it last got an answer, in ms */
+    var updateCheckedAt: Long
+        get() = d.getLong("updateCheckedAt", 0)
+        set(v) { d.edit().putLong("updateCheckedAt", v).apply() }
     /** the line over the picture the first time it showed (two fingers scroll, pinch with ⌘ held) */
     var pictureHintShown: Boolean
         get() = d.getBoolean("pictureHintShown", false)

@@ -9,6 +9,7 @@
 //  • a display chosen stays chosen, until Follow Pointer or until it's unplugged. The map says which; the button carries no badge for it.
 //  • Full Screen, at the foot of the map (and all of it with one display, where a hold opens it too): the picture takes the whole screen
 //    and only the talk key and a way back stay over it, for reading what was left open on the computer. Remembered.
+//  • on a phone, beside it: the screen turned the other way, rotation lock or not. Settings → Orientation has Auto.
 import BlurtRemoteKit
 import UIKit
 
@@ -18,6 +19,8 @@ enum DisplayChoice: Equatable {
     case display(String)
     /// not a display: the picture full screen, on or off
     case fullScreen
+    /// nor this: the phone's screen turned the other way
+    case turn
 
     var id: String? { if case let .display(d) = self { d } else { nil } }
 }
@@ -27,6 +30,14 @@ final class ScreenButton: UIControl {
     var onPick: ((DisplayChoice) -> Void)?
     /// the picture takes the whole screen (Prefs.fullScreen): the map's last row says so
     var fullScreen = false { didSet { map?.fullScreen = fullScreen } }
+    /// what the map's other row turns the phone's screen to; nil: there's no such row (an iPad)
+    var turnsTo: ScreenTurn? {
+        didSet {
+            guard turnsTo != oldValue else { return }
+            closeMap()
+            paint()
+        }
+    }
     /// where the map goes: the view it's put in, and its frame there (the keys' place; or one of this size beside the button)
     var mapPlace: ((CGSize) -> (UIView, CGRect)?)?
 
@@ -104,10 +115,11 @@ final class ScreenButton: UIControl {
         let name = displays.first { $0.id == shown }?.name
         accessibilityValue = several ? [name, pinned == nil ? String(localized: "Follow Pointer") : nil].compactMap { $0 }.joined(separator: ", ") : nil
         accessibilityHint = several ? String(localized: "Hold to choose a display.") : nil
-        let full = UIAccessibilityCustomAction(name: String(localized: "Full Screen")) { [weak self] _ in self?.onPick?(.fullScreen); return true }
+        var own = [UIAccessibilityCustomAction(name: String(localized: "Full Screen")) { [weak self] _ in self?.onPick?(.fullScreen); return true }]
+        if let t = turnsTo { own.append(UIAccessibilityCustomAction(name: t.name) { [weak self] _ in self?.onPick?(.turn); return true }) }
         accessibilityCustomActions = several ? displays.arranged.map { d in
             UIAccessibilityCustomAction(name: String(localized: "Show \(d.name)")) { [weak self] _ in self?.onPick?(.display(d.id)); return true }
-        } + [UIAccessibilityCustomAction(name: String(localized: "Follow Pointer")) { [weak self] _ in self?.onPick?(.follow); return true }, full] : [full]
+        } + [UIAccessibilityCustomAction(name: String(localized: "Follow Pointer")) { [weak self] _ in self?.onPick?(.follow); return true }] + own : own
         setNeedsLayout()
     }
 
@@ -204,7 +216,7 @@ final class ScreenButton: UIControl {
         switch c {
         case .follow: if pinned == nil { return }
         case let .display(id): if id == pinned || (pinned == nil && id == shown && moved) { return }
-        case .fullScreen: break
+        case .fullScreen, .turn: break
         }
         Haptics.tick()
         onPick?(c)
@@ -232,6 +244,7 @@ final class ScreenButton: UIControl {
         let m = DisplayMap()
         m.update(displays: displays, shown: shown, pinned: pinned)
         m.fullScreen = fullScreen
+        m.turnsTo = turnsTo
         m.candidate = several ? candidate : nil
         m.onPick = { [weak self] c in
             self?.closeMap()
@@ -284,6 +297,16 @@ final class DisplayMap: UIView {
     private let full = UIView()
     private let fullLabel = UILabel()
     private let fullIcon = UIImageView()
+    private let turn = UIView()
+    private let turnLabel = UILabel()
+    private let turnIcon = UIImageView()
+    var turnsTo: ScreenTurn? {
+        didSet {
+            turnLabel.text = turnsTo?.name
+            turnIcon.image = turnsTo.flatMap { UIImage(systemName: $0.icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium)) }
+            setNeedsLayout()
+        }
+    }
     private var spots: [String: CGRect] = [:]
     var fullScreen = false { didSet { paint() } }
     private var several: Bool { displays.count > 1 }
@@ -334,6 +357,19 @@ final class DisplayMap: UIView {
         full.addSubview(fullLabel)
         full.isUserInteractionEnabled = false
         addSubview(full)
+        turn.layer.cornerRadius = Theme.keyRadius
+        turn.layer.cornerCurve = .continuous
+        turn.backgroundColor = Theme.slab
+        turn.layer.borderWidth = 1
+        turn.layer.borderColor = Theme.edge.cgColor
+        turnLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        turnLabel.textColor = Theme.mark
+        turnIcon.tintColor = Theme.caption
+        turnIcon.contentMode = .center
+        turn.addSubview(turnIcon)
+        turn.addSubview(turnLabel)
+        turn.isUserInteractionEnabled = false
+        addSubview(turn)
         // VoiceOver chooses through the screen button's actions
         accessibilityElementsHidden = true
     }
@@ -386,7 +422,14 @@ final class DisplayMap: UIView {
         follow.frame = CGRect(x: Self.pad, y: Self.pad * 2 + mapArea.height, width: mapArea.width, height: Self.followHeight)
         full.frame = several ? CGRect(x: Self.pad, y: follow.frame.maxY + Self.pad, width: mapArea.width, height: Self.followHeight)
             : CGRect(x: Self.pad, y: Self.pad, width: bounds.width - Self.pad * 2, height: Self.followHeight)
-        for (row, icon, label) in [(follow, followIcon, followLabel), (full, fullIcon, fullLabel)] {
+        // turning the screen shares Full Screen's row: both are about the phone's own screen
+        turn.isHidden = turnsTo == nil
+        if turnsTo != nil {
+            let gap: CGFloat = 6, w = (full.frame.width - gap) / 2
+            full.frame.size.width = w
+            turn.frame = CGRect(x: full.frame.maxX + gap, y: full.frame.minY, width: w, height: full.frame.height)
+        }
+        for (row, icon, label) in [(follow, followIcon, followLabel), (full, fullIcon, fullLabel), (turn, turnIcon, turnLabel)] {
             let w = ceil(label.intrinsicContentSize.width), iconW: CGFloat = 20
             let x = (row.bounds.width - w - iconW - 6) / 2
             icon.frame = CGRect(x: x, y: 0, width: iconW, height: row.bounds.height)
@@ -419,10 +462,13 @@ final class DisplayMap: UIView {
         let fullAimed = candidate == .fullScreen
         full.layer.borderWidth = fullAimed ? 2 : 1
         full.layer.borderColor = (fullAimed ? Theme.mark : Theme.edge).cgColor
+        turn.layer.borderWidth = candidate == .turn ? 2 : 1
+        turn.layer.borderColor = (candidate == .turn ? Theme.mark : Theme.edge).cgColor
     }
 
     func choice(at p: CGPoint) -> DisplayChoice? {
-        if full.frame.insetBy(dx: -4, dy: -4).contains(p) { return .fullScreen }
+        if full.frame.insetBy(dx: -2, dy: -4).contains(p) { return .fullScreen }
+        if !turn.isHidden, turn.frame.insetBy(dx: -2, dy: -4).contains(p) { return .turn }
         guard several else { return nil }
         if follow.frame.insetBy(dx: -4, dy: -4).contains(p) { return .follow }
         let inMap = CGPoint(x: p.x - Self.pad, y: p.y - Self.pad)

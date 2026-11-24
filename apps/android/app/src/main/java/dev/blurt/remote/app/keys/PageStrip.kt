@@ -17,6 +17,9 @@ class PageStrip(c: Context) : View(c) {
     var onSelect: ((Int) -> Unit)? = null
     private var names: List<String> = emptyList()
     private var current = 0
+    /** the names' size where they fit, dp: larger on a big screen */
+    var largest = 13f
+        set(v) { if (field != v) { field = v; invalidate() } }
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
 
     fun show(names: List<String>, page: Int) {
@@ -39,11 +42,11 @@ class PageStrip(c: Context) : View(c) {
         if (names.isEmpty() || width <= 0) return 0f
         val w = width.toFloat() / names.size
         p.typeface = Fonts.medium
-        var size = 13.dp
-        // down to 70 % of 13, as the iPhone's tabs go
+        var size = largest.dp
+        // down to 70 % of a phone's 13, as the iPhone's tabs go
         while (size >= 9.dp) {
             p.textSize = size
-            if (names.all { p.measureText(it) <= w - 2.dp }) return size
+            if (names.all { p.measureText(it) <= w - (if (largest > 13f) 8 else 2).dp }) return size
             size *= 0.95f
         }
         return 0f

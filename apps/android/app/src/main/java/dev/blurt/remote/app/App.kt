@@ -21,13 +21,15 @@ object Remote {
         private set
     lateinit var link: Link
         private set
-    lateinit var sticky: Sticky
+    lateinit var sticky: dev.blurt.remote.core.HeldModifiers
         private set
     lateinit var screen: ScreenStream
         private set
     lateinit var mic: MicStream
         private set
     lateinit var net: NetWatch
+        private set
+    lateinit var updates: Updates
         private set
 
     fun start(c: Context) {
@@ -41,6 +43,7 @@ object Remote {
         link = Link(c, vault)
         net = NetWatch(c) { _, _ -> screen.planChanged() }
         net.start()
+        updates = Updates(c, prefs)
         Haptics.on = prefs.haptics
     }
 }

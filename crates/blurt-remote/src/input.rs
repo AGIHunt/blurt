@@ -29,6 +29,11 @@ pub fn known_key(name: &str) -> bool {
     crate::keys::known(name)
 }
 
+/// It types a character (Shift and Alt only choose which): never shown on the computer's screen (RemoteChord.types).
+pub fn types(c: &Chord) -> bool {
+    c.mods & !(2 | 4) == 0 && (c.key.chars().count() == 1 || c.key == "Space" || c.key.starts_with("Keypad") || c.key.starts_with("Intl"))
+}
+
 /// The modifiers as the host names them (Ctrl+C here, ⌘C on a Mac), for a HUD.
 pub fn label(c: &Chord, windows: bool) -> String {
     let mut parts: Vec<&str> = vec![];
@@ -175,6 +180,11 @@ impl Hands {
         let id = if c.key.is_empty() { format!("mods:{}", c.mods) } else { c.key.clone() };
         if down {
             if self.held.iter().any(|(k, _)| *k == id) {
+                // held already and down again: the phone's (or a viewer's) keyboard repeating it. A Windows key sent down doesn't repeat
+                // by itself; on Linux the desktop repeats it, and its backend leaves this alone
+                if known_key(&c.key) && c.key != "AltGr" {
+                    i.key(&c.key, 0, Some(true));
+                }
                 return;
             }
             self.held.push((id, c.mods));
@@ -506,6 +516,18 @@ pub(crate) mod tests {
         assert_eq!(take(&mut l), ["held 4", "key Tab 0 None", "held 6", "key Tab 0 None", "held 4", "held 0"]);
         h.hold(&mut l, &Chord::new(4, ""), false);
         assert!(l.0.is_empty(), "nothing held, nothing to let go");
+    }
+
+    #[test]
+    fn a_key_held_and_down_again_repeats() {
+        let (mut h, mut l) = (Hands::new(), Log::default());
+        h.hold(&mut l, &Chord::new(0, "A"), true);
+        h.hold(&mut l, &Chord::new(0, "A"), true);
+        h.hold(&mut l, &Chord::new(0, "A"), false);
+        assert_eq!(take(&mut l), ["key A 0 Some(true)", "key A 0 Some(true)", "key A 0 Some(false)"]);
+        h.hold(&mut l, &Chord::new(0, "AltGr"), true);
+        h.hold(&mut l, &Chord::new(0, "AltGr"), true);
+        assert_eq!(take(&mut l), ["key AltGr 0 Some(true)"], "a modifier doesn't repeat");
     }
 
     #[test]
