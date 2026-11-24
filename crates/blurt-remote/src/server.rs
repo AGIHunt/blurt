@@ -2753,14 +2753,36 @@ fn mark_for_wifi(s: &socket2::Socket) {
 /// DNS-SD: instance name = the computer's name, TXT id = this host's id.
 fn advertise(name: &str, id: &str, port: u16) -> Option<(mdns_sd::ServiceDaemon, String)> {
     let d = mdns_sd::ServiceDaemon::new().ok()?;
-    let host = gethostname::gethostname().to_string_lossy().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect::<String>();
-    let host = if host.is_empty() { "blurt".to_string() } else { host };
-    let info = mdns_sd::ServiceInfo::new(&format!("{SERVICE_TYPE}.local."), name, &format!("{host}.local."), "", port, &[("id", id)][..])
+    let (name, host) = (mdns_instance(name), mdns_host(&gethostname::gethostname().to_string_lossy()));
+    let info = mdns_sd::ServiceInfo::new(&format!("{SERVICE_TYPE}.local."), &name, &format!("{host}.local."), "", port, &[("id", id)][..])
         .ok()?
         .enable_addr_auto();
     let full = info.get_fullname().to_string();
     d.register(info).ok()?;
     Some((d, full))
+}
+
+/// A DNS label holds 63 bytes, and mdns-sd's thread panics on a longer one, ending discovery. Less, for the " (2)" or "-2" it adds when
+/// another computer has the name.
+const MDNS_LABEL: usize = 55;
+
+/// The computer's name as one label: mdns-sd takes a dot for the end of it. The name people see comes with the session.
+fn mdns_instance(name: &str) -> String {
+    let flat: String = name.chars().map(|c| if c == '.' || c.is_control() { ' ' } else { c }).collect();
+    let flat = flat.trim();
+    let mut end = flat.len().min(MDNS_LABEL);
+    while !flat.is_char_boundary(end) {
+        end -= 1;
+    }
+    let n = flat[..end].trim_end();
+    if n.is_empty() { "Computer".into() } else { n.into() }
+}
+
+/// The host name's first label, as a host name may be written.
+fn mdns_host(h: &str) -> String {
+    let h: String = short_host(h).chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(MDNS_LABEL).collect();
+    let h = h.trim_matches('-');
+    if h.is_empty() { "blurt".into() } else { h.into() }
 }
 
 /// The computer's name as people see it.
@@ -2796,5 +2818,34 @@ mod name_tests {
         assert_eq!(super::short_host(""), "Computer");
         assert_eq!(super::pretty_hostname("PRETTY_HOSTNAME=\"Ana's ThinkPad\"\nICON_NAME=computer"), Some("Ana's ThinkPad".into()));
         assert_eq!(super::pretty_hostname("ICON_NAME=computer"), None);
+    }
+
+    #[test]
+    fn names_fit_a_dns_label() {
+        use super::{mdns_host, mdns_instance};
+        assert_eq!(mdns_instance("Ana's ThinkPad"), "Ana's ThinkPad");
+        assert_eq!(mdns_instance("Ana's PC v1.2."), "Ana's PC v1 2");
+        assert_eq!(mdns_instance(".."), "Computer");
+        assert_eq!(mdns_instance(&"电脑".repeat(20)), "电脑".repeat(9));
+        assert_eq!(mdns_instance(&"x".repeat(64)).len(), 55);
+        assert_eq!(mdns_host("Studio.local"), "Studio");
+        assert_eq!(mdns_host("sat12-jn145-0f3a9c.vm.us-west-2.compute.internal.example.com"), "sat12-jn145-0f3a9c");
+        assert_eq!(mdns_host(&"a".repeat(64)).len(), 55);
+        assert_eq!(mdns_host("办公室"), "blurt");
+        assert_eq!(mdns_host(""), "Computer");
+    }
+
+    /// A computer whose name is longer than a DNS label is still found (the mDNS thread used to die on it, taking discovery with it).
+    #[test]
+    fn a_long_name_keeps_discovery_up() {
+        let name = "会议室里那台接着大屏幕的台式电脑，请不要关机，也不要拔电源线".to_string();
+        assert!(name.len() > 63);
+        let (d, full) = super::advertise(&name, "long-name-test", 9).unwrap();
+        // probing takes 750 ms, then the first announcement
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        let up = d.status().ok().and_then(|r| r.recv_timeout(std::time::Duration::from_secs(3)).ok());
+        assert!(matches!(up, Some(mdns_sd::DaemonStatus::Running)), "{up:?}");
+        let _ = d.unregister(&full);
+        let _ = d.shutdown();
     }
 }
