@@ -927,11 +927,15 @@ impl Engine {
                     if k.down && k.code == vk::ESCAPE {
                         self.last_key = code;
                     }
-                    let out = self.trigger.handle(Event::Key {
+                    let event = Event::Key {
                         code,
                         down: k.down,
                         time,
-                    });
+                    };
+                    #[cfg(windows)]
+                    let out = self.trigger.handle_with_modifiers(event, &k.modifiers);
+                    #[cfg(not(windows))]
+                    let out = self.trigger.handle(event);
                     self.apply(out);
                     self.missed();
                 }

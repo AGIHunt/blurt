@@ -22,7 +22,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_LCONTROL, VK_RMENU,
 };
 
-use super::trigger::{AltAlone, Key};
+use super::trigger::{vk, AltAlone, Key};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
     KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
@@ -44,6 +44,9 @@ pub struct KeyEvent {
     pub code: u32,
     pub down: bool,
     pub tick_ms: u32,
+    /// System-held modifiers before this event; zero entries mean released. Captured in the hook, not when the
+    /// engine drains the queue, so a delayed event is never reconciled against a later keyboard state.
+    pub modifiers: [u32; 8],
 }
 
 struct Hook {
@@ -68,6 +71,13 @@ pub static CANCEL_MODS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU
 /// The key is down now, as the system says (GetAsyncKeyState; VK_CONTROL 0x11 / VK_SHIFT 0x10 for either side).
 pub fn held(vk: i32) -> bool {
     unsafe { (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 }
+}
+
+fn modifiers_before_event() -> [u32; 8] {
+    // WH_KEYBOARD_LL runs before Windows updates this key's asynchronous state. The trigger reconciles the
+    // snapshot first, then applies the event itself. No allocation or extra messages on the hook thread.
+    [vk::LWIN, vk::RWIN, vk::LSHIFT, vk::RSHIFT, vk::LCONTROL, vk::RCONTROL, vk::LMENU, vk::RMENU]
+        .map(|code| if held(code as i32) { code } else { 0 })
 }
 
 fn cancel_esc_now() -> bool {
@@ -128,6 +138,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         code: k.vkCode,
                         down,
                         tick_ms: k.time,
+                        modifiers: modifiers_before_event(),
                     });
                 }
                 if lone_release {

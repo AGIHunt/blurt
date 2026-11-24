@@ -52,6 +52,16 @@
 （windows 0.62.2，通过）。没验证的：整个 App 的 Windows 构建（这台 Mac 编不了 ring / sqlite 的 C 部分，等 CI），以及在 Windows 上实按一次；
 反馈的用户用的是不是「任一 Alt」+ 左 Alt 也没确认，默认的右 Alt 本来就有掩码。
 
+**锁屏后右 Alt 失效（2026-11-24，#127）。** 反馈中实体右 Alt 在锁屏后不再唤起听写，但诊断仍能收到 Alt 的按下／松开；
+不重启，只重新按下并松开 Win 就恢复。这与安全桌面期间丢失 Win 松开、触发器一直把 Alt 当作组合键一致。
+`trigger.rs` 已有 `sync_modifiers` 和丢失松开的测试，但 Windows 事件入口没有调用它。
+现在 `keys_win.rs` 为每个事件附上钩子当时的系统修饰键状态，`engine.rs` 通过 `handle_with_modifiers` 先校正再处理该事件。
+[Windows 的低级键盘钩子](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) 在本次按键的异步状态更新前调用，
+因此不能先处理按下再用快照覆盖，也不能等引擎消费队列时才读取状态（那会把后续状态套到旧事件上）。校正只清除已经松开的标记，
+不补入新的按下：AltGr 的假 Ctrl 已被钩子过滤，直接覆盖整个位图会把它带回来。真正仍按住的组合键和按键重复照旧处理。
+回归测试覆盖丢失左右 Win／Ctrl／Shift／左 Alt 松开、实际组合键、AltGr、重复、排队事件，以及任一 Alt 的轻按／自动模式。
+这次修复针对修饰键残留；没有改变录音或识别行为。完整应用的锁屏实机验证仍需用修复后的构建进行。
+
 ## 收音
 
 | # | Mac | Windows 之前 | 处理 | 结果 |

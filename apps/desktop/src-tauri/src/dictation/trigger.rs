@@ -551,12 +551,20 @@ impl DictationTrigger {
 
     /// The modifiers the system says are down (GetAsyncKeyState, VK codes), for when the hook may have missed a key-up
     /// (the secure desktop after Win+L or a UAC prompt takes the keyboard): a modifier the trigger still thinks is
-    /// held would make every press "not alone". The Mac's flags carried this with every event.
+    /// held would make every press "not alone". Only reconcile releases: adding system-held keys would reintroduce
+    /// AltGr's fake Ctrl, deliberately filtered by the hook. Observed key-down events remain authoritative.
     pub fn sync_modifiers(&mut self, down: &[u32]) {
-        self.held = down
+        self.held &= down
             .iter()
             .filter_map(|&c| mod_bit(c))
             .fold(0, |a, b| a | b);
+    }
+
+    /// Handle a Windows hook event with the modifier snapshot captured before that event. Reconcile first:
+    /// GetAsyncKeyState in WH_KEYBOARD_LL has not yet applied this event's own transition.
+    pub fn handle_with_modifiers(&mut self, event: Event, down: &[u32]) -> Vec<Output> {
+        self.sync_modifiers(down);
+        self.handle(event)
     }
 
     /// A cancel that is a shortcut, not a cancelled dictation: another key (not Esc) or a click joined push-to-talk
@@ -1998,6 +2006,77 @@ mod tests {
         assert_eq!(t.run("ralt-down@5000 ralt-up@5080"), []); // Win "held": not alone
         t.sync_modifiers(&[]);
         assert_eq!(t.run("ralt-down@6000 ralt-up@6080"), [Arm, Start]);
+    }
+
+    #[test]
+    fn hook_snapshot_recovers_missed_modifier_releases() {
+        for modifier in [vk::LWIN, vk::RWIN, vk::LCONTROL, vk::RCONTROL, vk::LSHIFT, vk::RSHIFT, vk::LMENU] {
+            let mut t = DictationTrigger::new(Key::RightAlt, Mode::Hold);
+            t.handle(Event::Key { code: modifier, down: true, time: 0.0 });
+            // The secure desktop consumes the release. The next hook event carries the recovered state.
+            assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: true, time: 5.0 }, &[]), [Arm]);
+            assert_eq!(t.handle(Event::Tick { time: 5.3 }), [Start]);
+            assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: false, time: 6.0 }, &[vk::RMENU]), [Stop]);
+        }
+    }
+
+    #[test]
+    fn hook_snapshot_preserves_real_shortcuts() {
+        for modifier in [vk::LWIN, vk::RWIN, vk::LCONTROL, vk::RCONTROL, vk::LSHIFT, vk::RSHIFT, vk::LMENU] {
+            let mut t = DictationTrigger::new(Key::RightAlt, Mode::Hold);
+            t.handle(Event::Key { code: modifier, down: true, time: 0.0 });
+            assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: true, time: 1.0 }, &[modifier]), []);
+            assert_eq!(t.handle(Event::Tick { time: 1.3 }), []);
+            assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: false, time: 2.0 }, &[modifier, vk::RMENU]), []);
+        }
+    }
+
+    #[test]
+    fn hook_snapshot_does_not_reintroduce_altgr_fake_ctrl() {
+        let mut t = DictationTrigger::new(Key::RightAlt, Mode::Hold);
+        // The hook filtered AltGr's synthetic Ctrl event. Windows still reports that Ctrl as down.
+        assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: true, time: 1.0 }, &[vk::LCONTROL]), [Arm]);
+        assert_eq!(t.handle(Event::Tick { time: 1.3 }), [Start]);
+        assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: false, time: 2.0 }, &[vk::LCONTROL, vk::RMENU]), [Stop]);
+    }
+
+    #[test]
+    fn hook_snapshot_keeps_repeats_and_release_order() {
+        let mut t = DictationTrigger::new(Key::RightAlt, Mode::Hold);
+        assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: true, time: 1.0 }, &[]), [Arm]);
+        assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: true, time: 1.1 }, &[vk::RMENU]), []);
+        assert_eq!(t.handle(Event::Tick { time: 1.3 }), [Start]);
+        assert_eq!(t.handle_with_modifiers(Event::Key { code: vk::RMENU, down: false, time: 2.0 }, &[vk::RMENU]), [Stop]);
+    }
+
+    #[test]
+    fn hook_snapshot_recovers_taps_with_either_alt() {
+        for mode in [Mode::Tap, Mode::Auto] {
+            for code in [vk::LMENU, vk::RMENU] {
+                let mut t = DictationTrigger::new(Key::EitherAlt, mode);
+                t.handle(Event::Key { code: vk::LWIN, down: true, time: 0.0 });
+                assert_eq!(t.handle_with_modifiers(Event::Key { code, down: true, time: 5.0 }, &[]), [Arm]);
+                assert_eq!(t.handle_with_modifiers(Event::Key { code, down: false, time: 5.08 }, &[code]), [Start]);
+            }
+        }
+    }
+
+    #[test]
+    fn queued_hook_snapshots_use_each_events_state() {
+        let mut t = DictationTrigger::default();
+        t.handle(Event::Key { code: vk::LWIN, down: true, time: 0.0 });
+        // Replay a queued shortcut, then a standalone tap after a missed Win release.
+        // Handling both using the final (empty) system state would incorrectly start the first tap.
+        let events = [
+            (true, 1.0, vec![vk::LWIN]),
+            (false, 1.08, vec![vk::LWIN, vk::RMENU]),
+            (true, 5.0, vec![]),
+            (false, 5.08, vec![vk::RMENU]),
+        ];
+        let outputs: Vec<_> = events.into_iter().map(|(down, time, mods)| {
+            t.handle_with_modifiers(Event::Key { code: vk::RMENU, down, time }, &mods)
+        }).collect();
+        assert_eq!(outputs, [vec![], vec![], vec![Arm], vec![Start]]);
     }
 
     /// testEventTimeUsesTheEventsOwnClock, on the hook's GetTickCount milliseconds instead of CGEventTimestamp.
