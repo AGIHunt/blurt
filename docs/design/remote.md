@@ -231,8 +231,10 @@ US keyboard has Z.
 Windows: a key sent down again while down repeats (it was dropped). On Linux the desktop repeats a held key by itself.
 
 Checked: the iOS and Android tests; an iPhone simulator and Android emulators against `apps/android/fakehost` (it prints what it gets: ⌘ held with C,
-both lifting together → ⌘ down, C, ⌘ up; S and A held together; AltGr, fn, hold-to-repeat, slide-off); the Mac's legends on this Mac. Not checked: a
-hand on a phone, typing speed, a Windows or Linux computer (the Windows code type-checks), AltGr on a real layout, VoiceOver and TalkBack.
+both lifting together → ⌘ down, C, ⌘ up; S and A held together; AltGr, fn, hold-to-repeat, slide-off); the Mac's legends on this Mac;
+the founder on an iPhone 16 Pro Max with a MacBook. Windows Server 2022, the backend typing into Notepad (2026-11-25): 47 legends on each layout
+(German: Y shows z, Q has @ with AltGr), Y, AltGr+Q and X down three times typed `z@xxx`; on the US layout Y and X typed `yxxx`. Not checked: typing
+speed, a Linux computer, Windows' system service, VoiceOver and TalkBack.
 
 ## Trackpad
 
