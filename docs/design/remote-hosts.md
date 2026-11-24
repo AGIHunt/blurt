@@ -131,3 +131,6 @@ crate is also the Windows / Linux viewer (`viewer.rs`, `keys.rs`).
 - No HUD on the computer for the phone's keys yet (the Mac's RemoteHUD): `App::hud` is called, the desktop app doesn't draw it.
 - The front app is polled once a second while a phone is connected (the Mac is told by NSWorkspace).
 - DNS-SD is mdns-sd's own responder; on Windows and Linux it runs beside the system's (Bonjour / Avahi), not through it.
+  A label over 63 bytes panics its thread, and nothing says so: discovery just ends. Until 1.1.3 a name of 22 Chinese characters did it, and so did a
+  host name with its domain (the dots were dropped, not cut at). Now the instance is cut to 55 bytes at a character, dots as spaces, and the host
+  to its first label; 55 leaves room for the " (2)" it adds when the name is taken. Names people see come with the session, uncut.
