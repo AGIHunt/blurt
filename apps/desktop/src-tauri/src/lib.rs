@@ -32,6 +32,7 @@ pub mod screen_text;
 pub mod scripts;
 pub mod settings;
 pub mod setup;
+pub mod shell_icons; // Windows: the Shell reads Blurt's icon again after an install
 pub mod skill;
 pub mod tray;
 pub mod viewer; // one computer driving another: the list, pairing, a window per computer (crates/blurt-remote viewer.rs)
