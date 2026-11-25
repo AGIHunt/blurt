@@ -9,22 +9,22 @@
 "agents.effort.medium" = "Medium";
 "agents.effort.xhigh" = "Extra high";
 "agents.processing.cards" = "Organizing cards";
-"agents.processing.cards.help" = "Snaps, voice notes and AI fill-in. Defaults to the cheapest model at low effort, which is enough for a picture and a note and uses far fewer tokens.";
+"agents.processing.cards.help" = "Organizes snaps and voice notes, and fills in item details.";
 "agents.processing.cheapest" = "Cheapest model";
 "agents.processing.cheapest_named" = "Cheapest model (%@)";
 "agents.processing.default" = "Agent’s default model";
 "agents.processing.default_named" = "Agent’s default model (%@)";
 "agents.processing.recording" = "Organizing recordings";
-"agents.processing.recording.help" = "Defaults to the agent’s default model at low effort, which long recordings need.";
+"agents.processing.recording.help" = "Organizes recordings.";
 "common.cancel" = "Cancel";
 "common.done" = "Done";
 
 "agent.you" = "You";
 
 /* An item reached "to verify" (Peep says so in the island) */
-"verify.by" = "%@ says it’s fixed";
+"verify.by" = "%@ marked it as fixed";
 "verify.by.wontfix" = "%@ suggests not doing it";
-"verify.by.none" = "%@ handed it back";
+"verify.by.none" = "%@ finished it";
 "verify.notification" = "Ready to verify: %@";
 
 /* Settings → Agents */
@@ -36,36 +36,36 @@
 "agents.test.no_command" = "No command-line mode";
 "agents.test.ok" = "Works — replied in %@ s";
 "agents.test.timeout" = "Timed out";
-"agents.codex_trust" = "Codex marks the projects it works in as trusted (in its own settings).";
+"agents.codex_trust" = "Codex trusts the projects it has worked in.";
 "agents.state.ready" = "Signed in";
 "agents.state.not_installed" = "Not installed";
-"agents.state.manual" = "Installed · import blurt in its settings";
+"agents.state.manual" = "Installed";
 "agents.state.installed" = "Installed";
 "agents.state.unchecked" = "Can’t check sign-in";
-"agents.state.unchecked.help" = "Sign-in can’t be checked without spending tokens. It’s checked the first time it organizes something; if it isn’t signed in, Blurt uses the next agent and says so here.";
-"agents.state.manual.help" = "A separate app. Connect… installs the blurt skill and MCP in %@ (changes are listed first), or import them in its settings under Skills / MCP. Then say “Process my Blurt recordings” in its chat to organize recordings.";
+"agents.state.unchecked.help" = "Sign-in is checked the first time it’s used.";
+"agents.state.manual.help" = "To use Blurt in %@, click Connect….";
 "agents.state.chat" = "Organizes in chat";
-"agents.state.chat.help" = "Say “Process my Blurt recordings” in %@ to organize recordings into items. To work on items, use Copy Instruction for Agent.";
+"agents.state.chat.help" = "Say “Process my Blurt recordings” in %@ to organize recordings.";
 "agents.request" = "Process my Blurt recordings";
 "agents.request.copy" = "Copy";
 "agents.request.copied" = "Copied";
 "agents.move_up" = "Move Up";
-"agents.connected.help" = "Connected: it can find, read and update your items.";
-"agents.not_connected.help" = "Not connected yet. Connect shows what changes first.";
+"agents.connected.help" = "Connected. It can find, read and update items.";
+"agents.not_connected.help" = "Not connected. Click Connect… to see what will change.";
 "agents.ask.header" = "Ask your agent";
-"agents.ask.footer" = "Your agent reads items through the Blurt MCP, and packs a hand-off bundle (a .zip with the screenshots) when someone else needs them.";
+"agents.ask.footer" = "Agents can read your items in Blurt.";
 "agents.ask.copy" = "Copy";
 
 /* Install sheet */
 "install.title" = "Connect Blurt to %@";
 "install.title.applied" = "Blurt is connected to %@";
-"install.title.failed" = "Blurt couldn’t fully connect to %@";
+"install.title.failed" = "Couldn’t fully connect to %@";
 "install.title.nothing" = "Blurt is already in %@";
 "install.benefit" = "%@ will be able to find, read and update your Blurt items.";
 "install.benefit.applied" = "%@ can now find, read and update your Blurt items.";
 "install.benefit.nothing" = "%@ can already find, read and update your Blurt items.";
-"install.benefit.failed" = "Some steps didn’t work. The ones that need you are marked below.";
-"install.footnote" = "Nothing changes until you click Connect.";
+"install.benefit.failed" = "Some steps weren’t completed. The steps you need to do are marked below.";
+"install.footnote" = "Changes are made when you click Connect.";
 "install.next" = "Takes effect in new %@ sessions.";
 "install.confirm" = "Connect";
 "install.working" = "Connecting…";
@@ -78,13 +78,13 @@
 "install.row.added.mcp" = "Added the Blurt MCP server";
 "install.row.failed.skill" = "Couldn’t add the Blurt skill";
 "install.row.failed.mcp" = "Couldn’t add the Blurt MCP server";
-"install.row.failed.detail" = "%@ reported an error. Details shows the command that was run.";
-"install.row.about.skill" = "Shows %@ how to work with your items, in every project";
+"install.row.failed.detail" = "%@ reported an error. See Details for the command that was run.";
+"install.row.about.skill" = "%@ can work on Blurt items in every project";
 "install.row.about.mcp" = "Lets %@ read your items and report progress, in every project";
-"install.row.add.approve" = "Allow reports without asking";
-"install.row.added.approve" = "Allowed reports without asking";
-"install.row.in_place.approve" = "Reports without asking";
-"install.row.about.approve" = "%@ can mark, read and search your items without asking you first. Anything else still asks.";
+"install.row.add.approve" = "Allow reading and marking items without asking";
+"install.row.added.approve" = "Allowed reading and marking items without asking";
+"install.row.in_place.approve" = "Reads and marks items without asking";
+"install.row.about.approve" = "%@ can mark, read and search your items without asking. Anything else still asks first.";
 "install.row.in_place.skill" = "Blurt skill";
 "install.row.in_place.mcp" = "Blurt MCP server";
 "install.row.exists" = "Already installed";
@@ -93,15 +93,15 @@
 "install.row.conflict" = "%@ is a different skill with the same name. Rename or remove it, then connect again.";
 "install.row.manual.skill" = "Add the Blurt skill yourself";
 "install.row.manual.mcp" = "Add the Blurt MCP server yourself";
-"install.row.manual.none" = "%@ has no setting for this here. Its own documentation says how.";
-"agents.install.help" = "Installs the blurt skill and MCP server into this agent, after showing what changes";
+"install.row.manual.none" = "This can’t be changed here. See %@’s documentation.";
+"agents.install.help" = "Install the Blurt skill and MCP in this agent";
 "agents.state.checking" = "Checking…";
 "agents.state.unknown" = "Installed · can’t check sign-in";
 "agents.state.configured" = "Installed · can’t check sign-in";
 "agents.state.logged_out" = "Not signed in";
 
 /* Install and test errors in words */
-"install.error" = "A settings file’s format isn’t recognized, so it wasn’t changed.";
+"install.error" = "A settings file can’t be read, so nothing was changed.";
 "install.error.path" = "The format of %@ isn’t recognized, so it wasn’t changed.";
 "agents.test.failed" = "%@ didn’t pass the test. Run it in a terminal and check that it answers.";
 
@@ -109,8 +109,8 @@
 "agents.lead" = "Blurt uses the first agent that works, from the top.";
 "agents.in_use" = "In use";
 "agents.use" = "Use %@";
-"agents.use.on.help" = "On: Blurt tries it in this order";
-"agents.use.off.help" = "Off: Blurt never uses it";
+"agents.use.on.help" = "When this is on, it can organize recordings and cards.";
+"agents.use.off.help" = "When this is off, it doesn’t organize recordings and cards.";
 "agents.sign_in" = "Sign In…";
 "agents.install_cli" = "Install…";
 "agents.get_app" = "Get %@…";
@@ -125,7 +125,7 @@
 "agents.fix.then" = "Then come back and check again.";
 "agents.details.version" = "Version %@";
 "agents.details.model" = "Model";
-"agents.details.no_models" = "This agent doesn’t list its models, so it uses its own setting.";
+"agents.details.no_models" = "Choose a model in this agent’s settings.";
 "agents.details.models.note" = "Higher effort is slower and uses more tokens.";
 "agents.details.skill" = "Skill and MCP";
 "agents.details.connected" = "Connected";
@@ -141,11 +141,11 @@
 "agents.organize.recording" = "Recordings";
 "agents.organize.cards" = "Snaps and voice notes";
 "agents.organize.footer" = "Higher effort is slower and uses more tokens.";
-"agents.organize.own" = "Set on its own: %@ (in Details…).";
-"agents.organize.follow" = "Same as all (%@)";
+"agents.organize.own" = "Set separately: %@";
+"agents.organize.follow" = "Same as all agents (%@)";
 "agents.organize.follow_plain" = "Same as all agents";
 "agents.organize.inherit" = "Default (%@)";
-"agents.organize.inherit.default" = "Agent’s own";
+"agents.organize.inherit.default" = "Agent’s default";
 "agents.organize.inherit.cheapest" = "Cheapest";
 "agents.details.more" = "Connection";
 

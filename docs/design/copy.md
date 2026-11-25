@@ -6,7 +6,25 @@ writing or changing any of them, and give it to any agent that will.
 
 ## The standard
 
-Write like macOS System Settings, not like an assistant explaining itself. Copy that reads as AI-written fails, however correct it is.
+Write like macOS System Settings, the iPhone and Figma, not like an assistant explaining itself. Copy that reads as AI-written fails, however
+correct it is. The test: someone who has never used Blurt reads the line once, at normal speed, and knows what to do. If they have to stop, read
+it again or work out a word, it fails. (Founder, 2026-11-25: 「不要用奇怪的、没人听过的、不常用的、听到了会觉得一愣的需要思考的方式和口吻」.)
+
+How Apple and Figma do it:
+
+- **Say what it does for the person, not how it works.** 「改用内置麦克风可避免丢失开头的话。」, not the Bluetooth delay, the fallback order and the
+  default device. The order of steps, file formats, what is cached, which engine runs first: leave them out, or put them in the guide.
+- **One idea per sentence, one or two sentences per place.** A line under a setting is one sentence. The text behind an ⓘ button is at most two
+  sentences: about 60 Chinese characters, or 30 English words. More than that means the setting is too complicated or the options need better
+  names: fix the labels first, and cut the text.
+- **No text is the best text.** A row whose title says it all has no line and no ⓘ. Never repeat the title, the options or a nearby line.
+- **A choice explains itself.** Each option's name says what it does; the ⓘ is not a list of options.
+- **Use Apple's sentence shapes.** 若要…，请… · 打开后，… · 关闭后，… · 允许 App 访问… · 前往「系统设置 > …」 · 无法…。请… . In English: "To …, …" ·
+  "When this is off, …" · "Allow … to …" · "Can't …. Try …". `python3 tools/apple-copy.py <word> …` prints how macOS says it, in both languages,
+  from the Mac you are on. Look before inventing a sentence. Read it, don't copy it into the repository.
+- **Complete, ordinary sentences.** No clause piled on clause with 顿号 and 分号, no brackets inside brackets, no telegraphic fragments, no dash
+  asides. Write 也, 会, 可以 where a person would; drop 的话, 其实, 帮你, 先…再…接着… chains.
+- **Nothing about Blurt's character.** It doesn't think, notice, remember, hear, wait for you or help. State the result.
 
 - **Labels** are nouns or short noun phrases: 中转地址, 公共连接服务, 云端润色（可选）. A switch's label names the thing, not what happens
   when it's on.
@@ -23,15 +41,42 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 - **No product name inside status or error text.** 未经测试, not 未经口喷鸡测试.
 - **Never:** 这台 Mac (use 本机, or leave it out); counts phrased as 有 5 个 (write 已下载 5 个); fillers (好了, 换上, 认得, 都会, 再加, 随手,
   递给, 就出字); anthropomorphic lines about the system; 一键, 赋能, 丝滑, seamless, supercharge, unleash, magic.
+- **Say who or what, never where from the reader's side.** Name the device or the place: 「%@ 断开了连接。」, not 「%@ 那边断开了连接。」;
+  「对方屏幕」, 「本机」, not 「那边」「这边」「你这边」「那里」. In English, the device is the subject: "%@ ended the connection.", not "Someone
+  at %@ ended the connection.". (Founder, 2026-11-21: 「那边」 reads like chat, not like an app.)
+- **Write the Chinese, don't translate the English.** An English sentence carried over word for word reads wrong in Chinese (and the other
+  way round). Write each language as its own short sentence, the way System Settings says it in that language.
+- **Written negatives, not spoken ones.** 无法连接 %@, 未发送, 未及时回应, 适用于任何网络, not 连不上 %@, 没有发送, 没人及时回应, 都能连 / 也能连;
+  此 / 该 for 这个 / 那个 (此链接已过期, 该网络不允许直连); 接通电源时, not 插着电时.
 - **Quality:** never state error counts or error rates. Say it as a level, or a positive word (识别更准), or not at all.
 - **Global first:** examples lead with globally known apps (Slack, Notion, Claude). Chinese apps can be among them.
 
+## The judge
+
+Whoever writes copy does not decide that it is good. A separate agent that did not write it reads it as a user would
+([.claude/agents/copy-judge.md](../../.claude/agents/copy-judge.md)), and the round repeats until it finds nothing serious:
+
+1. The writer changes the strings and gives the judge the list: every changed string, zh and en, with where it appears.
+2. The judge reports each problem as **serious** or **minor**, with the words that make a reader stop. It suggests a direction, and does not edit.
+3. The writer fixes every serious one, and the minor ones worth it. A finding the writer disagrees with is answered in writing with the reason,
+   for the next judge to see.
+4. A **new** judge, with no memory of the last round, reads the changed strings again. Stop when a judge finds no serious problem; if three
+   rounds don't get there, list what is left for the founder.
+
+Always: before a pull request that adds or rewords user-facing strings. Before a release, the judge reads everything that changed since the last
+release (`python3 tools/copy-check.py v<last release>`), and the founder reads the list of changes before it ships.
+
 ## Before you send it
 
-1. Run `python3 tools/copy-check.py`. It prints every user-facing string your branch adds or changes, in each language, and fails on the
-   banned words above.
+1. Run `python3 tools/copy-check.py`. It prints every user-facing string your branch adds or changes, in each language (Mac `.strings` and
+   `.stringsdict`, the desktop app's locales, Android `strings.xml`, iOS `.xcstrings`), and fails on the banned words above.
+   `tests/test_ui_copy.py` runs the same banned-word check over every current string, so CI fails on them too.
 2. Read every line it prints, in both languages. Cut each one: shorter, more common words, no explaining.
 3. Where an older string already said it well, reuse it rather than writing a new one.
+   For a new one, see how macOS says it first (`python3 tools/apple-copy.py`).
+4. Have the judge read it (above), and repeat until nothing serious is left.
+5. Before a release, run `python3 tools/copy-check.py v<last release>` and read the whole list once more: agents write most strings, and a
+   reader who sees them all together catches what each change alone didn't.
 
 ## Agreed terms
 
@@ -62,7 +107,7 @@ Write like macOS System Settings, not like an assistant explaining itself. Copy 
 | The phone's two keyboards | 文字 · 电脑键盘 | Text · Computer |
 | Which way the phone's screen is turned | 屏幕方向 · 自动 · 竖屏 · 横屏 | Orientation · Auto · Portrait · Landscape |
 | The Android app's updates | 更新 · 检查更新 · 自动检查更新 · 安装 | Updates · Check for Updates · Check Automatically · Install |
-| Items not in a project | 未归类 | Unsorted |
+| Items not in a project | 未归类 | Unassigned |
 | Card tabs | 当前 / 历史 | Current / History |
 | A double tap of a key (Fn to send, ⇧, ⌘) | 双击 | double-tap |
 | One dictation (the thing in History; "take" stays inside the Dictation Lab) | 听写 | dictation |

@@ -20,7 +20,7 @@ describe('what the Hang row says', () => {
     const w = what({ pictures: 1, files: 2 });
     expect(cardsMade(w)).toBe(3);
     expect(hangSubtitle(w, tr('en'))).toBe('1 picture, 2 files · one card each');
-    expect(hangSubtitle(w, tr('zh-Hans'))).toBe('1 张图片、2 个文件 · 每样一张卡片');
+    expect(hangSubtitle(w, tr('zh-Hans'))).toBe('1 张图片、2 个文件 · 各存为一张卡片');
   });
   it('a single thing: a note after', () => {
     expect(hangSubtitle(what({ files: 1 }), tr('en'))).toBe('1 file · add a note after');

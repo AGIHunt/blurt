@@ -18,7 +18,7 @@ describe('data location', () => {
       }
     }
     setLang('en');
-    expect(locationError({ error: 'no_space', bytes: 3_820_000_000, free: 1_200_000_000 })).toBe('Not enough space there: needs 3.8 GB, 1.2 GB free.');
+    expect(locationError({ error: 'no_space', bytes: 3_820_000_000, free: 1_200_000_000 })).toBe('Not enough space: 3.8 GB needed, 1.2 GB available.');
     expect(locationError({ error: 'env', var: 'BLURT_HOME' })).toBe('Set by the BLURT_HOME environment variable');
     expect(locationError({ error: 'copy_failed', detail: 'E:\\x: disk full' })).toContain('E:\\x: disk full');
   });

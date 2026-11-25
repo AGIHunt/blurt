@@ -14,7 +14,7 @@
   "state.wontfix": "Won’t do",
   "state.discarded": "Discarded",
   "state.menu": "Change state",
-  "action.keep": "Accept",
+  "action.keep": "Mark as to do",
   "action.keep.hint": "Moves it out of the inbox as To do",
   "action.hand_off": "Copy instruction for agent",
   "action.hand_off.hint": "Copy an instruction to paste into Claude Code, Codex or any agent",
@@ -59,7 +59,7 @@
   "job.type.agent": "Agent session",
   "job.step.capture": "Capturing",
   "job.step.finalize": "Saving the recording",
-  "job.step.listen": "Listening",
+  "job.step.listen": "Recording audio",
   "job.step.transcribe": "Transcribing",
   "job.step.file": "Filing",
   "job.step.prepare": "Preparing",
@@ -68,5 +68,5 @@
   "job.step.route": "Sorting into projects",
   "job.step.launch": "Starting",
   "job.step.work": "Working",
-  "job.step.finish": "Wrapping up"
+  "job.step.finish": "Finishing"
 }

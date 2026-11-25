@@ -364,7 +364,7 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
             }
             // space beside tab, so return is the one by the talk key and esc is never next to it
             return mods + listOf(
-                KeySlot(KeyAction.Chord(RemoteChord(0, "Tab")), glyph = "sf:arrow.right.to.line", caption = "", hint = "Complete"),
+                KeySlot(KeyAction.Chord(RemoteChord(0, "Tab")), glyph = "sf:arrow.right.to.line", caption = "", hint = "Autocomplete"),
                 spaceBar, chord(0, "Escape", "Stop"), chord(0, "Delete", "Delete"), chord(0, "Return", "Send"),
             )
         }
@@ -374,7 +374,7 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
 
         fun main() = editKeys() + switchKeys() + actionKeys() + listOf(
             snap(), copyText(), translate(), cards(),
-            chord(primary, "R", "Reload", icon = "arrow.clockwise"), chord(S, "Tab", "Back a Field", icon = "arrow.left.to.line"),
+            chord(primary, "R", "Reload", icon = "arrow.clockwise"), chord(S, "Tab", "Previous Field", icon = "arrow.left.to.line"),
         )
 
         // Snip only in the picker on Windows: Snap does the same, and More stays one page
@@ -485,13 +485,13 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
                 chord(W, "R", "Reload", icon = "arrow.clockwise"), chord(W or S, "T", "Reopen Tab", icon = "arrow.uturn.backward.square"),
                 chord(W, "S", "Save", icon = "square.and.arrow.down"), chord(W, "L", "Address", icon = "link"),
                 chord(W or S, "[", "Previous Tab", icon = "chevron.left.square"), chord(W or S, "]", "Next Tab", icon = "chevron.right.square"),
-                chord(A, "Delete", "Delete Word", icon = "delete.left"), chord(W, "Delete", "Delete Line", icon = "delete.left.fill"),
-                chord(W, "Return", "Accept", icon = "checkmark.circle"), chord(S, "Tab", "Back a Field", icon = "arrow.left.to.line"),
+                chord(A, "Delete", "Delete Word", icon = "delete.left"), chord(W, "Delete", "Delete to Line Start", icon = "delete.left.fill"),
+                chord(W, "Return", "Accept", icon = "checkmark.circle"), chord(S, "Tab", "Previous Field", icon = "arrow.left.to.line"),
                 chord(W, "P", "Open File", icon = "doc.badge.gearshape"), chord(W or S, "P", "Command Palette", icon = "command.square"),
                 chord(W, "B", "Sidebar", icon = "sidebar.left"), chord(W, "J", "Terminal Panel", icon = "rectangle.bottomthird.inset.filled"),
                 chord(C, "O", "Transcript", icon = "text.justify.left"), chord(C, "R", "History", icon = "clock.arrow.circlepath"),
                 chord(C, "L", "Clear Screen", icon = "eraser"),
-                chord(A, "L", "Reformat", icon = "text.badge.checkmark"),
+                chord(A, "L", "Change Style", icon = "text.badge.checkmark"),
                 chord(C, "Space", "Input Source", icon = "globe"),
                 KeySlot(KeyAction.System(RemoteSystemMove.FIND_CURSOR), glyph = "sf:scope", caption = "Find Pointer"),
             )
@@ -501,12 +501,12 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
                 chord(C, "S", "Save", icon = "square.and.arrow.down"), chord(A, "D", "Address", icon = "link"),
                 chord(C, "PageUp", "Previous Tab", icon = "chevron.left.square"), chord(C, "PageDown", "Next Tab", icon = "chevron.right.square"),
                 chord(C, "Delete", "Delete Word", icon = "delete.left"),
-                chord(C, "Return", "Accept", icon = "checkmark.circle"), chord(S, "Tab", "Back a Field", icon = "arrow.left.to.line"),
+                chord(C, "Return", "Accept", icon = "checkmark.circle"), chord(S, "Tab", "Previous Field", icon = "arrow.left.to.line"),
                 chord(C, "P", "Open File", icon = "doc.badge.gearshape"), chord(C or S, "P", "Command Palette", icon = "command.square"),
                 chord(C, "B", "Sidebar", icon = "sidebar.left"), chord(C, "J", "Terminal Panel", icon = "rectangle.bottomthird.inset.filled"),
                 chord(C, "O", "Transcript", icon = "text.justify.left"), chord(C, "R", "History", icon = "clock.arrow.circlepath"),
                 chord(C, "L", "Clear Screen", icon = "eraser"),
-                chord(A, "L", "Reformat", icon = "text.badge.checkmark"),
+                chord(A, "L", "Change Style", icon = "text.badge.checkmark"),
                 chord(W, "Space", "Input Source", icon = "globe"),
                 KeySlot(KeyAction.System(RemoteSystemMove.FIND_CURSOR), glyph = "sf:scope", caption = "Find Pointer"),
             )

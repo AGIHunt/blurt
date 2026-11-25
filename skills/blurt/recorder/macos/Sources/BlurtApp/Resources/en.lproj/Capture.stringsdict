@@ -162,7 +162,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card into Unassigned with a suggested project (uses AI once)</string><key>other</key><string>Organize the %d cards into Unassigned with suggested projects (uses AI once)</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card and suggest a project</string><key>other</key><string>Organize the %d cards and suggest projects</string></dict>
   </dict>
   <key>capture.keys.taken_banner</key>
   <dict>
@@ -181,7 +181,7 @@
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
 		<key>n</key>
-		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>As a card, add a note any time</string><key>other</key><string>As %d cards</string></dict>
+		<dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>As a card</string><key>other</key><string>As %d cards</string></dict>
 	</dict>
 </dict>
 </plist>

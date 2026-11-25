@@ -187,7 +187,7 @@ struct SettingsSheet: View {
             // removed there in a session (the key is gone), or a key refused this run (kept): either way, a new code adds it again
             case .forgotten: return "Removed this iPhone"
             case .replaced: return "Another phone is using it"
-            case .ended: return "Ended at the computer"
+            case .ended: return "Ended by the computer"
             case .unpaired: return "Not connected"
             }
         }

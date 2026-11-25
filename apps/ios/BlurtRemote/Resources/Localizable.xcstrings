@@ -204,6 +204,12 @@
             "state" : "translated",
             "value" : "松开 %@"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Release %@"
+          }
         }
       }
     },
@@ -222,7 +228,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "单指沿拇指一侧边缘上下滑"
+            "value" : "单指沿拇指侧的屏幕边缘上下滑动"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slide one finger along the edge on your thumb’s side"
           }
         }
       }
@@ -252,7 +264,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按着 Ctrl 捏合"
+            "value" : "按住 Ctrl 捏合"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold Ctrl and pinch"
           }
         }
       }
@@ -262,7 +280,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按着 ⌘ 捏合"
+            "value" : "按住 ⌘ 捏合"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold ⌘ and pinch"
           }
         }
       }
@@ -342,7 +366,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在光标处滚动"
+            "value" : "在指针处滚动"
           }
         }
       }
@@ -389,7 +413,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "两指滑动可滚动 · 按着 Ctrl 捏合缩放电脑上的内容"
+            "value" : "两指滑动可滚动 · 按住 Ctrl 双指捏合可缩放内容"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Two fingers scroll · Hold Ctrl and pinch to zoom"
           }
         }
       }
@@ -399,7 +429,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "两指滑动可滚动 · 按着 ⌘ 捏合缩放 Mac 上的内容"
+            "value" : "两指滑动可滚动 · 按住 ⌘ 双指捏合可缩放内容"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Two fingers scroll · Hold ⌘ and pinch to zoom"
           }
         }
       }
@@ -429,7 +465,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "横屏收起按键后，esc、删除和回车留在拇指边。"
+            "value" : "横屏隐藏按键时，仍显示 esc、删除和回车。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In landscape, esc, delete and return stay visible when the keys are hidden."
           }
         }
       }
@@ -479,7 +521,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ctrl：⌘C 拷贝、⌘V 粘贴，和在 Mac 上一样。Control 也是 Ctrl，Option 是 Alt。"
+            "value" : "选择 Ctrl 时，⌘C 为拷贝，⌘V 为粘贴。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With Ctrl, ⌘C copies and ⌘V pastes."
           }
         }
       }
@@ -489,7 +537,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 没有允许这台 iPhone。"
+            "value" : "%@ 未允许这台 iPhone。"
           }
         }
       }
@@ -539,7 +587,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "画面不动时不用流量。网络差时画质会自动降低，画面一停下文字就会变清晰。"
+            "value" : "网络不佳时会自动降低画质。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quality is lowered automatically on a poor network."
           }
         }
       }
@@ -629,7 +683,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所有窗口、App 窗口"
+            "value" : "上滑显示所有窗口，下滑显示 App 窗口"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up for all windows, down for app windows"
           }
         }
       }
@@ -639,7 +699,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上 Blurt 的设置里允许这台 iPhone，确认两边的数字都是 %@。"
+            "value" : "如果电脑显示相同的数字 %@，请在电脑上点「允许」。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If the computer shows the same digits, %@, click Allow on it."
           }
         }
       }
@@ -669,7 +735,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另一台手机正在用"
+            "value" : "另一台手机已连接"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another phone is connected"
           }
         }
       }
@@ -729,7 +801,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连续移动，越远越快"
+            "value" : "重复该方向键，滑得越远越快"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repeats the arrow. Slide farther to go faster."
           }
         }
       }
@@ -739,7 +817,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每分钟最多约 30 MB，30 帧"
+            "value" : "每分钟最多约 30 MB"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to about 30 MB a minute"
           }
         }
       }
@@ -749,7 +833,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每分钟最多约 8 MB，15 帧"
+            "value" : "每分钟最多约 8 MB"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to about 8 MB a minute"
           }
         }
       }
@@ -759,7 +849,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每分钟最多约 90 MB，同一网络下 60 帧"
+            "value" : "每分钟最多约 90 MB，同一网络下更流畅"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to about 90 MB a minute, smoother on the same network"
           }
         }
       }
@@ -789,7 +885,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "反向 Tab"
+            "value" : "上一个输入框"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous Field"
           }
         }
       }
@@ -839,7 +941,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上"
+            "value" : "无法连接"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t connect"
           }
         }
       }
@@ -860,6 +968,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更换按键功能"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Action"
           }
         }
       }
@@ -919,7 +1033,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接点击手指所在位置"
+            "value" : "点按手指所在位置"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clicks where you tap"
           }
         }
       }
@@ -949,7 +1069,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "命令"
+            "value" : "Command"
           }
         }
       }
@@ -970,6 +1090,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "补全"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autocomplete"
           }
         }
       }
@@ -1029,7 +1155,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已连接，经过中转"
+            "value" : "已连接 · 自建中转"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected · Own relay"
           }
         }
       }
@@ -1130,6 +1262,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除到行首"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete to Line Start"
           }
         }
       }
@@ -1279,7 +1417,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找到光标"
+            "value" : "查找指针"
           }
         }
       }
@@ -1370,6 +1508,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "按住滑动以逐项切换"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold and slide to switch"
           }
         }
       }
@@ -1579,7 +1723,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "竖屏时把说话键和方向键移到另一侧。横屏时把手机转过来即可。"
+            "value" : "将说话键和方向键移到另一侧。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moves the talk and arrow keys to the other side."
           }
         }
       }
@@ -1589,7 +1739,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将说话键移到另一角，横屏时按键移到右侧。"
+            "value" : "将说话键和方向键移到另一侧。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moves the talk and arrow keys to the other side."
           }
         }
       }
@@ -1669,7 +1825,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下一标签（终端里用 Ctrl+PgDn）"
+            "value" : "下一标签页（终端中用 Ctrl+PgDn）"
           }
         }
       }
@@ -1679,7 +1835,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下一标签（终端里用 ⌘⇧]）"
+            "value" : "下一标签页（终端中用 ⌘⇧]）"
           }
         }
       }
@@ -1709,7 +1865,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不在当前网络"
+            "value" : "其他网络"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On another network"
           }
         }
       }
@@ -1751,6 +1913,12 @@
             "state" : "translated",
             "value" : "关闭后使用 Mac 的麦克风。"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When this is off, your Mac’s microphone is used."
+          }
         }
       }
     },
@@ -1761,6 +1929,12 @@
             "state" : "translated",
             "value" : "关闭后使用电脑的麦克风。"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When this is off, your computer’s microphone is used."
+          }
         }
       }
     },
@@ -1769,7 +1943,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 %@ 上弹出询问时，允许 Blurt 控制电脑（远程桌面）。"
+            "value" : "在 %@ 上出现提示时，请允许口喷鸡控制电脑。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When %@ asks, allow Blurt to control the computer."
           }
         }
       }
@@ -1779,7 +1959,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 %@ 上弹出询问时，允许 Blurt 共享屏幕。"
+            "value" : "在 %@ 上出现提示时，请允许口喷鸡共享屏幕。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When %@ asks, allow Blurt to share the screen."
           }
         }
       }
@@ -1799,7 +1985,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 画面上，轻点、滚动和拖移作用于手指所在位置。关闭后作用于光标所在位置，与触控板相同。"
+            "value" : "直接在 Mac 画面上轻点、滚动和拖移。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap, scroll and drag directly on the Mac’s screen."
           }
         }
       }
@@ -1809,7 +2001,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑画面上，轻点、滚动和拖移作用于手指所在位置。关闭后作用于光标所在位置，与触控板相同。"
+            "value" : "直接在电脑画面上轻点、滚动和拖移。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap, scroll and drag directly on the computer’s screen."
           }
         }
       }
@@ -1819,7 +2017,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在当前网络"
+            "value" : "同一网络"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Same network"
           }
         }
       }
@@ -1829,7 +2033,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 的系统设置里给 Blurt 打开辅助功能。"
+            "value" : "请在 Mac 的「系统设置」中允许口喷鸡使用辅助功能。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On your Mac, allow Accessibility for Blurt in System Settings."
           }
         }
       }
@@ -1839,7 +2049,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 的系统设置里给 Blurt 打开屏幕录制。"
+            "value" : "请在 Mac 的「系统设置」中允许口喷鸡录制屏幕。"
           }
         }
       }
@@ -1849,7 +2059,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上打开 Blurt 的「远程控制」页，点「添加设备…」。"
+            "value" : "在电脑上打开口喷鸡的「远程控制」页，点「添加设备…」。"
           }
         }
       }
@@ -1859,7 +2069,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "触控模式下放大后单指拖动"
+            "value" : "触控模式下放大后，单指拖动"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag with one finger while zoomed in, in Touch Mode"
           }
         }
       }
@@ -1989,7 +2205,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "光标速度"
+            "value" : "指针速度"
           }
         }
       }
@@ -1999,7 +2215,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "放大时移动光标"
+            "value" : "放大后移动指针"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move the pointer while zoomed in"
           }
         }
       }
@@ -2069,7 +2291,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重排"
+            "value" : "更改风格"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Style"
           }
         }
       }
@@ -2249,7 +2477,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在光标处滚动，轻点为右键"
+            "value" : "滑动可滚动，轻点为右键点按"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slide to scroll, tap to right-click"
           }
         }
       }
@@ -2299,7 +2533,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 上 Blurt 的设置里修改。你的所有 Mac 可以共用一个。"
+            "value" : "在 Mac 上的口喷鸡设置中修改。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change it in Blurt’s Settings on the Mac."
           }
         }
       }
@@ -2309,7 +2549,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在电脑上 Blurt 的设置里修改。你的所有电脑可以共用一个。"
+            "value" : "在电脑上的口喷鸡设置中修改。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change it in Blurt’s Settings on the computer."
           }
         }
       }
@@ -2339,7 +2585,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "同一网络下最清晰，用流量时自动节省"
+            "value" : "使用移动数据时节省流量"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses less data on mobile networks"
           }
         }
       }
@@ -2359,7 +2611,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 上的 Blurt 设置已关闭屏幕显示。"
+            "value" : "若要查看屏幕，请在 %@ 的口喷鸡设置中允许。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To see the screen, allow it in Blurt’s Settings on %@."
           }
         }
       }
@@ -2369,7 +2627,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mac 上的 Blurt 设置已关闭屏幕显示。"
+            "value" : "若要查看屏幕，请在 Mac 的口喷鸡设置中允许。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To see the screen, allow it in Blurt’s Settings on your Mac."
           }
         }
       }
@@ -2390,6 +2654,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "小字"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Small Text"
           }
         }
       }
@@ -2459,7 +2729,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "前后切换"
+            "value" : "逐项向前或向后切换"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moves through items, forward or back"
           }
         }
       }
@@ -2539,7 +2815,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按住时收音"
+            "value" : "按住说话，松开结束"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold to talk, release to finish"
           }
         }
       }
@@ -2549,7 +2831,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "说话：轻点两下"
+            "value" : "说话：双击"
           }
         }
       }
@@ -2589,7 +2871,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "点一台电脑即可切换。在主界面长按设置按钮，不用进这里也能切换。"
+            "value" : "轻点以切换电脑。在主界面长按设置按钮也可切换。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap a computer to switch to it. You can also hold the settings button on the main screen."
           }
         }
       }
@@ -2679,7 +2967,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按对应方向，按住连发"
+            "value" : "按对应的方向键，按住可重复"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Presses that arrow. Hold to repeat."
           }
         }
       }
@@ -2699,7 +2993,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "画面跟随光标"
+            "value" : "画面跟随指针"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The picture follows the pointer"
           }
         }
       }
@@ -2709,7 +3009,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 最前面的窗口以管理员身份运行，Blurt 无法操作它。"
+            "value" : "无法控制 %@ 上以管理员身份运行的窗口。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t control a window running as administrator on %@."
           }
         }
       }
@@ -2719,7 +3025,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这不是 Blurt 的二维码。"
+            "value" : "这不是口喷鸡的二维码。"
           }
         }
       }
@@ -2779,7 +3085,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "之后要用，重新扫码配对即可。"
+            "value" : "若要再次使用，请重新扫码配对。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To use it again, pair it again."
           }
         }
       }
@@ -2939,7 +3251,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本次已用"
+            "value" : "本次流量"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data Used This Session"
           }
         }
       }
@@ -2949,7 +3267,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用你的中转"
+            "value" : "使用自建中转"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses your own relay"
           }
         }
       }
@@ -2989,7 +3313,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有中转时，只能在这台 Mac 所在的网络下连接。可在 Mac 上 Blurt 的设置里填写。"
+            "value" : "若要从其他网络稳定连接，请在 Mac 上设置自建中转。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To connect reliably from other networks, set up your own relay on the Mac."
           }
         }
       }
@@ -2999,7 +3329,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有中转时，只能在这台电脑所在的网络下连接。可在电脑上 Blurt 的设置里填写。"
+            "value" : "若要从其他网络稳定连接，请在电脑上设置自建中转。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To connect reliably from other networks, set up your own relay on the computer."
           }
         }
       }
@@ -3050,6 +3386,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在转写"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transcribing"
           }
         }
       }
@@ -3169,7 +3511,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上 %@"
+            "value" : "无法连接 %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t connect to %@"
           }
         }
       }
@@ -3189,7 +3537,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认 Blurt 在运行，两台设备在同一网络。\n要在外面连，先在电脑上设置中转。"
+            "value" : "请确认电脑未睡眠，且口喷鸡正在运行。\n若要从其他网络稳定连接，请在电脑上设置自建中转。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check that the computer isn’t asleep and Blurt is running. To connect reliably from other networks, set up your own relay on the computer."
           }
         }
       }
@@ -3199,7 +3553,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认电脑没有进入睡眠，Blurt 在运行。"
+            "value" : "请确认电脑未睡眠，且口喷鸡正在运行。"
           }
         }
       }
@@ -3229,7 +3583,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "配对没有成功"
+            "value" : "配对失败"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pairing failed"
           }
         }
       }
@@ -3250,6 +3610,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
           }
         }
       }
@@ -3279,7 +3645,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点这里，换成这台手机。"
+            "value" : "轻点以使用这台手机。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to use this phone."
           }
         }
       }
@@ -3319,17 +3691,23 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "对方的自建中转无响应，正在改用公共连接服务…"
+            "value" : "自建中转无响应，正在重新连接…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your relay isn’t responding. Reconnecting…"
           }
         }
       }
     },
-    "Someone at %@ ended the connection." : {
+    "%@ ended the connection." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 那边断开了连接。"
+            "value" : "%@ 断开了连接。"
           }
         }
       }
@@ -3339,12 +3717,18 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "轻点这里重新连接。"
+            "value" : "轻点以重新连接。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap to reconnect."
           }
         }
       }
     },
-    "Ended at the computer" : {
+    "Ended by the computer" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3451,6 +3835,12 @@
             "state" : "translated",
             "value" : "免费，不保证可用。无法直连时，请设置自建中转。"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Free, with no guarantee. If a network can’t connect directly, set up your own relay."
+          }
         }
       }
     },
@@ -3459,7 +3849,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这个二维码已过期或已被用过。"
+            "value" : "此二维码已过期或已使用。"
           }
         }
       }
@@ -3469,17 +3859,17 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在 %@ 上打开“添加设备”，扫描它现在显示的二维码。"
+            "value" : "请在 %@ 上打开「添加设备」，扫描它当前显示的二维码。"
           }
         }
       }
     },
-    "No one answered on %@ in time." : {
+    "%@ didn’t answer in time." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 那边没有人及时回应。"
+            "value" : "%@ 未及时回应。"
           }
         }
       }
@@ -3489,7 +3879,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "口喷鸡离开了屏幕，配对已停止。"
+            "value" : "配对已停止，请重新扫码。"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pairing stopped. Scan the code again."
           }
         }
       }
@@ -3499,7 +3895,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上 %@。"
+            "value" : "无法连接 %@。"
           }
         }
       }
@@ -3519,7 +3915,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确认两台设备在同一网络；要在外面连，先在电脑上设置中转。"
+            "value" : "请确认两台设备在同一网络；要从其他网络连接，请先在电脑上设置自建中转。"
           }
         }
       }

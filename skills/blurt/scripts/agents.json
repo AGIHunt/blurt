@@ -9,7 +9,7 @@
       "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools",
               "Bash(uv run {scripts}/transcribe.py:*)", "Bash(uv run {scripts}/frames.py:*)", "Bash(uv run {scripts}/items.py:*)",
               "Bash(uv run {scripts}/projects.py list:*)", "Bash(uv run {scripts}/index.py search:*)", "Read", "Glob", "Grep", "mcp__blurt"],
-      "fix": {"zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"},
+      "fix": {"zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal, then type /login"},
       "install": {"zh": "curl -fsSL https://claude.ai/install.sh | bash", "en": "curl -fsSL https://claude.ai/install.sh | bash"},
       "version": ["--version"], "events": {"args": ["--output-format", "stream-json", "--verbose"], "format": "claude-stream-json"},
       "skill_dir": "~/.claude/skills",
@@ -84,7 +84,7 @@
               "run_shell_command(uv run {scripts}/transcribe.py)", "run_shell_command(uv run {scripts}/frames.py)",
               "run_shell_command(uv run {scripts}/items.py)", "run_shell_command(uv run {scripts}/projects.py list)",
               "run_shell_command(uv run {scripts}/index.py search)"],
-      "fix": {"zh": "在终端运行 gemini 登录一次（或设置 GEMINI_API_KEY）", "en": "run `gemini` once in a terminal to sign in (or set GEMINI_API_KEY)"},
+      "fix": {"zh": "在终端运行 gemini 并登录", "en": "run `gemini` in a terminal and sign in"},
       "install": {"zh": "npm i -g @google/gemini-cli", "en": "npm i -g @google/gemini-cli"},
       "version": ["--version"], "events": {"args": ["--output-format", "stream-json"], "format": "gemini-stream-json"},
       "skill_dir": "~/.agents/skills",
@@ -137,7 +137,7 @@
       "app_verified": "unverified",
       "drop": "composer", "site": "https://www.workbuddy.ai/",
       "install": {"zh": "见 workbuddy.ai", "en": "see workbuddy.ai"},
-      "after": {"zh": "在 WorkBuddy AI 里打开 连接器 → blurt，点「信任」，然后新开一个对话。", "en": "In WorkBuddy AI, open Connectors → blurt, click Trust, then start a new chat."},
+      "after": {"zh": "在 WorkBuddy AI 中打开「连接器」→「blurt」，点击「信任」，然后新建对话。", "en": "In WorkBuddy AI, open Connectors → blurt, click Trust, then start a new chat."},
       "skill_dir": "~/.workbuddy-ai/skills",
       "mcp": {"json": {"path": "~/.workbuddy-ai/mcp.json", "key": ["mcpServers", "blurt"],
                        "value": {"command": "{uv}", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
@@ -166,7 +166,7 @@
       "drop": "composer", "site": "https://qoder.com",
       "install": {"zh": "见 qoder.com", "en": "see qoder.com"},
       "skill_dir": "~/.qoderwork/skills",
-      "fix": {"zh": "在 QoderWork 的设置里添加 MCP，粘贴「其他 Agent…」里的配置", "en": "add the MCP server in QoderWork's settings with the setup from Other Agent…"}
+      "fix": {"zh": "在口喷鸡「设置 > Agent > 其他 Agent…」中复制 MCP 服务的配置，添加到 QoderWork 的设置中", "en": "Copy the MCP server setup from Blurt Settings > Agents > Other Agent…, then add it in QoderWork's settings"}
     },
     {
       "id": "trae", "name": "Trae", "bins": [], "verified": "local", "headless": false,
@@ -174,7 +174,7 @@
       "drop": "terminal", "site": "https://www.trae.ai",
       "install": {"zh": "见 trae.ai", "en": "see trae.ai"},
       "skill_dir": "~/.trae/skills",
-      "fix": {"zh": "在 Trae 的 设置 → MCP → 手动添加 里粘贴「其他 Agent…」里的配置", "en": "in Trae, Settings → MCP → Add Manually, paste the setup from Other Agent…"}
+      "fix": {"zh": "在口喷鸡「设置 > Agent > 其他 Agent…」中复制 MCP 服务的配置，粘贴到 Trae 的「设置」→「MCP」→「手动添加」", "en": "Copy the MCP server setup from Blurt Settings > Agents > Other Agent…, then paste it in Trae under Settings > MCP > Add Manually"}
     },
     {
       "id": "trae-cn", "name": "Trae CN", "bins": [], "verified": "local", "headless": false,
@@ -182,7 +182,7 @@
       "drop": "terminal", "site": "https://www.trae.cn",
       "install": {"zh": "见 trae.cn", "en": "see trae.cn"},
       "skill_dir": "~/.trae-cn/skills", "skill_verified": "unverified",
-      "fix": {"zh": "在 Trae 的 设置 → MCP → 手动添加 里粘贴「其他 Agent…」里的配置", "en": "in Trae, Settings → MCP → Add Manually, paste the setup from Other Agent…"}
+      "fix": {"zh": "在口喷鸡「设置 > Agent > 其他 Agent…」中复制 MCP 服务的配置，粘贴到 Trae CN 的「设置」→「MCP」→「手动添加」", "en": "Copy the MCP server setup from Blurt Settings > Agents > Other Agent…, then paste it in Trae CN under Settings > MCP > Add Manually"}
     },
     {
       "id": "windsurf", "name": "Windsurf", "bins": [], "verified": "docs", "headless": false,
@@ -219,36 +219,36 @@
     {
       "id": "zcode", "name": "ZCode", "bins": [], "verified": "unverified", "headless": false,
       "app": {"macos": ["/Applications/ZCode.app"]},
-      "fix": {"zh": "在 ZCode 设置 → Skills / MCP 里手动导入 blurt", "en": "in ZCode Settings → Skills / MCP, import blurt by hand"},
+      "fix": {"zh": "在口喷鸡「设置 > Agent > 其他 Agent…」中复制口喷鸡技能和 MCP 服务的配置，添加到 ZCode 的「设置」→「Skills / MCP」", "en": "Copy the Blurt skill and MCP server setup from Blurt Settings > Agents > Other Agent…, then add them in ZCode under Settings > Skills / MCP"},
       "install": {"zh": "见 zcode.z.ai", "en": "see zcode.z.ai"}
     }
   ],
   "failures": [
-    {"id": "skill", "short": {"zh": "找不到 skill", "en": "skill not found"},
-     "reason": {"zh": "{name} 找不到 blurt skill：在终端运行 record.py build 重新登记一次", "en": "{name} couldn't find the blurt skill: run record.py build once to register it"},
+    {"id": "skill", "short": {"zh": "找不到技能", "en": "skill not found"},
+     "reason": {"zh": "{name} 找不到口喷鸡技能。请重新打开口喷鸡后重试", "en": "{name} couldn't find the Blurt skill. Reopen Blurt, then try again"},
      "patterns": ["unknown skill", "skill[^\\n]{0,40}(not found|not available|not installed|doesn't exist|does not exist)", "no such skill",
                   "SKILL\\.md[^\\n]{0,60}(no such file|not found|does not exist)", "找不到[^\\n]{0,12}skill"]},
     {"id": "model", "short": {"zh": "模型不可用", "en": "model unavailable"},
-     "reason": {"zh": "{name} 设置的模型不存在或没有权限：检查它的模型设置", "en": "{name}'s model doesn't exist or isn't allowed: check its model setting"},
+     "reason": {"zh": "{name} 的模型不可用。请选择其他模型", "en": "{name}'s model isn't available. Choose another model"},
      "patterns": ["model[^\\n]{0,60}(not found|does not exist|not available|is not supported|unsupported|not exist)", "(unknown|invalid|unsupported) model",
                   "model_not_found", "no such model", "^\\s*error: not found\\s*$"]},
-    {"id": "auth", "short": {"zh": "登录失效", "en": "login expired"},
-     "reason": {"zh": "{name} 登录失效了：{fix}", "en": "{name}'s login has expired: {fix}"},
+    {"id": "auth", "short": {"zh": "登录已失效", "en": "sign-in expired"},
+     "reason": {"zh": "{name} 的登录已失效：{fix}", "en": "{name}'s sign-in has expired: {fix}"},
      "patterns": ["not logged in", "please run /login", "(invalid|expired|revoked)[^\\n]{0,30}(api[ _-]?key|token|grant|credential|session)",
                   "authorization grant is invalid", "no credential configured", "authentication (failed|error|required)", "unauthori[sz]ed", "\\b401\\b",
                   "token (has )?expired", "login (required|expired)", "re-?authenticate", "invalid x-api-key"]},
-    {"id": "quota", "short": {"zh": "额度 / 限流", "en": "quota / rate limit"},
-     "reason": {"zh": "{name} 额度用完了或被限流，过一会儿再整理", "en": "{name} hit a rate limit or ran out of quota — try again later"},
+    {"id": "quota", "short": {"zh": "额度已用完或请求过多", "en": "out of quota or busy"},
+     "reason": {"zh": "{name} 的额度已用完或请求过多。请稍后重试", "en": "{name} is out of quota or busy. Try again later"},
      "patterns": ["rate[ _-]?limit", "\\b429\\b", "quota", "usage limit", "credit balance is too low", "insufficient[_ ]quota",
                   "too many requests", "out of credits", "limit reached", "overloaded", "\\b529\\b"]},
     {"id": "network", "short": {"zh": "网络", "en": "network"},
-     "reason": {"zh": "连不上 {name} 的服务：检查网络 / 代理后再整理", "en": "couldn't reach {name}'s servers: check the network / proxy and try again"},
+     "reason": {"zh": "无法连接 {name}。请检查网络后重试", "en": "Can't connect to {name}. Check your network and try again"},
      "patterns": ["enotfound", "econnrefused", "econnreset", "etimedout", "getaddrinfo", "network (error|is unreachable)",
                   "connection (error|refused|reset|timed out|closed)", "could not resolve host", "fetch failed", "unable to connect",
                   "stream disconnected", "certificate verify failed", "(ssl|tls) (error|handshake)",
                   "dns error", "failed to lookup address", "error sending request", "nodename nor servname", "os error 5[01]\\b"]},
-    {"id": "outdated", "short": {"zh": "版本太旧", "en": "outdated"},
-     "reason": {"zh": "{name} 的版本太旧，没能启动。在终端里更新它，再检查一次：{fix}", "en": "{name} is too old to start here. Update it in a terminal, then check again: {fix}"},
+    {"id": "outdated", "short": {"zh": "版本过旧", "en": "outdated"},
+     "reason": {"zh": "{name} 的版本过旧。请更新后重试", "en": "{name} is out of date. Update it, then try again"},
      "patterns": ["timed out discarding buffered terminal input"]}
   ]
 }

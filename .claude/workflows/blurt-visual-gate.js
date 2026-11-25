@@ -148,6 +148,7 @@ Judges' problems and directions (round ${round}):
 ${brief}
 Fix, in order: real defects (cut off, overlapping, unreadable, wrong or misleading state, inconsistent wording); then problems two judges agree on, with modest changes. Skip one judge's taste notes, big restructures and new features. Keep every function; move rare settings behind disclosure, hover or a detail view instead of deleting them.
 Follow docs/design/system.md and docs/design/copy.md and Mac conventions. Copy must be plain, with no coined terms, in zh and en. Touch only this page's files and its strings.
+Copy: write each language as its own short System Settings sentence (no 那边/这边, no literal translation), then run \`python3 tools/copy-check.py\` and read every line it prints; it must pass.
 Then:
 1. Run swift build and the swift tests for the files you touched.
 2. Run uv run pytest tests -q -k "l10n or strings or icons".

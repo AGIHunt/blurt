@@ -492,7 +492,7 @@ fn key_label(k: Key) -> String {
 /// A take's cue: the start's peep (`sounds`, on unless turned off), the stop's and the cancel's peck (`stop_sound`,
 /// off unless turned on; the Mac's DictationSound) — `on` says which switch. Never while a recording runs (it would be
 /// in it).
-/// "… stays on in WeChat · Shift to switch back" / "As last time in WeChat: …": the line for what was remembered
+/// "Structured stays on in WeChat · double-tap Shift … to turn off" / "Structured is on in WeChat · …": the line for what was remembered
 /// (`prefix` .structured / .translate / .both), with the keys that switch it.
 fn remembered_line(prefix: &str, structured: bool, translated: bool) -> Option<(&'static str, &'static str)> {
     let saved = prefix.ends_with("saved");
@@ -1188,6 +1188,12 @@ impl Engine {
         } else {
             say(&self.app, "dictation.style.toast.back", json!({"style": style_name(to)}), keys::STYLE, 3000, None, false);
         }
+    }
+
+    /// How the keys of remembered_line are pressed, as the settings say ("double-tap Shift").
+    fn press_of(&self, keys: &str) -> String {
+        let tap = if keys == "Ctrl" { self.prefs.modifier_tap_command } else { self.prefs.modifier_tap_shift };
+        modifier_press(keys, tap == super::trigger::ModifierTap::Double)
     }
 
     /// What Ctrl did, the first two times it turned translate on (the Mac's DictationTranslateHint): which way it
@@ -2301,7 +2307,7 @@ impl Engine {
             return;
         }
         let _ = super::commands::set_dictation("remember_hint_shown", json!(shown + 1));
-        say(&self.app, msg, json!({"app": d.start_app_name, "keys": keys_}), keys::NOTICE, 4000, None, false);
+        say(&self.app, msg, json!({"app": d.start_app_name, "press": self.press_of(keys_)}), keys::NOTICE, 4000, None, false);
     }
 
     /// A take starts with something remembered and the app was quiet for an hour (or not used since launch): say so,
@@ -2324,7 +2330,7 @@ impl Engine {
         }
         let Some((msg, keys_)) = remembered_line("dictation.remember.kept", structured, translate) else { return };
         self.last_take_in.insert(app.to_string(), Instant::now());
-        say(&self.app, msg, json!({"app": name, "keys": keys_}), keys::STYLE, 4000, None, false);
+        say(&self.app, msg, json!({"app": name, "press": self.press_of(keys_)}), keys::STYLE, 4000, None, false);
     }
 
     /// The once-a-day notices after a typed take: cloud polish's key refused, a weaker speech model than the

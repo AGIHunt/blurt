@@ -1289,8 +1289,29 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
 - says which mic when nothing was heard: "Didn't catch anything (AirPods) · Change Mic…", or "No sound from AirPods"
   when the level never left the floor the whole take (muted, the wrong input, a headset still connecting —
   `BlurtCore/NothingHeard`); Change Mic… opens Settings → Dictation's microphone;
-- uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
-  Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
+- uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM. **Priority: the speech server's**
+  (`asr.limits.priority.note`, user-initiated, since 2026-11-26; `polish.py run` and `eval` stay at utility / nice 10;
+  `record.dictation.polish_priority` overrides). It was utility + nice 10, on a measurement that held on an idle Mac
+  only (108 vs 118 ms median: "the work is on the GPU"): each token also needs a CPU turn to be queued, and with the
+  cores taken (a build, a simulator booting) a utility process gets almost none. The founder's take that showed it
+  (00:48, an `xcodebuild test` booting a simulator, load average ~25 on 18 cores, 31 s said): 8.95 s from key-up, the
+  speech server (user-initiated) 2.1 s, Light 4.8 s, structuring 1.7 s; the load had started on the key-down and was
+  not the wait (`load_ms` 683, some of it while talking). Of 47 Structured takes over 5 s in 21 days, 4 came after the
+  10-minute idle exit. That take's text (130 characters) on an M5 Max, the machine as it was otherwise, spinning
+  processes as the load:
+
+  | | utility + nice 10 | user-initiated |
+  |---|---:|---:|
+  | through `serve`, no load: Light / structure | 0.57–0.60 / 0.56–0.58 s | 0.58–0.60 / 0.56 s |
+  | through `serve`, 18 spinning: Light | 8.6, 9.8 s | 0.67, 0.72 s |
+  | through `serve`, 18 spinning: structure | 7.8, 11.9 s | 0.76, 0.83 s |
+  | the engine alone, 18 spinning: Light, first | 13.5, 17.7 s | 1.0, 1.2 s |
+  | the engine alone, 30 spinning: Light, first | 10.3, 20.6 s | 1.7, 2.8 s |
+  | cold load, no load / 24 spinning | 3.1 s / until the load ended (42–44 s) | 2.9 s / 5.6–8.9 s |
+
+  (The utility numbers under load are cut by the load's own end, 20–45 s: without it they would be longer.) **It does
+  nothing for a busy GPU** (another app rendering, 2026-11-23: warm takes of 10–23 s); that is what "Still polishing ·
+  Type Now" is for.
 
 ### Cloud polish (v1.0.4)
 
@@ -1617,6 +1638,15 @@ polish above — stays the default everywhere and never restructures. Which styl
   measured, not kept: feeding the last piece to the structuring pass as heard (skipping its Light window) saved
   ~120 ms after key-up but resolved fewer corrections (25 vs 28 of 34 on one round) — the model had to tidy and
   structure at once.
+- **One local call instead of two, tried again and not kept** (2026-11-26). Both steps are the same model (Gemma 4 E2B);
+  since windows are 30 s a shorter take has all of Light after key-up, so one call would save it. Prototype: the cloud's
+  `structure_light` prompt with Light's and Structured's examples, its prefix cached, a refusal falling back to two calls.
+  On 80 of the founder's Structured takes of 6–34 s (an idle M5 Max, the history's raw text): 676 → 344 ms median,
+  1175 → 863 p90, refused by the guard 4 → 5. 42 came out identical; on the other 38 one blind judge: two calls 9, one
+  call 8, 21 ties — but of the serious faults, 6 each, one call's were all lost words (an instruction, a topic),
+  two calls' 2. On the 8 structured fixtures: self-corrections 8 → 7 (zh-05 left both days in), and sentences
+  without their punctuation (zh-06, en-03, mix-10). The structuring prompt alone in one call left 26 fillers where
+  two calls leave 8 of the 46-case set. 0.3 s isn't worth lost words; the priority above was the wait.
 - **With cloud polish: one call at key-up** (2026-11-12; `DictationStream.lightInStructure`, `polish.py`
   `structure_light_system`, cloud mode `structure_light`). In the cloud the two serial calls cost a second, not 120 ms:
   on the founder's Structured takes in Claude (DeepSeek Flash), key-up waited for the last window's Light (~1 s) and
@@ -2563,7 +2593,7 @@ never touched.
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
 | `sounds` | `true`: the peep / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
-| `polish_priority` | `utility` |
+| `polish_priority` | unset: the speech server's (`asr.limits.priority.note`, user-initiated) for `polish.py serve`, `utility` for its CLI runs |
 | `retention_days` | `30` |
 | `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |

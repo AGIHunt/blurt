@@ -7,14 +7,14 @@
 "speech.section.models" = "全部模型";
 "speech.section.advanced" = "高级";
 "speech.loading" = "正在检查本机…";
-"speech.error.read" = "读取语音模型失败。";
-"speech.error.no_uv" = "本机模型需要 uv（运行本机模型的工具），但还没有安装。";
-"speech.install_uv" = "安装 uv";
-"speech.error.offline" = "读取语音模型失败：这台 Mac 没有联网，联网后再试。";
-"speech.error.network" = "读取语音模型失败：下载组件时网络出错。";
-"speech.error.timeout" = "读取语音模型超时。";
-"speech.error.build" = "语音组件安装失败：%@ 编译失败。";
-"speech.error.build_missing" = "语音组件安装失败：%@ 编译失败（缺少 %@）。";
+"speech.error.read" = "无法加载语音模型。";
+"speech.error.no_uv" = "若要使用本机模型，请先安装语音工具。";
+"speech.install_uv" = "安装语音工具";
+"speech.error.offline" = "无法加载语音模型。请连接网络后重试。";
+"speech.error.network" = "无法加载语音模型。请检查网络后重试。";
+"speech.error.timeout" = "加载语音模型超时。";
+"speech.error.build" = "无法安装语音组件 %@。";
+"speech.error.build_missing" = "无法安装语音组件 %@。请安装 %@ 后重试。";
 "speech.error.copy" = "复制错误信息";
 "speech.error.copied" = "已复制";
 "speech.cancel" = "取消";
@@ -32,15 +32,15 @@
 
 /* Automatic choice and the jobs */
 "speech.purpose.batch" = "录屏";
-"speech.purpose.batch.detail" = "录完后转写，准确优先。";
+"speech.purpose.batch.detail" = "录屏结束后转写，更准确。";
 "speech.purpose.live" = "实时字幕";
-"speech.purpose.live.detail" = "录屏时同步转写，停止后即有文字稿。";
+"speech.purpose.live.detail" = "录屏时显示实时字幕。";
 "speech.purpose.note" = "语音备注";
 "speech.purpose.note.detail" = "截图备注和语音备注，速度优先。";
 "speech.purpose.dictation" = "听写";
-"speech.purpose.dictation.detail" = "在光标处输入语音转写的文字。";
+"speech.purpose.dictation.detail" = "将你说的话输入到光标处。";
 "speech.purpose.polish" = "听写润色";
-"speech.purpose.polish.detail" = "整理标点、口头禅和列表。";
+"speech.purpose.polish.detail" = "去掉口头禅，添加标点，并整理列表。";
 "speech.purpose.polish.unsupported" = "需要 Apple 芯片";
 "speech.purpose.none_yet" = "暂无";
 "speech.purpose.downloading" = "%@ · 正在下载";
@@ -55,14 +55,14 @@
 "speech.rec.downloading" = "正在下载 %@";
 
 /* The library row and sheet */
-"speech.manage.detail" = "各模型在你所用语言上的准确率和速度。已下载 %@。";
-"speech.manage.detail.none" = "各模型在你的语言上的准确率和速度。";
+"speech.manage.detail" = "比较各模型的准确率和速度。已下载 %@。";
+"speech.manage.detail.none" = "比较各模型的准确率和速度。";
 "speech.manage.button" = "管理模型…";
 "speech.lib.recognition" = "语音识别";
 "speech.lib.col.model" = "模型";
 "speech.lib.col.used" = "说明";
 "speech.lib.done" = "完成";
-"speech.lib.note" = "准确率按%@计算，来自 Apple M5 Max 上的参考测试。";
+"speech.lib.note" = "%@的准确率，在 Apple M5 Max 上测试。";
 "speech.lib.note.measured" = "表示在本机实测的数值。";
 "speech.lib.dash" = "暂无你所用语言的数据。";
 "speech.lib.dash.installed" = "暂无你所用语言的数据。可在该行菜单中选择「实测」。";
@@ -75,7 +75,7 @@
 "speech.metric.accuracy.help" = "识别正确的字词比例，按你的语言取平均。";
 "speech.metric.speed" = "速度";
 "speech.metric.speed.value" = "%@×";
-"speech.metric.speed.help" = "比实时快多少倍。";
+"speech.metric.speed.help" = "转写比播放快多少倍。";
 "speech.metric.memory" = "内存";
 "speech.metric.memory.help" = "模型运行时占用的内存。";
 "speech.metric.size" = "大小";
@@ -87,7 +87,7 @@
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo，用 NVIDIA GPU 运行。";
 "speech.note.qwen3_cpu" = "支持三十种语言，用 CPU 运行，适用于任何电脑。";
 "speech.note.qwen3_mlx" = "用 GPU 运行，速度快，支持词库。";
-"speech.note.qwen3_mlx_17" = "更大的 Qwen3-ASR：专有名词和嘈杂环境下更准确，每句慢约 25 毫秒。";
+"speech.note.qwen3_mlx_17" = "专有名词和嘈杂环境下更准确，速度稍慢。";
 "speech.note.fun_asr" = "中文、英文、日文，用 GPU 运行，支持词库。";
 "speech.note.cloud" = "云端语音识别的模型和音频速度。";
 "speech.note.apple" = "macOS 26 自带，无需下载；专有名词不如 Qwen3-ASR 准";
@@ -110,7 +110,7 @@
 "speech.remove.message" = "%1$@ · %2$@。之后可随时重新下载。";
 "speech.remove.confirm" = "移到废纸篓";
 "speech.remove.menu" = "移到废纸篓…";
-"speech.model.other" = "已不在列表里的模型";
+"speech.model.other" = "其他模型";
 "speech.model.picked_not_in" = "下载后用于%@";
 
 /* Languages */
@@ -122,12 +122,12 @@
 "speech.advanced.language.detail" = "每句自动识别语言，或固定用一种。";
 "speech.advanced.language.auto" = "自动检测";
 "speech.advanced.language.auto.system" = "自动（%@）";
-"speech.language.system" = "macOS 语音识别一次只识别一种语言，当前为%@，也能识别句中的英文单词。只说英文时请选择 English。";
+"speech.language.system" = "当前识别%@。若要识别其他语言，请更改此项。";
 "speech.language.system.one" = "macOS 语音识别一次只识别一种语言，当前为%@。使用其他语言时，请在此选择。";
 
 /* Advanced (folded) */
 "speech.more.title" = "高级";
-"speech.more.detail" = "处理器和内存占用、云端密钥、下载镜像";
+"speech.more.detail" = "处理器和内存占用、API Key、下载镜像";
 "speech.limits.threads" = "处理器线程";
 "speech.limits.threads.detail" = "共 %@ 核，其余供其他 App 使用。";
 "speech.limits.concurrent" = "同时转写数";
@@ -135,17 +135,17 @@
 "speech.limits.memory" = "GPU 内存";
 "speech.limits.memory.detail" = "语音模型可使用的最大内存。";
 "speech.limits.memory.value" = "最多 %@";
-"speech.limits.battery" = "用电池时使用更轻的模型";
+"speech.limits.battery" = "使用电池时用较小的模型";
 "speech.limits.battery.detail" = "未接电源时，录屏使用更小的模型。";
-"speech.limits.footer" = "录屏以低优先级转写；实时字幕和语音备注按正常优先级运行。";
+"speech.limits.footer" = "转写录屏时优先保证其他 App 流畅。";
 "speech.advanced.mirror" = "通过镜像下载模型";
-"speech.advanced.mirror.detail" = "Hugging Face 很慢或连不上时，改从 hf-mirror.com 下载。";
+"speech.advanced.mirror.detail" = "Hugging Face 速度慢或无法访问时，改从 hf-mirror.com 下载。";
 
 /* Cloud */
 "speech.cloud.title" = "云端识别";
 "speech.cloud.off" = "已在「隐私」里关闭";
 "speech.cloud.sheet.note" = "使用你的 API Key 在云端识别。Key 保存在钥匙串中，录音会上传到该服务。";
-"speech.cloud.speed" = "倍速";
+"speech.cloud.speed" = "音频速度";
 "speech.cloud.speed.1" = "原速（推荐）";
 "speech.cloud.speed.15" = "1.5 倍速";
 "speech.cloud.speed.2" = "2 倍速";
@@ -166,13 +166,13 @@
 "speech.cloud.options.speed.15" = "音频按 1.5 倍速发送";
 "speech.cloud.options.speed.2" = "音频按 2 倍速发送";
 "speech.cloud.options.button" = "选项…";
-"speech.cloud.options.note" = "设置云端识别的模型和音频速度。API 密钥在“云端模型”中设置。";
+"speech.cloud.options.note" = "云端识别的模型和音频速度。API Key 在「云端服务」中设置。";
 "speech.section.mac" = "本机";
 "speech.section.jobs" = "各功能使用的模型";
 "speech.machine.short" = "%1$@，%2$@";
 "speech.rec.title_size" = "推荐下载 · %@";
 "speech.rec.line" = "%1$@将改用 %2$@。";
-"speech.rec.help" = "下载以下模型，各功能在对应模型下载完成后自动启用。";
+"speech.rec.help" = "下载以下模型，完成后自动启用。";
 "speech.manage.count" = "已下载 %@ 个";
 
 "speech.purpose.recognition" = "语音识别";
@@ -190,15 +190,15 @@
 "speech.tag.small_mac" = "适合内存小的 Mac";
 "speech.tag.apple-speech" = "系统自带，无需下载；同音字识别较弱";
 "speech.tag.qwen3-asr-0.6b-mlx" = "准确，支持词库";
-"speech.tag.qwen3-asr-1.7b-mlx" = "英文比 Qwen3-ASR 0.6B 稍好";
+"speech.tag.qwen3-asr-1.7b-mlx" = "更准确，稍慢";
 "speech.tag.fun-asr-nano-mlx" = "中英混说更准，速度快";
 "speech.tag.sensevoice-small" = "最小最快，不支持词库";
 "speech.tag.whisper-large-v3-turbo-mlx" = "支持的语言最多";
 "speech.tag.whisper-large-v3-turbo-q4-mlx" = "语言多，下载小";
 "speech.tag.qwen3-asr-0.6b-onnx" = "不需要 Apple 芯片";
 "speech.tag.whisper-large-v3-turbo-ct2" = "适合 NVIDIA 显卡";
-"speech.tag.gemma4-e2b" = "实测最稳";
-"speech.tag.gemma4-e4b" = "更大更慢，改写偏多";
+"speech.tag.gemma4-e2b" = "很少改变用词";
+"speech.tag.gemma4-e4b" = "更大更慢，可能改变用词";
 "speech.tag.qwen3.5-2b" = "更小更快";
 "speech.tag.qwen3.5-0.8b" = "适合内存小的 Mac";
 "speech.tag.qwen3-0.6b" = "适合内存很小的 Mac";
@@ -214,7 +214,7 @@
 "speech.cloud.check.network" = "无法连接服务，请检查网络和接口地址";
 "speech.cloud.check.quota" = "请求过多或额度已用完，请稍后再试";
 "speech.cloud.check.privacy" = "云端识别已在「隐私」中关闭";
-"speech.cloud.check.model" = "百炼没有用这个模型返回识别结果：模型名可能有误，或它只支持实时流式或文件链接调用。请检查模型名，或从列表里选择";
+"speech.cloud.check.model" = "此模型无法用于识别。请检查模型名，或从列表中选择";
 "speech.cloud.check.other" = "服务返回错误，请检查接口地址和模型名称";
 
 /* 听写方案对比（设置 → 模型：页首一行和「对比…」；DictationCompare.swift）。数字来自 BlurtCore DictationChoices
@@ -223,7 +223,7 @@
 "speech.compare.lead.in_use" = "听写推荐：%1$@ · 使用中";
 "speech.compare.open" = "对比…";
 "speech.compare.menu" = "对比各方案…";
-"speech.compare.title" = "听写方案";
+"speech.compare.title" = "比较听写模型";
 "speech.compare.note.lang" = "基于%@语音的测试结果。";
 "speech.compare.note" = "基于中英混合语音的测试结果。";
 "speech.compare.mac" = "本机：%@";
@@ -242,18 +242,18 @@
 "speech.compare.cloud_polish" = "%@ + 云端润色";
 "speech.compare.cloud_asr.help" = "使用阿里云百炼 Qwen3-ASR Flash，录音会上传。";
 "speech.compare.volcengine" = "火山引擎";
-"speech.compare.volcengine.help" = "使用火山引擎豆包 Seed-ASR 2.0，说话时录音会上传。配合云端润色，人名和术语更准。需要完成中国大陆实名认证的火山引擎账号。";
+"speech.compare.volcengine.help" = "录音会上传到火山引擎。需要在中国大陆完成实名认证的火山引擎账号。";
 "speech.compare.cloud_polish.help" = "语音在本机由 %@ 识别，云端只处理文字。";
 "speech.compare.in_use" = "使用中";
 "speech.compare.needs_memory" = "需要 %@ 内存";
 "speech.compare.needs_apple" = "需要 Apple 芯片";
 "speech.compare.needs_macos" = "需要 macOS 26";
-"speech.compare.add_key" = "添加密钥…";
+"speech.compare.add_key" = "添加 Key…";
 "speech.compare.approx" = "约 %@";
 "speech.compare.section.local" = "本机";
 "speech.compare.section.local.note" = "免费，不上传任何内容";
 "speech.compare.section.cloud" = "云端";
-"speech.compare.section.cloud.note" = "使用你自己的密钥";
+"speech.compare.section.cloud.note" = "使用你自己的 API Key";
 "speech.compare.col.size" = "下载大小";
 "speech.compare.col.memory" = "内存";
 "speech.compare.col.memory.help" = "听写时模型占用的内存。";
@@ -265,7 +265,7 @@
 "speech.compare.accuracy.value" = "%@ / 5";
 
 /* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
-"speech.speed.reference" = "%1$@ 在我们的测试 Mac 上识别用时约 %2$@。";
+"speech.speed.reference" = "在另一台 Mac 上，%1$@ 的识别用时：%2$@";
 "speech.rec.for" = "%1$@ · 用于%2$@";
 "speech.rec.title.short" = "推荐模型";
 "speech.auto.check" = "自动选择";

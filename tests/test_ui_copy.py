@@ -150,8 +150,8 @@ class ShellCopy(unittest.TestCase):
         # zh's inline key is " Fn 键" (its own leading space, its own 键): a template wraps it as 按%@就能, never "%@ 键"
         zh = self.every("zh-Hans")
         self.assertTrue(zh["Dictation.strings"]["dictation.key.fn.inline"].endswith("键"))
-        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下一步下载语音模型，之后按%@就能随处听写。")
-        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在听%@")
+        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下载语音模型后，按%@开始听写。")
+        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在使用%@")
 
     def test_one_word_for_the_words_list_and_one_name_for_the_provider(self):
         zh, en = self.every("zh-Hans"), self.every("en")
@@ -271,3 +271,27 @@ class OneWordPerConcept(unittest.TestCase):
             review = self.every(lang)["review"]
             for k in ("field.next", "field.next_step", "field.next_steps"):
                 self.assertEqual(review[k], review["field.next_steps"], (lang, k))
+
+
+class BannedWordsEverywhere(unittest.TestCase):
+    """docs/design/copy.md's banned words, over every string the apps show now (tools/copy-check.py checks a branch's new lines)."""
+
+    def test_no_banned_word_in_any_current_string(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("copy_check", ROOT / "tools" / "copy-check.py")
+        cc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cc)
+        files = [p for pat in ("**/*.strings", "**/*.stringsdict", "web/**/locales/*.json", "apps/android/**/strings.xml",
+                               "apps/ios/**/*.xcstrings")
+                 for p in ROOT.glob(pat) if "node_modules" not in p.parts and ".build" not in p.parts]
+        self.assertTrue(files)
+        bad = []
+        for p in files:
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                if line.strip().startswith(("/*", "//", "<!--", "#")):
+                    continue
+                rel = str(p.relative_to(ROOT))
+                hits = [w for w in cc.BANNED if w in line and not (rel.startswith(cc.PHONE_PATHS) and w in cc.PHONE_OK)] + (["product name in status"] if cc.PRODUCT_IN_STATUS.search(line) else [])
+                if hits:
+                    bad.append(f"{p.relative_to(ROOT)}:{n}: {line.strip()[:120]}  ← {', '.join(hits)}")
+        self.assertEqual(bad, [], "\n" + "\n".join(bad))

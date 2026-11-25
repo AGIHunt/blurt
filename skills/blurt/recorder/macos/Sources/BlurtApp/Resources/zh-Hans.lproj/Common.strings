@@ -3,7 +3,7 @@
 
 /* 事项种类 */
 "job.title.enrich" = "AI 补全";
-"job.title.filed" = "按备注直接归档";
+"job.title.filed" = "已归入项目";
 "job.usage.cli_default" = "CLI 默认模型";
 "job.usage.none" = "未用 AI · 0 token";
 "job.usage.tokens" = "使用约 %@ token";
@@ -69,7 +69,7 @@
 /* 任务步骤 */
 "job.step.capture" = "采集";
 "job.step.finalize" = "保存";
-"job.step.listen" = "收音";
+"job.step.listen" = "录音";
 "job.step.transcribe" = "转写语音";
 "job.step.file" = "归档";
 "job.step.prepare" = "准备中";
@@ -78,7 +78,7 @@
 "job.step.route" = "归类";
 "job.step.launch" = "启动";
 "job.step.work" = "处理中";
-"job.step.finish" = "收尾";
+"job.step.finish" = "正在完成";
 
 /* 任务状态 */
 "job.state.queued" = "排队中";

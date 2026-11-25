@@ -9,22 +9,22 @@
 "agents.effort.medium" = "中";
 "agents.effort.xhigh" = "超高";
 "agents.processing.cards" = "整理卡片";
-"agents.processing.cards.help" = "截图、语音备注和 AI 补全。默认使用最便宜的模型和低思考强度，足以处理一张图和一段话，token 消耗更少。";
+"agents.processing.cards.help" = "用于整理截图和语音备注，以及补全事项详情。";
 "agents.processing.cheapest" = "最便宜的模型";
 "agents.processing.cheapest_named" = "最便宜的模型（%@）";
 "agents.processing.default" = "Agent 默认模型";
 "agents.processing.default_named" = "Agent 默认模型（%@）";
 "agents.processing.recording" = "整理录屏";
-"agents.processing.recording.help" = "默认使用 Agent 的默认模型和低思考强度，以处理长录屏。";
+"agents.processing.recording.help" = "用于整理录屏。";
 "common.cancel" = "取消";
 "common.done" = "完成";
 
 "agent.you" = "你";
 
 /* 事项到了「待验证」（鸡来啄一下） */
-"verify.by" = "%@ 说已经修好";
-"verify.by.wontfix" = "%@ 建议不处理";
-"verify.by.none" = "%@ 交回来了";
+"verify.by" = "由 %@ 标为已修复";
+"verify.by.wontfix" = "%@ 建议不做";
+"verify.by.none" = "%@ 已处理";
 "verify.notification" = "待验证：%@";
 
 /* 设置 → Agent */
@@ -36,36 +36,36 @@
 "agents.test.no_command" = "没有命令行模式";
 "agents.test.ok" = "可用，%@ 秒响应";
 "agents.test.timeout" = "超时";
-"agents.codex_trust" = "Codex 会把它处理过的项目记为受信任（写在它自己的设置里）。";
+"agents.codex_trust" = "Codex 会将处理过的项目设为受信任。";
 "agents.state.ready" = "已登录";
 "agents.state.not_installed" = "未安装";
-"agents.state.manual" = "已安装 · 在它的设置里导入 blurt";
+"agents.state.manual" = "已安装";
 "agents.state.installed" = "已安装";
 "agents.state.unchecked" = "无法确认登录";
-"agents.state.unchecked.help" = "无法在不消耗 token 的情况下确认登录状态。首次用它整理时会确认；如未登录，口喷鸡会改用下一个 Agent，并在此提示。";
-"agents.state.manual.help" = "独立 App。点「连接…」为 %@ 安装 blurt skill 和 MCP（会先列出改动），或在它的设置中通过 Skills / MCP 导入。之后在对话中说「处理我录的视频」即可整理录屏。";
+"agents.state.unchecked.help" = "首次使用时检查是否已登录。";
+"agents.state.manual.help" = "若要在 %@ 中使用口喷鸡，请点「连接…」。";
 "agents.state.chat" = "在对话中整理";
-"agents.state.chat.help" = "在 %@ 的对话中说「处理我录的视频」，即可将未整理的录屏整理成事项。处理事项请使用「复制指令给 Agent」。";
+"agents.state.chat.help" = "在 %@ 的对话中说「处理我录的视频」，即可整理录屏。";
 "agents.request" = "处理我录的视频";
 "agents.request.copy" = "复制";
 "agents.request.copied" = "已复制";
 "agents.move_up" = "上移";
-"agents.connected.help" = "已接入：它能查找、读取和更新你的事项。";
-"agents.not_connected.help" = "未接入。点「连接…」会先列出要更改的内容。";
+"agents.connected.help" = "已连接，可以查找、读取和更新事项。";
+"agents.not_connected.help" = "未连接。点「连接…」可查看要更改的内容。";
 "agents.ask.header" = "可以这样跟 Agent 说";
-"agents.ask.footer" = "Agent 通过口喷鸡 MCP 读取事项；需要发给他人时，会打包成交接包（含截图的 .zip）。";
+"agents.ask.footer" = "Agent 可以读取口喷鸡中的事项。";
 "agents.ask.copy" = "复制";
 
 /* 安装确认 */
 "install.title" = "把口喷鸡连接到 %@";
 "install.title.applied" = "口喷鸡已连接到 %@";
-"install.title.failed" = "口喷鸡没能完全连接到 %@";
+"install.title.failed" = "未能完全连接到 %@";
 "install.title.nothing" = "口喷鸡已安装在 %@ 中";
 "install.benefit" = "连接后，%@ 就能查找、读取和更新你的口喷鸡事项。";
 "install.benefit.applied" = "现在 %@ 能查找、读取和更新你的口喷鸡事项了。";
 "install.benefit.nothing" = "%@ 已经能查找、读取和更新你的口喷鸡事项。";
-"install.benefit.failed" = "部分步骤未成功，需要你处理的已在下方标出。";
-"install.footnote" = "点「连接」之前，什么都不会改动。";
+"install.benefit.failed" = "部分步骤未完成，需要处理的步骤已在下方标出。";
+"install.footnote" = "点「连接」后才会更改。";
 "install.next" = "在 %@ 里新开会话后生效。";
 "install.confirm" = "连接";
 "install.working" = "正在连接…";
@@ -78,30 +78,30 @@
 "install.row.added.mcp" = "已添加口喷鸡 MCP 服务";
 "install.row.failed.skill" = "无法添加口喷鸡技能";
 "install.row.failed.mcp" = "无法添加口喷鸡 MCP 服务";
-"install.row.failed.detail" = "%@ 报了错。执行的命令在「详细信息」里。";
-"install.row.about.skill" = "让 %@ 知道怎么处理你的事项，所有项目都生效";
+"install.row.failed.detail" = "%@ 发生错误。可在「详细信息」中查看运行的命令。";
+"install.row.about.skill" = "%@ 可以在所有项目中处理口喷鸡的事项";
 "install.row.about.mcp" = "让 %@ 能读取你的事项、汇报进度，所有项目都生效";
-"install.row.add.approve" = "允许直接汇报进度";
-"install.row.added.approve" = "已允许直接汇报进度";
-"install.row.in_place.approve" = "直接汇报进度";
-"install.row.about.approve" = "%@ 标记、读取和搜索事项时不用先问你，其余操作仍会询问。";
+"install.row.add.approve" = "允许直接读取和标记事项";
+"install.row.added.approve" = "已允许直接读取和标记事项";
+"install.row.in_place.approve" = "可直接读取和标记事项";
+"install.row.about.approve" = "%@ 可直接标记、读取和搜索事项，其他操作仍会先询问。";
 "install.row.in_place.skill" = "口喷鸡技能";
 "install.row.in_place.mcp" = "口喷鸡 MCP 服务";
 "install.row.exists" = "已安装";
 "install.row.other_copy" = "已安装，来自 %@";
-"install.row.conflict.title" = "没有添加口喷鸡技能";
+"install.row.conflict.title" = "未添加口喷鸡技能";
 "install.row.conflict" = "%@ 是另一个同名的技能。把它改名或移走后，再连接一次。";
 "install.row.manual.skill" = "需要你自己添加口喷鸡技能";
 "install.row.manual.mcp" = "需要你自己添加口喷鸡 MCP 服务";
 "install.row.manual.none" = "无法在此更改 %@ 的这项设置，请参照其说明文档操作。";
-"agents.install.help" = "将 blurt skill 和 MCP 安装到此 Agent，安装前会列出要更改的内容";
+"agents.install.help" = "在此 Agent 中安装口喷鸡技能和 MCP";
 "agents.state.checking" = "正在检查…";
 "agents.state.unknown" = "已安装 · 无法确认是否登录";
 "agents.state.configured" = "已安装 · 无法确认是否登录";
 "agents.state.logged_out" = "未登录";
 
 /* Install and test errors in words */
-"install.error" = "某个设置文件的格式无法识别，未做更改。";
+"install.error" = "无法识别某个设置文件，未做更改。";
 "install.error.path" = "%@ 的格式无法识别，未做更改。";
 "agents.test.failed" = "%@ 未通过测试。请在终端中运行它，确认能正常响应。";
 
@@ -109,14 +109,14 @@
 "agents.lead" = "口喷鸡按从上到下的顺序，使用第一个可用的 Agent。";
 "agents.in_use" = "使用中";
 "agents.use" = "使用 %@";
-"agents.use.on.help" = "开启：口喷鸡按顺序尝试它";
-"agents.use.off.help" = "关闭：口喷鸡不会用它";
+"agents.use.on.help" = "打开后，可用于整理录屏和卡片。";
+"agents.use.off.help" = "关闭后，不会用于整理录屏和卡片。";
 "agents.sign_in" = "登录…";
 "agents.install_cli" = "安装…";
 "agents.get_app" = "获取 %@…";
 "agents.more.named" = "%@ 的更多操作";
-"agents.connect.menu" = "接入 skill 和 MCP…";
-"agents.connected.menu" = "已接入 skill 和 MCP";
+"agents.connect.menu" = "连接口喷鸡技能和 MCP…";
+"agents.connected.menu" = "已连接口喷鸡技能和 MCP";
 "agents.move_down" = "下移";
 "agents.fix.sign_in_title" = "登录 %@";
 "agents.fix.install_title" = "安装 %@";
@@ -125,10 +125,10 @@
 "agents.fix.then" = "完成后回到这里，重新检查。";
 "agents.details.version" = "版本 %@";
 "agents.details.model" = "模型";
-"agents.details.no_models" = "此 Agent 未列出模型，将使用其自身设置。";
+"agents.details.no_models" = "请在此 Agent 的设置中选择模型。";
 "agents.details.models.note" = "强度越高，用时越长，消耗的 token 越多。";
 "agents.details.skill" = "口喷鸡技能和 MCP";
-"agents.details.connected" = "已接入";
+"agents.details.connected" = "已连接";
 "agents.details.test" = "试运行";
 "agents.ask.line" = "Agent 会用它自己的工具把事项发到别处，比如 Slack、Linear。";
 "agents.ask.examples" = "示例…";
@@ -141,9 +141,9 @@
 "agents.organize.recording" = "录屏";
 "agents.organize.cards" = "截图和语音备注";
 "agents.organize.footer" = "强度越高，用时越长，消耗的 token 越多。";
-"agents.organize.own" = "单独设置的：%@（在「详细信息…」里）。";
-"agents.organize.follow" = "和全部相同（%@）";
-"agents.organize.follow_plain" = "和全部 Agent 相同";
+"agents.organize.own" = "单独设置：%@";
+"agents.organize.follow" = "与全部 Agent 相同（%@）";
+"agents.organize.follow_plain" = "与全部 Agent 相同";
 "agents.organize.inherit" = "默认（%@）";
 "agents.organize.inherit.default" = "Agent 默认模型";
 "agents.organize.inherit.cheapest" = "最便宜的模型";
@@ -174,10 +174,10 @@
 "agents.manual.command" = "命令";
 "agents.manual.args" = "参数";
 "agents.manual.prompt" = "让 Agent 自行安装";
-"agents.manual.copy_prompt" = "拷贝提示词";
+"agents.manual.copy_prompt" = "复制提示词";
 "agents.manual.test" = "测试";
 "agents.manual.waiting" = "等待 Agent 连接…";
-"agents.manual.connected" = "已连上 · 刚刚";
+"agents.manual.connected" = "已连接 · 刚刚";
 "agents.manual.name" = "名称";
 "agents.manual.test.help" = "Agent 装好后点「测试」检查连接。";
 "agents.manual.name.placeholder" = "例如 Windsurf";
@@ -185,7 +185,7 @@
 "install.after" = "还差一步：%@";
 "agents.manual.save" = "添加到列表";
 "agents.organize.none" = "需要 Claude Code、Codex 等命令行 Agent。";
-"agents.drop.header" = "拖卡片";
+"agents.drop.header" = "拖移卡片";
 "agents.drop.line" = "拖入 %@ 的卡片包含图片路径和备注。";
 "agents.drop.edit" = "编辑…";
-"agents.copy" = "拷贝";
+"agents.copy" = "复制";
