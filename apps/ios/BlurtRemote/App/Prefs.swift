@@ -14,9 +14,9 @@ final class Prefs: ObservableObject {
     @Published var haptics: Bool { didSet { d.set(haptics, forKey: "haptics") } }
     /// portrait: the talk key and the arrow key at the other end. Landscape turns with the phone
     @Published var lefty: Bool { didSet { d.set(lefty, forKey: "lefty") } }
-    /// false: dictation listens through the Mac's microphone
     /// a session is kept a while after the app leaves the screen (Link.background)
     @Published var staysConnected: Bool { didSet { d.set(staysConnected, forKey: "staysConnected") } }
+    /// false: dictation listens through the Mac's microphone
     @Published var micOnPhone: Bool { didSet { d.set(micOnPhone, forKey: "micOnPhone") } }
     /// with the Mac's screen showing: a tap clicks what's under the finger. Off: a trackpad, clicking where the pointer is
     @Published var tapWhereTouched: Bool { didSet { d.set(tapWhereTouched, forKey: "tapWhereTouched") } }

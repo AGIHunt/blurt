@@ -430,7 +430,11 @@ final class RemoteServer {
             let before = self.networkNow
             self.networkNow = now
             guard let before, now != before, !now.isEmpty else { return }
-            self.waitAnew("network")
+            // a network coming up changes several times in a second: once it has settled
+            self.networkSettled?.cancel()
+            let w = DispatchWorkItem { [weak self] in self?.waitAnew("network") }
+            self.networkSettled = w
+            self.queue.asyncAfter(deadline: .now() + 1.5, execute: w)
         }
         network.start(queue: queue)
         // a lock screen this host can't show: the picture stops, and the viewer says why instead of keeping a stale desktop
@@ -457,10 +461,11 @@ final class RemoteServer {
     private let network = NWPathMonitor()
     /// the interfaces and gateways in use, as last seen; nil before the first look
     private var networkNow: String?
+    private var networkSettled: DispatchWorkItem?
 
     /// Every waiting connection made again, now: a wake or another network killed what was open, and a timer may be well into a long wait.
     private func waitAnew(_ why: String) {
-        guard !relays.isEmpty || !fallbacks.isEmpty || meetQuietUntil > 0 || ownRelayFails > 0 || !relayWait.isEmpty else { return }
+        guard Self.standbyAddress != nil else { return }
         emit(["event": "remote_relay", "state": "anew", "why": why])
         let open = relays.filter { $0.value !== session && $0.value !== asking }
         open.keys.forEach { relays[$0] = nil }
@@ -470,9 +475,9 @@ final class RemoteServer {
         met.values.forEach { $0.channel.close() }
         relayWait = [:]
         ownRelayFails = 0
-        meetRefusals = 0
-        meetQuietUntil = 0
-        if status.away == .relayDown || status.away == .busy { status.away = nil }
+        // a refusal is waited out as long as the service's own rate limit, whatever the network does (a flapping one would ask each time)
+        meetQuietUntil = min(meetQuietUntil, lastRefusal + 60)
+        if status.away == .relayDown { status.away = nil }
         updateRelays()
     }
 
@@ -938,6 +943,7 @@ final class RemoteServer {
     /// The go-between turned this Mac away this many times in a row, and isn't asked again before then (RemoteRelay.busyWait)
     private var meetRefusals = 0
     private var meetQuietUntil = 0.0
+    private var lastRefusal = -1000.0
     /// between willSleep and didWake: nothing reconnects
     private var sleeping = false
 
@@ -975,6 +981,7 @@ final class RemoteServer {
     private func meetEnded(_ ch: RemoteChannel) -> Double? {
         if ch.refusedByRelay {
             // one refusal a wait, however many phones' connections it came to
+            lastRefusal = CACurrentMediaTime()
             if CACurrentMediaTime() >= meetQuietUntil {
                 meetRefusals += 1
                 meetQuietUntil = CACurrentMediaTime() + RemoteRelay.busyWait(meetRefusals)

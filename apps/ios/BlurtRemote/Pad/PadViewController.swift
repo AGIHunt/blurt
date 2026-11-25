@@ -435,6 +435,7 @@ final class PadViewController: UIViewController {
 
     private func observe() {
         let l = Link.shared
+        l.onBack = { [weak self] in self?.showWanted() }
         // with a picture there to try it on: one that came on by itself and couldn't be had has no tip
         ScreenStream.shared.onFirstPicture = { [weak self] in
             guard let self, self.showing else { return }
@@ -447,11 +448,7 @@ final class PadViewController: UIViewController {
         l.$state.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] s in
             guard let self, s == .connected else { return }
             self.askUnsent()
-            guard Prefs.shared.screenWanted, !self.showing, !self.noScreenThere.contains(Link.shared.current?.id ?? ""), ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
-            DispatchQueue.main.async {
-                self.screenAsked = false
-                self.setShowing(true)
-            }
+            DispatchQueue.main.async { self.showWanted() }
         }.store(in: &bag)
         Publishers.CombineLatest(l.$macs, l.$current).receive(on: RunLoop.main).sink { [weak self] macs, current in
             self?.macMenu(macs, current)
@@ -584,6 +581,15 @@ final class PadViewController: UIViewController {
     }
 
     private var shownBanner: StatusBanner?
+
+    /// The picture that comes on with the computer. Never while the app is out of sight (a pairing allowed meanwhile): then on the way back.
+    private func showWanted() {
+        let l = Link.shared
+        guard l.state == .connected, !l.parked, Prefs.shared.screenWanted, !showing, !noScreenThere.contains(l.current?.id ?? ""),
+              ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
+        screenAsked = false
+        setShowing(true)
+    }
     /// the picture was asked for by the user, not come on by itself: a computer that won't show it is then said
     private var screenAsked = false
     /// computers that wouldn't show their screen when it came on by itself, this run

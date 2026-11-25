@@ -43,6 +43,8 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
     private var dragOff = false
     /// this scroll began where the pointer was just put
     private var scrollPlaced = false
+    /// the last touch was on a picture that can't be trusted
+    private var blindAt = false
     /// and that was off the picture: it goes nowhere
     private var scrollOff = false
     /// a soft light under the finger: says the glass feels it
@@ -275,13 +277,15 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
         let link = Link.shared
         var placed = false, broughtIn = false
         // the picture is from before, or not there yet (ScreenStream.blind): what's under the finger may not be there any more, so nothing is pressed on it
+        // Beside it (an iPad's bands, a trackpad with nothing under it) is as ever
         let blind = isStage && showing && engine.touchMode && ScreenStream.shared.blind
         for o in out {
             if blind {
+                if case let .pointAt(p) = o { blindAt = ScreenStream.shared.onPicture(p) || !bandsArePad }
                 switch o {
-                case .pointAt, .dragTo, .click: continue
-                case .button(_, down: true): dragOff = true; continue
-                case .scroll(_, _, .began): scrollOff = true; continue
+                case .pointAt where blindAt, .dragTo where blindAt, .click where blindAt: continue
+                case .button(_, down: true) where blindAt: dragOff = true; continue
+                case .scroll(_, _, .began) where blindAt: scrollOff = true; continue
                 default: break
                 }
             }

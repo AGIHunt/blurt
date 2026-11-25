@@ -998,6 +998,18 @@ final class ViewPortTests: XCTestCase {
             _ = e.tick(at: 0.41)
             XCTAssertTrue(e.ended([1], at: 0.8).contains(.click(.right)))
         }
+        // a hold that drifted within the tap's reach, then a tremble: still held, a right click, never a drag
+        var d = touch(true)
+        _ = d.began([t(1, 100, 100)], at: 0)
+        _ = d.moved([t(1, 108, 100)], at: 0.2)
+        _ = d.tick(at: 0.41)
+        XCTAssertFalse(presses(d.moved([t(1, 108.5, 100)], at: 0.45)))
+        XCTAssertTrue(d.ended([1], at: 0.8).contains(.click(.right)))
+        d = touch(true)
+        _ = d.began([t(1, 100, 100)], at: 0)
+        _ = d.moved([t(1, 108, 100)], at: 0.2)
+        _ = d.tick(at: 0.41)
+        XCTAssertTrue(presses(d.moved([t(1, 116, 100)], at: 0.45)))
         // the trackpad's are as they were: a thumb resting on it never clicks
         let e = touch(false)
         _ = e.began([t(1, 100, 100)], at: 0)

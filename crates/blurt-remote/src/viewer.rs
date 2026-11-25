@@ -1126,7 +1126,7 @@ async fn live(
     let mut rtt = 0.05;
     // the host's last word to a ping: a network gone quiet, or a host asleep, isn't waited out for TCP's many minutes
     let mut heard = 0.0f64;
-    let quiet_after = if tcp { 4.0 } else { 8.0 };
+    let quiet_after = if tcp { 6.0 } else { 10.0 };
     loop {
         let away = !matches!(route, Route::Local);
         tokio::select! {
@@ -1149,7 +1149,12 @@ async fn live(
                     phone.send(&ToMac::RequestKeyframe).await;
                 }
             },
-            e = phone.next(Duration::from_millis(4)) => match e {
+            e = phone.next(Duration::from_millis(4)) => {
+            // anything at all from the host: a file going out fills the stream, and the pongs behind it are late
+            if e.is_some() {
+                heard = now();
+            }
+            match e {
                 None => {}
                 Some(PhoneEvent::Closed) => return End::Dropped,
                 Some(PhoneEvent::Video(v)) => {
@@ -1188,7 +1193,6 @@ async fn live(
                         on(Event::Link { link: Link::Connected, route: Some(route) });
                     }
                     ToPhone::Pong(sent) => {
-                        heard = now();
                         rtt = (now() - sent).clamp(0.0005, 5.0);
                         pic.receiver.rtt = rtt;
                         on(Event::Rtt(rtt * 1000.0));
@@ -1220,9 +1224,14 @@ async fn live(
                     ToPhone::NoDirect => return End::NoDirect,
                     _ => {}
                 },
+            }
             },
         }
         let n = now();
+        // a send held up by a full stream (a file on a slow line) says nothing about the host: counted from its end
+        if n - last_tick > 1.0 {
+            heard = n.max(heard);
+        }
         if n - last_tick >= 0.004 {
             last_tick = n;
             let outs = pic.receiver.tick(n);

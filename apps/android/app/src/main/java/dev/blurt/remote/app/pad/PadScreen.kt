@@ -260,6 +260,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
 
     fun bind(scope: LifecycleCoroutineScope) {
         val l = Remote.link
+        l.onBack = { showWanted() }
         scope.launch { combine(l.state, l.current, l.canControl) { _, _, _ -> }.collect { status() } }
         scope.launch { combine(l.waitingForMac, l.pairFailed, l.route, l.screenError) { _, _, _, e -> e }.collect { e -> if (e != null) setShowing(false); status() } }
         scope.launch { combine(l.path, l.away) { _, _ -> }.collect { status() } }
@@ -435,7 +436,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     }
 
     private fun showWanted() {
-        if (Remote.link.state.value != Link.State.CONNECTED || showing || !Remote.prefs.screenWanted) return
+        // never out of sight (a pairing allowed meanwhile): then on the way back
+        if (Remote.link.isParked || Remote.link.state.value != Link.State.CONNECTED || showing || !Remote.prefs.screenWanted) return
         // a measured run has the stream to itself
         if (dev.blurt.remote.app.BuildConfig.DEBUG && TestWeather.screenTest > 0) return
         Remote.link.screenError.value = null

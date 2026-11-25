@@ -179,10 +179,24 @@ class Link(private val c: Context, private val vault: KeyVault) {
     /** relay connections that ended before a session, in a row (Reconnect.relayAgainMs), and the next one's wait */
     private var relayEnds = 0
     private var relayAgain: Runnable? = null
+    private var relayNotBefore = 0L
     /** the last session came over a relay or an overlay network: next time the relay starts with the local ways */
     private var lastAway = false
     /** the session in hand hasn't said `session` yet */
     private var sessionDue: Runnable? = null
+    private var greeted = false
+    private fun awaitSession(ch: Channel) {
+        sessionDue?.let { main.removeCallbacks(it) }
+        val due = Runnable { if (channel === ch && !greeted && joining == null) lost() }
+        sessionDue = due
+        main.postDelayed(due, Reconnect.sessionDueMs(ch.isRelay))
+    }
+
+    /** The picture is asked for: a lock said before may be over (one that ended while nothing was being shown isn't said). */
+    fun pictureAsked() { hostLocked.value = false }
+    /** back in front with the session kept */
+    var onBack: (() -> Unit)? = null
+    val isParked: Boolean get() = parked
     /** in the background with the session kept (background()) */
     private var parked = false
     private var parkEnds: Runnable? = null
@@ -278,6 +292,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         noDirectUntil = 0
         refused = false
         relayEnds = 0
+        relayNotBefore = 0
         if (away.value == AwayTrouble.NO_DIRECT || away.value == AwayTrouble.RELAY_DOWN) away.value = null
         busy.notAfter((lastRefusal + Reconnect.busyFloorMs(asked)) / 1000.0)
     }
@@ -501,6 +516,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             if (channel != null) {
                 prove()
                 Remote.screen.unpause()
+                onBack?.invoke()
                 return
             }
         }
@@ -607,7 +623,6 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (!active || channel != null || !attempts.all { it.isRelay }) return
         // replaced or ended there: nothing until the user touches this phone, whatever retry was already queued
         if (_state.value == State.REPLACED || _state.value == State.ENDED) return
-        relayAgain?.let { main.removeCallbacks(it) }
         val key = vault.read(mac.deviceID) ?: run { setState(State.FORGOTTEN); return }
         generation += 1
         if (firstAttempt == null) firstAttempt = now()
@@ -619,7 +634,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         main.postDelayed({
             if (channel != null || !active || g0 != generation) return@postDelayed
             tryOverlay(mac, key)
-            tryRelays(mac, key)
+            // a relay that has just said no isn't asked each round: its own pace (relayEnded)
+            if (now() >= relayNotBefore) tryRelays(mac, key)
         }, if (RELAY_ONLY != null) 0 else Reconnect.relayDelayMs(lastAway))
         // keep trying while the app is open; say so after a while
         val g = generation
@@ -755,7 +771,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
         relayAgain?.let { main.removeCallbacks(it) }
         val r = Runnable { tryRelays(mac, key) }
         relayAgain = r
-        main.postDelayed(r, Reconnect.relayAgainMs(relayEnds))
+        val wait = Reconnect.relayAgainMs(relayEnds)
+        relayNotBefore = now() + wait
+        main.postDelayed(r, wait)
     }
 
     /** The computer's relay, and Blurt's go-between beside it when that relay is down: each unless one is already being tried. */
@@ -811,9 +829,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         lastAway = ch.isRelay || path.value == LinkPath.TAILSCALE || path.value == LinkPath.OVERLAY
         // a computer that answers pings but never greets: not waited for
         sessionDue?.let { main.removeCallbacks(it) }
-        val due = Runnable { if (channel === ch && _state.value != State.CONNECTED && joining == null) lost() }
-        sessionDue = due
-        main.postDelayed(due, Reconnect.sessionDueMs(ch.isRelay))
+        greeted = false
+        awaitSession(ch)
         // a code that keeps getting sessions which never come to a question is being tried for digits: give up on it
         if (joining != null) {
             joinOpens += 1
@@ -920,6 +937,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.Session -> {
                 val i = m.info
                 sessionDue?.let { main.removeCallbacks(it) }
+                greeted = true
                 canControl.value = i.canControl
                 // connected some other way, or the go-between is introducing: either way nothing to say about it now (noDirect may follow)
                 if (channel?.goBetween != true) away.value = null
@@ -1041,6 +1059,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
                     saveMacs()
                 }
                 send(ToMac.KeyStored)
+                // paired: `session` comes next
+                channel?.let { awaitSession(it) }
             }
             // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused key
             // with no session (anyone on the network can send one) only says so, the key kept (`refused` → FORGOTTEN)

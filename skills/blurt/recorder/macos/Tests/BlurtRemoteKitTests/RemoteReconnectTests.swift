@@ -9,7 +9,7 @@ final class RemoteReconnectTests: XCTestCase {
         while at < 10 { n += 1; at += RemoteReconnect.relayAgain(n) }
         XCTAssertLessThanOrEqual(n, 6)
         XCTAssertLessThan(RemoteReconnect.relayAgain(1), 0.5)
-        XCTAssertEqual(RemoteReconnect.relayAgain(50), 5)
+        XCTAssertEqual(RemoteReconnect.relayAgain(50), 10)
         for i in 1..<10 { XCTAssertLessThanOrEqual(RemoteReconnect.relayAgain(i), RemoteReconnect.relayAgain(i + 1)) }
     }
 

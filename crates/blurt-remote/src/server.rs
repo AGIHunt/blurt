@@ -308,6 +308,7 @@ struct State {
     meet_refusals: u32,
     /// one refusal a wait, however many devices' connections it came to
     meet_quiet_until: Option<Instant>,
+    meet_refused_at: Option<Instant>,
     /// no nearby question until then (the owner said no to the last one)
     nearby_paused_until: Option<Instant>,
 }
@@ -397,6 +398,7 @@ impl Host {
             meet_problem: None,
             meet_refusals: 0,
             meet_quiet_until: None,
+            meet_refused_at: None,
             nearby_paused_until: None,
         };
         let core = Arc::new(Core {
@@ -1390,6 +1392,7 @@ impl Core {
         s.last_control = true; // a phone starts out assuming it may control: the first tick says otherwise
         s.displays_sent = None;
         s.legends_sent = None;
+        s.locked_sent = None;
         let me = self.arc();
         self.rt.spawn(async move {
             let mut t = tokio::time::interval(Duration::from_millis(500));
@@ -2364,8 +2367,8 @@ impl Core {
         }
         s.relay_wait.clear();
         s.own_relay_fails = 0;
-        s.meet_refusals = 0;
-        s.meet_quiet_until = None;
+        // a refusal is waited out as long as the service's own rate limit, whatever the network does (a flapping one would ask each time)
+        s.meet_quiet_until = s.meet_quiet_until.zip(s.meet_refused_at).map(|(t, at)| t.min(at + Duration::from_secs(60)));
         self.update_relays(s);
     }
 
@@ -2509,6 +2512,7 @@ impl Core {
                     if busy {
                         // the day's quota is gone, or it's rate-limiting: "busy today", and no retrying in a loop
                         let now = Instant::now();
+                        s.meet_refused_at = Some(now);
                         if s.meet_quiet_until.is_none_or(|t| now >= t) {
                             s.meet_refusals += 1;
                             s.meet_quiet_until = Some(now + relay::busy_wait(s.meet_refusals));

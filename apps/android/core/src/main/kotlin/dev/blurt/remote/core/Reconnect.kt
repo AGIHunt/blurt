@@ -15,7 +15,9 @@ object Reconnect {
         times == 2 -> 800
         times == 3 -> 1500
         times == 4 -> 3000
-        else -> 5000
+        times < 10 -> 5000
+        // a computer that's off, and an app left open beside it: the public service's day is everyone's
+        else -> 10_000
     }
 
     /** back in front with a session kept meanwhile: no answer from the computer within this and it's taken as gone */

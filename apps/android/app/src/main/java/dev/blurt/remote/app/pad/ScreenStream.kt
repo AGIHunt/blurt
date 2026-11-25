@@ -206,6 +206,7 @@ class ScreenStream(private val c: Context) {
 
     /** The most the computer may send, for this path and what the user chose. Under that it follows what the network carries. */
     fun start() {
+        Remote.link.pictureAsked()      // the computer says it again if it's locked still
         val p = plan
         planned = p
         val crop = port.crop

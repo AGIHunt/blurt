@@ -13,7 +13,7 @@ class ReconnectTest {
     }
 
     @Test fun aRelayThatEndedIsTriedAgainSoonThenLessOften() {
-        assertEquals(listOf<Long>(400, 400, 800, 1500, 3000, 5000, 5000), (0..6).map { Reconnect.relayAgainMs(it) })
+        assertEquals(listOf<Long>(400, 400, 800, 1500, 3000, 5000, 5000, 10_000), (listOf(0, 1, 2, 3, 4, 5, 6, 50)).map { Reconnect.relayAgainMs(it) })
     }
 
     @Test fun whatIsWaitedFor() {

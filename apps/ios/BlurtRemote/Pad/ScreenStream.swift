@@ -166,6 +166,8 @@ final class ScreenStream {
 
     /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).
     func start() {
+        // the computer says it again if it's locked still
+        Link.shared.pictureAsked()
         let p = plan
         planned = p
         let c = port.crop
@@ -181,7 +183,7 @@ final class ScreenStream {
     func planChanged() {
         planWait?.cancel()
         let w = DispatchWorkItem { [weak self] in
-            guard let self, self.on, self.plan != self.planned else { return }
+            guard let self, self.on, !self.paused, self.plan != self.planned else { return }
             self.start()
         }
         planWait = w
@@ -203,12 +205,23 @@ final class ScreenStream {
     }
 
     func connectionLost() {
+        dropWaiting()
         stale = true
         q.async { self.reset() }
     }
 
     /// What's on the glass is from before: the session went or was left, and nothing new has come yet. It's dimmed, and a touch on it isn't
     /// a click (TrackpadView): what's under the finger may no longer be there. Main thread.
+    /// a frame decoded and not up yet is from before too
+    private func dropWaiting() {
+        frameLock.lock()
+        nextFrame = nil
+        fromBefore = true
+        frameLock.unlock()
+    }
+    /// until the picture is asked for again, what comes out of the decoder is of the last one
+    private var fromBefore = false
+
     /// the first frame of a picture just turned on is up
     var onFirstPicture: (() -> Void)?
     var blind: Bool { !standsIn && (stale || video.contents == nil) }
@@ -228,6 +241,7 @@ final class ScreenStream {
     /// view stay as they are. iOS takes the decoder away out of sight, so what comes back starts it anew.
     private var paused = false
     func pause() {
+        dropWaiting()
         stale = true
         q.async {
             guard self.on, !self.paused else { return }
@@ -564,6 +578,8 @@ final class ScreenStream {
     }
 
     /// Where a point on the pad is on the Mac's screen; nil off the picture.
+    func onPicture(_ p: CGPoint) -> Bool { onScreenPoint(p) != nil }
+
     private func onScreenPoint(_ p: CGPoint) -> CGPoint? {
         guard bounds.width > 0 else { return nil }
         let v = port.rect
@@ -691,6 +707,9 @@ final class ScreenStream {
     func start(_ r: RemoteScreenRequest) {
         q.async {
             self.reset()
+            self.frameLock.lock()
+            self.fromBefore = false
+            self.frameLock.unlock()
             self.on = true
             self.paused = false
             self.request = r
@@ -876,8 +895,8 @@ final class ScreenStream {
     private func show(_ image: CVImageBuffer, crop: RemoteCrop, captured: Double) {
         // only the latest: after a stall the frames that piled up are worth nothing
         frameLock.lock()
-        let waiting = nextFrame != nil
-        nextFrame = (image, crop, captured)
+        let waiting = nextFrame != nil || fromBefore
+        if !fromBefore { nextFrame = (image, crop, captured) }
         frameLock.unlock()
         guard !waiting else { return }
         DispatchQueue.main.async { self.putUp() }

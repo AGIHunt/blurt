@@ -92,7 +92,7 @@ final class PadEngine {
         case moving(last: CGPoint)
         case second(start: CGPoint, at: Double)                 // pressed right after a tap: a double click or a drag
         case dragging(last: CGPoint)
-        case held(start: CGPoint, at: Double)                   // held still: right click or scroll
+        case held(start: CGPoint, from: CGPoint, at: Double)    // held still: right click or drag, from where the finger had got to (it may drift a little on the picture)
         case scrolling(last: CGPoint, two: Bool)
         case two(start: CGPoint, spread: CGFloat, at: Double)   // undecided
         case pinch(spread: CGFloat)
@@ -256,10 +256,10 @@ final class PadEngine {
                 out += pointer(from: last, to: p, now)
             }
             state = .dragging(last: p)
-        case let .held(start, _):
+        case let .held(start, from, _):
             if dist(p, start) > Self.slop, scrollsEdge(start, p) {
                 out += beginEdgeScroll(p)
-            } else if dist(p, start) > Self.slop {
+            } else if dist(p, from) > Self.slop {
                 lastTap = nil
                 lastMoveAt = now
                 if touchMode, onEdge(start) { out.append(.pointAt(start)) }
@@ -381,7 +381,7 @@ final class PadEngine {
             } else {
                 dragLetGo = now
             }
-        case let .held(start, at):
+        case let .held(start, _, at):
             if now - at < Self.holdLimit {
                 if touchMode, onEdge(start) { out.append(.pointAt(start)) }
                 out += [.click(.right), .haptic(.tap)]
@@ -422,7 +422,7 @@ final class PadEngine {
     func tick(at now: Double) -> [PadOutput] {
         var out: [PadOutput] = []
         if case let .one(start, _, at) = state, now - at >= Self.holdTime {
-            state = .held(start: start, at: now)
+            state = .held(start: start, from: touches.values.first ?? start, at: now)
             // the pointer comes to the finger as the phone taps back; on the edge it may yet be a scroll, which is where the pointer is
             if touchMode, !onEdge(start) { out.append(.pointAt(start)) }
             out.append(.haptic(.grab))

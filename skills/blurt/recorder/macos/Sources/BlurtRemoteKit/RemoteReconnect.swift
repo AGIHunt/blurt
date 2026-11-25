@@ -18,7 +18,9 @@ public enum RemoteReconnect {
         case 2: 0.8
         case 3: 1.5
         case 4: 3
-        default: 5
+        case ..<10: 5
+        // a computer that's off, and an app left open beside it: the public service's day is everyone's
+        default: 10
         }
     }
 
