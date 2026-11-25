@@ -89,11 +89,11 @@
 "main.action.record" = "开始录屏";
 "main.action.snap" = "截图";
 
-"main.undo.kept" = "%@ 之后有了变化，没有撤销。";
+"main.undo.kept" = "%@ 之后已有改动，未撤销。";
 "main.banner.agent" = "Agent";
-"main.banner.ended" = "没有回报就结束了";
-"main.banner.external" = "已交给你的 Agent。做完后在这里标为完成。";
-"main.banner.quiet" = "%@交给你的 Agent · 还没有回报";
+"main.banner.ended" = "结束时未回报";
+"main.banner.external" = "已交给你的 Agent。处理完后请在这里标为完成。";
+"main.banner.quiet" = "%@交给你的 Agent · 尚无回报";
 "main.banner.working" = "%@ 正在处理 · %@开始";
 "main.banner.working_now" = "%@ 正在处理";
 "main.banner.your_agent" = "你的 Agent";
@@ -119,7 +119,7 @@
 "main.detail.none" = "没有选中事项";
 "main.detail.none.detail" = "在左侧选择一个事项。";
 "main.detail.parse_error" = "无法读取该事项的文件";
-"main.detail.parse_error.detail" = "文件格式无法识别，口喷鸡不会覆盖它。请在编辑器中修正并保存，之后会在这里显示。";
+"main.detail.parse_error.detail" = "文件格式无法识别，不会被覆盖。请在编辑器中修正并保存，之后会在这里显示。";
 "main.unreadable.fix_first" = "无法读取该事项的文件，请先在编辑器中修正。";
 "main.unreadable.open" = "在编辑器中打开";
 "main.unreadable.show" = "显示";
@@ -738,7 +738,7 @@
 
 /* 会话没回报就结束了的事项 */
 "main.row.session_ended" = "未回报";
-"main.row.session_ended.help" = "它交给了旧版口喷鸡里的 Agent，Agent 没有回报就结束了。可以标为完成或收回。";
+"main.row.session_ended.help" = "此事项交给了旧版口喷鸡中的 Agent，Agent 结束时未回报。可标为完成或收回。";
 
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";

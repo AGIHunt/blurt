@@ -138,7 +138,7 @@
 "models.agent.step.verified" = "Dictation test passed";
 "models.agent.step.verify_failed" = "Dictation test failed";
 
-/* 云端模型一行写明用于哪些功能；能识别语音的服务可一键用于听写（先确认） */
+/* 云端模型一行写明用于哪些功能；能识别语音的服务可直接用于听写（先确认） */
 "models.service.uses" = "Used for %@";
 "models.service.unused" = "Not in use";
 "models.service.use_dictation" = "Use for Dictation";

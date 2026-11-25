@@ -72,7 +72,7 @@
     <string name="pair_unreachable_local">Put this phone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first.</string>
     <string name="pair_unreachable_relay">Make sure %1$s is on and Blurt is open there.</string>
     <string name="pair_spent">This code has expired or was already used.</string>
-    <string name="pair_unanswered">No one answered on %1$s in time.</string>
+    <string name="pair_unanswered">%1$s didn’t answer in time.</string>
     <string name="pair_left">Pairing stopped when Blurt left the screen.</string>
     <string name="pair_scan_new">On %1$s, open Add Device and scan the code it shows now.</string>
 
@@ -143,7 +143,7 @@
     <string name="s_forgotten">Needs pairing again</string>
     <string name="s_removed">Removed this phone</string>
     <string name="s_replaced">Another phone is using it</string>
-    <string name="s_ended">Ended at the computer</string>
+    <string name="s_ended">Ended by the computer</string>
     <string name="s_not_connected">Not connected</string>
     <string name="s_on_network">On this network</string>
     <string name="s_uses_relay">Uses your relay</string>

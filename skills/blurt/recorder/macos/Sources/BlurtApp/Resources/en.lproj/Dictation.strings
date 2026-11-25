@@ -617,7 +617,7 @@
 "dictation.history.summary" = "%1$ld saved · deleted after %2$@";
 "dictation.history.dont_keep" = "Don’t keep";
 "dictation.history.summary.off" = "Not kept · each dictation is forgotten once it’s typed";
-"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A dictation that couldn’t be recognized keeps its recording for a day, for Retry.";
+"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A dictation that couldn’t be recognized keeps its recording for a day, so you can retry it.";
 "dictation.models.detail" = "The speech and polish models dictation runs on.";
 "dictation.models.missing" = "Not downloaded · %@";
 "dictation.models.download" = "Download";

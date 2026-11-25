@@ -87,7 +87,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(spent.help, "On Studio PC, open Add Device and scan the code it shows now.")
         XCTAssertFalse(spent.canRetry)
         XCTAssertEqual(Link.failure(.declined, name: "Studio PC", hasRelay: true).title, "Studio PC didn’t allow this iPhone.")
-        XCTAssertEqual(Link.failure(.unanswered, name: "Studio PC", hasRelay: true).title, "No one answered on Studio PC in time.")
+        XCTAssertEqual(Link.failure(.unanswered, name: "Studio PC", hasRelay: true).title, "Studio PC didn’t answer in time.")
         let away = Link.failure(.unreachable, name: "Studio PC", hasRelay: true)
         XCTAssertEqual(away.title, "Can’t reach Studio PC.")
         XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there.")
