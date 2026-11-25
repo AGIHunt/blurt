@@ -371,8 +371,8 @@ final class PadEngineTests: XCTestCase {
     func testZoomedInOneFingerMovesThePicture() {
         let e = zoomed()
         XCTAssertEqual(e.began([t(1, 100, 100)], at: 0), [])
-        XCTAssertEqual(e.moved([t(1, 110, 100)], at: 0.02), [], "past the slop: it's a move from here")
-        XCTAssertEqual(e.moved([t(1, 125, 104)], at: 0.04), [.view(scale: 1, dx: 15, dy: 4, at: CGPoint(x: 125, y: 104))])
+        XCTAssertEqual(e.moved([t(1, 112, 100)], at: 0.02), [], "past the slop: it's a move from here")
+        XCTAssertEqual(e.moved([t(1, 125, 104)], at: 0.04), [.view(scale: 1, dx: 13, dy: 4, at: CGPoint(x: 125, y: 104))])
         XCTAssertEqual(e.moved([t(1, 125, 104)], at: 0.4), [.view(scale: 1, dx: 0, dy: 0, at: CGPoint(x: 125, y: 104))])
         XCTAssertEqual(e.ended([1], at: 0.6), [.viewEnd], "let go at rest: it stays; no click, no pointer")
     }
@@ -382,7 +382,7 @@ final class PadEngineTests: XCTestCase {
         // on, and it is one move of the picture throughout, never a press and never a selection
         let e = zoomed()
         _ = e.began([t(1, 100, 100)], at: 0)
-        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.moved([t(1, 112, 100)], at: 0.02)
         _ = e.moved([t(1, 140, 100)], at: 0.05)
         XCTAssertFalse(e.needsTicks)
         XCTAssertEqual(e.tick(at: 0.6), [])
@@ -394,7 +394,7 @@ final class PadEngineTests: XCTestCase {
     func testAFlickSendsThePictureCoasting() {
         let e = zoomed()
         _ = e.began([t(1, 100, 100)], at: 0)
-        _ = e.moved([t(1, 110, 100)], at: 0.01)
+        _ = e.moved([t(1, 112, 100)], at: 0.01)
         _ = e.moved([t(1, 130, 100)], at: 0.02)
         _ = e.moved([t(1, 150, 100)], at: 0.03)
         let o = e.ended([1], at: 0.035)
@@ -446,7 +446,7 @@ final class PadEngineTests: XCTestCase {
         e.pinchZoomsView = true
         e.touchMode = true
         _ = e.began([t(1, 100, 100)], at: 0)
-        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.moved([t(1, 112, 100)], at: 0.02)
         guard case .move? = e.moved([t(1, 120, 100)], at: 0.04).first else { return XCTFail() }
         _ = e.ended([1], at: 0.3)
         // zoomed in, two fingers are still the computer's scroll, under them
@@ -458,7 +458,7 @@ final class PadEngineTests: XCTestCase {
     func testThreeFingersEndAMoveOfThePicture() {
         let e = zoomed()
         _ = e.began([t(1, 100, 100)], at: 0)
-        _ = e.moved([t(1, 110, 100)], at: 0.02)
+        _ = e.moved([t(1, 112, 100)], at: 0.02)
         _ = e.began([t(2, 160, 100)], at: 0.03)
         XCTAssertEqual(e.began([t(3, 220, 100)], at: 0.04), [.viewEnd])
     }
@@ -516,7 +516,7 @@ final class PadEngineTests: XCTestCase {
         let e = PadEngine()
         e.touchMode = true
         _ = e.began([t(1, 100, 200)], at: 0)
-        _ = e.moved([t(1, 110, 200)], at: 0.05)
+        _ = e.moved([t(1, 112, 200)], at: 0.05)
         guard case .move? = e.moved([t(1, 120, 200)], at: 0.07).first else { return XCTFail() }
         XCTAssertEqual(e.ended([1], at: 0.2), [])
     }
@@ -961,5 +961,72 @@ final class ViewPortTests: XCTestCase {
         var p = ViewPort()
         p.change(scale: 100, move: .zero, anchor: .zero)
         XCTAssertEqual(p.zoom, ViewPort.closest)
+    }
+
+    // MARK: the hand, 2026-11-26
+
+    private func t(_ id: Int, _ x: CGFloat, _ y: CGFloat) -> PadTouch { PadTouch(id: id, x: x, y: y) }
+
+    private func touch(_ mode: Bool, pan: Bool = false) -> PadEngine {
+        let e = PadEngine()
+        e.touchMode = mode
+        e.pinchZoomsView = mode
+        e.panView = pan
+        return e
+    }
+
+    private func presses(_ o: [PadOutput]) -> Bool { o.contains { if case .button(_, down: true) = $0 { true } else { false } } }
+
+    func testOnThePictureATapMayBeSlowerAndLessSteady() {
+        for pan in [false, true] {
+            var e = touch(true, pan: pan)
+            _ = e.began([t(1, 100, 100)], at: 0)
+            _ = e.moved([t(1, 109, 100)], at: 0.2)
+            XCTAssertEqual(e.ended([1], at: 0.29), [.pointAt(CGPoint(x: 100, y: 100)), .click(.left), .haptic(.tap)])
+            // a clear move before the hold is the pointer's, or the picture's: nothing is pressed
+            e = touch(true, pan: pan)
+            _ = e.began([t(1, 100, 100)], at: 0)
+            XCTAssertFalse(presses(e.moved([t(1, 112, 100)], at: 0.39)))
+            // held, then moved: press and drag, as before
+            e = touch(true, pan: pan)
+            _ = e.began([t(1, 100, 100)], at: 0)
+            _ = e.tick(at: 0.41)
+            XCTAssertTrue(presses(e.moved([t(1, 112, 100)], at: 0.45)))
+            // held and lifted: a right click
+            e = touch(true, pan: pan)
+            _ = e.began([t(1, 100, 100)], at: 0)
+            _ = e.tick(at: 0.41)
+            XCTAssertTrue(e.ended([1], at: 0.8).contains(.click(.right)))
+        }
+        // the trackpad's are as they were: a thumb resting on it never clicks
+        let e = touch(false)
+        _ = e.began([t(1, 100, 100)], at: 0)
+        XCTAssertEqual(e.ended([1], at: 0.3), [])
+        _ = e.began([t(2, 100, 100)], at: 1)
+        _ = e.moved([t(2, 109, 100)], at: 1.1)
+        XCTAssertEqual(e.ended([2], at: 1.15), [], "nine points is a move there")
+    }
+
+    func testAFingerThatStoppedLeavesNothingCoasting() {
+        // the picture
+        var e = touch(true, pan: true)
+        _ = e.began([t(1, 100, 100)], at: 0)
+        for i in 1...6 { _ = e.moved([t(1, 100, 100 + CGFloat(i) * 20)], at: Double(i) * 0.016) }
+        XCTAssertEqual(e.ended([1], at: 0.3), [.viewEnd])
+        // two fingers scrolling
+        e = touch(false)
+        _ = e.began([t(1, 100, 100), t(2, 160, 100)], at: 0)
+        for i in 1...6 { _ = e.moved([t(1, 100, 100 + CGFloat(i) * 20), t(2, 160, 100 + CGFloat(i) * 20)], at: Double(i) * 0.016) }
+        XCTAssertEqual(e.ended([1, 2], at: 0.4), [.scroll(0, 0, .ended)])
+    }
+
+    func testAudioWhileTheSessionIsAwayIsKeptInOrderTheLastTenSeconds() {
+        var h = HeldAudio()
+        for i in 0..<120 { h.add(Data(repeating: UInt8(i), count: 3200)) }      // 12 s in 100 ms pieces
+        let kept = h.take()
+        XCTAssertEqual(kept.count, 100)
+        XCTAssertEqual(kept.first?.first, 20)
+        XCTAssertEqual(kept.last?.first, 119)
+        XCTAssertTrue(h.take().isEmpty)
     }
 }

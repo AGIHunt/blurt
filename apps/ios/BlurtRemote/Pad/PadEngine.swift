@@ -57,6 +57,12 @@ enum PadHaptic { case tap, grab, release, step }
 final class PadEngine {
     static let slop: CGFloat = 6
     static let tapTime = 0.22
+    /// on the picture a finger aims, and lands less lightly than on a trackpad: it may move this far and stay this long and still be a tap.
+    /// A hold (`holdTime`) and the drag after it are as before
+    static let touchSlop: CGFloat = 10
+    static let touchTapTime = 0.30
+    /// a finger that has stopped this long before it lifts leaves nothing coasting
+    static let restTime = 0.1
     static let doubleWindow = 0.30
     static let doubleReach: CGFloat = 44
     static let holdTime = 0.40
@@ -215,7 +221,7 @@ final class PadEngine {
         var out: [PadOutput] = []
         switch state {
         case let .one(start, _, _):
-            if dist(p, start) > Self.slop {
+            if dist(p, start) > (touchMode && !onEdge(start) ? Self.touchSlop : Self.slop) {
                 if scrollsEdge(start, p) {
                     out += beginEdgeScroll(p)
                 } else if panView {
@@ -360,7 +366,7 @@ final class PadEngine {
         }
         switch state {
         case let .one(start, _, at):
-            if now - at < Self.tapTime {
+            if now - at < (touchMode ? Self.touchTapTime : Self.tapTime) {
                 if touchMode { out.append(.pointAt(start)) }
                 out += [.click(.left), .haptic(.tap)]
                 lastTap = (now, start)
@@ -383,7 +389,7 @@ final class PadEngine {
         case let .scrolling(_, two):
             out.append(.scroll(0, 0, .ended))
             if !two { out.append(.edgeScroll(false)) }
-            if let v = releaseVelocity() {
+            if let v = releaseVelocity(now) {
                 let gain = two ? scrollGain : scrollGain * Self.edgeGain
                 out.append(.fling(Float(v.dx * gain), Float(v.dy * gain)))
                 coastUntil = now + Self.coastTime
@@ -397,15 +403,15 @@ final class PadEngine {
             out.append(.viewEnd)
         case .panning:
             out.append(.viewEnd)
-            if let v = releaseVelocity() { out.append(.viewCoast(v.dx, v.dy)) }
+            if let v = releaseVelocity(now) { out.append(.viewCoast(v.dx, v.dy)) }
         default: break
         }
         state = .idle
         return out
     }
 
-    private func releaseVelocity() -> CGVector? {
-        guard let first = samples.first, let last = samples.last, last.t > first.t, samples.count >= 2 else { return nil }
+    private func releaseVelocity(_ now: Double) -> CGVector? {
+        guard let first = samples.first, let last = samples.last, last.t > first.t, samples.count >= 2, now - last.t <= Self.restTime else { return nil }
         let span = max(last.t - first.t, 0.016)
         let dx = samples.reduce(0) { $0 + $1.dx }, dy = samples.reduce(0) { $0 + $1.dy }
         let v = CGVector(dx: dx / span, dy: dy / span)

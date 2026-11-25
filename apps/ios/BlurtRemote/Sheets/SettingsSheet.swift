@@ -22,6 +22,9 @@ struct SettingsSheet: View {
                     if l.macs.count > 1 { Text("Tap a computer to switch to it. On the main screen, hold the settings button to switch without coming here.") }
                 }
                 Section {
+                    Toggle("Stay Connected in the Background", isOn: $p.staysConnected)
+                } footer: { Text("For about 25 seconds after you leave Blurt.") }
+                Section {
                     SwiftUI.Link("Support", destination: supportURL("support"))
                     SwiftUI.Link("Privacy Policy", destination: supportURL("privacy"))
                 }

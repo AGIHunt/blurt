@@ -15,13 +15,15 @@ final class Prefs: ObservableObject {
     /// portrait: the talk key and the arrow key at the other end. Landscape turns with the phone
     @Published var lefty: Bool { didSet { d.set(lefty, forKey: "lefty") } }
     /// false: dictation listens through the Mac's microphone
+    /// a session is kept a while after the app leaves the screen (Link.background)
+    @Published var staysConnected: Bool { didSet { d.set(staysConnected, forKey: "staysConnected") } }
     @Published var micOnPhone: Bool { didSet { d.set(micOnPhone, forKey: "micOnPhone") } }
     /// with the Mac's screen showing: a tap clicks what's under the finger. Off: a trackpad, clicking where the pointer is
     @Published var tapWhereTouched: Bool { didSet { d.set(tapWhereTouched, forKey: "tapWhereTouched") } }
     /// a keyboard on the iPad, with Windows or Linux: what its ⌘ key presses there
     @Published var hardwareCommand: CommandKeyRole { didSet { d.set(hardwareCommand.rawValue, forKey: "hardwareCommand") } }
     @Published var quality: ScreenQuality { didSet { d.set(quality.rawValue, forKey: "quality"); ScreenStream.shared.planChanged() } }
-    /// the picture was on when last left: it comes back on with the computer. Off, the phone never starts showing a screen by itself
+    /// the picture comes on with the computer: from the first time, until the user turns it off (the founder, 2026-11-26)
     var screenWanted: Bool { didSet { d.set(screenWanted, forKey: "screenWanted") } }
     /// the picture has been turned on once: the empty pad no longer needs to say where it is
     var screenFound: Bool { didSet { d.set(screenFound, forKey: "screenFound") } }
@@ -43,11 +45,12 @@ final class Prefs: ObservableObject {
         reverseScroll = d.object(forKey: "reverseScroll") as? Bool ?? false
         haptics = d.object(forKey: "haptics") as? Bool ?? true
         lefty = d.object(forKey: "lefty") as? Bool ?? false
+        staysConnected = d.object(forKey: "staysConnected") as? Bool ?? true
         micOnPhone = d.object(forKey: "micOnPhone") as? Bool ?? true
         tapWhereTouched = d.object(forKey: "tapWhereTouched") as? Bool ?? true
         hardwareCommand = d.string(forKey: "hardwareCommand").flatMap(CommandKeyRole.init) ?? .control
         quality = d.string(forKey: "quality").flatMap(ScreenQuality.init) ?? .auto
-        screenWanted = d.bool(forKey: "screenWanted")
+        screenWanted = d.object(forKey: "screenWanted") as? Bool ?? true
         screenFound = d.bool(forKey: "screenFound")
         fullScreen = d.bool(forKey: "fullScreen")
         pictureTipShown = d.bool(forKey: "pictureTipShown")

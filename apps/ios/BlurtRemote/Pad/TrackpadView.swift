@@ -274,7 +274,17 @@ final class TrackpadView: UIView, UIPointerInteractionDelegate {
     private func apply(_ out: [PadOutput]) {
         let link = Link.shared
         var placed = false, broughtIn = false
+        // the picture is from before, or not there yet (ScreenStream.blind): what's under the finger may not be there any more, so nothing is pressed on it
+        let blind = isStage && showing && engine.touchMode && ScreenStream.shared.blind
         for o in out {
+            if blind {
+                switch o {
+                case .pointAt, .dragTo, .click: continue
+                case .button(_, down: true): dragOff = true; continue
+                case .scroll(_, _, .began): scrollOff = true; continue
+                default: break
+                }
+            }
             switch o {
             case let .move(x, y):
                 ScreenStream.shared.bringPointerIntoView()

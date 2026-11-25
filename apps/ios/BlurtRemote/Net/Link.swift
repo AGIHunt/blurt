@@ -76,7 +76,7 @@ final class Link: ObservableObject {
         case ended
     }
 
-    @Published private(set) var state = State.unpaired
+    @Published private(set) var state = State.unpaired { didSet { if state != oldValue { stateChanged() } } }
     @Published private(set) var macs: [PairedMac] = []
     @Published private(set) var current: PairedMac? { didSet { hostChanged() } }
     /// what the computer in hand is: its keys, their names and what the app says follow it. A Mac until it says otherwise
@@ -120,6 +120,17 @@ final class Link: ObservableObject {
     private let path = NWPathMonitor()
     private var nearbyBrowser: NWBrowser?
     @Published var screenError: String?
+    /// the computer's screen is locked and it can't show that (RemoteScreen's word)
+    @Published private(set) var hostLocked = false
+    /// on the go-between, nothing is carried until the direct path is open: not connected yet (state stays .connecting)
+    @Published private(set) var meeting = false
+    /// iOS's Local Network switch is off for Blurt
+    @Published private(set) var localDenied = false
+    /// what its relay says of a computer that can't be reached, asked now and then while it can't
+    @Published private(set) var presence: RemotePresence?
+    private var peeker: Timer?
+    /// typed on the phone's own keyboard while there was no session: kept, and asked about once there is
+    @Published private(set) var unsent = ""
 
     private var channel: RemoteChannel?
     private var attempts: [RemoteChannel] = []
@@ -241,6 +252,43 @@ final class Link: ObservableObject {
     }
     private var lastRefusal = Date.distantPast
 
+    private func stateChanged() {
+        awakeScreen()
+        // why it can't be reached, from its relay: asked on the way in, then now and then while it lasts
+        guard state == .unreachable else {
+            peeker?.invalidate()
+            peeker = nil
+            if state == .connected { presence = nil }
+            return
+        }
+        guard peeker == nil else { return }
+        peek()
+        peeker = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.peek() }
+    }
+
+    private func peek() {
+        guard active, let m = current, let a = m.relayAddress, let key = Keychain.read(account: m.deviceID) else { return }
+        RemoteRelay.peek(address: a, room: RemoteRelay.room(key: key)) { [weak self] p in
+            DispatchQueue.main.async {
+                guard let self, self.current?.deviceID == m.deviceID, self.state == .unreachable else { return }
+                self.presence = p
+            }
+        }
+    }
+
+    /// In use the screen stays on; with nothing to use for two minutes the phone may go to sleep as it would.
+    private var sleepy: DispatchWorkItem?
+    private func awakeScreen() {
+        sleepy?.cancel()
+        sleepy = nil
+        guard active else { return }
+        UIApplication.shared.isIdleTimerDisabled = true
+        guard state != .connected, !waitingForMac else { return }
+        let w = DispatchWorkItem { [weak self] in if self?.state != .connected { UIApplication.shared.isIdleTimerDisabled = false } }
+        sleepy = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: w)
+    }
+
     private func hostChanged() {
         let h = current?.host ?? .mac
         RemoteHost.shown = h
@@ -356,17 +404,18 @@ final class Link: ObservableObject {
         pairFailed = Self.failure(.unreachable, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
     }
 
-    /// The code never got an answer, or a refusal: back where things were, and say why, with Scan Code for a new one. Said for a while
-    /// over the computer gone back to (it may be in use), or until the next pairing begins.
+    /// The pad's OK under why a pairing didn't take.
+    func dismissPairFailure() { pairFailed = nil }
+
+    /// The code never got an answer, or a refusal: back where things were, and say why, with Scan Code for a new one. Said until it's read
+    /// (OK), or until the next pairing begins.
     private func joinFailed(_ why: PairFailure.Why) {
         guard let j = joining else { return }
         joining = nil
         waitingForMac = false
         askedAt = nil
         Keychain.remove(account: j.mac.deviceID)
-        let f = Self.failure(why, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
-        pairFailed = f
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in if self?.pairFailed == f { self?.pairFailed = nil } }
+        pairFailed = Self.failure(why, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
         leave()
         current = macs.first { $0.id == j.back?.id } ?? macs.first
         state = current == nil ? .unpaired : .connecting
@@ -410,6 +459,10 @@ final class Link: ObservableObject {
         front = nil
         legends = nil
         screenError = nil
+        hostLocked = false
+        meeting = false
+        presence = nil
+        unsent = ""
         displays = []
         shownDisplay = nil
         pinnedDisplay = nil
@@ -472,7 +525,7 @@ final class Link: ObservableObject {
         let back = !active
         active = true
         joining?.since = Date()      // scanning with the Camera app, say
-        UIApplication.shared.isIdleTimerDisabled = true
+        awakeScreen()
         if parked {
             unpark()
             if channel != nil {
@@ -488,8 +541,8 @@ final class Link: ObservableObject {
         if state != .connected, state != .replaced, state != .ended { connect() }
     }
 
-    /// The user reached for this phone while another had the Mac: take it back.
-    func touched() {
+    /// The card's Take Over or Reconnect: another phone has the computer, or its owner ended the session.
+    func takeBack() {
         guard state == .replaced || state == .ended else { return }
         state = .connecting
         connect()
@@ -516,12 +569,13 @@ final class Link: ObservableObject {
 
     func background() {
         active = false
+        sleepy?.cancel()
         Sticky.shared.clear()
         UIApplication.shared.isIdleTimerDisabled = false
         send(.releaseAll)
         // a message answered, a code copied: back within seconds, and the session is still there. Not while the microphone is this
         // phone's: iOS stops it out of sight, so the take ends as it would with the session
-        if channel != nil, state == .connected || waitingForMac, !MicStream.shared.busy, park() { return }
+        if Prefs.shared.staysConnected, channel != nil, state == .connected || waitingForMac, !MicStream.shared.busy, park() { return }
         left()
     }
 
@@ -672,6 +726,17 @@ final class Link: ObservableObject {
                 DispatchQueue.main.async { self.attempt(r.endpoint, mac: mac, key: key) }
             }
         }
+        b.stateUpdateHandler = { [weak self] s in
+            // kDNSServiceErr_PolicyDenied: the Local Network switch
+            var denied: Bool?
+            switch s {
+            case let .waiting(.dns(e)), let .failed(.dns(e)): denied = e == -65570
+            case .ready: denied = false
+            default: break
+            }
+            guard let denied else { return }
+            DispatchQueue.main.async { if self?.localDenied != denied { self?.localDenied = denied } }
+        }
         b.start(queue: queue)
         browser = b
     }
@@ -705,10 +770,14 @@ final class Link: ObservableObject {
             guard let ch else { return }
             DispatchQueue.main.async { self?.opened(ch, mac: mac, goBetween: goBetween) }
         }
-        ch.onMoved = { [weak self] in
+        ch.onMoved = { [weak self, weak ch] in
             DispatchQueue.main.async {
                 guard let self else { return }
                 // the whole session is on the direct path now: the go-between worked on this network
+                if let ch, self.channel === ch, self.meeting {
+                    self.meeting = false
+                    self.ready(with: ch)
+                }
                 self.noDirectTimes = 0
                 self.meetRefusals = 0
                 self.away = nil
@@ -868,7 +937,11 @@ final class Link: ObservableObject {
         channel = nil
         c?.close()
         viaGoBetween = false
-        MicStream.shared.stop()
+        meeting = false
+        hostLocked = false
+        // the talk key is still held: the microphone goes on and what it hears waits for the session (audio)
+        if !talkHeld || parked { MicStream.shared.stop() }
+        hold(talkHeld && !parked)
         ScreenStream.shared.connectionLost()
         dictation = .idle
         sessionDue?.cancel()
@@ -900,7 +973,6 @@ final class Link: ObservableObject {
         case let .session(i):
             sessionDue?.cancel()
             canControl = i.canControl
-            state = .connected
             pointerSeq = 0      // a new session: the computer has forgotten the last one's numbers too
             // its name, and what it is: a computer being paired isn't in the list yet, but its keys show already
             if var c = current, c.name != i.macName || c.platform != i.platform {
@@ -923,20 +995,29 @@ final class Link: ObservableObject {
             }
             // one relay serves all of them: a Mac with none takes the one the others use
             if i.relay == nil, let a = macs.compactMap(\.relayAddress).first(where: { !RemoteRelay.isGoBetween($0) }) { send(.offerRelay(a)) }
-            if talkHeld { send(.dictationKey(down: true)) }
-            if parked { ScreenStream.shared.pause() } else { ScreenStream.shared.resume() }
+            if let c = channel, viaGoBetween, !c.moved {
+                // the host says noDirect 8 s from here if the path doesn't open; a word lost on the way isn't waited for longer
+                meeting = true
+                let w = DispatchWorkItem { [weak self, weak c] in
+                    guard let self, let c, self.channel === c, self.meeting else { return }
+                    self.lost()
+                }
+                sessionDue = w
+                DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: w)
+            } else if let c = channel {
+                ready(with: c)
+            }
             if channel?.isRelay == true {
                 if ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" { lookForDirect(i) }
             } else {
                 channel?.openUDP(port: i.udpPort, session: i.udpSession)
             }
-            // the Mac let go of everything when the last session ended
-            send(.mods(Sticky.shared.held))
         case let .legends(l): legends = l
         case let .canControl(ok): canControl = ok
         case let .front(f): front = f
         case let .dictation(p):
             dictation = p
+            if p == .listening { heardTake() }
             if p != .listening { level = 0 }
             if p == .idle { live = ""; liveFinal = "" }
             MicStream.shared.macPhase(p)
@@ -1026,11 +1107,25 @@ final class Link: ObservableObject {
             noDirect()
         case .streamMoved: break      // the channel reads it itself
         case .clipboard: break        // to a computer driving another (remote-desktop-viewer.md); a phone never asks for it
-        case .screenLocked: break     // the picture stops at a lock screen; the phone keeps its last frame
+        case let .screenLocked(on): hostLocked = on
         }
     }
 
     private var lastInfo: RemoteSessionInfo?
+
+    /// The session carries everything from here: connected.
+    private func ready(with c: RemoteChannel) {
+        sessionDue?.cancel()
+        state = .connected
+        // a new session: the computer has forgotten the last one's held keys, and stopped its picture
+        if parked { ScreenStream.shared.pause() } else { ScreenStream.shared.resume() }
+        send(.mods(Sticky.shared.held))
+        if talkHeld {
+            // the microphone was let go of (or never had): it's opened again for the key still down
+            if MicStream.shared.usable { MicStream.shared.start() }
+            send(.dictationKey(down: true))
+        }
+    }
 
     /// The computer's own addresses, as it listed them this session: the private and overlay ones are kept to try next time, newest first.
     private func noteAddresses(_ list: [RemoteCandidate]) {
@@ -1084,9 +1179,54 @@ final class Link: ObservableObject {
     private var talkHeld = false
     func dictationKey(down: Bool) {
         talkHeld = down
+        hold(down && state != .connected)
+        // let go before the session was back: nothing of it goes, and the microphone with it
+        if !down, state != .connected { MicStream.shared.stop(for: .talk) }
         guard state == .connected else { return }
         send(.dictationKey(down: down))
     }
+
+    /// The microphone was taken mid-take: the take ends there with what was said, held or hands-free.
+    func micTaken() {
+        if talkHeld { return dictationKey(down: false) }
+        guard state == .connected, dictation == .listening else { return }
+        send(.dictationKey(down: true))
+        send(.dictationKey(down: false))
+    }
+
+    /// The computer listens: what the microphone heard while the session was away goes first, in order.
+    private func heardTake() {
+        audioLock.lock()
+        defer { audioLock.unlock() }
+        guard holding else { return }
+        holding = false
+        heldAudio.take().forEach { channel?.sendAudio($0) }
+    }
+
+    /// From a drop with the talk key held until the computer says it listens again, what the microphone hears is kept.
+    private func hold(_ on: Bool) {
+        audioLock.lock()
+        holding = on
+        heldAudio.clear()
+        audioLock.unlock()
+    }
+    private let audioLock = NSLock()
+    private var holding = false
+    private var heldAudio = HeldAudio()
+
+    /// Words typed on the phone's keyboard. With no session they're kept, not lost and not sent by themselves: by the time it's back they
+    /// might land in another window. The pad asks.
+    func type(_ t: String) {
+        if ready { return send(.text(t)) }
+        unsent = String((unsent + t).suffix(4000))
+    }
+    func sendUnsent() {
+        let t = unsent
+        unsent = ""
+        if !t.isEmpty { send(.text(t)) }
+    }
+    func dropUnsent() { unsent = "" }
+
     /// `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be
     func pointer(_ p: RemotePointerPacket, inOrder: Bool = false) {
         var p = p
@@ -1116,13 +1256,41 @@ final class Link: ObservableObject {
         pendingScroll = nil
     }
 
-    func audio(_ d: Data) { channel?.sendAudio(d) }
+    /// from the microphone's queue
+    func audio(_ d: Data) {
+        audioLock.lock()
+        defer { audioLock.unlock() }
+        if holding { heldAudio.add(d) } else { channel?.sendAudio(d) }
+    }
     func datagram(_ k: RemoteFrameKind, _ d: Data) { channel?.sendDatagram(k, d) }
     /// the last round trip, from any thread (the picture's receiver waits a few of these for a piece sent again)
     static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }
     static let rttLock = NSLock()
     nonisolated(unsafe) static var rttShared = 0.01
     var ready: Bool { channel != nil && state == .connected }
+}
+
+/// What the microphone heard while the session was away, the last ten seconds of it.
+struct HeldAudio {
+    static let most = 10 * 32_000      // 16 kHz PCM16
+    private var pieces: [Data] = []
+    private var bytes = 0
+
+    mutating func add(_ d: Data) {
+        pieces.append(d)
+        bytes += d.count
+        while bytes > Self.most, !pieces.isEmpty { bytes -= pieces.removeFirst().count }
+    }
+
+    mutating func take() -> [Data] {
+        defer { clear() }
+        return pieces
+    }
+
+    mutating func clear() {
+        pieces = []
+        bytes = 0
+    }
 }
 
 enum Keychain {

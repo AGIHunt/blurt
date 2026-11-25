@@ -7,18 +7,25 @@ struct PairSheet: View {
     @State private var link = Link.shared.lastLink
     @State private var failed = false
     private let hasCamera = AVCaptureDevice.default(for: .video) != nil
+    @State private var denied = [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .video))
+    private var camera: Bool { hasCamera && !denied }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                if hasCamera {
-                    Scanner { code in if open(code) { dismiss() } }
+                if camera {
+                    Scanner(onDenied: { denied = true }) { code in if open(code) { dismiss() } }
                         .aspectRatio(1, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
                 Text(Words.whereTheCodeIs)
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                if !hasCamera {
+                if hasCamera, denied {
+                    Text("Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link copied on your computer.")
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
+                }
+                if !camera {
                     TextField("Pairing link", text: $link)
                         .textFieldStyle(.roundedBorder).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Connect") { if open(link) { Link.shared.lastLink = link; dismiss() } }.disabled(link.isEmpty)
@@ -41,8 +48,9 @@ struct PairSheet: View {
 }
 
 private struct Scanner: UIViewControllerRepresentable {
+    var onDenied: () -> Void = {}
     let onCode: (String) -> Void
-    func makeUIViewController(context: Context) -> ScannerController { ScannerController(onCode) }
+    func makeUIViewController(context: Context) -> ScannerController { ScannerController(onCode, onDenied: onDenied) }
     func updateUIViewController(_ c: ScannerController, context: Context) {}
 }
 
@@ -52,8 +60,11 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     private var preview: AVCaptureVideoPreviewLayer?
     private var last: String?
 
-    init(_ onCode: @escaping (String) -> Void) {
+    private let onDenied: () -> Void
+
+    init(_ onCode: @escaping (String) -> Void, onDenied: @escaping () -> Void) {
         self.onCode = onCode
+        self.onDenied = onDenied
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -63,8 +74,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         super.viewDidLoad()
         view.backgroundColor = .black
         AVCaptureDevice.requestAccess(for: .video) { [weak self] ok in
-            guard ok else { return }
-            DispatchQueue.main.async { self?.begin() }
+            DispatchQueue.main.async { if ok { self?.begin() } else { self?.onDenied() } }
         }
     }
 

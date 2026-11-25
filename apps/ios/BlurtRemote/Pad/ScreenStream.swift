@@ -202,12 +202,33 @@ final class ScreenStream {
         start()
     }
 
-    func connectionLost() { q.async { self.reset() } }
+    func connectionLost() {
+        stale = true
+        q.async { self.reset() }
+    }
+
+    /// What's on the glass is from before: the session went or was left, and nothing new has come yet. It's dimmed, and a touch on it isn't
+    /// a click (TrackpadView): what's under the finger may no longer be there. Main thread.
+    /// the first frame of a picture just turned on is up
+    var onFirstPicture: (() -> Void)?
+    var blind: Bool { !standsIn && (stale || video.contents == nil) }
+    private(set) var stale = false {
+        didSet {
+            guard stale != oldValue else { return }
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.2)
+            video.opacity = stale ? 0.45 : 1
+            backdrop.opacity = stale ? 0.45 : 1
+            CATransaction.commit()
+            if stale { cursorLayer.isHidden = true } else { placeCursor() }
+        }
+    }
 
     /// The app is out of sight and its session kept: the computer stops capturing and the phone stops its timers, the last picture and the
     /// view stay as they are. iOS takes the decoder away out of sight, so what comes back starts it anew.
     private var paused = false
     func pause() {
+        stale = true
         q.async {
             guard self.on, !self.paused else { return }
             self.paused = true
@@ -552,14 +573,14 @@ final class ScreenStream {
 
     /// The Mac's pointer under the finger, now, ahead of whatever comes next. False off the picture.
     func placePointer(at p: CGPoint) -> Bool {
-        guard on, let at = onScreenPoint(p) else { return false }
+        guard on, !blind, let at = onScreenPoint(p) else { return false }
         move(to: at)
         return true
     }
 
     /// With the button down: it follows the finger, and stops at the picture's edge. Over the relay no more often than the pointer goes.
     func dragPointer(to p: CGPoint) {
-        guard on || standsIn, bounds.width > 0 else { return }
+        guard on && !blind || standsIn, bounds.width > 0 else { return }
         // zoomed in, a drag held at the stage's edge takes the view along: what's dragged can go further than what's in view
         if !port.isWhole {
             dragAt = p
@@ -642,7 +663,7 @@ final class ScreenStream {
     }
 
     private func placeCursor() {
-        guard on, source.width > 0, pointerKnown, bounds.width > 0 else { cursorLayer.isHidden = true; return }
+        guard on, !stale, source.width > 0, pointerKnown, bounds.width > 0 else { cursorLayer.isHidden = true; return }
         let v = port.rect
         let x = (pointer.x - v.minX) / v.width, y = (pointer.y - v.minY) / v.height
         CATransaction.begin()
@@ -694,6 +715,7 @@ final class ScreenStream {
             self.reset()
             DispatchQueue.main.async {
                 self.video.contents = nil
+                self.stale = false
                 self.onScreen = []
                 self.backdrop.contents = nil
                 self.backdropStale = true
@@ -866,7 +888,8 @@ final class ScreenStream {
         let f = nextFrame
         nextFrame = nil
         frameLock.unlock()
-        guard let (image, crop, captured) = f, on else { return }
+        guard let (image, crop, captured) = f, on, !paused else { return }
+        stale = false
         if let a = awaiting {
             // still the display left, by its shape: not shown. The first of the new one ends the cross-fade
             let w = CGFloat(CVPixelBufferGetWidth(image)), h = CGFloat(CVPixelBufferGetHeight(image))
@@ -879,6 +902,7 @@ final class ScreenStream {
         }
         onScreen.append(image)
         if onScreen.count > 3 { onScreen.removeFirst() }
+        if video.contents == nil { DispatchQueue.main.async { self.onFirstPicture?() } }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         video.contents = CVPixelBufferGetIOSurface(image)?.takeUnretainedValue()

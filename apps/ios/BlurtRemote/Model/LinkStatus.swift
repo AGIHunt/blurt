@@ -20,6 +20,20 @@ struct LinkStatus: Equatable {
     var canControl = true
     /// "permission", "off": why the computer won't show its screen
     var screenError: String?
+    /// the user asked for the picture (the screen button); one that came on by itself says nothing when it can't
+    var screenAsked = true
+    /// the picture is showing
+    var showing = false
+    /// the computer's screen is locked, and it can't show that
+    var locked = false
+    /// on the public connection service, the direct path isn't open yet: nothing is carried until it is
+    var meeting = false
+    /// this phone has no network at all
+    var offline = false
+    /// iOS won't let Blurt look on the local network
+    var localDenied = false
+    /// what the computer's relay says of it while it can't be reached
+    var presence: Presence?
     /// the computer is asking its owner about this phone's code
     var waiting = false
     /// a pairing just didn't take; Link has the sentences
@@ -32,6 +46,7 @@ struct LinkStatus: Equatable {
 
     /// `relayDown`: the computer's own relay doesn't answer; the public connection service is tried meanwhile (2026-11-20, the office)
     enum Away: Equatable { case noDirect, busy, relayDown }
+    enum Presence: Equatable { case asleep, lastOnline }
 }
 
 struct StatusBanner: Equatable {
@@ -40,20 +55,28 @@ struct StatusBanner: Equatable {
 
     enum Line: Equatable {
         case connecting, reconnecting
+        /// met on the public connection service; the direct path is being opened
+        case connectingDirect
+        case noNetwork, turnOnNetwork
         case cantReach, checkNetwork, checkAwake
+        /// since when, or when it was last there: from its relay (the time is in the words)
+        case asleepSince, lastOnline
+        /// iOS's Local Network switch is off for Blurt
+        case localNetworkOff
         /// the go-between: the direct path wouldn't open here / the free quota is spent for today
         case noDirect, goBetweenBusy, relayDown
         case needsPairing, forgotten
-        case otherPhone, touchToTakeOver
-        case endedThere, touchToReconnect
+        case otherPhone
+        case endedThere
         case pairFirst, whereTheCodeIs
         case waiting, allowOnComputer
         case pairingFailed, whyPairingFailed
         case cantControl, howToAllowControl
-        case cantShowScreen, allowScreen, screenIsOff
+        case cantShowScreen, allowScreen, screenIsOff, pictureStopped
+        case locked, unlockFirst
     }
 
-    enum Action: Equatable { case retry, scan, another }
+    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings }
 
     var mark: Mark
     var title: Line
@@ -67,27 +90,41 @@ struct StatusBanner: Equatable {
         switch s.phase {
         case .unpaired:
             b = StatusBanner(mark: .code, title: .pairFirst, detail: .whereTheCodeIs, action: .scan)
+        case .connecting where s.offline, .unreachable where s.offline:
+            b = StatusBanner(mark: .problem, title: .noNetwork, detail: .turnOnNetwork)
         case .connecting:
-            b = StatusBanner(mark: .busy, title: s.dropped ? .reconnecting : .connecting)
+            b = StatusBanner(mark: .busy, title: s.meeting ? .connectingDirect : s.dropped ? .reconnecting : .connecting)
+        case .unreachable where s.localDenied && !s.hasRelay:
+            b = StatusBanner(mark: .problem, title: .cantReach, detail: .localNetworkOff, action: .openSettings, second: .retry)
         case .unreachable:
             // the go-between's own reason, when that's why: it says what fixes it (a relay of one's own), not what to check
             let detail: Line = switch s.away {
             case .noDirect: .noDirect
             case .busy: .goBetweenBusy
             case .relayDown: .relayDown
-            case nil: s.hasRelay ? .checkAwake : .checkNetwork
+            case nil:
+                switch s.presence {
+                case .asleep: .asleepSince
+                case .lastOnline: .lastOnline
+                case nil: s.hasRelay ? .checkAwake : .checkNetwork
+                }
             }
             b = StatusBanner(mark: .problem, title: .cantReach, detail: detail, action: .retry, second: s.otherComputers ? .another : nil)
         case .forgotten:
             b = StatusBanner(mark: .problem, title: .needsPairing, detail: .forgotten, action: .scan)
         case .replaced:
-            b = StatusBanner(mark: .phone, title: .otherPhone, detail: .touchToTakeOver)
+            // a button, not any touch: a phone in a pocket, or a screen being wiped, mustn't take the computer from whoever has it
+            b = StatusBanner(mark: .phone, title: .otherPhone, action: .takeOver)
         case .ended:
-            b = StatusBanner(mark: .phone, title: .endedThere, detail: .touchToReconnect)
+            b = StatusBanner(mark: .phone, title: .endedThere, action: .reconnect)
         case .connected:
             if !s.canControl { b = StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl) }
-            if s.screenError == "permission" { b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .allowScreen) }
-            if s.screenError == "off" { b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .screenIsOff) }
+            if s.screenAsked, let e = s.screenError {
+                let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : .pictureStopped
+                b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: why)
+            }
+            // locked: why there's no picture, and why it may not take input either
+            if s.locked, s.showing { b = StatusBanner(mark: .problem, title: .locked, detail: .unlockFirst) }
         }
         // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
         // once the computer asks, whatever went wrong before is past
@@ -96,8 +133,8 @@ struct StatusBanner: Equatable {
             // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the
             // computer gone back to is still there to do
             b = s.pairRetry ? StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .retry, second: .scan)
-                : StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan,
-                               second: b?.action == .scan ? nil : b?.action)
+                // it stays until it's read: a tap on OK, or the next pairing
+                : StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan, second: .dismiss)
         }
         return b
     }

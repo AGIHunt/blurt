@@ -3640,22 +3640,6 @@
         }
       }
     },
-    "Touch to take over." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻点以使用这台手机。"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap to use this phone."
-          }
-        }
-      }
-    },
     "Waiting for your computer" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3672,16 +3656,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ · Tailscale"
-          }
-        }
-      }
-    },
-    "Can’t connect directly. Set up your own relay on the computer." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法直连。请在电脑上设置自建中转。"
           }
         }
       }
@@ -3708,22 +3682,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 断开了连接。"
-          }
-        }
-      }
-    },
-    "Touch to reconnect." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻点以重新连接。"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap to reconnect."
           }
         }
       }
@@ -3936,6 +3894,196 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已移除这台 iPhone"
+          }
+        }
+      }
+    },
+    "Connecting directly to %@…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在与 %@ 建立直连…"
+          }
+        }
+      }
+    },
+    "No network" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有网络"
+          }
+        }
+      }
+    },
+    "Turn on Wi-Fi or mobile data. Blurt reconnects by itself." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Wi‑Fi 或移动网络，会自动重新连接。"
+          }
+        }
+      }
+    },
+    "Asleep since %@. It reconnects once the computer wakes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑从 %@ 起睡眠，唤醒后会自动连接。"
+          }
+        }
+      }
+    },
+    "Last online %@. Make sure the computer is on and Blurt is open there." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次在线：%@。请确认电脑已开机，Blurt 已打开。"
+          }
+        }
+      }
+    },
+    "Turn on Local Network for Blurt in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在系统设置中允许 Blurt 访问本地网络。"
+          }
+        }
+      }
+    },
+    "This network can’t connect directly to the computer. Try another Wi-Fi or mobile data. If it happens often, set up your own relay on the computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个网络无法直接连到电脑。换个 Wi‑Fi 或用移动网络再试；经常遇到，可在电脑上设置自建中转。"
+          }
+        }
+      }
+    },
+    "The picture stopped. Tap the screen button to show it again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面已停止。轻点屏幕按钮可重新显示。"
+          }
+        }
+      }
+    },
+    "%@ is locked" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已锁屏"
+          }
+        }
+      }
+    },
+    "Its screen shows once it’s unlocked. Keys still work." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解锁后才能看到画面，按键仍可用。"
+          }
+        }
+      }
+    },
+    "Take Over" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接管"
+          }
+        }
+      }
+    },
+    "Reconnect" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新连接"
+          }
+        }
+      }
+    },
+    "Send what you typed while disconnected?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送断开时输入的文字？"
+          }
+        }
+      }
+    },
+    "Discard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃"
+          }
+        }
+      }
+    },
+    "Paste from This Phone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴手机剪贴板"
+          }
+        }
+      }
+    },
+    "Stay Connected in the Background" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切到后台时保持连接"
+          }
+        }
+      }
+    },
+    "For about 25 seconds after you leave Blurt." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离开 Blurt 后约 25 秒内回来，无需重新连接。"
+          }
+        }
+      }
+    },
+    "Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link copied on your computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blurt 无法使用相机。请在系统设置中允许，或粘贴在电脑上拷贝的配对链接。"
+          }
+        }
+      }
+    },
+    "Dictation stopped: another app took the microphone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "听写已停止：麦克风被其他应用占用。"
           }
         }
       }

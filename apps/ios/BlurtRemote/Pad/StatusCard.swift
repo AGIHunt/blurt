@@ -100,6 +100,8 @@ final class StatusCard: UIView {
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: p.top),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p.left),
+            // as wide as the card: with only its leading edge held, the words of a card shown before its first layout wrapped to the button's width
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p.right).with(.defaultHigh),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p.right),
             // a pad too short for it cuts the card at the bottom, never squeezes the words
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -p.bottom).with(.defaultHigh),
@@ -168,7 +170,7 @@ final class StatusCard: UIView {
         return ceil(s.height) + p.top + p.bottom
     }
 
-    /// Only its buttons take touches: the pad under the words is still the pad (a touch there takes the computer back from another phone).
+    /// Only its buttons take touches: the pad under the words is still the pad.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let v = super.hitTest(point, with: event)
         return v is UIControl ? v : nil

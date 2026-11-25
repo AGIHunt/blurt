@@ -24,6 +24,35 @@ final class MicStream {
     private var sawListening = false
     private var giveUp: DispatchWorkItem?
 
+    private init() {
+        let c = NotificationCenter.default
+        c.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
+            guard let self, self.running, n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt == AVAudioSession.InterruptionType.began.rawValue else { return }
+            self.taken()
+        }
+        c.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+            if self?.running == true { self?.taken() }
+        }
+        // AirPods put in or taken out: the engine's input is another one now
+        c.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] n in
+            guard let self, self.running, n.object as? AVAudioEngine === self.engine else { return }
+            self.engine.inputNode.removeTap(onBus: 0)
+            self.engine.stop()
+            self.running = false
+            let who = self.holders, heard = self.sawListening
+            self.holders = []
+            if who.allSatisfy({ self.start(for: $0) }) { self.sawListening = heard } else { self.holders = who; self.taken() }
+        }
+    }
+
+    /// A call, Siri or another app has the microphone: what was said is finished there, and the screen says why it stopped.
+    private func taken() {
+        let talking = holders.contains(.talk)
+        stop()
+        if talking { Link.shared.micTaken() }
+        Link.shared.notice = String(localized: "Dictation stopped: another app took the microphone.")
+    }
+
     var access: AVAudioApplication.recordPermission { AVAudioApplication.shared.recordPermission }
     func ask() {
         AVAudioApplication.requestRecordPermission { _ in
