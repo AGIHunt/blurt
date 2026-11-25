@@ -45,7 +45,7 @@
     <string name="connecting_to">正在连接 %1$s…</string>
     <string name="status_reconnecting">正在重新连接 %1$s…</string>
     <string name="status_cant_reach">无法连接 %1$s</string>
-    <string name="status_check_network">请确认电脑未睡眠，且口喷鸡正在运行。⏎若要从其他网络稳定连接，请在电脑上设置自建中转。</string>
+    <string name="status_check_network">请确认电脑未睡眠，且口喷鸡正在运行。\n若要从其他网络稳定连接，请在电脑上设置自建中转。</string>
     <string name="status_check_awake">请确认电脑未睡眠，且口喷鸡正在运行。</string>
     <string name="status_no_direct">无法直连。请在电脑上设置自建中转。</string>
     <string name="status_go_between_busy">公共连接服务今日已达上限。请稍后再试，或使用自建中转。</string>

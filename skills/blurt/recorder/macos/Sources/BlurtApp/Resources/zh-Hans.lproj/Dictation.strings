@@ -774,8 +774,10 @@
 /* Per-app memory of Structured / Translate (DictationRemembering) */
 "dictation.remember.translate" = "翻译";
 "dictation.remember.and" = "和";
-"dictation.remember.saved" = "%1$@：%2$@保持开启 · 听写时用 %3$@ 关闭";
-"dictation.remember.kept" = "%1$@：%2$@已开启 · 用 %3$@ 关闭";
+"dictation.remember.saved" = "%1$@：%2$@保持开启 · 听写时%3$@ 关闭";
+"dictation.remember.double" = "双击 %@";
+"dictation.remember.single" = "按 %@";
+"dictation.remember.kept" = "%1$@：%2$@已开启 · %3$@ 关闭";
 "dictation.translate.toast.on.into" = "翻译成%@ · 再双击 ⌘ 关闭";
 "dictation.settings.cancel_key" = "取消听写";
 "dictation.settings.cancel_key.default" = "%@（默认）";

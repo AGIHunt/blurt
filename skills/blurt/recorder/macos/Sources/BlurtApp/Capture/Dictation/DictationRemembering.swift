@@ -69,7 +69,7 @@ extension Dictation {
         Dictation.set("remember_hint_shown", shown + 1)
         toast("dictation.remember.saved", Dictation.appName(bundle: b, fallback: nil),
               saved.joined(separator: Loc.t("dictation.remember.and", table: "Dictation")),
-              keys(for: saved.count == 2, translated: sw.translateOn && sw.translateToggles > 0),
+              press(structured: saved.contains(Dictation.styleName(.structured)), both: saved.count == 2),
               key: Dictation.noticeToastKey, seconds: 4)
     }
 
@@ -86,13 +86,15 @@ extension Dictation {
         emit(["event": "dictation_remember", "what": "remind", "bundle": b, "structured": structured, "translate": translated])
         toast("dictation.remember.kept", Dictation.appName(bundle: b, fallback: nil),
               what.joined(separator: Loc.t("dictation.remember.and", table: "Dictation")),
-              structured && translated ? "⇧ / ⌘" : structured ? "⇧" : "⌘",
+              press(structured: structured, both: structured && translated),
               key: Dictation.styleToastKey, seconds: 4)
         Dictation.lastTakeAt[b] = Date()        // once, not again on every take of a long session
     }
 
-    private func keys(for both: Bool, translated: Bool) -> String {
-        if both { return "⇧ / ⌘" }
-        return translated ? "⌘" : "⇧"
+    /// How to turn it off, as the settings have the keys: "double-tap ⇧" / "press ⇧".
+    private func press(structured: Bool, both: Bool) -> String {
+        let tap = structured ? Dictation.modifierTapShift : Dictation.modifierTapCommand
+        return Loc.t(tap == .double ? "dictation.remember.double" : "dictation.remember.single", table: "Dictation",
+                     both ? "⇧ / ⌘" : structured ? "⇧" : "⌘")
     }
 }

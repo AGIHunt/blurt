@@ -237,7 +237,7 @@
      "patterns": ["not logged in", "please run /login", "(invalid|expired|revoked)[^\\n]{0,30}(api[ _-]?key|token|grant|credential|session)",
                   "authorization grant is invalid", "no credential configured", "authentication (failed|error|required)", "unauthori[sz]ed", "\\b401\\b",
                   "token (has )?expired", "login (required|expired)", "re-?authenticate", "invalid x-api-key"]},
-    {"id": "quota", "short": {"zh": "额度已用完或繁忙", "en": "out of quota or busy"},
+    {"id": "quota", "short": {"zh": "额度已用完或请求过多", "en": "out of quota or busy"},
      "reason": {"zh": "{name} 的额度已用完或请求过多。请稍后重试", "en": "{name} is out of quota or busy. Try again later"},
      "patterns": ["rate[ _-]?limit", "\\b429\\b", "quota", "usage limit", "credit balance is too low", "insufficient[_ ]quota",
                   "too many requests", "out of credits", "limit reached", "overloaded", "\\b529\\b"]},

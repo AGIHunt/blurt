@@ -492,7 +492,7 @@
   "main.job.error.network": "The network connection was lost.",
   "main.job.error.no_agent": "To organize recordings, install or sign in to an agent in Settings > Agents.",
   "main.job.error.quota": "The agent ran out of quota.",
-  "main.job.error.skill": "Couldn’t start organizing. Check Settings → Agents, then try again.",
+  "main.job.error.skill": "Couldn’t start organizing. Check Settings > Agents, then try again.",
   "main.job.error.unknown": "It stopped before it finished. Retry; if it keeps failing, the details are in the log.",
   "main.job.items": "Items",
   "main.job.items.none": "No items were created in this run.",

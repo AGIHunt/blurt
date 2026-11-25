@@ -482,7 +482,7 @@
   "main.job.error.network": "网络连接已断开。",
   "main.job.error.no_agent": "若要自动整理，请在「设置 > Agent」中安装或登录 Agent。",
   "main.job.error.quota": "Agent 的额度已用完。",
-  "main.job.error.skill": "无法开始整理。请在「设置 → Agent」中检查后重试。",
+  "main.job.error.skill": "无法开始整理。请在「设置 > Agent」中检查后重试。",
   "main.job.error.unknown": "整理未完成就停止了。请重试；如果问题持续，详情见日志。",
   "main.job.items": "事项",
   "main.job.items.none": "本次未生成事项。",

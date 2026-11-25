@@ -76,7 +76,7 @@ test("ops go out by uid; a project move changes the id and keeps what you were t
 test("state: the agent says fixed, you mark it done; S + R reopens it; Z undoes", async ({ page, server }) => {
   await page.locator(".qi").first().click();
   await expect(page.locator("#statePill .sring")).toHaveClass(/s-to_verify/);
-  await expect(page.locator("#workRow")).toContainText("says it’s fixed");
+  await expect(page.locator("#workRow")).toContainText("marked it as fixed");
   await page.locator("#workDone").click();
   await expect(page.locator("#statePill .sring")).toHaveClass(/s-done/);
   await until(() => item(server, 0).state === "done");

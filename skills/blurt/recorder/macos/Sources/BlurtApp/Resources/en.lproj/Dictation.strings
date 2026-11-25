@@ -774,8 +774,10 @@
 /* Per-app memory of Structured / Translate (DictationRemembering) */
 "dictation.remember.translate" = "Translate";
 "dictation.remember.and" = " and ";
-"dictation.remember.saved" = "%2$@ kept on in %1$@ · use %3$@ while dictating to turn off";
-"dictation.remember.kept" = "%2$@ on in %1$@ · %3$@ to turn off";
+"dictation.remember.saved" = "Still on in %1$@: %2$@ · %3$@ while dictating to turn off";
+"dictation.remember.double" = "double-tap %@";
+"dictation.remember.single" = "press %@";
+"dictation.remember.kept" = "On in %1$@: %2$@ · %3$@ to turn off";
 "dictation.translate.toast.on.into" = "Translating into %@ · double-tap ⌘ to turn off";
 "dictation.settings.cancel_key" = "Cancel dictation";
 "dictation.settings.cancel_key.default" = "%@ (default)";
