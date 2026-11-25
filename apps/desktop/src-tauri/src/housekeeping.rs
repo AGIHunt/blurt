@@ -170,6 +170,7 @@ pub fn start(app: &AppHandle) {
     let app = app.clone();
     let launched = chrono::Local::now();
     std::thread::spawn(move || {
+        crate::shell_icons::refresh_once(&app.package_info().version.to_string());
         check_contract(&app);
         finish_interrupted_jobs(launched);
         ask_carried_over_project(&app);
