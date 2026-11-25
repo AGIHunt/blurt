@@ -24,6 +24,10 @@ object Reconnect {
     /** a handshake done and the computer answering pings, but its `session` never came: start over after this */
     fun sessionDueMs(relay: Boolean): Long = if (relay) 10_000 else 5_000
 
+    /** met on the go-between, its `session` here, and the stream hasn't moved onto a direct path: the host says noDirect after 8 s, and a word
+     *  lost on the way isn't waited for longer */
+    const val MEETING_DUE_MS = 12_000L
+
     /** nothing has answered for this long: said so on the pad */
     fun unreachableAfterMs(relay: Boolean): Long = if (relay) 12_000 else 8_000
 
@@ -31,8 +35,10 @@ object Reconnect {
      *  back to the app, which people do hundreds of times a day, once a minute at most. */
     fun busyFloorMs(asked: Boolean): Long = if (asked) 12_000 else 60_000
 
-    /** Android lets the app just left run on for a while (the freezer takes it later): a session is kept a minute */
-    const val KEEP_IN_BACKGROUND_MS = 60_000L
+    /** How long a session is kept out of sight. With a foreground service (KeepService) Android leaves the process running: three minutes, a
+     *  message answered. Without one the freezer stops it about 6 s after it leaves the screen and Android 15 closes its sockets, so this is
+     *  only how long it may hang on where a maker lets it. */
+    fun keepInBackgroundMs(service: Boolean): Long = if (service) 180_000 else 30_000
 
     /** the go-between's door: out of today's quota, or its rate limit. Anything else that isn't a WebSocket (a captive portal, a proxy) is a
      *  failure like any other, and tried again soon */

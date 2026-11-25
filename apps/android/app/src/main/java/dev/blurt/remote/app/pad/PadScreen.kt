@@ -72,6 +72,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     }
 
     private val main = Handler(Looper.getMainLooper())
+    private val statusNow = Runnable { sayStatus() }
     val pad = TrackpadView(c)
     /** a big screen's second trackpad, beside the keys */
     private val pad2 = TrackpadView(c).apply { isStage = false }
@@ -112,7 +113,16 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private var follower = StatusFollower()
     /** the app is in front (MainActivity says): left and come back to, the connection starts again, and that's not a drop to tell the thumb */
     var inFront = false
-        set(v) { field = v; if (!v) follower = StatusFollower() }
+        set(v) {
+            field = v
+            if (!v) { follower = StatusFollower(); return }
+            // back: as bright as a touch would make it, and awake again for a while
+            touched()
+            stayAwake()
+        }
+    /** a sheet or a dialog is over the screen (MainActivity says): it's being read, so nothing dims */
+    var covered = false
+        set(v) { if (field != v) { field = v; touched() } }
     /** where one finger scrolls, on the stage and on the panel's own pad; lit while it does */
     private val edgeMark = EdgeMark(c)
     private val edgeMark2 = EdgeMark(c)
@@ -148,6 +158,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         pad.addView(stage, 0)
         for (v in listOf(header, liveText, tip, edgeMark, cursor, card)) pad.addView(v)
         Remote.screen.attach(stage, cursor)
+        // what two fingers do there is said once there's something to do it on
+        Remote.screen.onNew = { if (showing && !Remote.prefs.pictureHintShown) showTip() }
         addView(pad)
         addView(pad2)
         header.apply { textSize = 12f; setTextColor(Theme.faint); typeface = Fonts.medium; isSingleLine = true }
@@ -172,6 +184,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             p.onHaptic = { h -> when (h) { PadHaptic.TAP -> Haptics.tick(); PadHaptic.GRAB -> Haptics.grab(); PadHaptic.RELEASE -> Haptics.release(); PadHaptic.STEP -> Haptics.step() } }
             p.onClick = { Remote.sticky.used() }
             p.onViewEnd = { applyPrefs() }
+            p.onUsed = { used() }
         }
         pad.onEdgeScroll = { on -> edgeMark.lit = on }
         pad2.onEdgeScroll = { on -> edgeMark2.lit = on }
@@ -250,6 +263,20 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         scope.launch { combine(l.state, l.current, l.canControl) { _, _, _ -> }.collect { status() } }
         scope.launch { combine(l.waitingForMac, l.pairFailed, l.route, l.screenError) { _, _, _, e -> e }.collect { e -> if (e != null) setShowing(false); status() } }
         scope.launch { combine(l.path, l.away) { _, _ -> }.collect { status() } }
+        scope.launch { combine(l.hostLocked, l.meeting, l.offline, l.presence) { _, _, _, _ -> }.collect { status() } }
+        // the digits to compare: lit while they show
+        scope.launch { l.waitingForMac.collect { touched(); stayAwake() } }
+        scope.launch { l.state.collect { stayAwake() } }
+        // the picture comes on with the computer, from the first time, until the user turns it off; back after the app was ended, too
+        scope.launch {
+            l.state.collect { st ->
+                if (st == Link.State.CONNECTED) main.post { showWanted() }
+            }
+        }
+        scope.launch {
+            // the computer doesn't show its screen: not asked for again by itself
+            l.screenError.collect { e -> if (e == "off" || e == "permission") Remote.prefs.screenWanted = false }
+        }
         // the picture was of the computer just left
         var last: String? = l.current.value?.deviceID
         scope.launch { l.current.collect { m -> if (m?.deviceID != last) { last = m?.deviceID; setShowing(false) } } }
@@ -329,8 +356,15 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     /**
      * What the pad says, in the few states where it should say anything: which words for which state is core's LinkStatus, the same on
      * the iPhone. Connected and working it's the computer's name, small, in the corner; anything else is the card in the middle.
+     * Once Link has finished what it's doing: choosing another computer changes which one and the state one after the other, and between the
+     * two it would look like a session that dropped.
      */
     private fun status() {
+        main.removeCallbacks(statusNow)
+        main.post(statusNow)
+    }
+
+    private fun sayStatus() {
         val l = Remote.link
         val c = context
         val name = l.current.value?.title ?: ""
@@ -345,11 +379,12 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         }
         val cue = follower.see(phase, l.current.value?.id, inFront)
         val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,
-            otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value,
+            otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value, screenAsked = screenAsked || l.pictureSeen,
+            showing = showing, locked = l.hostLocked.value, meeting = l.meeting.value, offline = l.offline.value, presence = l.presence.value?.says,
             waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null,
             pairRetry = l.pairFailed.value?.why?.canRetry == true, away = l.away.value))
         shownBanner = banner
-        fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value)
+        fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value, l.presence.value?.since)
         card.show(banner?.mark, banner?.let { b ->
             StatusCard.Words(say(b.title), b.detail?.let(::say), b.action?.let { StatusCard.text(c, it) }, b.second?.let { StatusCard.text(c, it) })
         })
@@ -377,8 +412,13 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         Haptics.tick()
         when (a) {
             StatusAction.RETRY -> Remote.link.tryAgain()
-            StatusAction.SCAN -> sheets.pairing()
+            StatusAction.SCAN -> {
+                if (Remote.link.pairFailed.value?.why?.canRetry == false) Remote.link.dismissPairFailure()
+                sheets.pairing()
+            }
             StatusAction.ANOTHER -> sheets.switchMac()
+            StatusAction.TAKE_OVER, StatusAction.RECONNECT -> Remote.link.takeBack()
+            StatusAction.DISMISS -> Remote.link.dismissPairFailure()
         }
     }
 
@@ -387,8 +427,24 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private fun toggleScreen() {
         Haptics.tick()
         Remote.link.screenError.value = null
+        Remote.link.pictureSeen = false
+        screenAsked = true
         setShowing(!showing)
+        Remote.prefs.screenWanted = showing
     }
+
+    private fun showWanted() {
+        if (Remote.link.state.value != Link.State.CONNECTED || showing || !Remote.prefs.screenWanted) return
+        // a measured run has the stream to itself
+        if (dev.blurt.remote.app.BuildConfig.DEBUG && TestWeather.screenTest > 0) return
+        Remote.link.screenError.value = null
+        Remote.link.pictureSeen = false
+        screenAsked = false
+        setShowing(true)
+    }
+
+    /** the picture was asked for by the user, not come on by itself: a computer that won't show it is then said */
+    private var screenAsked = false
 
     private fun setShowing(on: Boolean) {
         if (on == showing) return
@@ -397,12 +453,10 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         keysPutAway()
         pad.engine.pinchZoomsView = on
         pad.showing = on
-        sheets.keepAwake(true)
         Remote.screen.resetView()
         applyPrefs()
         if (on) Remote.screen.start() else Remote.screen.stop()
         edgeMark.overPicture = on
-        if (on && !Remote.prefs.pictureHintShown) showTip()
         if (!on) hideTip()
         status()
         requestLayout()
@@ -477,9 +531,33 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         return super.dispatchTouchEvent(e)
     }
 
+    /** A mouse moving or scrolling over the app, captured or not. */
+    override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
+        used()
+        return super.dispatchGenericMotionEvent(e)
+    }
+
+    private var lastUsed = 0L
+    /** In use without a finger down: a mouse, a keyboard. Their events come by the hundred. */
+    fun used() {
+        val t = SystemClock.uptimeMillis()
+        if (t - lastUsed < 1000) return
+        lastUsed = t
+        touched()
+    }
+
+    private val sleepy = Runnable { sheets.keepAwake(false) }
+
+    /** In use the screen stays on; with nothing to use for two minutes the phone may go to sleep as it would. */
+    private fun stayAwake() {
+        main.removeCallbacks(sleepy)
+        sheets.keepAwake(true)
+        if (Remote.link.state.value != Link.State.CONNECTED && !Remote.link.waitingForMac.value) main.postDelayed(sleepy, SLEEPY)
+    }
+
     private val dimmer = Runnable {
-        // never while typing or talking
-        if (field.open || Remote.link.dictation.value != RemoteDictationPhase.IDLE) touched()
+        // never while typing or talking, reading a sheet or comparing a pairing's digits
+        if (field.open || covered || Remote.link.waitingForMac.value || Remote.link.dictation.value != RemoteDictationPhase.IDLE) touched()
         else dim.animate().alpha(0.6f).setDuration(600).start()
     }
     private val pacer = Runnable {
@@ -488,7 +566,6 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
 
     /** The screen dims when nothing happens and comes back with any touch, which still does its job. */
     fun touched() {
-        Remote.link.touched()
         Remote.screen.setIdle(false)
         watchIdle()
         if (dim.alpha > 0) dim.animate().alpha(0f).setDuration(150).start()
@@ -758,9 +835,9 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         /** long enough that it never happens in use: this only protects a phone left on the desk */
         const val IDLE_DIM = 300_000L
         const val IDLE_PACE = 45_000L
+        const val SLEEPY = 120_000L
         const val DRAWER_ICON = "apps"
         /** the modifier the computer's own zoom keys use: ⌘ on a Mac (⌘= ⌘−), Ctrl elsewhere */
         fun zoomModifier(h: RemoteHost) = if (h == RemoteHost.MAC) RemoteModifiers.COMMAND else RemoteModifiers.CONTROL
-        @Suppress("unused") private fun now() = SystemClock.uptimeMillis()
     }
 }

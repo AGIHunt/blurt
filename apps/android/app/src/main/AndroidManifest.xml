@@ -4,6 +4,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- the session kept for three minutes while the app is out of sight (net/KeepService.kt). CHANGE_NETWORK_STATE is what Android asks of
+         this kind of service; notifications are never asked for, and the service runs without them. The phone's processor is kept awake
+         that long with the screen off -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- dictation through the phone's microphone, asked for the first time the talk key is pressed -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- reading the pairing code, asked for when the scanner opens -->
@@ -57,5 +65,6 @@
             </intent-filter>
         </activity>
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <service android:name=".net.KeepService" android:exported="false" android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>

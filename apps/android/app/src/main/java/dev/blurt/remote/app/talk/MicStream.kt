@@ -9,8 +9,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
@@ -43,7 +46,13 @@ class MicStream(private val c: Context) {
         if (h == Holder.TALK) giveUp?.let { main.removeCallbacks(it) }
         holders += h
         if (running) return true
-        if (!granted) { holders -= h; return false }
+        if (granted && open()) return true
+        holders -= h
+        return false
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun open(): Boolean {
         val rate = 16000
         val min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = runCatching {
@@ -51,18 +60,18 @@ class MicStream(private val c: Context) {
         }.getOrNull()
         if (r == null || r.state != AudioRecord.STATE_INITIALIZED) {
             r?.release()
-            holders -= h
             return false
         }
         runCatching { r.startRecording() }
         if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
             r.release()
-            holders -= h
             return false
         }
         record = r
         running = true
         sawListening = false
+        if (Build.VERSION.SDK_INT >= 29) r.registerAudioRecordingCallback({ main.post(it) }, silenced as AudioManager.AudioRecordingCallback)
+        val audio = c.getSystemService(AudioManager::class.java)
         thread = Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
             val buf = ByteArray(PIECE)
@@ -74,9 +83,46 @@ class MicStream(private val c: Context) {
                     got += n
                 }
                 if (got > 0) Remote.link.audio(buf.copyOf(got))
+                if (got < PIECE && running) {
+                    main.post { broken(r) }
+                    break
+                }
+                // before Android 10 a call takes the microphone without a word
+                if (Build.VERSION.SDK_INT < 29 && audio.mode == AudioManager.MODE_IN_CALL) {
+                    main.post { if (record === r) taken() }
+                    break
+                }
             }
         }, "blurt-mic").apply { start() }
         return true
+    }
+
+    /** Android says whose microphone it is: silenced, a call or another app has it (Android 10+). */
+    private val silenced: Any? = if (Build.VERSION.SDK_INT < 29) null else object : AudioManager.AudioRecordingCallback() {
+        override fun onRecordingConfigChanged(configs: List<AudioRecordingConfiguration>) {
+            val r = record ?: return
+            if (configs.any { it.clientAudioSessionId == r.audioSessionId && it.isClientSilenced }) taken()
+        }
+    }
+
+    /** The device it read from is gone (earbuds put away): the microphone that's there now goes on. */
+    private fun broken(r: AudioRecord) {
+        if (record !== r) return
+        val heard = sawListening
+        close()
+        if (open()) sawListening = heard else taken()
+    }
+
+    /** A call or another app has the microphone: the take ends with what was said. A voice note goes on there, and hears silence. */
+    private fun taken() {
+        if (Holder.TALK !in holders) return
+        Remote.link.micTaken()
+    }
+
+    /** The session went and is coming back with the key still held: the computer's word on the last one says nothing about the next. */
+    fun again() {
+        sawListening = false
+        giveUp?.let { main.removeCallbacks(it) }
     }
 
     /** The key was let go of. A hands-free take goes on: the computer's next phase decides. */
@@ -95,10 +141,14 @@ class MicStream(private val c: Context) {
     fun stop(h: Holder? = null) {
         if (h != null) holders -= h else holders.clear()
         if (h == null || h == Holder.TALK) giveUp?.let { main.removeCallbacks(it) }
-        if (!running || holders.isNotEmpty()) return
+        if (running && holders.isEmpty()) close()
+    }
+
+    private fun close() {
         running = false
         val r = record
         record = null
+        if (Build.VERSION.SDK_INT >= 29) runCatching { r?.unregisterAudioRecordingCallback(silenced as AudioManager.AudioRecordingCallback) }
         thread?.join(300)
         thread = null
         runCatching { r?.stop() }

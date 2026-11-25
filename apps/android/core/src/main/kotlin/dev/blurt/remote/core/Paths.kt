@@ -4,11 +4,11 @@ package dev.blurt.remote.core
 
 /** In the order they win: the first that works is the one used. */
 enum class LinkPath {
-    /** the same network: an address on one of the phone's own networks, or found by DNS-SD */
+    /** the same network: an address on one of the phone's own networks, or one it reached with no VPN (another subnet), or found by DNS-SD */
     SAME_NETWORK,
     /** an address in Tailscale's ranges */
     TAILSCALE,
-    /** another overlay (ZeroTier and the like): an address the phone reached that isn't on its own networks */
+    /** another overlay (ZeroTier and the like): an address the phone reached through a VPN */
     OVERLAY,
     /** through a relay, with the direct UDP path open (the pointer and picture go direct), or moved off the go-between entirely */
     DIRECT,
@@ -24,12 +24,14 @@ enum class LinkPath {
         OWN_RELAY, GO_BETWEEN -> LinkRoute.RELAY
     }
 
-    /** a TCP session to an address the phone was told: Tailscale's ranges by name, else the same network if it's on one of the phone's own */
+    /** A TCP session to an address the phone was told: Tailscale's ranges by name; an overlay when the connection went out through a VPN to
+     *  an address an overlay has (ZeroTier's; the iPhone goes by the interface too). Anything else, another subnet of the office included, is
+     *  the same network. */
     companion object {
-        fun of(address: String, onMyNetwork: Boolean): LinkPath = when {
+        fun of(address: String, onMyNetwork: Boolean, throughVpn: Boolean): LinkPath = when {
             RemoteOverlay.isTailscale(address) -> TAILSCALE
-            onMyNetwork -> SAME_NETWORK
-            else -> OVERLAY
+            !onMyNetwork && throughVpn && RemoteOverlay.mayBeOverlay(address) -> OVERLAY
+            else -> SAME_NETWORK
         }
     }
 }

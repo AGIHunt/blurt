@@ -135,6 +135,12 @@ class TalkBar(c: Context) : View(c) {
         invalidate()
         Haptics.grab()
         val mic = Remote.mic
+        val link = Remote.link
+        if (!link.ready) {
+            // on its way: held until it's there, it talks from here on (Link.talkHeld). A tap does nothing but say it was felt
+            if (link.comingBack && (!Remote.prefs.micOnPhone || mic.granted && mic.start())) link.dictationKey(true)
+            return
+        }
         if (Remote.prefs.micOnPhone) {
             if (!mic.granted) {
                 // the system's question takes the touch away: the first press asks, the next one talks
@@ -159,7 +165,7 @@ class TalkBar(c: Context) : View(c) {
         invalidate()
         Haptics.release()
         Remote.link.dictationKey(false)
-        Remote.mic.released()
+        if (Remote.link.ready) Remote.mic.released()
     }
 
     /** Taken away mid-press (the app left the screen): the key comes up. */

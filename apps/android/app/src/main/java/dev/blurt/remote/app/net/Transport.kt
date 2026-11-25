@@ -33,6 +33,8 @@ interface Transport {
     fun close()
     /** where the computer is, once connected (local only): UDP goes to the same address */
     val remote: InetAddress?
+    /** and this end of it: which of the phone's networks it went out on */
+    val local: InetAddress? get() = null
     /** what it's to, for logs */
     val label: String
 }
@@ -44,6 +46,8 @@ class TcpTransport(private val host: String, private val port: Int, private val 
     private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "blurt-tcp-out").apply { isDaemon = true; priority = Thread.MAX_PRIORITY } }
     private val closed = AtomicBoolean(false)
     @Volatile override var remote: InetAddress? = null
+        private set
+    @Volatile override var local: InetAddress? = null
         private set
     override val label get() = "$host:$port"
 
@@ -57,6 +61,7 @@ class TcpTransport(private val host: String, private val port: Int, private val 
                 s.connect(if (resolved != null) InetSocketAddress(resolved, port) else InetSocketAddress(host, port), timeoutMs)
                 if (closed.get()) { s.close(); return@Thread }
                 remote = s.inetAddress
+                local = s.localAddress
                 out = s.getOutputStream()
                 sink.ready()
                 val input = s.getInputStream()
@@ -144,6 +149,18 @@ class RelayTransport(private val url: String) : Transport {
                 .readTimeout(0, TimeUnit.SECONDS)
                 .pingInterval(20, TimeUnit.SECONDS)
                 .build()
+        }
+
+        private val plain: OkHttpClient by lazy { client.newBuilder().callTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build() }
+
+        /** A plain GET's answer (a relay's peek); null when it's anything but 200, or nothing in 5 s. Any thread. */
+        fun get(url: String, done: (String?) -> Unit) {
+            val req = runCatching { Request.Builder().url(url).cacheControl(okhttp3.CacheControl.FORCE_NETWORK).build() }.getOrElse { return done(null) }
+            plain.newCall(req).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: IOException) = done(null)
+                override fun onResponse(call: okhttp3.Call, response: Response) =
+                    done(response.use { r -> if (r.code == 200) runCatching { r.body.string().take(4096) }.getOrNull() else null })
+            })
         }
     }
 }
