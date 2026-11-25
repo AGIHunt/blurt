@@ -285,6 +285,7 @@ async fn a_phone_back_at_once_finds_the_host_in_the_room() {
             }
             assert!(left.elapsed() < Duration::from_secs(5), "still out of the room (round {round})");
         }
+        eprintln!("back after {:?}", left.elapsed());
         assert!(left.elapsed() < Duration::from_secs(4), "{:?}", left.elapsed());
         // that one goes too, before the next round
         tokio::time::sleep(Duration::from_millis(300)).await;
