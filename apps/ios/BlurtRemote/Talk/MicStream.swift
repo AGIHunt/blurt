@@ -52,7 +52,7 @@ final class MicStream {
         let talking = holders.contains(.talk)
         stop()
         if talking { Link.shared.micTaken() }
-        Link.shared.notice = String(localized: "Dictation stopped: another app took the microphone.")
+        Link.shared.notice = String(localized: "Stopped listening: another app took the microphone.")
     }
 
     var access: AVAudioApplication.recordPermission { AVAudioApplication.shared.recordPermission }

@@ -109,7 +109,7 @@ enum class StatusLine {
     NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
 
-enum class StatusAction { RETRY, SCAN, ANOTHER, TAKE_OVER, RECONNECT, DISMISS }
+enum class StatusAction { RETRY, SCAN, ANOTHER, TAKE_OVER, RECONNECT, DISMISS, SHOW_SCREEN }
 
 data class StatusBanner(
     val mark: StatusMark,
@@ -152,7 +152,7 @@ data class StatusBanner(
                         "off" -> StatusLine.SCREEN_IS_OFF
                         "permission" -> StatusLine.ALLOW_SCREEN
                         else -> StatusLine.PICTURE_STOPPED
-                    })
+                    }, if (s.screenError == "off" || s.screenError == "permission") null else StatusAction.SHOW_SCREEN)
                     !s.canControl -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_CONTROL, StatusLine.HOW_TO_ALLOW_CONTROL)
                     else -> null
                 }

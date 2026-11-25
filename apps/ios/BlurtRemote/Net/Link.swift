@@ -392,7 +392,7 @@ final class Link: ObservableObject {
         case .left: PairFailure(why: why, title: String(localized: "Pairing stopped when Blurt left the screen."), help: scan)
         case .unreachable:
             PairFailure(why: why, title: String(localized: "Can’t reach \(name)."),
-                        help: hasRelay ? String(localized: "Make sure \(name) is on and Blurt is open there. A code lasts two minutes: after that, scan the new one.")
+                        help: hasRelay ? String(localized: "Make sure \(name) is on and Blurt is open there, or scan the new code.")
                             : String(localized: "Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first."))
         }
     }

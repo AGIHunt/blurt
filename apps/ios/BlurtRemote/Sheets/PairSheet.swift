@@ -21,7 +21,7 @@ struct PairSheet: View {
                 Text(Words.whereTheCodeIs)
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 if hasCamera, denied {
-                    Text("Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link copied on your computer.")
+                    Text("Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link below.")
                         .font(.subheadline).multilineTextAlignment(.center)
                     Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
                 }

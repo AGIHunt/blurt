@@ -118,7 +118,7 @@ final class ModifierRow: UIInputView {
         }
         if let b = buttons.last?.0 {
             b.configuration?.image = UIImage(systemName: "doc.on.clipboard", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
-            b.accessibilityLabel = String(localized: "Paste from This Phone")
+            b.accessibilityLabel = String(localized: "Paste from This Device")
         }
         add("esc") { Link.shared.send(.key(RemoteChord([], "Escape"), down: nil)); Haptics.tick() }
         add("⇥") { Link.shared.send(.key(RemoteChord([], "Tab"), down: nil)); Haptics.tick() }

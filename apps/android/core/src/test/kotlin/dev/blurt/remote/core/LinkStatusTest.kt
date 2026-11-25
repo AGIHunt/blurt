@@ -146,7 +146,7 @@ class LinkStatusTest {
     }
 
     @Test fun aPictureThatStoppedIsSaid() {
-        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PICTURE_STOPPED),
+        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PICTURE_STOPPED, StatusAction.SHOW_SCREEN),
             banner(LinkStatus(LinkPhase.CONNECTED, screenError = "The display went to sleep.")))
         // the picture that came on by itself and was refused: a trackpad, and nothing said
         for (e in listOf("off", "permission")) assertNull(banner(LinkStatus(LinkPhase.CONNECTED, screenError = e, screenAsked = false)), e)

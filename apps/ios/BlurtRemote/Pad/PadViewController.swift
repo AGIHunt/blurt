@@ -436,7 +436,11 @@ final class PadViewController: UIViewController {
     private func observe() {
         let l = Link.shared
         // with a picture there to try it on: one that came on by itself and couldn't be had has no tip
-        ScreenStream.shared.onFirstPicture = { [weak self] in if self?.showing == true { self?.tipOnce() } }
+        ScreenStream.shared.onFirstPicture = { [weak self] in
+            guard let self, self.showing else { return }
+            self.screenAsked = true     // it has been seen: if it stops, that's said
+            self.tipOnce()
+        }
         Publishers.CombineLatest3(l.$state, l.$current, l.$canControl).receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in DispatchQueue.main.async { self?.status() } }.store(in: &bag)
         // the picture comes on with the computer, from the first time, until the user turns it off
@@ -609,6 +613,7 @@ final class PadViewController: UIViewController {
         case .another: showSettings()
         case .takeOver, .reconnect: Link.shared.takeBack()
         case .dismiss: Link.shared.dismissPairFailure()
+        case .showScreen: toggleScreen()
         case .openSettings: if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
         }
     }

@@ -76,7 +76,7 @@ struct StatusBanner: Equatable {
         case locked, unlockFirst
     }
 
-    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings }
+    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings, showScreen }
 
     var mark: Mark
     var title: Line
@@ -121,7 +121,7 @@ struct StatusBanner: Equatable {
             if !s.canControl { b = StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl) }
             if s.screenAsked, let e = s.screenError {
                 let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : .pictureStopped
-                b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: why)
+                b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: why, action: why == .pictureStopped ? .showScreen : nil)
             }
             // locked: why there's no picture, and why it may not take input either
             if s.locked, s.showing { b = StatusBanner(mark: .problem, title: .locked, detail: .unlockFirst) }

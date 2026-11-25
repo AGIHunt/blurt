@@ -42,7 +42,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertNil(banner(.connected) { $0.away = .busy })
         // the words, as the spec has them
         XCTAssertEqual(Words.status(.noDirect, host: .mac, name: "Mac"),
-                       "This network can’t connect directly to the computer. Try another Wi-Fi or mobile data. If it happens often, set up your own relay on the computer.")
+                       "Can’t connect directly. Try another network, or set up your own relay on the computer.")
         XCTAssertEqual(Words.status(.goBetweenBusy, host: .windows, name: "PC"), "The public connection service has reached today’s limit. Try again later, or use your own relay.")
     }
 
@@ -119,7 +119,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(Link.failure(.unanswered, name: "Studio PC", hasRelay: true).title, "Studio PC didn’t answer in time.")
         let away = Link.failure(.unreachable, name: "Studio PC", hasRelay: true)
         XCTAssertEqual(away.title, "Can’t reach Studio PC.")
-        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there. A code lasts two minutes: after that, scan the new one.")
+        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there, or scan the new code.")
         XCTAssertTrue(away.canRetry)
         XCTAssertTrue(Link.failure(.unreachable, name: "Studio PC", hasRelay: false).help.contains("same network"))
         // the card says the failure itself, then what to do
@@ -142,7 +142,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(banner(.connected) { $0.canControl = false }, StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl))
         XCTAssertEqual(banner(.connected) { $0.screenError = "permission" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .allowScreen))
         XCTAssertEqual(banner(.connected) { $0.screenError = "off" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .screenIsOff))
-        XCTAssertEqual(banner(.connected) { $0.screenError = "stopped" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .pictureStopped))
+        XCTAssertEqual(banner(.connected) { $0.screenError = "stopped" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .pictureStopped, action: .showScreen))
         // a picture that came on by itself and can't: still a trackpad, nothing to say
         XCTAssertNil(banner(.connected) { $0.screenError = "off"; $0.screenAsked = false })
         // the screen was just asked for: that's the one said
@@ -226,7 +226,7 @@ final class LinkStatusTests: XCTestCase {
             // no name yet: still a sentence
             XCTAssertFalse(Words.status(.cantReach, host: h, name: nil).isEmpty)
         }
-        for a in [StatusBanner.Action.retry, .scan, .another, .takeOver, .reconnect, .dismiss, .openSettings] { XCTAssertFalse(Words.status(a).isEmpty) }
+        for a in [StatusBanner.Action.retry, .scan, .another, .takeOver, .reconnect, .dismiss, .openSettings, .showScreen] { XCTAssertFalse(Words.status(a).isEmpty) }
         XCTAssertTrue(Words.status(.connecting, host: .mac, name: "Studio").contains("Studio"))
         XCTAssertTrue(Words.status(.allowOnComputer, host: .mac, name: "Studio", check: "1234").contains("1234"))
     }
@@ -239,9 +239,9 @@ final class LinkStatusTests: XCTestCase {
         for k in ["Connecting to %@…", "Reconnecting to %@…", "Can’t reach %@",
                   "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.",
                   "Check that the computer isn’t asleep and Blurt is running.", "Needs pairing again", "Another phone is connected", "Take Over", "Reconnect", "OK", "Open Settings",
-                  "Connecting directly to %@…", "No network", "Turn on Wi-Fi or mobile data. Blurt reconnects by itself.",
-                  "Asleep since %@. It reconnects once the computer wakes.", "%@ is locked", "Its screen shows once it’s unlocked. Keys still work.",
-                  "Last online %@. Make sure the computer is on and Blurt is open there.",
+                  "Connecting directly to %@…", "No network", "Turn on Wi-Fi or mobile data to reconnect.",
+                  "Asleep since %@. Wake the computer to reconnect.", "%@ is locked", "The picture comes back once it’s unlocked.",
+                  "Last online %@. Check that the computer isn’t asleep and Blurt is running.",
                   "Pair with your computer", "Waiting for your computer", "Pairing didn’t work", "Can’t control %@", "Can’t show the screen",
                   "Retry", "Scan Code", "Try Another Computer", "Connected to %@"] {
             let zh = (((all[k] as? [String: Any])?["localizations"] as? [String: Any])?["zh-Hans"] as? [String: Any])?["stringUnit"] as? [String: Any]

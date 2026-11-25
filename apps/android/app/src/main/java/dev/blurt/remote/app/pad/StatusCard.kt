@@ -206,6 +206,7 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
             StatusAction.TAKE_OVER -> R.string.take_over
             StatusAction.RECONNECT -> R.string.reconnect
             StatusAction.DISMISS -> R.string.ok
+            StatusAction.SHOW_SCREEN -> R.string.show_screen
         })
 
         /** as the phone writes times: today only the time, earlier the day too */

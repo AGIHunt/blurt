@@ -3903,37 +3903,37 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有网络"
+            "value" : "无网络连接"
           }
         }
       }
     },
-    "Turn on Wi-Fi or mobile data. Blurt reconnects by itself." : {
+    "Turn on Wi-Fi or mobile data to reconnect." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打开 Wi‑Fi 或移动网络，会自动重新连接。"
+            "value" : "打开 Wi‑Fi 或移动数据后会自动重新连接。"
           }
         }
       }
     },
-    "Asleep since %@. It reconnects once the computer wakes." : {
+    "Asleep since %@. Wake the computer to reconnect." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "电脑从 %@ 起睡眠，唤醒后会自动连接。"
+            "value" : "电脑于 %@ 进入睡眠，唤醒后会自动连接。"
           }
         }
       }
     },
-    "Last online %@. Make sure the computer is on and Blurt is open there." : {
+    "Last online %@. Check that the computer isn’t asleep and Blurt is running." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "上次在线：%@。请确认电脑已开机，并且打开了口喷鸡。"
+            "value" : "上次在线：%@。请确认电脑未睡眠，且口喷鸡正在运行。"
           }
         }
       }
@@ -3943,27 +3943,27 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在系统设置中允许口喷鸡访问本地网络。"
+            "value" : "请在「设置」中允许口喷鸡访问本地网络。"
           }
         }
       }
     },
-    "This network can’t connect directly to the computer. Try another Wi-Fi or mobile data. If it happens often, set up your own relay on the computer." : {
+    "Can’t connect directly. Try another network, or set up your own relay on the computer." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这个网络无法直接连到电脑。换个 Wi‑Fi 或用移动网络再试；经常遇到，可在电脑上设置自建中转。"
+            "value" : "无法直连。请换一个网络重试，或在电脑上设置自建中转。"
           }
         }
       }
     },
-    "The picture stopped. Tap the screen button to show it again." : {
+    "The picture stopped." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "画面已停止。轻点屏幕按钮可重新显示。"
+            "value" : "画面已停止。"
           }
         }
       }
@@ -3978,12 +3978,12 @@
         }
       }
     },
-    "Its screen shows once it’s unlocked. Keys still work." : {
+    "The picture comes back once it’s unlocked." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "解锁后才能看到画面，按键仍可用。"
+            "value" : "解锁后画面会自动恢复。"
           }
         }
       }
@@ -4013,7 +4013,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发送断开时输入的文字？"
+            "value" : "要发送未连接时输入的文字吗？"
           }
         }
       }
@@ -4028,12 +4028,12 @@
         }
       }
     },
-    "Paste from This Phone" : {
+    "Paste from This Device" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "粘贴手机剪贴板"
+            "value" : "粘贴本机剪贴板"
           }
         }
       }
@@ -4058,32 +4058,32 @@
         }
       }
     },
-    "Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link copied on your computer." : {
+    "Blurt can’t use the camera. Turn it on in Settings, or paste the pairing link below." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "口喷鸡无法使用相机。请在系统设置中允许，或粘贴在电脑上复制的配对链接。"
+            "value" : "无法使用相机。请在「设置」中允许，或在下方粘贴配对链接。"
           }
         }
       }
     },
-    "Dictation stopped: another app took the microphone." : {
+    "Stopped listening: another app took the microphone." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "听写已停止：麦克风被其他应用占用。"
+            "value" : "已停止收音：麦克风被其他 App 占用。"
           }
         }
       }
     },
-    "Make sure %@ is on and Blurt is open there. A code lasts two minutes: after that, scan the new one." : {
+    "Make sure %@ is on and Blurt is open there, or scan the new code." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请确认 %@ 已开机，并且打开了口喷鸡。配对码 2 分钟内有效，过期请扫新的。"
+            "value" : "请确认 %@ 已开机，并且打开了口喷鸡；若二维码已更换，请重新扫描。"
           }
         }
       }

@@ -419,6 +419,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             StatusAction.ANOTHER -> sheets.switchMac()
             StatusAction.TAKE_OVER, StatusAction.RECONNECT -> Remote.link.takeBack()
             StatusAction.DISMISS -> Remote.link.dismissPairFailure()
+            StatusAction.SHOW_SCREEN -> toggleScreen()
         }
     }
 

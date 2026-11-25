@@ -314,7 +314,7 @@ way is turned that way whatever the lock says (`ScreenTurn`; Android's `requeste
 size and turn windows themselves. Checked: an iPhone simulator held upright turns and comes back with Auto; an Android emulator with its rotation lock on
 turns both ways. Not checked: a real iPhone with its lock on.
 
-iOS: `preferredScreenEdgesDeferringSystemGestures = .all`, status bar off, idle timer off while open, no rotation during a
+iOS: `preferredScreenEdgesDeferringSystemGestures` the sides, all four in full screen (2026-11-26; `.all` before), status bar off, idle timer off while open, no rotation during a
 touch, large contacts ignored as palms. The screen stays on while the app is open and dims only after 5 minutes idle, for a phone left on the desk
 (20 s was the first value; it read as the phone misbehaving).
 
@@ -445,9 +445,9 @@ well), and "Can't reach *name*. Check…" at 15 pt regular, white 66 %, with no 
 | Another phone took it | phone | Another phone is connected 另一台设备已连接 | | Take Over 接管 (a button since 2026-11-26, not any touch) |
 | The computer ended it | phone | *name* ended the connection. | | Reconnect 重新连接 |
 | Met on the public connection service | spinner | Connecting directly to *name*… 正在与 *name* 建立直连… | | |
-| The phone has no network | amber triangle | No network 没有网络 | Turn on Wi-Fi or mobile data… | |
+| The phone has no network | amber triangle | No network 无网络连接 | Turn on Wi-Fi or mobile data to reconnect. 打开 Wi‑Fi 或移动数据后会自动重新连接。 | |
 | Can't reach it, its relay knows since when | amber triangle | Can't reach *name* | Asleep since *time*… / Last online *time*… | Retry |
-| Connected, its screen is locked, the picture on | amber triangle | *name* is locked *name* 已锁屏 | Its screen shows once it's unlocked. Keys still work. | |
+| Connected, its screen is locked, the picture on | amber triangle | *name* is locked *name* 已锁屏 | The picture comes back once it's unlocked. 解锁后画面会自动恢复。 | |
 | No computer yet | code | Pair with your computer 与电脑配对 | On your computer, open Blurt's Settings and choose Phone. | Scan Code |
 | The computer is asking its owner | spinner | Waiting for your computer 等待电脑确认 | Allow this iPhone in Blurt's Settings… Check that it shows *digits*. | |
 | A pairing didn't take (8 s) | amber triangle | Pairing didn't work 配对没有成功 | why, in Link's sentence | what the state under it has |
