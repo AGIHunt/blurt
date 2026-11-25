@@ -13,8 +13,8 @@ android {
         applicationId = "dev.blurt.remote"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10103
-        versionName = "1.1.3"
+        versionCode = 10104
+        versionName = "1.1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
