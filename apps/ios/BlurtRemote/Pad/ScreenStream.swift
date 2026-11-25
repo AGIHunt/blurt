@@ -204,6 +204,30 @@ final class ScreenStream {
 
     func connectionLost() { q.async { self.reset() } }
 
+    /// The app is out of sight and its session kept: the computer stops capturing and the phone stops its timers, the last picture and the
+    /// view stay as they are. iOS takes the decoder away out of sight, so what comes back starts it anew.
+    private var paused = false
+    func pause() {
+        q.async {
+            guard self.on, !self.paused else { return }
+            self.paused = true
+            self.repairTimer?.cancel()
+            self.repairTimer = nil
+            self.reportTimer?.cancel()
+            self.reportTimer = nil
+            self.tell(.screen(nil))
+            self.reset()
+        }
+    }
+
+    func unpause() {
+        q.async {
+            guard self.paused else { return }
+            self.paused = false
+            DispatchQueue.main.async { self.resume() }
+        }
+    }
+
     /// Link belongs to the main thread.
     private func tell(_ m: ToMac) { DispatchQueue.main.async { Link.shared.send(m) } }
 
@@ -647,6 +671,7 @@ final class ScreenStream {
         q.async {
             self.reset()
             self.on = true
+            self.paused = false
             self.request = r
             self.pictureBytes = 0
             self.tell(.screen(r))
@@ -659,6 +684,7 @@ final class ScreenStream {
         q.async {
             guard self.on else { return }
             self.on = false
+            self.paused = false
             self.repairTimer?.cancel()
             self.repairTimer = nil
             self.reportTimer?.cancel()
@@ -697,7 +723,7 @@ final class ScreenStream {
 
     func packet(_ d: Data) {
         q.async {
-            guard self.on, let p = RemoteVideoPacket(d) else { return }
+            guard self.on, !self.paused, let p = RemoteVideoPacket(d) else { return }
             #if DEBUG
             guard Self.weather.passes(d, now: CACurrentMediaTime(), later: { held in self.q.async { self.arrived(held) } }) else { return }
             #endif

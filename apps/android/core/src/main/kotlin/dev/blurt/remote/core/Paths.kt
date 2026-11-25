@@ -116,6 +116,9 @@ class GoBetweenBackoff {
 
     fun mayTry(now: Double): Boolean = now >= until
 
+    /** the user asked again: the wait ends by `t` at the latest (how many refusals there were stays, for the next one) */
+    fun notAfter(t: Double) { if (until > t) until = t }
+
     fun worked() {
         refusals = 0
         until = Double.NEGATIVE_INFINITY

@@ -15,6 +15,8 @@ final class MicStream {
     private var converter: AVAudioConverter?
     private let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
     private var running = false
+    /// this phone's microphone is open
+    var busy: Bool { running }
     /// who has the microphone: the talk key, and a voice note the Mac started from here. It stops when neither does
     enum Holder { case talk, note }
     private var holders: Set<Holder> = []

@@ -185,6 +185,7 @@ class ScreenStream(private val c: Context) {
         idle = false
         val r = RemoteScreenRequest(TARGET, crop, p.width, p.height, p.bitrate, p.fps, decodable, features = features)
         on = true
+        paused = false
         stage?.scene?.on = true
         dec.post {
             resetDecoder()
@@ -213,11 +214,29 @@ class ScreenStream(private val c: Context) {
     /** A new session: the computer stopped the stream with the old one. */
     fun resume() { if (on) start() }
 
+    /** The app is out of sight and its session kept: the computer stops capturing and the phone's timers stop; the last picture and the view
+     *  stay as they are, and coming back starts the picture from a keyframe. */
+    private var paused = false
+    fun pause() {
+        if (!on || paused) return
+        paused = true
+        stopTimers()
+        Remote.link.send(ToMac.Screen(null))
+        dec.post { resetDecoder() }
+    }
+
+    fun unpause() {
+        if (!paused) return
+        paused = false
+        resume()
+    }
+
     fun connectionLost() { dec.post { resetDecoder() } }
 
     fun stop() {
         if (!on) return
         on = false
+        paused = false
         stage?.scene?.on = false
         stopTimers()
         use.value = use.value.copy(running = false)

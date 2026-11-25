@@ -68,6 +68,8 @@ class Channel(
     /** the stream moved onto the direct path: the WebSocket is idle from here on */
     var onMoved: (() -> Unit)? = null
 
+    /** which relay this goes through, for whoever made it */
+    var relayAddress: String? = null
     /** the relay's close code, when that ended it */
     @Volatile var relayClose: Int? = null
         private set

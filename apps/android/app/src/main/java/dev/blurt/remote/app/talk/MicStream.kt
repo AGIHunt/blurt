@@ -25,6 +25,8 @@ class MicStream(private val c: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val holders = mutableSetOf<Holder>()
     @Volatile private var running = false
+    /** this phone's microphone is open */
+    val busy: Boolean get() = running
     private var record: AudioRecord? = null
     private var thread: Thread? = null
     private var sawListening = false

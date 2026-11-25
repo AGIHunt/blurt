@@ -42,6 +42,8 @@ use crate::wire::{BlurtCommand, Candidate, DictationPhase, Front, SessionInfo, T
 
 const SILENCE: f64 = 2.0;
 const GONE: f64 = 12.0;
+/// how often the machine's addresses are looked at (another network, a sleep)
+const NETWORK_LOOK: Duration = Duration::from_secs(3);
 const PAIRING_LIFE: f64 = 120.0;
 const PAIRING_GRACE: f64 = 20.0;
 /// A copied link: pasted on another computer, often on another network, which takes longer than a scan. It lasts this long
@@ -304,6 +306,8 @@ struct State {
     meet_problem: Option<crate::server::GoBetweenProblem>,
     /// refusals from the go-between in a row ("busy today"): the next try waits 30 s, 2 min, 10 min, then an hour
     meet_refusals: u32,
+    /// one refusal a wait, however many devices' connections it came to
+    meet_quiet_until: Option<Instant>,
     /// no nearby question until then (the owner said no to the last one)
     nearby_paused_until: Option<Instant>,
 }
@@ -392,6 +396,7 @@ impl Host {
             off: false,
             meet_problem: None,
             meet_refusals: 0,
+            meet_quiet_until: None,
             nearby_paused_until: None,
         };
         let core = Arc::new(Core {
@@ -421,6 +426,30 @@ impl Host {
             core.update_listening(&mut s);
             core.publish(&mut s);
         }
+        // another network, or a sleep: what waits in the relay's rooms died with it, and would only be found dead by its pings, up to a
+        // minute later
+        let weak = Arc::downgrade(&core);
+        core.rt.spawn(async move {
+            let mut addresses = relay::local_addresses();
+            let mut seen = std::time::SystemTime::now();
+            loop {
+                tokio::time::sleep(NETWORK_LOOK).await;
+                let Some(me) = weak.upgrade() else { return };
+                let now = std::time::SystemTime::now();
+                let slept = now.duration_since(seen).is_ok_and(|d| d > NETWORK_LOOK + Duration::from_secs(8));
+                seen = now;
+                let list = relay::local_addresses();
+                if slept || list != addresses {
+                    let had = !list.is_empty();
+                    addresses = list;
+                    if had {
+                        let mut s = me.st.lock().unwrap();
+                        me.wait_anew(&mut s, if slept { "woke" } else { "network" });
+                        me.publish(&mut s);
+                    }
+                }
+            }
+        });
         Host { core }
     }
 
@@ -2091,7 +2120,7 @@ impl Core {
             // tries the overlays' when it's away); without the relay, also what the internet sees
             let mut list: Vec<Candidate> = relay::local_addresses().into_iter().map(|h| Candidate { host: h, port: udp_port }).collect();
             if chan.relay {
-                list.extend(relay::public_ipv6().into_iter().map(|h| Candidate { host: h, port: udp_port }));
+                list.extend(relay::public_ipv6().into_iter().take(6).map(|h| Candidate { host: h, port: udp_port }));
                 if let Some(c) = me.stun().await {
                     list.push(c);
                 }
@@ -2286,6 +2315,13 @@ impl Core {
         }
         if s.relay_at != address {
             s.own_relay_fails = 0;
+            // a session that came in by the old one and has moved: its room's connection is another by now
+            if let Some(x) = s.current.and_then(|sid| s.sessions.get(&sid)) {
+                let sid = x.chan.sid;
+                if s.relay_at.is_some() && x.chan.meet.load(SeqCst) && ![&s.relays, &s.fallbacks].iter().any(|m| m.values().any(|r| r.sid == sid)) {
+                    x.chan.close();
+                }
+            }
         }
         s.relay_at = address.clone();
         self.update_fallbacks(s);
@@ -2310,6 +2346,39 @@ impl Core {
         r.stop.notify_one();
         if let Some(x) = s.sessions.get(&r.sid) {
             x.chan.close();
+        }
+    }
+
+    /// Every waiting connection made again, now; a session being carried, or asked about, is left to its own watch.
+    fn wait_anew(&self, s: &mut State, why: &str) {
+        let keep = [s.current, s.asking];
+        let idle = |m: &HashMap<String, RelayConn>| m.iter().filter(|(_, r)| !keep.contains(&Some(r.sid))).map(|(id, _)| id.clone()).collect::<Vec<_>>();
+        let (relays, fallbacks) = (idle(&s.relays), idle(&s.fallbacks));
+        if s.relay_at.is_none() {
+            return;
+        }
+        self.log(json!({"event": "remote_relay", "state": "anew", "why": why}));
+        let gone: Vec<RelayConn> = relays.iter().filter_map(|id| s.relays.remove(id)).chain(fallbacks.iter().filter_map(|id| s.fallbacks.remove(id))).collect();
+        for r in gone {
+            self.stop_waiting(s, r);
+        }
+        s.relay_wait.clear();
+        s.own_relay_fails = 0;
+        s.meet_refusals = 0;
+        s.meet_quiet_until = None;
+        self.update_relays(s);
+    }
+
+    /// The device left the room of a session that goes on over the direct path: another connection waits there at once, so the device
+    /// coming back before this host has noticed it gone (6 s) finds it (docs/design/remote.md §Coming back).
+    fn room_empty(&self, id: &str, sid: u64) {
+        let mut s = self.st.lock().unwrap();
+        if s.relays.get(id).map(|r| r.sid) == Some(sid) {
+            s.relays.remove(id);
+            self.connect_relay(&mut s, id);
+        } else if s.fallbacks.get(id).map(|r| r.sid) == Some(sid) {
+            s.fallbacks.remove(id);
+            self.connect_fallback(&mut s, id);
         }
     }
 
@@ -2418,6 +2487,7 @@ impl Core {
                     let mut s = me.st.lock().unwrap();
                     if meet {
                         s.meet_refusals = 0;
+                        s.meet_quiet_until = None;
                         if s.meet_problem == Some(GoBetweenProblem::Busy) {
                             s.meet_problem = None;
                         }
@@ -2438,13 +2508,17 @@ impl Core {
                     let busy = meet && matches!(e, relay::ConnectError::Refused(_));
                     if busy {
                         // the day's quota is gone, or it's rate-limiting: "busy today", and no retrying in a loop
-                        s.meet_refusals += 1;
+                        let now = Instant::now();
+                        if s.meet_quiet_until.is_none_or(|t| now >= t) {
+                            s.meet_refusals += 1;
+                            s.meet_quiet_until = Some(now + relay::busy_wait(s.meet_refusals));
+                        }
                         s.meet_problem = Some(GoBetweenProblem::Busy);
                     } else if !meet {
                         s.relay_reachable = Some(false);
                         me.own_relay_answered(&mut s, false);
                     }
-                    let wait = busy.then(|| relay::busy_wait(s.meet_refusals));
+                    let wait = busy.then(|| s.meet_quiet_until.map_or(relay::busy_wait(s.meet_refusals), |t| t.saturating_duration_since(Instant::now())));
                     me.relay_ended_after(&mut s, &id, sid, false, None, wait);
                     me.publish(&mut s);
                     return;
@@ -2465,8 +2539,13 @@ impl Core {
             let stop2 = stop.clone();
             let c2 = chan.clone();
             me.rt.spawn(async move {
-                stop2.notified().await;
-                c2.close();
+                // the session may outlive the map's entry that holds `stop` (room_empty)
+                loop {
+                    tokio::select! {
+                        _ = stop2.notified() => return c2.close(),
+                        _ = tokio::time::sleep(Duration::from_secs(60)) => if c2.is_closed() { return },
+                    }
+                }
             });
             me.clone().read_ws(stream, chan, id).await;
         });
@@ -2511,8 +2590,9 @@ impl Core {
                 },
                 m = next, if ws_open => match m {
                     Some(Some(Ok(Message::Binary(b)))) => {
-                        // nothing after the phone's streamMoved counts on the old stream
-                        if moved.is_some() { continue; }
+                        // nothing after the phone's streamMoved counts on the old stream: it's the phone starting over in the same room (its
+                        // last session died unseen), and this session is the one it left
+                        if moved.is_some() { break; }
                         if !self.bytes(&mut conn, &b) { break; }
                         if chan.moved_in() {
                             moved = chan.take_moved();
@@ -2525,11 +2605,18 @@ impl Core {
                     Some(Some(Ok(Message::Close(f)))) => {
                         *chan.relay_close.lock().unwrap() = f.map(|f| u16::from(f.code));
                         // moved both ways: the session carries on over UDP
-                        if moved.is_some() && chan.moved_out() { ws_open = false; continue; }
+                        if moved.is_some() && chan.moved_out() {
+                            ws_open = false;
+                            self.room_empty(&id, chan.sid);
+                            continue;
+                        }
                         break;
                     }
                     Some(Some(Ok(_))) => {}
-                    Some(None) | Some(Some(Err(_))) if moved.is_some() && chan.moved_out() => ws_open = false,
+                    Some(None) | Some(Some(Err(_))) if moved.is_some() && chan.moved_out() => {
+                        ws_open = false;
+                        self.room_empty(&id, chan.sid);
+                    }
                     _ => break,
                 },
             }
@@ -2546,7 +2633,7 @@ impl Core {
         let clean = code == Some(relay::PHONE_LEFT) || greeted;
         if s.fallbacks.get(id).map(|r| r.sid) == Some(sid) {
             s.fallbacks.remove(id);
-            let wait = after.map_or(if clean { 0.5 } else { 4.0 }, |a| a.as_secs_f64());
+            let wait = after.map_or(if clean { 0.1 } else { 4.0 }, |a| a.as_secs_f64());
             let me = self.arc();
             let id = id.to_string();
             self.rt.spawn(async move {
@@ -2563,7 +2650,7 @@ impl Core {
         }
         s.relays.remove(id);
         // a failure waits longer each time, but not so long that a bad hello now and then keeps the phone off the relay
-        let mut wait = if clean { 0.5 } else { (s.relay_wait.get(id).copied().unwrap_or(1.0) * 2.0).min(8.0) };
+        let mut wait = if clean { 0.1 } else { (s.relay_wait.get(id).copied().unwrap_or(1.0) * 2.0).min(8.0) };
         s.relay_wait.insert(id.to_string(), if clean { 1.0 } else { wait });
         if let Some(a) = after {
             wait = a.as_secs_f64();

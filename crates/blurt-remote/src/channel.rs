@@ -23,6 +23,8 @@ use crate::wire::ToPhone;
 
 /// Control messages larger than this wait for the move on the go-between (`cursorShape`, a long list of displays).
 pub const HOLD_OVER: usize = 1024;
+/// the one that can't wait, however many addresses it lists: the move needs what it says
+const SESSION: &[u8] = br#"{"session":"#;
 /// After the move: this long without a datagram and the session is over.
 pub const MOVED_QUIET: Duration = Duration::from_secs(6);
 
@@ -149,7 +151,7 @@ impl Chan {
         plain.push(kind as u8);
         plain.extend_from_slice(body);
         // the go-between carries nothing large: it waits for the move
-        if g.stream.is_none() && self.meet.load(SeqCst) && kind == Kind::Control && body.len() > HOLD_OVER {
+        if g.stream.is_none() && self.meet.load(SeqCst) && kind == Kind::Control && body.len() > HOLD_OVER && !body.starts_with(SESSION) {
             if g.held.len() < 64 {
                 g.held.push(plain);
             }

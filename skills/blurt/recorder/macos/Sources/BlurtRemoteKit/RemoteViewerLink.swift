@@ -351,7 +351,9 @@ public final class RemoteViewerLink {
         queue.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, self.channel == nil, self.active, g == self.generation else { return }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
-            if self.refused { self.set(self.pairing ? .pairingFailed(.spent) : .forgotten); return }
+            // the relay's try still going may be the one that works: only its own end decides (addresses move, and a stranger's refusal is
+            // one of those)
+            if self.refused, self.pairing || !self.attempts.contains(where: \.isRelay) { self.set(self.pairing ? .pairingFailed(.spent) : .forgotten); return }
             if let a = self.away { self.set(.away(a)) } else if let f = self.firstAttempt, CACurrentMediaTime() - f > 8 { self.set(.unreachable) }
             self.cancelAttempts(keepRelay: CACurrentMediaTime() - self.lastRelayTry < 9)
             self.connect()
@@ -512,9 +514,9 @@ public final class RemoteViewerLink {
     }
 
     private func goBetweenEnded(_ ch: RemoteChannel) {
-        let refused = RemoteRelay.refused(ch.failure)
+        let refused = ch.refusedByRelay
         if refused {
-            meetRefusals += 1
+            if CACurrentMediaTime() >= meetQuietUntil { meetRefusals += 1 }
             meetQuietUntil = CACurrentMediaTime() + RemoteRelay.busyWait(meetRefusals)
         } else if ch.wasReady {
             meetRefusals = 0

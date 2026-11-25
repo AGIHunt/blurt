@@ -1,6 +1,7 @@
 // The connection to the computer (docs/design/remote.md §Connection; port of apps/ios/BlurtRemote/Net/Link.swift). The one thing competing
 // apps most often get wrong, so the rule is: the user never has to do anything to get back. Opening the app connects; coming back from another
-// app or the lock screen connects, usually before the thumb lands. It tries the last addresses and DNS-SD at the same time and takes whichever
+// app or the lock screen finds the session still there (it's kept a minute, as Android allows), or connects again, usually before the thumb
+// lands. It tries the last addresses and DNS-SD at the same time and takes whichever
 // answers. Keys and clicks made before the session is up are dropped, never queued: a late ⌘W is worse than a missing one.
 //
 // Away from home the same session runs over the owner's relay, tried a moment after the local ways. Over it the phone looks for a direct path
@@ -39,6 +40,7 @@ import dev.blurt.remote.core.RemotePointerPacket
 import dev.blurt.remote.core.RemoteRelay
 import dev.blurt.remote.core.RemoteScrollPhase
 import dev.blurt.remote.core.RemoteSessionInfo
+import dev.blurt.remote.core.Reconnect
 import dev.blurt.remote.core.ToMac
 import dev.blurt.remote.core.ToPhone
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -160,6 +162,17 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var generation = 0
     private var refused = false
     private var lastRelayTry = 0L
+    /** relay connections that ended before a session, in a row (Reconnect.relayAgainMs), and the next one's wait */
+    private var relayEnds = 0
+    private var relayAgain: Runnable? = null
+    /** the last session came over a relay or an overlay network: next time the relay starts with the local ways */
+    private var lastAway = false
+    /** the session in hand hasn't said `session` yet */
+    private var sessionDue: Runnable? = null
+    /** in the background with the session kept (background()) */
+    private var parked = false
+    private var parkEnds: Runnable? = null
+    private var lastRefusal = 0L
     /** the computer's own relay failed this many times in a row without opening: from 2, the public connection service is tried too
      * (its host waits there meanwhile), and the card says why */
     private var relayFails = 0
@@ -187,7 +200,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var replacing: String? = null
     private var joinOpens = 0
 
-    private fun now() = System.currentTimeMillis()
+    /** monotonic: the phone's clock may be set while a session runs, and time out of sight counts */
+    private fun now() = android.os.SystemClock.elapsedRealtime()
 
     init {
         _macs.value = runCatching {
@@ -197,6 +211,60 @@ class Link(private val c: Context, private val vault: KeyVault) {
         _current.value = _macs.value.firstOrNull { it.id == prefs.getString("currentMac", null) } ?: _macs.value.firstOrNull()
         _state.value = if (_current.value == null) State.UNPAIRED else State.CONNECTING
         host.value = _current.value?.host ?: RemoteHost.MAC
+        watchNetwork()
+    }
+
+    /** Wi-Fi came, went or became another one: told on the main thread, the first word (what's there now) apart. */
+    private fun watchNetwork() {
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        var seen: Pair<android.net.Network, String>? = null
+        var known = false
+        fun now(n: android.net.Network, lp: android.net.LinkProperties) {
+            val at = n to (lp.interfaceName ?: "") + lp.linkAddresses.map { it.toString() }.filter { "temporary" !in it }.sorted()
+            val changed = known && seen != at
+            seen = at
+            known = true
+            if (changed) networkChanged()
+        }
+        runCatching {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onLinkPropertiesChanged(network: android.net.Network, lp: android.net.LinkProperties) { main.post { now(network, lp) } }
+                override fun onLost(network: android.net.Network) { main.post { if (seen?.first == network) seen = null } }
+            })
+        }
+    }
+
+    /** What didn't work on the last network may on this one, and what was being tried goes out of one that's gone: start over now. A session
+     *  in hand is asked to prove itself instead. */
+    private fun networkChanged() {
+        askAgain(asked = true)
+        if (!active || _current.value == null) return
+        if (channel != null) {
+            prove()
+            lastLocalTry = 0       // the same network may be back: looked for now, not in 10 s
+        } else if (_state.value == State.CONNECTING || _state.value == State.UNREACHABLE) {
+            firstAttempt = null
+            cancelAttempts()
+            connect()
+        }
+    }
+
+    /** What was held against the ways in is put aside: the user came back, asked again, or changed networks. The go-between's refusal is
+     *  waited out only as long as its own rate limit, as killing and opening the app would. */
+    private fun askAgain(asked: Boolean) {
+        noDirectUntil = 0
+        refused = false
+        relayEnds = 0
+        if (away.value == AwayTrouble.NO_DIRECT || away.value == AwayTrouble.RELAY_DOWN) away.value = null
+        busy.notAfter((lastRefusal + Reconnect.busyFloorMs(asked)) / 1000.0)
+    }
+
+    /** The session in hand may have died unseen (the app was out of sight or frozen, the network changed): it answers soon, or it's started
+     *  over. */
+    private fun prove() {
+        val ch = channel ?: return
+        lastPong = now() + Reconnect.proofMs(ch.isRelay) - (if (ch.isRelay) 8000 else 2500)
+        send(ToMac.Ping(Net.now()))
     }
 
     private fun saveMacs() {
@@ -365,9 +433,22 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var cameBack = 0L
 
     fun foreground() {
+        val back = !active
         active = true
         cameBack = android.os.SystemClock.uptimeMillis()
         joining?.since = now()      // scanning with the camera app, say
+        if (parked) {
+            unpark()
+            if (channel != null) {
+                prove()
+                Remote.screen.unpause()
+                return
+            }
+        }
+        if (back) {
+            firstAttempt = null
+            askAgain(asked = false)
+        }
         if (_state.value != State.CONNECTED && _state.value != State.REPLACED && _state.value != State.ENDED) connect()
     }
 
@@ -392,9 +473,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             joining?.since = now()
         }
         _state.value = State.CONNECTING
-        // the user may have changed networks: the go-between gets another go, unless it said it's out of today's quota
-        noDirectUntil = 0
-        if (away.value == AwayTrouble.NO_DIRECT) away.value = null
+        askAgain(asked = true)
         cancelAttempts()
         connect()
     }
@@ -404,9 +483,37 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     fun background() {
         active = false
-        if (waitingForMac.value) joinFailed(PairEnd.LEFT)      // nobody's there to see it, and the code is spent
         Remote.sticky.clear()
         send(ToMac.ReleaseAll)
+        // a message answered, a code copied: back within a minute, and the session is still there. Not while the microphone is this phone's:
+        // Android gives an app out of sight silence, so the take ends as it would with the session
+        if (channel != null && (_state.value == State.CONNECTED || waitingForMac.value) && !Remote.mic.busy) {
+            parked = true
+            Remote.screen.pause()
+            val r = Runnable { parkOver() }
+            parkEnds = r
+            main.postDelayed(r, Reconnect.KEEP_IN_BACKGROUND_MS)
+            return
+        }
+        left()
+    }
+
+    /** Long enough out of sight, or the session went meanwhile: it ends here, and coming back starts anew. */
+    private fun parkOver() {
+        if (!parked) return
+        unpark()
+        left()
+    }
+
+    private fun unpark() {
+        parked = false
+        parkEnds?.let { main.removeCallbacks(it) }
+        parkEnds = null
+    }
+
+    /** Nothing is kept: the computer hears the session end. */
+    private fun left() {
+        if (waitingForMac.value) joinFailed(PairEnd.LEFT)      // nobody's there to see it, and the code is spent
         disconnect()
         // another phone has the computer: coming back doesn't take it from them, a touch does
         if (_current.value != null && _state.value != State.REPLACED && _state.value != State.ENDED) _state.value = State.CONNECTING
@@ -419,35 +526,20 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (!active || channel != null || !attempts.all { it.isRelay }) return
         // replaced or ended there: nothing until the user touches this phone, whatever retry was already queued
         if (_state.value == State.REPLACED || _state.value == State.ENDED) return
+        relayAgain?.let { main.removeCallbacks(it) }
         val key = vault.read(mac.deviceID) ?: run { _state.value = State.FORGOTTEN; return }
         generation += 1
         if (firstAttempt == null) firstAttempt = now()
         if (_state.value in setOf(State.CONNECTED, State.UNPAIRED, State.REPLACED, State.ENDED)) _state.value = State.CONNECTING
         tryLocal(mac, key)
-        // the relay a moment later, so at home it's never the one that wins; and not every round. Overlay addresses alongside it.
-        val address = RELAY_ONLY ?: mac.relayAddress
+        // the relay a moment later, so at home it's never the one that wins (with the local ways when the last session was away). Overlay
+        // addresses alongside it.
         val g0 = generation
         main.postDelayed({
             if (channel != null || !active || g0 != generation) return@postDelayed
             tryOverlay(mac, key)
-        }, 1200)
-        if (address != null && now() - lastRelayTry > 4000 && mayTryRelay(address)) {
-            main.postDelayed({
-                if (channel != null || !active || g0 != generation) return@postDelayed
-                val url = RemoteRelay.url(address, RemoteRelay.room(key), "phone") ?: return@postDelayed
-                lastRelayTry = now()
-                attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address))
-            }, if (RELAY_ONLY != null) 0 else 1200)
-        }
-        if (RELAY_ONLY == null && address != null && !RemoteRelay.isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
-            mayTryRelay(RemoteRelay.GO_BETWEEN)) {
-            main.postDelayed({
-                if (channel != null || !active || g0 != generation) return@postDelayed
-                val url = RemoteRelay.url(RemoteRelay.GO_BETWEEN, RemoteRelay.room(key), "phone") ?: return@postDelayed
-                lastMeetTry = now()
-                attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = true)
-            }, 1200)
-        }
+            tryRelays(mac, key)
+        }, if (RELAY_ONLY != null) 0 else Reconnect.relayDelayMs(lastAway))
         // keep trying while the app is open; say so after a while
         val g = generation
         val r = Runnable {
@@ -459,8 +551,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 if (now() - j.since > 15_000) joinUnreachable()
             }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
-            if (refused) _state.value = State.FORGOTTEN
-            else if (firstAttempt?.let { now() - it > 8000 } == true) _state.value = State.UNREACHABLE
+            if (refused && attempts.none { it.isRelay }) _state.value = State.FORGOTTEN
+            else if (firstAttempt?.let { now() - it > Reconnect.unreachableAfterMs(mac.relayAddress != null) } == true || away.value != null) _state.value = State.UNREACHABLE
             // a relay attempt gets longer than a local one: it has further to go
             cancelAttempts(keepRelay = now() - lastRelayTry < 9000)
             connect()
@@ -513,9 +605,11 @@ class Link(private val c: Context, private val vault: KeyVault) {
         noDirectUntil = now() + 60_000
     }
 
-    private fun attempt(t: Transport, relay: Boolean, mac: PairedMac, key: ByteArray, goBetween: Boolean = false, discovered: Boolean = false) {
-        if (!relay && channel != null && channel?.isRelay != true) return
+    private fun attempt(t: Transport, relay: Boolean, mac: PairedMac, key: ByteArray, goBetween: Boolean = false, discovered: Boolean = false,
+                        address: String? = null) {
+        if (!active || !relay && channel != null && channel?.isRelay != true) return
         val ch = Channel(t, PhoneHandshake(mac.deviceID, key), relay, goBetween, discovered)
+        ch.relayAddress = address
         ch.onOpen = { main.post { opened(ch) } }
         ch.onControl = { d ->
             val m = ToPhone.decode(d)
@@ -546,8 +640,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
         }
         ch.onClose = { failure ->
             main.post {
-                attempts.remove(ch)
-                if (ch.isRelay && !ch.goBetween) {
+                // one let go of here (another way in won, the app left) says nothing about the relay
+                val tried = attempts.remove(ch)
+                if (ch.isRelay && !ch.goBetween && (tried || ch.wasReady)) {
                     if (ch.wasReady) {
                         relayFails = 0
                         if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
@@ -556,17 +651,48 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 if (ch.goBetween) {
                     if (ch.relayClose == RemoteRelay.BUDGET) noDirect()
                     // refused at the door (429, Cloudflare's 1015, any upgrade that didn't happen): out of today's quota, or rate-limited
-                    if (ch.relayRefused != null) {
-                        busy.refused(now() / 1000.0)
-                        away.value = AwayTrouble.BUSY
+                    if (ch.relayRefused?.let { Reconnect.isRefusal(it) } == true) {
+                        // one refusal a wait, however many connections it came to
+                        if (busy.mayTry(now() / 1000.0)) busy.refused(now() / 1000.0)
+                        lastRefusal = now()
+                        if (channel == null) away.value = AwayTrouble.BUSY
                     }
                 }
                 if (failure?.kind == RemoteHandshakeError.Kind.NOT_PAIRED) refused = true
-                if (channel === ch) lost()
+                if (channel === ch) lost() else if (relay && tried) relayEnded(mac, key)
             }
         }
         attempts += ch
         ch.start()
+    }
+
+    /** A relay connection ended with no session: the computer may be just coming back to its room (it has only now found the last session
+     *  gone), so the next one comes soon, not at the next round. */
+    private fun relayEnded(mac: PairedMac, key: ByteArray) {
+        if (channel != null || !active || _current.value?.deviceID != mac.deviceID || (_state.value != State.CONNECTING && _state.value != State.UNREACHABLE)) return
+        relayEnds += 1
+        relayAgain?.let { main.removeCallbacks(it) }
+        val r = Runnable { tryRelays(mac, key) }
+        relayAgain = r
+        main.postDelayed(r, Reconnect.relayAgainMs(relayEnds))
+    }
+
+    /** The computer's relay, and Blurt's go-between beside it when that relay is down: each unless one is already being tried. */
+    private fun tryRelays(mac: PairedMac, key: ByteArray) {
+        if (channel != null || !active || _current.value?.deviceID != mac.deviceID) return
+        val address = RELAY_ONLY ?: mac.relayAddress ?: return
+        if (attempts.none { it.relayAddress == address } && mayTryRelay(address)) tryRelay(address, mac, key)
+        if (RELAY_ONLY == null && !RemoteRelay.isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
+            attempts.none { it.relayAddress == RemoteRelay.GO_BETWEEN } && mayTryRelay(RemoteRelay.GO_BETWEEN)) {
+            lastMeetTry = now()
+            tryRelay(RemoteRelay.GO_BETWEEN, mac, key)
+        }
+    }
+
+    private fun tryRelay(address: String, mac: PairedMac, key: ByteArray) {
+        val url = RemoteRelay.url(address, RemoteRelay.room(key), "phone") ?: return
+        lastRelayTry = now()
+        attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address), address = address)
     }
 
     private fun opened(ch: Channel) {
@@ -581,6 +707,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         attempts.remove(ch)
         cancelAttempts()
         channel = ch
+        // a refusal on the way was someone else's: what comes next may be a drop, and it must be come back from
+        if (_state.value == State.FORGOTTEN) _state.value = State.CONNECTING
         if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
         setPath(when {
             ch.goBetween -> LinkPath.GO_BETWEEN
@@ -593,6 +721,13 @@ class Link(private val c: Context, private val vault: KeyVault) {
         firstAttempt = null
         refused = false
         lastPong = now()
+        relayEnds = 0
+        lastAway = ch.isRelay || path.value == LinkPath.TAILSCALE || path.value == LinkPath.OVERLAY
+        // a computer that answers pings but never greets: not waited for
+        sessionDue?.let { main.removeCallbacks(it) }
+        val due = Runnable { if (channel === ch && _state.value != State.CONNECTED && joining == null) lost() }
+        sessionDue = due
+        main.postDelayed(due, Reconnect.sessionDueMs(ch.isRelay))
         // a code that keeps getting sessions which never come to a question is being tried for digits: give up on it
         if (joining != null) {
             joinOpens += 1
@@ -616,6 +751,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     private fun cancelAttempts(keepRelay: Boolean = false) {
         retry?.let { main.removeCallbacks(it) }
+        if (!keepRelay) relayAgain?.let { main.removeCallbacks(it) }
         browse?.stop()
         browse = null
         val a = attempts.filter { !(keepRelay && it.isRelay) }
@@ -630,7 +766,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         // over the relay, one in four: every message counts against the free plan (once moved off the go-between, nothing goes through it)
         if (!relay || channel?.moved == true || pingCount % 4 == 0) send(ToMac.Ping(Net.now()))
         val mac = _current.value
-        if (relay && attempts.isEmpty() && now() - lastLocalTry > 10_000 && mac != null) vault.read(mac.deviceID)?.let { tryLocal(mac, it); tryOverlay(mac, it) }
+        if (active && relay && attempts.isEmpty() && now() - lastLocalTry > 10_000 && mac != null) vault.read(mac.deviceID)?.let { tryLocal(mac, it); tryOverlay(mac, it) }
     }
 
     private fun lost() {
@@ -641,15 +777,22 @@ class Link(private val c: Context, private val vault: KeyVault) {
         Remote.mic.stop()
         Remote.screen.connectionLost()
         dictation.value = RemoteDictationPhase.IDLE
+        sessionDue?.let { main.removeCallbacks(it) }
+        // out of sight: nothing is started from here, coming back does that
+        if (parked) return parkOver()
         // the computer let go while it was asking: its owner said no, or nobody answered in its two minutes
         if (waitingForMac.value) return joinFailed(PairEnd.of(askedAt, now()))
         if (_current.value == null || _state.value == State.FORGOTTEN || _state.value == State.REPLACED || _state.value == State.ENDED) return
         _state.value = State.CONNECTING
+        // over a relay the same network is looked for every 10 s: one of those tries may be running, and connect() starts no round beside one
+        // (PR #118: the pad stayed at Reconnecting until the app was opened again)
+        cancelAttempts(keepRelay = true)
         connect()
     }
 
     private fun disconnect() {
         stopPinging()
+        sessionDue?.let { main.removeCallbacks(it) }
         cancelAttempts()
         val ch = channel
         channel = null
@@ -661,6 +804,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         when (m) {
             is ToPhone.Session -> {
                 val i = m.info
+                sessionDue?.let { main.removeCallbacks(it) }
                 canControl.value = i.canControl
                 if (dev.blurt.remote.app.BuildConfig.DEBUG && cameBack > 0) {
                     android.util.Log.i("Link", "connected ${android.os.SystemClock.uptimeMillis() - cameBack} ms after coming to the front, ${route.value}")
@@ -689,7 +833,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 if (i.relay == null || RemoteRelay.isGoBetween(i.relay))
                     _macs.value.mapNotNull { it.relayAddress }.firstOrNull { !RemoteRelay.isGoBetween(it) }?.let { send(ToMac.OfferRelay(it)) }
                 if (talkHeld) send(ToMac.DictationKey(true))
-                Remote.screen.resume()
+                if (parked) Remote.screen.pause() else Remote.screen.resume()
                 if (channel?.isRelay == true) lookForDirect(i) else channel?.openUDP(i.udpPort, i.udpSession)
                 // the computer let go of everything when the last session ended
                 send(ToMac.Mods(Remote.sticky.held))

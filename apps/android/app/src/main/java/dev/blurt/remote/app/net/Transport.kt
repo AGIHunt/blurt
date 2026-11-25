@@ -102,7 +102,10 @@ class RelayTransport(private val url: String) : Transport {
     override fun start(sink: Transport.Sink) {
         val req = runCatching { Request.Builder().url(url).build() }.getOrElse { sink.closed(null); return }
         ws = client.newWebSocket(req, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) { if (!closed.get()) sink.ready() }
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                opened = true
+                if (closed.get()) webSocket.close(1000, null) else sink.ready()
+            }
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) { if (!closed.get()) sink.bytes(bytes.toByteArray()) }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 webSocket.close(1000, null)
@@ -129,8 +132,10 @@ class RelayTransport(private val url: String) : Transport {
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        ws?.close(1000, null)
+        // not up yet: a close() would let it go on connecting, and come into the room after the one that took its place
+        if (opened) ws?.close(1000, null) else ws?.cancel()
     }
+    @Volatile private var opened = false
 
     companion object {
         val client: OkHttpClient by lazy {
