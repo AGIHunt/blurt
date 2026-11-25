@@ -939,9 +939,10 @@ def limits() -> dict:
     try:
         import transcribe  # noqa: PLC0415
         lim = transcribe.limits()
-        return {"threads": lim["threads"], "max_memory_fraction": lim["max_memory_fraction"]}
+        return {"threads": lim["threads"], "max_memory_fraction": lim["max_memory_fraction"],
+                "serve_priority": lim["priority"].get("note") or "user-initiated"}
     except Exception:  # noqa: BLE001
-        return {"threads": 3, "max_memory_fraction": 0.25}
+        return {"threads": 3, "max_memory_fraction": 0.25, "serve_priority": "user-initiated"}
 
 
 def recommended(tier: str | None = None) -> str | None:
@@ -1028,13 +1029,16 @@ def ensure_mlx(stdin: str | None = None) -> None:
     os.execvp(uv, argv)
 
 
-def throttle(priority: str | None = None) -> dict:
-    """The ASR caps (threads before MLX loads; utility priority by default) — CLI runs only."""
+def throttle(priority: str | None = None, serve: bool = False) -> dict:
+    """The ASR caps (threads before MLX loads) — CLI runs only. `serve` is what someone is waiting for after key-up, so
+    it runs at the speech server's priority (asr.limits.priority "note": user-initiated); run and eval at utility.
+    Utility cost nothing on an idle Mac and starved polish on one whose cores were busy (a build, a simulator): 130
+    characters took 10–21 s against 1–3 s (docs/design/dictation.md §Polish)."""
     lim = limits()
     for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
               "NUMEXPR_NUM_THREADS", "RAYON_NUM_THREADS", "TOKENIZERS_PARALLELISM"):
         os.environ[k] = "false" if k == "TOKENIZERS_PARALLELISM" else str(lim["threads"])
-    level = priority or dictation_config().get("polish_priority") or "utility"
+    level = priority or dictation_config().get("polish_priority") or (lim["serve_priority"] if serve else "utility")
     done = {"threads": lim["threads"], "level": level}
     try:
         import transcribe  # noqa: PLC0415
@@ -1780,7 +1784,7 @@ def cmd_serve(a):
         ensure_mlx()
     else:
         os.environ["BLURT_POLISH_REEXEC"] = "1"
-    throttle(a.priority)
+    throttle(a.priority, serve=True)
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

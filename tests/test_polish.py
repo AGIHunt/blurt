@@ -18,6 +18,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
@@ -783,7 +784,7 @@ class ServeWhileLoading(unittest.TestCase):
     def test_what_needs_no_model_is_answered_at_once_and_a_wait_is_load_time(self):
         # throttle() would lower the whole test runner's priority (and with it pytest's own output was lost)
         saved = (polish.Engine, polish.ensure_mlx, polish.throttle)
-        polish.Engine, polish.ensure_mlx, polish.throttle = self.Slow, (lambda: None), (lambda _p=None: {})
+        polish.Engine, polish.ensure_mlx, polish.throttle = self.Slow, (lambda: None), (lambda _p=None, serve=False: {})
         args = argparse.Namespace(preload=True, model_id="fake", priority=None, idle=600, exit_after=1800, parent=None)
         th = threading.Thread(target=lambda: polish.cmd_serve(args), daemon=True)
         try:
@@ -812,6 +813,35 @@ class ServeWhileLoading(unittest.TestCase):
         finally:
             polish.Engine, polish.ensure_mlx, polish.throttle = saved
         self.assertFalse(polish.SERVE_FILE.exists())
+
+
+class Priority(unittest.TestCase):
+    """The warm server is what someone waits for after key-up (2026-11-26: at utility on a Mac whose cores were busy,
+    130 characters took 10–21 s to polish against 1–3 s)."""
+
+    def level(self, config=None, **kw):
+        import transcribe
+        seen = []
+        saved = (transcribe.apply_priority, polish.dictation_config)
+        transcribe.apply_priority, polish.dictation_config = (lambda lv: seen.append(lv) or {}), (lambda: config or {})
+        try:
+            with mock.patch.dict(os.environ):       # throttle() sets the thread caps
+                polish.throttle(**kw)
+        finally:
+            transcribe.apply_priority, polish.dictation_config = saved
+        return seen[0]
+
+    def test_serve_runs_at_the_speech_servers_priority(self):
+        import transcribe
+        self.assertEqual(self.level(serve=True), transcribe.limits()["priority"]["note"])
+        self.assertEqual(self.level(serve=True), "user-initiated")
+
+    def test_run_and_eval_stay_at_utility(self):
+        self.assertEqual(self.level(), "utility")
+
+    def test_the_setting_and_the_flag_win(self):
+        self.assertEqual(self.level({"polish_priority": "utility"}, serve=True), "utility")
+        self.assertEqual(self.level({"polish_priority": "utility"}, priority="default", serve=True), "default")
 
 
 if __name__ == "__main__":
