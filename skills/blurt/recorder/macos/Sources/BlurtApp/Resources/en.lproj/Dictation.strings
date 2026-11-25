@@ -458,7 +458,7 @@
 "dictation.style.keys" = "While talking, double-tap ⇧ for Structured. Press %@ to change the last dictation’s style.";
 "dictation.style.keys.no_hotkey" = "While talking, double-tap ⇧ for Structured.";
 "dictation.style.cat.chat" = "Chat";
-"dictation.style.cat.chat.detail" = "Keeps a casual tone, with no full stop after a single sentence";
+"dictation.style.cat.chat.detail" = "Keeps a casual tone, with no period after a single sentence";
 "dictation.style.cat.code" = "Code and terminals";
 "dictation.style.cat.code.detail" = "No line breaks";
 "dictation.style.cat.mail" = "Mail";

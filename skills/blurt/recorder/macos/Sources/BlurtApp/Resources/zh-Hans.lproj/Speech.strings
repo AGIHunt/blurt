@@ -40,7 +40,7 @@
 "speech.purpose.dictation" = "听写";
 "speech.purpose.dictation.detail" = "将你说的话输入到光标处。";
 "speech.purpose.polish" = "听写润色";
-"speech.purpose.polish.detail" = "去掉语气词，添加标点，并整理列表。";
+"speech.purpose.polish.detail" = "去掉口头禅，添加标点，并整理列表。";
 "speech.purpose.polish.unsupported" = "需要 Apple 芯片";
 "speech.purpose.none_yet" = "暂无";
 "speech.purpose.downloading" = "%@ · 正在下载";

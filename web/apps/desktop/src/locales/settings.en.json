@@ -417,7 +417,7 @@
  "st.dictation.style.by_app.detail": "Chat, code, mail and notes can each have their own.",
  "st.dictation.style.by_app.pair": "{1}: {2}",
  "st.dictation.style.cat.chat": "Chat",
- "st.dictation.style.cat.chat.detail": "Keeps a casual tone, with no full stop after a single sentence",
+ "st.dictation.style.cat.chat.detail": "Keeps a casual tone, with no period after a single sentence",
  "st.dictation.style.cat.code": "Code and terminals",
  "st.dictation.style.cat.code.detail": "No line breaks",
  "st.dictation.style.cat.mail": "Mail",

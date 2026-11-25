@@ -423,7 +423,7 @@
 "onboarding.perm.why.input_monitoring" = "用于在任何 App 中检测%@。仅检测这个键，不记录输入内容。";
 "onboarding.perm.why.screen" = "用于录屏、截图、截图取字和截图翻译。";
 "onboarding.models.what.dictation" = "说话时把语音转成文字。";
-"onboarding.models.what.polish" = "去掉语气词，添加标点。";
+"onboarding.models.what.polish" = "去掉口头禅，添加标点。";
 "onboarding.models.what.note" = "把语音备注和录屏讲解转成文字。";
 "onboarding.models.total_label" = "需要下载";
 "onboarding.models.free" = "可用 %@";

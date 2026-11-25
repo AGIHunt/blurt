@@ -482,7 +482,7 @@
 "dictation.lab.compare.style" = "风格：%@";
 
 /* 设置 → 听写的风格、模型、词库摘要；听写页的「词库」标签（MainWindow/DictationWords.swift） */
-"dictation.style.light.detail" = "去掉语气词和重复的字词，并添加标点。";
+"dictation.style.light.detail" = "去掉口头禅和重复的字词，并添加标点。";
 "dictation.style.structured.detail" = "以说话时更正后的内容为准，并将要点整理成列表。";
 "dictation.style.auto.detail" = "通常使用轻度润色，说到多个要点时整理成列表。";
 "dictation.style.by_app" = "按 App 类型";

@@ -140,7 +140,7 @@
   "dictation.mode.hold.hint": "按住说话，松开结束。双击：发送（回车）。",
   "dictation.sounds": "开始和结束时的提示音",
   "dictation.polish": "用云端模型润色",
-  "dictation.polish.hint": "修正识别错误的名字，去掉语气词，并添加标点。需要连接云端服务。",
+  "dictation.polish.hint": "修正识别错误的名字，去掉口头禅，并添加标点。需要连接云端服务。",
   "dictation.translate_target": "翻译成",
   "dictation.translate_target.auto": "自动（你的语言 ↔ 英语）",
   "dictation.model": "语音识别",
