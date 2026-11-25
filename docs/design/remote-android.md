@@ -310,3 +310,19 @@ the download touches blurt.work, whose bandwidth the founder wants kept for the 
 
 Checked on an Android 16 emulator: a build of 1.0.0 found 1.1.1 by itself, downloaded it, asked, and was 1.1.1 afterwards; in airplane mode the check
 says why. Not checked: a maker's own installer (MIUI, HarmonyOS), a phone.
+
+## Kept in the background (2026-11-26)
+
+What the round changed on both phones, and why, is remote.md §Coming back. Android's own part:
+
+- Left alone, the app freezer stopped the process about 6 s after it left the screen on an Android 16 emulator, and its sockets were closed:
+  a session "kept for a minute" was gone by 20 s. So a foreground service (`net/KeepService.kt`, type `connectedDevice`) runs while the
+  session is parked, three minutes at most, with a low-importance notification ("Still connected to *name*", Disconnect). It works with
+  notifications off, and they aren't asked for. Where it can't start, the session is kept 30 s without it.
+- A partial wake lock (185 s at most) with it: with the screen off the processor sleeps, and the host ends a session it hasn't heard for 12 s.
+- Settings → Stay connected in the background off: no service, leaving ends the session.
+
+Measured on the emulator (Android 16, notifications not allowed), away 3 / 20 / 75 / 170 s: the same session, answering 47–93 ms after the app
+is back on the same network, 46–307 ms away (the real public connection service). After 200 s: 0.17 s to a new session on the same network,
+4.0 s away. With Ctrl latched, the talk key held and the picture on: the key up and the modifiers let go within 0.1 s, the picture off
+within 0.7 s, and nothing from the phone until it's back. Not tried: a real phone, MIUI / HyperOS / EMUI / ColorOS, deep sleep.

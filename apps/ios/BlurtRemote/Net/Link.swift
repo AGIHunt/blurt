@@ -573,8 +573,13 @@ final class Link: ObservableObject {
         Sticky.shared.clear()
         UIApplication.shared.isIdleTimerDisabled = false
         send(.releaseAll)
-        // a message answered, a code copied: back within seconds, and the session is still there. Not while the microphone is this
-        // phone's: iOS stops it out of sight, so the take ends as it would with the session
+        // iOS stops the microphone out of sight: a take heard through it ends here with what was said, and the session stays
+        if MicStream.shared.talking {
+            micTaken()
+            MicStream.shared.stop()
+        }
+        // a message answered, a code copied: back within seconds, and the session is still there (a voice note through this phone's
+        // microphone ends with the session, as before)
         if Prefs.shared.staysConnected, channel != nil, state == .connected || waitingForMac, !MicStream.shared.busy, park() { return }
         left()
     }

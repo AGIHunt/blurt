@@ -373,7 +373,8 @@ What was wrong, and is:
 
 - **Leaving ended the session.** Now it's kept (`Link.background`, `park`): everything held is let go of, the picture stops, only pings go.
   iOS allows about 30 s, so 25, and the end is said (a WebSocket close, before iOS stops the app); Android 3 minutes with a foreground
-  service (remote-android.md). Not with this phone's microphone open: out of sight it hears nothing, so the take ends as it did. Settings →
+  service (remote-android.md). A take heard through this phone's microphone ends with
+  what was said: out of sight iOS and Android give it silence. Settings →
   Stay Connected in the Background, on. Coming back asks for a pong in 1.2 s (2.5 over a relay) before believing it.
 - **On the go-between the host was out of its room for 9 s.** A session that has moved to UDP ignored its WebSocket's end, and the next
   waiting connection came 6 s of silence + 0.5 s + TLS later. Now one waits again the moment the old stream ends (`onOldStreamGone`,

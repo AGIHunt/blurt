@@ -17,6 +17,8 @@ final class MicStream {
     private var running = false
     /// this phone's microphone is open
     var busy: Bool { running }
+    /// for a take of the talk key's, not a voice note
+    var talking: Bool { running && holders == [.talk] }
     /// who has the microphone: the talk key, and a voice note the Mac started from here. It stops when neither does
     enum Holder { case talk, note }
     private var holders: Set<Holder> = []
