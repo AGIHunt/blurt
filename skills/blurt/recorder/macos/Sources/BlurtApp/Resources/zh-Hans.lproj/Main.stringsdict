@@ -145,7 +145,7 @@
 	<key>main.move.done</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>已把 %#@n@移到「%@」</string>
+		<string>已将 %#@n@移到「%@」</string>
 		<key>n</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
@@ -153,7 +153,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个</string>
+			<string>%ld 个事项</string>
 		</dict>
 	</dict>
 	<key>notify.more</key>
@@ -311,13 +311,13 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 条新记下的内容还没选项目</string>
+			<string>%ld 张卡片未选择项目</string>
 		</dict>
 	</dict>
 	<key>main.move.placeholder.many</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>把 %#@n@移到…</string>
+		<string>将 %#@n@移到…</string>
 		<key>n</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
@@ -325,7 +325,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个</string>
+			<string>%ld 个事项</string>
 		</dict>
 	</dict>
 	<key>main.selection.hand_off.tip</key>
@@ -339,7 +339,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>复制一段指令，粘贴到任意 Agent，让它处理这 %ld 个事项（⌘↩）</string>
+			<string>复制指令，让 Agent 处理这 %ld 个事项（⌘↩）</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>
@@ -353,7 +353,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 个移到一个项目（M）</string>
+			<string>将这 %ld 个事项移到项目（M）</string>
 		</dict>
 	</dict>
 	<key>main.selection.more_rows</key>

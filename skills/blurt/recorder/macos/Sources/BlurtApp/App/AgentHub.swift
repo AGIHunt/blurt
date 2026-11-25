@@ -253,7 +253,7 @@ final class AgentHub {
          "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash(uv run {scripts}/transcribe.py:*)",
                  "Bash(uv run {scripts}/frames.py:*)", "Bash(uv run {scripts}/items.py:*)", "Bash(uv run {scripts}/projects.py list:*)",
                  "Bash(uv run {scripts}/index.py search:*)", "Read", "Glob", "Grep"],
-         "fix": ["zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"]],
+         "fix": ["zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal, then type /login"]],
         ["id": "codex", "name": "Codex", "bins": ["codex"],
          "status": ["args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"]],
          "run": ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",

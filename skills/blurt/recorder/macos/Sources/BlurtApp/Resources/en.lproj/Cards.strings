@@ -8,7 +8,7 @@
 "cards.action.voice" = "Voice note";
 "cards.action.voice.tip" = "Record a voice note as a card";
 "cards.action.show_notch" = "Show under the notch";
-"cards.action.show_notch.tip" = "Bring the cards down under the notch, to drag them into other apps";
+"cards.action.show_notch.tip" = "Show the cards under the notch";
 
 "cards.search.placeholder" = "Search cards";
 "cards.search.tip" = "Search notes (⌘F or /)";
@@ -29,7 +29,7 @@
 "cards.selection.copy" = "Copy";
 "cards.selection.copy.tip" = "Copy the selected cards: pictures and notes";
 "cards.selection.delete" = "Delete";
-"cards.selection.delete.tip" = "Delete the selected cards (Undo under the notch)";
+"cards.selection.delete.tip" = "Delete the selected cards";
 "cards.menu.copy_n" = "Copy %d Cards";
 "cards.menu.delete_n" = "Delete %d Cards";
 

@@ -5,7 +5,7 @@
 
 "onboarding.done" = "完成";
 
-"onboarding.install_uv" = "安装 uv";
+"onboarding.install_uv" = "安装语音工具";
 
 "onboarding.next" = "下一步";
 
@@ -18,16 +18,16 @@
 
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
 
-"settings.general.after_recording" = "录完之后";
-"settings.general.app" = "应用";
-"settings.general.capture_into" = "新截图和语音备注归到";
+"settings.general.after_recording" = "录屏结束后";
+"settings.general.app" = "App";
+"settings.general.capture_into" = "新截图和语音备注归入";
 "settings.general.language" = "语言";
 "settings.general.language.restart" = "下次打开口喷鸡时生效。";
 "settings.general.language.system" = "跟随系统";
 "settings.general.login" = "登录时打开口喷鸡";
 "settings.general.none" = "未归类，之后再选项目";
 "settings.general.open_unassigned" = "在访达中显示未归类";
-"settings.general.projects.hint" = "每个项目对应一个文件夹，事项保存在其中的 .blurt 里，不纳入 git。";
+"settings.general.projects.hint" = "每个项目对应一个文件夹，事项保存在该文件夹中。";
 "settings.general.recording" = "录屏";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和事项保留）";
 "settings.general.system_audio" = "录制系统声音";
@@ -35,10 +35,10 @@
 "settings.general.hide_notch.detail" = "口喷鸡的其他窗口照常出现在录屏里。";
 "settings.general.snap_sound" = "截图时播放快门声";
 "settings.general.collect" = "将 macOS 截图添加为卡片";
-"settings.general.collect.hint" = "用 macOS 快捷键（⇧⌘3、⇧⌘4、⇧⌘5）截的图也会添加为卡片。";
-"settings.general.drag_copy_note" = "拖进去后备注没贴上时，复制到剪贴板";
+"settings.general.collect.hint" = "适用于 ⇧⌘3、⇧⌘4 和 ⇧⌘5。";
+"settings.general.drag_copy_note" = "无法添加备注时，复制到剪贴板";
 "settings.general.drag_copy_note.hint" = "口喷鸡没法把备注贴在图片后面时（没有「辅助功能」权限、上面的开关关了、App 没到前台，或者拖进了访达），备注会放进剪贴板，⌘V 就能贴上。会替换剪贴板里原来的内容；点刘海下方的「撤销」可以还原。";
-"settings.general.drag_note_file.hint" = "拖进聊天 App 或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端用不到它：终端拿到的是图片路径，备注跟在同一行后面。";
+"settings.general.drag_note_file.hint" = "适用于聊天 App 和访达。";
 "settings.general.drag_note_file" = "同时附上备注的 Markdown 文件";
 "settings.general.drag_caption" = "拖出图片时把备注印在图片下方";
 "settings.general.drag_caption.hint" = "打开后，拖出去的是一份在下方加了备注条的副本，给只收一张图片的 App 用；原来的截图不变。";
@@ -64,10 +64,10 @@
 "settings.privacy.agent_runs" = "Agent 运行记录";
 "settings.privacy.audio_never_goes_cloud" = "在本机识别，设置 Key 后也可使用云端服务。";
 "settings.privacy.benchmark_samples" = "测速样本";
-"settings.privacy.build_cache" = "构建缓存";
+"settings.privacy.build_cache" = "缓存";
 "settings.privacy.cancel" = "取消";
 "settings.privacy.data" = "数据";
-"settings.privacy.deleted_by_default_once" = "单独保存的音频文件，视频本身已包含声音。";
+"settings.privacy.deleted_by_default_once" = "视频中已包含声音。";
 "settings.privacy.freed" = "已释放 ";
 "settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
 "settings.privacy.items_appear_spotlight" = "在 Spotlight 中显示事项";
@@ -94,7 +94,7 @@
 "settings.perm.microphone.why" = "用于录屏讲解、语音备注和听写。";
 "settings.perm.accessibility.why" = "用于在光标处输入听写文字、在任何 App 中检测听写键，以及按住 ⌃ 画图。";
 "settings.perm.input_monitoring.why" = "用于在任何 App 中检测%@。仅检测这个键，不记录输入内容。";
-"settings.perm.fn_key.why" = "使按%@时只开始听写，不触发 macOS 的其他功能。";
+"settings.perm.fn_key.why" = "%@仅用于听写，不会触发 macOS 的其他功能。";
 "settings.perm.panel_title" = "设置权限";
 "settings.perm.step_done" = "%@已开启";
 "settings.perm.drag_hint" = "拖到「系统设置」的列表里";
@@ -115,9 +115,8 @@
 "settings.general.dictation_lab" = "显示听写测试台";
 "settings.general.dictation_lab.hint" = "在「听写」页显示用于对比模型的测试台。";
 "settings.general.voice_end_on_pause" = "结束语音备注";
-"settings.general.voice_end_on_pause.hint" = "两种结束方式：再按一次快捷键或点「完成」（最长 10 分钟），或停顿 1.5 秒自动结束。按 Esc 取消。截图上的语音备注总是停顿即结束。";
+"settings.general.voice_end_on_pause.hint" = "截图上的语音备注始终在停顿后结束。";
 "settings.general.live_text" = "实时显示识别文字";
-"settings.general.live_text.hint" = "语音备注或听写进行时，已识别的文字显示在刘海下方的面板中。面板不会抢占焦点，会避开输入位置，也不会被录入录屏。";
 
 "onboarding.subtitle" = "关闭不需要的功能，之后可在设置中更改。";
 "onboarding.use.dictation" = "听写";
@@ -146,18 +145,18 @@
 "onboarding.models.failed_toast" = "模型下载已中断";
 "onboarding.models.failed_open" = "重试…";
 "onboarding.models.later" = "之后可在「设置 > 模型」中更改。";
-"onboarding.uv.needed" = "运行语音模型需要安装 uv。";
-"onboarding.uv.failed" = "uv 安装失败，请检查网络后重试。";
+"onboarding.uv.needed" = "用于运行语音模型。";
+"onboarding.uv.failed" = "无法安装语音工具，请检查网络后重试。";
 "onboarding.try" = "试用";
 "onboarding.try.placeholder" = "识别的文字将显示在这里";
-"onboarding.try.works" = "成功了。在任何 App 中都能这样输入。";
+"onboarding.try.works" = "听写成功";
 "onboarding.try.needs_permissions" = "听写缺少权限";
 "onboarding.login.detail" = "听写键可随时使用。";
 "onboarding.login.detail_keys" = "快捷键随时可用。";
 "onboarding.try.asr_downloading" = "语音模型正在下载";
 "onboarding.try.no_model" = "听写需要语音模型";
 "onboarding.try.polish_coming" = "听写已就绪。润色模型下载完成后自动启用（还剩 %@）。";
-"onboarding.try.send" = "双击发送：在聊天中会同时按下回车。";
+"onboarding.try.send" = "双击听写键可直接发送。";
 "onboarding.try.item_done" = "已完成";
 "onboarding.try.item_todo" = "未完成";
 "onboarding.use.dictation.detail" = "按一下开始，再按一下停止，双击发送。";
@@ -166,11 +165,11 @@
 "settings.storage.dictation_audio" = "听写录音";
 "settings.storage.dictation_lab" = "听写测试台";
 "settings.storage.jobs" = "任务记录";
-"settings.storage.handoff" = "交接说明";
+"settings.storage.handoff" = "Agent 指令文件";
 "settings.storage.tmp" = "临时文件";
 "settings.storage.models" = "模型";
 "settings.storage.model.asr" = "语音识别";
-"settings.storage.model.vad" = "人声检测，供本机模型使用";
+"settings.storage.model.vad" = "语音检测，用于本机模型";
 "settings.storage.model.polish" = "听写润色";
 "settings.storage.model.none" = "未下载模型";
 "settings.storage.model.footer" = "在「模型」里选择。";
@@ -185,8 +184,8 @@
 "settings.storage.videos.auto_confirm_title" = "%ld 天后自动删除视频？";
 "settings.storage.videos.auto_confirm" = "超过期限的视频将立即移到废纸篓：";
 "settings.storage.videos.auto_on" = "打开";
-"settings.storage.model.footer_shared" = "在「模型」中选择。Hugging Face 共享缓存中的模型不会被删除。";
-"settings.storage.videos.detail" = "已整理录屏的视频（%@），删除后保留事项和文字稿";
+"settings.storage.model.footer_shared" = "在「模型」中选择。其他 App 也在使用的模型不会被删除。";
+"settings.storage.videos.detail" = "来自已整理的录屏 · %@";
 "settings.storage.recordings" = "录屏";
 "settings.storage.app_data" = "App 数据";
 "settings.storage.uses" = "口喷鸡占用 %@";
@@ -196,13 +195,13 @@
 "settings.storage.model.used_by" = "%@正在使用";
 "settings.storage.model.not_used" = "未使用";
 "settings.storage.managed_in_dictation" = "在「听写」中管理";
-"settings.storage.live_audio" = "实时字幕音频";
-"settings.storage.live_audio.kept" = "按隐私设置保留";
+"settings.storage.live_audio" = "麦克风音频";
+"settings.storage.live_audio.kept" = "在「隐私」中设为保留";
 "settings.storage.rebuilt" = "需要时自动重建";
 "settings.storage.detail.runs" = "交给 Agent 的工作记录";
 "settings.storage.detail.jobs" = "整理等后台工作的进度";
-"settings.storage.detail.handoff" = "交给 Agent 时附带的说明";
-"settings.storage.detail.prompts" = "给 Agent 的说明，需要时重新生成";
+"settings.storage.detail.handoff" = "复制指令给 Agent 时生成";
+"settings.storage.detail.prompts" = "可安全删除";
 "settings.storage.detail.bench" = "模型测速用的音频";
 "settings.storage.detail.tmp" = "可安全删除";
 "settings.storage.detail.lab" = "录制的测试样本";
@@ -212,7 +211,7 @@
    （settings.kw.pane.<pane>）的搜索关键词：逗号分隔，两种语言都会匹配（SettingsCatalog）。 */
 "settings.window.title" = "设置";
 "settings.group.features" = "功能";
-"settings.group.app" = "应用";
+"settings.group.app" = "App";
 "settings.group.mac" = "本机";
 /* 设置按功能排（v1.0.23）：「通用」里的五个开关，「卡片」「录屏与事项」两页，「快捷键」里录屏专用键的说明 */
 "settings.general.features" = "功能";
@@ -225,10 +224,10 @@
 "settings.cards.history.forever" = "永久";
 "settings.kw.cards.history" = "历史, 历史记录, 用过的卡片, 保留, 天, 永久, 废纸篓, 删除";
 "settings.recording.section.items" = "事项";
-"settings.recording.agent" = "整理用的 Agent";
-"settings.recording.agent.detail" = "使用 Agent 列表中第一个可用的 Agent，模型和思考强度也在「Agent」页设置。";
+"settings.recording.agent" = "用于整理的 Agent";
+"settings.recording.agent.detail" = "使用 Agent 列表中第一个可用的 Agent。";
 "settings.recording.agent.open" = "Agent 设置…";
-"settings.shortcuts.recording.footer" = "仅在录屏时生效，其余时间不占用这些按键。";
+"settings.shortcuts.recording.footer" = "仅在录屏时生效。";
 "settings.feature.off" = "功能已关闭";
 "settings.kw.pane.cards" = "卡片, 截图, 语音备注, 拖动, 刘海";
 "settings.kw.pane.recording" = "录屏, 录制, 视频, 事项, 整理";
@@ -261,16 +260,16 @@
 "settings.general.section.voice" = "语音备注";
 "settings.general.section.cards" = "卡片";
 "settings.general.section.developer" = "高级";
-"settings.general.login.detail" = "听写和快捷键需在口喷鸡运行时使用。";
-"settings.general.island_idle.detail" = "关闭后，仅在录屏、听写或录语音备注时显示。将指针移到屏幕顶部中间可展开刘海和卡片。";
+"settings.general.login.detail" = "口喷鸡运行时才能使用听写和快捷键。";
+"settings.general.island_idle.detail" = "关闭后，仅在录屏、听写或录语音备注时显示。";
 "settings.general.island_idle" = "空闲时显示刘海";
-"settings.general.menu_bar_icon.detail" = "隐藏后，从「聚焦搜索」或「访达」再次打开口喷鸡，即可打开主窗口和设置。";
+"settings.general.menu_bar_icon.detail" = "隐藏后，可从「聚焦搜索」或访达打开口喷鸡。";
 "settings.general.menu_bar_icon" = "在菜单栏显示";
 "settings.general.voice_end_on_pause.detail" = "关闭时，语音备注录到再次按下快捷键或点按「完成」为止；打开后，静音 1.5 秒自动结束。";
 "settings.general.live_text.detail" = "听写或录语音备注时，已识别的文字显示在刘海下方。";
-"settings.general.smart_paste.detail" = "卡片拖入聊天 App 时先放入图片，再粘贴备注。需要「辅助功能」权限。";
+"settings.general.smart_paste.detail" = "拖入聊天 App 时，在图片后面粘贴备注。";
 "settings.general.drag_copy_note.detail" = "备注无法跟在图片后时会放入剪贴板，按 ⌘V 粘贴。";
-"settings.general.drag_note_file.detail" = "拖进聊天 App 或访达时附上。";
+"settings.general.drag_note_file.detail" = "适用于聊天 App 和访达。";
 "settings.general.help.detail" = "所有功能及其快捷键。";
 "settings.general.assistant.title" = "设置助手";
 "settings.general.assistant.detail" = "权限、模型和试用，共四步。";
@@ -357,10 +356,10 @@
 "settings.kw.storage.models" = "模型, 删除模型, 废纸篓, 磁盘空间, 选择模型, 换模型, Hugging Face";
 "settings.kw.storage.files" = "缓存, 索引, 运行记录, 任务, 临时文件, 听写历史, 实时音频, pcm, App 数据";
 "settings.perm.done.no_model.title" = "权限已开启";
-"settings.perm.done.no_model" = "下一步下载语音模型，之后按%@就能随处听写。";
+"settings.perm.done.no_model" = "下载语音模型后，按%@开始听写。";
 "settings.privacy.local_asr.off_keys" = "选择「自动」时，录音可能上传至 %@ 识别。";
-"settings.privacy.local_asr.off_none" = "在本机识别。未设置云端服务的 Key。";
-"settings.privacy.local_asr.on" = "即使已设置 Key，录音也不会上传。";
+"settings.privacy.local_asr.off_none" = "在本机识别。未设置云端服务的 API Key。";
+"settings.privacy.local_asr.on" = "即使已设置 API Key，录音也不会上传。";
 "settings.storage.trashed" = "「%@」已移到废纸篓";
 "settings.storage.undo_failed" = "无法将「%@」放回原处";
 "settings.storage.undo_failed_many" = "%d 项无法放回原处";
@@ -372,10 +371,10 @@
 "onboarding.setup.retried_error" = "%@ 已重试：仍然失败。";
 "onboarding.try.blocked" = "语音工具未安装";
 "onboarding.models.small.help" = "SenseVoice Small：支持听写和语音备注，完整模型可稍后下载。";
-"settings.privacy.stay_with_agents" = "所有内容均存储在本机，仅交给 Agent 的内容会发送给它。";
-"settings.storage.model.vad_name" = "人声检测";
+"settings.privacy.stay_with_agents" = "录屏、截图和事项存储在本机。交给 Agent 的内容会发送给该 Agent。";
+"settings.storage.model.vad_name" = "语音检测";
 "settings.storage.model.voiceprint_name" = "声纹匹配";
-"settings.storage.model.turns_name" = "说话人切分";
+"settings.storage.model.turns_name" = "说话人识别";
 "settings.storage.model.voiceprint" = "只识别我的声音，用于听写";
 "settings.storage.model.unused" = "当前版本不再使用";
 "settings.general.login_failed" = "无法更改，请在「系统设置」的「登录项」中修改。";
@@ -391,7 +390,7 @@
    onboarding.use.keys_note.link）；手机那一行的提示（%@ 是页面名） */
 "onboarding.use.dictation.line" = "文字输入到光标处，适用于任何 App。";
 "onboarding.use.cards.line" = "截图和语音备注留在刘海下方，可拖入任何 App。";
-"onboarding.use.recording.line" = "边录屏边讲解，由编程 Agent 整理成问题和待办。";
+"onboarding.use.recording.line" = "录屏并讲解，由 Agent 整理成问题和待办。";
 "onboarding.use.key.auto" = "按一下或按住说话";
 "onboarding.use.key.tap" = "按一下说话";
 "onboarding.use.key.hold" = "按住说话";
@@ -405,7 +404,7 @@
 "onboarding.use.phone.help" = "在手机上安装口喷鸡 App 后，在「%@」页配对。";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";
-"onboarding.dictation.detail" = "选择听写键，然后允许口喷鸡使用麦克风和输入文字。";
+"onboarding.dictation.detail" = "选择听写键，然后允许麦克风和辅助功能权限。";
 "onboarding.keyboard" = "键盘";
 "onboarding.key.gesture" = "按一下开始、再按一下停止，也可以按住说话。";
 "onboarding.key.gesture_hold" = "按住说话，松开停止。";
@@ -414,9 +413,9 @@
 "onboarding.key.right_option" = "右 Option";
 "onboarding.key.either_option" = "任一 Option";
 "onboarding.fn.detail" = "Fn 键仅用于听写，不触发 macOS 的其他功能。";
-"onboarding.fn.ok" = "macOS 的地球仪键已设为「不执行任何操作」，Fn 只用来听写。";
+"onboarding.fn.ok" = "Fn 键现在仅用于听写。";
 "onboarding.fn.clash" = "按 Fn 时，macOS 也会响应。";
-"onboarding.fn.fix" = "关闭…";
+"onboarding.fn.fix" = "更改 Fn 键设置…";
 "onboarding.perm.missing" = "未允许";
 "onboarding.perm.waiting" = "等待中…";
 "onboarding.perm.why.microphone" = "用于听写、语音备注和录屏讲解。";
@@ -424,21 +423,21 @@
 "onboarding.perm.why.input_monitoring" = "用于在任何 App 中检测%@。仅检测这个键，不记录输入内容。";
 "onboarding.perm.why.screen" = "用于录屏、截图、截图取字和截图翻译。";
 "onboarding.models.what.dictation" = "说话时把语音转成文字。";
-"onboarding.models.what.polish" = "去掉口头禅，补好标点。";
+"onboarding.models.what.polish" = "去掉语气词，添加标点。";
 "onboarding.models.what.note" = "把语音备注和录屏讲解转成文字。";
 "onboarding.models.total_label" = "需要下载";
 "onboarding.models.free" = "可用 %@";
 "onboarding.models.installed" = "已安装";
 "onboarding.models.offline.title" = "未连接互联网";
 "onboarding.models.offline" = "联网后即可下载模型。";
-"onboarding.uv.title" = "需要安装 uv";
-"onboarding.uv.installing" = "正在安装 uv…";
+"onboarding.uv.title" = "需要安装语音工具";
+"onboarding.uv.installing" = "正在安装语音工具…";
 "onboarding.setup.blocked.title_offline" = "未连接互联网";
 "onboarding.setup.blocked.title" = "语音工具安装失败";
 "onboarding.try.subtitle" = "听写可在任何 App 中使用，可先在此试用。";
 "onboarding.try.how" = "按一下，说句话，再按一下。";
 "onboarding.try.how.hold" = "按住，说句话，松开。";
-"onboarding.try.card.detail" = "也试试卡片：截一张图，再把它拖进聊天。";
+"onboarding.try.card.detail" = "截一张图，再将卡片拖入聊天。";
 "onboarding.try.needs_permissions.detail" = "请开启%@。";
 "onboarding.try.asr_downloading.detail" = "下载完成后即可在此试用。";
 "onboarding.try.no_model.detail" = "下载在后台进行，你可以先完成设置。";
@@ -452,27 +451,27 @@
 "onboarding.guide.mic_prompt" = "在 macOS 的对话框里点「允许」";
 "onboarding.guide.mic_where" = "对话框在屏幕中间。";
 "onboarding.guide.fn_headline" = "把地球仪键设为「不执行任何操作」";
-"onboarding.guide.drag" = "列表里没有？把这张卡片拖进列表。";
+"onboarding.guide.drag" = "列表中没有？将口喷鸡图标拖到列表中。";
 "onboarding.guide.why.microphone" = "用于听写和语音备注。";
 "onboarding.guide.why.accessibility" = "用于在任何 App 中输入听写文字。";
 "onboarding.guide.why.input_monitoring" = "用于在任何 App 中检测%@，仅检测这个键。";
 "onboarding.guide.why.screen" = "用于录屏、截图、截图取字和截图翻译。";
-"onboarding.guide.why.fn_key" = "使 Fn 键仅用于开始听写。";
+"onboarding.guide.why.fn_key" = "Fn 键将仅用于听写。";
 "settings.kit.more_info" = "了解更多";
 "settings.general.voice_end.key" = "再按一次快捷键";
 "settings.general.voice_end.pause" = "停顿 1.5 秒后";
 "settings.general.card_drag" = "把卡片拖进其他 App";
-"settings.general.card_drag.paste" = "先放图片，再贴备注";
-"settings.general.card_drag.caption" = "图片下方印上备注";
-"settings.general.card_drag.picture" = "只放图片";
-"settings.general.card_drag.hint" = "先放图片，再贴备注：在聊天 App（浏览器、Claude、ChatGPT、Slack、飞书、微信）中，先放入图片，再将备注粘贴到同一输入框；复制卡片后 2 分钟内，在这些 App 中按 ⌘V 效果相同。需要「辅助功能」权限。图片下方印上备注：拖出的是在下方加了备注条的副本，适用于只接收一张图片的 App，原截图不变。以上两种方式中，备注无法粘贴时会放入剪贴板，可按 ⌘V 粘贴；点按刘海下方的「撤销」可还原剪贴板。只放图片：仅拖出图片。";
-"settings.general.card_drag.needs_ax" = "粘贴备注需要「辅助功能」权限。";
+"settings.general.card_drag.paste" = "图片和备注";
+"settings.general.card_drag.caption" = "写有备注的图片";
+"settings.general.card_drag.picture" = "仅图片";
+"settings.general.card_drag.hint" = "无法添加备注时，备注会复制到剪贴板。";
+"settings.general.card_drag.needs_ax" = "若要粘贴备注，请允许「辅助功能」权限。";
 "settings.general.agent_drag" = "把卡片拖进 Agent";
-"settings.general.agent_drag.paths" = "图片路径 + 备注";
-"settings.general.agent_drag.same" = "和其他 App 一样";
-"settings.general.agent_drag.hint" = "能直接读取本机文件的 Agent：Codex、Claude Code、WorkBuddy、QoderWork、Qoder、豆包工作、Kimi Code、Cursor、Trae 等。点「Agent 列表…」可查看，也可添加其他 App。图片路径 + 备注：每张卡片为一行，先是图片路径，后接备注，每张图都紧跟自己的备注。复制卡片后按 ⌘V 效果相同。与其他 App 相同：按上一项设置。终端始终使用路径 + 备注。";
+"settings.general.agent_drag.paths" = "图片路径和备注";
+"settings.general.agent_drag.same" = "与其他 App 相同";
+"settings.general.agent_drag.hint" = "Codex、Claude Code 等 Agent 可以直接打开本机上的图片。";
 "settings.general.agent_apps.title" = "Agent 列表";
-"settings.general.agent_apps.note" = "这些 App 中的 Agent 能打开本机文件，拖入卡片时发送图片路径 + 备注。可添加列表中没有的 App；关闭某个 App 后，改为发送图片。";
+"settings.general.agent_apps.note" = "拖入这些 App 的卡片会发送图片路径和备注。";
 "settings.general.agent_apps.codex_note" = "只在 Codex 模式下";
 "settings.general.agent_apps.claude_note" = "只在 Code 标签页里";
 "settings.general.agent_apps.not_installed" = "未安装";
@@ -495,7 +494,7 @@
 "settings.kw.cards.agent_drag" ="Agent, 拖动, 路径, 文件路径, 图片路径, 备注";
 "settings.kw.general.about" = "关于, 版本, 更新, 检查更新, 指南, 帮助, 设置助手, 引导";
 "settings.kw.dictation.lab" = "测试台, 开发者, 调试, 对比模型";
-"settings.projects.make_current" = "新截图归到这里";
+"settings.projects.make_current" = "设为当前项目";
 "settings.privacy.where_files" = "文件存放位置…";
 "settings.privacy.perms.all_allowed" = "全部已允许";
 "settings.privacy.perms.why" = "用于录屏、录音和输入听写文字。";
@@ -510,7 +509,7 @@
 "settings.privacy.perm.not_allowed" = "未允许";
 "settings.privacy.local_asr.auto" = "自动";
 "settings.privacy.local_asr.local" = "仅本机";
-"settings.privacy.local_asr.help" = "云端服务在「模型」中设置。整理和修复由你选择的 Agent 完成，数据处理遵循其条款。";
+"settings.privacy.local_asr.help" = "云端服务在「模型」中设置。";
 "settings.kw.shortcuts.pen" = "画笔, 画图, 按住画图, 圈出, Control, 标注";
 "settings.kw.agents.organize" = "模型, 强度, 最省, token, 费用, 整理, 卡片, 录屏, AI 补全";
 "settings.search.title_query" = "“%@”";
@@ -520,16 +519,16 @@
 "settings.storage.gb" = "%@ GB";
 "settings.storage.caches" = "缓存";
 "settings.storage.model.used_for" = "用于%@";
-"settings.storage.model.vad_use" = "为本机模型检测音频中的人声";
+"settings.storage.model.vad_use" = "用于本机模型";
 "settings.projects.capture_heading" = "截图和语音备注";
-"settings.projects.capture_row" = "新的归到";
+"settings.projects.capture_row" = "新截图和语音备注归入";
 "settings.projects.list_heading" = "项目文件夹";
 
 /* 截图取字（⌥C）的二次识别（ScreenTextRefine） */
 "settings.general.screen_text" = "精确识别";
-"settings.general.screen_text.hint" = "⌥C 先使用 macOS 文字识别立即复制，再由模型复查并修正识别错误的符号（如 l 和 /、0 和 @）。如果期间未复制其他内容，剪贴板将更新为修正后的文字。";
+"settings.general.screen_text.hint" = "使用模型修正容易识别错误的符号。";
 "settings.general.screen_text.local" = "本机模型";
-"settings.general.screen_text.detail.off" = "只用 macOS 自带识别，即时，无需下载";
+"settings.general.screen_text.detail.off" = "使用 macOS 自带的文字识别，无需下载";
 "settings.general.screen_text.detail.local_small" = "本机内存为 %d GB，可能影响性能，建议使用云端模型";
 "settings.general.screen_text.detail.download" = "需下载 %@";
 "settings.general.screen_text.detail.downloading" = "正在下载… %@";
@@ -539,14 +538,13 @@
 "settings.screen_text.section.copy" = "取字（⌥C）";
 "settings.screen_text.section.translate" = "翻译（⌥T）";
 "settings.screen_text.translate" = "⌥T 翻译成";
-"settings.screen_text.translate.hint" = "将屏幕上的文字译成所选语言。「自动」将你的语言译成另一种语言，将其他语言译成你的语言。选择具体语言时，已是该语言的文字原样复制。听写的 ⌘ 翻译单独设置。";
 "settings.kw.screentext.refine" = "OCR, 精确识别, 识别, 认错, 符号, PaddleOCR";
 "settings.kw.screentext.translate" = "翻译, 译文, 语言, 目标语言, 自动, 截图翻译";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "已可开始听写。以下两项为可选，可提高准确度。";
 "onboarding.start.ready.title" = "macOS 语音识别";
-"onboarding.start.lead" = "听写已可使用。以下两项可选，可让识别更准。";
+"onboarding.start.lead" = "已可开始听写。以下两项为可选，可提高准确度。";
 "onboarding.start.ready.mixed" = "已就绪 · 可识别句中的英文单词";
 "onboarding.start.ready.one" = "已就绪 · 系统自带，无需下载";
 "onboarding.start.assets.line" = "macOS 正在下载语音文件（约 400 MB）";
@@ -558,8 +556,8 @@
 "onboarding.local.with_free" = "%1$@ · 本机可用 %2$@";
 "onboarding.local.download" = "下载 %@";
 "onboarding.polish.title" = "云端润色";
-"onboarding.polish.detail" = "润色用词和标点，只发送文字，不上传录音";
-"onboarding.polish.help" = "说完后润色标点和用词。仅识别出的文字会发送到你选择的服务。";
+"onboarding.polish.detail" = "改进用词和标点。不会上传录音。";
+"onboarding.polish.help" = "识别出的文字会发送给你选择的服务。";
 "onboarding.polish.price" = "%1$@约 %2$@。";
 "onboarding.polish.add" = "添加 Key…";
 "onboarding.polish.change" = "更改 Key…";
@@ -578,11 +576,11 @@
 "onboarding.key.cloud.detail" = "填入阿里云百炼 Key 即可听写，无需下载。";
 "onboarding.upgrade.detail" = "离线可用，支持词库，更准确。";
 "onboarding.upgrade.download" = "下载（%@）";
-"onboarding.upgrade.needs_uv" = "需要先安装 uv（运行本机模型的工具）";
-"onboarding.models.detail_cloud" = "可使用 Key 云端听写，或下载模型在本机运行。";
+"onboarding.upgrade.needs_uv" = "需要先安装语音工具";
+"onboarding.models.detail_cloud" = "使用云端服务听写，或下载模型在本机识别。";
 "onboarding.section.cloud" = "云端";
 "onboarding.section.local" = "本机";
-"settings.storage.model.with_vad" = "含人声检测";
+"settings.storage.model.with_vad" = "含语音检测";
 "onboarding.models.connecting" = "正在连接…";
 "settings.perm.screen.readd_title" = "把口喷鸡重新加进列表";
 "settings.perm.screen.readd_step1" = "在列表里选中口喷鸡，再点列表下方的减号按钮";
@@ -612,12 +610,12 @@
 "settings.remote.section.computers" = "本机可控制的电脑";
 "settings.remote.remove" = "移除";
 "settings.remote.stay_awake" = "保持本机唤醒";
-"settings.remote.stay_awake.laptop" = "接通电源时有效。合上盖子后仍会睡眠。";
-"settings.remote.stay_awake.desktop" = "本机不睡眠，屏幕照常熄灭。";
-"settings.remote.stay_awake.laptop.more" = "接通电源时本机不睡眠，手机和电脑随时可以连接。屏幕照常熄灭，合上盖子后仍会睡眠。";
-"settings.remote.stay_awake.desktop.more" = "本机不睡眠，手机和电脑随时可以连接。屏幕照常熄灭。";
+"settings.remote.stay_awake.laptop" = "接通电源时本机不会自动睡眠。";
+"settings.remote.stay_awake.desktop" = "屏幕仍会关闭。";
+"settings.remote.stay_awake.laptop.more" = "合上盖子后仍会睡眠。";
+"settings.remote.stay_awake.desktop.more" = "手机和电脑可以随时连接本机。";
 "settings.remote.say_asleep" = "显示本机睡眠时间";
-"settings.remote.say_asleep.detail" = "你的设备上会显示「已睡眠 · 10:42 起」。中转只保存这个时间。";
+"settings.remote.say_asleep.detail" = "其他设备上会显示本机进入睡眠的时间，中转仅保存此时间。";
 "settings.kw.remote.say_asleep" = "睡眠 休眠 中转 设备";
 "settings.kw.remote.stay_awake" = "保持可连接, 保持唤醒, 睡眠, 唤醒, 插电, 远程";
 "settings.remote.hud" = "在屏幕上显示按键";
@@ -626,10 +624,10 @@
 "settings.remote.cancel" = "取消";
 "settings.remote.section.relay" = "其他网络";
 "settings.remote.relay" = "中转地址";
-"settings.remote.relay.address.detail" = "适用于任何网络，没有每日上限。";
+"settings.remote.relay.address.detail" = "适用于任何网络。";
 "settings.kw.remote.relay.address" = "中转, 自建中转, 中转地址, 搭建中转, cloudflare, 公网, 外网, 远程, 外出, 域名, 服务器";
 "settings.remote.relay.checking" = "正在检查…";
-"settings.remote.relay.from_phone" = "由手机填入，已测试可用。";
+"settings.remote.relay.from_phone" = "已在手机上设置并测试。";
 "settings.remote.ask.title" = "允许 %@ 控制本机？";
 "settings.remote.ask.detail" = "%@ 显示相同的数字时才允许。";
 "settings.remote.ask.yes" = "允许";
@@ -637,9 +635,9 @@
 "settings.remote.ask.caution" = "只允许你自己或家人连接。警察、银行和客服不会要求你安装或允许此类连接。";
 "settings.remote.last_used" = "上次使用：%@";
 "settings.remote.remove.title" = "移除 %@？";
-"settings.remote.remove.detail" = "移除后，它要重新扫码才能连接。";
-"settings.remote.relay.ok" = "可用。手机下次连接时会获取此地址。";
-"settings.remote.relay.failed" = "这个地址没有响应。";
+"settings.remote.remove.detail" = "移除后，该设备需重新扫码才能连接。";
+"settings.remote.relay.ok" = "中转可用。";
+"settings.remote.relay.failed" = "此地址无响应。请检查地址。";
 "settings.remote.relay.invalid" = "这不是中转地址。格式应类似 wss://relay.example.com。";
 "settings.remote.relay.help.detail" = "Claude Code 或 Codex 可以在你的域名或服务器上搭建中转。";
 "settings.remote.relay.copy" = "复制说明";
@@ -663,16 +661,16 @@
 "settings.remote.away.relay_down" = "自建中转无响应。请检查中转地址。";
 "settings.remote.away.no_direct" = "无法直连。请在电脑上设置自建中转。";
 "settings.remote.away.busy" = "今日已达上限。请稍后再试，或使用自建中转。";
-"settings.remote.screen" = "允许查看本机屏幕";
-"settings.remote.screen.detail" = "开启后，已配对的手机或电脑可以查看本机屏幕。";
+"settings.remote.screen" = "允许手机和电脑查看本机屏幕";
+"settings.remote.screen.detail" = "仅限已配对的设备。";
 "settings.kw.remote.screen" = "屏幕, 投屏, 画面, 远程";
 /* 取字与翻译 → 记录 */
 "settings.screen_text.section.history" = "历史";
 "settings.screen_text.history" = "已保存的取字与翻译";
-"settings.screen_text.history.detail" = "保存 ⌥C 取到的文字和 ⌥T 的译文。";
+"settings.screen_text.history.detail" = "保存在本机。";
 "settings.screen_text.history.keep" = "历史保留";
 "settings.screen_text.history.forever" = "永久";
-"settings.screen_text.history.summary.off" = "不保存 · 复制后不留记录";
+"settings.screen_text.history.summary.off" = "不保存";
 "settings.screen_text.history.open" = "打开历史…";
 "settings.screen_text.history.clear" = "清空历史…";
 "settings.screen_text.history.clear.title" = "清空历史？";

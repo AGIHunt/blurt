@@ -69,7 +69,7 @@
 "home.try.phone" = "Install Blurt on your phone and scan the code to pair";
 
 /* Text & Translation page (ScreenTextPage.swift) */
-"home.all.screen_text" = "Show All Text from Screen";
+"home.all.screen_text" = "Show All Text & Translations";
 "home.screen_text.summary" = "%1$ld saved · deleted after %2$@";
 "home.screen_text.summary.forever" = "%ld saved · kept until you delete them";
 "home.screen_text.summary.off" = "History is off";
@@ -92,5 +92,5 @@
 
 /* Home's timeline: a dictation that wasn't recognised */
 "home.entry.failed" = "Not recognized · recording %@";
-"home.entry.retry" = "Retry";
+"home.entry.retry" = "Try Again";
 "home.entry.retrying" = "Recognizing…";

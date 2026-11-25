@@ -318,8 +318,7 @@ public enum SettingsCatalog {
             row("general.menu_bar_icon", "general.app", "settings.general.menu_bar_icon", detail: S("settings.general.menu_bar_icon.detail")),
             row("general.island_idle", "general.app", "settings.general.island_idle", detail: S("settings.general.island_idle.detail")),
             // dictation's and the voice note's alike (record.live_text): the app's, not one capability's
-            row("general.live_text", "general.app", "settings.general.live_text", detail: S("settings.general.live_text.detail"),
-                more: S("settings.general.live_text.hint")),
+            row("general.live_text", "general.app", "settings.general.live_text", detail: S("settings.general.live_text.detail")),
             row("general.language", "general.app", "settings.general.language"),
             whole("general.about"),
 
@@ -390,8 +389,7 @@ public enum SettingsCatalog {
 
             // Copy Text from Screen: ⌥C's second reading; ⌥T's target (its own, not dictation's) and the model that translates
             row("screentext.refine", "screentext.copy", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
-            row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
-                more: S("settings.screen_text.translate.hint")),
+            row("screentext.translate", "screentext.translation", "settings.screen_text.translate"),
             row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
             row("screentext.history_keep", "screentext.history_section", "settings.screen_text.history.keep"),
             row("screentext.history", "screentext.history_section", "settings.screen_text.history",

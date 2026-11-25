@@ -24,10 +24,10 @@ enum class ScreenQuality(val raw: String) {
     /** The most it can cost: a still screen costs next to nothing. */
     val detail: String
         get() = when (this) {
-            AUTO -> "Sharpest on your own network, lighter on mobile data"
-            SHARP -> "At most about 90 MB a minute, 60 frames at home"
-            BALANCED -> "At most about 30 MB a minute, 30 frames"
-            SAVER -> "At most about 8 MB a minute, 15 frames"
+            AUTO -> "Uses less data on mobile networks"
+            SHARP -> "Up to about 90 MB a minute, smoother on the same network"
+            BALANCED -> "Up to about 30 MB a minute"
+            SAVER -> "Up to about 8 MB a minute"
         }
 
     companion object { fun from(raw: String?): ScreenQuality = entries.firstOrNull { it.raw == raw } ?: AUTO }

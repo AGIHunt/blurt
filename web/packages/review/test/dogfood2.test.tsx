@@ -92,14 +92,14 @@ describe("the item detail", () => {
     await s.load();
     expect(s.unreadable).toBe(true);
     const a = await render(s, <App store={s} onTheme={() => {}} />);
-    expect(a.el.textContent).toContain("读不出来");
+    expect(a.el.textContent).toContain("无法读取");
     expect(a.el.textContent).not.toContain("不在这里");
     a.done();
     s.dispose();
     const bad = new ReviewStore(host(() => { throw new Error("items.py load failed: exit 1: Traceback"); }), { lang: "zh" });
     await bad.load();
     const b = await render(bad, <App store={bad} onTheme={() => {}} />);
-    expect(b.el.textContent).toContain("事项没能加载");
+    expect(b.el.textContent).toContain("无法加载事项");
     expect(b.el.textContent).not.toMatch(/items\.py|Traceback|exit 1/);
     b.done();
     bad.dispose();

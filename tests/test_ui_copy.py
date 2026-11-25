@@ -150,8 +150,8 @@ class ShellCopy(unittest.TestCase):
         # zh's inline key is " Fn 键" (its own leading space, its own 键): a template wraps it as 按%@就能, never "%@ 键"
         zh = self.every("zh-Hans")
         self.assertTrue(zh["Dictation.strings"]["dictation.key.fn.inline"].endswith("键"))
-        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下一步下载语音模型，之后按%@就能随处听写。")
-        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在听%@")
+        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下载语音模型后，按%@开始听写。")
+        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在使用%@")
 
     def test_one_word_for_the_words_list_and_one_name_for_the_provider(self):
         zh, en = self.every("zh-Hans"), self.every("en")

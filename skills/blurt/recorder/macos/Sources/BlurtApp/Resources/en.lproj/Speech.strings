@@ -7,14 +7,14 @@
 "speech.section.models" = "All models";
 "speech.section.advanced" = "Advanced";
 "speech.loading" = "Checking your Mac…";
-"speech.error.read" = "Couldn’t read the speech models.";
-"speech.error.no_uv" = "Local models need uv (the tool that runs them), and it isn’t installed.";
-"speech.install_uv" = "Install uv";
-"speech.error.offline" = "Couldn’t read the speech models: this Mac is offline. Connect, then try again.";
-"speech.error.network" = "Couldn’t read the speech models: a network error while fetching their components.";
-"speech.error.timeout" = "Reading the speech models took too long.";
-"speech.error.build" = "Couldn’t install the speech components: %@ failed to build.";
-"speech.error.build_missing" = "Couldn’t install the speech components: %@ failed to build (%@ is missing).";
+"speech.error.read" = "Can’t load the speech models.";
+"speech.error.no_uv" = "To use local models, install the speech tools first.";
+"speech.install_uv" = "Install Speech Tools";
+"speech.error.offline" = "Can’t load the speech models. Connect to the internet and try again.";
+"speech.error.network" = "Can’t load the speech models. Check your network and try again.";
+"speech.error.timeout" = "Loading the speech models took too long.";
+"speech.error.build" = "Couldn’t install the speech component %@.";
+"speech.error.build_missing" = "Couldn’t install the speech component %@. Install %@, then try again.";
 "speech.error.copy" = "Copy Error";
 "speech.error.copied" = "Copied";
 "speech.cancel" = "Cancel";
@@ -32,15 +32,15 @@
 
 /* Automatic choice and the jobs */
 "speech.purpose.batch" = "Recordings";
-"speech.purpose.batch.detail" = "Transcribed after you stop. Accuracy first.";
+"speech.purpose.batch.detail" = "Transcribed after you stop. More accurate.";
 "speech.purpose.live" = "Live captions";
-"speech.purpose.live.detail" = "While you record, so text is ready when you stop.";
+"speech.purpose.live.detail" = "Shows captions while you record.";
 "speech.purpose.note" = "Voice notes";
 "speech.purpose.note.detail" = "Notes on snaps and voice notes. Speed first.";
 "speech.purpose.dictation" = "Dictation";
-"speech.purpose.dictation.detail" = "Types dictated text at the cursor.";
+"speech.purpose.dictation.detail" = "Types what you say at the cursor.";
 "speech.purpose.polish" = "Dictation polish";
-"speech.purpose.polish.detail" = "Tidies punctuation, filler words and lists.";
+"speech.purpose.polish.detail" = "Removes filler words, adds punctuation and makes lists.";
 "speech.purpose.polish.unsupported" = "Needs Apple silicon";
 "speech.purpose.none_yet" = "None";
 "speech.purpose.downloading" = "%@ · downloading";
@@ -55,14 +55,14 @@
 "speech.rec.downloading" = "Downloading %@";
 
 /* The library row and sheet */
-"speech.manage.detail" = "Accuracy and speed for your languages. %@ on this Mac.";
-"speech.manage.detail.none" = "Accuracy and speed for your languages.";
+"speech.manage.detail" = "Compare accuracy and speed. %@ downloaded.";
+"speech.manage.detail.none" = "Compare accuracy and speed.";
 "speech.manage.button" = "Manage Models…";
 "speech.lib.recognition" = "Speech recognition";
 "speech.lib.col.model" = "Model";
 "speech.lib.col.used" = "About";
 "speech.lib.done" = "Done";
-"speech.lib.note" = "Accuracy is for %@, from a reference test on Apple M5 Max.";
+"speech.lib.note" = "Accuracy for %@, tested on Apple M5 Max.";
 "speech.lib.note.measured" = "marks numbers measured on your Mac.";
 "speech.lib.dash" = "No numbers for your languages yet.";
 "speech.lib.dash.installed" = "No numbers for your languages yet. Choose Measure from the row’s menu.";
@@ -75,7 +75,7 @@
 "speech.metric.accuracy.help" = "Words recognised correctly, on average over your languages.";
 "speech.metric.speed" = "Speed";
 "speech.metric.speed.value" = "%@×";
-"speech.metric.speed.help" = "How many times faster than real time.";
+"speech.metric.speed.help" = "How many times faster than playing the recording.";
 "speech.metric.memory" = "Memory";
 "speech.metric.memory.help" = "Memory the model uses while it runs.";
 "speech.metric.size" = "Size";
@@ -87,7 +87,7 @@
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo on an NVIDIA GPU.";
 "speech.note.qwen3_cpu" = "Thirty languages on the CPU, on any computer.";
 "speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words.";
-"speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: more accurate on names and in noisy rooms, about 25 ms slower per sentence.";
+"speech.note.qwen3_mlx_17" = "More accurate on names and in noisy places, a little slower.";
 "speech.note.fun_asr" = "Chinese, English and Japanese on the GPU, and it uses your Words.";
 "speech.note.cloud" = "The model and audio speed of cloud speech recognition.";
 "speech.note.apple" = "Built into macOS 26, nothing to download; less accurate on names than Qwen3-ASR";
@@ -110,7 +110,7 @@
 "speech.remove.message" = "%1$@ · %2$@. You can download it again any time.";
 "speech.remove.confirm" = "Move to Trash";
 "speech.remove.menu" = "Move to Trash…";
-"speech.model.other" = "A model no longer listed";
+"speech.model.other" = "Other model";
 "speech.model.picked_not_in" = "For %@ once it’s downloaded";
 
 /* Languages */
@@ -122,12 +122,12 @@
 "speech.advanced.language.detail" = "Detect each sentence’s language, or always use one.";
 "speech.advanced.language.auto" = "Detect automatically";
 "speech.advanced.language.auto.system" = "Automatic (%@)";
-"speech.language.system" = "macOS speech recognition handles one language at a time: currently %@, including English words in a sentence. If you speak only English, choose English.";
+"speech.language.system" = "Recognizes %@. To recognize another language, change this setting.";
 "speech.language.system.one" = "macOS speech recognition handles one language at a time: currently %@. If you speak another language, choose it here.";
 
 /* Advanced (folded) */
 "speech.more.title" = "Advanced";
-"speech.more.detail" = "Processor and memory use, cloud keys, download mirror";
+"speech.more.detail" = "Processor and memory use, API keys, download mirror";
 "speech.limits.threads" = "Processor threads";
 "speech.limits.threads.detail" = "Of %@ cores. The rest stay free for your other apps.";
 "speech.limits.concurrent" = "Transcriptions at a time";
@@ -135,9 +135,9 @@
 "speech.limits.memory" = "GPU memory";
 "speech.limits.memory.detail" = "The maximum memory speech models may use.";
 "speech.limits.memory.value" = "Up to %@";
-"speech.limits.battery" = "Lighter models on battery";
+"speech.limits.battery" = "Use smaller models on battery";
 "speech.limits.battery.detail" = "A smaller model for recordings when not plugged in.";
-"speech.limits.footer" = "Recordings run at low priority; live captions and voice notes at normal priority.";
+"speech.limits.footer" = "Other apps get priority while recordings are transcribed.";
 "speech.advanced.mirror" = "Use a mirror for model downloads";
 "speech.advanced.mirror.detail" = "Downloads through hf-mirror.com when Hugging Face is slow or blocked.";
 
@@ -146,7 +146,7 @@
 "speech.cloud.off" = "Turned off in Privacy";
 "speech.cloud.sheet.note" = "Recognize speech in the cloud with your own API key. The key is stored in Keychain. Audio is uploaded to this service.";
 "speech.cloud.speed.1" = "Normal (recommended)";
-"speech.cloud.speed" = "Speed";
+"speech.cloud.speed" = "Audio speed";
 "speech.cloud.speed.15" = "1.5×";
 "speech.cloud.speed.2" = "2×";
 "speech.cloud.speed.1.hint" = "Most accurate; billed at full length";
@@ -166,13 +166,13 @@
 "speech.cloud.options.speed.15" = "Audio sped up 1.5×";
 "speech.cloud.options.speed.2" = "Audio sped up 2×";
 "speech.cloud.options.button" = "Options…";
-"speech.cloud.options.note" = "The model and audio speed for cloud recognition. Its API key is set in Cloud models.";
+"speech.cloud.options.note" = "The model and audio speed for cloud recognition. Set its API key in Cloud Services.";
 "speech.section.mac" = "On this Mac";
 "speech.section.jobs" = "Models by feature";
 "speech.machine.short" = "%1$@, %2$@";
 "speech.rec.title_size" = "Recommended download · %@";
 "speech.rec.line" = "%1$@ will use %2$@.";
-"speech.rec.help" = "Downloads these models. Each feature switches to its model when its download finishes.";
+"speech.rec.help" = "Downloads these models. Each is used when its download finishes.";
 "speech.manage.count" = "%@ downloaded";
 
 "speech.purpose.recognition" = "Speech recognition";
@@ -189,16 +189,16 @@
 "speech.tag.recommended" = "Recommended";
 "speech.tag.small_mac" = "For Macs with less memory";
 "speech.tag.apple-speech" = "Built in, no download; weaker on sound-alike words";
-"speech.tag.qwen3-asr-0.6b-mlx" = "Accurate, uses your Words";
-"speech.tag.qwen3-asr-1.7b-mlx" = "A little better at English than Qwen3-ASR 0.6B";
+"speech.tag.qwen3-asr-0.6b-mlx" = "Accurate, supports Words";
+"speech.tag.qwen3-asr-1.7b-mlx" = "More accurate, a little slower";
 "speech.tag.fun-asr-nano-mlx" = "Better at Chinese mixed with English; fast";
-"speech.tag.sensevoice-small" = "Smallest and fastest; doesn’t use your Words";
+"speech.tag.sensevoice-small" = "Smallest and fastest; doesn’t support Words";
 "speech.tag.whisper-large-v3-turbo-mlx" = "The most languages";
 "speech.tag.whisper-large-v3-turbo-q4-mlx" = "Many languages, small download";
 "speech.tag.qwen3-asr-0.6b-onnx" = "Runs without Apple silicon";
 "speech.tag.whisper-large-v3-turbo-ct2" = "For NVIDIA graphics";
-"speech.tag.gemma4-e2b" = "Steadiest in our tests";
-"speech.tag.gemma4-e4b" = "Bigger and slower; rewrites more";
+"speech.tag.gemma4-e2b" = "Rarely changes your wording";
+"speech.tag.gemma4-e4b" = "Larger and slower; may change your wording";
 "speech.tag.qwen3.5-2b" = "Smaller and faster";
 "speech.tag.qwen3.5-0.8b" = "For Macs with less memory";
 "speech.tag.qwen3-0.6b" = "For Macs with little memory";
@@ -214,7 +214,7 @@
 "speech.cloud.check.network" = "Can’t connect. Check your network and the base URL.";
 "speech.cloud.check.quota" = "Too many requests or no quota left. Try again later.";
 "speech.cloud.check.privacy" = "Cloud recognition is turned off in Privacy";
-"speech.cloud.check.model" = "Model Studio returned no text for this model. The name may be wrong, or the model only works with live streaming or a file link. Check the name or pick one from the list.";
+"speech.cloud.check.model" = "This model can’t be used for recognition. Check its name or choose one from the list";
 "speech.cloud.check.other" = "The service returned an error. Check the base URL and the model name.";
 
 /* Dictation’s choices compared (Settings → Models: the lead line and Compare…; DictationCompare.swift). Numbers come
@@ -223,7 +223,7 @@
 "speech.compare.lead.in_use" = "Recommended for dictation: %1$@ · In use";
 "speech.compare.open" = "Compare…";
 "speech.compare.menu" = "Compare Choices…";
-"speech.compare.title" = "Dictation Choices";
+"speech.compare.title" = "Compare Dictation Models";
 "speech.compare.note.lang" = "Based on tests in %@.";
 "speech.compare.note" = "Based on tests with Chinese mixed with English.";
 "speech.compare.mac" = "This Mac: %@";
@@ -242,7 +242,7 @@
 "speech.compare.cloud_polish" = "%@ + cloud polish";
 "speech.compare.cloud_asr.help" = "Uses Qwen3-ASR Flash on Alibaba Cloud Model Studio. Audio is uploaded.";
 "speech.compare.volcengine" = "Volcengine";
-"speech.compare.volcengine.help" = "Uses Doubao Seed-ASR 2.0 on Volcengine. Audio is uploaded while you speak. Names and terms are more accurate with cloud polish. Needs a Volcengine account verified in mainland China.";
+"speech.compare.volcengine.help" = "Recordings are uploaded to Volcengine. Needs a Volcengine account verified in mainland China.";
 "speech.compare.cloud_polish.help" = "Speech is recognized on your Mac by %@; only the text goes to the cloud.";
 "speech.compare.in_use" = "In Use";
 "speech.compare.needs_memory" = "Needs %@ of memory";
@@ -265,7 +265,7 @@
 "speech.compare.accuracy.value" = "%@ of 5";
 
 /* A model's expected wait from the published measurement (DictationChoices.delay), never this Mac's */
-"speech.speed.reference" = "%1$@ recognizes speech in about %2$@ on our test Mac.";
+"speech.speed.reference" = "On another Mac, %1$@ takes %2$@";
 "speech.rec.for" = "%1$@ · For %2$@";
 "speech.rec.title.short" = "Recommended models";
 "speech.auto.check" = "Choose Automatically";

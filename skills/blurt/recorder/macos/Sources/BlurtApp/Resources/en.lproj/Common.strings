@@ -3,7 +3,7 @@
 
 /* Item kinds */
 "job.title.enrich" = "AI fill-in";
-"job.title.filed" = "Filed from your note";
+"job.title.filed" = "Added to a project";
 "job.usage.cli_default" = "the CLI’s default model";
 "job.usage.none" = "No AI · 0 tokens";
 "job.usage.tokens" = "Used about %@ tokens";
@@ -28,7 +28,7 @@
 "state.menu" = "Change state";
 
 /* What you can do from a state: the verb, and one line saying what it does */
-"action.keep" = "Accept";
+"action.keep" = "Mark as to do";
 "action.keep.hint" = "Moves it out of the inbox as To do";
 "action.hand_off" = "Copy instruction for agent";
 "action.hand_off.hint" = "Copy an instruction to paste into Claude Code, Codex or any agent";
@@ -69,7 +69,7 @@
 /* Job steps */
 "job.step.capture" = "Capturing";
 "job.step.finalize" = "Saving";
-"job.step.listen" = "Listening";
+"job.step.listen" = "Recording audio";
 "job.step.transcribe" = "Transcribing";
 "job.step.file" = "Filing";
 "job.step.prepare" = "Preparing";
@@ -78,7 +78,7 @@
 "job.step.route" = "Sorting into projects";
 "job.step.launch" = "Starting";
 "job.step.work" = "Working";
-"job.step.finish" = "Wrapping up";
+"job.step.finish" = "Finishing";
 
 /* Job states */
 "job.state.queued" = "Queued";

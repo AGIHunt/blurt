@@ -81,13 +81,13 @@
 "models.token.invalid" = "Access Token 含有无效字符，请重新粘贴。";
 "models.key.spaces" = "API Key 不能包含空格。";
 "models.key.characters" = "API Key 含有无效字符，请重新粘贴。";
-"models.key.custom" = "这是 %@ 的 Key。%@ 已添加，可点它的「编辑…」更换 Key。";
+"models.key.custom" = "此 Key 属于已添加的 %@。若要更换 %@ 的 Key，请点「编辑…」。";
 
 "models.job.translate" = "翻译";
 "models.job.translate.detail" = "听写翻译（⌘）和截图翻译（⌥T）。";
 "models.job.vision" = "截图取字";
 "models.job.vision.detail" = "提高截图取字（⌥C）的准确度。";
-"models.job.goes.text" = "文字发往 %@。";
+"models.job.goes.text" = "文字会发送到 %@。";
 "models.job.goes.images" = "截图发往 %@。";
 "models.job.local" = "只在本机处理。";
 "models.job.none" = "可下载模型或添加 API Key。";
@@ -111,14 +111,14 @@
 /* 通过 Agent 设置（docs/design/agent-setup.md）：用户自己的编程 Agent 通过 scripts/setup.py 和 App 的本地控制接口设置模型。
    AgentSetupViews.swift、App/AgentSetupServer.swift。 */
 "models.agent.button" = "通过 Agent 设置…";
-"models.agent.note" = "Agent 第一次更改设置时，口喷鸡会请你允许。API Key 会经过 Agent，保存在钥匙串中。";
+"models.agent.note" = "Agent 首次更改设置时需要你允许。它能看到自己添加的 API Key，这些 Key 保存在钥匙串中。";
 "models.agent.sheet.title" = "通过 Agent 设置模型";
 "models.agent.prompt" = "设置模型（口喷鸡）\n\n帮我设置口喷鸡的语音和 AI 模型，参照 %1$@，命令用 `uv run %2$@ …` 运行。改动之前先问我里面列出的问题，帮我找到或创建各服务的 API Key，不要把任何 Key 写回对话里。口喷鸡第一次收到改动时会请我允许。";
 "models.agent.sheet.copied" = "已复制";
 "models.agent.sheet.copy" = "复制指令";
-"models.agent.sheet.detail" = "复制下面的指令，粘贴给本机上的 Claude Code、Codex 等 Agent。它会问你几个问题，帮你找到各服务的 API Key，然后完成设置。";
+"models.agent.sheet.detail" = "复制指令，粘贴到本机上的 Claude Code、Codex 或其他 Agent 中，即可设置模型。";
 "models.agent.ask.title" = "允许 %@ 设置模型？";
-"models.agent.ask.unknown" = "允许本机上的应用设置模型？";
+"models.agent.ask.unknown" = "允许本机上的 App 设置模型？";
 "models.agent.ask.detail" = "30 分钟内可连接服务、选择模型和运行测试。API Key 保存在钥匙串中。";
 "models.agent.ask.allow" = "允许";
 "models.agent.ask.deny" = "不允许";
@@ -142,13 +142,13 @@
 "models.service.uses" = "用于%@";
 "models.service.unused" = "未使用";
 "models.service.use_dictation" = "用于听写";
-"models.speech.ask.title" = "听写改用%@识别？";
-"models.speech.ask.message" = "录音会发给%@，不再在本机识别。之后可在本页改回。";
+"models.speech.ask.title" = "将 %@ 用于听写？";
+"models.speech.ask.message" = "录音会发送给%@。之后可在「模型」中更改。";
 "models.speech.ask.use" = "改用";
 "models.speech.ask.later" = "暂不";
 "models.sheet.use_for" = "用于";
 "models.check.job_failed" = "%1$@：%2$@";
-"models.sheet.note.other" = "口喷鸡没有测试过这个服务，连接前会用所选功能各试一次。API Key 保存在钥匙串中。";
+"models.sheet.note.other" = "此服务未经测试，连接时会检查是否可用。API Key 保存在钥匙串中。";
 "models.services.none.title" = "还没有云端服务";
 "models.services.none.detail" = "用你自己的 API Key 润色和翻译。";
 "models.services.more.title" = "其他服务";

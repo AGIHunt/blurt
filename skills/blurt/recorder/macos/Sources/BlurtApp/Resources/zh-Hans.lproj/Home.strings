@@ -89,6 +89,6 @@
 "home.screen_text.action.translate" = "翻译";
 
 /* 主页时间线里没能识别的听写 */
-"home.entry.failed" = "没能识别 · 录音 %@";
+"home.entry.failed" = "未识别 · 录音 %@";
 "home.entry.retry" = "重试";
 "home.entry.retrying" = "正在识别…";

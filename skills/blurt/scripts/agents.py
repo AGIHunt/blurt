@@ -189,8 +189,8 @@ def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
         if code is not None:
             text = so + se
     state = parse_status(defn, code, text, env)
-    why = {"ready": ("已登录", "logged in"), "configured": ("已配置", "configured"),
-           "logged_out": ("未登录", "not logged in"), "unknown": ("登录状态未知，会直接试", "login unknown, will try")}[state]
+    why = {"ready": ("已登录", "signed in"), "configured": ("已设置", "set up"),
+           "logged_out": ("未登录", "not signed in"), "unknown": ("无法确认登录", "can’t check sign-in")}[state]
     out.update(state=state, why=why[0] if lang == "zh" else why[1],
                fix=(defn.get("fix") or {}).get(lang, "") if state == "logged_out" else "")
     return out
@@ -221,7 +221,7 @@ def failure_reason(cls: str | None, name: str, fix: str = "", lang: str = "en", 
                 return text.split("{fix}")[0].rstrip("：:—– ")
             return text.replace("{fix}", fix)
     if lang == "zh":
-        return f"{name} 没整理完（退出码 {code}）" if code is not None else f"{name} 没整理完"
+        return f"{name} 未能完成整理（退出码 {code}）" if code is not None else f"{name} 未能完成整理"
     return f"{name} didn't finish (exit {code})" if code is not None else f"{name} didn't finish"
 
 

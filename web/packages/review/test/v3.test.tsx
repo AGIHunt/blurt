@@ -274,7 +274,7 @@ describe("v3 UI", () => {
     expect(pill.querySelector(".sring.s-to_verify")).not.toBeNull();
     expect(pill.textContent).toBe("To verify");
     expect(pill.getAttribute("aria-haspopup")).toBe("menu");
-    expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
+    expect(el.querySelector(".work-claim")?.textContent).toMatch(/marked it as fixed/);
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
     expect(el.querySelector("#workSession")).toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
@@ -353,7 +353,7 @@ describe("v3 UI", () => {
     // state glyphs are not verbs: no rings inside the buttons; the card leads with the to-verify disc
     expect(card.querySelectorAll("button .sring")).toHaveLength(0);
     expect(card.querySelector(":scope > .sring.s-to_verify")).not.toBeNull();
-    expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
+    expect(card.querySelector(".work-claim")?.textContent).toBe("The agent marked it as fixed");
     expect(card.textContent).not.toMatch(/by Agent/i); // an agent the doc can't name: no "by" part at all
     expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
     expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
@@ -407,11 +407,11 @@ describe("v3 UI", () => {
     const { el, s, sent, done } = await mount(<Inspector />);
     await act(async () => s.go(1));
     expect(el.querySelector(".prov-sug")?.textContent).toContain("Looks like website");
-    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized · mentions the pricing page");
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested from the content · mentions the pricing page");
     // no reason given: no dangling separator
     await act(async () => { s.data.items[1].suggested_project!.reason = ""; s.go(0); });
     await act(async () => s.go(1));
-    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized");
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested from the content");
     await act(async () => (el.querySelector("#acceptSuggestion") as HTMLButtonElement).click());
     await act(flush);
     expect(sent[0][0]).toEqual({ op: "set", id: U(1), set: { project: "p-site" }, unset: [] });

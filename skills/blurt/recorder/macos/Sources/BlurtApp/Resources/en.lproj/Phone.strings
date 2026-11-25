@@ -1,7 +1,7 @@
 /* The Remote Control page (MainWindow/PhonePage.swift, PhonePageViews.swift). */
 
 "phone.settings" = "Settings…";
-"phone.settings.tip" = "On-screen keys, viewing this screen, and connecting from other networks";
+"phone.settings.tip" = "Remote Control settings";
 /* a phone that gave no name */
 "phone.unnamed" = "Phone";
 
@@ -42,18 +42,18 @@
 "phone.mac.screen" = "Screen Recording is off";
 "phone.mac.screen.detail" = "Until it’s on, the phone can’t show your screen. The pointer and keys still work.";
 "phone.mac.deaf" = "Phones and computers can’t connect to this Mac";
-"phone.mac.deaf.in_use" = "Another copy of Blurt or another app is using its connection. Quit it, then click Try Again.";
+"phone.mac.deaf.in_use" = "Another copy of Blurt or another app is using the connection. Quit it, then click Try Again.";
 "phone.mac.deaf.other" = "macOS couldn’t open the connection. Click Try Again, or restart the Mac if that doesn’t help.";
 "phone.mac.deaf.retry" = "Try Again";
 "phone.mac.relay" = "Your relay isn’t responding";
 "phone.mac.relay.detail" = "Until it’s back, devices on another network can’t connect to this Mac. On the same Wi-Fi they still can.";
-"phone.mac.relay.detail.fallback" = "Until it’s back, devices on another network connect through the public connection service. On the same Wi-Fi nothing changes.";
+"phone.mac.relay.detail.fallback" = "Devices on other networks connect through the public connection service.";
 "phone.mac.relay.again" = "Check Again";
 "phone.relay_settings" = "Relay Settings…";
 "phone.away.busy" = "Can’t connect from other networks today";
-"phone.away.busy.detail" = "The public connection service has reached today’s limit. On the same Wi-Fi, devices still connect. Try again later, or set up your own relay.";
+"phone.away.busy.detail" = "The public connection service has reached today’s limit. Try again later, or use your own relay.";
 "phone.away.no_direct" = "A phone on another network couldn’t connect";
-"phone.away.no_direct.detail" = "That network doesn’t allow a direct connection. Your own relay works from any network. On the same Wi-Fi, devices still connect.";
+"phone.away.no_direct.detail" = "That network doesn’t allow a direct connection. Set up your own relay.";
 /* what VoiceOver says after a state row's title */
 "phone.ax.ok" = "OK";
 "phone.ax.needs_you" = "Needs attention";
@@ -66,7 +66,7 @@
 "phone.computers.none" = "No computers added yet";
 
 /* where the phone app comes from */
-"phone.app.where" = "The phone app isn’t in the app stores yet. Build it from source:";
+"phone.app.where" = "The phone app isn’t in the app stores yet. You can build it from source:";
 "phone.app.ios" = "iPhone and iPad";
 "phone.app.android" = "Android";
 
@@ -74,12 +74,12 @@
 "phone.tips" = "If It Won’t Connect";
 "phone.tips.network" = "Put the phone and your Mac on the same Wi-Fi.";
 "phone.tips.open" = "Open Blurt on the phone and make sure your Mac isn’t asleep.";
-"phone.tips.vpn" = "If a VPN is on, let it pass local network traffic, or try with it off. If your Mac’s firewall is on, allow incoming connections for Blurt.";
-"phone.tips.vpn.local" = "If a VPN is on, let it pass local network traffic, or try with it off. On your Mac, allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
+"phone.tips.vpn" = "If you use a VPN, try turning it off. Allow Blurt in the firewall.";
+"phone.tips.vpn.local" = "If you use a VPN, try turning it off. Allow Blurt in the firewall and in System Settings > Privacy & Security > Local Network.";
 "phone.tips.away.none" = "On another network, the phone connects through your own relay. None is set.";
 "phone.tips.away.go_between" = "On another network, the phone connects through the public connection service. If that network can’t connect directly, set up your own relay.";
 "phone.mac.ok.go_between" = "From other networks through the public connection service";
-"phone.tips.away.ok" = "On another network it connects through your relay. The phone only needs internet access.";
+"phone.tips.away.ok" = "On other networks, it connects through your own relay.";
 
 /* Settings → Remote Control (Settings/RemotePane.swift): its lead, the way to this page */
 "phone.pane.show" = "Show Devices";
@@ -93,7 +93,7 @@
 "viewer.open" = "Open Window";
 "viewer.connect" = "Connect";
 "viewer.remove" = "Remove";
-"viewer.remove.detail" = "To use it again, add it again.";
+"viewer.remove.detail" = "You’ll need to add it again to use it.";
 "viewer.state.connected" = "Connected · %@";
 "viewer.state.available" = "Available · %@";
 "viewer.state.offline" = "Offline · %@";
@@ -108,7 +108,7 @@
 "viewer.add.invalid" = "That isn’t a pairing link.";
 "viewer.add.connecting" = "Connecting to %@…";
 "viewer.add.looking_more" = "Looking for more computers…";
-"viewer.add.nearby.empty" = "Open Add Device in Blurt on the other computer to list it here.";
+"viewer.add.nearby.empty" = "Computers with Add Device open in Blurt appear here.";
 "viewer.add.nearby.missing" = "Not listed? Open Add Device in Blurt on that computer.";
 "viewer.add.link.placeholder" = "Paste the link from the other computer";
 "viewer.add.to" = "Add %@";
@@ -133,7 +133,7 @@
 "viewer.unreachable.mac.detail" = "If it restarted with FileVault on, its password must first be entered at the computer.";
 "viewer.locked.title" = "%@ is locked";
 "viewer.locked.detail" = "The picture comes back once it’s unlocked.";
-"viewer.locked.linux.detail" = "The picture comes back when it’s unlocked. To reach its login screen too, turn on Remote Login in its Settings → System → Remote Desktop.";
+"viewer.locked.linux.detail" = "To connect at the login screen, turn on Remote Login on that computer in Settings > System > Remote Desktop.";
 "viewer.reconnecting" = "Reconnecting…";
 "viewer.reconnecting.to" = "Reconnecting to %@…";
 "viewer.connecting.to" = "Connecting to %@…";
@@ -153,7 +153,7 @@
 "viewer.ended" = "%@ ended the connection.";
 "viewer.reconnect" = "Reconnect";
 "viewer.take_over" = "Take Over";
-"viewer.screen_off" = "%@ doesn’t show its screen. Turn it on in its Settings.";
+"viewer.screen_off" = "To see the screen, open Blurt Settings → Remote Control on %@ and allow it.";
 "viewer.screen_permission" = "%@ needs Screen Recording permission.";
 "viewer.screen_failed" = "Can’t show %@’s screen. The pointer and keys still work.";
 "viewer.one_display" = "%@ shows one display at a time.";
@@ -166,7 +166,7 @@
 "viewer.keys.on" = "Keys and the mouse go to %@. Press ⌃⌘ to release them.";
 "viewer.quality" = "Picture Quality";
 "viewer.quality.auto" = "Auto";
-"viewer.quality.auto.tip" = "Set by the connection";
+"viewer.quality.auto.tip" = "Adjusts to your connection";
 "viewer.quality.sharp" = "Sharp";
 "viewer.quality.balanced" = "Balanced";
 "viewer.quality.saver" = "Data Saver";
@@ -182,7 +182,7 @@
 "viewer.new_window.named" = "Open Display %ld in New Window";
 "viewer.release.lead" = "Keyboard and mouse go to %@";
 "viewer.release.word" = "Release";
-"viewer.release.app_only.note" = "System shortcuts stay on this Mac until Blurt is allowed in Input Monitoring.";
+"viewer.release.app_only.note" = "To send system shortcuts, allow Blurt in Input Monitoring.";
 "viewer.allow_shortcuts" = "Send System Shortcuts…";
 
 /* the bar on the controlled Mac */
@@ -197,8 +197,8 @@
 "remote.privacy.cover" = "This Mac is being used remotely by %@.\nThe screen is hidden.";
 "viewer.privacy" = "Black Out Remote Screen";
 "viewer.privacy.tip" = "Covers that computer’s screen with a note that it’s in use remotely. You still see everything.";
-"remote.text.refused" = "Not typed: a password field or the lock screen is in front.";
-"remote.text.unanswered" = "Not typed: the app in front isn’t responding, so Blurt can’t tell whether it’s a password field.";
+"remote.text.refused" = "Not typed: the cursor is in a password field, or the computer is locked.";
+"remote.text.unanswered" = "Not typed: the app on the other computer isn’t responding.";
 "phone.log.all" = "Show All (%ld)";
 "phone.log.less" = "Show Less";
 "remote.file.received.title" = "File from %@";

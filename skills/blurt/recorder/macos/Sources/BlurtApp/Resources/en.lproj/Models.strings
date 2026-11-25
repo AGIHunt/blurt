@@ -81,13 +81,13 @@
 "models.token.invalid" = "The Access Token has invalid characters. Paste it again.";
 "models.key.spaces" = "API keys can’t contain spaces.";
 "models.key.characters" = "The API key has invalid characters. Paste it again.";
-"models.key.custom" = "This is a %@ key. %@ is added already; use its Edit… to change the key.";
+"models.key.custom" = "This key is for %@. To change the key for %@, click Edit….";
 
 "models.job.translate" = "Translate";
 "models.job.translate.detail" = "Dictation translation (⌘) and screen translation (⌥T).";
 "models.job.vision" = "Copy Text from Screen";
 "models.job.vision.detail" = "Makes Copy Text from Screen (⌥C) more accurate.";
-"models.job.goes.text" = "Text goes to %@.";
+"models.job.goes.text" = "Text is sent to %@.";
 "models.job.goes.images" = "Screenshots go to %@.";
 "models.job.local" = "Stays on this Mac.";
 "models.job.none" = "Download a model or add an API key.";
@@ -111,12 +111,12 @@
 /* Set Up with Agent (docs/design/agent-setup.md): the user's own coding agent sets up the models through scripts/setup.py
    and the app's control socket. AgentSetupViews.swift, App/AgentSetupServer.swift. */
 "models.agent.button" = "Set Up with Agent…";
-"models.agent.note" = "Blurt asks for your OK the first time the agent changes a setting. The API key passes through the agent and is stored in Keychain.";
+"models.agent.note" = "The agent’s first change needs your approval. It sees the API keys it adds, which are stored in Keychain.";
 "models.agent.sheet.title" = "Set Up Models with an Agent";
 "models.agent.prompt" = "Set Up Models (Blurt)\n\nSet up Blurt’s speech and AI models for me, following %1$@; run its commands as `uv run %2$@ …`. Ask me its questions before you change anything, help me find or create each service’s API key, and never write a key back into this chat. Blurt asks me to allow the first change.";
 "models.agent.sheet.copied" = "Copied";
 "models.agent.sheet.copy" = "Copy Instruction";
-"models.agent.sheet.detail" = "Copy this instruction and paste it into an agent on your Mac, such as Claude Code or Codex. It asks a few questions, helps you find each service’s API key, and sets things up.";
+"models.agent.sheet.detail" = "Copy the instruction and paste it into Claude Code, Codex or another agent on this Mac to set up models.";
 "models.agent.ask.title" = "Allow %@ to set up models?";
 "models.agent.ask.unknown" = "Allow an app on your Mac to set up models?";
 "models.agent.ask.detail" = "For 30 minutes, it can connect services, choose models and run tests. API keys are stored in Keychain.";
@@ -142,13 +142,13 @@
 "models.service.uses" = "Used for %@";
 "models.service.unused" = "Not in use";
 "models.service.use_dictation" = "Use for Dictation";
-"models.speech.ask.title" = "Recognize dictation with %@?";
-"models.speech.ask.message" = "Your recordings go to %@ instead of being recognized on your Mac. You can switch back on this page.";
+"models.speech.ask.title" = "Use %@ for dictation?";
+"models.speech.ask.message" = "Recordings are sent to %@. You can change this in Models.";
 "models.speech.ask.use" = "Use It";
 "models.speech.ask.later" = "Not Now";
 "models.sheet.use_for" = "Use for";
 "models.check.job_failed" = "%1$@: %2$@";
-"models.sheet.note.other" = "Blurt hasn’t tested this service. Connect tries each feature you choose first. The API key is kept in Keychain.";
+"models.sheet.note.other" = "This service isn’t tested, so it’s checked when you connect. API keys are stored in Keychain.";
 "models.services.none.title" = "No cloud services yet";
 "models.services.none.detail" = "Polish and translate with your own API key.";
 "models.services.more.title" = "Another service";

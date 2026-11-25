@@ -155,7 +155,7 @@ export const ENTRIES: Entry[] = (() => {
     // the Mac's "Show the notch when idle" (app.island_idle); off by default here (island.rs shows_at_rest)
     row('general.island_idle', 'general.app', 'settings.general.island_idle', { detail: 'settings.general.island_idle.detail' }),
     // dictation's and the voice note's alike (record.live_text): the app's, not one capability's
-    row('general.live_text', 'general.app', 'settings.general.live_text', { detail: 'settings.general.live_text.detail', more: 'settings.general.live_text.hint' }),
+    row('general.live_text', 'general.app', 'settings.general.live_text', { detail: 'settings.general.live_text.detail' }),
     // Windows' own notifications (Blurt posts them while it isn't in front; the Mac says it in the island instead)
     row('general.notify_done', 'general.app', 'settings.notify.done', { more: 'win.general.notify.hint' }),
     row('general.language', 'general.app', 'settings.general.language'),
@@ -203,7 +203,7 @@ export const ENTRIES: Entry[] = (() => {
     // Text & Translation
     row('screentext.allow', 'screentext.copy', 'screentext.allow', { detail: 'screentext.allow.detail' }),
     row('screentext.precise', 'screentext.copy', 'screentext.precise', { detail: 'screentext.precise.detail' }),
-    row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate', { more: 'settings.screen_text.translate.hint' }),
+    row('screentext.translate', 'screentext.translation', 'settings.screen_text.translate'),
     row('screentext.translate_model', 'screentext.translation', 'models.uses.translate'),
     // how long the history keeps what was read (record.screen_text.history_days) in a popup in sight; then what is
     // kept, Open History…, Clear History…

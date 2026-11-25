@@ -349,9 +349,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>%ld capture is waiting for a project</string>
+			<string>%ld card without a project</string>
 			<key>other</key>
-			<string>%ld captures are waiting for a project</string>
+			<string>%ld cards without a project</string>
 		</dict>
 	</dict>
 	<key>main.move.placeholder.many</key>
@@ -381,9 +381,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Copy an instruction for this item to paste into your own agent (⌘↩)</string>
+			<string>Copy an instruction for an agent to work on this item (⌘↩)</string>
 			<key>other</key>
-			<string>Copy an instruction for these %ld items to paste into your own agent (⌘↩)</string>
+			<string>Copy an instruction for an agent to work on these %ld items (⌘↩)</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>
@@ -509,9 +509,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>%ld item in other places matches.</string>
+			<string>%ld match in other places.</string>
 			<key>other</key>
-			<string>%ld items in other places match.</string>
+			<string>%ld matches in other places.</string>
 		</dict>
 	</dict>
 	<key>main.drop.pictures</key>

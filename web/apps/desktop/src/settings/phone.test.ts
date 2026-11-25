@@ -167,7 +167,7 @@ describe('browser stand-in', () => {
   });
   it('the firewall notice in plain words', () => {
     expect(EN['phone.firewall']).toBe('Windows Firewall is blocking phones on this network.');
-    expect(ZH['phone.firewall']).toBe('Windows 防火墙挡住了这个网络上的手机。');
+    expect(ZH['phone.firewall']).toBe('Windows 防火墙阻止了此网络上的手机连接。');
     expect(EN['phone.firewall.allow']).toBe('Allow…');
     expect(ZH['phone.firewall.allow']).toBe('允许…');
   });

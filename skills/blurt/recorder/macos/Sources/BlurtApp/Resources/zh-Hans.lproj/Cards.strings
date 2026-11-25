@@ -8,7 +8,7 @@
 "cards.action.voice" = "语音备注";
 "cards.action.voice.tip" = "录一条语音备注，保存为卡片";
 "cards.action.show_notch" = "在刘海下显示";
-"cards.action.show_notch.tip" = "让卡片在刘海下方放下来，方便拖进其他 App";
+"cards.action.show_notch.tip" = "在刘海下方显示卡片";
 
 "cards.search.placeholder" = "搜索卡片";
 "cards.search.tip" = "搜索备注（⌘F 或 /）";
@@ -18,7 +18,7 @@
 "cards.section.current" = "当前";
 "cards.section.history" = "历史";
 "cards.history.kept" = "保留 %d 天";
-"cards.history.kept_forever" = "一直保留";
+"cards.history.kept_forever" = "永久保留";
 "cards.current.none" = "刘海下方暂无卡片。";
 "cards.history.none" = "拖入或粘贴到其他 App 的卡片会在此保留 %d 天。";
 "cards.history.none_forever" = "拖入或粘贴到其他 App 的卡片会一直保留在这里，直到你删除。";
@@ -29,7 +29,7 @@
 "cards.selection.copy" = "复制";
 "cards.selection.copy.tip" = "复制选中的卡片：图片和备注";
 "cards.selection.delete" = "删除";
-"cards.selection.delete.tip" = "删除选中的卡片（可在刘海处撤销）";
+"cards.selection.delete.tip" = "删除选中的卡片";
 "cards.menu.copy_n" = "复制 %d 张卡片";
 "cards.menu.delete_n" = "删除 %d 张卡片";
 
