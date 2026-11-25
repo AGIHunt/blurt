@@ -296,13 +296,22 @@ final class LinkStatusTests: XCTestCase {
             ("cant-control-windows", LinkStatus(phase: .connected, canControl: false), .windows),
             ("screen-permission", LinkStatus(phase: .connected, screenError: "permission"), .mac),
             ("screen-off", LinkStatus(phase: .connected, screenError: "off"), .linux),
+            ("no-direct", LinkStatus(phase: .unreachable, hasRelay: true, away: .noDirect), .mac),
+            ("no-network", LinkStatus(phase: .unreachable, offline: true), .mac),
+            ("asleep", LinkStatus(phase: .unreachable, hasRelay: true, presence: .asleep), .mac),
+            ("last-online", LinkStatus(phase: .unreachable, hasRelay: true, presence: .lastOnline), .mac),
+            ("connecting-direct", LinkStatus(phase: .connecting, meeting: true), .windows),
+            ("ended", LinkStatus(phase: .ended), .windows),
+            ("locked", LinkStatus(phase: .connected, showing: true, locked: true), .mac),
+            ("picture-stopped", LinkStatus(phase: .connected, screenError: "stopped"), .windows),
+            ("local-network-off", LinkStatus(phase: .unreachable, localDenied: true), .mac),
         ]
         let name = "Studio Mac"
         for (file, s, host) in cases {
             guard let b = StatusBanner.of(s) else { continue }
             func say(_ l: StatusBanner.Line) -> String {
                 Words.status(l, host: host, name: name, check: "4821",
-                             failed: Link.failure(s.pairRetry ? .unreachable : .spent, name: name, hasRelay: s.hasRelay))
+                             failed: Link.failure(s.pairRetry ? .unreachable : .spent, name: name, hasRelay: s.hasRelay), since: Date())
             }
             let card = StatusCard()
             card.show(b.mark, StatusCard.Words(title: say(b.title), detail: b.detail.map(say), action: b.action.map { Words.status($0) },
