@@ -968,6 +968,7 @@ final class Link: ObservableObject {
         // the computer waits on a session that's gone
         if c?.isRelay == true { c?.close(code: RemoteRelay.phoneLeft) } else { c?.close() }
         MicStream.shared.stop()
+        ScreenStream.shared.connectionLost()
     }
 
     private func heard(_ m: ToPhone) {
@@ -1022,7 +1023,8 @@ final class Link: ObservableObject {
             if p == .listening { heardTake() }
             if p != .listening { level = 0 }
             if p == .idle { live = ""; liveFinal = "" }
-            MicStream.shared.macPhase(p)
+            // a session just back says idle first: the talk key is still down, and its take is about to begin again
+            if p == .listening || !isHolding { MicStream.shared.macPhase(p) }
         case let .live(c, p): liveFinal = c; live = p
         case let .listen(on):
             // a voice note started from here is heard through this phone, as the talk key is
@@ -1211,6 +1213,11 @@ final class Link: ObservableObject {
         holding = on
         heldAudio.clear()
         audioLock.unlock()
+    }
+    private var isHolding: Bool {
+        audioLock.lock()
+        defer { audioLock.unlock() }
+        return holding
     }
     private let audioLock = NSLock()
     private var holding = false

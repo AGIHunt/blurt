@@ -443,7 +443,7 @@ final class PadViewController: UIViewController {
         l.$state.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] s in
             guard let self, s == .connected else { return }
             self.askUnsent()
-            guard Prefs.shared.screenWanted, !self.showing, ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
+            guard Prefs.shared.screenWanted, !self.showing, !self.noScreenThere.contains(Link.shared.current?.id ?? ""), ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
             DispatchQueue.main.async {
                 self.screenAsked = false
                 self.setShowing(true)
@@ -483,7 +483,10 @@ final class PadViewController: UIViewController {
         l.$screenError.receive(on: RunLoop.main).sink { [weak self] e in
             guard let self, let e else { return }
             // the computer doesn't show its screen: don't ask again by itself next time
-            if e == "off" || e == "permission" { Prefs.shared.screenWanted = false }
+            if e == "off" || e == "permission" {
+                // one that came on by itself and was refused says nothing about the other computers
+                if self.screenAsked { Prefs.shared.screenWanted = false } else if let id = Link.shared.current?.id { self.noScreenThere.insert(id) }
+            }
             self.setShowing(false)
             self.status()
         }.store(in: &bag)
@@ -579,6 +582,8 @@ final class PadViewController: UIViewController {
     private var shownBanner: StatusBanner?
     /// the picture was asked for by the user, not come on by itself: a computer that won't show it is then said
     private var screenAsked = false
+    /// computers that wouldn't show their screen when it came on by itself, this run
+    private var noScreenThere: Set<String> = []
     private var canTalk = false
     private var talkAlpha: CGFloat { !canTalk ? 0.35 : showing && Prefs.shared.fullScreen ? 0.8 : 1 }
 

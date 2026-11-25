@@ -146,7 +146,7 @@ final class StatusCard: UIView {
         second.configuration?.title = w.second
         second.isHidden = w.second == nil
         // the last thing showing has nothing under it
-        stack.setCustomSpacing(w.detail == nil && w.action == nil ? 0 : 6, after: title)
+        stack.setCustomSpacing(w.detail != nil ? 6 : w.action != nil ? 16 : 0, after: title)
         fade(true)
         return changed
     }
