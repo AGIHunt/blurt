@@ -67,6 +67,7 @@ final class StatusCard: UIView {
         a.baseBackgroundColor = Theme.slabLatched
         a.baseForegroundColor = .black
         a.cornerStyle = .capsule
+        a.titleLineBreakMode = .byTruncatingTail      // one line, as wide as it needs: wrapped, it took the width of the words before
         a.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 28, bottom: 12, trailing: 28)
         a.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { t in
             var t = t
@@ -77,6 +78,7 @@ final class StatusCard: UIView {
         action.addAction(UIAction { [weak self] _ in self?.onAction?() }, for: .touchUpInside)
         var b = UIButton.Configuration.plain()
         b.baseForegroundColor = Theme.mark
+        b.titleLineBreakMode = .byTruncatingTail
         b.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
         b.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { t in
             var t = t

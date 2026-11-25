@@ -710,11 +710,12 @@ public final class RemoteChannel {
             let m = NWProtocolWebSocket.Metadata(opcode: .close)
             m.closeCode = .privateCode(code)
             let ctx = NWConnection.ContentContext(identifier: "close", metadata: [m])
-            self.connection.send(content: nil, contentContext: ctx, isComplete: true, completion: .contentProcessed { [weak self] _ in
-                self?.queue.async { self?.shut(nil) }
+            self.connection.send(content: nil, contentContext: ctx, isComplete: true, completion: .contentProcessed { _ in
+                // the channel itself is kept until then: whoever closed it may have let go already, and the goodbye would go with it
+                self.queue.async { self.shut(nil) }
             })
             // a sleeping Mac doesn't wait long for it
-            self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.shut(nil) }
+            self.queue.asyncAfter(deadline: .now() + 0.5) { self.shut(nil) }
         }
     }
 

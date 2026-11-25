@@ -119,7 +119,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(Link.failure(.unanswered, name: "Studio PC", hasRelay: true).title, "Studio PC didn’t answer in time.")
         let away = Link.failure(.unreachable, name: "Studio PC", hasRelay: true)
         XCTAssertEqual(away.title, "Can’t reach Studio PC.")
-        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there.")
+        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there. A code lasts two minutes: after that, scan the new one.")
         XCTAssertTrue(away.canRetry)
         XCTAssertTrue(Link.failure(.unreachable, name: "Studio PC", hasRelay: false).help.contains("same network"))
         // the card says the failure itself, then what to do

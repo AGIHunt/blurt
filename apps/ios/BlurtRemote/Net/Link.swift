@@ -392,7 +392,7 @@ final class Link: ObservableObject {
         case .left: PairFailure(why: why, title: String(localized: "Pairing stopped when Blurt left the screen."), help: scan)
         case .unreachable:
             PairFailure(why: why, title: String(localized: "Can’t reach \(name)."),
-                        help: hasRelay ? String(localized: "Make sure \(name) is on and Blurt is open there.")
+                        help: hasRelay ? String(localized: "Make sure \(name) is on and Blurt is open there. A code lasts two minutes: after that, scan the new one.")
                             : String(localized: "Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first."))
         }
     }
@@ -596,7 +596,7 @@ final class Link: ObservableObject {
         ScreenStream.shared.pause()
         let w = DispatchWorkItem { [weak self] in self?.parkOver() }
         parkEnds = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(1, min(RemoteReconnect.keepInBackground, app.backgroundTimeRemaining - 3)), execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(1, min(RemoteReconnect.keepInBackground, app.backgroundTimeRemaining - 4)), execute: w)
         return true
     }
 
@@ -608,7 +608,7 @@ final class Link: ObservableObject {
         let t = backgroundTask
         backgroundTask = .invalid
         unpark()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { UIApplication.shared.endBackgroundTask(t) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { UIApplication.shared.endBackgroundTask(t) }
     }
 
     private func unpark() {
@@ -964,7 +964,9 @@ final class Link: ObservableObject {
         cancelAttempts()
         let c = channel
         channel = nil
-        c?.close()
+        // over a relay in words (a WebSocket close): the app may be stopped before TCP's own goodbye gets out, and until the relay knows,
+        // the computer waits on a session that's gone
+        if c?.isRelay == true { c?.close(code: RemoteRelay.phoneLeft) } else { c?.close() }
         MicStream.shared.stop()
     }
 

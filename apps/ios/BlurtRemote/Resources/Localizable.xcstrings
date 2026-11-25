@@ -3858,16 +3858,6 @@
         }
       }
     },
-    "Make sure %@ is on and Blurt is open there." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请确认 %@ 已开机，并且打开了口喷鸡。"
-          }
-        }
-      }
-    },
     "Put this iPhone and the computer on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer first." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3943,7 +3933,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "上次在线：%@。请确认电脑已开机，Blurt 已打开。"
+            "value" : "上次在线：%@。请确认电脑已开机，并且打开了口喷鸡。"
           }
         }
       }
@@ -3953,7 +3943,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在系统设置中允许 Blurt 访问本地网络。"
+            "value" : "请在系统设置中允许口喷鸡访问本地网络。"
           }
         }
       }
@@ -4063,7 +4053,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "离开 Blurt 后约 25 秒内回来，无需重新连接。"
+            "value" : "离开口喷鸡后约 25 秒内回来，无需重新连接。"
           }
         }
       }
@@ -4073,7 +4063,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blurt 无法使用相机。请在系统设置中允许，或粘贴在电脑上拷贝的配对链接。"
+            "value" : "口喷鸡无法使用相机。请在系统设置中允许，或粘贴在电脑上复制的配对链接。"
           }
         }
       }
@@ -4084,6 +4074,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "听写已停止：麦克风被其他应用占用。"
+          }
+        }
+      }
+    },
+    "Make sure %@ is on and Blurt is open there. A code lasts two minutes: after that, scan the new one." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请确认 %@ 已开机，并且打开了口喷鸡。配对码 2 分钟内有效，过期请扫新的。"
           }
         }
       }
