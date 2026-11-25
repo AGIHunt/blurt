@@ -42,3 +42,22 @@ def test_the_welcome_page_gets_the_version_the_installer_is_built_with():
         assert "version" not in json.loads(other.read_text(encoding="utf-8")), other.name
     for title in ("Install Blurt ${BLURT_VERSION}", "安装 Blurt ${BLURT_VERSION}"):
         assert title in code, title
+
+
+def code_lines() -> str:
+    return "\n".join(line for line in HOOKS.read_text(encoding="utf-8-sig").splitlines() if not line.lstrip().startswith(";"))
+
+
+def test_the_hooks_define_only_their_own_names():
+    """Tauri includes MUI2, FileFunc, its FileAssociation.nsh, … before the hooks, and NSIS stops at a name defined twice
+    (FileAssociation.nsh has SHCNE_ASSOCCHANGED). desktop.yml doesn't run on pull requests, so a build would only say so at
+    a release."""
+    names = re.findall(r"^\s*!define\s+(?:/\S+\s+)*([^\s]+)", code_lines(), re.M)
+    assert names
+    assert [n for n in names if not n.startswith(("MUI_", "BLURT"))] == []
+
+
+def test_icons_are_read_again_after_the_copy():
+    """An update keeps the shortcuts: one that had lost its icon kept the generic one without this (measured on Windows)."""
+    body = re.search(r"^!macro NSIS_HOOK_POSTINSTALL\n(.*?)^!macroend", code_lines(), re.M | re.S)
+    assert body and "${RefreshShellIcons}" in body.group(1)

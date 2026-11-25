@@ -12,6 +12,10 @@
 ;   for debugging; nothing on it is for a user);
 ; - on Finish: "Open Blurt" checked, the desktop shortcut not (the Start menu has it; the Mac puts nothing on the
 ;   desktop); the header picture at the right, so the inner pages' titles start on the body's left margin.
+; - after the copy, the Shell is told to read icons again: an update keeps the shortcuts, and one that had lost its icon
+;   stayed that way (docs/design/windows-parity/installer.md, 安装后的图标).
+; Names defined here start with MUI_ or BLURT: Tauri has included its own files by now (FileAssociation.nsh defines
+; SHCNE_ASSOCCHANGED), and a name defined twice stops the build (tests/test_windows_installer.py).
 ; These defines are read by the one page macro each belongs to (MUI_WELCOMEPAGE_* by the welcome, …), so setting them
 ; here, before Tauri's page list, reaches those pages only. Language strings by id: 1033 English, 2052 Simplified Chinese.
 SetFont /LANG=1033 "Segoe UI" 9
@@ -70,8 +74,9 @@ Function un.BlurtGuiInit
   !insertmacro BLURT_HIDE_BRANDING
 FunctionEnd
 
-; the copy is done: on to Finish by itself (the progress page is never a stop of its own)
+; the copy is done: icons read again, then on to Finish by itself (the progress page is never a stop of its own)
 !macro NSIS_HOOK_POSTINSTALL
+  ${RefreshShellIcons}
   SetAutoClose true
 !macroend
 
