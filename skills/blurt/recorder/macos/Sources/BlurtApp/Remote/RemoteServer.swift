@@ -1716,7 +1716,8 @@ final class RemoteServer {
 }
 
 /// The phone's microphone as the source of a dictation: what NoteVoice takes in place of the Mac's mic. Samples may arrive
-/// before the take has started (the phone sends from the key-down); they wait here, the last second of them.
+/// before the take has started (the phone sends from the key-down); they wait here, the last twelve seconds
+/// of them (a phone coming back from a drop with its talk key held sends what it heard meanwhile at once).
 final class RemoteMicFeed {
     static let shared = RemoteMicFeed()
     /// the press came from a phone that wants its own mic used
@@ -1739,7 +1740,7 @@ final class RemoteMicFeed {
         let s = sink
         if s == nil {
             waiting.append(x)
-            while waiting.reduce(0, { $0 + $1.count }) > 16000 { waiting.removeFirst() }
+            while waiting.reduce(0, { $0 + $1.count }) > 12 * 16000 { waiting.removeFirst() }
         }
         lock.unlock()
         if let s { DispatchQueue.main.async { s(x) } }

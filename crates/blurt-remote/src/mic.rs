@@ -17,6 +17,10 @@ struct Inner {
     sink: Option<Sender<Vec<f32>>>,
 }
 
+/// seconds kept while no take listens yet: a phone coming back from a drop with its talk key held sends what it heard meanwhile, up to
+/// ten seconds, at once. A key-down clears what's left of the last take.
+const WAITING_S: usize = 12;
+
 #[derive(Default)]
 pub struct MicFeed {
     inner: Mutex<Inner>,
@@ -42,7 +46,7 @@ impl MicFeed {
                     }
                     None => {
                         i.waiting.push_back(f);
-                        while i.waiting.len() * FRAME > RATE {
+                        while i.waiting.len() * FRAME > RATE * WAITING_S {
                             i.waiting.pop_front();
                         }
                     }
@@ -89,14 +93,14 @@ mod tests {
     }
 
     #[test]
-    fn a_second_waits_then_it_flows() {
+    fn twelve_seconds_wait_then_it_flows() {
         let m = MicFeed::new();
-        m.receive(&pcm(RATE * 2, 100)); // two seconds before the take starts
+        m.receive(&pcm(RATE * (WAITING_S + 2), 100)); // more than it keeps, before the take starts
         m.receive(&pcm(10, 200)); // a partial frame
         let (tx, rx) = std::sync::mpsc::channel();
         m.attach(tx);
         let held: Vec<Vec<f32>> = rx.try_iter().collect();
-        assert_eq!(held.len(), RATE / FRAME, "the last second only");
+        assert_eq!(held.len(), RATE * WAITING_S / FRAME, "the last twelve seconds only");
         m.receive(&pcm(FRAME - 10, 200));
         let f = rx.try_recv().unwrap();
         assert_eq!(f.len(), FRAME);

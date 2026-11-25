@@ -354,6 +354,70 @@ while a phone is connected.
 If a session goes quiet for 2 s, the Mac lets go of everything held, including the dictation key. A background phone sends
 `releaseAll` first.
 
+### Coming back (2026-11-26)
+
+A colleague who uses Blurt every day kept another app for remote control: the phone goes to WeChat and back, says Reconnecting for long,
+often fails, and only killing the app helps. Five role-played users (an iPhone developer who switches apps hundreds of times a day, an
+Android + Windows business user, an iPad designer, a long-time user of other remote desktops, a non-technical teacher) and a separate audit
+of the connection code used it, then argued the list out. What was measured first, on the iPhone 17 simulator and an Android 16
+emulator with the Rust host (session open again, counted from the app's launch call; seconds):
+
+| Away for | Same network | Own relay (on this machine) | Public connection service, before | Now |
+|---|---|---|---|---|
+| 1–3 s | 0.5 | 0.5 | 7.0–10.4, "Can't reach" at 8 | kept: no reconnect |
+| 8–20 s | 0.5 | 0.5 | 4.4–4.7 | kept |
+| 35–40 s (iPhone) | 0.5 | 0.5 | 4.1–4.9 | 3.8–4.6 (what TLS and the handshakes to the service take from here) |
+| Relay lost and back in the 10 s search for the same network | | 1 of 3 never came back | | 8 of 8, 2.9 s |
+
+What was wrong, and is:
+
+- **Leaving ended the session.** Now it's kept (`Link.background`, `park`): everything held is let go of, the picture stops, only pings go.
+  iOS allows about 30 s, so 25, and the end is said (a WebSocket close, before iOS stops the app); Android 3 minutes with a foreground
+  service (remote-android.md). Not with this phone's microphone open: out of sight it hears nothing, so the take ends as it did. Settings →
+  Stay Connected in the Background, on. Coming back asks for a pong in 1.2 s (2.5 over a relay) before believing it.
+- **On the go-between the host was out of its room for 9 s.** A session that has moved to UDP ignored its WebSocket's end, and the next
+  waiting connection came 6 s of silence + 0.5 s + TLS later. Now one waits again the moment the old stream ends (`onOldStreamGone`,
+  `room_empty`), and a hello on a moved session's WebSocket ends that session at once instead of being dropped.
+- **The phone asked the relay at 1.2 s and then at 7.2.** Now 0.4, 0.8, 1.5, 3, 5 s after each try that ended with no session
+  (`RemoteReconnect`, `Reconnect.kt`), and with the local ways at once when the last session was away.
+- **`lost()` could start nothing, for good** (PR #118 found it): away, the same network is looked for every 10 s, and a drop during one of
+  those tries met `connect()`'s "not beside another try" guard. The tries are let go of first.
+- **A session that opened and never said `session`** was waited on for ever: 5 s (10 over a relay), then again.
+- **What only killing the app cleared:** the go-between's back-offs (30 s to an hour), "no direct path", the first try's time, tries let go of
+  by the phone itself counted against the relay. Coming back to the app, Retry and another network (interfaces and gateways, not only
+  names) put them aside; a go-between that's out of quota is asked again at most once a minute on coming back, at once on Retry.
+- **One refusal was counted once per device,** so a computer with five devices paired left the go-between alone for an hour. One a wait now;
+  a success, a wake and another network clear it. An abort of a connection that was up is the network's, not a refusal.
+- **Computers on another network, or woken:** every waiting connection is made again at once (Mac: NWPathMonitor and didWake; Windows and
+  Linux: addresses and the clock looked at every 3 s); before, its pings found it dead 30–60 s later.
+- `session` never waits for the direct path however many addresses it lists (it could: the path needs what it says); at most six IPv6 ones.
+- A refusal from whatever now has the computer's old address no longer ends a relay try still going, and a session after it can drop and
+  come back.
+
+What else the round changed, with the votes where they split:
+
+- **A picture from before is never clicked.** From a drop or a leave until the next frame it's dimmed, and Touch Mode's taps, holds and drags
+  on it go nowhere (`ScreenStream.blind`).
+- **Connected means it carries:** on the go-between, keys stay dim and the card says Connecting directly until the stream has moved.
+- **Another phone took it / the computer ended it: a button, not any touch** (5 : 0): a pocket or a wiped screen took the computer back.
+- **Text typed with no session** is kept and asked about when it's back (5 : 0 against sending it by itself: it would land in another
+  window). Keys are still dropped.
+- **Talk key held through a drop:** the microphone goes on, and what it hears (10 s at most) goes once the computer listens again; hosts
+  keep 12 s that arrive before a take (was 1).
+- **Tap on the picture:** 10 pt and 0.30 s in Touch Mode (was 6 and 0.22; nothing happened between 0.22 and the 0.40 hold). The hold, the
+  drag after it and the trackpad are as they were. Let go of at rest, nothing coasts.
+- **Edges:** top and bottom are one swipe again, the sides still two, all four in full screen.
+- **The picture comes on by itself** from the first connection until it's turned off (the founder); one that can't be had then says nothing.
+- A locked computer says so; "Asleep since" and "Last online" come from the relay's `peek`; a phone with no network says that; Local Network
+  and the camera turned off lead to Settings; a pairing's failure stays until OK; a call or Siri ends the take in words; a mouse, a trackpad
+  or a keyboard on an iPad counts as use; the phone may sleep after two minutes of not being connected; Paste from This Phone sits over the
+  keyboard.
+
+Not done, by decision or for another round: pictures through the public service (Blurt runs no relay), a keys-and-voice-only mode through it
+(all five asked; the founder to decide, it needs a byte budget), file and clipboard exchange both ways, the computer's sound, Picture in
+Picture, Wake on LAN, held keys from an iPad's keyboard, pinch on an iPad's trackpad. Not tried: a real iPhone or Android phone, a real
+change of Wi-Fi or to mobile data, a real call during dictation.
+
 ### What the pad says (2026-11-16)
 
 The founder, using it from the sofa: when the connection dropped, was coming back or hadn't come up, the words saying so were too small to
@@ -377,7 +441,12 @@ well), and "Can't reach *name*. Check…" at 15 pt regular, white 66 %, with no 
 | Nothing answers for 8 s, no relay | amber triangle | Can't reach *name* 连不上 *name* | Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt's Settings → Remote Control on the computer. 确认 Blurt 在运行，手机和电脑连着同一个网络。不在同一网络时，先在电脑的 设置 → 远程控制 里设置中转。 (the same network is only needed without a relay, so the line names the relay, 中转, as the way to connect from anywhere; a pairing that can't reach the computer says the same, in the same order) | Retry 重试; Try Another Computer below it when there is one |
 | The same, the computer has a relay | amber triangle | Can't reach *name* | Check that the computer isn't asleep and Blurt is running. 确认电脑没有进入睡眠，Blurt 在运行。 | the same |
 | The computer has forgotten this phone | amber triangle | Needs pairing again 需要重新配对 | *name* no longer knows this iPhone. | Scan Code |
-| Another phone took it | phone | Another phone is connected 另一台设备已连接 | Touch to take over. 轻点以接管。 | (a touch anywhere) |
+| Another phone took it | phone | Another phone is connected 另一台设备已连接 | | Take Over 接管 (a button since 2026-11-26, not any touch) |
+| The computer ended it | phone | *name* ended the connection. | | Reconnect 重新连接 |
+| Met on the public connection service | spinner | Connecting directly to *name*… 正在与 *name* 建立直连… | | |
+| The phone has no network | amber triangle | No network 没有网络 | Turn on Wi-Fi or mobile data… | |
+| Can't reach it, its relay knows since when | amber triangle | Can't reach *name* | Asleep since *time*… / Last online *time*… | Retry |
+| Connected, its screen is locked, the picture on | amber triangle | *name* is locked *name* 已锁屏 | Its screen shows once it's unlocked. Keys still work. | |
 | No computer yet | code | Pair with your computer 与电脑配对 | On your computer, open Blurt's Settings and choose Phone. | Scan Code |
 | The computer is asking its owner | spinner | Waiting for your computer 等待电脑确认 | Allow this iPhone in Blurt's Settings… Check that it shows *digits*. | |
 | A pairing didn't take (8 s) | amber triangle | Pairing didn't work 配对没有成功 | why, in Link's sentence | what the state under it has |

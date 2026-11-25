@@ -56,7 +56,9 @@ Only on the go-between, and only when both ends listed `move`:
    stream. From then on it writes its outgoing stream bytes into kind-7 datagrams starting at offset 0.
 2. A receiver keeps reading frames from the old stream until it reads `streamMoved`. Then it reads frames from the UDP stream, in offset
    order. Kind-7 bytes that arrive earlier are buffered (up to the window).
-3. The WebSocket stays open and idle: idle costs the go-between nothing. If it closes, the session carries on over UDP.
+3. The WebSocket stays open and idle: idle costs the go-between nothing. If it closes, the session carries on over UDP, and the host puts
+   another waiting connection in the room at once, for the phone coming back before the session's end is noticed. A frame read on the old
+   stream after the phone's `streamMoved` is a phone starting over in the room: the host ends the session.
 4. If no datagram arrives for 6 s after the move, the session ends. The phone connects again from the start.
 
 Rules for the stream over UDP:
@@ -91,7 +93,9 @@ Rules for the stream over UDP:
 - A malformed path gets 404 before any Durable Object is touched, so it costs no Durable Object request.
 - `GET /` answers `blurt go-between` in plain text, as a health check.
 - Quota or rate refusals arrive as HTTP 429 or 1015, or as a failed upgrade. Apps read them as "busy today" and show that, without retrying
-  in a loop: they back off at 30 s, 2 min, 10 min, then hourly.
+  in a loop: they back off at 30 s, 2 min, 10 min, then hourly. One refusal counts once, however many devices' connections it came to; a
+  success, a wake or another network clears it. A phone whose user taps Retry or changes networks asks again at once (12 s after the
+  refusal at the earliest), one that comes back to the app at most once a minute (2026-11-26, remote.md §Coming back).
 
 **In front, a Cloudflare rate-limiting rule** on meet.blurt.work blocks an IP for 10 s past 40 requests in 10 s, before the Worker runs.
 
