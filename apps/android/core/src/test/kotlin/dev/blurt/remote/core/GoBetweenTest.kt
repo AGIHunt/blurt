@@ -56,10 +56,19 @@ class GoBetweenTest {
     }
 
     @Test fun thePathsName() {
-        assertEquals(LinkPath.TAILSCALE, LinkPath.of("100.101.102.103", onMyNetwork = false))
-        assertEquals(LinkPath.TAILSCALE, LinkPath.of("100.101.102.103", onMyNetwork = true), "the range says it, whatever the phone thinks")
-        assertEquals(LinkPath.SAME_NETWORK, LinkPath.of("192.168.1.20", onMyNetwork = true))
-        assertEquals(LinkPath.OVERLAY, LinkPath.of("10.147.17.5", onMyNetwork = false))
+        for (vpn in listOf(false, true)) {
+            assertEquals(LinkPath.TAILSCALE, LinkPath.of("100.101.102.103", onMyNetwork = false, throughVpn = vpn))
+            assertEquals(LinkPath.TAILSCALE, LinkPath.of("100.101.102.103", onMyNetwork = true, throughVpn = vpn), "the range says it, whatever the phone thinks")
+            assertEquals(LinkPath.SAME_NETWORK, LinkPath.of("192.168.1.20", onMyNetwork = true, throughVpn = vpn))
+        }
+        // ZeroTier's: an address of its own, out through the VPN
+        assertEquals(LinkPath.OVERLAY, LinkPath.of("10.147.17.5", onMyNetwork = false, throughVpn = true))
+        assertEquals(LinkPath.OVERLAY, LinkPath.of("fd12:3456::1", onMyNetwork = false, throughVpn = true))
+        // another subnet of the office: its addresses look the same, but no VPN is in between
+        assertEquals(LinkPath.SAME_NETWORK, LinkPath.of("10.20.3.4", onMyNetwork = false, throughVpn = false))
+        assertEquals(LinkPath.SAME_NETWORK, LinkPath.of("192.168.40.7", onMyNetwork = false, throughVpn = false))
+        // and no overlay has a public address
+        assertEquals(LinkPath.SAME_NETWORK, LinkPath.of("203.0.113.5", onMyNetwork = false, throughVpn = true))
         // an overlay is away for the picture's ceiling
         assertEquals(LinkRoute.DIRECT, LinkPath.TAILSCALE.route)
         assertEquals(LinkRoute.DIRECT, LinkPath.OVERLAY.route)
@@ -91,6 +100,25 @@ class GoBetweenTest {
         assertFalse(b.busy)
         b.refused(0.0)
         assertEquals(30.0, b.until, "a session that worked starts the count over")
+    }
+
+    /** Coming back, Retry or another network ends the wait by then at the latest; it never makes one longer, and the next refusal's is as long
+     *  as it would have been. */
+    @Test fun askingAgainEndsTheWaitSooner() {
+        val b = GoBetweenBackoff()
+        b.notAfter(50.0)
+        assertTrue(b.mayTry(0.0), "nothing to wait for")
+        b.refused(0.0)
+        b.notAfter(60.0)
+        assertEquals(30.0, b.until, "never longer")
+        b.notAfter(12.0)
+        assertFalse(b.mayTry(11.9))
+        assertTrue(b.mayTry(12.0))
+        assertTrue(b.busy)
+        b.refused(12.0)
+        assertEquals(132.0, b.until, "the second refusal's two minutes")
+        b.notAfter(Double.NEGATIVE_INFINITY)
+        assertTrue(b.mayTry(13.0))
     }
 
     @Test fun whatThePadSays() {

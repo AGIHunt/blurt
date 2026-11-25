@@ -20,6 +20,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
+import android.text.format.DateUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -159,21 +160,25 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
         const val MAX_SCALE = 1.5f
 
         /** The card's lines in words. `name`: the computer in hand; `check`: the digits a pairing shows on both; `failed`: Link's sentences
-         *  for a pairing that didn't take (what went wrong, then what to do). */
-        fun text(c: Context, line: StatusLine, host: RemoteHost, name: String?, check: String? = null, failed: PairFailure? = null): String {
+         *  for a pairing that didn't take (what went wrong, then what to do); `since`: what a computer's relay says of it (ms). */
+        fun text(c: Context, line: StatusLine, host: RemoteHost, name: String?, check: String? = null, failed: PairFailure? = null,
+                 since: Long? = null): String {
             val n = name?.takeIf { it.isNotEmpty() } ?: c.getString(R.string.the_computer)
             return when (line) {
                 StatusLine.CONNECTING -> c.getString(R.string.connecting_to, n)
                 StatusLine.RECONNECTING -> c.getString(R.string.status_reconnecting, n)
+                StatusLine.CONNECTING_DIRECT -> c.getString(R.string.status_connecting_direct, n)
+                StatusLine.NO_NETWORK -> c.getString(R.string.status_no_network)
+                StatusLine.TURN_ON_NETWORK -> c.getString(R.string.status_turn_on_network)
+                StatusLine.ASLEEP_SINCE -> c.getString(R.string.status_asleep_since, time(c, since ?: 0))
+                StatusLine.LAST_ONLINE -> c.getString(R.string.status_last_online, time(c, since ?: 0))
                 StatusLine.CANT_REACH -> c.getString(R.string.status_cant_reach, n)
                 StatusLine.CHECK_NETWORK -> c.getString(R.string.status_check_network)
                 StatusLine.CHECK_AWAKE -> c.getString(R.string.status_check_awake)
                 StatusLine.NEEDS_PAIRING -> c.getString(R.string.s_forgotten)
                 StatusLine.FORGOTTEN -> c.getString(R.string.status_forgotten, n)
                 StatusLine.OTHER_PHONE -> c.getString(R.string.status_other_phone)
-                StatusLine.TOUCH_TO_TAKE_OVER -> c.getString(R.string.status_take_over)
                 StatusLine.ENDED_THERE -> c.getString(R.string.status_ended)
-                StatusLine.TOUCH_TO_RECONNECT -> c.getString(R.string.status_reconnect)
                 StatusLine.PAIR_FIRST -> c.getString(R.string.status_pair_first)
                 StatusLine.WHERE_THE_CODE_IS -> c.getString(R.string.status_unpaired)
                 StatusLine.WAITING -> c.getString(R.string.status_waiting_title)
@@ -185,6 +190,9 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.CANT_SHOW_SCREEN -> c.getString(R.string.status_cant_show_screen)
                 StatusLine.ALLOW_SCREEN -> c.getString(if (host == RemoteHost.MAC) R.string.status_screen_permission else R.string.status_screen_permission_pc)
                 StatusLine.SCREEN_IS_OFF -> c.getString(R.string.status_screen_off)
+                StatusLine.PICTURE_STOPPED -> c.getString(R.string.status_picture_stopped)
+                StatusLine.LOCKED -> c.getString(R.string.status_locked, n)
+                StatusLine.UNLOCK_FIRST -> c.getString(R.string.status_unlock_first)
                 StatusLine.NO_DIRECT -> c.getString(R.string.status_no_direct)
                 StatusLine.GO_BETWEEN_BUSY -> c.getString(R.string.status_go_between_busy)
                 StatusLine.RELAY_DOWN -> c.getString(R.string.status_relay_down)
@@ -195,7 +203,14 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
             StatusAction.RETRY -> R.string.retry
             StatusAction.SCAN -> R.string.scan_code
             StatusAction.ANOTHER -> R.string.try_another
+            StatusAction.TAKE_OVER -> R.string.take_over
+            StatusAction.RECONNECT -> R.string.reconnect
+            StatusAction.DISMISS -> R.string.ok
         })
+
+        /** as the phone writes times: today only the time, earlier the day too */
+        private fun time(c: Context, ms: Long): String = DateUtils.formatDateTime(c, ms,
+            if (DateUtils.isToday(ms)) DateUtils.FORMAT_SHOW_TIME else DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH)
     }
 }
 

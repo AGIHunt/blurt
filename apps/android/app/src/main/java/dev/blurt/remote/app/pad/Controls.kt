@@ -189,6 +189,11 @@ class ModifierRow(c: Context, private val onComputer: () -> Unit, private val on
             mods += k to m
             add(k)
         }
+        add(Key(context.getString(dev.blurt.remote.app.R.string.paste_from_phone), "content_paste") {
+            Haptics.tick()
+            val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }
+            Remote.link.type(clip?.getItemAt(0)?.coerceToText(context)?.toString() ?: "")
+        })
         add(Key("esc", null) { Remote.link.send(ToMac.Key(RemoteChord(0, "Escape"), null)); Haptics.tick() })
         add(Key("⇥", "keyboard_tab") { Remote.link.send(ToMac.Key(RemoteChord(0, "Tab"), null)); Haptics.tick() })
         add(Key("↑", "keyboard_arrow_up") { Remote.link.send(ToMac.Key(RemoteChord(0, "Up"), null)); Haptics.step() })

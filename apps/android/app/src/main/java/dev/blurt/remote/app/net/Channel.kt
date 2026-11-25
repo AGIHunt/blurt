@@ -84,6 +84,7 @@ class Channel(
     val label get() = transport.label
     /** where a TCP session went, once connected */
     val remoteAddress: InetAddress? get() = transport.remote
+    val localAddress: InetAddress? get() = transport.local
 
     fun start() {
         transport.start(this)
@@ -523,6 +524,28 @@ object Addresses {
         }
         false
     }.getOrDefault(false)
+
+    /** the network a connection with this local address went out on is a VPN (Tailscale's, ZeroTier's, a proxy's) */
+    fun throughVpn(c: android.content.Context, local: InetAddress): Boolean = runCatching {
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        @Suppress("DEPRECATION")
+        cm.allNetworks.any { n ->
+            cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true &&
+                cm.getLinkProperties(n)?.linkAddresses?.any { it.address == local } == true
+        }
+    }.getOrDefault(false)
+
+    /** This phone is on some network: the internet, or a Wi-Fi or cable without it, where the computer may still be. */
+    fun online(c: android.content.Context): Boolean = runCatching {
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+        if (cm.activeNetwork != null) return true
+        @Suppress("DEPRECATION")
+        cm.allNetworks.any { n ->
+            val k = cm.getNetworkCapabilities(n) ?: return@any false
+            k.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) || k.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                k.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+        }
+    }.getOrDefault(true)
 
     private fun sameSubnet(mine: InetAddress, prefix: Int, other: InetAddress): Boolean {
         val x = mine.address

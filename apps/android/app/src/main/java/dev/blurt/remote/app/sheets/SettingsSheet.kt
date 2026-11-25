@@ -61,6 +61,7 @@ import dev.blurt.remote.app.pad.PadScreen
 import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.RemoteHost
 import dev.blurt.remote.core.RemoteModifiers
+import dev.blurt.remote.core.RemoteRelay
 import dev.blurt.remote.core.ScreenQuality
 import dev.blurt.remote.core.ToMac
 
@@ -109,6 +110,9 @@ private fun Settings(onClose: () -> Unit, onPair: () -> Unit, onDetails: (Paired
                     Divider()
                 }
                 Row2(stringResource(R.string.add_computer), modifier = Modifier.clickable(onClick = onPair)) { Sym("add", color = MaterialTheme.colorScheme.primary) }
+            }
+            Section(footer = stringResource(R.string.stay_connected_footer)) {
+                ToggleRow(stringResource(R.string.stay_connected), p.stayConnected) { p.stayConnected = it }
             }
             Section(stringResource(R.string.computer_screen), stringResource(R.string.screen_footer)) {
                 for (q in ScreenQuality.entries) {
@@ -236,7 +240,12 @@ private fun stateOf(m: PairedMac, cur: PairedMac?, state: Link.State, path: Link
         Link.State.UNPAIRED -> R.string.s_not_connected
     })
     if (m.removed) return stringResource(R.string.s_removed)
-    return stringResource(if (m.id in nearby) R.string.s_on_network else if (m.relayAddress != null) R.string.s_uses_relay else R.string.s_not_on_network)
+    return stringResource(when {
+        m.id in nearby -> R.string.s_on_network
+        RemoteRelay.isGoBetween(m.relayAddress) -> R.string.s_uses_go_between
+        m.relayAddress != null -> R.string.s_uses_relay
+        else -> R.string.s_not_on_network
+    })
 }
 
 @Composable
@@ -273,8 +282,9 @@ private fun MacDetail(mac: PairedMac, onBack: () -> Unit) {
             Section(stringResource(R.string.name)) {
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(12.dp), singleLine = true, placeholder = { Text(mac.name) })
             }
-            Section(footer = stringResource(if (mac.relayAddress == null) R.string.relay_none_footer else R.string.relay_footer)) {
-                Row2(stringResource(R.string.relay), mac.relayAddress ?: stringResource(R.string.none))
+            val goBetween = RemoteRelay.isGoBetween(mac.relayAddress)
+            Section(footer = stringResource(if (goBetween) R.string.go_between_footer else if (mac.relayAddress == null) R.string.relay_none_footer else R.string.relay_footer)) {
+                Row2(stringResource(R.string.relay), if (goBetween) stringResource(R.string.path_go_between) else mac.relayAddress ?: stringResource(R.string.none))
             }
             Section {
                 Row2(stringResource(R.string.remove_computer), modifier = Modifier.clickable { removing = true })

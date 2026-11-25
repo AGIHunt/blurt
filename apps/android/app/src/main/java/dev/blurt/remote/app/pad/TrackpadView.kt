@@ -42,6 +42,8 @@ class TrackpadView(c: Context) : FrameLayout(c) {
     var onClick: (() -> Unit)? = null
     /** one finger began or stopped scrolling along the edge */
     var onEdgeScroll: ((Boolean) -> Unit)? = null
+    /** a mouse moved, scrolled or clicked: the phone is in use, though no finger is down */
+    var onUsed: (() -> Unit)? = null
     /** this pad shows the picture (the stage); a second pad beside the keys never does */
     var isStage = true
     /** off the picture is a trackpad (the computer keyboard out on a big screen, with no other pad by it): a tap there clicks where the
@@ -199,6 +201,8 @@ class TrackpadView(c: Context) : FrameLayout(c) {
         var placed = false
         var broughtIn = false
         val stage = isStage && screen.on
+        // the picture is from before, or not there yet: what's under the finger may not be there any more, so nothing is pressed on it
+        val blind = stage && engine.touchMode && screen.stale
         for (o in out) {
             when (o) {
                 is PadOutput.Move -> {
@@ -214,8 +218,8 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 is PadOutput.ViewCoast -> if (stage) screen.coastView(o.vx, o.vy)
                 is PadOutput.PointAt -> {
                     val on = stage && screen.placePointer(o.point)
-                    offPicture = !on && !bandsArePad
-                    bandDrag = if (!on && bandsArePad) o.point else null
+                    offPicture = !on && (!bandsArePad || blind && screen.onPicture(o.point))
+                    bandDrag = if (!on && !offPicture) o.point else null
                     placed = true
                 }
                 is PadOutput.DragTo -> {
@@ -231,6 +235,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 }
                 is PadOutput.Click -> {
                     if (offPicture && engine.touchMode) continue      // a double tap off the picture is two of nothing
+                    if (blind && bandDrag == null) continue
                     screen.bringPointerIntoView()
                     link.send(ToMac.Button(o.button, true))
                     link.send(ToMac.Button(o.button, false))
@@ -238,7 +243,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
                 }
                 is PadOutput.Button -> {
                     if (o.down) {
-                        dragOff = offPicture && engine.touchMode
+                        dragOff = engine.touchMode && (offPicture || blind && bandDrag == null)
                         if (dragOff) continue
                         screen.bringPointerIntoView()
                     } else {
@@ -291,6 +296,7 @@ class TrackpadView(c: Context) : FrameLayout(c) {
 
     override fun onCapturedPointerEvent(e: MotionEvent): Boolean {
         val link = Remote.link
+        onUsed?.invoke()
         when (e.actionMasked) {
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_HOVER_MOVE -> {
                 val k = Remote.prefs.pointerSpeed

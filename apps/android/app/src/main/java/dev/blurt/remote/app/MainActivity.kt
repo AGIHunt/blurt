@@ -2,7 +2,7 @@
 // itself, so none of those restarts it: the session, the keys held, the zoomed view all carry on, and the stream is asked for its new size.
 //
 // Full screen and immersive: edge swipes show the system bars first rather than leaving the app, and the keys at the screen's sides get
-// their strips back from the system's back gesture (PadLayout.exclusions). The screen stays on while the app is open, and dims after five
+// their strips back from the system's back gesture (PadLayout.exclusions). The screen stays on while it's connected, and dims after five
 // minutes untouched (PadScreen).
 package dev.blurt.remote.app
 
@@ -98,14 +98,27 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
                 }
             }
         }
-        // the sheets' layer is there only while it has something to show: a sheet, or the question a link from outside asks
+        // the sheets' layer is there only while it has something to show: a sheet, or a question (a link from outside, words not sent)
         lifecycleScope.launch {
-            kotlinx.coroutines.flow.combine(sheets.current, Remote.link.offered) { s, o -> s != null || o != null }.collect { on ->
+            kotlinx.coroutines.flow.combine(sheets.current, Remote.link.offered, Remote.link.unsent, Remote.link.state) { s, o, u, st ->
+                s != null || o != null || u.isNotEmpty() && st == dev.blurt.remote.app.net.Link.State.CONNECTED
+            }.collect { on ->
                 sheetView.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+                screen.covered = on
             }
         }
         dev.blurt.remote.app.pad.TestWeather.from(intent)
-        handle(intent)
+        // Android hands the intent this began with over again when it brings the app back after ending it, from Recents or the launcher
+        handled = savedInstanceState?.getBoolean(HANDLED) == true
+        if (!handled && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(intent)
+    }
+
+    /** the intent this activity began with has been looked at: kept with it, for when it's brought back */
+    private var handled = false
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(HANDLED, handled)
     }
 
     private fun immersive() {
@@ -122,6 +135,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
 
     /** A pairing link from outside (the camera app, a web page): it asks first. */
     private fun handle(i: Intent?) {
+        handled = true
         val u = i?.data ?: return
         if (u.scheme == "blurtremote") Remote.link.openExternal(u.toString())
         i.data = null
@@ -180,7 +194,10 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     // Activity's own dispatchKeyEvent; lint takes it for androidx.core's restricted override of the same name
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
-        if (sheets.current.value == null && HardwareKeys.handle(e)) return true
+        if (sheets.current.value == null && HardwareKeys.handle(e)) {
+            screen.used()
+            return true
+        }
         return super.dispatchKeyEvent(e)
     }
 
@@ -197,5 +214,9 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     }
     override fun keepAwake(on: Boolean) {
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private companion object {
+        const val HANDLED = "handled"
     }
 }

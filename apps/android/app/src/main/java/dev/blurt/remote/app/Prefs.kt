@@ -55,6 +55,14 @@ class Prefs(c: Context) {
     var micOnPhone: Boolean
         get() = d.getBoolean("micOnPhone", true)
         set(v) { d.edit().putBoolean("micOnPhone", v).apply(); bump() }
+    /** a session is kept a while after the app leaves the screen (Link.background) */
+    var stayConnected: Boolean
+        get() = d.getBoolean("stayConnected", true)
+        set(v) { d.edit().putBoolean("stayConnected", v).apply(); bump() }
+    /** the picture comes on with the computer: from the first time, until the user turns it off (the founder, 2026-11-26) */
+    var screenWanted: Boolean
+        get() = d.getBoolean("screenWanted", true)
+        set(v) { d.edit().putBoolean("screenWanted", v).apply() }
     /** with the computer's screen showing: a tap clicks what's under the finger. Off: a trackpad, clicking where the pointer is */
     var tapWhereTouched: Boolean
         get() = d.getBoolean("tapWhereTouched", true)

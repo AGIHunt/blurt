@@ -35,6 +35,8 @@ class StageView(c: Context) : GLSurfaceView(c) {
         @Volatile var view = doubleArrayOf(0.0, 0.0, 1.0, 1.0)      // port.rect: x, y, w, h
         @Volatile var showBackdrop = false
         @Volatile var on = false
+        /** the picture's brightness: a picture from before is dimmed (ScreenStream.stale) */
+        @Volatile var dim = 1f
     }
 
     val scene = Scene()
@@ -52,6 +54,8 @@ class StageView(c: Context) : GLSurfaceView(c) {
     @Volatile private var clearFrame = false
     /** a new frame went up: called on the GL thread, with System.nanoTime() after the draw */
     @Volatile var onPresented: ((Long) -> Unit)? = null
+    /** a new frame is about to be drawn: called on the GL thread, with its timestamp (µs) */
+    @Volatile var onFresh: ((Long) -> Unit)? = null
     private var rate = 0f
 
     private val renderer = R()
@@ -179,6 +183,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
                     onShown?.invoke(crop)
                 }
             }
+            if (fresh) onFresh?.invoke(s.timestamp / 1000)
             val crop = shown ?: RemoteCrop.WHOLE
             // keep the last whole frame for the backdrop: a few times a second, or at once when a move is about to need it
             val now = System.nanoTime()
@@ -194,13 +199,14 @@ class StageView(c: Context) : GLSurfaceView(c) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
             if (!scene.on || !hasFrame) return
             val v = scene.view
-            if (scene.showBackdrop && hasBack) draw(backProgram, GLES20.GL_TEXTURE_2D, backTex, IDENTITY, 0.0, 0.0, 1.0, 1.0, v, flipY = false)
-            draw(program, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oes, texMatrix, crop.x.toDouble(), crop.y.toDouble(), crop.w.toDouble(), crop.h.toDouble(), v, flipY = false)
+            val dim = scene.dim
+            if (scene.showBackdrop && hasBack) draw(backProgram, GLES20.GL_TEXTURE_2D, backTex, IDENTITY, 0.0, 0.0, 1.0, 1.0, v, flipY = false, dim)
+            draw(program, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oes, texMatrix, crop.x.toDouble(), crop.y.toDouble(), crop.w.toDouble(), crop.h.toDouble(), v, flipY = false, dim)
             if (fresh) onPresented?.invoke(System.nanoTime())
         }
 
         /** A part of the screen (fx, fy, fw, fh) drawn where it belongs for the view (v), as a fraction of the stage. */
-        private fun draw(p: Int, target: Int, tex: Int, m: FloatArray, fx: Double, fy: Double, fw: Double, fh: Double, v: DoubleArray, flipY: Boolean) {
+        private fun draw(p: Int, target: Int, tex: Int, m: FloatArray, fx: Double, fy: Double, fw: Double, fh: Double, v: DoubleArray, flipY: Boolean, dim: Float = 1f) {
             GLES20.glUseProgram(p)
             val x0 = (fx - v[0]) / v[2]
             val y0 = (fy - v[1]) / v[3]
@@ -211,6 +217,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
             GLES20.glUniform1f(GLES20.glGetUniformLocation(p, "uFlip"), if (flipY) 1f else 0f)
             GLES20.glUniform2f(GLES20.glGetUniformLocation(p, "uSize"), w.toFloat(), h.toFloat())
             GLES20.glUniform1f(GLES20.glGetUniformLocation(p, "uRadius"), CORNER)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(p, "uDim"), dim)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(target, tex)
             GLES20.glUniform1i(GLES20.glGetUniformLocation(p, "uSampler"), 0)
@@ -295,6 +302,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
         const val CLIP = """
             uniform vec2 uSize;
             uniform float uRadius;
+            uniform float uDim;
             float inside(vec2 st) {
                 vec2 p = st * uSize;
                 vec2 q = abs(p - uSize * 0.5) - (uSize * 0.5 - vec2(uRadius));
@@ -310,7 +318,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
             varying vec2 vStage;
             uniform samplerExternalOES uSampler;
         """ + CLIP + """
-            void main() { gl_FragColor = vec4(texture2D(uSampler, vTex).rgb * inside(vStage), 1.0); }
+            void main() { gl_FragColor = vec4(texture2D(uSampler, vTex).rgb * inside(vStage) * uDim, 1.0); }
         """
 
         const val FRAGMENT_2D = """
@@ -319,7 +327,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
             varying vec2 vStage;
             uniform sampler2D uSampler;
         """ + CLIP + """
-            void main() { gl_FragColor = vec4(texture2D(uSampler, vTex).rgb * inside(vStage), 1.0); }
+            void main() { gl_FragColor = vec4(texture2D(uSampler, vTex).rgb * inside(vStage) * uDim, 1.0); }
         """
     }
 }

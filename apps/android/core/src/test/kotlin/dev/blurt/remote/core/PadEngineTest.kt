@@ -40,6 +40,82 @@ class PadEngineTest {
         assertEquals(listOf(), e.ended(listOf(1), 0.3))
     }
 
+    // MARK: on the picture (Touch Mode) a finger aims: it may move a little further and stay a little longer, and still be a tap
+
+    private fun touch(pan: Boolean = false) = PadEngine().apply { touchMode = true; pinchZoomsView = true; panView = pan }
+
+    @Test fun onThePictureATapMayTakeThreeTenths() {
+        val e = touch()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(), e.moved(listOf(t(1, 109, 100)), 0.1), "9 is still a tap")
+        assertEquals(listOf(PointAt(pt(100, 100)), Click(left), tap), e.ended(listOf(1), 0.29))
+        // between a tap and a hold, nothing
+        val f = touch()
+        f.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(), f.ended(listOf(1), 0.35))
+        // a trackpad's tap is as short as ever
+        val g = PadEngine()
+        g.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(), g.ended(listOf(1), 0.30))
+        g.began(listOf(t(1, 100, 100)), 1.0)
+        assertIs<PadOutput.Move>((g.moved(listOf(t(1, 107, 100)), 1.05) + g.moved(listOf(t(1, 110, 100)), 1.06)).firstOrNull())
+    }
+
+    @Test fun onThePictureMovingBeforeTheHoldMovesAndPressesNothing() {
+        val e = touch()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        val o = e.tick(0.35) + e.moved(listOf(t(1, 112, 100)), 0.39) + e.tick(0.45) + e.moved(listOf(t(1, 130, 100)), 0.5) + e.ended(listOf(1), 0.55)
+        assertTrue(o.any { it is PadOutput.Move }, "$o")
+        assertTrue(o.none { it is Button || it is Click || it is Haptic }, "$o")
+        val z = touch(pan = true)
+        z.began(listOf(t(1, 100, 100)), 0.0)
+        val p = z.moved(listOf(t(1, 112, 100)), 0.39) + z.tick(0.45) + z.moved(listOf(t(1, 130, 100)), 0.5) + z.ended(listOf(1), 0.55)
+        assertTrue(p.any { it is PadOutput.View }, "$p")
+        assertTrue(p.none { it is Button || it is Click || it is Haptic }, "$p")
+    }
+
+    @Test fun onThePictureAHoldThenAMoveDrags() {
+        val e = touch()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        assertEquals(listOf(PointAt(pt(100, 100)), grab), e.tick(0.42))
+        assertEquals(listOf<PadOutput>(Button(left, true)), e.moved(listOf(t(1, 112, 100)), 0.45))
+        assertEquals(listOf<PadOutput>(DragTo(pt(120, 100))), e.moved(listOf(t(1, 120, 100)), 0.5))
+        assertEquals(listOf(Button(left, false), release), e.ended(listOf(1), 0.6))
+    }
+
+    @Test fun onThePictureAHoldThenALiftIsARightClick() {
+        val e = touch()
+        e.began(listOf(t(1, 100, 100)), 0.0)
+        e.tick(0.42)
+        assertEquals(listOf(Click(right), tap), e.ended(listOf(1), 0.8))
+        // a finger that drifted before the hold hasn't begun a drag by it
+        val d = touch()
+        d.began(listOf(t(1, 100, 100)), 0.0)
+        d.moved(listOf(t(1, 108, 100)), 0.2)
+        assertEquals(listOf(PointAt(pt(100, 100)), grab), d.tick(0.42))
+        assertEquals(listOf(), d.moved(listOf(t(1, 109, 100)), 0.5))
+        assertEquals(listOf(Click(right), tap), d.ended(listOf(1), 0.8))
+    }
+
+    @Test fun aFingerThatStoppedLeavesNothingCoasting() {
+        fun pan(rest: Double): List<PadOutput> {
+            val e = touch(pan = true)
+            e.began(listOf(t(1, 100, 300)), 0.0)
+            for (i in 1..8) e.moved(listOf(t(1, 100, 300 - 20 * i)), 0.02 * i)
+            return e.ended(listOf(1), 0.16 + rest)
+        }
+        assertTrue(pan(0.05).any { it is PadOutput.ViewCoast })
+        assertTrue(pan(0.2).none { it is PadOutput.ViewCoast })
+        fun scroll(rest: Double): List<PadOutput> {
+            val e = PadEngine()
+            e.began(listOf(t(1, 100, 300), t(2, 160, 300)), 0.0)
+            for (i in 1..8) e.moved(listOf(t(1, 100, 300 - 20 * i), t(2, 160, 300 - 20 * i)), 0.02 * i)
+            return e.ended(listOf(1, 2), 0.16 + rest)
+        }
+        assertTrue(scroll(0.05).any { it is PadOutput.Fling })
+        assertTrue(scroll(0.2).none { it is PadOutput.Fling })
+    }
+
     @Test fun moveHasNoClick() {
         val e = PadEngine()
         e.began(listOf(t(1, 100, 100)), 0.0)
@@ -425,8 +501,8 @@ class PadEngineTest {
     @Test fun zoomedInOneFingerMovesThePicture() {
         val e = zoomed()
         assertEquals(listOf(), e.began(listOf(t(1, 100, 100)), 0.0))
-        assertEquals(listOf(), e.moved(listOf(t(1, 110, 100)), 0.02), "past the slop: it's a move from here")
-        assertEquals(listOf(PadOutput.View(1.0, 15.0, 4.0, pt(125, 104))), e.moved(listOf(t(1, 125, 104)), 0.04))
+        assertEquals(listOf(), e.moved(listOf(t(1, 111, 100)), 0.02), "past the slop: it's a move from here")
+        assertEquals(listOf(PadOutput.View(1.0, 14.0, 4.0, pt(125, 104))), e.moved(listOf(t(1, 125, 104)), 0.04))
         assertEquals(listOf(PadOutput.View(1.0, 0.0, 0.0, pt(125, 104))), e.moved(listOf(t(1, 125, 104)), 0.4))
         assertEquals(listOf(PadOutput.ViewEnd), e.ended(listOf(1), 0.6), "let go at rest: it stays; no click, no pointer")
     }
@@ -436,7 +512,7 @@ class PadEngineTest {
         // of the picture throughout, never a press and never a selection
         val e = zoomed()
         e.began(listOf(t(1, 100, 100)), 0.0)
-        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.moved(listOf(t(1, 111, 100)), 0.02)
         e.moved(listOf(t(1, 140, 100)), 0.05)
         assertFalse(e.needsTicks)
         assertEquals(listOf(), e.tick(0.6))
@@ -448,7 +524,7 @@ class PadEngineTest {
     @Test fun aFlickSendsThePictureCoasting() {
         val e = zoomed()
         e.began(listOf(t(1, 100, 100)), 0.0)
-        e.moved(listOf(t(1, 110, 100)), 0.01)
+        e.moved(listOf(t(1, 111, 100)), 0.01)
         e.moved(listOf(t(1, 130, 100)), 0.02)
         e.moved(listOf(t(1, 150, 100)), 0.03)
         val o = e.ended(listOf(1), 0.035)
@@ -500,7 +576,7 @@ class PadEngineTest {
         e.pinchZoomsView = true
         e.touchMode = true
         e.began(listOf(t(1, 100, 100)), 0.0)
-        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.moved(listOf(t(1, 111, 100)), 0.02)
         assertIs<PadOutput.Move>(e.moved(listOf(t(1, 120, 100)), 0.04).firstOrNull())
         e.ended(listOf(1), 0.3)
         // zoomed in, two fingers are still the computer's scroll, under them
@@ -512,7 +588,7 @@ class PadEngineTest {
     @Test fun threeFingersEndAMoveOfThePicture() {
         val e = zoomed()
         e.began(listOf(t(1, 100, 100)), 0.0)
-        e.moved(listOf(t(1, 110, 100)), 0.02)
+        e.moved(listOf(t(1, 111, 100)), 0.02)
         e.began(listOf(t(2, 160, 100)), 0.03)
         assertEquals(listOf(PadOutput.ViewEnd), e.began(listOf(t(3, 220, 100)), 0.04))
     }
@@ -569,7 +645,7 @@ class PadEngineTest {
         val e = PadEngine()
         e.touchMode = true
         e.began(listOf(t(1, 100, 200)), 0.0)
-        e.moved(listOf(t(1, 110, 200)), 0.05)
+        e.moved(listOf(t(1, 111, 200)), 0.05)
         assertIs<PadOutput.Move>(e.moved(listOf(t(1, 120, 200)), 0.07).firstOrNull())
         assertEquals(listOf(), e.ended(listOf(1), 0.2))
     }

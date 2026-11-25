@@ -59,10 +59,13 @@ class AppLogicTest {
             .associate { it.groupValues[1] to it.groupValues[2] }
         val en = strings("values")
         val zh = strings("values-b+zh+Hans")
-        val named = setOf("connecting_to", "status_reconnecting", "status_cant_reach", "status_cant_control", "status_forgotten", "connected_to")
-        val plain = setOf("status_check_network", "status_check_awake", "s_forgotten", "status_other_phone", "status_take_over", "status_pair_first",
+        val named = setOf("connecting_to", "status_reconnecting", "status_cant_reach", "status_cant_control", "status_forgotten", "connected_to",
+            "status_connecting_direct", "status_locked", "status_asleep_since", "status_last_online", "still_connected")
+        val plain = setOf("status_check_network", "status_check_awake", "s_forgotten", "status_other_phone", "take_over", "reconnect", "status_pair_first",
             "status_unpaired", "status_waiting_title", "status_pair_failed", "status_accessibility", "status_control", "status_cant_show_screen",
-            "status_screen_permission", "status_screen_permission_pc", "status_screen_off", "retry", "scan_code", "try_another", "the_computer")
+            "status_screen_permission", "status_screen_permission_pc", "status_screen_off", "retry", "scan_code", "try_another", "the_computer",
+            "status_no_network", "status_turn_on_network", "status_unlock_first", "status_picture_stopped", "status_no_direct", "ok", "mic_taken",
+            "paste_from_phone", "unsent_q", "send", "discard", "stay_connected", "stay_connected_footer", "disconnect", "s_uses_go_between", "go_between_footer")
         for (k in named + plain) for (t in listOf(en, zh)) {
             val v = t[k]
             assertNotNull(k, v)
