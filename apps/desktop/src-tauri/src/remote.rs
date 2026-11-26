@@ -733,6 +733,18 @@ impl App for Desktop {
         let _ = self.app.emit("remote://clipboard-sent", to.to_string());
     }
 
+    /// Not into a password field: the focus as dictation reads it (UI Automation's IsPassword, AT-SPI's password text role).
+    fn may_paste(&self) -> bool {
+        #[cfg(dict)]
+        {
+            !crate::dictation::insert::focus().is_some_and(|(password, _)| password)
+        }
+        #[cfg(not(dict))]
+        {
+            true
+        }
+    }
+
     fn transfer(&self, t: &blurt_remote::files::Transfer) {
         let _ = self.app.emit("remote://transfer", t.to_json());
     }
