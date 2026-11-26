@@ -323,6 +323,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         scope.launch { l.displayAspect.collect { requestLayout() } }
         scope.launch { l.legends.collect { board.invalidate() } }
         scope.launch { Remote.updates.state.collect { settingsButton.dot = it.newer != null } }
+        // something going or waiting: the Transfer arrows turn mint, as on the iPhone
+        scope.launch { Remote.transfers.rows.collect { rows -> transferButton.tint = if (rows.any { !it.t.isOver }) Theme.mint else Theme.caption } }
         scope.launch {
             combine(l.displays, l.shownDisplay) { _, shown -> shown }.collect { shown ->
                 displayButton.number = l.displaysInOrder.indexOfFirst { it.id == shown } + 1

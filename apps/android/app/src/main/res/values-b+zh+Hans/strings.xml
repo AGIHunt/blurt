@@ -276,6 +276,8 @@
     <string name="open">打开</string>
     <string name="share">分享…</string>
     <string name="save_to_gallery">保存到相册</string>
+    <!-- a received file's ⋮ (accessibility), as Android names its overflow button -->
+    <string name="more_options">更多选项</string>
     <string name="stop">停止</string>
     <string name="continue_transfer">继续</string>
     <string name="copied">已拷贝</string>

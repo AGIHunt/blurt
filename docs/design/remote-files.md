@@ -271,9 +271,17 @@ Android document picker can't pick a folder with files), and the share sheet's "
 "Open Blurt Remote to send."
 
 The share dialog (Android): the title **发送到 %@ / Send to %@** names the computer, the body lists the items as name · size (four, then
-…), and the buttons are **取消 · 发送 / Cancel · Send**. Sizes and the mobile-data question keep "136 MB" whole (a no-break space
-between the number and the unit). The sheet's rows put their icons in one 24 dp slot, so every title starts 54 dp in, the dividers start
-there, and a received file's first button label lines up with its name.
+…), and the buttons are **取消 · 发送 / Cancel · Send**. It follows the phone's light or dark theme (it sits over another app); the
+app's own screens stay dark. Sizes and the mobile-data question keep "136 MB" whole (a no-break space between the number and the unit), and
+both dialogs break their title into even lines ("Get 132 MB over / mobile data?", never a lone "data?") with Material's 24 dp under the
+buttons' labels (`AskDialog`; AlertDialog left about 45 dp).
+
+The sheet (round 2, 2026-11-26): the transfers are one grouped list, as Files by Google shows a folder: a row each, dividers at the text,
+no buttons under a name. A tap on a received file opens it; its ⋮ (**更多选项 / More Options** to TalkBack) holds **分享… · 保存到相册 /
+Share… · Save to Gallery**, the second greyed with ✓ once saved. Icons sit in one 24 dp slot, so every title starts 54 dp in. A stopped row
+leaves the list when the same file (name, way, computer) begins again. Get Copied Items greyed says why under it: the pad card's
+正在重新连接 %@… / Reconnecting to %@… or 无法连接 %@ / Can't connect to %@, or the update line. The bar's Transfer arrows are one path (two
+translucent strokes overlapped into bright dots at the tips) and turn mint while something goes or waits, as on the iPhone.
 
 A finding for every end: a file going out queues the sender's own pings behind up to 4 MiB. At 1.5 MB/s the Android phone dropped its
 session every few seconds until it counted the computer's file progress as a sign of life; a host or viewer that times out on pongs alone will

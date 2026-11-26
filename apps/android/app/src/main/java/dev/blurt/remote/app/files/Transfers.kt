@@ -386,10 +386,20 @@ class Transfers(private val c: Context) {
         val i = list.indexOfFirst { it.t.id == t.id && it.t.incoming == t.incoming }
         // sent: where it went depends on the computer's version (an older one saves into Downloads)
         val downloads = !t.incoming && t.state == RemoteTransfer.State.Done && !link.peerResumes
-        rows.value = if (i >= 0) list.toMutableList().also { l -> l[i] = l[i].copy(t = t.copy(at = l[i].t.at), intoDownloads = l[i].intoDownloads || downloads) }
-            else listOf(Row(t, peerName(t.peer), intoDownloads = downloads)) + list
+        if (i >= 0) {
+            rows.value = list.toMutableList().also { l -> l[i] = l[i].copy(t = t.copy(at = l[i].t.at), intoDownloads = l[i].intoDownloads || downloads) }
+        } else {
+            // the same file going again: its stopped row goes, so the list doesn't keep a "Stopped" beside the copy that arrived
+            val again = list.filter { stoppedCopy(it.t, t) }
+            rows.value = listOf(Row(t, peerName(t.peer), intoDownloads = downloads)) + (list - again.toSet())
+            if (again.isNotEmpty()) save()
+        }
         if (t.isOver) save()
     }
+
+    /** `old` was stopped, and `new` is the same file (name, way, computer) beginning again. */
+    private fun stoppedCopy(old: RemoteTransfer, new: RemoteTransfer) = old.state == RemoteTransfer.State.Failed("stopped") &&
+        old.id != new.id && old.name == new.name && old.incoming == new.incoming && old.peer == new.peer
 
     /** Done ones and failed ones the list keeps: the last 50. */
     private fun save() {

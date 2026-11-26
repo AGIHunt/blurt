@@ -11,10 +11,10 @@ import android.os.Bundle
 import android.text.format.Formatter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import dev.blurt.remote.app.files.UriSource
+import dev.blurt.remote.app.sheets.AskDialog
 import dev.blurt.remote.app.sheets.BlurtTheme
 import dev.blurt.remote.core.RemoteFiles
 import java.io.File
@@ -40,7 +41,8 @@ class ShareActivity : ComponentActivity() {
             if (s.size < 0) s.name else s.name + " · " + Formatter.formatShortFileSize(this, s.size).replace(' ', '\u00A0')
         }
         setContent {
-            BlurtTheme {
+            // over the app it was shared from: light or dark as the phone is
+            BlurtTheme(dark = isSystemInDarkTheme()) {
                 var copying by remember { mutableStateOf(false) }
                 // nothing paired, or more than one batch can carry (nothing goes, rather than the first 1,000)
                 val refusal = when {
@@ -54,16 +56,16 @@ class ShareActivity : ComponentActivity() {
                         text = { Text(stringResource(refusal ?: R.string.share_pair_first)) },
                         confirmButton = { TextButton({ finish() }) { Text(stringResource(R.string.ok)) } },
                     )
-                } else AlertDialog(
-                    onDismissRequest = { if (!copying) finish() },
-                    title = { Text(stringResource(R.string.share_send_to, mac.title)) },
+                } else AskDialog(
+                    onDismiss = { if (!copying) finish() },
+                    title = stringResource(R.string.share_send_to, mac.title),
                     text = {
                         Column {
-                            for (n in items.take(4)) Text(n, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.bodyMedium)
-                            if (uris.size > 4) Text("…", style = MaterialTheme.typography.bodyMedium)
+                            for (n in items.take(4)) Text(n, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+                            if (uris.size > 4) Text("…")
                         }
                     },
-                    confirmButton = {
+                    confirm = {
                         if (copying) CircularProgressIndicator()
                         else TextButton({
                             copying = true
@@ -73,7 +75,7 @@ class ShareActivity : ComponentActivity() {
                             }.start()
                         }) { Text(stringResource(R.string.send)) }
                     },
-                    dismissButton = { if (!copying) TextButton({ finish() }) { Text(stringResource(R.string.cancel)) } },
+                    dismiss = { if (!copying) TextButton({ finish() }) { Text(stringResource(R.string.cancel)) } },
                 )
             }
         }

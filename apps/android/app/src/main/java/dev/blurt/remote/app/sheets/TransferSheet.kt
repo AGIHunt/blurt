@@ -26,8 +26,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -94,10 +98,14 @@ fun TransferSheet(onClose: () -> Unit) {
                 Divider(TextStart)
                 ActionRow(stringResource(R.string.send_folder), "folder") { folder.launch(null) }
                 Divider(TextStart)
-                // an older computer can't give what's copied: it says so, and how to get it
+                // greyed, it says why: no session (the pad's card's words), or an older computer, and how to get it
                 val canClip = dev.blurt.remote.core.RemoteFeature.CLIPBOARD in features
                 ActionRow(stringResource(R.string.get_copied, macName), "content_paste_go", enabled = connected && canClip,
-                    sub = if (connected && !canClip) stringResource(R.string.update_host, macName) else null) { tr.getCopied() }
+                    sub = when {
+                        !connected -> stringResource(if (state == Link.State.CONNECTING) R.string.status_reconnecting else R.string.status_cant_reach, macName)
+                        !canClip -> stringResource(R.string.update_host, macName)
+                        else -> null
+                    }) { tr.getCopied() }
                 got?.let { Got(it, tr) }
             }
         }
@@ -107,11 +115,18 @@ fun TransferSheet(onClose: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
-        if (rows.isNotEmpty()) item { Spacer(Modifier.heightIn(min = 4.dp)) }
-        items(rows, key = { (if (it.t.incoming) "in-" else "out-") + it.t.id }) { r ->
-            Box(Modifier.padding(horizontal = 16.dp, vertical = 3.dp)) {
-                androidx.compose.material3.Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                    TransferRow(ctx, r, meeting = meeting, connected = connected)
+        if (rows.isNotEmpty()) item { Spacer(Modifier.heightIn(min = 8.dp)) }
+        // one grouped list, as Files shows a folder: rows with dividers, the group's corners on its first and last
+        itemsIndexed(rows, key = { _, it -> (if (it.t.incoming) "in-" else "out-") + it.t.id }) { i, r ->
+            val top = if (i == 0) 16.dp else 0.dp
+            val bottom = if (i == rows.lastIndex) 16.dp else 0.dp
+            Box(Modifier.padding(horizontal = 16.dp)) {
+                androidx.compose.material3.Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(top, top, bottom, bottom),
+                    color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Column {
+                        if (i > 0) Divider(TextStart)
+                        TransferRow(ctx, r, meeting = meeting, connected = connected)
+                    }
                 }
             }
         }
@@ -138,13 +153,25 @@ private fun Glyph(content: @Composable () -> Unit) = Box(Modifier.widthIn(min = 
 /** 16 dp in, a 24 dp icon, 14 dp: where the rows' text starts */
 private val TextStart = 54.dp
 
-/** A received file's button: its label starts where the button does (a TextButton centres a short one in its minimum width), so the
- *  first one lines up with the name above it. */
+/** A received file's ⋮: Share…, and Save to Gallery for pictures and videos (✓ once saved). A tap on the row opens it. */
 @Composable
-private fun FileButton(label: String, act: () -> Unit) =
-    TextButton(act, contentPadding = PaddingValues(horizontal = 8.dp)) {
-        Text(label, Modifier.widthIn(min = ButtonDefaults.MinWidth - 16.dp), fontSize = 14.sp, textAlign = TextAlign.Start)
+private fun FileMenu(ctx: Context, r: Transfers.Row, uri: Uri) {
+    var open by remember { mutableStateOf(false) }
+    val tr = Remote.transfers
+    Box {
+        val label = stringResource(R.string.more_options)
+        IconButton({ open = true }, Modifier.semantics { contentDescription = label }) {
+            Sym("more_vert", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        DropdownMenu(open, { open = false }, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DropdownMenuItem({ Text(stringResource(R.string.share)) }, { open = false; Downloads.share(ctx, uri, r.t.name) })
+            if (Downloads.canSaveToGallery(r.t.name)) {
+                DropdownMenuItem({ Text(stringResource(R.string.save_to_gallery)) }, { open = false; tr.saveToGallery(r) }, enabled = !r.inGallery,
+                    trailingIcon = if (r.inGallery) {{ Sym("check", size = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }} else null)
+            }
+        }
     }
+}
 
 /** What Get Copied Items brought: under the button, until the next. */
 @Composable
@@ -189,7 +216,9 @@ private fun TransferRow(ctx: Context, r: Transfers.Row, meeting: Boolean, connec
     val done = t.state == RemoteTransfer.State.Done
     val uri = t.location?.let(Uri::parse)
     val opens = done && t.incoming && uri != null
-    Column(Modifier.fillMaxWidth().clickable(opens) { if (uri != null) Downloads.open(ctx, uri, t.name) }.padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)) {
+    val openLabel = stringResource(R.string.open)
+    Column(Modifier.fillMaxWidth().clickable(opens, onClickLabel = openLabel) { if (uri != null) Downloads.open(ctx, uri, t.name) }
+        .heightIn(min = 60.dp).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.Center) {
         // Continue on a paused one whose session didn't come back by itself, and on one that didn't go
         val again = !t.incoming && (paused && !connected || t.state == RemoteTransfer.State.Failed("other"))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,23 +242,13 @@ private fun TransferRow(ctx: Context, r: Transfers.Row, meeting: Boolean, connec
                 val label = stringResource(R.string.stop)
                 IconButton({ tr.stop(r) }, Modifier.semantics { contentDescription = label }) { Sym("close", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
+            if (opens && uri != null) FileMenu(ctx, r, uri)
         }
         if (going || paused || r.zipping) {
             val f = t.fraction.toFloat()
-            if (r.zipping) LinearProgressIndicator(Modifier.fillMaxWidth().padding(start = TextStart - 16.dp, end = 12.dp, top = 8.dp))
-            else LinearProgressIndicator({ f }, Modifier.fillMaxWidth().padding(start = TextStart - 16.dp, end = 12.dp, top = 8.dp),
+            if (r.zipping) LinearProgressIndicator(Modifier.fillMaxWidth().padding(start = TextStart - 16.dp, end = 12.dp, top = 6.dp, bottom = 4.dp))
+            else LinearProgressIndicator({ f }, Modifier.fillMaxWidth().padding(start = TextStart - 16.dp, end = 12.dp, top = 6.dp, bottom = 4.dp),
                 color = if (paused) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
-        }
-        if (opens && uri != null) {
-            // the first label under the name: the row's text start, less the button's own 8 dp
-            Row(Modifier.padding(start = TextStart - 16.dp - 8.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FileButton(stringResource(R.string.open)) { Downloads.open(ctx, uri, t.name) }
-                FileButton(stringResource(R.string.share)) { Downloads.share(ctx, uri, t.name) }
-                if (Downloads.canSaveToGallery(t.name)) {
-                    if (r.inGallery) Box(Modifier.padding(12.dp)) { Sym("check", size = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    else FileButton(stringResource(R.string.save_to_gallery)) { tr.saveToGallery(r) }
-                }
-            }
         }
     }
 }

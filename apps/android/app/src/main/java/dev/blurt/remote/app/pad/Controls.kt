@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -39,6 +40,7 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
     private var heldFired = false
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val r = RectF()
+    private val path = Path()
     private val hold = Runnable { if (down && onHold != null) { heldFired = true; Haptics.grab(); onHold?.invoke() } }
 
     init {
@@ -77,14 +79,15 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
         val dx = 3f.dp
         val half = 5.5f.dp
         val head = 2.8f.dp
+        // one path for both: separate strokes overlap where the head meets the shaft, and the translucent mark doubles into a bright dot there
+        path.rewind()
         // up, on the left
-        canvas.drawLine(cx - dx, cy + half, cx - dx, cy - half, p)
-        canvas.drawLine(cx - dx, cy - half, cx - dx - head, cy - half + head, p)
-        canvas.drawLine(cx - dx, cy - half, cx - dx + head, cy - half + head, p)
+        path.moveTo(cx - dx, cy + half); path.lineTo(cx - dx, cy - half)
+        path.moveTo(cx - dx - head, cy - half + head); path.lineTo(cx - dx, cy - half); path.lineTo(cx - dx + head, cy - half + head)
         // down, on the right
-        canvas.drawLine(cx + dx, cy - half, cx + dx, cy + half, p)
-        canvas.drawLine(cx + dx, cy + half, cx + dx - head, cy + half - head, p)
-        canvas.drawLine(cx + dx, cy + half, cx + dx + head, cy + half - head, p)
+        path.moveTo(cx + dx, cy - half); path.lineTo(cx + dx, cy + half)
+        path.moveTo(cx + dx - head, cy + half - head); path.lineTo(cx + dx, cy + half); path.lineTo(cx + dx + head, cy + half - head)
+        canvas.drawPath(path, p)
         p.style = Paint.Style.FILL
     }
 

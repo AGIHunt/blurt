@@ -11,12 +11,16 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -28,7 +32,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,7 +45,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
 import dev.blurt.remote.app.pad.PadScreen
@@ -91,8 +99,50 @@ private val scheme = darkColorScheme(
     error = Color(0xFFFF8A80),
 )
 
+/** Light, for what shows over another app when the phone is light (the share sheet's question): the same teal, a shade deeper on white */
+private val lightScheme = lightColorScheme(
+    primary = Color(0xFF0B7F68),
+    onPrimary = Color.White,
+    secondary = Color(0xFF0B7F68),
+    surfaceTint = Color.Transparent,
+    // neutral greys, as the dark ones are: Material's defaults lean purple
+    surface = Color.White,
+    surfaceContainer = Color(0xFFF4F4F4),
+    surfaceContainerHigh = Color(0xFFF1F1F1),
+    onSurface = Color(0xFF1C1C1C),
+    onSurfaceVariant = Color(0xFF5E5E5E),
+)
+
+/** `dark`: the app is always dark; a screen over another app follows the phone. */
 @Composable
-fun BlurtTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = scheme, content = content)
+fun BlurtTheme(dark: Boolean = true, content: @Composable () -> Unit) = MaterialTheme(colorScheme = if (dark) scheme else lightScheme, content = content)
+
+/**
+ * A Material dialog with its spaces as the spec draws them: 24 dp around, 16 dp under the title, 24 dp from the text to the buttons and from
+ * the buttons' labels to the bottom. (AlertDialog adds the buttons' 48 dp touch height under 24 dp of padding: about 45 dp below them.) The
+ * title breaks into even lines, so "data?" never sits alone on the second.
+ */
+@Composable
+fun AskDialog(onDismiss: () -> Unit, title: String, confirm: @Composable () -> Unit, dismiss: (@Composable () -> Unit)? = null,
+              text: (@Composable () -> Unit)? = null) {
+    Dialog(onDismiss) {
+        Surface(Modifier.widthIn(min = 280.dp, max = 560.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            // the buttons are 40 dp tall in a 48 dp touch row: 10 dp here makes 24 dp to and from their labels
+            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 10.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall.copy(lineBreak = LineBreak.Heading), color = MaterialTheme.colorScheme.onSurface)
+                if (text != null) {
+                    Spacer(Modifier.height(16.dp))
+                    ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)) { text() }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                    dismiss?.invoke()
+                    confirm()
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,11 +228,11 @@ private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
     val ctx = LocalContext.current
     // "136 MB" never splits between the number and its unit
     val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes).replace(' ', '\u00A0')
-    AlertDialog(
-        onDismissRequest = a.no,
-        title = { Text(stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size)) },
-        confirmButton = { TextButton(a.yes) { Text(stringResource(if (a.incoming) R.string.data_get else R.string.send)) } },
-        dismissButton = { TextButton(a.no) { Text(stringResource(R.string.cancel)) } },
+    AskDialog(
+        onDismiss = a.no,
+        title = stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size),
+        confirm = { TextButton(a.yes) { Text(stringResource(if (a.incoming) R.string.data_get else R.string.send)) } },
+        dismiss = { TextButton(a.no) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

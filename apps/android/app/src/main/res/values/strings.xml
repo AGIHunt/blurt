@@ -286,6 +286,8 @@
     <string name="open">Open</string>
     <string name="share">Share…</string>
     <string name="save_to_gallery">Save to Gallery</string>
+    <!-- a received file's ⋮ (accessibility), as Android names its overflow button -->
+    <string name="more_options">More Options</string>
     <string name="stop">Stop</string>
     <string name="continue_transfer">Continue</string>
     <string name="copied">Copied</string>
