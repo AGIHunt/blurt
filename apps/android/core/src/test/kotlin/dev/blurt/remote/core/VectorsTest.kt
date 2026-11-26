@@ -213,6 +213,17 @@ class VectorsTest {
         assertEquals(n("chunk"), RemoteFiles.CHUNK.toLong())
         assertEquals(n("window"), RemoteFiles.WINDOW.toLong())
         assertEquals(n("progressEvery"), RemoteFiles.PROGRESS_EVERY.toLong())
+        assertEquals(n("oldProgressEvery"), RemoteFiles.OLD_PROGRESS_EVERY.toLong())
+        assertEquals(n("minWindow"), RemoteFiles.MIN_WINDOW.toLong())
+        assertEquals(n("windowMilliseconds"), RemoteFiles.WINDOW_MS)
+        val cases = f["windowFor"]!!.jsonArray
+        assertTrue(cases.size >= 4)
+        for (c in cases) {
+            val rate = c.jsonObject["rate"]!!.jsonPrimitive.double
+            assertEquals(c.jsonObject["window"]!!.jsonPrimitive.long, RemoteFiles.window(rate, resumes = true), "window($rate)")
+        }
+        assertEquals(RemoteFiles.WINDOW.toLong(), RemoteFiles.window(1_500_000.0, resumes = false), "an older peer: fixed 4 MiB")
+        assertEquals(RemoteFiles.MIN_WINDOW.toLong(), RemoteFiles.window(null, resumes = true), "no rate yet")
         assertEquals(n("maxSize"), RemoteFiles.MAX_SIZE)
         assertEquals(n("maxCount"), RemoteFiles.MAX_COUNT.toLong())
         assertEquals(n("maxClipImage"), RemoteFiles.MAX_CLIP_IMAGE.toLong())

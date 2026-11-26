@@ -260,6 +260,15 @@ class RemoteFilesTest {
         assertTrue(RemoteFiles.isMedia("作业 3.JPG") && RemoteFiles.isVideo("a.mp4") && !RemoteFiles.isMedia("Q4 报价单.xlsx"))
     }
 
+    @Test fun theWindowFollowsTheRate() {
+        assertEquals(RemoteFiles.MIN_WINDOW.toLong(), RemoteFiles.window(null, true))
+        assertEquals(750_000L, RemoteFiles.window(1_500_000.0, true), "half a second of a slow link")
+        assertEquals(RemoteFiles.WINDOW.toLong(), RemoteFiles.window(50_000_000.0, true), "capped on a fast one")
+        assertEquals(RemoteFiles.WINDOW.toLong(), RemoteFiles.window(1_500_000.0, false), "an older peer acks every 1 MiB")
+        assertEquals(null, RemoteFiles.rate(listOf(0L to 0L, 100L to 1000L)), "0.2 s apart at least")
+        assertEquals(10_000.0, RemoteFiles.rate(listOf(0L to 0L, 200L to 2000L)))
+    }
+
     @Test fun timeLeftNeedsTwoSeconds() {
         assertEquals(null, RemoteFiles.left(listOf(0L to 0L, 1000L to 100L), 1000))
         assertEquals(9.0, RemoteFiles.left(listOf(0L to 0L, 2000L to 200L), 1100), "100 B/s, 900 to go")

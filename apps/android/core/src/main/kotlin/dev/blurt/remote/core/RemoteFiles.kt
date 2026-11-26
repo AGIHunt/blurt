@@ -14,8 +14,16 @@ import java.util.concurrent.Executors
 
 object RemoteFiles {
     const val CHUNK = 192 * 1024
+    /** at most this much past the receiver's last progress: with a peer that doesn't resume (before 2026-11-26, which says how far it has
+     *  got every 1 MiB) always, otherwise the most the window grows to */
     const val WINDOW = 4 shl 20
-    const val PROGRESS_EVERY = 1 shl 20
+    /** a peer that resumes keeps only about this long of the measured rate unacknowledged, at least `MIN_WINDOW`: the control messages
+     *  sent behind file data (pings, keys) wait no longer than that (a fixed 4 MiB at 1.5 MB/s dropped this phone's session every 2.5 s) */
+    const val MIN_WINDOW = 512 shl 10
+    const val WINDOW_MS = 500L
+    /** a receiver that resumes says how far it has got this often (one that doesn't: every 1 MiB, `OLD_PROGRESS_EVERY`) */
+    const val PROGRESS_EVERY = 256 shl 10
+    const val OLD_PROGRESS_EVERY = 1 shl 20
     const val MAX_SIZE = 4L shl 30
     const val MAX_COUNT = 1000
     /** an image the phone pastes */
@@ -58,6 +66,21 @@ object RemoteFiles {
             if (!taken(c)) return c
         }
         return name
+    }
+
+    /** How much may be unacknowledged now: from the rate the receiver's progress shows (bytes/s, null before any), for a peer that resumes. */
+    fun window(rate: Double?, resumes: Boolean): Long {
+        if (!resumes) return WINDOW.toLong()
+        if (rate == null || rate <= 0) return MIN_WINDOW.toLong()
+        return (rate * WINDOW_MS / 1000.0).toLong().coerceIn(MIN_WINDOW.toLong(), WINDOW.toLong())
+    }
+
+    /** Bytes a second from what moved lately (ms, bytes): null until two samples 0.2 s apart. */
+    fun rate(samples: List<Pair<Long, Long>>): Double? {
+        val first = samples.firstOrNull() ?: return null
+        val last = samples.last()
+        if (last.first - first.first < 200 || last.second <= first.second) return null
+        return (last.second - first.second) / ((last.first - first.first) / 1000.0)
     }
 
     /** Seconds left from what moved lately (ms, bytes): null until 2 s of progress. */
@@ -415,13 +438,14 @@ class RemoteFileSender(
         }
         val id = info.id
         onChange?.invoke(item.t)
+        val resumes = peerResumes()
         if (info.size > RemoteFiles.MAX_SIZE) return finish(item, RemoteTransfer.State.Failed("too_big"), wire = false)
         if (item.source.size < 0) return finish(item, RemoteTransfer.State.Failed("read"), wire = false)
         val input = try { item.source.open() } catch (_: Exception) { return finish(item, RemoteTransfer.State.Failed("read"), wire = false) }
         input.use { h ->
             if (!send(RemoteFileOut.Begin(info))) return pause(item)
             var sent = 0L
-            if (peerResumes()) {
+            if (resumes) {
                 // where the receiver has it: 0 for a new file
                 var waited = 0L
                 while (synchronized(lock) { !item.heardSince && item.t.state == RemoteTransfer.State.Going }) {
@@ -436,7 +460,10 @@ class RemoteFileSender(
             val buf = ByteArray(RemoteFiles.CHUNK)
             while (true) {
                 var waited = 0L
-                while (synchronized(lock) { item.t.state == RemoteTransfer.State.Going && sent - (item.acked ?: 0L) > RemoteFiles.WINDOW }) {
+                while (synchronized(lock) {
+                        item.t.state == RemoteTransfer.State.Going &&
+                            sent - (item.acked ?: 0L) > RemoteFiles.window(RemoteFiles.rate(item.samples), resumes)
+                    }) {
                     Thread.sleep(pollMs)
                     waited += pollMs
                     // a minute without the receiver moving
@@ -611,7 +638,7 @@ class RemoteFileReceiver(
             return change(p, RemoteTransfer.State.Failed("write"))
         }
         p.written += d.size
-        if (p.held || p.written - p.told < RemoteFiles.PROGRESS_EVERY) return
+        if (p.held || p.written - p.told < (if (resumes) RemoteFiles.PROGRESS_EVERY else RemoteFiles.OLD_PROGRESS_EVERY)) return
         p.told = p.written
         val n = System.nanoTime() / 1_000_000
         p.samples += n to p.written
