@@ -63,6 +63,8 @@ final class PadViewController: UIViewController {
     private weak var transferSheet: UIViewController?
     /// what Get Copied Items came to, with the sheet away
     private let toast = TransferToast()
+    /// the mobile-data question on screen, closed if what it asks about goes
+    private weak var mobileAlert: UIAlertController?
     private let drawerButton = UIButton(type: .system)
     /// landscape: the keys are out. Out for the trackpad, put away when there's a picture to see
     private var drawerOpen = true
@@ -536,7 +538,13 @@ final class PadViewController: UIViewController {
             self.toast.show(s)
             self.view.setNeedsLayout()
         }.store(in: &bag)
-        tr.$asking.compactMap { $0 }.receive(on: RunLoop.main).sink { [weak self] a in self?.askMobileData(a) }.store(in: &bag)
+        tr.$asking.receive(on: RunLoop.main).sink { [weak self] a in
+            guard let self else { return }
+            if let a { return self.askMobileData(a) }
+            // the computer gave up on what was asked about, or the session went: the question goes too
+            if let c = self.mobileAlert, c.presentingViewController != nil, !c.isBeingDismissed { c.dismiss(animated: true) }
+            self.mobileAlert = nil
+        }.store(in: &bag)
         // lit while something goes or waits
         tr.$rows.map { $0.contains { !$0.isOver } }.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] busy in
             self?.transferButton.tintColor = busy ? Theme.mint : Theme.caption
@@ -1223,6 +1231,8 @@ final class PadViewController: UIViewController {
         c.addAction(UIAlertAction(title: a.incoming ? String(localized: "Get") : String(localized: "Send"), style: .default) { _ in
             Transfers.shared.answer(a, yes: true)
         })
+        if let old = mobileAlert, old.presentingViewController != nil { old.dismiss(animated: false) }
+        mobileAlert = c
         topmost.present(c, animated: true)
     }
 

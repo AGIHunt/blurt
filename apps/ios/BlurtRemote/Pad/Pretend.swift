@@ -23,7 +23,8 @@ enum Pretend {
     /// clipboard; `=sheet` opens the sheet, `=toast` shows the pad's toast for an image copied (docs/design/remote-files.md)
     static let transfers = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_TRANSFERS"]
 
-    /// The rows: one going out in a batch, the next waiting, one paused, one coming in, two received, one sent, one that couldn't go.
+    /// The rows: one going out in a batch, the next waiting, photos being prepared, one paused each way (Continue on the one going out),
+    /// one coming in, two received, one sent, one that couldn't go.
     static func fillTransfers(peer: String) {
         let docs = Link.documents, now = Date()
         // received files that exist, so a tap has something to open
@@ -43,7 +44,9 @@ enum Pretend {
             r("out-1", "片段 2.mov", 412_000_000, 148_000_000, incoming: false, .going, index: 2, count: 3, left: 184, ago: 10),
             r("out-2", "片段 3.mov", 236_000_000, 0, incoming: false, .waiting, index: 3, count: 3, ago: 10),
             r("in-1", "设计稿.zip", 86_000_000, 35_000_000, incoming: true, .going, left: 42, ago: 30),
+            r("prep-1", String(localized: "\(3) items"), 0, 0, incoming: false, .preparing, ago: 5),
             r("out-3", "Q3 汇报.key", 52_000_000, 31_700_000, incoming: false, .paused, ago: 60),
+            r("in-4", "课堂录音.m4a", 64_000_000, 20_500_000, incoming: true, .paused, ago: 90),
             r("in-2", "作业 3.jpg", photo.count, photo.count, incoming: true, .done, file: "作业 3.jpg", ago: 300),
             r("in-3", "Q4 报价单.xlsx", 48_200, 48_200, incoming: true, .done, file: "Q4 报价单.xlsx", ago: 900),
             r("out-4", "合同扫描.pdf", 2_400_000, 2_400_000, incoming: false, .done, ago: 1800),

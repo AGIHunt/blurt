@@ -10,6 +10,7 @@ final class PageStrip: UIView {
     /// than its neighbours and touching them ("LettersSymbols")
     private var size: CGFloat = 13
     static let minGap: CGFloat = 10
+    static let lineGap: CGFloat = 8
     /// lines of names, where the strip is tall enough for more than one
     private(set) var rows = 1
     /// a line takes at least this much height; under two of these the strip is one line, as on a phone
@@ -82,7 +83,8 @@ final class PageStrip: UIView {
         if bounds.height >= Self.minLine * 2 {
             (lines, fit) = Self.arrange(count: n, in: bounds.size) { widths($0).max() ?? 0 }
         } else {
-            let room = bounds.width - Self.minGap * CGFloat(n), natural = widths(13).reduce(0, +)
+            // one line on a phone: a little closer together (8 pt) than in a grid, so four Chinese names fit at 13 pt beside Transfer
+            let room = bounds.width - Self.lineGap * CGFloat(n), natural = widths(13).reduce(0, +)
             fit = natural > room ? max(10, floor(13 * room / natural * 2) / 2) : 13
         }
         if fit != size { size = fit; paint() }

@@ -52,6 +52,9 @@ struct TransferSheet: View {
                     ForEach(t.rows) { r in row(r) }
                 }
             }
+            // the first section ~20 pt under the title, as in Settings (the default left ~44 pt)
+            .listSectionSpacing(.compact)
+            .contentMargins(.top, 11, for: .scrollContent)
             .navigationTitle("Transfer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -113,20 +116,31 @@ struct TransferSheet: View {
 
     @ViewBuilder private func row(_ r: TransferRow) -> some View {
         if let u = r.savedURL, FileManager.default.fileExists(atPath: u.path) {
-            // a received file: a tap opens a menu, Open first
-            Menu {
-                Button { preview = u } label: { Label("Open", systemImage: "eye") }
+            // a received file, as in Files: a tap opens it, a touch and hold has the rest. A Menu here popped over the row and the one above
+            Button { preview = u } label: {
+                TransferRowView(r: r, meeting: l.meeting, canContinue: false)
+            }
+            .foregroundStyle(.primary)
+            .contextMenu {
                 ShareLink(item: u) { Label("Share…", systemImage: "square.and.arrow.up") }
                 if r.isMedia, !saved.contains(r.id) {
                     Button { save(u, video: r.isVideo, key: r.id) } label: { Label("Save to Photos", systemImage: "photo.badge.plus") }
                 }
-            } label: {
-                TransferRowView(r: r, meeting: l.meeting, canContinue: false)
             }
-            .foregroundStyle(.primary)
+            .accessibilityAction(named: Text("Share…")) { share(u) }
         } else {
-            TransferRowView(r: r, meeting: l.meeting, canContinue: t.canContinue(r), stop: { t.stop(r) }, again: { t.again(r) })
+            TransferRowView(r: r, meeting: l.meeting, canContinue: t.canContinue(r), away: t.away, stop: { t.stop(r) }, again: { t.again(r) })
         }
+    }
+
+    /// VoiceOver's way to Share…, which a context menu hides
+    private func share(_ u: URL) {
+        guard let w = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first,
+              var top = w.rootViewController else { return }
+        while let p = top.presentedViewController { top = p }
+        let c = UIActivityViewController(activityItems: [u], applicationActivities: nil)
+        c.popoverPresentationController?.sourceView = top.view
+        top.present(c, animated: true)
     }
 }
 
@@ -134,48 +148,82 @@ struct TransferRowView: View {
     let r: TransferRow
     let meeting: Bool
     let canContinue: Bool
+    var away = false
     var stop: () -> Void = {}
     var again: () -> Void = {}
 
+    /// While it moves, which way; once over, what kind of file it is (or what went wrong)
     private var icon: String {
         switch r.phase {
+        case .failed("stopped"): return Self.kind(r.file ?? r.name)
         case .failed: return "exclamationmark.circle"
-        case .done: return r.incoming ? (r.isMedia ? "photo" : "doc") : "checkmark.circle"
+        case .done: return Self.kind(r.file ?? r.name)
         case .compressing: return "doc.zipper"
+        case .preparing: return "photo.on.rectangle"
         default: return r.incoming ? "arrow.down.circle" : "arrow.up.circle"
         }
     }
 
-    /// A line wraps only between its parts: "148 MB / 412 MB" and 还剩 3 分钟 stay whole.
-    static func breaksAtDots(_ line: String) -> String {
-        line.components(separatedBy: " · ").map { part in
+    private var iconColor: Color {
+        if case let .failed(w) = r.phase, w != "stopped" { return .red }
+        return .secondary
+    }
+
+    /// A file's kind as a symbol, as Files draws it small
+    static func kind(_ name: String) -> String {
+        guard let t = UTType(filenameExtension: (name as NSString).pathExtension) else { return "doc" }
+        if t.conforms(to: .image) { return "photo" }
+        if t.conforms(to: .movie) || t.conforms(to: .video) { return "film" }
+        if t.conforms(to: .audio) { return "waveform" }
+        if t.conforms(to: .archive) { return "doc.zipper" }
+        if t.conforms(to: .pdf) { return "doc.richtext" }
+        if t.conforms(to: .spreadsheet) { return "tablecells" }
+        if t.conforms(to: .presentation) { return "rectangle.on.rectangle" }
+        return "doc"
+    }
+
+    /// The line as it may wrap: whole, else in two at one of its " · ", the later the better. "148 MB of 412 MB", "3 min left" and
+    /// 还剩 3 分钟 stay whole, and no line starts or ends with "·" (the dot at the break goes).
+    static func breaksAtDots(_ line: String) -> [String] {
+        let parts = line.components(separatedBy: " · ").map { part in
             part.map { $0 == " " ? "\u{00A0}" : String($0) }.joined(separator: "\u{2060}")
-        }.joined(separator: " · ")
+        }
+        func join(_ p: ArraySlice<String>) -> String { p.joined(separator: "\u{00A0}·\u{00A0}") }
+        return [join(parts[...])] + stride(from: parts.count - 1, through: 1, by: -1).map { k in
+            join(parts[..<k]) + "\n" + join(parts[k...])
+        }
     }
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(r.phase == .done ? Color.accentColor : Color.secondary)
+                .foregroundStyle(iconColor)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 Text(r.name).lineLimit(1).truncationMode(.middle)
                 if r.phase == .going || r.phase == .paused {
                     ProgressView(value: r.fraction).tint(r.phase == .paused ? .secondary : .accentColor)
                 }
-                Text(Self.breaksAtDots(TransferWords.line(r, meeting: meeting)))
+                HStack(alignment: .firstTextBaseline) {
+                    ViewThatFits(in: .horizontal) {
+                        ForEach(Self.breaksAtDots(TransferWords.line(r, meeting: meeting, canContinue: canContinue, away: away)), id: \.self) { t in
+                            Text(t).lineLimit(2)
+                        }
+                    }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    // Continue under the bar's end, so every bar ends at the same place
+                    if canContinue {
+                        Spacer(minLength: 8)
+                        Button("Continue", action: again)
+                            .font(.footnote.weight(.semibold))
+                            .buttonStyle(.borderless)
+                    }
+                }
             }
             Spacer(minLength: 0)
-            if canContinue {
-                Button(action: again) { Image(systemName: "arrow.clockwise.circle.fill").symbolRenderingMode(.hierarchical).font(.title2) }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(Text("Continue"))
-            }
-            if !r.isOver, r.phase != .compressing {
+            if !r.isOver, r.phase != .compressing, r.phase != .preparing {
                 Button(action: stop) {
                     Image(systemName: "xmark.circle.fill").symbolRenderingMode(.hierarchical).font(.title2).foregroundStyle(Color.secondary)
                 }

@@ -14,6 +14,8 @@ struct TransferRow: Identifiable, Codable, Equatable {
     enum Phase: Codable, Equatable {
         /// a folder being zipped before it goes
         case compressing
+        /// photos coming out of the photo library before they go
+        case preparing
         case waiting
         case going
         case paused
@@ -40,6 +42,8 @@ struct TransferRow: Identifiable, Codable, Equatable {
     var secondsLeft: Double?
     /// shared to Blurt and not sent yet: its folder in the outbox
     var outbox: String?
+    /// sent to a computer whose Blurt saves in Downloads itself, not Downloads/Blurt (one without `resume`, as the Mac viewer tells them)
+    var toDownloads: Bool?
 
     var fraction: Double { size > 0 ? min(1, Double(done) / Double(size)) : (phase == .done ? 1 : 0) }
     var isOver: Bool { if case .failed = phase { return true }; return phase == .done }
@@ -62,12 +66,17 @@ enum TransferWords {
         return f.string(from: max(1, s.rounded())) ?? ""
     }
 
-    /// The line under a row's name. `meeting`: the public connection service hasn't opened the direct path yet.
-    static func line(_ r: TransferRow, meeting: Bool = false) -> String {
+    /// The line under a row's name. `meeting`: the public connection service hasn't opened the direct path yet. `canContinue`: the row
+    /// has Continue, so a paused one needn't say how it resumes.
+    static func line(_ r: TransferRow, meeting: Bool = false, canContinue: Bool = false, away: Bool = false) -> String {
         switch r.phase {
         case .compressing: return String(localized: "Compressing…")
+        case .preparing: return String(localized: "Preparing…")
         case .waiting: return meeting ? String(localized: "Connecting directly…") : String(localized: "Waiting")
-        case .paused: return String(localized: "Paused. Resumes when reconnected.")
+        case .paused:
+            // the session ended out of sight (iOS lets it run on ~25 s): it goes on when the app is back
+            if away { return String(localized: "Resumes when Blurt is open.") }
+            return canContinue ? String(localized: "Paused") : String(localized: "Paused. Resumes when reconnected.")
         case .going:
             let done = size(r.done), all = size(r.size), peer = r.peer
             var parts: [String] = []
@@ -77,7 +86,8 @@ enum TransferWords {
             return parts.joined(separator: " · ")
         case .done:
             let peer = r.peer
-            return r.incoming ? String(localized: "Saved to Files › Blurt") : String(localized: "Saved to Downloads/Blurt on \(peer)")
+            if r.incoming { return String(localized: "Saved to Files › Blurt") }
+            return r.toDownloads == true ? String(localized: "Saved to Downloads on \(peer)") : String(localized: "Saved to Downloads/Blurt on \(peer)")
         case let .failed(why):
             if why == "stopped" { return String(localized: "Stopped") }
             if r.incoming { return why == "space" ? String(localized: "Not received: not enough space on this device.") : String(localized: "Not received.") }
@@ -95,6 +105,7 @@ enum TransferWords {
         switch why {
         case "empty": String(localized: "Nothing is copied on \(name).")
         case "locked": String(localized: "\(name) is locked.")
+        case "too_large": String(localized: "A file copied on \(name) is larger than 4 GB.")
         case "too_big": String(localized: "Too many files are copied on \(name). Copy up to 1,000 at a time.")
         default: String(localized: "Can’t get this kind of item from \(name).")
         }
@@ -151,10 +162,12 @@ final class Transfers: ObservableObject {
         var askClipboard: () -> Void
         /// queue files on the sender: (files, clip, temporary, zips made)
         var queue: ([URL], Bool, Bool, Set<URL>) -> Void
-        /// a held begin, let through to the receiver
-        var feed: (RemoteFileOut) -> Void
-        /// an answer to the computer about a file coming in
-        var answer: (RemoteFileAnswer) -> Void
+        /// a file coming in whose progress waited for the mobile-data answer goes on
+        var release: (String) -> Void
+        /// files going out wait (true) for the mobile-data answer, or go on (false)
+        var holdOut: (Bool) -> Void
+        /// the computer in hand keeps what it gets in Downloads/Blurt (it resumes); an older one, in Downloads
+        var peerResumes: () -> Bool
         var stopOut: (String) -> Void
         var stopIn: (String) -> Void
         var again: (String) -> Void
@@ -167,8 +180,9 @@ final class Transfers: ObservableObject {
             ready: { Link.shared.ready },
             askClipboard: { Link.shared.getCopied() },
             queue: { urls, clip, temporary, made in Link.shared.files.add(urls, clip: clip, temporary: temporary, made: made) },
-            feed: { Link.shared.feed($0) },
-            answer: { Link.shared.send(ToMac($0)) },
+            release: { Link.shared.releaseIncoming($0) },
+            holdOut: { Link.shared.holdOutgoing($0) },
+            peerResumes: { Link.shared.hostFeatures.contains(RemoteFeature.resume) },
             stopOut: { Link.shared.files.stop($0) },
             stopIn: { Link.shared.stopIncoming($0) },
             again: { Link.shared.files.again($0) },
@@ -182,6 +196,8 @@ final class Transfers: ObservableObject {
     @Published var asking: Ask?
     /// Get Copied Items was tapped and the computer hasn't answered yet
     @Published private(set) var getting = false
+    /// the session ended while the app was out of sight: paused rows go on once it's open
+    @Published private(set) var away = false
 
     private var now: [TransferRow] = []
     private var earlier: [TransferRow] = []
@@ -191,8 +207,12 @@ final class Transfers: ObservableObject {
     var env: Env
     /// test hook
     var clock: () -> Date = Date.init
-    /// begins from the computer held for the mobile-data question, by wire id
+    /// files from the computer whose progress waits for the mobile-data question, by wire id
     private var held: [String: RemoteFileInfo] = [:]
+    /// what's going out waits for the mobile-data question: it resumed on mobile data with more than 100 MB left
+    private var heldResume = false
+    /// a yes to the mobile-data question for files going out: not asked again until then
+    private var allowedOut: Date?
     /// files to send held for it
     private var heldOut: (urls: [URL], temporary: Bool, made: Set<URL>, scoped: [URL])?
     /// a batch from the computer the user said yes or no to, as (count, total), so its other files aren't asked about again
@@ -239,6 +259,8 @@ final class Transfers: ObservableObject {
         let id = (t.incoming ? "in-" : "out-") + t.id
         let phase: TransferRow.Phase = switch t.state {
         case .waiting: .waiting
+        // written but not said to the computer until the mobile-data answer
+        case .going where t.incoming && held[t.id] != nil: .waiting
         case .going: .going
         case .paused: .paused
         case .done: .done
@@ -252,6 +274,7 @@ final class Transfers: ObservableObject {
             r.phase = phase
             r.secondsLeft = t.secondsLeft
             if t.incoming, t.state == .done { r.file = t.url?.lastPathComponent ?? t.name }
+            if !t.incoming, t.state == .done { r.toDownloads = !env.peerResumes() }
             now[i] = r
         } else {
             let r = TransferRow(id: id, wire: t.id, name: t.name, size: t.size, done: t.done, incoming: t.incoming, phase: phase, index: t.index,
@@ -288,12 +311,30 @@ final class Transfers: ObservableObject {
     }
 
     func sessionUp() {
+        away = false
         pickUp()
     }
 
     func sessionDown() {
         getting = false
         gettingDue?.cancel()
+        if !env.active() { away = true }
+        // what was asked about is asked again when its file begins again
+        if !held.isEmpty {
+            held = [:]
+            if asking?.incoming == true { asking = nil }
+        }
+    }
+
+    /// The session is up on mobile data, or a session went over to it: what's left to send, over 100 MB, waits for a yes.
+    func onMobileData() {
+        guard env.mobileData(), !heldResume, heldOut == nil, asking == nil, (allowedOut ?? .distantPast) < clock() else { return }
+        let left = now.filter { !$0.incoming && $0.outbox == nil && [.waiting, .going, .paused].contains($0.phase) }
+            .reduce(0) { $0 + max(0, $1.size - $1.done) }
+        guard Self.asksFirst(bytes: left, mobileData: true) else { return }
+        heldResume = true
+        env.holdOut(true)
+        asking = Ask(incoming: false, bytes: left)
     }
 
     /// Files began coming from the computer: the answer to Get Copied Items, if it was asked.
@@ -301,20 +342,36 @@ final class Transfers: ObservableObject {
 
     // MARK: from the computer
 
-    /// A file begins from the computer: on mobile data, a big one (its batch's bytes) waits for a yes.
+    /// A file begins from the computer: on mobile data, a big one (what's left of its batch) waits for a yes. Held, it's taken but its
+    /// progress isn't said, so the computer stops a window in and waits (a minute) instead of giving up after 10 s.
     func admit(_ i: RemoteFileInfo) -> Admit {
         let key = "\(i.count ?? 1)/\(i.total ?? i.size)", t = clock()
         if let r = refusedIn, r.key == key, r.until > t { return .refuse }
         if let a = allowedIn, a.key == key, a.until > t { return .go }
-        guard Self.asksFirst(bytes: i.total ?? i.size, mobileData: env.mobileData()) else { return .go }
+        // a file going on after a drop: only what's left of it counts
+        let had = now.first { $0.id == "in-" + i.id }?.done ?? 0
+        guard Self.asksFirst(bytes: max(0, (i.total ?? i.size) - had), mobileData: env.mobileData()) else { return .go }
         held[i.id] = i
         getting = false
-        if asking == nil { asking = Ask(incoming: true, bytes: i.total ?? i.size) }
+        if asking == nil {
+            let a = Ask(incoming: true, bytes: max(0, (i.total ?? i.size) - had))
+            asking = a
+            // the computer waits a minute for the file to move: not answered by then, it's no
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.answerWithin) { [weak self] in
+                if self?.asking?.id == a.id { self?.answer(a, yes: false) }
+            }
+        }
         return .hold
     }
 
-    /// The computer gave up on a file while it was asked about (it waits 10 s for an answer).
-    func heldEnded(_ id: String) -> Bool { held.removeValue(forKey: id) != nil }
+    static let answerWithin: TimeInterval = 50
+
+    /// The computer gave up on a file while it was asked about, or stopped it: with nothing else held, the question goes.
+    @discardableResult func heldEnded(_ id: String) -> Bool {
+        guard held.removeValue(forKey: id) != nil else { return false }
+        if held.isEmpty, asking?.incoming == true { asking = nil }
+        return true
+    }
 
     /// The mobile-data question's answer.
     func answer(_ a: Ask, yes: Bool) {
@@ -326,15 +383,24 @@ final class Transfers: ObservableObject {
                 let key = "\(i.count ?? 1)/\(i.total ?? i.size)", until = clock().addingTimeInterval(RemoteFiles.keepParts)
                 if yes {
                     allowedIn = (key, until)
-                    env.feed(.begin(i))
+                    env.release(i.id)
                 } else {
                     refusedIn = (key, clock().addingTimeInterval(120))
-                    env.answer(.failed(id: i.id, why: "stopped"))
+                    env.stopIn(i.id)
                 }
             }
+        } else if heldResume {
+            heldResume = false
+            if yes {
+                allowedOut = clock().addingTimeInterval(Self.allowedFor)
+            } else {
+                now.filter { !$0.incoming && $0.outbox == nil && [.waiting, .going, .paused].contains($0.phase) }.forEach { env.stopOut($0.wire) }
+            }
+            env.holdOut(false)
         } else if let h = heldOut {
             heldOut = nil
             if yes {
+                allowedOut = clock().addingTimeInterval(Self.allowedFor)
                 env.queue(h.urls, false, h.temporary, h.made)
             } else {
                 h.made.forEach { try? FileManager.default.removeItem(at: $0) }
@@ -343,6 +409,9 @@ final class Transfers: ObservableObject {
             }
         }
     }
+
+    /// a yes for files going out holds this long: a drop and a reconnect on the same mobile data don't ask again
+    static let allowedFor: TimeInterval = 600
 
     /// Get Copied Items.
     func getCopied() {
@@ -404,7 +473,7 @@ final class Transfers: ObservableObject {
         guard !urls.isEmpty else { return }
         picked.forEach { scoped.insert($0) }
         let total = urls.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
-        if Self.asksFirst(bytes: total, mobileData: env.mobileData()) {
+        if Self.asksFirst(bytes: total, mobileData: env.mobileData()), (allowedOut ?? .distantPast) < clock() {
             heldOut = (urls, temporary, made, picked)
             asking = Ask(incoming: false, bytes: total)
             return
@@ -441,9 +510,14 @@ final class Transfers: ObservableObject {
         }
     }
 
-    /// Photos from the system picker (no permission asked): each copied out as it is, then sent and deleted once over.
+    /// Photos from the system picker (no permission asked): each copied out as it is, then sent and deleted once over. A Preparing… row
+    /// while they come out of the library (an iCloud one downloads first); any that couldn't are counted.
     func sendPhotos(_ items: [NSItemProvider]) {
         guard !items.isEmpty else { return }
+        let preparing = TransferRow(id: "prep-" + UUID().uuidString, wire: "", name: String(localized: "\(items.count) items"), size: 0, incoming: false,
+                                    phase: .preparing, peer: env.peer()?.name ?? "", at: clock())
+        now.insert(preparing, at: 0)
+        publish()
         let dir = Link.caches.appendingPathComponent("outgoing/" + UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var got = [URL?](repeating: nil, count: items.count)
@@ -462,7 +536,15 @@ final class Transfers: ObservableObject {
                 if (try? FileManager.default.copyItem(at: url, to: dest)) != nil { got[n] = dest }
             }
         }
-        g.notify(queue: .main) { self.send(got.compactMap { $0 }, temporary: true) }
+        g.notify(queue: .main) {
+            self.now.removeAll { $0.id == preparing.id }
+            self.publish()
+            let ready = got.compactMap { $0 }
+            if ready.count < items.count {
+                self.say(Said(kind: .note, title: String(localized: "Couldn’t load \(items.count - ready.count) items.")))
+            }
+            self.send(ready, temporary: true)
+        }
     }
 
     /// Paste from This Device with an image copied here: it goes as the clipboard's content (a `clip` PNG or JPEG), and the computer pastes
@@ -535,6 +617,7 @@ final class Transfers: ObservableObject {
     /// Open and connected to the computer they were shared to: they go now (one batch for each share).
     func pickUp() {
         defer { refreshOutbox() }
+        if env.active() { away = false }
         guard let box = outbox, env.active(), env.ready(), let peer = env.peer() else { return }
         let dir = Link.caches.appendingPathComponent("outgoing", isDirectory: true)
         for files in box.take(for: peer.id, into: dir, now: clock()) { send(files, temporary: true) }

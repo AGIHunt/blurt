@@ -1,12 +1,16 @@
 // Share → Blurt (docs/design/remote-files.md §What the user does): the button names the computer last controlled, and that tap is the act.
 // What's shared (up to 50 pictures, videos or files) is copied into the App Group's outbox for that computer; the app sends it the next time
 // it's open and connected to it, and drops anything older than an hour. Nothing goes over the network from here.
+import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 
 final class ShareViewController: UIViewController {
     private let card = UIView()
     private let title_ = UILabel()
+    /// what's being sent: the first item small, and how many beside the title
+    private let thumb = UIImageView()
+    private let count = UILabel()
     private let line = UILabel()
     private let send = UIButton(type: .system)
     private let cancel = UIButton(type: .system)
@@ -26,10 +30,25 @@ final class ShareViewController: UIViewController {
         title_.text = "Blurt"
         title_.font = .systemFont(ofSize: 17, weight: .semibold)
         title_.textColor = .white
-        title_.textAlignment = .center
+        count.font = .systemFont(ofSize: 15)
+        count.textColor = UIColor(white: 1, alpha: 0.6)
+        thumb.contentMode = .scaleAspectFill
+        thumb.clipsToBounds = true
+        thumb.layer.cornerRadius = 8
+        thumb.layer.cornerCurve = .continuous
+        thumb.backgroundColor = UIColor(white: 0.2, alpha: 1)
+        thumb.tintColor = UIColor(white: 1, alpha: 0.6)
+        thumb.image = UIImage(systemName: "doc", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17))
+        thumb.contentMode = .center
+        NSLayoutConstraint.activate([thumb.widthAnchor.constraint(equalToConstant: 40), thumb.heightAnchor.constraint(equalToConstant: 40)])
+        let names = UIStackView(arrangedSubviews: [title_, count])
+        names.axis = .vertical
+        names.spacing = 1
+        let head = UIStackView(arrangedSubviews: [thumb, names])
+        head.spacing = 12
+        head.alignment = .center
         line.font = .systemFont(ofSize: 15)
         line.textColor = UIColor(white: 1, alpha: 0.78)
-        line.textAlignment = .center
         line.numberOfLines = 0
         line.isHidden = true
 
@@ -54,7 +73,7 @@ final class ShareViewController: UIViewController {
         spinner.color = .white
         spinner.hidesWhenStopped = true
 
-        let stack = UIStackView(arrangedSubviews: [title_, line, send, spinner, cancel])
+        let stack = UIStackView(arrangedSubviews: [head, line, send, spinner, cancel])
         stack.axis = .vertical
         stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -74,12 +93,36 @@ final class ShareViewController: UIViewController {
         wide.priority = .required - 1
         wide.isActive = true
 
+        let n = providers.count
+        count.text = String(localized: "\(n) items")
+        count.isHidden = n < 2
+        loadThumb()
+
         if let t = Outbox.target, Outbox.shared != nil {
             send.configuration?.title = String(localized: "Send to \(t.name)")
         } else {
             line.text = String(localized: "Pair a computer in Blurt first.")
             line.isHidden = false
             send.isHidden = true
+        }
+    }
+
+    /// The first item's picture, small, read without decoding the whole photo (an extension has little memory); else a document's mark.
+    private func loadThumb() {
+        guard let p = providers.first else { return }
+        let show: (UIImage?) -> Void = { [weak self] i in
+            guard let i else { return }
+            DispatchQueue.main.async { self?.thumb.contentMode = .scaleAspectFill; self?.thumb.image = i }
+        }
+        if p.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            _ = p.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { u, _ in
+                guard let u, let src = CGImageSourceCreateWithURL(u as CFURL, nil) else { return }
+                let o = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                         kCGImageSourceThumbnailMaxPixelSize: 120] as CFDictionary
+                show(CGImageSourceCreateThumbnailAtIndex(src, 0, o).map { UIImage(cgImage: $0) })
+            }
+        } else {
+            p.loadPreviewImage(options: [NSItemProviderPreferredImageSizeKey: CGSize(width: 120, height: 120)]) { o, _ in show(o as? UIImage) }
         }
     }
 
@@ -116,7 +159,7 @@ final class ShareViewController: UIViewController {
     private func done(_ nothing: Bool) {
         spinner.stopAnimating()
         guard !nothing else { return close(sent: false) }
-        line.text = String(localized: "Open Blurt to send.")
+        line.text = String(localized: "Open Blurt within an hour to send.")
         line.isHidden = false
         var c = UIButton.Configuration.plain()
         c.title = String(localized: "Done")

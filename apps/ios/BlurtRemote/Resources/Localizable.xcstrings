@@ -4199,6 +4199,72 @@
         }
       }
     },
+    "Preparing…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备…"
+          }
+        }
+      }
+    },
+    "%lld items" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld item"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld items"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项"
+          }
+        }
+      }
+    },
+    "Couldn’t load %lld items." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Couldn’t load %lld item."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Couldn’t load %lld items."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项无法载入。"
+          }
+        }
+      }
+    },
     "Connecting directly…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4229,6 +4295,26 @@
         }
       }
     },
+    "Paused" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暂停"
+          }
+        }
+      }
+    },
+    "Resumes when Blurt is open." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Blurt 后继续。"
+          }
+        }
+      }
+    },
     "Stopped" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4255,6 +4341,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已保存到 %@ 的「下载/Blurt」"
+          }
+        }
+      }
+    },
+    "Saved to Downloads on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存到 %@ 的「下载」文件夹"
           }
         }
       }
@@ -4345,6 +4441,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 上拷贝的文件太多。一次最多 1,000 个。"
+          }
+        }
+      }
+    },
+    "A file copied on %@ is larger than 4 GB." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上拷贝的文件超过 4 GB。"
           }
         }
       }

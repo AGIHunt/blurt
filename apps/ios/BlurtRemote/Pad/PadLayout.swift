@@ -301,15 +301,16 @@ private struct Parts {
         // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to
         // the left has room
         // a narrow phone keeps the room for the tabs. Since Transfer came (2026-11-26) the four by the arrow key are 4 pt narrower each:
-        // the tabs lose 16 pt instead of 36. Settings keeps its width, the room a slide to the left needs left-handed
-        let settingsW: CGFloat = width < 374 ? 32 : 36, iconW: CGFloat = width < 374 ? 28 : 32, arrowW: CGFloat = 82
+        // the tabs lose 16 pt instead of 36. Settings keeps its width, the room a slide to the left needs left-handed. Transfer's arrows
+        // are 13 pt, so its cell is 4 pt narrower again: the tabs lose 12
+        let settingsW: CGFloat = width < 374 ? 32 : 36, iconW: CGFloat = width < 374 ? 28 : 32, arrowW: CGFloat = 82, transferW = iconW - 4
         p.settingsButton = CGRect(x: block.minX, y: block.minY, width: settingsW, height: t - 2)
         p.arrowKey = CGRect(x: lefty ? p.settingsButton.maxX + 4 : block.maxX - arrowW, y: block.minY, width: arrowW, height: t - 2)
         let rowEnd = lefty ? block.maxX : p.arrowKey.minX - 4
         p.keyboardButton = CGRect(x: rowEnd - iconW, y: block.minY, width: iconW, height: t - 2)
         p.screenButton = CGRect(x: rowEnd - iconW * 2, y: block.minY, width: iconW, height: t - 2)
-        p.transferButton = CGRect(x: rowEnd - iconW * 3, y: block.minY, width: iconW, height: t - 2)
-        p.findButton = CGRect(x: rowEnd - iconW * 4, y: block.minY, width: iconW, height: t - 2)
+        p.transferButton = CGRect(x: rowEnd - iconW * 2 - transferW, y: block.minY, width: transferW, height: t - 2)
+        p.findButton = CGRect(x: p.transferButton.minX - iconW, y: block.minY, width: iconW, height: t - 2)
         let stripX = lefty ? p.arrowKey.maxX : p.settingsButton.maxX
         p.strip = CGRect(x: stripX, y: block.minY, width: p.findButton.minX - stripX, height: t - 2)
         p.list = CGRect(x: block.minX, y: block.minY + t, width: width, height: listH)

@@ -1,5 +1,5 @@
 // What Get Copied Items (or a paste from here) came to, on the pad while the Transfer sheet is away: a slab like the status card's,
-// at the top of the stage, gone after a few seconds. An image copied here has Save to Photos on it.
+// at the top of the stage, gone after a few seconds. An image copied here has Save to Photos on it, a mint-tinted capsule.
 import UIKit
 
 final class TransferToast: UIView {
@@ -25,9 +25,10 @@ final class TransferToast: UIView {
         detail.textColor = UIColor(white: 1, alpha: 0.78)
         detail.numberOfLines = 1
         detail.lineBreakMode = .byTruncatingTail
-        var c = UIButton.Configuration.filled()
-        c.baseBackgroundColor = Theme.slabLatched
-        c.baseForegroundColor = .black
+        // tinted, not filled: the toast's one action, not the brightest thing on the screen
+        var c = UIButton.Configuration.tinted()
+        c.baseBackgroundColor = Theme.mint
+        c.baseForegroundColor = Theme.mint
         c.cornerStyle = .capsule
         c.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
         c.title = String(localized: "Save to Photos")

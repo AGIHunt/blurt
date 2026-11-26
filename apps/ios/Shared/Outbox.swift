@@ -6,7 +6,7 @@ import Foundation
 
 struct Outbox {
     static let keep: TimeInterval = 3600
-    static let most = 50
+    static let most = 1000
 
     /// One share: its files sit beside this, in the same folder. Written last, so a folder without it is still being filled.
     struct Entry: Codable, Equatable {

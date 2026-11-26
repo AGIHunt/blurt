@@ -17,8 +17,8 @@ final class TransferTests: XCTestCase {
     /// What the model did to the engine, for the tests to read.
     private final class Calls {
         var queued: [([URL], Bool, Bool, Set<URL>)] = []
-        var fed: [RemoteFileOut] = []
-        var answered: [RemoteFileAnswer] = []
+        var released: [String] = []
+        var heldOut: [Bool] = []
         var stoppedOut: [String] = []
         var stoppedIn: [String] = []
         var again: [String] = []
@@ -26,11 +26,12 @@ final class TransferTests: XCTestCase {
     }
 
     private func model(mobile: Bool = false, ready: Bool = true, active: Bool = true, peer: (String, String)? = ("pc-1", "Office PC"),
-                       store: URL? = nil, outbox: Outbox? = nil) -> (Transfers, Calls) {
+                       store: URL? = nil, outbox: Outbox? = nil, resumes: Bool = true) -> (Transfers, Calls) {
         let c = Calls()
         let env = Transfers.Env(peer: { peer.map { (id: $0.0, name: $0.1) } }, mobileData: { mobile }, meeting: { false }, ready: { ready },
                                 askClipboard: { c.asked += 1 },
-                                queue: { c.queued.append(($0, $1, $2, $3)) }, feed: { c.fed.append($0) }, answer: { c.answered.append($0) },
+                                queue: { c.queued.append(($0, $1, $2, $3)) }, release: { c.released.append($0) }, holdOut: { c.heldOut.append($0) },
+                                peerResumes: { resumes },
                                 stopOut: { c.stoppedOut.append($0) }, stopIn: { c.stoppedIn.append($0) }, again: { c.again.append($0) },
                                 active: { active })
         return (Transfers(store: store ?? dir.appendingPathComponent("transfers.json"), outbox: outbox, env: env), c)
@@ -69,6 +70,12 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.line(row(.waiting), meeting: true), "Connecting directly…", "the public connection service before the move")
         XCTAssertEqual(TransferWords.line(row(.compressing)), "Compressing…")
         XCTAssertEqual(TransferWords.line(row(.paused)), "Paused. Resumes when reconnected.")
+        XCTAssertEqual(TransferWords.line(row(.paused), canContinue: true), "Paused", "Continue beside it says the rest")
+        XCTAssertEqual(TransferWords.line(row(.paused), canContinue: true, away: true), "Resumes when Blurt is open.")
+        XCTAssertEqual(TransferWords.line(row(.preparing)), "Preparing…")
+        var older = row(.done)
+        older.toDownloads = true
+        XCTAssertEqual(TransferWords.line(older), "Saved to Downloads on Office PC", "a computer without resume saves in Downloads")
         XCTAssertEqual(TransferWords.line(row(.done)), "Saved to Downloads/Blurt on Office PC")
         XCTAssertEqual(TransferWords.line(row(.done, incoming: true)), "Saved to Files › Blurt")
         XCTAssertEqual(TransferWords.line(row(.failed("stopped"))), "Stopped")
@@ -85,9 +92,23 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.nothing("empty", name: "Office PC"), "Nothing is copied on Office PC.")
         XCTAssertEqual(TransferWords.nothing("locked", name: "Office PC"), "Office PC is locked.")
         XCTAssertEqual(TransferWords.nothing("too_big", name: "Office PC"), "Too many files are copied on Office PC. Copy up to 1,000 at a time.")
+        XCTAssertEqual(TransferWords.nothing("too_large", name: "Office PC"), "A file copied on Office PC is larger than 4 GB.")
         XCTAssertEqual(TransferWords.nothing("unsupported", name: "Office PC"), "Can’t get this kind of item from Office PC.")
         XCTAssertEqual(TransferWords.firstWords("  Hello\n\nworld  "), "Hello world")
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")
+    }
+
+    func testALineWrapsOnlyAtItsDotsAndNeverStartsOrEndsWithOne() {
+        let l = TransferRowView.breaksAtDots("2 of 3 · To Studio PC · 148 MB of 412 MB · 3 min left")
+        XCTAssertEqual(l.count, 4, "whole, then broken at each dot from the last")
+        XCTAssertFalse(l[0].contains("\n"))
+        for t in l {
+            for line in t.split(separator: "\n") {
+                XCTAssertFalse(line.hasPrefix("·") || line.hasSuffix("·") || line.hasSuffix("\u{00A0}"), String(line))
+            }
+            XCTAssertFalse(t.contains(" "), "no plain space to break at: \(t)")
+        }
+        XCTAssertTrue(l[1].hasSuffix("3\u{2060}\u{00A0}\u{2060}m\u{2060}i\u{2060}n\u{2060}\u{00A0}\u{2060}l\u{2060}e\u{2060}f\u{2060}t"), "3 min left whole, on its own line")
     }
 
     // MARK: the clipboard, only when asked
@@ -139,7 +160,7 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(t.asking?.bytes, 180_000_000, "the batch's bytes, not the file's")
         t.answer(t.asking!, yes: true)
         XCTAssertNil(t.asking)
-        XCTAssertEqual(c.fed, [.begin(first)], "let through to the receiver")
+        XCTAssertEqual(c.released, ["a"], "its progress said, so the computer goes on")
         // the rest of the same batch isn't asked about again
         XCTAssertEqual(t.admit(RemoteFileInfo(id: "b", name: "片段 2.mov", size: 90_000_000, index: 2, count: 2, total: 180_000_000)), .go)
         // small, or on Wi-Fi: straight in
@@ -152,15 +173,59 @@ final class TransferTests: XCTestCase {
         let i = RemoteFileInfo(id: "a", name: "片段 1.mov", size: 300_000_000, index: 1, count: 2, total: 600_000_000)
         XCTAssertEqual(t.admit(i), .hold)
         t.answer(t.asking!, yes: false)
-        XCTAssertEqual(c.answered, [.failed(id: "a", why: "stopped")])
+        XCTAssertEqual(c.stoppedIn, ["a"], "its part goes and the computer hears stopped")
         XCTAssertEqual(t.admit(RemoteFileInfo(id: "b", name: "片段 2.mov", size: 300_000_000, index: 2, count: 2, total: 600_000_000)), .refuse)
-        // the computer gives up waiting (10 s) before the answer: its end is the held begin's, and nothing is fed after
+        // the computer gives up waiting (a minute) before the answer: the question goes with it, and nothing is released after
         let (u, d) = model(mobile: true)
         XCTAssertEqual(u.admit(i), .hold)
         XCTAssertTrue(u.heldEnded("a"))
+        XCTAssertNil(u.asking, "the alert closes")
         XCTAssertFalse(u.heldEnded("a"))
-        u.answer(u.asking!, yes: true)
-        XCTAssertTrue(d.fed.isEmpty)
+        XCTAssertTrue(d.released.isEmpty)
+        // a session that drops takes the question with it
+        let (v, _) = model(mobile: true)
+        XCTAssertEqual(v.admit(i), .hold)
+        v.sessionDown()
+        XCTAssertNil(v.asking)
+    }
+
+    func testAFileGoingOnAfterADropAsksOnlyAboutWhatsLeft() {
+        let (t, _) = model(mobile: true)
+        t.changed(RemoteTransfer(id: "a", name: "片段 1.mov", size: 300_000_000, done: 250_000_000, incoming: true, state: .paused))
+        XCTAssertEqual(t.admit(RemoteFileInfo(id: "a", name: "片段 1.mov", size: 300_000_000)), .go, "50 MB left")
+        let (u, _) = model(mobile: true)
+        u.changed(RemoteTransfer(id: "a", name: "片段 1.mov", size: 300_000_000, done: 50_000_000, incoming: true, state: .paused))
+        XCTAssertEqual(u.admit(RemoteFileInfo(id: "a", name: "片段 1.mov", size: 300_000_000)), .hold)
+        XCTAssertEqual(u.asking?.bytes, 250_000_000)
+        // while asked about it's written but not said: the row waits
+        u.changed(RemoteTransfer(id: "a", name: "片段 1.mov", size: 300_000_000, done: 52_000_000, incoming: true, state: .going))
+        XCTAssertEqual(u.rows.first?.phase, .waiting)
+    }
+
+    func testSendingThatGoesOnOverMobileDataWithMoreThan100MBLeftAsksAgain() {
+        let (t, c) = model(mobile: true)
+        t.changed(RemoteTransfer(id: "p", name: "片段.mov", size: 300_000_000, done: 50_000_000, incoming: false, state: .paused))
+        t.onMobileData()
+        XCTAssertEqual(c.heldOut, [true], "nothing goes until the answer")
+        XCTAssertEqual(t.asking?.incoming, false)
+        XCTAssertEqual(t.asking?.bytes, 250_000_000, "what's left")
+        t.answer(t.asking!, yes: true)
+        XCTAssertEqual(c.heldOut, [true, false])
+        t.onMobileData()
+        XCTAssertNil(t.asking, "a yes isn't asked again at the next drop")
+        // no: what was going stops
+        let (u, d) = model(mobile: true)
+        u.changed(RemoteTransfer(id: "p", name: "片段.mov", size: 300_000_000, done: 50_000_000, incoming: false, state: .paused))
+        u.onMobileData()
+        u.answer(u.asking!, yes: false)
+        XCTAssertEqual(d.stoppedOut, ["p"])
+        XCTAssertEqual(d.heldOut, [true, false])
+        // less than 100 MB left, or Wi-Fi: no question
+        let (w, e) = model(mobile: true)
+        w.changed(RemoteTransfer(id: "p", name: "片段.mov", size: 300_000_000, done: 250_000_000, incoming: false, state: .paused))
+        w.onMobileData()
+        XCTAssertNil(w.asking)
+        XCTAssertTrue(e.heldOut.isEmpty)
     }
 
     func testSendingMoreThan100MBOnMobileDataAsksAndNoDeletesWhatWasMadeForIt() {

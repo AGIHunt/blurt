@@ -218,7 +218,11 @@ final class Link: ObservableObject {
             let network = p.status == .satisfied ? p.availableInterfaces.map(\.name).joined(separator: ",") + " " + p.gateways.map { "\($0)" }.joined(separator: ",") : ""
             DispatchQueue.main.async {
                 guard let self else { return }
-                if self.mobileData != phoneNetwork { self.mobileData = phoneNetwork }
+                if self.mobileData != phoneNetwork {
+                    self.mobileData = phoneNetwork
+                    // Wi-Fi gone with files still going: more than 100 MB left asks first
+                    if phoneNetwork, self.filesLock.withLock({ self.filesChannel != nil }) { Transfers.shared.onMobileData() }
+                }
                 // another network may open the direct path where this one didn't
                 if network != self.network {
                     let first = self.network == nil
@@ -1252,6 +1256,8 @@ final class Link: ObservableObject {
     /// on the public connection service, nothing big goes before the stream has moved
     private var filesNeedMove = false
     private var filesResumes = false
+    /// on mobile data with more than 100 MB left to send: nothing begins and no chunk goes until the user says (an end still goes)
+    private var filesHoldOut = false
     /// the receiver's key for the computer: its own id, which outlives its name
     private(set) var filesDevice: String?
 
@@ -1260,12 +1266,15 @@ final class Link: ObservableObject {
 
     private func setUpFiles() {
         files = RemoteFileSender(send: { [weak self] o in
-            guard let self, let c = self.filesLock.withLock({ self.filesChannel }) else { return false }
+            guard let self, let c = self.filesLock.withLock({ () -> RemoteChannel? in
+                if self.filesHoldOut, !o.isEnd { return nil }
+                return self.filesChannel
+            }) else { return false }
             c.send(ToMac(o))
             return true
         }, ready: { [weak self] in
             guard let self else { return false }
-            return self.filesLock.withLock { self.filesChannel.map { !self.filesNeedMove || $0.moved } ?? false }
+            return self.filesLock.withLock { !self.filesHoldOut && (self.filesChannel.map { !self.filesNeedMove || $0.moved } ?? false) }
         }, peerResumes: { [weak self] in
             guard let self else { return false }
             return self.filesLock.withLock { self.filesResumes }
@@ -1295,6 +1304,8 @@ final class Link: ObservableObject {
         filesDevice = m.id
         // the share extension sends to the computer last controlled
         Outbox.target = Outbox.Target(id: m.id, name: m.title)
+        // back on mobile data with a lot left to send: asked first
+        Transfers.shared.onMobileData()
         files.connection(up: true)
         Transfers.shared.sessionUp()
     }
@@ -1307,27 +1318,51 @@ final class Link: ObservableObject {
         }
         guard was else { return }
         files.connection(up: false)
+        filesQueue.async { self.holds = [:] }
         if let d = filesDevice { filesQueue.async { self.receiver.suspend(device: d) } }
         Transfers.shared.sessionDown()
     }
 
-    /// A file from the computer. A big one on mobile data waits for the user's word (Transfers.admit).
+    /// A file from the computer. A big one on mobile data waits for the user's word (Transfers.admit): it's taken, but its progress
+    /// isn't said, so the computer stops a window in and waits for it (a minute) instead of giving up.
     private func fileIn(_ o: RemoteFileOut) {
         guard let device = filesDevice else { return }
-        switch o {
-        case let .begin(i) where !i.clip:
+        if case let .begin(i) = o, !i.clip {
             Transfers.shared.filesAnswered()
             switch Transfers.shared.admit(i) {
             case .go: break
-            case .hold: return
-            case .refuse: return answerFile(.failed(id: i.id, why: "stopped"))
+            case .hold: filesQueue.async { self.holds[i.id] = Hold(size: i.size) }
+            case .refuse: return filesQueue.async { self.answerFile(.failed(id: i.id, why: "stopped")) }
             }
-        case let .end(id):
-            // given up on while it was asked about
-            if Transfers.shared.heldEnded(id) { return }
-        default: break
         }
         feed(o, device)
+    }
+
+    /// A file from the computer held for the mobile-data question (on filesQueue): what's come of it, and its end if it all came.
+    private struct Hold {
+        let size: Int
+        /// the receiver's first answer went (where it has the file from: 0, or what it kept from before a drop)
+        var said = false
+        var from = 0
+        var got = 0
+        var ended = false
+    }
+    private var holds: [String: Hold] = [:]
+
+    /// The mobile-data answer was yes: what's written is said and the computer goes on; a file that all came is saved now.
+    func releaseIncoming(_ id: String) {
+        filesQueue.async { [weak self] in
+            guard let self, let h = self.holds.removeValue(forKey: id), let d = self.filesDevice else { return }
+            if h.ended { self.receiver.heard(.end(id: id), from: d) { a in self.answerFile(a) } }
+            else { self.answerFile(.progress(id: id, bytes: h.from + h.got)) }
+        }
+    }
+
+    /// Files going out wait for the mobile-data answer, or go on.
+    func holdOutgoing(_ hold: Bool) {
+        filesLock.withLock { filesHoldOut = hold }
+        // what paused at a held chunk goes on from where the computer has it
+        if !hold, filesLock.withLock({ filesChannel != nil }) { files.connection(up: true) }
     }
 
     /// What comes in is written off the main thread, in order: chunks, the space check and the final move.
@@ -1336,11 +1371,37 @@ final class Link: ObservableObject {
     /// One message for the receiver, its answers back on the session.
     func feed(_ o: RemoteFileOut, _ device: String? = nil) {
         guard let d = device ?? filesDevice else { return }
-        filesQueue.async { [weak self] in self?.receiver.heard(o, from: d) { a in self?.answerFile(a) } }
+        filesQueue.async { [weak self] in
+            guard let self else { return }
+            switch o {
+            case let .chunk(id, data): self.holds[id]?.got += data.count
+            case let .end(id):
+                if let h = self.holds[id] {
+                    // all of it came: saved once the answer is yes
+                    if h.from + h.got >= h.size { self.holds[id]?.ended = true; return }
+                    // short: the computer gave up waiting, or stopped it
+                    self.holds[id] = nil
+                    DispatchQueue.main.async { Transfers.shared.heldEnded(id) }
+                }
+            default: break
+            }
+            self.receiver.heard(o, from: d) { a in self.answerFile(a) }
+        }
     }
 
-    /// An answer about a file coming in, from any thread.
+    /// An answer about a file coming in, from any thread; on filesQueue, a held file's progress waits.
     private func answerFile(_ a: RemoteFileAnswer) {
+        switch a {
+        case let .progress(id, bytes):
+            if var h = holds[id] {
+                if h.said { return }
+                h.said = true
+                h.from = bytes
+                holds[id] = h
+            }
+        case let .saved(id, _), let .failed(id, _):
+            holds[id] = nil
+        }
         filesLock.withLock { filesChannel }?.send(ToMac(a))
     }
 
@@ -1556,4 +1617,8 @@ enum Keychain {
     }
 
     static func remove(account: String) { SecItemDelete(query(account) as CFDictionary) }
+}
+
+private extension RemoteFileOut {
+    var isEnd: Bool { if case .end = self { return true }; return false }
 }
