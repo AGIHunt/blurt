@@ -100,6 +100,10 @@ data class KeySlot(
     fun detail(host: RemoteHost = RemoteHost.MAC): String? {
         caption?.let { return it.ifEmpty { null } }
         val n = keyName(host) ?: return null
+        // a key with nothing held, already named or drawn large (Home, PgUp, ⌦): its Mac symbol under it was a smudge nobody could
+        // read (founder, 2026-11-27)
+        val a = action
+        if (a is KeyAction.Chord && a.chord.mods == 0 && glyph != null && !glyph.startsWith("mark:")) return null
         return if (glyph == null) null else n
     }
 

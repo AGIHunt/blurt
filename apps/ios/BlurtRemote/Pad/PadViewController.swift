@@ -326,6 +326,7 @@ final class PadViewController: UIViewController {
 
         view.addSubview(field)
         field.frame = CGRect(x: -10, y: -10, width: 1, height: 1)
+        modRow.order = { [weak self] in self?.deck.dock.compactMap { if case let .sticky(m) = $0.action { m } else { nil } } ?? [] }
         field.inputAccessoryView = modRow
         modRow.refresh()        // made before the computer in hand was known
         field.onSent = { [weak self] _ in self?.touched() }      // the keyboard's touches don't come through the window
@@ -949,7 +950,7 @@ final class PadViewController: UIViewController {
         findButton.frame = l.findButton
         keyboardButton.isHidden = typing
         settingsButton.isHidden = typing
-        findButton.isHidden = typing
+        findButton.isHidden = typing || l.findButton.isEmpty
         dim.frame = view.bounds
         // full screen: everything but the picture goes, and the talk key stays over it, small and see-through, by the thumb
         exitFull.isHidden = !full
@@ -1286,6 +1287,7 @@ final class PadViewController: UIViewController {
         deck = d
         d.save(for: Link.shared.host)
         showDeck()
+        modRow.refresh()        // the dock's modifiers may have moved
         view.setNeedsLayout()
     }
 

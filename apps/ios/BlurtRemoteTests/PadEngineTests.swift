@@ -745,6 +745,40 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(upright.stageAlignY, 0.5)
     }
 
+    /// The founder, 2026-11-27: the tabs stood far apart while the icons by the arrow key touched. Now the icons stand about as far
+    /// apart as the tabs, and Find Pointer is a key on 更多.
+    func testPortraitTopRowSharesItsRoom() {
+        for w: CGFloat in [375, 402, 440] {
+            for lefty in [false, true] {
+                let l = PadLayout(size: CGSize(width: w, height: 874), safe: tall, lefty: lefty)
+                XCTAssertTrue(l.findButton.isEmpty, "\(w)")
+                let icons = [l.transferButton, l.screenButton, l.keyboardButton]
+                noOverlaps(icons + [l.strip, l.settingsButton, l.arrowKey])
+                for b in icons { XCTAssertEqual(b.width, icons[0].width, "\(w)"); XCTAssertEqual(b.minY, l.strip.minY, "\(w)") }
+                // the screen's lit patch is 40 pt: at most 2 pt into a neighbour's cell, whose glyph sits well inside it
+                if w >= 402 { XCTAssertGreaterThanOrEqual(icons[0].width, 36, "\(w)") }
+                // each tab's share of the strip, against an icon's
+                XCTAssertLessThan(l.strip.width / 4, icons[0].width * 1.5, "\(w): tabs not spread far wider than the icons")
+                XCTAssertGreaterThanOrEqual(l.strip.width / 4, 34, "\(w): room for each tab")
+            }
+        }
+    }
+
+    /// A slide comes to rest on any row (founder, 2026-11-27: half 常用, half 字母), never half a key, and the end is a row too.
+    func testTheListRestsOnAnyRow() {
+        let list = KeyList(frame: CGRect(x: 0, y: 0, width: 402, height: 4 * 48 + 3 * 6))
+        list.show(Deck.standard(for: .mac).sections)
+        list.arrange(key: CGSize(width: 62, height: 48), gap: 6)
+        let row: CGFloat = 54, limit = list.contentSize.height - list.bounds.height
+        XCTAssertEqual(limit.truncatingRemainder(dividingBy: row), 0, accuracy: 0.5, "the end shows whole rows")
+        for aim: CGFloat in [2 * row + 10, 5 * row - 20, limit - 10] {
+            var t = CGPoint(x: 0, y: aim)
+            list.scrollViewWillEndDragging(list, withVelocity: .zero, targetContentOffset: &t)
+            XCTAssertEqual(t.y.truncatingRemainder(dividingBy: row), 0, accuracy: 0.5, "\(aim)")
+            XCTAssertLessThanOrEqual(abs(t.y - aim), row / 2 + 0.5, "the nearest row, not the next page")
+        }
+    }
+
     func testLandscapeTheIslandsEndHoldsTheControlsAndTheOtherTheThumbsKeys() {
         for size in [max, wide] {
             for islandLeft in [true, false] {

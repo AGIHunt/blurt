@@ -52,7 +52,7 @@ PORTRAIT (402×874)            LANDSCAPE, keys open (956×440)           LANDSCA
 [⌃][⌥][⌘][⇧][⇥][esc][⌫][↩][␣][🎤]
 ```
 
-- Portrait: a top row (settings, tabs, find the pointer, Transfer (since 2026-11-26), the screen, the system keyboard, the arrow key), six across for four rows of 48 pt, and the
+- Portrait: a top row (settings, tabs, Transfer (since 2026-11-26), the screen, the system keyboard, the arrow key), six across for four rows of 48 pt, and the
   dock under them: ten even keys, the last the talk key. 311 pt in all. The top row is 52 pt so the arrow key has 25 pt for each of up and down. The
   dock runs from the modifiers to what's used most, so esc, delete, return and space are by the thumb. Left-Handed mirrors the dock; settings stays
   first in the top row and the arrow key comes in past it, so a slide to the left has room (founder, 2026-11-08: at the edge it had none). At the
@@ -79,7 +79,7 @@ PORTRAIT (402×874)            LANDSCAPE, keys open (956×440)           LANDSCA
 
 ## Keys
 
-Pages of one shape, four rows, with tabs (常用 字母 符号 更多); one that grows scrolls a row at a time. Every key can be moved or changed, and everything
+Pages of one shape, four rows, with tabs (常用 字母 符号 更多). A tab goes to its page's top; a slide comes to rest on any row, so the end of 常用 and the start of 字母 can be in view together, and never half a key (2026-11-27, below). Every key can be moved or changed, and everything
 taken off the default page is in the key picker.
 
 What earns a place on 常用, a row each so the rows can be learned (founder, 2026-11-08):
@@ -93,7 +93,7 @@ What earns a place on 常用, a row each so the rows can be learned (founder, 20
 
 Off the page: anything a tap on a modifier and a key already in view can do (⌥⌫, ⌘⌫, ⌘↩, ⇧⇥, and ⌥L with the letters); what a tap on the picture does
 (⌘L); and what's rarely needed on a phone (⌘S, ⌘P, ⇧⌘P, ⌘B, ⌘J). All Windows, App Windows and the desktop keys are on 更多, and three fingers do them anyway.
-Find Pointer is about the whole screen, not the Mac's keys: it's a control by the tabs. Its ring closes on the pointer and goes after 0.9 s; asked again sooner, the old ring
+Find Pointer is about the whole screen, not the Mac's keys. It was a control by the tabs until 2026-11-27; now it's a key on 更多 (below). Its ring closes on the pointer and goes after 0.9 s; asked again sooner, the old ring
 goes at once (1.0.14 testers saw one left on the screen). The tabs share one font size, shrunk together when a language's names don't fit. 更多 and 字母 hold what only a computer has: F1–F12, Home, End,
 Page Up and Down, and forward delete. The space bar is in the dock.
 
@@ -235,6 +235,34 @@ both lifting together → ⌘ down, C, ⌘ up; S and A held together; AltGr, fn,
 the founder on an iPhone 16 Pro Max with a MacBook. Windows Server 2022, the backend typing into Notepad (2026-11-25): 47 legends on each layout
 (German: Y shows z, Q has @ with AltGr), Y, AltGr+Q and X down three times typed `z@xxx`; on the US layout Y and X typed `yxxx`. Not checked: typing
 speed, a Linux computer, Windows' system service, VoiceOver and TalkBack.
+
+**The keyboard round of 2026-11-27.** The founder, on an iPhone 17 Pro Max (440 pt) with pinyin's nine keys, sent four screenshots; an agent
+then went over every keyboard state in both languages at 402 and 440 pt. Changed:
+- **The portrait top row** shared its room badly: the tabs took all the icons didn't, so on 440 pt each tab had 70 pt and each icon 28–32, and the
+  screen's lit patch (40 pt) ran over its neighbours. Now the icons get what four tabs need (38 pt each) leaves, 32–44 pt: on 440 pt 44 pt icons
+  and 46 pt a tab, on 402 pt 37 and 38. Find Pointer left the row: with the picture on the pointer is in view, and the Mac shows it when the pad
+  is shaken. It's a key on 更多 in the slot the last row had free (Mac 23 → 24 keys, Linux 22 → 23; Windows' 更多 is full, so it's in the
+  picker there), and an untouched 更多 takes it (`Deck.modernise`). In landscape and on big screens it stays a control: there's room.
+- **The list rests on any row.** It came to rest only at a section's top, so a slide always went a whole page. Every row is a stop now, and the
+  end is a row's top too: on 更多 the end used to leave half of F1–F6 above F7 to make room for Edit Keys. Rows are 54 pt apart in portrait on
+  every page, so whole rows are always what shows.
+- **The small line under a plain key** is gone where the large part already names or draws it: ⇞ under PgUp, ↖ under Home and ⌦ under ⌦ were
+  10 pt smudges. Shortcuts keep theirs (⌘C under the copy icon). Key names of two to four characters share one size, 17 pt (F7 was 20 and F10
+  15; Home 13 and End 15); one letter stays 20.
+- **The row over the iPhone's keyboard** had eleven places. ↑ and ↓ left (the pad's arrow key is a tap on the last key away, and the computer
+  keyboard has all four), leaving eight: the way to the computer keyboard, the modifiers in the dock's order (it was ⇧⌘ against the dock's
+  ⌘⇧), esc, Tab, Paste from This Device and Hide Keyboard. The first was a laptop icon: it read as the screen button and switched keyboards
+  by surprise. It now says 电脑键盘 / Computer, the words of the switch on the computer keyboard, in the same corner. Tab and Hide Keyboard are
+  the dock's icons, and the paste icon is drawn at the letters' size (13 pt, small scale): it came out about 20 pt tall, the largest thing in
+  the row. A modifier tapped for the next key is outlined and a locked one filled, as in the dock; both were filled.
+- **The band between that row and pinyin's keys** is the input method's own: the letters being spelled and the candidates go there as soon as a
+  key is pressed (checked with the nine-key pinyin keyboard in the simulator). An app can't remove or use it; with the English keyboard there's
+  none.
+Left as they are, for now: on 更多 a long name's caption shrinks on its own ("Desktop Right" smaller than "Desktop Left"); ⇥ and ␣ in small
+lines (⌘⇥, ⌘␣) draw low and thin; the keyboard button isn't lit while the computer keyboard is out; with a modifier held, its ✕ chip takes the
+switch's place in the top row. Android keeps its top row and paging as they were; only the small-line rule is shared (`KeySlot.detail`).
+Checked: the iOS tests (232, the two Mac golden tests stale before this, as on main), the simulator at 440 pt in Chinese with nine-key pinyin.
+Not checked: a phone in the hand, VoiceOver, Windows and Linux key names on the phone.
 
 ## Trackpad
 

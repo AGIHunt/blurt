@@ -1,5 +1,6 @@
-// The keys as pages of one list, like the emoji keyboard: one section after another, each coming to rest at its top, so a key has the same
-// place each time. The tabs jump to the sections and follow the list. A section that outgrows the view scrolls a row at a time. A section
+// The keys as pages of one list, like the emoji keyboard: one section after another. The tabs jump to a section's top; a slide comes to
+// rest on any row, never half a key, so the end of 常用 and the start of 字母 can be in view together (founder, 2026-11-27: a slide
+// always went a whole page). A section
 // shorter than the view is followed straight away by the next, never by a blank (in landscape the letters' rows are lower than the view). Keys here are ordinary KeyCells; what's
 // special is who gets a touch (KeyCell, on `committed`).
 import UIKit
@@ -125,16 +126,18 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
                 column += span
             }
             if !s.slots.isEmpty { y += h + gap }
-            // a section longer than the view: every row of it is a stop, so it scrolls a row at a time
-            if y - gap - top > page { rowTops += rows }
+            rowTops += rows
             y = max(y, top + gap)
         }
         // by the dominant thumb's half, never across the middle
         editButton.frame = split.map { CGRect(x: $0.at + $0.width, y: y, width: width - $0.at - $0.width, height: 44) } ?? CGRect(x: 0, y: y, width: width, height: 44)
         y += 44
-        // every section can come to the top
+        // every section can come to the top, and the end is a row's top too, so Edit Keys never leaves a sliver of a row above it
+        // (it did on 更多: F1–F6 cut in half over F7)
         let last = sectionTops.last ?? 0
-        contentSize = CGSize(width: width, height: max(y, last + bounds.height))
+        var end = rowTops.first { $0 >= y - page } ?? (rowTops.last ?? 0)
+        while end < y - page { end += h + gap }
+        contentSize = CGSize(width: width, height: max(end, last) + page)
         // turned the phone, or opened the keys: keys changed size, and the same section stays in view
         if sectionTops.indices.contains(section) { contentOffset.y = min(sectionTops[section], max(0, contentSize.height - bounds.height)) }
     }
@@ -174,7 +177,7 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
 
     func scrollViewWillEndDragging(_ s: UIScrollView, withVelocity v: CGPoint, targetContentOffset t: UnsafeMutablePointer<CGPoint>) {
         let limit = max(0, contentSize.height - bounds.height)
-        guard t.pointee.y < limit - 1 else { return }
-        if let best = rowTops.min(by: { abs($0 - t.pointee.y) < abs($1 - t.pointee.y) }) { t.pointee.y = min(best, limit) }
+        let stops = rowTops.filter { $0 < limit } + [limit]
+        if let best = stops.min(by: { abs($0 - t.pointee.y) < abs($1 - t.pointee.y) }) { t.pointee.y = best }
     }
 }
