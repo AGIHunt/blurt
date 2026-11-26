@@ -105,8 +105,8 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 | | Sends | Receives | Clipboard |
 |---|---|---|---|
 | Swift core, `BlurtRemoteKit/RemoteFiles.swift` | `RemoteFileSender` (chunks, window, resume) | `RemoteFileReceiver` (parts kept 1 h, unique names, the space check) | `RemoteClipboard` |
-| Mac host (`BlurtApp/Remote`) | getClipboard's files and image; the bar's Send Files… | Downloads/Blurt, quarantine | read on request; a `clip` image onto the pasteboard and ⌘V |
-| Mac viewer (`BlurtApp/Viewer`) | Send Files… (exists) | Get Copied Files → Downloads/Blurt | a `clip` image onto the pasteboard |
+| Mac host (`BlurtApp/Remote/RemoteHostFiles.swift`) | getClipboard's files (folders zipped) and image; the bar's Send Files… and drop on the bar; the bar shows how far | Downloads/Blurt, quarantine, one notification per batch | read on request (files, then an image, then text); a `clip` onto the pasteboard and ⌘V; the bar says "Clipboard sent to …" 4 s; the log counts clipboard and files each way |
+| Mac viewer (`BlurtApp/Viewer/ViewerFileSender.swift`) | Send Files… and drop (folders now zipped), paused and resumed | Get Copied Files (⋯, ⌥⌘V while keys stay here) → Downloads/Blurt, quarantined; a click on the card shows it in Finder | a `clip` or Get Copied text onto the pasteboard, whatever the Share Clipboard switch says (it was asked for) |
 | Windows / Linux host (`crates/blurt-remote`) | as the Mac | Downloads/Blurt, Mark of the Web | Windows CF_UNICODETEXT / CF_DIB / CF_HDROP; Linux arboard text + image, `text/uri-list` for files |
 | Windows / Linux viewer (`viewer.rs`, `apps/desktop`) | Send Files… (exists) | Get Copied Files | |
 | iPhone / iPad (`apps/ios`) | photo picker, document picker, share extension, Paste from This Phone (image) | Documents (shown in Files) | UIPasteboard |
@@ -144,5 +144,11 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 
 ## Measurements
 
-To fill in as each is run: throughput on the same network and over the moved go-between stream; resume after a drop at 40 %; time from
-Get Copied to the phone's clipboard.
+| What | Result | How |
+|---|---|---|
+| A 3 MB file, viewer → host, through the go-between in budget mode (`BUDGET=1`), moved stream on loopback | 369–426 ms over 3 runs, including the wait for the move; the go-between carried < 16 KiB and never hit its budget | `RemoteViewerSessionTests.testFilesBothWaysThroughTheBudgetRelay` |
+| Get Copied, a 1.2 MB file and a 10-byte one, host → viewer, same session | both whole, in order (index 1, 2) | the same test |
+| A drop at 5.6 of 12 MB, then back | only the missing part goes again (≤ one chunk more) | `RemoteFilesTests.testADropPausesAndTheSameFileGoesOnFromWhereItWas` |
+
+Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1max, LAN-only, wasn't reachable from this Mac's network on
+2026-11-26); Windows and Linux hosts (CI builds and tests only).
