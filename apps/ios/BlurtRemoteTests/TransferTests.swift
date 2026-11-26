@@ -112,6 +112,13 @@ final class TransferTests: XCTestCase {
         XCTAssertTrue(w.contains("\u{00A0}·\u{00A0}"))
     }
 
+    func testChineseTimeLeftHasASpaceBeforeItsUnit() {
+        XCTAssertEqual(TransferWords.duration(42, chinese: true), "42 秒")
+        XCTAssertEqual(TransferWords.duration(59.4, chinese: true), "59 秒")
+        XCTAssertEqual(TransferWords.duration(184, chinese: true), "3 分钟")
+        XCTAssertEqual(TransferWords.duration(7200, chinese: true), "120 分钟", "minutes only, as the Mac")
+    }
+
     func testAPreparingRowsXDropsWhatItLoads() {
         let (t, _) = model()
         t.pretend([TransferRow(id: "prep-1", wire: "", name: "3 items", size: 0, incoming: false, phase: .preparing, peer: "Office PC", at: Date())])

@@ -1,126 +1,139 @@
-// Share → Blurt (docs/design/remote-files.md §What the user does): the button names the computer last controlled, and that tap is the act.
-// The content sits in the system's own sheet, in the phone's light or dark appearance.
-// What's shared (up to 50 pictures, videos or files) is copied into the App Group's outbox for that computer; the app sends it the next time
-// it's open and connected to it, and drops anything older than an hour. Nothing goes over the network from here.
+// Share → Blurt (docs/design/remote-files.md §What the user does): the title names the computer last controlled, and Send is the act.
+// Laid out as Apple's own extensions are: a navigation bar (Cancel, the computer, Send) over what's being sent in an inset group, in the
+// phone's light or dark appearance. A share sheet extension can't make its sheet shorter.
+// What's shared (up to 1,000 pictures, videos or files) is copied into the App Group's outbox for that computer; the app sends it the next
+// time it's open and connected to it, and drops anything older than an hour. Nothing goes over the network from here.
 import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 
 final class ShareViewController: UIViewController {
-    private let card = UIView()
-    private let title_ = UILabel()
-    /// what's being sent: the first item small, and how many beside the title
+    private let bar = UINavigationBar()
+    private let item = UINavigationItem()
+    /// what's being sent: the first item small, its name, and its size or how many
+    private let group = UIView()
     private let thumb = UIImageView()
-    private let count = UILabel()
+    private let name = UILabel()
+    private let detail = UILabel()
+    private let tick = UIImageView(image: UIImage(systemName: "checkmark.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22)))
+    /// under the group: nothing paired, or what happens next
     private let line = UILabel()
-    private let send = UIButton(type: .system)
-    private let cancel = UIButton(type: .system)
-    private let spinner = UIActivityIndicatorView(style: .medium)
     private let mint = UIColor(red: 0.102, green: 0.643, blue: 0.529, alpha: 1)
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // the system's sheet, light or dark as the phone is, with the content in it (not a card over a grey wash)
-        view.backgroundColor = .systemBackground
-        card.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(card)
+        view.backgroundColor = .systemGroupedBackground
+        view.tintColor = mint
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.setItems([item], animated: false)
+        bar.standardAppearance.configureWithTransparentBackground()
+        item.leftBarButtonItem = UIBarButtonItem(title: String(localized: "Cancel"), primaryAction: UIAction { [weak self] _ in self?.close(sent: false) })
 
-        title_.text = "Blurt"
-        title_.font = .systemFont(ofSize: 17, weight: .semibold)
-        title_.textColor = .label
-        count.font = .systemFont(ofSize: 15)
-        count.textColor = .secondaryLabel
-        thumb.contentMode = .scaleAspectFill
+        group.backgroundColor = .secondarySystemGroupedBackground
+        group.layer.cornerRadius = 12
+        group.layer.cornerCurve = .continuous
         thumb.clipsToBounds = true
-        thumb.layer.cornerRadius = 8
+        thumb.layer.cornerRadius = 6
         thumb.layer.cornerCurve = .continuous
         thumb.backgroundColor = .tertiarySystemFill
         thumb.tintColor = .secondaryLabel
         thumb.image = UIImage(systemName: "doc", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17))
         thumb.contentMode = .center
-        NSLayoutConstraint.activate([thumb.widthAnchor.constraint(equalToConstant: 40), thumb.heightAnchor.constraint(equalToConstant: 40)])
-        let names = UIStackView(arrangedSubviews: [title_, count])
-        names.axis = .vertical
-        names.spacing = 1
-        let head = UIStackView(arrangedSubviews: [thumb, names])
-        head.spacing = 12
-        head.alignment = .center
-        line.font = .systemFont(ofSize: 15)
+        name.font = .preferredFont(forTextStyle: .body)
+        name.lineBreakMode = .byTruncatingMiddle
+        detail.font = .preferredFont(forTextStyle: .subheadline)
+        detail.textColor = .secondaryLabel
+        tick.tintColor = mint
+        tick.isHidden = true
+        tick.setContentHuggingPriority(.required, for: .horizontal)
+        let words = UIStackView(arrangedSubviews: [name, detail])
+        words.axis = .vertical
+        words.spacing = 2
+        let row = UIStackView(arrangedSubviews: [thumb, words, tick])
+        row.spacing = 12
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        group.addSubview(row)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        line.font = .preferredFont(forTextStyle: .footnote)
         line.textColor = .secondaryLabel
         line.numberOfLines = 0
-        line.isHidden = true
-
-        var s = UIButton.Configuration.filled()
-        s.baseBackgroundColor = mint
-        s.baseForegroundColor = .white
-        s.cornerStyle = .large
-        s.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
-        s.titleLineBreakMode = .byTruncatingMiddle
-        s.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
-            var a = a
-            a.font = .systemFont(ofSize: 17, weight: .semibold)
-            return a
-        }
-        send.configuration = s
-        send.addAction(UIAction { [weak self] _ in self?.go() }, for: .touchUpInside)
-        var c = UIButton.Configuration.plain()
-        c.title = String(localized: "Cancel")
-        c.baseForegroundColor = mint
-        cancel.configuration = c
-        cancel.addAction(UIAction { [weak self] _ in self?.close(sent: false) }, for: .touchUpInside)
-        spinner.hidesWhenStopped = true
-
-        let stack = UIStackView(arrangedSubviews: [head, line, send, spinner, cancel])
-        stack.axis = .vertical
-        stack.spacing = 14
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
+        line.translatesAutoresizingMaskIntoConstraints = false
+        [bar, group, line].forEach(view.addSubview)
+        let g = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor),
-            card.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            card.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
-            card.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
+            bar.topAnchor.constraint(equalTo: g.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            group.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 16),
+            group.leadingAnchor.constraint(equalTo: g.leadingAnchor, constant: 16),
+            group.trailingAnchor.constraint(equalTo: g.trailingAnchor, constant: -16),
+            row.topAnchor.constraint(equalTo: group.topAnchor, constant: 10),
+            row.bottomAnchor.constraint(equalTo: group.bottomAnchor, constant: -10),
+            row.leadingAnchor.constraint(equalTo: group.leadingAnchor, constant: 12),
+            row.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -16),
+            thumb.widthAnchor.constraint(equalToConstant: 44),
+            thumb.heightAnchor.constraint(equalToConstant: 44),
+            line.topAnchor.constraint(equalTo: group.bottomAnchor, constant: 8),
+            line.leadingAnchor.constraint(equalTo: group.leadingAnchor, constant: 16),
+            line.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -16),
         ])
-        // as wide as the sheet; no wider than a phone on an iPad or held wide
-        let wide = card.widthAnchor.constraint(equalTo: view.safeAreaLayoutGuide.widthAnchor)
-        wide.priority = .required - 1
-        wide.isActive = true
 
-        let n = providers.count
-        count.text = String(localized: "\(n) items")
-        count.isHidden = n < 2
+        let list = providers
+        name.text = list.first.flatMap(Self.shownName) ?? ""
+        if list.count > 1 { detail.text = String(localized: "\(list.count) items") }
+        else { detail.text = list.first.flatMap { Self.type(of: $0) }.flatMap { UTType($0)?.localizedDescription } }
         loadThumb()
 
         if let t = Outbox.target, Outbox.shared != nil {
-            send.configuration?.title = String(localized: "Send to \(t.name)")
+            item.title = t.name
+            let send = UIBarButtonItem(title: String(localized: "Send"), primaryAction: UIAction { [weak self] _ in self?.go() })
+            send.style = .done
+            item.rightBarButtonItem = send
         } else {
+            item.title = "Blurt"
             line.text = String(localized: "Pair a computer in Blurt first.")
-            line.isHidden = false
-            send.isHidden = true
         }
     }
 
+    /// An item's name as it was shared, if it has one; else its kind ("JPEG image").
+    private static func shownName(_ p: NSItemProvider) -> String? {
+        p.suggestedName ?? type(of: p).flatMap { UTType($0)?.localizedDescription }
+    }
+
     /// The first item's picture, small, read without decoding the whole photo (an extension has little memory); else a document's mark.
+    /// A single picture's file also gives its name and size.
     private func loadThumb() {
-        guard let p = providers.first else { return }
+        let list = providers
+        guard let p = list.first else { return }
         let show: (UIImage?) -> Void = { [weak self] i in
             guard let i else { return }
             DispatchQueue.main.async { self?.thumb.contentMode = .scaleAspectFill; self?.thumb.image = i }
         }
         if p.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            _ = p.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { u, _ in
+            _ = p.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] u, _ in
                 guard let u, let src = CGImageSourceCreateWithURL(u as CFURL, nil) else { return }
                 let o = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-                         kCGImageSourceThumbnailMaxPixelSize: 120] as CFDictionary
+                         kCGImageSourceThumbnailMaxPixelSize: 132] as CFDictionary
                 show(CGImageSourceCreateThumbnailAtIndex(src, 0, o).map { UIImage(cgImage: $0) })
+                let bytes = (try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil
+                let file = u.lastPathComponent
+                DispatchQueue.main.async {
+                    if p.suggestedName == nil { self?.name.text = file }
+                    if list.count == 1, let bytes { self?.detail.text = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) }
+                }
             }
         } else {
-            p.loadPreviewImage(options: [NSItemProviderPreferredImageSizeKey: CGSize(width: 120, height: 120)]) { o, _ in show(o as? UIImage) }
+            p.loadPreviewImage(options: [NSItemProviderPreferredImageSizeKey: CGSize(width: 132, height: 132)]) { o, _ in show(o as? UIImage) }
         }
+    }
+
+    /// What an item is sent as: a video or a picture as it is, else whatever file it is.
+    private static func type(of p: NSItemProvider) -> String? {
+        let ids = p.registeredTypeIdentifiers
+        return ids.first { UTType($0)?.conforms(to: .movie) == true }
+            ?? ids.first { UTType($0)?.conforms(to: .image) == true }
+            ?? ids.first { UTType($0).map { $0.conforms(to: .data) || $0.conforms(to: .package) } == true }
     }
 
     private var providers: [NSItemProvider] {
@@ -131,10 +144,10 @@ final class ShareViewController: UIViewController {
     /// Copies each item into a new share, then seals it for the computer named on the button.
     private func go() {
         guard let t = Outbox.target, let box = Outbox.shared, let folder = box.open() else { return close(sent: false) }
-        send.isEnabled = false
-        send.isHidden = true
-        cancel.isHidden = true
+        let spinner = UIActivityIndicatorView(style: .medium)
         spinner.startAnimating()
+        item.rightBarButtonItem = UIBarButtonItem(customView: spinner)
+        item.leftBarButtonItem?.isEnabled = false
         let list = providers
         var names = [String?](repeating: nil, count: list.count)
         let g = DispatchGroup()
@@ -153,16 +166,15 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    /// Copied: a ✓ on the item, what happens next under it, and Done where Send was.
     private func done(_ nothing: Bool) {
-        spinner.stopAnimating()
         guard !nothing else { return close(sent: false) }
+        tick.isHidden = false
         line.text = String(localized: "Open Blurt within an hour to send.")
-        line.isHidden = false
-        var c = UIButton.Configuration.plain()
-        c.title = String(localized: "Done")
-        c.baseForegroundColor = mint
-        cancel.configuration = c
-        cancel.isHidden = false
+        item.leftBarButtonItem = nil
+        let done = UIBarButtonItem(title: String(localized: "Done"), primaryAction: UIAction { [weak self] _ in self?.close(sent: true) })
+        done.style = .done
+        item.rightBarButtonItem = done
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.close(sent: true) }
     }
 
@@ -177,11 +189,7 @@ final class ShareViewController: UIViewController {
 
     /// One item as a file: a video or a picture as it is, else whatever file it is. Its name is the one it was shared with.
     private static func copy(_ p: NSItemProvider, into folder: URL, box: Outbox, done: @escaping (String?) -> Void) {
-        let ids = p.registeredTypeIdentifiers
-        let type = ids.first { UTType($0)?.conforms(to: .movie) == true }
-            ?? ids.first { UTType($0)?.conforms(to: .image) == true }
-            ?? ids.first { UTType($0).map { $0.conforms(to: .data) || $0.conforms(to: .package) } == true }
-            ?? UTType.data.identifier
+        let type = Self.type(of: p) ?? UTType.data.identifier
         let ext = UTType(type)?.preferredFilenameExtension
         func name(_ u: URL?) -> String? {
             let e = u?.pathExtension.isEmpty == false ? u!.pathExtension : ext

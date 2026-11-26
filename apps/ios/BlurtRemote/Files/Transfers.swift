@@ -57,8 +57,13 @@ struct TransferRow: Identifiable, Codable, Equatable {
 enum TransferWords {
     static func size(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }
 
-    /// the system's own short duration: "2 min", "2分钟"
-    static func duration(_ s: Double) -> String {
+    /// the system's own short duration in English ("2 min", "42 sec"); in Chinese by hand, as the Mac writes it, with a space between number
+    /// and unit (the formatter writes 3分钟): seconds up to a minute, then minutes
+    static func duration(_ s: Double, chinese: Bool = Bundle.main.preferredLocalizations.first?.hasPrefix("zh") == true) -> String {
+        if chinese {
+            let n = max(1, Int(s.rounded()))
+            return n < 60 ? "\(n) 秒" : "\(Int((Double(n) / 60).rounded())) 分钟"
+        }
         let f = DateComponentsFormatter()
         f.unitsStyle = .short
         f.maximumUnitCount = 1

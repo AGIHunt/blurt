@@ -69,12 +69,12 @@
         }
       }
     },
-    "Send to %@" : {
+    "Send" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发送到 %@"
+            "value" : "发送"
           }
         }
       }
