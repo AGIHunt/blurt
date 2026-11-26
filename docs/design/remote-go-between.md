@@ -176,6 +176,7 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 | Where | English | 中文 |
 |---|---|---|
 | No picture lease free (card under "Can't show the screen") | The public connection service is busy. Keys, the pointer and voice still work. | 公共连接服务繁忙。按键、指针和语音仍可使用。 |
+| The same in a computer viewer (no voice there) | The public connection service is busy. Keys and the pointer still work. | 公共连接服务繁忙。按键和指针仍可使用。 |
 | A send over 20 MB on this path | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
 | Past 50 MB today | You can send up to 50 MB a day over the public connection service. | 通过公共连接服务每天最多可发送 50 MB。 |
 | Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |

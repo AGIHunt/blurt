@@ -159,7 +159,7 @@
 "viewer.screen_permission" = "%@ needs Screen Recording permission.";
 "viewer.screen_failed" = "Can’t show %@’s screen. The pointer and keys still work.";
 /* Blurt's public relay has no picture free (docs/design/remote-go-between.md §The public relay) */
-"viewer.screen_busy" = "The public connection service is busy. Keys, the pointer and voice still work.";
+"viewer.screen_busy" = "The public connection service is busy. Keys and the pointer still work.";
 "viewer.one_display" = "%@ shows one display at a time.";
 "viewer.no_control" = "%@ needs Accessibility permission before it can be controlled.";
 "viewer.path_rtt" = "%@ · %ld ms";
