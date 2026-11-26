@@ -180,6 +180,27 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 | Past 50 MB today | You can send up to 50 MB a day over the public connection service. | 通过公共连接服务每天最多可发送 50 MB。 |
 | Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |
 
+### The box (deployed 2026-11-26)
+
+- Ubuntu 24.04, Node 22.21.1 LTS from nodejs.org (checksum checked) in `/opt/node`, `public.js` + `ws` 8.18.0 in `/opt/blurt-relay`, a
+  systemd service `blurt-relay` as user `blurt-relay`: `Restart=always`, `MemoryMax=1G`, `LimitNOFILE=65536`, `NoNewPrivileges`,
+  `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no capabilities. The secret is `/etc/blurt-relay.env` (root, 600), never in git.
+- Caddy 2.11 in front: Let's Encrypt by HTTP-01/TLS-ALPN (no DNS token on the box), no access log, errors only, header timeout 10 s,
+  `X-Real-IP` to the relay. DNS: `relay.blurt.work` A 43.161.232.195, DNS only, TTL 60; CAA `0 issue "letsencrypt.org"` on that name only.
+- ufw: 22, 80, 443 in; root SSH off, passwords off; journald ≤ 200 MB; unattended-upgrades on. The Lighthouse console firewall must
+  allow 443 too (it didn't at first: SYNs to 443 never arrived).
+- Outside check: `.github/workflows/relay-health.yml` every 10 min (TLS, ≥14 days of certificate, `GET /`, and the go-between).
+- The go-between (`blurt-meet`, version f4bc4a18) mints tickets; a ticket it minted opened a room on the box.
+
+### Measured
+
+| What | Result |
+|---|---|
+| On the box, relay only (`bench-public.mjs`, no TLS, generator on the same 2 vCPUs): 10 / 30 / 60 / 120 leased 1 Mbps sessions | every frame at 15 fps; p99 1.1 / 1.1 / 1.5 / 2.3 ms; **5 / 11 / 22 / 41 %** of one vCPU; RSS 60–74 MB |
+| China Mobile 5G (a phone hotspot in mainland China), 15:10 CST, ICMP | rtt 66 / 71 / 79 ms (min / avg / max), no loss |
+| Local end to end: Android emulator ↔ fake host through `server.js` (tickets) and `public.js` (`LEASES=1`) | on the relay 8.3 s after launch; busy, then the picture back by itself at the next 30 s ask; Opus 32.6 kbps; dead relay → no-direct line 5.2 s after `noDirect`, no retry |
+| Local end to end: Mac viewer ↔ in-process host, the same servers | lands on the relay; busy then granted (12+ H.264 frames decoded); dead relay → no-direct; a silent room → gives up in 4.5–6 s |
+
 ## Overlay addresses (Tailscale, ZeroTier, …)
 
 - **Hosts** list the addresses of overlay interfaces as well as LAN ones: IPv4 in 100.64.0.0/10, IPv6 in fd7a:115c:a1e0::/48 (Tailscale),
