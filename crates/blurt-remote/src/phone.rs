@@ -566,6 +566,11 @@ impl Phone {
         self.datagram(Kind::VideoFeedback, &f.encode()).await;
     }
 
+    /// Files may go now: not on the public connection service before the stream has moved (its small messages would close the room).
+    pub fn carries_files(&self) -> bool {
+        !self.on_go_between_unmoved()
+    }
+
     fn on_go_between_unmoved(&self) -> bool {
         self.inner.relayed && self.inner.opts.go_between && !self.inner.moved_out()
     }

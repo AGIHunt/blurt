@@ -132,6 +132,17 @@ pub struct Connection {
     pub route: Option<String>,
     #[serde(default)]
     pub paired: bool,
+    /// what moved in this session, never what it was: the clipboard given this many times, files received and sent
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub clipboard: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub received: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub sent: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 pub struct Files {

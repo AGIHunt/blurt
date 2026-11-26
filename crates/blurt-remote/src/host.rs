@@ -110,6 +110,47 @@ pub trait Input: Send {
     }
     /// Text from a viewer onto the clipboard, plain text only (at most 64 KiB). The default does nothing.
     fn set_clipboard(&mut self, _text: &str) {}
+    /// What's copied now, for a phone's or viewer's getClipboard (docs/design/remote-files.md): files first (Explorer's CF_HDROP,
+    /// a file manager's text/uri-list), then an image, then text. The default: the text `clipboard` reads. (Added 2026-11-26.)
+    fn copied(&mut self) -> Copied {
+        match self.clipboard() {
+            Some(t) if !t.is_empty() => Copied::Text(t),
+            _ => Copied::Empty,
+        }
+    }
+    /// A `clip` file from a phone: onto the clipboard, then Ctrl+V into the app in front. false: this backend can't (an image on the
+    /// default). (Added 2026-11-26.)
+    fn paste_clip(&mut self, clip: &Clip) -> bool {
+        match clip {
+            Clip::Text(t) => {
+                self.set_clipboard(t);
+                self.key("V", mods::CONTROL, None);
+                true
+            }
+            Clip::Image(_) => false,
+        }
+    }
+}
+
+/// What the clipboard holds, as getClipboard answers it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Copied {
+    Empty,
+    Text(String),
+    /// as PNG
+    Image(Vec<u8>),
+    /// files and folders (folders are zipped before they go)
+    Files(Vec<std::path::PathBuf>),
+    /// something this host can't read or send
+    Unsupported,
+}
+
+/// A `clip` file's content, to put on the clipboard and paste.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Clip {
+    Text(String),
+    /// the file's bytes as they came: PNG, JPEG, TIFF or BMP
+    Image(Vec<u8>),
 }
 
 /// One of the computer's displays (ToPhone.displays): its frame in points on the desktop (top-left origin, y down, as the OS's display
