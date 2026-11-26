@@ -18,7 +18,8 @@ data class LinkStatus(
     /** more than one computer is paired: there's another to try */
     val otherComputers: Boolean = false,
     val canControl: Boolean = true,
-    /** "permission", "off": why the computer won't show its screen; anything else, the picture stopped */
+    /** "permission", "off": why the computer won't show its screen; "busy": the public relay has no room for the picture yet; anything
+     *  else, the picture stopped */
     val screenError: String? = null,
     /** the user asked for the picture (the screen button); one that came on by itself says nothing when the computer won't show it */
     val screenAsked: Boolean = true,
@@ -108,6 +109,8 @@ enum class StatusLine {
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
     CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF, PICTURE_STOPPED,
+    /** the public relay has no picture lease free: the picture comes by itself once there is room */
+    PUBLIC_BUSY,
     LOCKED, UNLOCK_FIRST,
     NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
@@ -151,6 +154,8 @@ data class StatusBanner(
                 LinkPhase.CONNECTED -> when {
                     // locked: why there's no picture, and why it may not take input either
                     s.locked && s.showing -> StatusBanner(StatusMark.PROBLEM, StatusLine.LOCKED, StatusLine.UNLOCK_FIRST)
+                    // busy on the public relay: said whoever asked, since the picture is still coming; nothing to tap, it comes by itself
+                    s.screenError == RemotePublicRelay.BUSY -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PUBLIC_BUSY)
                     s.screenAsked && s.screenError != null -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, when (s.screenError) {
                         "off" -> StatusLine.SCREEN_IS_OFF
                         "permission" -> StatusLine.ALLOW_SCREEN

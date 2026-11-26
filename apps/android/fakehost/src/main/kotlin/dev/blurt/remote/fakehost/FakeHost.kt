@@ -20,6 +20,12 @@
 //   --take <KB/s>                  take files from the phone at most this fast, so progress can be watched
 //   --drop-at <percent>            close the session once a file from the phone is this far in (once): the phone pauses it, then resumes
 //   --clipboard <what>             what Get Copied Items finds: text:<words> · image:<png> · files:<path>[,<path>…] · none:<why>
+//   --go-between <ws://…>          also wait for each paired phone at this go-between (tools/remote-relay/server.js with BUDGET=1), and
+//                                  name it as the relay in every session; it gives the public relay's tickets (Relay.kt)
+//   --public-relay <ws://…>        a public relay at this address is allowed besides Blurt's own (a test build's BLURT_PUBLIC_RELAY)
+//   --meet-wait <s>                on the go-between, noDirect this long after `session` with no datagram (default 8)
+//   --ask-again <s>                on the public relay, a refused picture lease is asked for again this often (default 30)
+//   --no-opus                      a host that can't hear Opus: the phone has no voice on the public relay
 // On stdin: "send <path>[,<path>…]" sends files to the phone; "clipboard <what>" changes what's copied; "drop" closes the session.
 //
 // Repairs (docs/design/remote-realtime.md §Host): of what the phone offers it uses nack and fec, not ltr (ffmpeg's encoders can't refer
@@ -96,14 +102,19 @@ private var takeKBs = 0
 private var dropAt = 0
 private var clipboard = "text:会议纪要：周四下午三点，二楼会议室"
 private var tcpPort = 47811
+internal var goBetween: String? = null
+internal var publicRelayTest: String? = null
+internal var meetWait = 8.0
+internal var askAgain = 30.0
+internal var hearsOpus = true
 private val udpPort get() = tcpPort + 1
 
 private val start = System.nanoTime()
-private fun now() = (System.nanoTime() - start) / 1e9
-private fun log(s: String) = synchronized(System.out) { println(String.format("%8.3f %s", now(), s)); System.out.flush() }
+internal fun now() = (System.nanoTime() - start) / 1e9
+internal fun log(s: String) = synchronized(System.out) { println(String.format("%8.3f %s", now(), s)); System.out.flush() }
 
 /** paired phones: device id → key; and the one code waiting to be used */
-private val keys = ConcurrentHashMap<String, ByteArray>()
+internal val keys = ConcurrentHashMap<String, ByteArray>()
 private var codeID: String? = null
 private var codeKey: ByteArray? = null
 private val udp by lazy { DatagramSocket(udpPort) }
@@ -133,6 +144,11 @@ fun main(args: Array<String>) {
             "--take" -> takeKBs = args[++i].toInt()
             "--drop-at" -> dropAt = args[++i].toInt()
             "--clipboard" -> clipboard = args[++i]
+            "--go-between" -> goBetween = dev.blurt.remote.core.RemoteRelay.address(args[++i])
+            "--public-relay" -> publicRelayTest = dev.blurt.remote.core.RemoteRelay.address(args[++i])
+            "--meet-wait" -> meetWait = args[++i].toDouble()
+            "--ask-again" -> askAgain = args[++i].toDouble()
+            "--no-opus" -> hearsOpus = false
         }
         i++
     }
@@ -142,10 +158,11 @@ fun main(args: Array<String>) {
     thread(name = "stdin") { stdin() }
     val server = ServerSocket(tcpPort)
     log("listening tcp $tcpPort udp $udpPort as $platform \"$name\"")
+    goBetween?.let { gb -> for ((id, k) in keys) GoBetween.wait(gb, id, k) }
     while (true) {
         val s = server.accept()
         s.tcpNoDelay = true
-        thread(name = "session") { Session(s).run() }
+        thread(name = "session") { serveTcp(s) }
     }
 }
 
@@ -180,15 +197,49 @@ private fun stdin() {
         when {
             l.startsWith("send ") -> current?.let { Files.sendToPhone(l.removePrefix("send ").split(',').map { File(it.trim()) }) }
             l.startsWith("clipboard ") -> { clipboard = l.removePrefix("clipboard "); log("clipboard is now $clipboard") }
-            l == "drop" -> current?.socket?.close()
+            l == "drop" -> current?.pipe?.close()
             else -> current?.answer(l.lowercase().startsWith("y"))
         }
     }
 }
 
-private class Session(val socket: Socket) {
+/** Where a session's stream runs: a TCP connection, or a WebSocket at the go-between or the public relay (Relay.kt). */
+internal interface Pipe {
+    fun write(b: ByteArray)
+    fun close()
+}
+
+private class TcpPipe(val socket: Socket) : Pipe {
+    private val out: OutputStream = socket.getOutputStream()
+    override fun write(b: ByteArray) {
+        out.write(b)
+        out.flush()
+    }
+    override fun close() { runCatching { socket.close() } }
+}
+
+/** How a session reached this host: the stream on TCP, or through a relay (no datagrams there) */
+internal enum class Way { TCP, GO_BETWEEN, PUBLIC }
+
+private fun serveTcp(socket: Socket) {
+    val s = Session(TcpPipe(socket))
+    log("connection from ${socket.remoteSocketAddress}")
     val input: InputStream = socket.getInputStream()
-    val out: OutputStream = socket.getOutputStream()
+    try {
+        val buf = ByteArray(65536)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            if (!s.feed(buf.copyOf(n))) break
+        }
+    } catch (e: Exception) {
+        log("connection ended: ${e.javaClass.simpleName} ${e.message ?: ""}")
+    }
+    s.ended()
+}
+
+/** `only`: the one device this connection takes (a relay room is one pair's). */
+internal class Session(val pipe: Pipe, val way: Way = Way.TCP, val only: String? = null) {
     val reader = RemoteFrameReader()
     var sealer: RemoteSealer? = null
     var id: String? = null
@@ -211,33 +262,57 @@ private class Session(val socket: Socket) {
     @Volatile var listening = false
     @Volatile var display = "1"
 
-    fun run() {
-        log("connection from ${socket.remoteSocketAddress}")
+    /** bytes of the stream; false: it's over (the pipe is closed) */
+    fun feed(b: ByteArray): Boolean {
         try {
-            val buf = ByteArray(65536)
+            reader.feed(b)
             while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                reader.feed(buf.copyOf(n))
-                while (true) {
-                    val f = reader.next() ?: break
-                    frame(f)
-                }
+                val f = reader.next() ?: break
+                frame(f)
             }
+            return true
         } catch (e: Exception) {
             log("connection ended: ${e.javaClass.simpleName} ${e.message ?: ""}")
+            pipe.close()
+            return false
         }
+    }
+
+    @Volatile var over = false
+
+    fun ended() {
+        if (over) return
+        over = true
         stopStream()
-        id?.let { Files.ended(it) }
+        relay?.ended()
+        id?.let { if (greeted) Files.ended(it) }
         if (current === this) current = null
-        log("closed")
-        runCatching { socket.close() }
+        if (id != null || way == Way.TCP) log("closed${if (way != Way.TCP) " (${way.name.lowercase()})" else ""}")
+        pipe.close()
     }
 
     @Synchronized fun sendRaw(b: ByteArray) {
-        out.write(RemoteFrameReader.framed(b))
-        out.flush()
+        pipe.write(RemoteFrameReader.framed(b))
     }
+
+    /** Sealed in the stream: on a relay, what would be a datagram goes this way. */
+    fun stream(kind: RemoteFrameKind, body: ByteArray) {
+        val s = sealer ?: return
+        synchronized(this) { sendRaw(s.seal(byteArrayOf(kind.raw.toByte()) + body)) }
+    }
+
+    /** Several in one write: a frame's pieces are one WebSocket message, not a hundred. */
+    fun streamMany(kind: RemoteFrameKind, bodies: List<ByteArray>) {
+        val s = sealer ?: return
+        synchronized(this) {
+            val all = java.io.ByteArrayOutputStream()
+            for (b in bodies) all.write(RemoteFrameReader.framed(s.seal(byteArrayOf(kind.raw.toByte()) + b)))
+            pipe.write(all.toByteArray())
+        }
+    }
+
+    /** the relay side of a session through one (Relay.kt): the go-between's tickets, the public relay's leases */
+    val relay: RelaySide? = if (way == Way.TCP) null else RelaySide(this)
 
     fun send(m: ToPhone) {
         val s = sealer ?: return
@@ -250,6 +325,9 @@ private class Session(val socket: Socket) {
     @Volatile var phoneFeatures: List<String> = emptyList()
 
     fun datagram(kind: RemoteFrameKind, body: ByteArray) {
+        // through a relay: nothing heavy on the go-between before a move (there's none here), the stream on the public relay
+        if (way == Way.GO_BETWEEN) return
+        if (way == Way.PUBLIC) return stream(kind, body)
         val to = flow ?: return
         val s = sealer ?: return
         val p = synchronized(this) { s.sealPacket(byteArrayOf(kind.raw.toByte()) + body, number) }
@@ -259,7 +337,7 @@ private class Session(val socket: Socket) {
     fun frame(f: ByteArray) {
         val s = sealer
         if (s == null) {
-            val a = MacHandshake.answer(f) { who -> keys[who] ?: if (who == codeID) codeKey else null }
+            val a = MacHandshake.answer(f) { who -> if (only != null) keys[who]?.takeIf { who == only } else keys[who] ?: if (who == codeID) codeKey else null }
             sendRaw(a.reply)
             if (a.sealer == null) { log("handshake refused: ${String(a.reply)}"); throw IllegalStateException("refused") }
             sealer = a.sealer
@@ -277,11 +355,14 @@ private class Session(val socket: Socket) {
         val body = plain.copyOfRange(1, plain.size)
         when (RemoteFrameKind.from(plain[0].toInt() and 0xFF)) {
             RemoteFrameKind.CONTROL -> ToMac.decode(body)?.let { control(it) } ?: log("← unknown control ${String(body)}")
+            RemoteFrameKind.OPUS -> relay?.opus(body) ?: log("← opus outside a relay")
             RemoteFrameKind.AUDIO -> {
+                if (way == Way.PUBLIC) log("← PCM on the public relay: it must never come here")
+                relay?.touched()
                 audio += body.size
                 if (now() - lastAudioLog > 1) { lastAudioLog = now(); log("← audio ${audio} bytes so far (${audio / 32} ms)") }
             }
-            RemoteFrameKind.POINTER -> RemotePointerPacket.decode(body)?.let { pointer(it) }
+            RemoteFrameKind.POINTER -> RemotePointerPacket.decode(body)?.let { relay?.touched(); pointer(it) }
             RemoteFrameKind.PROBE -> datagram(RemoteFrameKind.PROBE, body)
             RemoteFrameKind.VIDEO_FEEDBACK -> RemoteVideoFeedback.decode(body)?.let { feedback(it) }
             else -> {}
@@ -325,7 +406,7 @@ private class Session(val socket: Socket) {
                 if (id == codeID) {
                     val n = m.nonce
                     val c = commitment
-                    if (n == null || c == null || !RemoteCrypto.same(RemoteCrypto.commitment(n), c)) { log("nonce doesn't match: refused"); socket.close(); return }
+                    if (n == null || c == null || !RemoteCrypto.same(RemoteCrypto.commitment(n), c)) { log("nonce doesn't match: refused"); pipe.close(); return }
                     asking = true
                     current = this
                     log("ASKING: allow \"${m.device}\"? digits ${sealer!!.check(n)}")
@@ -342,6 +423,7 @@ private class Session(val socket: Socket) {
                 save()
                 pairingKey = null
                 log("paired: ${id}")
+                goBetween?.let { GoBetween.wait(it, id!!, k) }
                 newCode()
                 begin()
                 return
@@ -358,10 +440,14 @@ private class Session(val socket: Socket) {
             else -> {}
         }
         if (m !is ToMac.ScreenReport) log("← ${m.toJson()}")
+        if (m !is ToMac.ScreenReport && m !is ToMac.Screen && m !is ToMac.ScreenCrop) relay?.touched()
         when (m) {
             is ToMac.Screen -> {
                 stopStream()
-                val r = m.request ?: return
+                val r = m.request
+                // the go-between carries no picture; the public relay's needs a lease first
+                if (relay != null) return relay.screen(r)
+                r ?: return
                 crop = r.crop
                 repairs = if (repairsOn) r.features.orEmpty().filter { it == RemoteVideoFeature.NACK || it == RemoteVideoFeature.FEC }.toSet() else emptySet()
                 stream(r.codecs ?: listOf(RemoteVideoCodec.HEVC), r.fps)
@@ -398,16 +484,32 @@ private class Session(val socket: Socket) {
     fun answer(yes: Boolean) {
         if (!asking) return
         asking = false
-        if (!yes) { log("said no"); socket.close(); return }
+        if (!yes) { log("said no"); pipe.close(); return }
         pairingKey = RemoteCrypto.newKey()
         send(ToPhone.NewKey(pairingKey!!))
     }
 
+    /** the picture as asked, for the public relay's lease to start once granted */
+    fun startPicture(r: dev.blurt.remote.core.RemoteScreenRequest) {
+        crop = r.crop
+        repairs = if (repairsOn) r.features.orEmpty().filter { it == RemoteVideoFeature.NACK || it == RemoteVideoFeature.FEC }.toSet() else emptySet()
+        bitrate = r.bitrate
+        stream(r.codecs ?: listOf(RemoteVideoCodec.HEVC), r.fps)
+    }
+
+    /** what the phone asked for: the most the encoder may make (the public relay's is Data Saver's) */
+    @Volatile var bitrate = 8_000_000
+
     fun begin() {
         greeted = true
         current = this
-        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, platform = platform,
-            features = if (oldFiles) listOf("files") else listOf("files", "resume", "clipboard"))))
+        val relayed = goBetween != null
+        val features = (if (oldFiles) listOf("files") else listOf("files", "resume", "clipboard")) +
+            (if (relayed) listOf("move", dev.blurt.remote.core.RemoteFeature.PUBLIC_RELAY) else emptyList()) +
+            (if (hearsOpus) listOf(dev.blurt.remote.core.RemoteFeature.OPUS) else emptyList())
+        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, relay = goBetween,
+            platform = platform, features = features)))
+        relay?.began()
         Files.began()
         send(ToPhone.Front(RemoteFront(if (platform == "mac") "com.apple.Terminal" else "WindowsTerminal.exe", "Terminal")))
         send(ToPhone.Dictation(RemoteDictationPhase.IDLE))
@@ -491,7 +593,8 @@ private class Session(val socket: Socket) {
         // scrolling: 2 px of 944 a frame, from where the last encoder left off
         val moving = if (scroll) ",scroll=vertical=${"%.6f".format(2.0 / 944)}:vpos=${"%.6f".format((encoded * 2.0 / 944) % 1.0)}" else ""
         val cmd = listOf("ffmpeg", "-hide_banner", "-loglevel", "error", "-re", "-loop", "1", "-framerate", "$rate", "-i", png,
-            "-vf", "scale=1512:944$moving,format=yuv420p", "-r", "$rate", "-b:v", "8M", "-maxrate", "12M", "-bufsize", "400k") + enc +
+            "-vf", "scale=${if (way == Way.PUBLIC) "1280:800" else "1512:944"}$moving,format=yuv420p", "-r", "$rate",
+            "-b:v", "${minOf(8_000_000, bitrate)}", "-maxrate", "${minOf(12_000_000, bitrate * 3 / 2)}", "-bufsize", "400k") + enc +
             listOf("-f", if (hevc) "hevc" else "h264", "-")
         val p = ProcessBuilder(cmd).redirectError(ProcessBuilder.Redirect.INHERIT).start()
         streaming = p
@@ -528,6 +631,10 @@ private class Session(val socket: Socket) {
         val pieces = RemoteVideoPacket.split(payload, frameId, key, now())
         val wire = pieces.map { it.encoded() }
         if (RemoteVideoFeature.NACK in repairs) synchronized(history) { history.add(frameId, wire, now()) }
+        if (way == Way.PUBLIC) {
+            streamMany(RemoteFrameKind.VIDEO, wire)
+            return
+        }
         for (w in wire) datagram(RemoteFrameKind.VIDEO, w)
         sentPieces += wire.size
         val g = if (forcedFec > 0) forcedFec else group
@@ -677,7 +784,7 @@ private object Files {
             if (t.size > 0 && t.done * 100 >= t.size * dropAt) {
                 dropped = true
                 log("dropping the session at ${t.done}/${t.size}")
-                s.socket.close()
+                s.pipe.close()
             }
         }
     }

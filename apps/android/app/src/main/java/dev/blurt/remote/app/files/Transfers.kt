@@ -21,6 +21,8 @@ import androidx.core.content.FileProvider
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
 import dev.blurt.remote.core.FileSource
+import dev.blurt.remote.core.PublicRelayFiles
+import dev.blurt.remote.core.RemoteFileOut
 import dev.blurt.remote.core.RemoteFeature
 import dev.blurt.remote.core.RemoteFileInfo
 import dev.blurt.remote.core.RemoteFileReceiver
@@ -53,8 +55,8 @@ class Transfers(private val c: Context) {
         data class None(val line: String) : Got()
     }
 
-    /** A question about mobile data: `bytes` either way. */
-    data class Ask(val bytes: Long, val incoming: Boolean, val yes: () -> Unit, val no: () -> Unit)
+    /** A question about mobile data: `bytes` either way. `publicRelay`: about a send over the public connection service instead */
+    data class Ask(val bytes: Long, val incoming: Boolean, val yes: () -> Unit, val no: () -> Unit, val publicRelay: Boolean = false)
 
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "blurt-files-in").apply { isDaemon = true } }
@@ -72,9 +74,18 @@ class Transfers(private val c: Context) {
     private var askedClipAt = 0L
     private val askLock = Any()
 
+    /** files sent over the public relay today (UTC), kept across runs: at most 50 MB a day there (remote-go-between.md §What the devices do) */
+    private val publicFiles = PublicRelayFiles(prefs.getLong("public.day", 0), prefs.getLong("public.sent", 0))
+
     val sender = RemoteFileSender(
-        send = { link.sendFile(RemoteFileWire.toMac(it)) },
-        ready = { link.ready },
+        send = { o ->
+            val public = link.onPublicRelay
+            val sent = link.sendFile(RemoteFileWire.toMac(o))
+            if (sent && public && o is RemoteFileOut.Chunk) countPublic(o.data.size.toLong())
+            sent
+        },
+        // past today's allowance on the public relay, what's left waits for another way in or another day
+        ready = { link.ready && !(link.onPublicRelay && synchronized(publicFiles) { publicFiles.spent(System.currentTimeMillis()) }) },
         peerResumes = { link.peerResumes },
         target = { link.current.value?.id },
         up = false,
@@ -196,6 +207,10 @@ class Transfers(private val c: Context) {
             val s = UriSource.of(c, uri) ?: return@execute
             if (s.size > RemoteFiles.MAX_CLIP_IMAGE) {
                 main.post { toast(c.getString(R.string.image_too_big)) }
+                return@execute
+            }
+            if (link.onPublicRelay && synchronized(publicFiles) { publicFiles.gate(s.size, System.currentTimeMillis()) } == PublicRelayFiles.Gate.OVER) {
+                main.post { toast(c.getString(R.string.public_files_limit)) }
                 return@execute
             }
             // a copy: the clipboard may change, and its grant end, before it goes
@@ -331,8 +346,25 @@ class Transfers(private val c: Context) {
         return n.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) && !n.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
-    /** Main thread: more than 100 MB over mobile data asks first. */
+    /** sender thread: bytes of files that just went over the public relay */
+    private fun countPublic(bytes: Long) {
+        synchronized(publicFiles) {
+            publicFiles.count(bytes, System.currentTimeMillis())
+            prefs.edit().putLong("public.day", publicFiles.day).putLong("public.sent", publicFiles.sent).apply()
+        }
+    }
+
+    /** Main thread: more than 100 MB over mobile data asks first. On the public relay: more than 20 MB asks, and past 50 MB today nothing
+     *  goes (the line says why). */
     private fun confirm(bytes: Long, incoming: Boolean, go: () -> Unit) {
+        if (!incoming && link.onPublicRelay) {
+            when (synchronized(publicFiles) { publicFiles.gate(bytes, System.currentTimeMillis()) }) {
+                PublicRelayFiles.Gate.OVER -> toast(c.getString(R.string.public_files_limit))
+                PublicRelayFiles.Gate.ASK -> ask.value = Ask(bytes, false, yes = { ask.value = null; go() }, no = { ask.value = null }, publicRelay = true)
+                PublicRelayFiles.Gate.GO -> go()
+            }
+            return
+        }
         if (bytes <= RemoteFiles.ASK_ON_CELLULAR || !cellular()) return go()
         ask.value = Ask(bytes, incoming, yes = { ask.value = null; go() }, no = { ask.value = null })
     }

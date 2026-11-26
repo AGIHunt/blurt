@@ -141,6 +141,13 @@ class TalkBar(c: Context) : View(c) {
             if (link.comingBack && (!Remote.prefs.micOnPhone || mic.granted && mic.start())) link.dictationKey(true)
             return
         }
+        // on the public relay voice goes as Opus or not at all: this phone's microphone can't be heard there
+        if (Remote.prefs.micOnPhone && !link.voice.carries) {
+            down = false
+            invalidate()
+            link.sayNoVoice()
+            return
+        }
         if (Remote.prefs.micOnPhone) {
             if (!mic.granted) {
                 // the system's question takes the touch away: the first press asks, the next one talks

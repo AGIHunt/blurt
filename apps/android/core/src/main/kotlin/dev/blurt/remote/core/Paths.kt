@@ -15,13 +15,15 @@ enum class LinkPath {
     /** the owner's relay, nothing direct */
     OWN_RELAY,
     /** Blurt's go-between, before the stream has moved */
-    GO_BETWEEN;
+    GO_BETWEEN,
+    /** Blurt's public relay, where a session goes on when the go-between found no direct path; labelled as the go-between is */
+    PUBLIC_RELAY;
 
     /** What the picture's ceiling goes by: an overlay counts as away, since its path may run through someone's relay. */
     val route: LinkRoute get() = when (this) {
         SAME_NETWORK -> LinkRoute.LOCAL
         TAILSCALE, OVERLAY, DIRECT -> LinkRoute.DIRECT
-        OWN_RELAY, GO_BETWEEN -> LinkRoute.RELAY
+        OWN_RELAY, GO_BETWEEN, PUBLIC_RELAY -> LinkRoute.RELAY
     }
 
     /** A TCP session to an address the phone was told: Tailscale's ranges by name; an overlay when the connection went out through a VPN to

@@ -162,6 +162,18 @@ class LinkStatusTest {
         assertEquals(StatusLine.CANT_CONTROL, banner(LinkStatus(LinkPhase.CONNECTED, screenError = "off", screenAsked = false, canControl = false))?.title)
     }
 
+    @Test fun thePublicRelayBusyIsSaidWithNothingToTap() {
+        // remote-go-between.md §Copy: under "Can't show the screen", no button; the picture comes by itself once there's room
+        val busy = StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PUBLIC_BUSY)
+        assertEquals(busy, banner(LinkStatus(LinkPhase.CONNECTED, screenError = RemotePublicRelay.BUSY, showing = true)))
+        // said even for a picture that came on by itself: it is still on its way
+        assertEquals(busy, banner(LinkStatus(LinkPhase.CONNECTED, screenError = RemotePublicRelay.BUSY, screenAsked = false)))
+        // the computer's lock says more about why there's no picture
+        assertEquals(StatusLine.LOCKED, banner(LinkStatus(LinkPhase.CONNECTED, screenError = RemotePublicRelay.BUSY, locked = true, showing = true))?.title)
+        // gone with the connection
+        assertEquals(StatusLine.CONNECTING, banner(LinkStatus(LinkPhase.CONNECTING, screenError = RemotePublicRelay.BUSY))?.title)
+    }
+
     // MARK: a drop, and coming back
 
     @Test fun aDropInUseIsFeltAndSoIsComingBack() {

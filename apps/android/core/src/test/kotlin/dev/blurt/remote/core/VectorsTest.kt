@@ -74,7 +74,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(42, list.size)
+        assertEquals(44, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -156,6 +156,9 @@ class VectorsTest {
         assertNull(s.features, "a host before the go-between names none")
         assertEquals(ToPhone.StreamMoved, phone("stream_moved"))
         assertEquals(ToPhone.NoDirect, phone("no_direct"))
+        assertEquals(ToPhone.PublicRelay("wss://relay.blurt.work", "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w",
+            "1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A"), phone("public_relay"))
+        assertEquals(ToPhone.ScreenFailed(RemotePublicRelay.BUSY), phone("screen_failed_busy"))
         assertEquals(ToPhone.CanControl(true), phone("can_control"))
         assertEquals(ToPhone.Front(RemoteFront("WindowsTerminal.exe", "Terminal")), phone("front"))
         assertEquals(ToPhone.Dictation(RemoteDictationPhase.LISTENING), phone("dictation"))
@@ -433,6 +436,54 @@ class VectorsTest {
 
     /** The move: `streamMoved` as the phone's last frame on the old stream, the next frame continuing its counters inside a kind-7 datagram,
      *  and the host's kind-8 ack, each sealed byte for byte as RemoteVectorsTests.swift wrote them. */
+    @Test
+    fun thePublicRelayIsSwifts() {
+        val p = v["publicRelay"]!!.jsonObject
+        fun n(k: String) = p[k]!!.jsonPrimitive.long
+        fun t(k: String) = p[k]!!.jsonPrimitive.content
+        assertEquals(p["addresses"]!!.jsonArray.map { it.jsonPrimitive.content }, RemotePublicRelay.ADDRESSES)
+        assertEquals(t("busy"), RemotePublicRelay.BUSY)
+        val f = p["features"]!!.jsonObject
+        assertEquals(f["publicRelay"]!!.jsonPrimitive.content, RemoteFeature.PUBLIC_RELAY)
+        assertEquals(f["opus"]!!.jsonPrimitive.content, RemoteFeature.OPUS)
+        assertEquals(n("opusKind").toInt(), RemoteFrameKind.OPUS.raw)
+        assertEquals(n("askOver"), RemotePublicRelay.ASK_OVER)
+        assertEquals(n("filesPerDay"), RemotePublicRelay.FILES_PER_DAY)
+        assertEquals(n("giveUpSeconds") * 1000, RemotePublicRelay.GIVE_UP_MS)
+        assertEquals(n("ticketWaitSeconds") * 1000, RemotePublicRelay.TICKET_WAIT_MS)
+        assertEquals(n("askAgainSeconds").toInt(), RemotePublicRelay.ASK_AGAIN_SECONDS)
+        assertEquals(n("renewSeconds").toInt(), RemotePublicRelay.RENEW_SECONDS)
+        assertEquals(n("untouchedSeconds").toInt(), RemotePublicRelay.UNTOUCHED_SECONDS)
+        assertEquals(n("nobodyCame").toInt(), RemotePublicRelay.NOBODY_CAME)
+        val pic = p["picture"]!!.jsonObject
+        assertEquals(pic["maxWidth"]!!.jsonPrimitive.int, RemotePublicRelay.MAX_WIDTH)
+        assertEquals(pic["maxBitrate"]!!.jsonPrimitive.int, RemotePublicRelay.MAX_BITRATE)
+        assertEquals(pic["maxFPS"]!!.jsonPrimitive.int, RemotePublicRelay.MAX_FPS)
+        // the picture the phone asks for on this path is that, whatever the user chose
+        for (q in ScreenQuality.entries) {
+            val plan = ScreenPlan(q, LinkRoute.RELAY, cellular = false, lowData = false, native = PadSize(2400.0, 1080.0), panel = 120, publicRelay = true)
+            assertTrue(plan.width <= RemotePublicRelay.MAX_WIDTH && plan.bitrate <= RemotePublicRelay.MAX_BITRATE && plan.fps <= RemotePublicRelay.MAX_FPS, "$q: $plan")
+        }
+
+        // the text messages, as the go-between and the relay read and write them
+        val room = "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w"
+        assertSameJson(Json.parseToJsonElement(t("ticketAsk")), Json.parseToJsonElement(RemotePublicRelay.ticketAsk(room)), "ticketAsk")
+        assertSameJson(Json.parseToJsonElement(t("leaseAsk")), Json.parseToJsonElement(RemotePublicRelay.lease(true)), "leaseAsk")
+        assertSameJson(Json.parseToJsonElement(t("leaseFree")), Json.parseToJsonElement(RemotePublicRelay.lease(false)), "leaseFree")
+        val tickets = RemotePublicRelay.ticketAnswer(t("ticketAnswer")) as RemotePublicRelay.TicketAnswer.Tickets
+        assertEquals(RemotePublicRelay.ADDRESSES[0], tickets.relay)
+        assertEquals(room, tickets.room)
+        assertEquals((ToPhone.fromJson(v["toPhone"]!!.jsonArray.first { it.jsonObject["name"]!!.jsonPrimitive.content == "public_relay" }
+            .jsonObject["json"]) as ToPhone.PublicRelay).ticket, tickets.phone)
+        assertEquals(listOf("off", "alone", "limit", "bad"),
+            p["ticketRefused"]!!.jsonArray.map { (RemotePublicRelay.ticketAnswer(it.jsonPrimitive.content) as RemotePublicRelay.TicketAnswer.Refused).why })
+        val leases = p["leaseAnswers"]!!.jsonArray.map { RemotePublicRelay.leaseAnswer(it.jsonPrimitive.content)!! }
+        assertEquals(listOf(RemotePublicRelay.LeaseAnswer(true, 75), RemotePublicRelay.LeaseAnswer(false, why = "full"),
+            RemotePublicRelay.LeaseAnswer(false, why = "prefix"), RemotePublicRelay.LeaseAnswer(false, why = "expired")), leases)
+        // the phone's way in, as public.js reads it
+        assertEquals("wss://relay.blurt.work/v1/$room/phone?t=${tickets.phone}", RemotePublicRelay.url(tickets.relay, room, "phone", tickets.phone))
+    }
+
     @Test
     fun theMoveByteForByte() {
         val g = v["goBetween"]!!.jsonObject

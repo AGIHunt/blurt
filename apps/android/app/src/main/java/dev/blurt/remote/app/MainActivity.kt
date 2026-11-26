@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
             }
         }
         dev.blurt.remote.app.pad.TestWeather.from(intent)
+        dev.blurt.remote.app.net.TestRoutes.from(intent)
         // Android hands the intent this began with over again when it brings the app back after ending it, from Recents or the launcher
         handled = savedInstanceState?.getBoolean(HANDLED) == true
         if (!handled && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) handle(intent)
@@ -130,6 +131,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         dev.blurt.remote.app.pad.TestWeather.from(intent)
+        dev.blurt.remote.app.net.TestRoutes.from(intent)
         handle(intent)
     }
 

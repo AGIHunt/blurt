@@ -6,6 +6,7 @@
 //   Auto, Wi-Fi elsewhere       1800 on a phone, a tablet's own (two pixels a dp)   4–8 Mbps  30 fps
 //   Auto, mobile data           1440                 2 Mbps  24 fps
 //   Auto, Data Saver            1280                 1 Mbps  15 fps   (Android's Data Saver is iOS's Low Data Mode)
+//   Any, the public relay       the same as Data Saver
 //   Sharp away / Balanced       the phone's / 1800   8 / 4   30 fps
 package dev.blurt.remote.core
 
@@ -49,11 +50,13 @@ data class ScreenPlan(val width: Int, val height: Int, val bitrate: Int, val fps
          */
         operator fun invoke(
             q: ScreenQuality, route: LinkRoute, cellular: Boolean, lowData: Boolean, native: PadSize, panel: Int = 60, scale: Double = 3.0,
+            publicRelay: Boolean = false,
         ): ScreenPlan {
             val long = max(native.width, native.height).toInt()
             val short = min(native.width, native.height).toInt()
             fun size(w: Int, h: Int) = min(long, w) to min(short, h)
-            val tier = if (q == ScreenQuality.AUTO) {
+            // Blurt's public relay is shared: Data Saver's picture whatever was chosen (remote-go-between.md §The picture: leases)
+            val tier = if (publicRelay) ScreenQuality.SAVER else if (q == ScreenQuality.AUTO) {
                 if (lowData) ScreenQuality.SAVER else if (route == LinkRoute.LOCAL && !cellular) ScreenQuality.SHARP else ScreenQuality.BALANCED
             } else q
             return when {

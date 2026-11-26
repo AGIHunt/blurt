@@ -193,6 +193,7 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.ALLOW_SCREEN -> c.getString(if (host == RemoteHost.MAC) R.string.status_screen_permission else R.string.status_screen_permission_pc)
                 StatusLine.SCREEN_IS_OFF -> c.getString(R.string.status_screen_off)
                 StatusLine.PICTURE_STOPPED -> c.getString(R.string.status_picture_stopped)
+                StatusLine.PUBLIC_BUSY -> c.getString(R.string.status_public_busy)
                 StatusLine.LOCKED -> c.getString(R.string.status_locked, n)
                 StatusLine.UNLOCK_FIRST -> c.getString(R.string.status_unlock_first)
                 StatusLine.NO_DIRECT -> c.getString(R.string.status_no_direct)
@@ -226,7 +227,8 @@ fun pathName(c: Context, p: LinkPath): String = c.getString(when (p) {
     LinkPath.OVERLAY -> R.string.path_overlay
     LinkPath.DIRECT -> R.string.path_direct
     LinkPath.OWN_RELAY -> R.string.path_own_relay
-    LinkPath.GO_BETWEEN -> R.string.path_go_between
+    // both are the public connection service to the user (copy.md)
+    LinkPath.GO_BETWEEN, LinkPath.PUBLIC_RELAY -> R.string.path_go_between
 })
 
 /**

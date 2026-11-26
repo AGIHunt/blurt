@@ -75,4 +75,23 @@ class AppLogicTest {
         // the same network is needed only without a relay: the line says both, the relay by its name
         assertTrue(en["status_check_network"]!!.contains("relay") && zh["status_check_network"]!!.contains("中转"))
     }
+
+    /** Blurt's public relay: the words are the spec's copy table (remote-go-between.md §Copy), the size where it says 35 MB. */
+    @Test fun thePublicRelaysWordsAreTheSpecs() {
+        fun strings(dir: String) = Regex("<string name=\"([a-z_0-9]+)\">(.*?)</string>").findAll(java.io.File("src/main/res/$dir/strings.xml").readText())
+            .associate { it.groupValues[1] to it.groupValues[2] }
+        val en = strings("values")
+        val zh = strings("values-b+zh+Hans")
+        assertEquals("The public connection service is busy. Keys, the pointer and voice still work.", en["status_public_busy"])
+        assertEquals("公共连接服务繁忙。按键、指针和语音仍可使用。", zh["status_public_busy"])
+        assertEquals("Send %1\$s over the public connection service?", en["public_send_q"])
+        assertEquals("通过公共连接服务发送 %1\$s？", zh["public_send_q"])
+        assertEquals("You can send up to 50 MB a day over the public connection service.", en["public_files_limit"])
+        assertEquals("通过公共连接服务每天最多可发送 50 MB。", zh["public_files_limit"])
+        // the busy card sits under the existing title; voice the host can't hear says the existing line; the label is the go-between's
+        assertEquals("Can’t show the screen", en["status_cant_show_screen"])
+        assertEquals("To use this, update Blurt on %1\$s.", en["update_host"])
+        assertEquals("Public connection service", en["path_go_between"])
+        assertEquals("公共连接服务", zh["path_go_between"])
+    }
 }

@@ -266,7 +266,11 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val l = Remote.link
         l.onBack = { showWanted() }
         scope.launch { combine(l.state, l.current, l.canControl) { _, _, _ -> }.collect { status() } }
-        scope.launch { combine(l.waitingForMac, l.digitsConfirmed, l.pairFailed, l.route, l.screenError) { _, _, _, _, e -> e }.collect { e -> if (e != null) setShowing(false); status() } }
+        scope.launch { combine(l.waitingForMac, l.digitsConfirmed, l.pairFailed, l.route, l.screenError) { _, _, _, _, e -> e }.collect { e ->
+            // the public relay busy: the picture is still wanted, and comes by itself once there's room
+            if (e != null && e != dev.blurt.remote.core.RemotePublicRelay.BUSY) setShowing(false)
+            status()
+        } }
         scope.launch { combine(l.path, l.away) { _, _ -> }.collect { status() } }
         scope.launch { combine(l.hostLocked, l.meeting, l.offline, l.presence) { _, _, _, _ -> }.collect { status() } }
         // the digits to compare: lit while they show

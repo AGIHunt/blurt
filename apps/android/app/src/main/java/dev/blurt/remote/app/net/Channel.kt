@@ -6,6 +6,9 @@
 // On Blurt's go-between the WebSocket only introduces the two ends (docs/design/remote-go-between.md): once the host says `udpOK`, each
 // side writes `streamMoved` as its last frame there, and the rest of its stream (the same sealed frames, the same counters) goes in kind-7
 // datagrams on the direct path (core's RemoteStreamSender / RemoteStreamReceiver). Until then no audio goes over the WebSocket.
+//
+// On Blurt's public relay (remote-go-between.md §The public relay) the session stays on the WebSocket, and voice goes as Opus (kind 9) or not
+// at all: never PCM.
 package dev.blurt.remote.app.net
 
 import android.os.Handler
@@ -46,6 +49,8 @@ class Channel(
     val goBetween: Boolean = false,
     /** a TCP address DNS-SD found: the same network */
     val discovered: Boolean = false,
+    /** the relay is Blurt's public relay, in a room made for this session */
+    val publicRelay: Boolean = false,
 ) : Transport.Sink {
     private val h = Net.handler
     private val reader = RemoteFrameReader()
@@ -183,7 +188,17 @@ class Channel(
         h.post { sendSealed(RemoteFrameKind.CONTROL, d) }
     }
 
+    /** On the public relay: the host hears Opus and this phone can make it (VoiceWay.OPUS). Otherwise no voice goes there. */
+    @Volatile var opus = false
+    private var encoder: dev.blurt.remote.app.talk.OpusVoice? = null
+
     fun sendAudio(pcm: ByteArray) = h.post {
+        if (publicRelay) {
+            if (closed || !opus || sealer == null) return@post
+            val e = encoder ?: dev.blurt.remote.app.talk.OpusVoice.make()?.also { encoder = it } ?: return@post
+            for (p in e.encode(pcm)) sendSealed(RemoteFrameKind.OPUS, p)
+            return@post
+        }
         // on the go-between nothing heavy crosses the WebSocket: the talk key's first words wait for the move, the last few seconds of them
         if (goBetween && !moved) {
             if (closed) return@post
@@ -502,6 +517,8 @@ class Channel(
         direct = null
         chosen = null
         heldAudio.clear()
+        encoder?.close()
+        encoder = null
         h.removeCallbacks(streamTicker)
         onClose?.invoke(failure)
     }

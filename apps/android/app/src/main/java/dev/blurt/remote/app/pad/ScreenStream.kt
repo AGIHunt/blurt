@@ -184,7 +184,8 @@ class ScreenStream(private val c: Context) {
         val l = Remote.link
         val dm = c.resources.displayMetrics
         return ScreenPlan(Remote.prefs.quality, l.route.value, Remote.net.cellular, Remote.net.lowData,
-            PadSize(maxOf(dm.widthPixels, dm.heightPixels).toDouble(), minOf(dm.widthPixels, dm.heightPixels).toDouble()), panel, dm.density.toDouble())
+            PadSize(maxOf(dm.widthPixels, dm.heightPixels).toDouble(), minOf(dm.widthPixels, dm.heightPixels).toDouble()), panel, dm.density.toDouble(),
+            publicRelay = l.path.value == dev.blurt.remote.core.LinkPath.PUBLIC_RELAY)
     }
 
     /** The display's top refresh rate: 120 on a 120 Hz panel. Asked for at home (ScreenPlan) and while frames come (StageView.wantRate). */

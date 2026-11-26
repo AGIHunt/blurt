@@ -230,7 +230,7 @@ private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
     val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes).replace(' ', '\u00A0')
     AskDialog(
         onDismiss = a.no,
-        title = stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size),
+        title = stringResource(if (a.publicRelay) R.string.public_send_q else if (a.incoming) R.string.data_get_q else R.string.data_send_q, size),
         confirm = { TextButton(a.yes) { Text(stringResource(if (a.incoming) R.string.data_get else R.string.send)) } },
         dismiss = { TextButton(a.no) { Text(stringResource(R.string.cancel)) } },
     )

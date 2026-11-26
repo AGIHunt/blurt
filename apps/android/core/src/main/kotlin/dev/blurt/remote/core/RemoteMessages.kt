@@ -198,6 +198,11 @@ object RemoteFeature {
     const val RESUME = "resume"
     /** in `session.features`: the host answers `getClipboard` and takes `clip` files */
     const val CLIPBOARD = "clipboard"
+    /** in `hello.features`: this phone can go on at Blurt's public relay after `noDirect` (`ToPhone.PublicRelay`). In `session.features`: this
+     *  host can take it there (remote-go-between.md §The public relay) */
+    const val PUBLIC_RELAY = "publicRelay"
+    /** in `hello.features`: this phone can send its voice as Opus (frame kind 9). In `session.features`: this host can hear it */
+    const val OPUS = "opus"
 }
 
 /** Phone → host. */
@@ -449,6 +454,9 @@ sealed class ToPhone {
     data object StreamMoved : ToPhone()
     /** on the go-between: the direct path didn't open in time, and this session can't continue there */
     data object NoDirect : ToPhone()
+    /** sent just before `noDirect` to a phone that listed RemoteFeature.PUBLIC_RELAY: the session goes on at Blurt's public relay, in this room
+     *  made for it, with this ticket. `address` must be one of RemotePublicRelay.ADDRESSES */
+    data class PublicRelay(val address: String, val room: String, val ticket: String) : ToPhone()
     /** a computer host's clipboard text, while a viewer has the keys (phones never see it) */
     data class Clipboard(val text: String) : ToPhone()
     /** the host's screen locked (true) or opened again (false), and it can't show its lock screen: no frames meanwhile. 1.1.0+ */
@@ -496,6 +504,7 @@ sealed class ToPhone {
             "height" to J.double(height))
         StreamMoved -> J.case("streamMoved")
         NoDirect -> J.case("noDirect")
+        is PublicRelay -> J.case("publicRelay", "address" to J.str(address), "room" to J.str(room), "ticket" to J.str(ticket))
         is Clipboard -> J.case("clipboard", "_0" to J.str(text))
         is ScreenLocked -> J.case("screenLocked", "_0" to J.bool(locked))
         is FileBegin -> J.case("fileBegin", "id" to J.str(id), "name" to J.str(name), "size" to J.int(size), "clip" to J.bool(clip),
@@ -544,6 +553,7 @@ sealed class ToPhone {
                     J.double(o, "width") ?: return null, J.double(o, "height") ?: return null)
                 "streamMoved" -> StreamMoved
                 "noDirect" -> NoDirect
+                "publicRelay" -> PublicRelay(J.str(o, "address") ?: return null, J.str(o, "room") ?: return null, J.str(o, "ticket") ?: return null)
                 "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
                 "screenLocked" -> ScreenLocked(J.bool(o, "_0") ?: return null)
                 "fileBegin" -> FileBegin(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.long(o, "size") ?: return null,
@@ -576,7 +586,9 @@ enum class RemoteFrameKind(val raw: Int) {
     /** after the move: u64 BE offset ∥ up to 1,100 bytes of the sender's stream (RemoteStreamPacket), datagrams only */
     STREAM(7),
     /** u64 BE next: the receiver's next expected offset in the moved stream, cumulative; datagrams only */
-    STREAM_ACK(8);
+    STREAM_ACK(8),
+    /** one Opus packet: 20 ms of 16 kHz mono voice, about 32 kbps. Instead of kind 1 on the public relay (RemotePublicRelay) */
+    OPUS(9);
 
     companion object { fun from(raw: Int): RemoteFrameKind? = entries.firstOrNull { it.raw == raw } }
 }
