@@ -242,4 +242,4 @@
 "viewer.file.left.sec" = "%ld 秒";
 "viewer.file.left.min" = "%ld 分钟";
 "viewer.copied.none.too_large" = "%@ 上拷贝的文件超过 4 GB。";
-"remote.clip.refused" = "未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。";
+"remote.clip.refused" = "未粘贴：对方的光标在密码框中，或对方已锁屏。内容已放入其剪贴板。";

@@ -150,7 +150,7 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | The host's bar: button (only for a device that takes files) · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
 | The host's bar while a file goes to the device (in place of who; the batch after the name; on the Mac also the viewer card's line, before time left: was Sending %ld of %ld to %@ · %@ of %@ / 正在发送第 %ld/%ld 个到 %@ · %@ / %@) · paused · failed, 4 s | 发往 %@ · 第 %ld/%ld 个 · %@ / %@ · 已暂停，重新连接后继续。 · 未发送。 | To %@ · %ld of %ld · %@ of %@ · Paused. Resumes when reconnected. · Not sent. |
 | Time left's number (inside 还剩 %@ / %@ left): minutes above 60 s, seconds below, a space before the unit | %ld 分钟 · %ld 秒 | %ld min · %ld sec |
-| A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Mac, Windows and Linux hosts) | 未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。 | Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard. |
+| A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Mac, Windows and Linux hosts; was 或屏幕已锁定。内容已放入对方的剪贴板。 / or the computer is locked. It’s on that computer’s clipboard.) | 未粘贴：对方的光标在密码框中，或对方已锁屏。内容已放入其剪贴板。 | Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard. |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
 | The host's connection log | 已发送剪贴板 · 收到 %ld 个文件 · 已发送 %ld 个文件 | Clipboard sent · Received %ld files · Sent %ld files |
 | The viewer's ⋯ menu | 获取拷贝的内容 | Get Copied Items |
@@ -216,6 +216,13 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
   (DateComponentsFormatter wrote 40秒 / 1分钟 in Chinese). Tabular digits. Saved, received and failed centre their two lines (they sat
   at the top over an empty bar's room); paused keeps its bar where it got to, at 40 %. Received has a Show in Finder button (the card's
   click still shows it too). Nothing copied and locked use the info mark; the triangle stays for what failed.
+- **Round 2** (a fresh judge on r1): Send Files… had regular weight beside a semibold Disconnect and read as disabled; both are
+  semibold now. A PDF being sent showed Chrome's page (`NSWorkspace.icon(for:)` is the default app's document icon); a file here being
+  sent now shows its Quick Look thumbnail (icon mode, as Finder), the type icon only until that comes or for a file still coming in.
+  One-line states (Copied, Nothing is copied…, too_large) are 44 pt tall with a 26 pt mark and hug their text from 150 pt (were 62 pt
+  tall, 260 pt at least, with a wide gap before ×); one that wraps gets the two-line height back. Shots `mac/r2/`, with the bar's
+  paused and Not sent. lines (`remotebar paused | failed`) and each bar also on the made-up desktop picture (`*-desk-*.png`: the bar's
+  own window shot laid under that picture's menu bar; the harness shoots the bar's window alone, never this Mac's screen).
 - Shots: `promo/cases/remote-files-1126/mac/r1/` (the bar's three lines and the card's ten states, en and zh), from the isolated test
   app: the bar from its test hook alone (nothing controls this Mac), the card on a pretend host in the same process (`viewer hint file.*`).
 

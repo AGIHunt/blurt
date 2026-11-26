@@ -243,4 +243,4 @@
 "viewer.file.left.sec" = "%ld sec";
 "viewer.file.left.min" = "%ld min";
 "viewer.copied.none.too_large" = "A file copied on %@ is larger than 4 GB.";
-"remote.clip.refused" = "Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard.";
+"remote.clip.refused" = "Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard.";

@@ -65,7 +65,8 @@
 //                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|inbox        switch the current project (inbox: none — captures go to Unassigned)
-//     remotebar NAME | off    the being-controlled bar alone, with nothing controlling (Remote/RemoteBanner.swift)
+//     remotebar NAME | off | clipboard | sending | paused | failed   the being-controlled bar alone, with nothing controlling
+//                             (Remote/RemoteBanner.swift); the last four: its lines for the clipboard and a file to the device
 //     peck [to_verify|done] TITLE   the done line (Peep) · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    Peep playing CLIP alone in a small window ("mascot" event: its window number)
 //     mascotframes DIR CLIP [dark]  the clip at 12 fps as PNGs (80 pt, 2x), in order
@@ -139,12 +140,18 @@ extension App {
             let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr, target: target) }
             if p.count == 4 { ScreenTextRefine.installed == nil ? ScreenTextRefine.refreshInstalled(read) : read() }
             else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
-        case "remotebar":                               // remotebar NAME | off | clipboard | sending: the bar alone, nothing is controlling
-            if arg == "clipboard" { RemoteBanner.flash(T("remote.banner.clipboard_sent", "iPhone")) }
-            else if arg == "sending" {
-                RemoteBanner.transfer(RemoteTransfer(id: "t", name: "作业 3.jpg", size: 8_400_000, done: 3_200_000, incoming: false, state: .going,
+        case "remotebar":                               // remotebar NAME | off | clipboard | sending | paused | failed: the bar alone, nothing is controlling
+            let file = { (state: RemoteTransfer.State) in
+                RemoteBanner.transfer(RemoteTransfer(id: "t", name: "作业 3.jpg", size: 8_400_000, done: 3_200_000, incoming: false, state: state,
                                                      index: 2, count: 5), to: "iPhone")
-            } else { RemoteBanner.pretend(arg == "off" ? nil : arg) }
+            }
+            switch arg {
+            case "clipboard": RemoteBanner.flash(T("remote.banner.clipboard_sent", "iPhone"))
+            case "sending": file(.going)
+            case "paused": file(.paused)
+            case "failed": file(.failed("space"))      // Not sent., 4 s
+            default: RemoteBanner.pretend(arg == "off" ? nil : arg)
+            }
         case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
             ScreenTextCard.shared.testCommand(arg)
         case "cardspage":                               // the main window's Cards page (CardsPage.testCommand: state, query, key, select…)

@@ -1121,14 +1121,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         switch key {
         case "release", "release.app_only": picture.showHint(releaseHint(system: key == "release"), seconds: 600)
         case "no_control": picture.showHint(T("viewer.no_control", shownName), seconds: nil)
-        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1, left: 95))
+        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1, left: 95, url: Self.testPDF(name)))
         case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1, left: nil))
-        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3, left: 40))
+        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3, left: 40, url: Self.testPDF(name)))
         case "file.saved": showFile(.saved(name: name, index: 1, count: 1, blurt: true))
         case "file.failed": showFile(.failed(name: name, why: "space", incoming: false))
         case "file.in": showFile(.receiving(name: "Q4 report.xlsx", size: size, done: 2_600_000, index: 1, count: 1, left: 12))
         case "file.paused":     // after 5.1 of 8.4 MB went
-            showFile(.sending(name: name, size: size, done: 5_100_000, index: 1, count: 1, left: 40))
+            showFile(.sending(name: name, size: size, done: 5_100_000, index: 1, count: 1, left: 40, url: Self.testPDF(name)))
             showFile(.paused(name: name))
         case "file.received": showFile(.received(url: URL(fileURLWithPath: "/tmp/Q4 report.xlsx"), index: 1, count: 1))
         case "file.copied": showFile(.copied(image: true))
@@ -1138,6 +1138,32 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case "file.off": fileCard.hide()
         default: emit(["event": "viewer_hint", "unknown": key])
         }
+    }
+
+    /// A one-page made-up report as NAME in a temporary folder: a file being sent, for its Quick Look thumbnail on the card.
+    private static func testPDF(_ name: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-test-hint", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let ctx = CGContext(url as CFURL, mediaBox: &box, nil) else { return nil }
+        ctx.beginPDFPage(nil)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSAttributedString(string: "Quarterly results", attributes: [.font: NSFont.boldSystemFont(ofSize: 34)]).draw(at: NSPoint(x: 60, y: 680))
+        NSAttributedString(string: "Q3 2026 · prepared for the board", attributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.gray])
+            .draw(at: NSPoint(x: 60, y: 646))
+        let bars: [(CGFloat, NSColor)] = [(180, .systemBlue), (240, .systemBlue), (210, .systemBlue), (300, .systemGreen)]
+        for (i, b) in bars.enumerated() {
+            b.1.setFill()
+            NSBezierPath(rect: NSRect(x: 80 + CGFloat(i) * 120, y: 300, width: 70, height: b.0)).fill()
+        }
+        NSColor.lightGray.setFill()
+        for i in 0..<6 { NSBezierPath(rect: NSRect(x: 60, y: 240 - CGFloat(i) * 26, width: i % 3 == 2 ? 320 : 490, height: 10)).fill() }
+        NSGraphicsContext.current = nil
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return url
     }
 
     var testHintState: [String: Any] { picture.testHint.merging(["file": fileCard.testState]) { a, _ in a } }

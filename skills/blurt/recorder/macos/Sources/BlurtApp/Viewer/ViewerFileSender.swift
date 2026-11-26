@@ -4,12 +4,14 @@
 import AppKit
 import BlurtCore
 import BlurtRemoteKit
+import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
 final class ViewerFileSender {
     /// What the card shows, on the main thread. `done` is nil until the other end first says how much it has written.
     enum Event: Equatable {
-        case sending(name: String, size: Int, done: Int?, index: Int, count: Int, left: Double?)
+        /// `url`: the file here being sent (its Quick Look thumbnail is the card's icon)
+        case sending(name: String, size: Int, done: Int?, index: Int, count: Int, left: Double?, url: URL? = nil)
         /// a file from the host, coming here (Get Copied Items)
         case receiving(name: String, size: Int, done: Int, index: Int, count: Int, left: Double?)
         /// the session dropped mid-file: it goes on when it's back
@@ -142,7 +144,7 @@ final class ViewerFileSender {
             if t.incoming {
                 post(.receiving(name: t.name, size: t.size, done: t.done, index: i, count: n, left: t.secondsLeft))
             } else {
-                post(.sending(name: t.name, size: t.size, done: t.done > 0 ? t.done : nil, index: i, count: n, left: t.secondsLeft))
+                post(.sending(name: t.name, size: t.size, done: t.done > 0 ? t.done : nil, index: i, count: n, left: t.secondsLeft, url: t.url))
             }
         case .paused:
             post(.paused(name: t.name))
@@ -163,14 +165,15 @@ final class ViewerFileSender {
 /// file's own icon, its name (cut in the middle, so the extension stays), where it goes and how much is there, a thin bar, and × to stop.
 /// Dark in both appearances, as the window's other cards over the picture (system.md §3.1). Done: the ok check and where it is, 5 s
 /// (received here: Show in Finder, 8 s); not sent: the attention triangle and why, until closed or 8 s. Nothing copied there: the info
-/// mark. Two lines keep one width (420 pt: "To Office PC · 2 of 3 · 5.1 MB of 8.4 MB · 40 sec left" fits); one line (Copied) hugs it,
-/// 260–460 pt, wrapping to a second line past that.
+/// mark. Two lines keep one width and height (420 × 62 pt: "To Office PC · 2 of 3 · 5.1 MB of 8.4 MB · 40 sec left" fits); one line
+/// (Copied) is 44 pt tall with a 26 pt mark and hugs its text, 150–460 pt, wrapping to a second line (62 pt tall) past that.
 final class ViewerFileCard: NSView {
     static let width: CGFloat = 420
     static let height: CGFloat = 62
-    static let oneLine: ClosedRange<CGFloat> = 260...460
-    /// left of the text (inset, icon, gap) and right of it (gap, ×, inset)
-    private static let chrome: CGFloat = 12 + 32 + 10 + 8 + 22 + 10
+    static let oneLineHeight: CGFloat = 44
+    static let oneLine: ClosedRange<CGFloat> = 150...460
+    /// left of the text (inset, icon, gap) and right of it (gap, ×, inset), one line (26 pt mark) or two (32 pt icon)
+    private static func chrome(icon: CGFloat) -> CGFloat { 12 + icon + 10 + 8 + 22 + 10 }
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
@@ -187,6 +190,10 @@ final class ViewerFileCard: NSView {
     private lazy var titleToReveal = title.trailingAnchor.constraint(equalTo: reveal.leadingAnchor, constant: -10)
     /// paused: the bar stays where it got to, dimmed
     private var paused = false
+    private lazy var tall = heightAnchor.constraint(equalToConstant: Self.height)
+    private lazy var iconWide = icon.widthAnchor.constraint(equalToConstant: 32)
+    /// the file whose thumbnail the icon is (or is being made for)
+    private var thumbFor: URL?
     private var hideTimer: Timer?
     private var fraction: CGFloat?
     private var showsBar = true
@@ -254,8 +261,7 @@ final class ViewerFileCard: NSView {
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 32),
-            icon.heightAnchor.constraint(equalToConstant: 32),
+            iconWide, icon.heightAnchor.constraint(equalTo: icon.widthAnchor),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
             titleToClose,
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
@@ -267,7 +273,7 @@ final class ViewerFileCard: NSView {
             close.heightAnchor.constraint(equalToConstant: 22),
             reveal.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -6),
             reveal.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: Self.height),
+            tall,
             wide,
         ])
         setAccessibilityElement(true)
@@ -339,11 +345,31 @@ final class ViewerFileCard: NSView {
         return f
     }()
 
-    /// A file's own icon, as Finder shows it.
+    /// A file's type icon, as Finder shows one it has no picture of (the default app's document icon: Chrome's page for a PDF on a Mac
+    /// where Chrome opens them).
     private static func fileIcon(_ name: String) -> NSImage {
         let ext = (name as NSString).pathExtension
         let type = ext.isEmpty ? UTType.data : (UTType(filenameExtension: ext) ?? .data)
         return NSWorkspace.shared.icon(for: type)
+    }
+
+    /// The file's icon: its Quick Look thumbnail when the file is here (a PDF's first page, a picture), as Finder draws it; the type's
+    /// icon until that comes, or for a file still coming from the other end.
+    private func setIcon(_ name: String, _ url: URL?) {
+        guard let url else { thumbFor = nil; icon.image = Self.fileIcon(name); return }
+        guard url != thumbFor else { return }
+        thumbFor = url
+        icon.image = Self.fileIcon(name)
+        let scale = window?.backingScaleFactor ?? 2
+        let ask = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 32, height: 32), scale: scale, representationTypes: .thumbnail)
+        ask.iconMode = true     // the page with its fold and shadow, as Finder's icon view
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: ask) { [weak self] rep, _ in
+            guard let img = rep?.nsImage else { return }
+            DispatchQueue.main.async {
+                guard let self, self.thumbFor == url else { return }
+                self.icon.image = img
+            }
+        }
     }
 
     /// a received file: a click on the card shows it in Finder
@@ -387,11 +413,11 @@ final class ViewerFileCard: NSView {
             close.setAccessibilityLabel(T("viewer.file.close"))
             hideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in self?.hide() }
         }
-        func going(_ name: String, _ size: Int, _ done: Int?) {
+        func going(_ name: String, _ size: Int, _ done: Int?, _ url: URL? = nil) {
             sending = true
             paused = false
             isHidden = false
-            icon.image = Self.fileIcon(name)
+            if url != nil || title.stringValue != name || thumbFor == nil { setIcon(name, url) }
             setTitle(name)
             fraction = done.map { size > 0 ? CGFloat(min($0, size)) / CGFloat(size) : 1 }
             showsBar = true
@@ -400,8 +426,8 @@ final class ViewerFileCard: NSView {
         }
         let bytes = { (n: Int) in Self.bytes.string(fromByteCount: Int64(n)) }
         switch e {
-        case let .sending(name, size, done, index, count, left):
-            going(name, size, done)
+        case let .sending(name, size, done, index, count, left, url):
+            going(name, size, done, url)
             if let done {
                 // the direction stays when time left shows: going out and coming in never read the same
                 detail.stringValue = Self.line(out: true, to, bytes(min(done, size)), bytes(size), index, count) + Self.left(left)
@@ -463,6 +489,7 @@ final class ViewerFileCard: NSView {
             hide()
         }
         let one = detail.stringValue.isEmpty
+        if case .sending = e {} else if case .receiving = e {} else if case .paused = e {} else { thumbFor = nil }
         titleTop.isActive = !one
         titleMiddle.isActive = one
         titleToClose.isActive = reveal.isHidden
@@ -471,11 +498,16 @@ final class ViewerFileCard: NSView {
         title.lineBreakMode = one ? .byWordWrapping : .byTruncatingMiddle
         title.maximumNumberOfLines = one ? 2 : 1
         if one {
+            let chrome = Self.chrome(icon: 26)
             let text = ceil(title.attributedStringValue.size().width) + 4
-            wide.constant = min(Self.oneLine.upperBound, max(Self.oneLine.lowerBound, text + Self.chrome))
-            title.preferredMaxLayoutWidth = wide.constant - Self.chrome
+            wide.constant = min(Self.oneLine.upperBound, max(Self.oneLine.lowerBound, text + chrome))
+            title.preferredMaxLayoutWidth = wide.constant - chrome
+            iconWide.constant = 26
+            tall.constant = text + chrome > Self.oneLine.upperBound ? Self.height : Self.oneLineHeight     // wrapped: two lines' room
         } else {
             wide.constant = Self.width
+            iconWide.constant = 32
+            tall.constant = Self.height
             title.preferredMaxLayoutWidth = 0
             let block = title.intrinsicContentSize.height + 1 + detail.intrinsicContentSize.height
             titleTop.constant = showsBar ? 11 : ((Self.height - block) / 2).rounded()

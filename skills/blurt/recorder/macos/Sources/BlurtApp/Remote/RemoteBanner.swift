@@ -128,7 +128,7 @@ enum RemoteBanner {
         let send = NSButton(title: T("remote.banner.send_files"), target: Handler.shared, action: #selector(Handler.sendFiles))
         send.bezelStyle = .push
         send.controlSize = .small
-        send.font = .systemFont(ofSize: 12, weight: .regular)
+        send.font = b.font      // as Disconnect: in regular weight it read as disabled beside it
         send.appearance = NSAppearance(named: .darkAqua)
         sendButton = send
         let row = NSStackView(views: [dot, t, send, b])
