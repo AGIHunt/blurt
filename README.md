@@ -1,7 +1,7 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/peep-readme-dark.png"><img src="assets/peep-readme.png" width="132" alt="Blurt"></picture></p>
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
-The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
+Tell your agents what you want by voice, screenshot and screen recording. Runs locally. Free and open source.<br>
 <a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a> · <a href="#community">WeChat group</a></p>
 
 <p align="center"><a href="https://blurt.work/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
@@ -9,253 +9,87 @@ The fastest way to work with your agents, by text, voice, screenshot or screen r
 
 ---
 
-Blurt is a menu-bar app for the Mac, with [test builds for Windows and Linux](https://github.com/AGIHunt/blurt/releases). It works next to the agents you already use, such as Claude Code, Codex, Cursor,
-Claude and ChatGPT, and handles the part before they start: getting what you mean into the agent's input box. It has
-no agent of its own and doesn't replace yours.
+Blurt works with the agents you already use: Claude Code, Codex, Cursor, Claude, ChatGPT, or any text box. It handles the step
+before they start: getting what you say, see and record into the input box. It isn't an agent and doesn't replace yours.
+
+The Mac app does the most. It also runs on Windows, Linux, iPhone, iPad and Android.
 
 ## What it does
 
-**Dictation (`Fn`).** Tap `Fn` in any app, talk, and tap it again. The words are typed where your cursor is. Finish
-with a double tap instead and it's sent too (Return). It works the moment Blurt is installed, with macOS's own speech
-recognition (macOS 26) and nothing to download. Open-source local models are an optional upgrade: more accurate, they
-learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
-fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
-talk. Double-tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back;
-double-tap `⌘` to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
-while you talk works too.
+| | Key | |
+|---|---|---|
+| **Dictation** | `Fn` | Tap it in any app, talk, tap again: the words are typed at the cursor. Double-tap to send them too. Fillers go and punctuation comes in; your words aren't rewritten. While talking, double-tap `⇧` for a list, `⌘` to translate. |
+| **Snap** | `⌥A` | Drag over part of the screen, say what's wrong, draw on it if you like. It becomes a card: drag it into an agent, a chat or a terminal, and the picture and your words go in together. |
+| **Voice Note** | `⌥V` | A snap without the picture. |
+| **Copy Text from Screen** | `⌥C` | Drag over text you can't select: a screenshot, a video, a page, a terminal. It's on the clipboard in about 0.2 s, with lists, tables and code indentation as they were. |
+| **Translate Text from Screen** | `⌥T` | The same drag, translated, then pasted or copied. |
+| **Record** | `⌥R` | Talk while you use your product. Your agent turns the recording into items, each with a screenshot, the spot marked, steps and the code involved. Review them, then hand them to your agent or send a teammate a `.zip`. |
+| **Remote Control** | | Your phone becomes the computer's trackpad, keyboard and microphone, and shows its screen. One computer can drive another too. [More below](#remote-control). |
 
-**Snap (`⌥A`) and Voice Note (`⌥V`).** Drag over part of the screen and say what's wrong; the note opens right
-beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
-undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
-your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
-
-**Copy text from screen (`⌥C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
-terminal. Let go and it's on the clipboard in about 0.2 s, laid out as if you had copied it: the half line the edge
-cut is left out, wrapped list items are one line again, tables keep their tabs and code its indentation. It reads with
-macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
-(720 MB) or your own cloud model fixes misread symbols in code and paths.
-
-**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your agent turns
-the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
-that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
-5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
-copy an instruction for your agent (`⌘↩`), or pack them into one `.zip` for a teammate.
-
-**Blurt on your phone.** When you sit back from a big screen, your phone becomes the computer's trackpad, keys and
-microphone, and can show its screen. It works with a Mac, Windows or Linux computer, from an iPhone, iPad (including the
-iPhone Duo) or Android phone or tablet. The talk key is Blurt's dictation key, and the keys follow the computer you're
-driving (⌘ on a Mac, Ctrl and Win elsewhere). With several displays the picture follows the pointer, or stays on the one
-you pick. Away from home it goes through a relay you run yourself; everything on the way is end-to-end encrypted. Pair
-in Settings → Phone on any computer. The phone apps aren't in the stores yet: build them
-yourself ([iPhone and iPad](apps/ios/README.md#build-it-yourself), [Android](apps/android/README.md#build-it-yourself)).
-
-Snaps, voice notes and recordings go into the current project (a folder you open in Blurt). Without one, recordings
-go to Unassigned and snaps stay as cards until you pick a project. Every shortcut can be changed in Settings.
+Every shortcut can be changed in Settings.
 
 ## Install
 
-You need macOS 13 or later. The local models need Apple silicon; an Intel Mac dictates with macOS 26's own speech
-recognition or a cloud key. Windows and Linux: see the [FAQ](#faq).
-
-**[Download Blurt for Mac](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)** (signed and
-notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app. There is nothing
-else to install: the app fetches the Python runtime its tools use (about 150 MB) by itself the first time.
-
-Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
+**Mac** (macOS 13 or later): [download](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg) and drag it to Applications.
+Signed and notarized; updates come in the app. Or run:
 
 ```bash
 curl -fsSL https://blurt.work/install.sh | sh
 ```
 
-It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.
+On macOS 26 dictation works right away with the Mac's own speech recognition, while a local model (more accurate, works offline) downloads in the
+background. On macOS 13–15, download a model or add a cloud key first. Local models need Apple silicon.
 
-**Use it from your agent.** In Blurt, *Settings → Agents → Connect…* adds the Blurt skill and MCP server to Claude
-Code, Codex and the other agents it finds (Gemini CLI, Kimi Code, OpenCode, Grok, CodeBuddy Code, WorkBuddy,
-Cursor). Start a new session of the agent, then tell it **"start blurt"** (`/blurt` in Claude Code, `$blurt` in
-Codex), or ask it about your items. Your agent can also do the connecting: [llms.txt](https://blurt.work/llms.txt) has
-the steps.
+**Windows and Linux** (test builds): download from [Releases](https://github.com/AGIHunt/blurt/releases). Windows 10 (1903 or later) and 11;
+Ubuntu 24.04 or later, Debian 13 or later. Dictation, voice notes, recording and Remote Control; Windows also has snaps and Copy Text from Screen.
+The Windows installer isn't signed yet: when SmartScreen asks, choose More info → Run anyway.
 
-<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt -g</code>, or in Claude Code <code>/plugin
-marketplace add AGIHunt/blurt</code> and then <code>/plugin install blurt@blurt</code>. Then "start blurt". The first run
-builds Blurt into <code>~/Applications</code>; it needs the Xcode Command Line Tools and
-<a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install what's missing.</sub>
+**Phones**: the Android APK is on [Releases](https://github.com/AGIHunt/blurt/releases). The iPhone and iPad app isn't in the App Store yet:
+[build it yourself](apps/ios/README.md#build-it-yourself).
 
-**First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
-key than `Fn`). Then press `Fn` in any text field: on macOS 26 dictation already works with macOS's own recognizer,
-while your Mac's own local model downloads in the background, once (1.6–5.9 GB depending on the Mac). On macOS 13–15
-you download a model first or add a cloud key. One optional upgrade: an AI-service key (fixes misheard names and
-punctuation, translates with the cloud model, and gives copied text a cloud second reading). Screen Recording is asked
-for the first time you snap or record.
+## With your agents
 
-## How it works with your agents
+In Settings → Agents, click Connect… and Blurt adds its skill and MCP to your agents, such as Claude Code, Codex, Cursor, Gemini CLI, Kimi Code,
+OpenCode and WorkBuddy. Then start a session and say "start blurt", or ask about your items.
 
-Blurt gets your words, pictures and recordings into an agent. The agent does the work.
+- Cards and dictated text go into any input box, so they work with every agent.
+- Reviewed items become one instruction to paste into your agent (`⌘↩`). The agent reports progress over MCP; an item is done when you say so.
+- Blurt only writes files. It has no Slack, Linear or GitHub connectors: delivery is your agent's job.
 
-| | What it does |
-|---|---|
-| **Dictation and cards** | Text and pictures go into any chat box or terminal, so they work with every agent. |
-| **Skill** | The `blurt` skill lets your agent record, transcribe, write items, open the review page and export. |
-| **MCP server** | `blurt` gives agents `search_items`, `get_item` (with screenshots), `get_transcript`, `update_item`, `mark_fixed` and `bundle_items`. *Settings → Agents → Connect…* installs the skill and the MCP server into an agent, after showing what it changes. |
-| **Copy Instruction for Agent** (`⌘↩`) | One line on the clipboard to paste into the agent you use (Claude Code, Codex, WorkBuddy, Cursor…), pointing to a hand-off note with every detail and screenshot. The items show as *Handed off*. Blurt doesn't start an agent for this. |
-| **Hand-off bundle** | One `.zip` with a summary, every item and its screenshots, for a person rather than an agent. |
+Without the app, the skill works on its own: `npx skills add AGIHunt/blurt -g`.
 
-Agents report back through the MCP server: an item moves to *In progress*, then *To verify*. "Fixed" from an agent
-always means *to verify* until you mark it done.
+## Remote Control
 
-Any agent with the Blurt skill can organize recordings into items, GUI apps like WorkBuddy, Cursor and CodeBuddy
-included: say "process my Blurt recordings" in its chat. The app can also do it in the background as soon as you stop,
-with the first of these that is installed and signed in: Claude Code, Codex, Kimi Code, OpenCode, Gemini CLI, Grok.
-You can change the order in *Settings → Agents*.
+On the computer to control, open Settings → Remote Control → Add Device…, then scan the code with your phone or paste the pairing link on another
+computer. When both show the same digits, click Allow on the computer.
 
-**No connectors, by design.** Your agent already has tools for Slack, Linear, GitHub, Notion, Jira and Feishu/Lark.
-Blurt writes files (Markdown, CSV and the hand-off bundle) and leaves delivery to the agent. To send items somewhere,
-ask it, for example: "Bundle the checkout issues and post them to #web in Slack."
+- **Phone to computer**: iPhone, iPad, Android phones and tablets, to a Mac, Windows or Linux computer. The talk key is Blurt's dictation key, and
+  the keys follow the computer you drive.
+- **Computer to computer**: any of Mac, Windows and Linux, one window per computer.
 
-## How Blurt compares
+**How it connects.** On the same network, directly. Apart, Blurt's public connection service sets up a direct connection. Some networks won't
+allow one; then set up [your own relay](tools/remote-relay/README.md) on the computer.
 
-Checked on **2026-10-25**. Prices and policies change.
-
-Blurt's numbers come from its own tests on one machine, an Apple M5 Max with 128 GB, with speech generated by macOS
-`say`. Synthetic speech is cleaner than a real microphone, so error rates are optimistic; smaller Macs, real
-microphones and accents were not measured. Competitor numbers come from other people and methods, some from a
-competing vendor, and are not directly comparable.
-
-| | **Blurt** | Typeless | Wispr Flow | Superwhisper | Aqua Voice |
-|---|---|---|---|---|---|
-| Price | Free, MIT licence, no word limit | Free with a weekly limit; Pro $12/month yearly, $30 monthly [1] | Free 2,000 words/week on desktop; Pro $15/month, $12/month yearly [2] | Free with local models; Pro $8.49/month [3] | Free 1,000 words; Pro $12/month, $10/month yearly [4] |
-| Where speech is processed | On your Mac | Cloud [5] | Cloud [6] | Local or cloud, your choice [7] | Cloud [8] |
-| End of speech → text | 0.29–0.54 s after 3–60 s of speech | about 3.0 s [9] | about 1.5 s [9] | not published | "about 450ms" (vendor) [8] |
-| English accuracy | WER 1.9 % (speech model alone) | WER about 7.9 % [9] | WER about 3.9 % [9] | depends on the model; not published | OpenASR average WER 6.24 (vendor) [10] |
-| Chinese accuracy | CER 1.3 % (speech model alone) | not published | not published | not published | not published |
-| Platforms | macOS; Windows and Linux test builds | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
-| Offline | Dictation needs no network once the models are downloaded (not yet tested with the network off) | No | No | Yes, with local models | No |
-| Snap and voice-note cards for agents | Yes | No | No | No | No |
-| Screen recording → items with screenshots and code pointers | Yes | No | No | No | No |
-| Hand-off to coding agents, status back through MCP | Yes | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
-
-<sub>Blurt sources: latency `docs/design/dictation.md` (median of 3 takes, warm models); accuracy
-`docs/design/asr-benchmark.md` (Qwen3-ASR 1.7B, 7 sentences × 2 voices per language). Full detail and the numbers we
-could not verify: [docs/positioning/facts.md](docs/positioning/facts.md).
-[1] [typeless.com/pricing](https://www.typeless.com/pricing) ·
-[2] [wisprflow.ai/pricing](https://wisprflow.ai/pricing) ·
-[3] [superwhisper.com](https://superwhisper.com/) ·
-[4] [aquavoice.com/pricing](https://aquavoice.com/pricing) ·
-[5] [Typeless data controls](https://typeless.com/data-controls), updated 2026-10-13 ·
-[6] [Wispr Flow data controls](https://wisprflow.ai/data-controls), updated 2026-08-18 ·
-[7] [Superwhisper docs](https://superwhisper.com/docs/llms-full.txt) ·
-[8] [Aqua blog, 2026-08-17](https://aquavoice.com/blog/wispr-flow-alternatives) ·
-[9] [VoiceDash](https://voicedash.ai/wispr-flow-vs-typeless/), a competing vendor; the same article also gives about 20 % for Typeless ·
-[10] [Aqua blog, 2025-10-08](https://aquavoice.com/blog/avalon-openasr-leaderboard).</sub>
-
-## What users complain about in other dictation apps, and what Blurt does
-
-From low-rated App Store reviews of Typeless and Wispr Flow (US store, read on 2026-10-24) and posts on r/macapps,
-V2EX and Product Hunt. Counts and quotes are in [facts.md §3](docs/positioning/facts.md#3-what-users-complain-about-and-what-blurt-does).
-
-| Complaint | What Blurt does |
-|---|---|
-| It rewrites what I said | The default style only removes fillers and adds punctuation. If polish drops or adds words, the raw transcript is typed instead. Lists happen only when you double-tap `⇧`. |
-| Words get lost or cut off | The words show while you talk. Every dictation stays in Dictation History for 30 days. The microphone opens on the key press, so the first words aren't cut. |
-| Word limits and subscriptions | Free, no word limit, no account. |
-| Names and mixed languages come out wrong | Words, a list of names and terms the speech model listens for, learned from your fixes (as hints, never as replacements), plus the text around the cursor. |
-| The microphone stays on; privacy | Speech is processed on your Mac. The microphone is on only while you dictate. No screenshots are taken for dictation. |
-| Slow | About 0.3–0.5 s from releasing the key to the text on the test Mac. |
-| The hotkey clashes with Fn | Blurt keeps `Fn` for dictation and tells you when macOS or another dictation app also reacts to it. Right Option or either Option can be used instead. |
-| Long dictations collapse into "[Pasted N lines]" in Claude Code | Terminals and code editors get the text on one line. |
-
-Not built yet: keeping a dictation's audio until the paste is confirmed, and a setting that limits dictation to your
-languages.
+**Security.** Only devices you paired and allowed on the computer can connect. The picture, keys, voice and files are end-to-end encrypted with keys
+made at pairing and kept only on those two devices; a relay passes the data on without being able to read it. The controlled computer always shows
+who is controlling it, and you can disconnect at any time.
 
 ## Privacy
 
-- Speech recognition and polish run on your Mac. Dictation History keeps each dictation's text, its audio and the text
-  around the cursor for 30 days (you can change how long, or stop keeping the audio).
-- When you start talking, Blurt reads about 500 characters around the cursor so names come out right. It never reads
-  password fields. You can turn this off.
-- Snaps, voice notes, recordings and items stay in your folders: `~/Blurt`, or `.blurt/` inside a project, which Blurt
-  keeps out of git.
-- When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
-  anything else you give it.
-- No account. Network use is limited to downloads of models and the Python runtime, update checks, a cloud speech key if you add one (Groq, OpenAI
-  or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
-  to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
-  reading in Screen Text if you choose it (the picture of the area you dragged over), what your agent sends to its provider, your phone's connection away from home (through your own relay, end-to-end
-  encrypted), and Send Feedback: when you click it on the
-  Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
-  on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
-  and deleted within 14 days.
-  *Settings → Privacy → Speech recognition: On Your Mac Only* keeps speech on your Mac even when a key is set.
+- Dictation, Copy Text from Screen and recording transcripts are processed on your device by default. Something goes to a cloud service only when
+  you add its key and turn that feature on.
+- No account.
+- Snaps, recordings and items stay in your folders (`~/Blurt`, or `.blurt/` in a project). Dictation history is kept for 30 days; change that, or
+  don't keep the audio.
+- When your agent organizes a recording, the transcript and a few screenshots go to that agent's provider, like anything else you give it.
+- Send Feedback sends only the dictations you tick, to Blurt's developers' private storage, deleted within 14 days.
 
-## FAQ
-
-**Does Blurt replace my agent?** No. It feeds the agents you already use: Claude Code, Codex, Cursor, Claude, ChatGPT
-or any chat box.
-
-**What does it cost?** Nothing. Turning a recording into items uses your own agent's tokens. The video is never sent
-to the model: speech is transcribed locally, the agent reads the text and looks at a few frames. Three real sessions
-(Claude Code, Opus 5.5, a production web app):
-
-| Recording | Speech | Items | Transcription (local) | New input / output tokens | At API prices |
-|---|---|---|---|---|---|
-| 7.0 min | 2.8 min | 9 | 4 s | ~142k / ~19k | ~$2 |
-| 14.3 min | 12.3 min | 23 | 12 s | ~138k / ~27k | ~$2.6 |
-| 20.0 min | 17.7 min | 34 | 15 s | ~122k / ~27k | ~$2.1 |
-
-<sub>Cache reads of the ongoing conversation (about 3–5M tokens at 1/20 of the input price) are included above.</sub>
-
-**How long until I can review a recording?** About a minute after you click Finish; screenshots fill in while you
-review. A real 5-minute, 12-item session was ready in 51 s.
-
-**Which models does it use, and how big are they?**
-
-| Use | Model | Download |
-|---|---|---|
-| Speech on Macs with 16 GB and up | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
-| Speech on 8 GB Macs and base M1 / M2, for Chinese, English and Japanese speakers | Fun-ASR-Nano | 1.6 GB |
-| Speech there for other languages | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
-| Polish, 16 GB and up (8 GB Macs don't polish locally) | Gemma 4 E2B, 4-bit | 3.4 GB |
-| Voice notes on CPU-only machines; Japanese, Korean, Cantonese | SenseVoice Small | 228 MB |
-| Recordings in other languages | Whisper large-v3-turbo, MLX | 1.5 GB |
-
-In use, the 1.7B and Gemma take about 3.1 and 2.3 GB of memory. Idle models unload after 10 minutes, and sooner when
-macOS runs short of memory. On macOS 26, macOS's own recognizer dictates until your Mac's model is downloaded.
-
-**Which languages?** Dictation was tested in Chinese, English and mixed Chinese–English. Recordings: SenseVoice covers
-Chinese, English, Japanese, Korean and Cantonese; Whisper covers 99 languages. Items come back in the language you
-spoke. The app is in English and Simplified Chinese.
-
-**Does it run on Windows and Linux?** Yes, as test builds on [GitHub Releases](https://github.com/AGIHunt/blurt/releases): Windows 10 (1903 or later)
-and 11, and Linux (Ubuntu 24.04 or later, Debian 13 or later; tested on Ubuntu with GNOME on Wayland). They dictate
-(Right Alt on Windows; on Linux a shortcut you pick the first time), take voice notes and record, with speech
-recognized locally on the CPU (about 1 GB to download). Windows also has snaps and Screen Text; on Linux
-they aren't done yet. Polish needs a cloud key, the notch is a small capsule, and you update by downloading the next
-build. The Windows installer isn't signed yet: SmartScreen asks first (More info → Run anyway).
-Without the app, the skill's recording scripts (recording, local transcription, the review page, exports) also run
-there, Linux with an X11 desktop: on Windows `winget install astral-sh.uv` and
-`winget install Gyan.FFmpeg`; on Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk` plus
-[uv](https://docs.astral.sh/uv/). `doctor.py` tells you what's missing.
-
-**What permissions does it need?** Microphone; Accessibility, to paste and to hear `Fn`; Input Monitoring, for other
-keys; Screen Recording, for snaps and recordings.
-
-**Can teammates without the code use it?** Yes. They record with the app and send you the video; your agent processes
-it with the code at hand. Items keep the name of the person who recorded them.
-
-**Can I change the shortcuts?** Yes, in *Settings → Shortcuts*. Blurt warns when a shortcut is taken by another
-action, another app or macOS. The same setting works in `~/.blurt/config.json`, also on Windows:
-
-```json
-{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"}, "draw_key": "control"}}
-```
-
-**Where is the full manual?** The [user guide](docs/guide.md) covers every feature, and
-[SKILL.md](skills/blurt/SKILL.md) is what your agent reads.
+More: the [user guide](docs/guide.md) covers every feature; the [FAQ](docs/faq.md) has the models and their sizes, what it costs, the full privacy
+notes and a comparison with similar apps; [SKILL.md](skills/blurt/SKILL.md) is for agents.
 
 ## Community
 
-Questions, feedback and new releases go to the Blurt users' group on WeChat. To join, reply 口喷 to the WeChat official
-account **AGI Hunt**.
+Questions, feedback and release news are in the WeChat group 口喷鸡狂喷群: reply 口喷 to the WeChat account AGI Hunt to join. Bugs and ideas are
+welcome as [GitHub issues](https://github.com/AGIHunt/blurt/issues).
 
-Bugs and feature requests are also welcome as [GitHub issues](https://github.com/AGIHunt/blurt/issues).
-
-<p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a></sub></p>
+<p align="center"><sub>MIT · Made by <a href="https://github.com/AGIHunt">AGI Hunt</a></sub></p>
