@@ -30,6 +30,7 @@ const TRUST_PROXY = env.TRUST_PROXY === "1";   // behind Caddy, which sends X-Re
 
 const KiB = 1024;
 const LEASES = num("LEASES", 10);
+const PER_PREFIX = num("PER_PREFIX", 1);                // leases per IP prefix (a bench may raise it)
 const RENEW_MS = num("RENEW_MS", 75000);               // the computer renews every 30 s while the picture flows
 const LEASE_MAX_MS = num("LEASE_MAX_MS", 2 * 3600e3);
 const AGAIN_MS = num("AGAIN_MS", 60000);               // after its 2 h, a room asks again behind anyone refused this long ago
@@ -226,7 +227,7 @@ function ask(room, ws) {
   let why = null;
   if (!isOpen(room.phone)) why = "alone";
   else if (leased.size >= LEASES) why = "full";
-  else if ([...leased.values()].some((x) => x.prefix === room.prefix)) why = "prefix";
+  else if ([...leased.values()].filter((x) => x.prefix === room.prefix).length >= PER_PREFIX) why = "prefix";
   // its 2 h are up: anyone refused in the last minute goes first
   else if (room.spentAt && now - room.spentAt < AGAIN_MS && now - lastRefusedAt < AGAIN_MS) why = "full";
   if (why) {
