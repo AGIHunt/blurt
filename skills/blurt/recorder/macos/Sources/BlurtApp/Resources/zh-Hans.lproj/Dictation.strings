@@ -165,6 +165,7 @@
 
 /* Words, speech model */
 "dictation.toast.learned" = "已将「%@」加入词库";
+"dictation.toast.suggested" = "可加入词库：%@";
 "dictation.toast.undo" = "撤销";
 "dictation.vocab.section" = "词库";
 "dictation.vocab.add" = "添加";
@@ -175,7 +176,7 @@
 "dictation.vocab.context" = "参考光标附近的文字";
 "dictation.vocab.context.detail" = "开始听写时会读取光标附近的文字，用于写对名字。不读取密码框。";
 "dictation.vocab.learn" = "从我的改正中学习";
-"dictation.vocab.learn.detail" = "改正识别错误的名字后，会自动加入词库。";
+"dictation.vocab.learn.detail" = "同一个名字改正两次后，会自动加入词库。";
 
 /* Fn 作为听写键：自动模式、不让 macOS 响应 Fn、macOS 的 🌐 键设置 */
 "dictation.mode.auto" = "按一下或按住";

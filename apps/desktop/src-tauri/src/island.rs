@@ -115,6 +115,21 @@ pub fn shows_at_rest() -> bool {
 }
 
 /// A `record.*` switch of Settings → General → Cards (the Mac's keys, same defaults).
+/// How many drops into an agent's message box get "Text goes in where you let go" (the Mac's DragReceipt.whereTimes).
+#[cfg(windows)]
+const DROP_WHERE_TIMES: i64 = 3;
+
+/// Whether this drop's toast says where the text went (`app.drop_where_said` counts them, at most DROP_WHERE_TIMES).
+#[cfg(windows)]
+fn drop_where_said() -> bool {
+    let n = settings::read_config().pointer("/app/drop_where_said").and_then(Value::as_i64).unwrap_or(0);
+    if n >= DROP_WHERE_TIMES {
+        return false;
+    }
+    let _ = settings::merge(json!({"app": {"drop_where_said": n + 1}}));
+    true
+}
+
 fn record_flag(key: &str, default: bool) -> bool {
     settings::read_config().pointer(&format!("/record/{key}")).and_then(Value::as_bool).unwrap_or(default)
 }
@@ -1045,7 +1060,7 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
             return;
         }
         // a terminal (or an agent app) got the pictures' paths and the notes as text: nothing more to do
-        let terminal = dropped.landed == Landed::Terminal;
+        let terminal = matches!(dropped.landed, Landed::Terminal | Landed::Composer);
         // a note that couldn't go in goes on the clipboard (record.drag_copy_note, on; never with picture only): a file
         // drop can't paste it after the picture here. Several cards: the notes numbered by file (follow_up_notes).
         let note = if several { card_drop::follow_up_notes(&picked) } else { card.text.clone().filter(|t| !t.trim().is_empty()) };
@@ -1073,8 +1088,11 @@ fn drag_out(app: &AppHandle, v: &Value, answer: impl Fn(&AppHandle, &str) + Clon
             (_, _, _, true) => "note",
             _ => "picture",
         };
+        // an agent's message box puts dropped text where the pointer was let go, not at its caret: the first
+        // DROP_WHERE_TIMES times the toast says so (the Mac's DragReceipt.saysWhere)
+        let says_where = dropped.landed == Landed::Composer && what == "paths" && drop_where_said();
         answer(&app2, "dropped");
-        send(&app2, json!({"op": "toast", "kind": "taken", "what": what, "cards": list}));
+        send(&app2, json!({"op": "toast", "kind": "taken", "what": what, "cards": list, "where": says_where}));
         refresh_cards(&app2);
         refresh_history(&app2);
     });

@@ -24,6 +24,12 @@ CGWindowList 的前后顺序找指针下第一个不是我们的窗口。macOS 2
 
 ### 0.2 卡片拖进主窗口没反应
 
+**松手处插入（2026-11-26）**：agent 自己的输入框（Claude 的 Code 页签、Codex、WorkBuddy… `AgentWindow.composers` /
+Windows `Target::Composer`）把拖进来的文字放在**松手的位置**，不在输入框原来的光标处；用户以为是 bug，看明白后觉得这个做法也好，
+只要提前知道。前 3 次拖进这类输入框，提示多一行「文字会插入到松手的位置」/ "Text is inserted where you drop it."
+（`DragReceipt.saysWhere`，计数 `capture.dropWhereSaid`；Windows `app.drop_where_said`）。终端不说：那里文字进提示符。
+Linux 的拖放分不出输入框和终端，没有这一行。
+
 探针跳过**所有**我们自己的窗口，所以指针在主窗口上时，拖动板按主窗口**后面**那个 app 重写——后面是终端或 agent 时，第一项是
 那一行字，没有卡片标签（`dev.blurt.capture`）；侧栏和列表只读第一项的标签，于是什么都不做。
 

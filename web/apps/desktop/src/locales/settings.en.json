@@ -495,7 +495,7 @@
  "st.dictation.vocab.context.detail": "Reads the text near the cursor when dictation starts, to spell names correctly. Password fields are never read.",
  "st.dictation.vocab.ignore": "Ignore",
  "st.dictation.vocab.learn": "Learn from my corrections",
- "st.dictation.vocab.learn.detail": "When you correct a misrecognized name, it’s added to Words.",
+ "st.dictation.vocab.learn.detail": "A name you correct twice is added to Words automatically.",
  "st.dictation.vocab.list_sep": ", ",
  "st.dictation.vocab.manage": "Manage…",
  "st.dictation.vocab.remove": "Remove",

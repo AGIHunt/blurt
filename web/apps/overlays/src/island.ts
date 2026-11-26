@@ -1304,7 +1304,9 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
       const n = o.cards?.length ?? 1;
       // several cards (a selection dragged as one): how many, then what came with them
       const tail = o.what === 'paths' ? t('island.toast.taken_paths_tail') : o.what === 'note' ? t('island.toast.notes_copied') : '';
-      const text = n > 1 ? [plural('island.toast.taken_many', n), tail].filter(Boolean).join(' · ') : t(`island.toast.taken_${o.what ?? 'picture'}`);
+      const said = n > 1 ? [plural('island.toast.taken_many', n), tail].filter(Boolean).join(' · ') : t(`island.toast.taken_${o.what ?? 'picture'}`);
+      // an agent's message box: the text went where the pointer was let go (the first few times, island.rs)
+      const text = o.where ? `${said}\n${t('island.toast.taken_where')}` : said;
       return postToast({ key: 'taken', text, mark: 'check', overOpen: true, ms: UNDO_MS, action: { a: 'card.putback', label: 'island.undo', extra: { cards: o.cards ?? [] } } });
     }
     case 'line':

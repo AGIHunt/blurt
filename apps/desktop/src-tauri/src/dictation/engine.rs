@@ -2153,7 +2153,17 @@ impl Engine {
             }
             // "Learned “X” · Undo": the word goes again
             "dictation.forget" => {
-                let _ = super::commands::dictation_words_edit("remove".into(), arg.to_string(), None);
+                for t in arg.split('\n') {
+                    let _ = super::commands::dictation_words_edit("remove".into(), t.to_string(), None);
+                }
+            }
+            // "New word from your edit: X · Add to Words"
+            "dictation.accept" => {
+                let terms: Vec<String> = arg.split('\n').filter(|t| !t.is_empty()).map(String::from).collect();
+                for t in &terms {
+                    let _ = super::commands::dictation_words_edit("accept".into(), t.clone(), None);
+                }
+                say_learned(&self.app, &terms);
             }
             "dictation.mic" => self.open_settings("dictation/mic"),
             "dictation.cloud" => self.open_settings("speech/speech.services"),
@@ -3404,15 +3414,33 @@ fn start_watch(app: &AppHandle, pid: u32, typed: &str, location: usize) {
         let runner = app.state::<AppState>().runner();
         let args: Vec<String> = ["learn", "--raw", &typed, "--corrected", &edited, "--suggest"].iter().map(|s| s.to_string()).collect();
         let Ok(v) = runner.run("dictation_vocab.py", &args, None, Duration::from_secs(30)) else { return };
+        let mut suggested: Vec<String> = Vec::new();
         for fx in v["fixes"].as_array().cloned().unwrap_or_default() {
+            let Some(term) = fx["fixed"].as_str() else { continue };
             if fx["result"] == "learned" {
-                if let Some(term) = fx["fixed"].as_str() {
-                    say(&app, "dictation.toast.learned", json!({"term": term}), "dictation.learned", 4000,
-                        Some((format!("dictation.forget:{term}"), "dictation.toast.undo")), true);
-                }
+                say_learned(&app, &[term.to_string()]);
+            } else if fx["result"] == "suggested" && !suggested.iter().any(|t| t == term) {
+                suggested.push(term.to_string());
             }
         }
+        // every time an edit names a word Words doesn't have yet: Add to Words (the Mac's toastSuggested; user report
+        // 2026-11-26: the first fix said nothing). Left alone it stays a suggestion; the same fix again adds it.
+        if !suggested.is_empty() {
+            say(&app, "dictation.toast.suggested", json!({"term": suggested.join(words_sep())}),
+                "dictation.learned", 8000, Some((format!("dictation.accept:{}", suggested.join("\n")), "dictation.toast.add_word")), false);
+        }
     });
+}
+
+/// Between words in one line: 「A、B」 / "A, B".
+fn words_sep() -> &'static str {
+    if crate::l10n::lang() == "zh-Hans" { "、" } else { ", " }
+}
+
+/// "Added “X” to Words · Undo" (several: one line, one Undo).
+fn say_learned(app: &AppHandle, terms: &[String]) {
+    say(app, "dictation.toast.learned", json!({"term": terms.join(words_sep())}), "dictation.learned", 4000,
+        Some((format!("dictation.forget:{}", terms.join("\n")), "dictation.toast.undo")), true);
 }
 
 /// What polish made of a take.

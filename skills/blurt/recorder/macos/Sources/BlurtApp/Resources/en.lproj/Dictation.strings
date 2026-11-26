@@ -165,6 +165,7 @@
 
 /* Words, speech model */
 "dictation.toast.learned" = "Added “%@” to Words";
+"dictation.toast.suggested" = "Add to Words: %@";
 "dictation.toast.undo" = "Undo";
 "dictation.vocab.section" = "Words";
 "dictation.vocab.add" = "Add";
@@ -175,7 +176,7 @@
 "dictation.vocab.context" = "Use the text near the cursor";
 "dictation.vocab.context.detail" = "Reads the text near the cursor when dictation starts, to spell names correctly. Password fields are never read.";
 "dictation.vocab.learn" = "Learn from my corrections";
-"dictation.vocab.learn.detail" = "When you correct a misrecognized name, it’s added to Words.";
+"dictation.vocab.learn.detail" = "A name you correct twice is added to Words automatically.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
 "dictation.mode.auto" = "Tap or hold";
