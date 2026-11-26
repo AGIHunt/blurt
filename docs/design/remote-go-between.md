@@ -194,7 +194,9 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 - Caddy 2.11 in front: Let's Encrypt by HTTP-01/TLS-ALPN (no DNS token on the box), no access log, errors only, header timeout 10 s,
   `X-Real-IP` to the relay. DNS: `relay.blurt.work` A 43.161.232.195, DNS only, TTL 60; CAA `0 issue "letsencrypt.org"` on that name only.
 - ufw: 22, 80, 443 in; root SSH off, passwords off; journald ≤ 200 MB; unattended-upgrades on. The Lighthouse console firewall must
-  allow 443 too (it didn't at first: SYNs to 443 never arrived).
+  allow 443 too (it didn't at first: SYNs to 443 never arrived; opened for IPv4 and IPv6 on 2026-11-26).
+- TCP congestion control **BBR** (`/etc/sysctl.d/90-blurt-bbr.conf`, `tcp_bbr` in `/etc/modules-load.d`). The kernel default, cubic,
+  backs off on the ~3 % loss of the Hong Kong → mainland leg (see Measured): a 1 Mbps picture queued up to 17 s behind it; with BBR, 0.6 s p95.
 - Outside check: `.github/workflows/relay-health.yml` every 10 min (TLS, ≥14 days of certificate, `GET /`, and the go-between).
 - The go-between (`blurt-meet`, version f4bc4a18) mints tickets; a ticket it minted opened a room on the box.
 
@@ -206,6 +208,11 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 | China Mobile 5G (a phone hotspot in mainland China), 15:10 CST, ICMP | rtt 66 / 71 / 79 ms (min / avg / max), no loss |
 | Local end to end: Android emulator ↔ fake host through `server.js` (tickets) and `public.js` (`LEASES=1`) | on the relay 8.3 s after launch; busy, then the picture back by itself at the next 30 s ask; Opus 32.6 kbps; dead relay → no-direct line 5.2 s after `noDirect`, no retry |
 | Local end to end: Mac viewer ↔ in-process host, the same servers | lands on the relay; busy then granted (12+ H.264 frames decoded); dead relay → no-direct; a silent room → gives up in 4.5–6 s |
+| Real path, China Mobile 5G hotspot → relay.blurt.work → back (`measure-path.mjs`, both ends on one Mac, relay leg straight out of Wi-Fi with `BIND`), 18:35 CST, ticket from the live go-between, 1 Mbps / 15 fps for 120 s | connect 0.26–0.86 s; idle round trip (computer → relay → phone → relay → computer) 166–183 ms p50. **cubic**: every frame arrives, but frame age 2.4 s p50, 17.7 s p95, 5 stalls over 1 s; on the box the downlink connection resends ~3 % of bytes and its window falls to 8–11 segments, the uplink resends nothing. **BBR**: frame age 143 ms p50, 601 ms p95, no stall |
+| The same, but through this Mac's own proxy (a TUN app; its exit is in the US) | round trip 1.1 s idle: what a user behind such a proxy gets unless it sends relay.blurt.work direct |
+| Without a picture lease (a second session from the same /24 while the first held it), 1 Mbps offered | paced to the unleased budget (0.13 Mbps of picture arrived), nothing dropped or closed: the sender has to slow down, as the apps do (busy) |
+| Outside bench: `bench-public.mjs` from the same hotspot through Caddy + TLS to a bench copy on the box (`/bench`, removed after), 1 Mbps + small messages each way per session, 18:50 CST | 1 / 3 / 5 / 10 sessions: all at 15 fps, 0 errors; frame latency p50 123 / 104 / 117 / 148 ms, p99 0.6 / 0.4 / 0.6 / 1.1 s. A second 10-session run minutes later: everything arrived but queued (p50 7.6 s): 10 Mbps each way through one phone hotspot across the border is past what the evening path gives one line |
+| Box CPU in that 10-session run (TLS included) | relay 4.5 %, Caddy 5.0 % of one vCPU; Caddy RSS 53 MB |
 
 ## Overlay addresses (Tailscale, ZeroTier, …)
 

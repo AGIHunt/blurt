@@ -3,6 +3,7 @@
 // signed here, so the relay under test needs the same TICKET_SECRETS (a bench copy, never the live service) and PER_PREFIX/LEASES/
 // UPGRADES/PER_IP raised to let one machine open them all.
 //   node bench-public.mjs <ws(s)://host[:port]> <secret> <rooms> [bps=1000000] [fps=15] [warm=6] [measure=15]
+// BIND and RELAY_IP as in measure-path.mjs: send it straight out of this machine's LAN interface past a local proxy.
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import WebSocket from "ws";
@@ -13,8 +14,12 @@ const FRAME = Math.round(+bps / 8 / +fps);
 const now = () => performance.timeOrigin + performance.now();
 const tag = randomBytes(9).toString("base64url");
 const exp = Math.floor(Date.now() / 1000) + 60;
+const direct = process.env.BIND ? {
+  localAddress: process.env.BIND,
+  ...(process.env.RELAY_IP && { lookup: (h, o, cb) => (o.all ? cb(null, [{ address: process.env.RELAY_IP, family: 4 }]) : cb(null, process.env.RELAY_IP, 4)) }),
+} : {};
 const open = async (room, role) => new Promise(async (ok, no) => {
-  const w = new WebSocket(`${url}/v1/${room}/${role}?t=${await ticket(secret, room, role, exp, tag)}`, { perMessageDeflate: false });
+  const w = new WebSocket(`${url}/v1/${room}/${role}?t=${await ticket(secret, room, role, exp, tag)}`, { perMessageDeflate: false, ...direct });
   w.once("open", () => ok(w)); w.once("error", no); w.once("unexpected-response", (_, r) => no(new Error("HTTP " + r.statusCode)));
 });
 const lat = []; let bytes = 0, frames = 0, errors = 0, leases = 0, measuring = false;
