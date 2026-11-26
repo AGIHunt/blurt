@@ -89,6 +89,18 @@ Annex B → 4-byte length-prefixed NAL units, VPS / SPS / PPS apart on keyframes
 - **Keep awake:** a power request (`PowerCreateRequest`, "Blurt: a phone is connected", system and optionally display), not
   `SetThreadExecutionState`, which belongs to whichever thread called it. `powercfg /requests` shows it.
 
+### Files and the clipboard (2026-11-26)
+
+[remote-files.md](remote-files.md). Files from a phone or viewer land in Downloads/Blurt (`dirs::download_dir()`), each with the Mark
+of the Web (a `Zone.Identifier` stream, zone 3), so SmartScreen warns as for a browser's download; the free-space check is
+`GetDiskFreeSpaceExW`. getClipboard reads the user's clipboard through arboard (`platform/clip.rs`): Explorer's CF_HDROP first (folders
+zipped), then the registered "PNG" format or CF_DIBV5 (Windows makes it from CF_DIB), then CF_UNICODETEXT. A phone's image goes on as
+PNG + CF_DIBV5, its text as CF_UNICODETEXT, then Ctrl+V (`Input::paste_clip`). With the system service on, the agent (SYSTEM) has
+no user's clipboard: the Proxy uses the user's (`OwnClipboard`) and presses Ctrl+V through the agent. Checked from the Mac with
+`cargo check --target x86_64-pc-windows-msvc --all-targets` and a stand-in C compiler (a `CC`/`AR` pair that only touches the files
+asked for: enough for `ring`'s build script under `check`). Not run on Windows yet: the clipboard reads and writes, the Mark of the Web
+on a received file, Ctrl+V into an elevated window (UIPI), the desktop app's build (its build script needs the Windows resource tools).
+
 ### What's verified
 
 On the Mac: 51 unit tests (key table against every wire name, modifier bookkeeping and the mask, Annex B with 3- and 4-byte start

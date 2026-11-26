@@ -601,3 +601,30 @@ typing (Notepad on Windows, Text Editor on Linux). Found and fixed on the way:
 - **A slow yes ended the session it allowed** (the host's 12 s silence clock ran while the owner compared digits): it restarts when the
   session takes over, on the Rust and the Mac host.
 - **A copied pairing link died with the next code on screen** (≤ 2 min): it now lasts 10 minutes (COPIED_LIFE), the button says so.
+
+## Files and the clipboard both ways (Windows and Linux, 2026-11-26)
+
+The design and words: [remote-files.md](remote-files.md). The viewer is a computer's end of the same engine as the phones'
+(`crates/blurt-remote/src/files.rs`, a port of RemoteFiles.swift).
+
+- **Hello.** The viewer's hello lists `files` and `resume` besides `move` and `viewer`: a host may send it files, and both ends keep a
+  part for a resume. `Session::files_ready` says files may go now: connected, and on the public connection service only once the
+  stream has moved (`Phone::carries_files`).
+- **Sending** (Send Files…, a drop): `files::prepare` zips folders (stored, in a temporary folder; the window says 正在压缩… meanwhile),
+  then one `files::Sender` per window sends one file at a time, 192 KiB chunks, never more than 4 MiB past the host's last
+  `fileProgress`. A drop pauses it (`Link` not connected); when the session is back the same file begins again with the same id, the
+  host answers with what it has and only the rest goes. × sends a short `fileEnd`.
+- **Get Copied Files** (⋯ menu, Ctrl+Alt+V while keys stay here): `getClipboard`. Files and folders (zipped there) come into
+  Downloads/Blurt with the Mark of the Web; an image (`clip`) goes onto this computer's clipboard; text comes as `clipboard` and goes
+  on whatever the clipboard switch says, because it was asked for (15 s). Nothing: the line says why (`clipboardNone`). A host whose
+  session doesn't list `clipboard` gets nothing sent: "Update %@ to use this."
+- **The files card**, bottom right over the picture: each transfer this window, newest first (5 shown), its line (来自 / 发往, how
+  much, 第 2/3 个, 还剩 …, or its state), a bar, × while it can be stopped, Show in Folder once one has come here. Its rows carry
+  their state in `data-state`, not a class: the review canvas styles `.done` and friends globally.
+- **Parts** live in `$BLURT_HOME/remote/viewer-parts`, one receiver for every computer shown (keyed by its host id), kept an hour after
+  a drop.
+
+Tests: `cargo test -p blurt-remote` (the engine's 12, `tests/files.rs`' host ↔ test phone, the viewer's file test now through the new
+receiver); the app's `cargo test` (356); web `pnpm test` (tsc + vitest 147, `files.ts`' lines in both languages). Not run: the app on
+real Windows / Linux (the clipboard plugin's image, Show in Folder, the shortcut with WebView2 / WebKitGTK), two computers end to end.
+Screenshots: `promo/cases/remote-files-1126/windows-linux/` (`viewer-files-card-zh`, `-en`, `host-bar-zh`, `-en`).

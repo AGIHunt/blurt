@@ -63,6 +63,16 @@ Decisions, and why:
 - **System moves (GNOME).** Super = overview; Super+\` = the app's next window; Super+PageUp/PageDown = workspaces;
   Ctrl+= / Ctrl+- = zoom; a lone Ctrl = Locate Pointer (when it's on).
 
+- **Files and the clipboard (2026-11-26, [remote-files.md](remote-files.md)).** Files land in Downloads/Blurt (XDG's download
+  folder); the free-space check is `statvfs`. getClipboard reads through arboard (`platform/clip.rs`): `text/uri-list` first (Files /
+  Nautilus copies offer it, folders zipped), then `image/png`, then text. arboard tries Wayland's data-control protocol first (KDE,
+  wlroots; the app's tree turns it on through the clipboard plugin) and falls back to XWayland's clipboard, which mutter keeps in step
+  with Wayland apps' copies. A phone's image (PNG, JPEG, TIFF,
+  BMP; HEIC isn't read) or text goes on through the same clipboard, kept by one arboard instance for the process (X11 selections are
+  served by their owner), then Ctrl+V through the portal. Not run on Linux yet: none of it (Docker wasn't available on this Mac on
+  2026-11-26, so not even the Linux `cargo check`); the crate's Linux code is the Windows code's `clip.rs` plus two small `Input`
+  overrides.
+
 ## Measured (2026-11-09)
 
 Rig: GCP n2-standard-8 (Cascade Lake, 8 vCPU, no GPU: llvmpipe, so x264), Ubuntu 26.04.1, GNOME 50.1 Wayland, PipeWire 1.6.2,
