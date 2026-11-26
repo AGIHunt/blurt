@@ -1,5 +1,6 @@
 // The public relay's rules (public.js, docs/design/remote-go-between.md §"The public relay"), against a copy started here with short
-// timers: tickets, ten leases and the eleventh refused, leases freed, budgets by pausing (nothing dropped), the waiting room, per-IP caps.
+// timers: tickets, ten leases and the eleventh refused, leases freed, budgets by pausing (nothing dropped), the waiting room, per-IP caps,
+// a prefix's day across tickets, an IPv6 /64 as one address.
 // Exits non-zero on the first failure. About 20 s.
 //   node test-public.mjs
 import { spawn } from "node:child_process";
@@ -11,7 +12,7 @@ const PORT = 18790 + Math.floor(Math.random() * 100);
 const SECRET = randomBytes(32).toString("hex");
 const env = {
   ...process.env, PORT: String(PORT), HOST: "127.0.0.1", TICKET_SECRETS: SECRET, TRUST_PROXY: "1", LEASES: "10",
-  RENEW_MS: "1500", LEASE_MAX_MS: "4000", AGAIN_MS: "3000", WAIT_MS: "1500", DAY_BYTES: "3000000", UPGRADES: "10", COUNT_MS: "600000",
+  RENEW_MS: "1500", LEASE_MAX_MS: "4000", AGAIN_MS: "3000", WAIT_MS: "1500", DAY_BYTES: "3000000", PREFIX_DAY_BYTES: "4000000", UPGRADES: "10", COUNT_MS: "600000",
   BASE_RATE: "100000", BASE_BURST: "20000", LEASED_RATE: "1000000", LEASED_BURST: "200000",
 };
 const relay = spawn(process.execPath, [new URL("./public.js", import.meta.url).pathname], { env, stdio: ["ignore", "pipe", "inherit"] });
@@ -154,6 +155,35 @@ try {
     for (let i = 0; i < 16; i++) mac.send(big);
     expect("past the day's bytes the computer hears", await mac.closed, 4003);
     expect("and the phone", await phone.closed, 4003);
+  }
+
+  // a prefix's day (4 MB here) across pairs: tickets with two tags, so each pair stays under its own 3 MB
+  {
+    const pairA = randomBytes(9).toString("base64url"), pairB = randomBytes(9).toString("base64url");
+    const sess = async (ip, tg) => { const room = newRoom(); const mac = await open(room, "mac", { ip, tg }); const phone = await open(room, "phone", { tg }); return { mac, phone }; };
+    const a = await sess("10.240.0.1", pairA);
+    expect("lease A", (await lease(a.mac)).ok, true);
+    const big = Buffer.alloc(250000);
+    for (let i = 0; i < 10; i++) a.mac.send(big);   // 2.5 MB: under pair A's 3 MB
+    while (a.phone.got.length < 10) await wait(20);
+    a.mac.close(); await a.phone.closed;
+    const b = await sess("10.240.0.2", pairB);
+    expect("lease B", (await lease(b.mac)).ok, true);
+    for (let i = 0; i < 8; i++) if (b.mac.readyState === 1) b.mac.send(big);   // 2 MB more from the same /24: past its 4 MB
+    expect("past the prefix's day, a pair still under its own hears", await b.mac.closed, 4003);
+    expect("a new connection from that /24 today", await open(newRoom(), "mac", { ip: "10.240.0.3" }), 429);
+    const other = await open(newRoom(), "mac", { ip: "10.241.0.3" });
+    expect("one from another /24", other instanceof WebSocket, true);
+    other.close();
+  }
+
+  // IPv6: one /64 is one address for the upgrade limit; another /64 isn't
+  {
+    const got = [];
+    for (let i = 0; i < 11; i++) got.push(await open(newRoom(), "phone", { ip: `2001:db8:1:2::${(i + 1).toString(16)}` }));
+    expect("the 11th upgrade from one /64 in 10 s, each from its own address", got[10], 429);
+    const p = await open(newRoom(), "phone", { ip: "2001:db8:1:3::1" });
+    expect("another /64 in the same /48 isn't counted with it", p !== 429, true);
   }
 
   // per IP: ten upgrades in 10 s

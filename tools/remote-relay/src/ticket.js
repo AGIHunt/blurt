@@ -7,6 +7,8 @@
 export const TICKET_LIFE_S = 60;
 export const PUBLIC_RELAY = "wss://relay.blurt.work";
 const ROOM = /^[A-Za-z0-9_-]{43}$/;
+// a well-formed ask: only these count toward the per-IP limit
+export const goodAsk = (asked) => typeof asked?.ticket?.room === "string" && ROOM.test(asked.ticket.room);
 
 const enc = (s) => new TextEncoder().encode(s);
 const b64url = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -32,3 +34,15 @@ export async function mint(secret, pair, asked, now = Date.now()) {
 // a text message that is a ticket request (no app sends text otherwise)
 export const asksTicket = (msg) => typeof msg === "string" && msg.startsWith('{"ticket"') && msg.length <= 256;
 export const TICKETS_PER_CONNECTION = 3;
+// and per client IP, across rooms, in a minute (the go-between's TICKETS rate limiter; server.js keeps the same window)
+export const TICKETS_PER_IP_MINUTE = 6;
+
+// who "one client" is for that limit: an IPv4 address, or an IPv6 /64 (one is handed to one line or machine)
+export function clientKey(ip) {
+  ip = String(ip || "").split("%")[0].toLowerCase();
+  if (!ip.includes(":") || /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(ip)) return ip.replace(/^::ffff:/, "");
+  const [a, b] = ip.split("::");
+  const head = a ? a.split(":") : [], tail = b === undefined ? [] : b ? b.split(":") : [];
+  const g = b === undefined ? head : [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail];
+  return g.slice(0, 4).map((h) => (parseInt(h, 16) || 0).toString(16)).join(":") + "::/64";
+}

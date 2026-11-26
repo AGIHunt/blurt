@@ -1,5 +1,6 @@
 // From the go-between to the public relay, offline: server.js (BUDGET=1, as src/meet.js) mints tickets for a computer whose phone is in
-// the room, and public.js lets both ends into the session's own room with them. Exits non-zero on the first failure. A few seconds.
+// the room (a few a connection, a few a minute per IP across rooms), and public.js lets both ends into the session's own room with them.
+// Exits non-zero on the first failure. A few seconds.
 //   node test-tickets.mjs
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -43,5 +44,15 @@ const got = new Promise((ok) => hm.once("message", (d) => ok(d.toString())));
 hp.send(Buffer.from("sealed"));
 expect("bytes pass", await got, "sealed");
 expect("the phone's ticket can't open the computer's end", await open(`${t.relay}/v1/${t.room}/mac?t=${t.phone}`), 403);
+// per client IP across rooms: a modified client can make go-between rooms at will; 6 tickets a minute from one address, then "limit"
+const answers = [];
+for (let i = 0; i < 6; i++) {
+  const pr = room();
+  const m = await open(`ws://127.0.0.1:${P1}/v1/${pr}/mac`);
+  const p = await open(`ws://127.0.0.1:${P1}/v1/${pr}/phone`);
+  answers.push((await ask(m, { ticket: { room: room() } })).ticket.error ?? "ok");
+  m.close(); p.close();
+}
+expect("from one IP, in new rooms each time, a minute's tickets (one was the first room's; bad asks don't count)", answers, ["ok", "ok", "ok", "ok", "ok", "limit"]);
 console.log("PASSED");
 done(0);

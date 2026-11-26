@@ -64,6 +64,26 @@ function mint(pair, asked, now) {
   return { ticket: { relay: PUBLIC_RELAY, room, mac: t("mac"), phone: t("phone") } };
 }
 const KiB = 1024;
+// tickets per client IP a minute, across rooms (src/meet.js's TICKETS rate limiter; an IPv6 /64 counts as one)
+const TICKETS_PER_IP = Number(process.env.TICKETS_PER_IP || 6);
+const ticketsBy = new Map();   // client → times of its last tickets
+function clientKey(ip) {
+  ip = String(ip || "").split("%")[0].toLowerCase();
+  if (!ip.includes(":") || /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(ip)) return ip.replace(/^::ffff:/, "");
+  const [a, b] = ip.split("::");
+  const head = a ? a.split(":") : [], tail = b === undefined ? [] : b ? b.split(":") : [];
+  const g = b === undefined ? head : [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail];
+  return g.slice(0, 4).map((h) => (parseInt(h, 16) || 0).toString(16)).join(":") + "::/64";
+}
+function perIP(from, now) {
+  const key = clientKey(from);
+  const recent = (ticketsBy.get(key) || []).filter((t) => t > now - 60000);
+  if (recent.length >= TICKETS_PER_IP) { ticketsBy.set(key, recent); return false; }
+  recent.push(now);
+  ticketsBy.set(key, recent);
+  return true;
+}
+setInterval(() => { const t = Date.now() - 60000; for (const [k, ts] of ticketsBy) if (!ts.some((x) => x > t)) ticketsBy.delete(k); }, 60000).unref();
 const MAX_TOTAL = 96 * KiB, MAX_WINDOW = 24 * KiB, BUDGET_MESSAGE = 16 * KiB;
 const WINDOW_MS = 5000, SLOT_MS = 250;   // the window is kept as 250 ms slots, so it looks back 5 to 5.25 s, as in src/meet.js
 const PHONE_MAX_MS = 12 * 3600 * 1000;
@@ -118,10 +138,10 @@ server.on("upgrade", (req, socket, head) => {
     if (n > 0) perAddress.set(from, n); else perAddress.delete(from);
   });
   socket.setNoDelay(true);
-  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[0], m[1]));
+  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[0], m[1], from));
 });
 
-function join(ws, id, role) {
+function join(ws, id, role, from) {
   const room = rooms.get(id) || {};
   // a phone with no Mac there hears so at once, and was never in the room: its leaving says nothing to a Mac that comes in meanwhile
   if (role === "phone" && !isOpen(room.mac)) {
@@ -148,8 +168,9 @@ function join(ws, id, role) {
       let asked = null;
       try { asked = JSON.parse(data.toString()); } catch (e) {}
       tickets++;
-      const answer = role !== "mac" || !asked ? { ticket: { error: "bad" } } : !isOpen(room.phone) ? { ticket: { error: "alone" } }
-        : tickets > 3 ? { ticket: { error: "limit" } } : mint(id, asked, Date.now());
+      const good = asked && asked.ticket && typeof asked.ticket.room === "string" && /^[A-Za-z0-9_-]{43}$/.test(asked.ticket.room);
+      const answer = role !== "mac" || !good ? { ticket: { error: "bad" } } : !isOpen(room.phone) ? { ticket: { error: "alone" } }
+        : tickets > 3 || !perIP(from, Date.now()) ? { ticket: { error: "limit" } } : mint(id, asked, Date.now());
       return ws.send(JSON.stringify(answer));
     }
     const other = room[role === "mac" ? "phone" : "mac"];

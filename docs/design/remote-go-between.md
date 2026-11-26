@@ -120,7 +120,9 @@ same setting; the apps call it the public connection service too (copy.md).
 1. On the go-between, 8 s after `session` with no datagram, a host whose phone listed `publicRelay` makes a room for this session:
    32 random bytes, base64url (43 characters). It sends the go-between a **text** WebSocket message `{"ticket":{"room":"<room>"}}`
    (no app sends text otherwise; the go-between answers it and never passes it on).
-2. The go-between answers only a computer whose phone is in the room, at most 3 times a connection:
+2. The go-between answers only a computer whose phone is in the room, at most 3 times a connection and **6 times a minute per client IP**
+   across rooms (`CF-Connecting-IP`, an IPv6 /64 as one; the Workers rate limiter `TICKETS`, counted per Cloudflare location, no storage
+   and no extra requests on the Free plan; a malformed ask doesn't count):
    `{"ticket":{"relay":"wss://relay.blurt.work","room":…,"mac":"<t>","phone":"<t>"}}`, or `{"ticket":{"error":"off|alone|limit|bad"}}`.
    A ticket is `<expiry>.<tag>.<signature>` (`src/ticket.js`): expiry = now + 60 s; tag = HMAC(S, pair's go-between room ‖ UTC day), 9
    bytes, so the relay can keep a day's byte budget per pair without learning the pair's room; signature = HMAC(S, relay room ‖ role ‖
@@ -161,8 +163,36 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
   files without a lease stay at the 256 kbps (35 MB ≈ 18 min; decided 2026-11-26: not raised, the picture lease is the scarce thing,
   and the 50 MB a day stays);
 - **1 GB per pair per UTC day** (the tag), then 4003 to both; a session at most 12 h (4003); messages at most 512 KiB;
-- per IP: 16 connections, 10 upgrades in 10 s (HTTP 429); 2,000 connections in all;
+- **10 GB a UTC day sent from one IP prefix** (/24, /48; `PREFIX_DAY_BYTES`), across all its rooms and tickets: past it the room hears
+  4003 and new connections from that prefix get HTTP 429 until the day turns. Why 10 GB: a heavy pair (a 2 h lease at the measured 1 Mbps
+  ≈ 0.9 GB, plus 50 MB of files) fits its own 1 GB; ten of them can share a /24 (mainland carriers put many lines behind one IPv4 /24);
+  10 GB is 0.5 % of what the box's 200 Mbps carries in a day. One address abusing it at its most (1 lease at 1.5 Mbps each way and 7 more
+  rooms at 256 kbps each way: ≈ 7 Mbps, 3.5 % of the box) spends it in about 3 h and is shut out for the rest of the day;
+- per IP (an IPv6 /64 counts as one: one is handed to one line): 16 connections, 10 upgrades in 10 s (HTTP 429); 2,000 connections in all;
 - no `peek`; `GET /` answers `blurt relay`; counters once a minute, nothing about who.
+
+### Limits, and what a modified client can get around
+
+The apps keep to all of these; what matters is which ones still hold for a client someone has changed. The relay and the go-between are the
+only places a limit can't be talked out of. (Tests: `test-public.mjs`, `test-tickets.mjs`, `test-meet-tickets.mjs` against `wrangler dev`.)
+
+| Limit | Enforced by | A modified client |
+|---|---|---|
+| A signed ticket to open a room end: 60 s, used once, for one room and role | relay | can't get in without the go-between's signature |
+| Tickets: 3 per go-between connection | go-between | reconnects to get more, so the next row is the one that holds |
+| Tickets: 6 a minute per client IP (/64), across go-between rooms | go-between (rate limiter, per location) | needs more addresses; counted per Cloudflare location, so a client reaching several locations gets a few times 6 |
+| Picture leases: 10 in all, 1 per prefix (/24, /48), renewed every 30 s, 2 h at most | relay | needs addresses in other prefixes for more leases at once; after 2 h it goes behind anyone refused |
+| Pace per room and direction: 256 kbps, 1.5 Mbps with a lease; 200 messages a second; paused, never dropped | relay | more rooms, bounded by the per-IP connections and the prefix's day |
+| 1 GB per pair per UTC day (the ticket's tag) | relay | new go-between rooms make new tags: bounded by the ticket rate and the next row |
+| 10 GB per IP prefix per UTC day, then 429 | relay | needs addresses in other /24s (/48s) |
+| 16 connections and 10 upgrades in 10 s per IP (/64); 2,000 connections in all | relay | needs more addresses |
+| 60 s waiting room, 12 h session | relay | starts again with new tickets (rate-limited) |
+| Files: 50 MB a day per device, asked over 20 MB | the apps | ignores it: a courtesy to the user, not a limit; the bytes still count toward the pace and both days |
+| Data Saver picture (1280 wide, 1 Mbps, 15 fps); stop after 5 min untouched; give the lease back in the background | the host app | ignores them, but the relay still paces at 1.5 Mbps and takes the lease back after 2 h |
+| Opus or no microphone | the apps | sends PCM: 256 kbps, within the unleased pace anyway |
+
+So one abuser with one address gets at most one lease, about 7 Mbps for about 3 hours a day, and 6 new sessions a minute; going past
+that takes many networks, which no per-client limit stops (the relay's 2,000 connections and 10 leases cap the whole box).
 
 ### What the devices do on this path
 
@@ -200,7 +230,8 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 - TCP congestion control **BBR** (`/etc/sysctl.d/90-blurt-bbr.conf`, `tcp_bbr` in `/etc/modules-load.d`). The kernel default, cubic,
   backs off on the ~3 % loss of the Hong Kong → mainland leg (see Measured): a 1 Mbps picture queued up to 17 s behind it; with BBR, 0.6 s p95.
 - Outside check: `.github/workflows/relay-health.yml` every 10 min (TLS, ≥14 days of certificate, `GET /`, and the go-between).
-- The go-between (`blurt-meet`, version f4bc4a18) mints tickets; a ticket it minted opened a room on the box.
+- The go-between (`blurt-meet`) mints tickets; a ticket it minted opened a room on the box (version f4bc4a18). Since version
+  98bbb22f (2026-11-26) it also limits them per client IP; the box's `public.js` got the prefix's day and /64 keys the same evening.
 
 ### Measured
 

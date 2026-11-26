@@ -9,7 +9,9 @@
 //   while the picture flows, gone after RENEW_MS unrenewed, on `{"lease":false}`, on either end leaving, and after LEASE_MAX_MS (2 h);
 // - budgets per room and direction, enforced by pausing reads (never by dropping: the frames are sealed in sequence): 256 kbps without a
 //   lease, 1.5 Mbps with one; 200 messages a second; DAY_BYTES (1 GB) per pair per UTC day, then 4003;
-// - per IP: 16 connections, 10 upgrades in 10 s; a computer alone in its room for 60 s is closed (4011); no `peek`.
+// - PREFIX_DAY_BYTES (10 GB) a UTC day sent from one IP prefix (/24, /48), whatever the tickets: then 4003, and 429 until the next day;
+// - per IP (an IPv6 /64 counts as one): 16 connections, 10 upgrades in 10 s; a computer alone in its room for 60 s is closed (4011);
+//   no `peek`.
 //
 // It logs counters once a minute and nothing about who: no addresses, rooms or devices.
 //
@@ -40,6 +42,9 @@ const LEASED_RATE = num("LEASED_RATE", 1500000 / 8);
 const LEASED_BURST = num("LEASED_BURST", 256 * KiB);  // a keyframe is 77–170 KB in one message
 const MSG_RATE = num("MSG_RATE", 200), MSG_BURST = num("MSG_BURST", 400);
 const DAY_BYTES = num("DAY_BYTES", 1e9);
+// what one IP prefix may send through here in a UTC day, across all its rooms and tickets: tickets are per pair, and a modified client can
+// make pairs at will, so this is the byte limit it can't get around (docs/design/remote-go-between.md §Limits)
+const PREFIX_DAY_BYTES = num("PREFIX_DAY_BYTES", 10e9);
 const WAIT_MS = num("WAIT_MS", 60000);
 const SESSION_MS = num("SESSION_MS", 12 * 3600e3);
 const PER_IP = num("PER_IP", 16);
@@ -72,13 +77,27 @@ function admit(url, now) {
   return { room, role, tag };
 }
 
-// an address's prefix for the one-lease rule: IPv4 /24, IPv6 /48
+// an IPv6 address as its 8 groups (a zone, `::` and an IPv4 tail expanded), or null for IPv4 and IPv4-mapped
+function groups6(ip) {
+  ip = ip.split("%")[0].toLowerCase();
+  if (!ip.includes(":") || /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(ip)) return null;
+  const v4 = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
+  if (v4) ip = ip.slice(0, v4.index) + ((+v4[1] << 8) | +v4[2]).toString(16) + ":" + ((+v4[3] << 8) | +v4[4]).toString(16);
+  const [a, b] = ip.split("::");
+  const head = a ? a.split(":") : [], tail = b === undefined ? [] : b ? b.split(":") : [];
+  const g = b === undefined ? head : [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail];
+  return g.map((h) => (parseInt(h, 16) || 0).toString(16));
+}
+const v4of = (ip) => { const m = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip); return m && m.slice(1, 5); };
+// an address's prefix for the one-lease rule and the prefix's day: IPv4 /24, IPv6 /48
 function prefix(ip) {
-  const v4 = /(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(ip);
-  if (v4 && (!ip.includes(":") || ip.toLowerCase().startsWith("::ffff:"))) return `${v4[1]}.${v4[2]}.${v4[3]}`;
-  const head = ip.split("::")[0].split(":");
-  const full = ip.includes("::") ? head : ip.split(":");
-  return full.slice(0, 3).map((h) => (h || "0").toLowerCase().replace(/^0+(?=.)/, "")).join(":") + "::/48";
+  const g = groups6(ip);
+  return g ? g.slice(0, 3).join(":") + "::/48" : (v4of(ip) || [ip]).slice(0, 3).join(".");
+}
+// who "one IP" is for the connection and upgrade limits: an IPv4 address, an IPv6 /64 (one is handed to one line or machine)
+function client(ip) {
+  const g = groups6(ip);
+  return g ? g.slice(0, 4).join(":") + "::/64" : (v4of(ip) || [ip]).join(".");
 }
 
 const counts = { upgrades: 0, refused: {}, granted: 0, leaseRefused: {}, bytes: 0, paused: 0, overBudget: 0 };
@@ -88,7 +107,7 @@ const rooms = new Map();   // room → { mac, phone, tag, prefix, lease, opened 
 const leased = new Map();  // room → its lease { granted, renewed, prefix }
 let lastRefusedAt = 0;     // the last lease refused for want of room
 const perIP = new Map(), upgradesBy = new Map();
-const dayBytes = new Map();
+const dayBytes = new Map(), prefixBytes = new Map();
 let day = Math.floor(Date.now() / 86400e3);
 let connections = 0;
 
@@ -113,12 +132,15 @@ function deny(socket, status, why) {
 server.on("upgrade", (req, socket, head) => {
   const now = Date.now();
   counts.upgrades++;
-  const from = (TRUST_PROXY && req.headers["x-real-ip"]) || req.socket.remoteAddress || "";
+  const ip = (TRUST_PROXY && req.headers["x-real-ip"]) || req.socket.remoteAddress || "";
+  const from = client(ip);
   const recent = (upgradesBy.get(from) || []).filter((t) => t > now - UPGRADE_WINDOW_MS);
   recent.push(now);
   upgradesBy.set(from, recent);
   if (recent.length > UPGRADES) return deny(socket, "429 Too Many Requests", "rate");
   if ((perIP.get(from) || 0) >= PER_IP || connections >= MAX_CONNECTIONS) return deny(socket, "429 Too Many Requests", "connections");
+  newDay();
+  if ((prefixBytes.get(prefix(ip)) || 0) > PREFIX_DAY_BYTES) return deny(socket, "429 Too Many Requests", "prefix_day");
   const a = admit(req.url, now);
   if (!a.room) return deny(socket, a.why === "path" ? "404 Not Found" : "403 Forbidden", a.why);
   const room = rooms.get(a.room);
@@ -134,8 +156,14 @@ server.on("upgrade", (req, socket, head) => {
     if (n > 0) perIP.set(from, n); else perIP.delete(from);
   });
   socket.setNoDelay(true);
-  wss.handleUpgrade(req, socket, head, (ws) => join(ws, a, from));
+  wss.handleUpgrade(req, socket, head, (ws) => join(ws, a, ip));
 });
+
+// a new UTC day: every day's count starts again
+function newDay() {
+  const today = Math.floor(Date.now() / 86400e3);
+  if (today !== day) { day = today; dayBytes.clear(); prefixBytes.clear(); }
+}
 
 function join(ws, a, from) {
   let room = rooms.get(a.room);
@@ -148,6 +176,7 @@ function join(ws, a, from) {
   if (old) old.close(REPLACED, "replaced");
   if (a.role === "mac") room.prefix = prefix(from);
   ws.role = a.role;
+  ws.prefix = prefix(from);   // what it sends counts toward its prefix's day
   ws.alive = true;
   ws.bucket = { bytes: BASE_BURST, msgs: MSG_BURST, at: Date.now() };
   ws.on("pong", () => { ws.alive = true; });
@@ -160,11 +189,12 @@ function join(ws, a, from) {
     if (!binary) return a.role === "mac" ? said(room, ws, data) : undefined;   // only the computer speaks to the relay
     const other = room[a.role === "mac" ? "phone" : "mac"];
     if (!isOpen(other)) return;
-    const today = Math.floor(Date.now() / 86400e3);
-    if (today !== day) { day = today; dayBytes.clear(); }
+    newDay();
     const n = (dayBytes.get(room.tag) || 0) + data.length;
     dayBytes.set(room.tag, n);
-    if (n > DAY_BYTES) return overBudget(room);
+    const p = (prefixBytes.get(ws.prefix) || 0) + data.length;
+    prefixBytes.set(ws.prefix, p);
+    if (n > DAY_BYTES || p > PREFIX_DAY_BYTES) return overBudget(room);
     if (other.bufferedAmount > BEHIND_CUT) return other.terminate();
     counts.bytes += data.length;
     other.send(data, { binary: true });

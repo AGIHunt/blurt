@@ -1,10 +1,10 @@
 // Blurt's public go-between at meet.blurt.work (docs/design/remote-go-between.md). The relay's protocol and close codes (src/index.js),
 // on a strict budget: a phone and its computer meet here, do the handshake, trade addresses and open the direct UDP path, then move
 // everything onto it. What passes is sealed end to end; nothing is stored. It is public, so there is no secret path, and it binds
-// nothing but its Durable Object.
+// nothing but its Durable Object and a rate limiter (TICKETS: tickets per client IP a minute, across rooms).
 import { DurableObject } from "cloudflare:workers";
 import { noteMacLeft, peek } from "./index.js";
-import { asksTicket, mint, TICKETS_PER_CONNECTION } from "./ticket.js";
+import { asksTicket, clientKey, goodAsk, mint, TICKETS_PER_CONNECTION } from "./ticket.js";
 
 const PATH = /^\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone|peek)$/;
 
@@ -61,7 +61,8 @@ export class Meet extends DurableObject {
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], [role]);
     // the counters live in the attachment, so they survive hibernation
-    const c = { opened: Date.now(), total: 0, slots: [], room: u.searchParams.get("room"), tickets: 0 };
+    // who asks for tickets, for the per-IP limit (an IPv6 /64 counts as one); kept only in this connection's attachment
+    const c = { opened: Date.now(), total: 0, slots: [], room: u.searchParams.get("room"), tickets: 0, ip: clientKey(req.headers.get("CF-Connecting-IP")) };
     // a phone with no computer there hears so at once, and its leaving says nothing to a computer that comes in meanwhile
     if (role === "phone" && other.length === 0) {
       pair[1].serializeAttachment({ ...c, refused: true });
@@ -89,15 +90,23 @@ export class Meet extends DurableObject {
       try { asked = JSON.parse(msg); } catch {}
       c.tickets = (c.tickets || 0) + 1;
       ws.serializeAttachment(c);
-      const answer = role !== "mac" || !asked ? { ticket: { error: "bad" } }
+      const answer = role !== "mac" || !goodAsk(asked) ? { ticket: { error: "bad" } }
         : this.open("phone").length === 0 ? { ticket: { error: "alone" } }
         : c.tickets > TICKETS_PER_CONNECTION ? { ticket: { error: "limit" } }
+        // and per client IP across every room: a modified client can make rooms at will, not addresses
+        : !(await this.perIP(c.ip)) ? { ticket: { error: "limit" } }
         : await mint(this.env.TICKET_SECRET, c.room, asked);
       try { ws.send(JSON.stringify(answer)); } catch {}
       return;
     }
     ws.serializeAttachment(c);
     for (const o of this.open(role === "mac" ? "phone" : "mac")) { try { o.send(msg); } catch {} }
+  }
+
+  // one more ticket for this client IP in the minute (the TICKETS rate limiter). Without the binding (a test), no limit
+  async perIP(ip) {
+    if (!this.env.TICKETS) return true;
+    try { return (await this.env.TICKETS.limit({ key: ip || "unknown" })).success; } catch { return true; }
   }
 
   // the session can't go on here: both ends hear why
