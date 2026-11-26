@@ -206,7 +206,102 @@ def platform_key() -> str:
 
 def runs_here(m: dict, plat: str | None = None) -> bool:
     plats = m.get("platforms") or ["*"]
-    return "*" in plats or (plat or platform_key()) in plats
+    if not ("*" in plats or (plat or platform_key()) in plats):
+        return False
+    # this machine: Fun-ASR-Nano on the CPU only where it gives text (fun_cpu_state)
+    return plat is not None or m.get("id") != FUN_CPU or fun_cpu_state() != "no"
+
+
+# ------------------------------------------------------------------ Fun-ASR-Nano on the CPU: only where it hears
+# sherpa-onnx's int8 export (its LLM: int8_mode u8u8, reduce_range 0) gives no text at all on an x86 processor without
+# VNNI: 0 tokens for every piece, on an Intel Xeon and an AMD Zen 3 with AVX2 only (2026-11-26: a user's i7-8700, every
+# take "couldn't recognize", Retry too; sherpa-onnx 1.13.8 and 2.0.3 alike), and right on Ice Lake (AVX-512 VNNI) and
+# the Zen 4 it was measured on (docs/design/windows-models.md §Processors). The CPU's flags say which side a processor
+# is on where they can; where they can't (Windows has no flag for the AVX-VNNI of Intel's 12th gen and later), the
+# model hears a 2.7 s probe once when it loads and the answer is kept per model, runtime and processor.
+PROBE_WAV = HERE.parent / "assets" / "asr-probe.wav"     # 这个 feature 下周上线。 (tests/fixtures/dictation_audio/mix09)
+CPU_CHECK_FILE = BLURT_HOME / "asr-cpu-check.json"
+_cpu_checks: dict | None = None
+
+
+def x86_vnni() -> bool | None:
+    """True: this x86 processor has AVX-512 VNNI; False: it has neither that nor AVX-VNNI; None: can't tell, or not
+    x86 (the int8 kernels that fail are x86's)."""
+    if not platform_key().endswith("x86_64"):
+        return None
+    try:
+        if sys.platform.startswith("linux"):
+            for line in Path("/proc/cpuinfo").read_text().splitlines():
+                if line.startswith("flags"):
+                    flags = set(line.split(":", 1)[1].split())
+                    return True if "avx512_vnni" in flags else None if "avx_vnni" in flags else False
+            return None
+        if IS_WIN:
+            import ctypes
+            # PF_AVX512F_INSTRUCTIONS_AVAILABLE (41). Without AVX-512 there is no AVX-512 VNNI, but there may be AVX-VNNI,
+            # which Windows has no flag for: then the probe decides
+            return True if ctypes.windll.kernel32.IsProcessorFeaturePresent(41) else None
+        if IS_MAC:
+            v = _sysctl("hw.optional.avx512vnni")
+            return True if v == "1" else False if v == "0" else None
+    except (OSError, AttributeError, ValueError):
+        pass
+    return None
+
+
+def _cpu_name() -> str:
+    if sys.platform.startswith("linux"):
+        try:
+            for line in Path("/proc/cpuinfo").read_text().splitlines():
+                if line.startswith("model name"):
+                    return line.split(":", 1)[1].strip()
+        except OSError:
+            pass
+    return platform.processor() or platform.machine()
+
+
+def _cpu_key(mid: str) -> str:
+    try:
+        from importlib.metadata import version
+        runtime = version("sherpa-onnx")
+    except Exception:  # noqa: BLE001 — a script without sherpa-onnx (feedback.py) still reads the file
+        runtime = "?"
+    return f"{mid}|{runtime}|{_cpu_name()}"
+
+
+def cpu_check(mid: str) -> bool | None:
+    """What the probe said for this model on this processor (None: not heard yet)."""
+    global _cpu_checks
+    if _cpu_checks is None:
+        d = load_json(CPU_CHECK_FILE, {})
+        _cpu_checks = d if isinstance(d, dict) else {}
+    r = _cpu_checks.get(_cpu_key(mid))
+    return r.get("ok") if isinstance(r, dict) and isinstance(r.get("ok"), bool) else None
+
+
+def save_cpu_check(mid: str, ok: bool, heard: str) -> None:
+    global _cpu_checks
+    d = load_json(CPU_CHECK_FILE, {})
+    d = d if isinstance(d, dict) else {}
+    d[_cpu_key(mid)] = {"ok": ok, "heard": heard[:40], "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    try:
+        save_json(CPU_CHECK_FILE, d)
+    except OSError:
+        pass
+    _cpu_checks = d
+
+
+def fun_cpu_state() -> str:
+    """Fun-ASR-Nano on the CPU here: "ok" (it heard the probe, or the processor has AVX-512 VNNI, or isn't x86) — picked
+    and offered; "unknown" — never picked by itself, but it runs when it is here (its probe decides at load); "no" (the
+    probe got nothing, or the processor has no VNNI at all) — neither offered nor run."""
+    c = cpu_check(FUN_CPU)
+    if c is not None:
+        return "ok" if c else "no"
+    v = x86_vnni()
+    if v is True or not platform_key().endswith("x86_64"):
+        return "ok"
+    return "unknown" if v is None else "no"
 
 
 # ------------------------------------------------------------------ hardware probe and tiers
@@ -1460,9 +1555,30 @@ class FunAsrOnnx:
         if not (d / "llm.int8.onnx").exists():
             raise Fail("Fun-ASR-Nano (CPU) is not downloaded: transcribe.py setup --model-id fun-asr-nano-onnx",
                        "model_missing")
+        if cpu_check(FUN_CPU) is False:
+            raise Fail(self.NO_TEXT, "cpu_unsupported")
         self.model = "fun-asr-nano-int8"
         self.dir, self.threads, self.hotwords = d, _threads(args), ""
         self.rec = self._build("")
+        if cpu_check(FUN_CPU) is None:
+            self._probe()
+
+    NO_TEXT = "Fun-ASR-Nano (CPU) gives no text on this processor (no AVX-512 VNNI): another model hears instead"
+
+    def _probe(self):
+        """Hear the probe once on this processor (§Fun-ASR-Nano on the CPU). Nothing but punctuation back: it can't
+        hear here, and the server loads the next model in the same request (NoteEngine.note)."""
+        try:
+            x = read_wav(PROBE_WAV)
+        except (OSError, Fail, RuntimeError):
+            return              # no probe in this install: nothing to judge by
+        heard = self._decode(x)[0]
+        ok = len(re.sub(r"[\W_]+", "", heard)) >= 2
+        save_cpu_check(FUN_CPU, ok, heard)
+        print(f"funasr: probe {'heard ' + repr(heard) if ok else 'came back empty'} on {_cpu_name()}", file=sys.stderr,
+              flush=True)
+        if not ok:
+            raise Fail(self.NO_TEXT, "cpu_unsupported")
 
     # The decoder's own cap is 512 new tokens. Speech is under ~8 tokens a second (the Mac's FunAsrMlx says the same),
     # so a piece of at most 20 s needs ~160: a repetition loop (it happens: the dogfood's 6 s of English, replayed on
@@ -3659,6 +3775,10 @@ class NoteEngine:
                 serve_loading(True)
             try:
                 self.backend = make_backend(name, a, "note")
+            except BaseException:
+                if a.model_id != self.model_id:
+                    self.backend = self.name = self.model_id = None     # the old model was closed above
+                raise
             finally:
                 if loading:
                     serve_loading(False)
@@ -3707,7 +3827,14 @@ class NoteEngine:
                         "speaker": speaker}
         was = self.backend
         t_load = time.perf_counter()
-        self.load(language, model_id)
+        try:
+            self.load(language, model_id)
+        except Fail as e:
+            if e.code != "cpu_unsupported":
+                raise
+            # its probe just came back empty (FunAsrOnnx._probe): the next model hears this very request
+            model_id = dictation_models()["selected"] if purpose == "dictation" else None
+            self.load(language, model_id)
         load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not was else 0
         if stop is not None and not getattr(self.backend, "interruptible", False):
             if not getattr(self.backend, "quick_decode", False):
@@ -4329,14 +4456,16 @@ def small_recognizer(langs: list[str] | None) -> str:
     return FUN_MLX if speaks_all(entry(FUN_MLX), langs) else QWEN_MLX
 
 
-def cpu_recognizer(hw: dict, langs: list[str] | None) -> str:
+def cpu_recognizer(hw: dict, langs: list[str] | None, fun_ok: bool | None = None) -> str:
     """Dictation's recogniser on a PC without Apple Silicon (docs/design/windows-models.md): Fun-ASR-Nano int8 for
     Chinese / English / Japanese speakers (3.69 % on the founder's takes, ~1 s after key-up for a 10 s piece on 4 Zen 4
     threads), else Qwen3-ASR 0.6B int8 (30 languages, 3.51 %); SenseVoice on a minimal PC (< 8 GB or ≤ 2 cores:
-    0.2 s, 5.2 %)."""
+    0.2 s, 5.2 %). Fun-ASR-Nano only where it is known to give text (fun_cpu_state "ok": most PCs without AVX-512 get
+    the 0.6B)."""
     if hw.get("ram_gb", 16) < 7.5 or (hw.get("perf_cores") or 4) + (hw.get("eff_cores") or 0) <= 2:
         return SV
-    return FUN_CPU if speaks_all(entry(FUN_CPU), langs) else QWEN_CPU
+    fun_ok = fun_cpu_state() == "ok" if fun_ok is None else fun_ok
+    return FUN_CPU if fun_ok and speaks_all(entry(FUN_CPU), langs) else QWEN_CPU
 
 
 def slow_chip(chip: str | None) -> bool:
