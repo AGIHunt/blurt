@@ -271,7 +271,7 @@
     <string name="transfer_paused_short">已暂停</string>
     <string name="transfer_stopped">已停止</string>
     <string name="transfer_sent">已保存到 %1$s 的「下载/Blurt」</string>
-    <string name="transfer_sent_downloads">已保存到 %1$s 的「下载」</string>
+    <string name="transfer_sent_downloads">已保存到 %1$s 的「下载」文件夹</string>
     <string name="transfer_received">已保存到「Download/Blurt」</string>
     <string name="open">打开</string>
     <string name="share">分享…</string>

@@ -134,14 +134,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | Photos that couldn't come out of the library (iPhone) · the Preparing… row's name | %ld 项无法载入。 · %ld 项 | Couldn’t load %ld items. · %ld items |
 | A paused row beside its Continue button (the button says the rest; one line) | 已暂停 | Paused |
 | Sent (a computer that resumes) · sent to an older one, which saves in Downloads (as the Mac viewer's `viewer.file.saved.to`) | 已保存到 %@ 的「下载/Blurt」 · 已保存到 %@ 的「下载」文件夹 | Saved to Downloads/Blurt on %@ · Saved to Downloads on %@ |
-| Sent to an older computer (no `resume` in its features: it saves into Downloads itself) | 已保存到 %@ 的「下载」 | Saved to Downloads on %@ |
 | More than 1,000 picked or shared: nothing goes | 一次最多发送 1,000 个。 | Send up to 1,000 at a time. |
 | Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved to Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
 | A received file's buttons (iPhone: a tap opens it, touch and hold has Share… and Save to Photos, as in Files) | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
 | What came from the clipboard (a row each: ✓, this title, the first words or Save to Photos / Gallery on the right) | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
 | Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · %@ 上拷贝的文件超过 4 GB。（`too_large`）· 无法从 %@ 获取此类内容。 · 若要使用此功能，请更新 %@ 上的口喷鸡。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Copy up to 1,000 at a time. · A file copied on %@ is larger than 4 GB. (`too_large`) · Can't get this kind of item from %@. · To use this, update Blurt on %@. |
-| Nothing came: one copied file over 4 GB (`too_large`; `too_big` stays over 1,000 files) | %@ 上拷贝的文件超过 4 GB。 | A file copied on %@ is larger than 4 GB. |
 | Not sent (exist, viewer.file.failed.*) | 未发送：对方空间不足。 · 未发送：文件超过 4 GB。 · 未发送：对方已锁屏。 · 未发送。 | Not sent: not enough space on that computer. · Not sent: larger than 4 GB. · Not sent: that computer is locked. · Not sent. |
 | Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device (on a computer: this computer). · Not received. |
 | Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
@@ -152,7 +150,6 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | The host's bar: button (only for a device that takes files) · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
 | The host's bar while a file goes to the device (in place of who; the batch after the name; on the Mac also the viewer card's line, before time left: was Sending %ld of %ld to %@ · %@ of %@ / 正在发送第 %ld/%ld 个到 %@ · %@ / %@) · paused · failed, 4 s | 发往 %@ · 第 %ld/%ld 个 · %@ / %@ · 已暂停，重新连接后继续。 · 未发送。 | To %@ · %ld of %ld · %@ of %@ · Paused. Resumes when reconnected. · Not sent. |
 | Time left's number (inside 还剩 %@ / %@ left): minutes above 60 s, seconds below, a space before the unit | %ld 分钟 · %ld 秒 | %ld min · %ld sec |
-| A copied file over 4 GB (`clipboardNone` `too_large`; `too_big` stays "over 1,000 files") | %@ 上拷贝的文件超过 4 GB。 | A file copied on %@ is larger than 4 GB. |
 | A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Mac, Windows and Linux hosts) | 未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。 | Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard. |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
 | The host's connection log | 已发送剪贴板 · 收到 %ld 个文件 · 已发送 %ld 个文件 | Clipboard sent · Received %ld files · Sent %ld files |
