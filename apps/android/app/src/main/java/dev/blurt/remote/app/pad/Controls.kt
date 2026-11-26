@@ -73,9 +73,10 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
         p.strokeWidth = 1.6f.dp
         p.strokeCap = Paint.Cap.ROUND
         p.strokeJoin = Paint.Join.ROUND
-        val dx = 3.6f.dp
-        val half = 7.5f.dp
-        val head = 3.6f.dp
+        // smaller than the cell, as the other icons' glyphs sit in theirs (founder, 2026-11-26: edge to edge looked heavy)
+        val dx = 3f.dp
+        val half = 5.5f.dp
+        val head = 2.8f.dp
         // up, on the left
         canvas.drawLine(cx - dx, cy + half, cx - dx, cy - half, p)
         canvas.drawLine(cx - dx, cy - half, cx - dx - head, cy - half + head, p)

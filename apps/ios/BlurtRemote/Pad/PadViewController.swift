@@ -305,7 +305,9 @@ final class PadViewController: UIViewController {
         chip(String(localized: "Translate")) { Link.shared.send(.blurt(.dictationTranslate)) }
 
         for (b, s) in [(keyboardButton, "keyboard"), (settingsButton, "slider.horizontal.3"), (findButton, "scope"), (transferButton, "arrow.up.arrow.down")] {
-            b.setImage(UIImage(systemName: s, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)), for: .normal)
+            // the two arrows are drawn edge to edge: smaller, a touch heavier, they sit in the row like the other icons (founder, 2026-11-26)
+            let transfer = b === transferButton
+            b.setImage(UIImage(systemName: s, withConfiguration: UIImage.SymbolConfiguration(pointSize: transfer ? 13 : 17, weight: transfer ? .medium : .regular)), for: .normal)
             b.tintColor = Theme.caption
             view.addSubview(b)
         }
