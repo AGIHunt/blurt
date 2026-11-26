@@ -495,7 +495,7 @@
  "st.dictation.vocab.context.detail": "开始听写时会读取光标附近的文字，用于写对名字。不读取密码框。",
  "st.dictation.vocab.ignore": "忽略",
  "st.dictation.vocab.learn": "从我的改正中学习",
- "st.dictation.vocab.learn.detail": "改正识别错误的名字后，会自动加入词库。",
+ "st.dictation.vocab.learn.detail": "同一个名字改正两次后，会自动加入词库。",
  "st.dictation.vocab.list_sep": "、",
  "st.dictation.vocab.manage": "管理…",
  "st.dictation.vocab.remove": "移除",

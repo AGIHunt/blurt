@@ -256,6 +256,9 @@ final class DictationWatch {
     private(set) var watching = false
     /// a fix was turned into a word (the island says so; tests read it)
     var onLearned: ((String) -> Void)?
+    /// fixes that named new words, kept as suggestions: the island offers Add to Words (user report 2026-11-26: the
+    /// first fix said nothing, so it looked as if Blurt didn't learn)
+    var onSuggested: (([String]) -> Void)?
     /// the list the take was typed as was taken apart in the field (a style-learning signal, dictation-styles.md §3.5)
     var onReverted: (() -> Void)?
 
@@ -314,11 +317,14 @@ final class DictationWatch {
         if DictationReformat.reverted(typed: typed, edited: edited) { onReverted?() }
         let fixes = DictationLearn.fixes(typed: typed, edited: edited, isCommonWord: DictationLearn.isCommonWord)
         emit(["event": "dictation_watch", "state": "learn", "fixes": fixes.count])
+        var suggested: [String] = []
         for fx in fixes {
             let r = DictationVocabulary.shared.learn(heard: fx.heard, fixed: fx.fixed)
             emit(["event": "dictation_learn", "heard": fx.heard, "fixed": fx.fixed, "kind": fx.kind.rawValue,
                   "result": r.map { "\($0)" } ?? "ignored"])
             if case .learned(let t)? = r { onLearned?(t) }
+            if case .suggested(let t)? = r, !suggested.contains(t) { suggested.append(t) }
         }
+        if !suggested.isEmpty { onSuggested?(suggested) }
     }
 }

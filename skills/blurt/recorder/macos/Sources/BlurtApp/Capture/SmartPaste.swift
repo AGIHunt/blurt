@@ -636,12 +636,16 @@ enum DragOutEnd {
         let asksAccessibility: Bool
         /// the note went on the clipboard without a word (pasted, unconfirmed: DragReceipt.followUp)
         var quietCopy = false
+        /// the toast's second line says the text went where the pointer was let go (DragReceipt.saysWhere)
+        var saysWhere = false
         /// the toast tells the user the note is on the clipboard (⌘V to paste)
         var noteCopied: Bool { saved != nil && !quietCopy }
     }
 
     /// "Blurt needs Accessibility to paste the note" was said this session (once is enough)
     private static var toldAccessibility = false
+    /// how many times a toast said the text went where the pointer was let go (DragReceipt.whereTimes at most)
+    static let whereSaidKey = "capture.dropWhereSaid"
 
     /// `card`: what was dragged (its picture, its note); `delivered`: the class whose layout the app got (nil: not
     /// sure); `noteFile`: the .md went with it; `landed` / `p`: the app it was dropped into and where. `who` goes
@@ -665,6 +669,12 @@ enum DragOutEnd {
             if ask { toldAccessibility = true }
             var d = Done(plan: plan, outcome: outcome, hasNote: hasNote, notePasted: f.notePasted, saved: saved, asksAccessibility: ask)
             d.quietCopy = f.quietCopy
+            let composer = landed?.cls == .terminal && (landed?.bundleID.map(AgentProbe.composers.contains) ?? false)
+            let said = UserDefaults.standard.integer(forKey: whereSaidKey)
+            if DragReceipt.saysWhere(outcome, composer: composer, said: said) {
+                d.saysWhere = true
+                UserDefaults.standard.set(said + 1, forKey: whereSaidKey)
+            }
             then(d)
         }
         if case .pasteNote(let note) = plan, let t = landed {
@@ -679,6 +689,7 @@ enum DragOutEnd {
     /// the user's clipboard couldn't be got back), 8 s, and Allow… follows as its own line once it has gone, answered
     /// or not; with nothing to undo, Allow… is its action.
     static func toast(_ d: Done, text: String, undo: (() -> Void)?) -> Island.Toast {
+        let text = d.saysWhere ? text + "\n" + Loc.t("capture.taken_out_where", table: "Capture") : text
         if d.asksAccessibility, let undo = undo {
             var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) {
                 undo()

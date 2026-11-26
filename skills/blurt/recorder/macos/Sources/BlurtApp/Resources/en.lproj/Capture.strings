@@ -231,6 +231,7 @@
 "capture.taken_out_note" = "Dragged out · Note copied. Press ⌘V to paste.";
 "capture.taken_out_text" = "Dragged out · picture and note";
 "capture.taken_out_paths" = "Dragged out · picture path and note";
+"capture.taken_out_where" = "Text is inserted where you drop it.";
 "capture.taken_out_files" = "Dragged out · picture and note file";
 "capture.taken_out_files_note" = "Note copied. Press ⌘V to paste.";
 "capture.taken_out_picture" = "Dragged out · picture";

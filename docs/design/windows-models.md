@@ -85,9 +85,42 @@ SenseVoice (dictation.md §Defaults by Mac). It is the best CPU model for Chines
 | PC | Recogniser | Polish |
 |---|---|---|
 | first minutes, while the recogniser downloads | SenseVoice (228 MB) | cloud if a key is set |
-| ≥ 8 GB and ≥ 4 cores, speaks only zh / en / ja | Fun-ASR-Nano int8 (950 MB, 20 s windows, 4 threads) | cloud if a key is set, else none |
-| any other language | Qwen3-ASR 0.6B int8 (940 MB) | as above |
+| ≥ 8 GB and ≥ 4 cores, speaks only zh / en / ja, a processor Fun-ASR-Nano hears on (§Processors) | Fun-ASR-Nano int8 (950 MB, 20 s windows, 4 threads) | cloud if a key is set, else none |
+| the same without AVX-512 VNNI (most Intel before Ice Lake, AMD before Zen 4), or any other language | Qwen3-ASR 0.6B int8 (940 MB) | as above |
 | < 8 GB or ≤ 2 cores | SenseVoice | as above |
+
+## Processors: Fun-ASR-Nano needs VNNI (2026-11-26)
+
+A user's Windows PC (Intel i7-8700 class, 6 cores, 16 GB; phone mic through Blurt Remote) never got a word: every take
+`asr_failed:timeout`, Retry too (feedback report 6sy4tpjycxm3meshyxpqoed7a4). The recording was fine — this Mac's
+model wrote it out. sherpa-onnx's Fun-ASR-Nano int8 export (LLM `int8_mode=u8u8`, `reduce_range=0`) decodes **0 tokens**
+for any audio on an x86 processor without VNNI. The same files, the same runtime, the same VM with its machine type
+changed (blurt-win3, Windows Server 2022):
+
+| Processor | AVX-512 VNNI | Fun-ASR-Nano int8 | SenseVoice | Qwen3-ASR 0.6B int8 |
+|---|---|---|---|---|
+| Intel Xeon 2.2 GHz (e2), AVX2 only | no | empty (TTS clip, the user's take, louder, shorter) | — | — |
+| AMD EPYC 7B13 (Zen 3), AVX2 only | no | empty | right, 4.8 s for the 29.5 s take | right, 11 s |
+| Intel Ice Lake (n2) | yes | right | — | — |
+
+sherpa-onnx 2.0.3 is no different. The measurements above (§Speed) were all on a Zen 4, which has VNNI, so this was
+never seen. A likely cause is the AVX2 / AVX-512BW u8×u8 path saturating 16-bit sums, which VNNI's instructions don't;
+that is a guess — what matters is the measured split.
+
+What runs now (`transcribe.fun_cpu_state`):
+- **The flags first**, where they tell: Linux `/proc/cpuinfo` (`avx512_vnni` → yes; neither it nor `avx_vnni` → no),
+  macOS `hw.optional.avx512vnni`; Windows only has a flag for AVX-512 itself (`IsProcessorFeaturePresent(41)`), so
+  without it the answer is "unknown" (Intel's 12th gen and later have AVX-VNNI without AVX-512; untested).
+- **A probe** when the model loads and nothing is known: it hears `skills/blurt/assets/asr-probe.wav` (2.7 s, 这个
+  feature 下周上线。, the mix09 fixture) and fewer than two letters back means it can't hear here. The answer is kept in
+  `~/.blurt/asr-cpu-check.json` per model, sherpa-onnx version and processor, and wins over the flags.
+- **"ok"** (VNNI, or the probe heard it): picked and offered as before. **"unknown"**: never picked by itself — Auto
+  recommends Qwen3-ASR 0.6B (3.51 % against Fun-ASR's 3.69 % on the founder's takes, a third slower) — but one already
+  downloaded still runs, and its probe decides. **"no"**: not offered, not run (`runs_here`).
+- **The take that finds out is not lost:** the probe failing raises `cpu_unsupported`, and the server loads dictation's
+  next model for the same request (`NoteEngine.note`). On the Zen 3 VM with Fun-ASR and SenseVoice installed (the
+  user's set): the first take 20.8 s (Fun-ASR loaded, probed, then SenseVoice), the next 6.5 s, Settings without
+  Fun-ASR and recommending the 0.6B. On Ice Lake the probe heard the clip and Fun-ASR kept the take.
 
 ## Cloud recognition on a weak PC (2026-11-11)
 

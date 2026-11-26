@@ -2089,8 +2089,15 @@ After a paste, `DictationWatch` follows the same AX element (the one focused jus
 - `DictationVocabulary.learn` learns words, never replacements: a known word gains the sounds-like (a relevance hint,
   §Custom words); a new one is a suggestion, accepted the second time
   the same fix is seen, or at once when it is only case or spacing. The first time a word becomes active, the
-  island says *Learned "pull request"* with **Undo** (记住了 pull request · 撤销). Never from secure fields; nothing of
-  the surrounding text is kept; `record.dictation.learn` turns it off.
+  island says *Added "pull request" to Words* with **Undo** (已将「pull request」加入词库 · 撤销). Never from secure
+  fields; nothing of the surrounding text is kept; `record.dictation.learn` turns it off.
+- **A new word is offered at once** (2026-11-26): every edit that leaves suggestions has the island say 「可加入词库：Claude」
+  / "Add to Words: Claude" (the main window's wording for the same offer) with **Add to Words** (8 s; several words in one line, one button; `Dictation.toastSuggested`,
+  Windows / Linux `engine.rs` `dictation.accept`). Before, the first fix said nothing — the word waited in the Words
+  tab's review list — and a user who fixed a name by hand reported the feature missing next to a product that asks right
+  away. Added → the usual *Added … · Undo*. Left alone → it stays a suggestion, and the same fix a second time adds it as
+  before. Settings' line under 「从我的改正中学习」 says 「同一个名字改正两次后，会自动加入词库。」 (was 「改正识别错误的名字后，会自动加入词库。」, which the
+  toast now contradicted).
 
 ### Learning from corrections
 

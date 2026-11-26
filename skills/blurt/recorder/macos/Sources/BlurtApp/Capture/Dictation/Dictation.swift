@@ -340,6 +340,7 @@ final class Dictation {
         watchHistoryClear()
         watchFnApps()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
+        DictationWatch.shared.onSuggested = { terms in Dictation.toastSuggested(terms) }
         // a fix to an ordinary word (a contraction, an inflection the word list lacks) is grammar, not a term
         DictationLearn.spelledRight = { w in
             var count = 0
@@ -449,14 +450,30 @@ final class Dictation {
         }
     }
 
-    /// "Learned “Claude” · Undo" — the first time a fix became a word.
-    static func toastLearned(_ term: String) {
-        island.toast(Loc.t("dictation.toast.learned", table: "Dictation", term), key: "dictation.learned", icon: .check,
+    /// "Added “Claude” to Words · Undo" — a fix became a word (the same fix seen twice, or Add on the line below).
+    static func toastLearned(_ term: String) { toastLearned([term]) }
+
+    static func toastLearned(_ terms: [String]) {
+        let list = terms.joined(separator: Loc.t("main.dictation.correct.sep", table: "Main"))
+        island.toast(Loc.t("dictation.toast.learned", table: "Dictation", list), key: "dictation.learned", icon: .check,
                      actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: {
-            DictationVocabulary.shared.forget(term)
-            emit(["event": "dictation_vocab_undo", "term": term])
+            for t in terms { DictationVocabulary.shared.forget(t) }
+            emit(["event": "dictation_vocab_undo", "terms": terms])
         })
-        emit(["event": "dictation_learned_toast", "term": term])
+        emit(["event": "dictation_learned_toast", "terms": terms])
+    }
+
+    /// "New word from your edit: Claude · Add to Words" — every time an edit names a word Words doesn't have yet. Left
+    /// alone, it stays a suggestion (the Words tab lists it), and the same fix a second time adds it by itself.
+    static func toastSuggested(_ terms: [String]) {
+        let list = terms.joined(separator: Loc.t("main.dictation.correct.sep", table: "Main"))
+        island.toast(Loc.t("dictation.toast.suggested", table: "Dictation", list), key: "dictation.learned", seconds: 8,
+                     actionTitle: Loc.t("main.dictation.correct.add", table: "Main"), action: {
+            for t in terms { DictationVocabulary.shared.accept(t) }
+            emit(["event": "dictation_vocab_accept", "terms": terms, "via": "island"])
+            toastLearned(terms)
+        })
+        emit(["event": "dictation_suggested_toast", "terms": terms])
     }
 
     // MARK: retention
