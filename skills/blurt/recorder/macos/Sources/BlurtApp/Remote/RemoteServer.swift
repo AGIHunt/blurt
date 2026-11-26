@@ -1210,7 +1210,7 @@ final class RemoteServer {
         }
         guard s.greeted else { return }
         switch m {
-        case .hello, .keyStored, .ping, .streamMoved: break
+        case .hello, .keyStored, .ping, .streamMoved, .fileProgress, .fileSaved, .fileFailed, .getClipboard: break
         case let .clipboard(t):
             // a viewer's, while its keys are captured: what it copied pastes here
             guard s.viewer, s.captured, RemoteClipboard.fits(t) else { return }
@@ -1224,7 +1224,7 @@ final class RemoteServer {
         case let .keysCaptured(on):
             guard s.viewer else { return }
             queue.async { self.captured(on, s) }
-        case let .fileBegin(id, name, size):
+        case let .fileBegin(id, name, size, _, _, _, _):
             queue.async {
                 guard self.session === s || self.extras.contains(where: { $0 === s }) else { return }
                 if s.files == nil { s.files = RemoteFileReceiver(from: self.label(s)) { [weak s] m in s?.channel.send(m) } }
