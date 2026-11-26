@@ -266,7 +266,11 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val l = Remote.link
         l.onBack = { showWanted() }
         scope.launch { combine(l.state, l.current, l.canControl) { _, _, _ -> }.collect { status() } }
-        scope.launch { combine(l.waitingForMac, l.pairFailed, l.route, l.screenError) { _, _, _, e -> e }.collect { e -> if (e != null) setShowing(false); status() } }
+        scope.launch { combine(l.waitingForMac, l.digitsConfirmed, l.pairFailed, l.route, l.screenError) { _, _, _, _, e -> e }.collect { e ->
+            // the public relay busy: the picture is still wanted, and comes by itself once there's room
+            if (e != null && e != dev.blurt.remote.core.RemotePublicRelay.BUSY) setShowing(false)
+            status()
+        } }
         scope.launch { combine(l.path, l.away) { _, _ -> }.collect { status() } }
         scope.launch { combine(l.hostLocked, l.meeting, l.offline, l.presence) { _, _, _, _ -> }.collect { status() } }
         // the digits to compare: lit while they show
@@ -388,7 +392,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         val banner = StatusBanner.of(LinkStatus(phase, dropped = follower.dropped, hasRelay = l.current.value?.relayAddress != null,
             otherComputers = l.macs.value.size > 1, canControl = l.canControl.value, screenError = l.screenError.value, screenAsked = screenAsked || l.pictureSeen,
             showing = showing, locked = l.hostLocked.value, meeting = l.meeting.value, offline = l.offline.value, presence = l.presence.value?.says,
-            waiting = l.waitingForMac.value, pairFailed = l.pairFailed.value != null,
+            waiting = l.waitingForMac.value, digitsConfirmed = l.digitsConfirmed.value, pairFailed = l.pairFailed.value != null,
             pairRetry = l.pairFailed.value?.why?.canRetry == true, away = l.away.value))
         shownBanner = banner
         fun say(line: StatusLine) = StatusCard.text(c, line, host, name, l.pairCheck, l.pairFailed.value, l.presence.value?.since)
@@ -427,6 +431,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
             StatusAction.TAKE_OVER, StatusAction.RECONNECT -> Remote.link.takeBack()
             StatusAction.DISMISS -> Remote.link.dismissPairFailure()
             StatusAction.SHOW_SCREEN -> toggleScreen()
+            StatusAction.PAIR -> Remote.link.confirmDigits()
+            StatusAction.CANCEL_PAIRING -> Remote.link.cancelJoin()
         }
     }
 

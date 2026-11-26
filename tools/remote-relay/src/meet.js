@@ -1,9 +1,10 @@
 // Blurt's public go-between at meet.blurt.work (docs/design/remote-go-between.md). The relay's protocol and close codes (src/index.js),
 // on a strict budget: a phone and its computer meet here, do the handshake, trade addresses and open the direct UDP path, then move
 // everything onto it. What passes is sealed end to end; nothing is stored. It is public, so there is no secret path, and it binds
-// nothing but its Durable Object.
+// nothing but its Durable Object and a rate limiter (TICKETS: tickets per client IP a minute, across rooms).
 import { DurableObject } from "cloudflare:workers";
 import { noteMacLeft, peek } from "./index.js";
+import { asksTicket, clientKey, goodAsk, mint, TICKETS_PER_CONNECTION } from "./ticket.js";
 
 const PATH = /^\/v1\/([A-Za-z0-9_-]{43})\/(mac|phone|peek)$/;
 
@@ -46,20 +47,22 @@ export default {
     // GET …/peek: is its computer waiting, and since when it's asleep or last seen (paired devices only know the room)
     if (m[2] === "peek") return req.method === "GET" ? env.MEET.get(env.MEET.idFromName(m[1])).fetch("https://meet/peek") : new Response("Not found", { status: 404 });
     if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
-    return env.MEET.get(env.MEET.idFromName(m[1])).fetch(new Request(`https://meet/${m[2]}`, req));
+    return env.MEET.get(env.MEET.idFromName(m[1])).fetch(new Request(`https://meet/${m[2]}?room=${m[1]}`, req));
   },
 };
 
 export class Meet extends DurableObject {
   async fetch(req) {
-    const role = new URL(req.url).pathname.slice(1);
+    const u = new URL(req.url);
+    const role = u.pathname.slice(1);
     if (role === "peek") return peek(this);
     for (const old of this.ctx.getWebSockets(role)) { try { old.close(REPLACED, "replaced"); } catch {} }
     const other = this.open(role === "mac" ? "phone" : "mac");
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], [role]);
     // the counters live in the attachment, so they survive hibernation
-    const c = { opened: Date.now(), total: 0, slots: [] };
+    // who asks for tickets, for the per-IP limit (an IPv6 /64 counts as one); kept only in this connection's attachment
+    const c = { opened: Date.now(), total: 0, slots: [], room: u.searchParams.get("room"), tickets: 0, ip: clientKey(req.headers.get("CF-Connecting-IP")) };
     // a phone with no computer there hears so at once, and its leaving says nothing to a computer that comes in meanwhile
     if (role === "phone" && other.length === 0) {
       pair[1].serializeAttachment({ ...c, refused: true });
@@ -75,14 +78,35 @@ export class Meet extends DurableObject {
   // a peer that vanished stays listed, closing, until the runtime gives up on it: it must not stop bytes reaching the live one
   open(role) { return this.ctx.getWebSockets(role).filter((w) => w.readyState === WebSocket.READY_STATE_OPEN); }
 
-  webSocketMessage(ws, msg) {
+  async webSocketMessage(ws, msg) {
     if (ws.readyState !== WebSocket.READY_STATE_OPEN) return;   // replaced or over budget: nothing it says counts any more
     const size = typeof msg === "string" ? new TextEncoder().encode(msg).byteLength : msg.byteLength;
     const c = ws.deserializeAttachment();
     if (!spend(c, size, Date.now())) return this.overBudget();
-    ws.serializeAttachment(c);
     const role = this.ctx.getTags(ws)[0];
+    // the computer asks for tickets to the public relay (ticket.js): only with its phone here, a few times a connection, never passed on
+    if (asksTicket(msg)) {
+      let asked = null;
+      try { asked = JSON.parse(msg); } catch {}
+      c.tickets = (c.tickets || 0) + 1;
+      ws.serializeAttachment(c);
+      const answer = role !== "mac" || !goodAsk(asked) ? { ticket: { error: "bad" } }
+        : this.open("phone").length === 0 ? { ticket: { error: "alone" } }
+        : c.tickets > TICKETS_PER_CONNECTION ? { ticket: { error: "limit" } }
+        // and per client IP across every room: a modified client can make rooms at will, not addresses
+        : !(await this.perIP(c.ip)) ? { ticket: { error: "limit" } }
+        : await mint(this.env.TICKET_SECRET, c.room, asked);
+      try { ws.send(JSON.stringify(answer)); } catch {}
+      return;
+    }
+    ws.serializeAttachment(c);
     for (const o of this.open(role === "mac" ? "phone" : "mac")) { try { o.send(msg); } catch {} }
+  }
+
+  // one more ticket for this client IP in the minute (the TICKETS rate limiter). Without the binding (a test), no limit
+  async perIP(ip) {
+    if (!this.env.TICKETS) return true;
+    try { return (await this.env.TICKETS.limit({ key: ip || "unknown" })).success; } catch { return true; }
   }
 
   // the session can't go on here: both ends hear why

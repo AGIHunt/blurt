@@ -30,6 +30,11 @@ object Reconnect {
      *  lost on the way isn't waited for longer */
     const val MEETING_DUE_MS = 12_000L
 
+    /** The same, when both ends listed `publicRelay`: after its 8 s the host may wait 3 s for tickets and 5 s for the public relay before
+     *  it says `publicRelay` and `noDirect` (remote-go-between.md §Getting in) */
+    fun meetingDueMs(publicRelay: Boolean): Long =
+        if (publicRelay) 8_000 + RemotePublicRelay.TICKET_WAIT_MS + RemotePublicRelay.GIVE_UP_MS + 1_000 else MEETING_DUE_MS
+
     /** nothing has answered for this long: said so on the pad */
     fun unreachableAfterMs(relay: Boolean): Long = if (relay) 12_000 else 8_000
 

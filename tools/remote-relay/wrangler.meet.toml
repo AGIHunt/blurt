@@ -1,6 +1,7 @@
 # Blurt's public go-between (src/meet.js, docs/design/remote-go-between.md): the relay's protocol on a strict budget per connection.
 # Workers Free plan: over the limits it stops answering; nothing can be billed. It binds only the hibernating, SQLite-backed Durable Object
-# `Meet`: no KV, no R2, no secrets.
+# `Meet` and the rate limiter `TICKETS`: no KV, no R2. One secret, TICKET_SECRET (`wrangler secret put TICKET_SECRET --config
+# wrangler.meet.toml`): it signs tickets for the public relay (src/ticket.js) and is the same as TICKET_SECRETS's first entry on the box.
 name = "blurt-meet"
 main = "src/meet.js"
 compatibility_date = "2025-09-01"
@@ -12,6 +13,13 @@ routes = [{ pattern = "meet.blurt.work", custom_domain = true }]
 [[durable_objects.bindings]]
 name = "MEET"
 class_name = "Meet"
+
+# tickets for the public relay per client IP (IPv6 /64) a minute, across rooms (src/ticket.js TICKETS_PER_IP_MINUTE): the Workers rate
+# limiter, counted in each Cloudflare location, no storage and no extra requests on the plan
+[[ratelimits]]
+name = "TICKETS"
+namespace_id = "4011"
+simple = { limit = 6, period = 60 }
 
 [[migrations]]
 tag = "v1"

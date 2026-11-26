@@ -694,22 +694,6 @@
         }
       }
     },
-    "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "如果电脑显示相同的数字 %@，请在电脑上点「允许」。"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "If the computer shows the same digits, %@, click Allow on it."
-          }
-        }
-      }
-    },
     "Always Here" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4571,6 +4555,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在「设置」中允许 Blurt 添加照片。"
+          }
+        }
+      }
+    },
+    "Click Allow on %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@ 上点「允许」。"
+          }
+        }
+      }
+    },
+    "Check the Digits on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核对 %@ 上的数字"
+          }
+        }
+      }
+    },
+    "If %@ shows %@, tap Pair." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果 %1$@ 显示 %2$@，请轻点「配对」。"
+          }
+        }
+      }
+        },
+    "The public connection service is busy, so there’s no picture for now. The pointer and keys still work." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。"
+          }
+        }
+      }
+    },
+    "Send %@ over the public connection service?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过公共连接服务发送 %@？"
+          }
+        }
+      }
+    },
+    "Files over the public connection service are limited to 50 MB a day." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过公共连接服务每天最多可传输 50 MB 文件。"
+          }
+        }
+      }
+    },
+    "Not sent: files over the public connection service are limited to 50 MB a day." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发送：通过公共连接服务每天最多可传输 50 MB 文件。"
           }
         }
       }

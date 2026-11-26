@@ -161,7 +161,7 @@ final class ScreenStream {
     private var plan: ScreenPlan {
         let l = Link.shared
         return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: stagePixels ?? UIScreen.main.nativeBounds.size,
-                          panel: UIScreen.main.maximumFramesPerSecond, scale: UIScreen.main.scale)
+                          panel: UIScreen.main.maximumFramesPerSecond, scale: UIScreen.main.scale, publicRelay: l.viaPublicRelay)
     }
 
     /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).

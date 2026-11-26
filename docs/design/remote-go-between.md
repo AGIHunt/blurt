@@ -102,6 +102,151 @@ Rules for the stream over UDP:
 **Billing safety:** the account's Workers plan is Free, so limits fail and nothing is billed. The Worker binds nothing billable: no R2,
 no KV, only the Durable Object class `Meet` (SQLite-backed, hibernating).
 
+## The public relay (Hong Kong, 2026-11-26)
+
+When the go-between finds no direct path, the session no longer just ends: it goes on through **Blurt's public relay**,
+`wss://relay.blurt.work`, a Tencent Lighthouse box in Hong Kong (2 vCPU, 2 GB, 200 Mbps peak; `tools/remote-relay/public.js` behind
+Caddy). It is free, shared and offered without a guarantee. Reviews: `promo/cases/public-relay-1126/` (security F1–F6, capacity).
+It carries sealed bytes like any relay: it can delay or cut a session, never read or change it.
+
+### Order of paths
+
+Same network → overlay → own relay → go-between (direct UDP) → **public relay** → "Can't connect directly". The public relay is used
+only when the go-between was (own relay empty, Public connection service on) and both ends list `publicRelay`. It is one more step of the
+same setting; the apps call it the public connection service too (copy.md).
+
+### Getting in: tickets and a room per session
+
+1. On the go-between, 8 s after `session` with no datagram, a host whose phone listed `publicRelay` makes a room for this session:
+   32 random bytes, base64url (43 characters). It sends the go-between a **text** WebSocket message `{"ticket":{"room":"<room>"}}`
+   (no app sends text otherwise; the go-between answers it and never passes it on).
+2. The go-between answers only a computer whose phone is in the room, at most 3 times a connection and **6 times a minute per client IP**
+   across rooms (`CF-Connecting-IP`, an IPv6 /64 as one; the Workers rate limiter `TICKETS`, counted per Cloudflare location, no storage
+   and no extra requests on the Free plan; a malformed ask doesn't count):
+   `{"ticket":{"relay":"wss://relay.blurt.work","room":…,"mac":"<t>","phone":"<t>"}}`, or `{"ticket":{"error":"off|alone|limit|bad"}}`.
+   A ticket is `<expiry>.<tag>.<signature>` (`src/ticket.js`): expiry = now + 60 s; tag = HMAC(S, pair's go-between room ‖ UTC day), 9
+   bytes, so the relay can keep a day's byte budget per pair without learning the pair's room; signature = HMAC(S, relay room ‖ role ‖
+   expiry ‖ tag), 16 bytes. S is a Worker secret (`TICKET_SECRET`) and `TICKET_SECRETS` on the box (comma list, newest first, to rotate).
+3. The host checks `relay` is one of `RemotePublicRelay.addresses` (`wss://relay.blurt.work` only; a test build may add
+   `BLURT_PUBLIC_RELAY`), opens `<relay>/v1/<room>/mac?t=<mac ticket>` within 5 s, then sends the phone, sealed,
+   `{"publicRelay":{"address":…,"room":…,"ticket":<phone ticket>}}` and `noDirect`, and closes the go-between session as before.
+   Any failure on the way (no answer in 3 s, an error, the relay not open in 5 s) is today's `noDirect` alone.
+4. A phone that got `publicRelay` (an allowed address, within the last 10 s) answers `noDirect` by connecting to
+   `<address>/v1/<room>/phone?t=<ticket>` and doing the usual handshake with the paired key. It gives up after **5 s** without `session`
+   (refused, 4001, 4011, timeout) and shows the existing no-direct line. No retry loop: the next try starts at the go-between again.
+5. The host's waiting connection takes one handshake, from that device id only. The relay closes a computer nobody came to after 60 s
+   (**4011**). A ticket opens one connection; the room is never used again.
+
+The relay never sees the pair's room or a device id in the clear before the handshake (the hello's id is inside TLS to the relay, as on
+any relay), so two sessions there can be linked only within a day, by the tag.
+
+### The picture: leases
+
+The relay can't see whether the picture is on, so the host asks: text messages on its relay connection, never passed on.
+
+- `{"lease":true}` asks, or renews one held; `{"lease":false}` gives it back. Answers: `{"lease":{"ok":true,"ttl":75}}`,
+  `{"lease":{"ok":false,"why":"full"|"prefix"|"alone"}}`; `{"lease":{"ok":false,"why":"expired"}}` when the relay takes one back.
+- At most **10** at once (`LEASES`), **one per IP prefix** of the computer (/24, /48). Refused: no queue.
+- The host asks before it starts the picture; on refusal it sends `screenFailed("busy")` and asks again every **30 s** while the picture
+  is still wanted, starting it (`screenView`) once granted. It renews every 30 s while frames flow; the relay takes back one unrenewed
+  for 75 s. Given back at once on picture off, the app going to the background (the phone stops the picture), the session's end; after
+  **5 min** with no touch, key or voice from the device the host stops the picture (`screenFailed("stopped")`) and gives it back; the
+  relay takes it back after **2 h** (asked again, it goes behind anyone refused in the last minute).
+- The picture on this path is Data Saver's: at most **1280 wide, 1 Mbps, 15 fps**, asked by the device and clamped by the host.
+
+### Budgets (the relay)
+
+Enforced by pausing the sender's reads, never by dropping (the frames are sealed in sequence, with AEAD counters):
+
+- each direction of a room: **256 kbps** without a lease (64 KiB burst), **1.5 Mbps** with one (256 KiB burst: a keyframe is 77–170 KB);
+  200 messages a second; a receiver 256 KiB behind pauses its sender, 2 MiB behind is cut;
+  files without a lease stay at the 256 kbps (35 MB ≈ 18 min; decided 2026-11-26: not raised, the picture lease is the scarce thing,
+  and the 50 MB a day stays);
+- **1 GB per pair per UTC day** (the tag), then 4003 to both; a session at most 12 h (4003); messages at most 512 KiB;
+- **10 GB a UTC day sent from one IP prefix** (/24, /48; `PREFIX_DAY_BYTES`), across all its rooms and tickets: past it the room hears
+  4003 and new connections from that prefix get HTTP 429 until the day turns. Why 10 GB: a heavy pair (a 2 h lease at the measured 1 Mbps
+  ≈ 0.9 GB, plus 50 MB of files) fits its own 1 GB; ten of them can share a /24 (mainland carriers put many lines behind one IPv4 /24);
+  10 GB is 0.5 % of what the box's 200 Mbps carries in a day. One address abusing it at its most (1 lease at 1.5 Mbps each way and 7 more
+  rooms at 256 kbps each way: ≈ 7 Mbps, 3.5 % of the box) spends it in about 3 h and is shut out for the rest of the day;
+- per IP (an IPv6 /64 counts as one: one is handed to one line): 16 connections, 10 upgrades in 10 s (HTTP 429); 2,000 connections in all;
+- no `peek`; `GET /` answers `blurt relay`; counters once a minute, nothing about who.
+
+### Limits, and what a modified client can get around
+
+The apps keep to all of these; what matters is which ones still hold for a client someone has changed. The relay and the go-between are the
+only places a limit can't be talked out of. (Tests: `test-public.mjs`, `test-tickets.mjs`, `test-meet-tickets.mjs` against `wrangler dev`.)
+
+| Limit | Enforced by | A modified client |
+|---|---|---|
+| A signed ticket to open a room end: 60 s, used once, for one room and role | relay | can't get in without the go-between's signature |
+| Tickets: 3 per go-between connection | go-between | reconnects to get more, so the next row is the one that holds |
+| Tickets: 6 a minute per client IP (/64), across go-between rooms | go-between (rate limiter, per location) | needs more addresses; counted per Cloudflare location, so a client reaching several locations gets a few times 6 |
+| Picture leases: 10 in all, 1 per prefix (/24, /48), renewed every 30 s, 2 h at most | relay | needs addresses in other prefixes for more leases at once; after 2 h it goes behind anyone refused |
+| Pace per room and direction: 256 kbps, 1.5 Mbps with a lease; 200 messages a second; paused, never dropped | relay | more rooms, bounded by the per-IP connections and the prefix's day |
+| 1 GB per pair per UTC day (the ticket's tag) | relay | new go-between rooms make new tags: bounded by the ticket rate and the next row |
+| 10 GB per IP prefix per UTC day, then 429 | relay | needs addresses in other /24s (/48s) |
+| 16 connections and 10 upgrades in 10 s per IP (/64); 2,000 connections in all | relay | needs more addresses |
+| 60 s waiting room, 12 h session | relay | starts again with new tickets (rate-limited) |
+| Files: 50 MB a day per device, asked over 20 MB | the apps | ignores it: a courtesy to the user, not a limit; the bytes still count toward the pace and both days |
+| Data Saver picture (1280 wide, 1 Mbps, 15 fps); stop after 5 min untouched; give the lease back in the background | the host app | ignores them, but the relay still paces at 1.5 Mbps and takes the lease back after 2 h |
+| Opus or no microphone | the apps | sends PCM: 256 kbps, within the unleased pace anyway |
+
+So one abuser with one address gets at most one lease, about 7 Mbps for about 3 hours a day, and 6 new sessions a minute; going past
+that takes many networks, which no per-client limit stops (the relay's 2,000 connections and 10 leases cap the whole box).
+
+### What the devices do on this path
+
+- **Voice:** Opus, frame kind **9**, one packet per 20 ms of 16 kHz mono, about 32 kbps, when the device listed `opus` and the host did
+  too; PCM (256 kbps) never goes here. A device that can't send Opus, or a host that can't hear it, has no microphone on this path: the talk
+  key says the update line only when the host can't hear Opus (an update there would help); a phone that can't make it says its
+  microphone-unavailable line.
+- **Files:** at most **50 MB per device per UTC day** over this path, counted by the sender; a send over **20 MB** is asked about first. Get Copied Items isn't asked about (the device asked for it); past the day's 50 MB the host answers `clipboardNone("limit")` with a notice
+  of the limit line (Rust host, 2026-11-26); every device and viewer shows the limit line for it (Mac, iPhone, Android, the desktop viewer).
+  The question before a send over 20 MB carries the limit line under its title, so the cost is in view.
+- **The picture busy:** `screenFailed("busy")` shows a card (below); keys, pointer and voice work meanwhile, and the picture comes by
+  itself once there is room.
+- The connection label says Public connection service, as on the go-between.
+
+### Copy (en / zh)
+
+| Where | English | 中文 |
+|---|---|---|
+| No picture lease free (card under "Can't show the screen"; the same line in a computer viewer). No promise of voice: on this path a phone without Opus has no microphone | The public connection service is busy, so there’s no picture for now. The pointer and keys still work. | 公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。 |
+| A send over 20 MB on this path (title; the limit line below is its message) | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
+| The message under the question above, and Get Copied Items' `clipboardNone("limit")` (the user asked for files; nothing of theirs was refused) | Files over the public connection service are limited to 50 MB a day. | 通过公共连接服务每天最多可传输 50 MB 文件。 |
+| A send refused past 50 MB today: led by "Not sent:" like the other refusals | Not sent: files over the public connection service are limited to 50 MB a day. | 未发送：通过公共连接服务每天最多可传输 50 MB 文件。 |
+| Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |
+| Voice when this phone can't make Opus | iPhone microphone unavailable · Phone microphone unavailable (existing) | iPhone 麦克风不可用 · 手机麦克风不可用（已有） |
+
+### The box (deployed 2026-11-26)
+
+- Ubuntu 24.04, Node 22.21.1 LTS from nodejs.org (checksum checked) in `/opt/node`, `public.js` + `ws` 8.18.0 in `/opt/blurt-relay`, a
+  systemd service `blurt-relay` as user `blurt-relay`: `Restart=always`, `MemoryMax=1G`, `LimitNOFILE=65536`, `NoNewPrivileges`,
+  `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no capabilities. The secret is `/etc/blurt-relay.env` (root, 600), never in git.
+- Caddy 2.11 in front: Let's Encrypt by HTTP-01/TLS-ALPN (no DNS token on the box), no access log, errors only, header timeout 10 s,
+  `X-Real-IP` to the relay. DNS: `relay.blurt.work` A 43.161.232.195, DNS only, TTL 60; CAA `0 issue "letsencrypt.org"` on that name only.
+- ufw: 22, 80, 443 in; root SSH off, passwords off; journald ≤ 200 MB; unattended-upgrades on. The Lighthouse console firewall must
+  allow 443 too (it didn't at first: SYNs to 443 never arrived; opened for IPv4 and IPv6 on 2026-11-26).
+- TCP congestion control **BBR** (`/etc/sysctl.d/90-blurt-bbr.conf`, `tcp_bbr` in `/etc/modules-load.d`). The kernel default, cubic,
+  backs off on the ~3 % loss of the Hong Kong → mainland leg (see Measured): a 1 Mbps picture queued up to 17 s behind it; with BBR, 0.6 s p95.
+- Outside check: `.github/workflows/relay-health.yml` every 10 min (TLS, ≥14 days of certificate, `GET /`, and the go-between).
+- The go-between (`blurt-meet`) mints tickets; a ticket it minted opened a room on the box (version f4bc4a18). Since version
+  98bbb22f (2026-11-26) it also limits them per client IP; the box's `public.js` got the prefix's day and /64 keys the same evening.
+
+### Measured
+
+| What | Result |
+|---|---|
+| On the box, relay only (`bench-public.mjs`, no TLS, generator on the same 2 vCPUs): 10 / 30 / 60 / 120 leased 1 Mbps sessions | every frame at 15 fps; p99 1.1 / 1.1 / 1.5 / 2.3 ms; **5 / 11 / 22 / 41 %** of one vCPU; RSS 60–74 MB |
+| China Mobile 5G (a phone hotspot in mainland China), 15:10 CST, ICMP | rtt 66 / 71 / 79 ms (min / avg / max), no loss |
+| Local end to end: Android emulator ↔ fake host through `server.js` (tickets) and `public.js` (`LEASES=1`) | on the relay 8.3 s after launch; busy, then the picture back by itself at the next 30 s ask; Opus 32.6 kbps; dead relay → no-direct line 5.2 s after `noDirect`, no retry |
+| Local end to end: Mac viewer ↔ in-process host, the same servers | lands on the relay; busy then granted (12+ H.264 frames decoded); dead relay → no-direct; a silent room → gives up in 4.5–6 s |
+| Real path, China Mobile 5G hotspot → relay.blurt.work → back (`measure-path.mjs`, both ends on one Mac, relay leg straight out of Wi-Fi with `BIND`), 18:35 CST, ticket from the live go-between, 1 Mbps / 15 fps for 120 s | connect 0.26–0.86 s; idle round trip (computer → relay → phone → relay → computer) 166–183 ms p50. **cubic**: every frame arrives, but frame age 2.4 s p50, 17.7 s p95, 5 stalls over 1 s; on the box the downlink connection resends ~3 % of bytes and its window falls to 8–11 segments, the uplink resends nothing. **BBR**: frame age 143 ms p50, 601 ms p95, no stall |
+| The same, but through this Mac's own proxy (a TUN app; its exit is in the US) | round trip 1.1 s idle: what a user behind such a proxy gets unless it sends relay.blurt.work direct |
+| Without a picture lease (a second session from the same /24 while the first held it), 1 Mbps offered | paced to the unleased budget (0.13 Mbps of picture arrived), nothing dropped or closed: the sender has to slow down, as the apps do (busy) |
+| Outside bench: `bench-public.mjs` from the same hotspot through Caddy + TLS to a bench copy on the box (`/bench`, removed after), 1 Mbps + small messages each way per session, 18:50 CST | 1 / 3 / 5 / 10 sessions: all at 15 fps, 0 errors; frame latency p50 123 / 104 / 117 / 148 ms, p99 0.6 / 0.4 / 0.6 / 1.1 s. A second 10-session run minutes later: everything arrived but queued (p50 7.6 s): 10 Mbps each way through one phone hotspot across the border is past what the evening path gives one line |
+| Box CPU in that 10-session run (TLS included) | relay 4.5 %, Caddy 5.0 % of one vCPU; Caddy RSS 53 MB |
+
 ## Overlay addresses (Tailscale, ZeroTier, …)
 
 - **Hosts** list the addresses of overlay interfaces as well as LAN ones: IPv4 in 100.64.0.0/10, IPv6 in fd7a:115c:a1e0::/48 (Tailscale),

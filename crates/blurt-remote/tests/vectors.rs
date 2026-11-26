@@ -49,7 +49,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 42);
+    assert_eq!(list.len(), 44);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -533,4 +533,91 @@ fn files() {
     // the host's answers to a file from the phone, as before
     assert_eq!(to_phone("file_progress").file_answer(), Some(FileAnswer::Progress { id: "f1".into(), bytes: 5 }));
     assert_eq!(ToPhone::from(FileAnswer::Failed { id: "f1".into(), why: "space".into() }).to_json(), find("toPhone", "file_failed"));
+}
+
+/// The joining side takes `newKey` only after the computer's question and its own user's yes to the digits, in either order
+/// (join_gate.rs, the Mac's RemoteJoinGate): every case the Swift tests wrote.
+#[test]
+fn join_gate() {
+    use blurt_remote::join_gate::{JoinEvent, JoinGate};
+    let v = vectors();
+    let cases = v["joinGate"]["cases"].as_array().expect("joinGate.cases");
+    assert!(cases.len() >= 10);
+    for c in cases {
+        let events: Vec<JoinEvent> = c["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| JoinEvent::parse(e.as_str().unwrap()).unwrap_or_else(|| panic!("event {e}")))
+            .collect();
+        let want = c["stores"].as_u64().map(|i| i as usize);
+        assert_eq!(JoinGate::run(&events), want, "{}", c["events"]);
+    }
+}
+
+/// Blurt's public relay (docs/design/remote-go-between.md §The public relay): the message, the busy reason, and the numbers and text
+/// messages of the `publicRelay` block, against public.rs.
+#[test]
+fn public_relay() {
+    use blurt_remote::packets::Kind;
+    use blurt_remote::public::{self, LeaseAnswer, Tickets};
+    let v = vectors();
+    let find = |name: &str| v["toPhone"].as_array().unwrap().iter().find(|e| e["name"] == name).unwrap_or_else(|| panic!("{name}"))["json"].clone();
+    let m = ToPhone::from_json(&find("public_relay")).expect("public_relay decodes");
+    assert_eq!(
+        m,
+        ToPhone::PublicRelay {
+            address: "wss://relay.blurt.work".into(),
+            room: "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w".into(),
+            ticket: "1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A".into(),
+        }
+    );
+    assert_eq!(m.to_json(), find("public_relay"));
+    assert_eq!(ToPhone::from_json(&find("screen_failed_busy")), Some(ToPhone::ScreenFailed(public::BUSY.into())));
+
+    let p = &v["publicRelay"];
+    assert_eq!(p["features"]["publicRelay"].as_str(), Some(blurt_remote::wire::PUBLIC_RELAY));
+    assert_eq!(p["features"]["opus"].as_str(), Some(blurt_remote::wire::OPUS));
+    let addresses: Vec<&str> = p["addresses"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
+    assert_eq!(addresses, public::ADDRESSES);
+    assert_eq!(p["opusKind"].as_u64(), Some(Kind::Opus as u64));
+    assert_eq!(Kind::from_byte(9), Some(Kind::Opus));
+    assert_eq!(p["giveUpSeconds"].as_f64(), Some(public::GIVE_UP.as_secs_f64()));
+    assert_eq!(p["ticketWaitSeconds"].as_f64(), Some(public::TICKET_WAIT.as_secs_f64()));
+    assert_eq!(p["picture"]["maxWidth"].as_i64(), Some(public::MAX_WIDTH));
+    assert_eq!(p["picture"]["maxBitrate"].as_i64(), Some(public::MAX_BITRATE));
+    assert_eq!(p["picture"]["maxFPS"].as_i64(), Some(public::MAX_FPS));
+    assert_eq!(p["renewSeconds"].as_f64(), Some(public::RENEW_EVERY.as_secs_f64()));
+    assert_eq!(p["askAgainSeconds"].as_f64(), Some(public::ASK_AGAIN.as_secs_f64()));
+    assert_eq!(p["untouchedSeconds"].as_f64(), Some(public::UNTOUCHED.as_secs_f64()));
+    assert_eq!(p["filesPerDay"].as_i64(), Some(public::FILES_PER_DAY));
+    assert_eq!(p["askOver"].as_i64(), Some(public::ASK_OVER));
+    assert_eq!(p["nobodyCame"].as_u64(), Some(public::NOBODY_CAME as u64));
+    assert_eq!(p["busy"].as_str(), Some(public::BUSY));
+    // the text messages, byte for byte where this side writes them, read where it reads them
+    assert_eq!(p["leaseAsk"].as_str(), Some(public::lease(true).as_str()));
+    assert_eq!(p["leaseFree"].as_str(), Some(public::lease(false).as_str()));
+    let room = "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w";
+    assert_eq!(p["ticketAsk"].as_str(), Some(public::ticket_ask(room).as_str()));
+    assert_eq!(
+        Tickets::parse(p["ticketAnswer"].as_str().unwrap()),
+        Some(Tickets::Given {
+            relay: "wss://relay.blurt.work".into(),
+            room: room.into(),
+            mac: "1764000060.vSDxp8K1xSfY.WAcrp_CCMxTDXy-t3YDNzQ".into(),
+            phone: "1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A".into(),
+        })
+    );
+    let refused: Vec<Option<Tickets>> = p["ticketRefused"].as_array().unwrap().iter().map(|t| Tickets::parse(t.as_str().unwrap())).collect();
+    assert_eq!(refused, ["off", "alone", "limit", "bad"].map(|w| Some(Tickets::Refused(w.into()))));
+    let leases: Vec<Option<LeaseAnswer>> = p["leaseAnswers"].as_array().unwrap().iter().map(|t| LeaseAnswer::parse(t.as_str().unwrap())).collect();
+    assert_eq!(
+        leases,
+        [
+            Some(LeaseAnswer::Granted { ttl: 75 }),
+            Some(LeaseAnswer::Refused("full".into())),
+            Some(LeaseAnswer::Refused("prefix".into())),
+            Some(LeaseAnswer::Refused("expired".into())),
+        ]
+    );
 }

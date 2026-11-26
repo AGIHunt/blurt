@@ -35,6 +35,13 @@ public final class RemoteChannel {
     public var onVideoFeedback: ((Data) -> Void)?
     /// `failure`: the handshake's reason, when that is what ended it
     public var onClose: ((_ failure: RemoteHandshakeError?) -> Void)?
+    /// one Opus packet of voice (frame kind 9, the public relay): RemotePublicRelay
+    public var onOpus: ((Data) -> Void)?
+    /// A text message from the relay itself, never sealed and never from the other end: the go-between's tickets, the public relay's
+    /// leases (docs/design/remote-go-between.md §The public relay). On the channel's queue.
+    public var onText: ((String) -> Void)?
+    /// the connection came up (for a relay: the WebSocket upgrade was accepted). On the channel's queue.
+    public var onReady: (() -> Void)?
 
     // the phone's UDP path
     private var udp: NWConnection?
@@ -128,6 +135,7 @@ public final class RemoteChannel {
             receive()
             if case let .phone(h) = role { sendRaw(RemoteFrameReader.framed(h.hello())) }
             if standby { keepAlive() }
+            onReady?()
         case let .failed(e):
             if !oldStreamGone { failure = e }
             oldStreamEnded()
@@ -199,6 +207,12 @@ public final class RemoteChannel {
                 if case let .privateCode(c) = m.closeCode { self.relayClose = c }
                 return self.oldStreamEnded()
             }
+            // the relay's own word (tickets, leases): not part of the sealed stream
+            if let m = ctx?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata, m.opcode == .text {
+                if let data, data.count <= 4096, let t = String(data: data, encoding: .utf8) { self.onText?(t) }
+                if err != nil { return self.oldStreamEnded() }
+                return self.receiveMessages()
+            }
             if let data, !data.isEmpty {
                 self.reader.feed(data)
                 do {
@@ -269,6 +283,7 @@ public final class RemoteChannel {
         switch k {
         case .control: onControl?(Data(body))
         case .audio: onAudio?(Data(body))
+        case .opus: onOpus?(Data(body))
         case .pointer: if let p = RemotePointerPacket(Data(body)) { onPointer?(p) }
         case .video: onVideo?(Data(body))
         case .probe: onProbe?(Data(body))
@@ -313,6 +328,20 @@ public final class RemoteChannel {
         } else {
             sendRaw(RemoteFrameReader.framed(f), done: done)
         }
+    }
+
+    /// A text message to the relay itself (a WebSocket text frame, not sealed): asks for tickets or a lease. Relay connections only.
+    public func sendText(_ text: String) {
+        queue.async {
+            guard self.isRelay, !self.closed else { return }
+            let ctx = NWConnection.ContentContext(identifier: "t", metadata: [NWProtocolWebSocket.Metadata(opcode: .text)])
+            self.connection.send(content: Data(text.utf8), contentContext: ctx, isComplete: true, completion: .idempotent)
+        }
+    }
+
+    /// Opus voice (frame kind 9): on the public relay, in place of PCM (`sendAudio`).
+    public func sendOpus(_ packet: Data) {
+        queue.async { self.sendSealed(.opus, packet) }
     }
 
     /// Frames waiting on the way out: over a slow link the next one is dropped rather than queued.

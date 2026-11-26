@@ -11,6 +11,7 @@
 //!     crypto.rs       handshake, six digits, seals
 //!     packets.rs      framing, pointer / video / cursor packets
 //!     pairing.rs      the QR code's link
+//!     join_gate.rs    the joining side's gate: newKey only after the question and its own user's yes
 //!     relay.rs        the owner's relay, STUN, this machine's addresses
 //!     rate.rs         the picture's rate control
 //!     input.rs        clicks, drags, scroll phases and the coast, held keys: what the backend is told to press
@@ -22,6 +23,8 @@
 //!     server.rs       listeners, pairing, sessions, the relay: the Host the app starts
 //!     files.rs        files and the clipboard's content both ways: the sender, the receiver (parts kept for a resume)
 //!     keys.rs         every key name, and a viewer's keyboard turned into them (docs/design/remote-desktop-viewer.md)
+//!     public.rs       Blurt's public relay: its numbers, tickets, leases, the files a day
+//!     opus.rs         voice as Opus (kind 9) on the public relay
 //!     viewer.rs       the viewer: a computer driving another (the phone's end, grown up), its paired computers, nearby ones
 
 pub mod host;
@@ -34,11 +37,14 @@ pub mod displays;
 pub mod agent;
 pub mod files;
 pub mod input;
+pub mod join_gate;
 pub mod keys;
 pub mod mic;
+pub mod opus;
 pub mod packets;
 pub mod pairing;
 pub mod phone;
+pub mod public;
 pub mod rate;
 pub mod relay;
 pub mod repair;

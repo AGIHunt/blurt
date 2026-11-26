@@ -115,6 +115,11 @@ public enum RemoteFeature {
     public static let resume = "resume"
     /// in `session.features`: the host answers `getClipboard` and takes `clip` files
     public static let clipboard = "clipboard"
+    /// in `hello.features`: this phone or viewer can go on at Blurt's public relay after `noDirect` (`ToPhone.publicRelay`). In
+    /// `session.features`: this host can take it there
+    public static let publicRelay = "publicRelay"
+    /// in `hello.features`: this phone or viewer can send its voice as Opus (frame kind 9). In `session.features`: this host can hear it
+    public static let opus = "opus"
 }
 
 /// Text on the clipboard between a viewer and its host: plain text only, at most 64 KiB of UTF-8, both ways.
@@ -235,6 +240,10 @@ public enum ToPhone: Codable, Sendable {
     case streamMoved
     /// the direct path didn't open in time on the go-between: this session can't go on there (docs/design/remote-go-between.md)
     case noDirect
+    /// sent just before `noDirect` to a phone that listed `RemoteFeature.publicRelay`: the session goes on at Blurt's public relay, in this
+    /// room made for it, with this ticket (docs/design/remote-go-between.md §The public relay). `address` must be one of
+    /// `RemotePublicRelay.addresses`.
+    case publicRelay(address: String, room: String, ticket: String)
     /// what this computer's keyboard layout prints on its keys, and the input source in use (docs/design/remote.md §Computer keyboard). Sent once a
     /// session is up and whenever it changes, by hosts that can tell. 1.2+
     case legends(RemoteLegends)
@@ -276,6 +285,7 @@ public enum RemoteFrameKind: UInt8, Sendable {
     case videoFeedback = 6  // RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+
     case stream = 7     // u64 BE offset ∥ up to 1,100 bytes of the sender's stream, once it moved (RemoteStream), datagrams only
     case streamAck = 8  // u64 BE: the next offset the receiver expects, cumulative, datagrams only
+    case opus = 9       // one Opus packet: 20 ms of 16 kHz mono voice, about 32 kbps. Instead of kind 1 on the public relay (RemotePublicRelay)
 }
 
 /// The pointer and scroll, one packet per display frame at most.

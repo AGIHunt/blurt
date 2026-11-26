@@ -182,7 +182,9 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.PAIR_FIRST -> c.getString(R.string.status_pair_first)
                 StatusLine.WHERE_THE_CODE_IS -> c.getString(R.string.status_unpaired)
                 StatusLine.WAITING -> c.getString(R.string.status_waiting_title)
-                StatusLine.ALLOW_ON_COMPUTER -> c.getString(R.string.status_waiting, check ?: "")
+                StatusLine.ALLOW_ON_COMPUTER -> c.getString(R.string.status_allow_on, n)
+                StatusLine.CHECK_DIGITS -> c.getString(R.string.status_check_digits, n)
+                StatusLine.PAIR_IF_SAME -> c.getString(R.string.status_pair_if_same, n, check ?: "")
                 StatusLine.PAIRING_FAILED -> failed?.title ?: c.getString(R.string.status_pair_failed)
                 StatusLine.WHY_PAIRING_FAILED -> failed?.help ?: ""
                 StatusLine.CANT_CONTROL -> c.getString(R.string.status_cant_control, n)
@@ -191,6 +193,7 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.ALLOW_SCREEN -> c.getString(if (host == RemoteHost.MAC) R.string.status_screen_permission else R.string.status_screen_permission_pc)
                 StatusLine.SCREEN_IS_OFF -> c.getString(R.string.status_screen_off)
                 StatusLine.PICTURE_STOPPED -> c.getString(R.string.status_picture_stopped)
+                StatusLine.PUBLIC_BUSY -> c.getString(R.string.status_public_busy)
                 StatusLine.LOCKED -> c.getString(R.string.status_locked, n)
                 StatusLine.UNLOCK_FIRST -> c.getString(R.string.status_unlock_first)
                 StatusLine.NO_DIRECT -> c.getString(R.string.status_no_direct)
@@ -207,6 +210,8 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
             StatusAction.RECONNECT -> R.string.reconnect
             StatusAction.DISMISS -> R.string.ok
             StatusAction.SHOW_SCREEN -> R.string.show_screen
+            StatusAction.PAIR -> R.string.pair
+            StatusAction.CANCEL_PAIRING -> R.string.cancel
         })
 
         /** as the phone writes times: today only the time, earlier the day too */
@@ -222,7 +227,8 @@ fun pathName(c: Context, p: LinkPath): String = c.getString(when (p) {
     LinkPath.OVERLAY -> R.string.path_overlay
     LinkPath.DIRECT -> R.string.path_direct
     LinkPath.OWN_RELAY -> R.string.path_own_relay
-    LinkPath.GO_BETWEEN -> R.string.path_go_between
+    // both are the public connection service to the user (copy.md)
+    LinkPath.GO_BETWEEN, LinkPath.PUBLIC_RELAY -> R.string.path_go_between
 })
 
 /**

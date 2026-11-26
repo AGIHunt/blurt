@@ -94,7 +94,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     func sendFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other", incoming: false)) }
-        files.send(urls)
+        // over Blurt's public relay: 50 MB a day, and a send over 20 MB asked about first
+        guard link.route == .publicRelay else { return files.send(urls) }
+        PublicRelayFiles.check(urls, device: "viewer-" + link.computer.id, window: window,
+                               over: { [weak self] _ in self?.showFile(.failed(name: "", why: "public_limit", incoming: false)) },
+                               go: { [weak self] in self?.files.send(urls) })
     }
 
     /// The host answers getClipboard (its session lists `clipboard`)
@@ -134,6 +138,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// the modifiers held here and what the host has of them: a press of ⌃ or ⌘ waits until it's clear it isn't the release
     private var heldMods = RemoteHeldModifiers()
     private var screenOn = false
+    /// the public relay's "busy" card is up: it goes when the picture comes
+    private var busyShown = false
     /// the path the picture was last asked for on
     private var pictureRoute: RemoteViewerLink.Route?
     private var lastPixels = RemotePixelSize(width: 0, height: 0)
@@ -169,6 +175,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         if let adopting { link = adopting } else {
             guard let key = ViewerStore.shared.key(c) else { return }
             link = RemoteViewerLink(computer: c, key: key, deviceName: Host.current().localizedName ?? "Mac")
+            link.publicRelayTest = RemoteServer.publicRelayTest
         }
         let w = ViewerWindowController(c, link: link, second: second, display: display)
         windows.append(w)
@@ -290,6 +297,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
             Notify.post(title: shownName, body: text, uid: "remote-notice-\(link.computer.id)")
         case let .screenView(w, h, codec, display, features):
+            if busyShown {
+                busyShown = false
+                hideCover()
+            }
             screen.view(codec: codec, features: features)
             fit(CGSize(width: w, height: h))
             shownDisplay = display
@@ -313,8 +324,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             pb.clearContents()
             pb.setString(t, forType: .string)
             pasteboardSeen = pb.changeCount
+        case let .screenFailed(why) where why == RemotePublicRelay.busy:
+            // the public relay has no picture free: keys and the pointer go on, and the host starts the picture by itself once there's room
+            busyShown = true
+            picture.stale = true
+            showCover(.init(mark: .attention, title: T("viewer.screen_busy")))
         case let .screenFailed(why):
             screenOn = false
+            busyShown = false
             let name = shownName
             // the host's own sentence is for phones (English only): the viewer says it in its own words
             let key = ["off": "viewer.screen_off", "permission": "viewer.screen_permission", "one_display": "viewer.one_display"][why]
@@ -533,7 +550,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         lastPixels = px
         let constrained = NWPathLowData.on
         let panel = window?.screen?.maximumFramesPerSecond ?? 60
-        return RemoteScreenPlan(quality, local: local, lowData: constrained, window: px, panel: panel)
+        // the public relay carries Data Saver's picture at most (the host holds it to that too)
+        return RemoteScreenPlan(link.route == .publicRelay ? .saver : quality, local: local, lowData: constrained, window: px, panel: panel)
             .request(display: pinned, features: RemoteViewerScreen.features, window: px)
     }
 
@@ -552,6 +570,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// `keep`: the last frame stays, darker (a drop, a lock), instead of a black window.
     private func stopPicture(keep: Bool = false) {
+        busyShown = false
         guard screenOn else { if !keep { picture.clear() }; return }
         screenOn = false
         screen.stop(tell: link.state == .connected)

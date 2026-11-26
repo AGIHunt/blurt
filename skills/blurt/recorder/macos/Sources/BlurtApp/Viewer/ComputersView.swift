@@ -323,10 +323,13 @@ struct AddComputerView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 } else if let c = check {
+                    // first this Mac's Pair (the digits are the same), then the other computer's Allow
                     Self.codeStep(c) {
                         HStack(alignment: .center, spacing: 6) {
-                            BrandSpinnerView(size: 12, label: T("viewer.add.waiting", p.name)).frame(width: 12, height: 12)
-                            Text(T("viewer.add.check", p.name)).font(.system(size: 12)).foregroundStyle(.secondary)
+                            if p.confirmed {
+                                BrandSpinnerView(size: 12, label: T("viewer.add.waiting", p.name)).frame(width: 12, height: 12)
+                            }
+                            Text(T(p.confirmed ? "viewer.add.allow" : "viewer.add.check", p.name)).font(.system(size: 12)).foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -344,6 +347,9 @@ struct AddComputerView: View {
                 if p.failed != nil, p.canRetry { Button(T("viewer.add.back")) { store.backFromPairing() } }
                 Spacer()
                 Button(T("settings.remote.cancel")) { done() }.keyboardShortcut(.cancelAction)
+                if check != nil, !p.confirmed {
+                    Button(T("viewer.add.pair")) { store.confirmDigits() }.keyboardShortcut(.defaultAction)
+                }
                 if p.failed != nil {
                     if p.canRetry {
                         Button(T("viewer.retry")) { store.retryPairing() }.keyboardShortcut(.defaultAction)

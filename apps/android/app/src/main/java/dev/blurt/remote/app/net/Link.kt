@@ -11,6 +11,10 @@
 // once the direct path opens the whole session moves onto it (Channel). And an overlay address the computer listed (Tailscale, ZeroTier) is
 // tried over TCP alongside, which wins over any relay.
 //
+// When the go-between finds no direct path, the host may send a room and a ticket at Blurt's public relay (`publicRelay`) just before
+// `noDirect`: the session starts again there, once, with 5 s to answer (remote-go-between.md §The public relay). If it doesn't, the pad says
+// there's no direct path, as before, and the next try starts at the go-between again.
+//
 // Main thread only.
 package dev.blurt.remote.app.net
 
@@ -24,10 +28,14 @@ import dev.blurt.remote.app.Remote
 import dev.blurt.remote.core.AwayTrouble
 import dev.blurt.remote.core.GoBetweenBackoff
 import dev.blurt.remote.core.HeldAudio
+import dev.blurt.remote.core.JoinGate
 import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.LinkRoute
 import dev.blurt.remote.core.PairEnd
 import dev.blurt.remote.core.PhoneHandshake
+import dev.blurt.remote.core.PublicRelayOffer
+import dev.blurt.remote.core.RemotePublicRelay
+import dev.blurt.remote.core.VoiceWay
 import dev.blurt.remote.core.RemoteBlurtCommand
 import dev.blurt.remote.core.RemoteDictationPhase
 import dev.blurt.remote.core.RemoteFeature
@@ -128,6 +136,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private val busy = GoBetweenBackoff()
     /** the go-between said this network won't connect directly: not asked again before this (ms), unless Retry */
     private var noDirectUntil = 0L
+    /** where the host said the session goes on, for the `noDirect` behind it (the public relay) */
+    private val offer = PublicRelayOffer()
     val displayAspect = MutableStateFlow(1.6)
     /** paired computers on this network right now, while Settings looks */
     val nearby = MutableStateFlow<Set<String>>(emptySet())
@@ -156,6 +166,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
     val waitingForMac = MutableStateFlow(false)
     var pairCheck: String? = null
         private set
+    /** this phone's user said the digits are the same (Pair on the card): until then a key from the other end isn't taken, since anyone
+     *  with a photo of the code can answer as the computer (JoinGate) */
+    val digitsConfirmed = MutableStateFlow(false)
+    private val gate = JoinGate()
+    /** the connection the gate's question came on: a new one asks again, with new digits */
+    private var gateChannel: Channel? = null
     /** a pairing that didn't take, for the pad to say */
     val pairFailed = MutableStateFlow<PairFailure?>(null)
     /** the last pairing link typed into the sheet: the sheet shows it again after a failure */
@@ -378,6 +394,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = Joining(m, if (joining != null) joining!!.back else _current.value, now())
         joinOpens = 0
+        resetGate()
         pairFailed.value = null
         switchTo(m)
     }
@@ -411,6 +428,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         val j = joining ?: return
         joining = null
         waitingForMac.value = false
+        resetGate()
         askedAt = null
         vault.remove(j.mac.deviceID)
         pairFailed.value = failure(why, j.mac)
@@ -431,8 +449,66 @@ class Link(private val c: Context, private val vault: KeyVault) {
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = null
         waitingForMac.value = false
+        resetGate()
         askedAt = null
         pairFailed.value = null
+    }
+
+    private fun resetGate() {
+        gate.reset()
+        gateChannel = null
+        digitsConfirmed.value = false
+    }
+
+    /** The joining connection's gate: a new connection starts it over. */
+    private fun gateOn(ch: Channel?) {
+        if (gateChannel === ch) return
+        gate.reset()
+        gateChannel = ch
+        digitsConfirmed.value = false
+    }
+
+    /** The card's Pair: the digits here are the same as the computer's. Its yes, if it came first, completes the pairing now. */
+    fun confirmDigits() {
+        if (joining == null || !waitingForMac.value || gateChannel !== channel || !gate.canConfirm) return
+        digitsConfirmed.value = true
+        gate.confirm()?.let { keyTaken(it) }
+    }
+
+    /** The card's Cancel while the digits are shown: back to the computer that was in hand, with nothing to say. */
+    fun cancelJoin() {
+        val j = joining ?: return
+        abandonJoin()
+        leave()
+        setCurrent(_macs.value.firstOrNull { it.id == j.back?.id } ?: _macs.value.firstOrNull())
+        setState(if (_current.value == null) State.UNPAIRED else State.CONNECTING)
+        disconnect()
+        connect()
+    }
+
+    /** The computer's key, now that it may be kept: stored, and the pairing done. */
+    private fun keyTaken(k: ByteArray) {
+        val cur = _current.value ?: return
+        vault.store(k, cur.deviceID)
+        if (joining != null) {
+            joining = null
+            waitingForMac.value = false
+            resetGate()
+            askedAt = null
+            pairFailed.value = null
+            lastLink = ""
+            _macs.value.firstOrNull { it.id == cur.id }?.let { old ->
+                if (old.deviceID != cur.deviceID) {
+                    vault.remove(old.deviceID)
+                    replacing = old.deviceID
+                }
+            }
+            _macs.value = listOf(cur) + _macs.value.filter { it.id != cur.id }
+            saveMacs()
+        }
+        send(ToMac.KeyStored)
+        // paired: `session` comes next
+        channel?.let { awaitSession(it) }
     }
 
     private fun switchTo(m: PairedMac?) {
@@ -646,7 +722,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             tryOverlay(mac, key)
             // a relay that has just said no isn't asked each round: its own pace (relayEnded)
             if (now() >= relayNotBefore) tryRelays(mac, key)
-        }, if (RELAY_ONLY != null) 0 else Reconnect.relayDelayMs(lastAway))
+        }, if (TestRoutes.relayOnly) 0 else Reconnect.relayDelayMs(lastAway))
         // keep trying while the app is open; say so after a while
         val g = generation
         val r = Runnable {
@@ -670,10 +746,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     /** The go-between isn't asked in a loop: not while it's busy, nor for a minute after it said this network won't connect directly. */
     private fun mayTryRelay(address: String): Boolean =
-        !RemoteRelay.isGoBetween(address) || busy.mayTry(now() / 1000.0) && now() >= noDirectUntil
+        !isGoBetween(address) || busy.mayTry(now() / 1000.0) && now() >= noDirectUntil
 
     private fun tryLocal(mac: PairedMac, key: ByteArray) {
-        if (RELAY_ONLY != null) return
+        if (TestRoutes.relayOnly) return
         lastLocalTry = now()
         // Tailscale's addresses are tried with the overlay ones, on a shorter fuse
         for (a in mac.addresses) if (!RemoteOverlay.isTailscale(a)) attempt(TcpTransport(a, mac.port), relay = false, mac = mac, key = key)
@@ -696,7 +772,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
      * overlay's (one runs at a time), they just time out.
      */
     private fun tryOverlay(mac: PairedMac, key: ByteArray) {
-        if (RELAY_ONLY != null) return
+        if (TestRoutes.relayOnly) return
         val list = (mac.addresses.filter { RemoteOverlay.isTailscale(it) } + mac.candidates.filter { it !in mac.addresses && RemoteOverlay.mayBeOverlay(it) }).distinct()
         for (a in list) attempt(TcpTransport(a, mac.port, timeoutMs = RemoteOverlay.CONNECT_TIMEOUT_MS), relay = false, mac = mac, key = key)
     }
@@ -713,9 +789,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
     }
 
     private fun attempt(t: Transport, relay: Boolean, mac: PairedMac, key: ByteArray, goBetween: Boolean = false, discovered: Boolean = false,
-                        address: String? = null) {
+                        address: String? = null, publicRelay: Boolean = false) {
         if (!active || !relay && channel != null && channel?.isRelay != true) return
-        val ch = Channel(t, PhoneHandshake(mac.deviceID, key), relay, goBetween, discovered)
+        val ch = Channel(t, PhoneHandshake(mac.deviceID, key), relay, goBetween, discovered, publicRelay)
         ch.relayAddress = address
         ch.onOpen = { main.post { opened(ch) } }
         ch.onControl = { d ->
@@ -734,7 +810,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         ch.onDirect = { found ->
             main.post {
                 if (channel !== ch) return@post
-                setPath(if (found) LinkPath.DIRECT else if (ch.goBetween) LinkPath.GO_BETWEEN else LinkPath.OWN_RELAY)
+                setPath(if (found) LinkPath.DIRECT else if (ch.goBetween) LinkPath.GO_BETWEEN else if (ch.publicRelay) LinkPath.PUBLIC_RELAY else LinkPath.OWN_RELAY)
                 Remote.screen.planChanged()
                 // a path that went quiet may come back, or another may open
                 if (!found) lastInfo?.let { i -> main.postDelayed({ if (route.value == LinkRoute.RELAY && channel === ch) lookForDirect(i) }, 15_000) }
@@ -771,6 +847,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
                     }
                 }
                 if (failure?.kind == RemoteHandshakeError.Kind.NOT_PAIRED) refused = true
+                // the public relay refused (4001, 4011, a spent ticket) or went before `session`: no direct path, no further try there
+                if (ch.publicRelay && (tried || channel === ch && !greeted)) return@post publicFailed(ch)
                 if (channel === ch) lost() else if (relay && tried) relayEnded(mac, key)
             }
         }
@@ -794,19 +872,65 @@ class Link(private val c: Context, private val vault: KeyVault) {
     /** The computer's relay, and Blurt's go-between beside it when that relay is down: each unless one is already being tried. */
     private fun tryRelays(mac: PairedMac, key: ByteArray) {
         if (channel != null || !active || _current.value?.deviceID != mac.deviceID) return
-        val address = RELAY_ONLY ?: mac.relayAddress ?: return
+        val address = mac.relayAddress ?: TestRoutes.goBetween?.takeIf { TestRoutes.relayOnly } ?: return
+        // on its way into the public relay: that's the one try until it answers or gives up
+        if (attempts.any { it.publicRelay }) return
         if (attempts.none { it.relayAddress == address } && mayTryRelay(address)) tryRelay(address, mac, key)
-        if (RELAY_ONLY == null && !RemoteRelay.isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
-            attempts.none { it.relayAddress == RemoteRelay.GO_BETWEEN } && mayTryRelay(RemoteRelay.GO_BETWEEN)) {
+        if (!TestRoutes.relayOnly && !isGoBetween(address) && relayFails >= 2 && now() - lastMeetTry > 4000 &&
+            attempts.none { it.relayAddress == goBetween } && mayTryRelay(goBetween)) {
             lastMeetTry = now()
-            tryRelay(RemoteRelay.GO_BETWEEN, mac, key)
+            tryRelay(goBetween, mac, key)
         }
     }
 
     private fun tryRelay(address: String, mac: PairedMac, key: ByteArray) {
         val url = RemoteRelay.url(address, RemoteRelay.room(key), "phone") ?: return
         lastRelayTry = now()
-        attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = RemoteRelay.isGoBetween(address), address = address)
+        attempt(RelayTransport(url), relay = true, mac = mac, key = key, goBetween = isGoBetween(address), address = address)
+    }
+
+    /** Blurt's go-between, or the test build's local copy of it (TestRoutes) */
+    private val goBetween: String get() = TestRoutes.goBetween ?: RemoteRelay.GO_BETWEEN
+    private fun isGoBetween(a: String?): Boolean = RemoteRelay.isGoBetween(a) || (TestRoutes.goBetween != null && a?.let { RemoteRelay.address(it) } == TestRoutes.goBetween)
+
+    /** The host sent where the session goes on, then `noDirect`: there, once, with 5 s to answer. False: nowhere to go. */
+    private fun goPublic(ch: Channel): Boolean {
+        val o = offer.take(now()) ?: return false
+        val mac = _current.value ?: return false
+        val key = vault.read(mac.deviceID) ?: return false
+        val url = RemotePublicRelay.url(o.address, o.room, "phone", o.ticket) ?: return false
+        if (!active || channel !== ch) return false
+        if (dev.blurt.remote.app.BuildConfig.DEBUG) android.util.Log.i("Link", "no direct path: on to the public relay")
+        // the go-between won't be asked again soon, whatever happens here; the host closes the session there behind this
+        noDirectUntil = now() + 60_000
+        lost()
+        // a relay try: the round's retry leaves it its time
+        lastRelayTry = now()
+        attempt(RelayTransport(url), relay = true, mac = mac, key = key, address = o.address, publicRelay = true)
+        val tried = attempts.lastOrNull()?.takeIf { it.publicRelay } ?: return true
+        publicDue?.let { main.removeCallbacks(it) }
+        val due = Runnable { if (attempts.contains(tried) || channel === tried && !greeted) publicFailed(tried) }
+        publicDue = due
+        main.postDelayed(due, RemotePublicRelay.GIVE_UP_MS)
+        return true
+    }
+
+    private var publicDue: Runnable? = null
+
+    /** The public relay didn't answer in time, refused, or closed before `session`: the no-direct line, and no further try there. */
+    private fun publicFailed(ch: Channel) {
+        publicDue?.let { main.removeCallbacks(it) }
+        publicDue = null
+        if (dev.blurt.remote.app.BuildConfig.DEBUG) android.util.Log.i("Link", "the public relay didn't answer: no direct path")
+        attempts.remove(ch)
+        if (channel === ch) {
+            channel = null
+            stopPinging()
+            sessionDue?.let { main.removeCallbacks(it) }
+        }
+        ch.close()
+        noDirect()
+        if (_state.value == State.CONNECTING) setState(State.UNREACHABLE)
     }
 
     private fun opened(ch: Channel) {
@@ -830,6 +954,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         if (away.value == AwayTrouble.RELAY_DOWN) away.value = null
         setPath(when {
             ch.goBetween -> LinkPath.GO_BETWEEN
+            ch.publicRelay -> LinkPath.PUBLIC_RELAY
             ch.isRelay -> LinkPath.OWN_RELAY
             else -> {
                 val at = ch.remoteAddress
@@ -851,7 +976,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
             joinOpens += 1
             if (joinOpens > 3) { ch.close(); return joinFailed(PairEnd.SPENT) }
         }
-        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOf(RemoteFeature.MOVE, RemoteFeature.FILES, RemoteFeature.RESUME)))
+        offer.clear()
+        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOfNotNull(RemoteFeature.MOVE, RemoteFeature.FILES, RemoteFeature.RESUME,
+            RemoteFeature.PUBLIC_RELAY, RemoteFeature.OPUS.takeIf { dev.blurt.remote.app.talk.OpusVoice.available })))
         val p = object : Runnable {
             override fun run() { ping(); if (pinger === this) main.postDelayed(this, 500) }
         }
@@ -914,6 +1041,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
     }
 
     private fun disconnect() {
+        publicDue?.let { main.removeCallbacks(it) }
+        publicDue = null
+        offer.clear()
         stopPinging()
         sessionDue?.let { main.removeCallbacks(it) }
         cancelAttempts()
@@ -942,6 +1072,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
         // a new session: the computer has forgotten the last one's held keys, and stopped its picture
         if (parked) Remote.screen.pause() else Remote.screen.resume()
         send(ToMac.Mods(Remote.sticky.held))
+        // held on the way here, and the public relay can't carry this phone's voice: nothing starts
+        if (talkHeld && Remote.prefs.micOnPhone && !voice.carries) {
+            talkHeld = false
+            dropTake()
+            sayNoVoice()
+        }
         if (talkHeld) {
             if (Remote.mic.usable) {
                 holdTake()
@@ -979,8 +1115,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 noteRelay(i.relay)
                 replacing?.let { send(ToMac.Replaces(it)); replacing = null }
                 // one relay serves all of them: a computer with none of its own (or only the go-between) takes the one the others use
-                if (i.relay == null || RemoteRelay.isGoBetween(i.relay))
-                    _macs.value.mapNotNull { it.relayAddress }.firstOrNull { !RemoteRelay.isGoBetween(it) }?.let { send(ToMac.OfferRelay(it)) }
+                if (i.relay == null || isGoBetween(i.relay))
+                    _macs.value.mapNotNull { it.relayAddress }.firstOrNull { !isGoBetween(it) }?.let { send(ToMac.OfferRelay(it)) }
                 val ch = channel
                 if (ch != null && ch.goBetween && !ch.moved) {
                     // met, not connected: the keys light up and the picture starts once everything goes direct
@@ -988,9 +1124,16 @@ class Link(private val c: Context, private val vault: KeyVault) {
                     setState(State.CONNECTING)
                     val due = Runnable { if (channel === ch && meeting.value) lost() }
                     sessionDue = due
-                    main.postDelayed(due, Reconnect.MEETING_DUE_MS)
+                    main.postDelayed(due, Reconnect.meetingDueMs(i.features?.contains(RemoteFeature.PUBLIC_RELAY) == true))
                 } else carrying()
-                if (ch?.isRelay == true) lookForDirect(i) else ch?.openUDP(i.udpPort, i.udpSession)
+                // the public relay: the go-between has just found no direct path, so none is looked for; voice as Opus or not at all
+                if (ch?.publicRelay == true) {
+                    ch.opus = VoiceWay.of(true, dev.blurt.remote.app.talk.OpusVoice.available, i.features) == VoiceWay.OPUS
+                    publicDue?.let { main.removeCallbacks(it) }
+                    publicDue = null
+                    // it worked: a drop from here starts at the go-between again at once
+                    noDirectUntil = 0
+                } else if (ch?.isRelay == true) lookForDirect(i) else ch?.openUDP(i.udpPort, i.udpSession)
             }
             is ToPhone.CanControl -> canControl.value = m.on
             is ToPhone.Front -> front.value = m.front
@@ -1008,7 +1151,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 if (m.on) {
                     // couldn't have the microphone (a call has it): the computer hears this note with its own; the setting stays, so the
                     // next note tries the phone again
-                    if (!Remote.mic.usable || !Remote.mic.start(dev.blurt.remote.app.talk.MicStream.Holder.NOTE)) {
+                    if (!Remote.mic.usable || !voice.carries || !Remote.mic.start(dev.blurt.remote.app.talk.MicStream.Holder.NOTE)) {
                         send(ToMac.SetMicOnPhone(false))
                         send(ToMac.SetMicOnPhone(Remote.mic.usable))
                         send(ToMac.Hud(c.getString(R.string.mic_unavailable)))
@@ -1031,17 +1174,24 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 channel?.rttHint = rtt
             }
             // the host is about to close: this network won't let the two meet directly
-            ToPhone.NoDirect -> noDirect()
+            ToPhone.NoDirect -> {
+                val ch = channel
+                if (ch == null || !ch.goBetween || !goPublic(ch)) noDirect()
+            }
+            // where the session goes on if `noDirect` follows: only from the go-between, only to an allowed address
+            is ToPhone.PublicRelay -> if (channel?.goBetween == true) offer.heard(m, now(), TestRoutes.publicRelay)
             // Channel reads it off the old stream itself; one in the datagrams says nothing more
             ToPhone.StreamMoved -> {}
             ToPhone.UdpOK -> channel?.udpConfirmed()
             is ToPhone.Clock -> Remote.screen.clock(m.phone, m.mac)
-            is ToPhone.ScreenFailed -> {
+            // the public relay has no room for the picture yet: it's still wanted, and the host starts it once there is
+            is ToPhone.ScreenFailed -> if (m.text == RemotePublicRelay.BUSY) screenError.value = m.text else {
                 if (Remote.screen.on && !Remote.screen.stale) pictureSeen = true
                 Remote.screen.stop()
                 screenError.value = m.text
             }
             is ToPhone.ScreenView -> {
+                if (screenError.value == RemotePublicRelay.BUSY) screenError.value = null
                 shownDisplay.value = m.display
                 Remote.screen.source(m.width, m.height, m.codec, m.display, m.features)
             }
@@ -1055,6 +1205,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
+                if (joining == null) return
+                gateOn(channel)
+                gate.pairingWaits()
+                digitsConfirmed.value = false
                 pairCheck = channel?.check
                 waitingForMac.value = true
                 askedAt = now()
@@ -1064,26 +1218,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 main.postDelayed({ if (waitingForMac.value && joining?.mac?.deviceID == d) joinFailed(PairEnd.UNANSWERED) }, PairEnd.QUESTION_LIFE_MS)
             }
             is ToPhone.NewKey -> {
-                val cur = _current.value ?: return
-                vault.store(m.key, cur.deviceID)
+                if (_current.value == null) return
                 if (joining != null) {
-                    joining = null
-                    waitingForMac.value = false
-                    askedAt = null
-                    pairFailed.value = null
-                    lastLink = ""
-                    _macs.value.firstOrNull { it.id == cur.id }?.let { old ->
-                        if (old.deviceID != cur.deviceID) {
-                            vault.remove(old.deviceID)
-                            replacing = old.deviceID
-                        }
-                    }
-                    _macs.value = listOf(cur) + _macs.value.filter { it.id != cur.id }
-                    saveMacs()
+                    // only after the question, and this side's yes to the same digits: held until then, dropped with no question
+                    gateOn(channel)
+                    gate.newKey(m.key)?.let { keyTaken(it) }
+                    return
                 }
-                send(ToMac.KeyStored)
-                // paired: `session` comes next
-                channel?.let { awaitSession(it) }
+                keyTaken(m.key)
             }
             // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused key
             // with no session (anyone on the network can send one) only says so, the key kept (`refused` → FORGOTTEN)
@@ -1130,7 +1272,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     /** Trade addresses with the computer and knock, from one fixed local port. */
     private fun lookForDirect(i: RemoteSessionInfo) {
-        if (NO_DIRECT) return
+        if (TestRoutes.noDirect) return
         val ch = channel ?: return
         ch.lookForDirect(i.candidates, i.udpSession) { mine -> main.post { if (channel === ch) send(ToMac.Candidates(mine)) } }
     }
@@ -1233,6 +1375,13 @@ class Link(private val c: Context, private val vault: KeyVault) {
         keyUp()
     }
 
+    /** The talk key on the public relay where voice can't go: why, on the phone (the user is away from the computer). */
+    fun sayNoVoice() {
+        val line = if (voice == VoiceWay.HOST_CANT) c.getString(R.string.update_host, _current.value?.title ?: c.getString(R.string.the_computer))
+            else c.getString(R.string.mic_unavailable)
+        android.widget.Toast.makeText(c, line, android.widget.Toast.LENGTH_LONG).show()
+    }
+
     /** A call or another app has the microphone (MicStream): the take is finished there, and the phone says why it stopped. */
     fun micTaken() {
         endTake()
@@ -1321,13 +1470,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
     fun audio(d: ByteArray) = heldAudio.add(d) { if (ready) channel?.sendAudio(it) }
     fun datagram(k: RemoteFrameKind, d: ByteArray) { channel?.sendDatagram(k, d) }
     val ready: Boolean get() = channel != null && _state.value == State.CONNECTED
+    /** the session runs through Blurt's public relay: its limits apply (files, voice, the picture) */
+    val onPublicRelay: Boolean get() = channel?.publicRelay == true
+    /** how this phone's voice goes now: on the public relay as Opus, or not at all */
+    val voice: VoiceWay get() = VoiceWay.of(onPublicRelay, dev.blurt.remote.app.talk.OpusVoice.available, hostFeatures.value)
     /** no session, but one is being looked for */
     val comingBack: Boolean get() = _current.value != null && (_state.value == State.CONNECTING || _state.value == State.UNREACHABLE)
 
     companion object {
-        /** a test run: only this way in (debug builds) */
-        val RELAY_ONLY: String? = null
-        const val NO_DIRECT = false
         private const val PEEK_EVERY_MS = 30_000L
         private const val MOST_UNSENT = 4000
     }

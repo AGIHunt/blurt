@@ -758,7 +758,7 @@ export type RemoteFirewall = 'ok' | 'blocked' | 'unknown';
 export type DeviceKind = 'phone' | 'computer';
 /** local: the same network; tailscale / overlay: an overlay network's address; direct: UDP, found through a relay or the
  *  go-between; relay: the owner's relay carries it; goBetween: Blurt's go-between, until the stream moves to the direct path */
-export type RemoteRoute = 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween';
+export type RemoteRoute = 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween' | 'publicRelay';
 export type RemoteGoBetweenProblem = 'noDirect' | 'busy';
 
 /** One line of the connection log: a session (`end` null while it lasts) or a new pairing. Times in ms. */

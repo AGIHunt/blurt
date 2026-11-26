@@ -55,9 +55,27 @@ then a u32 LE to a phone that numbers its moves) are binary: `pointer`, `video`,
 
 The session, as the host runs it (reference: `RemoteServer.swift` `opened`, `greet`, `handle`): first sealed frame from the phone opens it (its
 `hello` names the device and reveals the nonce) → a new device waits for the owner's yes (`pairingWaits`, then `newKey` → phone answers
-`keyStored`) → `session` (name, UDP port and session number, canControl, version, candidates, displayAspect, relay, **platform**) → `front`,
+`keyStored`; the joining side takes `newKey` only by the rule below) → `session` (name, UDP port and session number, canControl, version, candidates, displayAspect, relay, **platform**) → `front`,
 `dictation`, `clock` → the phone probes UDP (pointer `scrollStop` packets sealed on channel 1); the host answers `udpOK` on TCP once one opens.
 Quiet for 2 s: the host lets go of everything held (keys, buttons, dictation key). `ping` ↔ `pong` every second from the phone.
+
+### Joining: the joining side says yes too (2026-11-26, security review F1)
+
+A pairing code proves nothing about who answers it: anyone with a photo of the QR or the copied link (good for 10 minutes) can join its
+relay room as the computer (the relay drops the real one's waiting socket), finish the handshake with the code's key, and send `newKey`.
+Nearby pairing has the same shape with the public nearby key. So while joining, every joining client (iPhone, Android, Mac viewer, Rust
+viewer) runs one rule (`RemoteJoinGate`; Android `JoinGate`, Rust `join_gate.rs`):
+
+- `pairingWaits` shows the six digits. The joining user compares them with the computer's and presses **Pair**; a yes before
+  `pairingWaits` counts for nothing.
+- `newKey` is taken (stored, `keyStored` sent) only when `pairingWaits` came first on this connection and the user said yes. The yes and the
+  key may come in either order: a key that comes first is held in memory until the yes.
+- A `newKey` before `pairingWaits` is dropped, not held. A new connection starts over (new digits). Cancel abandons the join quietly.
+
+Hosts are unchanged: every host since 1.0.13 sends `pairingWaits` first and waits for `keyStored` without a deadline, so any mix of old
+and new versions still pairs (an old joining client simply keeps the old, weaker behaviour). An impostor who holds the code shows digits
+from its own handshake; the real computer shows none, or different ones (the phone committed to its nonce before seeing either key), so
+the joining user never presses Pair. Vectors: `joinGate.cases` (`events`, `stores` = the index at which the key is stored, or null).
 
 ## Hosts (new 2026-11-09)
 

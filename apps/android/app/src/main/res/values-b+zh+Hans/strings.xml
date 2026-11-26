@@ -42,7 +42,9 @@
     <string name="status_screen_permission">请在 Mac 的「系统设置」中允许口喷鸡录制屏幕。</string>
     <string name="status_screen_permission_pc">无法显示屏幕。请在电脑上打开口喷鸡的「远程控制」页。</string>
     <string name="status_screen_off">若要查看屏幕，请在电脑上的口喷鸡设置中允许。</string>
-    <string name="status_waiting">如果电脑显示相同的数字 %1$s，请在电脑上点「允许」。</string>
+    <string name="status_allow_on">请在 %1$s 上点「允许」。</string>
+    <string name="status_check_digits">核对 %1$s 上的数字</string>
+    <string name="status_pair_if_same">如果 %1$s 显示 %2$s，请轻点「配对」。</string>
     <string name="via_path">%1$s · %2$s</string>
     <string name="path_same_network">同一网络</string>
     <string name="path_tailscale">Tailscale</string>
@@ -64,6 +66,7 @@
     <string name="status_locked">%1$s 已锁屏</string>
     <string name="status_unlock_first">解锁后画面会自动恢复。</string>
     <string name="status_picture_stopped">画面已停止。</string>
+    <string name="status_public_busy">公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。</string>
     <string name="status_go_between_busy">公共连接服务今日已达上限。请稍后再试，或使用自建中转。</string>
     <string name="status_relay_down">自建中转无响应，正在重新连接…</string>
     <string name="status_other_phone">另一台手机已连接</string>
@@ -297,6 +300,9 @@
     <string name="not_received">未接收。</string>
     <string name="data_send_q">使用移动网络发送 %1$s？</string>
     <string name="data_get_q">使用移动网络接收 %1$s？</string>
+    <string name="public_send_q">通过公共连接服务发送 %1$s？</string>
+    <string name="public_files_limit">通过公共连接服务每天最多可传输 50 MB 文件。</string>
+    <string name="public_files_not_sent">未发送：通过公共连接服务每天最多可传输 50 MB 文件。</string>
     <string name="data_get">接收</string>
     <string name="image_too_big">无法粘贴超过 20 MB 的图片。</string>
     <string name="share_send_to">发送到 %1$s</string>

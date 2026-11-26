@@ -85,9 +85,10 @@ public final class RemoteViewerLink {
         case unanswered
     }
 
-    /// How the session came, in the agreed terms (copy.md): 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务
+    /// How the session came, in the agreed terms (copy.md): 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务.
+    /// `publicRelay`: Blurt's public relay, after the go-between found no direct path (公共连接服务 too)
     public enum Route: String, Sendable {
-        case local, tailscale, overlay, direct, relay, goBetween
+        case local, tailscale, overlay, direct, relay, goBetween, publicRelay
     }
 
     /// Why away from home didn't work through the public connection service.
@@ -165,10 +166,22 @@ public final class RemoteViewerLink {
     var moveOnRelay = false
     /// a second window on the same computer (another display): the host keeps the first window's session beside this one
     public var extraWindow = false
+    /// a test build's own public relay (BLURT_PUBLIC_RELAY), allowed besides `RemotePublicRelay.addresses`; a release leaves it nil
+    public var publicRelayTest: String?
+    /// the host's `publicRelay`, waiting for its `noDirect` (within `RemotePublicRelay.offerLife`)
+    private var publicOffer: (address: String, room: String, ticket: String, at: Double)?
+    /// the connection to the public relay's room, until it has a session or gives up (`RemotePublicRelay.giveUp`)
+    private var publicAttempt: RemoteChannel?
+    private var publicPending = false
     /// how long a host asks its owner about a new device before it takes the silence as a no (RemoteServer's and blurt-remote's
     /// `pairingLife`): a close that late is "nobody answered", not "no"
     var questionLife = 120.0
     private var waitingSince: Double?
+    /// pairing: the host's key is taken only after its question and this Mac's user's yes to the same digits (Pair), since anyone with
+    /// a photo of the code can answer as the host (RemoteJoinGate, docs/design/remote-protocol.md)
+    private var gate = RemoteJoinGate()
+    /// the connection the gate's question came on: a new one asks again, with new digits
+    private weak var gateChannel: RemoteChannel?
 
     public init(computer: RemoteComputer, key: Data, deviceName: String, pairing: Bool = false, endpoint: NWEndpoint? = nil, relayOnly: String? = nil,
                 callbacks: DispatchQueue = .main) {
@@ -296,7 +309,7 @@ public final class RemoteViewerLink {
         return seq
     }
     /// over the relay, every message counts against someone's plan: the app sends fewer
-    public var overRelay: Bool { queue.sync { route == .relay } }
+    public var overRelay: Bool { queue.sync { route == .relay || route == .publicRelay } }
     public var sentSeq: UInt32 { queue.sync { pointerSeq } }
 
     // MARK: connecting
@@ -415,14 +428,14 @@ public final class RemoteViewerLink {
     }
 
     @discardableResult
-    private func attempt(_ c: NWConnection, relay: Bool, goBetween: Bool = false) -> RemoteChannel {
+    private func attempt(_ c: NWConnection, relay: Bool, goBetween: Bool = false, publicRelay: Bool = false) -> RemoteChannel {
         let ch = RemoteChannel(connection: c, role: .phone(PhoneHandshake(id: computer.deviceID, paired: key)), relay: relay, queue: queue)
         attemptBegan = attemptBegan.filter { id, _ in attempts.contains { ObjectIdentifier($0) == id } }
         attemptBegan[ObjectIdentifier(ch)] = CACurrentMediaTime()
         if goBetween { ch.enableMove() }
         ch.onOpen = { [weak self, weak ch] _ in
             guard let self, let ch else { return }
-            self.opened(ch, goBetween: goBetween)
+            self.opened(ch, goBetween: goBetween, publicRelay: publicRelay)
         }
         ch.onMoved = { [weak self] in
             guard let self else { return }
@@ -453,9 +466,17 @@ public final class RemoteViewerLink {
             guard let self else { return }
             self.attempts.removeAll { $0 === ch }
             if failure?.kind == .notPaired { self.refused = true }
-            if relay, !goBetween, let ch { self.ownRelayAnswered(ch.wasReady) }
+            if relay, !goBetween, !publicRelay, let ch { self.ownRelayAnswered(ch.wasReady) }
             if goBetween, let ch { self.goBetweenEnded(ch) }
+            // the public relay's room turned it away, or closed before a session: no direct path, said now
+            if publicRelay, let ch, ch === self.publicAttempt, self.publicPending { return self.publicFailed("closed \(ch.relayClose.map(String.init) ?? "-")") }
             guard let ch, self.channel === ch else { return }
+            // the public relay's day for this pair is spent (4003): over the limit, as the go-between's refusal is
+            if publicRelay, ch.relayClose == RemoteRelay.overBudget {
+                if CACurrentMediaTime() >= self.meetQuietUntil { self.meetRefusals += 1 }
+                self.meetQuietUntil = CACurrentMediaTime() + RemoteRelay.busyWait(self.meetRefusals)
+                self.away = .busy
+            }
             self.lostWhy = "closed (\(failure.map { "\($0.kind)" } ?? "no failure"), moved \(ch.moved))"
             self.lost()
         }
@@ -464,7 +485,7 @@ public final class RemoteViewerLink {
         return ch
     }
 
-    private func opened(_ ch: RemoteChannel, goBetween: Bool) {
+    private func opened(_ ch: RemoteChannel, goBetween: Bool, publicRelay: Bool = false) {
         let overlay = ch.isRelay ? nil : Self.overlay(ch)
         if let old = channel {
             // the same network takes over from the relay or an overlay network; an overlay network from the relay
@@ -477,13 +498,14 @@ public final class RemoteViewerLink {
         cancelAttempts()
         channel = ch
         if away == .relayDown { away = nil }
-        setRoute(ch.isRelay ? (goBetween ? nil : .relay) : overlay == .tailscale ? .tailscale : overlay != nil ? .overlay : .local)
+        setRoute(publicRelay ? .publicRelay : ch.isRelay ? (goBetween ? nil : .relay) : overlay == .tailscale ? .tailscale : overlay != nil ? .overlay : .local)
         if goBetween { setTrying(.goBetween) }
         awaitingMove = goBetween
         firstAttempt = nil
         refused = false
         lastPong = CACurrentMediaTime()
-        ch.send(ToMac.hello(device: deviceName, micOnPhone: false, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.files, RemoteFeature.resume] + (extraWindow ? [RemoteFeature.window] : [])))
+        ch.send(ToMac.hello(device: deviceName, micOnPhone: false, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.files, RemoteFeature.resume,
+                                                                                               RemoteFeature.publicRelay] + (extraWindow ? [RemoteFeature.window] : [])))
         pinger?.cancel()
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now() + 0.5, repeating: 0.5)
@@ -605,7 +627,11 @@ public final class RemoteViewerLink {
             computer.relayAddress = i.relay.flatMap(RemoteRelay.address) ?? (RemoteRelay.isGoBetween(computer.relayAddress) ? nil : computer.relayAddress)
             computer.lastSeen = Date()
             if channel?.isRelay == true, route == nil { setRoute(channel?.moved == true ? .goBetween : nil) }
-            if channel?.isRelay == true, ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" {
+            if route == .publicRelay {
+                // the go-between found no direct path a moment ago: none is looked for here
+                publicPending = false
+                publicAttempt = nil
+            } else if channel?.isRelay == true, ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" {
                 lookForDirect(i)
             } else {
                 channel?.openUDP(port: i.udpPort, session: i.udpSession)
@@ -625,16 +651,20 @@ public final class RemoteViewerLink {
         case .udpOK:
             channel?.udpConfirmed()
         case .pairingWaits:
+            if pairing {
+                gateOn(channel)
+                gate.pairingWaits()
+            }
             waitingSince = CACurrentMediaTime()
             set(.waiting(check: channel?.check ?? ""))
         case let .newKey(k):
             guard k.count == 32 else { return }
-            key = k
-            onNewKey?(computer, k)
-            pairing = false
-            channel?.send(ToMac.keyStored)
-            let c = computer
-            callbacks.async { self.onComputer?(c) }
+            if pairing {
+                // only after the question, and this Mac's yes to the same digits: held until then, dropped with no question
+                gateOn(channel)
+                guard gate.newKey(k) != nil else { return }
+            }
+            keyTaken(k)
         case .removed:
             set(.removed)
             active = false
@@ -649,7 +679,18 @@ public final class RemoteViewerLink {
             let c = channel
             channel = nil
             c?.close()
+        case let .publicRelay(address, room, ticket):
+            // where the session goes on once the host says there's no direct path (docs/design/remote-go-between.md §The public relay)
+            guard RemotePublicRelay.allowed(address, testing: publicRelayTest) else { break }
+            publicOffer = (address, room, ticket, CACurrentMediaTime())
         case .noDirect:
+            // just told where to go on: the public relay's room, given up after 5 s (no loop: the next try starts at the go-between again)
+            if let o = publicOffer, CACurrentMediaTime() - o.at <= RemotePublicRelay.offerLife, channel?.isRelay == true, route != .publicRelay {
+                publicOffer = nil
+                goPublic(o.address, room: o.room, ticket: o.ticket)
+                callbacks.async { self.onMessage?(m) }
+                return
+            }
             // the host ends this session now: said at once, and the session is let go of here too (the service is asked again only after
             // its wait; the same network keeps being looked for)
             noDirect()
@@ -664,6 +705,71 @@ public final class RemoteViewerLink {
         default: break
         }
         callbacks.async { self.onMessage?(m) }
+    }
+
+    /// From the go-between to the public relay's room: the go-between's session is let go of, and the room has `giveUp` seconds to bring a
+    /// session; else the no-direct line, as before there was a public relay.
+    private func goPublic(_ address: String, room: String, ticket: String) {
+        pinger?.cancel()
+        pinger = nil
+        let old = channel
+        channel = nil
+        old?.close()
+        session = nil
+        awaitingMove = false
+        setRoute(nil)
+        setTrying(.publicRelay)
+        guard let c = RemotePublicRelay.connection(address: address, room: room, role: "phone", ticket: ticket) else { return publicFailed("address") }
+        // a round already counting keeps this one: it's the relay's try
+        lastRelayTry = CACurrentMediaTime()
+        publicPending = true
+        let ch = attempt(c, relay: true, publicRelay: true)
+        publicAttempt = ch
+        queue.asyncAfter(deadline: .now() + RemotePublicRelay.giveUp) { [weak self, weak ch] in
+            guard let self, let ch, self.publicAttempt === ch, self.publicPending else { return }
+            self.publicFailed("timeout")
+        }
+    }
+
+    /// The public relay brought no session in time: the no-direct line, and nothing more until its wait is over.
+    private func publicFailed(_ why: String) {
+        guard publicPending || publicAttempt == nil else { return }
+        publicPending = false
+        let a = publicAttempt
+        publicAttempt = nil
+        lostWhy = "public relay: \(why)"
+        attempts.removeAll { $0 === a }
+        if let a, channel !== a { a.close() }
+        noDirect()
+        lost()
+    }
+
+    /// The pairing's gate, for this connection: a new one starts it over.
+    private func gateOn(_ c: RemoteChannel?) {
+        guard gateChannel !== c else { return }
+        gate.reset()
+        gateChannel = c
+    }
+
+    /// Add Computer's Pair: the digits here are the same as the host's. Its key, if it came first, is taken now; a yes before the
+    /// question counts for nothing.
+    public func confirmDigits() {
+        queue.async {
+            guard self.pairing, let ch = self.channel, self.gateChannel === ch, self.gate.canConfirm else { return }
+            if let k = self.gate.confirm() { self.keyTaken(k) }
+        }
+    }
+
+    /// The host's key, now that it may be kept: stored, and the host told so (`session` comes next).
+    private func keyTaken(_ k: Data) {
+        key = k
+        onNewKey?(computer, k)
+        pairing = false
+        gate.reset()
+        gateChannel = nil
+        channel?.send(ToMac.keyStored)
+        let c = computer
+        callbacks.async { self.onComputer?(c) }
     }
 
     /// The host's own addresses, as it listed them this session: private and overlay ones are kept to try next time.

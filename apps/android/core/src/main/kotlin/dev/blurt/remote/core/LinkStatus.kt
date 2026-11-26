@@ -18,7 +18,8 @@ data class LinkStatus(
     /** more than one computer is paired: there's another to try */
     val otherComputers: Boolean = false,
     val canControl: Boolean = true,
-    /** "permission", "off": why the computer won't show its screen; anything else, the picture stopped */
+    /** "permission", "off": why the computer won't show its screen; "busy": the public relay has no room for the picture yet; anything
+     *  else, the picture stopped */
     val screenError: String? = null,
     /** the user asked for the picture (the screen button); one that came on by itself says nothing when the computer won't show it */
     val screenAsked: Boolean = true,
@@ -34,6 +35,8 @@ data class LinkStatus(
     val presence: Presence? = null,
     /** the computer is asking its owner about this phone's code */
     val waiting: Boolean = false,
+    /** this phone's user said its digits are the same as the computer's (Pair on the card) */
+    val digitsConfirmed: Boolean = false,
     /** a pairing just didn't take; Link has the sentences */
     val pairFailed: Boolean = false,
     /** the code that didn't take can still work (it couldn't be reached, and is still being tried): Try Again */
@@ -102,14 +105,17 @@ enum class StatusLine {
     ENDED_THERE,
     PAIR_FIRST, WHERE_THE_CODE_IS,
     WAITING, ALLOW_ON_COMPUTER,
+    CHECK_DIGITS, PAIR_IF_SAME,
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
     CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF, PICTURE_STOPPED,
+    /** the public relay has no picture lease free: the picture comes by itself once there is room */
+    PUBLIC_BUSY,
     LOCKED, UNLOCK_FIRST,
     NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
 
-enum class StatusAction { RETRY, SCAN, ANOTHER, TAKE_OVER, RECONNECT, DISMISS, SHOW_SCREEN }
+enum class StatusAction { RETRY, SCAN, ANOTHER, TAKE_OVER, RECONNECT, DISMISS, SHOW_SCREEN, PAIR, CANCEL_PAIRING }
 
 data class StatusBanner(
     val mark: StatusMark,
@@ -148,6 +154,8 @@ data class StatusBanner(
                 LinkPhase.CONNECTED -> when {
                     // locked: why there's no picture, and why it may not take input either
                     s.locked && s.showing -> StatusBanner(StatusMark.PROBLEM, StatusLine.LOCKED, StatusLine.UNLOCK_FIRST)
+                    // busy on the public relay: said whoever asked, since the picture is still coming; nothing to tap, it comes by itself
+                    s.screenError == RemotePublicRelay.BUSY -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PUBLIC_BUSY)
                     s.screenAsked && s.screenError != null -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, when (s.screenError) {
                         "off" -> StatusLine.SCREEN_IS_OFF
                         "permission" -> StatusLine.ALLOW_SCREEN
@@ -159,6 +167,10 @@ data class StatusBanner(
             }
             // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
             // once the computer asks, whatever went wrong before is past
+            // anyone with a photo of the code can answer as the computer: this side says the digits are the same before a key is taken
+            if (s.waiting && !s.digitsConfirmed) {
+                return StatusBanner(StatusMark.CODE, StatusLine.CHECK_DIGITS, StatusLine.PAIR_IF_SAME, StatusAction.PAIR, StatusAction.CANCEL_PAIRING)
+            }
             if (s.waiting) return StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER)
             if (s.pairFailed) {
                 // never a dead end: the same code once more where it can still work, else a new one

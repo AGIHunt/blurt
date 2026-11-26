@@ -18,7 +18,7 @@ struct LinkStatus: Equatable {
     /// more than one computer is paired: there's another to try
     var otherComputers = false
     var canControl = true
-    /// "permission", "off": why the computer won't show its screen
+    /// "permission", "off", "stopped", "busy": why the computer won't show its screen
     var screenError: String?
     /// the user asked for the picture (the screen button); one that came on by itself says nothing when it can't
     var screenAsked = true
@@ -36,6 +36,8 @@ struct LinkStatus: Equatable {
     var presence: Presence?
     /// the computer is asking its owner about this phone's code
     var waiting = false
+    /// this phone's user said its digits are the same as the computer's (Pair on the card)
+    var digitsConfirmed = false
     /// a pairing just didn't take; Link has the sentences
     var pairFailed = false
     /// the code that didn't take can still work (it couldn't be reached, and is still being tried): Try Again
@@ -70,13 +72,16 @@ struct StatusBanner: Equatable {
         case endedThere
         case pairFirst, whereTheCodeIs
         case waiting, allowOnComputer
+        case checkDigits, pairIfSame
         case pairingFailed, whyPairingFailed
         case cantControl, howToAllowControl
         case cantShowScreen, allowScreen, screenIsOff, pictureStopped
+        /// the public relay has no room for another picture now: it comes by itself once there is
+        case publicBusy
         case locked, unlockFirst
     }
 
-    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings, showScreen }
+    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings, showScreen, pair, cancelPairing }
 
     var mark: Mark
     var title: Line
@@ -119,8 +124,9 @@ struct StatusBanner: Equatable {
             b = StatusBanner(mark: .phone, title: .endedThere, action: .reconnect)
         case .connected:
             if !s.canControl { b = StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl) }
-            if s.screenAsked, let e = s.screenError {
-                let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : .pictureStopped
+            // busy is said however the picture came on: it stays on, dark, until there's room
+            if let e = s.screenError, s.screenAsked || e == "busy" {
+                let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : e == "busy" ? .publicBusy : .pictureStopped
                 b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: why, action: why == .pictureStopped ? .showScreen : nil)
             }
             // locked: why there's no picture, and why it may not take input either
@@ -128,6 +134,10 @@ struct StatusBanner: Equatable {
         }
         // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
         // once the computer asks, whatever went wrong before is past
+        // anyone with a photo of the code can answer as the computer: this side says the digits are the same before a key is taken
+        if s.waiting, !s.digitsConfirmed {
+            return StatusBanner(mark: .code, title: .checkDigits, detail: .pairIfSame, action: .pair, second: .cancelPairing)
+        }
         if s.waiting { return StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer) }
         if s.pairFailed {
             // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the

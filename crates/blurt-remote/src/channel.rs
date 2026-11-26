@@ -44,6 +44,8 @@ pub enum Out {
     Ping,
     /// this, then close (a refused handshake's one answer)
     Last(Vec<u8>),
+    /// a text message to the relay itself, never passed on: tickets from the go-between, leases from the public relay (public.rs)
+    Text(String),
     Close,
 }
 
@@ -67,6 +69,17 @@ pub struct Chan {
     stream_in: Mutex<StreamIn>,
     moved_tx: mpsc::UnboundedSender<Vec<u8>>,
     moved_rx: Mutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>,
+    /// a connection at Blurt's public relay (public.rs): its picture needs a lease, and it's Data Saver's
+    pub public: AtomicBool,
+    /// the only device id a handshake on this connection may name (the public relay's room is made for one session)
+    pub only: Mutex<Option<String>>,
+    /// text messages from the relay itself (`Out::Text`'s answers), for whoever took them
+    texts_tx: mpsc::UnboundedSender<String>,
+    texts_rx: Mutex<Option<mpsc::UnboundedReceiver<String>>>,
+    /// the device's last touch, key or voice (the public relay's picture stops after 5 min without)
+    touched: Mutex<Instant>,
+    /// kind-9 voice, decoded as it comes (opus.rs)
+    pub opus: Mutex<Option<crate::opus::Decoder>>,
     /// the route when it isn't the plain local network: "tailscale" or "overlay" (a TCP session over an overlay address)
     pub overlay: Mutex<Option<&'static str>>,
     t0: Instant,
@@ -87,6 +100,7 @@ impl Chan {
     pub fn new(sid: u64, relay: bool, standby: bool, udp: Arc<UdpSocket>, rt: tokio::runtime::Handle) -> (Arc<Chan>, mpsc::UnboundedReceiver<Out>) {
         let (tx, rx) = mpsc::unbounded_channel();
         let (moved_tx, moved_rx) = mpsc::unbounded_channel();
+        let (texts_tx, texts_rx) = mpsc::unbounded_channel();
         let c = Chan {
             sid,
             relay,
@@ -106,6 +120,12 @@ impl Chan {
             stream_in: Mutex::new(StreamIn::new()),
             moved_tx,
             moved_rx: Mutex::new(Some(moved_rx)),
+            public: AtomicBool::new(false),
+            only: Mutex::new(None),
+            texts_tx,
+            texts_rx: Mutex::new(Some(texts_rx)),
+            touched: Mutex::new(Instant::now()),
+            opus: Mutex::new(None),
             overlay: Mutex::new(None),
             t0: Instant::now(),
             udp,
@@ -136,6 +156,36 @@ impl Chan {
 
     pub fn ping(&self) {
         let _ = self.out.send(Out::Ping);
+    }
+
+    /// A text message to the relay itself (public.rs), not to the phone.
+    pub fn text(&self, t: String) {
+        if !self.closed.load(SeqCst) {
+            let _ = self.out.send(Out::Text(t));
+        }
+    }
+
+    /// What the relay said in text (the reader hands it here).
+    pub fn heard_text(&self, t: String) {
+        let _ = self.texts_tx.send(t);
+    }
+
+    /// The relay's text messages, for the one task that answers them.
+    pub fn take_texts(&self) -> Option<mpsc::UnboundedReceiver<String>> {
+        self.texts_rx.lock().unwrap().take()
+    }
+
+    /// A touch, key or voice from the device.
+    pub fn touch(&self) {
+        *self.touched.lock().unwrap() = Instant::now();
+    }
+
+    pub fn untouched(&self) -> Duration {
+        self.touched.lock().unwrap().elapsed()
+    }
+
+    pub fn is_public(&self) -> bool {
+        self.public.load(SeqCst)
     }
 
     fn now(&self) -> f64 {

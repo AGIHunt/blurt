@@ -470,7 +470,8 @@ final class ViewerFileCard: NSView {
             // nothing there, or locked, is a state: the info mark. What can't come is a failure: the triangle
             icon.image = why == "empty" || why == "locked" || why.isEmpty ? Self.infoMark : Self.attnMark
             let key = ["locked": "viewer.copied.none.locked", "too_big": "viewer.copied.none.too_big", "too_large": "viewer.copied.none.too_large",
-                       "unsupported": "viewer.copied.none.unsupported", "update": "viewer.copied.none.update"][why] ?? "viewer.copied.none.empty"
+                       "unsupported": "viewer.copied.none.unsupported", "update": "viewer.copied.none.update",
+                       "limit": "remote.public.files.over"][why] ?? "viewer.copied.none.empty"
             setTitle(T(key, to))
             detail.stringValue = ""
             over(6)
@@ -480,7 +481,8 @@ final class ViewerFileCard: NSView {
             if incoming {
                 key = why == "space" ? "viewer.file.failed.in.space" : "viewer.file.failed.in.other"
             } else {
-                key = ["space": "viewer.file.failed.space", "too_big": "viewer.file.failed.too_big", "locked": "viewer.file.failed.locked"][why]
+                key = ["space": "viewer.file.failed.space", "too_big": "viewer.file.failed.too_big", "locked": "viewer.file.failed.locked",
+                       "public_limit": "remote.public.files.not_sent"][why]
                     ?? "viewer.file.failed.other"
             }
             if name.isEmpty { setTitle(T(key)); detail.stringValue = "" } else { setTitle(name); detail.stringValue = T(key) }

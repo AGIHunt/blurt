@@ -24,6 +24,8 @@ pub enum Kind {
     Stream = 7,
     /// u64 BE: the next offset the receiver expects, cumulative
     StreamAck = 8,
+    /// one Opus packet: 20 ms of 16 kHz mono voice, about 32 kbps; kind 1's place on the public relay (public.rs, opus.rs)
+    Opus = 9,
 }
 
 impl Kind {
@@ -38,6 +40,7 @@ impl Kind {
             6 => Kind::VideoFeedback,
             7 => Kind::Stream,
             8 => Kind::StreamAck,
+            9 => Kind::Opus,
             _ => return None,
         })
     }

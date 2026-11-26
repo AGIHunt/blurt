@@ -40,6 +40,9 @@ zip = { version = "4", default-features = false }
 libc = "0.2"
 # the clipboard's image ↔ PNG (platform/pixels.rs): the version the app's tree has, with JPEG, TIFF and BMP read too
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "bmp"] }
+# voice on Blurt's public relay (opus.rs): libopus 1.3.1 translated to Rust by c2rust, so no C toolchain or cmake on any target
+# (Windows MSVC, Linux, macOS), and the same bitstream as the phones' libopus / AudioToolbox
+unsafe-libopus = "0.2"
 
 # Windows backend (src/platform/windows): capture, encode, input
 [target.'cfg(windows)'.dependencies]

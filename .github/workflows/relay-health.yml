@@ -1,0 +1,29 @@
+# Blurt's public relay (relay.blurt.work, docs/design/remote-go-between.md §The public relay), checked from outside every 10 minutes:
+# TLS, the certificate's days left, and `GET /`. A failed scheduled run emails the repository's owner. It also checks that the go-between
+# (meet.blurt.work) answers. Nothing is sent but two GETs.
+name: relay-health
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: relay.blurt.work answers over TLS
+        run: |
+          for i in 1 2 3; do
+            body=$(curl -fsS -m 10 https://relay.blurt.work/) && [ "$body" = "blurt relay" ] && ok=1 && break
+            sleep 20
+          done
+          [ "${ok:-}" = 1 ] || { echo "relay.blurt.work is down or answers wrongly"; exit 1; }
+      - name: its certificate has 14 days or more
+        run: |
+          end=$(echo | openssl s_client -connect relay.blurt.work:443 -servername relay.blurt.work 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+          left=$(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))
+          echo "certificate: $left days left"
+          [ "$left" -ge 14 ]
+      - name: the go-between answers
+        run: test "$(curl -fsS -m 10 https://meet.blurt.work/)" = "blurt go-between"

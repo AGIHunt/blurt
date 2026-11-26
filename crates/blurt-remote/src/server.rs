@@ -90,6 +90,11 @@ pub trait App: Send + Sync + 'static {
     fn not_pasted_notice(&self) -> String {
         "Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard.".into()
     }
+    /// What a device hears when a file from here would pass today's 50 MB over the public connection service (public.rs), in the
+    /// app's language.
+    fn public_limit_notice(&self) -> String {
+        "You can send up to 50 MB a day over the public connection service.".into()
+    }
     /// A new phone waits for a yes: the owner should see the six digits now (raise the window, a notification).
     fn asking(&self, _device: &str, _digits: &str) {}
     /// The phone's talk key: the dictation key's down / up. `phone_mic`: the take should listen through the phone (`Host::mic`).
@@ -128,6 +133,9 @@ pub struct HostConfig {
     /// Blurt's go-between: None = the built-in one (`relay::GO_BETWEEN`); Some("") = none (a test that mustn't reach out);
     /// Some(address) = another (tests: a local `BUDGET=1 node tools/remote-relay/server.js`)
     pub go_between: Option<String>,
+    /// Blurt's public relay at another address too (tests and test builds: a local `node tools/remote-relay/public.js`,
+    /// `BLURT_PUBLIC_RELAY`); a release lets only `public::ADDRESSES` in
+    pub public_relay: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -171,7 +179,7 @@ pub struct Connected {
     pub name: String,
     /// "local" (the same network), "tailscale" or "overlay" (an overlay network's address: away, no server), "direct" (UDP,
     /// found through a relay or the go-between), "relay" (the owner's relay carries it), "goBetween" (Blurt's go-between, until
-    /// the stream moves to the direct path)
+    /// the stream moves to the direct path), "publicRelay" (Blurt's public relay, after the go-between found no direct path)
     pub route: &'static str,
     pub screen: bool,
     /// its hello listed `files`: the bar's Send Files… shows only then
@@ -198,6 +206,18 @@ pub enum GoBetweenProblem {
     NoDirect,
     /// the go-between refused: its free quota for the day is gone, or it is rate-limiting
     Busy,
+}
+
+/// What Send Files… did (`Host::send_files_asked`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SendFiles {
+    Sent,
+    /// no device connected that takes files
+    NoDevice,
+    /// over the public connection service and over 20 MB: ask the person first (this many bytes), then again with `asked`
+    Ask(i64),
+    /// over the public connection service, past today's 50 MB for that device
+    OverToday,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -244,6 +264,11 @@ struct Sess {
     told_to: Option<String>,
     /// the phone listed `move` (its stream can move onto the direct path): only such a phone is offered the go-between
     moves: bool,
+    /// the phone listed `publicRelay` (it goes on at Blurt's public relay after `noDirect`) and `opus` (its voice as kind 9 there)
+    public_relay: bool,
+    opus: bool,
+    /// at the public relay: what wants the picture, for the task that keeps its lease (`keep_lease`)
+    lease: Option<mpsc::UnboundedSender<Option<crate::wire::ScreenRequest>>>,
     /// a computer driving this one (hello.features has `viewer`): its clipboard and keysCaptured count
     viewer: bool,
     /// a viewer's keys are captured: the clipboard goes both ways
@@ -300,6 +325,8 @@ struct State {
     relays: HashMap<String, RelayConn>,
     /// the go-between's waiting connections while the owner's relay is down, one per paired device
     fallbacks: HashMap<String, RelayConn>,
+    /// connections at Blurt's public relay, each in a room made for one session (by sid)
+    publics: HashMap<u64, RelayConn>,
     /// the owner's relay failed this many times in a row without connecting
     own_relay_fails: u32,
     relay_wait: HashMap<String, f64>,
@@ -351,6 +378,10 @@ struct Core {
     receiver: Mutex<Option<Arc<crate::files::Receiver>>>,
     /// files going out, one sender per device: paused while it's away, going on when it's back
     senders: Mutex<HashMap<String, crate::files::Sender>>,
+    /// what went to each device over the public relay today (public.rs `FILES_PER_DAY`)
+    public_files: crate::public::DayBudget,
+    /// tests: no direct path for sessions that came through a relay (their datagrams are dropped), as on a network that blocks UDP
+    no_direct: std::sync::atomic::AtomicBool,
     /// the screen is locked, as the watch last saw it (read by the receiver without the state's lock)
     locked_now: std::sync::atomic::AtomicBool,
     /// the last snapshot handed to the system service (`sync_standby`)
@@ -405,6 +436,7 @@ impl Host {
             asking: None,
             relays: HashMap::new(),
             fallbacks: HashMap::new(),
+            publics: HashMap::new(),
             own_relay_fails: 0,
             relay_wait: HashMap::new(),
             relay_at: None,
@@ -441,6 +473,8 @@ impl Host {
             downloads: Mutex::new(None),
             receiver: Mutex::new(None),
             senders: Mutex::new(HashMap::new()),
+            public_files: crate::public::DayBudget::default(),
+            no_direct: std::sync::atomic::AtomicBool::new(false),
             locked_now: std::sync::atomic::AtomicBool::new(false),
             standby_sent: Mutex::new(String::new()),
             handshaking: AtomicUsize::new(0),
@@ -544,6 +578,12 @@ impl Host {
         c.publish(&mut s);
     }
 
+    /// Tests and test builds (`BLURT_NO_DIRECT=1`): a session that came through a relay never gets a direct path, as on a network that
+    /// blocks UDP; the go-between then sends it on to the public relay.
+    pub fn test_no_direct(&self, on: bool) {
+        self.core.no_direct.store(on, SeqCst);
+    }
+
     /// Where files from viewers go (the Downloads folder): set, the host takes them and its sessions say so.
     pub fn set_downloads(&self, dir: Option<std::path::PathBuf>) {
         *self.core.receiver.lock().unwrap() = dir.as_ref().map(|d| Arc::new(self.core.make_receiver(d.clone())));
@@ -553,14 +593,28 @@ impl Host {
     /// The "being controlled" bar's Send Files…: these files (folders zipped) to the device connected now, if it takes files.
     /// false: no such device.
     pub fn send_files(&self, paths: Vec<std::path::PathBuf>) -> bool {
-        let device = {
+        self.send_files_asked(paths, true) == SendFiles::Sent
+    }
+
+    /// Send Files…, with the public connection service's limits (public.rs): over 20 MB there it is asked about first (`asked`: the
+    /// person said yes to this send), and at most 50 MB a day goes to a device that way.
+    pub fn send_files_asked(&self, paths: Vec<std::path::PathBuf>, asked: bool) -> SendFiles {
+        let (device, public) = {
             let s = self.core.st.lock().unwrap();
-            let Some(x) = s.current.and_then(|c| s.sessions.get(&c)) else { return false };
+            let Some(x) = s.current.and_then(|c| s.sessions.get(&c)) else { return SendFiles::NoDevice };
             if !x.takes_files || !x.chan.greeted.load(SeqCst) {
-                return false;
+                return SendFiles::NoDevice;
             }
-            x.id.clone().unwrap_or_default()
+            (x.id.clone().unwrap_or_default(), x.chan.is_public())
         };
+        if public {
+            let bytes = crate::files::size_of(&paths);
+            match self.core.public_files.check(&device, bytes, asked, now_ms()) {
+                crate::public::FilesCheck::Go => self.core.public_files.spend(&device, bytes, now_ms()),
+                crate::public::FilesCheck::Ask(n) => return SendFiles::Ask(n),
+                crate::public::FilesCheck::OverToday => return SendFiles::OverToday,
+            }
+        }
         let me = self.core.arc();
         self.core.rt.spawn_blocking(move || {
             let list = crate::files::prepare(&paths);
@@ -569,7 +623,7 @@ impl Host {
                 me.sender_for(&device).add(list, false);
             }
         });
-        true
+        SendFiles::Sent
     }
 
     /// What's going to or coming from the device connected now (its card on the bar).
@@ -852,6 +906,9 @@ impl Host {
         let ids: Vec<String> = s.relays.keys().chain(s.fallbacks.keys()).cloned().collect();
         for id in ids {
             c.close_relay(&mut s, &id);
+        }
+        for (_, r) in std::mem::take(&mut s.publics) {
+            c.stop_waiting(&s, r);
         }
         c.stop_listening(&mut s);
     }
@@ -1281,7 +1338,9 @@ impl Core {
                 return false;
             }
             let local = !chan.relay;
-            let a = crypto::answer(f, crypto::random(), |id| self.lookup(id, local));
+            // a room at the public relay is made for one session: only that device's handshake opens anything there
+            let only = chan.only.lock().unwrap().clone();
+            let a = crypto::answer(f, crypto::random(), |id| if only.as_deref().is_some_and(|o| o != id) { None } else { self.lookup(id, local) });
             let Some(k) = a.keys else {
                 // one answer, then the connection is over
                 chan.last(FrameReader::framed(&a.reply));
@@ -1326,6 +1385,17 @@ impl Core {
         s.sessions.remove(&sid);
         if s.listeners.is_some() && !s.showing_pairing && s.devices.is_empty() && s.asking.is_none() {
             self.update_listening(&mut s); // the question that kept it open has gone
+        }
+        if s.publics.remove(&sid).is_some() || conn.chan.is_public() {
+            let greeted = conn.chan.greeted.load(SeqCst);
+            let code = *conn.chan.relay_close.lock().unwrap();
+            self.log(json!({"event": "remote_public_relay", "state": "ended", "greeted": greeted, "code": code}));
+            if !greeted {
+                // nobody came (4011), or the handshake failed: that network had no way at all
+                s.meet_problem = Some(GoBetweenProblem::NoDirect);
+            }
+            self.publish(&mut s);
+            return;
         }
         if let Some(id) = relay_device {
             let code = *conn.chan.relay_close.lock().unwrap();
@@ -1374,6 +1444,9 @@ impl Core {
                 approved: false,
                 told_to: None,
                 moves: false,
+                public_relay: false,
+                opus: false,
+                lease: None,
                 viewer: false,
                 captured: false,
                 clip_gen: 0,
@@ -1664,6 +1737,57 @@ impl Core {
         }
     }
 
+    /// The picture, as asked (the latest request: one that comes after it, or a stop, wins).
+    fn start_screen(self: &Arc<Self>, chan: &Arc<Chan>, r: crate::wire::ScreenRequest) {
+        let g = {
+            let mut s = self.st.lock().unwrap();
+            let Some(g) = s.sessions.get(&chan.sid).map(|x| x.screen_gen) else { return };
+            self.keep_awake(&mut s, true, true);
+            g
+        };
+        // the start may wait on a portal's dialog: off the server's tasks, and only the latest request counts
+        let (me, chan) = (self.clone(), chan.clone());
+        self.rt.spawn_blocking(move || {
+            let log: Arc<dyn Fn(Value) + Send + Sync> = {
+                let me = me.clone();
+                Arc::new(move |v| me.log(v))
+            };
+            let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log, me.displays.clone(), me.told.clone());
+            let mut s = me.st.lock().unwrap();
+            let still = s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.screen_gen == g);
+            match started {
+                Ok(sc) if still => {
+                    s.sessions.get_mut(&chan.sid).unwrap().screen = Some(Arc::new(sc));
+                }
+                Ok(sc) => sc.stop(),
+                Err(why) => {
+                    me.log(json!({"event": "remote_screen", "state": "failed", "why": why}));
+                    if still {
+                        chan.send(&ToPhone::ScreenFailed(why));
+                        me.keep_awake(&mut s, true, false);
+                    }
+                }
+            }
+            me.publish(&mut s);
+        });
+    }
+
+    /// The picture stops here (its lease went, or nobody's used it): a start under way counts for nothing.
+    fn stop_screen(&self, chan: &Chan) {
+        let mut s = self.st.lock().unwrap();
+        let Some(x) = s.sessions.get_mut(&chan.sid) else { return };
+        if let Some(sc) = x.screen.take() {
+            sc.stop();
+        }
+        x.screen_gen += 1;
+        self.keep_awake(&mut s, true, false);
+        self.publish(&mut s);
+    }
+
+    fn screen_on(&self, chan: &Chan) -> bool {
+        self.st.lock().unwrap().sessions.get(&chan.sid).is_some_and(|x| x.screen.is_some())
+    }
+
     // ------------------------------------------------------------------ what the phone says
 
     fn deliver(self: &Arc<Self>, chan: &Arc<Chan>, plain: &[u8]) {
@@ -1678,13 +1802,31 @@ impl Core {
             }
             Kind::Audio => {
                 if chan.greeted.load(SeqCst) {
+                    chan.touch();
                     self.mic.receive(body);
+                }
+            }
+            // voice as Opus (the public relay): decoded to what kind 1 carries
+            Kind::Opus => {
+                if chan.greeted.load(SeqCst) {
+                    chan.touch();
+                    let pcm = {
+                        let mut d = chan.opus.lock().unwrap();
+                        if d.is_none() {
+                            *d = crate::opus::Decoder::new();
+                        }
+                        d.as_mut().and_then(|d| d.decode(body))
+                    };
+                    if let Some(pcm) = pcm {
+                        self.mic.receive(&pcm);
+                    }
                 }
             }
             Kind::Pointer => {
                 if let Some(p) = PointerPacket::decode(body) {
                     if chan.greeted.load(SeqCst) {
                         chan.heard();
+                        chan.touch();
                         let _ = self.input.send(Cmd::Pointer(p));
                         // its number, behind it in the queue: made once the move is, and the cursor's place says so (input.rs `Told`)
                         if let PointerPacket::Move { seq: Some(n), .. } = p {
@@ -1733,6 +1875,8 @@ impl Core {
                     x.viewer = viewer;
                     x.takes_files = has(crate::wire::FILES);
                     x.resumes = has(crate::wire::RESUME);
+                    x.public_relay = has(crate::wire::PUBLIC_RELAY);
+                    x.opus = has(crate::wire::OPUS);
                 }
                 chan.phone_moves.store(moves, SeqCst);
                 if s.sessions.get(&sid).is_some_and(|x| x.deferred) {
@@ -1775,6 +1919,25 @@ impl Core {
         if !chan.greeted.load(SeqCst) || s.current != Some(sid) {
             return;
         }
+        // a touch, key or voice: the public relay's picture goes on (`keep_lease`)
+        if matches!(
+            m,
+            ToMac::Key { .. }
+                | ToMac::Mods(_)
+                | ToMac::Run(_)
+                | ToMac::Text(_)
+                | ToMac::Button { .. }
+                | ToMac::DragBegin
+                | ToMac::DictationKey { .. }
+                | ToMac::Blurt(_)
+                | ToMac::System(_)
+                | ToMac::ScreenCrop(_)
+                | ToMac::PointerTo { .. }
+                | ToMac::ShowDisplay(_)
+                | ToMac::Screen(Some(_))
+        ) {
+            chan.touch();
+        }
         let windows = self.platform == "windows";
         match m {
             ToMac::Hello { .. } | ToMac::KeyStored | ToMac::Ping(_) => {}
@@ -1784,10 +1947,14 @@ impl Core {
                     sc.stop();
                 }
                 x.screen_gen += 1;
-                let g = x.screen_gen;
                 let pinned = x.pinned.clone();
+                let lease = x.lease.clone();
                 self.keep_awake(s, true, false);
                 let Some(mut r) = r else {
+                    // at the public relay: the lease goes back at once
+                    if let Some(l) = lease {
+                        let _ = l.send(None);
+                    }
                     self.publish(s);
                     return;
                 };
@@ -1803,33 +1970,14 @@ impl Core {
                     chan.send(&ToPhone::ScreenFailed(NO_SCREEN.into()));
                     return;
                 }
-                self.keep_awake(s, true, true);
+                // at the public relay: Data Saver's picture, once the relay gives it a lease (`keep_lease`)
+                if let Some(l) = lease {
+                    crate::public::clamp_picture(&mut r);
+                    let _ = l.send(Some(r));
+                    return;
+                }
                 drop(guard);
-                // the start may wait on a portal's dialog: off the server's tasks, and only the latest request counts
-                let (me, chan) = (self.clone(), chan.clone());
-                self.rt.spawn_blocking(move || {
-                    let log: Arc<dyn Fn(Value) + Send + Sync> = {
-                        let me = me.clone();
-                        Arc::new(move |v| me.log(v))
-                    };
-                    let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log, me.displays.clone(), me.told.clone());
-                    let mut s = me.st.lock().unwrap();
-                    let still = s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.screen_gen == g);
-                    match started {
-                        Ok(sc) if still => {
-                            s.sessions.get_mut(&chan.sid).unwrap().screen = Some(Arc::new(sc));
-                        }
-                        Ok(sc) => sc.stop(),
-                        Err(why) => {
-                            me.log(json!({"event": "remote_screen", "state": "failed", "why": why}));
-                            if still {
-                                chan.send(&ToPhone::ScreenFailed(why));
-                                me.keep_awake(&mut s, true, false);
-                            }
-                        }
-                    }
-                    me.publish(&mut s);
-                });
+                self.start_screen(chan, r);
             }
             ToMac::ScreenCrop(c) => {
                 if let Some(sc) = self.screen(s, sid) {
@@ -2216,6 +2364,30 @@ impl Core {
         });
     }
 
+    /// Files asked for over the public relay (getClipboard): counted against the device's 50 MB a day there. Past it, they're
+    /// deleted if they were made for this, the device hears why (a notice) and `clipboardNone("limit")`, and → false.
+    fn public_out(&self, chan: &Arc<Chan>, device: &str, list: &[(std::path::PathBuf, bool)]) -> bool {
+        if !chan.is_public() {
+            return true;
+        }
+        let paths: Vec<std::path::PathBuf> = list.iter().map(|(p, _)| p.clone()).collect();
+        let bytes = crate::files::size_of(&paths);
+        if self.public_files.check(device, bytes, true, now_ms()) == crate::public::FilesCheck::Go {
+            self.public_files.spend(device, bytes, now_ms());
+            return true;
+        }
+        for (p, temporary) in list {
+            if *temporary {
+                let _ = std::fs::remove_dir_all(p.parent().unwrap_or(p));
+            }
+        }
+        self.log(json!({"event": "remote_public_relay", "files": "over_today"}));
+        let c = chan.clone();
+        self.post(move |a| c.send(&ToPhone::Notice(a.public_limit_notice())));
+        chan.send(&ToPhone::ClipboardNone { why: "limit".into() });
+        false
+    }
+
     /// getClipboard: this computer's clipboard, read once, to `chan`: text as `clipboard` (64 KiB at most), longer text and an image
     /// as a `clip` file, copied files as a batch (folders zipped), or why not (`clipboardNone`). The bar says it was read; the log
     /// counts it, never what it was.
@@ -2234,7 +2406,11 @@ impl Core {
         let clip = |name: &str, bytes: &[u8]| -> bool {
             match crate::files::temporary(name, bytes) {
                 Some(p) => {
-                    self.sender_for(device).add(vec![(p, true)], true);
+                    let l = vec![(p, true)];
+                    if !self.public_out(chan, device, &l) {
+                        return false;
+                    }
+                    self.sender_for(device).add(l, true);
                     true
                 }
                 None => false,
@@ -2285,6 +2461,8 @@ impl Core {
                         false
                     } else if ready.is_empty() {
                         none("empty");
+                        false
+                    } else if !self.public_out(chan, device, &ready) {
                         false
                     } else {
                         self.sender_for(device).add(ready, false);
@@ -2458,6 +2636,8 @@ impl Core {
             platform: Some(self.platform.to_string()),
             features: Some({
                 let mut f = vec![crate::wire::MOVE.to_string(), crate::wire::VIEWER.to_string()];
+                // Blurt's public relay after the go-between, and voice as Opus there (opus.rs)
+                f.extend([crate::wire::PUBLIC_RELAY, crate::wire::OPUS].map(String::from));
                 if self.downloads.lock().unwrap().is_some() {
                     f.extend([crate::wire::FILES, crate::wire::RESUME, crate::wire::CLIPBOARD].map(String::from));
                 }
@@ -2491,21 +2671,60 @@ impl Core {
                 me.post(move |a| chan.send(&ToPhone::Notice(a.new_pairing_notice(&list, &host))));
             }
             if chan.meet.load(SeqCst) {
-                // the go-between only introduces: no direct path within 8 s, and this session can't go on
+                // the go-between only introduces: no direct path within 8 s, and the session goes on at Blurt's public relay (a phone
+                // that can go there), or can't go on
                 let (me, chan) = (me.clone(), chan.clone());
                 me.clone().rt.spawn(async move {
                     tokio::time::sleep(NO_DIRECT).await;
+                    let device = {
+                        let s = me.st.lock().unwrap();
+                        let x = s.sessions.get(&chan.sid);
+                        if x.is_some_and(|x| x.udp_seen) || chan.is_closed() {
+                            return;
+                        }
+                        // a paired device (its key opens the room's handshake), that can go there
+                        x.filter(|x| x.public_relay && s.settings.go_between)
+                            .and_then(|x| x.id.clone())
+                            .filter(|id| s.devices.iter().any(|d| d.id == *id))
+                    };
+                    let offer = match device {
+                        Some(d) => me.public_relay(&chan, &d).await,
+                        None => None,
+                    };
                     let mut s = me.st.lock().unwrap();
-                    let open = s.sessions.get(&chan.sid).is_some_and(|x| x.udp_seen);
-                    if open || chan.is_closed() {
+                    if s.sessions.get(&chan.sid).is_some_and(|x| x.udp_seen) || chan.is_closed() {
+                        // the direct path opened meanwhile, or the session went: the room at the public relay isn't needed
+                        if let Some((_, sid)) = offer {
+                            if let Some(r) = s.publics.remove(&sid) {
+                                me.stop_waiting(&s, r);
+                            }
+                        }
                         return;
                     }
-                    me.log(json!({"event": "remote_go_between", "state": "no_direct"}));
+                    me.log(json!({"event": "remote_go_between", "state": "no_direct", "publicRelay": offer.is_some()}));
+                    if let Some((o, _)) = &offer {
+                        chan.send(o);
+                    }
                     chan.send(&ToPhone::NoDirect);
                     chan.close_after(Duration::from_millis(300));
-                    s.meet_problem = Some(GoBetweenProblem::NoDirect);
+                    if offer.is_none() {
+                        s.meet_problem = Some(GoBetweenProblem::NoDirect);
+                    }
                     me.publish(&mut s);
                 });
+            }
+            if chan.is_public() {
+                // the picture at the public relay waits for a lease
+                let (tx, rx) = mpsc::unbounded_channel();
+                {
+                    let mut s = me.st.lock().unwrap();
+                    s.meet_problem = None;
+                    if let Some(x) = s.sessions.get_mut(&chan.sid) {
+                        x.lease = Some(tx);
+                    }
+                    me.publish(&mut s);
+                }
+                me.rt.spawn(me.clone().keep_lease(chan.clone(), rx));
             }
             let g = {
                 let mut s = me.st.lock().unwrap();
@@ -2593,6 +2812,9 @@ impl Core {
             }
             x.chan.clone()
         };
+        if chan.relay && self.no_direct.load(SeqCst) {
+            return;
+        }
         let Some(plain) = chan.open_packet(d) else { return };
         chan.use_flow(from);
         chan.heard();
@@ -2639,6 +2861,188 @@ impl Core {
         names.sort();
         names.dedup();
         (!names.is_empty()).then(|| names.join(", "))
+    }
+
+
+    // ------------------------------------------------------------------ Blurt's public relay
+
+    /// On the go-between with no direct path: two tickets from it for a room made for this session, this computer's connection there
+    /// open (within 5 s), and → what the device hears before `noDirect`, and that connection's sid. None, on any failure on the way:
+    /// then `noDirect` alone (docs/design/remote-go-between.md §Getting in).
+    async fn public_relay(self: &Arc<Self>, meet: &Arc<Chan>, device: &str) -> Option<(ToPhone, u64)> {
+        use crate::public::{self, Tickets};
+        let mut texts = meet.take_texts()?;
+        let room = public::new_room();
+        meet.text(public::ticket_ask(&room));
+        let until = tokio::time::Instant::now() + public::TICKET_WAIT;
+        let tickets = loop {
+            match tokio::time::timeout_at(until, texts.recv()).await {
+                Ok(Some(t)) => match Tickets::parse(&t) {
+                    Some(t) => break t,
+                    None => continue,
+                },
+                _ => {
+                    self.log(json!({"event": "remote_public_relay", "state": "no_tickets"}));
+                    return None;
+                }
+            }
+        };
+        let (address, mac, phone) = match tickets {
+            Tickets::Given { relay, room: r, mac, phone } if r == room => (relay, mac, phone),
+            Tickets::Given { .. } => return None,
+            Tickets::Refused(why) => {
+                self.log(json!({"event": "remote_public_relay", "state": "refused", "why": why}));
+                return None;
+            }
+        };
+        if !public::allowed(&address, self.cfg.public_relay.as_deref()) {
+            self.log(json!({"event": "remote_public_relay", "state": "not_allowed"}));
+            return None;
+        }
+        let ws = match relay::connect_ticket(&address, &room, "mac", &mac, public::GIVE_UP).await {
+            Ok(ws) => ws,
+            Err(e) => {
+                self.log(json!({"event": "remote_public_relay", "state": "failed", "why": e.to_string()}));
+                return None;
+            }
+        };
+        let udp = self.udp.lock().unwrap().clone()?;
+        let sid = self.next_sid.fetch_add(1, SeqCst);
+        let stop = Arc::new(tokio::sync::Notify::new());
+        let (chan, rx) = Chan::new(sid, true, true, udp, self.rt.handle().clone());
+        chan.public.store(true, SeqCst);
+        *chan.only.lock().unwrap() = Some(device.to_string());
+        self.st.lock().unwrap().publics.insert(sid, RelayConn { sid, stop: stop.clone() });
+        self.log(json!({"event": "remote_public_relay", "state": "waiting"}));
+        let (sink, stream) = ws.split();
+        self.rt.spawn(write_ws(sink, rx, chan.frames_out.clone()));
+        let c2 = chan.clone();
+        self.rt.spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = stop.notified() => return c2.close(),
+                    _ = tokio::time::sleep(Duration::from_secs(5)) => if c2.is_closed() { return },
+                }
+            }
+        });
+        self.rt.spawn(self.clone().read_ws(stream, chan, device.to_string()));
+        Some((ToPhone::PublicRelay { address, room, ticket: phone }, sid))
+    }
+
+    /// A session at the public relay: the picture's lease (docs/design/remote-go-between.md §The picture: leases). Asked for before the
+    /// picture starts; refused, the device hears `screenFailed("busy")` and it's asked again every 30 s while the picture is wanted;
+    /// renewed every 30 s while it's on; given back when it stops, when the session ends, and after 5 min with no touch, key or voice
+    /// (then the picture stops: `screenFailed("stopped")`). `want`: the latest request (None: the picture off); closed with the session.
+    async fn keep_lease(self: Arc<Self>, chan: Arc<Chan>, mut want_rx: mpsc::UnboundedReceiver<Option<crate::wire::ScreenRequest>>) {
+        use crate::public::{self, LeaseAnswer};
+        let Some(mut texts) = chan.take_texts() else { return };
+        let mut want: Option<crate::wire::ScreenRequest> = None;
+        let mut held = false;
+        // an ask out and not answered yet, since when
+        let mut asking: Option<Instant> = None;
+        let mut next_ask = Instant::now();
+        let mut renew_at = Instant::now();
+        let mut tick = tokio::time::interval(Duration::from_millis(500));
+        let ask = |asking: &mut Option<Instant>| {
+            chan.text(public::lease(true));
+            *asking = Some(Instant::now());
+        };
+        loop {
+            tokio::select! {
+                w = want_rx.recv() => match w {
+                    None => break,
+                    Some(None) => {
+                        want = None;
+                        if held {
+                            held = false;
+                            chan.text(public::lease(false));
+                            self.log(json!({"event": "remote_public_relay", "lease": "given_back"}));
+                        }
+                    }
+                    Some(Some(r)) => {
+                        want = Some(r.clone());
+                        if held {
+                            self.start_screen(&chan, r);
+                        } else if asking.is_none() {
+                            ask(&mut asking);
+                        }
+                    }
+                },
+                t = texts.recv() => {
+                    let Some(t) = t else { break };
+                    match LeaseAnswer::parse(&t) {
+                        Some(LeaseAnswer::Granted { .. }) => {
+                            asking = None;
+                            renew_at = Instant::now() + public::RENEW_EVERY;
+                            if !held {
+                                held = true;
+                                self.log(json!({"event": "remote_public_relay", "lease": "granted"}));
+                                match want.clone() {
+                                    Some(r) => self.start_screen(&chan, r),
+                                    None => {
+                                        held = false;
+                                        chan.text(public::lease(false));
+                                    }
+                                }
+                            }
+                        }
+                        Some(LeaseAnswer::Refused(why)) => {
+                            asking = None;
+                            self.log(json!({"event": "remote_public_relay", "lease": "refused", "why": why}));
+                            if std::mem::take(&mut held) {
+                                self.stop_screen(&chan); // taken back
+                            }
+                            if want.is_some() {
+                                chan.send(&ToPhone::ScreenFailed(public::BUSY.into()));
+                                next_ask = Instant::now() + public::ASK_AGAIN;
+                            }
+                        }
+                        None => {}
+                    }
+                }
+                _ = tick.tick() => {
+                    if chan.is_closed() {
+                        break;
+                    }
+                    let now = Instant::now();
+                    if (held || want.is_some()) && chan.untouched() >= public::UNTOUCHED {
+                        // nobody is using it: the picture stops and the lease goes
+                        self.log(json!({"event": "remote_public_relay", "lease": "untouched"}));
+                        want = None;
+                        asking = None;
+                        self.stop_screen(&chan);
+                        chan.send(&ToPhone::ScreenFailed(public::STOPPED.into()));
+                        if std::mem::take(&mut held) {
+                            chan.text(public::lease(false));
+                        }
+                        continue;
+                    }
+                    if asking.is_some_and(|a| now.duration_since(a) > Duration::from_secs(10)) {
+                        // no answer: as a refusal
+                        asking = None;
+                        if want.is_some() && !held {
+                            chan.send(&ToPhone::ScreenFailed(public::BUSY.into()));
+                            next_ask = now + public::ASK_AGAIN;
+                        }
+                    }
+                    if want.is_some() && !held && asking.is_none() && now >= next_ask {
+                        ask(&mut asking);
+                    }
+                    if held && now >= renew_at {
+                        renew_at = now + public::RENEW_EVERY;
+                        if want.is_some() || self.screen_on(&chan) {
+                            chan.text(public::lease(true));
+                        } else {
+                            held = false;
+                            chan.text(public::lease(false));
+                        }
+                    }
+                }
+            }
+        }
+        if held {
+            chan.text(public::lease(false));
+        }
     }
 
     // ------------------------------------------------------------------ the relay
@@ -2962,6 +3366,8 @@ impl Core {
                         }
                     }
                     Some(Some(Ok(Message::Pong(_)))) => pong_owed = false,
+                    // the relay itself speaking (tickets, leases: public.rs), never the phone
+                    Some(Some(Ok(Message::Text(t)))) => if t.len() <= 1024 { chan.heard_text(t.to_string()) },
                     Some(Some(Ok(Message::Close(f)))) => {
                         *chan.relay_close.lock().unwrap() = f.map(|f| u16::from(f.code));
                         // moved both ways: the session carries on over UDP
@@ -3042,6 +3448,8 @@ fn shown(s: &State, x: &Sess) -> String {
 fn route_of(chan: &Chan) -> &'static str {
     if !chan.relay {
         chan.overlay.lock().unwrap().unwrap_or("local")
+    } else if chan.is_public() && !chan.has_datagrams() {
+        "publicRelay"
     } else if chan.meet.load(SeqCst) {
         if chan.moved_out() {
             "direct"
@@ -3117,7 +3525,7 @@ async fn write_tcp(mut w: tokio::net::tcp::OwnedWriteHalf, mut rx: mpsc::Unbound
                     break;
                 }
             }
-            Out::Ping => {}
+            Out::Ping | Out::Text(_) => {}
             Out::Last(b) => {
                 let _ = w.write_all(&b).await;
                 break;
@@ -3146,6 +3554,11 @@ async fn write_ws(
             }
             Out::Ping => {
                 let _ = w.send(Message::Ping(Vec::new().into())).await;
+            }
+            Out::Text(t) => {
+                if w.send(Message::Text(t.into())).await.is_err() {
+                    break;
+                }
             }
             Out::Last(b) => {
                 let _ = w.send(Message::Binary(b.into())).await;

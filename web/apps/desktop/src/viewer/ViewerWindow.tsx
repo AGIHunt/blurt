@@ -58,7 +58,7 @@ type Message =
 const HINT_MS = 3000;
 const QUALITIES: Quality[] = ['auto', 'sharp', 'balanced', 'saver'];
 /** screenFailed's codes that have their own line; any other reason gets the general one */
-const SCREEN_FAILED: Record<string, string> = { off: 'viewer.screen_off', permission: 'viewer.screen_permission', one_display: 'viewer.one_display' };
+const SCREEN_FAILED: Record<string, string> = { off: 'viewer.screen_off', permission: 'viewer.screen_permission', one_display: 'viewer.one_display', busy: 'viewer.screen_busy' };
 
 /** The window's channel: Tauri's in the app; in a browser, a stand-in the mock talks into (mock.ts). */
 function channel(on: (m: Message | ArrayBuffer) => void): unknown {
@@ -192,6 +192,8 @@ export function ViewerWindow({ id }: { id: string }) {
         break;
       case 'view':
         setShown(m.display);
+        // the picture came: after "busy" on the public connection service it comes by itself once there's room
+        setFailed(null);
         break;
       case 'cursor':
         setCursor({ x: m.x, y: m.y });
@@ -522,7 +524,8 @@ export function ViewerWindow({ id }: { id: string }) {
             {cover.kind === 'removed' && (
               <button className="primary" onClick={() => void invoke('computers_add_again').catch(() => {})} data-testid="viewer-add-again">{t('computers.add_again')}</button>
             )}
-            {cover.kind === 'screenFailed' && failed !== 'off' && (
+            {/* busy: the picture comes by itself once there's room */}
+            {cover.kind === 'screenFailed' && failed !== 'off' && failed !== 'busy' && (
               <button onClick={() => { setFailed(null); setScreenTry((n) => n + 1); }}>{t('viewer.retry')}</button>
             )}
           </div>

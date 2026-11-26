@@ -9,7 +9,8 @@
 //!    paired device or shows a code.
 //!  • `pair`: with a pairing link (`blurtremote://pair?…`, from the host's Add Device) or with a computer found nearby (no code:
 //!    `pairing::nearby_key`, which a host takes only over its own TCP port). Either way the host asks its owner for a yes and both
-//!    ends show the same six digits.
+//!    ends show the same six digits; the host's key is taken only once this side's user said they're the same too (Pair:
+//!    join_gate.rs), since anyone holding the code could stand in for the computer.
 //!  • `Session`: one window's connection, kept up while the window is open (connecting again after a drop), with the picture's
 //!    receiver (repair.rs) and its reports and pings, frames handed on as Annex B with the WebCodecs codec string, and whatever the
 //!    host says as `Event`s.
@@ -23,6 +24,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+use crate::join_gate::JoinGate;
 use crate::packets::{unpack_payload, PointerPacket, VideoPacket};
 use crate::pairing::Pairing;
 use crate::phone::{Event as PhoneEvent, Options, Phone};
@@ -293,6 +295,9 @@ pub enum Route {
     Direct,
     Relay,
     GoBetween,
+    /// Blurt's public relay, after the go-between found no direct path (public.rs). The words are the go-between's: the public
+    /// connection service
+    PublicRelay,
 }
 
 /// The first TCP connection to open, of these, each given `each`.
@@ -360,6 +365,8 @@ fn options(device: &str, go_between: bool) -> Options {
             // files from the host (Get Copied Items), and a part kept for a resume, both ways
             crate::wire::FILES.to_string(),
             crate::wire::RESUME.to_string(),
+            // on at Blurt's public relay when the direct path doesn't open (it sends no voice, so no `opus`)
+            crate::wire::PUBLIC_RELAY.to_string(),
         ]),
         go_between,
         device: device.to_string(),
@@ -483,8 +490,30 @@ pub enum PairError {
 pub enum PairStep {
     /// nothing has answered for a while; still trying
     Unreachable,
-    /// the host asks its owner now, with these six digits (whatever was said before: they take its place)
+    /// the host asks its owner now, with these six digits (whatever was said before: they take its place); this side's user
+    /// checks them and says they're the same (Pair: `confirm`)
     Asking(String),
+    /// this side's user said the digits are the same: the host's key is taken once its owner allows (at once, when that came first)
+    Confirmed,
+}
+
+/// This side's user's yes to the digits (Pair), for `pair_steps`: `confirm()` from the UI. One said before the host asks counts for
+/// nothing (join_gate.rs).
+#[derive(Clone)]
+pub struct Confirm(mpsc::UnboundedSender<()>);
+
+/// What `pair_steps` listens on for `Confirm`.
+pub struct Confirms(mpsc::UnboundedReceiver<()>);
+
+impl Confirm {
+    pub fn new() -> (Confirm, Confirms) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Confirm(tx), Confirms(rx))
+    }
+
+    pub fn confirm(&self) {
+        let _ = self.0.send(());
+    }
 }
 
 /// How long a host asks its owner about a new device before it takes the silence as a no (server.rs `PAIRING_LIFE`): a close
@@ -494,17 +523,20 @@ pub const QUESTION_LIFE: Duration = Duration::from_secs(120);
 const UNREACHABLE_AFTER: Duration = Duration::from_secs(8);
 
 /// Pairs with a computer: connects, shows the six digits (`digits`) while the host asks its owner, and once the owner says yes
-/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests
-/// only.
+/// and this side's user said the digits are the same (`digits` → true, at once; false: not, and it ends unpaired) keeps the new
+/// key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests only.
 pub async fn pair(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
-    digits: impl Fn(&str),
+    digits: impl Fn(&str) -> bool,
 ) -> Result<(Computer, Vec<u8>), PairError> {
-    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, |s| {
+    let (yes, confirms) = Confirm::new();
+    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, confirms, |s| {
         if let PairStep::Asking(d) = s {
-            digits(&d)
+            if digits(&d) {
+                yes.confirm()
+            }
         }
     })
     .await
@@ -512,15 +544,19 @@ pub async fn pair(
 
 /// `pair`, for the Add Computer panel. `keep_trying`: while nothing answers it says `Unreachable` and goes on trying, so if the
 /// host turns up and asks, its digits replace that (the caller ends it by dropping or aborting the future). `question_life`: the
-/// host's (tests shorten it).
+/// host's (tests shorten it). `confirms`: this side's user's Pair; the host's key is taken only after the question and that, in
+/// either order (join_gate.rs). Cancel is the caller dropping the future, as for a no.
+#[allow(clippy::too_many_arguments)]
 pub async fn pair_steps(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
     question_life: Duration,
     keep_trying: bool,
+    confirms: Confirms,
     step: impl Fn(PairStep),
 ) -> Result<(Computer, Vec<u8>), PairError> {
+    let mut confirms = Some(confirms.0);
     let (host_id, name, device_id, key, port, addresses, nearby, relay) = match with {
         PairWith::Link(p) => (
             p.host_id,
@@ -576,16 +612,42 @@ pub async fn pair_steps(
     let patience = question_life + question_life / 12;
     let mut asked: Option<tokio::time::Instant> = None;
     let mut deadline = tokio::time::Instant::now() + patience;
+    // one connection: the gate isn't reset here (a new connection is a new pairing, and a new gate)
+    let mut gate = JoinGate::new();
     let new_key = loop {
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
-        match phone.next(left.min(Duration::from_secs(1))).await {
+        let next = tokio::select! {
+            e = phone.next(left.min(Duration::from_secs(1))) => e,
+            c = async { confirms.as_mut().unwrap().recv().await }, if confirms.is_some() => {
+                match c {
+                    // a yes before the question counts for nothing
+                    Some(()) if gate.can_confirm() => {
+                        let held = gate.confirm();
+                        step(PairStep::Confirmed);
+                        if let Some(k) = held {
+                            break k;
+                        }
+                    }
+                    Some(()) => {}
+                    None => confirms = None,
+                }
+                continue;
+            }
+        };
+        match next {
             Some(PhoneEvent::Control(ToPhone::PairingWaits)) => {
                 let now = tokio::time::Instant::now();
                 asked = Some(now);
                 deadline = now + patience;
+                gate.pairing_waits();
                 step(PairStep::Asking(phone.check.clone()));
             }
-            Some(PhoneEvent::Control(ToPhone::NewKey(k))) => break k,
+            // taken only after the question and this side's yes; held till that yes; dropped before the question
+            Some(PhoneEvent::Control(ToPhone::NewKey(k))) => {
+                if let Some(k) = gate.new_key(k) {
+                    break k;
+                }
+            }
             Some(PhoneEvent::Closed) => {
                 return Err(match asked {
                     None => PairError::Spent,
@@ -889,6 +951,8 @@ pub struct Target {
     pub nearby: Vec<IpAddr>,
     /// tests: the public connection service at another address
     pub go_between_at: Option<String>,
+    /// tests and test builds: Blurt's public relay at another address too (`BLURT_PUBLIC_RELAY`)
+    pub public_relay_at: Option<String>,
 }
 
 /// One window's connection. Dropping it closes it.
@@ -1000,8 +1064,28 @@ async fn run(
                 if route == Route::Relay {
                     relay_fails = 0;
                 }
-                let end = live(phone, route, &mut rx, &mut want, &on, &learned, &mut t, &files_ready).await;
+                let mut end = live(phone, route, &mut rx, &mut want, &on, &learned, &mut t, &files_ready).await;
                 files_ready.store(false, std::sync::atomic::Ordering::SeqCst);
+                // no direct path, and the host made a room at Blurt's public relay: on there, once, within 5 s; else the no-direct line
+                // (the next try starts at the go-between again)
+                if let End::NoDirect(Some((address, room, ticket))) = end {
+                    let got = tokio::select! {
+                        p = Phone::connect_public(&address, &room, &ticket, &c.device_id, &t.key, options(&t.device, false)) => p,
+                        _ = closed(&mut rx, &mut want) => return,
+                    };
+                    end = match got {
+                        Ok(phone) => {
+                            let e = live(phone, Route::PublicRelay, &mut rx, &mut want, &on, &learned, &mut t, &files_ready).await;
+                            files_ready.store(false, std::sync::atomic::Ordering::SeqCst);
+                            match e {
+                                // nothing more to try from there
+                                End::NoDirect(_) => End::NoDirect(None),
+                                e => e,
+                            }
+                        }
+                        Err(_) => End::NoDirect(None),
+                    };
+                }
                 match end {
                     End::Closed => return,
                     End::Removed => {
@@ -1025,7 +1109,7 @@ async fn run(
                         });
                         return;
                     }
-                    End::NoDirect => {
+                    End::NoDirect(_) => {
                         on(Event::Link {
                             link: Link::NoDirect,
                             route: None,
@@ -1092,11 +1176,17 @@ enum End {
     Removed,
     Replaced,
     Ended,
-    NoDirect,
+    /// with the host's `publicRelay` (address, room, ticket) when it came just before and names an allowed relay
+    NoDirect(Option<(String, String, String)>),
 }
 
 pub fn request(w: &Want, away: bool) -> ScreenRequest {
-    let (width, height, bitrate, fps) = plan(w.quality, away, w.window);
+    request_on(w, away, false)
+}
+
+/// `public`: on Blurt's public relay, where the picture is Data Saver's whatever the window chose (the host clamps it there too).
+pub fn request_on(w: &Want, away: bool, public: bool) -> ScreenRequest {
+    let (width, height, bitrate, fps) = plan(if public { Quality::Saver } else { w.quality }, away, w.window);
     ScreenRequest {
         target: "display".into(),
         crop: crate::wire::Crop::WHOLE,
@@ -1154,6 +1244,7 @@ async fn live(
     let quiet_after = if tcp { 6.0 } else { 10.0 };
     loop {
         let away = !matches!(route, Route::Local);
+        let public = route == Route::PublicRelay;
         tokio::select! {
             c = rx.recv() => match c {
                 None | Some(Command::Close) => {
@@ -1166,7 +1257,7 @@ async fn live(
                     *want = w;
                     if info.is_some() {
                         asked = want.is_some();
-                        phone.send(&ToMac::Screen(want.as_ref().map(|w| request(w, away)))).await;
+                        phone.send(&ToMac::Screen(want.as_ref().map(|w| request_on(w, away, public)))).await;
                     }
                 }
                 Some(Command::DecodeFailed) => {
@@ -1207,7 +1298,7 @@ async fn live(
                         info = Some(i);
                         if let Some(w) = want.as_ref() {
                             asked = true;
-                            phone.send(&ToMac::Screen(Some(request(w, away)))).await;
+                            phone.send(&ToMac::Screen(Some(request_on(w, away, public)))).await;
                         }
                     }
                     ToPhone::UdpOk if tcp => udp_ok = true,
@@ -1224,6 +1315,8 @@ async fn live(
                     }
                     ToPhone::ScreenView { width, height, codec: c, display, features } => {
                         let has = |n: &str| features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
+                        // the picture came by itself (a lease at the public relay freed up after "busy"): its reports go again
+                        asked = want.is_some();
                         pic.receiver = Receiver::new(has(crate::repair::NACK), has(crate::repair::LTR), now());
                         pic.receiver.rtt = rtt;
                         pic.family = c.unwrap_or_else(|| "hevc".into());
@@ -1252,7 +1345,7 @@ async fn live(
                     ToPhone::Removed => return End::Removed,
                     ToPhone::Replaced => return End::Replaced,
                     ToPhone::Ended => return End::Ended,
-                    ToPhone::NoDirect => return End::NoDirect,
+                    ToPhone::NoDirect => return End::NoDirect(phone.public_offer(t.public_relay_at.as_deref())),
                     _ => {}
                 },
             }

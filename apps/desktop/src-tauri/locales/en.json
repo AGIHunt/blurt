@@ -96,5 +96,10 @@
   "remote.notice.not_pasted": "Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard.",
   "remote.notice.new_pairing": "New device paired with {host}: {devices}. If that wasn’t you or your family, remove it on that computer.",
   "remote.files.received": "{count} files from {from}",
-  "remote.file.received": "File from {from}"
+  "remote.file.received": "File from {from}",
+  "remote.public.ask": "Send {size} over the public connection service?",
+  "remote.public.limit": "Files over the public connection service are limited to 50 MB a day.",
+  "remote.public.not_sent": "Not sent: files over the public connection service are limited to 50 MB a day.",
+  "remote.public.send": "Send",
+  "remote.public.cancel": "Cancel"
 }

@@ -121,7 +121,7 @@ fn host(dir: &std::path::Path, input: Lines, app: Lines) -> Host {
 
 fn host_answering(dir: &std::path::Path, input: Lines, app: Lines, answer: Option<bool>) -> Host {
     Host::start(
-        HostConfig { dir: dir.into(), name: "Studio PC".into(), version: "1.0.15".into(), test_answer: answer, port: 0, go_between: Some(String::new()) },
+        HostConfig { dir: dir.into(), name: "Studio PC".into(), version: "1.0.15".into(), test_answer: answer, port: 0, go_between: Some(String::new()), public_relay: None },
         Box::new(TestBackend(TestInput(input))),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(TestApp(app)),

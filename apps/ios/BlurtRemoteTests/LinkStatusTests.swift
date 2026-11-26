@@ -82,8 +82,11 @@ final class LinkStatusTests: XCTestCase {
     }
 
     func testAPairingUnderWayIsSaidOverTheRest() {
+        // the digits first: this side says they're the same (anyone with a photo of the code can answer as the computer), then the computer
         for p in [LinkStatus.Phase.unpaired, .connecting, .unreachable, .connected] {
-            XCTAssertEqual(banner(p) { $0.waiting = true }, StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer), "\(p)")
+            XCTAssertEqual(banner(p) { $0.waiting = true },
+                           StatusBanner(mark: .code, title: .checkDigits, detail: .pairIfSame, action: .pair, second: .cancelPairing), "\(p)")
+            XCTAssertEqual(banner(p) { $0.waiting = true; $0.digitsConfirmed = true }, StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer), "\(p)")
         }
         // one that didn't take: why, and never a dead end: a new code, and what there was to do about the computer gone back to
         // until it's read: OK
@@ -96,7 +99,7 @@ final class LinkStatusTests: XCTestCase {
                        StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .retry, second: .scan))
         // once the computer asks, its digits take the failure's place, so they can be compared
         XCTAssertEqual(banner(.unreachable) { $0.pairFailed = true; $0.pairRetry = true; $0.waiting = true },
-                       StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer))
+                       StatusBanner(mark: .code, title: .checkDigits, detail: .pairIfSame, action: .pair, second: .cancelPairing))
     }
 
     /// Why a pairing ended is read from when, as the Mac viewer does: refused before the question, a no while it was up, or nobody
@@ -149,6 +152,20 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(banner(.connected) { $0.canControl = false; $0.screenError = "off" }?.detail, .screenIsOff)
         // not connected, neither matters
         XCTAssertEqual(banner(.connecting) { $0.canControl = false; $0.screenError = "off" }, StatusBanner(mark: .busy, title: .connecting))
+    }
+
+    /// The public relay has no picture lease free: the card under "Can't show the screen" says so and offers nothing (the picture comes by
+    /// itself), even for a picture that came on by itself; it goes when the picture comes (Link clears the error at screenView).
+    func testThePublicRelayBusyCardSaysTheRestWorksAndHasNoButton() {
+        let busy = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .publicBusy)
+        XCTAssertEqual(banner(.connected) { $0.screenError = RemotePublicRelay.busy }, busy)
+        XCTAssertEqual(banner(.connected) { $0.screenError = "busy"; $0.screenAsked = false; $0.showing = true }, busy)
+        XCTAssertNil(banner(.connected) { $0.screenError = nil; $0.showing = true })
+        // not connected: the connection's card, not the picture's
+        XCTAssertEqual(banner(.connecting) { $0.screenError = "busy" }, StatusBanner(mark: .busy, title: .connecting))
+        XCTAssertEqual(Words.status(.cantShowScreen, host: .linux, name: "PC"), "Can’t show the screen")
+        XCTAssertEqual(Words.status(.publicBusy, host: .mac, name: "Studio"),
+                       "The public connection service is busy, so there’s no picture for now. The pointer and keys still work.")
     }
 
     func testEveryStateButConnectedSaysSomething() {
@@ -212,8 +229,9 @@ final class LinkStatusTests: XCTestCase {
 
     private static let lines: [StatusBanner.Line] = [.connecting, .reconnecting, .cantReach, .checkNetwork, .checkAwake, .needsPairing, .forgotten, .otherPhone,
                                                      .connectingDirect, .noNetwork, .turnOnNetwork, .asleepSince, .lastOnline, .localNetworkOff, .endedThere,
-                                                     .pictureStopped, .locked, .unlockFirst, .pairFirst, .whereTheCodeIs, .waiting, .allowOnComputer, .pairingFailed,
-                                                     .whyPairingFailed, .cantControl, .howToAllowControl, .cantShowScreen, .allowScreen, .screenIsOff]
+                                                     .pictureStopped, .locked, .unlockFirst, .pairFirst, .whereTheCodeIs, .waiting, .allowOnComputer, .checkDigits, .pairIfSame, .pairingFailed,
+                                                     .whyPairingFailed, .cantControl, .howToAllowControl, .cantShowScreen, .allowScreen, .screenIsOff,
+                                                     .publicBusy]
 
     func testEveryLineHasWordsForEveryKindOfComputer() {
         for h in RemoteHost.allCases {
@@ -226,9 +244,13 @@ final class LinkStatusTests: XCTestCase {
             // no name yet: still a sentence
             XCTAssertFalse(Words.status(.cantReach, host: h, name: nil).isEmpty)
         }
-        for a in [StatusBanner.Action.retry, .scan, .another, .takeOver, .reconnect, .dismiss, .openSettings, .showScreen] { XCTAssertFalse(Words.status(a).isEmpty) }
+        for a in [StatusBanner.Action.retry, .scan, .another, .takeOver, .reconnect, .dismiss, .openSettings, .showScreen, .pair, .cancelPairing] {
+            XCTAssertFalse(Words.status(a).isEmpty)
+        }
         XCTAssertTrue(Words.status(.connecting, host: .mac, name: "Studio").contains("Studio"))
-        XCTAssertTrue(Words.status(.allowOnComputer, host: .mac, name: "Studio", check: "1234").contains("1234"))
+        // the digits are on the card the user compares and says yes to; the computer's yes is asked for after
+        XCTAssertTrue(Words.status(.pairIfSame, host: .mac, name: "Studio", check: "123456").contains("123456"))
+        XCTAssertTrue(Words.status(.allowOnComputer, host: .mac, name: "Studio", check: "123456").contains("Studio"))
     }
 
     /// The catalog itself: what the card says is there in Chinese too.
@@ -289,7 +311,8 @@ final class LinkStatusTests: XCTestCase {
             ("unreachable-relay-others", LinkStatus(phase: .unreachable, hasRelay: true, otherComputers: true), .windows),
             ("forgotten", LinkStatus(phase: .forgotten), .mac),
             ("replaced", LinkStatus(phase: .replaced), .mac),
-            ("waiting", LinkStatus(phase: .unpaired, waiting: true), .mac),
+            ("check-digits", LinkStatus(phase: .unpaired, waiting: true), .mac),
+            ("waiting", LinkStatus(phase: .unpaired, waiting: true, digitsConfirmed: true), .mac),
             ("pair-failed", LinkStatus(phase: .unpaired, pairFailed: true), .mac),
             ("pair-unreachable", LinkStatus(phase: .unreachable, pairFailed: true, pairRetry: true), .mac),
             ("cant-control-mac", LinkStatus(phase: .connected, canControl: false), .mac),

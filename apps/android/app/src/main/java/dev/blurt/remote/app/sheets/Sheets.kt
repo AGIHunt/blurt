@@ -222,7 +222,8 @@ private fun SendUnsent(words: String) {
     )
 }
 
-/** More than 100 MB over mobile data, either way: asked first (remote-files.md §Rules). */
+/** More than 100 MB over mobile data, either way, or a send over 20 MB on the public relay: asked first (remote-files.md §Rules,
+ *  remote-go-between.md §What the devices do on this path). */
 @Composable
 private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
     val ctx = LocalContext.current
@@ -230,7 +231,9 @@ private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
     val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes).replace(' ', '\u00A0')
     AskDialog(
         onDismiss = a.no,
-        title = stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size),
+        title = stringResource(if (a.publicRelay) R.string.public_send_q else if (a.incoming) R.string.data_get_q else R.string.data_send_q, size),
+        // on the public relay the day's limit sits under the question, so the cost is in view
+        text = if (a.publicRelay) ({ Text(stringResource(R.string.public_files_limit)) }) else null,
         confirm = { TextButton(a.yes) { Text(stringResource(if (a.incoming) R.string.data_get else R.string.send)) } },
         dismiss = { TextButton(a.no) { Text(stringResource(R.string.cancel)) } },
     )

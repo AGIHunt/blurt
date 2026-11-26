@@ -12,6 +12,9 @@
 // BUDGET=1 applies the limits of Blurt's public go-between (src/meet.js, docs/design/remote-go-between.md), so it can be tested end to end
 // without Cloudflare: per connection, 16 KiB a message, 96 KiB in all and 24 KiB in any 5 s, then both ends get 4003; a phone stays
 // at most 12 h. `GET /` then answers "blurt go-between".
+//
+// With BUDGET=1 and TICKET_SECRET set it also mints tickets for the public relay (public.js) as src/meet.js does (src/ticket.js has
+// the format), naming PUBLIC_RELAY (default wss://relay.blurt.work) as the place to go: end-to-end tests of the whole path, offline.
 "use strict";
 const http = require("http");
 const { WebSocketServer, WebSocket } = require("ws");
@@ -46,7 +49,41 @@ const OVER_BUDGET = 4003;  // BUDGET=1: "the go-between can't carry this", to bo
 const ASLEEP = 4010;       // from a Mac: it's going to sleep (a peek then says since when)
 
 const BUDGET = process.env.BUDGET === "1";
+const TICKET_SECRET = process.env.TICKET_SECRET || "";
+const PUBLIC_RELAY = process.env.PUBLIC_RELAY || "wss://relay.blurt.work";
+const b64u = (b) => b.toString("base64url");
+const hmac = (text, n) => b64u(crypto.createHmac("sha256", TICKET_SECRET).update(text).digest().subarray(0, n));
+// as src/ticket.js `mint`
+function mint(pair, asked, now) {
+  const room = asked && asked.ticket && asked.ticket.room;
+  if (!TICKET_SECRET) return { ticket: { error: "off" } };
+  if (typeof room !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(room)) return { ticket: { error: "bad" } };
+  const exp = Math.floor(now / 1000) + 60;
+  const tag = hmac(`blurt-pair-day|${pair}|${Math.floor(now / 86400e3)}`, 9);
+  const t = (role) => `${exp}.${tag}.${hmac(`blurt-ticket-1|${room}|${role}|${exp}|${tag}`, 16)}`;
+  return { ticket: { relay: PUBLIC_RELAY, room, mac: t("mac"), phone: t("phone") } };
+}
 const KiB = 1024;
+// tickets per client IP a minute, across rooms (src/meet.js's TICKETS rate limiter; an IPv6 /64 counts as one)
+const TICKETS_PER_IP = Number(process.env.TICKETS_PER_IP || 6);
+const ticketsBy = new Map();   // client → times of its last tickets
+function clientKey(ip) {
+  ip = String(ip || "").split("%")[0].toLowerCase();
+  if (!ip.includes(":") || /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(ip)) return ip.replace(/^::ffff:/, "");
+  const [a, b] = ip.split("::");
+  const head = a ? a.split(":") : [], tail = b === undefined ? [] : b ? b.split(":") : [];
+  const g = b === undefined ? head : [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail];
+  return g.slice(0, 4).map((h) => (parseInt(h, 16) || 0).toString(16)).join(":") + "::/64";
+}
+function perIP(from, now) {
+  const key = clientKey(from);
+  const recent = (ticketsBy.get(key) || []).filter((t) => t > now - 60000);
+  if (recent.length >= TICKETS_PER_IP) { ticketsBy.set(key, recent); return false; }
+  recent.push(now);
+  ticketsBy.set(key, recent);
+  return true;
+}
+setInterval(() => { const t = Date.now() - 60000; for (const [k, ts] of ticketsBy) if (!ts.some((x) => x > t)) ticketsBy.delete(k); }, 60000).unref();
 const MAX_TOTAL = 96 * KiB, MAX_WINDOW = 24 * KiB, BUDGET_MESSAGE = 16 * KiB;
 const WINDOW_MS = 5000, SLOT_MS = 250;   // the window is kept as 250 ms slots, so it looks back 5 to 5.25 s, as in src/meet.js
 const PHONE_MAX_MS = 12 * 3600 * 1000;
@@ -101,10 +138,10 @@ server.on("upgrade", (req, socket, head) => {
     if (n > 0) perAddress.set(from, n); else perAddress.delete(from);
   });
   socket.setNoDelay(true);
-  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[0], m[1]));
+  wss.handleUpgrade(req, socket, head, (ws) => join(ws, m[0], m[1], from));
 });
 
-function join(ws, id, role) {
+function join(ws, id, role, from) {
   const room = rooms.get(id) || {};
   // a phone with no Mac there hears so at once, and was never in the room: its leaving says nothing to a Mac that comes in meanwhile
   if (role === "phone" && !isOpen(room.mac)) {
@@ -122,9 +159,20 @@ function join(ws, id, role) {
     budget = { total: 0, slots: [] };
     if (role === "phone") expire = setTimeout(() => overBudget(room), PHONE_MAX_MS);
   }
+  let tickets = 0;
   ws.on("message", (data, binary) => {
     if (room[role] !== ws || ws.readyState !== WebSocket.OPEN) return;   // replaced or over budget: nothing it says counts any more
     if (budget && !spend(budget, data.length, Date.now())) return overBudget(room);
+    // the computer asks for tickets to the public relay: answered here, never passed on (src/meet.js)
+    if (BUDGET && !binary && data.length <= 256 && data.toString().startsWith('{"ticket"')) {
+      let asked = null;
+      try { asked = JSON.parse(data.toString()); } catch (e) {}
+      tickets++;
+      const good = asked && asked.ticket && typeof asked.ticket.room === "string" && /^[A-Za-z0-9_-]{43}$/.test(asked.ticket.room);
+      const answer = role !== "mac" || !good ? { ticket: { error: "bad" } } : !isOpen(room.phone) ? { ticket: { error: "alone" } }
+        : tickets > 3 || !perIP(from, Date.now()) ? { ticket: { error: "limit" } } : mint(id, asked, Date.now());
+      return ws.send(JSON.stringify(answer));
+    }
     const other = room[role === "mac" ? "phone" : "mac"];
     if (!isOpen(other)) return;
     if (other.bufferedAmount > MAX_BEHIND) return other.terminate();

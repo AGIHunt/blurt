@@ -93,6 +93,13 @@ final class TalkBar: UIView {
         Haptics.grab()
         // the system's question takes the touch away: the first press asks, the next one talks
         if Prefs.shared.micOnPhone {
+            // the public relay with a computer that can't hear Opus: no microphone on this path, and why
+            if Link.shared.state == .connected, let why = Link.shared.voiceOffWords {
+                down = false
+                backgroundColor = Theme.talkRest
+                Link.shared.notice = why
+                return
+            }
             switch MicStream.shared.access {
             case .undetermined:
                 down = false

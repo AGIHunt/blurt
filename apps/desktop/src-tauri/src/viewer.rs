@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use blurt_remote::keys::{Keyboard, Sent};
 use blurt_remote::packets::{PointerPacket, ScrollPhase};
-use blurt_remote::viewer::{self, Computer, Computers, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want};
+use blurt_remote::viewer::{self, Computer, Computers, Confirm, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want};
 use blurt_remote::wire::{MouseButton, ToMac};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -38,6 +38,8 @@ struct Viewers {
     pair_gen: AtomicU64,
     /// the pairing under way: aborted by Cancel, Back or another pairing, so its connection closes and the host stops asking
     pair_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// the pairing under way's Pair: this side's yes to the digits, without which the host's key isn't taken (join_gate.rs)
+    pair_confirm: Mutex<Option<Confirm>>,
     /// how the last pairing began: Try Again begins it the same way
     pair_last: Mutex<Option<PairFrom>>,
     /// computers that refused this computer's key this run, with no session (`Link::Forgotten`): the list says Removed, the key is
@@ -64,6 +66,8 @@ struct Pairing {
     error: Option<&'static str>,
     /// begun from a pasted link (else from a computer found nearby)
     link: bool,
+    /// Pair was clicked for these digits: now the host's owner allows
+    confirmed: bool,
 }
 
 #[derive(Clone)]
@@ -134,6 +138,7 @@ pub fn start(app: &AppHandle) {
         pairing: Mutex::new(None),
         pair_gen: AtomicU64::new(0),
         pair_task: Mutex::new(None),
+        pair_confirm: Mutex::new(None),
         pair_last: Mutex::new(None),
         refused: Mutex::new(HashSet::new()),
         add_requests: AtomicU64::new(0),
@@ -295,7 +300,7 @@ pub struct NearbyUi {
 #[serde(rename_all = "camelCase")]
 pub struct PairingUi {
     name: String,
-    /// "connecting", "asking" (the digits show; the owner answers there), "failed" (an unreachable one goes on trying meanwhile:
+    /// "connecting", "asking" (the digits show; Pair here, then the owner answers there), "failed" (an unreachable one goes on trying meanwhile:
     /// if the host turns up and asks, "asking" takes its place)
     state: &'static str,
     digits: Option<String>,
@@ -303,6 +308,8 @@ pub struct PairingUi {
     error: Option<&'static str>,
     /// begun from a pasted link (else from a computer found nearby)
     link: bool,
+    /// asking, and Pair was clicked: the line says to click Allow there
+    confirmed: bool,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -362,7 +369,7 @@ fn status() -> ComputersStatus {
     let paired: Vec<&str> = list.iter().filter(|c| !c.removed && !refused.contains(&c.host_id)).map(|c| c.host_id.as_str()).collect();
     let nearby = nearby.iter().filter(|n| !paired.contains(&n.host_id.as_str())).map(|n| NearbyUi { id: n.host_id.clone(), name: n.name.clone() }).collect();
     let pairing =
-        v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error, link: p.link });
+        v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error, link: p.link, confirmed: p.confirmed });
     ComputersStatus { computers, nearby, pairing, browsing: v.browser.lock().unwrap().is_some(), add_requests: v.add_requests.load(SeqCst), paired: v.paired.load(SeqCst) }
 }
 
@@ -475,7 +482,7 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
         PairFrom::Link(l) => match blurt_remote::pairing::Pairing::parse(l.trim()) {
             Some(p) => PairWith::Link(p),
             None => {
-                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true });
+                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true, confirmed: false });
                 emit();
                 return;
             }
@@ -489,13 +496,15 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
     // one paired before (Add Again…) is named as this computer calls it
     let name = v.computers.get(host_id).and_then(|c| c.alias).unwrap_or_else(|| name.clone());
     let g = v.pair_gen.fetch_add(1, SeqCst) + 1;
-    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link });
+    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link, confirmed: false });
     emit();
     let me = blurt_remote::server::computer_name();
     let at = test_go_between();
+    let (yes, confirms) = Confirm::new();
+    *v.pair_confirm.lock().unwrap() = Some(yes);
     let task = v.rt.spawn(async move {
         // nothing answering is said, and it goes on trying: if the host turns up and asks, its digits take the place of the failure
-        let r = viewer::pair_steps(with, &me, at.as_deref(), viewer::QUESTION_LIFE, true, |s| {
+        let r = viewer::pair_steps(with, &me, at.as_deref(), viewer::QUESTION_LIFE, true, confirms, |s| {
             set_pairing(g, move |p| {
                 if let Some(p) = p {
                     match s {
@@ -503,12 +512,18 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
                             p.state = "failed";
                             p.error = Some("unreachable");
                             p.digits = None;
+                            p.confirmed = false;
                         }
                         PairStep::Asking(d) => {
+                            if p.digits.as_ref() != Some(&d) {
+                                p.confirmed = false;
+                            }
                             p.state = "asking";
                             p.error = None;
                             p.digits = Some(d);
                         }
+                        // the digits were the same here: the host's key is taken once its owner allows
+                        PairStep::Confirmed => p.confirmed = true,
                     }
                 }
             });
@@ -548,6 +563,7 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
                         p.state = "failed";
                         p.error = Some(why);
                         p.digits = None;
+                        p.confirmed = false;
                     }
                 });
             }
@@ -559,9 +575,22 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
 /// A pairing under way stops: its task ends, the connection with it, so the host's question goes too.
 fn stop_pairing(v: &Viewers) {
     v.pair_gen.fetch_add(1, SeqCst);
+    *v.pair_confirm.lock().unwrap() = None;
     if let Some(t) = v.pair_task.lock().unwrap().take() {
         t.abort();
     }
+}
+
+/// The digits step's Pair: this computer's user says the other one shows the same digits. The host's key is taken only after this
+/// (join_gate.rs); one said before the digits show counts for nothing. The step's line changes once the pairing hears it.
+#[tauri::command]
+pub fn computers_confirm_pairing() -> ComputersStatus {
+    if let Some(v) = viewers() {
+        if let Some(c) = v.pair_confirm.lock().unwrap().as_ref() {
+            c.confirm();
+        }
+    }
+    status()
 }
 
 /// Done with the pairing panel (Cancel), or Back to its first page after a failure: a pairing still under way stops.
@@ -703,6 +732,21 @@ fn urlencode(s: &str) -> String {
     s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
+/// Test builds: a local `node tools/remote-relay/public.js` let in as Blurt's public relay too.
+fn test_public_relay() -> Option<String> {
+    if crate::remote::test_build() {
+        std::env::var("BLURT_PUBLIC_RELAY").ok().filter(|s| !s.is_empty())
+    } else {
+        None
+    }
+}
+
+/// What this computer sent to each computer over the public relay today (50 MB a day: blurt_remote::public).
+fn public_files() -> &'static blurt_remote::public::DayBudget {
+    static B: OnceLock<blurt_remote::public::DayBudget> = OnceLock::new();
+    B.get_or_init(Default::default)
+}
+
 fn test_go_between() -> Option<String> {
     if crate::remote::test_build() {
         std::env::var("BLURT_TEST_GO_BETWEEN").ok().filter(|s| !s.is_empty())
@@ -786,8 +830,11 @@ fn on_event(label: String) -> viewer::OnEvent {
                         v.no_direct.lock().unwrap().remove(&host);
                         v.refused.lock().unwrap().remove(&host);
                         // the list names this path afterwards, not the relay it happens to know
-                        if route.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != route) {
-                            v.computers.update(&host, |c| c.last_route = route);
+                        // the public relay is kept as the public connection service it's part of (the same words; a file an older Blurt
+                        // reads)
+                        let kept = route.map(|r| if r == Route::PublicRelay { Route::GoBetween } else { r });
+                        if kept.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != kept) {
+                            v.computers.update(&host, |c| c.last_route = kept);
                         }
                     }
                     _ => {}
@@ -897,7 +944,7 @@ pub fn viewer_attach(window: WebviewWindow, channel: Channel<InvokeResponseBody>
     let c: Computer = v.computers.get(&host_id).ok_or("not paired")?;
     let key = v.computers.key(&host_id).ok_or("no key")?;
     let nearby = v.nearby.lock().unwrap().iter().find(|f| f.host_id == host_id).map(|f| f.addresses.clone()).unwrap_or_default();
-    let target = Target { computer: c.clone(), key, device: blurt_remote::server::computer_name(), nearby, go_between_at: test_go_between() };
+    let target = Target { computer: c.clone(), key, device: blurt_remote::server::computer_name(), nearby, go_between_at: test_go_between(), public_relay_at: test_public_relay() };
     let learned: viewer::OnLearned = {
         let id = host_id.clone();
         Arc::new(move |i| {
@@ -1149,6 +1196,25 @@ pub fn viewer_send_files(window: WebviewWindow, paths: Option<Vec<String>>) {
                 v.app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect()
             }
         };
+        // over the public relay: more than 20 MB is asked about first, and 50 MB a day goes at most
+        let (public, host) = v.windows.lock().unwrap().get(&label).map(|w| (w.route == Some(Route::PublicRelay), w.host_id.clone())).unwrap_or_default();
+        if public && !paths.is_empty() {
+            use blurt_remote::public::FilesCheck;
+            let bytes = blurt_remote::files::size_of(&paths);
+            let now = blurt_remote::store::now_ms();
+            let mut check = public_files().check(&host, bytes, false, now);
+            if let FilesCheck::Ask(n) = check {
+                if !crate::remote::public_ask(&v.app, n) {
+                    return;
+                }
+                check = public_files().check(&host, bytes, true, now);
+            }
+            if check == FilesCheck::OverToday {
+                crate::remote::public_limit(&v.app);
+                return;
+            }
+            public_files().spend(&host, bytes, now);
+        }
         // folders are zipped first: the window says so meanwhile
         if paths.iter().any(|p| p.is_dir()) {
             let ch = v.windows.lock().unwrap().get(&label).and_then(|w| w.channel.clone());
@@ -1271,7 +1337,7 @@ mod tests {
                 windows: 0,
             }],
             nearby: vec![NearbyUi { id: "n".into(), name: "Den".into() }],
-            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None, link: false }),
+            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None, link: false, confirmed: true }),
             browsing: true,
             add_requests: 0,
             paired: 1,
@@ -1282,6 +1348,7 @@ mod tests {
         assert_eq!(v["computers"][0]["lastSeen"], serde_json::Value::Null);
         assert_eq!(v["pairing"]["digits"], "123456");
         assert_eq!(v["pairing"]["link"], false);
+        assert_eq!(v["pairing"]["confirmed"], true);
         assert_eq!(v["addRequests"], 0);
         assert_eq!(v["paired"], 1);
         assert_eq!(serde_json::to_value(Options::default()).unwrap(), json!({"mapped": true, "clipboard": true}));

@@ -15,6 +15,8 @@ final class RemoteHostFiles {
         let ready: () -> Bool
         let resumes: () -> Bool
         let takesFiles: Bool
+        /// over Blurt's public relay: what goes is counted (PublicRelayFiles)
+        var publicRelay = false
     }
 
     static var downloads: URL {
@@ -92,6 +94,14 @@ final class RemoteHostFiles {
     }
 
     private func answer(_ read: Copied, takes: Bool, device: String, reply: @escaping (ToPhone) -> Void) {
+            // over the public relay, files count against the day's 50 MB, asked for or not
+            let counted = lock.withLock { sessions[device]?.publicRelay ?? false }
+            func fits(_ size: Int) -> Bool {
+                guard counted else { return true }
+                guard PublicRelayFiles.decide(size, device: device) != .over else { return false }
+                PublicRelayFiles.spend(size, device: device)
+                return true
+            }
             // a device that takes no files gets text in a message and nothing else
             switch read {
             case .image, .files: if !takes { return reply(.clipboardNone(why: "unsupported")) }
@@ -106,10 +116,12 @@ final class RemoteHostFiles {
                 if RemoteClipboard.fits(t) {
                     reply(.clipboard(t))
                 } else {
+                    guard fits(t.utf8.count) else { return reply(.clipboardNone(why: "limit")) }
                     guard let u = Self.temporary("Text.txt", Data(t.utf8)) else { return reply(.clipboardNone(why: "unsupported")) }
                     sender(device)?.add([u], clip: true, temporary: true)
                 }
             case let .image(png):
+                guard fits(png.count) else { return reply(.clipboardNone(why: "limit")) }
                 guard let u = Self.temporary("Image.png", png) else { return reply(.clipboardNone(why: "unsupported")) }
                 sender(device)?.add([u], clip: true, temporary: true)
             case let .files(urls):
@@ -121,6 +133,10 @@ final class RemoteHostFiles {
                 if let why = RemoteFiles.refusal(count: ready.count, sizes: sizes) {
                     RemoteFiles.discard(RemoteFiles.made(ready))
                     return reply(.clipboardNone(why: why))
+                }
+                guard fits(sizes.reduce(0, +)) else {
+                    RemoteFiles.discard(RemoteFiles.made(ready))
+                    return reply(.clipboardNone(why: "limit"))
                 }
                 // zips made here are deleted once over; the user's own files never are
                 sender(device)?.add(ready, made: RemoteFiles.made(ready))
@@ -236,5 +252,62 @@ final class RemoteHostFiles {
 
     private func changed(_ t: RemoteTransfer, _ device: String) {
         DispatchQueue.main.async { RemoteBanner.transfer(t, to: PhoneStatus.name(self.label(device))) }
+    }
+}
+
+/// Files over Blurt's public relay, counted here as the sender, by the host to each device and by a viewer to each computer: 50 MB a UTC
+/// day, and a send over 20 MB asked about first (docs/design/remote-go-between.md §What the devices do on this path). Kept in the config
+/// so a restart doesn't reset the day.
+enum PublicRelayFiles {
+    private static let key = "record.remote.public_files"
+    private static let lock = NSLock()
+
+    private static func load() -> RemotePublicFiles {
+        (Config.shared[key] as? String).flatMap { try? JSONDecoder().decode(RemotePublicFiles.self, from: Data($0.utf8)) } ?? RemotePublicFiles()
+    }
+
+    static func decide(_ size: Int, device: String) -> RemotePublicFiles.Decision { lock.withLock { load().decide(size, device: device) } }
+
+    static func spend(_ size: Int, device: String) {
+        lock.withLock {
+            var f = load()
+            f.spend(size, device: device)
+            if let d = try? JSONEncoder().encode(f) { Config.shared.set(key, String(decoding: d, as: UTF8.self)) }
+        }
+    }
+
+    /// "Send 35 MB over the public connection service?", with the day's limit (`overText`) under it
+    static func askText(_ size: Int) -> String { T("remote.public.files.ask", ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
+    static var overText: String { T("remote.public.files.over") }
+    /// a send past today's 50 MB, refused
+    static var refusedText: String { T("remote.public.files.not_sent") }
+
+    /// Main thread: whether these files may go over the public relay now. Past today's 50 MB it says so (`over`) and they don't; over 20 MB
+    /// it asks first, as a sheet on `window` or on its own. Counted once they're let go.
+    @MainActor static func check(_ urls: [URL], device: String, window: NSWindow?, over: (String) -> Void, go: @escaping () -> Void) {
+        let size = RemotePublicFiles.size(of: urls)
+        let send = {
+            spend(size, device: device)
+            go()
+        }
+        switch decide(size, device: device) {
+        case .over:
+            emit(["event": "remote_public_files", "state": "over", "size": size])
+            over(refusedText)
+        case .send:
+            send()
+        case .ask:
+            let a = NSAlert()
+            a.messageText = askText(size)
+            a.informativeText = overText
+            a.addButton(withTitle: T("remote.banner.send"))
+            a.addButton(withTitle: T("action.cancel"))
+            if let window {
+                a.beginSheetModal(for: window) { r in if r == .alertFirstButtonReturn { send() } }
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+                if a.runModal() == .alertFirstButtonReturn { send() }
+            }
+        }
     }
 }

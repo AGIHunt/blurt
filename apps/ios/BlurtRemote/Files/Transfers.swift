@@ -113,6 +113,11 @@ enum TransferWords {
         return [first.joined(separator: " · "), second.joined(separator: " · ")]
     }
 
+    /// the public relay's 50 MB a day, as information (under "Send 35 MB over the public connection service?")
+    static var publicDayLimit: String { String(localized: "Files over the public connection service are limited to 50 MB a day.") }
+    /// a send over the public relay past its 50 MB a day, refused
+    static var publicDayRefused: String { String(localized: "Not sent: files over the public connection service are limited to 50 MB a day.") }
+
     /// clipboardNone's reasons, for the computer `name`
     static func nothing(_ why: String, name: String) -> String {
         switch why {
@@ -120,6 +125,7 @@ enum TransferWords {
         case "locked": String(localized: "\(name) is locked.")
         case "too_large": String(localized: "A file copied on \(name) is larger than 4 GB.")
         case "too_big": String(localized: "Too many files are copied on \(name). Copy up to 1,000 at a time.")
+        case "limit": publicDayLimit
         default: String(localized: "Can’t get this kind of item from \(name).")
         }
     }
@@ -150,15 +156,30 @@ final class Transfers: ObservableObject {
         var detail: String?
     }
 
-    /// A big transfer on mobile data, asked about first.
+    /// A big transfer on mobile data, or a send over 20 MB on the public relay, asked about first.
     struct Ask: Identifiable, Equatable {
         let id = UUID()
         var incoming: Bool
         var bytes: Int
+        /// a send over Blurt's public relay, not mobile data
+        var publicRelay = false
         var title: String {
             let s = TransferWords.size(bytes)
+            if publicRelay { return String(localized: "Send \(s) over the public connection service?") }
             return incoming ? String(localized: "Get \(s) over mobile data?") : String(localized: "Send \(s) over mobile data?")
         }
+        /// under the title on the public relay: the day's limit, so the cost is in view
+        var message: String? { publicRelay ? TransferWords.publicDayLimit : nil }
+    }
+
+    /// What a send over the public relay comes to: it goes, it's asked about, or it's past today's 50 MB.
+    enum PublicSend: Equatable { case go, ask, over }
+
+    /// At most 50 MB a day (UTC) from this phone over the public relay, counted here as the sender; more than 20 MB at once asks first
+    /// (docs/design/remote-go-between.md §What the devices do on this path).
+    static func publicSend(bytes: Int, sentToday: Int) -> PublicSend {
+        if sentToday + bytes > RemotePublicRelay.filesPerDay { return .over }
+        return bytes > RemotePublicRelay.askOver ? .ask : .go
     }
 
     enum Admit { case go, hold, refuse }
@@ -185,6 +206,8 @@ final class Transfers: ObservableObject {
         var stopIn: (String) -> Void
         var again: (String) -> Void
         var active: () -> Bool
+        /// the session runs over Blurt's public relay
+        var publicRelay: () -> Bool = { false }
 
         static let app = Env(
             peer: { Link.shared.current.map { ($0.id, $0.title) } },
@@ -200,7 +223,8 @@ final class Transfers: ObservableObject {
             stopIn: { Link.shared.stopIncoming($0) },
             again: { Link.shared.files.again($0) },
             // in sight: sceneDidBecomeActive comes while the app still says inactive
-            active: { UIApplication.shared.applicationState != .background })
+            active: { UIApplication.shared.applicationState != .background },
+            publicRelay: { Link.shared.viaPublicRelay })
     }
 
     /// newest first: what waits in the outbox, this run's, then the last 50 before
@@ -239,10 +263,14 @@ final class Transfers: ObservableObject {
 
     static let keepRows = 50
 
-    init(store: URL? = Transfers.defaultStore, outbox: Outbox? = Outbox.shared, env: Env = .app) {
+    /// what went over the public relay today
+    let publicLog: PublicSendLog
+
+    init(store: URL? = Transfers.defaultStore, outbox: Outbox? = Outbox.shared, env: Env = .app, publicLog: PublicSendLog = PublicSendLog()) {
         self.store = store
         self.outbox = outbox
         self.env = env
+        self.publicLog = publicLog
         if let s = store, let d = try? Data(contentsOf: s), let r = try? JSONDecoder().decode([TransferRow].self, from: d) {
             earlier = Array(r.filter(\.isOver).prefix(Self.keepRows))
         }
@@ -415,7 +443,7 @@ final class Transfers: ObservableObject {
         } else if let h = heldOut {
             heldOut = nil
             if yes {
-                allowedOut = clock().addingTimeInterval(Self.allowedFor)
+                if a.publicRelay { publicLog.add(a.bytes, now: clock()) } else { allowedOut = clock().addingTimeInterval(Self.allowedFor) }
                 env.queue(h.urls, false, h.temporary, h.made)
             } else {
                 h.made.forEach { try? FileManager.default.removeItem(at: $0) }
@@ -488,6 +516,22 @@ final class Transfers: ObservableObject {
         guard !urls.isEmpty else { return }
         picked.forEach { scoped.insert($0) }
         let total = urls.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        if env.publicRelay() {
+            switch Self.publicSend(bytes: total, sentToday: publicLog.sent(now: clock())) {
+            case .over:
+                made.forEach { try? FileManager.default.removeItem(at: $0) }
+                if temporary { urls.forEach { try? FileManager.default.removeItem(at: $0) } }
+                picked.forEach { if scoped.remove($0) != nil { $0.stopAccessingSecurityScopedResource() } }
+                return say(Said(kind: .note, title: TransferWords.publicDayRefused))
+            case .ask:
+                heldOut = (urls, temporary, made, picked)
+                asking = Ask(incoming: false, bytes: total, publicRelay: true)
+                return
+            case .go:
+                publicLog.add(total, now: clock())
+                return env.queue(urls, false, temporary, made)
+            }
+        }
         if Self.asksFirst(bytes: total, mobileData: env.mobileData()), (allowedOut ?? .distantPast) < clock() {
             heldOut = (urls, temporary, made, picked)
             asking = Ask(incoming: false, bytes: total)
@@ -577,6 +621,14 @@ final class Transfers: ObservableObject {
             say(Said(kind: .note, title: String(localized: "Can’t paste images larger than 20 MB.")))
             return true
         }
+        // over the public relay it counts toward the day's 50 MB like any file (never over 20 MB, so never asked)
+        if env.publicRelay() {
+            guard Self.publicSend(bytes: data.count, sentToday: publicLog.sent(now: clock())) != .over else {
+                say(Said(kind: .note, title: TransferWords.publicDayRefused))
+                return true
+            }
+            publicLog.add(data.count, now: clock())
+        }
         let dir = Link.caches.appendingPathComponent("outgoing/" + UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let u = dir.appendingPathComponent("Image." + ext)
@@ -643,6 +695,30 @@ final class Transfers: ObservableObject {
         guard let box = outbox, env.active(), env.ready(), let peer = env.peer() else { return }
         let dir = Link.caches.appendingPathComponent("outgoing", isDirectory: true)
         for files in box.take(for: peer.id, into: dir, now: clock()) { send(files, temporary: true) }
+    }
+}
+
+/// What this phone has sent over Blurt's public relay on the current UTC day, kept across launches (the relay counts the pair's bytes too, a
+/// gigabyte a day, but files stop at 50 MB here, before they could use it up).
+struct PublicSendLog {
+    var defaults: UserDefaults = .standard
+    static let key = "publicRelay.sent.v1"
+
+    /// "2026-11-26", in UTC
+    static func day(_ d: Date) -> String {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        let p = c.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+    }
+
+    func sent(now: Date) -> Int {
+        guard let d = defaults.dictionary(forKey: Self.key), d["day"] as? String == Self.day(now) else { return 0 }
+        return d["bytes"] as? Int ?? 0
+    }
+
+    func add(_ bytes: Int, now: Date) {
+        defaults.set(["day": Self.day(now), "bytes": sent(now: now) + bytes], forKey: Self.key)
     }
 }
 

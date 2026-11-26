@@ -26,15 +26,22 @@ final class TransferTests: XCTestCase {
     }
 
     private func model(mobile: Bool = false, ready: Bool = true, active: Bool = true, peer: (String, String)? = ("pc-1", "Office PC"),
-                       store: URL? = nil, outbox: Outbox? = nil, resumes: Bool = true) -> (Transfers, Calls) {
+                       store: URL? = nil, outbox: Outbox? = nil, resumes: Bool = true, publicRelay: Bool = false, log: PublicSendLog? = nil) -> (Transfers, Calls) {
         let c = Calls()
         let env = Transfers.Env(peer: { peer.map { (id: $0.0, name: $0.1) } }, mobileData: { mobile }, meeting: { false }, ready: { ready },
                                 askClipboard: { c.asked += 1 },
                                 queue: { c.queued.append(($0, $1, $2, $3)) }, release: { c.released.append($0) }, holdOut: { c.heldOut.append($0) },
                                 peerResumes: { resumes },
                                 stopOut: { c.stoppedOut.append($0) }, stopIn: { c.stoppedIn.append($0) }, again: { c.again.append($0) },
-                                active: { active })
-        return (Transfers(store: store ?? dir.appendingPathComponent("transfers.json"), outbox: outbox, env: env), c)
+                                active: { active }, publicRelay: { publicRelay })
+        return (Transfers(store: store ?? dir.appendingPathComponent("transfers.json"), outbox: outbox, env: env, publicLog: log ?? freshLog()), c)
+    }
+
+    private func freshLog() -> PublicSendLog {
+        let name = "transfer-tests-" + UUID().uuidString
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        return PublicSendLog(defaults: d)
     }
 
     private func file(_ name: String, _ size: Int, in folder: URL? = nil) -> URL {
@@ -94,6 +101,7 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.nothing("too_big", name: "Office PC"), "Too many files are copied on Office PC. Copy up to 1,000 at a time.")
         XCTAssertEqual(TransferWords.nothing("too_large", name: "Office PC"), "A file copied on Office PC is larger than 4 GB.")
         XCTAssertEqual(TransferWords.nothing("unsupported", name: "Office PC"), "Can’t get this kind of item from Office PC.")
+        XCTAssertEqual(TransferWords.nothing("limit", name: "Office PC"), "Files over the public connection service are limited to 50 MB a day.")
         XCTAssertEqual(TransferWords.firstWords("  Hello\n\nworld  "), "Hello world")
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")
     }
@@ -251,6 +259,7 @@ final class TransferTests: XCTestCase {
         XCTAssertTrue(c.queued.isEmpty, "held for the question")
         XCTAssertEqual(t.asking?.incoming, false)
         XCTAssertEqual(t.asking?.title, "Send \(TransferWords.size(150_000_000)) over mobile data?")
+        XCTAssertNil(t.asking?.message, "mobile data: the question alone")
         t.answer(t.asking!, yes: false)
         XCTAssertTrue(c.queued.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: big.path), "a temporary copy goes")
@@ -397,6 +406,73 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(t.rows.count, 1)
         t.stop(t.rows[0])
         XCTAssertTrue(box.waiting().isEmpty, "an empty share goes")
+    }
+}
+
+// MARK: the public relay (docs/design/remote-go-between.md §What the devices do on this path)
+
+extension TransferTests {
+    func testThePublicRelaysFilesMath() {
+        XCTAssertEqual(RemotePublicRelay.filesPerDay, 50_000_000)
+        XCTAssertEqual(RemotePublicRelay.askOver, 20_000_000)
+        XCTAssertEqual(Transfers.publicSend(bytes: 20_000_000, sentToday: 0), .go, "20 MB goes without a question")
+        XCTAssertEqual(Transfers.publicSend(bytes: 20_000_001, sentToday: 0), .ask)
+        XCTAssertEqual(Transfers.publicSend(bytes: 35_000_000, sentToday: 15_000_000), .ask, "exactly 50 MB today is allowed")
+        XCTAssertEqual(Transfers.publicSend(bytes: 35_000_000, sentToday: 15_000_001), .over)
+        XCTAssertEqual(Transfers.publicSend(bytes: 1, sentToday: 50_000_000), .over)
+        XCTAssertEqual(Transfers.publicSend(bytes: 50_000_001, sentToday: 0), .over, "past the day, not asked about")
+    }
+
+    func testTheDayIsUTCAndKeptAcrossLaunches() {
+        let log = freshLog()
+        let late = Date(timeIntervalSince1970: 1_764_201_599)      // 2025-11-26 23:59:59 UTC
+        XCTAssertEqual(PublicSendLog.day(late), "2025-11-26")
+        log.add(30_000_000, now: late)
+        log.add(5_000_000, now: late)
+        XCTAssertEqual(PublicSendLog(defaults: log.defaults).sent(now: late), 35_000_000, "another launch reads the same day")
+        XCTAssertEqual(log.sent(now: late.addingTimeInterval(1)), 0, "00:00 UTC starts a new day")
+    }
+
+    func testASendOverThePublicRelayGoesIsAskedOrSaysTheDaysLimit() {
+        let log = freshLog()
+        let (t, c) = model(publicRelay: true, log: log)
+        t.send([file("a.zip", 15_000_000)])
+        XCTAssertEqual(c.queued.count, 1)
+        XCTAssertNil(t.asking)
+        XCTAssertEqual(log.sent(now: Date()), 15_000_000)
+
+        t.send([file("b.mov", 25_000_000)])
+        XCTAssertEqual(c.queued.count, 1, "held for the question")
+        XCTAssertEqual(t.asking?.publicRelay, true)
+        XCTAssertEqual(t.asking?.title, "Send \(TransferWords.size(25_000_000)) over the public connection service?")
+        XCTAssertEqual(t.asking?.message, "Files over the public connection service are limited to 50 MB a day.", "the cost under the question")
+        t.answer(t.asking!, yes: true)
+        XCTAssertEqual(c.queued.count, 2)
+        XCTAssertEqual(log.sent(now: Date()), 40_000_000)
+
+        // 10 MB left today
+        t.send([file("c.pdf", 11_000_000)])
+        XCTAssertEqual(c.queued.count, 2)
+        XCTAssertNil(t.asking)
+        XCTAssertEqual(t.said?.title, "Not sent: files over the public connection service are limited to 50 MB a day.")
+        t.send([file("d.txt", 10_000_000)])
+        XCTAssertEqual(c.queued.count, 3, "exactly up to the limit")
+
+        // said no: nothing goes, nothing counted
+        let (t2, c2) = model(publicRelay: true)
+        t2.send([file("e.mov", 21_000_000)])
+        t2.answer(t2.asking!, yes: false)
+        XCTAssertTrue(c2.queued.isEmpty)
+        XCTAssertEqual(t2.publicLog.sent(now: Date()), 0)
+    }
+
+    func testOffThePublicRelayNothingIsCountedOrAsked() {
+        let log = freshLog()
+        let (t, c) = model(log: log)
+        t.send([file("big.mov", 60_000_000)])
+        XCTAssertEqual(c.queued.count, 1)
+        XCTAssertNil(t.asking)
+        XCTAssertEqual(log.sent(now: Date()), 0)
     }
 }
 

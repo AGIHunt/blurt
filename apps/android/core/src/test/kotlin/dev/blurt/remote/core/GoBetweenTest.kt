@@ -132,6 +132,7 @@ class GoBetweenTest {
         // connected some other way: nothing to say about the go-between
         assertNull(StatusBanner.of(LinkStatus(LinkPhase.CONNECTED, away = AwayTrouble.BUSY)))
         // a pairing under way is still said over it
-        assertEquals(StatusLine.WAITING, StatusBanner.of(LinkStatus(LinkPhase.UNREACHABLE, waiting = true, away = AwayTrouble.NO_DIRECT))?.title)
+        assertEquals(StatusLine.CHECK_DIGITS, StatusBanner.of(LinkStatus(LinkPhase.UNREACHABLE, waiting = true, away = AwayTrouble.NO_DIRECT))?.title)
+        assertEquals(StatusLine.WAITING, StatusBanner.of(LinkStatus(LinkPhase.UNREACHABLE, waiting = true, digitsConfirmed = true, away = AwayTrouble.NO_DIRECT))?.title)
     }
 }

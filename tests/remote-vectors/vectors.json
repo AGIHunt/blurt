@@ -139,6 +139,96 @@
       }
     ]
   },
+  "joinGate" : {
+    "about" : "While joining, the joining side stores newKey only after pairingWaits and its own user's yes to the same digits (same), in either order of yes and key. A key before pairingWaits is dropped, not held; reconnect starts over. stores: the index of the event at which the key is stored, or null.",
+    "cases" : [
+      {
+        "events" : [
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "newKey"
+        ],
+        "stores" : 2
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey",
+          "same"
+        ],
+        "stores" : 2
+      },
+      {
+        "events" : [
+          "same",
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "newKey",
+          "pairingWaits",
+          "same"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey",
+          "reconnect",
+          "pairingWaits",
+          "same"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "pairingWaits",
+          "same",
+          "newKey"
+        ],
+        "stores" : 5
+      }
+    ]
+  },
   "pairingURL" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
   "pointer" : [
     {
@@ -166,6 +256,46 @@
       "name" : "move_seq"
     }
   ],
+  "publicRelay" : {
+    "addresses" : [
+      "wss://relay.blurt.work"
+    ],
+    "askAgainSeconds" : 30,
+    "askOver" : 20000000,
+    "busy" : "busy",
+    "features" : {
+      "opus" : "opus",
+      "publicRelay" : "publicRelay"
+    },
+    "filesPerDay" : 50000000,
+    "giveUpSeconds" : 5,
+    "leaseAnswers" : [
+      "{\"lease\":{\"ok\":true,\"ttl\":75}}",
+      "{\"lease\":{\"ok\":false,\"why\":\"full\"}}",
+      "{\"lease\":{\"ok\":false,\"why\":\"prefix\"}}",
+      "{\"lease\":{\"ok\":false,\"why\":\"expired\"}}"
+    ],
+    "leaseAsk" : "{\"lease\":true}",
+    "leaseFree" : "{\"lease\":false}",
+    "nobodyCame" : 4011,
+    "opusKind" : 9,
+    "picture" : {
+      "maxBitrate" : 1000000,
+      "maxFPS" : 15,
+      "maxWidth" : 1280
+    },
+    "renewSeconds" : 30,
+    "ticketAnswer" : "{\"ticket\":{\"relay\":\"wss://relay.blurt.work\",\"room\":\"guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w\",\"mac\":\"1764000060.vSDxp8K1xSfY.WAcrp_CCMxTDXy-t3YDNzQ\",\"phone\":\"1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A\"}}",
+    "ticketAsk" : "{\"ticket\":{\"room\":\"guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w\"}}",
+    "ticketRefused" : [
+      "{\"ticket\":{\"error\":\"off\"}}",
+      "{\"ticket\":{\"error\":\"alone\"}}",
+      "{\"ticket\":{\"error\":\"limit\"}}",
+      "{\"ticket\":{\"error\":\"bad\"}}"
+    ],
+    "ticketWaitSeconds" : 3,
+    "untouchedSeconds" : 300
+  },
   "relayRoom" : {
     "paired" : "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
     "room" : "XnpvguvK9APB5tb6ROrun0yHSmx3kwlj2BPrLhVCZJw"
@@ -984,6 +1114,24 @@
         }
       },
       "name" : "no_direct"
+    },
+    {
+      "json" : {
+        "publicRelay" : {
+          "address" : "wss://relay.blurt.work",
+          "room" : "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w",
+          "ticket" : "1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A"
+        }
+      },
+      "name" : "public_relay"
+    },
+    {
+      "json" : {
+        "screenFailed" : {
+          "_0" : "busy"
+        }
+      },
+      "name" : "screen_failed_busy"
     },
     {
       "json" : {

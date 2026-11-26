@@ -268,17 +268,31 @@ fn tls() -> Arc<rustls::ClientConfig> {
 /// A WebSocket to `<relay>/v1/<room>/<role>`, within 8 s.
 pub async fn connect(address: &str, room: &str, role: &str) -> Result<Socket, ConnectError> {
     let url = room_url(address, room, role).ok_or(ConnectError::Failed("not a relay address".into()))?;
+    open_url(&url, Duration::from_secs(8)).await
+}
+
+/// At Blurt's public relay (public.rs): `<relay>/v1/<room>/<role>?t=<ticket>`, within `within` (5 s).
+pub async fn connect_ticket(address: &str, room: &str, role: &str, ticket: &str, within: Duration) -> Result<Socket, ConnectError> {
+    let ok = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b));
+    if !ok(room) || !ok(ticket) {
+        return Err(ConnectError::Failed("not a ticket".into()));
+    }
+    let url = room_url(address, room, role).ok_or(ConnectError::Failed("not a relay address".into()))?;
+    open_url(&format!("{url}?t={ticket}"), within).await
+}
+
+async fn open_url(url: &str, within: Duration) -> Result<Socket, ConnectError> {
     let mut cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
     cfg.max_message_size = Some(1 << 21);
     cfg.max_frame_size = Some(1 << 21);
     let go = tokio_tungstenite::connect_async_tls_with_config(
-        url.as_str(),
+        url,
         Some(cfg),
         true,
         Some(tokio_tungstenite::Connector::Rustls(tls())),
     );
     use tokio_tungstenite::tungstenite::Error;
-    match tokio::time::timeout(Duration::from_secs(8), go).await {
+    match tokio::time::timeout(within, go).await {
         Ok(Ok((s, _))) => Ok(s),
         Ok(Err(Error::Http(r))) => Err(ConnectError::Refused(r.status().as_u16())),
         Ok(Err(e)) => Err(ConnectError::Failed(e.to_string())),

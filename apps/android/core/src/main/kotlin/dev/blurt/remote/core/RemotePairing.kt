@@ -87,3 +87,76 @@ class RemotePairing(
         }
     }
 }
+
+/**
+ * While a code is being used to join, the other end is only known to hold that code, and anyone with a photo of it or the copied link can
+ * answer as the computer. So the joining side takes `newKey` only after the computer asked (`pairingWaits`, which shows the digits) and this
+ * side's user said the digits are the same as the computer's: the yes and the key may come in either order. A key before the question is
+ * dropped, not held. A new connection starts over, since its digits are new. Every client runs the same rule, checked against
+ * `vectors.json` → `joinGate` (Swift: RemoteJoinGate; docs/design/remote-protocol.md, security review F1, 2026-11-26).
+ */
+class JoinGate {
+    enum class Event(val wire: String) {
+        PAIRING_WAITS("pairingWaits"), SAME("same"), NEW_KEY("newKey"), RECONNECT("reconnect");
+
+        companion object {
+            fun of(wire: String): Event? = entries.firstOrNull { it.wire == wire }
+        }
+    }
+
+    /** the computer asked: the digits are on screen */
+    var asked = false
+        private set
+    /** this side's user said they're the same */
+    var confirmed = false
+        private set
+    private var held: ByteArray? = null
+
+    /** the digits can be confirmed now (shown, and not yet confirmed) */
+    val canConfirm: Boolean get() = asked && !confirmed
+    /** the computer said yes; this side's user hasn't yet */
+    val keyWaiting: Boolean get() = held != null
+
+    fun pairingWaits() { asked = true }
+
+    /** The user says the digits are the same. The key to store now, when the computer's yes came first. */
+    fun confirm(): ByteArray? {
+        if (!asked) return null
+        confirmed = true
+        val k = held
+        held = null
+        return k
+    }
+
+    /** The computer's `newKey`. The key to store now, or null: held until the user's yes, or dropped when the computer never asked. */
+    fun newKey(k: ByteArray): ByteArray? {
+        if (!asked) return null
+        if (confirmed) return k
+        held = k
+        return null
+    }
+
+    /** a new connection: new digits, asked again */
+    fun reset() {
+        asked = false
+        confirmed = false
+        held = null
+    }
+
+    companion object {
+        /** Runs `events` in order (the vectors' form); the index of the event at which the key is stored, or null. */
+        fun run(events: List<Event>, key: ByteArray = ByteArray(32) { 7 }): Int? {
+            val g = JoinGate()
+            for ((i, e) in events.withIndex()) {
+                val got = when (e) {
+                    Event.PAIRING_WAITS -> { g.pairingWaits(); null }
+                    Event.SAME -> g.confirm()
+                    Event.NEW_KEY -> g.newKey(key)
+                    Event.RECONNECT -> { g.reset(); null }
+                }
+                if (got != null) return i
+            }
+            return null
+        }
+    }
+}
