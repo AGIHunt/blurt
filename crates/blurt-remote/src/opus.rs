@@ -68,8 +68,8 @@ impl Encoder {
     /// PCM16 LE bytes in, whole 20 ms packets out (what's left waits for the next call).
     pub fn encode(&mut self, pcm: &[u8]) -> Vec<Vec<u8>> {
         let mut out = vec![];
-        for s in pcm.chunks_exact(2) {
-            self.partial.push(i16::from_le_bytes([s[0], s[1]]));
+        for s in pcm.as_chunks::<2>().0 {
+            self.partial.push(i16::from_le_bytes(*s));
             if self.partial.len() == FRAME {
                 let mut buf = vec![0u8; 400];
                 let n = unsafe { unsafe_ffi::opus_encode(self.st, self.partial.as_ptr(), FRAME as i32, buf.as_mut_ptr(), buf.len() as i32) };
@@ -109,7 +109,7 @@ mod tests {
         let out: Vec<u8> = packets.iter().flat_map(|p| d.decode(p).unwrap()).collect();
         assert_eq!(out.len(), pcm.len());
         // the tone survives: energy in the second half about the input's
-        let energy = |b: &[u8]| b.chunks_exact(2).map(|s| (i16::from_le_bytes([s[0], s[1]]) as f64).powi(2)).sum::<f64>() / (b.len() / 2) as f64;
+        let energy = |b: &[u8]| b.as_chunks::<2>().0.iter().map(|s| (i16::from_le_bytes(*s) as f64).powi(2)).sum::<f64>() / (b.len() / 2) as f64;
         let (a, b) = (energy(&pcm[16000..]), energy(&out[16000..]));
         assert!(b > a * 0.5 && b < a * 1.5, "{a} vs {b}");
         assert_eq!(d.decode(&[]), None);
