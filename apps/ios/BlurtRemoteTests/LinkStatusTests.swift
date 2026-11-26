@@ -154,6 +154,20 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(banner(.connecting) { $0.canControl = false; $0.screenError = "off" }, StatusBanner(mark: .busy, title: .connecting))
     }
 
+    /// The public relay has no picture lease free: the card under "Can't show the screen" says so and offers nothing (the picture comes by
+    /// itself), even for a picture that came on by itself; it goes when the picture comes (Link clears the error at screenView).
+    func testThePublicRelayBusyCardSaysTheRestWorksAndHasNoButton() {
+        let busy = StatusBanner(mark: .problem, title: .cantShowScreen, detail: .publicBusy)
+        XCTAssertEqual(banner(.connected) { $0.screenError = RemotePublicRelay.busy }, busy)
+        XCTAssertEqual(banner(.connected) { $0.screenError = "busy"; $0.screenAsked = false; $0.showing = true }, busy)
+        XCTAssertNil(banner(.connected) { $0.screenError = nil; $0.showing = true })
+        // not connected: the connection's card, not the picture's
+        XCTAssertEqual(banner(.connecting) { $0.screenError = "busy" }, StatusBanner(mark: .busy, title: .connecting))
+        XCTAssertEqual(Words.status(.cantShowScreen, host: .linux, name: "PC"), "Can’t show the screen")
+        XCTAssertEqual(Words.status(.publicBusy, host: .mac, name: "Studio"),
+                       "The public connection service is busy. Keys, the pointer and voice still work.")
+    }
+
     func testEveryStateButConnectedSaysSomething() {
         for p in [LinkStatus.Phase.unpaired, .connecting, .unreachable, .forgotten, .replaced] {
             XCTAssertNotNil(banner(p), "\(p)")
@@ -216,7 +230,8 @@ final class LinkStatusTests: XCTestCase {
     private static let lines: [StatusBanner.Line] = [.connecting, .reconnecting, .cantReach, .checkNetwork, .checkAwake, .needsPairing, .forgotten, .otherPhone,
                                                      .connectingDirect, .noNetwork, .turnOnNetwork, .asleepSince, .lastOnline, .localNetworkOff, .endedThere,
                                                      .pictureStopped, .locked, .unlockFirst, .pairFirst, .whereTheCodeIs, .waiting, .allowOnComputer, .checkDigits, .pairIfSame, .pairingFailed,
-                                                     .whyPairingFailed, .cantControl, .howToAllowControl, .cantShowScreen, .allowScreen, .screenIsOff]
+                                                     .whyPairingFailed, .cantControl, .howToAllowControl, .cantShowScreen, .allowScreen, .screenIsOff,
+                                                     .publicBusy]
 
     func testEveryLineHasWordsForEveryKindOfComputer() {
         for h in RemoteHost.allCases {

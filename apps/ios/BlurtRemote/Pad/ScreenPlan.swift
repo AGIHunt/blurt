@@ -40,13 +40,17 @@ struct ScreenPlan: Equatable {
     /// asks for two pixels a point, which is all of an iPad's panel: 1800 across was the picture stretched half as wide again there, and
     /// text soft however long it stood (an iPad 13": 2752). A phone stays at 1800, already two pixels a point, and its third pixel
     /// nobody sees at arm's length. The rate goes with the pixels, 4 Mbps for 1800 across up to 8.
-    init(_ q: ScreenQuality, route: Link.Route, cellular: Bool, lowData: Bool, native: CGSize, panel: Int = 60, scale: CGFloat = 3) {
+    /// `publicRelay`: the session runs over Blurt's public relay, shared and on a budget: Data Saver whatever was chosen (1280 wide, 1 Mbps,
+    /// 15 fps: RemotePublicRelay), and the computer clamps it there too.
+    init(_ q: ScreenQuality, route: Link.Route, cellular: Bool, lowData: Bool, native: CGSize, panel: Int = 60, scale: CGFloat = 3,
+         publicRelay: Bool = false) {
         let long = Int(max(native.width, native.height)), short = Int(min(native.width, native.height))
         func size(_ w: Int, _ h: Int) -> (Int, Int) { (min(long, w), min(short, h)) }
         var tier = q
         if q == .auto {
             tier = lowData ? .saver : route == .local && !cellular ? .sharp : .balanced
         }
+        if publicRelay { tier = .saver }
         switch tier {
         case .saver:
             (width, height) = size(1280, 800)

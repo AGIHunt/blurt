@@ -184,7 +184,7 @@ final class ViewerStore: ObservableObject {
         case .overlay?: T("settings.remote.path.overlay")
         case .direct?, .goBetween?: T("settings.remote.path.direct")
         case .relay?: T("settings.remote.path.relay")
-        case nil: T("settings.remote.path.go_between")
+        case .publicRelay?, nil: T("settings.remote.path.go_between")
         }
     }
 
@@ -358,6 +358,7 @@ final class ViewerStore: ObservableObject {
         pairing = Pairing(name: name(of: c.id, else: c.name))
         pairingStart = (c, key, endpoint)
         let link = RemoteViewerLink(computer: c, key: key, deviceName: Host.current().localizedName ?? "Mac", pairing: true, endpoint: endpoint)
+        link.publicRelayTest = RemoteServer.publicRelayTest
         link.onNewKey = { c, k in ViewerKeys.store(k, c.deviceID) }
         let byLink = endpoint == nil
         link.onState = { [weak self, weak link] s in

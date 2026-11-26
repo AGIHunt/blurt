@@ -65,6 +65,10 @@ public enum RemoteRelay {
 
     public static func connection(address: String, room: String, role: String) -> NWConnection? {
         guard let a = self.address(address), let url = URL(string: "\(a)/v1/\(room)/\(role)") else { return nil }
+        return connection(url: url)
+    }
+
+    static func connection(url: URL) -> NWConnection {
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         tcp.connectionTimeout = 8

@@ -18,7 +18,7 @@ struct LinkStatus: Equatable {
     /// more than one computer is paired: there's another to try
     var otherComputers = false
     var canControl = true
-    /// "permission", "off": why the computer won't show its screen
+    /// "permission", "off", "stopped", "busy": why the computer won't show its screen
     var screenError: String?
     /// the user asked for the picture (the screen button); one that came on by itself says nothing when it can't
     var screenAsked = true
@@ -76,6 +76,8 @@ struct StatusBanner: Equatable {
         case pairingFailed, whyPairingFailed
         case cantControl, howToAllowControl
         case cantShowScreen, allowScreen, screenIsOff, pictureStopped
+        /// the public relay has no room for another picture now: it comes by itself once there is
+        case publicBusy
         case locked, unlockFirst
     }
 
@@ -122,8 +124,9 @@ struct StatusBanner: Equatable {
             b = StatusBanner(mark: .phone, title: .endedThere, action: .reconnect)
         case .connected:
             if !s.canControl { b = StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl) }
-            if s.screenAsked, let e = s.screenError {
-                let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : .pictureStopped
+            // busy is said however the picture came on: it stays on, dark, until there's room
+            if let e = s.screenError, s.screenAsked || e == "busy" {
+                let why: Line = e == "permission" ? .allowScreen : e == "off" ? .screenIsOff : e == "busy" ? .publicBusy : .pictureStopped
                 b = StatusBanner(mark: .problem, title: .cantShowScreen, detail: why, action: why == .pictureStopped ? .showScreen : nil)
             }
             // locked: why there's no picture, and why it may not take input either

@@ -96,6 +96,13 @@ final class Link: ObservableObject {
     @Published private(set) var overlayIsTailscale = false
     /// the session came in through Blurt's go-between (RemoteRelay.goBetween)
     @Published private(set) var viaGoBetween = false
+    /// the session runs over Blurt's public relay, where the go-between found no direct path (RemotePublicRelay): Data Saver's picture,
+    /// Opus voice or none, files counted
+    @Published private(set) var viaPublicRelay = false
+    /// either of Blurt's own services carries this session: what the connection label says
+    var onPublicService: Bool { viaGoBetween || viaPublicRelay }
+    /// how this phone's voice goes in the session in hand (Link.voice)
+    @Published private(set) var voice = Voice.pcm
     /// why away from home didn't work with the go-between, for the pad's card
     @Published private(set) var away: LinkStatus.Away?
     /// the computer's own words for this user (a new device paired there): the pad shows it once
@@ -105,6 +112,12 @@ final class Link: ObservableObject {
     private var meetRefusals = 0
     private var noDirectTimes = 0
     private var meetQuietUntil = Date.distantPast
+    /// the computer's word that the session can go on at Blurt's public relay (`ToPhone.publicRelay`), and when it came: `noDirect` within
+    /// 10 s of it goes there instead of ending
+    private var publicOffer: (address: String, room: String, ticket: String, at: Date)?
+    /// the public relay's connection while it hasn't said `session`: given up on after RemotePublicRelay.giveUp
+    private weak var publicTry: RemoteChannel?
+    private var publicDue: DispatchWorkItem?
     @Published private(set) var displayAspect: CGFloat = 1.6
     /// the computer's displays, as it arranges them; a switcher shows only with two or more (docs/design/remote.md §Several displays)
     @Published private(set) var displays: [RemoteDisplay] = []
@@ -170,6 +183,17 @@ final class Link: ObservableObject {
     private var lastLocalTry = Date.distantPast
     /// a test run: only this way in
     private static let relayOnly = ProcessInfo.processInfo.environment["BLURT_RELAY_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
+    /// debug builds: a local copy of the public relay (`BLURT_PUBLIC_RELAY=ws://127.0.0.1:8790`) is allowed beside the real one; a release
+    /// goes only to RemotePublicRelay.addresses
+    static let publicRelayTest: String? = {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["BLURT_PUBLIC_RELAY"].flatMap { $0.isEmpty ? nil : $0 }
+        #else
+        nil
+        #endif
+    }()
+    /// this phone can send its voice as Opus (the public relay's kind 9)
+    static let opusHere = RemoteOpus.available
     private var pingCount = 0
     private var pendingMove: (Float, Float)?
     /// this phone's pointer instructions so far, moves and placements alike: the computer says how far it has got with each word on
@@ -514,6 +538,8 @@ final class Link: ObservableObject {
         firstAttempt = nil
         lastRelayTry = .distantPast
         away = nil
+        publicOffer = nil
+        publicDue?.cancel()
     }
 
     func rename(_ m: PairedMac, to name: String) {
@@ -817,13 +843,13 @@ final class Link: ObservableObject {
     }
 
     @discardableResult
-    private func attempt(_ c: NWConnection, relay: Bool, mac: PairedMac, key: Data, goBetween: Bool = false) -> RemoteChannel {
+    private func attempt(_ c: NWConnection, relay: Bool, mac: PairedMac, key: Data, goBetween: Bool = false, publicRelay: Bool = false) -> RemoteChannel {
         let ch = RemoteChannel(connection: c, role: .phone(PhoneHandshake(id: mac.deviceID, paired: key)), relay: relay)
         // on the go-between, nothing big goes over it from the start, and the stream moves once the direct path opens
         if goBetween { ch.enableMove() }
         ch.onOpen = { [weak self, weak ch] _ in
             guard let ch else { return }
-            DispatchQueue.main.async { self?.opened(ch, mac: mac, goBetween: goBetween) }
+            DispatchQueue.main.async { self?.opened(ch, mac: mac, goBetween: goBetween, publicRelay: publicRelay) }
         }
         ch.onMoved = { [weak self, weak ch] in
             DispatchQueue.main.async {
@@ -867,6 +893,16 @@ final class Link: ObservableObject {
                 let tried = self.attempts.contains { $0 === ch }
                 self.attempts.removeAll { $0 === ch }
                 if failure?.kind == .notPaired { self.refused = true }
+                // the public relay: one go, no retry; a session there that ends starts over at the go-between (connect)
+                if publicRelay {
+                    guard let ch else { return }
+                    // refused, closed (4001, 4011) or gone before `session`: the no-direct line
+                    if self.publicTry === ch { return self.publicGaveUp(ch) }
+                    guard self.channel === ch else { return }
+                    // its day's budget or a session's 12 h are spent: this network still can't, said as before
+                    if ch.relayClose == RemoteRelay.overBudget { self.noDirect() }
+                    return self.lost()
+                }
                 if relay, !goBetween, let ch, tried || ch.wasReady {
                     if ch.wasReady {
                         self.relayFails = 0
@@ -889,8 +925,10 @@ final class Link: ObservableObject {
         return ch
     }
 
-    private func opened(_ ch: RemoteChannel, mac: PairedMac, goBetween: Bool) {
+    private func opened(_ ch: RemoteChannel, mac: PairedMac, goBetween: Bool, publicRelay: Bool = false) {
         let overlay = ch.isRelay ? nil : Self.overlay(ch)
+        // given up on already (5 s): nothing more of it
+        if publicRelay, publicTry !== ch { return ch.close() }
         if let old = channel {
             // back on the local network: it takes over from the relay, or from an overlay network; an overlay one from the relay
             guard old.isRelay && !ch.isRelay || route == .overlay && !ch.isRelay && overlay == nil else { return ch.close() }
@@ -911,6 +949,9 @@ final class Link: ObservableObject {
         route = ch.isRelay ? .relay : overlay != nil ? .overlay : .local
         overlayIsTailscale = overlay == .tailscale
         viaGoBetween = goBetween
+        viaPublicRelay = publicRelay
+        // what the computer can hear is known at `session`: until then nothing of the microphone goes over the public relay
+        setVoice(publicRelay ? .off(hostOutdated: false) : .pcm)
         firstAttempt = nil
         refused = false
         lastPong = Date()
@@ -929,7 +970,7 @@ final class Link: ObservableObject {
             joinOpens += 1
             if joinOpens > 3 { ch.close(); return joinFailed(.spent) }
         }
-        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.files, RemoteFeature.resume]))
+        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: Self.features))
         pinger = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.ping() }
     }
 
@@ -975,6 +1016,113 @@ final class Link: ObservableObject {
         meetQuietUntil = max(meetQuietUntil, Date().addingTimeInterval(RemoteRelay.busyWait(noDirectTimes)))
     }
 
+    // MARK: Blurt's public relay (docs/design/remote-go-between.md §The public relay)
+
+    /// what this phone says it can do in its hello
+    static var features: [String] {
+        [RemoteFeature.move, RemoteFeature.files, RemoteFeature.resume, RemoteFeature.publicRelay] + (opusHere ? [RemoteFeature.opus] : [])
+    }
+
+    /// `publicRelay` holds for 10 s: a `noDirect` later than that isn't its
+    static func offerFresh(_ at: Date, now: Date = Date()) -> Bool {
+        let age = now.timeIntervalSince(at)
+        return age >= 0 && age <= 10
+    }
+
+    /// `<address>/v1/<room>/phone?t=<ticket>`, or nil: only an allowed address (wss://; a debug build's local copy as it was given), and a
+    /// room and ticket of base64url (the ticket's dots too) that go into the URL as they are.
+    static func publicURL(address: String, room: String, ticket: String, testing: String?) -> URL? {
+        guard RemotePublicRelay.allowed(address, testing: testing), address.hasPrefix("wss://") || address == testing else { return nil }
+        let b64 = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        guard (16...64).contains(room.count), room.allSatisfy(b64.contains),
+              (1...256).contains(ticket.count), ticket.allSatisfy({ b64.contains($0) || $0 == "." }) else { return nil }
+        return URL(string: "\(address)/v1/\(room)/phone?t=\(ticket)")
+    }
+
+    /// A WebSocket to the public relay, as RemoteRelay.connection makes one to a relay, with the ticket in the query.
+    private static func publicConnection(_ url: URL) -> NWConnection {
+        let tcp = NWProtocolTCP.Options()
+        tcp.noDelay = true
+        tcp.connectionTimeout = Int(RemotePublicRelay.giveUp)
+        let params = url.scheme == "wss" ? NWParameters(tls: NWProtocolTLS.Options(), tcp: tcp) : NWParameters(tls: nil, tcp: tcp)
+        let ws = NWProtocolWebSocket.Options()
+        ws.autoReplyPing = true
+        ws.maximumMessageSize = 1 << 21
+        params.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
+        return NWConnection(to: .url(url), using: params)
+    }
+
+    /// The computer sent this phone to the public relay with its `noDirect`: the go-between's session ends, and the same session is asked for
+    /// there, once, with the paired key. No `session` in 5 s: the no-direct line, and the next try starts at the go-between again.
+    private func goPublic(_ address: String, room: String, ticket: String) {
+        guard active, let mac = current, let key = Keychain.read(account: mac.deviceID),
+              let url = Self.publicURL(address: address, room: room, ticket: ticket, testing: Self.publicRelayTest) else { return noDirect() }
+        // the go-between isn't asked again while this goes on
+        meetQuietUntil = max(meetQuietUntil, Date().addingTimeInterval(RemotePublicRelay.giveUp + 1))
+        if channel?.isRelay == true { lost() }
+        lastRelayTry = Date()
+        let ch = attempt(Self.publicConnection(url), relay: true, mac: mac, key: key, publicRelay: true)
+        ch.relayAddress = address
+        publicTry = ch
+        publicDue?.cancel()
+        let w = DispatchWorkItem { [weak self, weak ch] in
+            guard let self, let ch, self.publicTry === ch else { return }
+            self.publicGaveUp(ch)
+        }
+        publicDue = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + RemotePublicRelay.giveUp, execute: w)
+    }
+
+    /// The public relay didn't carry the session (refused, closed, or no `session` in 5 s): said as the go-between's no-direct, at once.
+    private func publicGaveUp(_ ch: RemoteChannel) {
+        publicDue?.cancel()
+        publicTry = nil
+        attempts.removeAll { $0 === ch }
+        let was = channel === ch
+        ch.close()
+        // another way in may have won meanwhile (the same network, the own relay back): then there's nothing to say
+        if was || channel == nil { noDirect() }
+        if was { lost() }
+        if channel == nil, state == .connecting { state = .unreachable }
+    }
+
+    /// How this phone's voice goes in a session.
+    enum Voice: Equatable {
+        /// 16 kHz PCM16, frame kind 1: anywhere but the public relay
+        case pcm
+        /// Opus, frame kind 9: the public relay, both ends able
+        case opus
+        /// no microphone on this path: the computer can't hear Opus (`hostOutdated`: an older Blurt there), or this phone can't make it
+        case off(hostOutdated: Bool)
+    }
+
+    /// PCM never goes over the public relay: Opus when both ends can, else nothing.
+    static func voice(publicRelay: Bool, phoneOpus: Bool, hostFeatures: Set<String>) -> Voice {
+        guard publicRelay else { return .pcm }
+        let hostOpus = hostFeatures.contains(RemoteFeature.opus)
+        return phoneOpus && hostOpus ? .opus : .off(hostOutdated: !hostOpus)
+    }
+
+    /// the microphone can be used in the session in hand
+    var voiceCarries: Bool { if case .off = voice { false } else { true } }
+
+    /// Why the talk key does nothing on this path, for the pad to say.
+    var voiceOffWords: String? {
+        guard case let .off(old) = voice else { return nil }
+        let name = current?.title ?? String(localized: "the computer")
+        return old ? String(localized: "To use this, update Blurt on \(name).") : String(localized: "iPhone microphone unavailable")
+    }
+
+    private func setVoice(_ v: Voice) {
+        audioLock.lock()
+        if v != voiceNow || (v == .opus && opus == nil) {
+            voiceNow = v
+            opus = v == .opus ? RemoteOpusEncoder() : nil
+        }
+        audioLock.unlock()
+        if voice != v { voice = v }
+    }
+
     private func ping() {
         let relay = channel?.isRelay == true, moved = channel?.moved == true
         // the stream moved onto UDP: as long a wait as the relay's (a lost ping waits for its resend), but nothing there counts against a plan
@@ -996,6 +1144,7 @@ final class Link: ObservableObject {
         channel = nil
         c?.close()
         viaGoBetween = false
+        viaPublicRelay = false
         meeting = false
         hostLocked = false
         upWaits?.cancel()
@@ -1028,6 +1177,7 @@ final class Link: ObservableObject {
         cancelAttempts()
         let c = channel
         channel = nil
+        viaPublicRelay = false
         // over a relay in words (a WebSocket close): the app may be stopped before TCP's own goodbye gets out, and until the relay knows,
         // the computer waits on a session that's gone
         if c?.isRelay == true { c?.close(code: RemoteRelay.phoneLeft) } else { c?.close() }
@@ -1055,6 +1205,12 @@ final class Link: ObservableObject {
             displayAspect = CGFloat(i.displayAspect)
             hostFeatures = Set(i.features ?? [])
             lastInfo = i
+            // on the public relay: in, and how this phone's voice goes there
+            if let c = channel, publicTry === c {
+                publicTry = nil
+                publicDue?.cancel()
+            }
+            setVoice(Self.voice(publicRelay: viaPublicRelay, phoneOpus: Self.opusHere, hostFeatures: hostFeatures))
             noteRelay(i.relay)
             noteAddresses(i.candidates)
             if viaGoBetween { away = nil }
@@ -1077,7 +1233,8 @@ final class Link: ObservableObject {
                 ready(with: c)
             }
             if channel?.isRelay == true {
-                if ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" { lookForDirect(i) }
+                // the public relay is there because the go-between just found no direct path: not looked for again
+                if ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1", !viaPublicRelay { lookForDirect(i) }
             } else {
                 channel?.openUDP(port: i.udpPort, session: i.udpSession)
             }
@@ -1097,7 +1254,7 @@ final class Link: ObservableObject {
             if on {
                 // couldn't have the microphone (a call has it): the Mac hears this note with its own. The setting stays as
                 // it was, so the next note tries the phone again
-                if !MicStream.shared.usable || !MicStream.shared.start(for: .note) {
+                if !MicStream.shared.usable || !voiceCarries || !MicStream.shared.start(for: .note) {
                     send(.setMicOnPhone(false))
                     send(.setMicOnPhone(MicStream.shared.usable))
                     send(.hud(String(localized: "iPhone microphone unavailable")))
@@ -1123,9 +1280,11 @@ final class Link: ObservableObject {
             }
         case let .clock(phone, mac): ScreenStream.shared.clock(phone: phone, mac: mac)
         case let .screenFailed(why):
-            ScreenStream.shared.stop()
+            // the public relay has no room for a picture now: still wanted, and the computer starts it by itself once there is
+            if why != RemotePublicRelay.busy { ScreenStream.shared.stop() }
             screenError = why
         case let .screenView(w, h, codec, display, features):
+            if screenError == RemotePublicRelay.busy { screenError = nil }
             shownDisplay = display
             ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec, display: display, features: features)
         case let .displays(list):
@@ -1172,7 +1331,15 @@ final class Link: ObservableObject {
         case .fileBegin, .fileChunk, .fileEnd:
             if let o = m.fileOut { fileIn(o) }
         case let .clipboardNone(why): Transfers.shared.clipNone(why)
+        case let .publicRelay(address, room, ticket):
+            // only Blurt's own relay (a debug build's local copy too), in words that make a URL as they are
+            guard Self.publicURL(address: address, room: room, ticket: ticket, testing: Self.publicRelayTest) != nil else { return }
+            publicOffer = (address, room, ticket, Date())
         case .noDirect:
+            if let o = publicOffer, Self.offerFresh(o.at) {
+                publicOffer = nil
+                return goPublic(o.address, room: o.room, ticket: o.ticket)
+            }
             noDirect()
         case .streamMoved: break      // the channel reads it itself
         // the answer to Get Copied Items (a phone isn't a viewer, so the host sends it no other)
@@ -1532,7 +1699,7 @@ final class Link: ObservableObject {
         audioLock.lock()
         if holding {
             holding = false
-            heldAudio.take().forEach { channel?.sendAudio($0) }
+            heldAudio.take().forEach { sendVoice($0) }
         }
         audioLock.unlock()
         // let go meanwhile: up once the computer counts it as held, not a tap
@@ -1618,8 +1785,21 @@ final class Link: ObservableObject {
     func audio(_ d: Data) {
         audioLock.lock()
         defer { audioLock.unlock() }
-        if holding { heldAudio.add(d) } else { channel?.sendAudio(d) }
+        if holding { heldAudio.add(d) } else { sendVoice(d) }
     }
+
+    /// PCM from the microphone as this session takes it (Link.voice). With audioLock held.
+    private func sendVoice(_ pcm: Data) {
+        switch voiceNow {
+        case .pcm: channel?.sendAudio(pcm)
+        // 20 ms packets, frame kind 9, in the stream behind what went before
+        case .opus: opus?.encode(pcm).forEach { channel?.sendDatagram(.opus, $0) }
+        // never PCM on the public relay
+        case .off: break
+        }
+    }
+    private var voiceNow = Voice.pcm
+    private var opus: RemoteOpusEncoder?
     func datagram(_ k: RemoteFrameKind, _ d: Data) { channel?.sendDatagram(k, d) }
     /// the last round trip, from any thread (the picture's receiver waits a few of these for a piece sent again)
     static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }

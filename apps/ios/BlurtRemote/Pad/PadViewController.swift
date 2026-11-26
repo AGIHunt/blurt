@@ -495,7 +495,11 @@ final class PadViewController: UIViewController {
             self?.present(a, animated: true)
         }.store(in: &bag)
         l.$screenError.receive(on: RunLoop.main).sink { [weak self] e in
-            guard let self, let e else { return }
+            guard let self else { return }
+            // gone (the busy picture came): the card goes with it
+            guard let e else { return self.status() }
+            // the public relay's picture is full: it stays on, and comes by itself once there's room
+            if e == RemotePublicRelay.busy { return self.status() }
             // the computer doesn't show its screen: don't ask again by itself next time
             if e == "off" || e == "permission" {
                 // one that came on by itself and was refused says nothing about the other computers
@@ -600,7 +604,7 @@ final class PadViewController: UIViewController {
         if changed, let words { UIAccessibility.post(notification: .announcement, argument: words.spoken) }
         emptyHint.isHidden = !(ready && banner == nil && !showing && !padTouched && !Prefs.shared.screenFound)
         let via: String? = switch l.route {
-        case .relay: l.viaGoBetween ? String(localized: "\(name ?? "") · Public connection service") : String(localized: "\(name ?? "") · Own relay")
+        case .relay: l.onPublicService ? String(localized: "\(name ?? "") · Public connection service") : String(localized: "\(name ?? "") · Own relay")
         case .direct: String(localized: "\(name ?? "") · Direct")
         case .overlay: l.overlayIsTailscale ? String(localized: "\(name ?? "") · Tailscale") : String(localized: "\(name ?? "") · Virtual network")
         case .local: name

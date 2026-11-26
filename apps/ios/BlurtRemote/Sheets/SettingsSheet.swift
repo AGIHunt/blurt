@@ -183,7 +183,7 @@ struct SettingsSheet: View {
                 case .local: return "Connected"
                 case .direct: return "Connected, direct"
                 case .overlay: return l.overlayIsTailscale ? "Connected · Tailscale" : "Connected · Virtual network"
-                case .relay: return l.viaGoBetween ? "Connected · Public connection service" : "Connected through your relay"
+                case .relay: return l.onPublicService ? "Connected · Public connection service" : "Connected through your relay"
                 }
             case .connecting: return "Connecting…"
             case .unreachable: return "Can’t reach it"

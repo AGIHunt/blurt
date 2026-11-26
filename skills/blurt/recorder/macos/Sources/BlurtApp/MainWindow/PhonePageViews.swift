@@ -332,7 +332,7 @@ enum PhoneText {
         case .overlay: T("settings.remote.path.overlay")
         case .direct, .goBetween: T("settings.remote.path.direct")
         case .relay: T("settings.remote.path.relay")
-        case .meeting: T("settings.remote.path.go_between")
+        case .meeting, .publicRelay: T("settings.remote.path.go_between")
         }
     }
 

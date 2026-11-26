@@ -74,6 +74,18 @@ final class RemoteViewerSessionTests: XCTestCase {
         /// the host removes this viewer this long after its session began (its owner's Remove)
         var removeAfter: Double?
         let pictures: [(payload: Data, key: Bool)]
+        /// Blurt's public relay (docs/design/remote-go-between.md §The public relay), as RemoteServer goes there: on the go-between the
+        /// direct path never opens, so `goPublicAfter` seconds after `session` the host asks for tickets, opens the relay's room and sends
+        /// `publicRelay` and `noDirect`; there the picture waits for a lease. `publicTest`: the relay address a test build allows.
+        var goPublic = false
+        var publicTest: String?
+        var goPublicAfter = 1.0
+        /// send the viewer to this room instead of the one opened (a relay that's gone by the time it gets there)
+        var publicLie: String?
+        var leaseAskAgain = 1.0
+        private(set) var lease: RemotePictureLease?
+        private var onPublic = false
+        private var wanted: RemoteScreenRequest?
         /// files and the clipboard both ways (docs/design/remote-files.md): the session lists them, and Get Copied sends `copied`
         var files = false
         var copied: [URL] = []
@@ -128,14 +140,44 @@ final class RemoteViewerSessionTests: XCTestCase {
 
         private func lookup(_ id: String) -> Data? {
             if id == pairedID { return pairedKey }
+            if onPublic { return nil }
             // nearby pairing: only on the network listener, never over a relay
             return !relay && RemoteNearby.isNearby(id) ? RemoteNearby.key : nil
         }
 
-        private func wire(_ c: NWConnection, relay: Bool) {
+        @discardableResult
+        private func wire(_ c: NWConnection, relay: Bool, publicRelay: Bool = false) -> RemoteChannel {
             self.relay = relay
             let ch = RemoteChannel(connection: c, role: .mac(lookup: { [weak self] in self?.lookup($0) }), relay: relay, standby: relay, queue: q)
             channel = ch
+            if publicRelay {
+                onPublic = true
+                let l = RemotePictureLease(queue: q) { [weak ch] t in ch?.sendText(t) }
+                l.askAgain = leaseAskAgain
+                l.onEvent = { [weak self, weak ch] e in
+                    guard let self, let ch else { return }
+                    self.note("lease \(e)")
+                    switch e {
+                    case .granted:
+                        guard !self.sending, let r = self.wanted else { return }
+                        self.startPicture(r, ch)
+                    case .refused:
+                        self.sending = false
+                        ch.send(ToPhone.screenFailed(RemotePublicRelay.busy))
+                    case .untouched:
+                        self.sending = false
+                        ch.send(ToPhone.screenFailed("stopped"))
+                    }
+                }
+                lease = l
+                ch.onText = { [weak l] t in l?.heard(t) }
+                let closed = ch.onClose
+                ch.onClose = { [weak self, weak l] f in
+                    l?.end()
+                    self?.note("public closed \(ch.relayClose.map(String.init) ?? "-")")
+                    closed?(f)
+                }
+            }
             var id: String?
             ch.onOpen = { id = $0 }
             ch.onControl = { [weak self, weak ch] d in
@@ -145,6 +187,40 @@ final class RemoteViewerSessionTests: XCTestCase {
             ch.onProbe = { [weak ch] d in ch?.sendDatagram(.probe, d) }
             ch.onVideoFeedback = { _ in }
             ch.start()
+            return ch
+        }
+
+        /// As RemoteServer.goPublic: tickets on the go-between (3 s), the relay's room open (5 s), then `publicRelay` and `noDirect`.
+        private func goPublic(_ gb: RemoteChannel) {
+            note("asking tickets")
+            RemotePublicRelay.askTickets(on: gb, testing: publicTest) { [weak self] t, why in
+                guard let self else { return }
+                self.q.async {
+                    self.note("ticket \(why)")
+                    guard let t, let c = RemotePublicRelay.connection(address: t.relay, room: t.room, role: "mac", ticket: t.mac) else { return self.sayNoDirect(gb) }
+                    let seat = self.wire(c, relay: true, publicRelay: true)
+                    RemotePublicRelay.whenOpen(seat) { ok in
+                        self.q.async {
+                            self.note("room open \(ok)")
+                            guard ok else { seat.close(); return self.sayNoDirect(gb) }
+                            gb.send(ToPhone.publicRelay(address: self.publicLie ?? t.relay, room: t.room, ticket: t.phone))
+                            self.sayNoDirect(gb)
+                        }
+                    }
+                }
+            }
+        }
+
+        private func sayNoDirect(_ gb: RemoteChannel) {
+            note("noDirect")
+            gb.send(ToPhone.noDirect)
+            q.asyncAfter(deadline: .now() + 0.3) { gb.close() }
+        }
+
+        private func startPicture(_ r: RemoteScreenRequest, _ ch: RemoteChannel) {
+            ch.send(ToPhone.screenView(width: 320, height: 180, codec: RemoteVideoCodec.h264, display: "1", features: nil))
+            sending = true
+            frames(ch, from: 0)
         }
 
         private var newKey: Data?
@@ -153,7 +229,7 @@ final class RemoteViewerSessionTests: XCTestCase {
             switch m {
             case let .hello(device, _, nonce, features):
                 note("hello \(device) \((features ?? []).joined(separator: ","))")
-                if (features ?? []).contains(RemoteFeature.move), relay { ch.enableMove() }
+                if (features ?? []).contains(RemoteFeature.move), relay, !onPublic { ch.enableMove() }
                 if id != pairedID {
                     // a new one: the six digits for the owner, who says yes here; then a key of its own
                     guard RemoteNearby.isNearby(id), let n = nonce, let check = ch.check(revealing: n) else { return ch.close() }
@@ -184,11 +260,21 @@ final class RemoteViewerSessionTests: XCTestCase {
             case let .screen(r):
                 window = r?.window
                 note("screen \(r?.window.map { "\($0.width)x\($0.height)" } ?? "none")")
-                guard r != nil else { sending = false; return }
+                guard let r else { sending = false; lease?.want(false); return }
+                if let lease {
+                    // the public relay: Data Saver's picture at most, on a lease
+                    let c = RemotePublicRelay.clamp(r)
+                    note("asked \(c.width)x\(c.height) \(c.bitrate) \(c.fps) window \(c.window.map { "\($0.width)x\($0.height)" } ?? "-")")
+                    wanted = c
+                    sending = false
+                    lease.want(true)
+                    return
+                }
                 ch.send(ToPhone.screenView(width: 320, height: 180, codec: RemoteVideoCodec.h264, display: "1", features: nil))
                 sending = true
                 frames(ch, from: 0)
             case let .key(c, down):
+                lease?.touched()
                 note("key \(c.key) \(down.map { $0 ? "down" : "up" } ?? "tap")")
             case let .mods(mm):
                 note("mods \(mm.rawValue)")
@@ -217,6 +303,22 @@ final class RemoteViewerSessionTests: XCTestCase {
         }
 
         private func session(_ ch: RemoteChannel) {
+            if goPublic || onPublic {
+                // no address to try: the direct path never opens here
+                ch.send(ToPhone.session(RemoteSessionInfo(macName: "Test Host", udpPort: 9, udpSession: 7, canControl: true, version: "test",
+                                                          relay: "ws://relay", platform: "mac",
+                                                          features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.publicRelay])))
+                note(onPublic ? "session public" : "session")
+                if onPublic {
+                    ch.send(ToPhone.displays([RemoteDisplay(id: "1", name: "One", x: 0, y: 0, width: 320, height: 180, main: true)]))
+                } else {
+                    q.asyncAfter(deadline: .now() + goPublicAfter) { [weak self, weak ch] in
+                        guard let self, let ch, !self.saw else { return }
+                        self.goPublic(ch)
+                    }
+                }
+                return
+            }
             if noDirect {
                 ch.send(ToPhone.session(RemoteSessionInfo(macName: "Test Host", udpPort: 9, udpSession: 7, canControl: true, version: "test",
                                                           relay: "ws://relay", platform: "mac", features: [RemoteFeature.move, RemoteFeature.viewer])))
@@ -326,6 +428,7 @@ final class RemoteViewerSessionTests: XCTestCase {
                 case .fileProgress, .fileSaved, .fileFailed:
                     self.outgoing.heard(m.fileAnswer!)
                 case let .displays(list): self.lock.withLock { self._heard.append("displays \(list.count)") }
+                case let .screenFailed(why): self.lock.withLock { self._heard.append("screenFailed \(why)") }
                 case let .session(i): self.lock.withLock { self._heard.append("session \(i.platform ?? "") \((i.features ?? []).joined(separator: ","))") }
                 default: break
                 }
@@ -364,7 +467,7 @@ final class RemoteViewerSessionTests: XCTestCase {
         XCTAssertEqual(link.computer.platform, "windows")
         XCTAssertEqual(link.computer.port, ports.tcp, "the port it was found at, kept to connect again")
         XCTAssertTrue(link.hostTakesViewer)
-        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer,files,resume"))
+        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer,files,resume,publicRelay"))
         XCTAssertTrue(host.log.contains("keyStored"))
 
         // the picture: asked for at the window's size, real frames decoded

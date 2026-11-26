@@ -73,6 +73,8 @@ final class RemoteServer {
         case goBetween
         /// at the go-between, the direct path not open yet
         case meeting
+        /// Blurt's public relay, after the go-between found no direct path (docs/design/remote-go-between.md §The public relay)
+        case publicRelay
     }
 
     enum AwayProblem: String, Equatable {
@@ -101,6 +103,9 @@ final class RemoteServer {
     #else
     private static let testing = false
     #endif
+    /// a test build's own public relay (BLURT_PUBLIC_RELAY: tools/remote-relay/public.js on this machine), allowed besides
+    /// `RemotePublicRelay.addresses`; never in a release build
+    static let publicRelayTest: String? = testing ? ProcessInfo.processInfo.environment["BLURT_PUBLIC_RELAY"].flatMap { $0.isEmpty ? nil : $0 } : nil
 
     let queue = DispatchQueue(label: "blurt.remote", qos: .userInteractive)
     var onStatus: ((Status) -> Void)?
@@ -136,11 +141,22 @@ final class RemoteServer {
     /// the device connected now takes files from this Mac (its hello lists `files`): the bar's Send Files… shows
     var connectedTakesFiles: Bool { shown.connectedID.map { hostFiles.takesFiles($0) } ?? false }
 
-    /// Send Files… on the bar, or files dropped on it: to the device connected now.
+    /// Send Files… on the bar, or files dropped on it: to the device connected now. Over the public relay they're counted, and a big
+    /// send is asked about first (PublicRelayFiles).
     func sendFiles(_ urls: [URL]) {
-        queue.async {
-            guard let s = self.session, let id = s.id, s.features.contains(RemoteFeature.files) else { return }
-            self.hostFiles.send(urls, to: id)
+        // main thread (the bar): what it shows is read here, never the server's queue, which may be waiting on the main thread
+        DispatchQueue.main.async {
+            guard let id = self.shown.connectedID else { return }
+            let go = {
+                self.queue.async {
+                    guard let s = self.session, s.id == id, s.features.contains(RemoteFeature.files) else { return }
+                    self.hostFiles.send(urls, to: id)
+                }
+            }
+            guard self.shown.path == .publicRelay else { return go() }
+            MainActor.assumeIsolated {
+                PublicRelayFiles.check(urls, device: id, window: nil, over: { RemoteBanner.flash($0) }, go: go)
+            }
         }
     }
     private func tell(_ s: Status) {
@@ -208,6 +224,14 @@ final class RemoteServer {
         var privacy = false
         /// it came in through Blurt's go-between (RemoteRelay.goBetween)
         var goBetween = false
+        /// it came in through Blurt's public relay, after the go-between: the picture on a lease, voice as Opus, files counted
+        var publicRelay = false
+        /// the picture's lease from the public relay (publicRelay only)
+        var lease: RemotePictureLease?
+        /// the picture asked for, waiting for the lease (publicRelay only), clamped to the path's ceiling
+        var wantedScreen: RemoteScreenRequest?
+        /// its voice, as Opus (frame kind 9, publicRelay only)
+        var opus: RemoteOpusDecoder?
         /// what the phone said it can do (`ToMac.hello.features`)
         var features: [String] = []
         /// another computer driving this one: it takes the clipboard both ways while its keys are captured
@@ -712,9 +736,12 @@ final class RemoteServer {
         wire(c, relay: nil)
     }
 
-    private func wire(_ c: NWConnection, relay deviceID: String?, fallback: Bool = false) {
+    /// `only`: a connection to Blurt's public relay, made for this device's session: it takes one handshake, from that device alone
+    @discardableResult
+    private func wire(_ c: NWConnection, relay deviceID: String?, fallback: Bool = false, publicRelay only: String? = nil) -> Session {
         let ch = RemoteChannel(connection: c, role: .mac(lookup: { [weak self] id in
             guard let self else { return nil }
+            if let only { return id == only ? self.queue.sync { self.key(for: id) } : nil }
             return self.queue.sync {
                 // a code answers a few handshakes, no more: enough for a phone trying several ways at once, too few to try for digits
                 if self.code(id) != nil {
@@ -726,9 +753,19 @@ final class RemoteServer {
                 guard deviceID == nil, RemoteNearby.isNearby(id), self.asking == nil, CACurrentMediaTime() >= self.nearbyQuietUntil else { return nil }
                 return RemoteNearby.key
             }
-        }), relay: deviceID != nil, standby: deviceID != nil, queue: DispatchQueue(label: "blurt.remote.session", qos: .userInteractive))
+        }), relay: deviceID != nil || only != nil, standby: deviceID != nil || only != nil, queue: DispatchQueue(label: "blurt.remote.session", qos: .userInteractive))
         let s = Session(ch)
         s.goBetween = deviceID != nil && (fallback || RemoteRelay.isGoBetween(relayAt))
+        if only != nil {
+            s.publicRelay = true
+            let lease = RemotePictureLease(queue: queue) { [weak ch] t in ch?.sendText(t) }
+            lease.onEvent = { [weak self, weak s] e in
+                guard let self, let s else { return }
+                self.leaseEvent(e, s)
+            }
+            s.lease = lease
+            ch.onText = { [weak lease] t in lease?.heard(t) }
+        }
         ch.onMoved = { [weak self, weak s] in
             guard let self, let s else { return }
             self.queue.async {
@@ -763,7 +800,15 @@ final class RemoteServer {
             s.lastHeard = CACurrentMediaTime()
             self.handle(m, s)
         }
-        ch.onAudio = { [weak s] d in if s?.greeted == true { RemoteMicFeed.shared.receive(d) } }
+        // PCM never comes over the public relay (256 kbps): only Opus, decoded into the same feed
+        ch.onAudio = { [weak s] d in if let s, s.greeted, !s.publicRelay { RemoteMicFeed.shared.receive(d) } }
+        ch.onOpus = { [weak s] d in
+            guard let s, s.greeted, s.publicRelay else { return }
+            if s.opus == nil { s.opus = RemoteOpusDecoder() }
+            guard let pcm = s.opus?.decode(d) else { return }
+            s.lease?.touched()
+            RemoteMicFeed.shared.receive(pcm)
+        }
         ch.onProbe = { [weak ch, weak s] d in
             ch?.sendDatagram(.probe, d)
             s?.probeArrived()
@@ -773,6 +818,7 @@ final class RemoteServer {
         ch.onPointer = { [weak self, weak s] p in
             guard let s, s.greeted else { return }
             s.lastHeard = CACurrentMediaTime()
+            s.lease?.touched()
             self?.pointer(p)
         }
         ch.onClose = { [weak self, weak s] _ in
@@ -781,14 +827,99 @@ final class RemoteServer {
                 self.handshaking[ObjectIdentifier(s)] = nil
                 self.closed(s)
                 if let deviceID { fallback ? self.fallbackEnded(deviceID, s) : self.relayEnded(deviceID, s) }
+                if let only { self.publicEnded(only, s) }
             }
         }
         if let deviceID {
             if fallback { fallbacks[deviceID] = s } else { relays[deviceID] = s }
+        } else if let only {
+            publicSeats[only]?.channel.close()
+            publicSeats[only] = s
         } else {
             handshaking[ObjectIdentifier(s)] = s
         }
         ch.start()
+        return s
+    }
+
+    // MARK: Blurt's public relay (docs/design/remote-go-between.md §The public relay)
+
+    /// a device's connection to the public relay's room made for it, until its session ends (one at a time)
+    private var publicSeats: [String: Session] = [:]
+
+    /// The go-between found no direct path for `s`, whose device can go on at the public relay: tickets from the go-between (3 s), the
+    /// relay's room opened (5 s), then the device hears where (`publicRelay`) and `noDirect`. Anything failing on the way is `noDirect` alone.
+    private func goPublic(_ s: Session) {
+        guard let id = s.id else { return sayNoDirect(s, why: "no_id") }
+        emit(["event": "remote_public_relay", "state": "asking"])
+        RemotePublicRelay.askTickets(on: s.channel, testing: Self.publicRelayTest) { [weak self, weak s] t, why in
+            guard let self, let s else { return }
+            self.queue.async {
+                guard self.session === s else { return }
+                guard let t, let c = RemotePublicRelay.connection(address: t.relay, room: t.room, role: "mac", ticket: t.mac) else {
+                    return self.sayNoDirect(s, why: "ticket_" + why)
+                }
+                let seat = self.wire(c, relay: nil, publicRelay: id)
+                RemotePublicRelay.whenOpen(seat.channel) { [weak self, weak s, weak seat] ok in
+                    guard let self else { return }
+                    self.queue.async {
+                        guard let s, self.session === s, let seat, self.publicSeats[id] === seat else { seat?.channel.close(); return }
+                        guard ok else {
+                            self.publicSeats[id] = nil
+                            seat.channel.close()
+                            return self.sayNoDirect(s, why: "relay_closed")
+                        }
+                        emit(["event": "remote_public_relay", "state": "open"])
+                        s.channel.send(ToPhone.publicRelay(address: t.relay, room: t.room, ticket: t.phone))
+                        s.channel.send(ToPhone.noDirect)
+                        s.channel.queue.asyncAfter(deadline: .now() + 0.3) { s.channel.close() }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The direct path didn't open and the session can't go on: the device hears `noDirect` and the session ends.
+    private func sayNoDirect(_ s: Session, why: String) {
+        emit(["event": "remote_session", "state": "no_direct", "why": why])
+        status.away = .noDirect
+        s.channel.send(ToPhone.noDirect)
+        s.channel.queue.asyncAfter(deadline: .now() + 0.3) { s.channel.close() }
+    }
+
+    /// A public relay connection ended: before a session (nobody came: 4011), or the session's own end.
+    private func publicEnded(_ id: String, _ s: Session) {
+        if publicSeats[id] === s { publicSeats[id] = nil }
+        s.lease?.end()
+        emit(["event": "remote_public_relay", "state": "closed", "code": Int(s.channel.relayClose ?? 0), "greeted": s.greeted])
+        // the pair's day on the public relay is spent: as over the go-between's limit
+        if s.channel.relayClose == RemoteRelay.overBudget, s.greeted { status.away = .busy }
+    }
+
+    /// The picture's lease: granted (the picture starts, or goes on), refused (busy: the device hears so, and the lease is asked again by
+    /// itself), or nothing from the device for 5 minutes (the picture stops).
+    private func leaseEvent(_ e: RemotePictureLease.Event, _ s: Session) {
+        guard live(s) else { return }
+        emit(["event": "remote_public_lease", "state": "\(e)"])
+        switch e {
+        case .granted:
+            guard s.screen == nil, let r = s.wantedScreen else { return }
+            startScreen(r, s)
+        case .refused:
+            stopScreen(s)
+            s.channel.send(ToPhone.screenFailed(RemotePublicRelay.busy))
+        case .untouched:
+            s.wantedScreen = nil
+            stopScreen(s)
+            s.channel.send(ToPhone.screenFailed("stopped"))
+        }
+    }
+
+    private func stopScreen(_ s: Session) {
+        guard s.screen != nil else { return }
+        s.screen?.stop()
+        s.screen = nil
+        keepAwake(displayToo: false)
     }
 
     // MARK: the relay
@@ -862,9 +993,11 @@ final class RemoteServer {
 
     func screenSettingChanged() {
         queue.async {
-            guard !Self.screenAllowed, let s = self.session, s.screen != nil else { return }
+            guard !Self.screenAllowed, let s = self.session, s.screen != nil || s.wantedScreen != nil else { return }
             s.screen?.stop()
             s.screen = nil
+            s.wantedScreen = nil
+            s.lease?.want(false)
             self.keepAwake(displayToo: false)
             s.channel.send(ToPhone.screenFailed("off"))
         }
@@ -1120,6 +1253,7 @@ final class RemoteServer {
         others.forEach { $0.screen?.stop(); $0.screen = nil; $0.pasteboardTimer?.cancel(); $0.channel.close() }
         s.screen?.stop()
         s.screen = nil
+        s.lease?.end()
         s.captured = false
         s.pasteboardTimer?.cancel()
         s.pasteboardTimer = nil
@@ -1234,6 +1368,11 @@ final class RemoteServer {
         default: break
         }
         guard s.greeted else { return }
+        // the public relay's picture stops after 5 minutes with no touch, key or voice from the device
+        switch m {
+        case .key, .mods, .run, .text, .button, .dragBegin, .dictationKey, .pointerTo, .blurt, .system, .activate: s.lease?.touched()
+        default: break
+        }
         switch m {
         case .hello, .keyStored, .ping, .streamMoved: break
         case .getClipboard:
@@ -1275,19 +1414,20 @@ final class RemoteServer {
                 s.screen?.stop()
                 s.screen = nil
                 self.keepAwake(displayToo: false)
-                guard let r else { return }
+                guard let r else {
+                    // off, or the app went to the background: the public relay's lease goes back at once
+                    s.wantedScreen = nil
+                    s.lease?.want(false)
+                    return
+                }
                 guard Self.screenAllowed else { return s.channel.send(ToPhone.screenFailed("off")) }
-                // the phone says what it last chose, so a picture turned on again shows what it showed
-                var asked = r
-                s.pinned = RemoteDisplayList.id(asked.display)
-                asked.display = s.pinned.map { String($0) }
-                let screen = RemoteScreen(channel: s.channel)
-                screen.onInfo = { [weak s] m in s?.channel.send(m) }
-                screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
-                s.screen = screen
-                self.keepAwake(displayToo: true)
-                screen.start(asked) { why in s.channel.send(ToPhone.screenFailed(why)) }
-                if Self.screenLocked { screen.locked(true) { [weak s] in s?.channel.send(ToPhone.screenLocked(true)) } }
+                // on the public relay: Data Saver's picture at most, and only on a lease (asked first; refused, the device hears "busy")
+                if let lease = s.lease {
+                    s.wantedScreen = RemotePublicRelay.clamp(r)
+                    lease.want(true)
+                    return
+                }
+                self.startScreen(r, s)
             }
         case let .screenCrop(c):
             s.screen?.setCrop(c)
@@ -1527,6 +1667,8 @@ final class RemoteServer {
         s.greeted = true
         if session === s {
             status.viaRelay = s.channel.isRelay
+            // the session went on at the public relay: the public connection service is in use, not short of a direct path
+            if s.publicRelay, status.away == .noDirect { status.away = nil }
         status.connected = label(s)
         status.connectedID = s.id
             status.path = Self.path(of: s)
@@ -1538,8 +1680,7 @@ final class RemoteServer {
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                                                              candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: self.relayFor(s),
-                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.privacy, RemoteFeature.files,
-                                                                        RemoteFeature.resume, RemoteFeature.clipboard])))
+                                                             platform: RemoteHost.mac.rawValue, features: Self.features)))
             if let notice { s.channel.send(ToPhone.notice(notice)) }
             if self.session === s, let id = s.id {
                 // files to this device go once it's up (and on the go-between, once its stream has moved); a dropped one goes on
@@ -1555,9 +1696,18 @@ final class RemoteServer {
                         return self.queue.sync { self.live(s) && s.greeted && (!s.goBetween || s.channel.moved) }
                     },
                     resumes: { [weak s] in s?.features.contains(RemoteFeature.resume) ?? false },
-                    takesFiles: s.features.contains(RemoteFeature.files)))
+                    takesFiles: s.features.contains(RemoteFeature.files), publicRelay: s.publicRelay))
             }
             if s.goBetween { self.awaitDirect(s) }
+        }
+        if s.publicRelay {
+            // the go-between found no direct path a moment ago: none is looked for here
+            info([])
+            s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
+            sendFront()
+            sendLegends()
+            DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
+            return
         }
         if s.channel.isRelay {
             // where the phone might reach this Mac without the relay
@@ -1581,8 +1731,13 @@ final class RemoteServer {
         DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
     }
 
+    /// What this host can do, in `session.features`: Opus only where the OS decodes it (macOS 14 and later).
+    static let features: [String] = [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.privacy, RemoteFeature.files, RemoteFeature.resume,
+                                     RemoteFeature.clipboard, RemoteFeature.publicRelay] + (RemoteOpus.available ? [RemoteFeature.opus] : [])
+
     /// How a session came in, for Settings: an overlay network's address, the same network, the owner's relay, or the go-between.
     private static func path(of s: Session) -> Path {
+        if s.publicRelay { return .publicRelay }
         if s.goBetween { return s.channel.moved ? .goBetween : .meeting }
         if s.channel.isRelay { return s.udpSeen ? .direct : .relay }
         if let h = s.channel.remoteHost, RemoteOverlay.isTailscale(h) { return .tailscale }
@@ -1592,14 +1747,30 @@ final class RemoteServer {
 
     /// On the go-between the session lives only if the direct path opens: 8 s after `session` without a datagram from the phone, it
     /// hears `noDirect` and the session ends. The phone shows why, and that a relay of one's own fixes it.
+    /// A device that lists `publicRelay` goes on at Blurt's public relay instead (goPublic).
     private func awaitDirect(_ s: Session) {
         queue.asyncAfter(deadline: .now() + 8) { [weak self, weak s] in
             guard let self, let s, self.session === s, !s.udpSeen else { return }
-            emit(["event": "remote_session", "state": "no_direct"])
-            self.status.away = .noDirect
-            s.channel.send(ToPhone.noDirect)
-            s.channel.queue.asyncAfter(deadline: .now() + 0.3) { s.channel.close() }
+            if s.features.contains(RemoteFeature.publicRelay) { return self.goPublic(s) }
+            self.sayNoDirect(s, why: "no_public_relay")
         }
+    }
+
+    /// The picture, as asked (on `queue`).
+    private func startScreen(_ r: RemoteScreenRequest, _ s: Session) {
+        guard live(s), Self.screenAllowed else { return }
+        s.screen?.stop()
+        // the phone says what it last chose, so a picture turned on again shows what it showed
+        var asked = r
+        s.pinned = RemoteDisplayList.id(asked.display)
+        asked.display = s.pinned.map { String($0) }
+        let screen = RemoteScreen(channel: s.channel)
+        screen.onInfo = { [weak s] m in s?.channel.send(m) }
+        screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
+        s.screen = screen
+        keepAwake(displayToo: true)
+        screen.start(asked) { why in s.channel.send(ToPhone.screenFailed(why)) }
+        if Self.screenLocked { screen.locked(true) { [weak s] in s?.channel.send(ToPhone.screenLocked(true)) } }
     }
 
     /// The phone chose a display: shown from now on, with the pointer in its middle, where the eyes go next; nil follows the pointer again.
