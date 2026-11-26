@@ -220,6 +220,7 @@ final class DeckRoundTests: XCTestCase {
         let space = d.dock.remove(at: 5)
         d.dock.append(space)
         d.sections[0].slots = Array(d.sections[0].slots.prefix(18)) + blurtRow(h)
+        d.sections[3].slots.removeAll { $0.action == Deck.findPointer.action }
         d.sections[3].slots.removeLast(2)
         if h == .windows { d.sections[3].slots.append(KeySlot(.chord(RemoteChord([.command, .shift], "S"), cycle: false))) }    // Snip was there
         return d
@@ -229,6 +230,24 @@ final class DeckRoundTests: XCTestCase {
         for h in RemoteHost.allCases {
             let keys = Deck.standard(for: h).dock.suffix(4).compactMap { if case let .chord(c, _) = $0.action { c.key } else { nil } }
             XCTAssertEqual(keys, ["Space", "Escape", "Delete", "Return"], "\(h)")
+        }
+    }
+
+    /// Find Pointer left the top row for 更多 (2026-11-27): an 更多 as it was takes it, one changed by hand doesn't, Windows' full one never.
+    func testFindPointerJoinsAnUntouchedMorePage() {
+        for h in RemoteHost.allCases {
+            let now = Deck.standard(for: h)
+            var d = now
+            d.sections[3].slots.removeAll { $0.action == Deck.findPointer.action }
+            XCTAssertEqual(Deck.modernise(&d, for: h), h != .windows, "\(h)")
+            XCTAssertEqual(d.sections[3].slots.map(\.action), now.sections[3].slots.map(\.action), "\(h)")
+            if h != .linux { XCTAssertEqual(now.sections[3].slots.count % Deck.columns, 0, "\(h): no row left half empty") }
+            var mine = now
+            mine.sections[3].slots.removeAll { $0.action == Deck.findPointer.action }
+            mine.sections[3].slots.removeFirst()
+            let kept = mine
+            Deck.modernise(&mine, for: h)
+            XCTAssertEqual(mine.sections[3].slots.map(\.action), kept.sections[3].slots.map(\.action), "\(h): changed by hand")
         }
     }
 

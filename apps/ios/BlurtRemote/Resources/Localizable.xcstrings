@@ -51,6 +51,16 @@
         }
       }
     },
+    "Computer Keyboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑键盘"
+          }
+        }
+      }
+    },
     "Design" : {
       "localizations" : {
         "zh-Hans" : {
@@ -137,6 +147,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已按住"
+          }
+        }
+      }
+    },
+    "Hide Keyboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏键盘"
           }
         }
       }

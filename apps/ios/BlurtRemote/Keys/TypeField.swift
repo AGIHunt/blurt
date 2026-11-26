@@ -62,11 +62,20 @@ final class TypeField: UITextView, UITextViewDelegate {
     }
 }
 
-/// The row above the keyboard: what a phone keyboard doesn't have.
+/// The row above the keyboard: what a phone keyboard doesn't have. Eight places, not eleven (founder, 2026-11-27: crowded): ↑ and ↓
+/// left it, since the pad's arrow key is one tap on ⌄ away and the computer keyboard has all four. The way to the computer keyboard says
+/// so in words, the same words as the switch over it, where a laptop icon read as the screen button and switched keyboards by surprise.
+/// Paste from this device is drawn the size of the letters beside it, not larger.
 final class ModifierRow: UIInputView {
     var onClose: (() -> Void)?
     /// the computer's keyboard instead
     var onComputer: (() -> Void)?
+    /// the modifiers as the dock has them, so ⌘ and ⇧ don't swap places between keyboards; the computer's own order otherwise
+    var order: () -> [RemoteModifiers] = { [] }
+    private var mods: [RemoteModifiers] {
+        let o = order()
+        return o.count == 4 ? o : RemoteHost.shown.modifierOrder
+    }
     private var buttons: [(UIButton, RemoteModifiers?)] = []
 
     init() {
@@ -74,7 +83,7 @@ final class ModifierRow: UIInputView {
         allowsSelfSizing = true
         let row = UIStackView()
         row.axis = .horizontal
-        row.distribution = .fillEqually
+        row.distribution = .fill
         row.spacing = 6
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -85,7 +94,7 @@ final class ModifierRow: UIInputView {
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
             heightAnchor.constraint(equalToConstant: 48),
         ])
-        func add(_ title: String, mods: RemoteModifiers? = nil, _ act: @escaping () -> Void) {
+        func style(_ title: String) -> UIButton.Configuration {
             var c = UIButton.Configuration.filled()
             c.title = title
             c.baseBackgroundColor = Theme.slabPressed
@@ -99,18 +108,29 @@ final class ModifierRow: UIInputView {
                 a.font = .systemFont(ofSize: 13, weight: .medium)
                 return a
             }
-            let b = UIButton(configuration: c, primaryAction: UIAction { _ in act() })
+            return c
+        }
+        var first: UIButton?
+        func add(_ title: String, mods: RemoteModifiers? = nil, _ act: @escaping () -> Void) {
+            let b = UIButton(configuration: style(title), primaryAction: UIAction { _ in act() })
             row.addArrangedSubview(b)
+            if let f = first { b.widthAnchor.constraint(equalTo: f.widthAnchor).isActive = true } else { first = b }
             buttons.append((b, mods))
         }
-        add("") { [weak self] in Haptics.tick(); self?.onComputer?() }
-        if let b = buttons.first?.0 {
-            b.configuration?.image = UIImage(systemName: "laptopcomputer", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
-            b.accessibilityLabel = String(localized: "Computer")
-        }
-        // in the order and with the names of the computer in hand, set in refresh: ⌃⌥⇧⌘ on a Mac, Ctrl Win Alt Shift on Windows
+        // in the dock's order, with the names of the computer in hand, set in refresh
         for i in 0..<4 {
-            add("", mods: []) { let m = RemoteHost.shown.modifierOrder[i]; Sticky.shared.tap(m, at: CACurrentMediaTime()); Haptics.grab() }
+            add("", mods: []) { [weak self] in
+                guard let self else { return }
+                Sticky.shared.tap(self.mods[i], at: CACurrentMediaTime())
+                Haptics.grab()
+            }
+        }
+        add("esc") { Link.shared.send(.key(RemoteChord([], "Escape"), down: nil)); Haptics.tick() }
+        // the same icon as Tab in the dock; ⇥ as text at 13 pt was a speck
+        add("") { Link.shared.send(.key(RemoteChord([], "Tab"), down: nil)); Haptics.tick() }
+        if let b = buttons.last?.0 {
+            b.configuration?.image = UIImage(systemName: "arrow.right.to.line", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium, scale: .small))
+            b.accessibilityLabel = RemoteHost.shown.keyName("Tab")
         }
         add("") {
             Haptics.tick()
@@ -119,29 +139,40 @@ final class ModifierRow: UIInputView {
             if let t = UIPasteboard.general.string, !t.isEmpty { Link.shared.type(t) }
         }
         if let b = buttons.last?.0 {
-            b.configuration?.image = UIImage(systemName: "doc.on.clipboard", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+            b.configuration?.image = UIImage(systemName: "doc.on.clipboard", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium, scale: .small))
             b.accessibilityLabel = String(localized: "Paste from This Device")
         }
-        add("esc") { Link.shared.send(.key(RemoteChord([], "Escape"), down: nil)); Haptics.tick() }
-        add("⇥") { Link.shared.send(.key(RemoteChord([], "Tab"), down: nil)); Haptics.tick() }
-        add("↑") { Link.shared.send(.key(RemoteChord([], "Up"), down: nil)); Haptics.step() }
-        add("↓") { Link.shared.send(.key(RemoteChord([], "Down"), down: nil)); Haptics.step() }
-        add("⌄") { [weak self] in self?.onClose?() }
+        add("") { [weak self] in self?.onClose?() }
+        if let b = buttons.last?.0 {
+            b.configuration?.image = UIImage(systemName: "keyboard.chevron.compact.down", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium, scale: .small))
+            b.accessibilityLabel = String(localized: "Hide Keyboard")
+        }
+        // the way to the computer keyboard, first, where the switch is on that keyboard; as wide as its words
+        var c = style(String(localized: "Computer"))
+        c.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10)
+        let computer = UIButton(configuration: c, primaryAction: UIAction { [weak self] _ in Haptics.tick(); self?.onComputer?() })
+        computer.setContentHuggingPriority(.required, for: .horizontal)
+        computer.setContentCompressionResistancePriority(.required, for: .horizontal)
+        computer.accessibilityLabel = String(localized: "Computer Keyboard")
+        row.insertArrangedSubview(computer, at: 0)
         refresh()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Tapped for the next key: an outline. Locked: filled. As the dock draws them, so the two can't be told apart only here.
     func refresh() {
-        let h = RemoteHost.shown
+        let h = RemoteHost.shown, s = Sticky.shared, order = mods
         for (i, (b, m)) in buttons.filter({ $0.1 != nil }).enumerated() {
             guard m != nil else { continue }
-            let m = h.modifierOrder[i]
-            let on = Sticky.shared.held.isSuperset(of: m)
+            let m = order[i]
+            let locked = s.locked.isSuperset(of: m), once = s.held.isSuperset(of: m) && !locked
             var c = b.configuration
             c?.title = h.name(m)
-            c?.baseBackgroundColor = on ? Theme.slabLatched : Theme.slabPressed
-            c?.baseForegroundColor = on ? .black : Theme.mark
+            c?.baseBackgroundColor = locked ? Theme.slabLatched : Theme.slabPressed
+            c?.baseForegroundColor = locked ? .black : Theme.mark
+            c?.background.strokeColor = once ? Theme.slabLatched : nil
+            c?.background.strokeWidth = once ? 1.5 : 0
             b.configuration = c
         }
     }

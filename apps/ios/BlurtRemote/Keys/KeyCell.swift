@@ -197,11 +197,12 @@ final class KeyCell: UIView {
     private static func faceSize(_ f: String, on h: RemoteHost) -> CGFloat {
         if f.contains(where: { "⌘⌃⌥⇧".contains($0) }) { return 16 }     // a shortcut written out, not a letter on a keyboard
         // a PC's keys are words (Ctrl, Shift, Esc, PgUp): as large as fits, the way a Mac's glyphs are
-        if h != .mac, f.count <= 6 { return f.count <= 2 ? 20 : 16 }
+        if h != .mac, f.count <= 6 { return f.count <= 1 ? 20 : 16 }
+        // a key's name of two to four (F7, F10, Home, End, PgUp, esc): one size, so a row of them reads as one row. By the count alone F10
+        // was smaller than F9 and Home smaller than End (2026-11-27); the label still shrinks to fit a narrow key
         return switch f.count {
-        case ...2: 20
-        case 3: 15
-        case 4: 13
+        case ...1: 20
+        case 2...4: 17
         case 5...6: 11
         default: 9
         }

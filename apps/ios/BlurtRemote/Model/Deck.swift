@@ -77,6 +77,9 @@ struct KeySlot: Codable, Hashable, Identifiable {
         guard let n = keyName(on: h) else { return nil }
         if glyph == nil, h == .windows, case .sticky(.command) = action { return n }     // the drawn Win key, named under it
         if h != .mac, glyph == n { return nil }      // Home on the key is Home on a PC: once is enough
+        // a key with nothing held, already named or drawn large (Home, PgUp, ⌦): its Mac symbol under it, at 10 pt, was a smudge
+        // nobody could read (founder, 2026-11-27: ⇞ under PgUp)
+        if case let .chord(c, _) = action, c.mods.isEmpty, let g = glyph, !g.hasPrefix("mark:") { return nil }
         return glyph == nil ? nil : n
     }
 
@@ -195,9 +198,14 @@ extension Deck {
             KeySection(String(localized: "Main"), editKeys + switchKeys + actionKeys + lastRow(.mac)),
             KeySection(String(localized: "Letters"), letterKeys, columns: 10),
             KeySection(String(localized: "Symbols"), symbolKeys, columns: 10),
-            KeySection(String(localized: "More"), functionKeys + macKeys + rareBlurtKeys),
+            KeySection(String(localized: "More"), functionKeys + macKeys + rareBlurtKeys + [findPointer]),
         ])
     }
+
+    /// It was a button by the tabs until 2026-11-27; the founder asked whether it earns that place. With the picture on the pointer is in
+    /// view, and the Mac finds it when the pad is shaken. So it's a key on 更多 instead, in the slot its last row had free (the Mac and Linux;
+    /// Windows' 更多 is full, and it's in the picker)
+    static var findPointer: KeySlot { KeySlot(.system(.findCursor), glyph: "sf:scope", caption: String(localized: "Find Pointer")) }
 
     private static var editKeys: [KeySlot] {
         [
@@ -260,7 +268,7 @@ extension Deck {
             chord(.control, "L", String(localized: "Clear Screen"), icon: "eraser"),
             chord(.option, "L", String(localized: "Reformat"), icon: "text.badge.checkmark"),
             chord(.control, "Space", String(localized: "Input Source"), icon: "globe"),
-            KeySlot(.system(.findCursor), glyph: "sf:scope", caption: String(localized: "Find Pointer")),
+            findPointer,
         ]
     }
 
@@ -384,7 +392,7 @@ extension Deck {
             KeySection(String(localized: "Main"), pcEdit(h) + pcSwitch(h) + pcAction(h) + lastRow(h)),
             KeySection(String(localized: "Letters"), letterKeys, columns: 10),
             KeySection(String(localized: "Symbols"), symbolKeys, columns: 10),
-            KeySection(String(localized: "More"), functionKeys + pcMore(h).filter { $0.action != snip.action } + rareBlurtKeys),
+            KeySection(String(localized: "More"), functionKeys + pcMore(h).filter { $0.action != snip.action } + rareBlurtKeys + (h == .windows ? [] : [findPointer])),
         ])
     }
 
@@ -464,7 +472,7 @@ extension Deck {
                 chord(C, "O", String(localized: "Transcript"), icon: "text.justify.left"),
                 chord(A, "L", String(localized: "Reformat"), icon: "text.badge.checkmark"),
                 chord(W, "Space", String(localized: "Input Source"), icon: "globe"),
-                KeySlot(.system(.findCursor), glyph: "sf:scope", caption: String(localized: "Find Pointer")),
+                findPointer,
             ] + pcMore(h)),
             (String(localized: "Vibe Coding"), [
                 chord(C, "B", String(localized: "Background"), icon: "square.2.layers.3d"),
@@ -528,6 +536,12 @@ extension Deck {
         if let i = d.sections.firstIndex(where: { $0.slots.map(\.action) == main }) {
             d.sections[i].slots = now.sections[0].slots
             if let j = d.sections.firstIndex(where: { $0.slots.map(\.action) == more }) { d.sections[j].slots = now.sections[3].slots }
+            changed = true
+        }
+        // 更多 as it was from 2026-11-18 to 11-27: Find Pointer joins it
+        let moreUntouched = now.sections[3].slots.filter { $0.action != findPointer.action }.map(\.action)
+        if moreUntouched != now.sections[3].slots.map(\.action), let j = d.sections.firstIndex(where: { $0.slots.map(\.action) == moreUntouched }) {
+            d.sections[j].slots = now.sections[3].slots
             changed = true
         }
         return changed

@@ -112,6 +112,8 @@ struct PadLayout {
     static let gap: CGFloat = 5
     /// tall enough for the arrow key's four edges
     static let stripHeight: CGFloat = 52
+    /// what a two-character tab needs in the portrait row at 13 pt, with room either side to tell it from the next
+    static let tabRoom: CGFloat = 38
     /// big: the top row is taller, so the arrow key is 88 pt square and each of its four edges 44 pt deep. On a phone ↑ and ↓ get 25 pt
     /// each, and in a terminal they're the arrows used most
     static let bigStripHeight: CGFloat = 90
@@ -299,20 +301,21 @@ private struct Parts {
         p.keySize = CGSize(width: keys(width), height: h)
 
         // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to
-        // the left has room
-        // a narrow phone keeps the room for the tabs. Since Transfer came (2026-11-26) the four by the arrow key are 4 pt narrower each:
-        // the tabs lose 16 pt instead of 36. Settings keeps its width, the room a slide to the left needs left-handed. Transfer's arrows
-        // are 13 pt, so its cell is 4 pt narrower again: the tabs lose 12
-        let settingsW: CGFloat = width < 374 ? 32 : 36, iconW: CGFloat = width < 374 ? 28 : 32, arrowW: CGFloat = 82, transferW = iconW - 4
+        // the left has room. Between them the tabs, then Transfer, the screen and the system keyboard. The tabs used to take all the room the icons didn't, so the four
+        // tabs stood far apart while the icons touched, and the screen's lit patch (40 pt) ran over its neighbours (founder, 2026-11-27).
+        // Now the icons get what four tabs at their size leave, up to 44 pt each, so tabs and icons stand about as far apart. Find Pointer
+        // left the row then: it's a key on 更多 (Deck.findPointer)
+        let settingsW: CGFloat = width < 374 ? 32 : 36, arrowW: CGFloat = 82
+        let room = width - settingsW - arrowW - 4
+        let iconW = min(44, max(32, floor((room - 4 * PadLayout.tabRoom) / 3)))
         p.settingsButton = CGRect(x: block.minX, y: block.minY, width: settingsW, height: t - 2)
         p.arrowKey = CGRect(x: lefty ? p.settingsButton.maxX + 4 : block.maxX - arrowW, y: block.minY, width: arrowW, height: t - 2)
         let rowEnd = lefty ? block.maxX : p.arrowKey.minX - 4
         p.keyboardButton = CGRect(x: rowEnd - iconW, y: block.minY, width: iconW, height: t - 2)
         p.screenButton = CGRect(x: rowEnd - iconW * 2, y: block.minY, width: iconW, height: t - 2)
-        p.transferButton = CGRect(x: rowEnd - iconW * 2 - transferW, y: block.minY, width: transferW, height: t - 2)
-        p.findButton = CGRect(x: p.transferButton.minX - iconW, y: block.minY, width: iconW, height: t - 2)
+        p.transferButton = CGRect(x: rowEnd - iconW * 3, y: block.minY, width: iconW, height: t - 2)
         let stripX = lefty ? p.arrowKey.maxX : p.settingsButton.maxX
-        p.strip = CGRect(x: stripX, y: block.minY, width: p.findButton.minX - stripX, height: t - 2)
+        p.strip = CGRect(x: stripX, y: block.minY, width: p.transferButton.minX - stripX, height: t - 2)
         p.list = CGRect(x: block.minX, y: block.minY + t, width: width, height: listH)
         if board { p.board = PadLayout.Board(frame: p.list, tier: .ten, heights: heights) }
 
