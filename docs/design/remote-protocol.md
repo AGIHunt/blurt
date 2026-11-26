@@ -245,7 +245,10 @@ Why and how it feels: [remote-files.md](remote-files.md). All additive. Directio
 - **One file, either way.** `fileBegin {id, name, size, clip?, index?, count?, total?}` → `fileChunk {id, data}` … → `fileEnd {id}`, answered by
   `fileProgress {id, bytes}` (every 1 MiB written), then `fileSaved {id, name}` or `fileFailed {id, why}`. `ToMac.fileBegin` (exists) goes to the
   host; `ToPhone.fileBegin` (new) comes from it, and the phone or viewer answers with `ToMac.fileProgress` / `fileSaved` / `fileFailed` (new).
-  `data` is standard base64; chunks of 192 KiB. The sender keeps at most 4 MiB past the last `fileProgress`.
+  `data` is standard base64; chunks of 192 KiB. With a peer that doesn't list `resume`, `fileProgress` comes every 1 MiB and the sender
+  keeps at most 4 MiB past the last one. With one that does, `fileProgress` comes every 256 KiB and the sender keeps at most half a
+  second of the rate those show, between 512 KiB and 4 MiB: pings and keys sent behind file data then wait at most about that long (a fixed
+  4 MiB at 1.5 MB/s held a ping 2.7 s, and the phone dropped its session every 2.5 s). Vectors `files.windowFor`.
 - `index`, `count`: this file's place in its batch, from 1, and how many; `total`: the batch's bytes. Missing: a batch of one.
 - `clip: true`: this file is the clipboard's content, not a file to keep. The receiver puts it on its clipboard: an image by its extension
   (`.png`, `.jpg`, `.heic`, `.tiff`), anything else as UTF-8 text. A host that takes one from a phone also pastes it into the app in front
