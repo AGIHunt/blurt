@@ -231,6 +231,7 @@
 "capture.taken_out_note" = "已拖出 · 备注已复制，按 ⌘V 粘贴";
 "capture.taken_out_text" = "已拖出 · 图片和备注";
 "capture.taken_out_paths" = "已拖出 · 图片路径和备注";
+"capture.taken_out_where" = "文字会插入到松手的位置";
 "capture.taken_out_files" = "已拖出 · 图片和备注文件";
 "capture.taken_out_files_note" = "备注已复制，按 ⌘V 粘贴";
 "capture.taken_out_picture" = "已拖出 · 图片";

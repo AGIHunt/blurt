@@ -83,7 +83,7 @@
 | 33 | 本机润色模型（MLX） | — | 做不到（docs/design/windows-models.md） | 不变 |
 | 34 | 光标处的衔接（DictationFit：重复的字和标点、句中小写、空格；清单另起一行，清单项后另起一段） | 无 | 对齐（`fit.rs`，测试照搬；粘贴前读输入框前后 500 字，读不到就原样） | 已做 |
 | 35 | 词库：每个请求带词，润色当拼写提示 | 发了，但「已拒绝 / 建议」的词也给了润色 | 对齐：只用 active 的词；`dictation_words` / `dictation_words_edit` 命令（加、删、改名、接受 / 拒绝建议、"a, b, c" 一次加多个）给设置页 | 后端已做 |
-| 36 | 改字后学新词（DictationWatch / Learn）：输入后一分钟每 1.5 s 读一次，结束时（时间到 / 焦点走了 / 文字没了 / 下一段）学一次；「记住了“X” · 撤销」 | 无 | 对齐（`learn.rs` + UIA；修正规则用 `dictation_vocab.py learn --suggest`，和 Mac 的 DictationLearn 同一套）；重排替换掉的不学。只记前后 40 字找回原文，结束就丢 | 已做 |
+| 36 | 改字后学新词（DictationWatch / Learn）：输入后一分钟每 1.5 s 读一次，结束时（时间到 / 焦点走了 / 文字没了 / 下一段）学一次；「已将「X」加入词库 · 撤销」；第一次见到的新词问「可加入词库：X · 加入词库」（2026-11-26，`dictation.accept`） | 无 | 对齐（`learn.rs` + UIA；修正规则用 `dictation_vocab.py learn --suggest`，和 Mac 的 DictationLearn 同一套）；重排替换掉的不学。只记前后 40 字找回原文，结束就丢 | 已做 |
 
 ## 路上的一段
 

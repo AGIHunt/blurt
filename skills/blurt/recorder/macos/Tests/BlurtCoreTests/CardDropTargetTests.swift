@@ -240,6 +240,16 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertTrue(DragReceipt.copiesNote(.unsure), "not sure what it got")
     }
 
+    /// An agent's message box puts the text where the pointer was let go: said the first three times, never for a
+    /// terminal (the prompt) or another outcome.
+    func testToastSaysWhereInAnAgentsMessageBox() {
+        XCTAssertTrue(DragReceipt.saysWhere(.paths, composer: true, said: 0))
+        XCTAssertTrue(DragReceipt.saysWhere(.paths, composer: true, said: DragReceipt.whereTimes - 1))
+        XCTAssertFalse(DragReceipt.saysWhere(.paths, composer: true, said: DragReceipt.whereTimes))
+        XCTAssertFalse(DragReceipt.saysWhere(.paths, composer: false, said: 0))
+        XCTAssertFalse(DragReceipt.saysWhere(.both, composer: true, said: 0))
+    }
+
     func testToastSaysWhatWentIn() {
         XCTAssertEqual(DragReceipt.toastKey(.both, hasNote: true, noteCopied: false), "capture.taken_out_text")
         XCTAssertEqual(DragReceipt.toastKey(.paths, hasNote: true, noteCopied: false, noteFile: true), "capture.taken_out_paths")

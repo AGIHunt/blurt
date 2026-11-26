@@ -81,8 +81,10 @@ pub enum Payload {
 /// Where a taken drag landed, as far as what it got goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Landed {
-    /// a terminal or an agent app: the pictures' paths and the notes as text (card_drop::Target::Terminal / Composer)
+    /// a terminal or an agent app: the pictures' paths and the notes as text (card_drop::Target::Terminal)
     Terminal,
+    /// the same text, in an agent's own message box (card_drop::Target::Composer): it goes where the pointer was let go
+    Composer,
     /// Blurt's own main window: it read which cards they are (card_drop::CARDS_MIME) and files them itself
     Ours,
     /// anything else: the files (or a voice card's words)
@@ -245,7 +247,8 @@ pub fn drag(payload: &Payload, cards: Option<&str>, image: Option<&[u8]>, offset
             Landed::Ours
         } else {
             match under_pointer(&mut Default::default(), &agents) {
-                Target::Terminal | Target::Composer => Landed::Terminal,
+                Target::Terminal => Landed::Terminal,
+                Target::Composer => Landed::Composer,
                 _ => Landed::Other,
             }
         };

@@ -471,6 +471,17 @@ public enum DragReceipt {
         (p != .notSent, p == .unconfirmed)
     }
 
+    /// How many drops into an agent's message box get the second line "Text goes in where you let go" (`saysWhere`).
+    public static let whereTimes = 3
+
+    /// The toast's second line, the first `whereTimes` times (`said`): the path and note went into an agent's own
+    /// message box (the Claude app's Code tab, Codex, WorkBuddy… — `composer`), which puts dropped text where the
+    /// pointer is let go, not at its caret (user report 2026-11-26: it looked like a bug until they saw why). Not a
+    /// terminal: there it goes in at the prompt.
+    public static func saysWhere(_ o: Outcome, composer: Bool, said: Int) -> Bool {
+        o == .paths && composer && said < whereTimes
+    }
+
     /// The safety net: the note goes on the clipboard only where it didn't go in (picture only, or not sure). A rich
     /// app, a chat app that got the note pasted, a terminal (path and note went in; ⌘V would paste at a prompt) and
     /// the Finder with the .md leave the clipboard alone.
