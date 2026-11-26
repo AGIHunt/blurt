@@ -240,3 +240,5 @@
 "viewer.copied.none.too_big" = "Too many files are copied on %@. Send up to 1,000 at a time.";
 "viewer.copied.none.unsupported" = "Can’t get this kind of item from %@.";
 "viewer.copied.none.update" = "Update %@ to use this.";
+"viewer.file.progress" = "%@ of %@";
+"viewer.file.batch" = "%ld of %ld";

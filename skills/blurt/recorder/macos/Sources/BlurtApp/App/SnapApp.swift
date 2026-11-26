@@ -82,6 +82,7 @@ import UniformTypeIdentifiers
 import Carbon.HIToolbox
 import WebKit
 import BlurtCore
+import BlurtRemoteKit
 
 var testMenu: NSMenu?
 
@@ -138,8 +139,12 @@ extension App {
             let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr, target: target) }
             if p.count == 4 { ScreenTextRefine.installed == nil ? ScreenTextRefine.refreshInstalled(read) : read() }
             else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
-        case "remotebar":                               // remotebar NAME | off: the bar alone, nothing is controlling
-            RemoteBanner.pretend(arg == "off" ? nil : arg)
+        case "remotebar":                               // remotebar NAME | off | clipboard | sending: the bar alone, nothing is controlling
+            if arg == "clipboard" { RemoteBanner.flash(T("remote.banner.clipboard_sent", "iPhone")) }
+            else if arg == "sending" {
+                RemoteBanner.transfer(RemoteTransfer(id: "t", name: "作业 3.jpg", size: 8_400_000, done: 3_200_000, incoming: false, state: .going,
+                                                     index: 2, count: 5), to: "iPhone")
+            } else { RemoteBanner.pretend(arg == "off" ? nil : arg) }
         case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
             ScreenTextCard.shared.testCommand(arg)
         case "cardspage":                               // the main window's Cards page (CardsPage.testCommand: state, query, key, select…)

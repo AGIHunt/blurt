@@ -37,7 +37,7 @@ enum RemoteBanner {
         }
         let (_, t) = make()
         t.stringValue = transient ?? going ?? T("remote.banner.controlling", PhoneStatus.name(who))
-        sendButton?.isHidden = !RemoteServer.shared.connectedTakesFiles
+        sendButton?.isHidden = !(pretended != nil || RemoteServer.shared.connectedTakesFiles)
         place()
         panel?.orderFrontRegardless()
     }
@@ -46,7 +46,7 @@ enum RemoteBanner {
     private static func relabel() {
         guard let who = shownFor, let label else { return }
         label.stringValue = transient ?? going ?? T("remote.banner.controlling", PhoneStatus.name(who))
-        sendButton?.isHidden = !RemoteServer.shared.connectedTakesFiles
+        sendButton?.isHidden = !(pretended != nil || RemoteServer.shared.connectedTakesFiles)
         place()
     }
 

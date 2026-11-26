@@ -239,3 +239,5 @@
 "viewer.copied.none.too_big" = "%@ 上拷贝的文件太多。一次最多 1,000 个。";
 "viewer.copied.none.unsupported" = "无法从 %@ 获取此类内容。";
 "viewer.copied.none.update" = "%@ 需要更新后才能使用。";
+"viewer.file.progress" = "%@ / %@";
+"viewer.file.batch" = "第 %ld/%ld 个";

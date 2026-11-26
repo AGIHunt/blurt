@@ -129,7 +129,7 @@ final class ViewerFileSender {
 /// Dark in both appearances, as the window's other cards over the picture (system.md §3.1). Done: the ok check and where it is, 5 s;
 /// not sent: the attention triangle and why, until closed or 8 s.
 final class ViewerFileCard: NSView {
-    static let width: CGFloat = 360
+    static let width: CGFloat = 380
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
@@ -197,7 +197,6 @@ final class ViewerFileCard: NSView {
             icon.heightAnchor.constraint(equalToConstant: 32),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
             title.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 11),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
@@ -279,6 +278,9 @@ final class ViewerFileCard: NSView {
 
     /// a received file: a click on the card shows it in Finder
     private var revealURL: URL?
+    /// two lines (a name over how far it is) or one, centred (Copied, Nothing is copied…)
+    private lazy var titleTop = title.topAnchor.constraint(equalTo: topAnchor, constant: 11)
+    private lazy var titleMiddle = title.centerYAnchor.constraint(equalTo: centerYAnchor)
 
     override func mouseUp(with event: NSEvent) {
         if let u = revealURL { NSWorkspace.shared.activateFileViewerSelecting([u]) }
@@ -328,14 +330,19 @@ final class ViewerFileCard: NSView {
             let many = count > 1
             if let done {
                 let d = bytes(min(done, size))
-                detail.stringValue = (many ? T("viewer.file.to.many", index, count, to, d, bytes(size)) : T("viewer.file.to", to, d, bytes(size))) + Self.left(left)
+                // once there's a time left, the line drops the computer's name (the window says it): the time is what's read
+                detail.stringValue = left.flatMap { Self.left($0).isEmpty ? nil : $0 } != nil
+                    ? (many ? T("viewer.file.batch", index, count) + " · " : "") + T("viewer.file.progress", d, bytes(size)) + Self.left(left)
+                    : (many ? T("viewer.file.to.many", index, count, to, d, bytes(size)) : T("viewer.file.to", to, d, bytes(size)))
             } else {
                 detail.stringValue = many ? T("viewer.file.to.many.start", index, count, to, bytes(size)) : T("viewer.file.to.start", to, bytes(size))
             }
         case let .receiving(name, size, done, index, count, left):
             going(name, size, done)
             let d = bytes(min(done, size))
-            detail.stringValue = (count > 1 ? T("viewer.file.from.many", index, count, to, d, bytes(size)) : T("viewer.file.from", to, d, bytes(size))) + Self.left(left)
+            detail.stringValue = !Self.left(left).isEmpty
+                ? (count > 1 ? T("viewer.file.batch", index, count) + " · " : "") + T("viewer.file.progress", d, bytes(size)) + Self.left(left)
+                : (count > 1 ? T("viewer.file.from.many", index, count, to, d, bytes(size)) : T("viewer.file.from", to, d, bytes(size)))
         case let .paused(name):
             going(name, 1, nil)
             showsBar = false
@@ -381,6 +388,10 @@ final class ViewerFileCard: NSView {
         case .stopped:
             hide()
         }
+        let one = detail.stringValue.isEmpty
+        titleTop.isActive = !one
+        titleMiddle.isActive = one
+        detail.toolTip = detail.stringValue
         setAccessibilityLabel([title.stringValue, detail.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
         needsLayout = true
     }
