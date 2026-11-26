@@ -591,9 +591,10 @@ class RemoteFileReceiver(
     private fun begin(i: RemoteFileInfo, device: String, answer: (RemoteFileAnswer) -> Unit) {
         expire()
         val k = key(device, i.id)
-        // the same file again after a drop: go on from what's written
+        // the same file again after a drop: go on from what's written, unless the screen has locked meanwhile (the part stays)
         val kept = synchronized(lock) { list[k] }
         if (resumes && kept != null && kept.name == RemoteFiles.clean(i.name) && kept.size == i.size) {
+            if (locked()) return answer(RemoteFileAnswer.Failed(i.id, "locked"))
             if (kept.handle == null) {
                 val h = try { RandomAccessFile(kept.file, "rw") } catch (_: Exception) { null }
                 if (h == null) {
@@ -751,11 +752,23 @@ class RemoteFileReceiver(
 
     companion object {
         /** Finished files into `folder()`, under a name not taken there (a host's Downloads/Blurt, a test's folder). */
-        fun intoFolder(folder: () -> File): (File, String, String) -> Saved? = { part, name, _ ->
+        fun intoFolder(folder: () -> File): (File, String, String) -> Saved? = intoFolder@{ part, name, _ ->
             val dir = folder().also { it.mkdirs() }
-            val n = RemoteFiles.unique(name) { File(dir, it).exists() }
-            val dest = File(dir, n)
-            if (part.renameTo(dest) || runCatching { part.copyTo(dest); true }.getOrDefault(false)) Saved(n, dest.path) else null
+            // the name is claimed with an empty file first (atomic), so a file made there meanwhile is never replaced: the next " n" is
+            // taken instead; then the part goes over that claim, which is ours
+            var taken = emptySet<String>()
+            repeat(100) {
+                val n = RemoteFiles.unique(name) { it in taken || File(dir, it).exists() }
+                val dest = File(dir, n)
+                if (!runCatching { dest.createNewFile() }.getOrDefault(false)) {
+                    taken = taken + n
+                    return@repeat
+                }
+                if (part.renameTo(dest) || runCatching { part.copyTo(dest, overwrite = true); true }.getOrDefault(false)) return@intoFolder Saved(n, dest.path)
+                dest.delete()
+                return@intoFolder null
+            }
+            null
         }
     }
 }

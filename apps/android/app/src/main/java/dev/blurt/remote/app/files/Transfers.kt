@@ -64,8 +64,11 @@ class Transfers(private val c: Context) {
     val ask = MutableStateFlow<Ask?>(null)
     /** the Transfer sheet is open: what Get Copied Items brings shows there, not as a toast */
     @Volatile var sheetOpen = false
-    /** Get Copied Items was tapped at (elapsed ms): a clipboard answer is taken only soon after */
-    @Volatile private var askedClipAt = 0L
+    /** Get Copied Items was tapped at (elapsed ms), and nothing has answered it yet: 0 when nothing is asked. The first answer that
+     *  completes it takes it (text, nothing, a `clip` file finishing, or the copied files beginning); a drop or 30 s ends it. What comes
+     *  unasked never reaches the clipboard (remote-files.md §Rules: nothing moves by itself) */
+    private var askedClipAt = 0L
+    private val askLock = Any()
 
     val sender = RemoteFileSender(
         send = { link.sendFile(RemoteFileWire.toMac(it)) },
@@ -95,6 +98,8 @@ class Transfers(private val c: Context) {
     /** From the network thread, in order. */
     fun fromHost(m: ToPhone, device: String) {
         RemoteFileWire.answer(m)?.let { return sender.heard(it) }
+        // the copied files beginning answer Get Copied Items: they're listed, nothing goes on the clipboard
+        if (m is ToPhone.FileBegin && m.clip != true && take()) main.post { if (got.value == Got.Asking) got.value = null }
         val o = RemoteFileWire.out(m) ?: return
         io.execute { receiver.heard(o, device) { a -> link.sendFile(RemoteFileWire.toMac(a)) } }
     }
@@ -104,6 +109,8 @@ class Transfers(private val c: Context) {
 
     /** The session with `device` ended: what goes pauses, what comes keeps its part an hour. */
     fun dropped(device: String) {
+        synchronized(askLock) { askedClipAt = 0 }
+        main.post { if (got.value == Got.Asking) got.value = null }
         sender.connection(false)
         io.execute { receiver.suspend(device) }
     }
@@ -184,25 +191,32 @@ class Transfers(private val c: Context) {
 
     fun getCopied() {
         if (!link.ready) return
-        askedClipAt = SystemClock.elapsedRealtime()
+        val at = SystemClock.elapsedRealtime()
+        synchronized(askLock) { askedClipAt = at }
         got.value = Got.Asking
         link.send(ToMac.GetClipboard)
         // nothing came at all: an older computer, or a lost answer
-        main.postDelayed({ if (got.value == Got.Asking) got.value = null }, 15_000)
+        main.postDelayed({
+            synchronized(askLock) { if (askedClipAt == at) askedClipAt = 0 }
+            if (got.value == Got.Asking) got.value = null
+        }, ASK_MS)
     }
 
-    private fun asked(): Boolean = SystemClock.elapsedRealtime() - askedClipAt < 60_000
-
-    /** The computer's text, as Get Copied Items asked for it. */
-    fun clipboardText(text: String) {
-        if (!asked()) return
+    /** The pending Get Copied Items, taken by the answer that completes it: false when nothing is asked (any thread). */
+    private fun take(): Boolean = synchronized(askLock) {
+        val asked = askedClipAt != 0L && SystemClock.elapsedRealtime() - askedClipAt < ASK_MS
         askedClipAt = 0
+        asked
+    }
+
+    /** The computer's text, as Get Copied Items asked for it; unasked, ignored. */
+    fun clipboardText(text: String) {
+        if (!take()) return
         putText(text)
     }
 
     fun clipboardNone(why: String) {
-        if (!asked()) return
-        askedClipAt = 0
+        if (!take()) return
         val name = link.current.value?.title ?: ""
         say(Got.None(c.getString(when (why) {
             "empty" -> R.string.clip_none_empty
@@ -212,8 +226,10 @@ class Transfers(private val c: Context) {
         }, name)))
     }
 
-    /** A `clip` file from the computer (io thread): an image by its extension, anything else as UTF-8 text. */
+    /** A `clip` file from the computer (io thread): an image by its extension, anything else as UTF-8 text. Unasked, its content is
+     *  dropped (the receiver deletes the file). */
     private fun clip(f: File, name: String) {
+        if (!take()) return
         if (!RemoteFiles.isImage(name)) {
             val t = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: return
             main.post { putText(t) }
@@ -226,14 +242,12 @@ class Transfers(private val c: Context) {
         if (runCatching { f.copyTo(out, overwrite = true) }.isFailure) return
         val uri = FileProvider.getUriForFile(c, Downloads.authority(c), out)
         main.post {
-            askedClipAt = 0
             clipboard()?.setPrimaryClip(ClipData.newUri(c.contentResolver, name, uri))
             say(Got.Image(uri, name))
         }
     }
 
     private fun putText(t: String) {
-        askedClipAt = 0
         clipboard()?.setPrimaryClip(ClipData.newPlainText(c.getString(R.string.app_name), t))
         say(Got.Text(t))
     }
@@ -368,6 +382,9 @@ class Transfers(private val c: Context) {
     private fun toast(s: String) = Toast.makeText(c, s, Toast.LENGTH_SHORT).show()
 
     companion object {
+        /** Get Copied Items waits this long for its answer */
+        const val ASK_MS = 30_000L
+
         /** the first words of copied text, on one line */
         fun firstWords(t: String): String {
             val one = t.trim().replace(Regex("\\s+"), " ")

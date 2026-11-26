@@ -186,6 +186,32 @@ class RemoteFilesTest {
         wait("refused") { p.s.transfers.first().state == RemoteTransfer.State.Failed("space") }
     }
 
+    @Test fun aLockBeforeTheSameFileGoesOnKeepsItsPart() {
+        val pipe = Pipe().apply { cutAfter = RemoteFiles.CHUNK * 10L }
+        val p = pair(pipe = pipe)
+        p.s.add(listOf(FileSource(file("big.bin", RemoteFiles.CHUNK * 40))))
+        wait("paused") { p.s.transfers.first().state == paused }
+        p.s.connection(false)
+        p.r.suspend("phone-1")
+        p.r.locked = { true }
+        synchronized(pipe.lock) { pipe.cutAfter = null; pipe.up = true }
+        p.s.connection(true)
+        wait("refused") { p.s.transfers.first().state == RemoteTransfer.State.Failed("locked") }
+        assertEquals(1, p.r.current.size, "the part stays for when it's open again")
+    }
+
+    @Test fun aNameMadeMeanwhileIsNotReplaced() {
+        val out = File(dir, "out").apply { mkdirs() }
+        val part = File(dir, "p.part").apply { writeText("new") }
+        val save = RemoteFileReceiver.intoFolder { out }
+        // another file appears under the name after it was looked at: the claim fails and the next name is used
+        File(out, "a.txt").writeText("theirs")
+        val s = save(part, "a.txt", "d")!!
+        assertEquals("a 2.txt", s.name)
+        assertEquals("theirs", File(out, "a.txt").readText())
+        assertEquals("new", File(out, "a 2.txt").readText())
+    }
+
     @Test fun anOlderReceiverWithoutResumeStillGetsTheFile() {
         val p = pair(resume = false)
         val f = file("doc.pdf", RemoteFiles.CHUNK * 25 + 1)
