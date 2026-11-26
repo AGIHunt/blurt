@@ -67,6 +67,32 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   (§Start of speech). (v1.0.4) Esc also has a Carbon hotkey for as long as a take listens (`.dictationEsc`): where the
   event tap doesn't see it — secure event input on, another tool holding the key — the hotkey still cancels. A press
   both see counts once (`Dictation.escTwin`, 0.4 s); `dictation_secure_input` logs when secure input was on.
+  **(2026-11-22，#40) 听的时候这个 Esc 只归口喷鸡：前台应用看不到按下，也看不到松开。** 在 Claude Code 里漏过去一个 Esc，正在跑的
+  任务就停了。以前会漏，原因有两个：热键在口喷鸡一听到 Esc 的那一刻就还回去了，松开那一下就到了前台应用；热键只认完全一样的
+  修饰键，按住 Fn 或 ⌥ 说话时按的 Esc 根本匹配不上。现在：
+  - 热键等按键松开、再稳 80 ms 才还回去，最多留 3 秒（BlurtCore `DictationEscHold`，`Dictation.releaseEsc`）。
+  - 听写键是 ⌥ 时另注册一个 ⌥Esc（`.dictationEscOption`），按住 ⌥ 说话时按 Esc 就是它。
+  - 按住 Fn 说话时按 Esc 没有热键能匹配（Carbon 的修饰键里没有 Fn），由 Fn 过滤器自己拦（`DictationKeys.keepEsc`，BlurtCore
+    `DictationEscFilter`）：按下、按住时的重复、松开，一起拦。没有过滤器时（没给辅助功能，或关了 🌐 捕获）Fn+Esc 还是会到前台应用。
+  - ⌘ ⌃ ⇧ 和 Esc 一起按是前台应用自己的快捷键，照旧放过去（听写照旧被取消）。⌥ 不在其中：听写键是 ⌥ 的人按住 ⌥ 说话，这时的 ⌥Esc
+    就是取消，归口喷鸡（系统的「朗读所选项」默认也是 ⌥Esc，听的那几秒里按它不会朗读）。
+  - 只管听的时候，main 上一直是这样（#66 起）：说完之后（转写、润色、打字的路上）Esc 还是到前台应用，同时取消这一段、可以撤销，
+    没改。
+  - 过滤器多看一种事件：按键的松开。Esc 以外的松开原样立刻放过去，不进锁、不上主线程。代价是过滤器开着的时候，全系统的松开事件都
+    多走一趟它的回调。
+
+  实测（macOS 27.2，用一个没有用途的键码代替 Esc，量的时候自己的窗口在前台，每行 12 次）：
+
+  | 按法 | 以前（一听到就还热键） | 现在 |
+  |---|---|---|
+  | 没有过滤器，单按 | 前台应用收到松开 12 次 | 0 次 |
+  | 过滤器把按键交出去，单按 | 收到按下和松开 12 次（另一次量是 0 次，看时序） | 0 次 |
+  | Fn 按着（按键上带 Fn 标志） | 收到按下和松开 12 次 | 过滤器拦下，0 次 |
+  | ⌥ 按着，只有单按的热键 | 收到按下和松开 12 次 | — |
+  | ⌥ 按着，有 ⌥Esc 热键 | 收到松开 12 次 | 0 次 |
+
+  过滤器拦下的那次，系统的按键状态表里看不到它是按下的，所以热键在 80 ms 后就还回去了：剩下的重复和松开由过滤器拦。
+  真键盘、签名的包还没测，要测的几条在 #40 的清单里。
 - **⇧ twice is the style toggle** (§Styles): ⇧ double-tapped while dictating (the second press within 350 ms) says
   `.style`, in push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still
   cancels, as any shortcut does); one ⇧ is nothing. A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over

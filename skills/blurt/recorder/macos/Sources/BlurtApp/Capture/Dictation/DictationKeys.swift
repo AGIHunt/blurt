@@ -16,13 +16,15 @@
 // flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events, each with the time it happened
 // (the event's own timestamp, DictationTrigger.eventTime — not when the main thread got to it: the double-tap window
 // is a few hundred ms and the main thread can be late). The key heard while another app is in front is remembered
-// (`lastOtherApp`): Settings shows it, and only the user can make it happen. What the filter's thread reads (drop Fn)
-// is behind a lock (`filterState`); the main thread sets it. ⇧ always passes: Structured is a double ⇧ by default and
-// the input method's own ⇧ (Chinese / English, full / half width) must keep working while a take listens. With a
-// single-⇧ Structured the input method switches as well, which beats a dead ⇧.
+// (`lastOtherApp`): Settings shows it, and only the user can make it happen. What the filter's thread reads (drop Fn,
+// keep Esc while a take listens: BlurtCore DictationEscFilter) is behind a lock (`filterState`); the main thread sets
+// it. ⇧ always passes: Structured is a double ⇧ by default and the input method's own ⇧ (Chinese / English, full /
+// half width) must keep working while a take listens. With a single-⇧ Structured the input method switches as well,
+// which beats a dead ⇧.
 // The filter keeps keyDown and mouse-down in its mask on purpose: they must reach the trigger in the order they
 // happened relative to the Fn change (Fn-← is a shortcut, not a tap), which a second listener can't promise. The
-// callback only reads the key code and flags and lets them through at once.
+// callback only reads the key code and flags and lets them through at once. keyUp is in the filter's mask for Esc's
+// release alone: every other key-up goes straight on, and nothing about any of them reaches the main thread.
 // Test builds never install a tap or a monitor: BLURT_TEST_DICTATION_TAP (ok | failed: what tapCreate answers),
 // BLURT_TEST_FILTER_TAP (ok | failed, default: the same), BLURT_TEST_INPUT_MONITORING / BLURT_TEST_ACCESSIBILITY
 // (1 | 0) and the `dictation tap|filter|im|ax …` hooks simulate macOS.
@@ -68,12 +70,21 @@ final class DictationKeys {
     /// What the filter's thread decides by, set from the main thread: behind one lock.
     struct FilterState {
         var swallowFn = false
+        var esc = DictationEscFilter()
     }
     fileprivate let filterState = OSAllocatedUnfairLock(initialState: FilterState())
     /// Read on the filter's thread: drop Fn presses (true while the filter runs for dictation).
     fileprivate var swallowFn: Bool {
         get { filterState.withLock { $0.swallowFn } }
         set { filterState.withLock { $0.swallowFn = newValue } }
+    }
+    /// A take is listening, or has stopped: the filter keeps a press of the cancel key from the app in front while it
+    /// is (`needs`: the modifier that key takes). Without the filter the Esc hotkeys do it (Dictation.holdEsc).
+    func keepEsc(_ listening: Bool, needs: UInt64) {
+        filterState.withLock {
+            $0.esc.armed = listening
+            $0.esc.needs = needs
+        }
     }
     /// How many Fn presses / releases the filter kept from macOS (tests and Settings).
     fileprivate(set) var swallowed = 0
@@ -200,7 +211,8 @@ final class DictationKeys {
             tapGeneration += 1
             return true
         }
-        let types: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        var types: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if filter { types.append(.keyUp) }        // Esc's release: the press it kept doesn't half reach an app
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         let me = Unmanaged.passUnretained(self).toOpaque()
         let t: CFMachPort?
@@ -230,6 +242,7 @@ final class DictationKeys {
 
     private func removeTap() {
         swallowFn = false
+        filterState.withLock { $0.esc.forgetPress() }     // a release it will never see must not hold the next press
         if let t = tap { CGEvent.tapEnable(tap: t, enable: false); CFMachPortInvalidate(t) }
         if let s = source, let l = sourceLoop { CFRunLoopRemoveSource(l, s, .commonModes) }
         tap = nil
@@ -261,8 +274,16 @@ final class DictationKeys {
     /// test builds: whether a simulated disabled tap comes back on when enabled again (`dictation tap disable stuck`)
     static var testTapReenables = true
 
-    /// Test builds: what the filter does with a key change (`dictation filter-event CODE`): dropped or passed.
+    /// Test builds: what the filter does with a key change (`dictation filter-event CODE`): dropped or passed. An Esc
+    /// is asked about as the press and its release: kept when the filter would keep both.
     func testFilterDecision(keyCode: Int) -> Bool {
+        if keyCode == DictationTrigger.escape {
+            return filterState.withLock { s -> Bool in
+                guard s.swallowFn else { return false }
+                var f = s.esc
+                return f.drop(keyDown: true, flags: 0) && f.drop(keyDown: false, flags: 0)
+            }
+        }
         let drop = swallowFn && keyCode == 63
         if drop { swallowed += 1 }
         return drop
@@ -363,17 +384,32 @@ private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, eve
     return Unmanaged.passUnretained(event)
 }
 
-/// The Fn filter, on FilterThread: decide at once (drop an Fn change, pass everything else), handle on the main thread.
+/// The Fn filter, on FilterThread: decide at once (drop an Fn change; keep an Esc while a take listens), handle on the
+/// main thread.
 private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-    guard let r = refcon, !DictationKeys.fromPhone(event, keyDown: type == .keyDown) else { return Unmanaged.passUnretained(event) }
+    let esc = (type == .keyDown || type == .keyUp)
+        && Int(event.getIntegerValueField(.keyboardEventKeycode)) == DictationTrigger.escape
+    // the mask has keyUp for Esc's release alone: every other one goes straight on
+    if type == .keyUp, !esc { return Unmanaged.passUnretained(event) }
+    guard let r = refcon, esc || !DictationKeys.fromPhone(event, keyDown: type == .keyDown) else { return Unmanaged.passUnretained(event) }
     let keys = Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
     let now = DictationKeys.time(event)
     let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0
     let raw = event.flags.rawValue
-    // one short critical section: the main thread only ever sets the flag
-    let drop = type == .flagsChanged && code == 63 && keys.filterState.withLock { $0.swallowFn }
+    // one short critical section: the main thread only ever sets this state
+    var keptFn = false
+    let drop = keys.filterState.withLock { s -> Bool in
+        guard s.swallowFn else { return false }
+        if esc { return s.esc.drop(keyDown: type == .keyDown, flags: raw) }
+        keptFn = type == .flagsChanged && code == 63
+        return keptFn
+    }
+    // Esc's release, and the repeats of a press it kept: the trigger heard the press, nothing more to say
+    if type == .keyUp || (drop && type == .keyDown && event.getIntegerValueField(.keyboardEventAutorepeat) != 0) {
+        return drop ? nil : Unmanaged.passUnretained(event)
+    }
     DispatchQueue.main.async {
-        if drop { keys.swallowed += 1 }
+        if keptFn { keys.swallowed += 1 }
         keys.received(type, code: code, flags: raw, at: now)
     }
     return drop ? nil : Unmanaged.passUnretained(event)

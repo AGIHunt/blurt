@@ -654,7 +654,7 @@ extension App {
             // reaching for the voice: if dictation can't hear its key, say so (≈ daily) — while Dictation is on
             if Capability.dictation.isOn { Dictation.shared.nudge("voice_key") }
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
-        case .dictationEsc: Dictation.shared.escFromHotkey()
+        case .dictationEsc, .dictationEscOption: Dictation.shared.escFromHotkey()
         case .project: if resident, Capability.projectsShown { island.toggleSwitcher() }       // (projects: Recording & Items')
         // ⌥H: the main window in front on the Cards page; in front on it already, away again (toggleCards)
         case .cards: if resident { AppEnvironment.mainWindow?.toggleCards(via: "hotkey") }

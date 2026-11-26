@@ -110,7 +110,8 @@ extension App {
             DictationKeys.testFilterTap = rest.isEmpty ? nil : rest
             emit(["event": "dictation_test_filter", "filter": DictationKeys.testFilterTap ?? NSNull()])
         case "filter-event":
-            // filter-event CODE: a flagsChanged of key CODE reaching the filter — dropped (kept from macOS) or passed
+            // filter-event CODE: a flagsChanged of key CODE reaching the filter — dropped (kept from macOS) or passed.
+            // CODE 53 (Esc) is asked about as a press and its release, while a take listens: kept when the filter keeps both
             let code = Int(rest) ?? 63
             emit(["event": "dictation_filter_event", "key_code": code, "dropped": d.testFilterDecision(code),
                   "filter": d.fnFiltering, "swallowed": d.fnSwallowed])
