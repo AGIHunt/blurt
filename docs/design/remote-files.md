@@ -157,6 +157,10 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | Rust host → the test phone on loopback (its end is `files::Receiver`): copied text, 30,000 Chinese characters as `Text.txt`, a PNG as `Image.png`, two files and a folder (zipped) as one batch, 1,001 files (`too_big`), a phone's pasted image | all whole; 4.9 s for the test, most of it pairing | `tests/files.rs` `copied_text_an_image_and_files_come_to_the_phone` |
 | Rust host → test phone, 12 MB from the bar's Send Files…, the phone gone at 40 % and back | resumed with the same id; at most what was missing plus the 4 MiB window went again | `tests/files.rs` `a_file_sent_from_the_bar_goes_on_after_the_phone_drops` |
 
+| A 50 MB file, Android emulator → fake host, throttled to 1.5 MB/s | with a fixed 4 MiB window the phone dropped its session 21 times (pings waited 2.7 s behind file data); with the rate-based window, no drop, 34 s | `apps/android/fakehost`, 2026-11-26 |
+| A drop mid-file on the Android emulator | went on from 17,694,720 bytes, 45 ms after the session reopened | the same rig |
+| 136 MB host → phone after Get Copied Items on (emulated) mobile data | asked first, then arrived with the same SHA-256 | the same rig |
+
 Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1max, LAN-only, wasn't reachable from this Mac's network on
 2026-11-26); Windows and Linux hosts (CI builds and tests only).
 
