@@ -262,6 +262,9 @@ public final class RemoteChannel {
     }
 
     /// A frame or packet, opened: first byte says what it is. `datagram`: it came as a packet, not in a stream.
+    /// one Opus packet of voice (frame kind 9, the public relay): RemotePublicRelay
+    public var onOpus: ((Data) -> Void)?
+
     public func deliver(_ plain: Data, datagram: Bool = false) {
         guard let k = plain.first.flatMap(RemoteFrameKind.init) else { return }
         let body = plain.dropFirst()
@@ -269,6 +272,7 @@ public final class RemoteChannel {
         switch k {
         case .control: onControl?(Data(body))
         case .audio: onAudio?(Data(body))
+        case .opus: onOpus?(Data(body))
         case .pointer: if let p = RemotePointerPacket(Data(body)) { onPointer?(p) }
         case .video: onVideo?(Data(body))
         case .probe: onProbe?(Data(body))

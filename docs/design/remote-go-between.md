@@ -102,6 +102,84 @@ Rules for the stream over UDP:
 **Billing safety:** the account's Workers plan is Free, so limits fail and nothing is billed. The Worker binds nothing billable: no R2,
 no KV, only the Durable Object class `Meet` (SQLite-backed, hibernating).
 
+## The public relay (Hong Kong, 2026-11-26)
+
+When the go-between finds no direct path, the session no longer just ends: it goes on through **Blurt's public relay**,
+`wss://relay.blurt.work`, a Tencent Lighthouse box in Hong Kong (2 vCPU, 2 GB, 200 Mbps peak; `tools/remote-relay/public.js` behind
+Caddy). It is free, shared and offered without a guarantee. Reviews: `promo/cases/public-relay-1126/` (security F1–F6, capacity).
+It carries sealed bytes like any relay: it can delay or cut a session, never read or change it.
+
+### Order of paths
+
+Same network → overlay → own relay → go-between (direct UDP) → **public relay** → "Can't connect directly". The public relay is used
+only when the go-between was (own relay empty, Public connection service on) and both ends list `publicRelay`. It is one more step of the
+same setting; the apps call it the public connection service too (copy.md).
+
+### Getting in: tickets and a room per session
+
+1. On the go-between, 8 s after `session` with no datagram, a host whose phone listed `publicRelay` makes a room for this session:
+   32 random bytes, base64url (43 characters). It sends the go-between a **text** WebSocket message `{"ticket":{"room":"<room>"}}`
+   (no app sends text otherwise; the go-between answers it and never passes it on).
+2. The go-between answers only a computer whose phone is in the room, at most 3 times a connection:
+   `{"ticket":{"relay":"wss://relay.blurt.work","room":…,"mac":"<t>","phone":"<t>"}}`, or `{"ticket":{"error":"off|alone|limit|bad"}}`.
+   A ticket is `<expiry>.<tag>.<signature>` (`src/ticket.js`): expiry = now + 60 s; tag = HMAC(S, pair's go-between room ‖ UTC day), 9
+   bytes, so the relay can keep a day's byte budget per pair without learning the pair's room; signature = HMAC(S, relay room ‖ role ‖
+   expiry ‖ tag), 16 bytes. S is a Worker secret (`TICKET_SECRET`) and `TICKET_SECRETS` on the box (comma list, newest first, to rotate).
+3. The host checks `relay` is one of `RemotePublicRelay.addresses` (`wss://relay.blurt.work` only; a test build may add
+   `BLURT_PUBLIC_RELAY`), opens `<relay>/v1/<room>/mac?t=<mac ticket>` within 5 s, then sends the phone, sealed,
+   `{"publicRelay":{"address":…,"room":…,"ticket":<phone ticket>}}` and `noDirect`, and closes the go-between session as before.
+   Any failure on the way (no answer in 3 s, an error, the relay not open in 5 s) is today's `noDirect` alone.
+4. A phone that got `publicRelay` (an allowed address, within the last 10 s) answers `noDirect` by connecting to
+   `<address>/v1/<room>/phone?t=<ticket>` and doing the usual handshake with the paired key. It gives up after **5 s** without `session`
+   (refused, 4001, 4011, timeout) and shows the existing no-direct line. No retry loop: the next try starts at the go-between again.
+5. The host's waiting connection takes one handshake, from that device id only. The relay closes a computer nobody came to after 60 s
+   (**4011**). A ticket opens one connection; the room is never used again.
+
+The relay never sees the pair's room or a device id in the clear before the handshake (the hello's id is inside TLS to the relay, as on
+any relay), so two sessions there can be linked only within a day, by the tag.
+
+### The picture: leases
+
+The relay can't see whether the picture is on, so the host asks: text messages on its relay connection, never passed on.
+
+- `{"lease":true}` asks, or renews one held; `{"lease":false}` gives it back. Answers: `{"lease":{"ok":true,"ttl":75}}`,
+  `{"lease":{"ok":false,"why":"full"|"prefix"|"alone"}}`; `{"lease":{"ok":false,"why":"expired"}}` when the relay takes one back.
+- At most **10** at once (`LEASES`), **one per IP prefix** of the computer (/24, /48). Refused: no queue.
+- The host asks before it starts the picture; on refusal it sends `screenFailed("busy")` and asks again every **30 s** while the picture
+  is still wanted, starting it (`screenView`) once granted. It renews every 30 s while frames flow; the relay takes back one unrenewed
+  for 75 s. Given back at once on picture off, the app going to the background (the phone stops the picture), the session's end; after
+  **5 min** with no touch, key or voice from the device the host stops the picture (`screenFailed("stopped")`) and gives it back; the
+  relay takes it back after **2 h** (asked again, it goes behind anyone refused in the last minute).
+- The picture on this path is Data Saver's: at most **1280 wide, 1 Mbps, 15 fps**, asked by the device and clamped by the host.
+
+### Budgets (the relay)
+
+Enforced by pausing the sender's reads, never by dropping (the frames are sealed in sequence, with AEAD counters):
+
+- each direction of a room: **256 kbps** without a lease (64 KiB burst), **1.5 Mbps** with one (256 KiB burst: a keyframe is 77–170 KB);
+  200 messages a second; a receiver 256 KiB behind pauses its sender, 2 MiB behind is cut;
+- **1 GB per pair per UTC day** (the tag), then 4003 to both; a session at most 12 h (4003); messages at most 512 KiB;
+- per IP: 16 connections, 10 upgrades in 10 s (HTTP 429); 2,000 connections in all;
+- no `peek`; `GET /` answers `blurt relay`; counters once a minute, nothing about who.
+
+### What the devices do on this path
+
+- **Voice:** Opus, frame kind **9**, one packet per 20 ms of 16 kHz mono, about 32 kbps, when the device listed `opus` and the host did
+  too; PCM (256 kbps) never goes here. A device that can't send Opus, or a host that can't hear it, has no microphone on this path.
+- **Files:** at most **50 MB per device per UTC day** over this path, counted by the sender; a send over **20 MB** is asked about first.
+- **The picture busy:** `screenFailed("busy")` shows a card (below); keys, pointer and voice work meanwhile, and the picture comes by
+  itself once there is room.
+- The connection label says Public connection service, as on the go-between.
+
+### Copy (en / zh)
+
+| Where | English | 中文 |
+|---|---|---|
+| No picture lease free (card under "Can't show the screen") | The public connection service is busy. Keys, the pointer and voice still work. | 公共连接服务繁忙。按键、指针和语音仍可使用。 |
+| A send over 20 MB on this path | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
+| Past 50 MB today | You can send up to 50 MB a day over the public connection service. | 通过公共连接服务每天最多可发送 50 MB。 |
+| Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |
+
 ## Overlay addresses (Tailscale, ZeroTier, …)
 
 - **Hosts** list the addresses of overlay interfaces as well as LAN ones: IPv4 in 100.64.0.0/10, IPv6 in fd7a:115c:a1e0::/48 (Tailscale),

@@ -289,3 +289,36 @@ public final class RemoteSTUN {
         return nil
     }
 }
+
+/// Blurt's public relay (docs/design/remote-go-between.md §The public relay): where a session goes on when the go-between finds no direct
+/// path. Shared and free, with limits: a ticket from the go-between to get in, the picture on a lease from the relay, budgets.
+public enum RemotePublicRelay {
+    /// the only addresses a host or a phone goes to (wss:// only); the go-between's answer and `ToPhone.publicRelay` must name one
+    public static let addresses = ["wss://relay.blurt.work"]
+    /// a test build may point both ends at a local copy (`BLURT_PUBLIC_RELAY`); a release never does
+    public static func allowed(_ a: String, testing: String? = nil) -> Bool { addresses.contains(a) || (testing != nil && a == testing) }
+    /// how long either end waits for the relay to answer before it gives up and says there's no direct path
+    public static let giveUp: Double = 5
+    /// the computer's wait for the go-between's tickets
+    public static let ticketWait: Double = 3
+    /// the picture on this path: Data Saver's
+    public static let maxWidth = 1280, maxBitrate = 1_000_000, maxFPS = 15
+    /// a lease is renewed this often while frames flow; the relay takes it back after 75 s without
+    public static let renewEvery: Double = 30
+    /// refused: asked again this often while the picture is wanted
+    public static let askAgain: Double = 30
+    /// no touch, key or voice from the device for this long: the picture stops and its lease goes
+    public static let untouched: Double = 300
+    /// files over this path, per device per UTC day, counted by the sender
+    public static let filesPerDay = 50_000_000
+    /// a file or batch over this is asked about first
+    public static let askOver = 20_000_000
+    /// the relay's close code for a computer nobody came to within 60 s
+    public static let nobodyCame: UInt16 = 4011
+    /// `ToPhone.screenFailed` when the relay has no picture lease free
+    public static let busy = "busy"
+
+    /// The text messages between a host and the relay (never passed on): asking for, renewing and giving back a lease, and the answer.
+    public static func lease(_ on: Bool) -> String { on ? #"{"lease":true}"# : #"{"lease":false}"# }
+    public static func ticketAsk(room: String) -> String { #"{"ticket":{"room":"\#(room)"}}"# }
+}

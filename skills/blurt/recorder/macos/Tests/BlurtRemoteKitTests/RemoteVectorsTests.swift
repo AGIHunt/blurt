@@ -103,6 +103,9 @@ final class RemoteVectorsTests: XCTestCase {
                                                               displayAspect: 1.5, relay: "wss://meet.blurt.work", platform: "windows", features: ["move"]))),
             ("stream_moved", .streamMoved),
             ("no_direct", .noDirect),
+            ("public_relay", .publicRelay(address: "wss://relay.blurt.work", room: "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w",
+                                          ticket: "1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A")),
+            ("screen_failed_busy", .screenFailed(RemotePublicRelay.busy)),
             ("session_old_mac", .session(RemoteSessionInfo(macName: "Mac", udpPort: 1, udpSession: 2, canControl: false, version: "1.0.13", platform: nil))),
             ("can_control", .canControl(true)),
             ("front", .front(RemoteFront(bundle: "WindowsTerminal.exe", name: "Terminal"))),
@@ -287,6 +290,22 @@ final class RemoteVectorsTests: XCTestCase {
                       },
         ]
         // while joining, newKey only after pairingWaits and this side's yes to the same digits (security review F1)
+        // Blurt's public relay (docs/design/remote-go-between.md §The public relay): features, addresses, limits, the text messages to the
+        // relay and the go-between (never sealed, never passed on), and the opus frame kind
+        out["publicRelay"] = [
+            "features": ["publicRelay": RemoteFeature.publicRelay, "opus": RemoteFeature.opus], "addresses": RemotePublicRelay.addresses,
+            "opusKind": Int(RemoteFrameKind.opus.rawValue), "giveUpSeconds": RemotePublicRelay.giveUp, "ticketWaitSeconds": RemotePublicRelay.ticketWait,
+            "picture": ["maxWidth": RemotePublicRelay.maxWidth, "maxBitrate": RemotePublicRelay.maxBitrate, "maxFPS": RemotePublicRelay.maxFPS],
+            "renewSeconds": RemotePublicRelay.renewEvery, "askAgainSeconds": RemotePublicRelay.askAgain, "untouchedSeconds": RemotePublicRelay.untouched,
+            "filesPerDay": RemotePublicRelay.filesPerDay, "askOver": RemotePublicRelay.askOver, "nobodyCame": Int(RemotePublicRelay.nobodyCame),
+            "busy": RemotePublicRelay.busy,
+            "leaseAsk": RemotePublicRelay.lease(true), "leaseFree": RemotePublicRelay.lease(false),
+            "leaseAnswers": [#"{"lease":{"ok":true,"ttl":75}}"#, #"{"lease":{"ok":false,"why":"full"}}"#, #"{"lease":{"ok":false,"why":"prefix"}}"#,
+                             #"{"lease":{"ok":false,"why":"expired"}}"#],
+            "ticketAsk": RemotePublicRelay.ticketAsk(room: "guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w"),
+            "ticketAnswer": #"{"ticket":{"relay":"wss://relay.blurt.work","room":"guZRlWLF0yQX0I21ZnxtHFAtfVV5pDTmSepPGKS3c8w","mac":"1764000060.vSDxp8K1xSfY.WAcrp_CCMxTDXy-t3YDNzQ","phone":"1764000060.vSDxp8K1xSfY.Zd8TTbFbCLl3pNcSNSWE0A"}}"#,
+            "ticketRefused": [#"{"ticket":{"error":"off"}}"#, #"{"ticket":{"error":"alone"}}"#, #"{"ticket":{"error":"limit"}}"#, #"{"ticket":{"error":"bad"}}"#],
+        ]
         out["joinGate"] = [
             "about": "While joining, the joining side stores newKey only after pairingWaits and its own user's yes to the same digits (same), in either order of yes and key. A key before pairingWaits is dropped, not held; reconnect starts over. stores: the index of the event at which the key is stored, or null.",
             "cases": RemoteJoinGate.cases.map { c -> [String: Any] in
