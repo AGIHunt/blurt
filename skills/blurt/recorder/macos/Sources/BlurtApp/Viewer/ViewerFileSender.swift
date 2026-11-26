@@ -34,11 +34,28 @@ final class ViewerFileSender {
     let out: RemoteFileSender
     let incoming: RemoteFileReceiver
     var onEvent: ((Event) -> Void)?
-    /// Get Copied Items was asked and not yet answered: only then does a `clip` from the host go on this Mac's clipboard (a host can't
-    /// put anything there on its own)
-    var clipAsked = false
+    /// Get Copied Items was asked and not yet answered (main thread): only then does what the host sends go on this Mac's clipboard, a
+    /// `clip` or text (a host can't put anything there on its own). The first answer uses it up: text, nothing, a clip, or the first
+    /// file of a batch; so does a drop, or 30 s.
+    private var askedAt: Date?
+    func ask() { askedAt = Date() }
+    /// The answer that came is the one asked for: true once.
+    func takeAsked() -> Bool {
+        defer { askedAt = nil }
+        return askedAt.map { Date().timeIntervalSince($0) < 30 } ?? false
+    }
     /// the host's id: the receiver keys its parts by it
     private var device: String { link.computer.id }
+
+    /// A window's own parts folder in `root` (another window of the same computer has its own): folders a crashed run left go after an hour.
+    static func partsFolder(in root: URL) -> URL {
+        let old = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for u in old where ((try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+            < Date().addingTimeInterval(-RemoteFiles.keepParts) {
+            try? FileManager.default.removeItem(at: u)
+        }
+        return root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    }
 
     init(link: RemoteViewerLink, parts: URL) {
         self.link = link
@@ -60,9 +77,7 @@ final class ViewerFileSender {
         incoming.onClip = { [weak self] url, name, _ in
             // the window hands the host's messages over on the main thread
             guard let self, Self.onMain({ () -> Bool in
-                let asked = self.clipAsked
-                self.clipAsked = false
-                return asked
+                self.takeAsked()
             }) else { return }
             let data = (try? Data(contentsOf: url)) ?? Data()
             let image = RemoteFiles.isImage(name)
@@ -94,6 +109,7 @@ final class ViewerFileSender {
 
     /// The session is up (true) or dropped: files pause and go on.
     func connection(up: Bool) {
+        if !up { askedAt = nil }
         out.connection(up: up)
         if !up { incoming.suspend(device: device) }
     }
@@ -101,6 +117,8 @@ final class ViewerFileSender {
     /// What the host said about files, either way.
     func heard(_ m: ToPhone) {
         if let a = m.fileAnswer { out.heard(a) }
+        // a batch of files answers Get Copied Items: nothing for the clipboard follows
+        if case let .fileBegin(_, _, _, clip, _, _, _) = m, clip != true { askedAt = nil }
         // written off the main thread, in order
         if let o = m.fileOut {
             let device = device

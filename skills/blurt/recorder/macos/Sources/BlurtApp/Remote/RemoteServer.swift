@@ -1539,7 +1539,8 @@ final class RemoteServer {
                 // files to this device go once it's up (and on the go-between, once its stream has moved); a dropped one goes on
                 self.hostFiles.opened(id, RemoteHostFiles.Session(
                     send: { [weak self, weak s] m in
-                        guard let self, let s, self.live(s) else { return false }
+                        // from the sender's own thread: whether it's live is asked on the server's queue
+                        guard let self, let s, self.queue.sync(execute: { self.live(s) }) else { return false }
                         s.channel.send(m)
                         return true
                     },

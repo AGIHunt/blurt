@@ -596,6 +596,8 @@ public final class RemoteFileReceiver: @unchecked Sendable {
     private func begin(_ i: RemoteFileInfo, _ device: String, _ answer: (RemoteFileAnswer) -> Void) {
         expire()
         let k = key(device, i.id)
+        // nothing is taken at the lock screen, a file going on included (its part waits)
+        if locked() { return answer(.failed(id: i.id, why: "locked")) }
         // the same file again after a drop: go on from what's written
         if resumes, var p = lock.withLock({ parts[k] }), p.name == RemoteFiles.clean(i.name), p.size == i.size {
             if p.handle == nil {
@@ -611,9 +613,8 @@ public final class RemoteFileReceiver: @unchecked Sendable {
             change(p, device, .going)
             return
         }
-        // another file from this device begins: one that wasn't finished is kept (resume) or goes
-        suspend(device: device, except: i.id)
-        if locked() { return answer(.failed(id: i.id, why: "locked")) }
+        // another file from this device may be going at the same time (a viewer's other window): it's left alone. One a sender gave up
+        // without an end waits as a dropped session's does, from when that session ends
         let cap = i.clip ? max(RemoteFiles.maxClipImage, 64 << 20) : RemoteFiles.maxSize
         guard i.size >= 0, i.size <= cap else { return answer(.failed(id: i.id, why: "too_big")) }
         if !i.clip {
@@ -635,22 +636,34 @@ public final class RemoteFileReceiver: @unchecked Sendable {
 
     private func chunk(_ id: String, _ d: Data, _ device: String, _ answer: (RemoteFileAnswer) -> Void) {
         let k = key(device, id)
-        guard var p = lock.withLock({ parts[k] }), let h = p.handle else { return }
-        guard p.written + d.count <= p.size, (try? h.write(contentsOf: d)) != nil else {
-            drop(k)
+        // written under the lock, so a stop or a suspend on another thread can't be undone by a copy written back after it
+        enum Outcome { case none, failed(Part), wrote(Part, tell: Bool) }
+        let outcome: Outcome = lock.withLock {
+            guard var p = parts[k], let h = p.handle, p.keptSince == nil else { return .none }
+            guard p.written + d.count <= p.size, (try? h.write(contentsOf: d)) != nil else {
+                try? h.close()
+                try? FileManager.default.removeItem(at: p.url)
+                parts.removeValue(forKey: k)
+                return .failed(p)
+            }
+            p.written += d.count
+            let tell = p.written - p.told >= (resumes ? RemoteFiles.progressEvery : RemoteFiles.oldProgressEvery)
+            if tell {
+                p.told = p.written
+                let now = ProcessInfo.processInfo.systemUptime
+                p.samples.append((now, p.written))
+                p.samples.removeAll { now - $0.t > 5 }
+            }
+            parts[k] = p
+            return .wrote(p, tell: tell)
+        }
+        switch outcome {
+        case .none: return
+        case let .failed(p):
             answer(.failed(id: id, why: "write"))
-            return change(p, device, .failed("write"))
-        }
-        p.written += d.count
-        let tell = p.written - p.told >= (resumes ? RemoteFiles.progressEvery : RemoteFiles.oldProgressEvery)
-        if tell {
-            p.told = p.written
-            let now = ProcessInfo.processInfo.systemUptime
-            p.samples.append((now, p.written))
-            p.samples.removeAll { now - $0.t > 5 }
-        }
-        lock.withLock { parts[k] = p }
-        if tell {
+            change(p, device, .failed("write"))
+        case let .wrote(p, tell):
+            guard tell else { return }
             answer(.progress(id: id, bytes: p.written))
             change(p, device, .going)
         }

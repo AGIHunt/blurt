@@ -81,8 +81,21 @@ final class RemoteHostFiles {
     /// message (or as Text.txt past 64 KiB). The bar says the clipboard was sent; the log keeps the time, never the content.
     func getClipboard(from device: String, reply: @escaping (ToPhone) -> Void) {
         if RemoteServer.screenLocked { return reply(.clipboardNone(why: "locked")) }
-        let read: Copied = DispatchQueue.main.sync { Self.read(NSPasteboard.general) }
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
+        let takes = takesFiles(device)
+        // the pasteboard is read on the main thread, without holding the server's queue (which the main thread may be waiting on)
+        DispatchQueue.main.async { [self] in
+            let read = Self.read(NSPasteboard.general)
+            DispatchQueue.global(qos: .userInitiated).async { [self] in answer(read, takes: takes, device: device, reply: reply) }
+        }
+    }
+
+    private func answer(_ read: Copied, takes: Bool, device: String, reply: @escaping (ToPhone) -> Void) {
+            // a device that takes no files gets text in a message and nothing else
+            switch read {
+            case .image, .files: if !takes { return reply(.clipboardNone(why: "unsupported")) }
+            case let .text(t): if !takes && !RemoteClipboard.fits(t) { return reply(.clipboardNone(why: "too_big")) }
+            case .nothing: break
+            }
             switch read {
             case .nothing:
                 reply(.clipboardNone(why: "empty"))
@@ -109,7 +122,6 @@ final class RemoteHostFiles {
             noted?(device, .clipboard)
             DispatchQueue.main.async { RemoteBanner.flash(T("remote.banner.clipboard_sent", PhoneStatus.name(self.label(device)))) }
             emit(["event": "remote_clipboard", "state": "sent"])
-        }
     }
 
     /// Send Files… on the bar (or files dropped on it): to the device connected now.
@@ -192,20 +204,25 @@ final class RemoteHostFiles {
     /// typed there.
     private func clip(_ url: URL, name: String, from device: String) {
         let data = (try? Data(contentsOf: url)) ?? Data()
-        DispatchQueue.main.sync {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            if RemoteFiles.isImage(name), let img = NSImage(data: data) {
-                pb.writeObjects([img])
-            } else {
-                pb.setString(String(decoding: data, as: UTF8.self), forType: .string)
+        let image = RemoteFiles.isImage(name)
+        // never into a password field or at the lock screen: there it only goes on the pasteboard (as `ToMac.text` refuses to type).
+        // The field is asked off the server's queue (a hung app answers slowly), the pasteboard is written on the main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            let paste = !RemoteServer.screenLocked && RemoteServer.focusedField() == .plain
+            DispatchQueue.main.async {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                if image, let img = NSImage(data: data) {
+                    pb.writeObjects([img])
+                } else {
+                    pb.setString(String(decoding: data, as: UTF8.self), forType: .string)
+                }
+                if paste {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { RemoteInput.shared.press(RemoteChord([.command], "V")) }
+                }
+                emit(["event": "remote_clipboard", "state": paste ? "pasted" : "copied", "image": image])
             }
         }
-        guard !RemoteServer.screenLocked else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            RemoteInput.shared.press(RemoteChord([.command], "V"))
-        }
-        emit(["event": "remote_clipboard", "state": "pasted", "image": RemoteFiles.isImage(name)])
     }
 
     private func changed(_ t: RemoteTransfer, _ device: String) {

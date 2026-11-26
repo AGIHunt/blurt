@@ -168,6 +168,47 @@ final class RemoteFilesTests: XCTestCase {
         XCTAssertEqual(RemoteFiles.window(rate: 1_500_000, resumes: false), RemoteFiles.window, "an older peer acks every 1 MiB")
     }
 
+    /// Two windows of one viewer (one device id) send at the same time: neither stops the other.
+    func testTwoFilesFromOneDeviceAtOnce() throws {
+        let p1 = Pipe(), p2 = Pipe()
+        p1.delay = 0.003; p2.delay = 0.003
+        let out = dir.appendingPathComponent("Downloads/Blurt")
+        let r = RemoteFileReceiver(parts: dir.appendingPathComponent("parts"), folder: { out })
+        held.append(r)
+        func sender(_ pipe: Pipe) -> RemoteFileSender {
+            var s: RemoteFileSender!
+            s = RemoteFileSender(send: { m in
+                if case .chunk = m { Thread.sleep(forTimeInterval: pipe.delay) }
+                r.heard(m, from: "viewer-1") { a in DispatchQueue.global().async { s.heard(a) } }
+                return true
+            }, ready: { true }, peerResumes: { true })
+            s.pollInterval = 0.002
+            return s
+        }
+        let a = sender(p1), b = sender(p2)
+        let fa = file("a.bin", RemoteFiles.chunk * 20), fb = file("b.bin", RemoteFiles.chunk * 20)
+        a.add([fa]); b.add([fb])
+        wait("both saved") { a.transfers.first?.state == .done && b.transfers.first?.state == .done }
+        XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("a.bin")), try Data(contentsOf: fa))
+        XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("b.bin")), try Data(contentsOf: fb))
+    }
+
+    /// A file going on after a drop is refused at the lock screen too; its part waits.
+    func testAResumeAtTheLockScreenWaits() {
+        let pipe = Pipe()
+        pipe.cutAfter = RemoteFiles.chunk * 4
+        let (s, r, _) = pair(pipe: pipe)
+        s.add([file("x.bin", RemoteFiles.chunk * 20)])
+        wait("paused") { s.transfers.first?.state == .paused }
+        s.connection(up: false)
+        r.suspend(device: "phone-1")
+        r.locked = { true }
+        pipe.lock.withLock { pipe.cutAfter = nil; pipe.up = true }
+        s.connection(up: true)
+        wait("refused") { s.transfers.first?.state == .failed("locked") }
+        XCTAssertEqual(r.current.first?.state, .paused, "the part is kept")
+    }
+
     func testNamesAreCleaned() {
         XCTAssertEqual(RemoteFiles.clean("../secret/.bashrc"), "bashrc")
         XCTAssertEqual(RemoteFiles.clean("C:\\Users\\me\\报告.pdf"), "报告.pdf")
