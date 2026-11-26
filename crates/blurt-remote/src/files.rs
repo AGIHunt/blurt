@@ -17,8 +17,28 @@ use serde_json::{json, Value};
 use crate::wire::{ToMac, ToPhone};
 
 pub const CHUNK: usize = 192 * 1024;
+/// at most this much past the receiver's last progress: with a peer that doesn't resume (which says how far it has got every 1 MiB)
+/// always, otherwise the most the window grows to
 pub const WINDOW: i64 = 4 << 20;
-pub const PROGRESS_EVERY: i64 = 1 << 20;
+/// a peer that resumes keeps only about `WINDOW_MILLISECONDS` of the measured rate unacknowledged, at least this: the control messages
+/// sent behind file data (pings, keys) wait no longer than that (Android measured drops every 2.5 s at 1.5 MB/s with a fixed 4 MiB)
+pub const MIN_WINDOW: i64 = 512 << 10;
+pub const WINDOW_MILLISECONDS: i64 = 500;
+/// a receiver that resumes says how far it has got this often; one that doesn't, every `OLD_PROGRESS_EVERY`
+pub const PROGRESS_EVERY: i64 = 256 << 10;
+pub const OLD_PROGRESS_EVERY: i64 = 1 << 20;
+
+/// How much may be unacknowledged now, from the rate the receiver's progress shows (bytes/s; None before any), for a peer that resumes
+/// (RemoteFiles.window(rate:resumes:)).
+pub fn window(rate: Option<f64>, resumes: bool) -> i64 {
+    if !resumes {
+        return WINDOW;
+    }
+    match rate {
+        Some(r) if r > 0.0 => ((r * WINDOW_MILLISECONDS as f64 / 1000.0) as i64).clamp(MIN_WINDOW, WINDOW),
+        _ => MIN_WINDOW,
+    }
+}
 pub const MAX_SIZE: i64 = 4 << 30;
 pub const MAX_COUNT: usize = 1000;
 /// an image the phone pastes
@@ -168,6 +188,16 @@ pub fn prepare(paths: &[PathBuf]) -> Vec<(PathBuf, bool)> {
             Err(_) => None,
         })
         .collect()
+}
+
+/// Bytes a second from what moved lately: None until two samples 0.2 s apart.
+fn rate(samples: &[(Instant, i64)]) -> Option<f64> {
+    let (first, last) = (samples.first()?, samples.last()?);
+    let span = last.0.duration_since(first.0).as_secs_f64();
+    if span < 0.2 || last.1 <= first.1 {
+        return None;
+    }
+    Some((last.1 - first.1) as f64 / span)
 }
 
 /// Seconds left from what moved lately: None until 2 s of progress.
@@ -670,7 +700,8 @@ impl Sender {
             return self.pause(id);
         }
         let mut sent = 0i64;
-        if (self.inner.peer_resumes)() {
+        let resumes = (self.inner.peer_resumes)();
+        if resumes {
             // where the receiver has it: 0 for a new file
             if self.wait_while(id, RESUME_WAIT, |i| !i.heard_since && i.t.state == State::Going) {
                 return self.finish(id, State::Failed("other".into()), true);
@@ -689,7 +720,7 @@ impl Sender {
         let mut buf = vec![0u8; CHUNK];
         loop {
             // never more than WINDOW past what the receiver has written; a minute without it moving and it's given up
-            if self.wait_while(id, STALLED, |i| i.t.state == State::Going && sent - i.acked.unwrap_or(0) > WINDOW) {
+            if self.wait_while(id, STALLED, |i| i.t.state == State::Going && sent - i.acked.unwrap_or(0) > window(rate(&i.samples), resumes)) {
                 return self.finish(id, State::Failed("other".into()), true);
             }
             match self.with(id, |i| i.t.state.clone()) {
@@ -945,7 +976,7 @@ impl Receiver {
             return;
         }
         p.written += data.len() as i64;
-        if p.written - p.told >= PROGRESS_EVERY {
+        if p.written - p.told >= if self.resumes { PROGRESS_EVERY } else { OLD_PROGRESS_EVERY } {
             p.told = p.written;
             sample(&mut p.samples, p.written);
             let (bytes, t) = (p.written, Self::transfer(p, State::Going, None));
@@ -1323,6 +1354,17 @@ mod tests {
         wait("dropped", || !p.pipe.up.load(SeqCst));
         p.r.suspend("phone-1", None);
         assert!(p.r.current().is_empty());
+    }
+
+    #[test]
+    fn the_window_follows_the_rate_with_a_peer_that_resumes() {
+        assert_eq!(window(None, true), MIN_WINDOW);
+        assert_eq!(window(Some(1_500_000.0), true), 750_000);
+        assert_eq!(window(Some(50e6), true), WINDOW);
+        assert_eq!(window(Some(1_500_000.0), false), WINDOW, "an older peer: fixed, as before");
+        let t = Instant::now();
+        assert_eq!(rate(&[(t, 0), (t + Duration::from_millis(100), 1 << 20)]), None, "less than 0.2 s");
+        assert_eq!(rate(&[(t, 0), (t + Duration::from_millis(500), 750_000)]), Some(1_500_000.0));
     }
 
     #[test]

@@ -485,6 +485,14 @@ fn files() {
     assert_eq!(n("chunk"), files::CHUNK as i64);
     assert_eq!(n("window"), files::WINDOW);
     assert_eq!(n("progressEvery"), files::PROGRESS_EVERY);
+    assert_eq!(n("oldProgressEvery"), files::OLD_PROGRESS_EVERY);
+    assert_eq!(n("minWindow"), files::MIN_WINDOW);
+    assert_eq!(n("windowMilliseconds"), files::WINDOW_MILLISECONDS);
+    for c in f["windowFor"].as_array().unwrap() {
+        let r = c["rate"].as_f64().unwrap();
+        assert_eq!(files::window((r > 0.0).then_some(r), true), c["window"].as_i64().unwrap(), "{c}");
+        assert_eq!(files::window(Some(r), true), c["window"].as_i64().unwrap(), "{c}");
+    }
     assert_eq!(n("maxSize"), files::MAX_SIZE);
     assert_eq!(n("maxCount"), files::MAX_COUNT as i64);
     assert_eq!(n("maxClipImage"), files::MAX_CLIP_IMAGE);
