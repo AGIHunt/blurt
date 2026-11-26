@@ -67,6 +67,8 @@ struct PadLayout {
     let keyboardButton: CGRect
     let settingsButton: CGRect
     let screenButton: CGRect
+    /// the Transfer sheet: files and the clipboard, both ways (docs/design/remote-files.md), next to the screen button
+    let transferButton: CGRect
     let findButton: CGRect
     /// landscape: the end with the island
     let rail: CGRect?
@@ -190,7 +192,7 @@ struct PadLayout {
         self.fold = fold
         pad = p.pad; thumbPad = p.thumbPad; talk = p.talk; list = p.list; listSplit = p.listSplit; keySize = p.keySize; dock = p.dock
         arrowKey = p.arrowKey; appsKey = p.appsKey; strip = p.strip; keyboardButton = p.keyboardButton; settingsButton = p.settingsButton
-        screenButton = p.screenButton; findButton = p.findButton; rail = p.rail; drawerButton = p.drawerButton; drawer = p.drawer
+        screenButton = p.screenButton; transferButton = p.transferButton; findButton = p.findButton; rail = p.rail; drawerButton = p.drawerButton; drawer = p.drawer
         board = p.board
         halves = p.halves; drawerMatters = p.drawerMatters; keysOut = p.keysOut; stageAlignY = p.stageAlignY
         // one finger scrolls along the side by the thumb, unless the fold is there: then along the other
@@ -240,6 +242,7 @@ private struct Parts {
     var pad = CGRect.zero, thumbPad: CGRect?, talk = CGRect.zero, list = CGRect.zero, listSplit: (at: CGFloat, width: CGFloat)?
     var keySize = CGSize.zero, dock: [CGRect] = [], arrowKey = CGRect.zero, appsKey = CGRect.zero, strip = CGRect.zero
     var keyboardButton = CGRect.zero, settingsButton = CGRect.zero, screenButton = CGRect.zero, findButton = CGRect.zero
+    var transferButton = CGRect.zero
     var rail: CGRect?, drawerButton = CGRect.zero, drawer = CGRect.zero, halves: [CGRect] = [], board: PadLayout.Board?
     var drawerMatters = false, keysOut = true, stageAlignY: CGFloat = 1
 
@@ -250,7 +253,7 @@ private struct Parts {
     mutating func shift(dy: CGFloat) {
         func m(_ r: inout CGRect) { r = r.offsetBy(dx: 0, dy: dy) }
         for r in [\Parts.pad, \.talk, \.list, \.arrowKey, \.appsKey, \.strip, \.keyboardButton, \.settingsButton, \.screenButton,
-                  \.findButton, \.drawerButton, \.drawer] as [WritableKeyPath<Parts, CGRect>] { m(&self[keyPath: r]) }
+                  \.transferButton, \.findButton, \.drawerButton, \.drawer] as [WritableKeyPath<Parts, CGRect>] { m(&self[keyPath: r]) }
         dock = dock.map { $0.offsetBy(dx: 0, dy: dy) }
         rail = rail?.offsetBy(dx: 0, dy: dy)
         thumbPad = thumbPad?.offsetBy(dx: 0, dy: dy)
@@ -297,13 +300,15 @@ private struct Parts {
 
         // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to
         // the left has room
-        let iconW: CGFloat = width < 374 ? 32 : 36, arrowW: CGFloat = 82     // a narrow phone keeps the room for the tabs
+        // five icons since Transfer came (2026-11-26): a little narrower each, so the tabs lose less of their room
+        let iconW: CGFloat = width < 374 ? 30 : 32, arrowW: CGFloat = 82     // a narrow phone keeps the room for the tabs
         p.settingsButton = CGRect(x: block.minX, y: block.minY, width: iconW, height: t - 2)
         p.arrowKey = CGRect(x: lefty ? p.settingsButton.maxX + 4 : block.maxX - arrowW, y: block.minY, width: arrowW, height: t - 2)
         let rowEnd = lefty ? block.maxX : p.arrowKey.minX - 4
         p.keyboardButton = CGRect(x: rowEnd - iconW, y: block.minY, width: iconW, height: t - 2)
         p.screenButton = CGRect(x: rowEnd - iconW * 2, y: block.minY, width: iconW, height: t - 2)
-        p.findButton = CGRect(x: rowEnd - iconW * 3, y: block.minY, width: iconW, height: t - 2)
+        p.transferButton = CGRect(x: rowEnd - iconW * 3, y: block.minY, width: iconW, height: t - 2)
+        p.findButton = CGRect(x: rowEnd - iconW * 4, y: block.minY, width: iconW, height: t - 2)
         let stripX = lefty ? p.arrowKey.maxX : p.settingsButton.maxX
         p.strip = CGRect(x: stripX, y: block.minY, width: p.findButton.minX - stripX, height: t - 2)
         p.list = CGRect(x: block.minX, y: block.minY + t, width: width, height: listH)
@@ -332,7 +337,7 @@ private struct Parts {
             CGRect(x: islandLeft ? size.width - inset - w : inset, y: y, width: w, height: h)
         }
 
-        // the island's end: two above it, two below. A camera in a corner instead: all four below it
+        // the island's end: two above it, three below. A camera in a corner instead: all four below it
         let ctrlW: CGFloat = 46, btn: CGFloat = 42, clear: CGFloat = 24
         let ctrlIn = margin > ctrlW + 8 ? (margin - ctrlW) / 2 : 8
         let ctrlEnd = max(margin, ctrlIn + ctrlW)
@@ -340,17 +345,20 @@ private struct Parts {
             let top = c.maxY + 8
             p.settingsButton = fromIsland(ctrlIn, ctrlW, top, btn)
             p.findButton = fromIsland(ctrlIn, ctrlW, top + btn + gap, btn)
+            p.transferButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn * 3 - gap * 2, btn)
             p.screenButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn * 2 - gap, btn)
             p.keyboardButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn, btn)
         } else if let c = camera, c.midY > size.height * 0.65 {
             let bottom = c.minY - 8
             p.settingsButton = fromIsland(ctrlIn, ctrlW, clear, btn)
             p.findButton = fromIsland(ctrlIn, ctrlW, clear + btn + gap, btn)
+            p.transferButton = fromIsland(ctrlIn, ctrlW, bottom - btn * 3 - gap * 2, btn)
             p.screenButton = fromIsland(ctrlIn, ctrlW, bottom - btn * 2 - gap, btn)
             p.keyboardButton = fromIsland(ctrlIn, ctrlW, bottom - btn, btn)
         } else {
             p.settingsButton = fromIsland(ctrlIn, ctrlW, clear, btn)
             p.findButton = fromIsland(ctrlIn, ctrlW, clear + btn + gap, btn)
+            p.transferButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn * 3 - gap * 2, btn)
             p.screenButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn * 2 - gap, btn)
             p.keyboardButton = fromIsland(ctrlIn, ctrlW, size.height - clear - btn, btn)
         }
@@ -498,20 +506,27 @@ private struct Parts {
             }
             p.settingsButton = x(control(0, 0))
             p.findButton = x(control(1, 0))
-            p.screenButton = x(control(0, 1))
-            p.keyboardButton = x(control(1, 1))
+            // the lower row in thirds: the screen, Transfer beside it, the keyboard under find
+            let third = floor((rest - 8) / 3), lowY = deck.minY + topH - cell.height
+            func low(_ i: Int) -> CGRect {
+                CGRect(x: leftHalf.minX + CGFloat(i) * (rest - third) / 2, y: lowY, width: third, height: cell.height)
+            }
+            p.screenButton = x(low(0))
+            p.transferButton = x(low(1))
+            p.keyboardButton = x(low(2))
             p.appsKey = x(CGRect(x: leftHalf.maxX - side, y: deck.minY, width: side, height: topH))
             p.arrowKey = x(CGRect(x: rightHalf.minX, y: deck.minY, width: side, height: topH))
             p.strip = x(CGRect(x: rightHalf.minX + side + 4, y: deck.minY, width: rest, height: topH))
         } else {
-            let n: CGFloat = 5
+            let n: CGFloat = 6
             let item = floor((half - 4 * (n - 1)) / n)
             func slot(_ i: Int) -> CGRect { CGRect(x: leftHalf.minX + CGFloat(i) * (item + 4), y: deck.minY, width: item, height: topH) }
             p.settingsButton = x(slot(0))
             p.findButton = x(slot(1))
             p.screenButton = x(slot(2))
-            p.keyboardButton = x(slot(3))
-            p.appsKey = x(CGRect(x: slot(4).minX, y: deck.minY, width: leftHalf.maxX - slot(4).minX, height: topH))
+            p.transferButton = x(slot(3))
+            p.keyboardButton = x(slot(4))
+            p.appsKey = x(CGRect(x: slot(5).minX, y: deck.minY, width: leftHalf.maxX - slot(5).minX, height: topH))
             let arrowW: CGFloat = 82
             p.arrowKey = x(CGRect(x: rightHalf.minX, y: deck.minY, width: arrowW, height: topH))
             p.strip = x(CGRect(x: rightHalf.minX + arrowW + 4, y: deck.minY, width: half - arrowW - 4, height: topH))
@@ -571,6 +586,7 @@ private struct Parts {
         p.settingsButton = next(c)
         p.findButton = next(c)
         p.screenButton = next(c)
+        p.transferButton = next(c)
         p.keyboardButton = next(c, 10)
         let quickW: CGFloat = min(64, max(44, (inner.maxX - x - 320 - 5 * gap) / 6)), quicks = inner.maxX - x - 320 - 5 * gap >= 44 * 6 ? 6 : 4
         let quickTotal = CGFloat(quicks) * quickW + CGFloat(quicks - 1) * gap

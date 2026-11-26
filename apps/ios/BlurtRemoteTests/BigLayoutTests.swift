@@ -79,7 +79,7 @@ final class BigLayoutTests: XCTestCase {
             }
         }
         if l.keysOut || l.mode == .big { r.append(("strip", l.strip)) }
-        for (n, b) in [("apps", l.appsKey), ("settings", l.settingsButton), ("find", l.findButton), ("screen", l.screenButton),
+        for (n, b) in [("apps", l.appsKey), ("settings", l.settingsButton), ("find", l.findButton), ("screen", l.screenButton), ("transfer", l.transferButton),
                        ("keyboard", l.keyboardButton), ("drawer", l.drawerButton)] where !b.isEmpty { r.append((n, b)) }
         return r
     }

@@ -192,6 +192,12 @@ data class RemoteSessionInfo(
 object RemoteFeature {
     /** the stream moves onto the direct UDP path after `udpOK` (the go-between: remote-go-between.md) */
     const val MOVE = "move"
+    /** in `session.features`: the host takes files (`fileBegin` …). In `hello.features`: this phone takes files from the host */
+    const val FILES = "files"
+    /** both ways: this end answers every fileBegin at once with what it has of it, and keeps a dropped file's part an hour */
+    const val RESUME = "resume"
+    /** in `session.features`: the host answers `getClipboard` and takes `clip` files */
+    const val CLIPBOARD = "clipboard"
 }
 
 /** Phone → host. */
@@ -264,14 +270,22 @@ sealed class ToMac {
     data class KeysCaptured(val on: Boolean) : ToMac()
     /** 隐私屏: cover the host's own screen while controlled */
     data class PrivacyScreen(val on: Boolean) : ToMac()
-    /** a file to the host's Downloads: its name and size, its bytes, the end */
-    data class FileBegin(val id: String, val name: String, val size: Long) : ToMac()
+    /** a file to the host's Downloads: its name and size, its bytes, the end (remote-protocol.md §Clipboard and files). `clip`: the
+     *  clipboard's content, not a file to keep. `index`, `count`: its place in its batch, from 1, and how many; `total`: the batch's bytes */
+    data class FileBegin(val id: String, val name: String, val size: Long, val clip: Boolean? = null, val index: Int? = null, val count: Int? = null,
+                         val total: Long? = null) : ToMac()
     class FileChunk(val id: String, val data: ByteArray) : ToMac() {
         override fun equals(other: Any?): Boolean = other is FileChunk && other.id == id && other.data.contentEquals(data)
         override fun hashCode(): Int = id.hashCode() * 31 + data.contentHashCode()
         override fun toString(): String = "FileChunk(id=$id, ${data.size} bytes)"
     }
     data class FileEnd(val id: String) : ToMac()
+    /** answers to a file from the host: how much is written (every 1 MiB, and at once on a begin when this end resumes), then saved or failed */
+    data class FileProgress(val id: String, val bytes: Long) : ToMac()
+    data class FileSaved(val id: String, val name: String) : ToMac()
+    data class FileFailed(val id: String, val why: String) : ToMac()
+    /** what is copied on the host, once: answered with ToPhone.Clipboard, a `clip` file, the copied files, or ToPhone.ClipboardNone */
+    data object GetClipboard : ToMac()
 
     fun toJson(): JsonObject = when (this) {
         is Key -> J.case("key", "_0" to chord.toJson(), "down" to J.bool(down))
@@ -308,9 +322,14 @@ sealed class ToMac {
         is Clipboard -> J.case("clipboard", "_0" to J.str(text))
         is KeysCaptured -> J.case("keysCaptured", "_0" to J.bool(on))
         is PrivacyScreen -> J.case("privacyScreen", "_0" to J.bool(on))
-        is FileBegin -> J.case("fileBegin", "id" to J.str(id), "name" to J.str(name), "size" to J.int(size))
+        is FileBegin -> J.case("fileBegin", "id" to J.str(id), "name" to J.str(name), "size" to J.int(size), "clip" to J.bool(clip),
+            "index" to J.int(index), "count" to J.int(count), "total" to J.int(total))
         is FileChunk -> J.case("fileChunk", "id" to J.str(id), "data" to J.data(data))
         is FileEnd -> J.case("fileEnd", "id" to J.str(id))
+        is FileProgress -> J.case("fileProgress", "id" to J.str(id), "bytes" to J.int(bytes))
+        is FileSaved -> J.case("fileSaved", "id" to J.str(id), "name" to J.str(name))
+        is FileFailed -> J.case("fileFailed", "id" to J.str(id), "why" to J.str(why))
+        GetClipboard -> J.case("getClipboard")
     }
 
     /** UTF-8 JSON, the body of a control frame (after its kind byte). */
@@ -358,9 +377,14 @@ sealed class ToMac {
                 "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
                 "keysCaptured" -> KeysCaptured(J.bool(o, "_0") ?: return null)
                 "privacyScreen" -> PrivacyScreen(J.bool(o, "_0") ?: return null)
-                "fileBegin" -> FileBegin(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.long(o, "size") ?: return null)
+                "fileBegin" -> FileBegin(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.long(o, "size") ?: return null,
+                    J.bool(o, "clip"), J.int(o, "index"), J.int(o, "count"), J.long(o, "total"))
                 "fileChunk" -> FileChunk(J.str(o, "id") ?: return null, J.data(o, "data") ?: return null)
                 "fileEnd" -> FileEnd(J.str(o, "id") ?: return null)
+                "fileProgress" -> FileProgress(J.str(o, "id") ?: return null, J.long(o, "bytes") ?: return null)
+                "fileSaved" -> FileSaved(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null)
+                "fileFailed" -> FileFailed(J.str(o, "id") ?: return null, J.str(o, "why") ?: return null)
+                "getClipboard" -> GetClipboard
                 else -> null
             }
         }
@@ -429,6 +453,17 @@ sealed class ToPhone {
     data class Clipboard(val text: String) : ToPhone()
     /** the host's screen locked (true) or opened again (false), and it can't show its lock screen: no frames meanwhile. 1.1.0+ */
     data class ScreenLocked(val locked: Boolean) : ToPhone()
+    /** a file from the host, to a phone that named `files`: as ToMac.FileBegin, answered with ToMac.FileProgress / FileSaved / FileFailed */
+    data class FileBegin(val id: String, val name: String, val size: Long, val clip: Boolean? = null, val index: Int? = null, val count: Int? = null,
+                         val total: Long? = null) : ToPhone()
+    class FileChunk(val id: String, val data: ByteArray) : ToPhone() {
+        override fun equals(other: Any?): Boolean = other is FileChunk && other.id == id && other.data.contentEquals(data)
+        override fun hashCode(): Int = id.hashCode() * 31 + data.contentHashCode()
+        override fun toString(): String = "FileChunk(id=$id, ${data.size} bytes)"
+    }
+    data class FileEnd(val id: String) : ToPhone()
+    /** getClipboard found nothing to give: `empty`, `locked`, `too_big`, `unsupported` */
+    data class ClipboardNone(val why: String) : ToPhone()
 
     fun toJson(): JsonObject = when (this) {
         is Session -> J.case("session", "_0" to info.toJson())
@@ -463,6 +498,11 @@ sealed class ToPhone {
         NoDirect -> J.case("noDirect")
         is Clipboard -> J.case("clipboard", "_0" to J.str(text))
         is ScreenLocked -> J.case("screenLocked", "_0" to J.bool(locked))
+        is FileBegin -> J.case("fileBegin", "id" to J.str(id), "name" to J.str(name), "size" to J.int(size), "clip" to J.bool(clip),
+            "index" to J.int(index), "count" to J.int(count), "total" to J.int(total))
+        is FileChunk -> J.case("fileChunk", "id" to J.str(id), "data" to J.data(data))
+        is FileEnd -> J.case("fileEnd", "id" to J.str(id))
+        is ClipboardNone -> J.case("clipboardNone", "why" to J.str(why))
     }
 
     fun encode(): ByteArray = J.bytes(toJson())
@@ -506,6 +546,11 @@ sealed class ToPhone {
                 "noDirect" -> NoDirect
                 "clipboard" -> Clipboard(J.str(o, "_0") ?: return null)
                 "screenLocked" -> ScreenLocked(J.bool(o, "_0") ?: return null)
+                "fileBegin" -> FileBegin(J.str(o, "id") ?: return null, J.str(o, "name") ?: return null, J.long(o, "size") ?: return null,
+                    J.bool(o, "clip"), J.int(o, "index"), J.int(o, "count"), J.long(o, "total"))
+                "fileChunk" -> FileChunk(J.str(o, "id") ?: return null, J.data(o, "data") ?: return null)
+                "fileEnd" -> FileEnd(J.str(o, "id") ?: return null)
+                "clipboardNone" -> ClipboardNone(J.str(o, "why") ?: return null)
                 else -> null
             }
         }

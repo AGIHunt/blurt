@@ -113,7 +113,10 @@ final class ArrowKeyTests: XCTestCase {
                     XCTAssertEqual(l.settingsButton.minY, a.minY, accuracy: 0.5, name)
                     XCTAssertEqual(l.screenButton.maxY, a.maxY, accuracy: 0.5, name)
                     XCTAssertEqual(l.findButton.minY, l.settingsButton.minY, name)
-                    XCTAssertEqual(l.keyboardButton.minX, l.findButton.minX, name)
+                    // the keyboard under find, at the half's outer edge; the lower row in thirds with Transfer in the middle
+                    XCTAssertTrue(abs(l.keyboardButton.maxX - l.findButton.maxX) < 0.5 || abs(l.keyboardButton.minX - l.findButton.minX) < 0.5, name)
+                    XCTAssertEqual(l.transferButton.minY, l.screenButton.minY, name)
+                    XCTAssertGreaterThanOrEqual(l.transferButton.width, 40, name)
                     XCTAssertEqual(l.strip.height, a.height, name)
                     XCTAssertGreaterThanOrEqual(l.strip.width, 140, "\(name): the tabs keep their room")
                     let half = l.halves.first { $0.contains(a.center) }!
