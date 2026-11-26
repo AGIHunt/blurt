@@ -64,7 +64,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     private lazy var files: ViewerFileSender = {
-        let f = ViewerFileSender(link: link)
+        let f = ViewerFileSender(link: link, parts: BlurtPaths.home.appendingPathComponent("remote/viewer-parts/\(computer.id)", isDirectory: true))
         f.onEvent = { [weak self] e in self?.showFile(e) }
         fileCard.onStop = { [weak f] in f?.stop() }
         return f
@@ -92,8 +92,23 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func sendFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other")) }
+        guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other", incoming: false)) }
         files.send(urls)
+    }
+
+    /// The host answers getClipboard (its session lists `clipboard`)
+    private var hostGivesClipboard: Bool { link.session?.features?.contains(RemoteFeature.clipboard) == true }
+    /// Get Copied Files was asked: the next `clipboard` from the host is its answer, wherever the keys are
+    private var askedClipboard = false
+
+    /// Get Copied Files (⋯, ⌥⌘V while keys stay here): what's copied on the host comes here, once. Files to Downloads/Blurt, an image
+    /// or text onto this Mac's clipboard (docs/design/remote-files.md).
+    @objc func getCopied() {
+        guard link.state == .connected else { return }
+        guard hostGivesClipboard else { return showFile(.nothing(why: "update")) }
+        askedClipboard = true
+        link.send(.getClipboard)
+        emit(["event": "viewer_get_copied"])
     }
 
     @objc private func sendSecureAttention() { link.send(.system(.secureAttention)) }
@@ -101,7 +116,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     @objc private func chooseFiles() {
         let p = NSOpenPanel()
         p.allowsMultipleSelection = true
-        p.canChooseDirectories = false
+        // a folder goes as a zip (RemoteFiles.prepare)
+        p.canChooseDirectories = true
         guard let w = window else { return }
         p.beginSheetModal(for: w) { [weak self] r in
             if r == .OK { self?.sendFiles(p.urls) }
@@ -266,8 +282,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func heard(_ m: ToPhone) {
         switch m {
-        case .fileProgress, .fileSaved, .fileFailed:
+        case .fileProgress, .fileSaved, .fileFailed, .fileBegin, .fileChunk, .fileEnd:
             files.heard(m)
+        case let .clipboardNone(why):
+            askedClipboard = false
+            showFile(.nothing(why: why))
         case let .notice(text):
             // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
             Notify.post(title: shownName, body: text, uid: "remote-notice-\(link.computer.id)")
@@ -282,6 +301,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             updateDisplays()
         case let .cursorShape(png, hx, hy, w, h):
             picture.shape(png: png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
+        case let .clipboard(t) where askedClipboard:
+            // the answer to Get Copied Files: asked for, so it's taken whatever the clipboard switch says
+            askedClipboard = false
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(t, forType: .string)
+            pasteboardSeen = pb.changeCount
+            showFile(.copied(image: false))
         case let .clipboard(t):
             guard captured, shareClipboard, RemoteClipboard.fits(t) else { return }
             let pb = NSPasteboard.general
@@ -330,6 +357,9 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         emit(["event": "viewer_link", "state": "\(s)", "route": link.route.map { "\($0)" } ?? "", "trying": link.trying.map { "\($0)" } ?? "", "lost": link.lostWhy])
         // the clock the cover counts from: the moment the link went down, or the window began connecting
         if s == .connected { downSince = nil } else if downSince == nil { downSince = CACurrentMediaTime() }
+        // files either way pause on a drop and go on from where they were (docs/design/remote-files.md)
+        files.connection(up: s == .connected)
+        if s != .connected { askedClipboard = false }
         switch s {
         case .connected: connected()
         case .connecting, .waiting:
@@ -889,6 +919,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         var actions: [NSMenuItem] = []
         if hostTakesFiles { actions.append(menuItem("viewer.send_files", #selector(chooseFiles))) }
+        if hostGivesClipboard {
+            let get = menuItem("viewer.get_copied", #selector(getCopied))
+            get.keyEquivalent = "v"
+            get.keyEquivalentModifierMask = [.command, .option]
+            actions.append(get)
+        }
         // a Windows host: its lock and login screens want Ctrl+Alt+Del (sent by the system service where it's on)
         if host == .windows { actions.append(menuItem("viewer.ctrl_alt_del", #selector(sendSecureAttention))) }
         if !actions.isEmpty {
@@ -1089,11 +1125,16 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         switch key {
         case "release", "release.app_only": picture.showHint(releaseHint(system: key == "release"), seconds: 600)
         case "no_control": picture.showHint(T("viewer.no_control", shownName), seconds: nil)
-        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1))
-        case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1))
-        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3))
-        case "file.saved": showFile(.saved(name: name, index: 1, count: 1))
-        case "file.failed": showFile(.failed(name: name, why: "space"))
+        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1, left: 95))
+        case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1, left: nil))
+        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3, left: 40))
+        case "file.saved": showFile(.saved(name: name, index: 1, count: 1, blurt: true))
+        case "file.failed": showFile(.failed(name: name, why: "space", incoming: false))
+        case "file.in": showFile(.receiving(name: "Q4 report.xlsx", size: size, done: 2_600_000, index: 1, count: 1, left: 12))
+        case "file.paused": showFile(.paused(name: name))
+        case "file.received": showFile(.received(url: URL(fileURLWithPath: "/tmp/Q4 report.xlsx"), index: 1, count: 1))
+        case "file.copied": showFile(.copied(image: true))
+        case "file.nothing": showFile(.nothing(why: "empty"))
         case "file.off": fileCard.hide()
         default: emit(["event": "viewer_hint", "unknown": key])
         }

@@ -130,6 +130,9 @@ public final class RemoteViewerLink {
     public private(set) var session: RemoteSessionInfo?
     /// the host takes a viewer's extras (clipboard, window size)
     public var hostTakesViewer: Bool { session?.features?.contains(RemoteFeature.viewer) == true }
+    /// Files may go now: a session is up and, on the public connection service, its stream has moved onto the direct path (its 16 KiB
+    /// messages can't carry them: docs/design/remote-files.md). Safe from any queue.
+    public var filesReady: Bool { state == .connected && (channel.map { !$0.movesStream || $0.moved } ?? false) }
 
     private var channel: RemoteChannel?
     private var attempts: [RemoteChannel] = []
@@ -480,7 +483,7 @@ public final class RemoteViewerLink {
         firstAttempt = nil
         refused = false
         lastPong = CACurrentMediaTime()
-        ch.send(ToMac.hello(device: deviceName, micOnPhone: false, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.viewer] + (extraWindow ? [RemoteFeature.window] : [])))
+        ch.send(ToMac.hello(device: deviceName, micOnPhone: false, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.files, RemoteFeature.resume] + (extraWindow ? [RemoteFeature.window] : [])))
         pinger?.cancel()
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now() + 0.5, repeating: 0.5)

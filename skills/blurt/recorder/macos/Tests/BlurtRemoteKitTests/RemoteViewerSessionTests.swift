@@ -315,7 +315,7 @@ final class RemoteViewerSessionTests: XCTestCase {
         XCTAssertEqual(link.computer.platform, "windows")
         XCTAssertEqual(link.computer.port, ports.tcp, "the port it was found at, kept to connect again")
         XCTAssertTrue(link.hostTakesViewer)
-        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer"))
+        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer,files,resume"))
         XCTAssertTrue(host.log.contains("keyStored"))
 
         // the picture: asked for at the window's size, real frames decoded

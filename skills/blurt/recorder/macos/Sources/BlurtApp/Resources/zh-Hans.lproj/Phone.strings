@@ -215,3 +215,27 @@
 "viewer.file.failed.locked" = "未发送：对方已锁屏。";
 "viewer.file.failed.other" = "未发送。";
 "viewer.ctrl_alt_del" = "发送 Ctrl+Alt+Del";
+
+/* Files and the clipboard both ways (docs/design/remote-files.md) */
+"remote.banner.send_files" = "发送文件…";
+"remote.banner.send" = "发送";
+"remote.banner.clipboard_sent" = "剪贴板已发送到「%@」";
+"remote.file.paused" = "已暂停，重新连接后继续。";
+"remote.file.received.many" = "收到「%2$@」发来的 %1$ld 个文件";
+"phone.log.clipboard" = "发送了剪贴板";
+"viewer.get_copied" = "接收拷贝的文件";
+"viewer.file.from" = "正在从 %@ 接收 · %@ / %@";
+"viewer.file.from.many" = "正在接收第 %1$ld/%2$ld 个，来自 %3$@ · %4$@ / %5$@";
+"viewer.file.left" = "还剩 %@";
+"viewer.file.saved.to.blurt" = "已保存到 %@ 的「下载/Blurt」";
+"viewer.file.received" = "已保存到「下载/Blurt」";
+"viewer.file.reveal" = "在访达中显示";
+"viewer.file.failed.in.space" = "未接收：本机空间不足。";
+"viewer.file.failed.in.other" = "未接收。";
+"viewer.copied.text" = "已拷贝";
+"viewer.copied.image" = "已拷贝图片";
+"viewer.copied.none.empty" = "%@ 上没有拷贝的内容。";
+"viewer.copied.none.locked" = "%@ 已锁屏。";
+"viewer.copied.none.too_big" = "%@ 上拷贝的文件太多。一次最多 1,000 个。";
+"viewer.copied.none.unsupported" = "无法从 %@ 获取此类内容。";
+"viewer.copied.none.update" = "%@ 需要更新后才能使用。";

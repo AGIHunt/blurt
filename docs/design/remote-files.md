@@ -54,7 +54,7 @@ right-click Send to iPhone (P1, P2, P3: next).
 - **Get Copied Items from Office PC**: what is copied on the computer right now comes to the phone (below).
 - The list of transfers: each with its name, where it goes or came from, progress and time left, × while going; done ones open on tap.
 
-Also: the system **Share** sheet → **Blurt Remote** (iOS share extension; Android `ACTION_SEND` / `ACTION_SEND_MULTIPLE`), to the
+Also: the system **Share** sheet → **Blurt** (iOS share extension; Android `ACTION_SEND` / `ACTION_SEND_MULTIPLE`), to the
 computer last controlled, named on the button. The phone's **Paste from This Phone** key (on the text keyboard's bar) now sends a copied
 image too: the computer puts it on its own clipboard and pastes it into the app in front, as text has always been typed there.
 
@@ -68,7 +68,7 @@ Files. Then **Get Copied Items from Office PC** on the phone:
 |---|---|
 | text | onto the phone's clipboard; the card shows "Copied" and its first words |
 | an image (a screenshot, a picture copied from an app) | onto the phone's clipboard; the card has **Save to Photos** |
-| files or folders (folders zipped) | saved: iOS in Files → On My iPhone → Blurt Remote; Android in Download/Blurt. The card has **Open**, **Share…**, and **Save to Photos** for pictures and videos |
+| files or folders (folders zipped) | saved: iOS in Files → On My iPhone → Blurt (the app's home-screen name); Android in Download/Blurt. The card has **Open**, **Share…**, and **Save to Photos** for pictures and videos |
 | nothing | "Nothing is copied on Office PC." |
 
 Text longer than a message (64 KiB) comes as a file and is put on the clipboard all the same. The computer's bar says "Clipboard sent to
@@ -126,7 +126,7 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | A batch (prefix) · time left (suffix, system duration) | 第 %ld/%ld 个 · 还剩 %@ | %ld of %ld · %@ left |
 | States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Continues when reconnected. · Stopped |
 | Sent | 已保存到 %@ 的「下载/Blurt」 | Saved to Downloads/Blurt on %@ |
-| Received on iPhone · on Android · on a computer | 已存到「文件」App 的 Blurt Remote 文件夹 · 已存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt Remote · Saved to Download/Blurt · Saved to Downloads/Blurt |
+| Received on iPhone · on Android · on a computer | 已存到「文件」App 的 Blurt 文件夹 · 已存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
 | A received file's buttons | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
 | What came from the clipboard | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
@@ -135,7 +135,7 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device. · Not received. |
 | Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
 | An image pasted from the phone, too big | 图片超过 20 MB。 | The image is larger than 20 MB. |
-| Share extension (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt Remote 中配对电脑。 · 打开 Blurt Remote 即可发送。 | Send to %@ · Pair a computer in Blurt Remote first. · Open Blurt Remote to send. |
+| Share extension, named Blurt as on the home screen (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt 中配对电脑。 · 打开 Blurt 即可发送。 | Send to %@ · Pair a computer in Blurt first. · Open Blurt to send. |
 | iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到“照片”。 | Save pictures and videos from your computer to Photos. |
 | The host's bar: button · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |

@@ -3,6 +3,7 @@
 // taking focus. It shows in the picture too, so the person controlling sees what the person here sees.
 import AppKit
 import BlurtCore
+import BlurtRemoteKit
 
 enum RemoteBanner {
     private static var panel: NSPanel?
@@ -10,6 +11,11 @@ enum RemoteBanner {
     private static var row: NSStackView?
     private static var shownFor: String?
     private static var pretended: String?
+    private static var sendButton: NSButton?
+    /// a line in place of "being controlled" for a moment (the clipboard sent), or while files go
+    private static var transient: String?
+    private static var transientTimer: Timer?
+    private static var going: String?
 
     static func start() {
         NotificationCenter.default.addObserver(forName: RemoteServer.statusChanged, object: nil, queue: .main) { _ in update() }
@@ -30,9 +36,51 @@ enum RemoteBanner {
             return
         }
         let (_, t) = make()
-        t.stringValue = T("remote.banner.controlling", PhoneStatus.name(who))
+        t.stringValue = transient ?? going ?? T("remote.banner.controlling", PhoneStatus.name(who))
+        sendButton?.isHidden = !RemoteServer.shared.connectedTakesFiles
         place()
         panel?.orderFrontRegardless()
+    }
+
+    /// The bar's line, from what it says now.
+    private static func relabel() {
+        guard let who = shownFor, let label else { return }
+        label.stringValue = transient ?? going ?? T("remote.banner.controlling", PhoneStatus.name(who))
+        sendButton?.isHidden = !RemoteServer.shared.connectedTakesFiles
+        place()
+    }
+
+    /// A line for 4 s ("Clipboard sent to …"), then the bar says who's controlling again.
+    static func flash(_ text: String) {
+        transient = text
+        transientTimer?.invalidate()
+        transientTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in
+            transient = nil
+            relabel()
+        }
+        relabel()
+    }
+
+    /// A file going to the device (Send Files…, Get Copied Items): how far, while it goes.
+    static func transfer(_ t: RemoteTransfer, to who: String) {
+        guard !t.incoming, !t.clip else { return }
+        let bytes = ByteCountFormatter()
+        bytes.countStyle = .file
+        switch t.state {
+        case .going, .waiting:
+            let d = bytes.string(fromByteCount: Int64(t.done)), size = bytes.string(fromByteCount: Int64(t.size))
+            if let i = t.index, let n = t.count {
+                going = T("viewer.file.to.many", i, n, who, d, size)
+            } else {
+                going = T("viewer.file.to", who, d, size)
+            }
+        case .paused:
+            going = T("remote.file.paused")
+        case .done, .failed:
+            going = nil
+            if case let .failed(why) = t.state, why != "stopped" { flash(T("viewer.file.failed.other")) }
+        }
+        relabel()
     }
 
     /// Test commands only: the bar as if this device controlled the Mac. Nothing does. Says where the bar and the island's middles are.
@@ -71,7 +119,13 @@ enum RemoteBanner {
         b.controlSize = .small
         b.font = .systemFont(ofSize: 12, weight: .semibold)
         b.appearance = NSAppearance(named: .darkAqua)
-        let row = NSStackView(views: [dot, t, b])
+        let send = NSButton(title: T("remote.banner.send_files"), target: Handler.shared, action: #selector(Handler.sendFiles))
+        send.bezelStyle = .push
+        send.controlSize = .small
+        send.font = .systemFont(ofSize: 12, weight: .regular)
+        send.appearance = NSAppearance(named: .darkAqua)
+        sendButton = send
+        let row = NSStackView(views: [dot, t, send, b])
         row.orientation = .horizontal
         row.spacing = 8
         row.alignment = .centerY
@@ -83,6 +137,14 @@ enum RemoteBanner {
             row.centerYAnchor.constraint(equalTo: bg.centerYAnchor),
         ])
         t.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // files dropped on the bar go to the device, as Send Files… does
+        let drop = DropView()
+        drop.translatesAutoresizingMaskIntoConstraints = false
+        bg.addSubview(drop, positioned: .below, relativeTo: row)
+        NSLayoutConstraint.activate([
+            drop.leadingAnchor.constraint(equalTo: bg.leadingAnchor), drop.trailingAnchor.constraint(equalTo: bg.trailingAnchor),
+            drop.topAnchor.constraint(equalTo: bg.topAnchor), drop.bottomAnchor.constraint(equalTo: bg.bottomAnchor),
+        ])
         p.contentView = bg
         panel = p
         label = t
@@ -110,5 +172,33 @@ enum RemoteBanner {
     private final class Handler: NSObject {
         static let shared = Handler()
         @objc func disconnect() { RemoteServer.shared.endByOwner() }
+        @objc func sendFiles() {
+            let p = NSOpenPanel()
+            p.canChooseFiles = true
+            p.canChooseDirectories = true
+            p.allowsMultipleSelection = true
+            p.prompt = T("remote.banner.send")
+            NSApp.activate(ignoringOtherApps: true)
+            guard p.runModal() == .OK, !p.urls.isEmpty else { return }
+            RemoteServer.shared.sendFiles(p.urls)
+        }
+    }
+
+    private final class DropView: NSView {
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            registerForDraggedTypes([.fileURL])
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+            RemoteServer.shared.connectedTakesFiles ? .copy : []
+        }
+        override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+            guard RemoteServer.shared.connectedTakesFiles,
+                  let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+                  !urls.isEmpty else { return false }
+            RemoteServer.shared.sendFiles(urls)
+            return true
+        }
     }
 }

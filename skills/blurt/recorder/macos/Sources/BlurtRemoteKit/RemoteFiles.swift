@@ -61,6 +61,9 @@ public enum RemoteFiles {
         }
     }
 
+    /// Of what `prepare` gave, the zips it made (to delete once sent).
+    public static func made(_ urls: [URL]) -> Set<URL> { Set(urls.filter { $0.deletingLastPathComponent().lastPathComponent.hasPrefix("blurt-zip-") }) }
+
     /// The system's own zip of a folder (what Files and Finder make for sharing one), named after the folder.
     public static func zip(_ folder: URL) -> URL? {
         var out: URL?
@@ -253,21 +256,21 @@ public final class RemoteFileSender: @unchecked Sendable {
     public var transfers: [RemoteTransfer] { lock.withLock { items.map(\.t) } }
 
     /// Queue files. `clip`: the clipboard's content (one file). Folders must already be zipped (RemoteFiles.prepare). `temporary`: delete
-    /// each once it's over. Returns the transfers made, in order.
+    /// each once it's over; `made`: only these (the zips RemoteFiles.prepare made). Returns the transfers made, in order.
     @discardableResult
-    public func add(_ urls: [URL], clip: Bool = false, temporary: Bool = false) -> [RemoteTransfer] {
+    public func add(_ urls: [URL], clip: Bool = false, temporary: Bool = false, made: Set<URL> = []) -> [RemoteTransfer] {
         let sizes = urls.map { (try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1 }
         let total = sizes.reduce(0) { $0 + max(0, $1) }
         let many = urls.count > 1
-        let made: [Item] = zip(urls, sizes).enumerated().map { i, p in
+        let new: [Item] = zip(urls, sizes).enumerated().map { i, p in
             Item(t: RemoteTransfer(id: Self.newID(), name: p.0.lastPathComponent, size: max(0, p.1), incoming: false, clip: clip,
-                                   index: many ? i + 1 : nil, count: many ? urls.count : nil, url: p.0), source: p.0, temporary: temporary,
+                                   index: many ? i + 1 : nil, count: many ? urls.count : nil, url: p.0), source: p.0, temporary: temporary || made.contains(p.0),
                  total: many ? total : nil)
         }
-        lock.withLock { items.append(contentsOf: made) }
-        made.forEach { onChange?($0.t) }
+        lock.withLock { items.append(contentsOf: new) }
+        new.forEach { onChange?($0.t) }
         kick()
-        return made.map(\.t)
+        return new.map(\.t)
     }
 
     /// × on one transfer, or on all of them (nil).

@@ -14,6 +14,10 @@ struct RemoteConnection: Codable, Equatable, Identifiable {
     var path: String?
     /// a new pairing, not a session
     var paired = false
+    /// what went each way in this session (docs/design/remote-files.md): the clipboard taken (how often, never what), files in and out
+    var clipboard: Int?
+    var filesIn: Int?
+    var filesOut: Int?
 }
 
 enum RemoteConnectionLog {
@@ -37,6 +41,24 @@ enum RemoteConnectionLog {
 
     static func ended(_ id: UUID) {
         change { list in if let i = list.lastIndex(where: { $0.id == id }) { list[i].end = Date() } }
+    }
+
+    enum Event: Equatable {
+        case clipboard
+        case filesIn(Int)
+        case filesOut(Int)
+    }
+
+    /// Something went across in the session `id` logs.
+    static func note(_ id: UUID, _ e: Event) {
+        change { list in
+            guard let i = list.lastIndex(where: { $0.id == id }) else { return }
+            switch e {
+            case .clipboard: list[i].clipboard = (list[i].clipboard ?? 0) + 1
+            case let .filesIn(n): list[i].filesIn = (list[i].filesIn ?? 0) + n
+            case let .filesOut(n): list[i].filesOut = (list[i].filesOut ?? 0) + n
+            }
+        }
     }
 
     static func paired(_ deviceID: String, name: String) {

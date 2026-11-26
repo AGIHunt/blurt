@@ -545,6 +545,12 @@ public final class RemoteChannel {
     private static let sessionStart = Data(#"{"session":"#.utf8)
     /// both ends listed `move` and this is the go-between: the stream moves once the direct path is open
     private var canMove = false
+    /// on the go-between: the stream will move onto the direct path (enableMove), so large messages wait for `moved`
+    public var movesStream: Bool {
+        pathLock.lock()
+        defer { pathLock.unlock() }
+        return canMove
+    }
     /// the other end's word that a datagram got through (phone: `udpOK`; host: it saw one)
     private var wantMove = false
     /// this end has written `streamMoved` and writes to the UDP stream since; the other end's `streamMoved` has been read
@@ -577,10 +583,11 @@ public final class RemoteChannel {
     /// The go-between, and both ends listed `move`: from now on nothing big goes over the WebSocket, and the stream moves onto the direct
     /// path once `udpConfirmed` and a path agree. The host calls `udpConfirmed` itself, once it has seen a datagram and said `udpOK`.
     public func enableMove() {
-        queue.async {
-            self.canMove = true
-            self.tryMove()
-        }
+        // at once, so `movesStream` holds files back from the first moment
+        pathLock.lock()
+        canMove = true
+        pathLock.unlock()
+        queue.async { self.tryMove() }
     }
 
     /// what datagrams go out on: the phone's chosen direct path, or the flow the host last heard the phone on
