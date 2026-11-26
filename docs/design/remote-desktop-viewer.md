@@ -614,7 +614,7 @@ The design and words: [remote-files.md](remote-files.md). The viewer is a comput
   then one `files::Sender` per window sends one file at a time, 192 KiB chunks, never more than 4 MiB past the host's last
   `fileProgress`. A drop pauses it (`Link` not connected); when the session is back the same file begins again with the same id, the
   host answers with what it has and only the rest goes. × sends a short `fileEnd`.
-- **Get Copied Files** (⋯ menu, Ctrl+Alt+V while keys stay here): `getClipboard`. Files and folders (zipped there) come into
+- **Get Copied Items** (⋯ menu, Ctrl+Alt+V while keys stay here): `getClipboard`. Files and folders (zipped there) come into
   Downloads/Blurt with the Mark of the Web; an image (`clip`) goes onto this computer's clipboard; text comes as `clipboard` and goes
   on whatever the clipboard switch says, because it was asked for (15 s). Nothing: the line says why (`clipboardNone`). A host whose
   session doesn't list `clipboard` gets nothing sent: "Update %@ to use this."

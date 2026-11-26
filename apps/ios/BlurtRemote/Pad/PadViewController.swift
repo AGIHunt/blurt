@@ -1234,7 +1234,7 @@ final class PadViewController: UIViewController {
                 Haptics.tick()
                 self.toast.dismiss()
             case .denied:
-                let c = UIAlertController(title: String(localized: "Allow Blurt to add photos in Settings."), message: nil, preferredStyle: .alert)
+                let c = UIAlertController(title: String(localized: "To save to Photos, allow access in Settings."), message: nil, preferredStyle: .alert)
                 c.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
                 c.addAction(UIAlertAction(title: String(localized: "Open Settings"), style: .default) { _ in
                     if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }

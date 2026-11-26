@@ -98,10 +98,10 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     /// The host answers getClipboard (its session lists `clipboard`)
     private var hostGivesClipboard: Bool { link.session?.features?.contains(RemoteFeature.clipboard) == true }
-    /// Get Copied Files was asked: the next `clipboard` from the host is its answer, wherever the keys are
+    /// Get Copied Items was asked: the next `clipboard` from the host is its answer, wherever the keys are
     private var askedClipboard = false
 
-    /// Get Copied Files (⋯, ⌥⌘V while keys stay here): what's copied on the host comes here, once. Files to Downloads/Blurt, an image
+    /// Get Copied Items (⋯, ⌥⌘V while keys stay here): what's copied on the host comes here, once. Files to Downloads/Blurt, an image
     /// or text onto this Mac's clipboard (docs/design/remote-files.md).
     @objc func getCopied() {
         guard link.state == .connected else { return }
@@ -304,7 +304,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case let .cursorShape(png, hx, hy, w, h):
             picture.shape(png: png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
         case let .clipboard(t) where askedClipboard:
-            // the answer to Get Copied Files: asked for, so it's taken whatever the clipboard switch says
+            // the answer to Get Copied Items: asked for, so it's taken whatever the clipboard switch says
             askedClipboard = false
             files.clipAsked = false
             let pb = NSPasteboard.general

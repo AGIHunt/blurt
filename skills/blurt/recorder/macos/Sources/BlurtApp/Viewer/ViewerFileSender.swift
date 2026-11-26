@@ -10,7 +10,7 @@ final class ViewerFileSender {
     /// What the card shows, on the main thread. `done` is nil until the other end first says how much it has written.
     enum Event: Equatable {
         case sending(name: String, size: Int, done: Int?, index: Int, count: Int, left: Double?)
-        /// a file from the host, coming here (Get Copied Files)
+        /// a file from the host, coming here (Get Copied Items)
         case receiving(name: String, size: Int, done: Int, index: Int, count: Int, left: Double?)
         /// the session dropped mid-file: it goes on when it's back
         case paused(name: String)
@@ -20,7 +20,7 @@ final class ViewerFileSender {
         case received(url: URL, index: Int, count: Int)
         /// what was copied there is on this Mac's clipboard now
         case copied(image: Bool)
-        /// Get Copied Files found nothing to send: "empty", "locked", "too_big", "unsupported"
+        /// Get Copied Items found nothing to send: "empty", "locked", "too_big", "unsupported"
         case nothing(why: String)
         /// why: "space", "too_big", "locked", "read", "write", "other"; `incoming`: a file coming here
         case failed(name: String, why: String, incoming: Bool)
@@ -34,7 +34,7 @@ final class ViewerFileSender {
     let out: RemoteFileSender
     let incoming: RemoteFileReceiver
     var onEvent: ((Event) -> Void)?
-    /// Get Copied Files was asked and not yet answered: only then does a `clip` from the host go on this Mac's clipboard (a host can't
+    /// Get Copied Items was asked and not yet answered: only then does a `clip` from the host go on this Mac's clipboard (a host can't
     /// put anything there on its own)
     var clipAsked = false
     /// the host's id: the receiver keys its parts by it

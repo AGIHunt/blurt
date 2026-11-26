@@ -357,7 +357,7 @@ fn options(device: &str, go_between: bool) -> Options {
         features: Some(vec![
             crate::wire::MOVE.to_string(),
             crate::wire::VIEWER.to_string(),
-            // files from the host (Get Copied Files), and a part kept for a resume, both ways
+            // files from the host (Get Copied Items), and a part kept for a resume, both ways
             crate::wire::FILES.to_string(),
             crate::wire::RESUME.to_string(),
         ]),

@@ -76,7 +76,7 @@ iPhone" for 4 s and the log keeps the time, never the content.
 
 From the computer's side: **Send Files…** on the "being controlled" bar (Mac: also drop files on it) sends to the device connected now.
 
-**Computer ↔ computer.** The viewer already sends files (Send Files…, or drop on the picture). New in its ⋯ menu: **Get Copied Files**
+**Computer ↔ computer.** The viewer already sends files (Send Files…, or drop on the picture). New in its ⋯ menu: **Get Copied Items**
 (⌥⌘V on a Mac, Ctrl+Alt+V elsewhere, when keys aren't going to the remote): what is copied on the other computer comes to this one's
 Downloads/Blurt; an image comes onto this computer's clipboard; text already comes while keys are captured.
 
@@ -106,12 +106,12 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 |---|---|---|---|
 | Swift core, `BlurtRemoteKit/RemoteFiles.swift` | `RemoteFileSender` (chunks, window, resume) | `RemoteFileReceiver` (parts kept 1 h, unique names, the space check) | `RemoteClipboard` |
 | Mac host (`BlurtApp/Remote/RemoteHostFiles.swift`) | getClipboard's files (folders zipped) and image; the bar's Send Files… and drop on the bar; the bar shows how far | Downloads/Blurt, quarantine, one notification per batch | read on request (files, then an image, then text); a `clip` onto the pasteboard and ⌘V; the bar says "Clipboard sent to …" 4 s; the log counts clipboard and files each way |
-| Mac viewer (`BlurtApp/Viewer/ViewerFileSender.swift`) | Send Files… and drop (folders now zipped), paused and resumed | Get Copied Files (⋯, ⌥⌘V while keys stay here) → Downloads/Blurt, quarantined; a click on the card shows it in Finder | a `clip` or Get Copied text onto the pasteboard, whatever the Share Clipboard switch says (it was asked for) |
+| Mac viewer (`BlurtApp/Viewer/ViewerFileSender.swift`) | Send Files… and drop (folders now zipped), paused and resumed | Get Copied Items (⋯, ⌥⌘V while keys stay here) → Downloads/Blurt, quarantined; a click on the card shows it in Finder | a `clip` or Get Copied text onto the pasteboard, whatever the Share Clipboard switch says (it was asked for) |
 | Windows / Linux host (`crates/blurt-remote`) | as the Mac | Downloads/Blurt, Mark of the Web | Windows CF_UNICODETEXT / CF_DIB / CF_HDROP; Linux arboard text + image, `text/uri-list` for files |
-| Windows / Linux viewer (`viewer.rs`, `apps/desktop`) | Send Files… (exists) | Get Copied Files | |
+| Windows / Linux viewer (`viewer.rs`, `apps/desktop`) | Send Files… (exists) | Get Copied Items | |
 | Rust core, `crates/blurt-remote/src/files.rs` (2026-11-26) | `files::Sender` (chunks, window, resume; a thread per sender) | `files::Receiver` (parts kept 1 h per device + id, unique names, the space check via statvfs / GetDiskFreeSpaceExW, Mark of the Web) | `Input::copied` / `Input::paste_clip` (host.rs), `platform/clip.rs` |
 | Windows / Linux host, as built (`server.rs`, `platform/clip.rs`, `apps/desktop` remote.rs) | a sender per device, held until `session` has gone and, on the public connection service, the stream moved; getClipboard's files (folders zipped, stored), image (PNG), text over 64 KiB as `Text.txt`; the bar's Send Files… (`remote_send_files`) | Downloads/Blurt for every device, Mark of the Web on Windows, one notification per batch | read on request through arboard: Windows CF_HDROP, then "PNG" / CF_DIBV5, then text; Linux `text/uri-list`, then `image/png`, then text (Wayland data-control where the compositor has it, else XWayland's clipboard, which mutter keeps in step). A phone's `clip` image (PNG, JPEG, TIFF, BMP; not HEIC) or text onto the clipboard, then Ctrl+V. The bar says "Clipboard sent to …" 4 s; the log counts clipboard, received, sent |
-| Windows / Linux viewer, as built (`viewer.rs` + `apps/desktop` viewer.rs, `ViewerWindow.tsx`) | Send Files… and drop (folders now zipped, "Compressing…"), paused across a drop and resumed | Get Copied Files (⋯, Ctrl+Alt+V while keys stay here) → Downloads/Blurt with the Mark of the Web; the files card shows each one with ×, its line, time left, Show in Folder | a `clip` image or text onto this computer's clipboard (tauri clipboard plugin), Get Copied text too, whatever the clipboard switch says |
+| Windows / Linux viewer, as built (`viewer.rs` + `apps/desktop` viewer.rs, `ViewerWindow.tsx`) | Send Files… and drop (folders now zipped, "Compressing…"), paused across a drop and resumed | Get Copied Items (⋯, Ctrl+Alt+V while keys stay here) → Downloads/Blurt with the Mark of the Web; the files card shows each one with ×, its line, time left, Show in Folder | a `clip` image or text onto this computer's clipboard (tauri clipboard plugin), Get Copied text too, whatever the clipboard switch says |
 | iPhone / iPad (`apps/ios`) | photo picker, document picker, share extension, Paste from This Phone (image) | Documents (shown in Files) | UIPasteboard |
 | Android (`apps/android`) | photo picker, `ACTION_OPEN_DOCUMENT`, share intents | MediaStore Downloads/Blurt (API 29+), app external files below | ClipboardManager |
 
@@ -129,21 +129,21 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | A batch (prefix) · time left (suffix, system duration) | 第 %ld/%ld 个 · 还剩 %@ | %ld of %ld · %@ left |
 | States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Continues when reconnected. · Stopped |
 | Sent | 已保存到 %@ 的「下载/Blurt」 | Saved to Downloads/Blurt on %@ |
-| Received on iPhone · on Android · on a computer | 已存到「文件」App 的 Blurt 文件夹 · 已存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
+| Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
 | A received file's buttons | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
 | What came from the clipboard | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
-| Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · 无法从 %@ 获取此类内容。 · %@ 需要更新后才能使用。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Send up to 1,000 at a time. · Can't get this kind of item from %@. · Update %@ to use this. |
+| Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · 无法从 %@ 获取此类内容。 · 若要使用此功能，请更新 %@ 上的口喷鸡。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Copy up to 1,000 at a time. · Can't get this kind of item from %@. · To use this, update Blurt on %@. |
 | Not sent (exist, viewer.file.failed.*) | 未发送：对方空间不足。 · 未发送：文件超过 4 GB。 · 未发送：对方已锁屏。 · 未发送。 | Not sent: not enough space on that computer. · Not sent: larger than 4 GB. · Not sent: that computer is locked. · Not sent. |
-| Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device. · Not received. |
+| Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device (on a computer: this computer). · Not received. |
 | Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
-| An image pasted from the phone, too big | 图片超过 20 MB。 | The image is larger than 20 MB. |
+| An image pasted from the phone, too big | 无法粘贴超过 20 MB 的图片。 | Can't paste images larger than 20 MB. |
 | Share extension, named Blurt as on the home screen (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt 中配对电脑。 · 打开 Blurt 即可发送。 | Send to %@ · Pair a computer in Blurt first. · Open Blurt to send. |
 | iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到“照片”。 | Save pictures and videos from your computer to Photos. |
 | The host's bar: button · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
 | The host's connection log | 发送了剪贴板 · 收到 %ld 个文件 · 发送了 %ld 个文件 | Sent the clipboard · Received %ld files · Sent %ld files |
-| The viewer's ⋯ menu | 接收拷贝的文件 | Get Copied Files |
+| The viewer's ⋯ menu | 获取拷贝的内容 | Get Copied Items |
 
 ## Measurements
 
@@ -167,7 +167,7 @@ Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1ma
 | The wire | `hello.features` adds `files` and `resume`; `session.features` is kept as `Link.hostFeatures` until the next session. One `RemoteFileSender` and one `RemoteFileReceiver` in `Link`, the receiver keyed by the computer's own id. The sender sends only on a session whose stream has moved (go-between) and pauses on `lost()` / `disconnect()`; switching computers stops what was queued for the last one | `apps/ios/BlurtRemote/Net/Link.swift` |
 | Received files | the app's Documents, shown in Files as **Blurt** (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`); parts in Caches/parts | Info.plist |
 | The bar | **Transfer** (↑↓) beside the screen button in every layout; lit while something goes or waits. Portrait: the four icons by the arrow key went from 36 to 32 pt so the tabs lose 16 pt, not 36 (strip 156 → 136 pt on a 402 pt phone, 145 → 129 on 375). Landscape: five controls at the island's end don't fit at 42 pt between a 132 pt island and the corners, so all five are as tall as three that do (35 pt on a 402 pt-tall phone, 40 on 440) | `Pad/PadLayout.swift` |
-| The sheet | Send Photos… (PHPicker, `.current` representation, no permission), Send Files… (document picker, opened in place, folders zipped with a Compressing… row), Get Copied Items (disabled with "Update %@ to use this." for a host without `clipboard`), the answer under it, and the list: this run, then the last 50 finished (Application Support/transfers.json). Stop on anything not over; Continue on this run's outgoing files that paused or failed on the way (not stopped, too big, no space or unreadable); a received file's row opens a menu: Open (Quick Look), Share…, Save to Photos (pictures and videos; add-only permission asked on the first tap) | `Files/TransferSheet.swift`, `Files/Transfers.swift` |
+| The sheet | Send Photos… (PHPicker, `.current` representation, no permission), Send Files… (document picker, opened in place, folders zipped with a Compressing… row), Get Copied Items (disabled with "To use this, update Blurt on %@." for a host without `clipboard`), the answer under it, and the list: this run, then the last 50 finished (Application Support/transfers.json). Stop on anything not over; Continue on this run's outgoing files that paused or failed on the way (not stopped, too big, no space or unreadable); a received file's row opens a menu: Open (Quick Look), Share…, Save to Photos (pictures and videos; add-only permission asked on the first tap) | `Files/TransferSheet.swift`, `Files/Transfers.swift` |
 | A row's line | wraps only at its " · ": "148 MB / 412 MB" and 还剩 3 分钟 stay whole | `TransferRowView.breaksAtDots` |
 | Get Copied's answer, sheet away | a toast at the top of the stage (4 s; 8 s with Save to Photos for an image) | `Files/TransferToast.swift` |
 | Mobile data | `NWPathMonitor.usesInterfaceType(.cellular)` (a hotspot is Wi-Fi). Sending: a pick over 100 MB in all asks first. Getting: a begin whose batch is over 100 MB is held (the host waits 10 s for its first answer) and asked about once per batch; a no answers `stopped` and refuses the rest of that batch for 2 minutes; a host that gave up meanwhile isn't fed late | `Transfers.admit`, `answer` |

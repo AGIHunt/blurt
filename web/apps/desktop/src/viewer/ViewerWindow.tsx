@@ -141,7 +141,7 @@ export function ViewerWindow({ id }: { id: string }) {
     });
   }, []);
 
-  /** A line over the picture for a few seconds (what Get Copied Files brought, or why nothing). */
+  /** A line over the picture for a few seconds (what Get Copied Items brought, or why nothing). */
   const note = useCallback((text: string) => {
     setFileNote(text);
     if (fileTimer.current) clearTimeout(fileTimer.current);
@@ -233,7 +233,7 @@ export function ViewerWindow({ id }: { id: string }) {
   }, [note]);
   nameRef.current = name;
 
-  // Get Copied Files: what is copied there comes here (an older Blurt there can't answer: said so)
+  // Get Copied Items: what is copied there comes here (an older Blurt there can't answer: said so)
   const getCopied = useCallback(() => {
     void invoke<string>('viewer_get_clipboard').then((r) => r === 'update' && note(t('viewer.update_host', { 1: nameRef.current })), () => {});
   }, [note]);
@@ -435,7 +435,7 @@ export function ViewerWindow({ id }: { id: string }) {
   ]);
   const qualityEntries: MenuEntry[] = QUALITIES.map((q) => ({ label: t(`viewer.quality.${q}`), checked: q === quality, run: () => pickQuality(q) }));
 
-  // F11: the system's own full screen, as the ⋯ menu's; Ctrl+Alt+V: Get Copied Files (not while keys are the other computer's)
+  // F11: the system's own full screen, as the ⋯ menu's; Ctrl+Alt+V: Get Copied Items (not while keys are the other computer's)
   useEffect(() => {
     const f = (e: KeyboardEvent) => {
       if (e.key === 'F11' && !capturedRef.current) {

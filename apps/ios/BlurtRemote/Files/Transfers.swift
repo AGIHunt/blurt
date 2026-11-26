@@ -95,7 +95,7 @@ enum TransferWords {
         switch why {
         case "empty": String(localized: "Nothing is copied on \(name).")
         case "locked": String(localized: "\(name) is locked.")
-        case "too_big": String(localized: "Too many files are copied on \(name). Send up to 1,000 at a time.")
+        case "too_big": String(localized: "Too many files are copied on \(name). Copy up to 1,000 at a time.")
         default: String(localized: "Can’t get this kind of item from \(name).")
         }
     }
@@ -461,7 +461,7 @@ final class Transfers: ObservableObject {
         else if let i = pb.image { data = i.pngData() }
         guard let data else { return false }
         guard data.count <= RemoteFiles.maxClipImage else {
-            say(Said(kind: .note, title: String(localized: "The image is larger than 20 MB.")))
+            say(Said(kind: .note, title: String(localized: "Can't paste images larger than 20 MB.")))
             return true
         }
         let dir = Link.caches.appendingPathComponent("outgoing/" + UUID().uuidString, isDirectory: true)

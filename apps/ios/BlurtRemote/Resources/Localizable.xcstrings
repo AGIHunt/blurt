@@ -4128,12 +4128,12 @@
         }
       }
     },
-    "Update %@ to use this." : {
+    "To use this, update Blurt on %@." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 需要更新后才能使用。"
+            "value" : "若要使用此功能，请更新 %@ 上的口喷鸡。"
           }
         }
       }
@@ -4244,7 +4244,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已存到「文件」App 的 Blurt 文件夹"
+            "value" : "已保存到「文件」App 的 Blurt 文件夹"
           }
         }
       }
@@ -4339,7 +4339,7 @@
         }
       }
     },
-    "Too many files are copied on %@. Send up to 1,000 at a time." : {
+    "Too many files are copied on %@. Copy up to 1,000 at a time." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4409,12 +4409,12 @@
         }
       }
     },
-    "The image is larger than 20 MB." : {
+    "Can't paste images larger than 20 MB." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "图片超过 20 MB。"
+            "value" : "无法粘贴超过 20 MB 的图片。"
           }
         }
       }
@@ -4459,12 +4459,12 @@
         }
       }
     },
-    "Allow Blurt to add photos in Settings." : {
+    "To save to Photos, allow access in Settings." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在「设置」中允许口喷鸡添加照片。"
+            "value" : "请在「设置」中允许 Blurt 添加照片。"
           }
         }
       }

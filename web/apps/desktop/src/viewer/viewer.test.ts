@@ -133,10 +133,10 @@ describe('files both ways', () => {
     expect(transferLine({ ...x, state: 'done' }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt');
     expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt on Office PC');
     expect(transferLine({ ...x, state: 'failed', why: 'stopped' }, 'Office PC', 'local')).toBe('Stopped');
-    expect(transferLine({ ...x, state: 'failed', why: 'space' }, 'Office PC', 'local')).toBe('Not received: not enough space on this device.');
+    expect(transferLine({ ...x, state: 'failed', why: 'space' }, 'Office PC', 'local')).toBe('Not received: not enough space on this computer.');
     expect(transferLine({ ...x, state: 'failed', why: 'locked', incoming: false }, 'Office PC', 'local')).toBe('Not sent: that computer is locked.');
     expect(noneLine('empty', 'Office PC')).toBe('Nothing is copied on Office PC.');
-    expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Send up to 1,000 at a time.');
+    expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Copy up to 1,000 at a time.');
     expect([stoppable(x), stoppable({ ...x, state: 'done' })]).toEqual([true, false]);
     setLang('zh-Hans');
     expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('已保存到 Office PC 的「下载/Blurt」');

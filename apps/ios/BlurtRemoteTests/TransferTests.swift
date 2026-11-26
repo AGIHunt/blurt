@@ -82,7 +82,7 @@ final class TransferTests: XCTestCase {
     func testNothingCopiedSaysWhy() {
         XCTAssertEqual(TransferWords.nothing("empty", name: "Office PC"), "Nothing is copied on Office PC.")
         XCTAssertEqual(TransferWords.nothing("locked", name: "Office PC"), "Office PC is locked.")
-        XCTAssertEqual(TransferWords.nothing("too_big", name: "Office PC"), "Too many files are copied on Office PC. Send up to 1,000 at a time.")
+        XCTAssertEqual(TransferWords.nothing("too_big", name: "Office PC"), "Too many files are copied on Office PC. Copy up to 1,000 at a time.")
         XCTAssertEqual(TransferWords.nothing("unsupported", name: "Office PC"), "Can’t get this kind of item from Office PC.")
         XCTAssertEqual(TransferWords.firstWords("  Hello\n\nworld  "), "Hello world")
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")

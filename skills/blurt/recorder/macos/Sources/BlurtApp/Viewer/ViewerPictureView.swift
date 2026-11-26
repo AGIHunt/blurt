@@ -11,7 +11,7 @@ final class ViewerPictureView: NSView {
     typealias Hint = ViewerHintPill.Hint
     weak var controller: ViewerWindowController?
 
-    /// ⌥⌘V while the keys stay on this Mac: Get Copied Files (captured, every key goes to the remote instead)
+    /// ⌥⌘V while the keys stay on this Mac: Get Copied Items (captured, every key goes to the remote instead)
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .option],
            event.charactersIgnoringModifiers?.lowercased() == "v", controller?.captured == false {

@@ -43,7 +43,7 @@ struct TransferSheet: View {
                     .disabled(!givesClipboard || !l.ready || t.getting)
                     if let s = t.said { saidRow(s) }
                 } footer: {
-                    if outdated { Text("Update \(name) to use this.") }
+                    if outdated { Text("To use this, update Blurt on \(name).") }
                 }
                 Section {
                     if t.rows.isEmpty {
@@ -66,7 +66,7 @@ struct TransferSheet: View {
         }
         .quickLookPreview($preview)
         .onAppear { t.refreshOutbox() }
-        .alert("Allow Blurt to add photos in Settings.", isPresented: $photosOff) {
+        .alert("To save to Photos, allow access in Settings.", isPresented: $photosOff) {
             Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
             Button("Cancel", role: .cancel) {}
         }

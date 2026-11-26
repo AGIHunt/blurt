@@ -53,7 +53,7 @@ struct Viewers {
     /// computers whose last try through the public connection service found no direct path (their window said so): the list says
     /// Can't Connect Directly until one connects or Connect tries again (the Mac's ViewerStore.failed)
     no_direct: Mutex<HashSet<String>>,
-    /// files from the computers shown (Get Copied Files, a host's Send Files…): Downloads/Blurt, parts kept an hour per computer
+    /// files from the computers shown (Get Copied Items, a host's Send Files…): Downloads/Blurt, parts kept an hour per computer
     receiver: Arc<blurt_remote::files::Receiver>,
 }
 
@@ -92,7 +92,7 @@ struct Win {
     /// its session lists `resume`, `clipboard`
     host_resumes: bool,
     host_clipboard: bool,
-    /// Get Copied Files asked, this long ago: the text that answers goes on this computer's clipboard, captured or not
+    /// Get Copied Items asked, this long ago: the text that answers goes on this computer's clipboard, captured or not
     getting: Option<std::time::Instant>,
 }
 
@@ -804,7 +804,7 @@ fn on_event(label: String) -> viewer::OnEvent {
                 json!({"type": "cursorShape", "png": blurt_remote::wire::b64(&png), "hotX": hot_x, "hotY": hot_y, "width": width, "height": height}),
             ),
             Event::Clipboard(t) => {
-                // the host's clipboard changed while keys were captured here, or Get Copied Files found text: this computer's takes it
+                // the host's clipboard changed while keys were captured here, or Get Copied Items found text: this computer's takes it
                 let asked = w.getting.take().is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(15));
                 let on = asked || (v.options.lock().unwrap().clipboard && w.captured);
                 if on && blurt_remote::wire::clipboard_fits(&t) {
@@ -1144,7 +1144,7 @@ pub fn viewer_send_files(window: WebviewWindow, paths: Option<Vec<String>>) {
     });
 }
 
-/// Get Copied Files (⋯, Ctrl+Alt+V while keys stay here): what is copied on that computer comes here: files to Downloads/Blurt, an
+/// Get Copied Items (⋯, Ctrl+Alt+V while keys stay here): what is copied on that computer comes here: files to Downloads/Blurt, an
 /// image or text onto this computer's clipboard. → "asked", or "update" (that computer's Blurt is too old to answer).
 #[tauri::command]
 pub fn viewer_get_clipboard(window: WebviewWindow) -> &'static str {
