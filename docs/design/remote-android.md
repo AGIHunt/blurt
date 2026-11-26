@@ -348,7 +348,7 @@ The product and its words: [remote-files.md](remote-files.md); the wire: [remote
   21 drops in 50 MB, each resumed) until it did. The lead then fixed it at the source (e0e8a860, ported here): with a peer that resumes
   the receiver says its progress every 256 KiB and the sender keeps only half a second of the measured rate unacknowledged (512 KiB to
   4 MiB, `RemoteFiles.window`); without `resume`, 1 MiB and a fixed 4 MiB as before. Both are kept: 50 MB at 1.5 MB/s then went with no
-  drop in 34 s, 196 progress messages.
+  drop in 34 s.
 - **Where files land**: parts in `cacheDir/parts`; finished files in the shared Download/Blurt through MediaStore on Android 10 and later (no
   permission for files the app adds; a name in use gets " 2" and MediaStore's own choice is read back), and in the app's own
   `Android/data/…/files/Download/Blurt` on 8 and 9, opened and shared through the app's FileProvider, since the shared folder would need a
