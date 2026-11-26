@@ -159,7 +159,7 @@
 "viewer.screen_permission" = "%@ needs Screen Recording permission.";
 "viewer.screen_failed" = "Can’t show %@’s screen. The pointer and keys still work.";
 /* Blurt's public relay has no picture free (docs/design/remote-go-between.md §The public relay) */
-"viewer.screen_busy" = "The public connection service is busy. The pointer and keys still work.";
+"viewer.screen_busy" = "The public connection service is busy, so there’s no picture for now. The pointer and keys still work.";
 "viewer.one_display" = "%@ shows one display at a time.";
 "viewer.no_control" = "%@ needs Accessibility permission before it can be controlled.";
 "viewer.path_rtt" = "%@ · %ld ms";
@@ -227,6 +227,7 @@
 /* Files over Blurt's public relay: a send over 20 MB is asked about (%@: its size, "35 MB"); 50 MB a day */
 "remote.public.files.ask" = "Send %@ over the public connection service?";
 "remote.public.files.over" = "Files over the public connection service are limited to 50 MB a day.";
+"remote.public.files.not_sent" = "Not sent: files over the public connection service are limited to 50 MB a day.";
 "remote.banner.clipboard_sent" = "Clipboard sent to %@";
 "remote.file.paused" = "Paused. Resumes when reconnected.";
 "remote.file.received.many" = "%1$ld files from %2$@";

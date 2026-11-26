@@ -454,7 +454,7 @@ extension TransferTests {
         t.send([file("c.pdf", 11_000_000)])
         XCTAssertEqual(c.queued.count, 2)
         XCTAssertNil(t.asking)
-        XCTAssertEqual(t.said?.title, "Files over the public connection service are limited to 50 MB a day.")
+        XCTAssertEqual(t.said?.title, "Not sent: files over the public connection service are limited to 50 MB a day.")
         t.send([file("d.txt", 10_000_000)])
         XCTAssertEqual(c.queued.count, 3, "exactly up to the limit")
 

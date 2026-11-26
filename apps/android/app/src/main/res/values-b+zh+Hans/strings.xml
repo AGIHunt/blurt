@@ -66,7 +66,7 @@
     <string name="status_locked">%1$s 已锁屏</string>
     <string name="status_unlock_first">解锁后画面会自动恢复。</string>
     <string name="status_picture_stopped">画面已停止。</string>
-    <string name="status_public_busy">公共连接服务繁忙。指针、按键和语音仍可使用。</string>
+    <string name="status_public_busy">公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。</string>
     <string name="status_go_between_busy">公共连接服务今日已达上限。请稍后再试，或使用自建中转。</string>
     <string name="status_relay_down">自建中转无响应，正在重新连接…</string>
     <string name="status_other_phone">另一台手机已连接</string>
@@ -302,6 +302,7 @@
     <string name="data_get_q">使用移动网络接收 %1$s？</string>
     <string name="public_send_q">通过公共连接服务发送 %1$s？</string>
     <string name="public_files_limit">通过公共连接服务每天最多可传输 50 MB 文件。</string>
+    <string name="public_files_not_sent">未发送：通过公共连接服务每天最多可传输 50 MB 文件。</string>
     <string name="data_get">接收</string>
     <string name="image_too_big">无法粘贴超过 20 MB 的图片。</string>
     <string name="share_send_to">发送到 %1$s</string>

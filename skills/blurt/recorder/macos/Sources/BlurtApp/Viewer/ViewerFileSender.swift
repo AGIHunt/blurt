@@ -482,7 +482,7 @@ final class ViewerFileCard: NSView {
                 key = why == "space" ? "viewer.file.failed.in.space" : "viewer.file.failed.in.other"
             } else {
                 key = ["space": "viewer.file.failed.space", "too_big": "viewer.file.failed.too_big", "locked": "viewer.file.failed.locked",
-                       "public_limit": "remote.public.files.over"][why]
+                       "public_limit": "remote.public.files.not_sent"][why]
                     ?? "viewer.file.failed.other"
             }
             if name.isEmpty { setTitle(T(key)); detail.stringValue = "" } else { setTitle(name); detail.stringValue = T(key) }

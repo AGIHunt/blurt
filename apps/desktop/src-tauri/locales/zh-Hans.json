@@ -99,6 +99,7 @@
   "remote.file.received": "收到“{from}”发来的文件",
   "remote.public.ask": "通过公共连接服务发送 {size}？",
   "remote.public.limit": "通过公共连接服务每天最多可传输 50 MB 文件。",
+  "remote.public.not_sent": "未发送：通过公共连接服务每天最多可传输 50 MB 文件。",
   "remote.public.send": "发送",
   "remote.public.cancel": "取消"
 }

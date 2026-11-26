@@ -210,7 +210,7 @@ class Transfers(private val c: Context) {
                 return@execute
             }
             if (link.onPublicRelay && synchronized(publicFiles) { publicFiles.gate(s.size, System.currentTimeMillis()) } == PublicRelayFiles.Gate.OVER) {
-                main.post { toast(c.getString(R.string.public_files_limit)) }
+                main.post { toast(c.getString(R.string.public_files_not_sent)) }
                 return@execute
             }
             // a copy: the clipboard may change, and its grant end, before it goes
@@ -353,7 +353,7 @@ class Transfers(private val c: Context) {
     private fun confirm(bytes: Long, incoming: Boolean, go: () -> Unit) {
         if (!incoming && link.onPublicRelay) {
             when (synchronized(publicFiles) { publicFiles.gate(bytes, System.currentTimeMillis()) }) {
-                PublicRelayFiles.Gate.OVER -> toast(c.getString(R.string.public_files_limit))
+                PublicRelayFiles.Gate.OVER -> toast(c.getString(R.string.public_files_not_sent))
                 PublicRelayFiles.Gate.ASK -> ask.value = Ask(bytes, false, yes = { ask.value = null; go() }, no = { ask.value = null }, publicRelay = true)
                 PublicRelayFiles.Gate.GO -> go()
             }

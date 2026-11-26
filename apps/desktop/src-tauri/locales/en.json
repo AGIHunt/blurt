@@ -99,6 +99,7 @@
   "remote.file.received": "File from {from}",
   "remote.public.ask": "Send {size} over the public connection service?",
   "remote.public.limit": "Files over the public connection service are limited to 50 MB a day.",
+  "remote.public.not_sent": "Not sent: files over the public connection service are limited to 50 MB a day.",
   "remote.public.send": "Send",
   "remote.public.cancel": "Cancel"
 }

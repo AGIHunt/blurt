@@ -950,7 +950,7 @@
   "viewer.screen_permission": "{1} 需要屏幕录制权限。",
   "viewer.screen_failed": "无法显示 {1} 的屏幕。指针和按键仍可使用。",
   "viewer.one_display": "{1} 一次只能显示一块屏幕。",
-  "viewer.screen_busy": "公共连接服务繁忙。指针和按键仍可使用。",
+  "viewer.screen_busy": "公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。",
   "viewer.retry": "重试",
   "viewer.no_control": "还无法控制“{1}”。请在那台电脑上允许。",
   "viewer.no_decoder": "本机无法解码画面。请安装 GStreamer 的 libav 插件（gstreamer1.0-libav）。",

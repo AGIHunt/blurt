@@ -279,6 +279,8 @@ enum PublicRelayFiles {
     /// "Send 35 MB over the public connection service?", with the day's limit (`overText`) under it
     static func askText(_ size: Int) -> String { T("remote.public.files.ask", ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
     static var overText: String { T("remote.public.files.over") }
+    /// a send past today's 50 MB, refused
+    static var refusedText: String { T("remote.public.files.not_sent") }
 
     /// Main thread: whether these files may go over the public relay now. Past today's 50 MB it says so (`over`) and they don't; over 20 MB
     /// it asks first, as a sheet on `window` or on its own. Counted once they're let go.
@@ -291,7 +293,7 @@ enum PublicRelayFiles {
         switch decide(size, device: device) {
         case .over:
             emit(["event": "remote_public_files", "state": "over", "size": size])
-            over(overText)
+            over(refusedText)
         case .send:
             send()
         case .ask:

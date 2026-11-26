@@ -165,7 +165,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(banner(.connecting) { $0.screenError = "busy" }, StatusBanner(mark: .busy, title: .connecting))
         XCTAssertEqual(Words.status(.cantShowScreen, host: .linux, name: "PC"), "Can’t show the screen")
         XCTAssertEqual(Words.status(.publicBusy, host: .mac, name: "Studio"),
-                       "The public connection service is busy. The pointer, keys and voice still work.")
+                       "The public connection service is busy, so there’s no picture for now. The pointer and keys still work.")
     }
 
     func testEveryStateButConnectedSaysSomething() {

@@ -77,7 +77,7 @@ enum Words {
         case .allowScreen: return noScreenPermission(h, n)
         case .screenIsOff: return screenOff(h, n)
         case .pictureStopped: return String(localized: "The picture stopped.")
-        case .publicBusy: return String(localized: "The public connection service is busy. The pointer, keys and voice still work.")
+        case .publicBusy: return String(localized: "The public connection service is busy, so there’s no picture for now. The pointer and keys still work.")
         case .locked: return String(localized: "\(n) is locked")
         case .unlockFirst: return String(localized: "The picture comes back once it’s unlocked.")
         }

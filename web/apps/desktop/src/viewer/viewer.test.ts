@@ -122,9 +122,9 @@ describe('the cover over the picture', () => {
     setLang('en');
     const busy = coverFor('connected', 'Studio', 'busy', false, true);
     expect(busy?.kind).toBe('screenFailed');
-    expect(busy?.title).toBe('The public connection service is busy. The pointer and keys still work.');
+    expect(busy?.title).toBe('The public connection service is busy, so there’s no picture for now. The pointer and keys still work.');
     setLang('zh-Hans');
-    expect(coverFor('connected', 'Studio', 'busy', false, true)?.title).toBe('公共连接服务繁忙。指针和按键仍可使用。');
+    expect(coverFor('connected', 'Studio', 'busy', false, true)?.title).toBe('公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。');
     setLang('en');
   });
 });

@@ -972,7 +972,7 @@
   "viewer.screen_permission": "{1} needs Screen Recording permission.",
   "viewer.screen_failed": "Can’t show {1}’s screen. The pointer and keys still work.",
   "viewer.one_display": "{1} shows one display at a time.",
-  "viewer.screen_busy": "The public connection service is busy. The pointer and keys still work.",
+  "viewer.screen_busy": "The public connection service is busy, so there’s no picture for now. The pointer and keys still work.",
   "viewer.retry": "Try Again",
   "viewer.no_control": "Can’t control “{1}” yet. Allow it on that computer.",
   "viewer.no_decoder": "Can’t decode the picture on this computer. Install GStreamer’s libav plugin (gstreamer1.0-libav).",

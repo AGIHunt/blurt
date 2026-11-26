@@ -158,6 +158,8 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 
 - each direction of a room: **256 kbps** without a lease (64 KiB burst), **1.5 Mbps** with one (256 KiB burst: a keyframe is 77–170 KB);
   200 messages a second; a receiver 256 KiB behind pauses its sender, 2 MiB behind is cut;
+  files without a lease stay at the 256 kbps (35 MB ≈ 18 min; decided 2026-11-26: not raised, the picture lease is the scarce thing,
+  and the 50 MB a day stays);
 - **1 GB per pair per UTC day** (the tag), then 4003 to both; a session at most 12 h (4003); messages at most 512 KiB;
 - per IP: 16 connections, 10 upgrades in 10 s (HTTP 429); 2,000 connections in all;
 - no `peek`; `GET /` answers `blurt relay`; counters once a minute, nothing about who.
@@ -179,10 +181,10 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 
 | Where | English | 中文 |
 |---|---|---|
-| No picture lease free (card under "Can't show the screen") | The public connection service is busy. The pointer, keys and voice still work. | 公共连接服务繁忙。指针、按键和语音仍可使用。 |
-| The same in a computer viewer (no voice there) | The public connection service is busy. The pointer and keys still work. | 公共连接服务繁忙。指针和按键仍可使用。 |
+| No picture lease free (card under "Can't show the screen"; the same line in a computer viewer). No promise of voice: on this path a phone without Opus has no microphone | The public connection service is busy, so there’s no picture for now. The pointer and keys still work. | 公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。 |
 | A send over 20 MB on this path (title; the limit line below is its message) | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
-| Past 50 MB today; Get Copied Items' `clipboardNone("limit")`; the message under the question above | Files over the public connection service are limited to 50 MB a day. | 通过公共连接服务每天最多可传输 50 MB 文件。 |
+| The message under the question above, and Get Copied Items' `clipboardNone("limit")` (the user asked for files; nothing of theirs was refused) | Files over the public connection service are limited to 50 MB a day. | 通过公共连接服务每天最多可传输 50 MB 文件。 |
+| A send refused past 50 MB today: led by "Not sent:" like the other refusals | Not sent: files over the public connection service are limited to 50 MB a day. | 未发送：通过公共连接服务每天最多可传输 50 MB 文件。 |
 | Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |
 | Voice when this phone can't make Opus | iPhone microphone unavailable · Phone microphone unavailable (existing) | iPhone 麦克风不可用 · 手机麦克风不可用（已有） |
 

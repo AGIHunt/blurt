@@ -82,12 +82,14 @@ class AppLogicTest {
             .associate { it.groupValues[1] to it.groupValues[2] }
         val en = strings("values")
         val zh = strings("values-b+zh+Hans")
-        assertEquals("The public connection service is busy. The pointer, keys and voice still work.", en["status_public_busy"])
-        assertEquals("公共连接服务繁忙。指针、按键和语音仍可使用。", zh["status_public_busy"])
+        assertEquals("The public connection service is busy, so there’s no picture for now. The pointer and keys still work.", en["status_public_busy"])
+        assertEquals("公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。", zh["status_public_busy"])
         assertEquals("Send %1\$s over the public connection service?", en["public_send_q"])
         assertEquals("通过公共连接服务发送 %1\$s？", zh["public_send_q"])
         assertEquals("Files over the public connection service are limited to 50 MB a day.", en["public_files_limit"])
         assertEquals("通过公共连接服务每天最多可传输 50 MB 文件。", zh["public_files_limit"])
+        assertEquals("Not sent: files over the public connection service are limited to 50 MB a day.", en["public_files_not_sent"])
+        assertEquals("未发送：通过公共连接服务每天最多可传输 50 MB 文件。", zh["public_files_not_sent"])
         // Get Copied Items past the day's 50 MB: the host's clipboardNone("limit") says the same line
         assertEquals(R.string.public_files_limit, dev.blurt.remote.app.files.Transfers.noneLine("limit"))
         assertEquals(R.string.clip_none_empty, dev.blurt.remote.app.files.Transfers.noneLine("empty"))

@@ -158,7 +158,7 @@
 "viewer.screen_permission" = "%@ 需要屏幕录制权限。";
 "viewer.screen_failed" = "无法显示 %@ 的屏幕。指针和按键仍可使用。";
 /* Blurt's public relay has no picture free (docs/design/remote-go-between.md §The public relay) */
-"viewer.screen_busy" = "公共连接服务繁忙。指针和按键仍可使用。";
+"viewer.screen_busy" = "公共连接服务繁忙，暂时没有画面。指针和按键仍可使用。";
 "viewer.one_display" = "%@ 一次只能显示一块屏幕。";
 "viewer.no_control" = "%@ 需要辅助功能权限才能被控制。";
 "viewer.path_rtt" = "%@ · %ld 毫秒";
@@ -226,6 +226,7 @@
 /* Files over Blurt's public relay: a send over 20 MB is asked about (%@: its size, "35 MB"); 50 MB a day */
 "remote.public.files.ask" = "通过公共连接服务发送 %@？";
 "remote.public.files.over" = "通过公共连接服务每天最多可传输 50 MB 文件。";
+"remote.public.files.not_sent" = "未发送：通过公共连接服务每天最多可传输 50 MB 文件。";
 "remote.banner.clipboard_sent" = "剪贴板已发送到 %@";
 "remote.file.paused" = "已暂停，重新连接后继续。";
 "remote.file.received.many" = "收到「%2$@」发来的 %1$ld 个文件";

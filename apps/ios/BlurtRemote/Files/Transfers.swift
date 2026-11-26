@@ -113,8 +113,10 @@ enum TransferWords {
         return [first.joined(separator: " · "), second.joined(separator: " · ")]
     }
 
-    /// a send over the public relay past its 50 MB a day
+    /// the public relay's 50 MB a day, as information (under "Send 35 MB over the public connection service?")
     static var publicDayLimit: String { String(localized: "Files over the public connection service are limited to 50 MB a day.") }
+    /// a send over the public relay past its 50 MB a day, refused
+    static var publicDayRefused: String { String(localized: "Not sent: files over the public connection service are limited to 50 MB a day.") }
 
     /// clipboardNone's reasons, for the computer `name`
     static func nothing(_ why: String, name: String) -> String {
@@ -520,7 +522,7 @@ final class Transfers: ObservableObject {
                 made.forEach { try? FileManager.default.removeItem(at: $0) }
                 if temporary { urls.forEach { try? FileManager.default.removeItem(at: $0) } }
                 picked.forEach { if scoped.remove($0) != nil { $0.stopAccessingSecurityScopedResource() } }
-                return say(Said(kind: .note, title: TransferWords.publicDayLimit))
+                return say(Said(kind: .note, title: TransferWords.publicDayRefused))
             case .ask:
                 heldOut = (urls, temporary, made, picked)
                 asking = Ask(incoming: false, bytes: total, publicRelay: true)
@@ -622,7 +624,7 @@ final class Transfers: ObservableObject {
         // over the public relay it counts toward the day's 50 MB like any file (never over 20 MB, so never asked)
         if env.publicRelay() {
             guard Self.publicSend(bytes: data.count, sentToday: publicLog.sent(now: clock())) != .over else {
-                say(Said(kind: .note, title: TransferWords.publicDayLimit))
+                say(Said(kind: .note, title: TransferWords.publicDayRefused))
                 return true
             }
             publicLog.add(data.count, now: clock())

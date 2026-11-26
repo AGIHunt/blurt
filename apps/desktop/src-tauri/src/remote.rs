@@ -646,7 +646,7 @@ pub fn public_ask(app: &AppHandle, bytes: i64) -> bool {
 /// Past today's 50 MB over the public connection service. Blocking.
 pub fn public_limit(app: &AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-    app.dialog().message(crate::l10n::t("remote.public.limit")).kind(MessageDialogKind::Info).blocking_show();
+    app.dialog().message(crate::l10n::t("remote.public.not_sent")).kind(MessageDialogKind::Info).blocking_show();
 }
 
 /// What's going to or coming from the device connected now, for the bar's card.
