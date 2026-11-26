@@ -92,7 +92,8 @@ struct Win {
     /// its session lists `resume`, `clipboard`
     host_resumes: bool,
     host_clipboard: bool,
-    /// Get Copied Items asked, this long ago: the text that answers goes on this computer's clipboard, captured or not
+    /// Get Copied Items asked, then: the first answer that completes it (text, nothing, a clip file finished, the first of the files)
+    /// takes it, or a drop, or 30 s. Only an asked clip or text goes on this computer's clipboard (else just the captured sync)
     getting: Option<std::time::Instant>,
 }
 
@@ -151,11 +152,24 @@ pub fn downloads() -> std::path::PathBuf {
     dirs::download_dir().unwrap_or_else(crate::paths::blurt_home).join("Blurt")
 }
 
+/// How long a Get Copied Items waits for its answer.
+const ASKED_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Takes the window's pending Get Copied Items: whether one was still waiting.
+fn take_asked(getting: &mut Option<std::time::Instant>) -> bool {
+    getting.take().is_some_and(|at| at.elapsed() < ASKED_FOR)
+}
+
 fn make_receiver() -> blurt_remote::files::Receiver {
     use blurt_remote::files::Hooks;
     let hooks = Hooks {
         clip: Box::new(|path, name, host| {
             let Some(v) = viewers() else { return };
+            // only an answer to Get Copied Items reaches this computer's clipboard; one nobody asked for is dropped
+            let asked = v.windows.lock().unwrap().values_mut().filter(|w| w.host_id == host).any(|w| take_asked(&mut w.getting));
+            if !asked {
+                return;
+            }
             let Ok(bytes) = std::fs::read(path) else { return };
             use tauri_plugin_clipboard_manager::ClipboardExt;
             let image = blurt_remote::files::is_image(name);
@@ -745,6 +759,9 @@ fn on_event(label: String) -> viewer::OnEvent {
                 w.route = route;
                 let host = w.host_id.clone();
                 let files = w.sender.clone();
+                if link != Link::Connected {
+                    w.getting = None; // its answer won't come on another session
+                }
                 drop(ws);
                 // files going there pause with the session and go on when it's back; what was coming waits an hour here
                 if let Some(f) = &files {
@@ -805,7 +822,7 @@ fn on_event(label: String) -> viewer::OnEvent {
             ),
             Event::Clipboard(t) => {
                 // the host's clipboard changed while keys were captured here, or Get Copied Items found text: this computer's takes it
-                let asked = w.getting.take().is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(15));
+                let asked = take_asked(&mut w.getting);
                 let on = asked || (v.options.lock().unwrap().clipboard && w.captured);
                 if on && blurt_remote::wire::clipboard_fits(&t) {
                     w.clip = Some(t.clone());
@@ -823,7 +840,10 @@ fn on_event(label: String) -> viewer::OnEvent {
             }
             Event::FileIn(o) => {
                 // a file from the host: to Downloads/Blurt (or this computer's clipboard), its answers back on this session
-                w.getting = None;
+                // the first of a batch of files answers Get Copied Items; a clip answers it once it has come whole (the hook)
+                if matches!(&o, blurt_remote::files::FileOut::Begin(i) if !i.clip) {
+                    w.getting = None;
+                }
                 let host = w.host_id.clone();
                 let s = w.session.as_ref().map(|s| s.sender());
                 drop(ws);

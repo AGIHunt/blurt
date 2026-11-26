@@ -45,7 +45,7 @@ impl Input for TestInput {
     fn copied(&mut self) -> Copied {
         self.0.copied.lock().unwrap().clone().unwrap_or(Copied::Empty)
     }
-    fn paste_clip(&mut self, c: &Clip) -> bool {
+    fn paste_clip(&mut self, c: &Clip, _paste: bool) -> bool {
         self.0.pasted.lock().unwrap().push(c.clone());
         true
     }

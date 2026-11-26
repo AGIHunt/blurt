@@ -73,6 +73,11 @@ pub trait App: Send + Sync + 'static {
     fn files_received(&self, _from: &str, _count: usize, _folder: &std::path::Path) {}
     /// This computer's clipboard was read for `to` (getClipboard): the "being controlled" bar says so for 4 s. Never its content.
     fn clipboard_sent(&self, _to: &str) {}
+    /// A `clip` from a phone may be pasted with Ctrl+V into what has the focus now: false in a password field (the app reads the
+    /// focus as dictation does). The host itself also holds back at the lock screen and where its input can't reach.
+    fn may_paste(&self) -> bool {
+        true
+    }
     /// A file to or from the device connected now changed (the bar's Send Files…, a getClipboard's files, a phone's files).
     fn transfer(&self, _t: &crate::files::Transfer) {}
     /// The sentence a paired device hears when others were paired here since it was last in, or when one is let in while it's
@@ -2062,11 +2067,19 @@ impl Core {
                         crate::host::Clip::Text(String::from_utf8_lossy(&bytes).into_owned())
                     };
                     let image = matches!(clip, crate::host::Clip::Image(_));
-                    let backend = me.backend.clone();
                     let me2 = me.clone();
-                    me.rt.spawn_blocking(move || {
-                        let ok = backend.lock().unwrap().input().paste_clip(&clip);
-                        me2.log(json!({"event": "remote_clip_in", "image": image, "pasted": ok}));
+                    // onto the clipboard always; Ctrl+V only where typing would go: not at the lock or login screen, not where this
+                    // host's input can't reach (the secure desktop, an elevated window), not in a password field
+                    me.post(move |a| {
+                        let field_ok = a.may_paste();
+                        let me3 = me2.clone();
+                        me2.rt.spawn_blocking(move || {
+                            let mut b = me3.backend.lock().unwrap();
+                            let paste = field_ok && !me3.locked_now.load(SeqCst) && b.input().can_control();
+                            let ok = b.input().paste_clip(&clip, paste);
+                            drop(b);
+                            me3.log(json!({"event": "remote_clip_in", "image": image, "on_clipboard": ok, "pasted": ok && paste}));
+                        });
                     });
                 }
             }),

@@ -118,13 +118,16 @@ pub trait Input: Send {
             _ => Copied::Empty,
         }
     }
-    /// A `clip` file from a phone: onto the clipboard, then Ctrl+V into the app in front. false: this backend can't (an image on the
-    /// default). (Added 2026-11-26.)
-    fn paste_clip(&mut self, clip: &Clip) -> bool {
+    /// A `clip` file from a phone: onto the clipboard, then (`paste`) Ctrl+V into the app in front. The server passes false at the lock
+    /// or login screen and in a password field: it stays on the clipboard. false: this backend can't (an image on the default).
+    /// (Added 2026-11-26.)
+    fn paste_clip(&mut self, clip: &Clip, paste: bool) -> bool {
         match clip {
             Clip::Text(t) => {
                 self.set_clipboard(t);
-                self.key("V", mods::CONTROL, None);
+                if paste {
+                    self.key("V", mods::CONTROL, None);
+                }
                 true
             }
             Clip::Image(_) => false,

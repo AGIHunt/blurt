@@ -101,6 +101,48 @@ pub fn unique(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 
+/// `want`, or "name 2.ext", "name 3.ext" …: the first that doesn't exist.
+fn candidate(want: &Path, i: u32) -> PathBuf {
+    if i < 2 {
+        return want.to_path_buf();
+    }
+    let stem = want.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    match want.extension() {
+        Some(e) => want.with_file_name(format!("{stem} {i}.{}", e.to_string_lossy())),
+        None => want.with_file_name(format!("{stem} {i}")),
+    }
+}
+
+/// Puts the file at `from` in place at `want` under a name nothing else holds, never over a file made meanwhile: a hard link (no-replace,
+/// and atomic), or where the volume can't (another volume, FAT), a file created new and copied into. The caller deletes `from`.
+fn place(from: &Path, want: &Path) -> Option<PathBuf> {
+    let mut links = true;
+    for i in 1..100_000 {
+        let c = candidate(want, i);
+        if links {
+            match std::fs::hard_link(from, &c) {
+                Ok(()) => return Some(c),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => links = false,
+            }
+        }
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&c) {
+            Ok(mut out) => {
+                let ok = std::fs::File::open(from).and_then(|mut f| std::io::copy(&mut f, &mut out)).is_ok();
+                if ok {
+                    return Some(c);
+                }
+                drop(out);
+                let _ = std::fs::remove_file(&c);
+                return None;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 /// Windows: the Mark of the Web (zone 3, the Internet), as a browser's download has. Elsewhere nothing: the file isn't executable.
 pub fn mark_downloaded(p: &Path) {
     if cfg!(windows) {
@@ -888,6 +930,10 @@ impl Receiver {
         self.expire();
         let k = Self::key(device, &i.id);
         let name = clean(&i.name);
+        // locked: nothing is taken, not even the rest of a kept part (which stays for when it's open again)
+        if (self.hooks.locked)() {
+            return answer(FileAnswer::Failed { id: i.id.clone(), why: "locked".into() });
+        }
         // the same file again after a drop: go on from what's written
         if self.resumes {
             let resumed = (|| {
@@ -916,12 +962,9 @@ impl Receiver {
                 return;
             }
         }
-        // another file from this device begins: one that wasn't finished is kept (resume) or goes
-        self.suspend(device, Some(&i.id));
+        // another file from this device doesn't touch its others: a viewer's second window has the same device id and sends at the
+        // same time. A part a sender gives up without an end waits as a dropped session's does, from when that session ends
         let fail = |answer: &mut dyn FnMut(FileAnswer), why: &str| answer(FileAnswer::Failed { id: i.id.clone(), why: why.into() });
-        if (self.hooks.locked)() {
-            return fail(answer, "locked");
-        }
         let cap = if i.clip { MAX_CLIP_IMAGE.max(64 << 20) } else { MAX_SIZE };
         if i.size < 0 || i.size > cap {
             return fail(answer, "too_big");
@@ -965,7 +1008,8 @@ impl Receiver {
     fn chunk(&self, id: &str, data: &[u8], device: &str, answer: &mut dyn FnMut(FileAnswer)) {
         let k = Self::key(device, id);
         let mut parts = self.parts.lock().unwrap();
-        let Some(p) = parts.get_mut(&k) else { return };
+        // under the lock: a part a stop or a drop has just closed (or kept) takes nothing more
+        let Some(p) = parts.get_mut(&k).filter(|p| p.kept_since.is_none()) else { return };
         let Some(out) = p.out.as_mut() else { return };
         if p.written + data.len() as i64 > p.size || out.write_all(data).is_err() {
             let p = parts.remove(&k).unwrap();
@@ -1005,16 +1049,12 @@ impl Receiver {
             return (self.hooks.change)(&Self::transfer(&p, State::Done, None), device);
         }
         let _ = std::fs::create_dir_all(&self.folder);
-        let dest = unique(&self.folder.join(&p.name));
-        if std::fs::rename(&p.path, &dest).is_err() {
-            // another volume: copy, then delete
-            let copied = std::fs::copy(&p.path, &dest).is_ok();
-            let _ = std::fs::remove_file(&p.path);
-            if !copied {
-                answer(FileAnswer::Failed { id: id.into(), why: "write".into() });
-                return (self.hooks.change)(&Self::transfer(&p, State::Failed("write".into()), None), device);
-            }
-        }
+        let placed = place(&p.path, &self.folder.join(&p.name));
+        let _ = std::fs::remove_file(&p.path);
+        let Some(dest) = placed else {
+            answer(FileAnswer::Failed { id: id.into(), why: "write".into() });
+            return (self.hooks.change)(&Self::transfer(&p, State::Failed("write".into()), None), device);
+        };
         mark_downloaded(&dest);
         (self.hooks.saved)(&dest, device);
         let name = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(p.name.clone());
@@ -1333,6 +1373,79 @@ mod tests {
         p.locked.store(true, SeqCst);
         p.s.add(vec![(file(&d.0, "a.txt", 3), false)], false);
         wait("refused", || p.s.transfers()[0].state == State::Failed("locked".into()));
+    }
+
+    #[test]
+    fn two_senders_under_one_device_send_at_the_same_time() {
+        // a viewer's two windows: one device id, two senders, one receiver
+        let d = dir();
+        let p = pair(&d.0, true);
+        p.pipe.delay.store(1, SeqCst);
+        let r = Arc::downgrade(&p.r);
+        let slot: Arc<Mutex<Option<Sender>>> = Arc::default();
+        let second = Sender::new(
+            {
+                let slot = slot.clone();
+                move |m| {
+                    let Some(r) = r.upgrade() else { return false };
+                    if matches!(m, FileOut::Chunk { .. }) {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    let slot = slot.clone();
+                    r.heard(m, "phone-1", &mut |a| {
+                        let slot = slot.clone();
+                        std::thread::spawn(move || {
+                            if let Some(s) = slot.lock().unwrap().clone() {
+                                s.heard(a)
+                            }
+                        });
+                    });
+                    true
+                }
+            },
+            || true,
+            || true,
+            |_| {},
+        );
+        *slot.lock().unwrap() = Some(second.clone());
+        let (a, b) = (file(&d.0, "one.bin", CHUNK * 30), file(&d.0, "two.bin", CHUNK * 30 + 5));
+        p.s.add(vec![(a.clone(), false)], false);
+        second.add(vec![(b.clone(), false)], false);
+        wait("both saved", || p.s.transfers()[0].state == State::Done && second.transfers()[0].state == State::Done);
+        assert_eq!(std::fs::read(p.out.join("one.bin")).unwrap(), std::fs::read(&a).unwrap());
+        assert_eq!(std::fs::read(p.out.join("two.bin")).unwrap(), std::fs::read(&b).unwrap());
+    }
+
+    #[test]
+    fn a_kept_part_waits_while_locked_and_goes_on_after() {
+        let d = dir();
+        let p = pair(&d.0, true);
+        p.pipe.cut_after.store((CHUNK * 4) as i64, SeqCst);
+        let f = file(&d.0, "x.bin", CHUNK * 20);
+        p.s.add(vec![(f.clone(), false)], false);
+        wait("dropped", || !p.pipe.up.load(SeqCst));
+        p.r.suspend("phone-1", None);
+        p.s.connection(false);
+        p.locked.store(true, SeqCst);
+        p.pipe.cut_after.store(-1, SeqCst);
+        p.pipe.up.store(true, SeqCst);
+        p.s.connection(true);
+        wait("refused while locked", || p.s.transfers()[0].state == State::Failed("locked".into()));
+        assert_eq!(p.r.current().len(), 1, "the part is kept");
+        assert_eq!(p.r.current()[0].1.state, State::Paused);
+    }
+
+    #[test]
+    fn a_file_made_meanwhile_is_never_replaced() {
+        let d = dir();
+        let src = file(&d.0, "a.txt", 3);
+        let want = d.0.join("out/a.txt");
+        std::fs::create_dir_all(want.parent().unwrap()).unwrap();
+        std::fs::write(&want, b"mine").unwrap();
+        std::fs::write(d.0.join("out/a 2.txt"), b"mine too").unwrap();
+        assert_eq!(place(&src, &want), Some(d.0.join("out/a 3.txt")));
+        assert_eq!(std::fs::read(&want).unwrap(), b"mine");
+        assert_eq!(std::fs::read(d.0.join("out/a 3.txt")).unwrap(), std::fs::read(&src).unwrap());
     }
 
     #[test]

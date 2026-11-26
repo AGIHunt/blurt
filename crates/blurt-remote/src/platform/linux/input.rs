@@ -270,7 +270,7 @@ impl Input for LinuxInput {
     fn copied(&mut self) -> crate::host::Copied {
         crate::platform::clip::read()
     }
-    fn paste_clip(&mut self, clip: &crate::host::Clip) -> bool {
+    fn paste_clip(&mut self, clip: &crate::host::Clip, paste: bool) -> bool {
         match clip {
             crate::host::Clip::Text(t) => self.set_clipboard(t),
             crate::host::Clip::Image(b) => {
@@ -279,7 +279,9 @@ impl Input for LinuxInput {
                 }
             }
         }
-        self.key("V", crate::host::mods::CONTROL, None);
+        if paste {
+            self.key("V", crate::host::mods::CONTROL, None);
+        }
         true
     }
 

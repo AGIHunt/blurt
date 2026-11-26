@@ -481,11 +481,13 @@ impl Input for Proxy {
         self.clipboard.as_mut().map_or(crate::host::Copied::Unsupported, |c| c.copied())
     }
     /// the user's clipboard here, Ctrl+V through the agent
-    fn paste_clip(&mut self, clip: &crate::host::Clip) -> bool {
-        if !self.clipboard.as_mut().is_some_and(|c| c.paste_clip(clip)) {
+    fn paste_clip(&mut self, clip: &crate::host::Clip, paste: bool) -> bool {
+        if !self.clipboard.as_mut().is_some_and(|c| c.paste_clip(clip, false)) {
             return false;
         }
-        self.key("V", crate::host::mods::CONTROL, None);
+        if paste {
+            self.key("V", crate::host::mods::CONTROL, None);
+        }
         true
     }
 }
