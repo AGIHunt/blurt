@@ -56,6 +56,8 @@ class PublicRelayTest {
         assertEquals(VoiceWay.HOST_CANT, VoiceWay.of(publicRelay = true, phoneOpus = true, hostFeatures = listOf(RemoteFeature.PUBLIC_RELAY)))
         assertEquals(VoiceWay.HOST_CANT, VoiceWay.of(publicRelay = true, phoneOpus = true, hostFeatures = null))
         assertEquals(VoiceWay.PHONE_CANT, VoiceWay.of(publicRelay = true, phoneOpus = false, hostFeatures = listOf(RemoteFeature.OPUS)))
+        // no Opus here: the phone's microphone line, not an update the computer can't help with
+        assertEquals(VoiceWay.PHONE_CANT, VoiceWay.of(publicRelay = true, phoneOpus = false, hostFeatures = listOf(RemoteFeature.PUBLIC_RELAY)))
         assertTrue(VoiceWay.OPUS.carries)
         assertFalse(VoiceWay.HOST_CANT.carries)
         assertFalse(VoiceWay.PHONE_CANT.carries)

@@ -82,12 +82,16 @@ class AppLogicTest {
             .associate { it.groupValues[1] to it.groupValues[2] }
         val en = strings("values")
         val zh = strings("values-b+zh+Hans")
-        assertEquals("The public connection service is busy. Keys, the pointer and voice still work.", en["status_public_busy"])
-        assertEquals("公共连接服务繁忙。按键、指针和语音仍可使用。", zh["status_public_busy"])
+        assertEquals("The public connection service is busy. The pointer, keys and voice still work.", en["status_public_busy"])
+        assertEquals("公共连接服务繁忙。指针、按键和语音仍可使用。", zh["status_public_busy"])
         assertEquals("Send %1\$s over the public connection service?", en["public_send_q"])
         assertEquals("通过公共连接服务发送 %1\$s？", zh["public_send_q"])
-        assertEquals("You can send up to 50 MB a day over the public connection service.", en["public_files_limit"])
-        assertEquals("通过公共连接服务每天最多可发送 50 MB。", zh["public_files_limit"])
+        assertEquals("Files over the public connection service are limited to 50 MB a day.", en["public_files_limit"])
+        assertEquals("通过公共连接服务每天最多可传输 50 MB 文件。", zh["public_files_limit"])
+        // Get Copied Items past the day's 50 MB: the host's clipboardNone("limit") says the same line
+        assertEquals(R.string.public_files_limit, dev.blurt.remote.app.files.Transfers.noneLine("limit"))
+        assertEquals(R.string.clip_none_empty, dev.blurt.remote.app.files.Transfers.noneLine("empty"))
+        assertEquals(R.string.clip_none_unsupported, dev.blurt.remote.app.files.Transfers.noneLine("something new"))
         // the busy card sits under the existing title; voice the host can't hear says the existing line; the label is the go-between's
         assertEquals("Can’t show the screen", en["status_cant_show_screen"])
         assertEquals("To use this, update Blurt on %1\$s.", en["update_host"])

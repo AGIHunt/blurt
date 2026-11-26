@@ -1100,7 +1100,8 @@ final class Link: ObservableObject {
     static func voice(publicRelay: Bool, phoneOpus: Bool, hostFeatures: Set<String>) -> Voice {
         guard publicRelay else { return .pcm }
         let hostOpus = hostFeatures.contains(RemoteFeature.opus)
-        return phoneOpus && hostOpus ? .opus : .off(hostOutdated: !hostOpus)
+        // an update there helps only when this phone can make Opus; when it can't, the phone's microphone line says so
+        return phoneOpus && hostOpus ? .opus : .off(hostOutdated: phoneOpus && !hostOpus)
     }
 
     /// the microphone can be used in the session in hand

@@ -276,7 +276,7 @@ enum PublicRelayFiles {
         }
     }
 
-    /// "Send 35 MB over the public connection service?"
+    /// "Send 35 MB over the public connection service?", with the day's limit (`overText`) under it
     static func askText(_ size: Int) -> String { T("remote.public.files.ask", ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) }
     static var overText: String { T("remote.public.files.over") }
 
@@ -297,6 +297,7 @@ enum PublicRelayFiles {
         case .ask:
             let a = NSAlert()
             a.messageText = askText(size)
+            a.informativeText = overText
             a.addButton(withTitle: T("remote.banner.send"))
             a.addButton(withTitle: T("action.cancel"))
             if let window {

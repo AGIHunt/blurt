@@ -270,13 +270,7 @@ class Transfers(private val c: Context) {
     fun clipboardNone(why: String) {
         if (!take()) return
         val name = link.current.value?.title ?: ""
-        say(Got.None(c.getString(when (why) {
-            "empty" -> R.string.clip_none_empty
-            "locked" -> R.string.clip_none_locked
-            "too_big" -> R.string.clip_none_too_many
-            "too_large" -> R.string.clip_none_too_large
-            else -> R.string.clip_none_unsupported
-        }, name)))
+        say(Got.None(c.getString(noneLine(why), name)))
     }
 
     /** A `clip` file from the computer (io thread): an image by its extension, anything else as UTF-8 text. Unasked, its content is
@@ -472,6 +466,16 @@ class Transfers(private val c: Context) {
         fun firstWords(t: String): String {
             val one = t.trim().replace(Regex("\\s+"), " ")
             return if (one.length > 40) one.take(40).trimEnd() + "…" else one
+        }
+
+        /** clipboardNone's reasons, in the Copy table's words (%1$s: the computer). "limit": past the public relay's 50 MB today */
+        fun noneLine(why: String): Int = when (why) {
+            "empty" -> R.string.clip_none_empty
+            "locked" -> R.string.clip_none_locked
+            "too_big" -> R.string.clip_none_too_many
+            "too_large" -> R.string.clip_none_too_large
+            "limit" -> R.string.public_files_limit
+            else -> R.string.clip_none_unsupported
         }
 
         /** Why a transfer didn't go, in the Copy table's words. */

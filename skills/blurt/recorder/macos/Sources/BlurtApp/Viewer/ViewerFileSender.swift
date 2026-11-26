@@ -470,7 +470,8 @@ final class ViewerFileCard: NSView {
             // nothing there, or locked, is a state: the info mark. What can't come is a failure: the triangle
             icon.image = why == "empty" || why == "locked" || why.isEmpty ? Self.infoMark : Self.attnMark
             let key = ["locked": "viewer.copied.none.locked", "too_big": "viewer.copied.none.too_big", "too_large": "viewer.copied.none.too_large",
-                       "unsupported": "viewer.copied.none.unsupported", "update": "viewer.copied.none.update"][why] ?? "viewer.copied.none.empty"
+                       "unsupported": "viewer.copied.none.unsupported", "update": "viewer.copied.none.update",
+                       "limit": "remote.public.files.over"][why] ?? "viewer.copied.none.empty"
             setTitle(T(key, to))
             detail.stringValue = ""
             over(6)

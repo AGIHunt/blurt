@@ -72,7 +72,7 @@
     <string name="status_locked">%1$s is locked</string>
     <string name="status_unlock_first">The picture comes back once it’s unlocked.</string>
     <string name="status_picture_stopped">The picture stopped.</string>
-    <string name="status_public_busy">The public connection service is busy. Keys, the pointer and voice still work.</string>
+    <string name="status_public_busy">The public connection service is busy. The pointer, keys and voice still work.</string>
     <string name="status_go_between_busy">The public connection service has reached today’s limit. Try again later, or use your own relay.</string>
     <string name="status_relay_down">Your relay isn’t responding. Reconnecting…</string>
     <string name="status_other_phone">Another phone is connected</string>
@@ -311,7 +311,7 @@
     <string name="data_send_q">Send %1$s over mobile data?</string>
     <string name="data_get_q">Get %1$s over mobile data?</string>
     <string name="public_send_q">Send %1$s over the public connection service?</string>
-    <string name="public_files_limit">You can send up to 50 MB a day over the public connection service.</string>
+    <string name="public_files_limit">Files over the public connection service are limited to 50 MB a day.</string>
     <string name="data_get">Get</string>
     <string name="image_too_big">Can’t paste images larger than 20 MB.</string>
     <string name="share_send_to">Send to %1$s</string>

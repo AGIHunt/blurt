@@ -4589,12 +4589,12 @@
         }
       }
         },
-    "The public connection service is busy. Keys, the pointer and voice still work." : {
+    "The public connection service is busy. The pointer, keys and voice still work." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "公共连接服务繁忙。按键、指针和语音仍可使用。"
+            "value" : "公共连接服务繁忙。指针、按键和语音仍可使用。"
           }
         }
       }
@@ -4609,12 +4609,12 @@
         }
       }
     },
-    "You can send up to 50 MB a day over the public connection service." : {
+    "Files over the public connection service are limited to 50 MB a day." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通过公共连接服务每天最多可发送 50 MB。"
+            "value" : "通过公共连接服务每天最多可传输 50 MB 文件。"
           }
         }
       }

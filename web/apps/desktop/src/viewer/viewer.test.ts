@@ -122,9 +122,9 @@ describe('the cover over the picture', () => {
     setLang('en');
     const busy = coverFor('connected', 'Studio', 'busy', false, true);
     expect(busy?.kind).toBe('screenFailed');
-    expect(busy?.title).toBe('The public connection service is busy. Keys and the pointer still work.');
+    expect(busy?.title).toBe('The public connection service is busy. The pointer and keys still work.');
     setLang('zh-Hans');
-    expect(coverFor('connected', 'Studio', 'busy', false, true)?.title).toBe('公共连接服务繁忙。按键和指针仍可使用。');
+    expect(coverFor('connected', 'Studio', 'busy', false, true)?.title).toBe('公共连接服务繁忙。指针和按键仍可使用。');
     setLang('en');
   });
 });
@@ -151,7 +151,7 @@ describe('files both ways', () => {
     expect(noneLine('empty', 'Office PC')).toBe('Nothing is copied on Office PC.');
     expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Copy up to 1,000 at a time.');
     expect(noneLine('too_large', 'Office PC')).toBe('A file copied on Office PC is larger than 4 GB.');
-    expect(noneLine('limit', 'Office PC')).toBe('You can send up to 50 MB a day over the public connection service.');
+    expect(noneLine('limit', 'Office PC')).toBe('Files over the public connection service are limited to 50 MB a day.');
     expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'publicRelay')).toBe('Waiting');
     expect([stoppable(x), stoppable({ ...x, state: 'done' })]).toEqual([true, false]);
     setLang('zh-Hans');

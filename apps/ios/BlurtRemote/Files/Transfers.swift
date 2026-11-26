@@ -114,7 +114,7 @@ enum TransferWords {
     }
 
     /// a send over the public relay past its 50 MB a day
-    static var publicDayLimit: String { String(localized: "You can send up to 50 MB a day over the public connection service.") }
+    static var publicDayLimit: String { String(localized: "Files over the public connection service are limited to 50 MB a day.") }
 
     /// clipboardNone's reasons, for the computer `name`
     static func nothing(_ why: String, name: String) -> String {
@@ -123,6 +123,7 @@ enum TransferWords {
         case "locked": String(localized: "\(name) is locked.")
         case "too_large": String(localized: "A file copied on \(name) is larger than 4 GB.")
         case "too_big": String(localized: "Too many files are copied on \(name). Copy up to 1,000 at a time.")
+        case "limit": publicDayLimit
         default: String(localized: "Can’t get this kind of item from \(name).")
         }
     }
@@ -165,6 +166,8 @@ final class Transfers: ObservableObject {
             if publicRelay { return String(localized: "Send \(s) over the public connection service?") }
             return incoming ? String(localized: "Get \(s) over mobile data?") : String(localized: "Send \(s) over mobile data?")
         }
+        /// under the title on the public relay: the day's limit, so the cost is in view
+        var message: String? { publicRelay ? TransferWords.publicDayLimit : nil }
     }
 
     /// What a send over the public relay comes to: it goes, it's asked about, or it's past today's 50 MB.

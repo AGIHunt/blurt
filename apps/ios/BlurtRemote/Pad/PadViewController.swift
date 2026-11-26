@@ -1232,7 +1232,7 @@ final class PadViewController: UIViewController {
 
     /// On mobile data, before more than 100 MB goes either way.
     private func askMobileData(_ a: Transfers.Ask) {
-        let c = UIAlertController(title: a.title, message: nil, preferredStyle: .alert)
+        let c = UIAlertController(title: a.title, message: a.message, preferredStyle: .alert)
         c.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in Transfers.shared.answer(a, yes: false) })
         c.addAction(UIAlertAction(title: a.incoming ? String(localized: "Get") : String(localized: "Send"), style: .default) { _ in
             Transfers.shared.answer(a, yes: true)

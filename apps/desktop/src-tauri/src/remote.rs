@@ -629,13 +629,15 @@ pub async fn remote_send_files(app: AppHandle) -> bool {
     }
 }
 
-/// "Send 35 MB over the public connection service?" with Send and Cancel (docs/design/remote-go-between.md §Copy). Blocking. → Send.
+/// "Send 35 MB over the public connection service?" over the day's limit, with Send and Cancel (docs/design/remote-go-between.md §Copy).
+/// Blocking. → Send.
 pub fn public_ask(app: &AppHandle, bytes: i64) -> bool {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     let t = crate::l10n::t;
     let size = format!("{} MB", ((bytes as f64) / 1e6).round().max(1.0));
     app.dialog()
-        .message(crate::l10n::tf("remote.public.ask", &[("size", size)]))
+        .message(t("remote.public.limit"))
+        .title(crate::l10n::tf("remote.public.ask", &[("size", size)]))
         .kind(MessageDialogKind::Info)
         .buttons(MessageDialogButtons::OkCancelCustom(t("remote.public.send"), t("remote.public.cancel")))
         .blocking_show()

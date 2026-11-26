@@ -64,6 +64,7 @@ final class PublicRelayTests: XCTestCase {
         // PCM never goes there
         XCTAssertEqual(Link.voice(publicRelay: true, phoneOpus: true, hostFeatures: old), .off(hostOutdated: true))
         XCTAssertEqual(Link.voice(publicRelay: true, phoneOpus: false, hostFeatures: opus), .off(hostOutdated: false))
+        XCTAssertEqual(Link.voice(publicRelay: true, phoneOpus: false, hostFeatures: old), .off(hostOutdated: false), "no Opus here: not the update line")
     }
 
     func testOpusPacketsAreTwentyMillisecondsAndSmall() throws {

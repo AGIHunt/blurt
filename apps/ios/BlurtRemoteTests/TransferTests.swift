@@ -101,6 +101,7 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.nothing("too_big", name: "Office PC"), "Too many files are copied on Office PC. Copy up to 1,000 at a time.")
         XCTAssertEqual(TransferWords.nothing("too_large", name: "Office PC"), "A file copied on Office PC is larger than 4 GB.")
         XCTAssertEqual(TransferWords.nothing("unsupported", name: "Office PC"), "Can’t get this kind of item from Office PC.")
+        XCTAssertEqual(TransferWords.nothing("limit", name: "Office PC"), "Files over the public connection service are limited to 50 MB a day.")
         XCTAssertEqual(TransferWords.firstWords("  Hello\n\nworld  "), "Hello world")
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")
     }
@@ -258,6 +259,7 @@ final class TransferTests: XCTestCase {
         XCTAssertTrue(c.queued.isEmpty, "held for the question")
         XCTAssertEqual(t.asking?.incoming, false)
         XCTAssertEqual(t.asking?.title, "Send \(TransferWords.size(150_000_000)) over mobile data?")
+        XCTAssertNil(t.asking?.message, "mobile data: the question alone")
         t.answer(t.asking!, yes: false)
         XCTAssertTrue(c.queued.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: big.path), "a temporary copy goes")
@@ -443,6 +445,7 @@ extension TransferTests {
         XCTAssertEqual(c.queued.count, 1, "held for the question")
         XCTAssertEqual(t.asking?.publicRelay, true)
         XCTAssertEqual(t.asking?.title, "Send \(TransferWords.size(25_000_000)) over the public connection service?")
+        XCTAssertEqual(t.asking?.message, "Files over the public connection service are limited to 50 MB a day.", "the cost under the question")
         t.answer(t.asking!, yes: true)
         XCTAssertEqual(c.queued.count, 2)
         XCTAssertEqual(log.sent(now: Date()), 40_000_000)
@@ -451,7 +454,7 @@ extension TransferTests {
         t.send([file("c.pdf", 11_000_000)])
         XCTAssertEqual(c.queued.count, 2)
         XCTAssertNil(t.asking)
-        XCTAssertEqual(t.said?.title, "You can send up to 50 MB a day over the public connection service.")
+        XCTAssertEqual(t.said?.title, "Files over the public connection service are limited to 50 MB a day.")
         t.send([file("d.txt", 10_000_000)])
         XCTAssertEqual(c.queued.count, 3, "exactly up to the limit")
 

@@ -165,9 +165,12 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 ### What the devices do on this path
 
 - **Voice:** Opus, frame kind **9**, one packet per 20 ms of 16 kHz mono, about 32 kbps, when the device listed `opus` and the host did
-  too; PCM (256 kbps) never goes here. A device that can't send Opus, or a host that can't hear it, has no microphone on this path.
+  too; PCM (256 kbps) never goes here. A device that can't send Opus, or a host that can't hear it, has no microphone on this path: the talk
+  key says the update line only when the host can't hear Opus (an update there would help); a phone that can't make it says its
+  microphone-unavailable line.
 - **Files:** at most **50 MB per device per UTC day** over this path, counted by the sender; a send over **20 MB** is asked about first. Get Copied Items isn't asked about (the device asked for it); past the day's 50 MB the host answers `clipboardNone("limit")` with a notice
-  of the limit line (Rust host, 2026-11-26; a device that doesn't know `limit` shows its generic line).
+  of the limit line (Rust host, 2026-11-26); every device and viewer shows the limit line for it (Mac, iPhone, Android, the desktop viewer).
+  The question before a send over 20 MB carries the limit line under its title, so the cost is in view.
 - **The picture busy:** `screenFailed("busy")` shows a card (below); keys, pointer and voice work meanwhile, and the picture comes by
   itself once there is room.
 - The connection label says Public connection service, as on the go-between.
@@ -176,11 +179,12 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 
 | Where | English | 中文 |
 |---|---|---|
-| No picture lease free (card under "Can't show the screen") | The public connection service is busy. Keys, the pointer and voice still work. | 公共连接服务繁忙。按键、指针和语音仍可使用。 |
-| The same in a computer viewer (no voice there) | The public connection service is busy. Keys and the pointer still work. | 公共连接服务繁忙。按键和指针仍可使用。 |
-| A send over 20 MB on this path | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
-| Past 50 MB today | You can send up to 50 MB a day over the public connection service. | 通过公共连接服务每天最多可发送 50 MB。 |
+| No picture lease free (card under "Can't show the screen") | The public connection service is busy. The pointer, keys and voice still work. | 公共连接服务繁忙。指针、按键和语音仍可使用。 |
+| The same in a computer viewer (no voice there) | The public connection service is busy. The pointer and keys still work. | 公共连接服务繁忙。指针和按键仍可使用。 |
+| A send over 20 MB on this path (title; the limit line below is its message) | Send 35 MB over the public connection service? | 通过公共连接服务发送 35 MB？ |
+| Past 50 MB today; Get Copied Items' `clipboardNone("limit")`; the message under the question above | Files over the public connection service are limited to 50 MB a day. | 通过公共连接服务每天最多可传输 50 MB 文件。 |
 | Voice when the host can't hear Opus | To use this, update Blurt on %@. (existing) | 若要使用此功能，请更新 %@ 上的口喷鸡。（已有） |
+| Voice when this phone can't make Opus | iPhone microphone unavailable · Phone microphone unavailable (existing) | iPhone 麦克风不可用 · 手机麦克风不可用（已有） |
 
 ### The box (deployed 2026-11-26)
 
