@@ -93,8 +93,8 @@ pub fn start(app: &AppHandle) {
         keys,
         Box::new(Desktop { app: app.clone() }),
     );
-    // files from viewers go to Downloads (quarantined there: incoming.rs)
-    h.set_downloads(dirs::download_dir());
+    // files from viewers and phones go to Downloads/Blurt (quarantined there: files.rs)
+    h.set_downloads(dirs::download_dir().map(|d| d.join("Blurt")));
     let _ = HOST.set(h);
     // 保持可连接 on a laptop holds only while plugged in: look at the power source once a minute
     std::thread::spawn(|| loop {
@@ -580,6 +580,37 @@ fn elevated(exe: &std::path::Path, arg: &str) -> Result<u32, String> {
     }
 }
 
+/// The "being controlled" bar's Send Files…: picked here, they go to the device connected now (folders zipped). false: none takes
+/// files, or nothing was picked.
+#[tauri::command]
+pub async fn remote_send_files(app: AppHandle) -> bool {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(h) = host() else { return false };
+    if h.connected().is_none() {
+        return false;
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect::<Vec<_>>()
+    })
+    .await
+    .unwrap_or_default();
+    !picked.is_empty() && h.send_files(picked)
+}
+
+/// What's going to or coming from the device connected now, for the bar's card.
+#[tauri::command]
+pub fn remote_transfers() -> Vec<serde_json::Value> {
+    host().map(|h| h.transfers().iter().map(|t| t.to_json()).collect()).unwrap_or_default()
+}
+
+/// × on one of them.
+#[tauri::command]
+pub fn remote_stop_transfer(id: String) {
+    if let Some(h) = host() {
+        h.stop_transfer(&id);
+    }
+}
+
 /// The "being controlled" bar's Disconnect.
 #[tauri::command]
 pub fn remote_end_session() {
@@ -612,7 +643,8 @@ fn banner(app: &AppHandle, who: Option<String>) {
         if a.get_webview_window(LABEL).is_some() {
             return; // the page follows the status itself
         }
-        let (w, h) = (380.0, 38.0);
+        // room for Send Files… and the 4 s "Clipboard sent to …" in place of the name
+        let (w, h) = (480.0, 38.0);
         let (x, y) = match a.primary_monitor().ok().flatten() {
             Some(m) => {
                 let s = m.scale_factor();
@@ -688,6 +720,21 @@ impl App for Desktop {
         use tauri_plugin_notification::NotificationExt;
         let title = crate::l10n::tf("remote.file.received", &[("from", from.to_string())]);
         let _ = self.app.notification().builder().title(title).body(name).show();
+    }
+
+    fn files_received(&self, from: &str, count: usize, folder: &std::path::Path) {
+        use tauri_plugin_notification::NotificationExt;
+        let title = crate::l10n::tf("remote.files.received", &[("from", from.to_string()), ("count", count.to_string())]);
+        let _ = self.app.notification().builder().title(title).body(folder.to_string_lossy()).show();
+    }
+
+    /// The bar says it for 4 s (its page keeps the timer); the log has `remote_clipboard_read` already, never the content.
+    fn clipboard_sent(&self, to: &str) {
+        let _ = self.app.emit("remote://clipboard-sent", to.to_string());
+    }
+
+    fn transfer(&self, t: &blurt_remote::files::Transfer) {
+        let _ = self.app.emit("remote://transfer", t.to_json());
     }
 
     fn new_pairing_notice(&self, devices: &str, host: &str) -> String {
