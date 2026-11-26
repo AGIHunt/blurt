@@ -54,7 +54,10 @@ class TypeField(c: Context) : View(c) {
         if (s == "\n") return key("Return")
         val held = Remote.sticky.held
         val k = if (held != 0 && s.codePointCount(0, s.length) == 1) RemoteKey.named(s.uppercase()) else null
-        if (k != null) send(ToMac.Key(RemoteChord(held, k.name), null)) else send(ToMac.Text(s))
+        if (k != null) return send(ToMac.Key(RemoteChord(held, k.name), null))
+        Remote.link.type(s)
+        Remote.sticky.used()
+        onSent?.invoke()
     }
 
     override fun onCreateInputConnection(out: EditorInfo): InputConnection {

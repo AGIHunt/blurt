@@ -36,19 +36,20 @@ class LinkStatusTest {
     @Test fun pairingStates() {
         assertEquals(StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN), banner(LinkStatus(LinkPhase.UNPAIRED)))
         assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.NEEDS_PAIRING, StatusLine.FORGOTTEN, StatusAction.SCAN), banner(LinkStatus(LinkPhase.FORGOTTEN)))
-        assertEquals(StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, StatusLine.TOUCH_TO_TAKE_OVER), banner(LinkStatus(LinkPhase.REPLACED)))
+        assertEquals(StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, action = StatusAction.TAKE_OVER), banner(LinkStatus(LinkPhase.REPLACED)))
+        assertEquals(StatusBanner(StatusMark.PHONE, StatusLine.ENDED_THERE, action = StatusAction.RECONNECT), banner(LinkStatus(LinkPhase.ENDED)))
     }
 
     @Test fun aPairingUnderWayIsSaidOverTheRest() {
         for (p in listOf(LinkPhase.UNPAIRED, LinkPhase.CONNECTING, LinkPhase.UNREACHABLE, LinkPhase.CONNECTED)) {
             assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER), banner(LinkStatus(p, waiting = true)), "$p")
         }
-        // one that didn't take: why, and never a dead end: a new code, and what there was to do about the computer gone back to
-        val failed = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN)
+        // one that didn't take: why, until it's read (OK), and never a dead end: a new code
+        val failed = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN, StatusAction.DISMISS)
         assertEquals(failed, banner(LinkStatus(LinkPhase.UNPAIRED, pairFailed = true)))
         assertEquals(failed, banner(LinkStatus(LinkPhase.CONNECTING, pairFailed = true)))
         assertEquals(failed, banner(LinkStatus(LinkPhase.CONNECTED, pairFailed = true)))
-        assertEquals(failed.copy(second = StatusAction.RETRY), banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, otherComputers = true)))
+        assertEquals(failed, banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, otherComputers = true)))
         // a code that can't be reached is still being tried: the same code again first, a new one second
         assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN),
             banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true)))
@@ -80,12 +81,76 @@ class LinkStatusTest {
 
     @Test fun everyStateButConnectedSaysSomething() {
         for (p in LinkPhase.entries) if (p != LinkPhase.CONNECTED) assertNotNull(banner(LinkStatus(p)), "$p")
-        // a button never without the line that says what it's for
         for (p in LinkPhase.entries) for (relay in listOf(false, true)) for (others in listOf(false, true)) {
             val b = banner(LinkStatus(p, hasRelay = relay, otherComputers = others)) ?: continue
-            if (b.action != null) assertNotNull(b.detail, "$p")
+            // a button never without the line that says what it's for, but where the title and the button say it all
+            if (b.action != null && p != LinkPhase.REPLACED && p != LinkPhase.ENDED) assertNotNull(b.detail, "$p")
             if (b.second != null) assertNotNull(b.action, "$p")
         }
+    }
+
+    /** Met on the public connection service: not connected until everything goes direct, and it says that's what it's doing. */
+    @Test fun connectingDirectly() {
+        val direct = StatusBanner(StatusMark.BUSY, StatusLine.CONNECTING_DIRECT)
+        assertEquals(direct, banner(LinkStatus(LinkPhase.CONNECTING, hasRelay = true, meeting = true)))
+        assertEquals(direct, banner(LinkStatus(LinkPhase.CONNECTING, dropped = true, meeting = true)))
+        assertNull(banner(LinkStatus(LinkPhase.CONNECTED, meeting = false)))
+    }
+
+    @Test fun noNetworkIsTheFirstThingToSay() {
+        val none = StatusBanner(StatusMark.PROBLEM, StatusLine.NO_NETWORK, StatusLine.TURN_ON_NETWORK)
+        assertEquals(none, banner(LinkStatus(LinkPhase.CONNECTING, offline = true)))
+        assertEquals(none, banner(LinkStatus(LinkPhase.CONNECTING, dropped = true, offline = true)))
+        assertEquals(none, banner(LinkStatus(LinkPhase.UNREACHABLE, offline = true, otherComputers = true, away = AwayTrouble.NO_DIRECT, presence = Presence.ASLEEP)))
+        // a pairing under way is still what the user is looking at; the rest has nothing to do with it
+        assertEquals(StatusLine.WAITING, banner(LinkStatus(LinkPhase.CONNECTING, offline = true, waiting = true))?.title)
+        assertNull(banner(LinkStatus(LinkPhase.CONNECTED, offline = true)))
+        assertEquals(StatusLine.OTHER_PHONE, banner(LinkStatus(LinkPhase.REPLACED, offline = true))?.title)
+    }
+
+    @Test fun whatItsRelaySaysOfIt() {
+        val p = LinkStatus(LinkPhase.UNREACHABLE, hasRelay = true)
+        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, StatusLine.ASLEEP_SINCE, StatusAction.RETRY), banner(p.copy(presence = Presence.ASLEEP)))
+        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, StatusLine.LAST_ONLINE, StatusAction.RETRY, StatusAction.ANOTHER),
+            banner(p.copy(presence = Presence.LAST_ONLINE, otherComputers = true)))
+        assertEquals(StatusLine.CHECK_AWAKE, banner(p)?.detail)
+        // why the public connection service can't carry it comes first
+        assertEquals(StatusLine.NO_DIRECT, banner(p.copy(presence = Presence.ASLEEP, away = AwayTrouble.NO_DIRECT))?.detail)
+        assertEquals(StatusLine.GO_BETWEEN_BUSY, banner(p.copy(presence = Presence.ASLEEP, away = AwayTrouble.BUSY))?.detail)
+        assertEquals(StatusLine.CONNECTING, banner(LinkStatus(LinkPhase.CONNECTING, presence = Presence.ASLEEP))?.title)
+    }
+
+    @Test fun whatARelaysAnswerMeans() {
+        val asleep = RemotePresence.parse("""{"host":false,"asleep":1795631850383,"seen":1795631850000}""")
+        assertEquals(RemotePresence(false, 1795631850383, 1795631850000), asleep)
+        assertEquals(Presence.ASLEEP, asleep?.says)
+        assertEquals(1795631850383, asleep?.since)
+        val seen = RemotePresence.parse("""{"host":false,"seen":1795631850000,"asleep":null}""")
+        assertEquals(Presence.LAST_ONLINE, seen?.says)
+        assertEquals(1795631850000, seen?.since)
+        // waiting there now, or never seen: the plain line
+        assertNull(RemotePresence.parse("""{"host":true,"asleep":1795631850383}""")?.says)
+        assertNull(RemotePresence.parse("""{"host":false}""")?.says)
+        for (b in listOf("", "blurt relay", "[]", "{}", """{"host":"yes"}""", """{"host":1}""")) assertNull(RemotePresence.parse(b), b)
+        assertEquals("https://relay.example.com/secret/v1/room/peek", RemoteRelay.peekURL("relay.example.com/secret/", "room"))
+        assertEquals("http://10.0.0.2:8787/v1/room/peek", RemoteRelay.peekURL("ws://10.0.0.2:8787", "room"))
+        assertNull(RemoteRelay.peekURL("http://x", "room"))
+    }
+
+    @Test fun lockedIsSaidWhileThePictureShows() {
+        val locked = StatusBanner(StatusMark.PROBLEM, StatusLine.LOCKED, StatusLine.UNLOCK_FIRST)
+        assertEquals(locked, banner(LinkStatus(LinkPhase.CONNECTED, locked = true, showing = true)))
+        assertEquals(locked, banner(LinkStatus(LinkPhase.CONNECTED, locked = true, showing = true, canControl = false)))
+        assertNull(banner(LinkStatus(LinkPhase.CONNECTED, locked = true)), "a trackpad and keys have nothing to show")
+        assertEquals(StatusLine.CONNECTING, banner(LinkStatus(LinkPhase.CONNECTING, locked = true, showing = true))?.title)
+    }
+
+    @Test fun aPictureThatStoppedIsSaid() {
+        assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.PICTURE_STOPPED, StatusAction.SHOW_SCREEN),
+            banner(LinkStatus(LinkPhase.CONNECTED, screenError = "The display went to sleep.")))
+        // the picture that came on by itself and was refused: a trackpad, and nothing said
+        for (e in listOf("off", "permission")) assertNull(banner(LinkStatus(LinkPhase.CONNECTED, screenError = e, screenAsked = false)), e)
+        assertEquals(StatusLine.CANT_CONTROL, banner(LinkStatus(LinkPhase.CONNECTED, screenError = "off", screenAsked = false, canControl = false))?.title)
     }
 
     // MARK: a drop, and coming back

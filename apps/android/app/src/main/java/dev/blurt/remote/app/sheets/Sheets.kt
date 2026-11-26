@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +98,8 @@ fun BlurtTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = sc
 fun SheetHost(sheets: Sheets, screen: PadScreen) {
     val current by sheets.current.collectAsState()
     val offered by Remote.link.offered.collectAsState()
+    val unsent by Remote.link.unsent.collectAsState()
+    val state by Remote.link.state.collectAsState()
     BlurtTheme {
         Box(Modifier.fillMaxSize()) {
             val s = current
@@ -116,6 +121,7 @@ fun SheetHost(sheets: Sheets, screen: PadScreen) {
             if (s is Sheet.MicDenied) MicDeniedDialog(onClose = { sheets.close() })
             if (s is Sheet.Displays) DisplayMap(onClose = { sheets.close() })
             offered?.let { p -> ConfirmPairing(p) }
+            if (unsent.isNotEmpty() && state == dev.blurt.remote.app.net.Link.State.CONNECTED) SendUnsent(unsent)
         }
     }
 }
@@ -145,6 +151,19 @@ private fun ConfirmPairing(p: dev.blurt.remote.core.RemotePairing) {
         // Pair isn't the default: a link from outside was made by someone
         confirmButton = { TextButton({ l.offered.value = null; l.pair(p) }) { Text(stringResource(R.string.pair)) } },
         dismissButton = { TextButton({ l.offered.value = null }) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/** What was typed with no session is asked about once there is one: it isn't lost, and doesn't land by itself wherever the caret is now. */
+@Composable
+private fun SendUnsent(words: String) {
+    val l = Remote.link
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(stringResource(R.string.unsent_q)) },
+        text = { Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) { Text(words) } },
+        confirmButton = { TextButton({ l.sendUnsent() }) { Text(stringResource(R.string.send)) } },
+        dismissButton = { TextButton({ l.dropUnsent() }) { Text(stringResource(R.string.discard)) } },
     )
 }
 

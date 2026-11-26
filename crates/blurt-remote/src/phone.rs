@@ -198,6 +198,9 @@ impl Inner {
     }
 }
 
+/// how long the handshake's answer is waited for, as the phone apps do
+const HANDSHAKE: Duration = Duration::from_secs(6);
+
 pub struct Phone {
     inner: Arc<Inner>,
     rx: mpsc::UnboundedReceiver<Event>,
@@ -450,7 +453,9 @@ impl Phone {
             if let Some(f) = reader.next_frame().map_err(|_| "bad length")? {
                 break f;
             }
-            match old.recv().await {
+            // one that lets a connection in and never answers (a host half gone, another service at that address) isn't waited for
+            let Ok(got) = tokio::time::timeout(HANDSHAKE, old.recv()).await else { return Err("no answer".into()) };
+            match got {
                 Some(b) => reader.feed(&b),
                 // the relay's code is in before its reader lets go
                 None => return Err(match *code.lock().unwrap() {

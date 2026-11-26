@@ -129,6 +129,32 @@ class ScreenStream(private val c: Context) {
     /** when the last frame went up, for letting the panel's rate go */
     @Volatile private var lastShown = 0.0
 
+    /** What's on the glass is from before: the session went or was left (or there was no picture yet), and nothing new has come. It's dimmed,
+     *  and in Touch Mode a touch on it isn't a click (TrackpadView): what's under the finger may no longer be there. */
+    @Volatile var stale = false
+        private set
+    /** the first timestamp of the stream asked for since then */
+    @Volatile private var freshFrom = Long.MAX_VALUE
+
+    private fun goStale() {
+        freshFrom = Long.MAX_VALUE
+        stale = true
+        stage?.let { it.scene.dim = STALE_DIM; it.requestRender() }
+        placeCursor()
+    }
+
+    /** A frame is about to be drawn (GL thread): the first of the new stream is the picture again. */
+    private fun fresh(pts: Long) {
+        if (!stale || pts < freshFrom) return
+        stale = false
+        stage?.scene?.dim = 1f
+        if (BuildConfig.DEBUG) Log.i("Link", "the picture is new again")
+        main.post { placeCursor(); onNew?.invoke() }
+    }
+
+    /** the first frame of a picture (or of one that came back) is up: main thread */
+    var onNew: (() -> Unit)? = null
+
     fun attach(s: StageView, cursor: CursorView) {
         stage = s
         cursorView = cursor
@@ -136,6 +162,8 @@ class ScreenStream(private val c: Context) {
         s.surface?.let { out -> dec.post { surface = out } }
         s.onShown = { crop -> main.post { if (crop != shown) { shown = crop; place() } } }
         s.onPresented = { t -> presented(t) }
+        s.onFresh = { pts -> fresh(pts) }
+        s.scene.dim = if (stale) STALE_DIM else 1f
     }
 
     /** The stage is the whole pad; the picture sits in it. `alignY`: where a picture smaller than the stage sits, near the thumb in portrait. */
@@ -178,17 +206,21 @@ class ScreenStream(private val c: Context) {
 
     /** The most the computer may send, for this path and what the user chose. Under that it follows what the network carries. */
     fun start() {
+        Remote.link.pictureAsked()      // the computer says it again if it's locked still
         val p = plan
         planned = p
         val crop = port.crop
         sentCrop = crop
         idle = false
         val r = RemoteScreenRequest(TARGET, crop, p.width, p.height, p.bitrate, p.fps, decodable, features = features)
+        if (!on) goStale()
         on = true
+        paused = false
         stage?.scene?.on = true
         dec.post {
             resetDecoder()
             pictureBytes = 0
+            freshFrom = nextPts
         }
         Remote.link.send(ToMac.Screen(r))
         startTimers()
@@ -197,7 +229,7 @@ class ScreenStream(private val c: Context) {
     /** The route, the phone's network, or the user's choice changed. A network that flickers restarts nothing. */
     fun planChanged() {
         planWait?.let { main.removeCallbacks(it) }
-        val w = Runnable { if (on && !same(planned, plan)) start() }
+        val w = Runnable { if (on && !paused && !same(planned, plan)) start() }
         planWait = w
         main.postDelayed(w, 1500)
     }
@@ -205,7 +237,7 @@ class ScreenStream(private val c: Context) {
     /** Nobody touching the phone, away from home: the computer slows down. Home has nothing to save. */
     fun setIdle(want0: Boolean) {
         val want = want0 && Remote.link.route.value != LinkRoute.LOCAL
-        if (!on || want == idle) return
+        if (!on || paused || want == idle) return
         idle = want
         Remote.link.send(ToMac.ScreenPace(want))
     }
@@ -213,12 +245,36 @@ class ScreenStream(private val c: Context) {
     /** A new session: the computer stopped the stream with the old one. */
     fun resume() { if (on) start() }
 
-    fun connectionLost() { dec.post { resetDecoder() } }
+    /** The app is out of sight and its session kept: the computer stops capturing and the phone's timers stop; the last picture and the view
+     *  stay as they are, and coming back starts the picture from a keyframe. */
+    @Volatile private var paused = false
+    fun pause() {
+        if (!on || paused) return
+        paused = true
+        goStale()
+        stopTimers()
+        Remote.link.send(ToMac.Screen(null))
+        dec.post { resetDecoder() }
+    }
+
+    fun unpause() {
+        if (!paused) return
+        paused = false
+        resume()
+    }
+
+    fun connectionLost() {
+        if (on) goStale()
+        dec.post { resetDecoder() }
+    }
 
     fun stop() {
         if (!on) return
         on = false
+        paused = false
+        stale = false
         stage?.scene?.on = false
+        stage?.scene?.dim = 1f
         stopTimers()
         use.value = use.value.copy(running = false)
         Remote.link.send(ToMac.Screen(null))
@@ -498,15 +554,18 @@ class ScreenStream(private val c: Context) {
 
     /** The pointer under the finger, now, ahead of whatever comes next. False off the picture. */
     fun placePointer(p: PadPoint): Boolean {
-        if (!on) return false
+        if (!on || stale) return false
         val at = onScreen(p) ?: return false
         move(at.first, at.second)
         return true
     }
 
+    /** This point of the pad is on the picture. */
+    fun onPicture(p: PadPoint): Boolean = onScreen(p) != null
+
     /** With the button down it follows the finger, and stops at the picture's edge. Over the relay no more often than the pointer goes. */
     fun dragPointer(p: PadPoint) {
-        if (!on || bw <= 0) return
+        if (!on || stale || bw <= 0) return
         // zoomed in, a drag held at the stage's edge takes the view along: what's dragged can go further than what's in view
         if (!port.isWhole) {
             dragAt = p
@@ -571,7 +630,7 @@ class ScreenStream(private val c: Context) {
 
     private fun placeCursor() {
         val cv = cursorView ?: return
-        if (!on || srcW <= 0 || px < 0 || bw <= 0) return cv.hide()
+        if (!on || stale || srcW <= 0 || px < 0 || bw <= 0) return cv.hide()
         val v = port.rect
         val x = (px - v.minX) / v.width
         val y = (py - v.minY) / v.height
@@ -594,7 +653,7 @@ class ScreenStream(private val c: Context) {
     // MARK: arriving (the net thread), decoding (`dec`)
 
     fun packet(d: ByteArray) {
-        if (!on) return
+        if (!on || paused) return
         val p = RemoteVideoPacket.decode(d) ?: return
         dec.post {
             if (BuildConfig.DEBUG && !TestWeather.current.calm) {
@@ -894,6 +953,8 @@ class ScreenStream(private val c: Context) {
 
     companion object {
         private const val TARGET = "display"
+        /** a picture from before, over black */
+        private const val STALE_DIM = 0.45f
         /** how near the stage's edge a dragging finger takes the view along (dp), and how fast at the very edge (dp a second) */
         private const val EDGE_BAND = 36.0
         private const val EDGE_SPEED = 700.0

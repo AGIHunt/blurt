@@ -86,6 +86,30 @@ public enum RemoteDisplayMap {
             }
             out[d.id] = r
         }
+        // grown ones may have come over a neighbour or out of the box: pushed clear of both, the shorter way
+        for d in displays.sorted(by: { $0.width * $0.height < $1.width * $1.height }) {
+            guard var r = out[d.id] else { continue }
+            for _ in 0..<3 {
+                for (id, o) in out where id != d.id && r.intersects(o) {
+                    let right = o.maxX - r.minX, left = r.maxX - o.minX, down = o.maxY - r.minY, up = r.maxY - o.minY
+                    let least = Swift.min(right, left, down, up)
+                    if least == left { r.origin.x -= left } else if least == right { r.origin.x += right }
+                    else if least == up { r.origin.y -= up } else { r.origin.y += down }
+                }
+                r.origin.x = Swift.max(0, Swift.min(box.width - r.width, r.minX))
+                r.origin.y = Swift.max(0, Swift.min(box.height - r.height, r.minY))
+            }
+            out[d.id] = r
+        }
+        // no room to push one clear: all as they are, only to scale, which never overlap
+        let rects = Array(out.values)
+        for i in rects.indices where rects[(i + 1)...].contains(where: { $0.insetBy(dx: 0.5, dy: 0.5).intersects(rects[i]) }) {
+            for d in displays {
+                let r = CGRect(x: ox + (d.x - all.minX) * k, y: oy + (d.y - all.minY) * k, width: d.width * k, height: d.height * k)
+                out[d.id] = r.insetBy(dx: Swift.min(gap / 2, r.width / 4), dy: Swift.min(gap / 2, r.height / 4))
+            }
+            break
+        }
         return out
     }
 

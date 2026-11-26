@@ -6,9 +6,18 @@ import SwiftUI
 import UIKit
 
 final class PadWindow: UIWindow {
+    private var lastOther = 0.0
+
     override func sendEvent(_ e: UIEvent) {
         super.sendEvent(e)
-        guard e.type == .touches, let c = rootViewController as? PadViewController else { return }
+        guard let c = rootViewController as? PadViewController else { return }
+        // a mouse, a trackpad or a keyboard on the iPad is use too, though no finger is down
+        if e.type != .touches {
+            let now = CACurrentMediaTime()
+            guard e.type == .hover || e.type == .scroll || e.type == .presses, now - lastOther > 1 else { return }
+            lastOther = now
+            return c.touched()
+        }
         c.touching = e.allTouches?.contains { $0.phase != .ended && $0.phase != .cancelled } ?? false
     }
 }
@@ -102,7 +111,9 @@ final class PadViewController: UIViewController {
     override var prefersStatusBarHidden: Bool { true }
     /// iOS's own three-finger undo and copy gestures would take the touches from the pad
     override var editingInteractionConfiguration: UIEditingInteractionConfiguration { .none }
-    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
+    /// The sides, where the thumbs work; home and the notifications are one swipe away, people leave and come back all day (2026-11-26).
+    /// Full screen, the computer's own bars are at every edge
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { showing && Prefs.shared.fullScreen ? .all : [.left, .right] }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         let allowed = Prefs.shared.turn.mask
         // leaning back mustn't rotate the screen under a thumb. Otherwise every way Info.plist allows (an iPad: all four)
@@ -303,6 +314,7 @@ final class PadViewController: UIViewController {
         view.addSubview(field)
         field.frame = CGRect(x: -10, y: -10, width: 1, height: 1)
         field.inputAccessoryView = modRow
+        modRow.refresh()        // made before the computer in hand was known
         field.onSent = { [weak self] _ in self?.touched() }      // the keyboard's touches don't come through the window
         modRow.onClose = { [weak self] in self?.field.resignFirstResponder() }
         modRow.onComputer = { [weak self] in self?.keyboard(.computer) }
@@ -423,13 +435,20 @@ final class PadViewController: UIViewController {
 
     private func observe() {
         let l = Link.shared
+        l.onBack = { [weak self] in self?.showWanted() }
+        // with a picture there to try it on: one that came on by itself and couldn't be had has no tip
+        ScreenStream.shared.onFirstPicture = { [weak self] in
+            guard let self, self.showing else { return }
+            self.screenAsked = true     // it has been seen: if it stops, that's said
+            self.tipOnce()
+        }
         Publishers.CombineLatest3(l.$state, l.$current, l.$canControl).receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in DispatchQueue.main.async { self?.status() } }.store(in: &bag)
-        // the picture comes back if it was on when last left; never by itself the first time
+        // the picture comes on with the computer, from the first time, until the user turns it off
         l.$state.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] s in
-            guard let self, s == .connected, Prefs.shared.screenWanted, !self.showing,
-                  ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
-            DispatchQueue.main.async { self.setShowing(true) }
+            guard let self, s == .connected else { return }
+            self.askUnsent()
+            DispatchQueue.main.async { self.showWanted() }
         }.store(in: &bag)
         Publishers.CombineLatest(l.$macs, l.$current).receive(on: RunLoop.main).sink { [weak self] macs, current in
             self?.macMenu(macs, current)
@@ -449,6 +468,10 @@ final class PadViewController: UIViewController {
         Publishers.CombineLatest3(l.$waitingForMac, l.$pairFailed, l.$away).receive(on: RunLoop.main).sink { [weak self] _, _, _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
+        Publishers.CombineLatest4(l.$hostLocked, l.$meeting, l.$offline, l.$localDenied).receive(on: RunLoop.main).sink { [weak self] _ in
+            DispatchQueue.main.async { self?.status() }
+        }.store(in: &bag)
+        l.$presence.receive(on: RunLoop.main).sink { [weak self] _ in DispatchQueue.main.async { self?.status() } }.store(in: &bag)
         Publishers.CombineLatest(l.$route, l.$displayAspect).receive(on: RunLoop.main).sink { [weak self] _, _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
@@ -459,11 +482,14 @@ final class PadViewController: UIViewController {
             self?.present(a, animated: true)
         }.store(in: &bag)
         l.$screenError.receive(on: RunLoop.main).sink { [weak self] e in
-            guard let e else { return }
+            guard let self, let e else { return }
             // the computer doesn't show its screen: don't ask again by itself next time
-            if e == "off" || e == "permission" { Prefs.shared.screenWanted = false }
-            self?.setShowing(false)
-            self?.status()
+            if e == "off" || e == "permission" {
+                // one that came on by itself and was refused says nothing about the other computers
+                if self.screenAsked { Prefs.shared.screenWanted = false } else if let id = Link.shared.current?.id { self.noScreenThere.insert(id) }
+            }
+            self.setShowing(false)
+            self.status()
         }.store(in: &bag)
         l.$offered.receive(on: RunLoop.main).sink { [weak self] p in
             if let p { self?.confirmPairing(p) }
@@ -515,6 +541,9 @@ final class PadViewController: UIViewController {
         let cue = follower.see(phase, computer: l.current?.id, inUse: UIApplication.shared.applicationState != .background)
         var banner = StatusBanner.of(LinkStatus(phase: phase, dropped: follower.dropped, hasRelay: l.current?.relayAddress != nil,
                                                 otherComputers: l.macs.count > 1, canControl: l.canControl, screenError: l.screenError,
+                                                screenAsked: screenAsked, showing: showing, locked: l.hostLocked, meeting: l.meeting, offline: l.offline,
+                                                localDenied: l.localDenied,
+                                                presence: l.presence.flatMap { $0.host ? nil : $0.asleep != nil ? .asleep : $0.seen != nil ? .lastOnline : nil },
                                                 waiting: l.waitingForMac, pairFailed: l.pairFailed != nil,
                                                 pairRetry: l.pairFailed?.canRetry == true, away: l.away))
         var ready = l.state == .connected
@@ -522,7 +551,7 @@ final class PadViewController: UIViewController {
         if Pretend.connected { banner = nil; ready = true }
         #endif
         let name = l.current?.title
-        func say(_ line: StatusBanner.Line) -> String { Words.status(line, host: l.host, name: name, check: l.pairCheck, failed: l.pairFailed) }
+        func say(_ line: StatusBanner.Line) -> String { Words.status(line, host: l.host, name: name, check: l.pairCheck, failed: l.pairFailed, since: l.presence?.asleep ?? l.presence?.seen) }
         shownBanner = banner
         let words = banner.map { StatusCard.Words(title: say($0.title), detail: $0.detail.map(say), action: $0.action.map { Words.status($0) }, second: $0.second.map { Words.status($0) }) }
         let changed = card.show(banner?.mark, words)
@@ -545,12 +574,41 @@ final class PadViewController: UIViewController {
         case .local: name
         }
         header.text = l.state == .connected && !showing ? via : nil
-        talk.alpha = ready ? 1 : 0.35
+        canTalk = ready
+        talk.alpha = talkAlpha
         if cycleKey == nil { allCells.forEach { $0.alpha = ready ? 1 : 0.35 } }
         view.setNeedsLayout()
     }
 
     private var shownBanner: StatusBanner?
+
+    /// The picture that comes on with the computer. Never while the app is out of sight (a pairing allowed meanwhile): then on the way back.
+    private func showWanted() {
+        let l = Link.shared
+        guard l.state == .connected, !l.parked, Prefs.shared.screenWanted, !showing, !noScreenThere.contains(l.current?.id ?? ""),
+              ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
+        screenAsked = false
+        setShowing(true)
+    }
+    /// the picture was asked for by the user, not come on by itself: a computer that won't show it is then said
+    private var screenAsked = false
+    /// computers that wouldn't show their screen when it came on by itself, this run
+    private var noScreenThere: Set<String> = []
+    private var canTalk = false
+    private var talkAlpha: CGFloat { !canTalk ? 0.35 : showing && Prefs.shared.fullScreen ? 0.8 : 1 }
+
+    /// What was typed with no session is asked about once there is one: it isn't lost, and doesn't land by itself wherever the caret is now.
+    private func askUnsent() {
+        let t = Link.shared.unsent
+        guard !t.isEmpty else { return }
+        let a = UIAlertController(title: String(localized: "Send what you typed while disconnected?"), message: String(t.suffix(300)), preferredStyle: .alert)
+        a.addAction(UIAlertAction(title: String(localized: "Discard"), style: .cancel) { _ in Link.shared.dropUnsent() })
+        a.addAction(UIAlertAction(title: String(localized: "Send"), style: .default) { _ in Link.shared.sendUnsent() })
+        var top: UIViewController = self
+        while let p = top.presentedViewController, !p.isBeingDismissed { top = p }
+        guard !(top is UIAlertController) else { return }
+        top.present(a, animated: true)
+    }
 
     private func cardAction(second: Bool) {
         guard let a = second ? shownBanner?.second : shownBanner?.action else { return }
@@ -559,6 +617,10 @@ final class PadViewController: UIViewController {
         case .retry: Link.shared.tryAgain()
         case .scan: showPairing()
         case .another: showSettings()
+        case .takeOver, .reconnect: Link.shared.takeBack()
+        case .dismiss: Link.shared.dismissPairFailure()
+        case .showScreen: toggleScreen()
+        case .openSettings: if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
         }
     }
 
@@ -584,6 +646,7 @@ final class PadViewController: UIViewController {
         guard ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"] == nil else { return }
         Haptics.tick()
         Link.shared.screenError = nil
+        screenAsked = true
         setShowing(!showing)
         remember()
     }
@@ -592,8 +655,10 @@ final class PadViewController: UIViewController {
     private func setFullScreen(_ on: Bool) {
         Haptics.tick()
         Prefs.shared.fullScreen = on
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         screenButton.fullScreen = on
         if on, !showing {
+            screenAsked = true
             Link.shared.screenError = nil
             setShowing(true)
             remember()
@@ -617,6 +682,7 @@ final class PadViewController: UIViewController {
             return
         }
         Link.shared.screenError = nil
+        screenAsked = true
         Link.shared.showDisplay(c.id)
         if !showing { setShowing(true) }
         remember()
@@ -662,6 +728,7 @@ final class PadViewController: UIViewController {
         guard on != showing else { return }
         if !on { screenButton.closeMap() }
         showing = on
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         drawerOpen = !on
         keysPutAway()
         pad.engine.pinchZoomsView = on
@@ -674,7 +741,10 @@ final class PadViewController: UIViewController {
         applyPrefs()
         if on { ScreenStream.shared.start() } else { ScreenStream.shared.stop() }
         edgeMark.overPicture = on
-        if on { tipOnce() } else { tipBack.alpha = 0 }
+        if !on {
+            tipBack.layer.removeAllAnimations()
+            tipBack.alpha = 0
+        }
         status()
         view.setNeedsLayout()
         UIView.animate(withDuration: 0.22) { self.view.layoutIfNeeded() }
@@ -843,7 +913,7 @@ final class PadViewController: UIViewController {
         dim.frame = view.bounds
         // full screen: everything but the picture goes, and the talk key stays over it, small and see-through, by the thumb
         exitFull.isHidden = !full
-        talk.alpha = full ? 0.8 : 1
+        talk.alpha = talkAlpha
         if full {
             for v in [board, keyboardSwitch, thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
                 v.isHidden = true
@@ -1015,7 +1085,6 @@ final class PadViewController: UIViewController {
     func touched() {
         // back from a sheet: a keyboard on the iPad is the computer's again
         if !isFirstResponder, !field.isFirstResponder, presentedViewController == nil { becomeFirstResponder() }
-        Link.shared.touched()
         ScreenStream.shared.setIdle(false)
         watchIdle()
         if dim.alpha > 0 { UIView.animate(withDuration: 0.15) { self.dim.alpha = 0 } }

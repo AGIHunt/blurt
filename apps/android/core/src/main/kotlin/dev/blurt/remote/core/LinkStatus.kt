@@ -18,8 +18,20 @@ data class LinkStatus(
     /** more than one computer is paired: there's another to try */
     val otherComputers: Boolean = false,
     val canControl: Boolean = true,
-    /** "permission", "off": why the computer won't show its screen */
+    /** "permission", "off": why the computer won't show its screen; anything else, the picture stopped */
     val screenError: String? = null,
+    /** the user asked for the picture (the screen button); one that came on by itself says nothing when the computer won't show it */
+    val screenAsked: Boolean = true,
+    /** the picture is showing */
+    val showing: Boolean = false,
+    /** the computer's screen is locked, and it can't show that */
+    val locked: Boolean = false,
+    /** on the public connection service, the direct path isn't open yet: nothing is carried until it is */
+    val meeting: Boolean = false,
+    /** this phone has no network at all */
+    val offline: Boolean = false,
+    /** what the computer's relay says of it while it can't be reached */
+    val presence: Presence? = null,
     /** the computer is asking its owner about this phone's code */
     val waiting: Boolean = false,
     /** a pairing just didn't take; Link has the sentences */
@@ -61,6 +73,9 @@ enum class PairEnd {
     }
 }
 
+/** What a relay says of a computer that isn't waiting there (RemotePresence): it said it was going to sleep, or it was last seen then. */
+enum class Presence { ASLEEP, LAST_ONLINE }
+
 /** What Blurt's go-between couldn't do */
 enum class AwayTrouble {
     /** the direct path didn't open on this network (`noDirect`, or close code 4003): a relay of the owner's own fixes it */
@@ -76,19 +91,25 @@ enum class StatusMark { BUSY, PROBLEM, PHONE, CODE }
 
 enum class StatusLine {
     CONNECTING, RECONNECTING,
+    /** met on the public connection service; the direct path is being opened */
+    CONNECTING_DIRECT,
+    NO_NETWORK, TURN_ON_NETWORK,
     CANT_REACH, CHECK_NETWORK, CHECK_AWAKE,
+    /** since when, or when it was last there: from its relay (the time is in the words) */
+    ASLEEP_SINCE, LAST_ONLINE,
     NEEDS_PAIRING, FORGOTTEN,
-    OTHER_PHONE, TOUCH_TO_TAKE_OVER,
-    ENDED_THERE, TOUCH_TO_RECONNECT,
+    OTHER_PHONE,
+    ENDED_THERE,
     PAIR_FIRST, WHERE_THE_CODE_IS,
     WAITING, ALLOW_ON_COMPUTER,
     PAIRING_FAILED, WHY_PAIRING_FAILED,
     CANT_CONTROL, HOW_TO_ALLOW_CONTROL,
-    CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF,
+    CANT_SHOW_SCREEN, ALLOW_SCREEN, SCREEN_IS_OFF, PICTURE_STOPPED,
+    LOCKED, UNLOCK_FIRST,
     NO_DIRECT, GO_BETWEEN_BUSY, RELAY_DOWN,
 }
 
-enum class StatusAction { RETRY, SCAN, ANOTHER }
+enum class StatusAction { RETRY, SCAN, ANOTHER, TAKE_OVER, RECONNECT, DISMISS, SHOW_SCREEN }
 
 data class StatusBanner(
     val mark: StatusMark,
@@ -100,25 +121,38 @@ data class StatusBanner(
     companion object {
         /** null: connected and working, nothing to say. */
         fun of(s: LinkStatus): StatusBanner? {
-            var b: StatusBanner? = if (s.phase == LinkPhase.UNREACHABLE && s.away != null) {
-                // the go-between said why it can't carry this: once nothing else has answered either, that's the one thing to say
-                StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, when (s.away) {
+            val away = s.phase == LinkPhase.CONNECTING || s.phase == LinkPhase.UNREACHABLE
+            val b: StatusBanner? = if (away && s.offline) StatusBanner(StatusMark.PROBLEM, StatusLine.NO_NETWORK, StatusLine.TURN_ON_NETWORK)
+            else when (s.phase) {
+                LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
+                LinkPhase.CONNECTING -> StatusBanner(StatusMark.BUSY, when {
+                    s.meeting -> StatusLine.CONNECTING_DIRECT
+                    s.dropped -> StatusLine.RECONNECTING
+                    else -> StatusLine.CONNECTING
+                })
+                LinkPhase.UNREACHABLE -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, when (s.away) {
+                    // the go-between said why it can't carry this: once nothing else has answered either, that's the one thing to say
                     AwayTrouble.NO_DIRECT -> StatusLine.NO_DIRECT
                     AwayTrouble.BUSY -> StatusLine.GO_BETWEEN_BUSY
                     AwayTrouble.RELAY_DOWN -> StatusLine.RELAY_DOWN
-                },
-                    StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
-            } else when (s.phase) {
-                LinkPhase.UNPAIRED -> StatusBanner(StatusMark.CODE, StatusLine.PAIR_FIRST, StatusLine.WHERE_THE_CODE_IS, StatusAction.SCAN)
-                LinkPhase.CONNECTING -> StatusBanner(StatusMark.BUSY, if (s.dropped) StatusLine.RECONNECTING else StatusLine.CONNECTING)
-                LinkPhase.UNREACHABLE -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_REACH, if (s.hasRelay) StatusLine.CHECK_AWAKE else StatusLine.CHECK_NETWORK,
-                    StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
+                    null -> when (s.presence) {
+                        Presence.ASLEEP -> StatusLine.ASLEEP_SINCE
+                        Presence.LAST_ONLINE -> StatusLine.LAST_ONLINE
+                        null -> if (s.hasRelay) StatusLine.CHECK_AWAKE else StatusLine.CHECK_NETWORK
+                    }
+                }, StatusAction.RETRY, if (s.otherComputers) StatusAction.ANOTHER else null)
                 LinkPhase.FORGOTTEN -> StatusBanner(StatusMark.PROBLEM, StatusLine.NEEDS_PAIRING, StatusLine.FORGOTTEN, StatusAction.SCAN)
-                LinkPhase.REPLACED -> StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, StatusLine.TOUCH_TO_TAKE_OVER)
-                LinkPhase.ENDED -> StatusBanner(StatusMark.PHONE, StatusLine.ENDED_THERE, StatusLine.TOUCH_TO_RECONNECT)
+                // a button, not any touch: a phone in a pocket, or a screen being wiped, mustn't take the computer from whoever has it
+                LinkPhase.REPLACED -> StatusBanner(StatusMark.PHONE, StatusLine.OTHER_PHONE, action = StatusAction.TAKE_OVER)
+                LinkPhase.ENDED -> StatusBanner(StatusMark.PHONE, StatusLine.ENDED_THERE, action = StatusAction.RECONNECT)
                 LinkPhase.CONNECTED -> when {
-                    s.screenError == "off" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.SCREEN_IS_OFF)
-                    s.screenError == "permission" -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, StatusLine.ALLOW_SCREEN)
+                    // locked: why there's no picture, and why it may not take input either
+                    s.locked && s.showing -> StatusBanner(StatusMark.PROBLEM, StatusLine.LOCKED, StatusLine.UNLOCK_FIRST)
+                    s.screenAsked && s.screenError != null -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_SHOW_SCREEN, when (s.screenError) {
+                        "off" -> StatusLine.SCREEN_IS_OFF
+                        "permission" -> StatusLine.ALLOW_SCREEN
+                        else -> StatusLine.PICTURE_STOPPED
+                    }, if (s.screenError == "off" || s.screenError == "permission") null else StatusAction.SHOW_SCREEN)
                     !s.canControl -> StatusBanner(StatusMark.PROBLEM, StatusLine.CANT_CONTROL, StatusLine.HOW_TO_ALLOW_CONTROL)
                     else -> null
                 }
@@ -127,11 +161,10 @@ data class StatusBanner(
             // once the computer asks, whatever went wrong before is past
             if (s.waiting) return StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER)
             if (s.pairFailed) {
-                // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the
-                // computer gone back to is still there to do
-                b = if (s.pairRetry) StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN)
-                else StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN,
-                    b?.action?.takeIf { it != StatusAction.SCAN })
+                // never a dead end: the same code once more where it can still work, else a new one
+                return if (s.pairRetry) StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN)
+                // it stays until it's read: a tap on OK, or the next pairing
+                else StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN, StatusAction.DISMISS)
             }
             return b
         }

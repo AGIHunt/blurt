@@ -69,6 +69,12 @@ public final class RemoteChannel {
     public private(set) var relayClose: UInt16?
     /// the connection came up (for a relay: the WebSocket upgrade was accepted)
     public private(set) var wasReady = false
+    /// which relay this goes through, for whoever made it
+    public var relayAddress: String?
+    /// The relay turned the connection away before it was up (RemoteRelay.refused). A connection that was up and is then aborted is the
+    /// network's doing: iOS and macOS report a lost interface, a sleep or a suspended app's socket as the same abort.
+    public var refusedByRelay: Bool { !wasReady && pathOK && RemoteRelay.refused(failure) }
+    private var pathOK: Bool { connection.currentPath?.status != .unsatisfied }
 
     /// Where the other end is, as the connection sees it (an IP address, or nil before it knows).
     public var remoteHost: String? {
@@ -162,7 +168,11 @@ public final class RemoteChannel {
         oldStreamGone = true
         connection.stateUpdateHandler = nil
         connection.cancel()
+        onOldStreamGone?()
     }
+
+    /// The host: the old stream of a session that has moved ended, and the session goes on. Nothing waits in the phone's room any more.
+    public var onOldStreamGone: (() -> Void)?
 
     private func receive() {
         if isRelay { return receiveMessages() }
@@ -205,7 +215,9 @@ public final class RemoteChannel {
 
     private func frame(_ f: Data) {
         guard let sealer else { return handshake(f) }
-        if inMoved { return }       // the other end's last frame here was `streamMoved`: nothing after it counts
+        // the other end's last frame here was `streamMoved`: nothing after it counts. On the host a frame after it is the phone starting
+        // over in the same room (its last session died unseen): this session is the one it left
+        if inMoved { if case .mac = role { shut(nil) }; return }
         guard let plain = try? sealer.open(f) else { return shut(nil) }
         if !opened {
             opened = true
@@ -282,7 +294,8 @@ public final class RemoteChannel {
             // so whatever follows one waits too). If the move never comes, the session ends and they go with it
             switch kind {
             case .control:
-                if !held.isEmpty || body.count > Self.holdOver {
+                // `session` can't wait, however many addresses it lists: the move needs what it says
+                if !held.isEmpty || body.count > Self.holdOver && !body.starts(with: Self.sessionStart) {
                     held.append(body)
                     done?()
                     return
@@ -529,6 +542,7 @@ public final class RemoteChannel {
 
     /// control messages bigger than this wait for the direct path on the go-between
     static let holdOver = 2048
+    private static let sessionStart = Data(#"{"session":"#.utf8)
     /// both ends listed `move` and this is the go-between: the stream moves once the direct path is open
     private var canMove = false
     /// the other end's word that a datagram got through (phone: `udpOK`; host: it saw one)
@@ -696,11 +710,12 @@ public final class RemoteChannel {
             let m = NWProtocolWebSocket.Metadata(opcode: .close)
             m.closeCode = .privateCode(code)
             let ctx = NWConnection.ContentContext(identifier: "close", metadata: [m])
-            self.connection.send(content: nil, contentContext: ctx, isComplete: true, completion: .contentProcessed { [weak self] _ in
-                self?.queue.async { self?.shut(nil) }
+            self.connection.send(content: nil, contentContext: ctx, isComplete: true, completion: .contentProcessed { _ in
+                // the channel itself is kept until then: whoever closed it may have let go already, and the goodbye would go with it
+                self.queue.async { self.shut(nil) }
             })
             // a sleeping Mac doesn't wait long for it
-            self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.shut(nil) }
+            self.queue.asyncAfter(deadline: .now() + 0.5) { self.shut(nil) }
         }
     }
 

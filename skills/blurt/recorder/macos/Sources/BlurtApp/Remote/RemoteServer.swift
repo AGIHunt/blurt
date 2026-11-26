@@ -419,19 +419,24 @@ final class RemoteServer {
             }
         })
         observers.append(w.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.queue.async {
-                guard let self else { return }
-                self.sleeping = false
-                let open = self.relays.filter { $0.value !== self.session }
-                open.keys.forEach { self.relays[$0] = nil }
-                open.values.forEach { $0.channel.close() }
-                let met = self.fallbacks.filter { $0.value !== self.session }
-                met.keys.forEach { self.fallbacks[$0] = nil }
-                met.values.forEach { $0.channel.close() }
-                self.relayWait = [:]
-                self.updateRelays()
-            }
+            self?.queue.async { self?.sleeping = false; self?.waitAnew("woke") }
         })
+        // another network: what waits in the relay's rooms went out of the one that's gone, and its dead connection would only be found by
+        // its pings, up to a minute later
+        network.pathUpdateHandler = { [weak self] p in
+            guard let self else { return }
+            let now = p.status == .satisfied ? p.availableInterfaces.filter { p.usesInterfaceType($0.type) }.map(\.name).joined(separator: ",") + " " +
+                p.gateways.map { "\($0)" }.joined(separator: ",") : ""
+            let before = self.networkNow
+            self.networkNow = now
+            guard let before, now != before, !now.isEmpty else { return }
+            // a network coming up changes several times in a second: once it has settled
+            self.networkSettled?.cancel()
+            let w = DispatchWorkItem { [weak self] in self?.waitAnew("network") }
+            self.networkSettled = w
+            self.queue.asyncAfter(deadline: .now() + 1.5, execute: w)
+        }
+        network.start(queue: queue)
         // a lock screen this host can't show: the picture stops, and the viewer says why instead of keeping a stale desktop
         let d = DistributedNotificationCenter.default()
         for (name, locked) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
@@ -453,6 +458,29 @@ final class RemoteServer {
             if self.session != nil { t.resume(); self.watcherRunning = true }
         }
     }
+    private let network = NWPathMonitor()
+    /// the interfaces and gateways in use, as last seen; nil before the first look
+    private var networkNow: String?
+    private var networkSettled: DispatchWorkItem?
+
+    /// Every waiting connection made again, now: a wake or another network killed what was open, and a timer may be well into a long wait.
+    private func waitAnew(_ why: String) {
+        guard Self.standbyAddress != nil else { return }
+        emit(["event": "remote_relay", "state": "anew", "why": why])
+        let open = relays.filter { $0.value !== session && $0.value !== asking }
+        open.keys.forEach { relays[$0] = nil }
+        open.values.forEach { $0.channel.close() }
+        let met = fallbacks.filter { $0.value !== session && $0.value !== asking }
+        met.keys.forEach { fallbacks[$0] = nil }
+        met.values.forEach { $0.channel.close() }
+        relayWait = [:]
+        ownRelayFails = 0
+        // a refusal is waited out as long as the service's own rate limit, whatever the network does (a flapping one would ask each time)
+        meetQuietUntil = min(meetQuietUntil, lastRefusal + 60)
+        if status.away == .relayDown { status.away = nil }
+        updateRelays()
+    }
+
     private var watcher: DispatchSourceTimer?
     private var watcherRunning = false
     /// on `queue`: the watch runs while there's a session, and nobody else's Mac wakes twice a second for it
@@ -684,6 +712,22 @@ final class RemoteServer {
                 self.status.away = nil
             }
         }
+        // the phone left the room of a session that goes on over the direct path: one waits there again at once, so the phone coming back
+        // while this Mac hasn't noticed it gone (6 s) finds it (docs/design/remote.md §Coming back)
+        ch.onOldStreamGone = { [weak self, weak s] in
+            guard let self, let s, let deviceID else { return }
+            self.queue.async {
+                if fallback {
+                    guard self.fallbacks[deviceID] === s else { return }
+                    self.fallbacks[deviceID] = nil
+                    self.connectFallback(deviceID)
+                } else {
+                    guard self.relays[deviceID] === s else { return }
+                    self.relays[deviceID] = nil
+                    self.connectRelay(deviceID)
+                }
+            }
+        }
         ch.onOpen = { [weak self, weak s] id in
             guard let self, let s else { return }
             self.queue.async { self.opened(s, id: id) }
@@ -824,7 +868,11 @@ final class RemoteServer {
             relays[id] = nil
             s.channel.close()
         }
-        if relayAt != address { meetRefusals = 0; meetQuietUntil = 0; ownRelayFails = 0 }
+        if relayAt != address {
+            meetRefusals = 0; meetQuietUntil = 0; ownRelayFails = 0
+            // a session that came in by the old one and has moved: its room's connection is another by now
+            if let s = session, s.goBetween, relayAt != nil, !relays.values.contains(where: { $0 === s }), !fallbacks.values.contains(where: { $0 === s }) { s.channel.close() }
+        }
         relayAt = address
         updateFallbacks(ids)
         guard address != nil else { return }
@@ -872,7 +920,7 @@ final class RemoteServer {
         if let wait = meetEnded(s.channel) {
             return queue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.connectFallback(id) }
         }
-        let wait = s.channel.relayClose == RemoteRelay.phoneLeft || s.greeted ? 0.5 : 4
+        let wait = s.channel.relayClose == RemoteRelay.phoneLeft || s.greeted ? 0.1 : 4
         queue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.connectFallback(id) }
     }
 
@@ -895,6 +943,7 @@ final class RemoteServer {
     /// The go-between turned this Mac away this many times in a row, and isn't asked again before then (RemoteRelay.busyWait)
     private var meetRefusals = 0
     private var meetQuietUntil = 0.0
+    private var lastRefusal = -1000.0
     /// between willSleep and didWake: nothing reconnects
     private var sleeping = false
 
@@ -922,7 +971,7 @@ final class RemoteServer {
         }
         let clean = ch.relayClose == RemoteRelay.phoneLeft || s.greeted
         // a failure waits longer each time, but not so long that a bad hello now and then keeps the phone off the relay
-        let wait = clean ? 0.5 : min((relayWait[id] ?? 1) * 2, 8)
+        let wait = clean ? 0.1 : min((relayWait[id] ?? 1) * 2, 8)
         relayWait[id] = clean ? 1 : wait
         queue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.connectRelay(id) }
     }
@@ -930,16 +979,21 @@ final class RemoteServer {
     /// A connection to the go-between ended. A refusal (busy today, or its rate limit) leaves it alone for a while, longer each time, and
     /// says so in Settings: the wait is returned.
     private func meetEnded(_ ch: RemoteChannel) -> Double? {
-        if RemoteRelay.refused(ch.failure) {
-            meetRefusals += 1
-            let wait = RemoteRelay.busyWait(meetRefusals)
-            meetQuietUntil = CACurrentMediaTime() + wait
+        if ch.refusedByRelay {
+            // one refusal a wait, however many phones' connections it came to
+            lastRefusal = CACurrentMediaTime()
+            if CACurrentMediaTime() >= meetQuietUntil {
+                meetRefusals += 1
+                meetQuietUntil = CACurrentMediaTime() + RemoteRelay.busyWait(meetRefusals)
+            }
+            let wait = max(1, meetQuietUntil - CACurrentMediaTime())
             if status.away != .relayDown { status.away = .busy }
             emit(["event": "remote_relay", "state": "busy", "wait": wait])
             return wait
         }
         if ch.wasReady {
             meetRefusals = 0
+            meetQuietUntil = 0
             if status.away == .busy { status.away = nil }
         }
         if ch.relayClose == RemoteRelay.overBudget {
@@ -1464,7 +1518,7 @@ final class RemoteServer {
         if s.channel.isRelay {
             // where the phone might reach this Mac without the relay
             var list = Self.addresses().map { RemoteCandidate(host: $0, port: udpPort) }
-            list += RemoteAddresses.publicIPv6().map { RemoteCandidate(host: $0, port: udpPort) }
+            list += RemoteAddresses.publicIPv6().prefix(6).map { RemoteCandidate(host: $0, port: udpPort) }
             RemoteSTUN.ask(from: udpPort, queue: queue) { found in
                 if let found { list.append(found) }
                 info(list)
@@ -1669,7 +1723,8 @@ final class RemoteServer {
 }
 
 /// The phone's microphone as the source of a dictation: what NoteVoice takes in place of the Mac's mic. Samples may arrive
-/// before the take has started (the phone sends from the key-down); they wait here, the last second of them.
+/// before the take has started (the phone sends from the key-down); they wait here, the last twelve seconds
+/// of them (a phone coming back from a drop with its talk key held sends what it heard meanwhile at once).
 final class RemoteMicFeed {
     static let shared = RemoteMicFeed()
     /// the press came from a phone that wants its own mic used
@@ -1692,7 +1747,7 @@ final class RemoteMicFeed {
         let s = sink
         if s == nil {
             waiting.append(x)
-            while waiting.reduce(0, { $0 + $1.count }) > 16000 { waiting.removeFirst() }
+            while waiting.reduce(0, { $0 + $1.count }) > 12 * 16000 { waiting.removeFirst() }
         }
         lock.unlock()
         if let s { DispatchQueue.main.async { s(x) } }

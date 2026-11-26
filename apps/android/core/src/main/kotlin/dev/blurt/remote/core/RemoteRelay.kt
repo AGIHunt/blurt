@@ -58,6 +58,35 @@ object RemoteRelay {
 
     /** `<relay>/v1/<room>/<mac|phone>` */
     fun url(address: String, room: String, role: String): String? = address(address)?.let { "$it/v1/$room/$role" }
+
+    /** `GET` this: what the relay says of the room's computer without joining it (RemotePresence). */
+    fun peekURL(address: String, room: String): String? = url(address, room, "peek")?.let { u ->
+        if (u.startsWith("wss://")) "https://" + u.removePrefix("wss://") else "http://" + u.removePrefix("ws://")
+    }
+}
+
+/** What a relay says of a room's computer (`GET …/peek`, tools/remote-relay): waiting there now, else since when it's asleep (it said so before
+ *  sleeping) or last seen, in ms. Only a paired device can ask: the room comes from the pair's key. */
+data class RemotePresence(val host: Boolean, val asleep: Long? = null, val seen: Long? = null) {
+    /** what the pad says of it; null while it's waiting there, or when the relay doesn't know */
+    val says: Presence? get() = when {
+        host -> null
+        asleep != null -> Presence.ASLEEP
+        seen != null -> Presence.LAST_ONLINE
+        else -> null
+    }
+    val since: Long? get() = if (host) null else asleep ?: seen
+
+    companion object {
+        /** null: not an answer (an older relay says something else) */
+        fun parse(body: String): RemotePresence? = runCatching {
+            val o = kotlinx.serialization.json.Json.parseToJsonElement(body) as? kotlinx.serialization.json.JsonObject ?: return null
+            fun word(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { !it.isString }?.content
+            val host = word("host")?.toBooleanStrictOrNull() ?: return null
+            fun ms(k: String) = word(k)?.toDoubleOrNull()?.toLong()
+            RemotePresence(host, ms("asleep"), ms("seen"))
+        }.getOrNull()
+    }
 }
 
 /** What the outside world sees of a local UDP port: a Binding request, and the IPv4 XOR-MAPPED-ADDRESS out of the answer. */

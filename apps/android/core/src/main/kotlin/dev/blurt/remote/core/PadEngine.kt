@@ -55,6 +55,12 @@ class PadEngine {
     companion object {
         const val SLOP = 6.0
         const val TAP_TIME = 0.22
+        /** on the picture a finger aims, and lands less lightly than on a trackpad: it may move this far and stay this long and still be a
+         *  tap. A hold (HOLD_TIME) and the drag after it are as before */
+        const val TOUCH_SLOP = 10.0
+        const val TOUCH_TAP_TIME = 0.30
+        /** a finger that has stopped this long before it lifts leaves nothing coasting */
+        const val REST_TIME = 0.1
         const val DOUBLE_WINDOW = 0.30
         const val DOUBLE_REACH = 44.0
         const val HOLD_TIME = 0.40
@@ -90,8 +96,8 @@ class PadEngine {
         /** pressed right after a tap: a double click or a drag */
         data class Second(val start: PadPoint, val at: Double) : State()
         data class Dragging(val last: PadPoint) : State()
-        /** held still: right click or drag */
-        data class Held(val start: PadPoint, val at: Double) : State()
+        /** held still: right click or drag, from where the finger had got to (it may drift a little on the picture) */
+        data class Held(val start: PadPoint, val from: PadPoint, val at: Double) : State()
         data class Scrolling(val last: PadPoint, val two: Boolean) : State()
         /** undecided */
         data class Two(val start: PadPoint, val spread: Double, val at: Double) : State()
@@ -231,7 +237,7 @@ class PadEngine {
         val p = centroid
         val out = mutableListOf<PadOutput>()
         when (val s = state) {
-            is State.One -> if (dist(p, s.start) > SLOP) {
+            is State.One -> if (dist(p, s.start) > (if (touchMode && !onEdge(s.start)) TOUCH_SLOP else SLOP)) {
                 if (scrollsEdge(s.start, p)) {
                     out += beginEdgeScroll(p)
                 } else if (panView) {
@@ -271,7 +277,7 @@ class PadEngine {
             }
             is State.Held -> if (dist(p, s.start) > SLOP && scrollsEdge(s.start, p)) {
                 out += beginEdgeScroll(p)
-            } else if (dist(p, s.start) > SLOP) {
+            } else if (dist(p, s.from) > SLOP) {
                 lastTap = null
                 lastMoveAt = now
                 if (touchMode && onEdge(s.start)) out += PadOutput.PointAt(s.start)
@@ -394,7 +400,7 @@ class PadEngine {
             return out
         }
         when (val s = state) {
-            is State.One -> if (now - s.at < TAP_TIME) {
+            is State.One -> if (now - s.at < (if (touchMode) TOUCH_TAP_TIME else TAP_TIME)) {
                 if (touchMode) out += PadOutput.PointAt(s.start)
                 out += listOf(PadOutput.Click(RemoteMouseButton.LEFT), PadOutput.Haptic(PadHaptic.TAP))
                 lastTap = now to s.start
@@ -415,7 +421,7 @@ class PadEngine {
             is State.Scrolling -> {
                 out += PadOutput.Scroll(0f, 0f, RemoteScrollPhase.ENDED)
                 if (!s.two) out += PadOutput.EdgeScroll(false)
-                releaseVelocity()?.let { v ->
+                releaseVelocity(now)?.let { v ->
                     val gain = if (s.two) scrollGain else scrollGain * EDGE_GAIN
                     out += PadOutput.Fling((v.first * gain).toFloat(), (v.second * gain).toFloat())
                     coastUntil = now + COAST_TIME
@@ -428,7 +434,7 @@ class PadEngine {
             is State.View -> out += PadOutput.ViewEnd
             is State.Panning -> {
                 out += PadOutput.ViewEnd
-                releaseVelocity()?.let { v -> out += PadOutput.ViewCoast(v.first, v.second) }
+                releaseVelocity(now)?.let { v -> out += PadOutput.ViewCoast(v.first, v.second) }
             }
             else -> {}
         }
@@ -436,9 +442,10 @@ class PadEngine {
         return out
     }
 
-    private fun releaseVelocity(): Pair<Double, Double>? {
+    private fun releaseVelocity(now: Double): Pair<Double, Double>? {
         val first = samples.firstOrNull() ?: return null
         val last = samples.last()
+        if (now - last.t > REST_TIME) return null
         if (!(last.t > first.t) || samples.size < 2) return null
         val span = max(last.t - first.t, 0.016)
         val vx = samples.sumOf { it.dx } / span
@@ -451,7 +458,7 @@ class PadEngine {
         val out = mutableListOf<PadOutput>()
         val s = state
         if (s is State.One && now - s.at >= HOLD_TIME) {
-            state = State.Held(s.start, now)
+            state = State.Held(s.start, touches.values.firstOrNull() ?: s.start, now)
             // the pointer comes to the finger as the phone taps back; on the edge it may yet be a scroll, which is where the pointer is
             if (touchMode && !onEdge(s.start)) out += PadOutput.PointAt(s.start)
             out += PadOutput.Haptic(PadHaptic.GRAB)

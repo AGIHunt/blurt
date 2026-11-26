@@ -67,6 +67,7 @@ final class StatusCard: UIView {
         a.baseBackgroundColor = Theme.slabLatched
         a.baseForegroundColor = .black
         a.cornerStyle = .capsule
+        a.titleLineBreakMode = .byTruncatingTail      // one line, as wide as it needs: wrapped, it took the width of the words before
         a.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 28, bottom: 12, trailing: 28)
         a.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { t in
             var t = t
@@ -77,6 +78,7 @@ final class StatusCard: UIView {
         action.addAction(UIAction { [weak self] _ in self?.onAction?() }, for: .touchUpInside)
         var b = UIButton.Configuration.plain()
         b.baseForegroundColor = Theme.mark
+        b.titleLineBreakMode = .byTruncatingTail
         b.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
         b.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { t in
             var t = t
@@ -100,6 +102,8 @@ final class StatusCard: UIView {
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: p.top),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p.left),
+            // as wide as the card: with only its leading edge held, the words of a card shown before its first layout wrapped to the button's width
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p.right).with(.defaultHigh),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p.right),
             // a pad too short for it cuts the card at the bottom, never squeezes the words
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -p.bottom).with(.defaultHigh),
@@ -142,7 +146,7 @@ final class StatusCard: UIView {
         second.configuration?.title = w.second
         second.isHidden = w.second == nil
         // the last thing showing has nothing under it
-        stack.setCustomSpacing(w.detail == nil && w.action == nil ? 0 : 6, after: title)
+        stack.setCustomSpacing(w.detail != nil ? 6 : w.action != nil ? 16 : 0, after: title)
         fade(true)
         return changed
     }
@@ -168,7 +172,7 @@ final class StatusCard: UIView {
         return ceil(s.height) + p.top + p.bottom
     }
 
-    /// Only its buttons take touches: the pad under the words is still the pad (a touch there takes the computer back from another phone).
+    /// Only its buttons take touches: the pad under the words is still the pad.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let v = super.hitTest(point, with: event)
         return v is UIControl ? v : nil

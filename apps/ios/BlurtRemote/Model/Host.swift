@@ -41,23 +41,28 @@ enum Words {
 
     /// The pad's card, line by line (LinkStatus.swift has which lines a state gets). `name`: the computer in hand; `check`: the digits a
     /// pairing shows on both; `failed`: Link's sentences for a pairing that didn't take.
-    static func status(_ line: StatusBanner.Line, host h: RemoteHost, name: String?, check: String? = nil, failed: PairFailure? = nil) -> String {
+    static func status(_ line: StatusBanner.Line, host h: RemoteHost, name: String?, check: String? = nil, failed: PairFailure? = nil,
+                       since: Date? = nil) -> String {
         let n = name ?? String(localized: "the computer")
         switch line {
         case .connecting: return String(localized: "Connecting to \(n)…")
         case .reconnecting: return String(localized: "Reconnecting to \(n)…")
+        case .connectingDirect: return String(localized: "Connecting directly to \(n)…")
+        case .noNetwork: return String(localized: "No network")
+        case .turnOnNetwork: return String(localized: "Turn on Wi-Fi or mobile data to reconnect.")
+        case .asleepSince: return String(localized: "Asleep since \(when(since)). Wake the computer to reconnect.")
+        case .lastOnline: return String(localized: "Last online \(when(since)). Check that the computer isn’t asleep and Blurt is running.")
+        case .localNetworkOff: return String(localized: "Turn on Local Network for Blurt in Settings.")
         case .cantReach: return String(localized: "Can’t reach \(n)")
         case .checkNetwork: return String(localized: "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.")
         case .checkAwake: return String(localized: "Check that the computer isn’t asleep and Blurt is running.")
-        case .noDirect: return String(localized: "Can’t connect directly. Set up your own relay on the computer.")
+        case .noDirect: return String(localized: "Can’t connect directly. Try another network, or set up your own relay on the computer.")
         case .goBetweenBusy: return String(localized: "The public connection service has reached today’s limit. Try again later, or use your own relay.")
         case .relayDown: return String(localized: "Its own relay isn’t responding. Trying the public connection service…")
         case .needsPairing: return String(localized: "Needs pairing again")
         case .forgotten: return String(localized: "\(name ?? String(localized: "This computer")) removed this iPhone.")
         case .otherPhone: return String(localized: "Another phone is connected")
-        case .touchToTakeOver: return String(localized: "Touch to take over.")
         case .endedThere: return String(localized: "\(n) ended the connection.")
-        case .touchToReconnect: return String(localized: "Touch to reconnect.")
         case .pairFirst: return String(localized: "Pair with your computer")
         case .whereTheCodeIs: return whereTheCodeIs
         case .waiting: return String(localized: "Waiting for your computer")
@@ -69,6 +74,9 @@ enum Words {
         case .cantShowScreen: return String(localized: "Can’t show the screen")
         case .allowScreen: return noScreenPermission(h, n)
         case .screenIsOff: return screenOff(h, n)
+        case .pictureStopped: return String(localized: "The picture stopped.")
+        case .locked: return String(localized: "\(n) is locked")
+        case .unlockFirst: return String(localized: "The picture comes back once it’s unlocked.")
         }
     }
 
@@ -77,7 +85,18 @@ enum Words {
         case .retry: String(localized: "Retry")
         case .scan: String(localized: "Scan Code")
         case .another: String(localized: "Try Another Computer")
+        case .takeOver: String(localized: "Take Over")
+        case .reconnect: String(localized: "Reconnect")
+        case .dismiss: String(localized: "OK")
+        case .openSettings: String(localized: "Open Settings")
+        case .showScreen: String(localized: "Show Screen")
         }
+    }
+
+    /// today: the time alone; earlier: the day too
+    private static func when(_ d: Date?) -> String {
+        guard let d else { return "" }
+        return Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(date: .abbreviated, time: .shortened)
     }
 
     /// The cycle keys, as the settings' list of gestures names them.

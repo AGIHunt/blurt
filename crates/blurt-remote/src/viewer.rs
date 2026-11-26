@@ -408,7 +408,13 @@ pub async fn open_with(
     if let Some((a, s)) = tcp_first(tcp, Duration::from_millis(1500)).await {
         return match Phone::over_tcp(s, a, id, key, options(device, false)).await {
             Ok(p) => Ok((p, tcp_route(a))),
-            Err(e) if refused(&e) => Err(Unreached::NotPaired),
+            // whatever is at that address now refused this key: it may be another computer (addresses move), so the relay, whose room only
+            // this one knows, still gets its try
+            Err(e) if refused(&e) && relay.is_none() => Err(Unreached::NotPaired),
+            Err(e) if refused(&e) => match Box::pin(open_with(device, id, key, port, &[], &[], relay, go_between_at, fallback)).await {
+                Err(Unreached::Offline) => Err(Unreached::NotPaired),
+                r => r,
+            },
             Err(_) => Err(Unreached::Offline),
         };
     }
@@ -943,6 +949,8 @@ impl Session {
 }
 
 const RETRY: [u64; 5] = [1, 2, 4, 8, 15];
+/// seconds for a connected host to say `session` (it may ask a STUN server first)
+const SESSION_DUE: f64 = 12.0;
 
 async fn run(
     mut t: Target,
@@ -1116,6 +1124,9 @@ async fn live(
     // UDP knocks until the host says it heard one: a first datagram can be lost (or not leave a socket that isn't writable yet)
     let (mut udp_ok, mut knocked, mut knocks) = (false, 0.0, 0);
     let mut rtt = 0.05;
+    // the host's last word to a ping: a network gone quiet, or a host asleep, isn't waited out for TCP's many minutes
+    let mut heard = 0.0f64;
+    let quiet_after = if tcp { 6.0 } else { 10.0 };
     loop {
         let away = !matches!(route, Route::Local);
         tokio::select! {
@@ -1138,7 +1149,12 @@ async fn live(
                     phone.send(&ToMac::RequestKeyframe).await;
                 }
             },
-            e = phone.next(Duration::from_millis(4)) => match e {
+            e = phone.next(Duration::from_millis(4)) => {
+            // anything at all from the host: a file going out fills the stream, and the pongs behind it are late
+            if e.is_some() {
+                heard = now();
+            }
+            match e {
                 None => {}
                 Some(PhoneEvent::Closed) => return End::Dropped,
                 Some(PhoneEvent::Video(v)) => {
@@ -1208,9 +1224,14 @@ async fn live(
                     ToPhone::NoDirect => return End::NoDirect,
                     _ => {}
                 },
+            }
             },
         }
         let n = now();
+        // a send held up by a full stream (a file on a slow line) says nothing about the host: counted from its end
+        if n - last_tick > 1.0 {
+            heard = n.max(heard);
+        }
         if n - last_tick >= 0.004 {
             last_tick = n;
             let outs = pic.receiver.tick(n);
@@ -1222,6 +1243,9 @@ async fn live(
             knocked = n;
             knocks += 1;
             phone.pointer(PointerPacket::Stop).await;
+        }
+        if n - heard > quiet_after || info.is_none() && n > SESSION_DUE {
+            return End::Dropped;
         }
         if n - last_ping >= 1.0 {
             last_ping = n;

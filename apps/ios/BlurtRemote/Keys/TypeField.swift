@@ -55,7 +55,8 @@ final class TypeField: UITextView, UITextViewDelegate {
         if !held.isEmpty, s.count == 1, let k = RemoteKey.named(s.uppercased()) {
             send(.key(RemoteChord(held, k.name), down: nil))
         } else {
-            send(.text(s))
+            Link.shared.type(s)
+            Sticky.shared.used()
         }
         onSent?(s)
     }
@@ -91,6 +92,13 @@ final class ModifierRow: UIInputView {
             c.baseForegroundColor = Theme.mark
             c.contentInsets = .zero
             c.cornerStyle = .medium
+            // one line: "Shift" in a tenth of a phone's width was "Shif / t"
+            c.titleLineBreakMode = .byClipping
+            c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+                var a = a
+                a.font = .systemFont(ofSize: 13, weight: .medium)
+                return a
+            }
             let b = UIButton(configuration: c, primaryAction: UIAction { _ in act() })
             row.addArrangedSubview(b)
             buttons.append((b, mods))
@@ -103,6 +111,14 @@ final class ModifierRow: UIInputView {
         // in the order and with the names of the computer in hand, set in refresh: ⌃⌥⇧⌘ on a Mac, Ctrl Win Alt Shift on Windows
         for i in 0..<4 {
             add("", mods: []) { let m = RemoteHost.shown.modifierOrder[i]; Sticky.shared.tap(m, at: CACurrentMediaTime()); Haptics.grab() }
+        }
+        add("") {
+            Haptics.tick()
+            if let t = UIPasteboard.general.string, !t.isEmpty { Link.shared.type(t) }
+        }
+        if let b = buttons.last?.0 {
+            b.configuration?.image = UIImage(systemName: "doc.on.clipboard", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+            b.accessibilityLabel = String(localized: "Paste from This Device")
         }
         add("esc") { Link.shared.send(.key(RemoteChord([], "Escape"), down: nil)); Haptics.tick() }
         add("⇥") { Link.shared.send(.key(RemoteChord([], "Tab"), down: nil)); Haptics.tick() }

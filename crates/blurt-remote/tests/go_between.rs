@@ -250,6 +250,50 @@ async fn the_session_meets_moves_to_udp_and_stays_off_the_go_between() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The phone leaves a moved session and is back before the host has noticed (6 s of no datagrams): the room has the host in it again, and
+/// the session is the same device's new one (docs/design/remote.md §Coming back; before, it was out of the room for 9 s).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_back_at_once_finds_the_host_in_the_room() {
+    let r = match relay().await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let (h, dir, device, key) = paired(&meet, Lines::default()).await;
+    for round in 0..2 {
+        let (mut phone, mut info) = away(&meet, &device, &key, Options::go_between()).await;
+        info.candidates.push(Candidate { host: "127.0.0.1".into(), port: info.udp_port });
+        phone.open_direct(&info).await.unwrap();
+        let t0 = std::time::Instant::now();
+        while !phone.moved() && t0.elapsed() < Duration::from_secs(5) {
+            let _ = phone.next(Duration::from_millis(100)).await;
+        }
+        assert!(phone.moved(), "round {round}");
+        until(|| h.status().connected.filter(|c| c.route == "direct")).await;
+        // gone with no goodbye but the WebSocket's end
+        drop(phone);
+        let left = std::time::Instant::now();
+        loop {
+            match Phone::connect_relay_with(&meet, &device, &key, Options::go_between()).await {
+                Ok(mut p) => {
+                    let s = p.wait(Duration::from_secs(5), |m| matches!(m, ToPhone::Session(_)).then_some(())).await;
+                    if s.is_some() {
+                        break;
+                    }
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(200)).await,
+            }
+            assert!(left.elapsed() < Duration::from_secs(5), "still out of the room (round {round})");
+        }
+        eprintln!("back after {:?}", left.elapsed());
+        assert!(left.elapsed() < Duration::from_secs(4), "{:?}", left.elapsed());
+        // that one goes too, before the next round
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn an_old_phone_isnt_offered_it_and_no_direct_path_ends_the_session() {
     let r = match relay().await {

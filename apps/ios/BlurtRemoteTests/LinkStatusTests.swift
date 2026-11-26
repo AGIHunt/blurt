@@ -42,14 +42,43 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertNil(banner(.connected) { $0.away = .busy })
         // the words, as the spec has them
         XCTAssertEqual(Words.status(.noDirect, host: .mac, name: "Mac"),
-                       "Can’t connect directly. Set up your own relay on the computer.")
+                       "Can’t connect directly. Try another network, or set up your own relay on the computer.")
         XCTAssertEqual(Words.status(.goBetweenBusy, host: .windows, name: "PC"), "The public connection service has reached today’s limit. Try again later, or use your own relay.")
     }
 
     func testPairingStates() {
         XCTAssertEqual(banner(.unpaired), StatusBanner(mark: .code, title: .pairFirst, detail: .whereTheCodeIs, action: .scan))
         XCTAssertEqual(banner(.forgotten), StatusBanner(mark: .problem, title: .needsPairing, detail: .forgotten, action: .scan))
-        XCTAssertEqual(banner(.replaced), StatusBanner(mark: .phone, title: .otherPhone, detail: .touchToTakeOver))
+        // a button, never any touch: a phone in a pocket doesn't take the computer back
+        XCTAssertEqual(banner(.replaced), StatusBanner(mark: .phone, title: .otherPhone, action: .takeOver))
+        XCTAssertEqual(banner(.ended), StatusBanner(mark: .phone, title: .endedThere, action: .reconnect))
+    }
+
+    func testMeetingOnThePublicServiceIsNotConnectedYet() {
+        XCTAssertEqual(banner(.connecting) { $0.meeting = true }, StatusBanner(mark: .busy, title: .connectingDirect))
+        XCTAssertEqual(banner(.connecting) { $0.meeting = true; $0.dropped = true }?.title, .connectingDirect)
+    }
+
+    func testAPhoneWithNoNetworkSaysSoFirst() {
+        let b = StatusBanner(mark: .problem, title: .noNetwork, detail: .turnOnNetwork)
+        XCTAssertEqual(banner(.connecting) { $0.offline = true }, b)
+        XCTAssertEqual(banner(.unreachable) { $0.offline = true; $0.away = .noDirect; $0.hasRelay = true }, b)
+        XCTAssertNil(banner(.connected) { $0.offline = true }, "a session over something else goes on")
+    }
+
+    func testWhyItCantBeReachedFromItsRelay() {
+        XCTAssertEqual(banner(.unreachable) { $0.hasRelay = true; $0.presence = .asleep }?.detail, .asleepSince)
+        XCTAssertEqual(banner(.unreachable) { $0.hasRelay = true; $0.presence = .lastOnline }?.detail, .lastOnline)
+        XCTAssertEqual(banner(.unreachable) { $0.hasRelay = true; $0.presence = .asleep; $0.away = .noDirect }?.detail, .noDirect, "the reason that's known wins")
+        XCTAssertEqual(banner(.unreachable) { $0.localDenied = true },
+                       StatusBanner(mark: .problem, title: .cantReach, detail: .localNetworkOff, action: .openSettings, second: .retry))
+        XCTAssertEqual(banner(.unreachable) { $0.localDenied = true; $0.hasRelay = true }?.detail, .checkAwake, "a relay needs no local network")
+    }
+
+    func testALockedScreenIsSaidWhileThePictureIsOn() {
+        XCTAssertEqual(banner(.connected) { $0.locked = true; $0.showing = true; $0.canControl = false },
+                       StatusBanner(mark: .problem, title: .locked, detail: .unlockFirst))
+        XCTAssertNil(banner(.connected) { $0.locked = true })
     }
 
     func testAPairingUnderWayIsSaidOverTheRest() {
@@ -57,11 +86,11 @@ final class LinkStatusTests: XCTestCase {
             XCTAssertEqual(banner(p) { $0.waiting = true }, StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer), "\(p)")
         }
         // one that didn't take: why, and never a dead end: a new code, and what there was to do about the computer gone back to
-        XCTAssertEqual(banner(.unpaired) { $0.pairFailed = true }, StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan))
-        XCTAssertEqual(banner(.connecting) { $0.pairFailed = true }, StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan))
-        XCTAssertEqual(banner(.connected) { $0.pairFailed = true }, StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan))
-        XCTAssertEqual(banner(.unreachable) { $0.pairFailed = true; $0.otherComputers = true },
-                       StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan, second: .retry))
+        // until it's read: OK
+        for p in [LinkStatus.Phase.unpaired, .connecting, .connected, .unreachable] {
+            XCTAssertEqual(banner(p) { $0.pairFailed = true; $0.otherComputers = true },
+                           StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .scan, second: .dismiss), "\(p)")
+        }
         // a code that can't be reached is still being tried: the same code again first, a new one second
         XCTAssertEqual(banner(.unreachable) { $0.pairFailed = true; $0.pairRetry = true },
                        StatusBanner(mark: .problem, title: .pairingFailed, detail: .whyPairingFailed, action: .retry, second: .scan))
@@ -90,7 +119,7 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(Link.failure(.unanswered, name: "Studio PC", hasRelay: true).title, "Studio PC didn’t answer in time.")
         let away = Link.failure(.unreachable, name: "Studio PC", hasRelay: true)
         XCTAssertEqual(away.title, "Can’t reach Studio PC.")
-        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there.")
+        XCTAssertEqual(away.help, "Make sure Studio PC is on and Blurt is open there, or scan the new code.")
         XCTAssertTrue(away.canRetry)
         XCTAssertTrue(Link.failure(.unreachable, name: "Studio PC", hasRelay: false).help.contains("same network"))
         // the card says the failure itself, then what to do
@@ -113,6 +142,9 @@ final class LinkStatusTests: XCTestCase {
         XCTAssertEqual(banner(.connected) { $0.canControl = false }, StatusBanner(mark: .problem, title: .cantControl, detail: .howToAllowControl))
         XCTAssertEqual(banner(.connected) { $0.screenError = "permission" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .allowScreen))
         XCTAssertEqual(banner(.connected) { $0.screenError = "off" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .screenIsOff))
+        XCTAssertEqual(banner(.connected) { $0.screenError = "stopped" }, StatusBanner(mark: .problem, title: .cantShowScreen, detail: .pictureStopped, action: .showScreen))
+        // a picture that came on by itself and can't: still a trackpad, nothing to say
+        XCTAssertNil(banner(.connected) { $0.screenError = "off"; $0.screenAsked = false })
         // the screen was just asked for: that's the one said
         XCTAssertEqual(banner(.connected) { $0.canControl = false; $0.screenError = "off" }?.detail, .screenIsOff)
         // not connected, neither matters
@@ -128,7 +160,7 @@ final class LinkStatusTests: XCTestCase {
             for relay in [false, true] {
                 for others in [false, true] {
                     guard let b = banner(p, { $0.hasRelay = relay; $0.otherComputers = others }) else { continue }
-                    if b.action != nil { XCTAssertNotNil(b.detail, "\(p)") }
+                    if b.action != nil, b.action != .takeOver { XCTAssertNotNil(b.detail, "\(p)") }
                     if b.second != nil { XCTAssertNotNil(b.action, "\(p)") }
                 }
             }
@@ -179,13 +211,14 @@ final class LinkStatusTests: XCTestCase {
     // MARK: the words
 
     private static let lines: [StatusBanner.Line] = [.connecting, .reconnecting, .cantReach, .checkNetwork, .checkAwake, .needsPairing, .forgotten, .otherPhone,
-                                                     .touchToTakeOver, .pairFirst, .whereTheCodeIs, .waiting, .allowOnComputer, .pairingFailed,
+                                                     .connectingDirect, .noNetwork, .turnOnNetwork, .asleepSince, .lastOnline, .localNetworkOff, .endedThere,
+                                                     .pictureStopped, .locked, .unlockFirst, .pairFirst, .whereTheCodeIs, .waiting, .allowOnComputer, .pairingFailed,
                                                      .whyPairingFailed, .cantControl, .howToAllowControl, .cantShowScreen, .allowScreen, .screenIsOff]
 
     func testEveryLineHasWordsForEveryKindOfComputer() {
         for h in RemoteHost.allCases {
             for l in Self.lines {
-                let t = Words.status(l, host: h, name: "Studio", check: "1234", failed: Link.failure(.declined, name: "Studio", hasRelay: false))
+                let t = Words.status(l, host: h, name: "Studio", check: "1234", failed: Link.failure(.declined, name: "Studio", hasRelay: false), since: Date())
                 XCTAssertFalse(t.isEmpty, "\(l) \(h)")
                 XCTAssertFalse(t.contains("!"), "no shouting: \(t)")
                 XCTAssertFalse(t.contains("%@"), t)
@@ -193,7 +226,7 @@ final class LinkStatusTests: XCTestCase {
             // no name yet: still a sentence
             XCTAssertFalse(Words.status(.cantReach, host: h, name: nil).isEmpty)
         }
-        for a in [StatusBanner.Action.retry, .scan, .another] { XCTAssertFalse(Words.status(a).isEmpty) }
+        for a in [StatusBanner.Action.retry, .scan, .another, .takeOver, .reconnect, .dismiss, .openSettings, .showScreen] { XCTAssertFalse(Words.status(a).isEmpty) }
         XCTAssertTrue(Words.status(.connecting, host: .mac, name: "Studio").contains("Studio"))
         XCTAssertTrue(Words.status(.allowOnComputer, host: .mac, name: "Studio", check: "1234").contains("1234"))
     }
@@ -205,7 +238,10 @@ final class LinkStatusTests: XCTestCase {
         let all = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["strings"] as? [String: Any] ?? [:]
         for k in ["Connecting to %@…", "Reconnecting to %@…", "Can’t reach %@",
                   "Check that Blurt is running and both are on the same network. To connect from anywhere, set a relay in Blurt’s Settings → Remote Control on the computer.",
-                  "Check that the computer isn’t asleep and Blurt is running.", "Needs pairing again", "Another phone is connected", "Touch to take over.",
+                  "Check that the computer isn’t asleep and Blurt is running.", "Needs pairing again", "Another phone is connected", "Take Over", "Reconnect", "OK", "Open Settings",
+                  "Connecting directly to %@…", "No network", "Turn on Wi-Fi or mobile data to reconnect.",
+                  "Asleep since %@. Wake the computer to reconnect.", "%@ is locked", "The picture comes back once it’s unlocked.",
+                  "Last online %@. Check that the computer isn’t asleep and Blurt is running.",
                   "Pair with your computer", "Waiting for your computer", "Pairing didn’t work", "Can’t control %@", "Can’t show the screen",
                   "Retry", "Scan Code", "Try Another Computer", "Connected to %@"] {
             let zh = (((all[k] as? [String: Any])?["localizations"] as? [String: Any])?["zh-Hans"] as? [String: Any])?["stringUnit"] as? [String: Any]
@@ -260,13 +296,22 @@ final class LinkStatusTests: XCTestCase {
             ("cant-control-windows", LinkStatus(phase: .connected, canControl: false), .windows),
             ("screen-permission", LinkStatus(phase: .connected, screenError: "permission"), .mac),
             ("screen-off", LinkStatus(phase: .connected, screenError: "off"), .linux),
+            ("no-direct", LinkStatus(phase: .unreachable, hasRelay: true, away: .noDirect), .mac),
+            ("no-network", LinkStatus(phase: .unreachable, offline: true), .mac),
+            ("asleep", LinkStatus(phase: .unreachable, hasRelay: true, presence: .asleep), .mac),
+            ("last-online", LinkStatus(phase: .unreachable, hasRelay: true, presence: .lastOnline), .mac),
+            ("connecting-direct", LinkStatus(phase: .connecting, meeting: true), .windows),
+            ("ended", LinkStatus(phase: .ended), .windows),
+            ("locked", LinkStatus(phase: .connected, showing: true, locked: true), .mac),
+            ("picture-stopped", LinkStatus(phase: .connected, screenError: "stopped"), .windows),
+            ("local-network-off", LinkStatus(phase: .unreachable, localDenied: true), .mac),
         ]
         let name = "Studio Mac"
         for (file, s, host) in cases {
             guard let b = StatusBanner.of(s) else { continue }
             func say(_ l: StatusBanner.Line) -> String {
                 Words.status(l, host: host, name: name, check: "4821",
-                             failed: Link.failure(s.pairRetry ? .unreachable : .spent, name: name, hasRelay: s.hasRelay))
+                             failed: Link.failure(s.pairRetry ? .unreachable : .spent, name: name, hasRelay: s.hasRelay), since: Date())
             }
             let card = StatusCard()
             card.show(b.mark, StatusCard.Words(title: say(b.title), detail: b.detail.map(say), action: b.action.map { Words.status($0) },

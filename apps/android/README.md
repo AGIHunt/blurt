@@ -34,12 +34,12 @@ config.
 
 ## Pair
 
-1. On the computer, open Blurt's Settings and choose **Phone** (on a Mac: **iPhone**). It shows a code.
+1. On the computer, open Blurt's Settings and choose **Remote Control** → Add Device. It shows a code.
 2. On the phone, open Blurt and tap **Scan Code**, then point the camera at the code. The camera app works too: it opens Blurt, which asks
    before pairing.
 3. Both show the same six digits; say yes on the computer.
 
-From then on the phone connects by itself whenever the app opens, on the same network, or anywhere once the computer has a relay
+From then on the phone connects by itself whenever the app opens, on the same network, or from anywhere through the public connection service or your own relay
 (Settings → Remote Control → Relay Address on the computer). Several computers: Settings → Add Computer on the phone; hold the settings button on the
 main screen to switch.
 

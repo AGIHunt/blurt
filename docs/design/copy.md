@@ -84,6 +84,7 @@ release (`python3 tools/copy-check.py v<last release>`), and the founder reads t
 |---|---|---|
 | Blurt's public go-between (remote-go-between.md) | 公共连接服务 | Public connection service |
 | The user's own relay | 自建中转 | Own relay |
+| Taking the computer from another device (the card's button) | 接管 | Take Over |
 | The relay address field | 中转地址 | Relay Address |
 | Connection paths | 同一网络 · 直连 · Tailscale · 虚拟局域网 · 自建中转 · 公共连接服务 | Same network · Direct · Tailscale · Virtual network · Own relay · Public connection service |
 | One computer driving another (remote-desktop-viewer.md) | 电脑 · 添加电脑 · 打开窗口 · 连接 · 移除 | Computers · Add Computer · Open Window · Connect · Remove |
