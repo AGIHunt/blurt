@@ -1107,6 +1107,10 @@ async fn a_file_goes_to_the_hosts_downloads() {
         id: "f1".into(),
         name: "../report.bin".into(),
         size: body.len() as i64,
+        clip: None,
+        index: None,
+        count: None,
+        total: None,
     });
     for c in body.chunks(192 * 1024) {
         s.send(ToMac::FileChunk {

@@ -115,6 +115,34 @@ final class RemoteServer {
     /// `status` as last told to the main thread (in order: the main queue keeps it), for whoever shows it there (the bar, the Remote
     /// Control page, the menu). Main thread only: reading `status` there raced its changes on `queue`.
     private(set) var shown = Status()
+    /// files and the clipboard both ways (docs/design/remote-files.md)
+    private(set) lazy var hostFiles: RemoteHostFiles = {
+        let f = RemoteHostFiles(parts: folder.appendingPathComponent("parts", isDirectory: true))
+        f.label = { [weak self] id in self?.label(id, self?.devices().first { $0.id == id }?.name ?? "") ?? "" }
+        f.noted = { [weak self] id, e in
+            self?.queue.async {
+                guard let s = self?.session, s.id == id, let entry = s.logged else { return }
+                RemoteConnectionLog.note(entry, e)
+            }
+        }
+        f.notice = { [weak self] id, text in
+            self?.queue.async {
+                guard let s = self?.session, s.id == id else { return }
+                s.channel.send(ToPhone.notice(text))
+            }
+        }
+        return f
+    }()
+    /// the device connected now takes files from this Mac (its hello lists `files`): the bar's Send Files… shows
+    var connectedTakesFiles: Bool { shown.connectedID.map { hostFiles.takesFiles($0) } ?? false }
+
+    /// Send Files… on the bar, or files dropped on it: to the device connected now.
+    func sendFiles(_ urls: [URL]) {
+        queue.async {
+            guard let s = self.session, let id = s.id, s.features.contains(RemoteFeature.files) else { return }
+            self.hostFiles.send(urls, to: id)
+        }
+    }
     private func tell(_ s: Status) {
         shown = s
         onStatus?(s)
@@ -178,8 +206,6 @@ final class RemoteServer {
         var logged: UUID?
         /// it asked for the privacy screen (RemotePrivacy)
         var privacy = false
-        /// files it sends (made at the first one)
-        var files: RemoteFileReceiver?
         /// it came in through Blurt's go-between (RemoteRelay.goBetween)
         var goBetween = false
         /// what the phone said it can do (`ToMac.hello.features`)
@@ -1073,7 +1099,6 @@ final class RemoteServer {
     private func closed(_ s: Session) {
         if let i = extras.firstIndex(where: { $0 === s }) {
             extras.remove(at: i)
-            s.files?.drop()
             s.screen?.stop()
             s.screen = nil
             s.pasteboardTimer?.cancel()
@@ -1101,7 +1126,7 @@ final class RemoteServer {
         keepAwake(false)
         if let e = s.logged { RemoteConnectionLog.ended(e); s.logged = nil }
         if s.privacy { s.privacy = false; RemotePrivacy.set(false, who: label(s)) }
-        s.files?.drop()
+        if let id = s.id { hostFiles.closed(id) }
         status.connected = nil
         status.connectedID = nil
         status.viaRelay = false
@@ -1211,6 +1236,12 @@ final class RemoteServer {
         guard s.greeted else { return }
         switch m {
         case .hello, .keyStored, .ping, .streamMoved: break
+        case .getClipboard:
+            // what's copied here, once, because the device asked (docs/design/remote-files.md)
+            queue.async {
+                guard self.session === s, let id = s.id else { return }
+                self.hostFiles.getClipboard(from: id) { [weak s] r in s?.channel.send(r) }
+            }
         case let .clipboard(t):
             // a viewer's, while its keys are captured: what it copied pastes here
             guard s.viewer, s.captured, RemoteClipboard.fits(t) else { return }
@@ -1224,16 +1255,12 @@ final class RemoteServer {
         case let .keysCaptured(on):
             guard s.viewer else { return }
             queue.async { self.captured(on, s) }
-        case let .fileBegin(id, name, size):
+        case .fileBegin, .fileChunk, .fileEnd, .fileProgress, .fileSaved, .fileFailed:
+            // a file from the device to ~/Downloads/Blurt, or its answers to one going to it
             queue.async {
-                guard self.session === s || self.extras.contains(where: { $0 === s }) else { return }
-                if s.files == nil { s.files = RemoteFileReceiver(from: self.label(s)) { [weak s] m in s?.channel.send(m) } }
-                s.files?.begin(id: id, name: name, size: size)
+                guard self.live(s), let id = s.id else { return }
+                self.hostFiles.heard(m, from: id) { [weak s] r in s?.channel.send(r) }
             }
-        case let .fileChunk(id, data):
-            queue.async { s.files?.chunk(id: id, data: data) }
-        case let .fileEnd(id):
-            queue.async { s.files?.end(id: id) }
         case let .privacyScreen(on):
             queue.async {
                 guard self.session === s else { return }
@@ -1511,8 +1538,25 @@ final class RemoteServer {
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
                                                              candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: self.relayFor(s),
-                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.privacy, RemoteFeature.files])))
+                                                             platform: RemoteHost.mac.rawValue, features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.privacy, RemoteFeature.files,
+                                                                        RemoteFeature.resume, RemoteFeature.clipboard])))
             if let notice { s.channel.send(ToPhone.notice(notice)) }
+            if self.session === s, let id = s.id {
+                // files to this device go once it's up (and on the go-between, once its stream has moved); a dropped one goes on
+                self.hostFiles.opened(id, RemoteHostFiles.Session(
+                    send: { [weak self, weak s] m in
+                        // from the sender's own thread: whether it's live is asked on the server's queue
+                        guard let self, let s, self.queue.sync(execute: { self.live(s) }) else { return false }
+                        s.channel.send(m)
+                        return true
+                    },
+                    ready: { [weak self, weak s] in
+                        guard let self, let s else { return false }
+                        return self.queue.sync { self.live(s) && s.greeted && (!s.goBetween || s.channel.moved) }
+                    },
+                    resumes: { [weak s] in s?.features.contains(RemoteFeature.resume) ?? false },
+                    takesFiles: s.features.contains(RemoteFeature.files)))
+            }
             if s.goBetween { self.awaitDirect(s) }
         }
         if s.channel.isRelay {

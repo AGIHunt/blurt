@@ -63,5 +63,7 @@ No camera, or the code won't read: copy the pairing link shown under the code on
 - `fakehost/` is a fake computer: `./gradlew :fakehost:run --args="--platform windows --picture some.png"`. It prints a pairing link
   (also in `build/fakehost-pairing.txt`) and everything the phone sends; `--german` makes it send a German keyboard's legends. An emulator reaches it at 10.0.2.2:
   `adb shell am start -a android.intent.action.VIEW -d "$(cat build/fakehost-pairing.txt)"`.
+  With `--files <dir>` it takes files from the phone (`--take <KB/s>` to watch them go, `--drop-at <percent>` to see one resume) and answers
+  Get Copied Items (`--clipboard text:… | image:<png> | files:<paths> | none:<why>`); `send <path>` on its stdin sends files to the phone.
 - `./gradlew :app:assembleDebug :app:testDebugUnitTest lint` is what has to pass.
 - Icons are Material Symbols Rounded (Apache 2.0), cut down to the ones the app uses by `tools/symbols.py`.

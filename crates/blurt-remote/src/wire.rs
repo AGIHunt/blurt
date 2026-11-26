@@ -249,10 +249,18 @@ pub enum ToMac {
     KeysCaptured(bool),
     /// 隐私屏: cover the host's own screen while controlled (hosts whose session lists `privacy`)
     PrivacyScreen(bool),
-    /// a file to the host's Downloads: its name and size, its bytes in order, the end (hosts whose session lists `files`)
-    FileBegin { id: String, name: String, size: i64 },
+    /// a file to the host's Downloads/Blurt: its name and size, its bytes in order, the end (hosts whose session lists `files`).
+    /// `clip`: the clipboard's content, not a file to keep (hosts that list `clipboard`); `index`, `count`: its place in a batch, from
+    /// 1; `total`: the batch's bytes (docs/design/remote-protocol.md §Clipboard and files)
+    FileBegin { id: String, name: String, size: i64, clip: Option<bool>, index: Option<i64>, count: Option<i64>, total: Option<i64> },
     FileChunk { id: String, data: Vec<u8> },
     FileEnd { id: String },
+    /// the phone's or viewer's answer to a file from the host (`ToPhone::FileBegin`): written so far, saved, or not
+    FileProgress { id: String, bytes: i64 },
+    FileSaved { id: String, name: String },
+    FileFailed { id: String, why: String },
+    /// read the host's clipboard once: it answers with `clipboard`, a `clip` file, a batch of files, or `clipboardNone`
+    GetClipboard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,6 +322,12 @@ pub const VIEWER: &str = "viewer";
 pub const WINDOW: &str = "window";
 /// `screenFailed`'s reason for a viewer's second window on a host that shows one display at a time.
 pub const ONE_DISPLAY: &str = "one_display";
+/// In a hello: this phone or viewer takes files from the host. In `session`: the host takes files.
+pub const FILES: &str = "files";
+/// Both ends: a receiver answers every `fileBegin` with what it has, and a sender goes on from there.
+pub const RESUME: &str = "resume";
+/// In `session`: the host answers `getClipboard` and takes `clip` files.
+pub const CLIPBOARD: &str = "clipboard";
 /// Clipboard text between a viewer and its host: plain text, at most 64 KiB of UTF-8, both ways (RemoteClipboard.maxBytes).
 pub const MAX_CLIPBOARD: usize = 64 * 1024;
 
@@ -404,6 +418,12 @@ pub enum ToPhone {
     Clipboard(String),
     /// the host's screen locked (true) or opened again (false), and this host can't show its lock screen: no frames meanwhile. 1.1.0+
     ScreenLocked(bool),
+    /// a file from the host (to a phone or viewer whose hello lists `files`), as `ToMac::FileBegin` the other way
+    FileBegin { id: String, name: String, size: i64, clip: Option<bool>, index: Option<i64>, count: Option<i64>, total: Option<i64> },
+    FileChunk { id: String, data: Vec<u8> },
+    FileEnd { id: String },
+    /// `getClipboard` found nothing to give: "empty", "locked", "too_big" (over 1,000 files), "too_large" (a file over 4 GB), "unsupported"
+    ClipboardNone { why: String },
 }
 
 // ------------------------------------------------------------------ helpers
@@ -691,6 +711,39 @@ fn session_from(v: &Value) -> Option<SessionInfo> {
     })
 }
 
+/// `fileBegin`, either way: the optional fields left out when nil.
+#[allow(clippy::too_many_arguments)]
+fn begin_json(id: &str, name: &str, size: i64, clip: Option<bool>, index: Option<i64>, count: Option<i64>, total: Option<i64>) -> Value {
+    let mut f = vec![("id", json!(id)), ("name", json!(name)), ("size", json!(size))];
+    if let Some(c) = clip {
+        f.push(("clip", json!(c)));
+    }
+    if let Some(i) = index {
+        f.push(("index", json!(i)));
+    }
+    if let Some(c) = count {
+        f.push(("count", json!(c)));
+    }
+    if let Some(t) = total {
+        f.push(("total", json!(t)));
+    }
+    case("fileBegin", f)
+}
+
+type Begin = (String, String, i64, Option<bool>, Option<i64>, Option<i64>, Option<i64>);
+
+fn begin_from(f: &Map<String, Value>) -> Option<Begin> {
+    Some((
+        string(req(f, "id")?)?,
+        string(req(f, "name")?)?,
+        int(req(f, "size")?)?,
+        opt(f, "clip", boolean)?,
+        opt(f, "index", int)?,
+        opt(f, "count", int)?,
+        opt(f, "total", int)?,
+    ))
+}
+
 // ------------------------------------------------------------------ ToMac
 
 impl ToMac {
@@ -750,9 +803,13 @@ impl ToMac {
             ToMac::Clipboard(t) => one("clipboard", json!(t)),
             ToMac::KeysCaptured(on) => one("keysCaptured", json!(on)),
             ToMac::PrivacyScreen(on) => one("privacyScreen", json!(on)),
-            ToMac::FileBegin { id, name, size } => case("fileBegin", vec![("id", json!(id)), ("name", json!(name)), ("size", json!(size))]),
+            ToMac::FileBegin { id, name, size, clip, index, count, total } => begin_json(id, name, *size, *clip, *index, *count, *total),
             ToMac::FileChunk { id, data } => case("fileChunk", vec![("id", json!(id)), ("data", json!(b64(data)))]),
             ToMac::FileEnd { id } => case("fileEnd", vec![("id", json!(id))]),
+            ToMac::FileProgress { id, bytes } => case("fileProgress", vec![("id", json!(id)), ("bytes", json!(bytes))]),
+            ToMac::FileSaved { id, name } => case("fileSaved", vec![("id", json!(id)), ("name", json!(name))]),
+            ToMac::FileFailed { id, why } => case("fileFailed", vec![("id", json!(id)), ("why", json!(why))]),
+            ToMac::GetClipboard => case("getClipboard", vec![]),
         }
     }
 
@@ -811,9 +868,16 @@ impl ToMac {
             "clipboard" => ToMac::Clipboard(string(x0()?)?),
             "keysCaptured" => ToMac::KeysCaptured(boolean(x0()?)?),
             "privacyScreen" => ToMac::PrivacyScreen(boolean(x0()?)?),
-            "fileBegin" => ToMac::FileBegin { id: string(req(f, "id")?)?, name: string(req(f, "name")?)?, size: int(req(f, "size")?)? },
+            "fileBegin" => {
+                let (id, name, size, clip, index, count, total) = begin_from(f)?;
+                ToMac::FileBegin { id, name, size, clip, index, count, total }
+            }
             "fileChunk" => ToMac::FileChunk { id: string(req(f, "id")?)?, data: data(req(f, "data")?)? },
             "fileEnd" => ToMac::FileEnd { id: string(req(f, "id")?)? },
+            "fileProgress" => ToMac::FileProgress { id: string(req(f, "id")?)?, bytes: int(req(f, "bytes")?)? },
+            "fileSaved" => ToMac::FileSaved { id: string(req(f, "id")?)?, name: string(req(f, "name")?)? },
+            "fileFailed" => ToMac::FileFailed { id: string(req(f, "id")?)?, why: string(req(f, "why")?)? },
+            "getClipboard" => ToMac::GetClipboard,
             _ => return None,
         })
     }
@@ -877,6 +941,10 @@ impl ToPhone {
             ToPhone::NoDirect => case("noDirect", vec![]),
             ToPhone::Clipboard(t) => one("clipboard", json!(t)),
             ToPhone::ScreenLocked(b) => one("screenLocked", json!(b)),
+            ToPhone::FileBegin { id, name, size, clip, index, count, total } => begin_json(id, name, *size, *clip, *index, *count, *total),
+            ToPhone::FileChunk { id, data } => case("fileChunk", vec![("id", json!(id)), ("data", json!(b64(data)))]),
+            ToPhone::FileEnd { id } => case("fileEnd", vec![("id", json!(id))]),
+            ToPhone::ClipboardNone { why } => case("clipboardNone", vec![("why", json!(why))]),
         }
     }
 
@@ -929,6 +997,13 @@ impl ToPhone {
             "noDirect" => ToPhone::NoDirect,
             "clipboard" => ToPhone::Clipboard(string(x0()?)?),
             "screenLocked" => ToPhone::ScreenLocked(boolean(x0()?)?),
+            "fileBegin" => {
+                let (id, name, size, clip, index, count, total) = begin_from(f)?;
+                ToPhone::FileBegin { id, name, size, clip, index, count, total }
+            }
+            "fileChunk" => ToPhone::FileChunk { id: string(req(f, "id")?)?, data: data(req(f, "data")?)? },
+            "fileEnd" => ToPhone::FileEnd { id: string(req(f, "id")?)? },
+            "clipboardNone" => ToPhone::ClipboardNone { why: string(req(f, "why")?)? },
             _ => return None,
         })
     }

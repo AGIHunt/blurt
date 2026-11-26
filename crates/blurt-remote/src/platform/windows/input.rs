@@ -607,6 +607,23 @@ impl Input for WinInput {
     fn set_clipboard(&mut self, text: &str) {
         let _ = super::clipboard::set_text(text);
     }
+    fn copied(&mut self) -> crate::host::Copied {
+        crate::platform::clip::read()
+    }
+    fn paste_clip(&mut self, clip: &crate::host::Clip, paste: bool) -> bool {
+        match clip {
+            crate::host::Clip::Text(t) => self.set_clipboard(t),
+            crate::host::Clip::Image(b) => {
+                if !crate::platform::clip::set_image(b) {
+                    return false;
+                }
+            }
+        }
+        if paste {
+            self.key("V", crate::host::mods::CONTROL, None);
+        }
+        true
+    }
 
     fn pointer_desktop(&self) -> Option<(f64, f64)> {
         monitors::cursor_points()

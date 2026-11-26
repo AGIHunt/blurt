@@ -712,14 +712,14 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(l.talk.width, l.dock[0].width, accuracy: 0.5, "no bigger than the keys beside it")
         XCTAssertEqual(l.dock[PadLayout.thumbSlots.enter].maxX + PadLayout.gap, l.talk.minX, accuracy: 0.5, "return right by it")
         XCTAssertEqual(l.settingsButton.minX, l.drawer.minX, accuracy: 1, "settings first")
-        noOverlaps(l.dock + [l.talk, l.arrowKey, l.keyboardButton, l.screenButton, l.findButton, l.settingsButton, l.strip, l.list])
-        XCTAssertGreaterThanOrEqual(l.strip.width / 4, 38, "room for four tabs")
+        noOverlaps(l.dock + [l.talk, l.arrowKey, l.keyboardButton, l.screenButton, l.transferButton, l.findButton, l.settingsButton, l.strip, l.list])
+        XCTAssertGreaterThanOrEqual(l.strip.width / 4, 34, "room for four tabs (38 before Transfer joined the row, 2026-11-26)")
 
         let m = PadLayout(size: portrait, safe: tall, lefty: true)
         XCTAssertEqual(m.talk.minX, m.drawer.minX, accuracy: 1)
         XCTAssertEqual(m.settingsButton.minX, m.drawer.minX, accuracy: 1, "settings first either way")
         XCTAssertGreaterThan(m.arrowKey.minX, m.drawer.minX + 36, "room for a slide to the left")
-        noOverlaps(m.dock + [m.talk, m.arrowKey, m.keyboardButton, m.screenButton, m.findButton, m.settingsButton, m.strip, m.list])
+        noOverlaps(m.dock + [m.talk, m.arrowKey, m.keyboardButton, m.screenButton, m.transferButton, m.findButton, m.settingsButton, m.strip, m.list])
     }
 
     /// The Mac's screen across a phone held upright: the keys get a little taller, not more of them, and the picture sits in the middle.
@@ -737,7 +737,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(on.list.height, on.keySize.height * 4 + PadLayout.gap * 3, accuracy: 1, "still four rows")
         XCTAssertEqual(on.dock[0].height, on.keySize.height, accuracy: 0.5)
         XCTAssertLessThan(on.pad.maxY, on.drawer.minY + 1)
-        noOverlaps(on.dock + [on.talk, on.arrowKey, on.keyboardButton, on.screenButton, on.findButton, on.settingsButton, on.strip, on.list])
+        noOverlaps(on.dock + [on.talk, on.arrowKey, on.keyboardButton, on.screenButton, on.transferButton, on.findButton, on.settingsButton, on.strip, on.list])
         // a screen as tall as the phone's pad: nothing to give
         let upright = PadLayout(size: portrait, safe: tall, lefty: false, aspect: 0.5, showing: true)
         XCTAssertEqual(upright.keySize.height, off.keySize.height)
@@ -751,7 +751,7 @@ final class LayoutTests: XCTestCase {
                 let l = PadLayout(size: size, safe: side, lefty: false, islandLeft: islandLeft)
                 XCTAssertTrue(l.landscape)
                 let island = CGRect(x: islandLeft ? 8 : size.width - 54, y: size.height / 2 - 66, width: 46, height: 132)
-                for b in [l.settingsButton, l.findButton, l.screenButton, l.keyboardButton] {
+                for b in [l.settingsButton, l.findButton, l.transferButton, l.screenButton, l.keyboardButton] {
                     XCTAssertFalse(b.intersects(island), "clear of the island")
                     XCTAssertEqual(b.midX, islandLeft ? 31 : size.width - 31, accuracy: 1, "in the black edge")
                 }
@@ -808,7 +808,7 @@ final class LayoutTests: XCTestCase {
     func testSmallestPhone() {
         let l = PadLayout(size: CGSize(width: 375, height: 667), safe: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0), lefty: false)
         XCTAssertGreaterThan(l.pad.height, 300)
-        XCTAssertGreaterThan(l.strip.width / 4, 35)
+        XCTAssertGreaterThan(l.strip.width / 4, 31, "35 before Transfer joined the row (2026-11-26)")
     }
 }
 

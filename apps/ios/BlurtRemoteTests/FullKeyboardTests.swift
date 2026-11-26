@@ -240,7 +240,7 @@ final class FullLayoutTests: XCTestCase {
             for (i, d) in l.dock.enumerated() where l.mode != .landscape || PadLayout.staysOut(i) { r.append(("dock\(i)", d)) }
         }
         if l.mode != .landscape { r.append(("switch", l.strip)) }
-        for (n, x) in [("apps", l.appsKey), ("settings", l.settingsButton), ("find", l.findButton), ("screen", l.screenButton),
+        for (n, x) in [("apps", l.appsKey), ("settings", l.settingsButton), ("find", l.findButton), ("screen", l.screenButton), ("transfer", l.transferButton),
                        ("keyboard", l.keyboardButton), ("drawer", l.drawerButton)] where !x.isEmpty { r.append((n, x)) }
         return r
     }

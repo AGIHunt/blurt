@@ -171,6 +171,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var retry: Runnable? = null
     private var pinger: Runnable? = null
     private var lastPong = 0L
+    /** the last file message from the session in hand (network thread): a file going out queues the pings behind up to 4 MiB of it, and
+     *  the computer's progress says it's there meanwhile */
+    @Volatile private var lastFileWord = 0L
     private var firstAttempt: Long? = null
     private var active = false
     private var generation = 0
@@ -221,6 +224,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private var pendingScroll: Pair<Float, Float>? = null
     private var flushing = false
     private var lastInfo: RemoteSessionInfo? = null
+    /** what the computer can do beyond the base protocol, as its last session said (RemoteFeature) */
+    val hostFeatures = MutableStateFlow<List<String>>(emptyList())
+    /** the computer answers every file's begin with where to start (any thread) */
+    val peerResumes: Boolean get() = RemoteFeature.RESUME in hostFeatures.value
 
     /** A code isn't a pairing until the computer has answered it: those already paired stay as they are until then. */
     private data class Joining(val mac: PairedMac, val back: PairedMac?, var since: Long)
@@ -440,6 +447,9 @@ class Link(private val c: Context, private val vault: KeyVault) {
     /** Nothing of this computer goes with the phone to the next: not a held key, a take, its picture or what went wrong with it. */
     private fun leave() {
         if (dictation.value != RemoteDictationPhase.IDLE) send(ToMac.Blurt(RemoteBlurtCommand.DICTATION_CANCEL))
+        // a file half sent waits for this computer (Continue); its features aren't the next one's
+        _current.value?.let { Remote.transfers.dropped(it.id) }
+        hostFeatures.value = emptyList()
         Remote.sticky.clear()
         send(ToMac.Mods(0))
         send(ToMac.ReleaseAll)
@@ -710,8 +720,13 @@ class Link(private val c: Context, private val vault: KeyVault) {
         ch.onOpen = { main.post { opened(ch) } }
         ch.onControl = { d ->
             val m = ToPhone.decode(d)
-            // a word from a computer no longer in hand says nothing about the one that is
-            if (m != null) main.post { if (channel === ch) heard(m) }
+            // files go to their own thread, in order, and never through the main one (Transfers)
+            if (m != null && Remote.transfers.takes(m)) {
+                if (channel === ch) {
+                    lastFileWord = now()
+                    Remote.transfers.fromHost(m, mac.id)
+                }
+            } else if (m != null) main.post { if (channel === ch) heard(m) }
         }
         ch.onVideo = { Remote.screen.packet(it) }
         ch.onProbe = { Remote.screen.probeBack(it) }
@@ -836,7 +851,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             joinOpens += 1
             if (joinOpens > 3) { ch.close(); return joinFailed(PairEnd.SPENT) }
         }
-        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOf(RemoteFeature.MOVE)))
+        ch.send(ToMac.Hello(deviceName(), Remote.mic.usable, ch.nonce, listOf(RemoteFeature.MOVE, RemoteFeature.FILES, RemoteFeature.RESUME)))
         val p = object : Runnable {
             override fun run() { ping(); if (pinger === this) main.postDelayed(this, 500) }
         }
@@ -864,7 +879,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     private fun ping() {
         val relay = channel?.isRelay == true
-        if (now() - lastPong > if (relay) 8000 else 2500) return lost()
+        if (now() - maxOf(lastPong, lastFileWord) > if (relay) 8000 else 2500) return lost()
         pingCount += 1
         // over the relay, one in four: every message counts against the free plan (once moved off the go-between, nothing goes through it)
         if (!relay || channel?.moved == true || pingCount % 4 == 0) send(ToMac.Ping(Net.now()))
@@ -877,6 +892,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
         val ch = channel
         channel = null
         ch?.close()
+        // a file going pauses where the computer had it; one coming keeps its part an hour
+        _current.value?.let { Remote.transfers.dropped(it.id) }
         meeting.value = false
         hostLocked.value = false
         // the talk key is still held: the microphone goes on, and what it hears waits for the session
@@ -903,6 +920,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         val ch = channel
         channel = null
         ch?.close()
+        _current.value?.let { Remote.transfers.dropped(it.id) }
         meeting.value = false
         hostLocked.value = false
         dropTake()
@@ -919,6 +937,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
             cameBack = 0
         }
         setState(State.CONNECTED)
+        // files that waited, or paused with the last session, go now
+        Remote.transfers.connected()
         // a new session: the computer has forgotten the last one's held keys, and stopped its picture
         if (parked) Remote.screen.pause() else Remote.screen.resume()
         send(ToMac.Mods(Remote.sticky.held))
@@ -955,6 +975,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 host.value = i.host
                 displayAspect.value = i.displayAspect
                 lastInfo = i
+                hostFeatures.value = i.features.orEmpty()
                 noteRelay(i.relay)
                 replacing?.let { send(ToMac.Replaces(it)); replacing = null }
                 // one relay serves all of them: a computer with none of its own (or only the go-between) takes the one the others use
@@ -1025,10 +1046,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 Remote.screen.source(m.width, m.height, m.codec, m.display, m.features)
             }
             is ToPhone.Displays -> displays.value = m.displays
-            // a computer host sends its clipboard to computer viewers only; nothing for a phone to do
-            is ToPhone.Clipboard -> {}
+            // what Get Copied Items asked for (a viewer hears it while it has the keys; a phone only when it asked)
+            is ToPhone.Clipboard -> Remote.transfers.clipboardText(m.text)
+            is ToPhone.ClipboardNone -> Remote.transfers.clipboardNone(m.why)
             is ToPhone.ScreenLocked -> hostLocked.value = m.locked
-            is ToPhone.FileProgress, is ToPhone.FileSaved, is ToPhone.FileFailed -> {}     // a phone sends no files
+            // taken on the way in (Transfers)
+            is ToPhone.FileProgress, is ToPhone.FileSaved, is ToPhone.FileFailed, is ToPhone.FileBegin, is ToPhone.FileChunk, is ToPhone.FileEnd -> {}
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
@@ -1285,6 +1308,13 @@ class Link(private val c: Context, private val vault: KeyVault) {
         pendingScroll?.let { ch?.sendPointer(RemotePointerPacket.Scroll(it.first, it.second, RemoteScrollPhase.CHANGED)) }
         pendingMove = null
         pendingScroll = null
+    }
+
+    /** A file's message, from the file engine's threads: false when there's no session to put it on. */
+    fun sendFile(m: ToMac): Boolean {
+        val ch = channel ?: return false
+        ch.send(m)
+        return true
     }
 
     /** from the microphone's thread */

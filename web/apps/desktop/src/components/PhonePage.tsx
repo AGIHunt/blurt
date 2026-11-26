@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type AppStatus, type RemoteConnection, type RemoteStatus } from '../api';
 import { phoneProblems, phoneTips, type PhoneProblem } from '../capabilities';
-import { i18n, t } from '../i18n';
+import { i18n, plural, t } from '../i18n';
 import { apply, useRemoteStatus } from '../settings/phone';
 import { Confirm, PairPanel } from '../settings/PhonePane';
 import { ComputersGroup } from '../viewer/ComputersGroup';
@@ -207,7 +207,13 @@ function ConnectionLog({ r }: { r: RemoteStatus }) {
   const line = (c: RemoteConnection) => {
     if (c.paired) return t('phone.log.paired', { 1: when(c.start) });
     const span = c.end ? `${when(c.start)}–${i18n().formatDate(c.end, 'time')}` : t('phone.log.now', { 1: when(c.start) });
-    return c.route ? `${span} · ${t(`phone.route.${c.route}`)}` : span;
+    // what moved, counted, never what it was
+    const moved = [
+      c.clipboard ? t('phone.log.clipboard') : '',
+      c.received ? plural('phone.log.received', c.received) : '',
+      c.sent ? plural('phone.log.sent', c.sent) : '',
+    ].filter(Boolean);
+    return [c.route ? `${span} · ${t(`phone.route.${c.route}`)}` : span, ...moved].join(' · ');
   };
   const row = (c: RemoteConnection) => (
     <DeviceRow key={`${c.id}-${c.paired}`} icon={c.paired ? 'plus' : r.devices.find((d) => d.id === c.deviceId)?.kind === 'computer' ? 'screen' : 'phone'}

@@ -67,12 +67,28 @@ const NEARBY_PAUSE: Duration = Duration::from_secs(30);
 pub trait App: Send + Sync + 'static {
     /// The status changed (Settings, the tray).
     fn status(&self, _s: &Status) {}
-    /// A file from `from` was saved to the Downloads folder as `name`: tell the person here.
+    /// A file from `from` was saved to Downloads/Blurt as `name`: tell the person here.
     fn file_received(&self, _from: &str, _name: &str) {}
+    /// The last of a batch of `count` files from `from` was saved to `folder`: one notification for them all.
+    fn files_received(&self, _from: &str, _count: usize, _folder: &std::path::Path) {}
+    /// This computer's clipboard was read for `to` (getClipboard): the "being controlled" bar says so for 4 s. Never its content.
+    fn clipboard_sent(&self, _to: &str) {}
+    /// A `clip` from a phone may be pasted with Ctrl+V into what has the focus now: false in a password field (the app reads the
+    /// focus as dictation does). The host itself also holds back at the lock screen and where its input can't reach.
+    fn may_paste(&self) -> bool {
+        true
+    }
+    /// A file to or from the device connected now changed (the bar's Send Files…, a getClipboard's files, a phone's files).
+    fn transfer(&self, _t: &crate::files::Transfer) {}
     /// The sentence a paired device hears when others were paired here since it was last in, or when one is let in while it's
     /// connected (anti-scam, remote-1.1.md §3), in the app's language. `devices`: their names, joined; `host`: this computer's name.
     fn new_pairing_notice(&self, devices: &str, host: &str) -> String {
         format!("New device paired with {host}: {devices}. If that wasn't you or your family, remove it on that computer.")
+    }
+    /// What a device hears when its pasted image or text stayed on the clipboard here: a password field had the focus, or the
+    /// computer was locked. In the app's language.
+    fn not_pasted_notice(&self) -> String {
+        "Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard.".into()
     }
     /// A new phone waits for a yes: the owner should see the six digits now (raise the window, a notification).
     fn asking(&self, _device: &str, _digits: &str) {}
@@ -158,6 +174,8 @@ pub struct Connected {
     /// the stream moves to the direct path)
     pub route: &'static str,
     pub screen: bool,
+    /// its hello listed `files`: the bar's Send Files… shows only then
+    pub files: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -207,8 +225,9 @@ struct Code {
 
 struct Sess {
     chan: Arc<Chan>,
-    /// files it sends (made at the first one)
-    incoming: Option<crate::incoming::Receiver>,
+    /// its hello lists `files` (it takes files from here) and `resume`
+    takes_files: bool,
+    resumes: bool,
     /// its line in the connection log, once greeted (the session's sid)
     logged: bool,
     id: Option<String>,
@@ -328,6 +347,12 @@ struct Core {
     udp: Mutex<Option<Arc<UdpSocket>>>,
     /// where files from viewers go (the app sets it: `Host::set_downloads`); None: files aren't taken
     downloads: Mutex<Option<std::path::PathBuf>>,
+    /// files coming in, from every device (parts kept an hour after a drop, by device): made by `set_downloads`
+    receiver: Mutex<Option<Arc<crate::files::Receiver>>>,
+    /// files going out, one sender per device: paused while it's away, going on when it's back
+    senders: Mutex<HashMap<String, crate::files::Sender>>,
+    /// the screen is locked, as the watch last saw it (read by the receiver without the state's lock)
+    locked_now: std::sync::atomic::AtomicBool,
     /// the last snapshot handed to the system service (`sync_standby`)
     standby_sent: Mutex<String>,
     handshaking: AtomicUsize,
@@ -414,6 +439,9 @@ impl Host {
             cfg,
             udp: Mutex::new(None),
             downloads: Mutex::new(None),
+            receiver: Mutex::new(None),
+            senders: Mutex::new(HashMap::new()),
+            locked_now: std::sync::atomic::AtomicBool::new(false),
             standby_sent: Mutex::new(String::new()),
             handshaking: AtomicUsize::new(0),
             next_sid: AtomicU64::new(1),
@@ -518,7 +546,65 @@ impl Host {
 
     /// Where files from viewers go (the Downloads folder): set, the host takes them and its sessions say so.
     pub fn set_downloads(&self, dir: Option<std::path::PathBuf>) {
+        *self.core.receiver.lock().unwrap() = dir.as_ref().map(|d| Arc::new(self.core.make_receiver(d.clone())));
         *self.core.downloads.lock().unwrap() = dir;
+    }
+
+    /// The "being controlled" bar's Send Files…: these files (folders zipped) to the device connected now, if it takes files.
+    /// false: no such device.
+    pub fn send_files(&self, paths: Vec<std::path::PathBuf>) -> bool {
+        let device = {
+            let s = self.core.st.lock().unwrap();
+            let Some(x) = s.current.and_then(|c| s.sessions.get(&c)) else { return false };
+            if !x.takes_files || !x.chan.greeted.load(SeqCst) {
+                return false;
+            }
+            x.id.clone().unwrap_or_default()
+        };
+        let me = self.core.arc();
+        self.core.rt.spawn_blocking(move || {
+            let list = crate::files::prepare(&paths);
+            if !list.is_empty() {
+                me.log(json!({"event": "remote_files_out", "count": list.len()}));
+                me.sender_for(&device).add(list, false);
+            }
+        });
+        true
+    }
+
+    /// What's going to or coming from the device connected now (its card on the bar).
+    pub fn transfers(&self) -> Vec<crate::files::Transfer> {
+        let Some(device) = self.connected_id() else { return vec![] };
+        let mut l = self.core.senders.lock().unwrap().get(&device).map(|s| s.transfers()).unwrap_or_default();
+        if let Some(r) = self.core.receiver.lock().unwrap().clone() {
+            l.extend(r.current().into_iter().filter(|(d, _)| *d == device).map(|(_, t)| t));
+        }
+        l
+    }
+
+    /// × on a file going to the device connected now, or coming from it.
+    pub fn stop_transfer(&self, id: &str) {
+        let Some(device) = self.connected_id() else { return };
+        if let Some(s) = self.core.senders.lock().unwrap().get(&device).cloned() {
+            s.stop(Some(id));
+        }
+        let r = self.core.receiver.lock().unwrap().clone();
+        if let Some(r) = r {
+            let chan = {
+                let s = self.core.st.lock().unwrap();
+                s.current.and_then(|c| s.sessions.get(&c)).map(|x| x.chan.clone())
+            };
+            r.stop(id, &device, &mut |a| {
+                if let Some(c) = &chan {
+                    c.send(&ToPhone::from(a));
+                }
+            });
+        }
+    }
+
+    fn connected_id(&self) -> Option<String> {
+        let s = self.core.st.lock().unwrap();
+        s.current.and_then(|c| s.sessions.get(&c)).and_then(|x| x.id.clone())
     }
 
     /// 连接记录: sessions and pairings on this computer, oldest first.
@@ -788,6 +874,16 @@ impl Core {
         self.backend.lock().unwrap().now()
     }
 
+    /// To `device` only, if it's the one connected now.
+    fn to_device(&self, device: &str, m: &ToPhone) {
+        let s = self.st.lock().unwrap();
+        if let Some(sess) = s.current.and_then(|id| s.sessions.get(&id)) {
+            if sess.chan.greeted.load(SeqCst) && sess.id.as_deref() == Some(device) {
+                sess.chan.send(m);
+            }
+        }
+    }
+
     fn to_phone(&self, m: &ToPhone) {
         let s = self.st.lock().unwrap();
         if let Some(sess) = s.current.and_then(|id| s.sessions.get(&id)) {
@@ -818,6 +914,7 @@ impl Core {
                 name: shown(s, c),
                 route: route_of(&c.chan),
                 screen: c.screen.is_some(),
+                files: c.takes_files,
             }),
             relay: RelayStatus {
                 address: relay_address(&s.settings),
@@ -1263,7 +1360,8 @@ impl Core {
         s.sessions.insert(
             sid,
             Sess {
-                incoming: None,
+                takes_files: false,
+                resumes: false,
                 logged: false,
                 chan: chan.clone(),
                 id: Some(id.clone()),
@@ -1444,6 +1542,7 @@ impl Core {
     /// The screen locked or unlocked (where the backend can tell): the viewer says so instead of showing a picture that stopped.
     fn poll_locked(&self, g: u64) {
         let Some(l) = self.backend.lock().unwrap().locked() else { return };
+        self.locked_now.store(l, SeqCst);
         let mut s = self.st.lock().unwrap();
         if s.watch_gen != g || s.locked_sent == Some(l) {
             return;
@@ -1524,6 +1623,15 @@ impl Core {
             x.screen_gen += 1;
         }
         self.keep_awake(s, false, false);
+        // files under way pause: the part waits an hour here, the sender goes on when the device is back
+        if let Some(dev) = s.sessions.get(&sid).and_then(|x| x.id.clone()) {
+            if let Some(r) = self.receiver.lock().unwrap().clone() {
+                r.suspend(&dev, None);
+            }
+            if let Some(f) = self.senders.lock().unwrap().get(&dev).cloned() {
+                f.connection(false);
+            }
+        }
         if s.sessions.get(&sid).is_some_and(|x| x.logged) {
             self.files.change_connections(|l| {
                 if let Some(c) = l.iter_mut().rev().find(|c| c.id == sid && !c.paired) {
@@ -1623,6 +1731,8 @@ impl Core {
                     x.nonce = nonce;
                     x.moves = moves;
                     x.viewer = viewer;
+                    x.takes_files = has(crate::wire::FILES);
+                    x.resumes = has(crate::wire::RESUME);
                 }
                 chan.phone_moves.store(moves, SeqCst);
                 if s.sessions.get(&sid).is_some_and(|x| x.deferred) {
@@ -1881,30 +1991,29 @@ impl Core {
             }
             // 隐私屏: Mac only for now (this host doesn't list `privacy`, so viewers don't offer it)
             ToMac::PrivacyScreen(_) => {}
-            ToMac::FileBegin { id, name, size } => {
-                let Some(dir) = self.downloads.lock().unwrap().clone() else { return };
-                let x = s.sessions.get_mut(&sid).unwrap();
-                let r = x.incoming.get_or_insert_with(|| crate::incoming::Receiver::new(dir));
-                if let Some(m) = r.begin(&id, &name, size, false) {
-                    chan.send(&m);
-                }
+            // a file from the phone or viewer (to Downloads/Blurt, or a clip onto the clipboard), and its answers to ours
+            m @ (ToMac::FileBegin { .. } | ToMac::FileChunk { .. } | ToMac::FileEnd { .. }) => {
+                let Some(r) = self.receiver.lock().unwrap().clone() else { return };
+                let Some(dev) = s.sessions.get(&sid).and_then(|x| x.id.clone()) else { return };
+                let Some(o) = m.file_out() else { return };
+                r.heard(o, &dev, &mut |a| chan.send(&ToPhone::from(a)));
             }
-            ToMac::FileChunk { id, data } => {
-                if let Some(m) = s.sessions.get_mut(&sid).and_then(|x| x.incoming.as_mut()).and_then(|r| r.chunk(&id, &data)) {
-                    chan.send(&m);
-                }
+            m @ (ToMac::FileProgress { .. } | ToMac::FileSaved { .. } | ToMac::FileFailed { .. }) => {
+                let Some(dev) = s.sessions.get(&sid).and_then(|x| x.id.clone()) else { return };
+                let (Some(a), Some(f)) = (m.file_answer(), self.senders.lock().unwrap().get(&dev).cloned()) else { return };
+                drop(guard);
+                f.heard(a);
             }
-            ToMac::FileEnd { id } => {
-                let Some(x) = s.sessions.get_mut(&sid) else { return };
-                let from = x.name.clone();
-                let Some(said) = x.incoming.as_mut().map(|r| r.end(&id)) else { return };
-                if let Some(m) = said.msg {
-                    chan.send(&m);
+            ToMac::GetClipboard => {
+                let x = &s.sessions[&sid];
+                let (dev, takes) = (x.id.clone().unwrap_or_default(), x.takes_files);
+                if self.locked_now.load(SeqCst) {
+                    chan.send(&ToPhone::ClipboardNone { why: "locked".into() });
+                    return;
                 }
-                if let Some(name) = said.saved {
-                    self.log(json!({"event": "remote_file", "state": "saved"}));
-                    self.post(move |a| a.file_received(&from, &name));
-                }
+                drop(guard);
+                let (me, chan) = (self.clone(), chan.clone());
+                self.rt.spawn_blocking(move || me.give_clipboard(&chan, &dev, takes));
             }
             ToMac::KeysCaptured(on) => {
                 let x = s.sessions.get_mut(&sid).unwrap();
@@ -1954,6 +2063,249 @@ impl Core {
                 tokio::time::sleep(CLIPBOARD_EVERY).await;
             }
         });
+    }
+
+    /// Files from viewers and phones: Downloads/Blurt (quarantined), a `clip` onto the clipboard and pasted, the person here told.
+    fn make_receiver(&self, dir: std::path::PathBuf) -> crate::files::Receiver {
+        let weak = self.me.lock().unwrap().clone();
+        let hooks = crate::files::Hooks {
+            locked: Box::new({
+                let w = weak.clone();
+                move || w.upgrade().is_some_and(|c| c.locked_now.load(SeqCst))
+            }),
+            saved: Box::new(|_, _| {}),
+            clip: Box::new({
+                let w = weak.clone();
+                move |path, name, device| {
+                    let Some(me) = w.upgrade() else { return };
+                    let device = device.to_string();
+                    let Ok(bytes) = std::fs::read(path) else { return };
+                    let clip = if crate::files::is_image(name) {
+                        crate::host::Clip::Image(bytes)
+                    } else {
+                        crate::host::Clip::Text(String::from_utf8_lossy(&bytes).into_owned())
+                    };
+                    let image = matches!(clip, crate::host::Clip::Image(_));
+                    let me2 = me.clone();
+                    // onto the clipboard always; Ctrl+V only where typing would go: not at the lock or login screen, not where this
+                    // host's input can't reach (the secure desktop, an elevated window), not in a password field
+                    me.post(move |a| {
+                        let field_ok = a.may_paste();
+                        let notice = a.not_pasted_notice();
+                        let me3 = me2.clone();
+                        me2.rt.spawn_blocking(move || {
+                            let mut b = me3.backend.lock().unwrap();
+                            let locked = me3.locked_now.load(SeqCst);
+                            let paste = field_ok && !locked && b.input().can_control();
+                            let ok = b.input().paste_clip(&clip, paste);
+                            drop(b);
+                            me3.log(json!({"event": "remote_clip_in", "image": image, "on_clipboard": ok, "pasted": ok && paste}));
+                            // held back in a password field or at the lock screen: the device hears why nothing appeared
+                            if ok && (!field_ok || locked) {
+                                me3.to_device(&device, &ToPhone::Notice(notice));
+                            }
+                        });
+                    });
+                }
+            }),
+            change: Box::new({
+                let w = weak.clone();
+                move |t, device| {
+                    let Some(me) = w.upgrade() else { return };
+                    me.transfer_changed(t, device);
+                }
+            }),
+        };
+        crate::files::Receiver::new(self.cfg.dir.join("parts"), dir, true, hooks)
+    }
+
+    /// One sender per device: what goes to it waits while it's away, and on the public connection service until the stream moved.
+    fn sender_for(&self, device: &str) -> crate::files::Sender {
+        let mut l = self.senders.lock().unwrap();
+        if let Some(s) = l.get(device) {
+            return s.clone();
+        }
+        let weak = self.me.lock().unwrap().clone();
+        let session = {
+            let (w, d) = (weak.clone(), device.to_string());
+            // the device's session now, greeted and taking files: its channel, whether its stream may carry files, and resume
+            move || -> Option<(Arc<Chan>, bool, bool)> {
+                let me = w.upgrade()?;
+                let s = me.st.lock().unwrap();
+                let x = s.current.and_then(|c| s.sessions.get(&c)).filter(|x| x.id.as_deref() == Some(d.as_str()))?;
+                // after `session` has gone: a phone reads nothing else before it
+                if !x.takes_files || !x.told || !x.chan.greeted.load(SeqCst) || x.chan.is_closed() {
+                    return None;
+                }
+                let moved = !x.chan.meet.load(SeqCst) || x.chan.moved_out();
+                Some((x.chan.clone(), moved, x.resumes))
+            }
+        };
+        let session = Arc::new(session);
+        let s = crate::files::Sender::new(
+            {
+                let session = session.clone();
+                move |o| match session() {
+                    Some((chan, true, _)) => {
+                        chan.send(&ToPhone::from(o));
+                        true
+                    }
+                    _ => false,
+                }
+            },
+            {
+                let session = session.clone();
+                move || session().is_some_and(|(_, moved, _)| moved)
+            },
+            {
+                let session = session.clone();
+                move || session().is_some_and(|(_, _, r)| r)
+            },
+            {
+                let (w, d) = (weak, device.to_string());
+                move |t| {
+                    if let Some(me) = w.upgrade() {
+                        me.transfer_changed(t, &d);
+                    }
+                }
+            },
+        );
+        l.insert(device.to_string(), s.clone());
+        s
+    }
+
+    /// A file either way changed: the app hears it (the bar's card); a finished one counts in the connection log, and the last of a
+    /// batch received is one notification. Called from the engine, maybe under the state's lock: everything goes through the app's
+    /// thread.
+    fn transfer_changed(&self, t: &crate::files::Transfer, device: &str) {
+        let (t, device) = (t.clone(), device.to_string());
+        let weak = self.me.lock().unwrap().clone();
+        self.post(move |a| {
+            a.transfer(&t);
+            if t.state != crate::files::State::Done || t.clip {
+                return;
+            }
+            let Some(me) = weak.upgrade() else { return };
+            let (sid, from) = {
+                let s = me.st.lock().unwrap();
+                let x = s.current.and_then(|c| s.sessions.get(&c).map(|x| (c, x))).filter(|(_, x)| x.id.as_deref() == Some(device.as_str()));
+                (x.map(|(c, _)| c), x.map(|(_, x)| shown(&s, x)).unwrap_or_default())
+            };
+            if let Some(sid) = sid {
+                me.files.change_connections(|l| {
+                    if let Some(c) = l.iter_mut().rev().find(|c| c.id == sid && !c.paired) {
+                        if t.incoming {
+                            c.received += 1;
+                        } else {
+                            c.sent += 1;
+                        }
+                    }
+                });
+            }
+            if t.incoming {
+                me.log(json!({"event": "remote_file", "state": "saved"}));
+                match (t.index, t.count) {
+                    (Some(i), Some(n)) if i == n && n > 1 => {
+                        let dir = me.downloads.lock().unwrap().clone().unwrap_or_default();
+                        a.files_received(&from, n as usize, &dir);
+                    }
+                    (Some(_), Some(n)) if n > 1 => {}
+                    _ => a.file_received(&from, &t.name),
+                }
+            }
+        });
+    }
+
+    /// getClipboard: this computer's clipboard, read once, to `chan`: text as `clipboard` (64 KiB at most), longer text and an image
+    /// as a `clip` file, copied files as a batch (folders zipped), or why not (`clipboardNone`). The bar says it was read; the log
+    /// counts it, never what it was.
+    fn give_clipboard(self: &Arc<Self>, chan: &Arc<Chan>, device: &str, takes_files: bool) {
+        use crate::host::Copied;
+        let none = |why: &str| chan.send(&ToPhone::ClipboardNone { why: why.into() });
+        let copied = self.backend.lock().unwrap().input().copied();
+        let kind = match &copied {
+            Copied::Empty => "empty",
+            Copied::Text(_) => "text",
+            Copied::Image(_) => "image",
+            Copied::Files(_) => "files",
+            Copied::Unsupported => "unsupported",
+        };
+        self.log(json!({"event": "remote_clipboard_read", "kind": kind}));
+        let clip = |name: &str, bytes: &[u8]| -> bool {
+            match crate::files::temporary(name, bytes) {
+                Some(p) => {
+                    self.sender_for(device).add(vec![(p, true)], true);
+                    true
+                }
+                None => false,
+            }
+        };
+        let gave = match copied {
+            Copied::Empty => {
+                none("empty");
+                false
+            }
+            Copied::Unsupported => {
+                none("unsupported");
+                false
+            }
+            Copied::Text(t) if crate::wire::clipboard_fits(&t) => {
+                {
+                    let mut s = self.st.lock().unwrap();
+                    if let Some(x) = s.sessions.get_mut(&chan.sid) {
+                        x.clip_known = Some(t.clone()); // a viewer's watch doesn't send it again
+                    }
+                }
+                chan.send(&ToPhone::Clipboard(t));
+                true
+            }
+            Copied::Text(_) | Copied::Image(_) | Copied::Files(_) if !takes_files => {
+                none("unsupported");
+                false
+            }
+            Copied::Text(t) => clip("Text.txt", t.as_bytes()),
+            Copied::Image(png) => clip("Image.png", &png),
+            Copied::Files(list) => {
+                // too_big: more than 1,000 files; too_large: one of them (or a zipped folder) over 4 GB
+                if list.len() > crate::files::MAX_COUNT {
+                    none("too_big");
+                    false
+                } else if list.iter().any(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() as i64 > crate::files::MAX_SIZE)) {
+                    none("too_large");
+                    false
+                } else {
+                    let ready = crate::files::prepare(&list);
+                    if ready.iter().any(|(p, _)| std::fs::metadata(p).is_ok_and(|m| m.len() as i64 > crate::files::MAX_SIZE)) {
+                        for (p, t) in &ready {
+                            if *t {
+                                let _ = std::fs::remove_dir_all(p.parent().unwrap_or(p));
+                            }
+                        }
+                        none("too_large");
+                        false
+                    } else if ready.is_empty() {
+                        none("empty");
+                        false
+                    } else {
+                        self.sender_for(device).add(ready, false);
+                        true
+                    }
+                }
+            }
+        };
+        if !gave {
+            return;
+        }
+        let (sid, to) = {
+            let s = self.st.lock().unwrap();
+            (chan.sid, s.sessions.get(&chan.sid).map(|x| shown(&s, x)).unwrap_or_default())
+        };
+        self.files.change_connections(|l| {
+            if let Some(c) = l.iter_mut().rev().find(|c| c.id == sid && !c.paired) {
+                c.clipboard += 1;
+            }
+        });
+        self.post(move |a| a.clipboard_sent(&to));
     }
 
     fn screen(&self, s: &State, sid: u64) -> Option<Arc<ScreenSession>> {
@@ -2053,7 +2405,7 @@ impl Core {
         self.files.save_devices(&s.devices);
         let name = s.devices.last().map(|d| d.name.clone()).unwrap_or_default();
         self.files.change_connections(|l| {
-            l.push(Connection { id: sid, device_id: id.clone(), name: name.clone(), start: now_ms(), end: None, route: None, paired: true })
+            l.push(Connection { id: sid, device_id: id.clone(), name: name.clone(), start: now_ms(), end: None, route: None, paired: true, clipboard: 0, received: 0, sent: 0 })
         });
         // the device connected when the owner said yes heard of it then (take_over); the others hear of it when they next come in
         if let Some(d) = told.and_then(|t| s.devices.iter_mut().find(|d| d.id == t)) {
@@ -2076,7 +2428,7 @@ impl Core {
                 x.logged = true;
                 let (dev, name, route) = (x.id.clone().unwrap_or_default(), x.name.clone(), route_of(&x.chan).to_string());
                 self.files.change_connections(|l| {
-                    l.push(Connection { id: sid, device_id: dev, name, start: now_ms(), end: None, route: Some(route), paired: false })
+                    l.push(Connection { id: sid, device_id: dev, name, start: now_ms(), end: None, route: Some(route), paired: false, clipboard: 0, received: 0, sent: 0 })
                 });
             }
         }
@@ -2107,11 +2459,15 @@ impl Core {
             features: Some({
                 let mut f = vec![crate::wire::MOVE.to_string(), crate::wire::VIEWER.to_string()];
                 if self.downloads.lock().unwrap().is_some() {
-                    f.push("files".to_string());
+                    f.extend([crate::wire::FILES, crate::wire::RESUME, crate::wire::CLIPBOARD].map(String::from));
                 }
                 f
             }),
         };
+        // files that paused when this device left go on (once the stream has moved, on the public connection service)
+        if let Some(f) = s.sessions[&sid].id.as_ref().and_then(|d| self.senders.lock().unwrap().get(d).cloned()) {
+            f.connection(true);
+        }
         {
             let n = name.clone();
             self.post(move |a| a.session(Some(&n)));

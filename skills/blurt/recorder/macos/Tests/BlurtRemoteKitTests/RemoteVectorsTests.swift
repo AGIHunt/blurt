@@ -80,6 +80,13 @@ final class RemoteVectorsTests: XCTestCase {
             ("file_begin", .fileBegin(id: "f1", name: "notes.txt", size: 5)),
             ("file_chunk", .fileChunk(id: "f1", data: Data("hello".utf8))),
             ("file_end", .fileEnd(id: "f1")),
+            // clipboard and files both ways (docs/design/remote-files.md)
+            ("file_begin_batch", .fileBegin(id: "f2", name: "照片 1.heic", size: 2_400_000, index: 1, count: 3, total: 7_000_000)),
+            ("file_begin_clip", .fileBegin(id: "f3", name: "Image.png", size: 52_000, clip: true)),
+            ("get_clipboard", .getClipboard),
+            ("file_progress_back", .fileProgress(id: "h1", bytes: 1_048_576)),
+            ("file_saved_back", .fileSaved(id: "h1", name: "report 2.pdf")),
+            ("file_failed_back", .fileFailed(id: "h1", why: "stopped")),
             ("key_f13_down", .key(RemoteChord([], "F13"), down: true)),
             ("key_keypad_enter", .key(RemoteChord([], "KeypadEnter"), down: nil)),
         ]
@@ -133,6 +140,11 @@ final class RemoteVectorsTests: XCTestCase {
             ("file_progress", .fileProgress(id: "f1", bytes: 5)),
             ("file_saved", .fileSaved(id: "f1", name: "notes.txt")),
             ("file_failed", .fileFailed(id: "f1", why: "space")),
+            ("file_begin_back", .fileBegin(id: "h1", name: "report.pdf", size: 5, index: 2, count: 2, total: 9)),
+            ("file_begin_back_clip", .fileBegin(id: "h2", name: "Text.txt", size: 70_000, clip: true)),
+            ("file_chunk_back", .fileChunk(id: "h1", data: Data("hello".utf8))),
+            ("file_end_back", .fileEnd(id: "h1")),
+            ("clipboard_none", .clipboardNone(why: "empty")),
         ]
     }
 
@@ -258,6 +270,21 @@ final class RemoteVectorsTests: XCTestCase {
                             ["viewer": "linux", "host": "windows", "pressed": Int(RemoteModifiers([.control]).rawValue),
                              "sent": Int(RemoteViewerKeys.map([.control], from: .linux, to: .windows, mapping: true).rawValue)]],
             "nearby": ["idPrefix": RemoteNearby.idPrefix, "key": hex(RemoteNearby.key), "seed": "blurt-remote-nearby-1"],
+        ]
+        // clipboard and files (docs/design/remote-files.md): feature names and every limit an implementation must share
+        out["files"] = [
+            "features": ["files": RemoteFeature.files, "resume": RemoteFeature.resume, "clipboard": RemoteFeature.clipboard],
+            "chunk": RemoteFiles.chunk, "window": RemoteFiles.window, "progressEvery": RemoteFiles.progressEvery, "oldProgressEvery": RemoteFiles.oldProgressEvery,
+            "minWindow": RemoteFiles.minWindow, "windowMilliseconds": Int(RemoteFiles.windowSeconds * 1000),
+            "windowFor": [[0, 0], [100_000, RemoteFiles.window(rate: 100_000, resumes: true)], [1_500_000, RemoteFiles.window(rate: 1_500_000, resumes: true)],
+                          [50_000_000, RemoteFiles.window(rate: 50_000_000, resumes: true)]].map { ["rate": $0[0], "window": $0[0] == 0 ? RemoteFiles.minWindow : $0[1]] },
+            "maxSize": RemoteFiles.maxSize,
+            "maxCount": RemoteFiles.maxCount, "maxClipImage": RemoteFiles.maxClipImage, "keepPartsSeconds": Int(RemoteFiles.keepParts),
+            "resumeWaitSeconds": Int(RemoteFiles.resumeWait), "askOnCellular": RemoteFiles.askOnCellular,
+            "clean": [["in": "../secret/.bashrc", "out": "bashrc"], ["in": "a:b.txt", "out": "a-b.txt"], ["in": "C:\\Users\\me\\报告.pdf", "out": "报告.pdf"],
+                      ["in": "   ", "out": "file"], ["in": "tab\there.txt", "out": "tabhere.txt"]].map { c in
+                          ["in": c["in"]!, "out": RemoteFiles.clean(c["in"]!)]
+                      },
         ]
         let pairing = RemotePairing(macID: "host-id-1", deviceID: "device-id-1", key: paired, macName: "Studio PC", port: 50123,
                                     addresses: ["192.168.1.20", "fe80::1"], relay: "wss://relay.example.com")

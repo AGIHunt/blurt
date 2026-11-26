@@ -100,8 +100,8 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
         }
         // the sheets' layer is there only while it has something to show: a sheet, or a question (a link from outside, words not sent)
         lifecycleScope.launch {
-            kotlinx.coroutines.flow.combine(sheets.current, Remote.link.offered, Remote.link.unsent, Remote.link.state) { s, o, u, st ->
-                s != null || o != null || u.isNotEmpty() && st == dev.blurt.remote.app.net.Link.State.CONNECTED
+            kotlinx.coroutines.flow.combine(sheets.current, Remote.link.offered, Remote.link.unsent, Remote.link.state, Remote.transfers.ask) { s, o, u, st, a ->
+                s != null || o != null || a != null || u.isNotEmpty() && st == dev.blurt.remote.app.net.Link.State.CONNECTED
             }.collect { on ->
                 sheetView.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
                 screen.covered = on
@@ -133,9 +133,13 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
         handle(intent)
     }
 
-    /** A pairing link from outside (the camera app, a web page): it asks first. */
+    /** A pairing link from outside (the camera app, a web page): it asks first. The share sheet's items open the Transfer sheet. */
     private fun handle(i: Intent?) {
         handled = true
+        if (i?.getBooleanExtra(SHOW_TRANSFERS, false) == true) {
+            i.removeExtra(SHOW_TRANSFERS)
+            sheets.show(Sheet.Transfer)
+        }
         val u = i?.data ?: return
         if (u.scheme == "blurtremote") Remote.link.openExternal(u.toString())
         i.data = null
@@ -208,6 +212,7 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
     override fun editor() = sheets.show(Sheet.Editor)
     override fun switchMac() = sheets.show(Sheet.Switch)
     override fun displays() = sheets.show(Sheet.Displays)
+    override fun transfer() = sheets.show(Sheet.Transfer)
     override fun askMic() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return
         askMic.launch(Manifest.permission.RECORD_AUDIO)
@@ -216,7 +221,9 @@ class MainActivity : ComponentActivity(), PadScreen.Sheets {
         if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    private companion object {
-        const val HANDLED = "handled"
+    companion object {
+        private const val HANDLED = "handled"
+        /** an intent extra: open on the Transfer sheet (ShareActivity) */
+        const val SHOW_TRANSFERS = "dev.blurt.remote.transfers"
     }
 }

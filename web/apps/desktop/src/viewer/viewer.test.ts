@@ -116,3 +116,55 @@ describe('the cover over the picture', () => {
     expect(coverFor('forgotten', 'Studio', null, false, true)?.kind).toBe('removed');
   });
 });
+
+describe('files both ways', () => {
+  it('says where a file goes and how far, its batch and time left, and each state', async () => {
+    const { transferLine, noneLine, stoppable, size } = await import('./files');
+    const { setLang } = await import('../i18n');
+    setLang('en');
+    const MB = 1024 * 1024;
+    const x = { id: 'a', name: 'Q4 Quote.xlsx', size: 350 * MB, done: 141 * MB, incoming: true, clip: false, state: 'going' as const };
+    expect(transferLine(x, 'Office PC', 'local')).toBe(`From Office PC · ${size(141 * MB)} of ${size(350 * MB)}`);
+    expect(transferLine({ ...x, incoming: false, index: 2, count: 3 }, 'Office PC', 'local')).toMatch(/^To Office PC · 2 of 3 · /);
+    expect(transferLine({ ...x, secondsLeft: 95 }, 'Office PC', 'local')).toMatch(/ · 2 min left$/);
+    expect(transferLine({ ...x, secondsLeft: 39.2 }, 'Office PC', 'local')).toMatch(/ · 40 sec left$/);
+    expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'goBetween')).toBe('Connecting directly…');
+    expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'local')).toBe('Waiting');
+    expect(transferLine({ ...x, state: 'paused' }, 'Office PC', 'local')).toBe('Paused. Resumes when reconnected.');
+    expect(transferLine({ ...x, state: 'done' }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt');
+    expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt on Office PC');
+    expect(transferLine({ ...x, state: 'failed', why: 'stopped' }, 'Office PC', 'local')).toBe('Stopped');
+    expect(transferLine({ ...x, state: 'failed', why: 'space' }, 'Office PC', 'local')).toBe('Not received: not enough space on this computer.');
+    expect(transferLine({ ...x, state: 'failed', why: 'locked', incoming: false }, 'Office PC', 'local')).toBe('Not sent: that computer is locked.');
+    expect(noneLine('empty', 'Office PC')).toBe('Nothing is copied on Office PC.');
+    expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Copy up to 1,000 at a time.');
+    expect(noneLine('too_large', 'Office PC')).toBe('A file copied on Office PC is larger than 4 GB.');
+    expect([stoppable(x), stoppable({ ...x, state: 'done' })]).toEqual([true, false]);
+    setLang('zh-Hans');
+    expect(transferLine({ ...x, secondsLeft: 150 }, 'Office PC', 'local')).toMatch(/ · 还剩 3 分钟$/);
+    expect(transferLine({ ...x, secondsLeft: 40 }, 'Office PC', 'local')).toMatch(/ · 还剩 40 秒$/);
+    expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('已保存到 Office PC 的「下载/Blurt」');
+    expect(transferLine({ ...x, index: 1, count: 3 }, 'Office PC', 'local')).toMatch(/^来自 Office PC · 第 1\/3 个 · /);
+    setLang('en');
+  });
+
+  it('the host bar: where and how far a file to the device is, its batch after the name, paused, else the name', async () => {
+    const { barLine, lineParts, size } = await import('./files');
+    const { setLang } = await import('../i18n');
+    setLang('en');
+    const MB = 1024 * 1024;
+    const x = { id: 'b', name: 'Lesson 3.mp4', size: 350 * MB, done: 141 * MB, incoming: false, clip: false, state: 'going' as const };
+    expect(barLine(x, 'Maya’s iPhone')).toBe(`To Maya’s iPhone · ${size(141 * MB)} of ${size(350 * MB)}`);
+    expect(barLine({ ...x, index: 2, count: 5 }, 'Maya’s iPhone')).toBe(`To Maya’s iPhone · 2 of 5 · ${size(141 * MB)} of ${size(350 * MB)}`);
+    expect(barLine({ ...x, state: 'paused' }, 'Maya’s iPhone')).toBe('Paused. Resumes when reconnected.');
+    expect([barLine({ ...x, state: 'done' }, 'P'), barLine({ ...x, incoming: true }, 'P'), barLine({ ...x, clip: true }, 'P')]).toEqual([null, null, null]);
+    setLang('zh-Hans');
+    expect(barLine({ ...x, index: 2, count: 5 }, 'Maya 的 iPhone')).toBe(`发往 Maya 的 iPhone · 第 2/5 个 · ${size(141 * MB)} / ${size(350 * MB)}`);
+    setLang('en');
+    const { transferLines } = await import('./files');
+    expect(transferLines({ ...x, incoming: true, index: 2, count: 3, secondsLeft: 95 }, 'Den PC', 'local')).toEqual(
+      ['From Den PC · 2 of 3', `${size(141 * MB)} of ${size(350 * MB)} · 2 min left`]);
+    expect(transferLines({ ...x, state: 'paused' }, 'Den PC', 'local')).toEqual(['Paused. Resumes when reconnected.']);
+    expect(lineParts('To Den PC · 3 MB of 12 MB · 2 min left')).toEqual(['To Den PC', '3 MB of 12 MB', '2 min left']);
+  });
+});

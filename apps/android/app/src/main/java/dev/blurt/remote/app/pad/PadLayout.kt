@@ -88,6 +88,8 @@ class PadLayout(
     var keyboardButton = Frame(); private set
     var settingsButton = Frame(); private set
     var screenButton = Frame(); private set
+    /** the Transfer sheet: files and the clipboard, next to the screen button */
+    var transferButton = Frame(); private set
     var findButton = Frame(); private set
     /** which of the computer's displays the picture is of; empty when there's only one */
     var displayButton = Frame(); private set
@@ -203,16 +205,20 @@ class PadLayout(
         if (tall) topRowTall(block, t, width) else {
             // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to the
             // left has room
-            val iconW = if (width < 390) 32f else 36f
+            // since Transfer came (2026-11-26) the four by the arrow key are 4 dp narrower each, so the tabs lose 16 dp instead of 36, as on
+            // the iPhone. Settings keeps its width, the room a slide to the left needs left-handed
+            val settingsW = if (width < 390) 32f else 36f
+            val iconW = settingsW - 4
             val arrowW = 82f
-            settingsButton = Frame(block.left, block.top, block.left + iconW, block.top + t - 2)
+            settingsButton = Frame(block.left, block.top, block.left + settingsW, block.top + t - 2)
             arrowKey = if (lefty) Frame(settingsButton.right + 4, block.top, settingsButton.right + 4 + arrowW, block.top + t - 2)
                 else Frame(block.right - arrowW, block.top, block.right, block.top + t - 2)
             val rowEnd = if (lefty) block.right else arrowKey.left - 4
             keyboardButton = Frame(rowEnd - iconW, block.top, rowEnd, block.top + t - 2)
             screenButton = Frame(rowEnd - iconW * 2, block.top, rowEnd - iconW, block.top + t - 2)
-            findButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
-            displayButton = if (displays) Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2) else Frame()
+            transferButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
+            findButton = Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2)
+            displayButton = if (displays) Frame(rowEnd - iconW * 5, block.top, rowEnd - iconW * 4, block.top + t - 2) else Frame()
             val stripX = if (lefty) arrowKey.right else settingsButton.right
             strip = Frame(stripX, block.top, if (displays) displayButton.left else findButton.left, block.top + t - 2)
         }
@@ -244,16 +250,18 @@ class PadLayout(
         keyW = (width - gap * (Deck.COLUMNS - 1)) / Deck.COLUMNS
         keyH = KEY_H
         appsKey = Frame()
-        val iconW = if (width < 390) 32f else 36f
+        val settingsW = if (width < 390) 32f else 36f
+        val iconW = settingsW - 4
         val arrowW = 82f
-        settingsButton = Frame(block.left, block.top, block.left + iconW, block.top + t - 2)
+        settingsButton = Frame(block.left, block.top, block.left + settingsW, block.top + t - 2)
         arrowKey = if (lefty) Frame(settingsButton.right + 4, block.top, settingsButton.right + 4 + arrowW, block.top + t - 2)
             else Frame(block.right - arrowW, block.top, block.right, block.top + t - 2)
         val rowEnd = if (lefty) block.right else arrowKey.left - 4
         keyboardButton = Frame(rowEnd - iconW, block.top, rowEnd, block.top + t - 2)
         screenButton = Frame(rowEnd - iconW * 2, block.top, rowEnd - iconW, block.top + t - 2)
-        findButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
-        displayButton = if (displays) Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2) else Frame()
+        transferButton = Frame(rowEnd - iconW * 3, block.top, rowEnd - iconW * 2, block.top + t - 2)
+        findButton = Frame(rowEnd - iconW * 4, block.top, rowEnd - iconW * 3, block.top + t - 2)
+        displayButton = if (displays) Frame(rowEnd - iconW * 5, block.top, rowEnd - iconW * 4, block.top + t - 2) else Frame()
         val stripX = if (lefty) arrowKey.right else settingsButton.right
         strip = Frame(stripX, block.top, if (displays) displayButton.left else findButton.left, block.top + t - 2)
         list = Frame(block.left, block.top + t, block.right, block.top + t + listH)
@@ -308,6 +316,7 @@ class PadLayout(
         settingsButton = next()
         findButton = next()
         screenButton = next()
+        transferButton = next()
         displayButton = if (displays) next() else Frame()
         keyboardButton = next(10f)
         val spare = right - x - 300 - 5 * gap
@@ -355,6 +364,7 @@ class PadLayout(
         if (!lefty) controls += { f: Frame -> settingsButton = f }
         controls += { f: Frame -> findButton = f }
         controls += { f: Frame -> screenButton = f }
+        controls += { f: Frame -> transferButton = f }
         controls += { f: Frame -> keyboardButton = f }
         if (displays) controls += { f: Frame -> displayButton = f } else displayButton = Frame()
         val cw = (restRight - restLeft) / controls.size
@@ -384,8 +394,10 @@ class PadLayout(
         settingsButton = fromRail(ctrlIn, ctrlW, clear, btn)
         findButton = fromRail(ctrlIn, ctrlW, clear + btn + gap, btn)
         screenButton = fromRail(ctrlIn, ctrlW, h - clear - btn * 2 - gap, btn)
+        transferButton = fromRail(ctrlIn, ctrlW, h - clear - btn * 3 - gap * 2, btn)
         keyboardButton = fromRail(ctrlIn, ctrlW, h - clear - btn, btn)
-        displayButton = if (displays) fromRail(ctrlIn, ctrlW, (h - btn) / 2, btn) else Frame()
+        // the display switcher between the two pairs
+        displayButton = if (displays) fromRail(ctrlIn, ctrlW, (findButton.bottom + transferButton.top - btn) / 2, btn) else Frame()
         rail = fromRail(0f, ctrlEnd, 0f, h)
 
         // the thumb's end: clear of the round corners, the talk key where the thumb rests, a little taller than the keys above it

@@ -1336,6 +1336,10 @@ pub fn run() {
             remote::remote_set_go_between,
             remote::remote_set_stay_awake,
             remote::remote_end_session,
+            remote::remote_send_files,
+            remote::remote_transfers,
+            remote::remote_banner_fit,
+            remote::remote_stop_transfer,
             remote::remote_connections,
             remote::remote_set_service,
             remote::remote_relay_instructions,
@@ -1361,6 +1365,8 @@ pub fn run() {
             viewer::viewer_privacy,
             viewer::viewer_system,
             viewer::viewer_send_files,
+            viewer::viewer_get_clipboard,
+            viewer::viewer_stop_transfer,
             viewer::viewer_decode_failed,
         ])
         .build(tauri::generate_context!())

@@ -345,7 +345,7 @@ type MockRemote = {
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
   asking: null | { device: string; digits: string; viaRelay: boolean; kind?: 'phone' | 'computer' };
   devices: { id: string; name: string; ownName?: string; lastSeen: number | null; kind: 'phone' | 'computer' }[];
-  connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean };
+  connected: null | { id: string; name: string; route: 'local' | 'tailscale' | 'overlay' | 'direct' | 'relay' | 'goBetween'; screen: boolean; files: boolean };
   relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: 'noDirect' | 'busy' | null; fallback: boolean };
   screenAllowed: boolean;
   stayAwake: boolean;
@@ -375,7 +375,7 @@ const remote: MockRemote = {
         { id: 'ph-2', name: 'iPad mini', lastSeen: Date.now() - 2 * 86400_000, kind: 'phone' },
       ]
     : [],
-  connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true } : null,
+  connected: paired && (!away || awayRoute) ? { id: 'ph-1', name: L('Maya’s iPhone', 'Maya 的 iPhone'), route: awayRoute ?? 'relay', screen: true, files: param('banner_files') !== '0' } : null,
   relay: paired && !away
     ? { address: 'wss://relay.example.com', fromPhone: phoneStart === 'fromphone', reachable: phoneStart === 'relayfail' ? false : true, goBetween: true, goBetweenProblem: null, fallback: phoneStart === 'relayfail' }
     : { address: null, fromPhone: false, reachable: null, goBetween: away !== 'off', goBetweenProblem: away === 'noDirect' || away === 'busy' ? away : null, fallback: false },
@@ -431,6 +431,21 @@ function mockPairingCode() {
   });
 }
 
+const MB = 1024 * 1024;
+function mockBarTransfers() {
+  const st = param('banner_state');
+  const one = (state: string, done: number, extra: Record<string, unknown> = {}) => [
+    { id: 'b1', name: L('Q4 Quote.xlsx', 'Q4 报价单.xlsx'), size: 48.2 * MB, done, incoming: false, clip: false, state, why: null, index: null, count: null, path: null, secondsLeft: 40, ...extra },
+  ];
+  const later = (event: string, p: unknown) => setTimeout(() => emit(event, p), 300);
+  if (st === 'going') return one('going', 12.6 * MB);
+  if (st === 'batch') return one('going', 141 * MB, { name: L('Lesson 3.mp4', '第 3 课.mp4'), size: 350 * MB, index: 2, count: 5 });
+  if (st === 'paused') return one('paused', 21 * MB);
+  if (st === 'failed') later('remote://transfer', one('failed', 3 * MB, { why: 'other' })[0]);
+  if (st === 'clipboard') later('remote://clipboard-sent', L('Maya’s iPhone', 'Maya 的 iPhone'));
+  return [];
+}
+
 function mockRemote(cmd: string, a: Record<string, any>): unknown {
   switch (cmd) {
     case 'remote_status':
@@ -459,7 +474,7 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       const id = `ph-${Date.now()}`;
       remote.devices = [...remote.devices, { id, name: ask.device, lastSeen: Date.now(), kind: ask.kind ?? 'phone' }];
       remote.listening = true;
-      remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false };
+      remote.connected = { id, name: ask.device, route: ask.viaRelay ? 'relay' : 'local', screen: false, files: true };
       if (ask.viaRelay) remoteLater(4000, () => remote.connected?.id === id && (remote.connected.route = 'direct'));
       break;
     }
@@ -503,6 +518,13 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
     case 'remote_end_session':
       remote.connected = null;
       break;
+    // the "being controlled" bar (index.html?banner=1&phone=paired): &banner_files=0 a device that takes no files;
+    // &banner_state= going | batch | paused | failed | clipboard, what it says in place of the name
+    case 'remote_transfers':
+      return mockBarTransfers();
+    case 'remote_banner_fit':
+    case 'remote_send_files':
+      return undefined;
     case 'remote_set_service':
       remote.service = !!a.on;
       break;

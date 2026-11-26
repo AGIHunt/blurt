@@ -232,3 +232,38 @@ else only the same network or an overlay. The go-between switch is dimmed and sa
 - `ToMac.key` with `down: true` for a key already down is that key repeating: a Mac posts an autorepeat, Windows another key-down, Linux nothing (the
   desktop repeats held keys).
 - `"AltGr"` is a key name (Windows: right Alt; Linux: KEY_RIGHTALT), held with `down`. A host that doesn't know it ignores it.
+
+## Clipboard and files (2026-11-26)
+
+Why and how it feels: [remote-files.md](remote-files.md). All additive. Directions are by role: `ToMac` is whoever drives (phone or viewer),
+`ToPhone` is the host. Vectors: `toMac` → `file_begin_batch`, `file_begin_clip`, `get_clipboard`, `file_progress_back`, `file_saved_back`,
+`file_failed_back`; `toPhone` → `file_begin_back`, `file_chunk_back`, `file_end_back`, `clipboard_none`; `files` block (the limits).
+
+- **Features.** `hello.features` gains `files` (this phone or viewer takes files: the host may send `ToPhone.fileBegin`) and `resume`.
+  `session.features` already had `files` (the host takes files); it gains `resume` and `clipboard` (the host answers `getClipboard` and takes
+  `clip` files). Nothing below goes to a peer that didn't name it.
+- **One file, either way.** `fileBegin {id, name, size, clip?, index?, count?, total?}` → `fileChunk {id, data}` … → `fileEnd {id}`, answered by
+  `fileProgress {id, bytes}` (every 1 MiB written), then `fileSaved {id, name}` or `fileFailed {id, why}`. `ToMac.fileBegin` (exists) goes to the
+  host; `ToPhone.fileBegin` (new) comes from it, and the phone or viewer answers with `ToMac.fileProgress` / `fileSaved` / `fileFailed` (new).
+  `data` is standard base64; chunks of 192 KiB. With a peer that doesn't list `resume`, `fileProgress` comes every 1 MiB and the sender
+  keeps at most 4 MiB past the last one. With one that does, `fileProgress` comes every 256 KiB and the sender keeps at most half a
+  second of the rate those show, between 512 KiB and 4 MiB: pings and keys sent behind file data then wait at most about that long (a fixed
+  4 MiB at 1.5 MB/s held a ping 2.7 s, and the phone dropped its session every 2.5 s). Vectors `files.windowFor`.
+- `index`, `count`: this file's place in its batch, from 1, and how many; `total`: the batch's bytes. Missing: a batch of one.
+- `clip: true`: this file is the clipboard's content, not a file to keep. The receiver puts it on its clipboard: an image by its extension
+  (`.png`, `.jpg`, `.heic`, `.tiff`), anything else as UTF-8 text. A host that takes one from a phone also pastes it into the app in front
+  (⌘V, Ctrl+V). Saved nowhere; `fileSaved.name` is the name it came with.
+- `why`: `space`, `too_big`, `write`, `locked`, `read` (the sender couldn't read its own file), `stopped` (× on the receiver), `other`.
+- **Cancel.** The sender's × sends `fileEnd` before `size` bytes; the receiver deletes the part. The receiver's × answers `fileFailed
+  {why: "stopped"}`; the sender stops reading.
+- **Resume** (`resume` on both ends). A receiver that names it answers **every** `fileBegin` at once with `fileProgress {id, bytes}`: what it
+  already has of that file (0 if new). A sender that sees `resume` waits for that answer (10 s, else it gives up as `other`) and sends from
+  `bytes`. A session that ends mid-file leaves the part; the receiver keeps it 1 hour, keyed by the sending device and `id`, with the same
+  `name` and `size`. The sender, once a session is back, sends `fileBegin` again with the same `id`.
+- **`ToMac.getClipboard`** (`{"getClipboard":{}}`): the host reads its clipboard once and answers with exactly one of:
+  `ToPhone.clipboard(text)` (text, at most 64 KiB, the same case the viewer hears); a `clip` file (an image as PNG, or text over 64 KiB as
+  `Text.txt`); the copied files as a batch (a folder zipped as `<name>.zip`); or **`ToPhone.clipboardNone {why}`** (new): `empty`, `locked`,
+  `too_big` (over 1,000 files), `too_large` (a file, or a folder's zip, over 4 GB; hosts before 2026-11-26 said `too_big`), `unsupported`
+  (this host can't read that kind). The host's bar says it was read.
+- **Before the stream moves** on the public connection service, neither end sends `fileBegin`, `fileChunk` or a `clip` file (its 16 KiB
+  messages and 96 KiB in all would close the room): they wait for `streamMoved`.

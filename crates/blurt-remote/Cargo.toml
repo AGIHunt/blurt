@@ -35,6 +35,11 @@ mdns-sd = "0.13"
 if-addrs = "0.13"
 url = "2"
 gethostname = "1"
+# files both ways (files.rs): folders sent as zip files (stored: no compressor), the volume's free space
+zip = { version = "4", default-features = false }
+libc = "0.2"
+# the clipboard's image ↔ PNG (platform/pixels.rs): the version the app's tree has, with JPEG, TIFF and BMP read too
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "bmp"] }
 
 # Windows backend (src/platform/windows): capture, encode, input
 [target.'cfg(windows)'.dependencies]
@@ -55,6 +60,9 @@ windows = { version = "0.62", features = [
 ] }
 # the pointer's shape as PNG (already in the app's tree)
 png = "0.17"
+# the clipboard's image and copied files for getClipboard, and a phone's image onto it (platform/clip.rs): PNG + CF_DIBV5, CF_HDROP.
+# The same arboard as the app's tree (the clipboard plugin's, which has image-data on)
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 
 # Linux backend (src/platform/linux): portal ScreenCast + RemoteDesktop, PipeWire, GStreamer
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -69,7 +77,7 @@ gstreamer-video = "0.25"
 # the cursor's bitmap → PNG for the phone (the version the app's tree and the Windows backend have)
 png = "0.17"
 # text that can't be typed goes through the clipboard, as the desktop app's dictation does (XWayland's: insert_linux.rs)
-arboard = { version = "3", default-features = false }
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 
 [dev-dependencies]
 

@@ -11,6 +11,65 @@
     "x" : 0.5,
     "y" : 0.25
   },
+  "files" : {
+    "askOnCellular" : 100000000,
+    "chunk" : 196608,
+    "clean" : [
+      {
+        "in" : "../secret/.bashrc",
+        "out" : "bashrc"
+      },
+      {
+        "in" : "a:b.txt",
+        "out" : "a-b.txt"
+      },
+      {
+        "in" : "C:\\Users\\me\\报告.pdf",
+        "out" : "报告.pdf"
+      },
+      {
+        "in" : "   ",
+        "out" : "file"
+      },
+      {
+        "in" : "tab\there.txt",
+        "out" : "tabhere.txt"
+      }
+    ],
+    "features" : {
+      "clipboard" : "clipboard",
+      "files" : "files",
+      "resume" : "resume"
+    },
+    "keepPartsSeconds" : 3600,
+    "maxClipImage" : 20971520,
+    "maxCount" : 1000,
+    "maxSize" : 4294967296,
+    "minWindow" : 524288,
+    "oldProgressEvery" : 1048576,
+    "progressEvery" : 262144,
+    "resumeWaitSeconds" : 10,
+    "window" : 4194304,
+    "windowFor" : [
+      {
+        "rate" : 0,
+        "window" : 524288
+      },
+      {
+        "rate" : 100000,
+        "window" : 524288
+      },
+      {
+        "rate" : 1500000,
+        "window" : 750000
+      },
+      {
+        "rate" : 50000000,
+        "window" : 4194304
+      }
+    ],
+    "windowMilliseconds" : 500
+  },
   "goBetween" : {
     "address" : "wss://meet.blurt.work",
     "chunk" : 1100,
@@ -771,6 +830,65 @@
     },
     {
       "json" : {
+        "fileBegin" : {
+          "count" : 3,
+          "id" : "f2",
+          "index" : 1,
+          "name" : "照片 1.heic",
+          "size" : 2400000,
+          "total" : 7000000
+        }
+      },
+      "name" : "file_begin_batch"
+    },
+    {
+      "json" : {
+        "fileBegin" : {
+          "clip" : true,
+          "id" : "f3",
+          "name" : "Image.png",
+          "size" : 52000
+        }
+      },
+      "name" : "file_begin_clip"
+    },
+    {
+      "json" : {
+        "getClipboard" : {
+
+        }
+      },
+      "name" : "get_clipboard"
+    },
+    {
+      "json" : {
+        "fileProgress" : {
+          "bytes" : 1048576,
+          "id" : "h1"
+        }
+      },
+      "name" : "file_progress_back"
+    },
+    {
+      "json" : {
+        "fileSaved" : {
+          "id" : "h1",
+          "name" : "report 2.pdf"
+        }
+      },
+      "name" : "file_saved_back"
+    },
+    {
+      "json" : {
+        "fileFailed" : {
+          "id" : "h1",
+          "why" : "stopped"
+        }
+      },
+      "name" : "file_failed_back"
+    },
+    {
+      "json" : {
         "key" : {
           "_0" : {
             "key" : "F13",
@@ -1220,6 +1338,55 @@
         }
       },
       "name" : "file_failed"
+    },
+    {
+      "json" : {
+        "fileBegin" : {
+          "count" : 2,
+          "id" : "h1",
+          "index" : 2,
+          "name" : "report.pdf",
+          "size" : 5,
+          "total" : 9
+        }
+      },
+      "name" : "file_begin_back"
+    },
+    {
+      "json" : {
+        "fileBegin" : {
+          "clip" : true,
+          "id" : "h2",
+          "name" : "Text.txt",
+          "size" : 70000
+        }
+      },
+      "name" : "file_begin_back_clip"
+    },
+    {
+      "json" : {
+        "fileChunk" : {
+          "data" : "aGVsbG8=",
+          "id" : "h1"
+        }
+      },
+      "name" : "file_chunk_back"
+    },
+    {
+      "json" : {
+        "fileEnd" : {
+          "id" : "h1"
+        }
+      },
+      "name" : "file_end_back"
+    },
+    {
+      "json" : {
+        "clipboardNone" : {
+          "why" : "empty"
+        }
+      },
+      "name" : "clipboard_none"
     }
   ],
   "version" : 1,

@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -39,6 +40,7 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
     private var heldFired = false
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val r = RectF()
+    private val path = Path()
     private val hold = Runnable { if (down && onHold != null) { heldFired = true; Haptics.grab(); onHold?.invoke() } }
 
     init {
@@ -52,15 +54,41 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
             p.color = when { lit -> Theme.slabLatched; down -> Theme.slabPressed; else -> Theme.slab }
             canvas.drawRoundRect(r, Theme.KEY_RADIUS.dp, Theme.KEY_RADIUS.dp, p)
         }
-        p.typeface = Fonts.symbols(context)
-        p.textSize = 21.dp
         p.color = if (lit) Color.BLACK else tint
-        val fm = p.fontMetrics
-        canvas.drawText(Icons.char(icon), width / 2f, height / 2f - (fm.ascent + fm.descent) / 2, p)
+        if (icon == TRANSFER) drawTransfer(canvas) else {
+            p.typeface = Fonts.symbols(context)
+            p.textSize = 21.dp
+            val fm = p.fontMetrics
+            canvas.drawText(Icons.char(icon), width / 2f, height / 2f - (fm.ascent + fm.descent) / 2, p)
+        }
         if (dot) {
             p.color = Theme.attn
             canvas.drawCircle(width / 2f + 12.dp, height / 2f - 10.dp, 3.5f.dp, p)
         }
+    }
+
+    /** Two arrows, up and down, the symbols' weight: files going either way (the font has no such symbol). */
+    private fun drawTransfer(canvas: Canvas) {
+        val cx = width / 2f
+        val cy = height / 2f
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.6f.dp
+        p.strokeCap = Paint.Cap.ROUND
+        p.strokeJoin = Paint.Join.ROUND
+        // smaller than the cell, as the other icons' glyphs sit in theirs (founder, 2026-11-26: edge to edge looked heavy)
+        val dx = 3f.dp
+        val half = 5.5f.dp
+        val head = 2.8f.dp
+        // one path for both: separate strokes overlap where the head meets the shaft, and the translucent mark doubles into a bright dot there
+        path.rewind()
+        // up, on the left
+        path.moveTo(cx - dx, cy + half); path.lineTo(cx - dx, cy - half)
+        path.moveTo(cx - dx - head, cy - half + head); path.lineTo(cx - dx, cy - half); path.lineTo(cx - dx + head, cy - half + head)
+        // down, on the right
+        path.moveTo(cx + dx, cy - half); path.lineTo(cx + dx, cy + half)
+        path.moveTo(cx + dx - head, cy + half - head); path.lineTo(cx + dx, cy + half); path.lineTo(cx + dx + head, cy + half - head)
+        canvas.drawPath(path, p)
+        p.style = Paint.Style.FILL
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -83,6 +111,11 @@ class IconButton(c: Context, var icon: String, label: String) : View(c) {
         super.performClick()
         onTap?.invoke()
         return true
+    }
+
+    companion object {
+        /** drawn here, not a font symbol */
+        const val TRANSFER = "mark:transfer"
     }
 }
 
@@ -192,7 +225,11 @@ class ModifierRow(c: Context, private val onComputer: () -> Unit, private val on
         add(Key(context.getString(dev.blurt.remote.app.R.string.paste_from_phone), "content_paste") {
             Haptics.tick()
             val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }
-            Remote.link.type(clip?.getItemAt(0)?.coerceToText(context)?.toString() ?: "")
+            // a copied image goes as the computer's clipboard and is pasted there, on a computer that takes it (remote-files.md); text as ever
+            val uri = clip?.getItemAt(0)?.uri
+            val image = uri != null && (clip.description.hasMimeType("image/*") || context.contentResolver.getType(uri)?.startsWith("image/") == true)
+            if (image && Remote.transfers.hostHasClipboard && Remote.link.ready) Remote.transfers.pasteImage(uri!!)
+            else Remote.link.type(clip?.getItemAt(0)?.coerceToText(context)?.toString() ?: "")
         })
         add(Key("esc", null) { Remote.link.send(ToMac.Key(RemoteChord(0, "Escape"), null)); Haptics.tick() })
         add(Key("⇥", "keyboard_tab") { Remote.link.send(ToMac.Key(RemoteChord(0, "Tab"), null)); Haptics.tick() })

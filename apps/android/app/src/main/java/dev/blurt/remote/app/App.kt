@@ -31,6 +31,8 @@ object Remote {
         private set
     lateinit var updates: Updates
         private set
+    lateinit var transfers: dev.blurt.remote.app.files.Transfers
+        private set
 
     fun start(c: Context) {
         if (::context.isInitialized) return
@@ -41,6 +43,7 @@ object Remote {
         mic = MicStream(c)
         screen = ScreenStream(c)
         link = Link(c, vault)
+        transfers = dev.blurt.remote.app.files.Transfers(c)
         net = NetWatch(c) { _, _ -> screen.planChanged() }
         net.start()
         updates = Updates(c, prefs)

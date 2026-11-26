@@ -17,7 +17,7 @@ class PadLayoutTest {
     private fun keys(l: PadLayout): List<Frame> = l.dock + listOf(l.talk, l.arrowKey) + (if (l.landscape) listOf(l.appsKey, l.drawerButton) else emptyList())
 
     private fun check(l: PadLayout, w: Float, h: Float) {
-        val all = keys(l) + listOf(l.list, l.strip, l.settingsButton, l.keyboardButton, l.screenButton, l.findButton, l.pad) + listOfNotNull(l.pad2)
+        val all = keys(l) + listOf(l.list, l.strip, l.settingsButton, l.keyboardButton, l.screenButton, l.transferButton, l.findButton, l.pad) + listOfNotNull(l.pad2)
         for (r in all) {
             assertTrue("inside the window: $r in ${w}x$h", r.left >= -0.01f && r.top >= -0.01f && r.right <= w + 0.01f && r.bottom <= h + 0.01f)
             assertFalse("not empty: $r", r.isEmpty)
@@ -40,6 +40,17 @@ class PadLayoutTest {
         // six across, the dock ten even parts with the talk key last, by the thumb
         assertTrue(l.talk.left > l.dock.last().right)
         assertTrue(l.pad.height > 450)
+    }
+
+    /** The Transfer button (2026-11-26) costs the tabs 16 to 20 dp, not a whole button: on a phone they keep room for four names. */
+    @Test fun theTransferButtonLeavesTheTabsTheirRoom() {
+        for ((w, strip) in listOf(360f to 114f, 412f to 146f)) {
+            val l = PadLayout(w, 800f, 0f, 30f, 0f, 20f, lefty = false, drawerOpen = true)
+            check(l, w, 800f)
+            assertTrue("${w}: the tabs ${l.strip.width} wide", l.strip.width >= strip - 0.5f)
+            assertEquals("next to the screen button", l.screenButton.left, l.transferButton.right, 0.01f)
+            assertTrue("${w}: settings keeps its width", l.settingsButton.width >= 32f)
+        }
     }
 
     @Test fun leftHandedMirrorsTheDock() {
@@ -161,7 +172,7 @@ class PadLayoutTest {
                 val l = PadLayout(w, h, if (w > h && h < 480) 40f else 0f, if (w < h) 30f else 0f, 0f, 0f, lefty, drawerOpen = true, fold = f, displays = displays, withBoard = true)
                 val b = l.board!!
                 val big = b.quick.isNotEmpty()
-                val all = mutableListOf("pad" to l.pad, "board" to b.frame, "settings" to l.settingsButton, "find" to l.findButton, "screen" to l.screenButton, "keyboard" to l.keyboardButton)
+                val all = mutableListOf("pad" to l.pad, "board" to b.frame, "settings" to l.settingsButton, "find" to l.findButton, "screen" to l.screenButton, "transfer" to l.transferButton, "keyboard" to l.keyboardButton)
                 l.pad2?.let { all += "pad2" to it }
                 if (displays) all += "display" to l.displayButton
                 b.quick.forEachIndexed { i, q -> all += "quick$i" to q }

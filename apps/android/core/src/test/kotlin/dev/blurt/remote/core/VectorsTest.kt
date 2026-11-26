@@ -61,7 +61,7 @@ class VectorsTest {
     @Test
     fun everyToMacMessageDecodesAndEncodesTheSame() {
         val list = v["toMac"]!!.jsonArray
-        assertEquals(54, list.size)
+        assertEquals(60, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -74,7 +74,7 @@ class VectorsTest {
     @Test
     fun everyToPhoneMessageDecodesAndEncodesTheSame() {
         val list = v["toPhone"]!!.jsonArray
-        assertEquals(37, list.size)
+        assertEquals(42, list.size)
         for (e in list) {
             val name = e.jsonObject["name"]!!.jsonPrimitive.content
             val json = e.jsonObject["json"]!!
@@ -182,6 +182,64 @@ class VectorsTest {
         assertEquals(ToPhone.Displays(listOf(RemoteDisplay("1", "Built-in Retina Display", 0.0, 0.0, 1512.0, 982.0, true),
             RemoteDisplay("69733382", "DELL U2723QE", 1512.0, -458.0, 2560.0, 1440.0, false))), phone("displays"))
         assertEquals(ToPhone.CursorShape(byteArrayOf(0x89.toByte(), 0x50), 1.0, 2.0, 16.0, 24.0), phone("cursor_shape"))
+
+        // the clipboard and files, both ways (remote-protocol.md §Clipboard and files)
+        assertEquals(ToMac.FileBegin("f1", "notes.txt", 5), mac("file_begin"))
+        assertNull((mac("file_begin") as ToMac.FileBegin).clip, "a file of its own, not the clipboard")
+        assertEquals(ToMac.FileBegin("f2", "照片 1.heic", 2_400_000, null, 1, 3, 7_000_000), mac("file_begin_batch"))
+        assertEquals(ToMac.FileBegin("f3", "Image.png", 52_000, clip = true), mac("file_begin_clip"))
+        assertEquals(ToMac.GetClipboard, mac("get_clipboard"))
+        assertEquals(ToMac.FileProgress("h1", 1_048_576), mac("file_progress_back"))
+        assertEquals(ToMac.FileSaved("h1", "report 2.pdf"), mac("file_saved_back"))
+        assertEquals(ToMac.FileFailed("h1", "stopped"), mac("file_failed_back"))
+        assertEquals(ToPhone.FileBegin("h1", "report.pdf", 5, null, 2, 2, 9), phone("file_begin_back"))
+        assertEquals(ToPhone.FileBegin("h2", "Text.txt", 70_000, clip = true), phone("file_begin_back_clip"))
+        assertEquals(ToPhone.FileChunk("h1", "hello".toByteArray()), phone("file_chunk_back"))
+        assertEquals(ToPhone.FileEnd("h1"), phone("file_end_back"))
+        assertEquals(ToPhone.ClipboardNone("empty"), phone("clipboard_none"))
+        assertEquals(ToPhone.FileProgress("f1", 5), phone("file_progress"))
+        // the engine's mapping: what the phone sends and answers is what the vectors say
+        val back = phone("file_begin_back")!!
+        assertEquals(RemoteFileOut.Begin(RemoteFileInfo("h1", "report.pdf", 5, false, 2, 2, 9)), RemoteFileWire.out(back))
+        assertEquals(mac("file_progress_back"), RemoteFileWire.toMac(RemoteFileAnswer.Progress("h1", 1_048_576)))
+        assertEquals(mac("file_begin_clip"), RemoteFileWire.toMac(RemoteFileOut.Begin(RemoteFileInfo("f3", "Image.png", 52_000, clip = true))))
+        assertEquals(mac("file_begin_batch"), RemoteFileWire.toMac(RemoteFileOut.Begin(RemoteFileInfo("f2", "照片 1.heic", 2_400_000, false, 1, 3, 7_000_000))))
+    }
+
+    @Test
+    fun theFilesLimitsAndNamesAreSwifts() {
+        val f = v["files"]!!.jsonObject
+        fun n(k: String) = f[k]!!.jsonPrimitive.long
+        assertEquals(n("chunk"), RemoteFiles.CHUNK.toLong())
+        assertEquals(n("window"), RemoteFiles.WINDOW.toLong())
+        assertEquals(n("progressEvery"), RemoteFiles.PROGRESS_EVERY.toLong())
+        assertEquals(n("oldProgressEvery"), RemoteFiles.OLD_PROGRESS_EVERY.toLong())
+        assertEquals(n("minWindow"), RemoteFiles.MIN_WINDOW.toLong())
+        assertEquals(n("windowMilliseconds"), RemoteFiles.WINDOW_MS)
+        val cases = f["windowFor"]!!.jsonArray
+        assertTrue(cases.size >= 4)
+        for (c in cases) {
+            val rate = c.jsonObject["rate"]!!.jsonPrimitive.double
+            assertEquals(c.jsonObject["window"]!!.jsonPrimitive.long, RemoteFiles.window(rate, resumes = true), "window($rate)")
+        }
+        assertEquals(RemoteFiles.WINDOW.toLong(), RemoteFiles.window(1_500_000.0, resumes = false), "an older peer: fixed 4 MiB")
+        assertEquals(RemoteFiles.MIN_WINDOW.toLong(), RemoteFiles.window(null, resumes = true), "no rate yet")
+        assertEquals(n("maxSize"), RemoteFiles.MAX_SIZE)
+        assertEquals(n("maxCount"), RemoteFiles.MAX_COUNT.toLong())
+        assertEquals(n("maxClipImage"), RemoteFiles.MAX_CLIP_IMAGE.toLong())
+        assertEquals(n("keepPartsSeconds") * 1000, RemoteFiles.KEEP_PARTS_MS)
+        assertEquals(n("resumeWaitSeconds") * 1000, RemoteFiles.RESUME_WAIT_MS)
+        assertEquals(n("askOnCellular"), RemoteFiles.ASK_ON_CELLULAR)
+        val features = f["features"]!!.jsonObject
+        assertEquals(features["files"]!!.jsonPrimitive.content, RemoteFeature.FILES)
+        assertEquals(features["resume"]!!.jsonPrimitive.content, RemoteFeature.RESUME)
+        assertEquals(features["clipboard"]!!.jsonPrimitive.content, RemoteFeature.CLIPBOARD)
+        val clean = f["clean"]!!.jsonArray
+        assertTrue(clean.size >= 5)
+        for (c in clean) {
+            val i = c.jsonObject["in"]!!.jsonPrimitive.content
+            assertEquals(c.jsonObject["out"]!!.jsonPrimitive.content, RemoteFiles.clean(i), "clean($i)")
+        }
     }
 
     @Test

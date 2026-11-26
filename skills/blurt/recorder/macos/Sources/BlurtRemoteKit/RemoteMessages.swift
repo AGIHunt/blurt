@@ -83,9 +83,18 @@ public enum ToMac: Codable, Sendable {
     case privacyScreen(Bool)
     /// a file from the viewer, to the host's Downloads (remote-1.1.md §6): its name and size, then its bytes in order, then the end.
     /// The host answers fileProgress (paces the sender), then fileSaved or fileFailed. Only to a host whose session lists `files`
-    case fileBegin(id: String, name: String, size: Int)
+    /// `clip`: the clipboard's content (an image, or long text), for the host's clipboard and pasted into the app in front, not kept.
+    /// `index`, `count`, `total`: its place in a batch, from 1, how many, and the batch's bytes (docs/design/remote-files.md)
+    case fileBegin(id: String, name: String, size: Int, clip: Bool? = nil, index: Int? = nil, count: Int? = nil, total: Int? = nil)
     case fileChunk(id: String, data: Data)
     case fileEnd(id: String)
+    /// a file from the host (ToPhone.fileBegin), as the host answers the other way: written so far, saved (under this name), or not
+    case fileProgress(id: String, bytes: Int)
+    case fileSaved(id: String, name: String)
+    case fileFailed(id: String, why: String)
+    /// what's copied on the host, once, now: it answers with `clipboard`, a `clip` file, a batch of files, or `clipboardNone`. Only to a host
+    /// whose session lists `clipboard`
+    case getClipboard
 }
 
 /// What one end can do beyond the base protocol, named in `ToMac.hello.features` and `RemoteSessionInfo.features`. Unknown names are ignored.
@@ -97,10 +106,15 @@ public enum RemoteFeature {
     public static let viewer = "viewer"
     /// in `session.features`: the host can cover its screen while controlled (`privacyScreen`)
     public static let privacy = "privacy"
-    /// in `session.features`: the host takes files (`fileBegin` …)
+    /// in `session.features`: the host takes files (`fileBegin` …). In `hello.features`: this phone or viewer takes files from the host
     public static let files = "files"
     /// in a viewer's hello: another window of a viewer that has a session already (another display). The host keeps the first session
     public static let window = "window"
+    /// in `hello.features` and `session.features`: this end answers every fileBegin at once with what it has of it, and keeps a dropped file's
+    /// part an hour, so a file goes on from where it stopped
+    public static let resume = "resume"
+    /// in `session.features`: the host answers `getClipboard` and takes `clip` files
+    public static let clipboard = "clipboard"
 }
 
 /// Text on the clipboard between a viewer and its host: plain text only, at most 64 KiB of UTF-8, both ways.
@@ -193,8 +207,15 @@ public enum ToPhone: Codable, Sendable {
     case fileProgress(id: String, bytes: Int)
     /// written to the host's Downloads under this name (quarantined: never opened by itself)
     case fileSaved(id: String, name: String)
-    /// not written: "space", "too_big", "write", "locked"
+    /// not written: "space", "too_big", "write", "locked", "read", "stopped", "other"
     case fileFailed(id: String, why: String)
+    /// a file from the host to this phone or viewer (only to one whose hello lists `files`): the same shape as ToMac.fileBegin, answered the
+    /// same way (ToMac.fileProgress …)
+    case fileBegin(id: String, name: String, size: Int, clip: Bool? = nil, index: Int? = nil, count: Int? = nil, total: Int? = nil)
+    case fileChunk(id: String, data: Data)
+    case fileEnd(id: String)
+    /// the answer to getClipboard when nothing comes: "empty", "locked", "too_big", "unsupported"
+    case clipboardNone(why: String)
     /// a code used over the relay: someone at the Mac has to say yes
     case pairingWaits
     /// a voice note started from the phone wants the phone's microphone (true), or is over (false)

@@ -72,6 +72,7 @@ object SymbolCodes {
         "mic" to 0xE31D,
         "more_horiz" to 0xE5D3,
         "more_vert" to 0xE5D4,
+        "movie" to 0xE404,
         "my_location" to 0xE55C,
         "open_with" to 0xE89F,
         "pause" to 0xE034,

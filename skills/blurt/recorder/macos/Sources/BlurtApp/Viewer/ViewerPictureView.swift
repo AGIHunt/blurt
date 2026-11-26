@@ -10,6 +10,16 @@ import QuartzCore
 final class ViewerPictureView: NSView {
     typealias Hint = ViewerHintPill.Hint
     weak var controller: ViewerWindowController?
+
+    /// ⌥⌘V while the keys stay on this Mac: Get Copied Items (captured, every key goes to the remote instead)
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .option],
+           event.charactersIgnoringModifiers?.lowercased() == "v", controller?.captured == false {
+            controller?.getCopied()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
     private let video = CALayer()
     /// a picture that stopped (the link dropped, the host locked): the last frame, blurred and greyed once, so it reads as stopped and
     /// none of its text competes with the cover's words; `dim` darkens it under the cover

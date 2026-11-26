@@ -69,6 +69,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         fun askMic()
         fun keepAwake(on: Boolean)
         fun displays()
+        /** the Transfer sheet: files and the clipboard */
+        fun transfer()
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -103,6 +105,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
     private val settingsButton = IconButton(c, "tune", c.getString(R.string.settings))
     private val screenButton = IconButton(c, "desktop_windows", c.getString(R.string.show_screen))
     private val findButton = IconButton(c, "my_location", c.getString(R.string.find_pointer))
+    private val transferButton = IconButton(c, IconButton.TRANSFER, c.getString(R.string.transfer))
     private val drawerButton = IconButton(c, "apps", c.getString(R.string.keys))
     private val displayButton = DisplayButton(c)
     private val header = TextView(c)
@@ -204,7 +207,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         talk.onAsk = { sheets.askMic() }
         addView(exitFull)
         exitFull.visibility = GONE
-        for (b in listOf(drawerButton, screenButton, keyboardButton, settingsButton, findButton)) addView(b)
+        for (b in listOf(drawerButton, screenButton, keyboardButton, settingsButton, findButton, transferButton)) addView(b)
         addView(displayButton)
         displayButton.onTap = { Remote.link.nextDisplay() }
         displayButton.onHold = { sheets.displays() }
@@ -213,6 +216,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         // the map with one display too: it holds Full Screen
         screenButton.onHold = { sheets.displays() }
         keyboardButton.onTap = { toggleKeyboard() }
+        transferButton.onTap = { Haptics.tick(); sheets.transfer() }
         settingsButton.onTap = { sheets.settings() }
         settingsButton.onHold = { if (Remote.link.macs.value.size > 1) sheets.switchMac() }
         findButton.onTap = { Haptics.tick(); Remote.link.send(ToMac.System(RemoteSystemMove.FIND_CURSOR)) }
@@ -319,6 +323,8 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         scope.launch { l.displayAspect.collect { requestLayout() } }
         scope.launch { l.legends.collect { board.invalidate() } }
         scope.launch { Remote.updates.state.collect { settingsButton.dot = it.newer != null } }
+        // something going or waiting: the Transfer arrows turn mint, as on the iPhone
+        scope.launch { Remote.transfers.rows.collect { rows -> transferButton.tint = if (rows.any { !it.t.isOver }) Theme.mint else Theme.caption } }
         scope.launch {
             combine(l.displays, l.shownDisplay) { _, shown -> shown }.collect { shown ->
                 displayButton.number = l.displaysInOrder.indexOfFirst { it.id == shown } + 1
@@ -756,7 +762,7 @@ class PadScreen(c: Context, private val sheets: Sheets) : ViewGroup(c) {
         screenButton.lit = showing
         screenButton.tint = if (railed) Theme.mark else Theme.caption
         screenButton.contentDescription = context.getString(if (showing) R.string.hide_screen else R.string.show_screen)
-        for ((b, r) in listOf(keyboardButton to l.keyboardButton, settingsButton to l.settingsButton, findButton to l.findButton)) {
+        for ((b, r) in listOf(keyboardButton to l.keyboardButton, settingsButton to l.settingsButton, findButton to l.findButton, transferButton to l.transferButton)) {
             place(b, r)
             show(b, keys && !typing)
             b.slab = railed

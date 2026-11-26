@@ -185,7 +185,7 @@
 "viewer.allow_shortcuts" = "发送系统快捷键…";
 
 /* the bar on the controlled Mac */
-"remote.banner.controlling" = "正在被「%@」控制";
+"remote.banner.controlling" = "%@ 正在控制本机";
 "remote.banner.disconnect" = "断开";
 
 /* the Remote Control page: who was in this Mac */
@@ -203,9 +203,9 @@
 "remote.file.received.title" = "收到「%@」发来的文件";
 "viewer.send_files" = "发送文件…";
 "viewer.file.to.start" = "正在发送到 %@ · %@";
-"viewer.file.to" = "正在发送到 %@ · %@ / %@";
+"viewer.file.to" = "发往 %@ · %@ / %@";
 "viewer.file.to.many.start" = "正在发送第 %ld/%ld 个到 %@ · %@";
-"viewer.file.to.many" = "正在发送第 %ld/%ld 个到 %@ · %@ / %@";
+"viewer.file.to.many" = "发往 %@ · 第 %ld/%ld 个 · %@ / %@";
 "viewer.file.saved.to" = "已保存到 %@ 的「下载」文件夹";
 "viewer.file.count" = "%ld 个文件";
 "viewer.file.stop" = "停止发送";
@@ -215,3 +215,31 @@
 "viewer.file.failed.locked" = "未发送：对方已锁屏。";
 "viewer.file.failed.other" = "未发送。";
 "viewer.ctrl_alt_del" = "发送 Ctrl+Alt+Del";
+
+/* Files and the clipboard both ways (docs/design/remote-files.md) */
+"remote.banner.send_files" = "发送文件…";
+"remote.banner.send" = "发送";
+"remote.banner.clipboard_sent" = "剪贴板已发送到 %@";
+"remote.file.paused" = "已暂停，重新连接后继续。";
+"remote.file.received.many" = "收到「%2$@」发来的 %1$ld 个文件";
+"phone.log.clipboard" = "已发送剪贴板";
+"viewer.get_copied" = "获取拷贝的内容";
+"viewer.file.from" = "来自 %@ · %@ / %@";
+"viewer.file.from.many" = "来自 %@ · 第 %ld/%ld 个 · %@ / %@";
+"viewer.file.left" = "还剩 %@";
+"viewer.file.saved.to.blurt" = "已保存到 %@ 的「下载/Blurt」";
+"viewer.file.received" = "已保存到「下载/Blurt」";
+"viewer.file.reveal" = "在访达中显示";
+"viewer.file.failed.in.space" = "未接收：本机空间不足。";
+"viewer.file.failed.in.other" = "未接收。";
+"viewer.copied.text" = "已拷贝";
+"viewer.copied.image" = "已拷贝图片";
+"viewer.copied.none.empty" = "%@ 上没有拷贝的内容。";
+"viewer.copied.none.locked" = "%@ 已锁屏。";
+"viewer.copied.none.too_big" = "%@ 上拷贝的文件太多。一次最多 1,000 个。";
+"viewer.copied.none.unsupported" = "无法从 %@ 获取此类内容。";
+"viewer.copied.none.update" = "若要使用此功能，请更新 %@ 上的口喷鸡。";
+"viewer.file.left.sec" = "%ld 秒";
+"viewer.file.left.min" = "%ld 分钟";
+"viewer.copied.none.too_large" = "%@ 上拷贝的文件超过 4 GB。";
+"remote.clip.refused" = "未粘贴：对方的光标在密码框中，或对方已锁屏。内容已放入其剪贴板。";

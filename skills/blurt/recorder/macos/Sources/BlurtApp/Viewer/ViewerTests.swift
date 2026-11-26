@@ -365,7 +365,7 @@ final class ViewerFakeHost {
         ch.send(ToPhone.session(RemoteSessionInfo(macName: name, udpPort: udp.port?.rawValue ?? 0, udpSession: 9, canControl: true, version: "test",
                                                   candidates: [RemoteCandidate(host: "127.0.0.1", port: udp.port?.rawValue ?? 0)],
                                                   displayAspect: Double(image.width) / Double(image.height), platform: platform,
-                                                  features: [RemoteFeature.move, RemoteFeature.viewer])))
+                                                  features: [RemoteFeature.move, RemoteFeature.viewer, RemoteFeature.files, RemoteFeature.resume, RemoteFeature.clipboard])))
         let w = Double(image.width) / 2, h = Double(image.height) / 2
         ch.send(ToPhone.displays([RemoteDisplay(id: "1", name: "DELL U2723QE", x: 0, y: 0, width: w, height: h, main: true),
                                   RemoteDisplay(id: "2", name: "Built-in Display", x: w, y: h * 0.3, width: w * 0.8, height: h * 0.8, main: false)]))

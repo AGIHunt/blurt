@@ -113,6 +113,8 @@ object Icons {
         "tune", "desktop_windows", "keyboard", "my_location", "apps", "mic", "info", "more_vert", "more_horiz", "close", "drag_indicator",
         "qr_code_scanner", "edit", "keyboard_arrow_up", "keyboard_arrow_down", "keyboard_arrow_left", "keyboard_arrow_right", "add", "remove",
         "check", "search", "content_paste", "keyboard_hide",
+        // a video's row in the transfers list, framed like image and description
+        "movie",
         // a modifier key's face: the font's own ⌃ ⌥ ⇧ are thin and small next to ⌘
         "keyboard_control_key", "keyboard_option_key", "shift",
     )

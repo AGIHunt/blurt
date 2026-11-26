@@ -117,6 +117,11 @@ final class Link: ObservableObject {
     /// on mobile data; Low Data Mode is on
     @Published private(set) var cellular = false
     @Published private(set) var lowData = false
+    /// on the phone network itself (a hotspot is Wi-Fi): more than 100 MB of files asks first (docs/design/remote-files.md §Rules)
+    @Published private(set) var mobileData = false
+    /// what the computer in hand said it can do this session (`session.features`): `files`, `resume`, `clipboard` …; kept until the next
+    /// session, so the Transfer sheet can say what it can't do while the session comes back
+    @Published private(set) var hostFeatures: Set<String> = []
     private let path = NWPathMonitor()
     private var nearbyBrowser: NWBrowser?
     @Published var screenError: String?
@@ -191,6 +196,11 @@ final class Link: ObservableObject {
             DispatchQueue.main.async { self.open(u, confirmed: true) }
         }
         if !Pretend.displays.isEmpty { pretend(displays: Pretend.displays, shown: Pretend.displays.first?.id) }
+        if Pretend.transfers != nil, let m = current {
+            hostFeatures = [RemoteFeature.files, RemoteFeature.resume, RemoteFeature.clipboard]
+            Outbox.target = Outbox.Target(id: m.id, name: m.title)
+            DispatchQueue.main.async { Pretend.fillTransfers(peer: m.title) }
+        }
         // the pad's card when the public connection service couldn't carry the session, with no computer: =nodirect | =busy
         if let a = ProcessInfo.processInfo.environment["BLURT_REMOTE_TEST_AWAY"] {
             macs = [PairedMac(id: "test-mac", deviceID: "test-2", name: "MacBook Pro", port: 0, addresses: [], relayAddress: RemoteRelay.goBetween)]
@@ -203,11 +213,16 @@ final class Link: ObservableObject {
         hostChanged()
         path.pathUpdateHandler = { [weak self] p in
             // a phone's hotspot is Wi-Fi the user is paying for
-            let mobile = p.isExpensive, low = p.isConstrained
+            let mobile = p.isExpensive, low = p.isConstrained, phoneNetwork = p.usesInterfaceType(.cellular)
             // the gateways too: from one Wi-Fi to another the interface is the same
             let network = p.status == .satisfied ? p.availableInterfaces.map(\.name).joined(separator: ",") + " " + p.gateways.map { "\($0)" }.joined(separator: ",") : ""
             DispatchQueue.main.async {
                 guard let self else { return }
+                if self.mobileData != phoneNetwork {
+                    self.mobileData = phoneNetwork
+                    // Wi-Fi gone with files still going: more than 100 MB left asks first
+                    if phoneNetwork, self.filesLock.withLock({ self.filesChannel != nil }) { Transfers.shared.onMobileData() }
+                }
                 // another network may open the direct path where this one didn't
                 if network != self.network {
                     let first = self.network == nil
@@ -222,6 +237,7 @@ final class Link: ObservableObject {
             }
         }
         path.start(queue: queue)
+        setUpFiles()
     }
 
     private var network: String?
@@ -476,6 +492,9 @@ final class Link: ObservableObject {
         displays = []
         shownDisplay = nil
         pinnedDisplay = nil
+        // files queued for this computer don't go to the next one
+        files.stop()
+        hostFeatures = []
         refused = false
         firstAttempt = nil
         lastRelayTry = .distantPast
@@ -486,6 +505,7 @@ final class Link: ObservableObject {
         guard let n = macs.firstIndex(where: { $0.id == m.id }) else { return }
         macs[n].nickname = name.trimmingCharacters(in: .whitespaces)
         if current?.id == m.id { current = macs[n] }
+        if Outbox.target?.id == m.id { Outbox.target = Outbox.Target(id: m.id, name: macs[n].title) }
         saveMacs()
     }
 
@@ -522,6 +542,7 @@ final class Link: ObservableObject {
         if current?.id == m.id, state == .connected { send(.unpair) }
         Keychain.remove(account: m.deviceID)
         macs.removeAll { $0.id == m.id }
+        if Outbox.target?.id == m.id { Outbox.target = nil }
         if current?.id == m.id {
             abandonJoin()
             switchTo(macs.first)
@@ -893,7 +914,7 @@ final class Link: ObservableObject {
             joinOpens += 1
             if joinOpens > 3 { ch.close(); return joinFailed(.spent) }
         }
-        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: [RemoteFeature.move]))
+        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce, features: [RemoteFeature.move, RemoteFeature.files, RemoteFeature.resume]))
         pinger = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.ping() }
     }
 
@@ -955,6 +976,7 @@ final class Link: ObservableObject {
     private func lost() {
         pinger?.invalidate()
         pinger = nil
+        filesDown()
         let c = channel
         channel = nil
         c?.close()
@@ -984,6 +1006,7 @@ final class Link: ObservableObject {
     private func disconnect() {
         pinger?.invalidate()
         pinger = nil
+        filesDown()
         sessionDue?.cancel()
         meeting = false
         hostLocked = false
@@ -1015,6 +1038,7 @@ final class Link: ObservableObject {
                 }
             }
             displayAspect = CGFloat(i.displayAspect)
+            hostFeatures = Set(i.features ?? [])
             lastInfo = i
             noteRelay(i.relay)
             noteAddresses(i.candidates)
@@ -1143,11 +1167,16 @@ final class Link: ObservableObject {
         case .ended:
             state = .ended
             disconnect()
-        case .fileProgress, .fileSaved, .fileFailed: break   // a phone sends no files
+        case .fileProgress, .fileSaved, .fileFailed:
+            if let a = m.fileAnswer { files.heard(a) }
+        case .fileBegin, .fileChunk, .fileEnd:
+            if let o = m.fileOut { fileIn(o) }
+        case let .clipboardNone(why): Transfers.shared.clipNone(why)
         case .noDirect:
             noDirect()
         case .streamMoved: break      // the channel reads it itself
-        case .clipboard: break        // to a computer driving another (remote-desktop-viewer.md); a phone never asks for it
+        // the answer to Get Copied Items (a phone isn't a viewer, so the host sends it no other)
+        case let .clipboard(t): Transfers.shared.clipText(t)
         case let .screenLocked(on): hostLocked = on
         }
     }
@@ -1161,6 +1190,7 @@ final class Link: ObservableObject {
     private func ready(with c: RemoteChannel) {
         sessionDue?.cancel()
         state = .connected
+        filesUp(c)
         // a new session: the computer has forgotten the last one's held keys, and stopped its picture
         if parked { ScreenStream.shared.pause() } else { ScreenStream.shared.resume() }
         send(.mods(Sticky.shared.held))
@@ -1213,6 +1243,178 @@ final class Link: ObservableObject {
             self.send(.candidates(mine))
             self.channel?.tryDirect(i.candidates, session: i.udpSession, localPort: port)
         }
+    }
+
+    // MARK: files and the clipboard (docs/design/remote-files.md)
+
+    /// One sender and one receiver for the computer in hand. The sender runs on its own thread: what it reads of the session is here,
+    /// behind a lock.
+    private(set) var files: RemoteFileSender!
+    private(set) var receiver: RemoteFileReceiver!
+    private let filesLock = NSLock()
+    private var filesChannel: RemoteChannel?
+    /// on the public connection service, nothing big goes before the stream has moved
+    private var filesNeedMove = false
+    private var filesResumes = false
+    /// on mobile data with more than 100 MB left to send: nothing begins and no chunk goes until the user says (an end still goes)
+    private var filesHoldOut = false
+    /// the receiver's key for the computer: its own id, which outlives its name
+    private(set) var filesDevice: String?
+
+    static var documents: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
+    static var caches: URL { FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0] }
+
+    private func setUpFiles() {
+        files = RemoteFileSender(send: { [weak self] o in
+            guard let self, let c = self.filesLock.withLock({ () -> RemoteChannel? in
+                if self.filesHoldOut, !o.isEnd { return nil }
+                return self.filesChannel
+            }) else { return false }
+            c.send(ToMac(o))
+            return true
+        }, ready: { [weak self] in
+            guard let self else { return false }
+            return self.filesLock.withLock { !self.filesHoldOut && (self.filesChannel.map { !self.filesNeedMove || $0.moved } ?? false) }
+        }, peerResumes: { [weak self] in
+            guard let self else { return false }
+            return self.filesLock.withLock { self.filesResumes }
+        })
+        // nothing to send on yet: the sender waits for a session instead of looking for one
+        files.connection(up: false)
+        files.onChange = { t in DispatchQueue.main.async { Transfers.shared.changed(t) } }
+        receiver = RemoteFileReceiver(parts: Self.caches.appendingPathComponent("parts", isDirectory: true), folder: { Self.documents })
+        receiver.onChange = { t, _ in
+            if Thread.isMainThread { Transfers.shared.changed(t) } else { DispatchQueue.main.async { Transfers.shared.changed(t) } }
+        }
+        // on the main thread (heard is): the file is gone once this returns
+        // on the files queue: read before the file goes, put on the clipboard on the main thread (only if it was asked for)
+        receiver.onClip = { url, name, _ in
+            guard let d = try? Data(contentsOf: url) else { return }
+            DispatchQueue.main.async { Transfers.shared.clipData(d, name: name) }
+        }
+    }
+
+    private func filesUp(_ c: RemoteChannel) {
+        guard let m = current else { return }
+        filesLock.withLock {
+            filesChannel = c
+            filesNeedMove = viaGoBetween
+            filesResumes = hostFeatures.contains(RemoteFeature.resume)
+        }
+        filesDevice = m.id
+        // the share extension sends to the computer last controlled
+        Outbox.target = Outbox.Target(id: m.id, name: m.title)
+        // back on mobile data with a lot left to send: asked first
+        Transfers.shared.onMobileData()
+        files.connection(up: true)
+        Transfers.shared.sessionUp()
+    }
+
+    /// The session went: what was going pauses, a file coming in keeps its part an hour.
+    private func filesDown() {
+        let was = filesLock.withLock { () -> Bool in
+            defer { filesChannel = nil }
+            return filesChannel != nil
+        }
+        guard was else { return }
+        files.connection(up: false)
+        filesQueue.async { self.holds = [:] }
+        if let d = filesDevice { filesQueue.async { self.receiver.suspend(device: d) } }
+        Transfers.shared.sessionDown()
+    }
+
+    /// A file from the computer. A big one on mobile data waits for the user's word (Transfers.admit): it's taken, but its progress
+    /// isn't said, so the computer stops a window in and waits for it (a minute) instead of giving up.
+    private func fileIn(_ o: RemoteFileOut) {
+        guard let device = filesDevice else { return }
+        if case let .begin(i) = o, !i.clip {
+            Transfers.shared.filesAnswered()
+            switch Transfers.shared.admit(i) {
+            case .go: break
+            case .hold: filesQueue.async { self.holds[i.id] = Hold(size: i.size) }
+            case .refuse: return filesQueue.async { self.answerFile(.failed(id: i.id, why: "stopped")) }
+            }
+        }
+        feed(o, device)
+    }
+
+    /// A file from the computer held for the mobile-data question (on filesQueue): what's come of it, and its end if it all came.
+    private struct Hold {
+        let size: Int
+        /// the receiver's first answer went (where it has the file from: 0, or what it kept from before a drop)
+        var said = false
+        var from = 0
+        var got = 0
+        var ended = false
+    }
+    private var holds: [String: Hold] = [:]
+
+    /// The mobile-data answer was yes: what's written is said and the computer goes on; a file that all came is saved now.
+    func releaseIncoming(_ id: String) {
+        filesQueue.async { [weak self] in
+            guard let self, let h = self.holds.removeValue(forKey: id), let d = self.filesDevice else { return }
+            if h.ended { self.receiver.heard(.end(id: id), from: d) { a in self.answerFile(a) } }
+            else { self.answerFile(.progress(id: id, bytes: h.from + h.got)) }
+        }
+    }
+
+    /// Files going out wait for the mobile-data answer, or go on.
+    func holdOutgoing(_ hold: Bool) {
+        filesLock.withLock { filesHoldOut = hold }
+        // what paused at a held chunk goes on from where the computer has it
+        if !hold, filesLock.withLock({ filesChannel != nil }) { files.connection(up: true) }
+    }
+
+    /// What comes in is written off the main thread, in order: chunks, the space check and the final move.
+    private let filesQueue = DispatchQueue(label: "blurt.remote.files.in", qos: .userInitiated)
+
+    /// One message for the receiver, its answers back on the session.
+    func feed(_ o: RemoteFileOut, _ device: String? = nil) {
+        guard let d = device ?? filesDevice else { return }
+        filesQueue.async { [weak self] in
+            guard let self else { return }
+            switch o {
+            case let .chunk(id, data): self.holds[id]?.got += data.count
+            case let .end(id):
+                if let h = self.holds[id] {
+                    // all of it came: saved once the answer is yes
+                    if h.from + h.got >= h.size { self.holds[id]?.ended = true; return }
+                    // short: the computer gave up waiting, or stopped it
+                    self.holds[id] = nil
+                    DispatchQueue.main.async { Transfers.shared.heldEnded(id) }
+                }
+            default: break
+            }
+            self.receiver.heard(o, from: d) { a in self.answerFile(a) }
+        }
+    }
+
+    /// An answer about a file coming in, from any thread; on filesQueue, a held file's progress waits.
+    private func answerFile(_ a: RemoteFileAnswer) {
+        switch a {
+        case let .progress(id, bytes):
+            if var h = holds[id] {
+                if h.said { return }
+                h.said = true
+                h.from = bytes
+                holds[id] = h
+            }
+        case let .saved(id, _), let .failed(id, _):
+            holds[id] = nil
+        }
+        filesLock.withLock { filesChannel }?.send(ToMac(a))
+    }
+
+    /// × on a file coming in: its part goes, and the computer hears `stopped`.
+    func stopIncoming(_ id: String) {
+        guard let d = filesDevice ?? current?.id else { return }
+        filesQueue.async { [weak self] in self?.receiver.stop(id, from: d) { a in self?.answerFile(a) } }
+    }
+
+    /// Get Copied Items: the computer reads its clipboard once and answers.
+    func getCopied() {
+        guard ready else { return }
+        send(.getClipboard)
     }
 
     // MARK: sending
@@ -1362,7 +1564,12 @@ final class Link: ObservableObject {
     static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }
     static let rttLock = NSLock()
     nonisolated(unsafe) static var rttShared = 0.01
-    var ready: Bool { channel != nil && state == .connected }
+    var ready: Bool {
+        #if DEBUG
+        if Pretend.transfers != nil { return state == .connected }
+        #endif
+        return channel != nil && state == .connected
+    }
 }
 
 /// What the microphone heard while the session was away, the last ten seconds of it.
@@ -1410,4 +1617,8 @@ enum Keychain {
     }
 
     static func remove(account: String) { SecItemDelete(query(account) as CFDictionary) }
+}
+
+private extension RemoteFileOut {
+    var isEnd: Bool { if case .end = self { return true }; return false }
 }

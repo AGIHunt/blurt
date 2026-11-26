@@ -20,6 +20,7 @@
 //!     store.rs        paired devices, the host's settings, keys (through the app's secret store)
 //!     mic.rs          the phone's microphone as dictation's source
 //!     server.rs       listeners, pairing, sessions, the relay: the Host the app starts
+//!     files.rs        files and the clipboard's content both ways: the sender, the receiver (parts kept for a resume)
 //!     keys.rs         every key name, and a viewer's keyboard turned into them (docs/design/remote-desktop-viewer.md)
 //!     viewer.rs       the viewer: a computer driving another (the phone's end, grown up), its paired computers, nearby ones
 
@@ -31,7 +32,7 @@ pub mod credit;
 pub mod crypto;
 pub mod displays;
 pub mod agent;
-pub mod incoming;
+pub mod files;
 pub mod input;
 pub mod keys;
 pub mod mic;

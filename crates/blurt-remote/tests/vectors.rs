@@ -35,7 +35,7 @@ fn version() {
 fn every_message_to_the_host() {
     let v = vectors();
     let list = v["toMac"].as_array().unwrap();
-    assert_eq!(list.len(), 54);
+    assert_eq!(list.len(), 60);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToMac::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -49,7 +49,7 @@ fn every_message_to_the_host() {
 fn every_message_to_the_phone() {
     let v = vectors();
     let list = v["toPhone"].as_array().unwrap();
-    assert_eq!(list.len(), 37);
+    assert_eq!(list.len(), 42);
     for e in list {
         let name = e["name"].as_str().unwrap();
         let m = ToPhone::from_json(&e["json"]).unwrap_or_else(|| panic!("{name} doesn't decode"));
@@ -472,4 +472,65 @@ fn viewer() {
             down: Some(true)
         })
     );
+}
+
+/// Clipboard and files (2026-11-26): every new message as the engine sees it, the limits, the feature names, and names cleaned the
+/// same way on every end.
+#[test]
+fn files() {
+    use blurt_remote::files::{self, FileAnswer, FileInfo, FileOut};
+    let v = vectors();
+    let f = &v["files"];
+    let n = |k: &str| f[k].as_i64().unwrap_or_else(|| panic!("{k}"));
+    assert_eq!(n("chunk"), files::CHUNK as i64);
+    assert_eq!(n("window"), files::WINDOW);
+    assert_eq!(n("progressEvery"), files::PROGRESS_EVERY);
+    assert_eq!(n("oldProgressEvery"), files::OLD_PROGRESS_EVERY);
+    assert_eq!(n("minWindow"), files::MIN_WINDOW);
+    assert_eq!(n("windowMilliseconds"), files::WINDOW_MILLISECONDS);
+    for c in f["windowFor"].as_array().unwrap() {
+        let r = c["rate"].as_f64().unwrap();
+        assert_eq!(files::window((r > 0.0).then_some(r), true), c["window"].as_i64().unwrap(), "{c}");
+        assert_eq!(files::window(Some(r), true), c["window"].as_i64().unwrap(), "{c}");
+    }
+    assert_eq!(n("maxSize"), files::MAX_SIZE);
+    assert_eq!(n("maxCount"), files::MAX_COUNT as i64);
+    assert_eq!(n("maxClipImage"), files::MAX_CLIP_IMAGE);
+    assert_eq!(n("keepPartsSeconds"), files::KEEP_PARTS.as_secs() as i64);
+    assert_eq!(n("resumeWaitSeconds"), files::RESUME_WAIT.as_secs() as i64);
+    assert_eq!(n("askOnCellular"), files::ASK_ON_CELLULAR);
+    assert_eq!(f["features"]["files"], blurt_remote::wire::FILES);
+    assert_eq!(f["features"]["resume"], blurt_remote::wire::RESUME);
+    assert_eq!(f["features"]["clipboard"], blurt_remote::wire::CLIPBOARD);
+    for c in f["clean"].as_array().unwrap() {
+        assert_eq!(files::clean(c["in"].as_str().unwrap()), c["out"].as_str().unwrap(), "{c}");
+    }
+
+    let find = |dir: &str, name: &str| {
+        v[dir].as_array().unwrap().iter().find(|e| e["name"] == name).unwrap_or_else(|| panic!("{name}"))["json"].clone()
+    };
+    let to_mac = |name: &str| ToMac::from_json(&find("toMac", name)).unwrap();
+    let to_phone = |name: &str| ToPhone::from_json(&find("toPhone", name)).unwrap();
+    assert_eq!(
+        to_mac("file_begin_batch").file_out(),
+        Some(FileOut::Begin(FileInfo { id: "f2".into(), name: "照片 1.heic".into(), size: 2_400_000, clip: false, index: Some(1), count: Some(3), total: Some(7_000_000) }))
+    );
+    let Some(FileOut::Begin(clip)) = to_mac("file_begin_clip").file_out() else { panic!("file_begin_clip") };
+    assert!(clip.clip && clip.index.is_none());
+    // the engine's begin goes back out as the same JSON, `clip` left out when false
+    assert_eq!(ToMac::from(FileOut::Begin(clip)).to_json(), find("toMac", "file_begin_clip"));
+    assert_eq!(to_mac("get_clipboard"), ToMac::GetClipboard);
+    assert_eq!(to_mac("file_progress_back").file_answer(), Some(FileAnswer::Progress { id: "h1".into(), bytes: 1 << 20 }));
+    assert_eq!(to_mac("file_saved_back").file_answer(), Some(FileAnswer::Saved { id: "h1".into(), name: "report 2.pdf".into() }));
+    assert_eq!(to_mac("file_failed_back").file_answer(), Some(FileAnswer::Failed { id: "h1".into(), why: "stopped".into() }));
+    assert_eq!(to_phone("file_begin_back").file_out(), Some(FileOut::Begin(FileInfo { id: "h1".into(), name: "report.pdf".into(), size: 5, clip: false, index: Some(2), count: Some(2), total: Some(9) })));
+    let Some(FileOut::Begin(back)) = to_phone("file_begin_back_clip").file_out() else { panic!("file_begin_back_clip") };
+    assert_eq!((back.clip, back.name.as_str(), back.size), (true, "Text.txt", 70_000));
+    assert_eq!(ToPhone::from(FileOut::Begin(back)).to_json(), find("toPhone", "file_begin_back_clip"));
+    assert_eq!(to_phone("file_chunk_back").file_out(), Some(FileOut::Chunk { id: "h1".into(), data: b"hello".to_vec() }));
+    assert_eq!(to_phone("file_end_back").file_out(), Some(FileOut::End { id: "h1".into() }));
+    assert_eq!(to_phone("clipboard_none"), ToPhone::ClipboardNone { why: "empty".into() });
+    // the host's answers to a file from the phone, as before
+    assert_eq!(to_phone("file_progress").file_answer(), Some(FileAnswer::Progress { id: "f1".into(), bytes: 5 }));
+    assert_eq!(ToPhone::from(FileAnswer::Failed { id: "f1".into(), why: "space".into() }).to_json(), find("toPhone", "file_failed"));
 }

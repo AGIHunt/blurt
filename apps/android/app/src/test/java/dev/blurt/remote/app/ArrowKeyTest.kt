@@ -106,7 +106,7 @@ class ArrowKeyTest {
             assertTrue("$w×$h $lefty: $a", a.width >= 88 && a.height >= 88)
             assertTrue("never at the edge", a.left > 20 && a.right < w)
             assertTrue("above the pages", a.bottom <= l.list.top)
-            val row = listOf(a, l.settingsButton, l.findButton, l.screenButton, l.keyboardButton, l.strip) + (if (displays) listOf(l.displayButton) else emptyList())
+            val row = listOf(a, l.settingsButton, l.findButton, l.screenButton, l.transferButton, l.keyboardButton, l.strip) + (if (displays) listOf(l.displayButton) else emptyList())
             noOverlap(row)
             for (r in row) assertTrue("in the top row: $r", r.top >= a.top - 0.01f && r.bottom <= a.bottom + 0.01f)
             assertEquals("the tabs as tall as the controls", l.findButton.height, l.strip.height, 0.01f)

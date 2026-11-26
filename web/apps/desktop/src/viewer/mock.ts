@@ -8,7 +8,7 @@
 //   &computers_error= declined (default) | unanswered | spent | unreachable   &computers_link=1 (begun from a link)
 //   ?viewer=<id>&viewer_state= connected (default) | connecting | offline | busy | noDirect | removed | replaced | noControl
 //   &viewer_route= local | direct | relay | goBetween | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
-//   &viewer_captured=1 (keys captured, the hint showing)
+//   &viewer_captured=1 (keys captured, the hint showing)   &viewer_files=1 (the files card: one coming, one paused, one done)
 import { packFrame } from './decode';
 import type { ComputersStatus } from './computers';
 
@@ -146,7 +146,8 @@ function mockViewer(cmd: string, a: Record<string, any>): unknown {
         setTimeout(() => {
           if (st === 'noControl' || st === 'connected') {
             send({ type: 'link', link: 'connected', route: param('viewer_route') ?? 'local' });
-            send({ type: 'session', name: vname(), platform: host(), canControl: st !== 'noControl' });
+            send({ type: 'session', name: vname(), platform: host(), canControl: st !== 'noControl', files: true, clipboard: true });
+            if (param('viewer_files') === '1') sampleFiles(send);
             send({ type: 'rtt', ms: param('viewer_route') === 'goBetween' || param('viewer_route') === 'direct' ? 46 : 3 });
             const two = param('viewer_displays') === '2';
             const displays = [
@@ -174,12 +175,29 @@ function mockViewer(cmd: string, a: Record<string, any>): unknown {
       return false;
     case 'viewer_options':
       return { mapped: a.mapped, clipboard: a.clipboard };
+    case 'viewer_get_clipboard':
+      setTimeout(() => sampleFiles((m) => out?.onmessage(m)), 300);
+      return 'asked';
+    case 'viewer_stop_transfer':
+      out?.onmessage({ ...files.find((f) => f.id === a.id), type: 'transfer', state: 'failed', why: 'stopped', secondsLeft: null });
+      return null;
     case 'viewer_show_display':
       out?.onmessage({ type: 'view', width: a.id === 'D2' ? 1920 : 2560, height: a.id === 'D2' ? 1080 : 1440, family: 'h264', display: a.id ?? 'D1' });
       enc?.key();
       return null;
   }
   return null;
+}
+
+const MB = 1024 * 1024;
+const files = [
+  { id: 't3', name: L('Q4 Quote.xlsx', 'Q4 报价单.xlsx'), size: 2.4 * MB, done: 2.4 * MB, incoming: true, clip: false, state: 'done', index: 1, count: 3, path: 'C:\\Users\\me\\Downloads\\Blurt\\Q4 报价单.xlsx' },
+  { id: 't2', name: L('Lesson 3.mp4', '第 3 课.mp4'), size: 350 * MB, done: 141 * MB, incoming: true, clip: false, state: 'going', index: 2, count: 3, secondsLeft: 95 },
+  { id: 't1', name: L('Homework 3.jpg', '作业 3.jpg'), size: 4.2 * MB, done: 1.7 * MB, incoming: false, clip: false, state: 'paused' },
+];
+/** The files card's three rows, as the app tells them. */
+function sampleFiles(send: (m: unknown) => void) {
+  for (const f of [...files].reverse()) send({ type: 'transfer', ...f });
 }
 
 /** A made-up desktop of `host()`'s kind, drawn and encoded 30 times a second into the window's channel. */

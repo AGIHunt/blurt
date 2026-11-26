@@ -53,6 +53,8 @@ struct Viewers {
     /// computers whose last try through the public connection service found no direct path (their window said so): the list says
     /// Can't Connect Directly until one connects or Connect tries again (the Mac's ViewerStore.failed)
     no_direct: Mutex<HashSet<String>>,
+    /// files from the computers shown (Get Copied Items, a host's Send Files…): Downloads/Blurt, parts kept an hour per computer
+    receiver: Arc<blurt_remote::files::Receiver>,
 }
 
 struct Pairing {
@@ -85,6 +87,14 @@ struct Win {
     clip: Option<String>,
     /// the dictation key, down and not sent yet: alone it's dictation here, with another key it goes on (AltGr+E still types €)
     held_trigger: Option<String>,
+    /// files going to this computer (Send Files…, a drop): one at a time, paused across a drop, going on when it's back
+    sender: Option<blurt_remote::files::Sender>,
+    /// its session lists `resume`, `clipboard`
+    host_resumes: bool,
+    host_clipboard: bool,
+    /// Get Copied Items asked, then: the first answer that completes it (text, nothing, a clip file finished, the first of the files)
+    /// takes it, or a drop, or 30 s. Only an asked clip or text goes on this computer's clipboard (else just the captured sync)
+    getting: Option<std::time::Instant>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -132,7 +142,96 @@ pub fn start(app: &AppHandle) {
         next_window: AtomicU64::new(1),
         options: Mutex::new(options),
         no_direct: Mutex::new(HashSet::new()),
+        receiver: Arc::new(make_receiver()),
     });
+}
+
+/// Where a computer's files land here: Downloads/Blurt (the Mark of the Web on Windows), and a `clip` image or text onto this computer's
+/// clipboard, as the Mac viewer does.
+pub fn downloads() -> std::path::PathBuf {
+    dirs::download_dir().unwrap_or_else(crate::paths::blurt_home).join("Blurt")
+}
+
+/// How long a Get Copied Items waits for its answer.
+const ASKED_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Takes the window's pending Get Copied Items: whether one was still waiting.
+fn take_asked(getting: &mut Option<std::time::Instant>) -> bool {
+    getting.take().is_some_and(|at| at.elapsed() < ASKED_FOR)
+}
+
+fn make_receiver() -> blurt_remote::files::Receiver {
+    use blurt_remote::files::Hooks;
+    let hooks = Hooks {
+        clip: Box::new(|path, name, host| {
+            let Some(v) = viewers() else { return };
+            // only an answer to Get Copied Items reaches this computer's clipboard; one nobody asked for is dropped
+            let asked = v.windows.lock().unwrap().values_mut().filter(|w| w.host_id == host).any(|w| take_asked(&mut w.getting));
+            if !asked {
+                return;
+            }
+            let Ok(bytes) = std::fs::read(path) else { return };
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            let image = blurt_remote::files::is_image(name);
+            let ok = if image {
+                tauri::image::Image::from_bytes(&bytes).is_ok_and(|i| v.app.clipboard().write_image(&i).is_ok())
+            } else {
+                v.app.clipboard().write_text(String::from_utf8_lossy(&bytes).into_owned()).is_ok()
+            };
+            if ok {
+                to_host_window(host, json!({"type": "copied", "what": if image { "image" } else { "text" }}));
+            }
+        }),
+        change: Box::new(|t, host| to_host_window(host, transfer_json(t))),
+        ..Hooks::default()
+    };
+    blurt_remote::files::Receiver::new(dir().join("viewer-parts"), downloads(), true, hooks)
+}
+
+fn transfer_json(t: &blurt_remote::files::Transfer) -> serde_json::Value {
+    let mut j = t.to_json();
+    j["type"] = json!("transfer");
+    j
+}
+
+/// A message to every window showing this computer (taken without holding the windows' lock afterwards).
+fn to_host_window(host: &str, m: serde_json::Value) {
+    let Some(v) = viewers() else { return };
+    let chans: Vec<_> = v.windows.lock().unwrap().values().filter(|w| w.host_id == host).filter_map(|w| w.channel.clone()).collect();
+    for c in chans {
+        send_json(&c, m.clone());
+    }
+}
+
+/// The window's sender: what goes through its session while it's connected and files may go (the stream moved, on the public
+/// connection service).
+fn make_sender(label: &str) -> blurt_remote::files::Sender {
+    use blurt_remote::files::Sender;
+    let session = {
+        let label = label.to_string();
+        move || -> Option<(viewer::Sender, bool, bool)> {
+            let v = viewers()?;
+            let ws = v.windows.lock().unwrap();
+            let w = ws.get(&label)?;
+            let s = w.session.as_ref()?;
+            (w.link == Link::Connected).then(|| (s.sender(), s.files_ready(), w.host_resumes))
+        }
+    };
+    let session = Arc::new(session);
+    let (a, b, c) = (session.clone(), session.clone(), session);
+    let l = label.to_string();
+    Sender::new(
+        move |o| matches!(a(), Some((s, true, _)) if s.send(ToMac::from(o))),
+        move || b().is_some_and(|(_, ready, _)| ready),
+        move || c().is_some_and(|(_, _, r)| r),
+        move |t| {
+            let Some(v) = viewers() else { return };
+            let ch = v.windows.lock().unwrap().get(&l).and_then(|w| w.channel.clone());
+            if let Some(ch) = ch {
+                send_json(&ch, transfer_json(t));
+            }
+        },
+    )
 }
 
 /// The window closed: its session ends, keys go back.
@@ -582,6 +681,10 @@ fn open_window(app: &AppHandle, id: &str) -> Result<(), String> {
             route: None,
             clip: None,
             held_trigger: None,
+            sender: Some(make_sender(&label)),
+            host_resumes: false,
+            host_clipboard: false,
+            getting: None,
         },
     );
     let url = format!("index.html?viewer={}", urlencode(&c.host_id));
@@ -655,7 +758,18 @@ fn on_event(label: String) -> viewer::OnEvent {
                 w.link = link;
                 w.route = route;
                 let host = w.host_id.clone();
+                let files = w.sender.clone();
+                if link != Link::Connected {
+                    w.getting = None; // its answer won't come on another session
+                }
                 drop(ws);
+                // files going there pause with the session and go on when it's back; what was coming waits an hour here
+                if let Some(f) = &files {
+                    f.connection(link == Link::Connected);
+                }
+                if link != Link::Connected {
+                    v.receiver.suspend(&host, None);
+                }
                 match link {
                     Link::NoDirect => {
                         v.no_direct.lock().unwrap().insert(host);
@@ -689,8 +803,10 @@ fn on_event(label: String) -> viewer::OnEvent {
                 let has = |n: &str| i.features.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
                 // the window's title is the name this computer gives it: the host's own only when it has none here
                 let name = v.computers.get(&w.host_id).and_then(|c| c.alias).unwrap_or_else(|| i.mac_name.clone());
+                w.host_resumes = has(blurt_remote::wire::RESUME);
+                w.host_clipboard = has(blurt_remote::wire::CLIPBOARD);
                 send_json(&ch, json!({"type": "session", "name": name, "platform": i.platform, "canControl": i.can_control,
-                    "privacy": has("privacy"), "files": has("files")}));
+                    "privacy": has("privacy"), "files": has("files"), "clipboard": has(blurt_remote::wire::CLIPBOARD)}));
             }
             Event::Displays(l) => {
                 let l: Vec<_> = l.iter().map(|d| json!({"id": d.id, "name": d.name, "x": d.x, "y": d.y, "width": d.width, "height": d.height, "main": d.main})).collect();
@@ -705,30 +821,62 @@ fn on_event(label: String) -> viewer::OnEvent {
                 json!({"type": "cursorShape", "png": blurt_remote::wire::b64(&png), "hotX": hot_x, "hotY": hot_y, "width": width, "height": height}),
             ),
             Event::Clipboard(t) => {
-                // the host's clipboard changed while keys were captured here: this computer's takes it
-                let on = v.options.lock().unwrap().clipboard && w.captured;
+                // the host's clipboard changed while keys were captured here, or Get Copied Items found text: this computer's takes it
+                let asked = take_asked(&mut w.getting);
+                let on = asked || (v.options.lock().unwrap().clipboard && w.captured);
                 if on && blurt_remote::wire::clipboard_fits(&t) {
                     w.clip = Some(t.clone());
                     drop(ws);
                     use tauri_plugin_clipboard_manager::ClipboardExt;
-                    let _ = v.app.clipboard().write_text(t);
+                    let ok = v.app.clipboard().write_text(t).is_ok();
+                    if asked && ok {
+                        send_json(&ch, json!({"type": "copied", "what": "text"}));
+                    }
                 }
+            }
+            Event::ClipboardNone(why) => {
+                w.getting = None;
+                send_json(&ch, json!({"type": "clipboardNone", "why": why}));
+            }
+            Event::FileIn(o) => {
+                // a file from the host: to Downloads/Blurt (or this computer's clipboard), its answers back on this session
+                // the first of a batch of files answers Get Copied Items; a clip answers it once it has come whole (the hook)
+                if matches!(&o, blurt_remote::files::FileOut::Begin(i) if !i.clip) {
+                    w.getting = None;
+                }
+                let host = w.host_id.clone();
+                let s = w.session.as_ref().map(|s| s.sender());
+                drop(ws);
+                v.receiver.heard(o, &host, &mut |a| {
+                    if let Some(s) = &s {
+                        s.send(ToMac::from(a));
+                    }
+                });
             }
             Event::ScreenFailed(why) => send_json(&ch, json!({"type": "screenFailed", "why": why})),
             Event::CanControl(b) => send_json(&ch, json!({"type": "canControl", "on": b})),
             Event::ScreenLocked(b) => send_json(&ch, json!({"type": "screenLocked", "locked": b})),
+            // the host's answers to a file going there
             Event::FileProgress { id, bytes } => {
-                if let Some(a) = outgoing().lock().unwrap().get(&id) {
-                    a.store(bytes, SeqCst);
+                let f = w.sender.clone();
+                drop(ws);
+                if let Some(f) = f {
+                    f.heard(blurt_remote::files::FileAnswer::Progress { id, bytes });
                 }
             }
             Event::FileSaved { id, name } => {
-                outgoing().lock().unwrap().remove(&id);
-                send_json(&ch, json!({"type": "file", "state": "saved", "name": name}));
+                let f = w.sender.clone();
+                drop(ws);
+                if let Some(f) = f {
+                    f.heard(blurt_remote::files::FileAnswer::Saved { id, name });
+                }
             }
             Event::FileFailed { id, why } => {
-                outgoing().lock().unwrap().remove(&id);
-                send_json(&ch, json!({"type": "file", "state": "failed", "why": why}));
+                let f = w.sender.clone();
+                drop(ws);
+                if let Some(f) = f {
+                    f.heard(blurt_remote::files::FileAnswer::Failed { id, why });
+                }
             }
             Event::Notice(text) => {
                 // a notification, so it's seen even with this window behind
@@ -987,78 +1135,65 @@ pub fn type_on_remote(text: &str) -> bool {
     true
 }
 
-/// Files going out, by id: what the host has acknowledged writing (its fileProgress), so no more than WINDOW is ever in flight.
-fn outgoing() -> &'static Mutex<HashMap<String, Arc<std::sync::atomic::AtomicI64>>> {
-    static O: std::sync::OnceLock<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicI64>>>> = std::sync::OnceLock::new();
-    O.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-/// Send Files… (and files dropped on the picture): each to the host's Downloads, in order, a chunk at a time and never more than
-/// 4 MB ahead of what it has written. The window hears each one saved or not (`{"type": "file"}`).
+/// Send Files… (and files dropped on the picture): to the host's Downloads/Blurt, in order, folders zipped. The window hears each
+/// one as it goes (`{"type": "transfer"}`); a drop pauses it, and it goes on from where the host has it once the session is back.
 #[tauri::command]
 pub fn viewer_send_files(window: WebviewWindow, paths: Option<Vec<String>>) {
     let label = window.label().to_string();
     std::thread::spawn(move || {
+        let Some(v) = viewers() else { return };
         let paths: Vec<std::path::PathBuf> = match paths {
             Some(p) => p.into_iter().map(Into::into).collect(),
             None => {
                 use tauri_plugin_dialog::DialogExt;
-                let Some(v) = viewers() else { return };
                 v.app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect()
             }
         };
-        for p in paths {
-            let Some(v) = viewers() else { return };
-            let (sender, ch) = {
-                let ws = v.windows.lock().unwrap();
-                let Some(w) = ws.get(&label) else { return };
-                (w.session.as_ref().map(|s| s.sender()), w.channel.clone())
-            };
-            let (Some(sender), Some(ch)) = (sender, ch) else { return };
-            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
-            send_json(&ch, json!({"type": "file", "state": "sending", "name": name}));
-            if !send_file(&sender, &p, &name) {
-                send_json(&ch, json!({"type": "file", "state": "failed", "why": "read"}));
+        // folders are zipped first: the window says so meanwhile
+        if paths.iter().any(|p| p.is_dir()) {
+            let ch = v.windows.lock().unwrap().get(&label).and_then(|w| w.channel.clone());
+            if let Some(ch) = ch {
+                send_json(&ch, json!({"type": "compressing"}));
             }
+        }
+        let list = blurt_remote::files::prepare(&paths);
+        let f = v.windows.lock().unwrap().get(&label).and_then(|w| w.sender.clone());
+        if let (Some(f), false) = (f, list.is_empty()) {
+            f.add(list, false);
         }
     });
 }
 
-fn send_file(s: &blurt_remote::viewer::Sender, p: &std::path::Path, name: &str) -> bool {
-    use std::io::Read;
-    const CHUNK: usize = 192 * 1024;
-    const WINDOW: i64 = 4 << 20;
-    let Ok(mut f) = std::fs::File::open(p) else { return false };
-    let Ok(size) = f.metadata().map(|m| m.len() as i64) else { return false };
-    let id = blurt_remote::crypto::new_id();
-    let acked = Arc::new(std::sync::atomic::AtomicI64::new(0));
-    outgoing().lock().unwrap().insert(id.clone(), acked.clone());
-    if !s.send(ToMac::FileBegin { id: id.clone(), name: name.to_string(), size }) {
-        return false;
-    }
-    let mut sent = 0i64;
-    let mut buf = vec![0u8; CHUNK];
-    loop {
-        // the host is at most WINDOW behind; a minute without it moving and this one is given up
-        let mut waited = 0;
-        while sent - acked.load(SeqCst) > WINDOW {
-            if waited > 3000 || !outgoing().lock().unwrap().contains_key(&id) {
-                return true; // the host said why (fileFailed), or went quiet: the window says so either way
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            waited += 1;
+/// Get Copied Items (⋯, Ctrl+Alt+V while keys stay here): what is copied on that computer comes here: files to Downloads/Blurt, an
+/// image or text onto this computer's clipboard. → "asked", or "update" (that computer's Blurt is too old to answer).
+#[tauri::command]
+pub fn viewer_get_clipboard(window: WebviewWindow) -> &'static str {
+    with_win(&window, |w| {
+        if !w.host_clipboard {
+            return "update";
         }
-        let n = match f.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(_) => return false,
-        };
-        if !s.send(ToMac::FileChunk { id: id.clone(), data: buf[..n].to_vec() }) {
-            return false;
+        w.getting = Some(std::time::Instant::now());
+        if let Some(s) = &w.session {
+            s.send(ToMac::GetClipboard);
         }
-        sent += n as i64;
+        "asked"
+    })
+    .unwrap_or("update")
+}
+
+/// × on a file going there or coming from there: the other end hears `stopped`, the part goes.
+#[tauri::command]
+pub fn viewer_stop_transfer(window: WebviewWindow, id: String) {
+    let Some(v) = viewers() else { return };
+    let Some((f, host, s)) = with_win(&window, |w| (w.sender.clone(), w.host_id.clone(), w.session.as_ref().map(|s| s.sender()))) else { return };
+    if let Some(f) = f {
+        f.stop(Some(&id));
     }
-    s.send(ToMac::FileEnd { id })
+    v.receiver.stop(&id, &host, &mut |a| {
+        if let Some(s) = &s {
+            s.send(ToMac::from(a));
+        }
+    });
 }
 
 /// A named move of the host's OS from the ⋯ menu (Ctrl+Alt+Del: `secureAttention`).

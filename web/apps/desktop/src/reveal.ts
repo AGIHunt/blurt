@@ -9,3 +9,6 @@ export function notePlatform(platform: string | null | undefined): void {
 }
 
 export const revealLabel = (): string => t(gnome ? 'mw.reveal.files' : 'mw.reveal');
+
+/** A received file's button on the viewer's files card (remote-files.md Copy): Show in Folder on Windows, Show in Files on Linux. */
+export const revealFolderLabel = (): string => t(gnome ? 'mw.reveal.files' : 'detail.reveal');

@@ -357,6 +357,9 @@ fn options(device: &str, go_between: bool) -> Options {
         features: Some(vec![
             crate::wire::MOVE.to_string(),
             crate::wire::VIEWER.to_string(),
+            // files from the host (Get Copied Items), and a part kept for a resume, both ways
+            crate::wire::FILES.to_string(),
+            crate::wire::RESUME.to_string(),
         ]),
         go_between,
         device: device.to_string(),
@@ -849,6 +852,10 @@ pub enum Event {
     FileProgress { id: String, bytes: i64 },
     FileSaved { id: String, name: String },
     FileFailed { id: String, why: String },
+    /// a file from the host (copied files, a clip image or long text), for this end's receiver: answer with `Session::send`
+    FileIn(crate::files::FileOut),
+    /// getClipboard found nothing to give: "empty", "locked", "too_big" (over 1,000 files), "too_large" (a file over 4 GB), "unsupported"
+    ClipboardNone(String),
 }
 
 /// What the window asks for its picture.
@@ -887,6 +894,8 @@ pub struct Target {
 /// One window's connection. Dropping it closes it.
 pub struct Session {
     tx: mpsc::UnboundedSender<Command>,
+    /// connected, and files may go (on the public connection service, once the stream has moved)
+    files_ready: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -918,8 +927,19 @@ impl Session {
         learned: OnLearned,
     ) -> Session {
         let (tx, rx) = mpsc::unbounded_channel();
-        rt.spawn(run(t, rx, on, learned));
-        Session { tx }
+        let files_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        rt.spawn(run(t, rx, on, learned, files_ready.clone()));
+        Session { tx, files_ready }
+    }
+
+    /// Files may go now (`files::Sender`'s ready).
+    pub fn files_ready(&self) -> bool {
+        self.files_ready.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The same, for a sender's thread.
+    pub fn files_ready_flag(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        self.files_ready.clone()
     }
 
     pub fn send(&self, m: ToMac) {
@@ -957,6 +977,7 @@ async fn run(
     mut rx: mpsc::UnboundedReceiver<Command>,
     on: OnEvent,
     learned: OnLearned,
+    files_ready: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let mut want: Option<Want> = None;
     let mut tries = 0u32;
@@ -979,7 +1000,9 @@ async fn run(
                 if route == Route::Relay {
                     relay_fails = 0;
                 }
-                match live(phone, route, &mut rx, &mut want, &on, &learned, &mut t).await {
+                let end = live(phone, route, &mut rx, &mut want, &on, &learned, &mut t, &files_ready).await;
+                files_ready.store(false, std::sync::atomic::Ordering::SeqCst);
+                match end {
                     End::Closed => return,
                     End::Removed => {
                         on(Event::Link {
@@ -1099,6 +1122,7 @@ struct Picture {
     frames: i64,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn live(
     mut phone: Phone,
     mut route: Route,
@@ -1107,6 +1131,7 @@ async fn live(
     on: &OnEvent,
     learned: &OnLearned,
     t: &mut Target,
+    files_ready: &std::sync::atomic::AtomicBool,
 ) -> End {
     let t0 = Instant::now();
     let now = move || t0.elapsed().as_secs_f64();
@@ -1218,6 +1243,12 @@ async fn live(
                     ToPhone::FileProgress { id, bytes } => on(Event::FileProgress { id, bytes }),
                     ToPhone::FileSaved { id, name } => on(Event::FileSaved { id, name }),
                     ToPhone::FileFailed { id, why } => on(Event::FileFailed { id, why }),
+                    m @ (ToPhone::FileBegin { .. } | ToPhone::FileChunk { .. } | ToPhone::FileEnd { .. }) => {
+                        if let Some(o) = m.file_out() {
+                            on(Event::FileIn(o));
+                        }
+                    }
+                    ToPhone::ClipboardNone { why } => on(Event::ClipboardNone(why)),
                     ToPhone::Removed => return End::Removed,
                     ToPhone::Replaced => return End::Replaced,
                     ToPhone::Ended => return End::Ended,
@@ -1227,6 +1258,7 @@ async fn live(
             }
             },
         }
+        files_ready.store(info.is_some() && phone.carries_files(), std::sync::atomic::Ordering::SeqCst);
         let n = now();
         // a send held up by a full stream (a file on a slow line) says nothing about the host: counted from its end
         if n - last_tick > 1.0 {

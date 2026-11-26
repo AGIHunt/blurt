@@ -64,7 +64,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     }
 
     private lazy var files: ViewerFileSender = {
-        let f = ViewerFileSender(link: link)
+        let f = ViewerFileSender(link: link, parts: ViewerFileSender.partsFolder(in: BlurtPaths.home.appendingPathComponent("remote/viewer-parts/\(computer.id)", isDirectory: true)))
         f.onEvent = { [weak self] e in self?.showFile(e) }
         fileCard.onStop = { [weak f] in f?.stop() }
         return f
@@ -79,11 +79,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         placeFileCard()
     }
 
-    /// The card keeps above the band where a host keeps its taskbar or Dock (about 7 % of its screen's height: Windows' taskbar
-    /// at 200 % on 1440 px, a Mac's Dock): 12 pt over that band, 64 pt at least.
+    /// The card keeps above the band where a host keeps its taskbar or Dock: 12 pt over that band, 64 pt at least. The band is 10.5 % of
+    /// the picture's height: Windows' taskbar at 200 % on 1440 px is 6.7 %, a Mac's Dock with 50 pt icons on a 720 pt screen 10 % (at
+    /// 7.5 % the card's foot sat over that Dock, 2026-11-26).
     private func placeFileCard() {
         guard let content = window?.contentView else { return }
-        let band = (content.bounds.height * 0.075).rounded()
+        let band = (content.bounds.height * 0.105).rounded()
         fileCardBottom?.constant = -max(64, band + 12)
     }
 
@@ -92,8 +93,21 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     func sendFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other")) }
+        guard hostTakesFiles else { return showFile(.failed(name: urls.count == 1 ? urls[0].lastPathComponent : "", why: "other", incoming: false)) }
         files.send(urls)
+    }
+
+    /// The host answers getClipboard (its session lists `clipboard`)
+    private var hostGivesClipboard: Bool { link.session?.features?.contains(RemoteFeature.clipboard) == true }
+
+    /// Get Copied Items (⋯, ⌥⌘V while keys stay here): what's copied on the host comes here, once. Files to Downloads/Blurt, an image
+    /// or text onto this Mac's clipboard (docs/design/remote-files.md).
+    @objc func getCopied() {
+        guard link.state == .connected else { return }
+        guard hostGivesClipboard else { return showFile(.nothing(why: "update")) }
+        files.ask()
+        link.send(.getClipboard)
+        emit(["event": "viewer_get_copied"])
     }
 
     @objc private func sendSecureAttention() { link.send(.system(.secureAttention)) }
@@ -101,7 +115,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     @objc private func chooseFiles() {
         let p = NSOpenPanel()
         p.allowsMultipleSelection = true
-        p.canChooseDirectories = false
+        // a folder goes as a zip (RemoteFiles.prepare)
+        p.canChooseDirectories = true
         guard let w = window else { return }
         p.beginSheetModal(for: w) { [weak self] r in
             if r == .OK { self?.sendFiles(p.urls) }
@@ -266,8 +281,11 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
 
     private func heard(_ m: ToPhone) {
         switch m {
-        case .fileProgress, .fileSaved, .fileFailed:
+        case .fileProgress, .fileSaved, .fileFailed, .fileBegin, .fileChunk, .fileEnd:
             files.heard(m)
+        case let .clipboardNone(why):
+            guard files.takeAsked() else { return }
+            showFile(.nothing(why: why))
         case let .notice(text):
             // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
             Notify.post(title: shownName, body: text, uid: "remote-notice-\(link.computer.id)")
@@ -282,6 +300,13 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             updateDisplays()
         case let .cursorShape(png, hx, hy, w, h):
             picture.shape(png: png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
+        case let .clipboard(t) where files.takeAsked():
+            // the answer to Get Copied Items: asked for, so it's taken whatever the clipboard switch says
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(t, forType: .string)
+            pasteboardSeen = pb.changeCount
+            showFile(.copied(image: false))
         case let .clipboard(t):
             guard captured, shareClipboard, RemoteClipboard.fits(t) else { return }
             let pb = NSPasteboard.general
@@ -330,6 +355,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         emit(["event": "viewer_link", "state": "\(s)", "route": link.route.map { "\($0)" } ?? "", "trying": link.trying.map { "\($0)" } ?? "", "lost": link.lostWhy])
         // the clock the cover counts from: the moment the link went down, or the window began connecting
         if s == .connected { downSince = nil } else if downSince == nil { downSince = CACurrentMediaTime() }
+        // files either way pause on a drop and go on from where they were (docs/design/remote-files.md)
+        files.connection(up: s == .connected)
         switch s {
         case .connected: connected()
         case .connecting, .waiting:
@@ -664,9 +691,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         fileCard.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(fileCard)
         let bottom = fileCard.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -64)
-        let wide = fileCard.widthAnchor.constraint(equalToConstant: ViewerFileCard.width)
-        wide.priority = .defaultHigh
-        NSLayoutConstraint.activate([bottom, wide,
+        // its width is its own (ViewerFileCard: one for two lines, hugging one line)
+        NSLayoutConstraint.activate([bottom,
                                      fileCard.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
                                      fileCard.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12)])
         fileCardBottom = bottom
@@ -889,6 +915,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         }
         var actions: [NSMenuItem] = []
         if hostTakesFiles { actions.append(menuItem("viewer.send_files", #selector(chooseFiles))) }
+        if hostGivesClipboard {
+            let get = menuItem("viewer.get_copied", #selector(getCopied))
+            get.keyEquivalent = "v"
+            get.keyEquivalentModifierMask = [.command, .option]
+            actions.append(get)
+        }
         // a Windows host: its lock and login screens want Ctrl+Alt+Del (sent by the system service where it's on)
         if host == .windows { actions.append(menuItem("viewer.ctrl_alt_del", #selector(sendSecureAttention))) }
         if !actions.isEmpty {
@@ -1080,7 +1112,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// the picture's hint, as the window shows it (`viewer hint KEY`: release, release.app_only, no_control); held up until the
     /// next one, so a screenshot can't miss it. The display switcher closes, as it does when the keys come here. And the file card:
     /// file (a long file name being sent, 3.2 of 8.4 MB there), file.start (before the host's first count), file.many (the second of
-    /// three), file.saved, file.failed (not enough space there), file.off.
+    /// three), file.in (coming here), file.paused (after 5.1 MB), file.saved, file.received, file.copied, file.nothing, file.too_large,
+    /// file.too_big, file.failed (not enough space there), file.off.
     func testHint(_ key: String) {
         displaysPopover?.close()
         let name = "Quarterly results for the board, final version (2).pdf", size = 8_400_000
@@ -1089,14 +1122,49 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         switch key {
         case "release", "release.app_only": picture.showHint(releaseHint(system: key == "release"), seconds: 600)
         case "no_control": picture.showHint(T("viewer.no_control", shownName), seconds: nil)
-        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1))
-        case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1))
-        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3))
-        case "file.saved": showFile(.saved(name: name, index: 1, count: 1))
-        case "file.failed": showFile(.failed(name: name, why: "space"))
+        case "file": showFile(.sending(name: name, size: size, done: 3_200_000, index: 1, count: 1, left: 95, url: Self.testPDF(name)))
+        case "file.start": showFile(.sending(name: name, size: size, done: nil, index: 1, count: 1, left: nil))
+        case "file.many": showFile(.sending(name: name, size: size, done: 5_100_000, index: 2, count: 3, left: 40, url: Self.testPDF(name)))
+        case "file.saved": showFile(.saved(name: name, index: 1, count: 1, blurt: true))
+        case "file.failed": showFile(.failed(name: name, why: "space", incoming: false))
+        case "file.in": showFile(.receiving(name: "Q4 report.xlsx", size: size, done: 2_600_000, index: 1, count: 1, left: 12))
+        case "file.paused":     // after 5.1 of 8.4 MB went
+            showFile(.sending(name: name, size: size, done: 5_100_000, index: 1, count: 1, left: 40, url: Self.testPDF(name)))
+            showFile(.paused(name: name))
+        case "file.received": showFile(.received(url: URL(fileURLWithPath: "/tmp/Q4 report.xlsx"), index: 1, count: 1))
+        case "file.copied": showFile(.copied(image: true))
+        case "file.nothing": showFile(.nothing(why: "empty"))
+        case "file.too_large": showFile(.nothing(why: "too_large"))
+        case "file.too_big": showFile(.nothing(why: "too_big"))
         case "file.off": fileCard.hide()
         default: emit(["event": "viewer_hint", "unknown": key])
         }
+    }
+
+    /// A one-page made-up report as NAME in a temporary folder: a file being sent, for its Quick Look thumbnail on the card.
+    private static func testPDF(_ name: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-test-hint", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let ctx = CGContext(url as CFURL, mediaBox: &box, nil) else { return nil }
+        ctx.beginPDFPage(nil)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSAttributedString(string: "Quarterly results", attributes: [.font: NSFont.boldSystemFont(ofSize: 34)]).draw(at: NSPoint(x: 60, y: 680))
+        NSAttributedString(string: "Q3 2026 · prepared for the board", attributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.gray])
+            .draw(at: NSPoint(x: 60, y: 646))
+        let bars: [(CGFloat, NSColor)] = [(180, .systemBlue), (240, .systemBlue), (210, .systemBlue), (300, .systemGreen)]
+        for (i, b) in bars.enumerated() {
+            b.1.setFill()
+            NSBezierPath(rect: NSRect(x: 80 + CGFloat(i) * 120, y: 300, width: 70, height: b.0)).fill()
+        }
+        NSColor.lightGray.setFill()
+        for i in 0..<6 { NSBezierPath(rect: NSRect(x: 60, y: 240 - CGFloat(i) * 26, width: i % 3 == 2 ? 320 : 490, height: 10)).fill() }
+        NSGraphicsContext.current = nil
+        ctx.endPDFPage()
+        ctx.closePDF()
+        return url
     }
 
     var testHintState: [String: Any] { picture.testHint.merging(["file": fileCard.testState]) { a, _ in a } }

@@ -500,6 +500,8 @@ dependencies = [
  "hkdf",
  "hmac",
  "if-addrs",
+ "image",
+ "libc",
  "mdns-sd",
  "pipewire",
  "png 0.17.16",
@@ -514,6 +516,7 @@ dependencies = [
  "webpki-roots 0.26.11",
  "windows 0.62.2",
  "x25519-dalek",
+ "zip",
 ]
 
 [[package]]
@@ -2572,6 +2575,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

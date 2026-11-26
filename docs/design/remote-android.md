@@ -326,3 +326,66 @@ Measured on the emulator (Android 16, notifications not allowed), away 3 / 20 / 
 is back on the same network, 46–307 ms away (the real public connection service). After 200 s: 0.17 s to a new session on the same network,
 4.0 s away. With Ctrl latched, the talk key held and the picture on: the key up and the modifiers let go within 0.1 s, the picture off
 within 0.7 s, and nothing from the phone until it's back. Not tried: a real phone, MIUI / HyperOS / EMUI / ColorOS, deep sleep.
+
+## Files and the clipboard (2026-11-26)
+
+The product and its words: [remote-files.md](remote-files.md); the wire: [remote-protocol.md](remote-protocol.md) §Clipboard and files.
+
+- **Core** (`core/RemoteFiles.kt`): RemoteFiles.swift's sender and receiver on a JVM, behaviour for behaviour: one file at a time, 192 KiB
+  chunks, at most 4 MiB past the receiver's last progress; resume (the receiver answers every begin with what it has, keeps a dropped part an
+  hour keyed by device and id with the same name and size); a drop pauses, the session coming back goes on; × on either end ends it at both;
+  `clip` files go to a callback; `locked`, `space` (size + 256 MB), `too_big`; an older peer without `resume` gets the file from 0. The sender
+  reads a `RemoteFileSource` (a file, or on the phone a content URI), so core has no Android in it. Added for the phone: a file asked for one
+  computer waits while the session is with another (`target`), the share sheet's items are dropped if not begun within the hour
+  (`expiresIn`), and the receiver can hold a file's progress (`hold` / `release`) while the phone asks about mobile data, which stops the
+  sender one window in. `RemoteFilesTest` has the Swift cases and these; `VectorsTest` checks every new vector and the `files` block,
+  `clean` cases included.
+- **The link** (`net/Link.kt`): hello names `files` and `resume`; `session.features` say whether the computer resumes (`peerResumes`) and
+  answers `getClipboard`. File messages from the computer are taken on the network thread and handed, in order, to the receiver's own thread
+  (`files/Transfers.kt`), never through the main thread. Files go only while the session is connected, which on the public connection
+  service is after the stream has moved. **A computer's file progress counts as a sign of life**: a file going out queues the pings behind up
+  to 4 MiB, so at 1.5 MB/s the pongs came 2.8 s late and the session was dropped every few seconds (the fake host throttled to 1.5 MB/s:
+  21 drops in 50 MB, each resumed) until it did. The lead then fixed it at the source (e0e8a860, ported here): with a peer that resumes
+  the receiver says its progress every 256 KiB and the sender keeps only half a second of the measured rate unacknowledged (512 KiB to
+  4 MiB, `RemoteFiles.window`); without `resume`, 1 MiB and a fixed 4 MiB as before. Both are kept: 50 MB at 1.5 MB/s then went with no
+  drop in 34 s.
+- **Where files land**: parts in `cacheDir/parts`; finished files in the shared Download/Blurt through MediaStore on Android 10 and later (no
+  permission for files the app adds; a name in use gets " 2" and MediaStore's own choice is read back), and in the app's own
+  `Android/data/…/files/Download/Blurt` on 8 and 9, opened and shared through the app's FileProvider, since the shared folder would need a
+  permission prompt there. **Save to Gallery** copies into Pictures/Blurt or Movies/Blurt only when tapped, Android 10 and later (below, it
+  isn't offered).
+- **The Transfer button** sits next to the screen button on every layout (portrait, the computer keyboard, landscape's rail, big screens). It
+  is drawn (two arrows), as the icon font has no such symbol. On a phone held upright the four buttons by the arrow key are 4 dp narrower
+  each since it came, as on the iPhone, so the tabs lose 16–20 dp, not a whole button: at 412 dp wide they keep 146 dp and the four names
+  still show in both languages (`PadLayoutTest.theTransferButtonLeavesTheTabsTheirRoom`).
+- **The sheet** (`sheets/TransferSheet.kt`): Send Photos… is Android's photo picker (`PickMultipleVisualMedia`; on phones without it, the
+  document picker), Send Files… the document picker, and the folder button beside it `OpenDocumentTree`, zipped with `java.util.zip` while
+  the row says Compressing… Get Copied Items is dimmed with "Update %@ to use this." for a computer that doesn't name `clipboard`. The list
+  is this run's transfers and the last 50 finished ones (prefs), newest first, with progress, time left, × and Continue; received ones have
+  Open (`ACTION_VIEW`), Share… (the system's share sheet, 分享) and Save to Gallery for pictures and videos.
+- **What's copied there** goes onto ClipboardManager: text as text, an image through the FileProvider (`cacheDir/clip`), and the sheet says
+  Copied with its first words, or Image Copied with Save to Gallery; a toast when the sheet is closed. A clipboard answer is taken only within
+  a minute of the tap. Paste from This Device sends a copied image as a `clip` file (20 MB at most) to a computer that names `clipboard`,
+  text as before.
+- **The share sheet** (`ShareActivity`, `ACTION_SEND` / `ACTION_SEND_MULTIPLE`, images, videos, any file): "Send to *the computer last
+  controlled*". The tap copies the items into the app's cache while the share's grant lasts, queues them, and opens the app on the Transfer
+  sheet when there's no session in hand; not begun within the hour, they're dropped.
+- **Mobile data** (`TRANSPORT_CELLULAR` without `NOT_METERED`): more than 100 MB asks first, sending (before anything goes) and receiving
+  (the file waits one window in; yes counts for that batch for 10 minutes, no for 30 s; unanswered in 50 s is no, before the computer gives
+  up at 60 s).
+
+Measured on the Android 16 emulator against the fake host (`--files`, `--take`, `--clipboard`, `send …` on its stdin) over the emulator's
+loopback:
+
+| | |
+|---|---|
+| Get Copied Items: text, an image | the host answered within 1 ms; on the phone's clipboard and in the sheet at once; the image saved to Pictures/Blurt on tap |
+| 50 MB to the computer, host taking 1.5 MB/s | 34 s, the same bytes; time left shown while it went |
+| The session dropped at 17.7 MB of 50 MB | back and resumed from 17,694,720 bytes, 45 ms after the new session opened |
+| The fake host stopped, then started again | the row Paused with Continue; once back it went on by itself, from 0 (the new process had no part), saved as "… 4.xlsx" |
+| 136 MB from the computer over mobile data | asked first; after Get, 136 MB in about 15 s, the same SHA-256 |
+| Share from Files → Blurt | "Send to Office PC", sent while the app was in the background |
+
+Not tried: a real phone, a real host (Mac/Windows/Linux: the lead and the host agents), the relay and the go-between with files, Android 8–9
+(the app's own folder), a folder zipped from the picker (built, not run), a share while nothing was connected for an hour.
+

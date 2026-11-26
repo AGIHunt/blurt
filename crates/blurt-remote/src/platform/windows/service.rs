@@ -679,6 +679,16 @@ impl crate::host::Input for OwnClipboard {
     fn set_clipboard(&mut self, text: &str) {
         let _ = super::clipboard::set_text(text);
     }
+    fn copied(&mut self) -> crate::host::Copied {
+        crate::platform::clip::read()
+    }
+    /// onto the user's clipboard only: the Proxy presses Ctrl+V through the agent
+    fn paste_clip(&mut self, clip: &crate::host::Clip, _paste: bool) -> bool {
+        match clip {
+            crate::host::Clip::Text(t) => super::clipboard::set_text(t),
+            crate::host::Clip::Image(b) => crate::platform::clip::set_image(b),
+        }
+    }
 }
 
 #[allow(dead_code)]

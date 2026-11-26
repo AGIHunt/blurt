@@ -286,8 +286,13 @@ enum PhoneText {
         time.timeStyle = .short
         if e.paired { return T("phone.log.paired", day.string(from: e.start)) }
         let span = e.end.map { "\(day.string(from: e.start))–\(time.string(from: $0))" } ?? T("phone.log.now", day.string(from: e.start))
-        guard let p = e.path.flatMap(RemoteServer.Path.init(rawValue:)) else { return span }
-        return "\(span) · \(path(p))"
+        // what went across, never what it was (docs/design/remote-files.md)
+        var parts = [span]
+        if let p = e.path.flatMap(RemoteServer.Path.init(rawValue:)) { parts.append(path(p)) }
+        if (e.clipboard ?? 0) > 0 { parts.append(T("phone.log.clipboard")) }
+        if let n = e.filesIn, n > 0 { parts.append(TP("phone.log.files_in", n)) }
+        if let n = e.filesOut, n > 0 { parts.append(TP("phone.log.files_out", n)) }
+        return parts.joined(separator: " · ")
     }
 
     static func lastUsed(_ d: RemoteServer.Device) -> String {

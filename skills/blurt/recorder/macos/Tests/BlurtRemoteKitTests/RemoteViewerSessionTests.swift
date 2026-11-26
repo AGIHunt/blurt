@@ -70,6 +70,22 @@ final class RemoteViewerSessionTests: XCTestCase {
         /// the host removes this viewer this long after its session began (its owner's Remove)
         var removeAfter: Double?
         let pictures: [(payload: Data, key: Bool)]
+        /// files and the clipboard both ways (docs/design/remote-files.md): the session lists them, and Get Copied sends `copied`
+        var files = false
+        var copied: [URL] = []
+        let filesDir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-host-files-" + UUID().uuidString)
+        private(set) lazy var incoming = RemoteFileReceiver(parts: filesDir.appendingPathComponent("parts"), folder: { [filesDir] in filesDir.appendingPathComponent("Downloads/Blurt") })
+        private(set) lazy var outgoing: RemoteFileSender = RemoteFileSender(
+            send: { [weak self] o in
+                guard let ch = self?.channel else { return false }
+                ch.send(ToPhone(o))
+                return true
+            },
+            ready: { [weak self] in
+                guard let self, let ch = self.channel else { return false }
+                return !self.relay || ch.moved
+            },
+            peerResumes: { true })
 
         init(pictures: [(payload: Data, key: Bool)]) throws {
             tcp = try NWListener(using: .tcp, on: .any)
@@ -177,6 +193,15 @@ final class RemoteViewerSessionTests: XCTestCase {
                 note("pointer \(x),\(y) \(seq ?? 0)")
             case let .ping(t):
                 ch.send(ToPhone.pong(t))
+            case .getClipboard:
+                note("getClipboard")
+                outgoing.add(copied)
+            case .fileBegin, .fileChunk, .fileEnd:
+                if case let .fileBegin(_, name, size, _, _, _, _) = m { note("fileBegin \(name) \(size)") }
+                incoming.heard(m.fileOut!, from: id) { [weak ch] a in ch?.send(ToPhone(a)) }
+            case .fileProgress, .fileSaved, .fileFailed:
+                if case let .fileSaved(_, name) = m { note("fileSaved there \(name)") }
+                outgoing.heard(m.fileAnswer!)
             default: break
             }
         }
@@ -196,7 +221,9 @@ final class RemoteViewerSessionTests: XCTestCase {
             ch.send(ToPhone.session(RemoteSessionInfo(macName: "Test Host", udpPort: udp.port!.rawValue, udpSession: 7, canControl: true, version: "test",
                                                       candidates: [RemoteCandidate(host: "127.0.0.1", port: udp.port!.rawValue)],
                                                       relay: relay ? "ws://relay" : nil, platform: "windows",
-                                                      features: [RemoteFeature.move, RemoteFeature.viewer])))
+                                                      features: [RemoteFeature.move, RemoteFeature.viewer]
+                                                        + (files ? [RemoteFeature.files, RemoteFeature.resume, RemoteFeature.clipboard] : []))))
+            if files { outgoing.connection(up: true) }
             ch.send(ToPhone.displays([RemoteDisplay(id: "1", name: "One", x: 0, y: 0, width: 320, height: 180, main: true),
                                       RemoteDisplay(id: "2", name: "Two", x: 320, y: 0, width: 320, height: 180, main: false)]))
             if let r = removeAfter {
@@ -260,6 +287,12 @@ final class RemoteViewerSessionTests: XCTestCase {
         var heard: [String] { lock.withLock { _heard } }
         var stored: Data?
         let callbacks = DispatchQueue(label: "test.viewer")
+        /// files from the host, as the viewer's ViewerFileSender takes them
+        let filesDir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-viewer-files-" + UUID().uuidString)
+        private(set) lazy var incoming = RemoteFileReceiver(parts: filesDir.appendingPathComponent("parts"), folder: { [filesDir] in filesDir.appendingPathComponent("Downloads/Blurt") })
+        private(set) lazy var outgoing = RemoteFileSender(send: { [weak link] o in link?.send(ToMac(o)); return link?.state == .connected },
+                                                          ready: { [weak link] in link?.filesReady ?? false },
+                                                          peerResumes: { [weak link] in link?.session?.features?.contains(RemoteFeature.resume) == true })
 
         init(_ link: RemoteViewerLink) {
             self.link = link
@@ -278,6 +311,10 @@ final class RemoteViewerSessionTests: XCTestCase {
                 switch m {
                 case let .screenView(_, _, codec, _, features): self.screen.view(codec: codec, features: features)
                 case let .clipboard(t): self.lock.withLock { self._heard.append("clipboard \(t)") }
+                case .fileBegin, .fileChunk, .fileEnd:
+                    self.incoming.heard(m.fileOut!, from: link.computer.id) { [weak link] a in link?.send(ToMac(a)) }
+                case .fileProgress, .fileSaved, .fileFailed:
+                    self.outgoing.heard(m.fileAnswer!)
                 case let .displays(list): self.lock.withLock { self._heard.append("displays \(list.count)") }
                 case let .session(i): self.lock.withLock { self._heard.append("session \(i.platform ?? "") \((i.features ?? []).joined(separator: ","))") }
                 default: break
@@ -315,7 +352,7 @@ final class RemoteViewerSessionTests: XCTestCase {
         XCTAssertEqual(link.computer.platform, "windows")
         XCTAssertEqual(link.computer.port, ports.tcp, "the port it was found at, kept to connect again")
         XCTAssertTrue(link.hostTakesViewer)
-        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer"))
+        XCTAssertTrue(host.log.contains("hello Test Mac move,viewer,files,resume"))
         XCTAssertTrue(host.log.contains("keyStored"))
 
         // the picture: asked for at the window's size, real frames decoded
@@ -445,6 +482,62 @@ final class RemoteViewerSessionTests: XCTestCase {
         link.send(.key(RemoteChord([], "KeypadEnter"), down: nil))
         XCTAssertTrue(until(8) { host.log.contains("key KeypadEnter tap") && v.heard.contains("clipboard from the host") }, "\(host.log)")
         XCTAssertTrue(host.log.contains("clipboard \(big.utf8.count)"))
+        if let relay {
+            XCTAssertFalse(relay.overBudget)
+            XCTAssertLessThan(relay.carried, 16 * 1024, "the relay carried only the meeting: \(relay.carried) bytes")
+        }
+    }
+
+    /// Files both ways through the public connection service (docs/design/remote-files.md): nothing of them goes before the stream has
+    /// moved onto the direct path, so the go-between carries only the meeting; a 3 MB file goes to the host whole, and Get Copied brings a
+    /// batch of two back.
+    func testFilesBothWaysThroughTheBudgetRelay() throws {
+        var relay: Relay?
+        let address: String
+        if let a = ProcessInfo.processInfo.environment["BLURT_TEST_RELAY"], !a.isEmpty { address = a } else {
+            let r = try Relay()
+            relay = r
+            address = "ws://127.0.0.1:\(r.start())"
+        }
+        let host = try Host(pictures: try Self.pictures())
+        host.files = true
+        try FileManager.default.createDirectory(at: host.filesDir, withIntermediateDirectories: true)
+        let a = host.filesDir.appendingPathComponent("Q4 报价单.xlsx"), b = host.filesDir.appendingPathComponent("notes.txt")
+        try Data((0..<1_200_000).map { UInt8(truncatingIfNeeded: $0 &* 7) }).write(to: a)
+        try Data("ten bytes!".utf8).write(to: b)
+        host.copied = [a, b]
+        _ = host.start()
+        let key = RemoteCrypto.newKey()
+        host.pairedID = "viewer-1"
+        host.pairedKey = key
+        host.standby(relay: address)
+        Thread.sleep(forTimeInterval: 0.3)
+        let computer = RemoteComputer(id: "test-host", deviceID: "viewer-1", name: "Test Host", port: 0, addresses: [], relayAddress: address)
+        let link = RemoteViewerLink(computer: computer, key: key, deviceName: "Test Mac", relayOnly: address, callbacks: DispatchQueue(label: "cb"))
+        link.moveOnRelay = true
+        let v = Viewer(link)
+        try FileManager.default.createDirectory(at: v.filesDir, withIntermediateDirectories: true)
+        let up = v.filesDir.appendingPathComponent("作业 3.jpg")
+        try Data((0..<3_000_000).map { UInt8(truncatingIfNeeded: $0 &* 13) }).write(to: up)
+        link.start()
+        defer { link.stop(); host.stop(); relay?.stop() }
+
+        XCTAssertTrue(until(8) { v.states.last == .connected }, "\(v.states)")
+        // queued at once: it waits for the move
+        v.outgoing.connection(up: true)
+        let t0 = Date()
+        v.outgoing.add([up])
+        XCTAssertTrue(until(20) { v.outgoing.transfers.first?.state == .done }, "\(v.outgoing.transfers) \(host.log)")
+        // measured for docs/design/remote-files.md: the moved stream over loopback (256 KiB in flight)
+        print("files-measure 3 MB to host over the moved stream: \(Int(Date().timeIntervalSince(t0) * 1000)) ms")
+        XCTAssertEqual(link.route, .goBetween)
+        XCTAssertEqual(try Data(contentsOf: host.filesDir.appendingPathComponent("Downloads/Blurt/作业 3.jpg")), try Data(contentsOf: up))
+        link.send(.getClipboard)
+        let back = v.filesDir.appendingPathComponent("Downloads/Blurt")
+        XCTAssertTrue(until(20) { host.log.filter { $0.hasPrefix("fileSaved there") }.count == 2 }, "\(host.log)")
+        XCTAssertEqual(try Data(contentsOf: back.appendingPathComponent("Q4 报价单.xlsx")), try Data(contentsOf: a))
+        XCTAssertEqual(try String(contentsOf: back.appendingPathComponent("notes.txt"), encoding: .utf8), "ten bytes!")
+        XCTAssertEqual(host.outgoing.transfers.map(\.index), [1, 2])
         if let relay {
             XCTAssertFalse(relay.overBudget)
             XCTAssertLessThan(relay.carried, 16 * 1024, "the relay carried only the meeting: \(relay.carried) bytes")
