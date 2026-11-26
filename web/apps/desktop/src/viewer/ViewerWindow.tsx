@@ -15,7 +15,7 @@ import { Menu, tidy, type MenuAt, type MenuEntry } from '../components/Menu';
 import { contained, decodable, parseFrame, Picture, toPicture, wheelPoints } from './decode';
 import { pathLine } from './computers';
 import { lineParts, noneLine, stoppable, transferLine, type Transfer } from './files';
-import { revealLabel } from '../reveal';
+import { revealFolderLabel } from '../reveal';
 import './viewer.css';
 
 type Quality = 'auto' | 'sharp' | 'balanced' | 'saver';
@@ -563,8 +563,11 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
         <button className="vw-files-x" aria-label={t('viewer.close')} onClick={onClose}><Icon name="close" size={12} /></button>
       </header>
       {transfers.slice(0, 5).map((x) => (
-        <div key={x.id} className="vw-file" data-testid="viewer-file-row" data-state={x.state}>
-          <Icon name={x.incoming ? 'download' : 'send'} size={14} />
+        <div key={x.id} className="vw-file" data-testid="viewer-file-row" data-state={x.state} data-why={x.why ?? undefined}>
+          {/* done: a check; failed: the warning mark; × stopped and the rest: which way it goes */}
+          <span className="vw-file-ic" aria-hidden>
+            <Icon name={x.state === 'done' ? 'check' : x.state === 'failed' && x.why !== 'stopped' ? 'warning' : x.incoming ? 'download' : 'send'} size={14} />
+          </span>
           <div className="vw-file-text">
             <div className="vw-file-name" title={x.name}>{x.name}</div>
             <FileLine line={transferLine(x, computer, route)} />
@@ -572,7 +575,7 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
               <div className="vw-file-bar" aria-hidden><span style={{ width: `${Math.min(100, (100 * x.done) / x.size)}%` }} /></div>
             )}
             {x.state === 'done' && x.incoming && x.path && (
-              <button className="vw-file-link" onClick={() => void invoke('reveal', { path: x.path }).catch(() => {})}>{revealLabel()}</button>
+              <button className="vw-file-link" onClick={() => void invoke('reveal', { path: x.path }).catch(() => {})}>{revealFolderLabel()}</button>
             )}
           </div>
           {stoppable(x) && (

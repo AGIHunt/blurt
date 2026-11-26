@@ -292,6 +292,16 @@ html.remote-banner-page[data-platform='win'] body {
 html[data-platform='win'] .remote-banner {
   border-radius: 8px;
 }
+/* the lines the bar may say, measured for its width (RemoteBanner.tsx), never seen */
+.remote-banner-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.remote-banner-measure span {
+  position: absolute;
+}
 .remote-banner-dot {
   flex: none;
   width: 8px;
@@ -318,7 +328,7 @@ html[data-platform='win'] .remote-banner {
   background: rgb(255 255 255 / 0.14);
   color: #fff;
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -346,7 +356,8 @@ html[data-platform='win'] .remote-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 4px 12px;
+  /* the same right inset as a row's, so the header's × sits over the rows' */
+  padding: 0 10px 4px 12px;
   background: none;
   font-weight: 600;
   color: rgb(255 255 255 / 0.7);
@@ -369,6 +380,29 @@ html[data-platform='win'] .remote-banner {
 .vw .vw-files-x:hover,
 .vw .vw-file-btn:hover {
   background: rgb(255 255 255 / 0.24);
+}
+/* closing the card is a plain glyph; stopping a file keeps the filled circle */
+.vw .vw-files-x {
+  background: none;
+  color: rgb(255 255 255 / 0.6);
+}
+.vw .vw-files-x:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+}
+.vw-file-ic {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 17px;
+  color: rgb(255 255 255 / 0.75);
+}
+.vw-file[data-state='done'] .vw-file-ic {
+  color: var(--accent, #4c8dff);
+}
+.vw-file[data-state='failed']:not([data-why='stopped']) .vw-file-ic {
+  color: #ffb4a8;
 }
 .vw-file {
   display: flex;
@@ -411,7 +445,7 @@ html[data-platform='win'] .remote-banner {
   width: 1.1em;
   text-align: center;
 }
-.vw-file[data-state='failed'] .vw-file-line {
+.vw-file[data-state='failed']:not([data-why='stopped']) .vw-file-line {
   color: #ffb4a8;
 }
 .vw-file-bar {

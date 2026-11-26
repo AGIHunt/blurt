@@ -125,7 +125,7 @@ describe('files both ways', () => {
     const MB = 1024 * 1024;
     const x = { id: 'a', name: 'Q4 Quote.xlsx', size: 350 * MB, done: 141 * MB, incoming: true, clip: false, state: 'going' as const };
     expect(transferLine(x, 'Office PC', 'local')).toBe(`From Office PC · ${size(141 * MB)} of ${size(350 * MB)}`);
-    expect(transferLine({ ...x, incoming: false, index: 2, count: 3 }, 'Office PC', 'local')).toMatch(/^2 of 3 · To Office PC · /);
+    expect(transferLine({ ...x, incoming: false, index: 2, count: 3 }, 'Office PC', 'local')).toMatch(/^To Office PC · 2 of 3 · /);
     expect(transferLine({ ...x, secondsLeft: 95 }, 'Office PC', 'local')).toMatch(/ · 2 min left$/);
     expect(transferLine({ ...x, secondsLeft: 39.2 }, 'Office PC', 'local')).toMatch(/ · 40 sec left$/);
     expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'goBetween')).toBe('Connecting directly…');
@@ -144,7 +144,7 @@ describe('files both ways', () => {
     expect(transferLine({ ...x, secondsLeft: 150 }, 'Office PC', 'local')).toMatch(/ · 还剩 3 分钟$/);
     expect(transferLine({ ...x, secondsLeft: 40 }, 'Office PC', 'local')).toMatch(/ · 还剩 40 秒$/);
     expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('已保存到 Office PC 的「下载/Blurt」');
-    expect(transferLine({ ...x, index: 1, count: 3 }, 'Office PC', 'local')).toMatch(/^第 1\/3 个 · 来自 Office PC · /);
+    expect(transferLine({ ...x, index: 1, count: 3 }, 'Office PC', 'local')).toMatch(/^来自 Office PC · 第 1\/3 个 · /);
     setLang('en');
   });
 

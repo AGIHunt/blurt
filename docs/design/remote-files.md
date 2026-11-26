@@ -136,7 +136,7 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | Sent (a computer that resumes) · sent to an older one, which saves in Downloads (as the Mac viewer's `viewer.file.saved.to`) | 已保存到 %@ 的「下载/Blurt」 · 已保存到 %@ 的「下载」文件夹 | Saved to Downloads/Blurt on %@ · Saved to Downloads on %@ |
 | More than 1,000 picked or shared: nothing goes | 一次最多发送 1,000 个。 | Send up to 1,000 at a time. |
 | Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved to Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
-| A received file's buttons (iPhone: a tap opens it, touch and hold has Share… and Save to Photos, as in Files) | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
+| A received file's buttons (iPhone: a tap opens it, touch and hold has Share… and Save to Photos, as in Files) | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示（Windows）/ 在「文件」中显示（Linux） | Open · Share… · Save to Photos · Show in Finder / Show in Folder (Windows) / Show in Files (Linux) |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
 | What came from the clipboard (a row each: ✓, this title, the first words or Save to Photos / Gallery on the right) | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
 | Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · %@ 上拷贝的文件超过 4 GB。（`too_large`）· 无法从 %@ 获取此类内容。 · 若要使用此功能，请更新 %@ 上的口喷鸡。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Copy up to 1,000 at a time. · A file copied on %@ is larger than 4 GB. (`too_large`) · Can't get this kind of item from %@. · To use this, update Blurt on %@. |
@@ -183,6 +183,14 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
   (`width: max-content`, at most the display less 40 px, then …) and `remote_banner_fit` sets the window to that width, even, centred
   again. Radius 10 px with a 1 px white 12 % border; Linux makes the window transparent so the corners are the page's, Windows 11 rounds
   the undecorated window itself (8 px, so the page uses 8). Send Files… and Disconnect share one button style.
+- **Round 2** (a fresh judge on r1): the bar still changed width with its line (612 → 875 → 985 → 1030 px in the shots), so the buttons
+  moved under the pointer. Now the Mac's rule: saying who, the line is as wide as the wider of who and "Clipboard sent to …" (both
+  measured in the page); a flash or a file's line keeps at least that and never narrows while it shows (paused and Not sent. too); back
+  to who, back to that width. Both buttons semibold, as the Mac's. The card: a finished row shows a check and a failed one the warning
+  mark (a stopped one keeps its arrow); the line is direction first, as the Copy table: "From %@ · 2 of 3 · …" / 来自 %@ · 第 2/3 个 · …
+  (was the batch first); the header's × is a plain glyph (a row's × stops a file and keeps its circle) on the rows' right inset (it sat
+  2 px out); a received file's button is Show in Folder / 在文件夹中显示 on Windows and Show in Files / 在「文件」中显示 on Linux (the
+  card had the main window's Show in File Explorer). Shots `windows-linux/r2/` (`viewer-files-card-close-windows-*` for Windows).
 - **The card's line** (`ViewerWindow.tsx` FileLine): it wrapped inside a value ("… · 1 / min, 35 sec left", zh after a trailing ·). Each
   " · " piece is now an unbreakable inline block that brings its own dot, and the line starts one dot-width left under a clip, so a
   wrapped line neither starts nor ends with a dot; a piece wider than the card ends in …. A line without " · " (a sentence) wraps as one.

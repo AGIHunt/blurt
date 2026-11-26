@@ -42,10 +42,10 @@ export function transferLine(x: Transfer, computer: string, route: string | null
       if (x.incoming) return t(x.why === 'space' ? 'viewer.file.not_received.space' : 'viewer.file.not_received.other');
       return t(`viewer.file.failed.${x.why === 'space' || x.why === 'too_big' || x.why === 'locked' ? x.why : 'other'}`);
     case 'going': {
-      const amount = t(x.incoming ? 'viewer.file.from' : 'viewer.file.to', { 1: computer, 2: size(x.done), 3: size(x.size) });
-      const batch = x.count && x.count > 1 && x.index ? `${t('viewer.file.batch', { 1: x.index, 2: x.count })} · ` : '';
-      const left = x.secondsLeft != null ? ` · ${t('viewer.file.left', { 1: timeLeft(x.secondsLeft) })}` : '';
-      return batch + amount + left;
+      // direction first, then its place in a batch, how far, time left (as the Mac and the phones say it)
+      const parts = withBatch(lineParts(t(x.incoming ? 'viewer.file.from' : 'viewer.file.to', { 1: computer, 2: size(x.done), 3: size(x.size) })), x);
+      if (x.secondsLeft != null) parts.push(t('viewer.file.left', { 1: timeLeft(x.secondsLeft) }));
+      return parts.join(' · ');
     }
   }
 }
@@ -60,15 +60,19 @@ export function timeLeft(seconds: number): string {
 /** The line's pieces between its " · ": each stays whole when the line wraps. */
 export const lineParts = (line: string) => line.split(' · ');
 
+/** "2 of 5" after the direction ("To Den PC · 2 of 5 · 3 MB of 12 MB"), for a file in a batch. */
+function withBatch(parts: string[], x: Transfer): string[] {
+  if (x.count && x.count > 1 && x.index) parts.splice(1, 0, t('viewer.file.batch', { 1: x.index, 2: x.count }));
+  return parts;
+}
+
 /** The host's bar while a file goes to the device (the Mac's RemoteBanner.transfer): where and how far, its place in a batch after
  * the name ("To Maya’s iPhone · 2 of 5 · 3 MB of 12 MB"), paused, or nothing (null: the bar says who's controlling). */
 export function barLine(x: Transfer, device: string): string | null {
   if (x.incoming || x.clip) return null;
   if (x.state === 'paused') return t('viewer.file.paused');
   if (x.state !== 'going' && x.state !== 'waiting') return null;
-  const parts = lineParts(t('viewer.file.to', { 1: device, 2: size(x.done), 3: size(x.size) }));
-  if (x.count && x.count > 1 && x.index) parts.splice(1, 0, t('viewer.file.batch', { 1: x.index, 2: x.count }));
-  return parts.join(' · ');
+  return withBatch(lineParts(t('viewer.file.to', { 1: device, 2: size(x.done), 3: size(x.size) })), x).join(' · ');
 }
 
 /** × is there while it can still be stopped. */

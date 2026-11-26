@@ -88,7 +88,7 @@ pub trait App: Send + Sync + 'static {
     /// What a device hears when its pasted image or text stayed on the clipboard here: a password field had the focus, or the
     /// computer was locked. In the app's language.
     fn not_pasted_notice(&self) -> String {
-        "Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard.".into()
+        "Not pasted: the cursor is in a password field, or that computer is locked. It’s on its clipboard.".into()
     }
     /// A new phone waits for a yes: the owner should see the six digits now (raise the window, a notification).
     fn asking(&self, _device: &str, _digits: &str) {}
