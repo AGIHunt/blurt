@@ -93,6 +93,7 @@
   "agent.why.unusable": " can’t be used",
   "agent.list_sep": ", ",
   "rec.request": "Process my Blurt recordings",
+  "remote.notice.not_pasted": "Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard.",
   "remote.notice.new_pairing": "New device paired with {host}: {devices}. If that wasn’t you or your family, remove it on that computer.",
   "remote.files.received": "{count} files from {from}",
   "remote.file.received": "File from {from}"

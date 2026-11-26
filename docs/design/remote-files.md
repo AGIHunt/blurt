@@ -110,7 +110,7 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 | Windows / Linux host (`crates/blurt-remote`) | as the Mac | Downloads/Blurt, Mark of the Web | Windows CF_UNICODETEXT / CF_DIB / CF_HDROP; Linux arboard text + image, `text/uri-list` for files |
 | Windows / Linux viewer (`viewer.rs`, `apps/desktop`) | Send Files… (exists) | Get Copied Items | |
 | Rust core, `crates/blurt-remote/src/files.rs` (2026-11-26) | `files::Sender` (chunks, window, resume; a thread per sender) | `files::Receiver` (parts kept 1 h per device + id, unique names, the space check via statvfs / GetDiskFreeSpaceExW, Mark of the Web) | `Input::copied` / `Input::paste_clip` (host.rs), `platform/clip.rs` |
-| Windows / Linux host, as built (`server.rs`, `platform/clip.rs`, `apps/desktop` remote.rs) | a sender per device, held until `session` has gone and, on the public connection service, the stream moved; getClipboard's files (folders zipped, stored), image (PNG), text over 64 KiB as `Text.txt`; the bar's Send Files… (`remote_send_files`) | Downloads/Blurt for every device, Mark of the Web on Windows, one notification per batch | read on request through arboard: Windows CF_HDROP, then "PNG" / CF_DIBV5, then text; Linux `text/uri-list`, then `image/png`, then text (Wayland data-control where the compositor has it, else XWayland's clipboard, which mutter keeps in step). A phone's `clip` image (PNG, JPEG, TIFF, BMP; not HEIC) or text onto the clipboard, then Ctrl+V. The bar says "Clipboard sent to …" 4 s; the log counts clipboard, received, sent |
+| Windows / Linux host, as built (`server.rs`, `platform/clip.rs`, `apps/desktop` remote.rs) | a sender per device, held until `session` has gone and, on the public connection service, the stream moved; getClipboard's files (folders zipped, stored), image (PNG), text over 64 KiB as `Text.txt`; the bar's Send Files… (`remote_send_files`) | Downloads/Blurt for every device, Mark of the Web on Windows, one notification per batch | read on request through arboard: Windows CF_HDROP, then "PNG" / CF_DIBV5, then text; Linux `text/uri-list`, then `image/png`, then text (Wayland data-control where the compositor has it, else XWayland's clipboard, which mutter keeps in step). A phone's `clip` image (PNG, JPEG, TIFF, BMP; not HEIC) or text onto the clipboard, then Ctrl+V, except in a password field or at the lock screen, where the device gets a notice (Not pasted: …). A copied file over 4 GB answers `too_large`. The bar says "Clipboard sent to …" 4 s and how far a file to the device is; the log counts clipboard, received, sent |
 | Windows / Linux viewer, as built (`viewer.rs` + `apps/desktop` viewer.rs, `ViewerWindow.tsx`) | Send Files… and drop (folders now zipped, "Compressing…"), paused across a drop and resumed | Get Copied Items (⋯, Ctrl+Alt+V while keys stay here) → Downloads/Blurt with the Mark of the Web; the files card shows each one with ×, its line, time left, Show in Folder | a `clip` image or text onto this computer's clipboard (tauri clipboard plugin), Get Copied text too, whatever the clipboard switch says |
 | iPhone / iPad (`apps/ios`) | photo picker, document picker, share extension, Paste from This Phone (image) | Documents (shown in Files) | UIPasteboard |
 | Android (`apps/android`) | photo picker, `ACTION_OPEN_DOCUMENT`, share intents | MediaStore Downloads/Blurt (API 29+), app external files below | ClipboardManager |
@@ -140,7 +140,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | An image pasted from the phone, too big | 无法粘贴超过 20 MB 的图片。 | Can’t paste images larger than 20 MB. |
 | Share extension, named Blurt as on the home screen (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt 中配对电脑。 · 打开 Blurt 即可发送。 | Send to %@ · Pair a computer in Blurt first. · Open Blurt to send. |
 | iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到「照片」。 | Save pictures and videos from your computer to Photos. |
-| The host's bar: button · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
+| The host's bar: who (was 正在被“%@”控制 / “%@” is controlling this computer, 2026-11-26) | %@ 正在控制本机 | %@ is controlling this computer |
+| The host's bar: button (only for a device that takes files) · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
+| The host's bar while a file goes to the device (in place of who; the batch after the name) · paused · failed, 4 s | 发往 %@ · 第 %ld/%ld 个 · %@ / %@ · 已暂停，重新连接后继续。 · 未发送。 | To %@ · %ld of %ld · %@ of %@ · Paused. Resumes when reconnected. · Not sent. |
+| Time left's number (inside 还剩 %@ / %@ left): minutes above 60 s, seconds below, a space before the unit | %ld 分钟 · %ld 秒 | %ld min · %ld sec |
+| A copied file over 4 GB (`clipboardNone` `too_large`; `too_big` stays "over 1,000 files") | %@ 上拷贝的文件超过 4 GB。 | A file copied on %@ is larger than 4 GB. |
+| A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Windows / Linux host) | 未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。 | Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard. |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
 | The host's connection log | 已发送剪贴板 · 收到 %ld 个文件 · 已发送 %ld 个文件 | Clipboard sent · Received %ld files · Sent %ld files |
 | The viewer's ⋯ menu | 获取拷贝的内容 | Get Copied Items |
@@ -160,6 +165,27 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | A 50 MB file, Android emulator → fake host, throttled to 1.5 MB/s | with a fixed 4 MiB window the phone dropped its session 21 times (pings waited 2.7 s behind file data); with the rate-based window, no drop, 34 s | `apps/android/fakehost`, 2026-11-26 |
 | A drop mid-file on the Android emulator | went on from 17,694,720 bytes, 45 ms after the session reopened | the same rig |
 | 136 MB host → phone after Get Copied Items on (emulated) mobile data | asked first, then arrived with the same SHA-256 | the same rig |
+
+### Windows and Linux, the bar and the card (2026-11-26, design-judge round)
+
+- **The bar** (`RemoteBanner.tsx`, remote.rs `banner`): it now says what the Mac's says. While a file goes to the device (Send Files…,
+  Get Copied Items' files; not a clip) the line is where and how far, from `remote://transfer` (and `remote_transfers` when the bar opens),
+  the one going first, then one waiting, then one paused; a failure other than × says 未发送。 for 4 s. Send Files… shows only when the
+  connected device's hello listed `files` (`Status.connected.files`); before, it showed for every device and did nothing for one without.
+- **Its size:** the window was a fixed 480 × 38, which left about 200 px empty after the zh line. The page measures the bar
+  (`width: max-content`, at most the display less 40 px, then …) and `remote_banner_fit` sets the window to that width, even, centred
+  again. Radius 10 px with a 1 px white 12 % border; Linux makes the window transparent so the corners are the page's, Windows 11 rounds
+  the undecorated window itself (8 px, so the page uses 8). Send Files… and Disconnect share one button style.
+- **The card's line** (`ViewerWindow.tsx` FileLine): it wrapped inside a value ("… · 1 / min, 35 sec left", zh after a trailing ·). Each
+  " · " piece is now an unbreakable inline block that brings its own dot, and the line starts one dot-width left under a clip, so a
+  wrapped line neither starts nor ends with a dot; a piece wider than the card ends in …. A line without " · " (a sentence) wraps as one.
+  Numbers are tabular. Time left is one unit: 2 分钟 / 2 min above 60 s, 40 秒 / 40 sec below (Intl's short duration gave 1 分钟 35 秒 and
+  2分钟 without a space).
+- **The card:** × and Show in Folder are pinned at 20 px (the shell's button min-height made × a tall oval); the header has no
+  background; 10 px under the last row; the card is opaque, since a light window in the picture showed through its 6 % as a band.
+- Shots: `promo/cases/remote-files-1126/windows-linux/r1/` (the bar in every state, en and zh; the card), from the web app's mock
+  (`?banner=1&phone=paired&banner_state=going|batch|paused|failed|clipboard`, `&banner_files=0`; `?viewer=den&viewer_files=1`) in headless
+  Chromium at 2×.
 
 Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1max, LAN-only, wasn't reachable from this Mac's network on
 2026-11-26); Windows and Linux hosts (CI builds and tests only).

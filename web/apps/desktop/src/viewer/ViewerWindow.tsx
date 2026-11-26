@@ -14,7 +14,7 @@ import { setLang, t } from '../i18n';
 import { Menu, tidy, type MenuAt, type MenuEntry } from '../components/Menu';
 import { contained, decodable, parseFrame, Picture, toPicture, wheelPoints } from './decode';
 import { pathLine } from './computers';
-import { noneLine, stoppable, transferLine, type Transfer } from './files';
+import { lineParts, noneLine, stoppable, transferLine, type Transfer } from './files';
 import { revealLabel } from '../reveal';
 import './viewer.css';
 
@@ -540,6 +540,19 @@ export function ViewerWindow({ id }: { id: string }) {
   );
 }
 
+/** A row's line: a sentence wraps as one; a line of pieces ("To Den PC · 141 MB of 350 MB · 2 min left") only between them. */
+function FileLine({ line }: { line: string }) {
+  const parts = lineParts(line);
+  if (parts.length < 2) return <div className="vw-file-line">{line}</div>;
+  return (
+    <div className="vw-file-line" aria-label={line}>
+      <div className="vw-file-line-in">
+        {parts.map((p, i) => <span key={i} className="vw-file-part">{p}</span>)}
+      </div>
+    </div>
+  );
+}
+
 /** The files card (bottom right, over the picture): each transfer this window, its line, its progress, × while it can be stopped, and
  * Show in Folder once one has come here. Closing it clears the finished ones. */
 export function FileCard({ transfers, computer, route, onStop, onClose }: { transfers: Transfer[]; computer: string; route: string | null; onStop: (id: string) => void; onClose: () => void }) {
@@ -554,7 +567,7 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
           <Icon name={x.incoming ? 'download' : 'send'} size={14} />
           <div className="vw-file-text">
             <div className="vw-file-name" title={x.name}>{x.name}</div>
-            <div className="vw-file-line">{transferLine(x, computer, route)}</div>
+            <FileLine line={transferLine(x, computer, route)} />
             {(x.state === 'going' || x.state === 'paused') && x.size > 0 && (
               <div className="vw-file-bar" aria-hidden><span style={{ width: `${Math.min(100, (100 * x.done) / x.size)}%` }} /></div>
             )}

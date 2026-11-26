@@ -1338,6 +1338,7 @@ pub fn run() {
             remote::remote_end_session,
             remote::remote_send_files,
             remote::remote_transfers,
+            remote::remote_banner_fit,
             remote::remote_stop_transfer,
             remote::remote_connections,
             remote::remote_set_service,

@@ -19,6 +19,8 @@ struct Board {
     copied: Arc<Mutex<Option<Copied>>>,
     pasted: Arc<Mutex<Vec<Clip>>>,
     said: Arc<Mutex<Vec<String>>>,
+    /// a password field has the focus (App::may_paste)
+    password: Arc<Mutex<bool>>,
 }
 
 struct TestInput(Board);
@@ -80,6 +82,9 @@ impl App for TestApp {
     }
     fn files_received(&self, from: &str, count: usize, _: &std::path::Path) {
         self.0.said.lock().unwrap().push(format!("{count} files from {from}"));
+    }
+    fn may_paste(&self) -> bool {
+        !*self.0.password.lock().unwrap()
     }
 }
 
@@ -236,6 +241,15 @@ async fn copied_text_an_image_and_files_come_to_the_phone() {
     let why = phone.wait(Duration::from_secs(3), |m| if let ToPhone::ClipboardNone { why } = m { Some(why.clone()) } else { None }).await;
     assert_eq!(why.as_deref(), Some("too_big"));
 
+    // one file over 4 GB (sparse): too_large, nothing sent
+    let huge = src.join("Backup.vhdx");
+    std::fs::File::create(&huge).unwrap().set_len(files::MAX_SIZE as u64 + 1).unwrap();
+    *board.copied.lock().unwrap() = Some(Copied::Files(vec![huge.clone(), src.join("作业 3.jpg")]));
+    phone.send(&ToMac::GetClipboard).await;
+    let why = phone.wait(Duration::from_secs(3), |m| if let ToPhone::ClipboardNone { why } = m { Some(why.clone()) } else { None }).await;
+    assert_eq!(why.as_deref(), Some("too_large"));
+    let _ = std::fs::remove_file(&huge);
+
     // the connection log counts it, never what it was
     until("the log", || h.connections().last().filter(|c| c.clipboard >= 4 && c.sent >= 3).map(|_| ())).await;
 
@@ -248,8 +262,17 @@ async fn copied_text_an_image_and_files_come_to_the_phone() {
     phone.send(&ToMac::FileEnd { id: "p1".into() }).await;
     phone.wait(Duration::from_secs(3), |m| matches!(m, ToPhone::FileSaved { id, .. } if id == "p1").then_some(())).await.expect("saved");
     until("pasted", || board.pasted.lock().unwrap().first().cloned()).await;
-    assert_eq!(board.pasted.lock().unwrap()[0], Clip::Image(png2));
+    assert_eq!(board.pasted.lock().unwrap()[0], Clip::Image(png2.clone()));
     assert!(!dir.join("Downloads/Blurt/Image.png").exists());
+
+    // a password field in front: on the clipboard, not pasted, and the phone hears why
+    *board.password.lock().unwrap() = true;
+    phone.send(&ToMac::FileBegin { id: "p2".into(), name: "Image.png".into(), size: png2.len() as i64, clip: Some(true), index: None, count: None, total: None }).await;
+    phone.send(&ToMac::FileChunk { id: "p2".into(), data: png2.clone() }).await;
+    phone.send(&ToMac::FileEnd { id: "p2".into() }).await;
+    let said = phone.wait(Duration::from_secs(3), |m| if let ToPhone::Notice(t) = m { Some(t.clone()) } else { None }).await;
+    assert!(said.is_some_and(|t| t.starts_with("Not pasted")));
+    assert_eq!(board.pasted.lock().unwrap().len(), 2, "still onto the clipboard");
 
     h.stop();
     let _ = std::fs::remove_dir_all(dir);

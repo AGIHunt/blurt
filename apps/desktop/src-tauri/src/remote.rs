@@ -257,6 +257,8 @@ struct ConnectedUi {
     name: String,
     route: &'static str,
     screen: bool,
+    /// it takes files: the bar's Send Files…
+    files: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -325,7 +327,7 @@ fn to_ui(s: &Status) -> RemoteStatus {
         pairing,
         asking: s.asking.as_ref().map(|a| AskingUi { device: a.device.clone(), digits: a.digits.clone(), via_relay: a.via_relay, kind: a.kind.as_str() }),
         devices: s.devices.iter().map(|d| DeviceUi { id: d.id.clone(), name: d.shown().to_string(), own_name: d.name.clone(), last_seen: d.last_seen, kind: d.kind.as_str() }).collect(),
-        connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen }),
+        connected: s.connected.as_ref().map(|c| ConnectedUi { id: c.id.clone(), name: c.name.clone(), route: c.route, screen: c.screen, files: c.files }),
         relay: RelayUi {
             address: s.relay.address.clone(),
             from_phone: s.relay.from_phone,
@@ -643,28 +645,52 @@ fn banner(app: &AppHandle, who: Option<String>) {
         if a.get_webview_window(LABEL).is_some() {
             return; // the page follows the status itself
         }
-        // room for Send Files… and the 4 s "Clipboard sent to …" in place of the name
-        let (w, h) = (480.0, 38.0);
-        let (x, y) = match a.primary_monitor().ok().flatten() {
-            Some(m) => {
-                let s = m.scale_factor();
-                let (p, z) = (m.position(), m.size());
-                (p.x as f64 / s + (z.width as f64 / s - w) / 2.0, p.y as f64 / s + 8.0)
-            }
-            None => (200.0, 8.0),
-        };
-        let _ = tauri::WebviewWindowBuilder::new(&a, LABEL, tauri::WebviewUrl::App("index.html?banner=1".into()))
+        // a first guess: the page measures what it says and sizes the window to it (`remote_banner_fit`)
+        let w = 420.0;
+        let (x, y) = banner_place(&a, w);
+        let b = tauri::WebviewWindowBuilder::new(&a, LABEL, tauri::WebviewUrl::App("index.html?banner=1".into()))
             .title("Blurt")
-            .inner_size(w, h)
+            .inner_size(w, BANNER_H)
             .position(x, y)
             .decorations(false)
             .resizable(false)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
-            .visible_on_all_workspaces(true)
-            .build();
+            .visible_on_all_workspaces(true);
+        // Linux: the page draws the bar's rounded corners itself; Windows 11 rounds an undecorated window with a shadow
+        #[cfg(target_os = "linux")]
+        let b = b.transparent(true);
+        let _ = b.build();
     });
+}
+
+const BANNER_H: f64 = 38.0;
+
+/// Where the bar goes for `w` logical pixels: centred at the top of the primary display, 8 px down.
+fn banner_place(a: &AppHandle, w: f64) -> (f64, f64) {
+    match a.primary_monitor().ok().flatten() {
+        Some(m) => {
+            let s = m.scale_factor();
+            let (p, z) = (m.position(), m.size());
+            (p.x as f64 / s + (z.width as f64 / s - w) / 2.0, p.y as f64 / s + 8.0)
+        }
+        None => (200.0, 8.0),
+    }
+}
+
+/// The bar's page measured what it says (`width`, CSS pixels): the window takes that width, centred again, at most the display
+/// less 40 px (the page ellipsizes inside that).
+#[tauri::command]
+pub fn remote_banner_fit(app: AppHandle, width: f64) {
+    use tauri::Manager;
+    let Some(win) = app.get_webview_window("remote-banner") else { return };
+    let most = app.primary_monitor().ok().flatten().map_or(1200.0, |m| m.size().width as f64 / m.scale_factor() - 40.0);
+    let w = (width.ceil() / 2.0).ceil() * 2.0; // even: centred on a whole pixel
+    let w = w.clamp(200.0, most.max(200.0));
+    let (x, y) = banner_place(&app, w);
+    let _ = win.set_size(tauri::LogicalSize::new(w, BANNER_H));
+    let _ = win.set_position(tauri::LogicalPosition::new(x, y));
 }
 
 /// 保持可连接 (on by default).
@@ -747,6 +773,10 @@ impl App for Desktop {
 
     fn transfer(&self, t: &blurt_remote::files::Transfer) {
         let _ = self.app.emit("remote://transfer", t.to_json());
+    }
+
+    fn not_pasted_notice(&self) -> String {
+        crate::l10n::t("remote.notice.not_pasted")
     }
 
     fn new_pairing_notice(&self, devices: &str, host: &str) -> String {

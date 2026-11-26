@@ -255,35 +255,59 @@
   color: var(--ink-2);
 }
 
-/* the bar on a computer being controlled (RemoteBanner.tsx): the whole window */
+/* the bar on a computer being controlled (RemoteBanner.tsx): as wide as what it says (remote.rs sizes the window to it). Linux: a
+   transparent window, the page draws the rounded corners; Windows 11 rounds the undecorated window itself (8 px), so the page fills
+   it in the bar's colour. */
+html.remote-banner-page,
+html.remote-banner-page body {
+  background: transparent;
+}
+html.remote-banner-page[data-platform='win'],
+html.remote-banner-page[data-platform='win'] body {
+  background: #1d1d1f;
+}
 .remote-banner {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  height: 100%;
+  width: max-content;
+  /* the display less 40 px (RemoteBanner sets it): past that the line ends in … */
+  max-width: var(--banner-most, 1200px);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 0 6px 0 14px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px;
   background: #1d1d1f;
   color: #fff;
   font-size: 13px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   user-select: none;
   -webkit-app-region: drag;
+}
+html[data-platform='win'] .remote-banner {
+  border-radius: 8px;
 }
 .remote-banner-dot {
   flex: none;
   width: 8px;
   height: 8px;
+  margin-right: 2px;
   border-radius: 50%;
   background: #ff9f0a;
 }
 .remote-banner-text {
-  flex: 1;
   min-width: 0;
+  margin-right: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Send Files… and Disconnect: one style, side by side */
 .remote-banner button {
   flex: none;
   -webkit-app-region: no-drag;
@@ -291,21 +315,15 @@
   padding: 0 12px;
   border: 0;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgb(255 255 255 / 0.14);
   color: #fff;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 .remote-banner button:hover {
-  background: rgba(255, 255, 255, 0.26);
-}
-.remote-banner button.secondary {
-  background: none;
-  font-weight: 500;
-}
-.remote-banner button.secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(255 255 255 / 0.24);
 }
 /* files both ways (docs/design/remote-files.md): a card at the bottom right, over the picture */
 .vw-files {
@@ -314,9 +332,10 @@
   bottom: 12px;
   width: 340px;
   max-width: calc(100% - 24px);
-  padding: 6px 0 4px;
+  padding: 6px 0 10px;
   border-radius: 10px;
-  background: rgb(38 38 38 / 0.94);
+  /* opaque: a light window in the picture would show through as a band behind the title */
+  background: rgb(38 38 38);
   border: 1px solid rgb(255 255 255 / 0.16);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
   color: #fff;
@@ -328,6 +347,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 4px 12px;
+  background: none;
   font-weight: 600;
   color: rgb(255 255 255 / 0.7);
 }
@@ -338,6 +358,7 @@
   flex: none;
   width: 20px;
   height: 20px;
+  min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -365,9 +386,30 @@
   white-space: nowrap;
   font-size: 13px;
 }
+/* wraps only between its pieces ("141 MB of 350 MB" and 还剩 2 分钟 stay whole); each piece brings its "·", and the line starts
+   one dot-width to the left under a clip, so a wrapped line never starts or ends with one */
 .vw-file-line {
+  overflow: hidden;
   color: rgb(255 255 255 / 0.65);
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.vw-file-line-in {
+  margin-left: -1.1em;
+}
+.vw-file-part {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+.vw-file-part::before {
+  content: '·';
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
 }
 .vw-file[data-state='failed'] .vw-file-line {
   color: #ffb4a8;
@@ -389,7 +431,8 @@
   background: rgb(255 255 255 / 0.5);
 }
 .vw .vw-file-link {
-  height: auto;
+  height: 20px;
+  min-height: 0;
   margin-top: 2px;
   padding: 0;
   border: 0;

@@ -88,7 +88,7 @@ describe('the Phone page', () => {
   it('one headline', () => {
     expect(phoneHeadline(base)).toEqual({ kind: 'none' });
     expect(phoneHeadline({ ...base, devices: [phone] })).toEqual({ kind: 'not_connected' });
-    expect(phoneHeadline({ ...base, devices: [phone], connected: { id: 'p', name: 'Pixel', route: 'relay', screen: false } })).toEqual({ kind: 'connected', name: 'Pixel', viaRelay: true, route: 'relay' });
+    expect(phoneHeadline({ ...base, devices: [phone], connected: { id: 'p', name: 'Pixel', route: 'relay', screen: false, files: true } })).toEqual({ kind: 'connected', name: 'Pixel', viaRelay: true, route: 'relay' });
   });
   it('only what stands in the way, and only once it matters', () => {
     expect(phoneProblems({ ...base, canControl: false })).toEqual([]);
@@ -105,6 +105,6 @@ describe('the Phone page', () => {
     // no relay, the go-between on: that is the way in from other networks
     expect(phoneTips({ ...base, devices: [phone], relay: { ...base.relay, goBetween: true } })).toEqual(['network', 'open', 'vpn', 'away_go_between']);
     expect(phoneTips({ ...base, devices: [phone], relay: { ...base.relay, address: 'wss://r', reachable: true } })).toEqual(['network', 'open', 'vpn', 'away_ok']);
-    expect(phoneTips({ ...base, devices: [phone], connected: { id: 'p', name: '', route: 'local', screen: false } })).toEqual([]);
+    expect(phoneTips({ ...base, devices: [phone], connected: { id: 'p', name: '', route: 'local', screen: false, files: true } })).toEqual([]);
   });
 });

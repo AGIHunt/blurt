@@ -4,6 +4,7 @@
 import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { Action, State } from '@blurt/ui';
+import type { Transfer } from './viewer/files';
 import { mockInvoke, mockListen } from './mock';
 import type { CardRef } from './drops';
 import type { RecordingInfo } from './recordings';
@@ -681,6 +682,10 @@ export const api = {
   remoteEndSession: () => invoke<void>('remote_end_session'),
   /** the bar's Send Files…: picked there, to the device connected now (false: nothing picked, or it takes no files) */
   remoteSendFiles: () => invoke<boolean>('remote_send_files'),
+  /** what's going to or coming from the device connected now; each change also comes as 'remote://transfer' (onRemoteTransfer) */
+  remoteTransfers: () => invoke<Transfer[]>('remote_transfers'),
+  /** the bar's page measured itself: its window takes that width, centred again */
+  remoteBannerFit: (width: number) => invoke<void>('remote_banner_fit', { width }),
   /** 连接记录, newest first */
   remoteConnections: (limit = 8) => invoke<RemoteConnection[]>('remote_connections', { limit }),
   /** Blurt's go-between for away from home (on by default); used only while no relay of the owner's is set */
@@ -728,7 +733,8 @@ export interface RemoteStatus {
   asking: null | { device: string; digits: string; viaRelay: boolean; kind?: DeviceKind };
   /** every device that can control this computer: phones, and computers driving it (docs/design/remote-desktop-viewer.md) */
   devices: { id: string; name: string; /** the name it gives itself (`name` is the owner's for it, once renamed) */ ownName?: string; lastSeen: number | null; kind?: DeviceKind }[];
-  connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean };
+  /** files: it takes files (the bar's Send Files…) */
+  connected: null | { id: string; name: string; route: RemoteRoute; screen: boolean; files: boolean };
   /** the owner's relay; `goBetween`: the go-between switch (used only while `address` is null); `goBetweenProblem`: why
    *  the go-between couldn't carry the last session it tried (null: fine, or not tried) */
   relay: { address: string | null; fromPhone: boolean; reachable: boolean | null; goBetween: boolean; goBetweenProblem: RemoteGoBetweenProblem | null;
@@ -773,6 +779,7 @@ export interface RemoteConnection {
 export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
 /** this computer's clipboard went to the device named (getClipboard): the bar says so for 4 s */
 export const onClipboardSent = (cb: (to: string) => void) => listen<string>('remote://clipboard-sent', cb);
+export const onRemoteTransfer = (cb: (t: Transfer) => void) => listen<Transfer>('remote://transfer', cb);
 
 export interface VoiceprintStatus {
   enrolled: boolean;

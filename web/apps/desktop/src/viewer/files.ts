@@ -44,10 +44,31 @@ export function transferLine(x: Transfer, computer: string, route: string | null
     case 'going': {
       const amount = t(x.incoming ? 'viewer.file.from' : 'viewer.file.to', { 1: computer, 2: size(x.done), 3: size(x.size) });
       const batch = x.count && x.count > 1 && x.index ? `${t('viewer.file.batch', { 1: x.index, 2: x.count })} · ` : '';
-      const left = x.secondsLeft != null ? ` · ${t('viewer.file.left', { 1: i18n().formatDuration(Math.max(1, Math.ceil(x.secondsLeft)), 'short') })}` : '';
+      const left = x.secondsLeft != null ? ` · ${t('viewer.file.left', { 1: timeLeft(x.secondsLeft) })}` : '';
       return batch + amount + left;
     }
   }
+}
+
+/** "2 min" above a minute, "40 sec" below: one unit, as a progress line says it (还剩 2 分钟, 还剩 40 秒). */
+export function timeLeft(seconds: number): string {
+  const s = Math.max(1, Math.ceil(seconds));
+  const n = (v: number) => i18n().formatNumber(v);
+  return s > 60 ? t('viewer.file.minutes', { 1: n(Math.round(s / 60)) }) : t('viewer.file.seconds', { 1: n(s) });
+}
+
+/** The line's pieces between its " · ": each stays whole when the line wraps. */
+export const lineParts = (line: string) => line.split(' · ');
+
+/** The host's bar while a file goes to the device (the Mac's RemoteBanner.transfer): where and how far, its place in a batch after
+ * the name ("To Maya’s iPhone · 2 of 5 · 3 MB of 12 MB"), paused, or nothing (null: the bar says who's controlling). */
+export function barLine(x: Transfer, device: string): string | null {
+  if (x.incoming || x.clip) return null;
+  if (x.state === 'paused') return t('viewer.file.paused');
+  if (x.state !== 'going' && x.state !== 'waiting') return null;
+  const parts = lineParts(t('viewer.file.to', { 1: device, 2: size(x.done), 3: size(x.size) }));
+  if (x.count && x.count > 1 && x.index) parts.splice(1, 0, t('viewer.file.batch', { 1: x.index, 2: x.count }));
+  return parts.join(' · ');
 }
 
 /** × is there while it can still be stopped. */
@@ -55,4 +76,4 @@ export const stoppable = (x: Transfer) => x.state === 'waiting' || x.state === '
 
 /** What getClipboard's "nothing" says, by its reason. */
 export const noneLine = (why: string, computer: string) =>
-  t(`viewer.none.${why === 'locked' || why === 'too_big' || why === 'unsupported' ? why : 'empty'}`, { 1: computer });
+  t(`viewer.none.${why === 'locked' || why === 'too_big' || why === 'too_large' || why === 'unsupported' ? why : 'empty'}`, { 1: computer });

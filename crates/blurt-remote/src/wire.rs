@@ -422,7 +422,7 @@ pub enum ToPhone {
     FileBegin { id: String, name: String, size: i64, clip: Option<bool>, index: Option<i64>, count: Option<i64>, total: Option<i64> },
     FileChunk { id: String, data: Vec<u8> },
     FileEnd { id: String },
-    /// `getClipboard` found nothing to give: "empty", "locked", "too_big", "unsupported"
+    /// `getClipboard` found nothing to give: "empty", "locked", "too_big" (over 1,000 files), "too_large" (a file over 4 GB), "unsupported"
     ClipboardNone { why: String },
 }
 

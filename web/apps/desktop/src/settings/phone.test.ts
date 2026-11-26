@@ -24,7 +24,7 @@ describe('relay address', () => {
 describe('away from home', () => {
   type R = Pick<RemoteStatus, 'connected' | 'relay'>;
   const none: R = { connected: null, relay: { address: null, fromPhone: false, reachable: null, goBetween: true, goBetweenProblem: null, fallback: false } };
-  const on = (route: NonNullable<RemoteStatus['connected']>['route']): R => ({ ...none, connected: { id: 'p', name: 'Pixel', route, screen: false } });
+  const on = (route: NonNullable<RemoteStatus['connected']>['route']): R => ({ ...none, connected: { id: 'p', name: 'Pixel', route, screen: false, files: true } });
   it('a connected phone: the path it uses, whatever else is set', () => {
     for (const route of ['local', 'tailscale', 'overlay', 'direct', 'relay', 'goBetween'] as const)
       expect(awayLine(on(route))).toEqual({ key: 'phone.connected', route: `phone.route.${route}`, warn: false, live: true });

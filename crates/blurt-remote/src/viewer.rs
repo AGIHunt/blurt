@@ -854,7 +854,7 @@ pub enum Event {
     FileFailed { id: String, why: String },
     /// a file from the host (copied files, a clip image or long text), for this end's receiver: answer with `Session::send`
     FileIn(crate::files::FileOut),
-    /// getClipboard found nothing to give: "empty", "locked", "too_big", "unsupported"
+    /// getClipboard found nothing to give: "empty", "locked", "too_big" (over 1,000 files), "too_large" (a file over 4 GB), "unsupported"
     ClipboardNone(String),
 }
 

@@ -85,6 +85,11 @@ pub trait App: Send + Sync + 'static {
     fn new_pairing_notice(&self, devices: &str, host: &str) -> String {
         format!("New device paired with {host}: {devices}. If that wasn't you or your family, remove it on that computer.")
     }
+    /// What a device hears when its pasted image or text stayed on the clipboard here: a password field had the focus, or the
+    /// computer was locked. In the app's language.
+    fn not_pasted_notice(&self) -> String {
+        "Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard.".into()
+    }
     /// A new phone waits for a yes: the owner should see the six digits now (raise the window, a notification).
     fn asking(&self, _device: &str, _digits: &str) {}
     /// The phone's talk key: the dictation key's down / up. `phone_mic`: the take should listen through the phone (`Host::mic`).
@@ -169,6 +174,8 @@ pub struct Connected {
     /// the stream moves to the direct path)
     pub route: &'static str,
     pub screen: bool,
+    /// its hello listed `files`: the bar's Send Files… shows only then
+    pub files: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -867,6 +874,16 @@ impl Core {
         self.backend.lock().unwrap().now()
     }
 
+    /// To `device` only, if it's the one connected now.
+    fn to_device(&self, device: &str, m: &ToPhone) {
+        let s = self.st.lock().unwrap();
+        if let Some(sess) = s.current.and_then(|id| s.sessions.get(&id)) {
+            if sess.chan.greeted.load(SeqCst) && sess.id.as_deref() == Some(device) {
+                sess.chan.send(m);
+            }
+        }
+    }
+
     fn to_phone(&self, m: &ToPhone) {
         let s = self.st.lock().unwrap();
         if let Some(sess) = s.current.and_then(|id| s.sessions.get(&id)) {
@@ -897,6 +914,7 @@ impl Core {
                 name: shown(s, c),
                 route: route_of(&c.chan),
                 screen: c.screen.is_some(),
+                files: c.takes_files,
             }),
             relay: RelayStatus {
                 address: relay_address(&s.settings),
@@ -2058,8 +2076,9 @@ impl Core {
             saved: Box::new(|_, _| {}),
             clip: Box::new({
                 let w = weak.clone();
-                move |path, name, _device| {
+                move |path, name, device| {
                     let Some(me) = w.upgrade() else { return };
+                    let device = device.to_string();
                     let Ok(bytes) = std::fs::read(path) else { return };
                     let clip = if crate::files::is_image(name) {
                         crate::host::Clip::Image(bytes)
@@ -2072,13 +2091,19 @@ impl Core {
                     // host's input can't reach (the secure desktop, an elevated window), not in a password field
                     me.post(move |a| {
                         let field_ok = a.may_paste();
+                        let notice = a.not_pasted_notice();
                         let me3 = me2.clone();
                         me2.rt.spawn_blocking(move || {
                             let mut b = me3.backend.lock().unwrap();
-                            let paste = field_ok && !me3.locked_now.load(SeqCst) && b.input().can_control();
+                            let locked = me3.locked_now.load(SeqCst);
+                            let paste = field_ok && !locked && b.input().can_control();
                             let ok = b.input().paste_clip(&clip, paste);
                             drop(b);
                             me3.log(json!({"event": "remote_clip_in", "image": image, "on_clipboard": ok, "pasted": ok && paste}));
+                            // held back in a password field or at the lock screen: the device hears why nothing appeared
+                            if ok && (!field_ok || locked) {
+                                me3.to_device(&device, &ToPhone::Notice(notice));
+                            }
                         });
                     });
                 }
@@ -2241,10 +2266,12 @@ impl Core {
             Copied::Text(t) => clip("Text.txt", t.as_bytes()),
             Copied::Image(png) => clip("Image.png", &png),
             Copied::Files(list) => {
-                let big = list.len() > crate::files::MAX_COUNT
-                    || list.iter().any(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() as i64 > crate::files::MAX_SIZE));
-                if big {
+                // too_big: more than 1,000 files; too_large: one of them (or a zipped folder) over 4 GB
+                if list.len() > crate::files::MAX_COUNT {
                     none("too_big");
+                    false
+                } else if list.iter().any(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() as i64 > crate::files::MAX_SIZE)) {
+                    none("too_large");
                     false
                 } else {
                     let ready = crate::files::prepare(&list);
@@ -2254,7 +2281,7 @@ impl Core {
                                 let _ = std::fs::remove_dir_all(p.parent().unwrap_or(p));
                             }
                         }
-                        none("too_big");
+                        none("too_large");
                         false
                     } else if ready.is_empty() {
                         none("empty");
