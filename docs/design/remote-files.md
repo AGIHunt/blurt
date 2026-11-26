@@ -107,8 +107,8 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 | | Sends | Receives | Clipboard |
 |---|---|---|---|
 | Swift core, `BlurtRemoteKit/RemoteFiles.swift` | `RemoteFileSender` (chunks, window, resume) | `RemoteFileReceiver` (parts kept 1 h, unique names, the space check) | `RemoteClipboard` |
-| Mac host (`BlurtApp/Remote/RemoteHostFiles.swift`) | getClipboard's files (folders zipped) and image; the bar's Send Files… and drop on the bar; the bar shows how far | Downloads/Blurt, quarantine, one notification per batch | read on request (files, then an image, then text); a `clip` onto the pasteboard and ⌘V; the bar says "Clipboard sent to …" 4 s; the log counts clipboard and files each way |
-| Mac viewer (`BlurtApp/Viewer/ViewerFileSender.swift`) | Send Files… and drop (folders now zipped), paused and resumed | Get Copied Items (⋯, ⌥⌘V while keys stay here) → Downloads/Blurt, quarantined; a click on the card shows it in Finder | a `clip` or Get Copied text onto the pasteboard, whatever the Share Clipboard switch says (it was asked for) |
+| Mac host (`BlurtApp/Remote/RemoteHostFiles.swift`) | getClipboard's files (folders zipped) and image; the bar's Send Files… and drop on the bar; the bar shows how far | Downloads/Blurt, quarantine, one notification per batch | read on request (files, then an image, then text); a `clip` onto the pasteboard and ⌘V, except in a password field or at the lock screen, where the device gets a notice (Not pasted: …); a copied file over 4 GB answers `too_large` (zips made for it deleted); the bar says "Clipboard sent to …" 4 s; the log counts clipboard and files each way |
+| Mac viewer (`BlurtApp/Viewer/ViewerFileSender.swift`) | Send Files… and drop (folders now zipped), paused and resumed | Get Copied Items (⋯, ⌥⌘V while keys stay here) → Downloads/Blurt, quarantined; the card's Show in Finder (or a click on the card) shows it | a `clip` or Get Copied text onto the pasteboard, whatever the Share Clipboard switch says (it was asked for) |
 | Windows / Linux host (`crates/blurt-remote`) | as the Mac | Downloads/Blurt, Mark of the Web | Windows CF_UNICODETEXT / CF_DIB / CF_HDROP; Linux arboard text + image, `text/uri-list` for files |
 | Windows / Linux viewer (`viewer.rs`, `apps/desktop`) | Send Files… (exists) | Get Copied Items | |
 | Rust core, `crates/blurt-remote/src/files.rs` (2026-11-26) | `files::Sender` (chunks, window, resume; a thread per sender) | `files::Receiver` (parts kept 1 h per device + id, unique names, the space check via statvfs / GetDiskFreeSpaceExW, Mark of the Web) | `Input::copied` / `Input::paste_clip` (host.rs), `platform/clip.rs` |
@@ -148,12 +148,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | An image pasted from the phone, too big | 无法粘贴超过 20 MB 的图片。 | Can’t paste images larger than 20 MB. |
 | Share extension, named Blurt as on the home screen (button · nothing paired · after the tap · how many, beside the title, for 2 or more) | 发送到 %@ · 请先在 Blurt 中配对电脑。 · 请在一小时内打开 Blurt 发送。 · %ld 项 | Send to %@ · Pair a computer in Blurt first. · Open Blurt within an hour to send. · %ld items |
 | iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到「照片」。 | Save pictures and videos from your computer to Photos. |
-| The host's bar: who (was 正在被“%@”控制 / “%@” is controlling this computer, 2026-11-26) | %@ 正在控制本机 | %@ is controlling this computer |
+| The host's bar: who (was 正在被“%@”控制 / “%@” is controlling this computer, 2026-11-26; the Mac's was 正在被「%@」控制 / “%@” is controlling this Mac) | %@ 正在控制本机 | %@ is controlling this computer (Mac: this Mac) |
 | The host's bar: button (only for a device that takes files) · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
-| The host's bar while a file goes to the device (in place of who; the batch after the name) · paused · failed, 4 s | 发往 %@ · 第 %ld/%ld 个 · %@ / %@ · 已暂停，重新连接后继续。 · 未发送。 | To %@ · %ld of %ld · %@ of %@ · Paused. Resumes when reconnected. · Not sent. |
+| The host's bar while a file goes to the device (in place of who; the batch after the name; on the Mac also the viewer card's line, before time left: was Sending %ld of %ld to %@ · %@ of %@ / 正在发送第 %ld/%ld 个到 %@ · %@ / %@) · paused · failed, 4 s | 发往 %@ · 第 %ld/%ld 个 · %@ / %@ · 已暂停，重新连接后继续。 · 未发送。 | To %@ · %ld of %ld · %@ of %@ · Paused. Resumes when reconnected. · Not sent. |
 | Time left's number (inside 还剩 %@ / %@ left): minutes above 60 s, seconds below, a space before the unit | %ld 分钟 · %ld 秒 | %ld min · %ld sec |
 | A copied file over 4 GB (`clipboardNone` `too_large`; `too_big` stays "over 1,000 files") | %@ 上拷贝的文件超过 4 GB。 | A file copied on %@ is larger than 4 GB. |
-| A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Windows / Linux host) | 未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。 | Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard. |
+| A device's pasted image or long text held back in a password field or at the lock screen (a notice to the device; Mac, Windows and Linux hosts) | 未粘贴：对方的光标在密码框中，或屏幕已锁定。内容已放入对方的剪贴板。 | Not pasted: the cursor is in a password field, or the computer is locked. It’s on that computer’s clipboard. |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
 | The host's connection log | 已发送剪贴板 · 收到 %ld 个文件 · 已发送 %ld 个文件 | Clipboard sent · Received %ld files · Sent %ld files |
 | The viewer's ⋯ menu | 获取拷贝的内容 | Get Copied Items |
@@ -196,6 +196,23 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 - Shots: `promo/cases/remote-files-1126/windows-linux/r1/` (the bar in every state, en and zh; the card), from the web app's mock
   (`?banner=1&phone=paired&banner_state=going|batch|paused|failed|clipboard`, `&banner_files=0`; `?viewer=den&viewer_files=1`) in headless
   Chromium at 2×.
+
+### The Mac, the bar and the card (2026-11-26, design-judge round)
+
+- **The bar** (`RemoteBanner.swift`): its width jumped between who (420 pt), "Clipboard sent to iPhone" (392) and a file going (495), so
+  Send Files… and Disconnect slid under the pointer. Now the idle bar is as wide as the wider of who and the clipboard line, and a file's
+  line takes max(that, what it needs) and never narrows while it shows; the line takes the spare room, the buttons stay at the end.
+  Digits are tabular. Insets 12 / 11 pt (were 12 / 6: Disconnect nearly touched the end). Measured with the test hooks
+  (`remotebar iPhone | clipboard | sending`): en 414 / 414 / 458 pt, zh 316 / 316 / 430 pt. A file's line still widens it once (the sending line is longer than who); it
+  stays put for the rest of the transfer.
+- **The card** (`ViewerFileCard`): the line keeps To / From when time left shows (it dropped the name, so a file coming in read like one
+  going out): "To Studio · 2 of 3 · 5.1 MB of 8.4 MB · 40 sec left". Two-line states are 420 pt (was 380) so that line fits;
+  one-line states (Copied, Nothing is copied…) hug their text, 260–460 pt, and wrap past that. Time left is one unit, by hand
+  (DateComponentsFormatter wrote 40秒 / 1分钟 in Chinese). Tabular digits. Saved, received and failed centre their two lines (they sat
+  at the top over an empty bar's room); paused keeps its bar where it got to, at 40 %. Received has a Show in Finder button (the card's
+  click still shows it too). Nothing copied and locked use the info mark; the triangle stays for what failed.
+- Shots: `promo/cases/remote-files-1126/mac/r1/` (the bar's three lines and the card's ten states, en and zh), from the isolated test
+  app: the bar from its test hook alone (nothing controls this Mac), the card on a pretend host in the same process (`viewer hint file.*`).
 
 Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1max, LAN-only, wasn't reachable from this Mac's network on
 2026-11-26); Windows and Linux hosts (CI builds and tests only).

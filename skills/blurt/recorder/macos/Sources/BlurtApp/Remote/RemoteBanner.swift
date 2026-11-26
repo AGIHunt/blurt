@@ -16,6 +16,12 @@ enum RemoteBanner {
     private static var transient: String?
     private static var transientTimer: Timer?
     private static var going: String?
+    /// The bar's width while it says who's controlling. A flash or a file's line keeps at least that, and never narrows while it shows,
+    /// so Send Files… and Disconnect don't slide under the pointer (2026-11-26: 420 → 392 → 495 pt between the three lines).
+    private static var idleWidth: CGFloat?
+    private static var heldWidth: CGFloat = 0
+    /// the row's insets: the dot's 12 pt on the left, Disconnect's bezel as far from the right end
+    private static let leadingInset: CGFloat = 12, trailingInset: CGFloat = 11
 
     static func start() {
         NotificationCenter.default.addObserver(forName: RemoteServer.statusChanged, object: nil, queue: .main) { _ in update() }
@@ -70,7 +76,7 @@ enum RemoteBanner {
         case .going, .waiting:
             let d = bytes.string(fromByteCount: Int64(t.done)), size = bytes.string(fromByteCount: Int64(t.size))
             if let i = t.index, let n = t.count {
-                going = T("viewer.file.to.many", i, n, who, d, size)
+                going = T("viewer.file.to.many", who, i, n, d, size)
             } else {
                 going = T("viewer.file.to", who, d, size)
             }
@@ -111,7 +117,7 @@ enum RemoteBanner {
         dot.symbolConfiguration = .init(pointSize: 8, weight: .regular)
         dot.contentTintColor = .systemOrange
         let t = NSTextField(labelWithString: "")
-        t.font = .systemFont(ofSize: 13, weight: .medium)
+        t.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)   // a file's count doesn't jitter
         t.textColor = .white
         t.lineBreakMode = .byTruncatingMiddle
         let b = NSButton(title: T("remote.banner.disconnect"), target: Handler.shared, action: #selector(Handler.disconnect))
@@ -129,11 +135,14 @@ enum RemoteBanner {
         row.orientation = .horizontal
         row.spacing = 8
         row.alignment = .centerY
+        // a bar wider than its line: the line takes the room, the buttons stay at the end
+        row.distribution = .fill
+        t.setContentHuggingPriority(.init(1), for: .horizontal)
         row.translatesAutoresizingMaskIntoConstraints = false
         bg.addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: 12),
-            row.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -6),
+            row.leadingAnchor.constraint(equalTo: bg.leadingAnchor, constant: leadingInset),
+            row.trailingAnchor.constraint(equalTo: bg.trailingAnchor, constant: -trailingInset),
             row.centerYAnchor.constraint(equalTo: bg.centerYAnchor),
         ])
         t.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -158,7 +167,23 @@ enum RemoteBanner {
     private static func place() {
         guard let p = panel, let row, let s = NSScreen.screens.first else { return }
         let f = s.visibleFrame
-        let w = min(ceil((row.fittingSize.width + 18) / 2) * 2, f.width - 40)       // even: centred on a whole point
+        let fits = ceil((row.fittingSize.width + leadingInset + trailingInset) / 2) * 2     // even: centred on a whole point
+        let w: CGFloat
+        if transient == nil && going == nil {
+            // room for "Clipboard sent to …" too, the line that comes most often: then it doesn't move the buttons at all
+            var idle = fits
+            if let who = shownFor, let label, let font = label.font {
+                let width = { (s: String) in ceil(NSAttributedString(string: s, attributes: [.font: font]).size().width) }
+                idle += max(0, width(T("remote.banner.clipboard_sent", PhoneStatus.name(who))) - width(label.stringValue))
+                idle = ceil(idle / 2) * 2
+            }
+            idleWidth = idle
+            heldWidth = 0
+            w = min(idle, f.width - 40)
+        } else {
+            heldWidth = max(heldWidth, idleWidth ?? 0, fits)
+            w = min(heldWidth, f.width - 40)
+        }
         let x = IslandLayout.hangX(under: island.shapeMidX(on: s) ?? s.frame.midX, width: w, in: s.frame, scale: s.backingScaleFactor)
         let at = NSRect(x: x, y: f.maxY - 30 - 6, width: w, height: 30)
         if p.frame != at { p.setFrame(at, display: true) }

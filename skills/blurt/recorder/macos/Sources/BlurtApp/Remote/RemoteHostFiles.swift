@@ -29,6 +29,8 @@ final class RemoteHostFiles {
     var label: (String) -> String = { $0 }
     /// a file saved, a clipboard read, files sent: for the connection log
     var noted: ((String, RemoteConnectionLog.Event) -> Void)?
+    /// a line for the device (`ToPhone.notice`), if it's still the one connected
+    var notice: ((String, String) -> Void)?
     /// files from one device in a row, for one notification
     private var arrived: [String: (count: Int, last: String, at: Date)] = [:]
 
@@ -111,11 +113,15 @@ final class RemoteHostFiles {
                 guard let u = Self.temporary("Image.png", png) else { return reply(.clipboardNone(why: "unsupported")) }
                 sender(device)?.add([u], clip: true, temporary: true)
             case let .files(urls):
-                guard urls.count <= RemoteFiles.maxCount else { return reply(.clipboardNone(why: "too_big")) }
+                if let why = RemoteFiles.refusal(count: urls.count, sizes: []) { return reply(.clipboardNone(why: why)) }
                 let ready = RemoteFiles.prepare(urls)
                 let sizes = ready.map { (try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }
                 guard !ready.isEmpty else { return reply(.clipboardNone(why: "empty")) }
-                guard sizes.allSatisfy({ $0 <= RemoteFiles.maxSize }) else { return reply(.clipboardNone(why: "too_big")) }
+                // a file (or a folder's zip) over 4 GB: none of them go, and the zips made for them are deleted now
+                if let why = RemoteFiles.refusal(count: ready.count, sizes: sizes) {
+                    RemoteFiles.discard(RemoteFiles.made(ready))
+                    return reply(.clipboardNone(why: why))
+                }
                 // zips made here are deleted once over; the user's own files never are
                 sender(device)?.add(ready, made: RemoteFiles.made(ready))
             }
@@ -207,8 +213,11 @@ final class RemoteHostFiles {
         let image = RemoteFiles.isImage(name)
         // never into a password field or at the lock screen: there it only goes on the pasteboard (as `ToMac.text` refuses to type).
         // The field is asked off the server's queue (a hung app answers slowly), the pasteboard is written on the main thread
-        DispatchQueue.global(qos: .userInitiated).async {
-            let paste = !RemoteServer.screenLocked && RemoteServer.focusedField() == .plain
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let field: RemoteServer.FocusedField = RemoteServer.screenLocked ? .password : RemoteServer.focusedField()
+            let paste = field == .plain
+            // the device is told it wasn't pasted, as for its text: it's on this Mac's clipboard
+            if field == .password { self?.notice?(device, T("remote.clip.refused")) }
             DispatchQueue.main.async {
                 let pb = NSPasteboard.general
                 pb.clearContents()

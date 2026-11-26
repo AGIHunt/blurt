@@ -20,7 +20,8 @@ final class ViewerFileSender {
         case received(url: URL, index: Int, count: Int)
         /// what was copied there is on this Mac's clipboard now
         case copied(image: Bool)
-        /// Get Copied Items found nothing to send: "empty", "locked", "too_big", "unsupported"
+        /// Get Copied Items found nothing to send: "empty", "locked", "too_big" (over 1,000 files), "too_large" (a file over 4 GB),
+        /// "unsupported", "update"
         case nothing(why: String)
         /// why: "space", "too_big", "locked", "read", "write", "other"; `incoming`: a file coming here
         case failed(name: String, why: String, incoming: Bool)
@@ -160,16 +161,32 @@ final class ViewerFileSender {
 
 /// The file going to the computer, on the picture's bottom-left corner above the band where the host keeps its taskbar or Dock: the
 /// file's own icon, its name (cut in the middle, so the extension stays), where it goes and how much is there, a thin bar, and × to stop.
-/// Dark in both appearances, as the window's other cards over the picture (system.md §3.1). Done: the ok check and where it is, 5 s;
-/// not sent: the attention triangle and why, until closed or 8 s.
+/// Dark in both appearances, as the window's other cards over the picture (system.md §3.1). Done: the ok check and where it is, 5 s
+/// (received here: Show in Finder, 8 s); not sent: the attention triangle and why, until closed or 8 s. Nothing copied there: the info
+/// mark. Two lines keep one width (420 pt: "To Office PC · 2 of 3 · 5.1 MB of 8.4 MB · 40 sec left" fits); one line (Copied) hugs it,
+/// 260–460 pt, wrapping to a second line past that.
 final class ViewerFileCard: NSView {
-    static let width: CGFloat = 380
+    static let width: CGFloat = 420
+    static let height: CGFloat = 62
+    static let oneLine: ClosedRange<CGFloat> = 260...460
+    /// left of the text (inset, icon, gap) and right of it (gap, ×, inset)
+    private static let chrome: CGFloat = 12 + 32 + 10 + 8 + 22 + 10
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let track = CALayer()
     private let fill = CALayer()
     private let close = NSButton()
+    private let reveal = NSButton(title: "", target: nil, action: nil)
+    private lazy var wide: NSLayoutConstraint = {
+        let c = widthAnchor.constraint(equalToConstant: Self.width)
+        c.priority = .defaultHigh       // a narrow window wins
+        return c
+    }()
+    private lazy var titleToClose = title.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8)
+    private lazy var titleToReveal = title.trailingAnchor.constraint(equalTo: reveal.leadingAnchor, constant: -10)
+    /// paused: the bar stays where it got to, dimmed
+    private var paused = false
     private var hideTimer: Timer?
     private var fraction: CGFloat?
     private var showsBar = true
@@ -202,7 +219,7 @@ final class ViewerFileCard: NSView {
         title.maximumNumberOfLines = 1
         title.cell?.truncatesLastVisibleLine = true
         title.allowsExpansionToolTips = true
-        detail.font = .systemFont(ofSize: 11.5)
+        detail.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)     // the counts don't jitter
         detail.textColor = NSColor.white.withAlphaComponent(0.6)
         detail.lineBreakMode = .byTruncatingTail
         detail.maximumNumberOfLines = 1
@@ -214,7 +231,17 @@ final class ViewerFileCard: NSView {
         close.target = self
         close.action = #selector(stopTapped)
         close.alphaValue = 0.55
-        for v in [icon, title, detail, close] as [NSView] {
+        reveal.title = T("viewer.file.reveal")
+        reveal.bezelStyle = .push
+        reveal.controlSize = .small
+        reveal.font = .systemFont(ofSize: 12)
+        reveal.target = self
+        reveal.action = #selector(revealTapped)
+        reveal.isHidden = true
+        reveal.bezelColor = NSColor.white.withAlphaComponent(0.22)     // a button on the near-black card, as on a notification
+        reveal.setContentCompressionResistancePriority(.required, for: .horizontal)
+        reveal.setContentHuggingPriority(.required, for: .horizontal)
+        for v in [icon, title, detail, close, reveal] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -230,7 +257,7 @@ final class ViewerFileCard: NSView {
             icon.widthAnchor.constraint(equalToConstant: 32),
             icon.heightAnchor.constraint(equalToConstant: 32),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            title.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8),
+            titleToClose,
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
@@ -238,7 +265,10 @@ final class ViewerFileCard: NSView {
             close.centerYAnchor.constraint(equalTo: centerYAnchor),
             close.widthAnchor.constraint(equalToConstant: 22),
             close.heightAnchor.constraint(equalToConstant: 22),
-            heightAnchor.constraint(equalToConstant: 62),
+            reveal.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -6),
+            reveal.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: Self.height),
+            wide,
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
@@ -255,8 +285,9 @@ final class ViewerFileCard: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fill.frame = CGRect(x: 0, y: 0, width: track.bounds.width * (fraction ?? 0), height: 3)
+        fill.opacity = paused ? 0.4 : 1
         CATransaction.commit()
-        indeterminate(fraction == nil && showsBar)
+        indeterminate(fraction == nil && showsBar && !paused)
     }
 
     /// Before the host's first count: a short piece of the bar slides along (still under Reduce Motion).
@@ -284,6 +315,11 @@ final class ViewerFileCard: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: revealURL == nil ? .arrow : .pointingHand) }
     // the card is its own surface: clicks on it don't reach the picture under it
     override func mouseDown(with event: NSEvent) {}
+
+    @objc private func revealTapped() {
+        if let u = revealURL { NSWorkspace.shared.activateFileViewerSelecting([u]) }
+        hide()
+    }
 
     @objc private func stopTapped() {
         if sending { onStop?() }
@@ -320,17 +356,19 @@ final class ViewerFileCard: NSView {
         if let u = revealURL { NSWorkspace.shared.activateFileViewerSelecting([u]) }
     }
 
-    /// " · 2 min left" once there's a rate to tell it from
-    private static func left(_ s: Double?) -> String {
+    /// " · 40 sec left" / " · 还剩 40 秒" once there's a rate to tell it from: one unit, seconds up to a minute, then whole minutes
+    /// ("2 min", "95 min"), as on every platform. By hand: DateComponentsFormatter wrote 40秒 and 1分钟 in Chinese, with no space.
+    static func left(_ s: Double?) -> String {
         guard let s, s.isFinite, s >= 1 else { return "" }
-        let f = DateComponentsFormatter()
-        f.unitsStyle = .short
-        f.allowedUnits = s >= 3600 ? [.hour, .minute] : s >= 60 ? [.minute] : [.second]
-        var cal = Calendar.current
-        cal.locale = Loc.locale
-        f.calendar = cal
-        guard let d = f.string(from: s.rounded(.up)) else { return "" }
+        let secs = Int(min(s, 1e7).rounded(.up))
+        let d = secs <= 60 ? T("viewer.file.left.sec", secs) : T("viewer.file.left.min", (secs + 59) / 60)
         return " · " + T("viewer.file.left", d)
+    }
+
+    /// "To Office PC · 2 of 3 · 5.1 MB of 8.4 MB": where it goes (or comes from), which one, how much
+    private static func line(out: Bool, _ who: String, _ done: String, _ size: String, _ i: Int, _ n: Int) -> String {
+        if n > 1 { return out ? T("viewer.file.to.many", who, i, n, done, size) : T("viewer.file.from.many", who, i, n, done, size) }
+        return out ? T("viewer.file.to", who, done, size) : T("viewer.file.from", who, done, size)
     }
 
     /// The state the card says; `to` is the computer's name.
@@ -339,8 +377,10 @@ final class ViewerFileCard: NSView {
         hideTimer = nil
         revealURL = nil
         toolTip = nil
+        reveal.isHidden = true
         func over(_ seconds: TimeInterval) {
             sending = false
+            paused = false
             isHidden = false
             showsBar = false
             close.toolTip = T("viewer.file.close")
@@ -349,6 +389,7 @@ final class ViewerFileCard: NSView {
         }
         func going(_ name: String, _ size: Int, _ done: Int?) {
             sending = true
+            paused = false
             isHidden = false
             icon.image = Self.fileIcon(name)
             setTitle(name)
@@ -361,25 +402,22 @@ final class ViewerFileCard: NSView {
         switch e {
         case let .sending(name, size, done, index, count, left):
             going(name, size, done)
-            let many = count > 1
             if let done {
-                let d = bytes(min(done, size))
-                // once there's a time left, the line drops the computer's name (the window says it): the time is what's read
-                detail.stringValue = left.flatMap { Self.left($0).isEmpty ? nil : $0 } != nil
-                    ? (many ? T("viewer.file.batch", index, count) + " · " : "") + T("viewer.file.progress", d, bytes(size)) + Self.left(left)
-                    : (many ? T("viewer.file.to.many", index, count, to, d, bytes(size)) : T("viewer.file.to", to, d, bytes(size)))
+                // the direction stays when time left shows: going out and coming in never read the same
+                detail.stringValue = Self.line(out: true, to, bytes(min(done, size)), bytes(size), index, count) + Self.left(left)
             } else {
-                detail.stringValue = many ? T("viewer.file.to.many.start", index, count, to, bytes(size)) : T("viewer.file.to.start", to, bytes(size))
+                detail.stringValue = count > 1 ? T("viewer.file.to.many.start", index, count, to, bytes(size)) : T("viewer.file.to.start", to, bytes(size))
             }
         case let .receiving(name, size, done, index, count, left):
             going(name, size, done)
-            let d = bytes(min(done, size))
-            detail.stringValue = !Self.left(left).isEmpty
-                ? (count > 1 ? T("viewer.file.batch", index, count) + " · " : "") + T("viewer.file.progress", d, bytes(size)) + Self.left(left)
-                : (count > 1 ? T("viewer.file.from.many", index, count, to, d, bytes(size)) : T("viewer.file.from", to, d, bytes(size)))
+            detail.stringValue = Self.line(out: false, to, bytes(min(done, size)), bytes(size), index, count) + Self.left(left)
         case let .paused(name):
+            // the same file: its bar stays where it got to, dimmed; one not seen going here: no bar
+            let got = !isHidden && sending && title.stringValue == name ? fraction : nil
             going(name, 1, nil)
-            showsBar = false
+            fraction = got
+            paused = got != nil
+            showsBar = got != nil
             detail.stringValue = T("remote.file.paused")
         case let .saved(name, index, count, blurt):
             // the next file follows at once: only the last one's done moment stays
@@ -395,6 +433,7 @@ final class ViewerFileCard: NSView {
             detail.stringValue = T("viewer.file.received")
             revealURL = url
             toolTip = T("viewer.file.reveal")
+            reveal.isHidden = false
             over(8)
         case let .copied(image):
             icon.image = Self.okMark
@@ -402,9 +441,10 @@ final class ViewerFileCard: NSView {
             detail.stringValue = ""
             over(4)
         case let .nothing(why):
-            icon.image = Self.attnMark
-            let key = ["locked": "viewer.copied.none.locked", "too_big": "viewer.copied.none.too_big", "unsupported": "viewer.copied.none.unsupported",
-                       "update": "viewer.copied.none.update"][why] ?? "viewer.copied.none.empty"
+            // nothing there, or locked, is a state: the info mark. What can't come is a failure: the triangle
+            icon.image = why == "empty" || why == "locked" || why.isEmpty ? Self.infoMark : Self.attnMark
+            let key = ["locked": "viewer.copied.none.locked", "too_big": "viewer.copied.none.too_big", "too_large": "viewer.copied.none.too_large",
+                       "unsupported": "viewer.copied.none.unsupported", "update": "viewer.copied.none.update"][why] ?? "viewer.copied.none.empty"
             setTitle(T(key, to))
             detail.stringValue = ""
             over(6)
@@ -425,6 +465,21 @@ final class ViewerFileCard: NSView {
         let one = detail.stringValue.isEmpty
         titleTop.isActive = !one
         titleMiddle.isActive = one
+        titleToClose.isActive = reveal.isHidden
+        titleToReveal.isActive = !reveal.isHidden
+        // one line hugs its text (wrapping past the widest); two keep one width, the block centred when there's no bar under it
+        title.lineBreakMode = one ? .byWordWrapping : .byTruncatingMiddle
+        title.maximumNumberOfLines = one ? 2 : 1
+        if one {
+            let text = ceil(title.attributedStringValue.size().width) + 4
+            wide.constant = min(Self.oneLine.upperBound, max(Self.oneLine.lowerBound, text + Self.chrome))
+            title.preferredMaxLayoutWidth = wide.constant - Self.chrome
+        } else {
+            wide.constant = Self.width
+            title.preferredMaxLayoutWidth = 0
+            let block = title.intrinsicContentSize.height + 1 + detail.intrinsicContentSize.height
+            titleTop.constant = showsBar ? 11 : ((Self.height - block) / 2).rounded()
+        }
         detail.toolTip = detail.stringValue
         setAccessibilityLabel([title.stringValue, detail.stringValue].filter { !$0.isEmpty }.joined(separator: ", "))
         needsLayout = true
@@ -446,6 +501,13 @@ final class ViewerFileCard: NSView {
         return true
     }
 
+    /// nothing there to get: the info mark, in the card's secondary white
+    private static let infoMark: NSImage = NSImage(size: NSSize(width: 32, height: 32), flipped: true) { r in
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+        BlurtIcon.info.draw(in: ctx, rect: r.insetBy(dx: 4, dy: 4), color: NSColor.white.withAlphaComponent(0.7).cgColor, flipped: true)
+        return true
+    }
+
     /// not sent: the attention triangle
     private static let attnMark: NSImage = NSImage(size: NSSize(width: 32, height: 32), flipped: true) { r in
         guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
@@ -456,7 +518,8 @@ final class ViewerFileCard: NSView {
     #if DEBUG || BLURT_TEST_HOOKS
     var testState: [String: Any] {
         ["shown": !isHidden, "title": title.stringValue, "detail": detail.stringValue, "frame": NSStringFromRect(frame),
-         "fraction": fraction.map { Double($0) } ?? -1, "bar": showsBar]
+         "fraction": fraction.map { Double($0) } ?? -1, "bar": showsBar, "paused": paused, "reveal": !reveal.isHidden,
+         "title_frame": NSStringFromRect(title.frame), "detail_frame": NSStringFromRect(detail.frame)]
     }
     #endif
 }

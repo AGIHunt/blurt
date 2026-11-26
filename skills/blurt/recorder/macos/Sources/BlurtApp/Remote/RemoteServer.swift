@@ -125,6 +125,12 @@ final class RemoteServer {
                 RemoteConnectionLog.note(entry, e)
             }
         }
+        f.notice = { [weak self] id, text in
+            self?.queue.async {
+                guard let s = self?.session, s.id == id else { return }
+                s.channel.send(ToPhone.notice(text))
+            }
+        }
         return f
     }()
     /// the device connected now takes files from this Mac (its hello lists `files`): the bar's Send Files… shows

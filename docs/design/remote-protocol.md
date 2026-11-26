@@ -263,6 +263,7 @@ Why and how it feels: [remote-files.md](remote-files.md). All additive. Directio
 - **`ToMac.getClipboard`** (`{"getClipboard":{}}`): the host reads its clipboard once and answers with exactly one of:
   `ToPhone.clipboard(text)` (text, at most 64 KiB, the same case the viewer hears); a `clip` file (an image as PNG, or text over 64 KiB as
   `Text.txt`); the copied files as a batch (a folder zipped as `<name>.zip`); or **`ToPhone.clipboardNone {why}`** (new): `empty`, `locked`,
-  `too_big` (over 1,000 files or a file over 4 GB), `unsupported` (this host can't read that kind). The host's bar says it was read.
+  `too_big` (over 1,000 files), `too_large` (a file, or a folder's zip, over 4 GB; hosts before 2026-11-26 said `too_big`), `unsupported`
+  (this host can't read that kind). The host's bar says it was read.
 - **Before the stream moves** on the public connection service, neither end sends `fileBegin`, `fileChunk` or a `clip` file (its 16 KiB
   messages and 96 KiB in all would close the room): they wait for `streamMoved`.

@@ -79,6 +79,22 @@ public enum RemoteFiles {
     /// Of what `prepare` gave, the zips it made (to delete once sent).
     public static func made(_ urls: [URL]) -> Set<URL> { Set(urls.filter { $0.deletingLastPathComponent().lastPathComponent.hasPrefix("blurt-zip-") }) }
 
+    /// Zips `prepare` made for a batch that won't go (Get Copied Items refused it): each with the temporary folder it's in. The user's
+    /// own files are never in `made`.
+    public static func discard(_ made: Set<URL>) {
+        for u in made where u.deletingLastPathComponent().lastPathComponent.hasPrefix("blurt-zip-") {
+            try? FileManager.default.removeItem(at: u.deletingLastPathComponent())
+        }
+    }
+
+    /// Why copied files can't go, as `clipboardNone`'s `why`, or nil: more than `maxCount` files is `too_big`, a file (or a folder's zip)
+    /// over `maxSize` is `too_large`.
+    public static func refusal(count: Int, sizes: [Int]) -> String? {
+        if count > maxCount { return "too_big" }
+        if sizes.contains(where: { $0 > maxSize }) { return "too_large" }
+        return nil
+    }
+
     /// The system's own zip of a folder (what Files and Finder make for sharing one), named after the folder.
     public static func zip(_ folder: URL) -> URL? {
         var out: URL?

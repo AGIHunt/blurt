@@ -225,4 +225,21 @@ final class RemoteFilesTests: XCTestCase {
         let head = try Data(contentsOf: out[0]).prefix(2)
         XCTAssertEqual(Array(head), [0x50, 0x4B], "a zip")
     }
+
+    func testCopiedFilesThatCantGoSayWhyAndTheirZipsGo() throws {
+        XCTAssertEqual(RemoteFiles.refusal(count: RemoteFiles.maxCount + 1, sizes: [1]), "too_big")
+        XCTAssertEqual(RemoteFiles.refusal(count: 2, sizes: [1, RemoteFiles.maxSize + 1]), "too_large")
+        XCTAssertNil(RemoteFiles.refusal(count: 2, sizes: [1, RemoteFiles.maxSize]))
+        let f = dir.appendingPathComponent("Photos")
+        try FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
+        try Data("hi".utf8).write(to: f.appendingPathComponent("a.txt"))
+        let mine = file("b.txt", 1)
+        let out = RemoteFiles.prepare([f, mine])
+        let made = RemoteFiles.made(out)
+        XCTAssertEqual(made.map(\.lastPathComponent), ["Photos.zip"])
+        RemoteFiles.discard(made)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: out[0].deletingLastPathComponent().path), "the zip and its folder are gone")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mine.path), "the user's own files stay")
+    }
 }

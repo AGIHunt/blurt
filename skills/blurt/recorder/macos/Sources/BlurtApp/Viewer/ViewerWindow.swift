@@ -690,9 +690,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         fileCard.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(fileCard)
         let bottom = fileCard.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -64)
-        let wide = fileCard.widthAnchor.constraint(equalToConstant: ViewerFileCard.width)
-        wide.priority = .defaultHigh
-        NSLayoutConstraint.activate([bottom, wide,
+        // its width is its own (ViewerFileCard: one for two lines, hugging one line)
+        NSLayoutConstraint.activate([bottom,
                                      fileCard.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
                                      fileCard.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12)])
         fileCardBottom = bottom
@@ -1112,7 +1111,8 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
     /// the picture's hint, as the window shows it (`viewer hint KEY`: release, release.app_only, no_control); held up until the
     /// next one, so a screenshot can't miss it. The display switcher closes, as it does when the keys come here. And the file card:
     /// file (a long file name being sent, 3.2 of 8.4 MB there), file.start (before the host's first count), file.many (the second of
-    /// three), file.saved, file.failed (not enough space there), file.off.
+    /// three), file.in (coming here), file.paused (after 5.1 MB), file.saved, file.received, file.copied, file.nothing, file.too_large,
+    /// file.too_big, file.failed (not enough space there), file.off.
     func testHint(_ key: String) {
         displaysPopover?.close()
         let name = "Quarterly results for the board, final version (2).pdf", size = 8_400_000
@@ -1127,10 +1127,14 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case "file.saved": showFile(.saved(name: name, index: 1, count: 1, blurt: true))
         case "file.failed": showFile(.failed(name: name, why: "space", incoming: false))
         case "file.in": showFile(.receiving(name: "Q4 report.xlsx", size: size, done: 2_600_000, index: 1, count: 1, left: 12))
-        case "file.paused": showFile(.paused(name: name))
+        case "file.paused":     // after 5.1 of 8.4 MB went
+            showFile(.sending(name: name, size: size, done: 5_100_000, index: 1, count: 1, left: 40))
+            showFile(.paused(name: name))
         case "file.received": showFile(.received(url: URL(fileURLWithPath: "/tmp/Q4 report.xlsx"), index: 1, count: 1))
         case "file.copied": showFile(.copied(image: true))
         case "file.nothing": showFile(.nothing(why: "empty"))
+        case "file.too_large": showFile(.nothing(why: "too_large"))
+        case "file.too_big": showFile(.nothing(why: "too_big"))
         case "file.off": fileCard.hide()
         default: emit(["event": "viewer_hint", "unknown": key])
         }
