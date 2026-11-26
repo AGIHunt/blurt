@@ -550,7 +550,7 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
         <button className="vw-files-x" aria-label={t('viewer.close')} onClick={onClose}><Icon name="close" size={12} /></button>
       </header>
       {transfers.slice(0, 5).map((x) => (
-        <div key={x.id} className={`vw-file ${x.state}`} data-testid="viewer-file-row" data-state={x.state}>
+        <div key={x.id} className="vw-file" data-testid="viewer-file-row" data-state={x.state}>
           <Icon name={x.incoming ? 'download' : 'send'} size={14} />
           <div className="vw-file-text">
             <div className="vw-file-name" title={x.name}>{x.name}</div>
@@ -558,14 +558,14 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
             {(x.state === 'going' || x.state === 'paused') && x.size > 0 && (
               <div className="vw-file-bar" aria-hidden><span style={{ width: `${Math.min(100, (100 * x.done) / x.size)}%` }} /></div>
             )}
+            {x.state === 'done' && x.incoming && x.path && (
+              <button className="vw-file-link" onClick={() => void invoke('reveal', { path: x.path }).catch(() => {})}>{revealLabel()}</button>
+            )}
           </div>
           {stoppable(x) && (
             <button className="vw-file-btn" aria-label={t('viewer.file.stop')} title={t('viewer.file.stop')} onClick={() => onStop(x.id)}>
               <Icon name="close" size={12} />
             </button>
-          )}
-          {x.state === 'done' && x.incoming && x.path && (
-            <button className="vw-file-link" onClick={() => void invoke('reveal', { path: x.path }).catch(() => {})}>{revealLabel()}</button>
           )}
         </div>
       ))}

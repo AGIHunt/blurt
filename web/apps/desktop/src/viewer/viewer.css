@@ -312,7 +312,7 @@
   position: absolute;
   right: 12px;
   bottom: 12px;
-  width: 300px;
+  width: 340px;
   max-width: calc(100% - 24px);
   padding: 6px 0 4px;
   border-radius: 10px;
@@ -331,25 +331,27 @@
   font-weight: 600;
   color: rgb(255 255 255 / 0.7);
 }
-.vw-files-x,
-.vw-file-btn {
+.vw .vw-files-x,
+.vw .vw-file-btn {
   display: grid;
   place-items: center;
+  flex: none;
   width: 20px;
   height: 20px;
+  padding: 0;
   border: 0;
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.14);
   color: #fff;
   cursor: pointer;
 }
-.vw-files-x:hover,
-.vw-file-btn:hover {
+.vw .vw-files-x:hover,
+.vw .vw-file-btn:hover {
   background: rgb(255 255 255 / 0.24);
 }
 .vw-file {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 6px 10px 6px 12px;
 }
@@ -365,11 +367,9 @@
 }
 .vw-file-line {
   color: rgb(255 255 255 / 0.65);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
 }
-.vw-file.failed .vw-file-line {
+.vw-file[data-state='failed'] .vw-file-line {
   color: #ffb4a8;
 }
 .vw-file-bar {
@@ -385,10 +385,13 @@
   background: var(--accent, #4c8dff);
   transition: width 0.3s var(--ease);
 }
-.vw-file.paused .vw-file-bar span {
+.vw-file[data-state='paused'] .vw-file-bar span {
   background: rgb(255 255 255 / 0.5);
 }
-.vw-file-link {
+.vw .vw-file-link {
+  height: auto;
+  margin-top: 2px;
+  padding: 0;
   border: 0;
   background: none;
   color: var(--accent, #7fb0ff);
