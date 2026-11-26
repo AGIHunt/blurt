@@ -107,6 +107,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         guard link.state == .connected else { return }
         guard hostGivesClipboard else { return showFile(.nothing(why: "update")) }
         askedClipboard = true
+        files.clipAsked = true
         link.send(.getClipboard)
         emit(["event": "viewer_get_copied"])
     }
@@ -286,6 +287,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
             files.heard(m)
         case let .clipboardNone(why):
             askedClipboard = false
+            files.clipAsked = false
             showFile(.nothing(why: why))
         case let .notice(text):
             // the host's own words (a new device paired there): a notification, so it's seen even with this window behind
@@ -304,6 +306,7 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         case let .clipboard(t) where askedClipboard:
             // the answer to Get Copied Files: asked for, so it's taken whatever the clipboard switch says
             askedClipboard = false
+            files.clipAsked = false
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(t, forType: .string)

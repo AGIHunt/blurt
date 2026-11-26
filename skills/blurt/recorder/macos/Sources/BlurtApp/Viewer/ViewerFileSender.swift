@@ -34,6 +34,9 @@ final class ViewerFileSender {
     let out: RemoteFileSender
     let incoming: RemoteFileReceiver
     var onEvent: ((Event) -> Void)?
+    /// Get Copied Files was asked and not yet answered: only then does a `clip` from the host go on this Mac's clipboard (a host can't
+    /// put anything there on its own)
+    var clipAsked = false
     /// the host's id: the receiver keys its parts by it
     private var device: String { link.computer.id }
 
@@ -55,16 +58,24 @@ final class ViewerFileSender {
             try? (url as NSURL).setResourceValue(q, forKey: .quarantinePropertiesKey)
         }
         incoming.onClip = { [weak self] url, name, _ in
+            // the window hands the host's messages over on the main thread
+            guard let self, Self.onMain({ () -> Bool in
+                let asked = self.clipAsked
+                self.clipAsked = false
+                return asked
+            }) else { return }
             let data = (try? Data(contentsOf: url)) ?? Data()
             let image = RemoteFiles.isImage(name)
-            DispatchQueue.main.sync {
+            Self.onMain {
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 if image, let img = NSImage(data: data) { pb.writeObjects([img]) } else { pb.setString(String(decoding: data, as: UTF8.self), forType: .string) }
             }
-            self?.post(.copied(image: image))
+            self.post(.copied(image: image))
         }
     }
+
+    private static func onMain<T>(_ f: () -> T) -> T { Thread.isMainThread ? f() : DispatchQueue.main.sync(execute: f) }
 
     func send(_ urls: [URL]) {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
@@ -90,8 +101,13 @@ final class ViewerFileSender {
     /// What the host said about files, either way.
     func heard(_ m: ToPhone) {
         if let a = m.fileAnswer { out.heard(a) }
-        if let o = m.fileOut { incoming.heard(o, from: device) { [weak link] a in link?.send(ToMac(a)) } }
+        // written off the main thread, in order
+        if let o = m.fileOut {
+            let device = device
+            writes.async { [weak self] in self?.incoming.heard(o, from: device) { [weak self] a in self?.link.send(ToMac(a)) } }
+        }
     }
+    private let writes = DispatchQueue(label: "blurt.viewer.files.in")
 
     private func post(_ e: Event) {
         DispatchQueue.main.async { self.onEvent?(e) }
