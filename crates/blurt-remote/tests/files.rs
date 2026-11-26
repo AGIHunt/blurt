@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use blurt_remote::files::{self, FileAnswer, FileOut, Hooks, Receiver};
+use blurt_remote::files::{self, Clips, FileAnswer, FileOut, Hooks, Receiver};
 use blurt_remote::host::{Backend, Button, Clip, Copied, CursorShape, Input, ScrollPhase, SystemMove};
 use blurt_remote::phone::{pair, Event, Options, Phone};
 use blurt_remote::store::FileKeyStore;
@@ -100,13 +100,13 @@ fn data(n: usize) -> Vec<u8> {
 /// The phone's end: its receiver, what it got on its clipboard, the chunk bytes it took.
 struct PhoneEnd {
     r: Receiver,
-    clips: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
+    clips: Clips,
     folder: PathBuf,
 }
 
 impl PhoneEnd {
     fn new(dir: &std::path::Path) -> PhoneEnd {
-        let clips: Arc<Mutex<Vec<(String, Vec<u8>)>>> = Arc::default();
+        let clips: Clips = Arc::default();
         let c = clips.clone();
         let hooks = Hooks { clip: Box::new(move |p, n, _| c.lock().unwrap().push((n.into(), std::fs::read(p).unwrap()))), ..Hooks::default() };
         let folder = dir.join("phone/Blurt Remote");

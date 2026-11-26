@@ -788,15 +788,21 @@ struct Part {
     samples: Vec<(Instant, i64)>,
 }
 
+pub type SavedFn = Box<dyn Fn(&Path, &str) + Send + Sync>;
+pub type ClipFn = Box<dyn Fn(&Path, &str, &str) + Send + Sync>;
+pub type ReceiveChangeFn = Box<dyn Fn(&Transfer, &str) + Send + Sync>;
+/// Clip files a test end got: (name, bytes).
+pub type Clips = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+
 /// What a receiver asks of the end it runs in. Called outside its locks.
 pub struct Hooks {
     /// the screen is locked: nothing is taken
     pub locked: Box<dyn Fn() -> bool + Send + Sync>,
     /// a finished file, moved to its place (`device`: who sent it): notify (not for clip ones)
-    pub saved: Box<dyn Fn(&Path, &str) + Send + Sync>,
+    pub saved: SavedFn,
     /// a `clip` file arrived (its part, its name, the device): put it on the clipboard. The part is deleted after this returns
-    pub clip: Box<dyn Fn(&Path, &str, &str) + Send + Sync>,
-    pub change: Box<dyn Fn(&Transfer, &str) + Send + Sync>,
+    pub clip: ClipFn,
+    pub change: ReceiveChangeFn,
 }
 
 impl Default for Hooks {
@@ -1115,13 +1121,13 @@ mod tests {
         r: Arc<Receiver>,
         out: PathBuf,
         pipe: Arc<Pipe>,
-        clips: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
+        clips: Clips,
         locked: Arc<AtomicBool>,
     }
 
     fn pair(d: &Path, resume: bool) -> Pair {
         let out = d.join("Downloads/Blurt");
-        let clips: Arc<Mutex<Vec<(String, Vec<u8>)>>> = Arc::default();
+        let clips: Clips = Arc::default();
         let locked = Arc::new(AtomicBool::new(false));
         let hooks = Hooks {
             locked: Box::new({
@@ -1151,11 +1157,9 @@ mod tests {
                             std::thread::sleep(Duration::from_millis(d as u64));
                         }
                         let cut = pipe.cut_after.load(SeqCst);
-                        if cut >= 0 {
-                            if pipe.chunked.load(SeqCst) >= cut {
-                                pipe.up.store(false, SeqCst);
-                                return false;
-                            }
+                        if cut >= 0 && pipe.chunked.load(SeqCst) >= cut {
+                            pipe.up.store(false, SeqCst);
+                            return false;
                         }
                         pipe.chunked.fetch_add(data.len() as i64, SeqCst);
                     }

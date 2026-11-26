@@ -148,7 +148,7 @@ pub fn start(app: &AppHandle) {
 /// Where a computer's files land here: Downloads/Blurt (the Mark of the Web on Windows), and a `clip` image or text onto this computer's
 /// clipboard, as the Mac viewer does.
 pub fn downloads() -> std::path::PathBuf {
-    dirs::download_dir().unwrap_or_else(|| crate::paths::blurt_home()).join("Blurt")
+    dirs::download_dir().unwrap_or_else(crate::paths::blurt_home).join("Blurt")
 }
 
 fn make_receiver() -> blurt_remote::files::Receiver {
