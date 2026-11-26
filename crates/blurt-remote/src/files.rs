@@ -232,6 +232,19 @@ pub fn prepare(paths: &[PathBuf]) -> Vec<(PathBuf, bool)> {
         .collect()
 }
 
+/// The bytes these would send: files as they are, folders as everything in them (their zip stores, not compresses). Links aren't
+/// followed.
+pub fn size_of(paths: &[PathBuf]) -> i64 {
+    fn walk(p: &Path, depth: u32) -> i64 {
+        match std::fs::symlink_metadata(p) {
+            Ok(m) if m.is_dir() && depth < 64 => std::fs::read_dir(p).map(|d| d.flatten().map(|e| walk(&e.path(), depth + 1)).sum()).unwrap_or(0),
+            Ok(m) if m.is_file() => m.len() as i64,
+            _ => 0,
+        }
+    }
+    paths.iter().map(|p| walk(p, 0)).sum()
+}
+
 /// Bytes a second from what moved lately: None until two samples 0.2 s apart.
 fn rate(samples: &[(Instant, i64)]) -> Option<f64> {
     let (first, last) = (samples.first()?, samples.last()?);

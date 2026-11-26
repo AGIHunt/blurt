@@ -6,6 +6,10 @@
 //!    than the budget arrive after the move with nothing closed for being over it;
 //!  • a phone from before the go-between isn't offered it; with UDP blocked the host says `noDirect` after 8 s and closes.
 //!
+//!  • with no direct path, the session goes on at Blurt's public relay (`node tools/remote-relay/public.js`, tickets from the
+//!    go-between): keys and Opus voice pass, the picture waits for a lease and is Data Saver's; one lease (`LEASES=1`) is busy for a
+//!    second computer until the first gives it back; a dead relay is the no-direct line, at once on the host, within 5 s on the phone.
+//!
 //! Skipped (with a line saying so) where node, the `ws` package or the relay's budget mode isn't there.
 
 use std::net::SocketAddr;
@@ -13,7 +17,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use blurt_remote::host::{Backend, Button, CursorShape, Input, ScrollPhase, SystemMove};
+use blurt_remote::host::{Backend, Button, Crop, CursorShape, FrameSink, Input, Screen, ScreenConfig, ScreenInfo, ScrollPhase, SystemMove};
 use blurt_remote::phone::{pair, Event, Options, Phone};
 use blurt_remote::server::GoBetweenProblem;
 use blurt_remote::store::FileKeyStore;
@@ -69,14 +73,37 @@ impl Input for TestInput {
     }
 }
 
-struct TestBackend(TestInput);
+/// A screen that sends nothing and writes down what it was asked for: (width, height, bitrate, fps) of each start, and stops.
+/// (width, height, bitrate, fps)
+type Start = (u32, u32, u32, u32);
+
+#[derive(Clone, Default)]
+struct Asked(Arc<Mutex<Vec<Start>>>, Arc<Mutex<usize>>);
+
+struct TestScreen(Asked);
+
+impl Screen for TestScreen {
+    fn start(&mut self, c: &ScreenConfig, _: FrameSink) -> Result<ScreenInfo, String> {
+        self.0 .0.lock().unwrap().push((c.width, c.height, c.bitrate, c.fps));
+        Ok(ScreenInfo { width: 1440.0, height: 900.0, codec: "h264".into() })
+    }
+    fn set_crop(&mut self, _: Crop) {}
+    fn set_rate(&mut self, _: u32, _: u32) {}
+    fn keyframe(&mut self) {}
+    fn refresh(&mut self) {}
+    fn stop(&mut self) {
+        *self.0 .1.lock().unwrap() += 1;
+    }
+}
+
+struct TestBackend(TestInput, Option<TestScreen>);
 
 impl Backend for TestBackend {
     fn input(&mut self) -> &mut dyn Input {
         &mut self.0
     }
     fn screen(&mut self) -> Option<&mut dyn blurt_remote::host::Screen> {
-        None
+        self.1.as_mut().map(|s| s as &mut dyn Screen)
     }
     fn platform(&self) -> &'static str {
         "linux"
@@ -113,17 +140,32 @@ fn ws_module(repo: &std::path::Path) -> Option<std::path::PathBuf> {
 }
 
 async fn relay() -> Result<Relay, String> {
+    node("server.js", &[("BUDGET", "1".into())], "blurt go-between").await
+}
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+/// `tools/remote-relay/<script>` on a free port with these settings, once `GET /` answers with `says`.
+async fn node(script: &str, env: &[(&str, String)], says: &str) -> Result<Relay, String> {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let server = repo.join("tools/remote-relay/server.js");
-    let port = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?.local_addr().unwrap().port();
+    let server = repo.join("tools/remote-relay").join(script);
+    if !server.exists() {
+        return Err(format!("no {script} here"));
+    }
+    let port = free_port();
     let mut c = Command::new("node");
-    c.arg(&server).env("BUDGET", "1").env("HOST", "127.0.0.1").env("PORT", port.to_string()).stdout(Stdio::null()).stderr(Stdio::null());
+    c.arg(&server).env("HOST", "127.0.0.1").env("PORT", port.to_string()).stdout(Stdio::null()).stderr(Stdio::null());
+    for (k, v) in env {
+        c.env(k, v);
+    }
     if let Some(p) = ws_module(&repo) {
         c.env("NODE_PATH", p);
     }
     let child = c.spawn().map_err(|e| format!("node: {e}"))?;
     let r = Relay(child, port);
-    // up, and in budget mode: GET / says so
+    // up, and the right one: GET / says so
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if let Ok(mut s) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
@@ -131,10 +173,20 @@ async fn relay() -> Result<Relay, String> {
             let _ = s.write_all(b"GET / HTTP/1.0\r\nHost: x\r\n\r\n").await;
             let mut b = vec![];
             let _ = tokio::time::timeout(Duration::from_secs(2), s.read_to_end(&mut b)).await;
-            return if String::from_utf8_lossy(&b).contains("blurt go-between") { Ok(r) } else { Err("the relay has no budget mode yet".into()) };
+            return if String::from_utf8_lossy(&b).contains(says) { Ok(r) } else { Err(format!("{script} isn't the one this test needs")) };
         }
     }
     Err("the relay didn't start (node, or its ws package, missing?)".into())
+}
+
+/// Blurt's public relay (`public.js`, `LEASES` at once) and a go-between that gives tickets to it, sharing a secret: (go-between,
+/// public relay). `public_at`: the address the go-between names instead (a dead one).
+async fn public_pair(leases: u32, public_at: Option<String>) -> Result<(Relay, Relay), String> {
+    let secret = blurt_remote::crypto::base64url(&blurt_remote::crypto::new_key());
+    let public = node("public.js", &[("TICKET_SECRETS", secret.clone()), ("LEASES", leases.to_string())], "blurt relay").await?;
+    let named = public_at.unwrap_or_else(|| format!("ws://127.0.0.1:{}", public.1));
+    let meet = node("server.js", &[("BUDGET", "1".into()), ("TICKET_SECRET", secret), ("PUBLIC_RELAY", named)], "blurt go-between").await?;
+    Ok((meet, public))
 }
 
 async fn until<T>(f: impl Fn() -> Option<T>) -> T {
@@ -149,10 +201,23 @@ async fn until<T>(f: impl Fn() -> Option<T>) -> T {
 
 /// A host whose go-between is the local relay, and a phone paired with it on the local network (then gone).
 async fn paired(meet: &str, input: Lines) -> (Host, std::path::PathBuf, String, Vec<u8>) {
+    paired_with(meet, None, input, None).await
+}
+
+/// The same, with Blurt's public relay let in at `public` and a screen that writes down what it's asked.
+async fn paired_with(meet: &str, public: Option<&str>, input: Lines, screen: Option<Asked>) -> (Host, std::path::PathBuf, String, Vec<u8>) {
     let dir = std::env::temp_dir().join(format!("blurt-remote-meet-{}", blurt_remote::crypto::new_id()));
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Studio PC".into(), version: "1.0.27".into(), test_answer: Some(true), port: 0, go_between: Some(meet.into()) },
-        Box::new(TestBackend(TestInput(input))),
+        HostConfig {
+            dir: dir.clone(),
+            name: "Studio PC".into(),
+            version: "1.0.27".into(),
+            test_answer: Some(true),
+            port: 0,
+            go_between: Some(meet.into()),
+            public_relay: public.map(String::from),
+        },
+        Box::new(TestBackend(TestInput(input), screen.map(TestScreen))),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(Quiet),
     );
@@ -194,7 +259,7 @@ async fn the_session_meets_moves_to_udp_and_stays_off_the_go_between() {
     let (mut phone, mut info) = away(&meet, &device, &key, Options::go_between()).await;
     assert_eq!(
         info.features.as_deref(),
-        Some(&["move".to_string(), "viewer".to_string()][..])
+        Some(&["move", "viewer", "publicRelay", "opus"].map(String::from)[..])
     );
     assert_eq!(info.relay.as_deref(), Some(meet.as_str()), "offered to a phone that can move");
     assert!(!info.candidates.is_empty() || cfg!(not(target_os = "macos")), "the LAN's addresses go in every session");
@@ -402,8 +467,8 @@ async fn a_busy_go_between_is_said_and_not_retried_in_a_loop() {
     });
     let dir = std::env::temp_dir().join(format!("blurt-remote-busy-{}", blurt_remote::crypto::new_id()));
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Studio PC".into(), version: "1.0.27".into(), test_answer: Some(true), port: 0, go_between: Some(meet.clone()) },
-        Box::new(TestBackend(TestInput(Lines::default()))),
+        HostConfig { dir: dir.clone(), name: "Studio PC".into(), version: "1.0.27".into(), test_answer: Some(true), port: 0, go_between: Some(meet.clone()), public_relay: None },
+        Box::new(TestBackend(TestInput(Lines::default()), None)),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(Quiet),
     );
@@ -483,5 +548,207 @@ async fn a_peek_says_whether_the_host_waits_and_since_when_it_left() {
     let p = gone.expect("gone from the room");
     assert!(p.seen.is_some() && p.asleep.is_none(), "{p:?}");
     tokio::task::spawn_blocking(move || drop(h)).await.unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// ------------------------------------------------------------------ Blurt's public relay
+
+/// A phone that goes on at the public relay and sends its voice as Opus.
+fn public_phone() -> Options {
+    Options { features: Some(["move", "publicRelay", "opus"].map(String::from).to_vec()), go_between: true, ..Options::default() }
+}
+
+fn big_picture() -> blurt_remote::wire::ScreenRequest {
+    blurt_remote::wire::ScreenRequest {
+        target: "display".into(),
+        crop: blurt_remote::wire::Crop::WHOLE,
+        width: 2560,
+        height: 1600,
+        bitrate: 8_000_000,
+        fps: 60,
+        codecs: Some(vec!["h264".into()]),
+        display: None,
+        features: None,
+        window: None,
+    }
+}
+
+/// Control messages until `want` takes one, within `t`, with a ping a second meanwhile (the host ends a session quiet for 12 s).
+async fn wait_pinging<T>(p: &mut Phone, t: Duration, want: impl Fn(&ToPhone) -> Option<T>) -> Option<T> {
+    let end = std::time::Instant::now() + t;
+    while std::time::Instant::now() < end {
+        p.send(&ToMac::Ping(0.0)).await;
+        if let Some(x) = p.wait(Duration::from_secs(1), &want).await {
+            return Some(x);
+        }
+    }
+    None
+}
+
+/// Through the go-between with no direct path (the phone never knocks): the host's `publicRelay` just before its `noDirect` 8 s on,
+/// then in at the public relay with the phone's ticket, within 5 s.
+async fn on_public(meet: &str, public: &str, device: &str, key: &[u8]) -> Phone {
+    let (mut phone, info) = away(meet, device, key, public_phone()).await;
+    let f = info.features.unwrap_or_default();
+    assert!(f.iter().any(|x| x == "publicRelay") && f.iter().any(|x| x == "opus"), "{f:?}");
+    let t0 = std::time::Instant::now();
+    assert!(phone.wait(Duration::from_secs(14), |m| matches!(m, ToPhone::NoDirect).then_some(())).await.is_some(), "noDirect");
+    let after = t0.elapsed();
+    assert!(after >= Duration::from_millis(7500) && after < Duration::from_secs(12), "{after:?}");
+    let (address, room, ticket) = phone.public_offer(Some(public)).expect("publicRelay just before noDirect");
+    assert_eq!(address, public);
+    assert_eq!(room.len(), 43);
+    // a release build goes only to the one address it knows
+    assert!(phone.public_offer(None).is_none());
+    drop(phone);
+    let t1 = std::time::Instant::now();
+    let q = Phone::connect_public(&address, &room, &ticket, device, key, public_phone()).await.expect("in at the public relay");
+    assert!(t1.elapsed() < Duration::from_secs(5));
+    // a ticket opens one connection
+    assert!(Phone::connect_public(&address, &room, &ticket, device, key, public_phone()).await.is_err());
+    q
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn no_direct_path_goes_on_at_the_public_relay() {
+    let (r, p) = match public_pair(10, None).await {
+        Ok(x) => x,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let (meet, public) = (format!("ws://127.0.0.1:{}", r.1), format!("ws://127.0.0.1:{}", p.1));
+    let (input, asked) = (Lines::default(), Asked::default());
+    let (h, dir, device, key) = paired_with(&meet, Some(&public), input.clone(), Some(asked.clone())).await;
+
+    let mut q = on_public(&meet, &public, &device, &key).await;
+    until(|| h.status().connected.filter(|c| c.route == "publicRelay")).await;
+    assert_eq!(h.status().relay.go_between_problem, None, "the public relay carries it");
+
+    // keys
+    q.send(&ToMac::Key { chord: Chord::new(8, "C"), down: None }).await;
+    assert_eq!(input.wait("held 0").await, ["held 8", "key C 0 None", "held 0"]);
+
+    // voice as Opus: a second of it reaches dictation, as 20 ms frames
+    let (tx, rx) = std::sync::mpsc::channel();
+    h.mic().attach(tx);
+    let pcm: Vec<u8> =
+        (0..16_000).flat_map(|i| (((i as f64 * 440.0 * std::f64::consts::TAU / 16_000.0).sin() * 8000.0) as i16).to_le_bytes()).collect();
+    let mut enc = blurt_remote::opus::Encoder::new().unwrap();
+    let packets = enc.encode(&pcm);
+    assert_eq!(packets.len(), 50);
+    for pk in &packets {
+        q.opus(pk).await;
+    }
+    let mut frames = 0;
+    while frames < 50 {
+        match rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(f) => {
+                assert_eq!(f.len(), 320);
+                frames += 1;
+            }
+            Err(_) => break,
+        }
+    }
+    assert_eq!(frames, 50, "a second of voice");
+
+    // the picture, asked for big: it waits for the lease, and comes as Data Saver's
+    q.send(&ToMac::Screen(Some(big_picture()))).await;
+    let view = q.wait(Duration::from_secs(5), |m| matches!(m, ToPhone::ScreenView { .. }).then_some(())).await;
+    assert!(view.is_some(), "the picture, with a lease");
+    let (w, _, bitrate, fps) = asked.0.lock().unwrap()[0];
+    assert!(w <= 1280 && bitrate <= 1_000_000 && fps <= 15, "{:?}", asked.0.lock().unwrap());
+    // off: it stops (and its lease goes back)
+    q.send(&ToMac::Screen(None)).await;
+    until(|| (*asked.1.lock().unwrap() >= 1).then_some(())).await;
+    drop(q);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `LEASES=1`: a second computer's picture is busy (`screenFailed("busy")`, keys still working) until the first gives the lease back;
+/// then it comes by itself, asked again within 30 s.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_lease_is_busy_for_another_until_it_is_given_back() {
+    let (r, p) = match public_pair(1, None).await {
+        Ok(x) => x,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let (meet, public) = (format!("ws://127.0.0.1:{}", r.1), format!("ws://127.0.0.1:{}", p.1));
+    let (a_asked, b_asked, b_input) = (Asked::default(), Asked::default(), Lines::default());
+    let (ha, da, deva, keya) = paired_with(&meet, Some(&public), Lines::default(), Some(a_asked.clone())).await;
+    let (hb, db, devb, keyb) = paired_with(&meet, Some(&public), b_input.clone(), Some(b_asked.clone())).await;
+    let (mut a, mut b) = tokio::join!(on_public(&meet, &public, &deva, &keya), on_public(&meet, &public, &devb, &keyb));
+
+    a.send(&ToMac::Screen(Some(big_picture()))).await;
+    assert!(a.wait(Duration::from_secs(5), |m| matches!(m, ToPhone::ScreenView { .. }).then_some(())).await.is_some());
+    b.send(&ToMac::Screen(Some(big_picture()))).await;
+    let why = b.wait(Duration::from_secs(5), |m| if let ToPhone::ScreenFailed(w) = m { Some(w.clone()) } else { None }).await;
+    assert_eq!(why.as_deref(), Some("busy"));
+    assert!(b_asked.0.lock().unwrap().is_empty(), "no picture without a lease");
+    // keys work meanwhile
+    b.send(&ToMac::Key { chord: Chord::new(0, "Escape"), down: None }).await;
+    b_input.wait("key Escape").await;
+
+    // A's picture off: its lease goes back, and B's picture comes by itself
+    a.send(&ToMac::Screen(None)).await;
+    let t = std::time::Instant::now();
+    let pinging_a = async {
+        for _ in 0..40 {
+            a.send(&ToMac::Ping(0.0)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    };
+    let got = tokio::select! {
+        v = wait_pinging(&mut b, Duration::from_secs(40), |m| matches!(m, ToPhone::ScreenView { .. }).then_some(())) => v,
+        _ = pinging_a => None,
+    };
+    assert!(got.is_some(), "B's picture once A gave the lease back");
+    eprintln!("B's picture {:?} after A gave the lease back", t.elapsed());
+    assert!(t.elapsed() <= Duration::from_secs(32));
+    assert_eq!(b_asked.0.lock().unwrap().len(), 1);
+    for (h, d) in [(ha, da), (hb, db)] {
+        h.stop();
+        let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+/// A dead public relay: the host can't get in and says `noDirect` alone, at once; a phone sent to one that never answers gives up after
+/// 5 s, one that refuses at once at once.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dead_public_relay_is_the_no_direct_line() {
+    let dead = format!("ws://127.0.0.1:{}", free_port());
+    let (r, _p) = match public_pair(10, Some(dead.clone())).await {
+        Ok(x) => x,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let (h, dir, device, key) = paired_with(&meet, Some(&dead), Lines::default(), None).await;
+    let (mut phone, _) = away(&meet, &device, &key, public_phone()).await;
+    let t0 = std::time::Instant::now();
+    assert!(phone.wait(Duration::from_secs(16), |m| matches!(m, ToPhone::NoDirect).then_some(())).await.is_some());
+    let after = t0.elapsed();
+    assert!(after < Duration::from_secs(8 + 5), "{after:?}");
+    assert!(phone.public_offer(Some(&dead)).is_none(), "no publicRelay: the host couldn't get in");
+    until(|| (h.status().relay.go_between_problem == Some(GoBetweenProblem::NoDirect)).then_some(())).await;
+
+    // the phone's side
+    let hole = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hole_at = format!("ws://{}", hole.local_addr().unwrap());
+    tokio::spawn(async move {
+        let mut held = vec![];
+        while let Ok((s, _)) = hole.accept().await {
+            held.push(s); // taken, never answered
+        }
+    });
+    let room = blurt_remote::public::new_room();
+    let ticket = "1764000060.abcdefghijkl.abcdefghijklmnopqrstuv";
+    let t1 = std::time::Instant::now();
+    assert!(Phone::connect_public(&hole_at, &room, ticket, &device, &key, public_phone()).await.is_err());
+    let took = t1.elapsed();
+    assert!(took >= Duration::from_millis(4500) && took < Duration::from_millis(6500), "{took:?}");
+    let t2 = std::time::Instant::now();
+    assert!(Phone::connect_public(&dead, &room, ticket, &device, &key, public_phone()).await.is_err());
+    assert!(t2.elapsed() < Duration::from_secs(2));
+    h.stop();
     let _ = std::fs::remove_dir_all(dir);
 }

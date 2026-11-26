@@ -23,6 +23,8 @@
 //!     server.rs       listeners, pairing, sessions, the relay: the Host the app starts
 //!     files.rs        files and the clipboard's content both ways: the sender, the receiver (parts kept for a resume)
 //!     keys.rs         every key name, and a viewer's keyboard turned into them (docs/design/remote-desktop-viewer.md)
+//!     public.rs       Blurt's public relay: its numbers, tickets, leases, the files a day
+//!     opus.rs         voice as Opus (kind 9) on the public relay
 //!     viewer.rs       the viewer: a computer driving another (the phone's end, grown up), its paired computers, nearby ones
 
 pub mod host;
@@ -38,9 +40,11 @@ pub mod input;
 pub mod join_gate;
 pub mod keys;
 pub mod mic;
+pub mod opus;
 pub mod packets;
 pub mod pairing;
 pub mod phone;
+pub mod public;
 pub mod rate;
 pub mod relay;
 pub mod repair;

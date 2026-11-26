@@ -285,7 +285,7 @@ async fn loss_is_repaired_not_restarted() {
     stops.watch(done.clone());
     let logs = Logs::default();
     let h = Host::start(
-        HostConfig { dir: dir.clone(), name: "Loopback".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()) },
+        HostConfig { dir: dir.clone(), name: "Loopback".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()), public_relay: None },
         Box::new(Back(In, synth.clone())),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(LogApp(logs.clone())),

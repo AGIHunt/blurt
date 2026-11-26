@@ -112,6 +112,8 @@ struct Inner {
     candidates: Mutex<Vec<Candidate>>,
     close_code: Arc<Mutex<Option<u16>>>,
     closed: AtomicBool,
+    /// the host's `publicRelay` (address, room, ticket) and when it came: where to go on its `noDirect`
+    public_offer: Mutex<Option<(String, String, String, Instant)>>,
     t0: Instant,
 }
 
@@ -203,6 +205,8 @@ const HANDSHAKE: Duration = Duration::from_secs(6);
 
 pub struct Phone {
     inner: Arc<Inner>,
+    /// events looked at already (`session_within`), read before `rx`
+    front: std::collections::VecDeque<Event>,
     rx: mpsc::UnboundedReceiver<Event>,
     tx: mpsc::UnboundedSender<Event>,
     udp_in: Option<SealIn>,
@@ -287,6 +291,9 @@ async fn read(inner: Arc<Inner>, mut reader: FrameReader, mut inn: SealIn, mut o
                 Some(ToPhone::Session(i)) => {
                     inner.host_moves.store(i.features.as_ref().is_some_and(|f| f.iter().any(|x| x == crate::wire::MOVE)), SeqCst);
                     *inner.candidates.lock().unwrap() = i.candidates.clone();
+                }
+                Some(ToPhone::PublicRelay { address, room, ticket }) => {
+                    *inner.public_offer.lock().unwrap() = Some((address.clone(), room.clone(), ticket.clone(), Instant::now()));
                 }
                 Some(ToPhone::UdpOk) if inner.moves() => {
                     // the host has the phone's datagrams: once its way back is known too, the stream moves
@@ -397,6 +404,19 @@ impl Phone {
         Phone::start(Writer::Tcp(w), old_rx, h, host, false, opts, Arc::new(Mutex::new(None))).await
     }
 
+    /// Blurt's public relay, after the host's `publicRelay` and `noDirect` (docs/design/remote-go-between.md §Getting in): into the room
+    /// made for this session with the phone's ticket and the usual handshake, and the host's `session`, all within 5 s; else Err (refused,
+    /// 4001, 4011, nothing in time), and the caller shows the no-direct line. Tried once.
+    pub async fn connect_public(address: &str, room: &str, ticket: &str, id: &str, key: &[u8], opts: Options) -> Result<Phone, String> {
+        let go = async {
+            let ws = crate::relay::connect_ticket(address, room, "phone", ticket, crate::public::GIVE_UP).await?;
+            let mut p = Phone::over_ws(ws, id, key, Options { go_between: false, ..opts }).await?;
+            p.session_within(crate::public::GIVE_UP).await.ok_or_else(|| format!("no session (closed {:?})", p.close_code()))?;
+            Ok::<Phone, String>(p)
+        };
+        tokio::time::timeout(crate::public::GIVE_UP, go).await.map_err(|_| "timed out".to_string())?
+    }
+
     /// The same over the relay: `<relay>/v1/<room>/phone`.
     pub async fn connect_relay(address: &str, id: &str, key: &[u8]) -> Result<Phone, String> {
         Phone::connect_relay_with(address, id, key, Options::default()).await
@@ -485,11 +505,12 @@ impl Phone {
             candidates: Mutex::new(vec![]),
             close_code: code,
             closed: AtomicBool::new(false),
+            public_offer: Mutex::new(None),
             t0: Instant::now(),
         });
         let udp_in = Some(k.inn.clone());
         tokio::spawn(read(inner.clone(), reader, k.inn, old, moved_rx, tx.clone()));
-        let p = Phone { inner, rx, tx, udp_in, host, check };
+        let p = Phone { inner, front: Default::default(), rx, tx, udp_in, host, check };
         p.hello(&h.nonce).await;
         Ok(p)
     }
@@ -554,6 +575,14 @@ impl Phone {
             return;
         }
         self.inner.sealed(Kind::Audio, pcm).await;
+    }
+
+    /// The microphone as Opus (kind 9: opus.rs), as on the public relay: one packet of 20 ms.
+    pub async fn opus(&self, packet: &[u8]) {
+        if self.on_go_between_unmoved() {
+            return;
+        }
+        self.inner.sealed(Kind::Opus, packet).await;
     }
 
     /// Over UDP once it works, else in the stream (but never over the go-between).
@@ -669,12 +698,54 @@ impl Phone {
 
     /// The next event within `t`.
     pub async fn next(&mut self, t: Duration) -> Option<Event> {
+        if let Some(e) = self.front.pop_front() {
+            return Some(e);
+        }
         tokio::time::timeout(t, self.rx.recv()).await.ok().flatten()
+    }
+
+    /// The host's `session` within `t`, left in place for whoever reads the events next (with whatever came before it). None: it
+    /// closed first, or nothing came in time.
+    pub async fn session_within(&mut self, t: Duration) -> Option<SessionInfo> {
+        let end = tokio::time::Instant::now() + t;
+        if let Some(i) = self.front.iter().find_map(|e| if let Event::Control(ToPhone::Session(i)) = e { Some(i.clone()) } else { None }) {
+            return Some(i);
+        }
+        loop {
+            let e = tokio::time::timeout_at(end, self.rx.recv()).await.ok().flatten()?;
+            let found = if let Event::Control(ToPhone::Session(i)) = &e { Some(i.clone()) } else { None };
+            let closed = matches!(e, Event::Closed);
+            self.front.push_back(e);
+            if found.is_some() {
+                return found;
+            }
+            if closed {
+                return None;
+            }
+        }
+    }
+
+    /// The host's `publicRelay`, if it came within the last 10 s and names an allowed address (`testing`: a test's own relay):
+    /// (address, room, ticket).
+    pub fn public_offer(&self, testing: Option<&str>) -> Option<(String, String, String)> {
+        let o = self.inner.public_offer.lock().unwrap().clone()?;
+        (o.3.elapsed() <= crate::public::OFFER_FRESH && crate::public::allowed(&o.0, testing)).then_some((o.0, o.1, o.2))
     }
 
     /// Control messages until one `want` takes, within `t`; the rest are dropped.
     pub async fn wait<T>(&mut self, t: Duration, want: impl Fn(&ToPhone) -> Option<T>) -> Option<T> {
         let end = tokio::time::Instant::now() + t;
+        while let Some(e) = self.front.pop_front() {
+            match e {
+                Event::Control(m) => {
+                    if let Some(x) = want(&m) {
+                        return Some(x);
+                    }
+                }
+                Event::Closed => return None,
+                _ => {}
+            }
+        }
         loop {
             let left = end.saturating_duration_since(tokio::time::Instant::now());
             match tokio::time::timeout(left, self.rx.recv()).await.ok().flatten()? {

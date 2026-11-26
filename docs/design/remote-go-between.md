@@ -166,7 +166,8 @@ Enforced by pausing the sender's reads, never by dropping (the frames are sealed
 
 - **Voice:** Opus, frame kind **9**, one packet per 20 ms of 16 kHz mono, about 32 kbps, when the device listed `opus` and the host did
   too; PCM (256 kbps) never goes here. A device that can't send Opus, or a host that can't hear it, has no microphone on this path.
-- **Files:** at most **50 MB per device per UTC day** over this path, counted by the sender; a send over **20 MB** is asked about first.
+- **Files:** at most **50 MB per device per UTC day** over this path, counted by the sender; a send over **20 MB** is asked about first. Get Copied Items isn't asked about (the device asked for it); past the day's 50 MB the host answers `clipboardNone("limit")` with a notice
+  of the limit line (Rust host, 2026-11-26; a device that doesn't know `limit` shows its generic line).
 - **The picture busy:** `screenFailed("busy")` shows a card (below); keys, pointer and voice work meanwhile, and the picture comes by
   itself once there is room.
 - The connection label says Public connection service, as on the go-between.

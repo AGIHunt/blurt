@@ -115,6 +115,18 @@ describe('the cover over the picture', () => {
     expect(coverFor('removed', 'Studio', null, false, true)?.kind).toBe('removed');
     expect(coverFor('forgotten', 'Studio', null, false, true)?.kind).toBe('removed');
   });
+
+  it('says the public connection service is busy, with no Retry: the picture comes by itself', async () => {
+    const { coverFor } = await import('./ViewerWindow');
+    const { setLang } = await import('../i18n');
+    setLang('en');
+    const busy = coverFor('connected', 'Studio', 'busy', false, true);
+    expect(busy?.kind).toBe('screenFailed');
+    expect(busy?.title).toBe('The public connection service is busy. Keys and the pointer still work.');
+    setLang('zh-Hans');
+    expect(coverFor('connected', 'Studio', 'busy', false, true)?.title).toBe('公共连接服务繁忙。按键和指针仍可使用。');
+    setLang('en');
+  });
 });
 
 describe('files both ways', () => {
@@ -139,6 +151,8 @@ describe('files both ways', () => {
     expect(noneLine('empty', 'Office PC')).toBe('Nothing is copied on Office PC.');
     expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Copy up to 1,000 at a time.');
     expect(noneLine('too_large', 'Office PC')).toBe('A file copied on Office PC is larger than 4 GB.');
+    expect(noneLine('limit', 'Office PC')).toBe('You can send up to 50 MB a day over the public connection service.');
+    expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'publicRelay')).toBe('Waiting');
     expect([stoppable(x), stoppable({ ...x, state: 'done' })]).toEqual([true, false]);
     setLang('zh-Hans');
     expect(transferLine({ ...x, secondsLeft: 150 }, 'Office PC', 'local')).toMatch(/ · 还剩 3 分钟$/);

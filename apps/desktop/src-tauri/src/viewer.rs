@@ -732,6 +732,21 @@ fn urlencode(s: &str) -> String {
     s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
 }
 
+/// Test builds: a local `node tools/remote-relay/public.js` let in as Blurt's public relay too.
+fn test_public_relay() -> Option<String> {
+    if crate::remote::test_build() {
+        std::env::var("BLURT_PUBLIC_RELAY").ok().filter(|s| !s.is_empty())
+    } else {
+        None
+    }
+}
+
+/// What this computer sent to each computer over the public relay today (50 MB a day: blurt_remote::public).
+fn public_files() -> &'static blurt_remote::public::DayBudget {
+    static B: OnceLock<blurt_remote::public::DayBudget> = OnceLock::new();
+    B.get_or_init(Default::default)
+}
+
 fn test_go_between() -> Option<String> {
     if crate::remote::test_build() {
         std::env::var("BLURT_TEST_GO_BETWEEN").ok().filter(|s| !s.is_empty())
@@ -815,8 +830,11 @@ fn on_event(label: String) -> viewer::OnEvent {
                         v.no_direct.lock().unwrap().remove(&host);
                         v.refused.lock().unwrap().remove(&host);
                         // the list names this path afterwards, not the relay it happens to know
-                        if route.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != route) {
-                            v.computers.update(&host, |c| c.last_route = route);
+                        // the public relay is kept as the public connection service it's part of (the same words; a file an older Blurt
+                        // reads)
+                        let kept = route.map(|r| if r == Route::PublicRelay { Route::GoBetween } else { r });
+                        if kept.is_some() && v.computers.get(&host).is_some_and(|c| c.last_route != kept) {
+                            v.computers.update(&host, |c| c.last_route = kept);
                         }
                     }
                     _ => {}
@@ -926,7 +944,7 @@ pub fn viewer_attach(window: WebviewWindow, channel: Channel<InvokeResponseBody>
     let c: Computer = v.computers.get(&host_id).ok_or("not paired")?;
     let key = v.computers.key(&host_id).ok_or("no key")?;
     let nearby = v.nearby.lock().unwrap().iter().find(|f| f.host_id == host_id).map(|f| f.addresses.clone()).unwrap_or_default();
-    let target = Target { computer: c.clone(), key, device: blurt_remote::server::computer_name(), nearby, go_between_at: test_go_between() };
+    let target = Target { computer: c.clone(), key, device: blurt_remote::server::computer_name(), nearby, go_between_at: test_go_between(), public_relay_at: test_public_relay() };
     let learned: viewer::OnLearned = {
         let id = host_id.clone();
         Arc::new(move |i| {
@@ -1178,6 +1196,25 @@ pub fn viewer_send_files(window: WebviewWindow, paths: Option<Vec<String>>) {
                 v.app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect()
             }
         };
+        // over the public relay: more than 20 MB is asked about first, and 50 MB a day goes at most
+        let (public, host) = v.windows.lock().unwrap().get(&label).map(|w| (w.route == Some(Route::PublicRelay), w.host_id.clone())).unwrap_or_default();
+        if public && !paths.is_empty() {
+            use blurt_remote::public::FilesCheck;
+            let bytes = blurt_remote::files::size_of(&paths);
+            let now = blurt_remote::store::now_ms();
+            let mut check = public_files().check(&host, bytes, false, now);
+            if let FilesCheck::Ask(n) = check {
+                if !crate::remote::public_ask(&v.app, n) {
+                    return;
+                }
+                check = public_files().check(&host, bytes, true, now);
+            }
+            if check == FilesCheck::OverToday {
+                crate::remote::public_limit(&v.app);
+                return;
+            }
+            public_files().spend(&host, bytes, now);
+        }
         // folders are zipped first: the window says so meanwhile
         if paths.iter().any(|p| p.is_dir()) {
             let ch = v.windows.lock().unwrap().get(&label).and_then(|w| w.channel.clone());

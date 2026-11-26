@@ -92,4 +92,4 @@ export const stoppable = (x: Transfer) => x.state === 'waiting' || x.state === '
 
 /** What getClipboard's "nothing" says, by its reason. */
 export const noneLine = (why: string, computer: string) =>
-  t(`viewer.none.${why === 'locked' || why === 'too_big' || why === 'too_large' || why === 'unsupported' ? why : 'empty'}`, { 1: computer });
+  t(`viewer.none.${why === 'locked' || why === 'too_big' || why === 'too_large' || why === 'unsupported' || why === 'limit' ? why : 'empty'}`, { 1: computer });

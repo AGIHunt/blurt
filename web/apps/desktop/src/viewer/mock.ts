@@ -7,7 +7,7 @@
 //   ?computers_pairing= connecting | asking | confirmed | failed        Add Computer… already pairing (confirmed: asking, after Pair)
 //   &computers_error= declined (default) | unanswered | spent | unreachable   &computers_link=1 (begun from a link)
 //   ?viewer=<id>&viewer_state= connected (default) | connecting | offline | busy | noDirect | removed | replaced | noControl
-//   &viewer_route= local | direct | relay | goBetween | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
+//   &viewer_route= local | direct | relay | goBetween | publicRelay | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
 //   &viewer_captured=1 (keys captured, the hint showing)   &viewer_files=1 (the files card: one coming, one paused, one done)
 import { packFrame } from './decode';
 import type { ComputersStatus } from './computers';

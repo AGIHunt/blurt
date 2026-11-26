@@ -159,7 +159,7 @@ fn files_phone() -> Options {
 
 async fn paired(dir: &std::path::Path, board: &Board) -> (Host, SocketAddr, String, Vec<u8>) {
     let h = Host::start(
-        HostConfig { dir: dir.into(), name: "Office PC".into(), version: "1.1.5".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()) },
+        HostConfig { dir: dir.into(), name: "Office PC".into(), version: "1.1.5".into(), test_answer: Some(true), port: 0, go_between: Some(String::new()), public_relay: None },
         Box::new(TestBackend(TestInput(board.clone()))),
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(TestApp(board.clone())),

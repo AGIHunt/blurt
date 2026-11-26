@@ -6,7 +6,9 @@
 //!  • the session says "viewer" both ways; the window's size is the picture's ceiling; frames arrive whole, in Annex B, with
 //!    the codec string;
 //!  • keys from the viewer's keyboard (Ctrl+C to a Mac host is ⌘C); the clipboard both ways while captured, and not otherwise;
-//!  • through the public connection service: the session meets, moves onto the direct path, and frames and keys still arrive.
+//!  • through the public connection service: the session meets, moves onto the direct path, and frames and keys still arrive;
+//!  • with no direct path, on at Blurt's public relay (`public.js`): Data Saver's picture and keys; a relay that never answers is the
+//!    no-direct line 5 s later, and nothing is tried again for a while.
 //!
 //! Nothing here touches this computer's own screen, keyboard or clipboard.
 
@@ -232,6 +234,18 @@ fn host_on(
     go_between: &str,
     port: u16,
 ) -> (Host, std::path::PathBuf) {
+    host_with(w, platform, answer, go_between, port, None)
+}
+
+/// `public`: Blurt's public relay let in at this address too.
+fn host_with(
+    w: &World,
+    platform: &'static str,
+    answer: bool,
+    go_between: &str,
+    port: u16,
+    public: Option<&str>,
+) -> (Host, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!(
         "blurt-remote-viewer-{}",
         blurt_remote::crypto::new_id()
@@ -244,6 +258,7 @@ fn host_on(
             test_answer: Some(answer),
             port,
             go_between: Some(go_between.into()),
+            public_relay: public.map(String::from),
         },
         Box::new(Back(
             In(w.clone()),
@@ -357,6 +372,7 @@ async fn pair_by_link_then_picture_keys_and_clipboard() {
             device: "Desk Laptop".into(),
             nearby: vec![IpAddr::from([127, 0, 0, 1])],
             go_between_at: None,
+            public_relay_at: None,
         },
         seen.on(),
         Arc::new(|_| {}),
@@ -919,6 +935,7 @@ async fn a_refused_key_is_forgotten_not_removed() {
             device: "Desk Laptop".into(),
             nearby: vec![IpAddr::from([127, 0, 0, 1])],
             go_between_at: None,
+            public_relay_at: None,
         },
         seen.on(),
         Arc::new(|_| {}),
@@ -962,17 +979,27 @@ impl Drop for Relay {
 }
 
 async fn relay() -> Result<Relay, String> {
+    node("server.js", &[("BUDGET", "1".into())]).await
+}
+
+/// `tools/remote-relay/<script>` on a free port with these settings.
+async fn node(script: &str, env: &[(&str, String)]) -> Result<Relay, String> {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if !repo.join("tools/remote-relay").join(script).exists() {
+        return Err(format!("no {script} here"));
+    }
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .map_err(|e| e.to_string())?
         .local_addr()
         .unwrap()
         .port();
     let mut c = Command::new("node");
-    c.arg(repo.join("tools/remote-relay/server.js"))
-        .env("BUDGET", "1")
+    c.arg(repo.join("tools/remote-relay").join(script))
         .env("HOST", "127.0.0.1")
         .env("PORT", port.to_string());
+    for (k, v) in env {
+        c.env(k, v);
+    }
     c.stdout(Stdio::null()).stderr(Stdio::null());
     if !repo.join("tools/remote-relay/node_modules/ws").exists() {
         let pnpm = repo.join("web/node_modules/.pnpm");
@@ -1029,6 +1056,7 @@ async fn through_the_public_connection_service_then_direct() {
             device: "Desk Laptop".into(),
             nearby: vec![],
             go_between_at: Some(meet.clone()),
+            public_relay_at: None,
         },
         seen.on(),
         Arc::new(|_| {}),
@@ -1136,6 +1164,7 @@ async fn a_dead_own_relay_goes_through_the_public_connection_service() {
             device: "Desk Laptop".into(),
             nearby: vec![],
             go_between_at: Some(meet.clone()),
+            public_relay_at: None,
         },
         seen.on(),
         Arc::new(|_| {}),
@@ -1186,6 +1215,7 @@ async fn a_file_goes_to_the_hosts_downloads() {
             device: "Desk Laptop".into(),
             nearby: vec![IpAddr::from([127, 0, 0, 1])],
             go_between_at: None,
+            public_relay_at: None,
         },
         seen.on(),
         Arc::new(|_| {}),
@@ -1240,6 +1270,143 @@ async fn a_file_goes_to_the_hosts_downloads() {
         .is_some());
     assert_eq!(std::fs::read(downloads.join("report.bin")).unwrap(), body);
     assert!(!downloads.join("report.bin.part").exists());
+    drop(s);
+    h.stop();
+}
+
+// ------------------------------------------------------------------ Blurt's public relay
+
+/// A go-between that gives tickets to `named` (Blurt's public relay, as `public.js` or anything else), sharing `secret` with it.
+async fn ticketing(secret: &str, named: &str) -> Result<Relay, String> {
+    node("server.js", &[("BUDGET", "1".into()), ("TICKET_SECRET", secret.into()), ("PUBLIC_RELAY", named.into())]).await
+}
+
+fn connected_routes(seen: &Seen) -> Vec<Route> {
+    seen.0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| if let Event::Link { link: Link::Connected, route } = e { *route } else { None })
+        .collect()
+}
+
+/// A network with no direct path (the host drops every datagram of a relayed session): the go-between gives up after 8 s and the
+/// viewer goes on at the public relay, where the picture is Data Saver's and keys pass.
+#[tokio::test(flavor = "multi_thread")]
+async fn with_no_direct_path_on_at_the_public_relay() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let secret = blurt_remote::crypto::base64url(&blurt_remote::crypto::new_key());
+    let p = match node("public.js", &[("TICKET_SECRETS", secret.clone())]).await {
+        Ok(p) => p,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let public = format!("ws://127.0.0.1:{}", p.1);
+    let r = match ticketing(&secret, &public).await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let w = World::default();
+    let (h, _dir) = host_with(&w, "windows", true, &meet, 0, Some(&public));
+    h.test_no_direct(true);
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    let away = viewer::Computer { addresses: vec![], port: 9, ..c.clone() };
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: away,
+            key,
+            device: "Desk Laptop".into(),
+            nearby: vec![],
+            go_between_at: Some(meet.clone()),
+            public_relay_at: Some(public.clone()),
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    s.screen(Some(Want { quality: Quality::Sharp, window: (2560, 1600), codecs: vec!["h264".into()], display: None }));
+    until("on the public relay", || (seen.route() == Some(Route::PublicRelay)).then_some(())).await;
+    assert_eq!(connected_routes(&seen), [Route::GoBetween, Route::PublicRelay]);
+    until("frames", || (seen.frames() >= 10).then_some(())).await;
+    let started = *w.started.lock().unwrap().last().unwrap();
+    assert!(started.0 <= 1280, "Data Saver's picture: {started:?}");
+    let mut k = Keyboard::new();
+    keys(&s, &mut k, "KeyV", true, "windows");
+    keys(&s, &mut k, "KeyV", false, "windows");
+    until("V", || w.has("key V 0 Some(false)").then_some(())).await;
+    assert_eq!(h.status().connected.map(|c| c.route), Some("publicRelay"));
+    assert!(!seen.0.lock().unwrap().iter().any(|e| matches!(e, Event::Link { link: Link::NoDirect, .. })));
+    drop(s);
+    h.stop();
+}
+
+/// The public relay takes the computer but never answers the viewer: 5 s later the viewer says there's no direct path, and doesn't try
+/// again at once (the next try, later, starts at the go-between).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_public_relay_that_never_answers_is_the_no_direct_line_5_s_later() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    // the computer's way in works; the viewer's is taken and never answered
+    let fake = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let public = format!("ws://{}", fake.local_addr().unwrap());
+    tokio::spawn(async move {
+        let mut held = vec![];
+        while let Ok((s, _)) = fake.accept().await {
+            let mut b = [0u8; 512];
+            let n = s.peek(&mut b).await.unwrap_or(0);
+            if String::from_utf8_lossy(&b[..n]).contains("/mac?t=") {
+                tokio::spawn(async move {
+                    if let Ok(mut ws) = tokio_tungstenite::accept_async(s).await {
+                        use futures_util::StreamExt;
+                        while ws.next().await.is_some() {}
+                    }
+                });
+            } else {
+                held.push(s);
+            }
+        }
+    });
+    let secret = blurt_remote::crypto::base64url(&blurt_remote::crypto::new_key());
+    let r = match ticketing(&secret, &public).await {
+        Ok(r) => r,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let meet = format!("ws://127.0.0.1:{}", r.1);
+    let w = World::default();
+    let (h, _dir) = host_with(&w, "windows", true, &meet, 0, Some(&public));
+    h.test_no_direct(true);
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    let away = viewer::Computer { addresses: vec![], port: 9, ..c.clone() };
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: away,
+            key,
+            device: "Desk Laptop".into(),
+            nearby: vec![],
+            go_between_at: Some(meet.clone()),
+            public_relay_at: Some(public.clone()),
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    until("through the go-between", || (seen.route() == Some(Route::GoBetween)).then_some(())).await;
+    let t0 = Instant::now();
+    let no_direct = |seen: &Seen| seen.0.lock().unwrap().iter().any(|e| matches!(e, Event::Link { link: Link::NoDirect, .. }));
+    while !no_direct(&seen) && t0.elapsed() < Duration::from_secs(20) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let after = t0.elapsed();
+    // 8 s on the go-between, the host's tickets and its way in, then the viewer's 5 s
+    assert!(no_direct(&seen), "the no-direct line");
+    assert!(after >= Duration::from_secs(12) && after < Duration::from_millis(15_500), "{after:?}");
+    // and no loop: nothing more for a while
+    let n = seen.0.lock().unwrap().len();
+    tokio::time::sleep(Duration::from_secs(8)).await;
+    let later: Vec<String> = seen.0.lock().unwrap()[n..].iter().map(|e| format!("{e:?}")).collect();
+    assert!(!later.iter().any(|e| e.contains("Connecting")), "{later:?}");
+    assert_eq!(connected_routes(&seen), [Route::GoBetween]);
     drop(s);
     h.stop();
 }

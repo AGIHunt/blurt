@@ -466,6 +466,7 @@ fn standby() {
             test_answer: Some(false),
             port: 0,
             go_between: None,
+            public_relay: None,
         },
         Box::new(backend),
         Box::new(crate::store::FileKeyStore::new(dir.join("keys.json"))),

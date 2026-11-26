@@ -96,5 +96,9 @@
   "remote.notice.not_pasted": "未粘贴：对方的光标在密码框中，或对方已锁屏。内容已放入其剪贴板。",
   "remote.notice.new_pairing": "{host} 新配对了设备：{devices}。如果不是你或家人，请在那台电脑上移除它。",
   "remote.files.received": "收到「{from}」发来的 {count} 个文件",
-  "remote.file.received": "收到“{from}”发来的文件"
+  "remote.file.received": "收到“{from}”发来的文件",
+  "remote.public.ask": "通过公共连接服务发送 {size}？",
+  "remote.public.limit": "通过公共连接服务每天最多可发送 50 MB。",
+  "remote.public.send": "发送",
+  "remote.public.cancel": "取消"
 }

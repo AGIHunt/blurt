@@ -328,6 +328,11 @@ pub const FILES: &str = "files";
 pub const RESUME: &str = "resume";
 /// In `session`: the host answers `getClipboard` and takes `clip` files.
 pub const CLIPBOARD: &str = "clipboard";
+/// In a hello: this phone or viewer can go on at Blurt's public relay after `noDirect` (`ToPhone::PublicRelay`). In `session`: this host
+/// can take it there (docs/design/remote-go-between.md §The public relay; public.rs).
+pub const PUBLIC_RELAY: &str = "publicRelay";
+/// In a hello: this phone or viewer can send its voice as Opus (frame kind 9). In `session`: this host can hear it.
+pub const OPUS: &str = "opus";
 /// Clipboard text between a viewer and its host: plain text, at most 64 KiB of UTF-8, both ways (RemoteClipboard.maxBytes).
 pub const MAX_CLIPBOARD: usize = 64 * 1024;
 
@@ -414,6 +419,9 @@ pub enum ToPhone {
     StreamMoved,
     /// the direct path didn't open in time: this session can't go on through the go-between
     NoDirect,
+    /// sent just before `noDirect` to a phone that listed `publicRelay`: the session goes on at Blurt's public relay, in this room made
+    /// for it, with this ticket. `address` must be one of `public::ADDRESSES`.
+    PublicRelay { address: String, room: String, ticket: String },
     /// to a viewer whose keys are captured: the host's clipboard changed to this text (at most `MAX_CLIPBOARD` bytes)
     Clipboard(String),
     /// the host's screen locked (true) or opened again (false), and this host can't show its lock screen: no frames meanwhile. 1.1.0+
@@ -939,6 +947,9 @@ impl ToPhone {
             ),
             ToPhone::StreamMoved => case("streamMoved", vec![]),
             ToPhone::NoDirect => case("noDirect", vec![]),
+            ToPhone::PublicRelay { address, room, ticket } => {
+                case("publicRelay", vec![("address", json!(address)), ("room", json!(room)), ("ticket", json!(ticket))])
+            }
             ToPhone::Clipboard(t) => one("clipboard", json!(t)),
             ToPhone::ScreenLocked(b) => one("screenLocked", json!(b)),
             ToPhone::FileBegin { id, name, size, clip, index, count, total } => begin_json(id, name, *size, *clip, *index, *count, *total),
@@ -995,6 +1006,11 @@ impl ToPhone {
             },
             "streamMoved" => ToPhone::StreamMoved,
             "noDirect" => ToPhone::NoDirect,
+            "publicRelay" => ToPhone::PublicRelay {
+                address: string(req(f, "address")?)?,
+                room: string(req(f, "room")?)?,
+                ticket: string(req(f, "ticket")?)?,
+            },
             "clipboard" => ToPhone::Clipboard(string(x0()?)?),
             "screenLocked" => ToPhone::ScreenLocked(boolean(x0()?)?),
             "fileBegin" => {

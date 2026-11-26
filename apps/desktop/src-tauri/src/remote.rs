@@ -19,7 +19,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
 use blurt_remote::host::Backend;
-use blurt_remote::server::{GoBetweenProblem, Problem, Status};
+use blurt_remote::server::{GoBetweenProblem, Problem, SendFiles, Status};
 use blurt_remote::wire::{BlurtCommand, DictationPhase, Front};
 use blurt_remote::{App, Host, HostConfig, KeyStore};
 use serde::Serialize;
@@ -88,6 +88,8 @@ pub fn start(app: &AppHandle) {
             port: 0,
             // test builds: another go-between (a local `BUDGET=1 node tools/remote-relay/server.js`), or "" for none
             go_between: if testing() { std::env::var("BLURT_TEST_GO_BETWEEN").ok() } else { None },
+            // test builds: a local `node tools/remote-relay/public.js` let in as Blurt's public relay too
+            public_relay: if testing() { std::env::var("BLURT_PUBLIC_RELAY").ok().filter(|s| !s.is_empty()) } else { None },
         },
         backend,
         keys,
@@ -95,6 +97,10 @@ pub fn start(app: &AppHandle) {
     );
     // files from viewers and phones go to Downloads/Blurt (quarantined there: files.rs)
     h.set_downloads(dirs::download_dir().map(|d| d.join("Blurt")));
+    // test builds: a network with no direct path (BLURT_NO_DIRECT=1), so the go-between hands sessions on to the public relay
+    if testing() && std::env::var("BLURT_NO_DIRECT").as_deref() == Ok("1") {
+        h.test_no_direct(true);
+    }
     let _ = HOST.set(h);
     // 保持可连接 on a laptop holds only while plugged in: look at the power source once a minute
     std::thread::spawn(|| loop {
@@ -591,12 +597,54 @@ pub async fn remote_send_files(app: AppHandle) -> bool {
     if h.connected().is_none() {
         return false;
     }
+    let picker = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect::<Vec<_>>()
+        picker.dialog().file().blocking_pick_files().unwrap_or_default().into_iter().filter_map(|f| f.into_path().ok()).collect::<Vec<_>>()
     })
     .await
     .unwrap_or_default();
-    !picked.is_empty() && h.send_files(picked)
+    if picked.is_empty() {
+        return false;
+    }
+    // over the public connection service: more than 20 MB is asked about first, and 50 MB a day goes at most
+    let mut asked = false;
+    loop {
+        match h.send_files_asked(picked.clone(), asked) {
+            SendFiles::Sent => return true,
+            SendFiles::NoDevice => return false,
+            SendFiles::Ask(bytes) if !asked => {
+                let a = app.clone();
+                if !tauri::async_runtime::spawn_blocking(move || public_ask(&a, bytes)).await.unwrap_or(false) {
+                    return false;
+                }
+                asked = true;
+            }
+            SendFiles::Ask(_) => return false,
+            SendFiles::OverToday => {
+                let a = app.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || public_limit(&a)).await;
+                return false;
+            }
+        }
+    }
+}
+
+/// "Send 35 MB over the public connection service?" with Send and Cancel (docs/design/remote-go-between.md §Copy). Blocking. → Send.
+pub fn public_ask(app: &AppHandle, bytes: i64) -> bool {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let t = crate::l10n::t;
+    let size = format!("{} MB", ((bytes as f64) / 1e6).round().max(1.0));
+    app.dialog()
+        .message(crate::l10n::tf("remote.public.ask", &[("size", size)]))
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(t("remote.public.send"), t("remote.public.cancel")))
+        .blocking_show()
+}
+
+/// Past today's 50 MB over the public connection service. Blocking.
+pub fn public_limit(app: &AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    app.dialog().message(crate::l10n::t("remote.public.limit")).kind(MessageDialogKind::Info).blocking_show();
 }
 
 /// What's going to or coming from the device connected now, for the bar's card.
@@ -773,6 +821,10 @@ impl App for Desktop {
 
     fn transfer(&self, t: &blurt_remote::files::Transfer) {
         let _ = self.app.emit("remote://transfer", t.to_json());
+    }
+
+    fn public_limit_notice(&self) -> String {
+        crate::l10n::t("remote.public.limit")
     }
 
     fn not_pasted_notice(&self) -> String {
