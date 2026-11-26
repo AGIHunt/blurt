@@ -53,6 +53,7 @@ sealed class Sheet {
     data object Switch : Sheet()
     data object MicDenied : Sheet()
     data object Displays : Sheet()
+    data object Transfer : Sheet()
 }
 
 class Sheets {
@@ -100,19 +101,22 @@ fun SheetHost(sheets: Sheets, screen: PadScreen) {
     val offered by Remote.link.offered.collectAsState()
     val unsent by Remote.link.unsent.collectAsState()
     val state by Remote.link.state.collectAsState()
+    val ask by Remote.transfers.ask.collectAsState()
     BlurtTheme {
         Box(Modifier.fillMaxSize()) {
             val s = current
-            if (s is Sheet.Settings || s is Sheet.Pair || s is Sheet.Editor) {
+            val carded = s is Sheet.Settings || s is Sheet.Pair || s is Sheet.Editor || s is Sheet.Transfer
+            if (carded) {
                 BackHandler { sheets.close() }
                 Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(remember { MutableInteractionSource() }, null) { sheets.close() })
             }
-            AnimatedVisibility(s is Sheet.Settings || s is Sheet.Pair || s is Sheet.Editor, enter = slideInVertically { it / 3 } + fadeIn(), exit = slideOutVertically { it / 3 } + fadeOut()) {
+            AnimatedVisibility(carded, enter = slideInVertically { it / 3 } + fadeIn(), exit = slideOutVertically { it / 3 } + fadeOut()) {
                 Card {
                     when (s) {
                         Sheet.Settings -> SettingsSheet(screen, onClose = { sheets.close() }, onPair = { sheets.show(Sheet.Pair) })
                         Sheet.Pair -> PairSheet(onClose = { sheets.close() })
                         Sheet.Editor -> KeyEditor(screen, onClose = { sheets.close() })
+                        Sheet.Transfer -> TransferSheet(onClose = { sheets.close() })
                         else -> {}
                     }
                 }
@@ -121,6 +125,7 @@ fun SheetHost(sheets: Sheets, screen: PadScreen) {
             if (s is Sheet.MicDenied) MicDeniedDialog(onClose = { sheets.close() })
             if (s is Sheet.Displays) DisplayMap(onClose = { sheets.close() })
             offered?.let { p -> ConfirmPairing(p) }
+            ask?.let { MobileData(it) }
             if (unsent.isNotEmpty() && state == dev.blurt.remote.app.net.Link.State.CONNECTED) SendUnsent(unsent)
         }
     }
@@ -164,6 +169,19 @@ private fun SendUnsent(words: String) {
         text = { Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) { Text(words) } },
         confirmButton = { TextButton({ l.sendUnsent() }) { Text(stringResource(R.string.send)) } },
         dismissButton = { TextButton({ l.dropUnsent() }) { Text(stringResource(R.string.discard)) } },
+    )
+}
+
+/** More than 100 MB over mobile data, either way: asked first (remote-files.md §Rules). */
+@Composable
+private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
+    val ctx = LocalContext.current
+    val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes)
+    AlertDialog(
+        onDismissRequest = a.no,
+        title = { Text(stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size)) },
+        confirmButton = { TextButton(a.yes) { Text(stringResource(if (a.incoming) R.string.data_get else R.string.send)) } },
+        dismissButton = { TextButton(a.no) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

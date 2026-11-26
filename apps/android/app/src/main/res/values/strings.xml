@@ -262,4 +262,47 @@
     <string name="key">Key</string>
     <string name="hold_slide">Hold and slide to switch</string>
     <string name="press_return">Press Return After</string>
+
+    <!-- the clipboard and files (docs/design/remote-files.md §Copy) -->
+    <string name="transfer">Transfer</string>
+    <string name="send_photos">Send Photos…</string>
+    <string name="send_files">Send Files…</string>
+    <string name="send_folder">Send Folder…</string>
+    <string name="get_copied">Get Copied Items from %1$s</string>
+    <string name="transfers_empty">Files you send or get appear here.</string>
+    <string name="transfer_to">To %1$s · %2$s of %3$s</string>
+    <string name="transfer_from">From %1$s · %2$s of %3$s</string>
+    <string name="transfer_batch">%1$d of %2$d</string>
+    <string name="transfer_left">%1$s left</string>
+    <string name="transfer_waiting">Waiting</string>
+    <string name="transfer_connecting">Connecting directly…</string>
+    <string name="transfer_compressing">Compressing…</string>
+    <string name="transfer_paused">Paused. Continues when reconnected.</string>
+    <string name="transfer_stopped">Stopped</string>
+    <string name="transfer_sent">Saved to Downloads/Blurt on %1$s</string>
+    <string name="transfer_received">Saved to Download/Blurt</string>
+    <string name="open">Open</string>
+    <string name="share">Share…</string>
+    <string name="save_to_gallery">Save to Gallery</string>
+    <string name="stop">Stop</string>
+    <string name="continue_transfer">Continue</string>
+    <string name="copied">Copied</string>
+    <string name="image_copied">Image Copied</string>
+    <string name="clip_none_empty">Nothing is copied on %1$s.</string>
+    <string name="clip_none_locked">%1$s is locked.</string>
+    <string name="clip_none_too_many">Too many files are copied on %1$s. Send up to 1,000 at a time.</string>
+    <string name="clip_none_unsupported">Can’t get this kind of item from %1$s.</string>
+    <string name="update_host">Update %1$s to use this.</string>
+    <string name="not_sent_space">Not sent: not enough space on that computer.</string>
+    <string name="not_sent_too_big">Not sent: larger than 4 GB.</string>
+    <string name="not_sent_locked">Not sent: that computer is locked.</string>
+    <string name="not_sent">Not sent.</string>
+    <string name="not_received_space">Not received: not enough space on this device.</string>
+    <string name="not_received">Not received.</string>
+    <string name="data_send_q">Send %1$s over mobile data?</string>
+    <string name="data_get_q">Get %1$s over mobile data?</string>
+    <string name="data_get">Get</string>
+    <string name="image_too_big">The image is larger than 20 MB.</string>
+    <string name="share_send_to">Send to %1$s</string>
+    <string name="share_pair_first">Pair a computer in Blurt first.</string>
 </resources>

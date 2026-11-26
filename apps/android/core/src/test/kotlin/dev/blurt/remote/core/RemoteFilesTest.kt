@@ -92,6 +92,7 @@ class RemoteFilesTest {
         File(p.out, "a.txt").writeText("")
         p.s.add(listOf(FileSource(file("a.txt", 3))))
         wait("saved as a 2.txt") { File(p.out, "a 2.txt").exists() }
+        wait("the list says so") { p.s.transfers.first().name == "a 2.txt" }
         assertEquals("a 3.txt", RemoteFiles.unique("a.txt") { it == "a.txt" || it == "a 2.txt" })
         assertEquals("Lessons 2", RemoteFiles.unique("Lessons") { it == "Lessons" })
     }

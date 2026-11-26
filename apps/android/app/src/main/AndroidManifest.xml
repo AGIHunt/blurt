@@ -64,6 +64,36 @@
                 <data android:scheme="blurtremote" android:host="pair" />
             </intent-filter>
         </activity>
+        <!-- Blurt in the share sheet: pictures, videos and any file, to the computer last controlled (ShareActivity.kt) -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:taskAffinity="dev.blurt.remote.share"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Blurt.Share">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- what Open, Share… and the clipboard hand to other apps: a copied image, and files from the computer below Android 10 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
         <receiver android:name=".UpdateReceiver" android:exported="false" />
         <service android:name=".net.KeepService" android:exported="false" android:foregroundServiceType="connectedDevice" />
     </application>

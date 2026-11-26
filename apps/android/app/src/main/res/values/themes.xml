@@ -7,5 +7,11 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:colorAccent">#FF61DBBD</item>
     </style>
+    <!-- the share sheet's question, over the app it was shared from -->
+    <style name="Theme.Blurt.Share" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
     <color name="icon_background">#FF151B1C</color>
 </resources>

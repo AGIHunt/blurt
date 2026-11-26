@@ -252,4 +252,47 @@
     <string name="key">按键</string>
     <string name="hold_slide">按住滑动以逐项切换</string>
     <string name="press_return">输入后按回车</string>
+
+    <!-- the clipboard and files (docs/design/remote-files.md §Copy) -->
+    <string name="transfer">传输</string>
+    <string name="send_photos">发送照片…</string>
+    <string name="send_files">发送文件…</string>
+    <string name="send_folder">发送文件夹…</string>
+    <string name="get_copied">获取 %1$s 上拷贝的内容</string>
+    <string name="transfers_empty">发送或获取的文件会显示在这里。</string>
+    <string name="transfer_to">发往 %1$s · %2$s / %3$s</string>
+    <string name="transfer_from">来自 %1$s · %2$s / %3$s</string>
+    <string name="transfer_batch">第 %1$d/%2$d 个</string>
+    <string name="transfer_left">还剩 %1$s</string>
+    <string name="transfer_waiting">等待中</string>
+    <string name="transfer_connecting">正在建立直连…</string>
+    <string name="transfer_compressing">正在压缩…</string>
+    <string name="transfer_paused">已暂停，重新连接后继续。</string>
+    <string name="transfer_stopped">已停止</string>
+    <string name="transfer_sent">已保存到 %1$s 的「下载/Blurt」</string>
+    <string name="transfer_received">已存到「Download/Blurt」</string>
+    <string name="open">打开</string>
+    <string name="share">分享…</string>
+    <string name="save_to_gallery">存储到相册</string>
+    <string name="stop">停止</string>
+    <string name="continue_transfer">继续</string>
+    <string name="copied">已拷贝</string>
+    <string name="image_copied">已拷贝图片</string>
+    <string name="clip_none_empty">%1$s 上没有拷贝的内容。</string>
+    <string name="clip_none_locked">%1$s 已锁屏。</string>
+    <string name="clip_none_too_many">%1$s 上拷贝的文件太多。一次最多 1,000 个。</string>
+    <string name="clip_none_unsupported">无法从 %1$s 获取此类内容。</string>
+    <string name="update_host">%1$s 需要更新后才能使用。</string>
+    <string name="not_sent_space">未发送：对方空间不足。</string>
+    <string name="not_sent_too_big">未发送：文件超过 4 GB。</string>
+    <string name="not_sent_locked">未发送：对方已锁屏。</string>
+    <string name="not_sent">未发送。</string>
+    <string name="not_received_space">未接收：本机空间不足。</string>
+    <string name="not_received">未接收。</string>
+    <string name="data_send_q">使用移动网络发送 %1$s？</string>
+    <string name="data_get_q">使用移动网络接收 %1$s？</string>
+    <string name="data_get">接收</string>
+    <string name="image_too_big">图片超过 20 MB。</string>
+    <string name="share_send_to">发送到 %1$s</string>
+    <string name="share_pair_first">请先在口喷鸡中配对电脑。</string>
 </resources>

@@ -183,3 +183,25 @@ Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1ma
 
 Not checked on iOS: a real host session (no host on this Mac; the Android fake host doesn't speak files), a device build with the App
 Group provisioned (simulator builds sign it locally), mobile data on a device.
+
+### Android (2026-11-26)
+
+Built in `apps/android` (details and numbers: [remote-android.md](remote-android.md) §Files and the clipboard):
+
+| | Where | What |
+|---|---|---|
+| Engine | `core/RemoteFiles.kt` (`RemoteFilesTest`, `VectorsTest`) | the Swift engine's behaviour; plus a target computer per file, the share queue's hour, and a receiver hold for the mobile-data question |
+| Wire | `core/RemoteMessages.kt` | `ToMac.FileBegin` clip/index/count/total; `FileProgress` / `FileSaved` / `FileFailed` / `GetClipboard`; `ToPhone.FileBegin` / `FileChunk` / `FileEnd` / `ClipboardNone`; hello `files`, `resume` |
+| Sends | `files/Transfers.kt`, `sheets/TransferSheet.kt`, `ShareActivity.kt` | photo picker, document picker, a folder zipped, the share sheet, Paste from This Device (image) |
+| Receives | `files/Downloads.kt` | MediaStore Download/Blurt (Android 10+), the app's own Download/Blurt below; Save to Gallery on tap |
+| Clipboard | `files/Transfers.kt` | ClipboardManager; an image through the FileProvider |
+
+Android-only words, beyond the Copy table: **发送文件夹… / Send Folder…** (the folder button's label beside Send Files…, since the Android
+document picker can't pick a folder with files), and the share sheet's "nothing paired" line names the Android app as it's installed:
+请先在口喷鸡中配对电脑。 / Pair a computer in Blurt first. Android opens the app itself after a share with no session, so it doesn't need
+"Open Blurt Remote to send."
+
+A finding for every end: a file going out queues the sender's own pings behind up to 4 MiB. At 1.5 MB/s the Android phone dropped its
+session every few seconds until it counted the computer's file progress as a sign of life; a host or viewer that times out on pongs alone will
+do the same when the phone or viewer sends it a big file slowly.
+

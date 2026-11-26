@@ -312,7 +312,9 @@ class RemoteFileSender(
                     it.samples.removeAll { s -> n - s.first > 5000 }
                     it.t = it.t.copy(done = minOf(a.bytes, it.t.size), secondsLeft = RemoteFiles.left(it.samples, it.t.size))
                 }
-                is RemoteFileAnswer.Saved -> it.t = it.t.copy(state = RemoteTransfer.State.Done, done = it.t.size, secondsLeft = null)
+                // the name it was saved under there ("report 2.pdf"), for the list (not a clip's: that's never saved)
+                is RemoteFileAnswer.Saved -> it.t = it.t.copy(state = RemoteTransfer.State.Done, done = it.t.size, secondsLeft = null,
+                    name = if (it.t.clip || a.name.isEmpty()) it.t.name else a.name)
                 is RemoteFileAnswer.Failed -> it.t = it.t.copy(state = RemoteTransfer.State.Failed(a.why), secondsLeft = null)
             }
             it.t

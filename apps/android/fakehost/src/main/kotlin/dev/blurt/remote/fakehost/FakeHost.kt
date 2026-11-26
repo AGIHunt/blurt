@@ -14,6 +14,13 @@
 //   --ask                          a new phone waits for "y" on stdin; without it the answer is yes after 2 s
 //   --port <n>                     TCP on n, UDP on n + 1 (default 47811)
 //   --two-displays                 say it has a second display, above and to the right of the first (the picture is the same)
+//   --files <dir>                  where files from the phone land (default build/fakehost-files); it takes files, resumes, and answers
+//                                  Get Copied Items (session features files, resume, clipboard)
+//   --old-files                    a host before 2026-11-26: it takes files but neither resumes nor gives its clipboard
+//   --take <KB/s>                  take files from the phone at most this fast, so progress can be watched
+//   --drop-at <percent>            close the session once a file from the phone is this far in (once): the phone pauses it, then resumes
+//   --clipboard <what>             what Get Copied Items finds: text:<words> · image:<png> · files:<path>[,<path>…] · none:<why>
+// On stdin: "send <path>[,<path>…]" sends files to the phone; "clipboard <what>" changes what's copied; "drop" closes the session.
 //
 // Repairs (docs/design/remote-realtime.md §Host): of what the phone offers it uses nack and fec, not ltr (ffmpeg's encoders can't refer
 // back to an acknowledged frame), so a frame given up costs a keyframe, as on a Linux host. Pieces are kept for a second and sent again when
@@ -21,7 +28,13 @@
 // and the frame numbers carrying on.
 package dev.blurt.remote.fakehost
 
+import dev.blurt.remote.core.FileSource
 import dev.blurt.remote.core.MacHandshake
+import dev.blurt.remote.core.RemoteFileOut
+import dev.blurt.remote.core.RemoteFileReceiver
+import dev.blurt.remote.core.RemoteFileSender
+import dev.blurt.remote.core.RemoteFileWire
+import dev.blurt.remote.core.RemoteTransfer
 import dev.blurt.remote.core.RemoteCrop
 import dev.blurt.remote.core.RemoteCrypto
 import dev.blurt.remote.core.RemoteCursor
@@ -77,6 +90,11 @@ private val DISPLAYS = listOf(
     dev.blurt.remote.core.RemoteDisplay("1", "Built-in Retina Display", 0.0, 0.0, 1512.0, 944.0, true),
     dev.blurt.remote.core.RemoteDisplay("2", "Studio Display", 1512.0, -458.0, 2560.0, 1440.0, false),
 )
+private var filesDir = File("build/fakehost-files")
+private var oldFiles = false
+private var takeKBs = 0
+private var dropAt = 0
+private var clipboard = "text:会议纪要：周四下午三点，二楼会议室"
 private var tcpPort = 47811
 private val udpPort get() = tcpPort + 1
 
@@ -110,13 +128,18 @@ fun main(args: Array<String>) {
             "--codec" -> forceCodec = args[++i]
             "--no-repairs" -> repairsOn = false
             "--fec" -> forcedFec = args[++i].toInt()
+            "--files" -> filesDir = File(args[++i])
+            "--old-files" -> oldFiles = true
+            "--take" -> takeKBs = args[++i].toInt()
+            "--drop-at" -> dropAt = args[++i].toInt()
+            "--clipboard" -> clipboard = args[++i]
         }
         i++
     }
     load()
     newCode()
     thread(name = "udp") { udpLoop() }
-    if (ask) thread(name = "stdin") { stdin() }
+    thread(name = "stdin") { stdin() }
     val server = ServerSocket(tcpPort)
     log("listening tcp $tcpPort udp $udpPort as $platform \"$name\"")
     while (true) {
@@ -153,8 +176,13 @@ private val MAC_ID = "fakehost-" + name.hashCode().toUInt().toString(16)
 private fun stdin() {
     val r = System.`in`.bufferedReader()
     while (true) {
-        val l = r.readLine() ?: return
-        current?.answer(l.trim().lowercase().startsWith("y"))
+        val l = r.readLine()?.trim() ?: return
+        when {
+            l.startsWith("send ") -> current?.let { Files.sendToPhone(l.removePrefix("send ").split(',').map { File(it.trim()) }) }
+            l.startsWith("clipboard ") -> { clipboard = l.removePrefix("clipboard "); log("clipboard is now $clipboard") }
+            l == "drop" -> current?.socket?.close()
+            else -> current?.answer(l.lowercase().startsWith("y"))
+        }
     }
 }
 
@@ -200,6 +228,7 @@ private class Session(val socket: Socket) {
             log("connection ended: ${e.javaClass.simpleName} ${e.message ?: ""}")
         }
         stopStream()
+        id?.let { Files.ended(it) }
         if (current === this) current = null
         log("closed")
         runCatching { socket.close() }
@@ -213,8 +242,12 @@ private class Session(val socket: Socket) {
     fun send(m: ToPhone) {
         val s = sealer ?: return
         synchronized(this) { sendRaw(s.seal(byteArrayOf(RemoteFrameKind.CONTROL.raw.toByte()) + m.encode())) }
+        if (m is ToPhone.FileChunk) return
         if (m !is ToPhone.Pong && m !is ToPhone.Clock && m !is ToPhone.Live && m !is ToPhone.Level) log("→ ${m.toJson()}")
     }
+
+    /** the phone named `files` and `resume` in its hello */
+    @Volatile var phoneFeatures: List<String> = emptyList()
 
     fun datagram(kind: RemoteFrameKind, body: ByteArray) {
         val to = flow ?: return
@@ -287,7 +320,8 @@ private class Session(val socket: Socket) {
                 return
             }
             is ToMac.Hello -> {
-                log("← hello from \"${m.device}\" micOnPhone=${m.micOnPhone}")
+                log("← hello from \"${m.device}\" micOnPhone=${m.micOnPhone} features=${m.features}")
+                phoneFeatures = m.features.orEmpty()
                 if (id == codeID) {
                     val n = m.nonce
                     val c = commitment
@@ -311,6 +345,15 @@ private class Session(val socket: Socket) {
                 newCode()
                 begin()
                 return
+            }
+            is ToMac.FileChunk -> return Files.fromPhone(this, m)
+            is ToMac.FileBegin, is ToMac.FileEnd, is ToMac.FileProgress, is ToMac.FileSaved, is ToMac.FileFailed -> {
+                log("← ${m.toJson()}")
+                return Files.fromPhone(this, m)
+            }
+            ToMac.GetClipboard -> {
+                log("← getClipboard")
+                return Files.clipboard(this)
             }
             else -> {}
         }
@@ -363,7 +406,9 @@ private class Session(val socket: Socket) {
     fun begin() {
         greeted = true
         current = this
-        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, platform = platform)))
+        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, platform = platform,
+            features = if (oldFiles) listOf("files") else listOf("files", "resume", "clipboard"))))
+        Files.began()
         send(ToPhone.Front(RemoteFront(if (platform == "mac") "com.apple.Terminal" else "WindowsTerminal.exe", "Terminal")))
         send(ToPhone.Dictation(RemoteDictationPhase.IDLE))
         if (twoDisplays) send(ToPhone.Displays(DISPLAYS))
@@ -598,3 +643,59 @@ private fun udpLoop() {
 }
 
 @Suppress("unused") private fun unused(a: InetSocketAddress) = a
+
+/** Files both ways and the clipboard (docs/design/remote-files.md), with core's engine, as a host runs it. */
+private object Files {
+    private val receiver by lazy {
+        RemoteFileReceiver(File(filesDir, ".parts"), resumes = !oldFiles, save = RemoteFileReceiver.intoFolder { filesDir }).apply {
+            onChange = { t, _ -> if (t.state != RemoteTransfer.State.Going) log("file ${t.name}: ${t.state} ${t.done}/${t.size}") }
+        }
+    }
+    private val sender by lazy {
+        RemoteFileSender(send = { o -> current?.takeIf { it.greeted }?.let { it.send(RemoteFileWire.toPhone(o)); true } ?: false },
+            ready = { current?.greeted == true }, peerResumes = { current?.phoneFeatures?.contains("resume") == true }).apply {
+            onChange = { t -> if (t.state != RemoteTransfer.State.Going) log("to phone ${t.name}: ${t.state} ${t.done}/${t.size}") }
+        }
+    }
+    private var dropped = false
+
+    fun began() = sender.connection(true)
+
+    fun ended(device: String) {
+        sender.connection(false)
+        receiver.suspend(device)
+    }
+
+    fun fromPhone(s: Session, m: ToMac) {
+        RemoteFileWire.answer(m)?.let { return sender.heard(it) }
+        val o = RemoteFileWire.out(m) ?: return
+        val device = s.id ?: return
+        if (o is RemoteFileOut.Chunk && takeKBs > 0) Thread.sleep(o.data.size * 1000L / (takeKBs * 1024L))
+        receiver.heard(o, device) { a -> s.send(RemoteFileWire.toPhone(a)) }
+        if (o is RemoteFileOut.Chunk && dropAt > 0 && !dropped) {
+            val t = receiver.current.firstOrNull { it.id == o.id } ?: return
+            if (t.size > 0 && t.done * 100 >= t.size * dropAt) {
+                dropped = true
+                log("dropping the session at ${t.done}/${t.size}")
+                s.socket.close()
+            }
+        }
+    }
+
+    fun sendToPhone(files: List<File>) {
+        val ok = files.filter { it.isFile }
+        if (ok.isEmpty()) return log("nothing to send")
+        sender.add(ok.map { FileSource(it) })
+    }
+
+    fun clipboard(s: Session) {
+        val kind = clipboard.substringBefore(':')
+        val what = clipboard.substringAfter(':', "")
+        when (kind) {
+            "text" -> s.send(ToPhone.Clipboard(what))
+            "image" -> sender.add(listOf(FileSource(File(what), name = "Image.png")), clip = true)
+            "files" -> sendToPhone(what.split(',').map { File(it.trim()) })
+            else -> s.send(ToPhone.ClipboardNone(what.ifEmpty { "empty" }))
+        }
+    }
+}
