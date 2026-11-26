@@ -35,7 +35,7 @@ struct TransferSheet: View {
                         .disabled(!takesFiles)
                     Button { t.getCopied() } label: {
                         HStack {
-                            Label("Get Copied Items from \(name)", systemImage: "doc.on.clipboard")
+                            Label("Get Copied Items from \(name)", systemImage: "clipboard")
                             Spacer()
                             if t.getting { ProgressView() }
                         }
@@ -127,6 +127,8 @@ struct TransferSheet: View {
                     Button { save(u, video: r.isVideo, key: r.id) } label: { Label("Save to Photos", systemImage: "photo.badge.plus") }
                 }
             }
+            // the menu's icons in the label's colour, as in Files, not the app's mint (outside the menu, where it reads the tint)
+            .tint(.primary)
             .accessibilityAction(named: Text("Share…")) { share(u) }
         } else {
             TransferRowView(r: r, meeting: l.meeting, canContinue: t.canContinue(r), away: t.away, stop: { t.stop(r) }, again: { t.again(r) })
@@ -182,16 +184,11 @@ struct TransferRowView: View {
         return "doc"
     }
 
-    /// The line as it may wrap: whole, else in two at one of its " · ", the later the better. "148 MB of 412 MB", "3 min left" and
-    /// 还剩 3 分钟 stay whole, and no line starts or ends with "·" (the dot at the break goes).
-    static func breaksAtDots(_ line: String) -> [String] {
-        let parts = line.components(separatedBy: " · ").map { part in
+    /// A line's parts kept whole: "148 MB of 412 MB", "3 min left" and 还剩 3 分钟 never break inside.
+    static func whole(_ line: String) -> String {
+        line.components(separatedBy: " · ").map { part in
             part.map { $0 == " " ? "\u{00A0}" : String($0) }.joined(separator: "\u{2060}")
-        }
-        func join(_ p: ArraySlice<String>) -> String { p.joined(separator: "\u{00A0}·\u{00A0}") }
-        return [join(parts[...])] + stride(from: parts.count - 1, through: 1, by: -1).map { k in
-            join(parts[..<k]) + "\n" + join(parts[k...])
-        }
+        }.joined(separator: "\u{00A0}·\u{00A0}")
     }
 
     var body: some View {
@@ -206,9 +203,14 @@ struct TransferRowView: View {
                     ProgressView(value: r.fraction).tint(r.phase == .paused ? .secondary : .accentColor)
                 }
                 HStack(alignment: .firstTextBaseline) {
-                    ViewThatFits(in: .horizontal) {
-                        ForEach(Self.breaksAtDots(TransferWords.line(r, meeting: meeting, canContinue: canContinue, away: away)), id: \.self) { t in
-                            Text(t).lineLimit(2)
+                    Group {
+                        // going: where, then how far, in the same two lines both ways
+                        if r.phase == .going {
+                            VStack(alignment: .leading, spacing: 1) {
+                                ForEach(TransferWords.going(r).filter { !$0.isEmpty }, id: \.self) { Text(Self.whole($0)).lineLimit(1) }
+                            }
+                        } else {
+                            Text(TransferWords.line(r, meeting: meeting, canContinue: canContinue, away: away)).lineLimit(2)
                         }
                     }
                     .font(.footnote)
@@ -223,7 +225,7 @@ struct TransferRowView: View {
                 }
             }
             Spacer(minLength: 0)
-            if !r.isOver, r.phase != .compressing, r.phase != .preparing {
+            if !r.isOver, r.phase != .compressing {
                 Button(action: stop) {
                     Image(systemName: "xmark.circle.fill").symbolRenderingMode(.hierarchical).font(.title2).foregroundStyle(Color.secondary)
                 }

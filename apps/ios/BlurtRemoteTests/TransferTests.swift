@@ -98,17 +98,25 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")
     }
 
-    func testALineWrapsOnlyAtItsDotsAndNeverStartsOrEndsWithOne() {
-        let l = TransferRowView.breaksAtDots("2 of 3 · To Studio PC · 148 MB of 412 MB · 3 min left")
-        XCTAssertEqual(l.count, 4, "whole, then broken at each dot from the last")
-        XCTAssertFalse(l[0].contains("\n"))
-        for t in l {
-            for line in t.split(separator: "\n") {
-                XCTAssertFalse(line.hasPrefix("·") || line.hasSuffix("·") || line.hasSuffix("\u{00A0}"), String(line))
-            }
-            XCTAssertFalse(t.contains(" "), "no plain space to break at: \(t)")
-        }
-        XCTAssertTrue(l[1].hasSuffix("3\u{2060}\u{00A0}\u{2060}m\u{2060}i\u{2060}n\u{2060}\u{00A0}\u{2060}l\u{2060}e\u{2060}f\u{2060}t"), "3 min left whole, on its own line")
+    func testAGoingRowHasTheSameTwoLinesBothWays() {
+        let s = TransferWords.size
+        let out = TransferWords.going(row(.going, done: 3_000_000, index: 2, count: 3, left: 42))
+        XCTAssertEqual(out[0], "2 of 3 · To Office PC", "where, and its place in the batch")
+        XCTAssertTrue(out[1].hasPrefix("\(s(3_000_000)) of \(s(10_000_000)) · "), out[1])
+        XCTAssertTrue(out[1].hasSuffix(" left"), out[1])
+        let into = TransferWords.going(row(.going, incoming: true, done: 3_000_000))
+        XCTAssertEqual(into, ["From Office PC", "\(s(3_000_000)) of \(s(10_000_000))"])
+        // a part never breaks inside, and no plain space is left to break at
+        let w = TransferRowView.whole("148 MB of 412 MB · 3 min left")
+        XCTAssertFalse(w.contains(" "))
+        XCTAssertTrue(w.contains("\u{00A0}·\u{00A0}"))
+    }
+
+    func testAPreparingRowsXDropsWhatItLoads() {
+        let (t, _) = model()
+        t.pretend([TransferRow(id: "prep-1", wire: "", name: "3 items", size: 0, incoming: false, phase: .preparing, peer: "Office PC", at: Date())])
+        t.stop(t.rows[0])
+        XCTAssertTrue(t.rows.isEmpty)
     }
 
     // MARK: the clipboard, only when asked

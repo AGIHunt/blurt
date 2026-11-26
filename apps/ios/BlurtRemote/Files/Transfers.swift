@@ -78,12 +78,7 @@ enum TransferWords {
             if away { return String(localized: "Resumes when Blurt is open.") }
             return canContinue ? String(localized: "Paused") : String(localized: "Paused. Resumes when reconnected.")
         case .going:
-            let done = size(r.done), all = size(r.size), peer = r.peer
-            var parts: [String] = []
-            if let i = r.index, let n = r.count, n > 1 { parts.append(String(localized: "\(i) of \(n)", comment: "a file's place in its batch")) }
-            parts.append(r.incoming ? String(localized: "From \(peer) · \(done) of \(all)") : String(localized: "To \(peer) · \(done) of \(all)"))
-            if let s = r.secondsLeft { parts.append(String(localized: "\(duration(s)) left")) }
-            return parts.joined(separator: " · ")
+            return going(r).joined(separator: " · ")
         case .done:
             let peer = r.peer
             if r.incoming { return String(localized: "Saved to Files › Blurt") }
@@ -98,6 +93,19 @@ enum TransferWords {
             default: return String(localized: "Not sent.")
             }
         }
+    }
+
+    /// A file on its way, in two lines the same both ways: where (and its place in a batch), then how far and the time left.
+    static func going(_ r: TransferRow) -> [String] {
+        let done = size(r.done), all = size(r.size), peer = r.peer
+        // "To %@ · %@ of %@" is one string, so each language keeps its order; it splits at its dot
+        let both = (r.incoming ? String(localized: "From \(peer) · \(done) of \(all)") : String(localized: "To \(peer) · \(done) of \(all)"))
+            .components(separatedBy: " · ")
+        var first: [String] = [], second = Array(both.dropFirst())
+        if let i = r.index, let n = r.count, n > 1 { first.append(String(localized: "\(i) of \(n)", comment: "a file's place in its batch")) }
+        first.append(both.first ?? "")
+        if let s = r.secondsLeft { second.append(String(localized: "\(duration(s)) left")) }
+        return [first.joined(separator: " · "), second.joined(separator: " · ")]
     }
 
     /// clipboardNone's reasons, for the computer `name`
@@ -218,6 +226,8 @@ final class Transfers: ObservableObject {
     /// a batch from the computer the user said yes or no to, as (count, total), so its other files aren't asked about again
     private var allowedIn: (key: String, until: Date)?
     private var refusedIn: (key: String, until: Date)?
+    /// Preparing… rows × took away: what they load is dropped
+    private var cancelled: Set<String> = []
     /// files picked in Files: their access lasts until they're sent
     private var scoped: Set<URL> = []
     private var gettingDue: DispatchWorkItem?
@@ -537,6 +547,7 @@ final class Transfers: ObservableObject {
             }
         }
         g.notify(queue: .main) {
+            if self.cancelled.remove(preparing.id) != nil { try? FileManager.default.removeItem(at: dir); return }
             self.now.removeAll { $0.id == preparing.id }
             self.publish()
             let ready = got.compactMap { $0 }
@@ -572,6 +583,12 @@ final class Transfers: ObservableObject {
     // MARK: a row's buttons
 
     func stop(_ r: TransferRow) {
+        // photos still coming out of the library: they don't go
+        if r.phase == .preparing {
+            cancelled.insert(r.id)
+            now.removeAll { $0.id == r.id }
+            return publish()
+        }
         if let o = r.outbox, let box = outbox {
             box.remove(r.name, in: box.root.appendingPathComponent(o, isDirectory: true))
             return refreshOutbox()

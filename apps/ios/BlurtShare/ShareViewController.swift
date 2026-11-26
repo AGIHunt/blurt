@@ -1,4 +1,5 @@
 // Share → Blurt (docs/design/remote-files.md §What the user does): the button names the computer last controlled, and that tap is the act.
+// The content sits in the system's own sheet, in the phone's light or dark appearance.
 // What's shared (up to 50 pictures, videos or files) is copied into the App Group's outbox for that computer; the app sends it the next time
 // it's open and connected to it, and drops anything older than an hour. Nothing goes over the network from here.
 import ImageIO
@@ -19,25 +20,22 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        overrideUserInterfaceStyle = .dark
-        view.backgroundColor = UIColor(white: 0, alpha: 0.35)
-        card.backgroundColor = UIColor(white: 0.11, alpha: 1)
-        card.layer.cornerRadius = 22
-        card.layer.cornerCurve = .continuous
+        // the system's sheet, light or dark as the phone is, with the content in it (not a card over a grey wash)
+        view.backgroundColor = .systemBackground
         card.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(card)
 
         title_.text = "Blurt"
         title_.font = .systemFont(ofSize: 17, weight: .semibold)
-        title_.textColor = .white
+        title_.textColor = .label
         count.font = .systemFont(ofSize: 15)
-        count.textColor = UIColor(white: 1, alpha: 0.6)
+        count.textColor = .secondaryLabel
         thumb.contentMode = .scaleAspectFill
         thumb.clipsToBounds = true
         thumb.layer.cornerRadius = 8
         thumb.layer.cornerCurve = .continuous
-        thumb.backgroundColor = UIColor(white: 0.2, alpha: 1)
-        thumb.tintColor = UIColor(white: 1, alpha: 0.6)
+        thumb.backgroundColor = .tertiarySystemFill
+        thumb.tintColor = .secondaryLabel
         thumb.image = UIImage(systemName: "doc", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17))
         thumb.contentMode = .center
         NSLayoutConstraint.activate([thumb.widthAnchor.constraint(equalToConstant: 40), thumb.heightAnchor.constraint(equalToConstant: 40)])
@@ -48,7 +46,7 @@ final class ShareViewController: UIViewController {
         head.spacing = 12
         head.alignment = .center
         line.font = .systemFont(ofSize: 15)
-        line.textColor = UIColor(white: 1, alpha: 0.78)
+        line.textColor = .secondaryLabel
         line.numberOfLines = 0
         line.isHidden = true
 
@@ -70,7 +68,6 @@ final class ShareViewController: UIViewController {
         c.baseForegroundColor = mint
         cancel.configuration = c
         cancel.addAction(UIAction { [weak self] _ in self?.close(sent: false) }, for: .touchUpInside)
-        spinner.color = .white
         spinner.hidesWhenStopped = true
 
         let stack = UIStackView(arrangedSubviews: [head, line, send, spinner, cancel])
@@ -79,17 +76,17 @@ final class ShareViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(stack)
         NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-            card.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+            card.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor),
+            card.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             card.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
             card.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 20),
             stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 22),
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 20),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
         ])
-        // as wide as the phone, less a margin; no wider than a phone on an iPad or held wide
-        let wide = card.widthAnchor.constraint(equalTo: view.safeAreaLayoutGuide.widthAnchor, constant: -24)
+        // as wide as the sheet; no wider than a phone on an iPad or held wide
+        let wide = card.widthAnchor.constraint(equalTo: view.safeAreaLayoutGuide.widthAnchor)
         wide.priority = .required - 1
         wide.isActive = true
 

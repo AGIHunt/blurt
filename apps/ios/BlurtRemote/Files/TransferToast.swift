@@ -1,5 +1,5 @@
 // What Get Copied Items (or a paste from here) came to, on the pad while the Transfer sheet is away: a slab like the status card's,
-// at the top of the stage, gone after a few seconds. An image copied here has Save to Photos on it, a mint-tinted capsule.
+// at the top of the stage, gone after a few seconds. A ✓ before what came; an image copied here has Save to Photos on it, a mint-tinted capsule.
 import UIKit
 
 final class TransferToast: UIView {
@@ -7,6 +7,8 @@ final class TransferToast: UIView {
     private let title = UILabel()
     private let detail = UILabel()
     private let button = UIButton(type: .system)
+    /// ✓ before what came (Copied, Image Copied); nothing before a note
+    private let mark = UIImageView(image: UIImage(systemName: "checkmark.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)))
     private var hide: DispatchWorkItem?
 
     override init(frame: CGRect) {
@@ -39,7 +41,9 @@ final class TransferToast: UIView {
         }
         button.configuration = c
         button.addAction(UIAction { [weak self] _ in self?.onPhotos?() }, for: .touchUpInside)
-        [title, detail, button].forEach(addSubview)
+        mark.tintColor = Theme.mint
+        mark.contentMode = .center
+        [mark, title, detail, button].forEach(addSubview)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -49,6 +53,7 @@ final class TransferToast: UIView {
         detail.text = s.detail
         detail.isHidden = s.detail == nil
         if case .image = s.kind { button.isHidden = false } else { button.isHidden = true }
+        mark.isHidden = s.kind == .note
         isHidden = false
         setNeedsLayout()
         superview?.setNeedsLayout()
@@ -65,9 +70,11 @@ final class TransferToast: UIView {
         UIView.animate(withDuration: 0.25) { self.alpha = 0 } completion: { _ in if self.alpha == 0 { self.isHidden = true } }
     }
 
+    static let markW: CGFloat = 30
+
     /// Its height at this width.
     func height(width: CGFloat) -> CGFloat {
-        let inner = width - 28 - (button.isHidden ? 0 : button.intrinsicContentSize.width + 10)
+        let inner = width - 28 - (button.isHidden ? 0 : button.intrinsicContentSize.width + 10) - (mark.isHidden ? 0 : Self.markW)
         let t = ceil(title.sizeThatFits(CGSize(width: inner, height: 100)).height)
         let d = detail.isHidden ? 0 : ceil(detail.sizeThatFits(CGSize(width: inner, height: 40)).height) + 2
         return max(44, t + d + 20)
@@ -75,7 +82,11 @@ final class TransferToast: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let b = bounds.insetBy(dx: 14, dy: 10)
+        var b = bounds.insetBy(dx: 14, dy: 10)
+        if !mark.isHidden {
+            mark.frame = CGRect(x: b.minX, y: bounds.midY - 12, width: 22, height: 24)
+            b = b.inset(by: UIEdgeInsets(top: 0, left: Self.markW, bottom: 0, right: 0))
+        }
         var inner = b.width
         if !button.isHidden {
             let s = button.intrinsicContentSize
