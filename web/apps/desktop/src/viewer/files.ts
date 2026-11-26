@@ -27,8 +27,24 @@ export function size(n: number): string {
   return unit(Math.max(1, Math.round(n / 1024)), 'kilobyte', 0);
 }
 
-/** The row's line under the name: where it goes or came from and how far, or its state. `route`: the window's path now. */
+/** The row's line under the name, all on one: where it goes or came from and how far, or its state. `route`: the window's path now. */
 export function transferLine(x: Transfer, computer: string, route: string | null): string {
+  return transferLines(x, computer, route).join(' · ');
+}
+
+/** The same in its fixed lines, as the phones show it: a file on its way has two, where (and "2 of 3") then how far and time left, so
+ * "2 min left" never lands alone; a state is one. */
+export function transferLines(x: Transfer, computer: string, route: string | null): string[] {
+  if (x.state === 'going') {
+    const [where, ...amount] = lineParts(t(x.incoming ? 'viewer.file.from' : 'viewer.file.to', { 1: computer, 2: size(x.done), 3: size(x.size) }));
+    const first = withBatch([where], x);
+    if (x.secondsLeft != null) amount.push(t('viewer.file.left', { 1: timeLeft(x.secondsLeft) }));
+    return [first.join(' · '), amount.join(' · ')];
+  }
+  return [stateLine(x, computer, route)];
+}
+
+function stateLine(x: Transfer, computer: string, route: string | null): string {
   switch (x.state) {
     case 'waiting':
       // on the public connection service files wait for the direct path, as the status card says
@@ -41,12 +57,8 @@ export function transferLine(x: Transfer, computer: string, route: string | null
       if (x.why === 'stopped') return t('viewer.file.stopped');
       if (x.incoming) return t(x.why === 'space' ? 'viewer.file.not_received.space' : 'viewer.file.not_received.other');
       return t(`viewer.file.failed.${x.why === 'space' || x.why === 'too_big' || x.why === 'locked' ? x.why : 'other'}`);
-    case 'going': {
-      // direction first, then its place in a batch, how far, time left (as the Mac and the phones say it)
-      const parts = withBatch(lineParts(t(x.incoming ? 'viewer.file.from' : 'viewer.file.to', { 1: computer, 2: size(x.done), 3: size(x.size) })), x);
-      if (x.secondsLeft != null) parts.push(t('viewer.file.left', { 1: timeLeft(x.secondsLeft) }));
-      return parts.join(' · ');
-    }
+    default:
+      return '';
   }
 }
 

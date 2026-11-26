@@ -161,6 +161,10 @@ describe('files both ways', () => {
     setLang('zh-Hans');
     expect(barLine({ ...x, index: 2, count: 5 }, 'Maya 的 iPhone')).toBe(`发往 Maya 的 iPhone · 第 2/5 个 · ${size(141 * MB)} / ${size(350 * MB)}`);
     setLang('en');
+    const { transferLines } = await import('./files');
+    expect(transferLines({ ...x, incoming: true, index: 2, count: 3, secondsLeft: 95 }, 'Den PC', 'local')).toEqual(
+      ['From Den PC · 2 of 3', `${size(141 * MB)} of ${size(350 * MB)} · 2 min left`]);
+    expect(transferLines({ ...x, state: 'paused' }, 'Den PC', 'local')).toEqual(['Paused. Resumes when reconnected.']);
     expect(lineParts('To Den PC · 3 MB of 12 MB · 2 min left')).toEqual(['To Den PC', '3 MB of 12 MB', '2 min left']);
   });
 });

@@ -44,6 +44,7 @@ export function RemoteBanner() {
     }, () => {});
     api.remoteStatus().then(setS, () => {});
     api.remoteTransfers().then((l) => l.forEach(took), () => {});
+    void document.fonts?.ready.then(() => setTick((n) => n + 1)); // measured again in the real font
     return onRemoteStatus(setS);
   }, []);
   // the window as wide as the bar: measured on every change of what it says (and once the fonts are in)
@@ -70,30 +71,24 @@ export function RemoteBanner() {
   const now = list.find((x) => x.state === 'going') ?? list.find((x) => x.state === 'waiting') ?? list.find((x) => x.state === 'paused');
   const controlling = t('remote.banner.controlling', { 1: who });
   const clipboard = t('remote.banner.clipboard_sent', { 1: who });
-  const fileLine = now ? barLine(now, who) : null;
-  const line = flash ?? fileLine ?? controlling;
-  // The Mac's rule (RemoteBanner.swift place()), so Send Files… and Disconnect don't move under the pointer: saying who, the line has
-  // room for the clipboard line too; a flash or a file's line keeps at least that and never narrows while it shows (paused and
-  // Not sent. included); back to who, back to that width.
+  const line = flash ?? (now ? barLine(now, who) : null) ?? controlling;
+  // One width for the whole session, so Send Files… and Disconnect never move: the widest line the bar can say for this device (who,
+  // the clipboard line, a file at its longest — "10 of 10", 999.9 MB of 999.9 MB —, paused, Not sent.), measured in the page.
+  const longest = 999.9 * 1024 * 1024;
+  const widest = [controlling, clipboard, barLine({ id: '', name: '', size: longest, done: longest, incoming: false, clip: false, state: 'going', index: 10, count: 10 }, who) ?? '',
+    t('viewer.file.paused'), t('viewer.file.failed.other')];
   const measure = useRef<HTMLSpanElement>(null);
-  const held = useRef(0);
   const [textW, setTextW] = useState(0);
   useLayoutEffect(() => {
     const m = measure.current;
     if (!m) return;
-    const [ctl, clip, cur] = Array.from(m.children).map((c) => Math.ceil(c.getBoundingClientRect().width));
-    const idle = Math.max(ctl, clip);
-    let w = idle;
-    if (flash == null && fileLine == null) held.current = 0;
-    else w = held.current = Math.max(held.current, idle, cur);
+    const w = Math.max(...Array.from(m.children).map((c) => Math.ceil(c.getBoundingClientRect().width)));
     if (w !== textW) setTextW(w);
   });
   return (
     <div className="remote-banner" ref={bar} data-testid="remote-banner">
       <span className="remote-banner-measure" ref={measure} aria-hidden>
-        <span>{controlling}</span>
-        <span>{clipboard}</span>
-        <span>{line}</span>
+        {widest.map((l, k) => <span key={k}>{l}</span>)}
       </span>
       <span className="remote-banner-dot" aria-hidden />
       <span className="remote-banner-text" role="status" data-testid="remote-banner-text" style={textW ? { width: textW } : undefined}>{line}</span>

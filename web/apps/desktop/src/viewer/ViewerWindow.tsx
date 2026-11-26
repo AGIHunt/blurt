@@ -14,7 +14,7 @@ import { setLang, t } from '../i18n';
 import { Menu, tidy, type MenuAt, type MenuEntry } from '../components/Menu';
 import { contained, decodable, parseFrame, Picture, toPicture, wheelPoints } from './decode';
 import { pathLine } from './computers';
-import { lineParts, noneLine, stoppable, transferLine, type Transfer } from './files';
+import { lineParts, noneLine, stoppable, transferLines, type Transfer } from './files';
 import { revealFolderLabel } from '../reveal';
 import './viewer.css';
 
@@ -570,7 +570,7 @@ export function FileCard({ transfers, computer, route, onStop, onClose }: { tran
           </span>
           <div className="vw-file-text">
             <div className="vw-file-name" title={x.name}>{x.name}</div>
-            <FileLine line={transferLine(x, computer, route)} />
+            {transferLines(x, computer, route).map((l, i) => <FileLine key={i} line={l} />)}
             {(x.state === 'going' || x.state === 'paused') && x.size > 0 && (
               <div className="vw-file-bar" aria-hidden><span style={{ width: `${Math.min(100, (100 * x.done) / x.size)}%` }} /></div>
             )}

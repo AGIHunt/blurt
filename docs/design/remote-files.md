@@ -191,6 +191,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
   (was the batch first); the header's × is a plain glyph (a row's × stops a file and keeps its circle) on the rows' right inset (it sat
   2 px out); a received file's button is Show in Folder / 在文件夹中显示 on Windows and Show in Files / 在「文件」中显示 on Linux (the
   card had the main window's Show in File Explorer). Shots `windows-linux/r2/` (`viewer-files-card-close-windows-*` for Windows).
+- **Round 3** (the last judge on r2): the bar still went 788 → 920 → 1046 px and back to 788 on paused (zh). Now it has one width
+  from the moment it shows for a device: the widest line it can say for that device (who, the clipboard line, a file at its longest,
+  "10 of 10 · 999.9 MB of 999.9 MB", paused, Not sent.), so nothing moves during a session: r3 is 570 px in every state in en, 562 in
+  zh (460 / 465 with no Send Files…). The line is semibold as the Mac's, the two buttons the same weight. The card's going row has two
+  fixed lines as the phones: where and "2 of 3", then how far and time left (2 min left no longer lands alone on Windows); a row's ×
+  is the same plain glyph as the card's; a paused bar is the accent dimmed, not grey. Shots `windows-linux/r3/`.
 - **The card's line** (`ViewerWindow.tsx` FileLine): it wrapped inside a value ("… · 1 / min, 35 sec left", zh after a trailing ·). Each
   " · " piece is now an unbreakable inline block that brings its own dot, and the line starts one dot-width left under a clip, so a
   wrapped line neither starts nor ends with a dot; a piece wider than the card ends in …. A line without " · " (a sentence) wraps as one.
