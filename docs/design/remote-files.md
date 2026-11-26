@@ -95,7 +95,9 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
   the sender begins the same file again with the same id; the receiver answers with how much it has, and the sender goes on from there.
   The card says "Paused. Resumes when reconnected." The phone's list has **Continue** on a paused file whose session didn't come back by
   itself. After an hour, or if the receiver has no part, it starts from 0.
-- **Mobile data:** a phone on mobile data asks before more than 100 MB goes either way ("Send 350 MB over mobile data?").
+- **Mobile data:** a phone on mobile data asks before more than 100 MB goes either way ("Send 350 MB over mobile data?"). A transfer that
+  goes on after a drop asks again when it comes back on mobile data with more than 100 MB left (Wi-Fi lost mid-file): the same question,
+  with what's left; until the answer the sender stops a window in, as for a new file.
 - **Public connection service:** it only introduces the two ends; it can't carry files. Files wait until the direct path opens (usually a
   few seconds: the card says 正在建立直连…, as the status card does) and then go over it. If the direct path never opens the session ends with
   the existing no-direct message: nothing fails silently. Over an own relay, files go at the relay's speed, with time left.
@@ -128,12 +130,16 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | A row going out · coming in (`%@ / %@` done / size) | 发往 %@ · %@ / %@ · 来自 %@ · %@ / %@ | To %@ · %@ of %@ · From %@ · %@ of %@ |
 | A batch (prefix) · time left (suffix, system duration) | 第 %ld/%ld 个 · 还剩 %@ | %ld of %ld · %@ left |
 | States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Resumes when reconnected. · Stopped |
+| A paused row beside its Continue button (the button says the rest; one line) | 已暂停 | Paused |
 | Sent | 已保存到 %@ 的「下载/Blurt」 | Saved to Downloads/Blurt on %@ |
+| Sent to an older computer (no `resume` in its features: it saves into Downloads itself) | 已保存到 %@ 的「下载」 | Saved to Downloads on %@ |
+| More than 1,000 picked or shared: nothing goes | 一次最多发送 1,000 个。 | Send up to 1,000 at a time. |
 | Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved to Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
 | A received file's buttons | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
-| What came from the clipboard | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
+| What came from the clipboard (a row each: ✓, this title, the first words or Save to Photos / Gallery on the right) | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
 | Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · 无法从 %@ 获取此类内容。 · 若要使用此功能，请更新 %@ 上的口喷鸡。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Copy up to 1,000 at a time. · Can't get this kind of item from %@. · To use this, update Blurt on %@. |
+| Nothing came: one copied file over 4 GB (`too_large`; `too_big` stays over 1,000 files) | %@ 上拷贝的文件超过 4 GB。 | A file copied on %@ is larger than 4 GB. |
 | Not sent (exist, viewer.file.failed.*) | 未发送：对方空间不足。 · 未发送：文件超过 4 GB。 · 未发送：对方已锁屏。 · 未发送。 | Not sent: not enough space on that computer. · Not sent: larger than 4 GB. · Not sent: that computer is locked. · Not sent. |
 | Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device (on a computer: this computer). · Not received. |
 | Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
@@ -165,6 +171,8 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | A 50 MB file, Android emulator → fake host, throttled to 1.5 MB/s | with a fixed 4 MiB window the phone dropped its session 21 times (pings waited 2.7 s behind file data); with the rate-based window, no drop, 34 s | `apps/android/fakehost`, 2026-11-26 |
 | A drop mid-file on the Android emulator | went on from 17,694,720 bytes, 45 ms after the session reopened | the same rig |
 | 136 MB host → phone after Get Copied Items on (emulated) mobile data | asked first, then arrived with the same SHA-256 | the same rig |
+| 136 MB host → phone begun on Wi-Fi, the session dropped at 3 MB and back on mobile data | asked "Get 131 MB over mobile data?" (what was left), went on from 3,145,728 bytes after Get | the same rig, `RemoteFilesTest.aFileThatGoesOnAfterADropIsAskedAboutAgain` |
+| 136 MB phone → host (share sheet) begun on Wi-Fi, dropped, back on mobile data | asked again before a byte more went; after Send it went on from where the host had it | the same rig |
 
 ### Windows and Linux, the bar and the card (2026-11-26, design-judge round)
 
@@ -226,10 +234,15 @@ Built in `apps/android` (details and numbers: [remote-android.md](remote-android
 | Receives | `files/Downloads.kt` | MediaStore Download/Blurt (Android 10+), the app's own Download/Blurt below; Save to Gallery on tap |
 | Clipboard | `files/Transfers.kt` | ClipboardManager; an image through the FileProvider |
 
-Android-only words, beyond the Copy table: **发送文件夹… / Send Folder…** (the folder button's label beside Send Files…, since the Android
-document picker can't pick a folder with files), and the share sheet's "nothing paired" line names the Android app as it's installed:
+Android-only words, beyond the Copy table: **发送文件夹… / Send Folder…** (its own row under Send Files…, with a folder icon, since the
+Android document picker can't pick a folder with files), and the share sheet's "nothing paired" line names the Android app as it's installed:
 请先在口喷鸡中配对电脑。 / Pair a computer in Blurt first. Android opens the app itself after a share with no session, so it doesn't need
 "Open Blurt Remote to send."
+
+The share dialog (Android): the title **发送到 %@ / Send to %@** names the computer, the body lists the items as name · size (four, then
+…), and the buttons are **取消 · 发送 / Cancel · Send**. Sizes and the mobile-data question keep "136 MB" whole (a no-break space
+between the number and the unit). The sheet's rows put their icons in one 24 dp slot, so every title starts 54 dp in, the dividers start
+there, and a received file's first button label lines up with its name.
 
 A finding for every end: a file going out queues the sender's own pings behind up to 4 MiB. At 1.5 MB/s the Android phone dropped its
 session every few seconds until it counted the computer's file progress as a sign of life; a host or viewer that times out on pongs alone will

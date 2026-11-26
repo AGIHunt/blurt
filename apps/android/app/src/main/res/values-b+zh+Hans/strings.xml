@@ -268,8 +268,10 @@
     <string name="transfer_connecting">正在建立直连…</string>
     <string name="transfer_compressing">正在压缩…</string>
     <string name="transfer_paused">已暂停，重新连接后继续。</string>
+    <string name="transfer_paused_short">已暂停</string>
     <string name="transfer_stopped">已停止</string>
     <string name="transfer_sent">已保存到 %1$s 的「下载/Blurt」</string>
+    <string name="transfer_sent_downloads">已保存到 %1$s 的「下载」</string>
     <string name="transfer_received">已保存到「Download/Blurt」</string>
     <string name="open">打开</string>
     <string name="share">分享…</string>
@@ -281,10 +283,12 @@
     <string name="clip_none_empty">%1$s 上没有拷贝的内容。</string>
     <string name="clip_none_locked">%1$s 已锁屏。</string>
     <string name="clip_none_too_many">%1$s 上拷贝的文件太多。一次最多 1,000 个。</string>
+    <string name="clip_none_too_large">%1$s 上拷贝的文件超过 4 GB。</string>
     <string name="clip_none_unsupported">无法从 %1$s 获取此类内容。</string>
     <string name="update_host">若要使用此功能，请更新 %1$s 上的口喷鸡。</string>
     <string name="not_sent_space">未发送：对方空间不足。</string>
     <string name="not_sent_too_big">未发送：文件超过 4 GB。</string>
+    <string name="send_too_many">一次最多发送 1,000 个。</string>
     <string name="not_sent_locked">未发送：对方已锁屏。</string>
     <string name="not_sent">未发送。</string>
     <string name="not_received_space">未接收：本机空间不足。</string>

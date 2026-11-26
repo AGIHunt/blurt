@@ -39,8 +39,10 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 
 class Transfers(private val c: Context) {
-    /** One line of the list. `zipping`: a folder being compressed, not yet a transfer. `inGallery`: saved to the gallery from here */
-    data class Row(val t: RemoteTransfer, val peerName: String, val zipping: Boolean = false, val inGallery: Boolean = false)
+    /** One line of the list. `zipping`: a folder being compressed, not yet a transfer. `inGallery`: saved to the gallery from here.
+     *  `intoDownloads`: sent to an older computer (no `resume`), which saves into Downloads itself, not Downloads/Blurt */
+    data class Row(val t: RemoteTransfer, val peerName: String, val zipping: Boolean = false, val inGallery: Boolean = false,
+        val intoDownloads: Boolean = false)
 
     /** What Get Copied Items brought, for the sheet (or a toast when it's closed). */
     sealed class Got {
@@ -104,13 +106,44 @@ class Transfers(private val c: Context) {
         io.execute { receiver.heard(o, device) { a -> link.sendFile(RemoteFileWire.toMac(a)) } }
     }
 
-    /** The session carries everything (and on the go-between its stream has moved): files go. */
-    fun connected() = sender.connection(true)
+    /** the question about going on over mobile data, while it's up: the sender waits for it */
+    private var resumeAsk: Ask? = null
+
+    /** The session carries everything (and on the go-between its stream has moved): files go. What paused with the last session goes on
+     *  by itself, unless the phone is now on mobile data with more than 100 MB of it left: that's asked first, as when it was picked. */
+    fun connected() = main.post {
+        if (resumeAsk != null) return@post
+        val all = sender.transfers.filter { !it.clip }
+        val paused = all.filter { it.state == RemoteTransfer.State.Paused }
+        // the rest of a batch that paused waits behind it: it counts too
+        val batches = paused.map { it.at }.toSet()
+        val left = all.filter { it.state == RemoteTransfer.State.Paused || it.state == RemoteTransfer.State.Waiting && it.at in batches }
+            .sumOf { maxOf(0L, it.size - it.done) }
+        if (paused.isEmpty() || left <= RemoteFiles.ASK_ON_CELLULAR || !cellular()) return@post sender.connection(true)
+        val q = Ask(left, incoming = false, yes = {
+            resumeAsk = null
+            ask.value = null
+            if (link.ready) sender.connection(true)
+        }, no = {
+            resumeAsk = null
+            ask.value = null
+            paused.forEach { sender.stop(it.id) }
+            all.filter { it.state == RemoteTransfer.State.Waiting && it.at in batches }.forEach { sender.stop(it.id) }
+            if (link.ready) sender.connection(true)
+        })
+        resumeAsk = q
+        ask.value = q
+    }
 
     /** The session with `device` ended: what goes pauses, what comes keeps its part an hour. */
     fun dropped(device: String) {
         synchronized(askLock) { askedClipAt = 0 }
-        main.post { if (got.value == Got.Asking) got.value = null }
+        main.post {
+            if (got.value == Got.Asking) got.value = null
+            // asked again when the next session is up
+            resumeAsk?.let { q -> if (ask.value === q) ask.value = null }
+            resumeAsk = null
+        }
         sender.connection(false)
         io.execute { receiver.suspend(device) }
     }
@@ -123,6 +156,8 @@ class Transfers(private val c: Context) {
     /** Photos or files picked here: to the computer in hand, after a question on mobile data for a big batch. */
     fun send(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        // more than a batch can carry: nothing goes, rather than the first 1,000 of them
+        if (uris.size > RemoteFiles.MAX_COUNT) return toast(c.getString(R.string.send_too_many))
         val to = link.current.value?.id
         io.execute {
             val sources = uris.mapNotNull { UriSource.of(c, it) }
@@ -183,8 +218,10 @@ class Transfers(private val c: Context) {
     /** Continue on a paused one whose session didn't come back by itself. */
     fun again(r: Row) {
         if (r.t.incoming) return link.tryAgain()
-        sender.again(r.t.id)
-        if (!link.ready) link.tryAgain()
+        confirm(maxOf(0L, r.t.size - r.t.done), incoming = false) {
+            sender.again(r.t.id)
+            if (!link.ready) link.tryAgain()
+        }
     }
 
     // MARK: Get Copied Items
@@ -222,6 +259,7 @@ class Transfers(private val c: Context) {
             "empty" -> R.string.clip_none_empty
             "locked" -> R.string.clip_none_locked
             "too_big" -> R.string.clip_none_too_many
+            "too_large" -> R.string.clip_none_too_large
             else -> R.string.clip_none_unsupported
         }, name)))
     }
@@ -346,8 +384,10 @@ class Transfers(private val c: Context) {
         }
         val list = rows.value
         val i = list.indexOfFirst { it.t.id == t.id && it.t.incoming == t.incoming }
-        rows.value = if (i >= 0) list.toMutableList().also { l -> l[i] = l[i].copy(t = t.copy(at = l[i].t.at)) }
-            else listOf(Row(t, peerName(t.peer))) + list
+        // sent: where it went depends on the computer's version (an older one saves into Downloads)
+        val downloads = !t.incoming && t.state == RemoteTransfer.State.Done && !link.peerResumes
+        rows.value = if (i >= 0) list.toMutableList().also { l -> l[i] = l[i].copy(t = t.copy(at = l[i].t.at), intoDownloads = l[i].intoDownloads || downloads) }
+            else listOf(Row(t, peerName(t.peer), intoDownloads = downloads)) + list
         if (t.isOver) save()
     }
 
@@ -359,7 +399,7 @@ class Transfers(private val c: Context) {
             a.put(JSONObject().put("id", t.id).put("name", t.name).put("size", t.size).put("done", t.done).put("in", t.incoming)
                 .put("state", when (val s = t.state) { is RemoteTransfer.State.Failed -> s.why; else -> "done" })
                 .put("index", t.index ?: 0).put("count", t.count ?: 0).put("at", t.at).put("peer", t.peer).put("peerName", r.peerName)
-                .put("location", t.location).put("gallery", r.inGallery))
+                .put("location", t.location).put("gallery", r.inGallery).put("downloads", r.intoDownloads))
         }
         prefs.edit().putString("list.v1", a.toString()).apply()
     }
@@ -372,7 +412,8 @@ class Transfers(private val c: Context) {
             Row(RemoteTransfer(o.getString("id"), o.getString("name"), o.getLong("size"), o.optLong("done"), o.getBoolean("in"),
                 state = if (st == "done") RemoteTransfer.State.Done else RemoteTransfer.State.Failed(st),
                 index = o.optInt("index").takeIf { it > 0 }, count = o.optInt("count").takeIf { it > 0 }, location = o.optString("location").ifEmpty { null },
-                at = o.getLong("at"), peer = o.optString("peer").ifEmpty { null }), o.optString("peerName"), inGallery = o.optBoolean("gallery"))
+                at = o.getLong("at"), peer = o.optString("peer").ifEmpty { null }), o.optString("peerName"), inGallery = o.optBoolean("gallery"),
+                intoDownloads = o.optBoolean("downloads"))
         }
     }.getOrDefault(emptyList())
 

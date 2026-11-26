@@ -236,6 +236,29 @@ class RemoteFilesTest {
         assertContentEquals(f.readBytes(), File(p.out, "film.mp4").readBytes())
     }
 
+    @Test fun aFileThatGoesOnAfterADropIsAskedAboutAgain() {
+        val pipe = Pipe().apply { cutAfter = RemoteFiles.CHUNK * 10L }
+        val p = pair(pipe = pipe)
+        val f = file("film.mp4", RemoteFiles.CHUNK * 64)   // 12 MB
+        p.s.add(listOf(FileSource(f)))
+        wait("paused after the drop") { p.s.transfers.firstOrNull()?.state == paused }
+        p.s.connection(false)
+        p.r.suspend("phone-1")
+        val had = p.r.current.first().done
+        // back, now on mobile data: the rest is asked about, and stops a window in until the answer
+        var asked: RemoteFileInfo? = null
+        p.r.hold = { i, _ -> asked = i; true }
+        synchronized(pipe.lock) { pipe.cutAfter = null; pipe.chunked = 0; pipe.up = true }
+        p.s.connection(true)
+        wait("asked") { asked != null }
+        assertEquals(RemoteFiles.CHUNK * 64L - had, asked!!.size, "only what's left is asked about")
+        Thread.sleep(300)
+        assertTrue(pipe.chunked <= RemoteFiles.WINDOW + RemoteFiles.CHUNK, "no further than the window while asked: ${pipe.chunked}")
+        p.r.release(asked!!.id, "phone-1") { a -> p.s.heard(a) }
+        wait("saved") { p.s.transfers.first().state == done }
+        assertContentEquals(f.readBytes(), File(p.out, "film.mp4").readBytes())
+    }
+
     @Test fun aSharedItemNotBegunWithinItsTimeIsDropped() {
         val pipe = Pipe().apply { up = false }
         val p = pair(pipe = pipe)

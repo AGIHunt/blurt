@@ -1,5 +1,5 @@
 // Blurt in the system share sheet (ACTION_SEND, ACTION_SEND_MULTIPLE: pictures, videos, any file). One question, naming the computer last
-// controlled: "Send to Office PC". That tap is the act (remote-files.md, P4): the items are copied here while the share's grant lasts, queued
+// controlled: "Send to Office PC", the items (name · size) under it, then Cancel and Send. That tap is the act (remote-files.md, P4): the items are copied here while the share's grant lasts, queued
 // in the transfers list, and go once the session is up; anything not begun within the hour is dropped. With no session, the app opens on the
 // Transfer sheet, which connects and shows them going.
 package dev.blurt.remote.app
@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.format.Formatter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
@@ -31,25 +32,35 @@ class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Remote.start(applicationContext)
-        val uris = streams(intent).take(RemoteFiles.MAX_COUNT)
+        val uris = streams(intent)
         if (uris.isEmpty()) return finish()
         val mac = Remote.link.current.value
-        val names = uris.map { u -> UriSource.of(this, u)?.name ?: "" }.filter { it.isNotEmpty() }
+        // name · size, the size whole on its line ("2.4 MB", not "2.4" then "MB")
+        val items = uris.take(5).mapNotNull { u -> UriSource.of(this, u)?.takeIf { it.name.isNotEmpty() } }.map { s ->
+            if (s.size < 0) s.name else s.name + " · " + Formatter.formatShortFileSize(this, s.size).replace(' ', '\u00A0')
+        }
         setContent {
             BlurtTheme {
                 var copying by remember { mutableStateOf(false) }
-                if (mac == null) {
+                // nothing paired, or more than one batch can carry (nothing goes, rather than the first 1,000)
+                val refusal = when {
+                    mac == null -> R.string.share_pair_first
+                    uris.size > RemoteFiles.MAX_COUNT -> R.string.send_too_many
+                    else -> null
+                }
+                if (mac == null || refusal != null) {
                     AlertDialog(
                         onDismissRequest = { finish() },
-                        text = { Text(stringResource(R.string.share_pair_first)) },
+                        text = { Text(stringResource(refusal ?: R.string.share_pair_first)) },
                         confirmButton = { TextButton({ finish() }) { Text(stringResource(R.string.ok)) } },
                     )
                 } else AlertDialog(
                     onDismissRequest = { if (!copying) finish() },
+                    title = { Text(stringResource(R.string.share_send_to, mac.title)) },
                     text = {
                         Column {
-                            for (n in names.take(4)) Text(n, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.bodyMedium)
-                            if (names.size > 4) Text("…", style = MaterialTheme.typography.bodyMedium)
+                            for (n in items.take(4)) Text(n, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.bodyMedium)
+                            if (uris.size > 4) Text("…", style = MaterialTheme.typography.bodyMedium)
                         }
                     },
                     confirmButton = {
@@ -60,7 +71,7 @@ class ShareActivity : ComponentActivity() {
                                 val files = copy(uris)
                                 runOnUiThread { queued(files, mac.id) }
                             }.start()
-                        }) { Text(stringResource(R.string.share_send_to, mac.title)) }
+                        }) { Text(stringResource(R.string.send)) }
                     },
                     dismissButton = { if (!copying) TextButton({ finish() }) { Text(stringResource(R.string.cancel)) } },
                 )

@@ -608,6 +608,8 @@ class RemoteFileReceiver(
                 kept.told = at
             }
             kept.keptSince = null
+            // back on mobile data, say: what's left is asked about again, as a new file is (`hold` sees only what's left of this one)
+            kept.held = hold?.invoke(i.copy(size = kept.size - kept.written, total = null), device) == true
             answer(RemoteFileAnswer.Progress(i.id, kept.written))
             return change(kept, RemoteTransfer.State.Going)
         }

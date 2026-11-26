@@ -93,7 +93,8 @@ fun Section(title: String? = null, footer: String? = null, content: @Composable 
 }
 
 @Composable
-fun Divider() = HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+/** `start`: where the rows' text begins (a row with an icon: after it) */
+fun Divider(start: Dp = 16.dp) = HorizontalDivider(Modifier.padding(start = start), color = MaterialTheme.colorScheme.outlineVariant)
 
 @Composable
 fun Row2(label: String, value: String? = null, modifier: Modifier = Modifier, sub: String? = null, trailing: @Composable (() -> Unit)? = null) {

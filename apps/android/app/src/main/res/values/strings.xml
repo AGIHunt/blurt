@@ -278,8 +278,10 @@
     <string name="transfer_connecting">Connecting directly…</string>
     <string name="transfer_compressing">Compressing…</string>
     <string name="transfer_paused">Paused. Resumes when reconnected.</string>
+    <string name="transfer_paused_short">Paused</string>
     <string name="transfer_stopped">Stopped</string>
     <string name="transfer_sent">Saved to Downloads/Blurt on %1$s</string>
+    <string name="transfer_sent_downloads">Saved to Downloads on %1$s</string>
     <string name="transfer_received">Saved to Download/Blurt</string>
     <string name="open">Open</string>
     <string name="share">Share…</string>
@@ -291,10 +293,12 @@
     <string name="clip_none_empty">Nothing is copied on %1$s.</string>
     <string name="clip_none_locked">%1$s is locked.</string>
     <string name="clip_none_too_many">Too many files are copied on %1$s. Copy up to 1,000 at a time.</string>
+    <string name="clip_none_too_large">A file copied on %1$s is larger than 4 GB.</string>
     <string name="clip_none_unsupported">Can’t get this kind of item from %1$s.</string>
     <string name="update_host">To use this, update Blurt on %1$s.</string>
     <string name="not_sent_space">Not sent: not enough space on that computer.</string>
     <string name="not_sent_too_big">Not sent: larger than 4 GB.</string>
+    <string name="send_too_many">Send up to 1,000 at a time.</string>
     <string name="not_sent_locked">Not sent: that computer is locked.</string>
     <string name="not_sent">Not sent.</string>
     <string name="not_received_space">Not received: not enough space on this device.</string>

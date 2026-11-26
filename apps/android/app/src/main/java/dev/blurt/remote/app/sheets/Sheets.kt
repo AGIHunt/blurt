@@ -176,7 +176,8 @@ private fun SendUnsent(words: String) {
 @Composable
 private fun MobileData(a: dev.blurt.remote.app.files.Transfers.Ask) {
     val ctx = LocalContext.current
-    val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes)
+    // "136 MB" never splits between the number and its unit
+    val size = android.text.format.Formatter.formatShortFileSize(ctx, a.bytes).replace(' ', '\u00A0')
     AlertDialog(
         onDismissRequest = a.no,
         title = { Text(stringResource(if (a.incoming) R.string.data_get_q else R.string.data_send_q, size)) },
