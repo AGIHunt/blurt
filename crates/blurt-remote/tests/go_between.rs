@@ -748,7 +748,9 @@ async fn a_dead_public_relay_is_the_no_direct_line() {
     assert!(took >= Duration::from_millis(4500) && took < Duration::from_millis(6500), "{took:?}");
     let t2 = std::time::Instant::now();
     assert!(Phone::connect_public(&dead, &room, ticket, &device, &key, public_phone()).await.is_err());
-    assert!(t2.elapsed() < Duration::from_secs(2));
+    // refused at once; Windows retries a refused SYN twice, ~0.5 s apart, before it gives up (about 2 s)
+    let refused = if cfg!(windows) { Duration::from_secs(4) } else { Duration::from_secs(2) };
+    assert!(t2.elapsed() < refused, "{:?}", t2.elapsed());
     h.stop();
     let _ = std::fs::remove_dir_all(dir);
 }
