@@ -4,16 +4,18 @@
 //                                 (connected, available through the public connection service, offline) and one
 //                                nearby, as if real: nothing saved, nothing connected
 //   viewer list | add | settings the Computers window · its Add Computer sheet · Settings → 手机和电脑
-//   viewer pairing [connecting|failed]   the Add Computer sheet showing six digits (or before they come, or after a no)
+//   viewer pairing [connecting|confirmed|failed]   the Add Computer sheet showing six digits (or before they come, after Pair, or
+//                                after a no)
 //   viewer fakehost PNG [windows|linux|mac] [nodirect|no|silent|late=S|removed=S|link|name=N]   a pretend host (nodirect: it says the direct
 //                                path didn't open, as the public connection service's host does, then takes no more sessions); on 127.0.0.1 in this process,
-//                                paired as a nearby computer is (its owner's yes comes by itself), whose screen is PNG encoded as H.264 and sent as a real
-//                                host sends it. no: its owner says no · silent: nobody answers, and it gives up asking after two minutes, as RemoteServer
+//                                paired as a nearby computer is (its owner's yes comes by itself; this Mac's is `viewer confirm`), whose
+//                                screen is PNG encoded as H.264 and sent as a real host sends it. no: its owner says no · silent: nobody answers, and it gives up asking after two minutes, as RemoteServer
 //                                does · late=S: it drops every connection for S seconds (not up yet) · removed=S: it removes this Mac S seconds into the
 //                                session · link: not paired by itself; its port and id come as `viewer_host` for a link to it. It posts no input
 //                                and captures nothing: what it is sent comes back as `viewer_host` events. Two displays, so the switcher shows.
 //                                name=N: its name (one word; Office PC otherwise), e.g. name=Studio for a Mac host's screen (Tests/make_host_screen.swift)
 //   viewer pair LINK|NAME        pair with a pasted blurtremote:// link, or the computer of that name found on this network
+//   viewer confirm               the digits step's Pair: the pairing goes on only after it (the fake host's yes is held until then)
 //   viewer rename page|list ID start|type TEXT|return|esc   a computer's name field on the page or in the Computers window
 //   viewer open NAME             a paired computer's window · viewer quality auto|sharp|balanced|saver (for the next request)
 //   viewer keys                  ⌘C (held, one repeat), F13, the keypad's Enter and ⌃⌘ alone into the front window, as captured
@@ -67,6 +69,7 @@ enum ViewerTests {
                 let step = a.count > 1 ? a[1] : "check"
                 let p: ViewerStore.Pairing = switch step {
                 case "connecting": .init(name: "MacBook Air")
+                case "confirmed": .init(name: "MacBook Air", check: "482713", confirmed: true)
                 case "failed": .init(name: "MacBook Air", failed: T("viewer.add.refused", "MacBook Air"), canRetry: true)
                 default: .init(name: "MacBook Air", check: "482713")
                 }
@@ -87,6 +90,7 @@ enum ViewerTests {
             case "open":
                 let name = a.dropFirst().joined(separator: " ")
                 if let c = store.computers.first(where: { $0.name == name }) { store.open(c) }
+            case "confirm": store.confirmDigits()
             case "rename": RenameTests.post(a)      // = phonepage rename
             case "quality":
                 Config.shared.set("record.viewer.quality", a.count > 1 && a[1] != "auto" ? a[1] : nil)

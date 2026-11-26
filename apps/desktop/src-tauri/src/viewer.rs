@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use blurt_remote::keys::{Keyboard, Sent};
 use blurt_remote::packets::{PointerPacket, ScrollPhase};
-use blurt_remote::viewer::{self, Computer, Computers, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want};
+use blurt_remote::viewer::{self, Computer, Computers, Confirm, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want};
 use blurt_remote::wire::{MouseButton, ToMac};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -38,6 +38,8 @@ struct Viewers {
     pair_gen: AtomicU64,
     /// the pairing under way: aborted by Cancel, Back or another pairing, so its connection closes and the host stops asking
     pair_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// the pairing under way's Pair: this side's yes to the digits, without which the host's key isn't taken (join_gate.rs)
+    pair_confirm: Mutex<Option<Confirm>>,
     /// how the last pairing began: Try Again begins it the same way
     pair_last: Mutex<Option<PairFrom>>,
     /// computers that refused this computer's key this run, with no session (`Link::Forgotten`): the list says Removed, the key is
@@ -64,6 +66,8 @@ struct Pairing {
     error: Option<&'static str>,
     /// begun from a pasted link (else from a computer found nearby)
     link: bool,
+    /// Pair was clicked for these digits: now the host's owner allows
+    confirmed: bool,
 }
 
 #[derive(Clone)]
@@ -134,6 +138,7 @@ pub fn start(app: &AppHandle) {
         pairing: Mutex::new(None),
         pair_gen: AtomicU64::new(0),
         pair_task: Mutex::new(None),
+        pair_confirm: Mutex::new(None),
         pair_last: Mutex::new(None),
         refused: Mutex::new(HashSet::new()),
         add_requests: AtomicU64::new(0),
@@ -295,7 +300,7 @@ pub struct NearbyUi {
 #[serde(rename_all = "camelCase")]
 pub struct PairingUi {
     name: String,
-    /// "connecting", "asking" (the digits show; the owner answers there), "failed" (an unreachable one goes on trying meanwhile:
+    /// "connecting", "asking" (the digits show; Pair here, then the owner answers there), "failed" (an unreachable one goes on trying meanwhile:
     /// if the host turns up and asks, "asking" takes its place)
     state: &'static str,
     digits: Option<String>,
@@ -303,6 +308,8 @@ pub struct PairingUi {
     error: Option<&'static str>,
     /// begun from a pasted link (else from a computer found nearby)
     link: bool,
+    /// asking, and Pair was clicked: the line says to click Allow there
+    confirmed: bool,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -362,7 +369,7 @@ fn status() -> ComputersStatus {
     let paired: Vec<&str> = list.iter().filter(|c| !c.removed && !refused.contains(&c.host_id)).map(|c| c.host_id.as_str()).collect();
     let nearby = nearby.iter().filter(|n| !paired.contains(&n.host_id.as_str())).map(|n| NearbyUi { id: n.host_id.clone(), name: n.name.clone() }).collect();
     let pairing =
-        v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error, link: p.link });
+        v.pairing.lock().unwrap().as_ref().map(|p| PairingUi { name: p.name.clone(), state: p.state, digits: p.digits.clone(), error: p.error, link: p.link, confirmed: p.confirmed });
     ComputersStatus { computers, nearby, pairing, browsing: v.browser.lock().unwrap().is_some(), add_requests: v.add_requests.load(SeqCst), paired: v.paired.load(SeqCst) }
 }
 
@@ -475,7 +482,7 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
         PairFrom::Link(l) => match blurt_remote::pairing::Pairing::parse(l.trim()) {
             Some(p) => PairWith::Link(p),
             None => {
-                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true });
+                *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true, confirmed: false });
                 emit();
                 return;
             }
@@ -489,13 +496,15 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
     // one paired before (Add Again…) is named as this computer calls it
     let name = v.computers.get(host_id).and_then(|c| c.alias).unwrap_or_else(|| name.clone());
     let g = v.pair_gen.fetch_add(1, SeqCst) + 1;
-    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link });
+    *v.pairing.lock().unwrap() = Some(Pairing { name, state: "connecting", digits: None, error: None, link: by_link, confirmed: false });
     emit();
     let me = blurt_remote::server::computer_name();
     let at = test_go_between();
+    let (yes, confirms) = Confirm::new();
+    *v.pair_confirm.lock().unwrap() = Some(yes);
     let task = v.rt.spawn(async move {
         // nothing answering is said, and it goes on trying: if the host turns up and asks, its digits take the place of the failure
-        let r = viewer::pair_steps(with, &me, at.as_deref(), viewer::QUESTION_LIFE, true, |s| {
+        let r = viewer::pair_steps(with, &me, at.as_deref(), viewer::QUESTION_LIFE, true, confirms, |s| {
             set_pairing(g, move |p| {
                 if let Some(p) = p {
                     match s {
@@ -503,12 +512,18 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
                             p.state = "failed";
                             p.error = Some("unreachable");
                             p.digits = None;
+                            p.confirmed = false;
                         }
                         PairStep::Asking(d) => {
+                            if p.digits.as_ref() != Some(&d) {
+                                p.confirmed = false;
+                            }
                             p.state = "asking";
                             p.error = None;
                             p.digits = Some(d);
                         }
+                        // the digits were the same here: the host's key is taken once its owner allows
+                        PairStep::Confirmed => p.confirmed = true,
                     }
                 }
             });
@@ -548,6 +563,7 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
                         p.state = "failed";
                         p.error = Some(why);
                         p.digits = None;
+                        p.confirmed = false;
                     }
                 });
             }
@@ -559,9 +575,22 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
 /// A pairing under way stops: its task ends, the connection with it, so the host's question goes too.
 fn stop_pairing(v: &Viewers) {
     v.pair_gen.fetch_add(1, SeqCst);
+    *v.pair_confirm.lock().unwrap() = None;
     if let Some(t) = v.pair_task.lock().unwrap().take() {
         t.abort();
     }
+}
+
+/// The digits step's Pair: this computer's user says the other one shows the same digits. The host's key is taken only after this
+/// (join_gate.rs); one said before the digits show counts for nothing. The step's line changes once the pairing hears it.
+#[tauri::command]
+pub fn computers_confirm_pairing() -> ComputersStatus {
+    if let Some(v) = viewers() {
+        if let Some(c) = v.pair_confirm.lock().unwrap().as_ref() {
+            c.confirm();
+        }
+    }
+    status()
 }
 
 /// Done with the pairing panel (Cancel), or Back to its first page after a failure: a pairing still under way stops.
@@ -1271,7 +1300,7 @@ mod tests {
                 windows: 0,
             }],
             nearby: vec![NearbyUi { id: "n".into(), name: "Den".into() }],
-            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None, link: false }),
+            pairing: Some(PairingUi { name: "Den".into(), state: "asking", digits: Some("123456".into()), error: None, link: false, confirmed: true }),
             browsing: true,
             add_requests: 0,
             paired: 1,
@@ -1282,6 +1311,7 @@ mod tests {
         assert_eq!(v["computers"][0]["lastSeen"], serde_json::Value::Null);
         assert_eq!(v["pairing"]["digits"], "123456");
         assert_eq!(v["pairing"]["link"], false);
+        assert_eq!(v["pairing"]["confirmed"], true);
         assert_eq!(v["addRequests"], 0);
         assert_eq!(v["paired"], 1);
         assert_eq!(serde_json::to_value(Options::default()).unwrap(), json!({"mapped": true, "clipboard": true}));

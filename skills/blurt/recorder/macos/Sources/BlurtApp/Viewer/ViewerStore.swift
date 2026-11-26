@@ -27,6 +27,8 @@ final class ViewerStore: ObservableObject {
     struct Pairing: Equatable {
         var name: String
         var check: String?
+        /// this Mac's user said the digits are the same (Pair): now the other computer's Allow
+        var confirmed = false
         /// what went wrong, and what to do about it (a second line, or nil)
         var failed: String?
         var help: String?
@@ -376,6 +378,7 @@ final class ViewerStore: ObservableObject {
                 case let .waiting(check):
                     // the other computer asks its owner now, whatever was said before (it may have woken after "Can't reach"): the
                     // digits take the place of the failure, so they can be compared
+                    if self.pairing?.check != check { self.pairing?.confirmed = false }
                     self.pairing?.check = check
                     self.pairing?.failed = nil
                     self.pairing?.help = nil
@@ -449,6 +452,15 @@ final class ViewerStore: ObservableObject {
         } else if let s = pairingStart {
             startPairing(s.computer, key: s.key, endpoint: s.endpoint)
         }
+    }
+
+    /// The digits step's Pair: they're the same as on the other computer. Only then does this Mac keep the key it gets, since anyone
+    /// with a photo of the code can answer as that computer (RemoteJoinGate).
+    func confirmDigits() {
+        guard let p = pairing, p.failed == nil, p.check?.isEmpty == false, !p.confirmed else { return }
+        pairing?.confirmed = true
+        pairingLink?.confirmDigits()
+        emit(["event": "viewer_pairing", "state": "confirmed"])
     }
 
     /// The failed sheet's Back: the sheet's first page, the pasted link still in its field.

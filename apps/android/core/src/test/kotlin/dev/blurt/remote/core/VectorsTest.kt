@@ -534,6 +534,17 @@ class VectorsTest {
         assertEquals(p, RemotePairing.parse(p.url))
     }
 
+    @Test
+    fun joinGate() {
+        val cases = v["joinGate"]!!.jsonObject["cases"]!!.jsonArray
+        assertTrue(cases.size >= 10)
+        for (e in cases) {
+            val events = e.jsonObject["events"]!!.jsonArray.map { w -> JoinGate.Event.of(w.jsonPrimitive.content) ?: fail("event $w") }
+            val stores = e.jsonObject["stores"]!!.let { if (it is JsonNull) null else it.jsonPrimitive.int }
+            assertEquals(stores, JoinGate.run(events), "joinGate ${events.map { it.wire }}")
+        }
+    }
+
     companion object {
         /** RemoteVectorsTests.swift's seeds: seed + i·7 */
         fun bytes(seed: Int, n: Int = 32) = ByteArray(n) { (seed + it * 7).toByte() }

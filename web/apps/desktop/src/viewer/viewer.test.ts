@@ -4,7 +4,7 @@ import { contained, packFrame, parseFrame, toPicture, wheelPoints } from './deco
 import { CATALOGS } from '../i18n';
 
 const row = (o: Partial<ComputerRow>): ComputerRow => ({ id: 'a', name: 'Studio', platform: 'mac', state: 'offline', key: true, route: null, lastSeen: null, windows: 0, ...o });
-const failed = (o: Partial<Pairing>): Pairing => ({ name: 'Studio', state: 'failed', digits: null, error: 'unreachable', link: false, ...o });
+const failed = (o: Partial<Pairing>): Pairing => ({ name: 'Studio', state: 'failed', digits: null, error: 'unreachable', link: false, confirmed: false, ...o });
 
 describe('the list of computers', () => {
   it('says each state with its one button (Remove is in the menu)', () => {

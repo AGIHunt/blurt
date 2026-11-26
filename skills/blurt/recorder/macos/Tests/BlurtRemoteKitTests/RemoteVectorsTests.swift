@@ -286,6 +286,13 @@ final class RemoteVectorsTests: XCTestCase {
                           ["in": c["in"]!, "out": RemoteFiles.clean(c["in"]!)]
                       },
         ]
+        // while joining, newKey only after pairingWaits and this side's yes to the same digits (security review F1)
+        out["joinGate"] = [
+            "about": "While joining, the joining side stores newKey only after pairingWaits and its own user's yes to the same digits (same), in either order of yes and key. A key before pairingWaits is dropped, not held; reconnect starts over. stores: the index of the event at which the key is stored, or null.",
+            "cases": RemoteJoinGate.cases.map { c -> [String: Any] in
+                ["events": c.map(\.rawValue), "stores": RemoteJoinGate.run(c).map { $0 as Any } ?? NSNull()]
+            },
+        ]
         let pairing = RemotePairing(macID: "host-id-1", deviceID: "device-id-1", key: paired, macName: "Studio PC", port: 50123,
                                     addresses: ["192.168.1.20", "fe80::1"], relay: "wss://relay.example.com")
         out["pairingURL"] = pairing.url.absoluteString

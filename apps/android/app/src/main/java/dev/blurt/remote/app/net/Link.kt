@@ -24,6 +24,7 @@ import dev.blurt.remote.app.Remote
 import dev.blurt.remote.core.AwayTrouble
 import dev.blurt.remote.core.GoBetweenBackoff
 import dev.blurt.remote.core.HeldAudio
+import dev.blurt.remote.core.JoinGate
 import dev.blurt.remote.core.LinkPath
 import dev.blurt.remote.core.LinkRoute
 import dev.blurt.remote.core.PairEnd
@@ -156,6 +157,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
     val waitingForMac = MutableStateFlow(false)
     var pairCheck: String? = null
         private set
+    /** this phone's user said the digits are the same (Pair on the card): until then a key from the other end isn't taken, since anyone
+     *  with a photo of the code can answer as the computer (JoinGate) */
+    val digitsConfirmed = MutableStateFlow(false)
+    private val gate = JoinGate()
+    /** the connection the gate's question came on: a new one asks again, with new digits */
+    private var gateChannel: Channel? = null
     /** a pairing that didn't take, for the pad to say */
     val pairFailed = MutableStateFlow<PairFailure?>(null)
     /** the last pairing link typed into the sheet: the sheet shows it again after a failure */
@@ -378,6 +385,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = Joining(m, if (joining != null) joining!!.back else _current.value, now())
         joinOpens = 0
+        resetGate()
         pairFailed.value = null
         switchTo(m)
     }
@@ -411,6 +419,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
         val j = joining ?: return
         joining = null
         waitingForMac.value = false
+        resetGate()
         askedAt = null
         vault.remove(j.mac.deviceID)
         pairFailed.value = failure(why, j.mac)
@@ -431,8 +440,66 @@ class Link(private val c: Context, private val vault: KeyVault) {
         joining?.let { vault.remove(it.mac.deviceID) }
         joining = null
         waitingForMac.value = false
+        resetGate()
         askedAt = null
         pairFailed.value = null
+    }
+
+    private fun resetGate() {
+        gate.reset()
+        gateChannel = null
+        digitsConfirmed.value = false
+    }
+
+    /** The joining connection's gate: a new connection starts it over. */
+    private fun gateOn(ch: Channel?) {
+        if (gateChannel === ch) return
+        gate.reset()
+        gateChannel = ch
+        digitsConfirmed.value = false
+    }
+
+    /** The card's Pair: the digits here are the same as the computer's. Its yes, if it came first, completes the pairing now. */
+    fun confirmDigits() {
+        if (joining == null || !waitingForMac.value || gateChannel !== channel || !gate.canConfirm) return
+        digitsConfirmed.value = true
+        gate.confirm()?.let { keyTaken(it) }
+    }
+
+    /** The card's Cancel while the digits are shown: back to the computer that was in hand, with nothing to say. */
+    fun cancelJoin() {
+        val j = joining ?: return
+        abandonJoin()
+        leave()
+        setCurrent(_macs.value.firstOrNull { it.id == j.back?.id } ?: _macs.value.firstOrNull())
+        setState(if (_current.value == null) State.UNPAIRED else State.CONNECTING)
+        disconnect()
+        connect()
+    }
+
+    /** The computer's key, now that it may be kept: stored, and the pairing done. */
+    private fun keyTaken(k: ByteArray) {
+        val cur = _current.value ?: return
+        vault.store(k, cur.deviceID)
+        if (joining != null) {
+            joining = null
+            waitingForMac.value = false
+            resetGate()
+            askedAt = null
+            pairFailed.value = null
+            lastLink = ""
+            _macs.value.firstOrNull { it.id == cur.id }?.let { old ->
+                if (old.deviceID != cur.deviceID) {
+                    vault.remove(old.deviceID)
+                    replacing = old.deviceID
+                }
+            }
+            _macs.value = listOf(cur) + _macs.value.filter { it.id != cur.id }
+            saveMacs()
+        }
+        send(ToMac.KeyStored)
+        // paired: `session` comes next
+        channel?.let { awaitSession(it) }
     }
 
     private fun switchTo(m: PairedMac?) {
@@ -1055,6 +1122,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)
             is ToPhone.Relay -> noteRelay(m.address)
             ToPhone.PairingWaits -> {
+                if (joining == null) return
+                gateOn(channel)
+                gate.pairingWaits()
+                digitsConfirmed.value = false
                 pairCheck = channel?.check
                 waitingForMac.value = true
                 askedAt = now()
@@ -1064,26 +1135,14 @@ class Link(private val c: Context, private val vault: KeyVault) {
                 main.postDelayed({ if (waitingForMac.value && joining?.mac?.deviceID == d) joinFailed(PairEnd.UNANSWERED) }, PairEnd.QUESTION_LIFE_MS)
             }
             is ToPhone.NewKey -> {
-                val cur = _current.value ?: return
-                vault.store(m.key, cur.deviceID)
+                if (_current.value == null) return
                 if (joining != null) {
-                    joining = null
-                    waitingForMac.value = false
-                    askedAt = null
-                    pairFailed.value = null
-                    lastLink = ""
-                    _macs.value.firstOrNull { it.id == cur.id }?.let { old ->
-                        if (old.deviceID != cur.deviceID) {
-                            vault.remove(old.deviceID)
-                            replacing = old.deviceID
-                        }
-                    }
-                    _macs.value = listOf(cur) + _macs.value.filter { it.id != cur.id }
-                    saveMacs()
+                    // only after the question, and this side's yes to the same digits: held until then, dropped with no question
+                    gateOn(channel)
+                    gate.newKey(m.key)?.let { keyTaken(it) }
+                    return
                 }
-                send(ToMac.KeyStored)
-                // paired: `session` comes next
-                channel?.let { awaitSession(it) }
+                keyTaken(m.key)
             }
             // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused key
             // with no session (anyone on the network can send one) only says so, the key kept (`refused` → FORGOTTEN)

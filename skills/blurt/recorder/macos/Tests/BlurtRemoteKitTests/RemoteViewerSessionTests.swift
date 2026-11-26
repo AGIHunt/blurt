@@ -65,6 +65,10 @@ final class RemoteViewerSessionTests: XCTestCase {
         /// either way, as RemoteServer's `answerPairing(false)`)
         enum Answer { case yes, no, none(closeAfter: Double) }
         var answer = Answer.yes
+        /// the owner's yes (the new key) this long after the question
+        var keyAfter = 0.3
+        /// one with a photo of the code, answering as the host: the key at once, with no question (no digits on its screen)
+        var keyWithoutQuestion = false
         /// connections are taken and dropped at once until then (a host not up yet)
         var deafUntil: Date?
         /// the host removes this viewer this long after its session began (its owner's Remove)
@@ -154,12 +158,18 @@ final class RemoteViewerSessionTests: XCTestCase {
                     // a new one: the six digits for the owner, who says yes here; then a key of its own
                     guard RemoteNearby.isNearby(id), let n = nonce, let check = ch.check(revealing: n) else { return ch.close() }
                     digits = check
+                    if keyWithoutQuestion {
+                        let k = RemoteCrypto.newKey()
+                        newKey = k
+                        ch.send(ToPhone.newKey(k))
+                        return
+                    }
                     ch.send(ToPhone.pairingWaits)
                     switch answer {
                     case .yes:
                         let k = RemoteCrypto.newKey()
                         newKey = k
-                        q.asyncAfter(deadline: .now() + 0.3) { ch.send(ToPhone.newKey(k)) }
+                        q.asyncAfter(deadline: .now() + keyAfter) { ch.send(ToPhone.newKey(k)) }
                         pairedID = id
                     case .no: q.asyncAfter(deadline: .now() + 0.3) { ch.close() }
                     case let .none(after): q.asyncAfter(deadline: .now() + after) { ch.close() }
@@ -346,6 +356,8 @@ final class RemoteViewerSessionTests: XCTestCase {
         guard case let .waiting(check)? = v.states.first(where: { if case .waiting = $0 { true } else { false } }) else { return XCTFail() }
         XCTAssertEqual(check.count, 6)
         XCTAssertEqual(check, host.digits)
+        // this Mac's Pair: the digits are the same
+        link.confirmDigits()
         XCTAssertTrue(until(5) { v.states.last == .connected }, "\(v.states)")
         XCTAssertNotNil(v.stored)
         XCTAssertEqual(v.stored, host.pairedKey)

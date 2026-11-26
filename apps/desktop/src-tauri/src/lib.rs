@@ -1347,6 +1347,7 @@ pub fn run() {
             viewer::computers_status,
             viewer::computers_browse,
             viewer::computers_pair,
+            viewer::computers_confirm_pairing,
             viewer::computers_cancel_pairing,
             viewer::computers_retry_pairing,
             viewer::computers_add_again,

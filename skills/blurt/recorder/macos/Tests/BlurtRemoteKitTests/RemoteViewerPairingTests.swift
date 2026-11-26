@@ -116,6 +116,72 @@ final class RemoteViewerPairingTests: XCTestCase {
         XCTAssertTrue(until(8) { v.states.last == .forgotten }, "\(v.states)")
     }
 
+    // MARK: the digits confirmed here first (RemoteJoinGate): anyone with a photo of the code can answer as the host
+
+    /// A key with no question first (no digits were shown): dropped, not held, and a Pair after it changes nothing.
+    func testAKeyWithNoQuestionIsNotKept() throws {
+        let host = try Host(pictures: [])
+        host.keyWithoutQuestion = true
+        let ports = host.start()
+        defer { host.stop() }
+        let link = nearby(ports.tcp)
+        let v = Viewer(link)
+        link.start()
+        defer { link.stop() }
+        Thread.sleep(forTimeInterval: 1.5)
+        link.confirmDigits()
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertNil(v.stored, "\(v.states)")
+        XCTAssertFalse(host.log.contains("keyStored"))
+        XCTAssertTrue(link.pairing)
+        XCTAssertFalse(v.states.contains(where: Self.waited))
+        XCTAssertFalse(v.states.contains(.connected))
+    }
+
+    /// The host's yes before this Mac's Pair: the key is held, not kept, until Pair; then it's kept and the session comes.
+    func testAKeyBeforePairIsHeldUntilPair() throws {
+        // connected, the viewer asks for the picture: the host has frames to send
+        let host = try Host(pictures: try RemoteViewerSessionTests.pictures())
+        let ports = host.start()
+        defer { host.stop() }
+        let link = nearby(ports.tcp)
+        let v = Viewer(link)
+        link.start()
+        defer { link.stop() }
+        XCTAssertTrue(until(5) { v.states.contains(where: Self.waited) }, "\(v.states)")
+        // the key comes 0.3 s after the question: well past it, still nothing kept
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertNil(v.stored)
+        XCTAssertFalse(host.log.contains("keyStored"))
+        XCTAssertTrue(link.pairing)
+        link.confirmDigits()
+        XCTAssertTrue(until(5) { v.states.last == .connected }, "\(v.states)")
+        XCTAssertNotNil(v.stored)
+        XCTAssertEqual(v.stored, host.pairedKey)
+        XCTAssertTrue(host.log.contains("keyStored"))
+        XCTAssertFalse(link.pairing)
+    }
+
+    /// Pair first, then the host's yes: the key is kept as it comes.
+    func testPairThenTheKeyIsKept() throws {
+        // connected, the viewer asks for the picture: the host has frames to send
+        let host = try Host(pictures: try RemoteViewerSessionTests.pictures())
+        host.keyAfter = 1.5
+        let ports = host.start()
+        defer { host.stop() }
+        let link = nearby(ports.tcp)
+        let v = Viewer(link)
+        link.start()
+        defer { link.stop() }
+        XCTAssertTrue(until(5) { v.states.contains(where: Self.waited) }, "\(v.states)")
+        link.confirmDigits()
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertNil(v.stored, "no key yet")
+        XCTAssertTrue(until(5) { v.states.last == .connected }, "\(v.states)")
+        XCTAssertEqual(v.stored, host.pairedKey)
+        XCTAssertTrue(host.log.contains("keyStored"))
+    }
+
     func testTheListSaysARemovedComputerIsRemoved() {
         var c = RemoteComputer(id: "a", deviceID: "d", name: "Mini", port: 1, addresses: [], relayAddress: "wss://relay.example.com")
         XCTAssertEqual(RemoteViewerRow.of(c, connected: false, route: nil, nearby: true, failed: nil), .available(.local))

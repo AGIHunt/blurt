@@ -46,7 +46,9 @@
     <string name="status_screen_permission">On your Mac, allow Screen Recording for Blurt.</string>
     <string name="status_screen_permission_pc">Can’t show the screen. Open Blurt’s Remote Control page on the computer.</string>
     <string name="status_screen_off">To see the screen, allow it in Blurt’s Settings on your computer.</string>
-    <string name="status_waiting">If the computer shows the same digits, %1$s, click Allow on it.</string>
+    <string name="status_allow_on">Click Allow on %1$s.</string>
+    <string name="status_check_digits">Check the Digits on %1$s</string>
+    <string name="status_pair_if_same">If %1$s shows %2$s, tap Pair.</string>
     <!-- the connection label away from home: the computer's name, then the way the session runs (remote-go-between.md) -->
     <string name="via_path">%1$s · %2$s</string>
     <string name="path_same_network">Same network</string>

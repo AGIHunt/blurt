@@ -24,7 +24,8 @@ use blurt_remote::keys::{Keyboard, Sent};
 use blurt_remote::pairing::Pairing;
 use blurt_remote::store::FileKeyStore;
 use blurt_remote::viewer::{
-    self, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target, Want,
+    self, Confirm, Event, Found, Link, PairError, PairStep, PairWith, Quality, Route, Session, Target,
+    Want,
 };
 use blurt_remote::wire::ToMac;
 use blurt_remote::{App, Host, HostConfig};
@@ -321,7 +322,8 @@ async fn paired_by_link(
     let p = Pairing::parse(&link).unwrap();
     let d2 = digits.clone();
     let r = viewer::pair(PairWith::Link(p), "Desk Laptop", None, move |d| {
-        *d2.lock().unwrap() = Some(d.to_string())
+        *d2.lock().unwrap() = Some(d.to_string());
+        true
     })
     .await;
     h.show_pairing(false);
@@ -581,7 +583,7 @@ async fn pair_with_a_computer_found_nearby() {
         PairWith::Link(Pairing::parse(&link).unwrap()),
         "Phone",
         None,
-        |_| {},
+        |_| true,
     )
     .await
     .expect("the first device");
@@ -598,7 +600,10 @@ async fn pair_with_a_computer_found_nearby() {
         PairWith::Nearby(found.clone()),
         "Desk Laptop",
         None,
-        move |d| *d2.lock().unwrap() = Some(d.to_string()),
+        move |d| {
+            *d2.lock().unwrap() = Some(d.to_string());
+            true
+        },
     )
     .await
     .expect("paired nearby");
@@ -641,9 +646,9 @@ async fn pair_with_a_computer_found_nearby() {
     until("listening", || (h.status().port != 0).then_some(())).await;
     let port = h.status().port;
     let found = Found { port, ..found };
-    let r = viewer::pair(PairWith::Nearby(found.clone()), "Desk Laptop", None, |_| {}).await;
+    let r = viewer::pair(PairWith::Nearby(found.clone()), "Desk Laptop", None, |_| true).await;
     assert_eq!(r.err(), Some(PairError::Declined));
-    let r = viewer::pair(PairWith::Nearby(found), "Desk Laptop", None, |_| {}).await;
+    let r = viewer::pair(PairWith::Nearby(found), "Desk Laptop", None, |_| true).await;
     assert_eq!(
         r.err(),
         Some(PairError::Spent),
@@ -674,7 +679,7 @@ async fn a_spent_link_is_not_a_refusal() {
         PairWith::Link(Pairing::parse(&link).unwrap()),
         "Desk Laptop",
         None,
-        |_| {},
+        |_| true,
     )
     .await
     .expect("the first time");
@@ -684,7 +689,10 @@ async fn a_spent_link_is_not_a_refusal() {
         PairWith::Link(Pairing::parse(&link).unwrap()),
         "Desk Laptop",
         None,
-        move |_| a2.store(true, SeqCst),
+        move |_| {
+            a2.store(true, SeqCst);
+            true
+        },
     )
     .await;
     assert_eq!(r.err(), Some(PairError::Spent));
@@ -707,18 +715,26 @@ async fn a_no_and_no_answer() {
         let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
         let steps = Arc::new(Mutex::new(vec![]));
         let s2 = steps.clone();
+        // this side's user says the digits are the same at once; the host's owner says no, or nothing
+        let (yes, confirms) = Confirm::new();
         let r = viewer::pair_steps(
             PairWith::Link(Pairing::parse(&link).unwrap()),
             "Desk Laptop",
             None,
             life,
             true,
-            move |s| s2.lock().unwrap().push(s),
+            confirms,
+            move |s| {
+                if matches!(s, PairStep::Asking(_)) {
+                    yes.confirm();
+                }
+                s2.lock().unwrap().push(s)
+            },
         )
         .await;
         assert_eq!(r.err(), Some(want));
         assert!(
-            matches!(steps.lock().unwrap().as_slice(), [PairStep::Asking(d)] if d.len() == 6),
+            matches!(steps.lock().unwrap().as_slice(), [PairStep::Asking(d), PairStep::Confirmed] if d.len() == 6),
             "{:?}",
             steps.lock().unwrap()
         );
@@ -744,6 +760,7 @@ async fn unreachable_then_asked() {
     };
     let steps = Arc::new(Mutex::new(vec![]));
     let s2 = steps.clone();
+    let (yes, confirms) = Confirm::new();
     let pairing = tokio::spawn(async move {
         viewer::pair_steps(
             PairWith::Nearby(found),
@@ -751,7 +768,13 @@ async fn unreachable_then_asked() {
             None,
             viewer::QUESTION_LIFE,
             true,
-            move |s| s2.lock().unwrap().push(s),
+            confirms,
+            move |s| {
+                if matches!(s, PairStep::Asking(_)) {
+                    yes.confirm();
+                }
+                s2.lock().unwrap().push(s)
+            },
         )
         .await
     });
@@ -781,11 +804,93 @@ async fn unreachable_then_asked() {
     assert!(
         matches!(
             steps.lock().unwrap().as_slice(),
-            [PairStep::Unreachable, PairStep::Asking(_)]
+            [PairStep::Unreachable, PairStep::Asking(_), PairStep::Confirmed]
         ),
         "{:?}",
         steps.lock().unwrap()
     );
+    h.stop();
+}
+
+/// The host's yes comes first (3 s after it asks): its key waits, not taken and not acknowledged (the host hasn't added this
+/// computer), until this side's user says the digits are the same; then it pairs (join_gate.rs).
+#[tokio::test(flavor = "multi_thread")]
+async fn the_key_waits_for_this_sides_yes() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, "");
+    h.show_pairing(true);
+    let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
+    let steps = Arc::new(Mutex::new(vec![]));
+    let s2 = steps.clone();
+    let (yes, confirms) = Confirm::new();
+    let mut pairing = tokio::spawn(async move {
+        viewer::pair_steps(
+            PairWith::Link(Pairing::parse(&link).unwrap()),
+            "Desk Laptop",
+            None,
+            viewer::QUESTION_LIFE,
+            false,
+            confirms,
+            move |s| s2.lock().unwrap().push(s),
+        )
+        .await
+    });
+    until("asked", || {
+        matches!(steps.lock().unwrap().as_slice(), [PairStep::Asking(_)]).then_some(())
+    })
+    .await;
+    // past the host's yes, with room to spare
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), &mut pairing)
+            .await
+            .is_err(),
+        "paired without this side's yes"
+    );
+    assert!(h.status().devices.is_empty(), "the key was acknowledged");
+    yes.confirm();
+    let (c, key) = tokio::time::timeout(Duration::from_secs(5), pairing)
+        .await
+        .expect("in time")
+        .unwrap()
+        .expect("paired");
+    assert_eq!(key.len(), 32);
+    assert_eq!(c.platform.as_deref(), Some("windows"));
+    assert_eq!(h.status().devices.len(), 1);
+    assert!(matches!(
+        steps.lock().unwrap().as_slice(),
+        [PairStep::Asking(_), PairStep::Confirmed]
+    ));
+    h.stop();
+}
+
+/// A yes said before the host asks counts for nothing: the host's owner allows, but with no yes to the digits here the key is
+/// never taken, and the pairing ends unanswered (the question's life cut to 6 s here).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_yes_before_the_question_counts_for_nothing() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, "");
+    h.show_pairing(true);
+    let link = until("a code", || h.status().pairing.map(|p| p.url)).await;
+    let (yes, confirms) = Confirm::new();
+    yes.confirm();
+    let steps = Arc::new(Mutex::new(vec![]));
+    let s2 = steps.clone();
+    let r = viewer::pair_steps(
+        PairWith::Link(Pairing::parse(&link).unwrap()),
+        "Desk Laptop",
+        None,
+        Duration::from_secs(6),
+        false,
+        confirms,
+        move |s| s2.lock().unwrap().push(s),
+    )
+    .await;
+    assert_eq!(r.err(), Some(PairError::Unanswered));
+    assert!(matches!(steps.lock().unwrap().as_slice(), [PairStep::Asking(_)]));
+    assert!(h.status().devices.is_empty());
+    drop(yes);
     h.stop();
 }
 
@@ -801,7 +906,7 @@ async fn a_refused_key_is_forgotten_not_removed() {
         PairWith::Link(Pairing::parse(&link).unwrap()),
         "Desk Laptop",
         None,
-        |_| {},
+        |_| true,
     )
     .await
     .expect("paired");

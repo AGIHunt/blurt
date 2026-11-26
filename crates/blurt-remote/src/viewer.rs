@@ -9,7 +9,8 @@
 //!    paired device or shows a code.
 //!  • `pair`: with a pairing link (`blurtremote://pair?…`, from the host's Add Device) or with a computer found nearby (no code:
 //!    `pairing::nearby_key`, which a host takes only over its own TCP port). Either way the host asks its owner for a yes and both
-//!    ends show the same six digits.
+//!    ends show the same six digits; the host's key is taken only once this side's user said they're the same too (Pair:
+//!    join_gate.rs), since anyone holding the code could stand in for the computer.
 //!  • `Session`: one window's connection, kept up while the window is open (connecting again after a drop), with the picture's
 //!    receiver (repair.rs) and its reports and pings, frames handed on as Annex B with the WebCodecs codec string, and whatever the
 //!    host says as `Event`s.
@@ -23,6 +24,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+use crate::join_gate::JoinGate;
 use crate::packets::{unpack_payload, PointerPacket, VideoPacket};
 use crate::pairing::Pairing;
 use crate::phone::{Event as PhoneEvent, Options, Phone};
@@ -483,8 +485,30 @@ pub enum PairError {
 pub enum PairStep {
     /// nothing has answered for a while; still trying
     Unreachable,
-    /// the host asks its owner now, with these six digits (whatever was said before: they take its place)
+    /// the host asks its owner now, with these six digits (whatever was said before: they take its place); this side's user
+    /// checks them and says they're the same (Pair: `confirm`)
     Asking(String),
+    /// this side's user said the digits are the same: the host's key is taken once its owner allows (at once, when that came first)
+    Confirmed,
+}
+
+/// This side's user's yes to the digits (Pair), for `pair_steps`: `confirm()` from the UI. One said before the host asks counts for
+/// nothing (join_gate.rs).
+#[derive(Clone)]
+pub struct Confirm(mpsc::UnboundedSender<()>);
+
+/// What `pair_steps` listens on for `Confirm`.
+pub struct Confirms(mpsc::UnboundedReceiver<()>);
+
+impl Confirm {
+    pub fn new() -> (Confirm, Confirms) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Confirm(tx), Confirms(rx))
+    }
+
+    pub fn confirm(&self) {
+        let _ = self.0.send(());
+    }
 }
 
 /// How long a host asks its owner about a new device before it takes the silence as a no (server.rs `PAIRING_LIFE`): a close
@@ -494,17 +518,20 @@ pub const QUESTION_LIFE: Duration = Duration::from_secs(120);
 const UNREACHABLE_AFTER: Duration = Duration::from_secs(8);
 
 /// Pairs with a computer: connects, shows the six digits (`digits`) while the host asks its owner, and once the owner says yes
-/// keeps the new key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests
-/// only.
+/// and this side's user said the digits are the same (`digits` → true, at once; false: not, and it ends unpaired) keeps the new
+/// key. → the computer and its key (the caller stores both: `Computers::add`). Tries once. `go_between_at`: tests only.
 pub async fn pair(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
-    digits: impl Fn(&str),
+    digits: impl Fn(&str) -> bool,
 ) -> Result<(Computer, Vec<u8>), PairError> {
-    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, |s| {
+    let (yes, confirms) = Confirm::new();
+    pair_steps(with, device, go_between_at, QUESTION_LIFE, false, confirms, |s| {
         if let PairStep::Asking(d) = s {
-            digits(&d)
+            if digits(&d) {
+                yes.confirm()
+            }
         }
     })
     .await
@@ -512,15 +539,19 @@ pub async fn pair(
 
 /// `pair`, for the Add Computer panel. `keep_trying`: while nothing answers it says `Unreachable` and goes on trying, so if the
 /// host turns up and asks, its digits replace that (the caller ends it by dropping or aborting the future). `question_life`: the
-/// host's (tests shorten it).
+/// host's (tests shorten it). `confirms`: this side's user's Pair; the host's key is taken only after the question and that, in
+/// either order (join_gate.rs). Cancel is the caller dropping the future, as for a no.
+#[allow(clippy::too_many_arguments)]
 pub async fn pair_steps(
     with: PairWith,
     device: &str,
     go_between_at: Option<&str>,
     question_life: Duration,
     keep_trying: bool,
+    confirms: Confirms,
     step: impl Fn(PairStep),
 ) -> Result<(Computer, Vec<u8>), PairError> {
+    let mut confirms = Some(confirms.0);
     let (host_id, name, device_id, key, port, addresses, nearby, relay) = match with {
         PairWith::Link(p) => (
             p.host_id,
@@ -576,16 +607,42 @@ pub async fn pair_steps(
     let patience = question_life + question_life / 12;
     let mut asked: Option<tokio::time::Instant> = None;
     let mut deadline = tokio::time::Instant::now() + patience;
+    // one connection: the gate isn't reset here (a new connection is a new pairing, and a new gate)
+    let mut gate = JoinGate::new();
     let new_key = loop {
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
-        match phone.next(left.min(Duration::from_secs(1))).await {
+        let next = tokio::select! {
+            e = phone.next(left.min(Duration::from_secs(1))) => e,
+            c = async { confirms.as_mut().unwrap().recv().await }, if confirms.is_some() => {
+                match c {
+                    // a yes before the question counts for nothing
+                    Some(()) if gate.can_confirm() => {
+                        let held = gate.confirm();
+                        step(PairStep::Confirmed);
+                        if let Some(k) = held {
+                            break k;
+                        }
+                    }
+                    Some(()) => {}
+                    None => confirms = None,
+                }
+                continue;
+            }
+        };
+        match next {
             Some(PhoneEvent::Control(ToPhone::PairingWaits)) => {
                 let now = tokio::time::Instant::now();
                 asked = Some(now);
                 deadline = now + patience;
+                gate.pairing_waits();
                 step(PairStep::Asking(phone.check.clone()));
             }
-            Some(PhoneEvent::Control(ToPhone::NewKey(k))) => break k,
+            // taken only after the question and this side's yes; held till that yes; dropped before the question
+            Some(PhoneEvent::Control(ToPhone::NewKey(k))) => {
+                if let Some(k) = gate.new_key(k) {
+                    break k;
+                }
+            }
             Some(PhoneEvent::Closed) => {
                 return Err(match asked {
                     None => PairError::Spent,

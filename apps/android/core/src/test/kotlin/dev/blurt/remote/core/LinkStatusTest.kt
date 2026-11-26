@@ -41,9 +41,15 @@ class LinkStatusTest {
     }
 
     @Test fun aPairingUnderWayIsSaidOverTheRest() {
+        // the digits first: Pair says they're the same as the computer's (anyone with a photo of the code can answer as the computer),
+        // Cancel gives up; then the computer's own yes is waited for
+        val check = StatusBanner(StatusMark.CODE, StatusLine.CHECK_DIGITS, StatusLine.PAIR_IF_SAME, StatusAction.PAIR, StatusAction.CANCEL_PAIRING)
         for (p in listOf(LinkPhase.UNPAIRED, LinkPhase.CONNECTING, LinkPhase.UNREACHABLE, LinkPhase.CONNECTED)) {
-            assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER), banner(LinkStatus(p, waiting = true)), "$p")
+            assertEquals(check, banner(LinkStatus(p, waiting = true)), "$p")
+            assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER), banner(LinkStatus(p, waiting = true, digitsConfirmed = true)), "$p")
         }
+        // a yes with no question shows nothing of it
+        assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.CONNECTING), banner(LinkStatus(LinkPhase.CONNECTING, digitsConfirmed = true)))
         // one that didn't take: why, until it's read (OK), and never a dead end: a new code
         val failed = StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.SCAN, StatusAction.DISMISS)
         assertEquals(failed, banner(LinkStatus(LinkPhase.UNPAIRED, pairFailed = true)))
@@ -54,8 +60,10 @@ class LinkStatusTest {
         assertEquals(StatusBanner(StatusMark.PROBLEM, StatusLine.PAIRING_FAILED, StatusLine.WHY_PAIRING_FAILED, StatusAction.RETRY, StatusAction.SCAN),
             banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true)))
         // once the computer asks, its digits take the failure's place, so they can be compared
-        assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER),
+        assertEquals(StatusBanner(StatusMark.CODE, StatusLine.CHECK_DIGITS, StatusLine.PAIR_IF_SAME, StatusAction.PAIR, StatusAction.CANCEL_PAIRING),
             banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true, waiting = true)))
+        assertEquals(StatusBanner(StatusMark.BUSY, StatusLine.WAITING, StatusLine.ALLOW_ON_COMPUTER),
+            banner(LinkStatus(LinkPhase.UNREACHABLE, pairFailed = true, pairRetry = true, waiting = true, digitsConfirmed = true)))
     }
 
     /** Why a pairing ended is read from when, as the Mac viewer does: a spent code is not "didn't allow", and no answer is not a no. */
@@ -103,7 +111,8 @@ class LinkStatusTest {
         assertEquals(none, banner(LinkStatus(LinkPhase.CONNECTING, dropped = true, offline = true)))
         assertEquals(none, banner(LinkStatus(LinkPhase.UNREACHABLE, offline = true, otherComputers = true, away = AwayTrouble.NO_DIRECT, presence = Presence.ASLEEP)))
         // a pairing under way is still what the user is looking at; the rest has nothing to do with it
-        assertEquals(StatusLine.WAITING, banner(LinkStatus(LinkPhase.CONNECTING, offline = true, waiting = true))?.title)
+        assertEquals(StatusLine.CHECK_DIGITS, banner(LinkStatus(LinkPhase.CONNECTING, offline = true, waiting = true))?.title)
+        assertEquals(StatusLine.WAITING, banner(LinkStatus(LinkPhase.CONNECTING, offline = true, waiting = true, digitsConfirmed = true))?.title)
         assertNull(banner(LinkStatus(LinkPhase.CONNECTED, offline = true)))
         assertEquals(StatusLine.OTHER_PHONE, banner(LinkStatus(LinkPhase.REPLACED, offline = true))?.title)
     }

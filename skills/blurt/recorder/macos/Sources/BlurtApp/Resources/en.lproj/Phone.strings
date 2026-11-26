@@ -116,7 +116,9 @@
 "viewer.add.waiting" = "Waiting for %@";
 "viewer.add.failed.title" = "Couldn’t Add %@";
 "viewer.no_direct.help" = "%1$@ can’t be reached directly from this network. On %1$@, open Blurt Settings → Remote Control and set a relay address. On the same network, no relay is needed.";
-"viewer.add.check" = "Click Allow on %@ if it shows these digits.";
+"viewer.add.check" = "If %@ shows these digits, click Pair.";
+"viewer.add.pair" = "Pair";
+"viewer.add.allow" = "Click Allow on %@.";
 "viewer.add.refused" = "%@ didn’t allow this Mac.";
 "viewer.add.unreachable" = "Can’t reach %@.";
 "viewer.add.unreachable.help" = "Make sure %@ is on and Blurt is open there.";

@@ -115,7 +115,9 @@
 "viewer.add.waiting" = "正在等待 %@";
 "viewer.add.failed.title" = "未能添加 %@";
 "viewer.no_direct.help" = "从这个网络无法直接连到 %1$@。请在 %1$@ 上打开口喷鸡设置 → 远程控制，填写中转地址。在同一网络下不需要中转。";
-"viewer.add.check" = "如果 %@ 显示相同的数字，请在那台电脑上点「允许」。";
+"viewer.add.check" = "如果 %@ 显示相同的数字，请点「配对」。";
+"viewer.add.pair" = "配对";
+"viewer.add.allow" = "请在 %@ 上点「允许」。";
 "viewer.add.refused" = "%@ 未允许本机。";
 "viewer.add.unreachable" = "无法连接 %@。";
 "viewer.add.unreachable.help" = "请确认 %@ 已开机，并且打开了口喷鸡。";

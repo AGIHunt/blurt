@@ -478,7 +478,7 @@ final class PadViewController: UIViewController {
         }.store(in: &bag)
         // the picture was of the Mac just left
         l.$current.map { $0?.deviceID }.removeDuplicates().dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.setShowing(false) }.store(in: &bag)
-        Publishers.CombineLatest3(l.$waitingForMac, l.$pairFailed, l.$away).receive(on: RunLoop.main).sink { [weak self] _, _, _ in
+        Publishers.CombineLatest4(l.$waitingForMac, l.$digitsConfirmed, l.$pairFailed, l.$away).receive(on: RunLoop.main).sink { [weak self] _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
         Publishers.CombineLatest4(l.$hostLocked, l.$meeting, l.$offline, l.$localDenied).receive(on: RunLoop.main).sink { [weak self] _ in
@@ -576,7 +576,7 @@ final class PadViewController: UIViewController {
                                                 screenAsked: screenAsked, showing: showing, locked: l.hostLocked, meeting: l.meeting, offline: l.offline,
                                                 localDenied: l.localDenied,
                                                 presence: l.presence.flatMap { $0.host ? nil : $0.asleep != nil ? .asleep : $0.seen != nil ? .lastOnline : nil },
-                                                waiting: l.waitingForMac, pairFailed: l.pairFailed != nil,
+                                                waiting: l.waitingForMac, digitsConfirmed: l.digitsConfirmed, pairFailed: l.pairFailed != nil,
                                                 pairRetry: l.pairFailed?.canRetry == true, away: l.away))
         var ready = l.state == .connected
         #if DEBUG
@@ -651,6 +651,8 @@ final class PadViewController: UIViewController {
         case .another: showSettings()
         case .takeOver, .reconnect: Link.shared.takeBack()
         case .dismiss: Link.shared.dismissPairFailure()
+        case .pair: Link.shared.confirmDigits()
+        case .cancelPairing: Link.shared.cancelJoin()
         case .showScreen: toggleScreen()
         case .openSettings: if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
         }

@@ -534,3 +534,23 @@ fn files() {
     assert_eq!(to_phone("file_progress").file_answer(), Some(FileAnswer::Progress { id: "f1".into(), bytes: 5 }));
     assert_eq!(ToPhone::from(FileAnswer::Failed { id: "f1".into(), why: "space".into() }).to_json(), find("toPhone", "file_failed"));
 }
+
+/// The joining side takes `newKey` only after the computer's question and its own user's yes to the digits, in either order
+/// (join_gate.rs, the Mac's RemoteJoinGate): every case the Swift tests wrote.
+#[test]
+fn join_gate() {
+    use blurt_remote::join_gate::{JoinEvent, JoinGate};
+    let v = vectors();
+    let cases = v["joinGate"]["cases"].as_array().expect("joinGate.cases");
+    assert!(cases.len() >= 10);
+    for c in cases {
+        let events: Vec<JoinEvent> = c["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| JoinEvent::parse(e.as_str().unwrap()).unwrap_or_else(|| panic!("event {e}")))
+            .collect();
+        let want = c["stores"].as_u64().map(|i| i as usize);
+        assert_eq!(JoinGate::run(&events), want, "{}", c["events"]);
+    }
+}

@@ -2,8 +2,8 @@
 // PhonePage.tsx): the computers this one shows and drives. Each row: the name, its system, its state (Connected · <path>,
 // Available · <path>, Needs its own relay, Offline · <when last seen>, Removed this computer), its button (Open Window, Connect
 // or Add Again…) and ⋯ with Remove. Add Computer… lists the Blurt computers found on this network (choosing one starts pairing)
-// and takes a pasted pairing link for one that's away. While pairing, the six digits the other computer asks with show here; a
-// pairing that fails says why and what to do next (Try Again, or Back with the link kept). The app's side: src-tauri/src/viewer.rs.
+// and takes a pasted pairing link for one that's away. While pairing, the six digits the other computer asks with show here, with
+// Pair for when they match (then Allow is clicked there); a pairing that fails says why and what to do next (Try Again, or Back with the link kept). The app's side: src-tauri/src/viewer.rs.
 import { useEffect, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { i18n } from '../i18n';
@@ -138,11 +138,19 @@ function AddPanel({ s, onClose }: { s: ComputersStatus; onClose: () => void }) {
             <div className="st-phone-ask-title">{p.state === 'asking' ? S('computers.pairing.asking', p.name) : S('computers.pairing.connecting', p.name)}</div>
             {p.state === 'asking' && p.digits ? (
               <>
-                <div className="st-detail">{S('computers.pairing.asking.detail')}</div>
+                {/* Pair first, then the other computer's owner allows: its key is taken only after both (join_gate.rs) */}
+                <div className="st-detail" data-testid="computers-digits-detail">
+                  {p.confirmed ? S('computers.pairing.allow', p.name) : S('computers.pairing.asking.detail', p.name)}
+                </div>
                 <div className="st-phone-ask-foot">
                   <span className="st-phone-digits" data-testid="computers-digits" aria-label={p.digits.split('').join(' ')}>{groupDigits(p.digits)}</span>
                   <span className="grow" />
                   <button className="ph-act" onClick={onClose}>{S('phone.cancel')}</button>
+                  {!p.confirmed && (
+                    <button className="ph-act primary" onClick={() => void applyComputers(computers.confirmPairing()).catch(() => {})} data-testid="computers-digits-pair">
+                      {S('computers.pair')}
+                    </button>
+                  )}
                 </div>
               </>
             ) : (

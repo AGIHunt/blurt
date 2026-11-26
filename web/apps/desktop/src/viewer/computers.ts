@@ -33,6 +33,8 @@ export interface Pairing {
   error: PairingError | null;
   /** begun from a pasted link (else from a computer found nearby) */
   link: boolean;
+  /** asking, and Pair was clicked here: the other computer's owner allows now */
+  confirmed: boolean;
 }
 export interface ComputersStatus {
   computers: ComputerRow[];
@@ -52,6 +54,8 @@ export const computers = {
   browse: (on: boolean) => invoke<ComputersStatus>('computers_browse', { on }),
   pairNearby: (id: string) => invoke<ComputersStatus>('computers_pair', { nearby: id, link: null }),
   pairLink: (link: string) => invoke<ComputersStatus>('computers_pair', { nearby: null, link }),
+  /** the digits step's Pair: the other computer shows the same digits (its key is taken only after this) */
+  confirmPairing: () => invoke<ComputersStatus>('computers_confirm_pairing'),
   /** Cancel, or Back to the panel's first page (the link stays in its field) */
   cancelPairing: () => invoke<ComputersStatus>('computers_cancel_pairing'),
   /** the failed panel's Try Again: the same link, or the computer found nearby, once more */

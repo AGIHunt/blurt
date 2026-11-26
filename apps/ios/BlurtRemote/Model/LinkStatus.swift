@@ -36,6 +36,8 @@ struct LinkStatus: Equatable {
     var presence: Presence?
     /// the computer is asking its owner about this phone's code
     var waiting = false
+    /// this phone's user said its digits are the same as the computer's (Pair on the card)
+    var digitsConfirmed = false
     /// a pairing just didn't take; Link has the sentences
     var pairFailed = false
     /// the code that didn't take can still work (it couldn't be reached, and is still being tried): Try Again
@@ -70,13 +72,14 @@ struct StatusBanner: Equatable {
         case endedThere
         case pairFirst, whereTheCodeIs
         case waiting, allowOnComputer
+        case checkDigits, pairIfSame
         case pairingFailed, whyPairingFailed
         case cantControl, howToAllowControl
         case cantShowScreen, allowScreen, screenIsOff, pictureStopped
         case locked, unlockFirst
     }
 
-    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings, showScreen }
+    enum Action: Equatable { case retry, scan, another, takeOver, reconnect, dismiss, openSettings, showScreen, pair, cancelPairing }
 
     var mark: Mark
     var title: Line
@@ -128,6 +131,10 @@ struct StatusBanner: Equatable {
         }
         // a pairing under way is what the user is looking at: it's said over whatever the computer in hand is doing. The digits win:
         // once the computer asks, whatever went wrong before is past
+        // anyone with a photo of the code can answer as the computer: this side says the digits are the same before a key is taken
+        if s.waiting, !s.digitsConfirmed {
+            return StatusBanner(mark: .code, title: .checkDigits, detail: .pairIfSame, action: .pair, second: .cancelPairing)
+        }
         if s.waiting { return StatusBanner(mark: .busy, title: .waiting, detail: .allowOnComputer) }
         if s.pairFailed {
             // never a dead end: the same code once more where it can still work, else a new one; what there was to do about the

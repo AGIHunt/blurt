@@ -264,6 +264,8 @@ on 正在连接… with an empty subtitle while the list still said 可连接 ·
   same session, the picture decoded and shown at the window's size (2560 × 1440 for a 1280-pt window), ⌘C arrived as `mods Ctrl` + C,
   a held C as a second down, F13 and the keypad's Enter by name, ⌃⌘ released (`mods ""`, `captured false`, `releaseAll`), a click as
   button down / up, and the clipboard went both ways.
+  Since 2026-11-26 the viewer pairs only after its own Pair as well (remote-protocol.md §Joining): a scripted `viewer fakehost` pairing
+  needs `viewer confirm` before it finishes, and `viewer pairing confirmed` looks for the after-Pair line.
 - Not run yet: a real host. This Mac is never driven (the founder's rule), so viewer → host runs are against another Mac and Windows /
   Linux machines. Not measured: the event tap's hold on ⌘Tab / ⌘Space against a real host, decode-to-glass latency, two windows on one
   host.

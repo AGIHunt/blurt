@@ -139,6 +139,96 @@
       }
     ]
   },
+  "joinGate" : {
+    "about" : "While joining, the joining side stores newKey only after pairingWaits and its own user's yes to the same digits (same), in either order of yes and key. A key before pairingWaits is dropped, not held; reconnect starts over. stores: the index of the event at which the key is stored, or null.",
+    "cases" : [
+      {
+        "events" : [
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "newKey"
+        ],
+        "stores" : 2
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey",
+          "same"
+        ],
+        "stores" : 2
+      },
+      {
+        "events" : [
+          "same",
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "newKey",
+          "pairingWaits",
+          "same"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "newKey",
+          "reconnect",
+          "pairingWaits",
+          "same"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "pairingWaits",
+          "newKey"
+        ],
+        "stores" : null
+      },
+      {
+        "events" : [
+          "pairingWaits",
+          "same",
+          "reconnect",
+          "pairingWaits",
+          "same",
+          "newKey"
+        ],
+        "stores" : 5
+      }
+    ]
+  },
   "pairingURL" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
   "pointer" : [
     {

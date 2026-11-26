@@ -182,7 +182,9 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
                 StatusLine.PAIR_FIRST -> c.getString(R.string.status_pair_first)
                 StatusLine.WHERE_THE_CODE_IS -> c.getString(R.string.status_unpaired)
                 StatusLine.WAITING -> c.getString(R.string.status_waiting_title)
-                StatusLine.ALLOW_ON_COMPUTER -> c.getString(R.string.status_waiting, check ?: "")
+                StatusLine.ALLOW_ON_COMPUTER -> c.getString(R.string.status_allow_on, n)
+                StatusLine.CHECK_DIGITS -> c.getString(R.string.status_check_digits, n)
+                StatusLine.PAIR_IF_SAME -> c.getString(R.string.status_pair_if_same, n, check ?: "")
                 StatusLine.PAIRING_FAILED -> failed?.title ?: c.getString(R.string.status_pair_failed)
                 StatusLine.WHY_PAIRING_FAILED -> failed?.help ?: ""
                 StatusLine.CANT_CONTROL -> c.getString(R.string.status_cant_control, n)
@@ -207,6 +209,8 @@ class StatusCard(c: Context, onAction: () -> Unit, onSecond: () -> Unit) : Linea
             StatusAction.RECONNECT -> R.string.reconnect
             StatusAction.DISMISS -> R.string.ok
             StatusAction.SHOW_SCREEN -> R.string.show_screen
+            StatusAction.PAIR -> R.string.pair
+            StatusAction.CANCEL_PAIRING -> R.string.cancel
         })
 
         /** as the phone writes times: today only the time, earlier the day too */

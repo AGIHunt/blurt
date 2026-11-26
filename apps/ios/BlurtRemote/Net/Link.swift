@@ -362,8 +362,14 @@ final class Link: ObservableObject {
     @Published var offered: RemotePairing?
     /// the Mac is asking its owner about the code this phone used
     @Published private(set) var waitingForMac = false
-    /// the four digits the Mac shows with its question: a yes there is for this iPhone only if they match
+    /// the six digits the computer shows with its question: a yes there is for this iPhone only if they match
     private(set) var pairCheck: String?
+    /// this iPhone's user said the digits are the same (Pair on the card): until then a key from the other end isn't taken, since anyone
+    /// with a photo of the code can answer as the computer (RemoteJoinGate)
+    @Published private(set) var digitsConfirmed = false
+    private var gate = RemoteJoinGate()
+    /// the connection the gate's question came on: a new one asks again, with new digits
+    private weak var gateChannel: RemoteChannel?
     /// a pairing that didn't take, for the pad to say
     @Published private(set) var pairFailed: PairFailure?
     /// when the computer began asking about the code in hand
@@ -398,6 +404,9 @@ final class Link: ObservableObject {
         if let j = joining { Keychain.remove(account: j.mac.deviceID) }
         joining = (m, joining != nil ? joining!.back : current, Date())
         joinOpens = 0
+        gate.reset()
+        gateChannel = nil
+        digitsConfirmed = false
         pairFailed = nil
         switchTo(m)
     }
@@ -439,6 +448,9 @@ final class Link: ObservableObject {
         guard let j = joining else { return }
         joining = nil
         waitingForMac = false
+        digitsConfirmed = false
+        gate.reset()
+        gateChannel = nil
         askedAt = nil
         Keychain.remove(account: j.mac.deviceID)
         pairFailed = Self.failure(why, name: j.mac.name, hasRelay: j.mac.relayAddress != nil)
@@ -459,6 +471,9 @@ final class Link: ObservableObject {
         if let j = joining { Keychain.remove(account: j.mac.deviceID) }
         joining = nil
         waitingForMac = false
+        digitsConfirmed = false
+        gate.reset()
+        gateChannel = nil
         askedAt = nil
         pairFailed = nil
     }
@@ -1120,6 +1135,10 @@ final class Link: ObservableObject {
             ScreenStream.shared.shape(png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
         case let .relay(a): noteRelay(a)
         case .pairingWaits:
+            guard joining != nil else { return }
+            gateOn(channel)
+            gate.pairingWaits()
+            digitsConfirmed = false
             pairCheck = channel?.check
             waitingForMac = true
             askedAt = Date()
@@ -1130,33 +1149,14 @@ final class Link: ObservableObject {
                 if let self, self.waitingForMac, self.joining?.mac.deviceID == d { self.joinFailed(.unanswered) }
             }
         case let .newKey(k):
-            guard let c = current else { return }
-            Keychain.store(k, account: c.deviceID)
+            guard current != nil else { return }
             if joining != nil {
-                joining = nil
-                waitingForMac = false
-                askedAt = nil
-                pairFailed = nil
-                lastLink = ""
-                if let old = macs.first(where: { $0.id == c.id }), old.deviceID != c.deviceID {
-                    Keychain.remove(account: old.deviceID)
-                    replacing = old.deviceID
-                }
-                macs.removeAll { $0.id == c.id }
-                macs.insert(c, at: 0)
-                saveMacs()
+                // only after the question, and this side's yes to the same digits: held until then, dropped with no question
+                gateOn(channel)
+                guard let k = gate.newKey(k) else { return }
+                return keyTaken(k)
             }
-            send(.keyStored)
-            // paired: `session` comes next
-            if let ch = channel {
-                let due = DispatchWorkItem { [weak self, weak ch] in
-                    guard let self, let ch, self.channel === ch, !self.greeted else { return }
-                    self.lost()
-                }
-                sessionDue?.cancel()
-                sessionDue = due
-                DispatchQueue.main.asyncAfter(deadline: .now() + RemoteReconnect.sessionDue(relay: ch.isRelay), execute: due)
-            }
+            keyTaken(k)
         case .removed:
             // said in a session it had opened, so it's so: the key goes, and the list says Removed until it's paired again. A refused
             // key with no session (anyone on the network can send one) only says so, the key kept (`refused` → `.forgotten`)
@@ -1178,6 +1178,67 @@ final class Link: ObservableObject {
         // the answer to Get Copied Items (a phone isn't a viewer, so the host sends it no other)
         case let .clipboard(t): Transfers.shared.clipText(t)
         case let .screenLocked(on): hostLocked = on
+        }
+    }
+
+    /// The joining connection's gate: a new connection starts it over.
+    private func gateOn(_ c: RemoteChannel?) {
+        guard gateChannel !== c else { return }
+        gate.reset()
+        gateChannel = c
+        digitsConfirmed = false
+    }
+
+    /// The card's Pair: the digits here are the same as the computer's. Its yes, if it came first, completes the pairing now.
+    func confirmDigits() {
+        guard joining != nil, waitingForMac, gateChannel === channel, gate.canConfirm else { return }
+        digitsConfirmed = true
+        if let k = gate.confirm() { keyTaken(k) }
+    }
+
+    /// The card's Cancel while the digits are shown: back to the computer that was in hand, with nothing to say.
+    func cancelJoin() {
+        guard let j = joining else { return }
+        abandonJoin()
+        Keychain.remove(account: j.mac.deviceID)
+        leave()
+        current = macs.first { $0.id == j.back?.id } ?? macs.first
+        state = current == nil ? .unpaired : .connecting
+        disconnect()
+        connect()
+    }
+
+    /// The computer's key, now that it may be kept: stored, and the pairing done.
+    private func keyTaken(_ k: Data) {
+        guard let c = current else { return }
+        Keychain.store(k, account: c.deviceID)
+        if joining != nil {
+            joining = nil
+            waitingForMac = false
+            digitsConfirmed = false
+            gate.reset()
+            gateChannel = nil
+            askedAt = nil
+            pairFailed = nil
+            lastLink = ""
+            if let old = macs.first(where: { $0.id == c.id }), old.deviceID != c.deviceID {
+                Keychain.remove(account: old.deviceID)
+                replacing = old.deviceID
+            }
+            macs.removeAll { $0.id == c.id }
+            macs.insert(c, at: 0)
+            saveMacs()
+        }
+        send(.keyStored)
+        // paired: `session` comes next
+        if let ch = channel {
+            let due = DispatchWorkItem { [weak self, weak ch] in
+                guard let self, let ch, self.channel === ch, !self.greeted else { return }
+                self.lost()
+            }
+            sessionDue?.cancel()
+            sessionDue = due
+            DispatchQueue.main.asyncAfter(deadline: .now() + RemoteReconnect.sessionDue(relay: ch.isRelay), execute: due)
         }
     }
 

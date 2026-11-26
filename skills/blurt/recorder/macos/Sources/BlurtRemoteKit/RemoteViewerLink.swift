@@ -169,6 +169,11 @@ public final class RemoteViewerLink {
     /// `pairingLife`): a close that late is "nobody answered", not "no"
     var questionLife = 120.0
     private var waitingSince: Double?
+    /// pairing: the host's key is taken only after its question and this Mac's user's yes to the same digits (Pair), since anyone with
+    /// a photo of the code can answer as the host (RemoteJoinGate, docs/design/remote-protocol.md)
+    private var gate = RemoteJoinGate()
+    /// the connection the gate's question came on: a new one asks again, with new digits
+    private weak var gateChannel: RemoteChannel?
 
     public init(computer: RemoteComputer, key: Data, deviceName: String, pairing: Bool = false, endpoint: NWEndpoint? = nil, relayOnly: String? = nil,
                 callbacks: DispatchQueue = .main) {
@@ -625,16 +630,20 @@ public final class RemoteViewerLink {
         case .udpOK:
             channel?.udpConfirmed()
         case .pairingWaits:
+            if pairing {
+                gateOn(channel)
+                gate.pairingWaits()
+            }
             waitingSince = CACurrentMediaTime()
             set(.waiting(check: channel?.check ?? ""))
         case let .newKey(k):
             guard k.count == 32 else { return }
-            key = k
-            onNewKey?(computer, k)
-            pairing = false
-            channel?.send(ToMac.keyStored)
-            let c = computer
-            callbacks.async { self.onComputer?(c) }
+            if pairing {
+                // only after the question, and this Mac's yes to the same digits: held until then, dropped with no question
+                gateOn(channel)
+                guard gate.newKey(k) != nil else { return }
+            }
+            keyTaken(k)
         case .removed:
             set(.removed)
             active = false
@@ -664,6 +673,34 @@ public final class RemoteViewerLink {
         default: break
         }
         callbacks.async { self.onMessage?(m) }
+    }
+
+    /// The pairing's gate, for this connection: a new one starts it over.
+    private func gateOn(_ c: RemoteChannel?) {
+        guard gateChannel !== c else { return }
+        gate.reset()
+        gateChannel = c
+    }
+
+    /// Add Computer's Pair: the digits here are the same as the host's. Its key, if it came first, is taken now; a yes before the
+    /// question counts for nothing.
+    public func confirmDigits() {
+        queue.async {
+            guard self.pairing, let ch = self.channel, self.gateChannel === ch, self.gate.canConfirm else { return }
+            if let k = self.gate.confirm() { self.keyTaken(k) }
+        }
+    }
+
+    /// The host's key, now that it may be kept: stored, and the host told so (`session` comes next).
+    private func keyTaken(_ k: Data) {
+        key = k
+        onNewKey?(computer, k)
+        pairing = false
+        gate.reset()
+        gateChannel = nil
+        channel?.send(ToMac.keyStored)
+        let c = computer
+        callbacks.async { self.onComputer?(c) }
     }
 
     /// The host's own addresses, as it listed them this session: private and overlay ones are kept to try next time.

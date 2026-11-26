@@ -4,7 +4,7 @@
 // the app. URL parameters:
 //   ?computers= none | some (default) | nodirect | removed   the list: none, or Connected / Available (nodirect: Needs its own relay;
 //                                                           removed: Removed this computer) / Offline rows
-//   ?computers_pairing= connecting | asking | failed        Add Computer… already pairing
+//   ?computers_pairing= connecting | asking | confirmed | failed        Add Computer… already pairing (confirmed: asking, after Pair)
 //   &computers_error= declined (default) | unanswered | spent | unreachable   &computers_link=1 (begun from a link)
 //   ?viewer=<id>&viewer_state= connected (default) | connecting | offline | busy | noDirect | removed | replaced | noControl
 //   &viewer_route= local | direct | relay | goBetween | tailscale   &viewer_displays=2   &viewer_host= mac | windows | linux
@@ -46,17 +46,21 @@ const state: ComputersStatus = {
   paired: 0,
 };
 const p0 = param('computers_pairing');
-if (p0 === 'connecting' || p0 === 'asking' || p0 === 'failed')
+if (p0 === 'connecting' || p0 === 'asking' || p0 === 'confirmed' || p0 === 'failed')
   state.pairing = {
     name: L('Office ThinkPad', '办公室 ThinkPad'),
-    state: p0,
-    digits: p0 === 'asking' ? '204718' : null,
+    state: p0 === 'confirmed' ? 'asking' : p0,
+    confirmed: p0 === 'confirmed',
+    digits: p0 === 'asking' || p0 === 'confirmed' ? '204718' : null,
     error: p0 === 'failed' ? ((param('computers_error') as 'declined' | 'unanswered' | 'spent' | 'unreachable' | null) ?? 'declined') : null,
     link: param('computers_link') === '1',
   };
 let last: Record<string, any> = {};
 
 let timers: ReturnType<typeof setTimeout>[] = [];
+/** the pairing under way: the other computer's owner said yes (it pairs once Pair is clicked here), and what pairing does */
+let ownerSaidYes = false;
+let paired = () => {};
 const now = () => JSON.parse(JSON.stringify(state)) as ComputersStatus;
 
 export function mockComputers(cmd: string, a: Record<string, any>, emit: Emit): unknown {
@@ -78,22 +82,29 @@ export function mockComputers(cmd: string, a: Record<string, any>, emit: Emit): 
       const link = a.link as string | null;
       const name = a.nearby ? state.nearby.find((n) => n.id === a.nearby)?.name ?? '' : L('Den PC', '书房电脑');
       if (link != null && !/^blurtremote:\/\/pair\?/.test(link)) {
-        state.pairing = { name: '', state: 'failed', digits: null, error: 'invalid', link: true };
+        state.pairing = { name: '', state: 'failed', digits: null, error: 'invalid', link: true, confirmed: false };
         break;
       }
-      state.pairing = { name, state: 'connecting', digits: null, error: null, link: link != null };
+      state.pairing = { name, state: 'connecting', digits: null, error: null, link: link != null, confirmed: false };
       later(1200, () => state.pairing && (state.pairing = { ...state.pairing, state: 'asking', digits: String(100000 + Math.floor(Math.random() * 900000)) }));
-      // the owner there says yes a few seconds later
-      later(7000, () => {
+      ownerSaidYes = false;
+      paired = () => {
         if (!state.pairing) return;
         state.pairing = null;
         const id = a.nearby ?? `pc-${Date.now()}`;
         state.nearby = state.nearby.filter((n) => n.id !== id);
         state.computers = [...state.computers.filter((c) => c.id !== id), { id, name, platform: 'windows', state: 'connected', key: true, route: 'local', lastSeen: Date.now(), windows: 1 }];
         state.paired += 1;
-      });
+      };
+      // the owner there says yes a few seconds later; it pairs once Pair was clicked here too
+      later(7000, () => (state.pairing?.confirmed ? paired() : (ownerSaidYes = true)));
       break;
     }
+    case 'computers_confirm_pairing':
+      if (state.pairing?.state !== 'asking' || state.pairing.confirmed) break;
+      state.pairing = { ...state.pairing, confirmed: true };
+      if (ownerSaidYes) later(300, paired);
+      break;
     case 'computers_cancel_pairing':
       timers.forEach(clearTimeout);
       timers = [];

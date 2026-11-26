@@ -66,7 +66,9 @@ enum Words {
         case .pairFirst: return String(localized: "Pair with your computer")
         case .whereTheCodeIs: return whereTheCodeIs
         case .waiting: return String(localized: "Waiting for your computer")
-        case .allowOnComputer: return String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your computer. Check that it shows %@."), check ?? "")
+        case .allowOnComputer: return String(localized: "Click Allow on \(n).")
+        case .checkDigits: return String(localized: "Check the Digits on \(n)")
+        case .pairIfSame: return String(localized: "If \(n) shows \(check ?? ""), tap Pair.")
         case .pairingFailed: return failed?.title ?? String(localized: "Pairing didn’t work")
         case .whyPairingFailed: return failed?.help ?? ""
         case .cantControl: return String(localized: "Can’t control \(n)")
@@ -90,6 +92,8 @@ enum Words {
         case .dismiss: String(localized: "OK")
         case .openSettings: String(localized: "Open Settings")
         case .showScreen: String(localized: "Show Screen")
+        case .pair: String(localized: "Pair")
+        case .cancelPairing: String(localized: "Cancel")
         }
     }
 

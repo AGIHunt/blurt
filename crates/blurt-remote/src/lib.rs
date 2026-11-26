@@ -11,6 +11,7 @@
 //!     crypto.rs       handshake, six digits, seals
 //!     packets.rs      framing, pointer / video / cursor packets
 //!     pairing.rs      the QR code's link
+//!     join_gate.rs    the joining side's gate: newKey only after the question and its own user's yes
 //!     relay.rs        the owner's relay, STUN, this machine's addresses
 //!     rate.rs         the picture's rate control
 //!     input.rs        clicks, drags, scroll phases and the coast, held keys: what the backend is told to press
@@ -34,6 +35,7 @@ pub mod displays;
 pub mod agent;
 pub mod files;
 pub mod input;
+pub mod join_gate;
 pub mod keys;
 pub mod mic;
 pub mod packets;
