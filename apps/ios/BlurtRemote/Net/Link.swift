@@ -1278,7 +1278,11 @@ final class Link: ObservableObject {
             if Thread.isMainThread { Transfers.shared.changed(t) } else { DispatchQueue.main.async { Transfers.shared.changed(t) } }
         }
         // on the main thread (heard is): the file is gone once this returns
-        receiver.onClip = { url, name, _ in Transfers.shared.clipFile(url, name: name) }
+        // on the files queue: read before the file goes, put on the clipboard on the main thread (only if it was asked for)
+        receiver.onClip = { url, name, _ in
+            guard let d = try? Data(contentsOf: url) else { return }
+            DispatchQueue.main.async { Transfers.shared.clipData(d, name: name) }
+        }
     }
 
     private func filesUp(_ c: RemoteChannel) {
@@ -1303,7 +1307,7 @@ final class Link: ObservableObject {
         }
         guard was else { return }
         files.connection(up: false)
-        if let d = filesDevice { receiver.suspend(device: d) }
+        if let d = filesDevice { filesQueue.async { self.receiver.suspend(device: d) } }
         Transfers.shared.sessionDown()
     }
 
@@ -1312,10 +1316,11 @@ final class Link: ObservableObject {
         guard let device = filesDevice else { return }
         switch o {
         case let .begin(i) where !i.clip:
+            Transfers.shared.filesAnswered()
             switch Transfers.shared.admit(i) {
             case .go: break
             case .hold: return
-            case .refuse: return send(ToMac(RemoteFileAnswer.failed(id: i.id, why: "stopped")))
+            case .refuse: return answerFile(.failed(id: i.id, why: "stopped"))
             }
         case let .end(id):
             // given up on while it was asked about
@@ -1325,16 +1330,24 @@ final class Link: ObservableObject {
         feed(o, device)
     }
 
+    /// What comes in is written off the main thread, in order: chunks, the space check and the final move.
+    private let filesQueue = DispatchQueue(label: "blurt.remote.files.in", qos: .userInitiated)
+
     /// One message for the receiver, its answers back on the session.
     func feed(_ o: RemoteFileOut, _ device: String? = nil) {
         guard let d = device ?? filesDevice else { return }
-        receiver.heard(o, from: d) { [weak self] a in self?.send(ToMac(a)) }
+        filesQueue.async { [weak self] in self?.receiver.heard(o, from: d) { a in self?.answerFile(a) } }
+    }
+
+    /// An answer about a file coming in, from any thread.
+    private func answerFile(_ a: RemoteFileAnswer) {
+        filesLock.withLock { filesChannel }?.send(ToMac(a))
     }
 
     /// × on a file coming in: its part goes, and the computer hears `stopped`.
     func stopIncoming(_ id: String) {
         guard let d = filesDevice ?? current?.id else { return }
-        receiver.stop(id, from: d) { [weak self] a in self?.send(ToMac(a)) }
+        filesQueue.async { [weak self] in self?.receiver.stop(id, from: d) { a in self?.answerFile(a) } }
     }
 
     /// Get Copied Items: the computer reads its clipboard once and answers.

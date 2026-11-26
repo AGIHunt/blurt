@@ -22,12 +22,14 @@ final class TransferTests: XCTestCase {
         var stoppedOut: [String] = []
         var stoppedIn: [String] = []
         var again: [String] = []
+        var asked = 0
     }
 
     private func model(mobile: Bool = false, ready: Bool = true, active: Bool = true, peer: (String, String)? = ("pc-1", "Office PC"),
                        store: URL? = nil, outbox: Outbox? = nil) -> (Transfers, Calls) {
         let c = Calls()
         let env = Transfers.Env(peer: { peer.map { (id: $0.0, name: $0.1) } }, mobileData: { mobile }, meeting: { false }, ready: { ready },
+                                askClipboard: { c.asked += 1 },
                                 queue: { c.queued.append(($0, $1, $2, $3)) }, feed: { c.fed.append($0) }, answer: { c.answered.append($0) },
                                 stopOut: { c.stoppedOut.append($0) }, stopIn: { c.stoppedIn.append($0) }, again: { c.again.append($0) },
                                 active: { active })
@@ -86,6 +88,39 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(TransferWords.nothing("unsupported", name: "Office PC"), "Can’t get this kind of item from Office PC.")
         XCTAssertEqual(TransferWords.firstWords("  Hello\n\nworld  "), "Hello world")
         XCTAssertEqual(TransferWords.firstWords(String(repeating: "a", count: 80)), String(repeating: "a", count: 60) + "…")
+    }
+
+    // MARK: the clipboard, only when asked
+
+    func testNothingTheComputerSendsUnaskedReachesTheClipboard() {
+        let (t, c) = model()
+        t.clipData(Data("unasked".utf8), name: "Text.txt")
+        t.clipText("unasked")
+        t.clipNone("empty")
+        XCTAssertNil(t.said, "ignored: nobody asked")
+        t.getCopied()
+        XCTAssertEqual(c.asked, 1)
+        XCTAssertTrue(t.getting)
+        t.clipNone("empty")
+        XCTAssertEqual(t.said?.title, "Nothing is copied on Office PC.")
+        XCTAssertFalse(t.getting, "the first answer uses the question up")
+        t.dismissSaid()
+        t.clipText("a second answer")
+        XCTAssertNil(t.said)
+        // files beginning are the answer too; a drop clears the question
+        t.getCopied()
+        t.filesAnswered()
+        XCTAssertFalse(t.getting)
+        t.getCopied()
+        t.sessionDown()
+        t.clipData(Data("late".utf8), name: "Text.txt")
+        XCTAssertNil(t.said)
+        XCTAssertEqual(Transfers.askedFor, 30)
+        // asked, a clip file's text lands
+        t.getCopied()
+        t.clipData(Data("Q4 报价单 第一版".utf8), name: "Text.txt")
+        XCTAssertEqual(t.said?.title, "Copied")
+        XCTAssertEqual(t.said?.detail, "Q4 报价单 第一版")
     }
 
     // MARK: mobile data

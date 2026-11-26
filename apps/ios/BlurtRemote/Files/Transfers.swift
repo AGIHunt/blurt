@@ -147,6 +147,8 @@ final class Transfers: ObservableObject {
         var meeting: () -> Bool
         /// files may go now (a session is up)
         var ready: () -> Bool
+        /// send getClipboard
+        var askClipboard: () -> Void
         /// queue files on the sender: (files, clip, temporary, zips made)
         var queue: ([URL], Bool, Bool, Set<URL>) -> Void
         /// a held begin, let through to the receiver
@@ -163,6 +165,7 @@ final class Transfers: ObservableObject {
             mobileData: { Link.shared.mobileData },
             meeting: { Link.shared.meeting },
             ready: { Link.shared.ready },
+            askClipboard: { Link.shared.getCopied() },
             queue: { urls, clip, temporary, made in Link.shared.files.add(urls, clip: clip, temporary: temporary, made: made) },
             feed: { Link.shared.feed($0) },
             answer: { Link.shared.send(ToMac($0)) },
@@ -241,7 +244,6 @@ final class Transfers: ObservableObject {
         case .done: .done
         case let .failed(w): .failed(w)
         }
-        if t.incoming, t.state == .going { getting = false }
         if let i = now.firstIndex(where: { $0.id == id }) {
             var r = now[i]
             r.name = t.name
@@ -276,7 +278,11 @@ final class Transfers: ObservableObject {
     /// The clipboard's content going either way isn't a file in the list: only what it came to is said.
     private func clipChanged(_ t: RemoteTransfer) {
         guard case let .failed(why) = t.state else { return }
-        if t.incoming { getting = false }
+        // a clip nobody asked for says nothing
+        if t.incoming {
+            guard getting else { return }
+            getting = false
+        }
         let name = env.peer()?.name ?? ""
         say(Said(kind: .note, title: why == "locked" ? String(localized: "\(name) is locked.") : t.incoming ? String(localized: "Not received.") : String(localized: "Not sent.")))
     }
@@ -287,7 +293,11 @@ final class Transfers: ObservableObject {
 
     func sessionDown() {
         getting = false
+        gettingDue?.cancel()
     }
+
+    /// Files began coming from the computer: the answer to Get Copied Items, if it was asked.
+    func filesAnswered() { getting = false }
 
     // MARK: from the computer
 
@@ -338,13 +348,17 @@ final class Transfers: ObservableObject {
     func getCopied() {
         guard env.ready() else { return }
         said = nil
+        // asked: the first answer that completes it uses this up (text, nothing, a clip file, or files beginning); a session that drops or
+        // 30 s without one clears it. Nothing the computer sends unasked reaches this phone's clipboard
         getting = true
-        Link.shared.getCopied()
+        env.askClipboard()
         gettingDue?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.getting = false }
         gettingDue = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.askedFor, execute: w)
     }
+
+    static let askedFor: TimeInterval = 30
 
     func clipText(_ t: String) {
         guard getting else { return }
@@ -354,14 +368,15 @@ final class Transfers: ObservableObject {
     }
 
     func clipNone(_ why: String) {
+        guard getting else { return }
         getting = false
         say(Said(kind: .note, title: TransferWords.nothing(why, name: env.peer()?.name ?? "")))
     }
 
-    /// A `clip` file: an image onto the clipboard as it came (kept for Save to Photos), anything else as text. The file goes once this returns.
-    func clipFile(_ url: URL, name: String) {
+    /// A `clip` file's content: an image onto the clipboard as it came (kept for Save to Photos), anything else as text. Unasked, it's dropped.
+    func clipData(_ data: Data, name: String) {
+        guard getting else { return }
         getting = false
-        guard let data = try? Data(contentsOf: url) else { return }
         if RemoteFiles.isImage(name), UIImage(data: data) != nil {
             let type = UTType(filenameExtension: (name as NSString).pathExtension)?.identifier ?? UTType.png.identifier
             UIPasteboard.general.setItems([[type: data]])
