@@ -16,10 +16,9 @@ enum RemoteBanner {
     private static var transient: String?
     private static var transientTimer: Timer?
     private static var going: String?
-    /// The bar's width while it says who's controlling. A flash or a file's line keeps at least that, and never narrows while it shows,
-    /// so Send Files… and Disconnect don't slide under the pointer (2026-11-26: 420 → 392 → 495 pt between the three lines).
-    private static var idleWidth: CGFloat?
-    private static var heldWidth: CGFloat = 0
+    // The bar is as wide as the widest line it can show for this device (who, the clipboard line, a worst-case file line, paused, Not
+    // sent.) from the moment it shows, so Send Files… and Disconnect never move under the pointer (2026-11-26: 420 → 392 → 495 pt between
+    // three lines; then 416 → 462 → 468 with the widest kept). The line is left-aligned; a longer real one is cut in the middle.
     /// the row's insets: the dot's 12 pt on the left, Disconnect's bezel as far from the right end
     private static let leadingInset: CGFloat = 12, trailingInset: CGFloat = 11
 
@@ -124,11 +123,13 @@ enum RemoteBanner {
         b.bezelStyle = .push
         b.controlSize = .small
         b.font = .systemFont(ofSize: 12, weight: .semibold)
+        Self.whiteTitle(b)
         b.appearance = NSAppearance(named: .darkAqua)
         let send = NSButton(title: T("remote.banner.send_files"), target: Handler.shared, action: #selector(Handler.sendFiles))
         send.bezelStyle = .push
         send.controlSize = .small
         send.font = b.font      // as Disconnect: in regular weight it read as disabled beside it
+        Self.whiteTitle(send)
         send.appearance = NSAppearance(named: .darkAqua)
         sendButton = send
         let row = NSStackView(views: [dot, t, send, b])
@@ -167,31 +168,35 @@ enum RemoteBanner {
     private static func place() {
         guard let p = panel, let row, let s = NSScreen.screens.first else { return }
         let f = s.visibleFrame
-        let fits = ceil((row.fittingSize.width + leadingInset + trailingInset) / 2) * 2     // even: centred on a whole point
-        let w: CGFloat
-        if transient == nil && going == nil {
-            // room for "Clipboard sent to …" too, the line that comes most often: then it doesn't move the buttons at all
-            var idle = fits
-            if let who = shownFor, let label, let font = label.font {
-                let width = { (s: String) in ceil(NSAttributedString(string: s, attributes: [.font: font]).size().width) }
-                idle += max(0, width(T("remote.banner.clipboard_sent", PhoneStatus.name(who))) - width(label.stringValue))
-                idle = ceil(idle / 2) * 2
-            }
-            idleWidth = idle
-            heldWidth = 0
-            w = min(idle, f.width - 40)
-        } else {
-            heldWidth = max(heldWidth, idleWidth ?? 0, fits)
-            w = min(heldWidth, f.width - 40)
+        var widest = row.fittingSize.width
+        if let who = shownFor, let label, let font = label.font {
+            let width = { (s: String) in ceil(NSAttributedString(string: s, attributes: [.font: font]).size().width) }
+            widest += Self.lines(for: PhoneStatus.name(who)).map(width).max().map { $0 - width(label.stringValue) } ?? 0
         }
+        let w = min(ceil((widest + leadingInset + trailingInset) / 2) * 2, f.width - 40)       // even: centred on a whole point
         let x = IslandLayout.hangX(under: island.shapeMidX(on: s) ?? s.frame.midX, width: w, in: s.frame, scale: s.backingScaleFactor)
         let at = NSRect(x: x, y: f.maxY - 30 - 6, width: w, height: 30)
         if p.frame != at { p.setFrame(at, display: true) }
     }
 
+    /// Every line the bar can show for a device: who, the clipboard line, and for one that takes files the longest file line (a batch of
+    /// 10, 999.9 MB of 999.9 MB), paused and Not sent.
+    private static func lines(for who: String) -> [String] {
+        var all = [T("remote.banner.controlling", who), T("remote.banner.clipboard_sent", who)]
+        if sendButton?.isHidden == false {
+            all += [T("viewer.file.to.many", who, 10, 10, "999.9 MB", "999.9 MB"), T("remote.file.paused"), T("viewer.file.failed.other")]
+        }
+        return all
+    }
+
     /// The island's shape moved (an ear came or went, it opened): the bar goes with it.
     static func islandMoved() {
         if panel?.isVisible == true { place() }
+    }
+
+    /// White titles: the dark push button's own light grey read as disabled on the grey bar.
+    private static func whiteTitle(_ b: NSButton) {
+        b.attributedTitle = NSAttributedString(string: b.title, attributes: [.font: b.font ?? .systemFont(ofSize: 12), .foregroundColor: NSColor.white])
     }
 
     private final class Handler: NSObject {

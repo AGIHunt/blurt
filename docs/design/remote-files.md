@@ -214,8 +214,8 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
   Send Files… and Disconnect slid under the pointer. Now the idle bar is as wide as the wider of who and the clipboard line, and a file's
   line takes max(that, what it needs) and never narrows while it shows; the line takes the spare room, the buttons stay at the end.
   Digits are tabular. Insets 12 / 11 pt (were 12 / 6: Disconnect nearly touched the end). Measured with the test hooks
-  (`remotebar iPhone | clipboard | sending`): en 414 / 414 / 458 pt, zh 316 / 316 / 430 pt. A file's line still widens it once (the sending line is longer than who); it
-  stays put for the rest of the transfer.
+  (`remotebar iPhone | clipboard | sending`): en 414 / 414 / 458 pt, zh 316 / 316 / 430 pt; a file's line still widened it once
+  (round 3 below ends that).
 - **The card** (`ViewerFileCard`): the line keeps To / From when time left shows (it dropped the name, so a file coming in read like one
   going out): "To Studio · 2 of 3 · 5.1 MB of 8.4 MB · 40 sec left". Two-line states are 420 pt (was 380) so that line fits;
   one-line states (Copied, Nothing is copied…) hug their text, 260–460 pt, and wrap past that. Time left is one unit, by hand
@@ -229,6 +229,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
   tall, 260 pt at least, with a wide gap before ×); one that wraps gets the two-line height back. Shots `mac/r2/`, with the bar's
   paused and Not sent. lines (`remotebar paused | failed`) and each bar also on the made-up desktop picture (`*-desk-*.png`: the bar's
   own window shot laid under that picture's menu bar; the harness shoots the bar's window alone, never this Mac's screen).
+- **Round 3** (the final judge on r2: the bar still widened when a file started, 416 → 462 → 468 pt, buttons jumping): from the moment
+  the bar shows for a device it is as wide as the widest line it can show for that device: who, "Clipboard sent to …", and for one that
+  takes files a worst-case file line (To iPhone · 10 of 10 · 999.9 MB of 999.9 MB), Paused. Resumes when reconnected. and Not sent.
+  The line is left-aligned, the buttons stay at the end; a longer real line is cut in the middle. Button titles are white (the dark
+  push button's light grey read as disabled on the grey bar). The viewer's file card keeps above 10.5 % of the picture's height (was
+  7.5 %: its foot sat over a Mac Dock with 50 pt icons on a 720 pt screen, which is 10 %). Shots `mac/r3/`; widths in its report.
 - Shots: `promo/cases/remote-files-1126/mac/r1/` (the bar's three lines and the card's ten states, en and zh), from the isolated test
   app: the bar from its test hook alone (nothing controls this Mac), the card on a pretend host in the same process (`viewer hint file.*`).
 

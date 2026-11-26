@@ -79,11 +79,12 @@ final class ViewerWindowController: NSWindowController, NSWindowDelegate, NSTool
         placeFileCard()
     }
 
-    /// The card keeps above the band where a host keeps its taskbar or Dock (about 7 % of its screen's height: Windows' taskbar
-    /// at 200 % on 1440 px, a Mac's Dock): 12 pt over that band, 64 pt at least.
+    /// The card keeps above the band where a host keeps its taskbar or Dock: 12 pt over that band, 64 pt at least. The band is 10.5 % of
+    /// the picture's height: Windows' taskbar at 200 % on 1440 px is 6.7 %, a Mac's Dock with 50 pt icons on a 720 pt screen 10 % (at
+    /// 7.5 % the card's foot sat over that Dock, 2026-11-26).
     private func placeFileCard() {
         guard let content = window?.contentView else { return }
-        let band = (content.bounds.height * 0.075).rounded()
+        let band = (content.bounds.height * 0.105).rounded()
         fileCardBottom?.constant = -max(64, band + 12)
     }
 
