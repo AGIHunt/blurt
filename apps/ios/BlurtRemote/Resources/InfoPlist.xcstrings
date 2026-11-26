@@ -52,6 +52,23 @@
      }
     }
    }
+  },
+  "NSPhotoLibraryAddUsageDescription": {
+   "extractionState": "manual",
+   "localizations": {
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Save pictures and videos from your computer to Photos."
+     }
+    },
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "将从电脑获取的照片和视频存储到“照片”。"
+     }
+    }
+   }
   }
  }
 }

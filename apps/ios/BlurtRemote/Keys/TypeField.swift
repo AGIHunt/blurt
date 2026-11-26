@@ -114,6 +114,8 @@ final class ModifierRow: UIInputView {
         }
         add("") {
             Haptics.tick()
+            // an image copied here goes as the clipboard's content, and the computer pastes it (docs/design/remote-files.md); text is typed
+            if Transfers.shared.pasteImage() { return }
             if let t = UIPasteboard.general.string, !t.isEmpty { Link.shared.type(t) }
         }
         if let b = buttons.last?.0 {

@@ -713,7 +713,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(l.dock[PadLayout.thumbSlots.enter].maxX + PadLayout.gap, l.talk.minX, accuracy: 0.5, "return right by it")
         XCTAssertEqual(l.settingsButton.minX, l.drawer.minX, accuracy: 1, "settings first")
         noOverlaps(l.dock + [l.talk, l.arrowKey, l.keyboardButton, l.screenButton, l.transferButton, l.findButton, l.settingsButton, l.strip, l.list])
-        XCTAssertGreaterThanOrEqual(l.strip.width / 4, 38, "room for four tabs")
+        XCTAssertGreaterThanOrEqual(l.strip.width / 4, 34, "room for four tabs (38 before Transfer joined the row, 2026-11-26)")
 
         let m = PadLayout(size: portrait, safe: tall, lefty: true)
         XCTAssertEqual(m.talk.minX, m.drawer.minX, accuracy: 1)
@@ -808,7 +808,7 @@ final class LayoutTests: XCTestCase {
     func testSmallestPhone() {
         let l = PadLayout(size: CGSize(width: 375, height: 667), safe: UIEdgeInsets(top: 20, left: 0, bottom: 0, right: 0), lefty: false)
         XCTAssertGreaterThan(l.pad.height, 300)
-        XCTAssertGreaterThan(l.strip.width / 4, 35)
+        XCTAssertGreaterThan(l.strip.width / 4, 31, "35 before Transfer joined the row (2026-11-26)")
     }
 }
 

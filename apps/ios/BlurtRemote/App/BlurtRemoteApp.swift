@@ -27,7 +27,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let u = c.first?.url { Link.shared.openExternal(u) }
     }
 
-    func sceneDidBecomeActive(_ scene: UIScene) { Link.shared.foreground() }
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        Link.shared.foreground()
+        // shared to Blurt while away: sent now if the computer is the one in hand
+        Transfers.shared.pickUp()
+    }
     func sceneWillResignActive(_ scene: UIScene) { Link.shared.leaving() }
     func sceneDidEnterBackground(_ scene: UIScene) { Link.shared.background() }
 }

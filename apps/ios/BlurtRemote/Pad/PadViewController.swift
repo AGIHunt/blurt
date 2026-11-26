@@ -58,6 +58,11 @@ final class PadViewController: UIViewController {
     /// the picture on and off, and with several displays, which one (DisplaySwitch.swift)
     private let screenButton = ScreenButton()
     private let findButton = UIButton(type: .system)
+    /// files and the clipboard, both ways: the Transfer sheet (Files/TransferSheet.swift)
+    private let transferButton = UIButton(type: .system)
+    private weak var transferSheet: UIViewController?
+    /// what Get Copied Items came to, with the sheet away
+    private let toast = TransferToast()
     private let drawerButton = UIButton(type: .system)
     /// landscape: the keys are out. Out for the trackpad, put away when there's a picture to see
     private var drawerOpen = true
@@ -299,7 +304,7 @@ final class PadViewController: UIViewController {
         chip(String(localized: "Structured")) { Link.shared.send(.blurt(.dictationStructured)) }
         chip(String(localized: "Translate")) { Link.shared.send(.blurt(.dictationTranslate)) }
 
-        for (b, s) in [(keyboardButton, "keyboard"), (settingsButton, "slider.horizontal.3"), (findButton, "scope")] {
+        for (b, s) in [(keyboardButton, "keyboard"), (settingsButton, "slider.horizontal.3"), (findButton, "scope"), (transferButton, "arrow.up.arrow.down")] {
             b.setImage(UIImage(systemName: s, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)), for: .normal)
             b.tintColor = Theme.caption
             view.addSubview(b)
@@ -307,6 +312,10 @@ final class PadViewController: UIViewController {
         keyboardButton.accessibilityLabel = String(localized: "Keyboard")
         settingsButton.accessibilityLabel = String(localized: "Settings")
         findButton.accessibilityLabel = String(localized: "Find Pointer")
+        transferButton.accessibilityLabel = String(localized: "Transfer")
+        transferButton.addAction(UIAction { [weak self] _ in Haptics.tick(); self?.showTransfer() }, for: .touchUpInside)
+        view.addSubview(toast)
+        toast.onPhotos = { [weak self] in self?.saveCopiedImage() }
         findButton.addAction(UIAction { _ in Haptics.tick(); Link.shared.send(.system(.findCursor)) }, for: .touchUpInside)
         keyboardButton.addAction(UIAction { [weak self] _ in self?.toggleKeyboard() }, for: .touchUpInside)
         settingsButton.addAction(UIAction { [weak self] _ in self?.showSettings() }, for: .touchUpInside)
@@ -516,6 +525,19 @@ final class PadViewController: UIViewController {
         l.$level.receive(on: RunLoop.main).sink { [weak self] v in self?.talk.level(v) }.store(in: &bag)
         Publishers.CombineLatest3(l.$displays, l.$shownDisplay, l.$pinnedDisplay).receive(on: RunLoop.main).sink { [weak self] d, s, p in
             self?.screenButton.update(displays: d, shown: s, pinned: p)
+        }.store(in: &bag)
+        let tr = Transfers.shared
+        tr.$said.receive(on: RunLoop.main).sink { [weak self] s in
+            guard let self else { return }
+            // the sheet shows it under its button
+            guard let s, self.transferSheet == nil else { return }
+            self.toast.show(s)
+            self.view.setNeedsLayout()
+        }.store(in: &bag)
+        tr.$asking.compactMap { $0 }.receive(on: RunLoop.main).sink { [weak self] a in self?.askMobileData(a) }.store(in: &bag)
+        // lit while something goes or waits
+        tr.$rows.map { $0.contains { !$0.isOver } }.removeDuplicates().receive(on: RunLoop.main).sink { [weak self] busy in
+            self?.transferButton.tintColor = busy ? Theme.mint : Theme.caption
         }.store(in: &bag)
         Prefs.shared.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             DispatchQueue.main.async {
@@ -895,7 +917,9 @@ final class PadViewController: UIViewController {
         screenButton.isHidden = typing
         screenButton.paint(showing: showing, railed: railed)
         screenButton.turnsTo = ScreenTurn.auto.applies ? (size.width > size.height ? .portrait : .landscape) : nil
-        for b in [keyboardButton, settingsButton, findButton] {
+        transferButton.frame = l.transferButton
+        transferButton.isHidden = typing || l.transferButton.isEmpty
+        for b in [keyboardButton, settingsButton, findButton, transferButton] {
             b.layer.cornerRadius = Theme.keyRadius
             b.backgroundColor = railed ? Theme.slab : .clear
         }
@@ -915,7 +939,7 @@ final class PadViewController: UIViewController {
         exitFull.isHidden = !full
         talk.alpha = talkAlpha
         if full {
-            for v in [board, keyboardSwitch, thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
+            for v in [board, keyboardSwitch, thumbPad, list, arrowCell, appsCell, drawerButton, screenButton, transferButton, strip, keyboardButton, settingsButton, findButton] as [UIView] {
                 v.isHidden = true
             }
             (dockCells + quickCells).forEach { $0.isHidden = true }
@@ -984,6 +1008,11 @@ final class PadViewController: UIViewController {
         let hintSize = emptyHint.sizeThatFits(CGSize(width: inset.width - 16, height: .greatestFiniteMagnitude))
         emptyHint.frame = CGRect(x: hint.midX - hintSize.width / 2, y: hint.midY - hintSize.height / 2, width: hintSize.width, height: hintSize.height)
         emptyHint.isHidden = emptyHint.isHidden || typing
+        // the toast at the top of what's clear on the stage, over the picture or the keyboard's room alike
+        let toastW = min(hint.width - 24, 380)
+        toast.frame = CGRect(x: padFrame.minX + hint.midX - toastW / 2, y: padFrame.minY + hint.minY + 12, width: toastW, height: toast.height(width: toastW))
+        view.bringSubviewToFront(toast)
+        view.bringSubviewToFront(dim)
     }
 
     /// The safe area, and on iPadOS 26 a window's controls too: the stage's top corner stays clear of them.
@@ -1166,6 +1195,56 @@ final class PadViewController: UIViewController {
 
     private func showPairing() { present(PairSheet()) }
 
+    private func showTransfer() {
+        toast.dismiss()
+        let c = UIHostingController(rootView: TransferSheet().preferredColorScheme(.dark).tint(Color(red: 0.102, green: 0.643, blue: 0.529)))
+        c.view.backgroundColor = UIColor(white: 0.07, alpha: 1)
+        if let s = c.sheetPresentationController {
+            s.detents = [.medium(), .large()]
+            s.prefersGrabberVisible = true
+        }
+        transferSheet = c
+        present(c, animated: true)
+    }
+
+    /// The top of what's shown: an alert goes over a sheet, not under it.
+    private var topmost: UIViewController {
+        var top: UIViewController = self
+        while let p = top.presentedViewController, !p.isBeingDismissed { top = p }
+        return top
+    }
+
+    /// On mobile data, before more than 100 MB goes either way.
+    private func askMobileData(_ a: Transfers.Ask) {
+        let c = UIAlertController(title: a.title, message: nil, preferredStyle: .alert)
+        c.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in Transfers.shared.answer(a, yes: false) })
+        c.addAction(UIAlertAction(title: a.incoming ? String(localized: "Get") : String(localized: "Send"), style: .default) { _ in
+            Transfers.shared.answer(a, yes: true)
+        })
+        topmost.present(c, animated: true)
+    }
+
+    /// The toast's Save to Photos: Photos asks for its permission now, the first time.
+    private func saveCopiedImage() {
+        guard case let .image(u)? = Transfers.shared.said?.kind else { return }
+        PhotoSave.save(u, video: false) { [weak self] r in
+            guard let self else { return }
+            switch r {
+            case .saved:
+                Haptics.tick()
+                self.toast.dismiss()
+            case .denied:
+                let c = UIAlertController(title: String(localized: "Allow Blurt to add photos in Settings."), message: nil, preferredStyle: .alert)
+                c.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+                c.addAction(UIAlertAction(title: String(localized: "Open Settings"), style: .default) { _ in
+                    if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                })
+                self.topmost.present(c, animated: true)
+            case .failed: break
+            }
+        }
+    }
+
     /// Hold the settings button: with more than one Mac, the fastest way to the other.
     private func macMenu(_ macs: [PairedMac], _ current: PairedMac?) {
         guard macs.count > 1 else { settingsButton.menu = nil; return }
@@ -1197,6 +1276,13 @@ final class PadViewController: UIViewController {
         if !field.isFirstResponder { becomeFirstResponder() }
         #if DEBUG
         Pretend.turn(view.window?.windowScene)
+        if Pretend.transfers == "sheet", presentedViewController == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showTransfer() }
+        }
+        if Pretend.transfers == "toast" {
+            let u = Link.documents.appendingPathComponent("作业 3.jpg")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { Transfers.shared.say(Transfers.Said(kind: .image(u), title: String(localized: "Image Copied"))) }
+        }
         #endif
     }
 

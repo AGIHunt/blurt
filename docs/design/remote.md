@@ -52,7 +52,7 @@ PORTRAIT (402×874)            LANDSCAPE, keys open (956×440)           LANDSCA
 [⌃][⌥][⌘][⇧][⇥][esc][⌫][↩][␣][🎤]
 ```
 
-- Portrait: a top row (settings, tabs, find the pointer, the screen, the system keyboard, the arrow key), six across for four rows of 48 pt, and the
+- Portrait: a top row (settings, tabs, find the pointer, Transfer (since 2026-11-26), the screen, the system keyboard, the arrow key), six across for four rows of 48 pt, and the
   dock under them: ten even keys, the last the talk key. 311 pt in all. The top row is 52 pt so the arrow key has 25 pt for each of up and down. The
   dock runs from the modifiers to what's used most, so esc, delete, return and space are by the thumb. Left-Handed mirrors the dock; settings stays
   first in the top row and the arrow key comes in past it, so a slide to the left has room (founder, 2026-11-08: at the edge it had none). At the
@@ -923,3 +923,22 @@ and multitasking widths, and the Duo open, closed, turned, folded like a laptop 
   usages faithfully.
 - With no picture showing, the iPad's pointer stops at the pad's edge, and so does the computer's pointer. Pointer lock
   (`prefersPointerLocked` with GCMouse's raw movement) would fix that, but the mouse could then no longer reach the keys.
+
+## Files and the clipboard (2026-11-26)
+
+What the user does and why: [remote-files.md](remote-files.md); the wire: [remote-protocol.md](remote-protocol.md) §Clipboard and files.
+
+- **Transfer** (↑↓) on the bar next to the screen button opens the Transfer sheet: Send Photos…, Send Files…, Get Copied Items from the
+  computer, and the list of transfers (this run, then the last 50 finished). It's lit while something goes or waits. The bar gained a control
+  everywhere: in portrait the four icons by the arrow key are 32 pt wide instead of 36 (settings keeps 36, the room a left-handed slide needs),
+  so the tabs lose 16 pt (156 → 136 pt on a 402 pt phone; tab names shrink to fit, as they already did); in landscape the island's end holds
+  two controls above the island and three below, each as tall as three can be between the island and the corner (35 pt on a 402 pt-tall
+  phone, 42 where there's room); on a big screen the lower row of the controls is in thirds (the screen, Transfer, the keyboard).
+- What Get Copied Items brings shows under its button in the sheet; with the sheet away, as a toast at the top of the stage (an image with
+  **Save to Photos** on it). Nothing is written to Photos without that tap, and the add-only permission is asked on the first one.
+- Received files go to the app's Documents, which Files shows under the app's home-screen name (**Blurt**).
+- **Share → Blurt** (the share extension) names the computer last controlled; the app sends what was shared once it's open and connected to
+  that computer. Paste from This Device sends a copied image as the clipboard's content (the computer pastes it).
+- On the phone network, more than 100 MB either way asks first.
+- Debug builds: `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_TRANSFERS=1` (with `BLURT_REMOTE_TEST_HOST`) fills the list with each kind of row; `=sheet`
+  opens the sheet, `=toast` shows the toast. Screenshots: `promo/cases/remote-files-1126/ios/`.

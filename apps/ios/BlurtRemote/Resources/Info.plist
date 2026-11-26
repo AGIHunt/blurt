@@ -23,8 +23,12 @@
 	<key>NSBonjourServices</key><array><string>_blurt-remote._tcp</string></array>
 	<key>NSCameraUsageDescription</key><string>Scan the QR code Blurt shows on your computer to pair.</string>
 	<key>NSLocalNetworkUsageDescription</key><string>Find and connect to Blurt on your computer.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key><string>Save pictures and videos from your computer to Photos.</string>
 	<key>NSMicrophoneUsageDescription</key><string>Send dictation audio from this device to your paired computer.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key><true/>
+	<key>UIFileSharingEnabled</key><true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key><true/>
+	<key>BlurtAppGroup</key><string>$(BLURT_APP_GROUP)</string>
 	<key>UIStatusBarHidden</key><true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

@@ -159,3 +159,27 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 
 Not measured yet: a real phone over Wi-Fi and mobile data; a real Mac host (m1max, LAN-only, wasn't reachable from this Mac's network on
 2026-11-26); Windows and Linux hosts (CI builds and tests only).
+
+## iPhone and iPad (2026-11-26)
+
+| | Built | Where |
+|---|---|---|
+| The wire | `hello.features` adds `files` and `resume`; `session.features` is kept as `Link.hostFeatures` until the next session. One `RemoteFileSender` and one `RemoteFileReceiver` in `Link`, the receiver keyed by the computer's own id. The sender sends only on a session whose stream has moved (go-between) and pauses on `lost()` / `disconnect()`; switching computers stops what was queued for the last one | `apps/ios/BlurtRemote/Net/Link.swift` |
+| Received files | the app's Documents, shown in Files as **Blurt** (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`); parts in Caches/parts | Info.plist |
+| The bar | **Transfer** (↑↓) beside the screen button in every layout; lit while something goes or waits. Portrait: the four icons by the arrow key went from 36 to 32 pt so the tabs lose 16 pt, not 36 (strip 156 → 136 pt on a 402 pt phone, 145 → 129 on 375). Landscape: five controls at the island's end don't fit at 42 pt between a 132 pt island and the corners, so all five are as tall as three that do (35 pt on a 402 pt-tall phone, 40 on 440) | `Pad/PadLayout.swift` |
+| The sheet | Send Photos… (PHPicker, `.current` representation, no permission), Send Files… (document picker, opened in place, folders zipped with a Compressing… row), Get Copied Items (disabled with "Update %@ to use this." for a host without `clipboard`), the answer under it, and the list: this run, then the last 50 finished (Application Support/transfers.json). Stop on anything not over; Continue on this run's outgoing files that paused or failed on the way (not stopped, too big, no space or unreadable); a received file's row opens a menu: Open (Quick Look), Share…, Save to Photos (pictures and videos; add-only permission asked on the first tap) | `Files/TransferSheet.swift`, `Files/Transfers.swift` |
+| A row's line | wraps only at its " · ": "148 MB / 412 MB" and 还剩 3 分钟 stay whole | `TransferRowView.breaksAtDots` |
+| Get Copied's answer, sheet away | a toast at the top of the stage (4 s; 8 s with Save to Photos for an image) | `Files/TransferToast.swift` |
+| Mobile data | `NWPathMonitor.usesInterfaceType(.cellular)` (a hotspot is Wi-Fi). Sending: a pick over 100 MB in all asks first. Getting: a begin whose batch is over 100 MB is held (the host waits 10 s for its first answer) and asked about once per batch; a no answers `stopped` and refuses the rest of that batch for 2 minutes; a host that gave up meanwhile isn't fed late | `Transfers.admit`, `answer` |
+| Paste from This Device | an image on the pasteboard, to a host with `clipboard`, goes as a `clip` PNG or JPEG (≤ 20 MB, else "The image is larger than 20 MB."); text as before | `Keys/TypeField.swift`, `Transfers.pasteImage` |
+| Share extension | **Blurt** in the share sheet (images, movies, files, up to 50). "Send to %@" names the computer last controlled (App Group defaults, written when a session is ready); the tap copies the items into the group's Outbox with that computer's id, then "Open Blurt to send."; nothing paired: "Pair a computer in Blurt first." The app takes the outbox when it's in front and ready with that computer (scene active, session up), sends each share as a batch and deletes the copies once over; waiting shares show as Waiting rows with ×; anything over an hour old, or a half-filled share as old, is deleted | `apps/ios/BlurtShare`, `apps/ios/Shared/Outbox.swift` |
+| App Group | `group.dev.blurt.remote` (debug, `dev.blurt.remote` / `.share`), `group.work.blurt.remote` (release), from the `BLURT_APP_GROUP` build setting into the entitlements and Info.plist's `BlurtAppGroup` | `project.yml` |
+
+| What | Result | How |
+|---|---|---|
+| The model: each row's line, the nothing-copied reasons, the 100 MB rule both ways, a held batch (yes, no, given up), the list's order and the 50 kept, Continue, Stop, the outbox (per computer, an hour, a share still being filled, × on one file) and its pickup (only in front, only for that computer), one file through the real engine to Saved | 15 tests pass; the whole suite 210 tests, the 2 MacDeckGoldenTests failing as on main | `BlurtRemoteTests/TransferTests.swift`, XCTest injected with simctl (iPhone 17 Pro simulator) |
+| Share → Blurt from Photos in the simulator, then the app opened | the photo landed in the group's Outbox with the computer's id; the app took it on opening and queued it (Outbox empty after) | by hand, `promo/cases/remote-files-1126/ios/share-*` |
+| Save to Photos on a received picture | the add-only question on the first tap, then the picture in Photos | by hand in the simulator |
+
+Not checked on iOS: a real host session (no host on this Mac; the Android fake host doesn't speak files), a device build with the App
+Group provisioned (simulator builds sign it locally), mobile data on a device.

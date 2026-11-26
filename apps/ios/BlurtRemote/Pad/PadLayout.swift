@@ -300,9 +300,10 @@ private struct Parts {
 
         // the top row: settings first, the arrow key by the thumb. Left-handed it comes in from the edge, past settings, so a slide to
         // the left has room
-        // five icons since Transfer came (2026-11-26): a little narrower each, so the tabs lose less of their room
-        let iconW: CGFloat = width < 374 ? 30 : 32, arrowW: CGFloat = 82     // a narrow phone keeps the room for the tabs
-        p.settingsButton = CGRect(x: block.minX, y: block.minY, width: iconW, height: t - 2)
+        // a narrow phone keeps the room for the tabs. Since Transfer came (2026-11-26) the four by the arrow key are 4 pt narrower each:
+        // the tabs lose 16 pt instead of 36. Settings keeps its width, the room a slide to the left needs left-handed
+        let settingsW: CGFloat = width < 374 ? 32 : 36, iconW: CGFloat = width < 374 ? 28 : 32, arrowW: CGFloat = 82
+        p.settingsButton = CGRect(x: block.minX, y: block.minY, width: settingsW, height: t - 2)
         p.arrowKey = CGRect(x: lefty ? p.settingsButton.maxX + 4 : block.maxX - arrowW, y: block.minY, width: arrowW, height: t - 2)
         let rowEnd = lefty ? block.maxX : p.arrowKey.minX - 4
         p.keyboardButton = CGRect(x: rowEnd - iconW, y: block.minY, width: iconW, height: t - 2)
@@ -337,8 +338,10 @@ private struct Parts {
             CGRect(x: islandLeft ? size.width - inset - w : inset, y: y, width: w, height: h)
         }
 
-        // the island's end: two above it, three below. A camera in a corner instead: all four below it
-        let ctrlW: CGFloat = 46, btn: CGFloat = 42, clear: CGFloat = 24
+        // the island's end: two above it, three below. A camera in a corner instead: all five below it. Three 42 pt buttons don't fit
+        // between a phone's island and its corner (2026-11-26, Transfer): there all five are as tall as three that do
+        let ctrlW: CGFloat = 46, clear: CGFloat = 24, islandHalf: CGFloat = 66
+        let btn: CGFloat = min(42, max(32, floor((size.height / 2 - islandHalf - clear - gap * 2) / 3)))
         let ctrlIn = margin > ctrlW + 8 ? (margin - ctrlW) / 2 : 8
         let ctrlEnd = max(margin, ctrlIn + ctrlW)
         if let c = camera, c.midY < size.height * 0.35 {

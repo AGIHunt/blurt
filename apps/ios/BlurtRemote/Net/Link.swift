@@ -196,6 +196,11 @@ final class Link: ObservableObject {
             DispatchQueue.main.async { self.open(u, confirmed: true) }
         }
         if !Pretend.displays.isEmpty { pretend(displays: Pretend.displays, shown: Pretend.displays.first?.id) }
+        if Pretend.transfers != nil, let m = current {
+            hostFeatures = [RemoteFeature.files, RemoteFeature.resume, RemoteFeature.clipboard]
+            Outbox.target = Outbox.Target(id: m.id, name: m.title)
+            DispatchQueue.main.async { Pretend.fillTransfers(peer: m.title) }
+        }
         // the pad's card when the public connection service couldn't carry the session, with no computer: =nodirect | =busy
         if let a = ProcessInfo.processInfo.environment["BLURT_REMOTE_TEST_AWAY"] {
             macs = [PairedMac(id: "test-mac", deviceID: "test-2", name: "MacBook Pro", port: 0, addresses: [], relayAddress: RemoteRelay.goBetween)]
@@ -1485,7 +1490,12 @@ final class Link: ObservableObject {
     static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }
     static let rttLock = NSLock()
     nonisolated(unsafe) static var rttShared = 0.01
-    var ready: Bool { channel != nil && state == .connected }
+    var ready: Bool {
+        #if DEBUG
+        if Pretend.transfers != nil { return state == .connected }
+        #endif
+        return channel != nil && state == .connected
+    }
 }
 
 /// What the microphone heard while the session was away, the last ten seconds of it.
