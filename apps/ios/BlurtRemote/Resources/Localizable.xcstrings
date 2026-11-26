@@ -4219,7 +4219,7 @@
         }
       }
     },
-    "Paused. Continues when reconnected." : {
+    "Paused. Resumes when reconnected." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4239,7 +4239,7 @@
         }
       }
     },
-    "Saved in Files › Blurt" : {
+    "Saved to Files › Blurt" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4409,7 +4409,7 @@
         }
       }
     },
-    "Can't paste images larger than 20 MB." : {
+    "Can’t paste images larger than 20 MB." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

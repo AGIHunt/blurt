@@ -29,9 +29,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>发送了 %ld 个文件</string>
+			<string>已发送 %ld 个文件</string>
 			<key>other</key>
-			<string>发送了 %ld 个文件</string>
+			<string>已发送 %ld 个文件</string>
 		</dict>
 	</dict>
 </dict>

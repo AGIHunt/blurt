@@ -67,7 +67,7 @@ enum TransferWords {
         switch r.phase {
         case .compressing: return String(localized: "Compressing…")
         case .waiting: return meeting ? String(localized: "Connecting directly…") : String(localized: "Waiting")
-        case .paused: return String(localized: "Paused. Continues when reconnected.")
+        case .paused: return String(localized: "Paused. Resumes when reconnected.")
         case .going:
             let done = size(r.done), all = size(r.size), peer = r.peer
             var parts: [String] = []
@@ -77,7 +77,7 @@ enum TransferWords {
             return parts.joined(separator: " · ")
         case .done:
             let peer = r.peer
-            return r.incoming ? String(localized: "Saved in Files › Blurt") : String(localized: "Saved to Downloads/Blurt on \(peer)")
+            return r.incoming ? String(localized: "Saved to Files › Blurt") : String(localized: "Saved to Downloads/Blurt on \(peer)")
         case let .failed(why):
             if why == "stopped" { return String(localized: "Stopped") }
             if r.incoming { return why == "space" ? String(localized: "Not received: not enough space on this device.") : String(localized: "Not received.") }
@@ -461,7 +461,7 @@ final class Transfers: ObservableObject {
         else if let i = pb.image { data = i.pngData() }
         guard let data else { return false }
         guard data.count <= RemoteFiles.maxClipImage else {
-            say(Said(kind: .note, title: String(localized: "Can't paste images larger than 20 MB.")))
+            say(Said(kind: .note, title: String(localized: "Can’t paste images larger than 20 MB.")))
             return true
         }
         let dir = Link.caches.appendingPathComponent("outgoing/" + UUID().uuidString, isDirectory: true)

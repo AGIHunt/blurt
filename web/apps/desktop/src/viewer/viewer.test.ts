@@ -129,7 +129,7 @@ describe('files both ways', () => {
     expect(transferLine({ ...x, secondsLeft: 95 }, 'Office PC', 'local')).toMatch(/ left$/);
     expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'goBetween')).toBe('Connecting directly…');
     expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'local')).toBe('Waiting');
-    expect(transferLine({ ...x, state: 'paused' }, 'Office PC', 'local')).toBe('Paused. Continues when reconnected.');
+    expect(transferLine({ ...x, state: 'paused' }, 'Office PC', 'local')).toBe('Paused. Resumes when reconnected.');
     expect(transferLine({ ...x, state: 'done' }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt');
     expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt on Office PC');
     expect(transferLine({ ...x, state: 'failed', why: 'stopped' }, 'Office PC', 'local')).toBe('Stopped');

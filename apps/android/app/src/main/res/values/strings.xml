@@ -277,7 +277,7 @@
     <string name="transfer_waiting">Waiting</string>
     <string name="transfer_connecting">Connecting directly…</string>
     <string name="transfer_compressing">Compressing…</string>
-    <string name="transfer_paused">Paused. Continues when reconnected.</string>
+    <string name="transfer_paused">Paused. Resumes when reconnected.</string>
     <string name="transfer_stopped">Stopped</string>
     <string name="transfer_sent">Saved to Downloads/Blurt on %1$s</string>
     <string name="transfer_received">Saved to Download/Blurt</string>
@@ -302,7 +302,7 @@
     <string name="data_send_q">Send %1$s over mobile data?</string>
     <string name="data_get_q">Get %1$s over mobile data?</string>
     <string name="data_get">Get</string>
-    <string name="image_too_big">Can\'t paste images larger than 20 MB.</string>
+    <string name="image_too_big">Can’t paste images larger than 20 MB.</string>
     <string name="share_send_to">Send to %1$s</string>
     <string name="share_pair_first">Pair a computer in Blurt first.</string>
 </resources>

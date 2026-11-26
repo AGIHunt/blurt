@@ -222,7 +222,7 @@
 "remote.banner.clipboard_sent" = "剪贴板已发送到 %@";
 "remote.file.paused" = "已暂停，重新连接后继续。";
 "remote.file.received.many" = "收到「%2$@」发来的 %1$ld 个文件";
-"phone.log.clipboard" = "发送了剪贴板";
+"phone.log.clipboard" = "已发送剪贴板";
 "viewer.get_copied" = "获取拷贝的内容";
 "viewer.file.from" = "正在从 %@ 接收 · %@ / %@";
 "viewer.file.from.many" = "正在从 %3$@ 接收第 %1$ld/%2$ld 个 · %4$@ / %5$@";

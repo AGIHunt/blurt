@@ -93,7 +93,7 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
   either way the part is deleted at once.
 - **Resume:** a dropped connection leaves the part. The receiver keeps it for 1 hour, keyed by device and file id. When the session is back,
   the sender begins the same file again with the same id; the receiver answers with how much it has, and the sender goes on from there.
-  The card says "Paused. Continues when reconnected." The phone's list has **Continue** on a paused file whose session didn't come back by
+  The card says "Paused. Resumes when reconnected." The phone's list has **Continue** on a paused file whose session didn't come back by
   itself. After an hour, or if the receiver has no part, it starts from 0.
 - **Mobile data:** a phone on mobile data asks before more than 100 MB goes either way ("Send 350 MB over mobile data?").
 - **Public connection service:** it only introduces the two ends; it can't carry files. Files wait until the direct path opens (usually a
@@ -127,9 +127,9 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | The sheet's empty list | 发送或获取的文件会显示在这里。 | Files you send or get appear here. |
 | A row going out · coming in (`%@ / %@` done / size) | 发往 %@ · %@ / %@ · 来自 %@ · %@ / %@ | To %@ · %@ of %@ · From %@ · %@ of %@ |
 | A batch (prefix) · time left (suffix, system duration) | 第 %ld/%ld 个 · 还剩 %@ | %ld of %ld · %@ left |
-| States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Continues when reconnected. · Stopped |
+| States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Resumes when reconnected. · Stopped |
 | Sent | 已保存到 %@ 的「下载/Blurt」 | Saved to Downloads/Blurt on %@ |
-| Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
+| Received on iPhone · on Android · on a computer | 已保存到「文件」App 的 Blurt 文件夹 · 已保存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved to Files › Blurt · Saved to Download/Blurt · Saved to Downloads/Blurt |
 | A received file's buttons | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
 | A transfer's buttons | 停止 · 继续 | Stop · Continue |
 | What came from the clipboard | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
@@ -137,12 +137,12 @@ Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says �
 | Not sent (exist, viewer.file.failed.*) | 未发送：对方空间不足。 · 未发送：文件超过 4 GB。 · 未发送：对方已锁屏。 · 未发送。 | Not sent: not enough space on that computer. · Not sent: larger than 4 GB. · Not sent: that computer is locked. · Not sent. |
 | Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device (on a computer: this computer). · Not received. |
 | Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
-| An image pasted from the phone, too big | 无法粘贴超过 20 MB 的图片。 | Can't paste images larger than 20 MB. |
+| An image pasted from the phone, too big | 无法粘贴超过 20 MB 的图片。 | Can’t paste images larger than 20 MB. |
 | Share extension, named Blurt as on the home screen (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt 中配对电脑。 · 打开 Blurt 即可发送。 | Send to %@ · Pair a computer in Blurt first. · Open Blurt to send. |
-| iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到“照片”。 | Save pictures and videos from your computer to Photos. |
+| iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到「照片」。 | Save pictures and videos from your computer to Photos. |
 | The host's bar: button · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
 | The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
-| The host's connection log | 发送了剪贴板 · 收到 %ld 个文件 · 发送了 %ld 个文件 | Sent the clipboard · Received %ld files · Sent %ld files |
+| The host's connection log | 已发送剪贴板 · 收到 %ld 个文件 · 已发送 %ld 个文件 | Clipboard sent · Received %ld files · Sent %ld files |
 | The viewer's ⋯ menu | 获取拷贝的内容 | Get Copied Items |
 
 ## Measurements
