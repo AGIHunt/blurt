@@ -161,6 +161,13 @@ final class RemoteFilesTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("doc.pdf")), try Data(contentsOf: f))
     }
 
+    func testTheWindowFollowsTheRate() {
+        XCTAssertEqual(RemoteFiles.window(rate: nil, resumes: true), RemoteFiles.minWindow)
+        XCTAssertEqual(RemoteFiles.window(rate: 1_500_000, resumes: true), 750_000, "half a second of a slow link")
+        XCTAssertEqual(RemoteFiles.window(rate: 50_000_000, resumes: true), RemoteFiles.window, "capped on a fast one")
+        XCTAssertEqual(RemoteFiles.window(rate: 1_500_000, resumes: false), RemoteFiles.window, "an older peer acks every 1 MiB")
+    }
+
     func testNamesAreCleaned() {
         XCTAssertEqual(RemoteFiles.clean("../secret/.bashrc"), "bashrc")
         XCTAssertEqual(RemoteFiles.clean("C:\\Users\\me\\报告.pdf"), "报告.pdf")

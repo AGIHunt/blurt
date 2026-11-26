@@ -7,8 +7,23 @@ import Foundation
 
 public enum RemoteFiles {
     public static let chunk = 192 * 1024
+    /// at most this much past the receiver's last progress: with a peer that doesn't resume (before 2026-11-26, which says how far it has
+    /// got every 1 MiB) always, otherwise the most the window grows to
     public static let window = 4 << 20
-    public static let progressEvery = 1 << 20
+    /// a peer that resumes keeps only about this long of the measured rate unacknowledged, at least `minWindow`: the control messages
+    /// sent behind file data (pings, keys) wait no longer than that (Android measured drops every 2.5 s at 1.5 MB/s with a fixed 4 MiB)
+    public static let minWindow = 512 << 10
+    public static let windowSeconds = 0.5
+    /// a receiver that resumes says how far it has got this often (one that doesn't: every 1 MiB, `oldProgressEvery`)
+    public static let progressEvery = 256 << 10
+    public static let oldProgressEvery = 1 << 20
+
+    /// How much may be unacknowledged now: from the rate the receiver's progress shows (bytes/s, nil before any), for a peer that resumes.
+    public static func window(rate: Double?, resumes: Bool) -> Int {
+        guard resumes else { return window }
+        guard let rate, rate > 0 else { return minWindow }
+        return min(window, max(minWindow, Int(rate * windowSeconds)))
+    }
     public static let maxSize = 4 << 30
     public static let maxCount = 1000
     /// an image the phone pastes
@@ -75,6 +90,12 @@ public enum RemoteFiles {
             if (try? FileManager.default.copyItem(at: z, to: dest)) != nil { out = dest }
         }
         return out
+    }
+
+    /// Bytes a second from what moved lately: nil until two samples 0.2 s apart.
+    static func rate(_ samples: [(t: TimeInterval, bytes: Int)]) -> Double? {
+        guard let first = samples.first, let last = samples.last, last.t - first.t >= 0.2, last.bytes > first.bytes else { return nil }
+        return Double(last.bytes - first.bytes) / (last.t - first.t)
     }
 
     /// Seconds left from what moved lately: nil until 2 s of progress.
@@ -422,12 +443,13 @@ public final class RemoteFileSender: @unchecked Sendable {
             return (t.id, RemoteFileInfo(id: t.id, name: t.name, size: t.size, clip: t.clip, index: t.index, count: t.count, total: items[index].total), items[index].source)
         }) else { return }
         publish(id)
+        let resumes = peerResumes()
         guard info.size <= RemoteFiles.maxSize else { return finish(id, .failed("too_big"), wire: false) }
         guard let h = try? FileHandle(forReadingFrom: source) else { return finish(id, .failed("read"), wire: false) }
         defer { try? h.close() }
         guard send(.begin(info)) else { return pause(id) }
         var sent = 0
-        if peerResumes() {
+        if resumes {
             // where the receiver has it: 0 for a new file
             var waited = 0.0
             while lock.withLock({ item(id).map { $0.heardSince == false && $0.t.state == .going } ?? false }) {
@@ -443,7 +465,8 @@ public final class RemoteFileSender: @unchecked Sendable {
         }
         while true {
             var waited = 0.0
-            while let it = lock.withLock({ item(id) }), it.t.state == .going, sent - (it.acked ?? 0) > RemoteFiles.window {
+            while let it = lock.withLock({ item(id) }), it.t.state == .going,
+                  sent - (it.acked ?? 0) > RemoteFiles.window(rate: RemoteFiles.rate(it.samples), resumes: resumes) {
                 Thread.sleep(forTimeInterval: pollInterval)
                 waited += pollInterval
                 // a minute without the receiver moving
@@ -619,7 +642,7 @@ public final class RemoteFileReceiver: @unchecked Sendable {
             return change(p, device, .failed("write"))
         }
         p.written += d.count
-        let tell = p.written - p.told >= RemoteFiles.progressEvery
+        let tell = p.written - p.told >= (resumes ? RemoteFiles.progressEvery : RemoteFiles.oldProgressEvery)
         if tell {
             p.told = p.written
             let now = ProcessInfo.processInfo.systemUptime

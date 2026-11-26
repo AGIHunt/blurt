@@ -45,9 +45,30 @@
     "maxClipImage" : 20971520,
     "maxCount" : 1000,
     "maxSize" : 4294967296,
-    "progressEvery" : 1048576,
+    "minWindow" : 524288,
+    "oldProgressEvery" : 1048576,
+    "progressEvery" : 262144,
     "resumeWaitSeconds" : 10,
-    "window" : 4194304
+    "window" : 4194304,
+    "windowFor" : [
+      {
+        "rate" : 0,
+        "window" : 524288
+      },
+      {
+        "rate" : 100000,
+        "window" : 524288
+      },
+      {
+        "rate" : 1500000,
+        "window" : 750000
+      },
+      {
+        "rate" : 50000000,
+        "window" : 4194304
+      }
+    ],
+    "windowMilliseconds" : 500
   },
   "goBetween" : {
     "address" : "wss://meet.blurt.work",

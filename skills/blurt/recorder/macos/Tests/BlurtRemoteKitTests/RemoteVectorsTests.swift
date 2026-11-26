@@ -274,7 +274,11 @@ final class RemoteVectorsTests: XCTestCase {
         // clipboard and files (docs/design/remote-files.md): feature names and every limit an implementation must share
         out["files"] = [
             "features": ["files": RemoteFeature.files, "resume": RemoteFeature.resume, "clipboard": RemoteFeature.clipboard],
-            "chunk": RemoteFiles.chunk, "window": RemoteFiles.window, "progressEvery": RemoteFiles.progressEvery, "maxSize": RemoteFiles.maxSize,
+            "chunk": RemoteFiles.chunk, "window": RemoteFiles.window, "progressEvery": RemoteFiles.progressEvery, "oldProgressEvery": RemoteFiles.oldProgressEvery,
+            "minWindow": RemoteFiles.minWindow, "windowMilliseconds": Int(RemoteFiles.windowSeconds * 1000),
+            "windowFor": [[0, 0], [100_000, RemoteFiles.window(rate: 100_000, resumes: true)], [1_500_000, RemoteFiles.window(rate: 1_500_000, resumes: true)],
+                          [50_000_000, RemoteFiles.window(rate: 50_000_000, resumes: true)]].map { ["rate": $0[0], "window": $0[0] == 0 ? RemoteFiles.minWindow : $0[1]] },
+            "maxSize": RemoteFiles.maxSize,
             "maxCount": RemoteFiles.maxCount, "maxClipImage": RemoteFiles.maxClipImage, "keepPartsSeconds": Int(RemoteFiles.keepParts),
             "resumeWaitSeconds": Int(RemoteFiles.resumeWait), "askOnCellular": RemoteFiles.askOnCellular,
             "clean": [["in": "../secret/.bashrc", "out": "bashrc"], ["in": "a:b.txt", "out": "a-b.txt"], ["in": "C:\\Users\\me\\报告.pdf", "out": "报告.pdf"],
