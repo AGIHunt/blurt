@@ -17,8 +17,10 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use blurt_remote::host::{Backend, Button, Crop, CursorShape, FrameSink, Input, Screen, ScreenConfig, ScreenInfo, ScrollPhase, SystemMove};
-use blurt_remote::phone::{pair, Event, Options, Phone};
+use blurt_remote::host::{
+    Backend, Button, Crop, CursorShape, EncodedFrame, FrameSink, Input, Screen, ScreenConfig, ScreenInfo, ScrollPhase, SystemMove,
+};
+use blurt_remote::phone::{pair, Event, Options, Phone, Watch, Weather};
 use blurt_remote::server::GoBetweenProblem;
 use blurt_remote::store::FileKeyStore;
 use blurt_remote::wire::{Candidate, Chord, SessionInfo, ToMac, ToPhone};
@@ -182,8 +184,15 @@ async fn node(script: &str, env: &[(&str, String)], says: &str) -> Result<Relay,
 /// Blurt's public relay (`public.js`, `LEASES` at once) and a go-between that gives tickets to it, sharing a secret: (go-between,
 /// public relay). `public_at`: the address the go-between names instead (a dead one).
 async fn public_pair(leases: u32, public_at: Option<String>) -> Result<(Relay, Relay), String> {
+    public_pair_with(leases, public_at, &[]).await
+}
+
+/// The same, with more of the public relay's settings (its budgets, say).
+async fn public_pair_with(leases: u32, public_at: Option<String>, more: &[(&str, String)]) -> Result<(Relay, Relay), String> {
     let secret = blurt_remote::crypto::base64url(&blurt_remote::crypto::new_key());
-    let public = node("public.js", &[("TICKET_SECRETS", secret.clone()), ("LEASES", leases.to_string())], "blurt relay").await?;
+    let mut env = vec![("TICKET_SECRETS", secret.clone()), ("LEASES", leases.to_string())];
+    env.extend(more.iter().cloned());
+    let public = node("public.js", &env, "blurt relay").await?;
     let named = public_at.unwrap_or_else(|| format!("ws://127.0.0.1:{}", public.1));
     let meet = node("server.js", &[("BUDGET", "1".into()), ("TICKET_SECRET", secret), ("PUBLIC_RELAY", named)], "blurt go-between").await?;
     Ok((meet, public))
@@ -206,6 +215,11 @@ async fn paired(meet: &str, input: Lines) -> (Host, std::path::PathBuf, String, 
 
 /// The same, with Blurt's public relay let in at `public` and a screen that writes down what it's asked.
 async fn paired_with(meet: &str, public: Option<&str>, input: Lines, screen: Option<Asked>) -> (Host, std::path::PathBuf, String, Vec<u8>) {
+    paired_on(meet, public, Box::new(TestBackend(TestInput(input), screen.map(TestScreen)))).await
+}
+
+/// The same, with any backend.
+async fn paired_on(meet: &str, public: Option<&str>, backend: Box<dyn Backend>) -> (Host, std::path::PathBuf, String, Vec<u8>) {
     let dir = std::env::temp_dir().join(format!("blurt-remote-meet-{}", blurt_remote::crypto::new_id()));
     let h = Host::start(
         HostConfig {
@@ -217,7 +231,7 @@ async fn paired_with(meet: &str, public: Option<&str>, input: Lines, screen: Opt
             go_between: Some(meet.into()),
             public_relay: public.map(String::from),
         },
-        Box::new(TestBackend(TestInput(input), screen.map(TestScreen))),
+        backend,
         Box::new(FileKeyStore::new(dir.join("keys.json"))),
         Box::new(Quiet),
     );
@@ -710,6 +724,151 @@ async fn one_lease_is_busy_for_another_until_it_is_given_back() {
         h.stop();
         let _ = std::fs::remove_dir_all(d);
     }
+}
+
+fn clock() -> f64 {
+    static T: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    T.get_or_init(std::time::Instant::now).elapsed().as_secs_f64()
+}
+
+/// Seconds from each picture's capture to the phone having it whole. Over a relay the host sends no clock, so each picture starts
+/// with its capture time on `clock()`, which host and phone share here.
+static AGES: Mutex<Vec<f64>> = Mutex::new(Vec::new());
+
+fn age_of(data: &[u8]) -> bool {
+    let Some(p) = blurt_remote::packets::unpack_payload(data) else { return false };
+    let Some(at) = p.picture.get(..8) else { return false };
+    AGES.lock().unwrap().push(clock() - f64::from_be_bytes(at.try_into().unwrap()));
+    true
+}
+
+#[derive(Default)]
+struct SteadySt {
+    gen: u64,
+    bitrate: u32,
+    fps: u32,
+    want_key: bool,
+    /// the bitrate of each start, then of each `set_rate`
+    rates: Vec<u32>,
+    keyframes: usize,
+}
+
+/// A screen that keeps moving: frames at the rate it's given, each a frame's share of the bitrate (a keyframe four times that), and a
+/// keyframe when asked, as a real encoder.
+#[derive(Clone, Default)]
+struct Steady(Arc<Mutex<SteadySt>>);
+
+impl Screen for Steady {
+    fn start(&mut self, c: &ScreenConfig, sink: FrameSink) -> Result<ScreenInfo, String> {
+        let gen = {
+            let mut s = self.0.lock().unwrap();
+            s.gen += 1;
+            (s.bitrate, s.fps, s.want_key) = (c.bitrate, c.fps, true);
+            s.rates.push(c.bitrate);
+            s.gen
+        };
+        let st = self.0.clone();
+        std::thread::spawn(move || loop {
+            let (f, gap) = {
+                let mut s = st.lock().unwrap();
+                if s.gen != gen {
+                    return;
+                }
+                let fps = s.fps.clamp(1, 60);
+                let per = (s.bitrate / 8 / fps).max(500) as usize;
+                let key = std::mem::take(&mut s.want_key);
+                s.keyframes += key as usize;
+                let mut picture = clock().to_be_bytes().to_vec();
+                picture.resize(if key { per * 4 } else { per }, 0x41);
+                let f = EncodedFrame {
+                    picture,
+                    keyframe: key,
+                    parameter_sets: if key { vec![vec![0x67, 1, 2], vec![0x68, 3]] } else { vec![] },
+                    crop: Crop::WHOLE,
+                    captured: clock(),
+                    ..Default::default()
+                };
+                (f, 1.0 / fps as f64)
+            };
+            sink(f);
+            std::thread::sleep(Duration::from_secs_f64(gap));
+        });
+        Ok(ScreenInfo { width: 1440.0, height: 900.0, codec: "h264".into() })
+    }
+    fn set_crop(&mut self, _: Crop) {}
+    fn set_rate(&mut self, bitrate: u32, fps: u32) {
+        let mut s = self.0.lock().unwrap();
+        (s.bitrate, s.fps) = (bitrate, fps);
+        s.rates.push(bitrate);
+    }
+    fn keyframe(&mut self) {
+        self.0.lock().unwrap().want_key = true;
+    }
+    fn refresh(&mut self) {}
+    fn stop(&mut self) {
+        self.0.lock().unwrap().gen += 1;
+    }
+}
+
+/// The test input and a moving screen.
+struct MovingBackend(TestInput, Steady);
+
+impl Backend for MovingBackend {
+    fn input(&mut self) -> &mut dyn Input {
+        &mut self.0
+    }
+    fn screen(&mut self) -> Option<&mut dyn Screen> {
+        Some(&mut self.1)
+    }
+    fn platform(&self) -> &'static str {
+        "linux"
+    }
+    fn display_aspect(&self) -> f64 {
+        1.6
+    }
+    fn now(&self) -> f64 {
+        clock()
+    }
+    fn keep_awake(&mut self, _: bool, _: bool) {}
+}
+
+/// The evening's cross-border path, made on loopback: the public relay passes the picture at 300 kbps (`LEASED_RATE`) and pauses
+/// reading the host's connection past that, as it does whenever the far side can't keep up. The host is offered a screen moving at
+/// its full 1 Mbps / 15 fps. A sender that sent every frame regardless (`measure-path.mjs`) was ~15 s behind on the real path at the
+/// peak, and here would be about 10 s behind after 15 s; the real host has to stay within a few seconds by skipping frames (a
+/// keyframe once the way is clear) and lowering its rate from the phone's reports (screen.rs `holding_back`, `report`).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_public_relay_costs_frames_not_seconds() {
+    let (r, p) = match public_pair_with(10, None, &[("LEASED_RATE", (300_000 / 8).to_string()), ("LEASED_BURST", (64 * 1024).to_string())]).await
+    {
+        Ok(x) => x,
+        Err(why) => return eprintln!("skipped: {why}"),
+    };
+    let (meet, public) = (format!("ws://127.0.0.1:{}", r.1), format!("ws://127.0.0.1:{}", p.1));
+    let screen = Steady::default();
+    let (h, dir, device, key) = paired_on(&meet, Some(&public), Box::new(MovingBackend(TestInput(Lines::default()), screen.clone()))).await;
+    let mut q = on_public(&meet, &public, &device, &key).await;
+    until(|| h.status().connected.filter(|c| c.route == "publicRelay")).await;
+
+    let m = q.watch(Watch { request: big_picture(), warmup: 3.0, seconds: 15.0, weather: Weather::clear(), verify: Some(age_of) }).await;
+    let (rates, keyframes) = {
+        let s = screen.0.lock().unwrap();
+        (s.rates.clone(), s.keyframes)
+    };
+    let mut ages = std::mem::take(&mut *AGES.lock().unwrap());
+    ages.sort_by(f64::total_cmp);
+    let (p50, p95, max) = (ages[ages.len() / 2], ages[ages.len() * 95 / 100], ages[ages.len() - 1]);
+    eprintln!("through a 300 kbps relay: {m}; age p50/p95/max {p50:.2}/{p95:.2}/{max:.2} s; encoder rates {rates:?}, keyframes {keyframes}");
+    assert_eq!(m.corrupt, 0);
+    assert!(rates.iter().all(|r| *r <= 1_000_000), "Data Saver's picture at most: {rates:?}");
+    assert!(*rates.last().unwrap() <= 400_000, "the encoder's rate comes down to what gets through: {rates:?}");
+    assert!(m.mbps <= 0.33, "no more than the relay passes: {m}");
+    assert!(m.shown >= 15, "the picture keeps coming, a frame a second at least: {m}");
+    assert!(p95 < 3.0 && max < 5.0, "a few seconds behind at most, not a queue that grows: {p50}/{p95}/{max}");
+    drop(q);
+    until(|| h.status().connected.is_none().then_some(())).await;
+    h.stop();
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// A dead public relay: the host can't get in and says `noDirect` alone, at once; a phone sent to one that never answers gives up after
