@@ -679,6 +679,8 @@ export const api = {
   remoteSetService: (on: boolean) => invoke<RemoteStatus>('remote_set_service', { on }),
   /** the "being controlled" bar's Disconnect: the device waits for its user instead of reconnecting */
   remoteEndSession: () => invoke<void>('remote_end_session'),
+  /** the bar's Send Files…: picked there, to the device connected now (false: nothing picked, or it takes no files) */
+  remoteSendFiles: () => invoke<boolean>('remote_send_files'),
   /** 连接记录, newest first */
   remoteConnections: (limit = 8) => invoke<RemoteConnection[]>('remote_connections', { limit }),
   /** Blurt's go-between for away from home (on by default); used only while no relay of the owner's is set */
@@ -762,9 +764,15 @@ export interface RemoteConnection {
   end: number | null;
   route: string | null;
   paired: boolean;
+  /** what moved in that session, never what it was */
+  clipboard?: number;
+  received?: number;
+  sent?: number;
 }
 
 export const onRemoteStatus = (cb: (s: RemoteStatus) => void) => listen<RemoteStatus>('remote://status', cb);
+/** this computer's clipboard went to the device named (getClipboard): the bar says so for 4 s */
+export const onClipboardSent = (cb: (to: string) => void) => listen<string>('remote://clipboard-sent', cb);
 
 export interface VoiceprintStatus {
   enrolled: boolean;

@@ -116,3 +116,31 @@ describe('the cover over the picture', () => {
     expect(coverFor('forgotten', 'Studio', null, false, true)?.kind).toBe('removed');
   });
 });
+
+describe('files both ways', () => {
+  it('says where a file goes and how far, its batch and time left, and each state', async () => {
+    const { transferLine, noneLine, stoppable, size } = await import('./files');
+    const { setLang } = await import('../i18n');
+    setLang('en');
+    const MB = 1024 * 1024;
+    const x = { id: 'a', name: 'Q4 Quote.xlsx', size: 350 * MB, done: 141 * MB, incoming: true, clip: false, state: 'going' as const };
+    expect(transferLine(x, 'Office PC', 'local')).toBe(`From Office PC · ${size(141 * MB)} of ${size(350 * MB)}`);
+    expect(transferLine({ ...x, incoming: false, index: 2, count: 3 }, 'Office PC', 'local')).toMatch(/^2 of 3 · To Office PC · /);
+    expect(transferLine({ ...x, secondsLeft: 95 }, 'Office PC', 'local')).toMatch(/ left$/);
+    expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'goBetween')).toBe('Connecting directly…');
+    expect(transferLine({ ...x, state: 'waiting' }, 'Office PC', 'local')).toBe('Waiting');
+    expect(transferLine({ ...x, state: 'paused' }, 'Office PC', 'local')).toBe('Paused. Continues when reconnected.');
+    expect(transferLine({ ...x, state: 'done' }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt');
+    expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('Saved to Downloads/Blurt on Office PC');
+    expect(transferLine({ ...x, state: 'failed', why: 'stopped' }, 'Office PC', 'local')).toBe('Stopped');
+    expect(transferLine({ ...x, state: 'failed', why: 'space' }, 'Office PC', 'local')).toBe('Not received: not enough space on this device.');
+    expect(transferLine({ ...x, state: 'failed', why: 'locked', incoming: false }, 'Office PC', 'local')).toBe('Not sent: that computer is locked.');
+    expect(noneLine('empty', 'Office PC')).toBe('Nothing is copied on Office PC.');
+    expect(noneLine('too_big', 'Office PC')).toBe('Too many files are copied on Office PC. Send up to 1,000 at a time.');
+    expect([stoppable(x), stoppable({ ...x, state: 'done' })]).toEqual([true, false]);
+    setLang('zh-Hans');
+    expect(transferLine({ ...x, state: 'done', incoming: false }, 'Office PC', 'local')).toBe('已保存到 Office PC 的「下载/Blurt」');
+    expect(transferLine({ ...x, index: 1, count: 3 }, 'Office PC', 'local')).toMatch(/^第 1\/3 个 · 来自 Office PC · /);
+    setLang('en');
+  });
+});

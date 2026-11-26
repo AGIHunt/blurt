@@ -14,6 +14,8 @@ import { setLang, t } from '../i18n';
 import { Menu, tidy, type MenuAt, type MenuEntry } from '../components/Menu';
 import { contained, decodable, parseFrame, Picture, toPicture, wheelPoints } from './decode';
 import { pathLine } from './computers';
+import { noneLine, stoppable, transferLine, type Transfer } from './files';
+import { revealLabel } from '../reveal';
 import './viewer.css';
 
 type Quality = 'auto' | 'sharp' | 'balanced' | 'saver';
@@ -39,8 +41,11 @@ interface Init {
 type Message =
   | { type: 'link'; link: Link; route: RemoteRoute | null }
   | { type: 'rtt'; ms: number }
-  | { type: 'session'; name: string; platform: Init['platform']; canControl: boolean; privacy?: boolean; files?: boolean }
-  | { type: 'file'; state: 'sending' | 'saved' | 'failed'; name?: string; why?: string }
+  | { type: 'session'; name: string; platform: Init['platform']; canControl: boolean; privacy?: boolean; files?: boolean; clipboard?: boolean }
+  | ({ type: 'transfer' } & Transfer)
+  | { type: 'copied'; what: 'text' | 'image' }
+  | { type: 'clipboardNone'; why: string }
+  | { type: 'compressing' }
   | { type: 'displays'; displays: Display[] }
   | { type: 'view'; width: number; height: number; family: string; display: string | null }
   | { type: 'cursor'; x: number; y: number }
@@ -89,7 +94,11 @@ export function ViewerWindow({ id }: { id: string }) {
   const [canPrivacy, setCanPrivacy] = useState(false);
   // files: the host takes them (its session says); what the last one did, said for a few seconds
   const [canFiles, setCanFiles] = useState(false);
+  const [canClipboard, setCanClipboard] = useState(false);
   const [fileNote, setFileNote] = useState<string | null>(null);
+  // files both ways this window: newest first (the card), and the computer's own name for its lines
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const nameRef = useRef('');
   const fileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const privacy = useRef(false);
   const [, setPrivacyTick] = useState(0);
@@ -132,6 +141,12 @@ export function ViewerWindow({ id }: { id: string }) {
     });
   }, []);
 
+  /** A line over the picture for a few seconds (what Get Copied Files brought, or why nothing). */
+  const note = useCallback((text: string) => {
+    setFileNote(text);
+    if (fileTimer.current) clearTimeout(fileTimer.current);
+    fileTimer.current = setTimeout(() => setFileNote(null), 4000);
+  }, []);
   const onMessage = useCallback((m: Message | ArrayBuffer) => {
     if (m instanceof ArrayBuffer) {
       const f = parseFrame(m);
@@ -167,6 +182,7 @@ export function ViewerWindow({ id }: { id: string }) {
         setCanControl(m.canControl);
         setCanPrivacy(!!m.privacy);
         setCanFiles(!!m.files);
+        setCanClipboard(!!m.clipboard);
         if (m.privacy && privacy.current) void invoke('viewer_privacy', { on: true }).catch(() => {});
         setFailed(null);
         setLocked(false);
@@ -192,21 +208,35 @@ export function ViewerWindow({ id }: { id: string }) {
       case 'screenLocked':
         setLocked(m.locked);
         break;
-      case 'file': {
-        const text = m.state === 'sending' ? t('viewer.file.sending', { 1: m.name ?? '' })
-          : m.state === 'saved' ? t('viewer.file.saved', { 1: m.name ?? '' })
-          : t(`viewer.file.failed.${m.why === 'space' || m.why === 'too_big' || m.why === 'locked' ? m.why : 'other'}`);
-        setFileNote(text);
-        if (fileTimer.current) clearTimeout(fileTimer.current);
-        if (m.state !== 'sending') fileTimer.current = setTimeout(() => setFileNote(null), 5000);
+      case 'transfer': {
+        const { type: _, ...x } = m;
+        void _;
+        // a clip goes onto the clipboard: its note says so, it isn't a file in the list
+        if (x.clip && x.incoming) break;
+        setTransfers((l) => [x, ...l.filter((y) => y.id !== x.id)].slice(0, 20));
         break;
       }
+      case 'copied':
+        note(t(m.what === 'image' ? 'viewer.copied_image' : 'viewer.copied'));
+        break;
+      case 'clipboardNone':
+        note(noneLine(m.why, nameRef.current));
+        break;
+      case 'compressing':
+        note(t('viewer.file.compressing'));
+        break;
       case 'released':
         setCaptured(false);
         setHint(false);
         break;
     }
-  }, []);
+  }, [note]);
+  nameRef.current = name;
+
+  // Get Copied Files: what is copied there comes here (an older Blurt there can't answer: said so)
+  const getCopied = useCallback(() => {
+    void invoke<string>('viewer_get_clipboard').then((r) => r === 'update' && note(t('viewer.update_host', { 1: nameRef.current })), () => {});
+  }, [note]);
 
   // the session: once the webview is ready (and again after a reload)
   const attach = useCallback(() => {
@@ -392,6 +422,7 @@ export function ViewerWindow({ id }: { id: string }) {
     { label: t('viewer.clipboard'), checked: options.clipboard, run: () => setOpts({ clipboard: !options.clipboard }), testId: 'viewer-clipboard' },
     host === 'windows' && { label: t('viewer.ctrl_alt_del'), testId: 'viewer-cad', run: () => void invoke('viewer_system', { name: 'secureAttention' }).catch(() => {}) },
     canFiles && { label: t('viewer.send_files'), testId: 'viewer-send-files', run: () => void invoke('viewer_send_files', { paths: null }).catch(() => {}) },
+    (canFiles || canClipboard) && { label: t('viewer.get_copied'), keys: init?.os === 'mac' ? '⌥⌘V' : 'Ctrl+Alt+V', testId: 'viewer-get-copied', run: getCopied },
     canPrivacy && { label: t('viewer.privacy'), checked: privacy.current, testId: 'viewer-privacy',
       run: () => {
         privacy.current = !privacy.current;
@@ -404,17 +435,21 @@ export function ViewerWindow({ id }: { id: string }) {
   ]);
   const qualityEntries: MenuEntry[] = QUALITIES.map((q) => ({ label: t(`viewer.quality.${q}`), checked: q === quality, run: () => pickQuality(q) }));
 
-  // F11: the system's own full screen, as the ⋯ menu's (not while keys are the other computer's)
+  // F11: the system's own full screen, as the ⋯ menu's; Ctrl+Alt+V: Get Copied Files (not while keys are the other computer's)
   useEffect(() => {
     const f = (e: KeyboardEvent) => {
       if (e.key === 'F11' && !capturedRef.current) {
         e.preventDefault();
         void fullScreen();
       }
+      if (e.code === 'KeyV' && e.altKey && (e.ctrlKey || e.metaKey) && !e.shiftKey && !capturedRef.current) {
+        e.preventDefault();
+        getCopied();
+      }
     };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, []);
+  }, [getCopied]);
 
   const index = displays.findIndex((d) => d.id === shown);
   const box = picSize && stage.current ? contained(stage.current.clientWidth, stage.current.clientHeight, picSize.w, picSize.h) : null;
@@ -470,7 +505,12 @@ export function ViewerWindow({ id }: { id: string }) {
         )}
         {showCursor && !shape && <span className="vw-cursor arrow" style={{ left: box.x + cursor.x * box.w, top: box.y + cursor.y * box.h }} />}
         {hint && live && <div className="vw-hint" role="status" data-testid="viewer-hint">{t('viewer.hint')}</div>}
-        {fileNote && live && <div className="vw-hint" role="status" data-testid="viewer-file">{fileNote}</div>}
+        {fileNote && link === 'connected' && <div className="vw-hint" role="status" data-testid="viewer-file">{fileNote}</div>}
+        {transfers.length > 0 && (
+          <FileCard transfers={transfers} computer={name} route={route}
+            onStop={(id) => void invoke('viewer_stop_transfer', { id }).catch(() => {})}
+            onClose={() => setTransfers((l) => l.filter(stoppable))} />
+        )}
         {cover && (
           <div className={`vw-cover ${cover.warn ? 'warn' : ''} ${cover.over ? 'over' : ''}`} role="status" data-testid="viewer-cover" data-cover={cover.kind}>
             {cover.kind === 'connecting' || cover.kind === 'reconnecting' ? <span className="st-spin" aria-hidden /> : cover.warn ? <Icon name="warning" size={20} /> : null}
@@ -497,6 +537,39 @@ export function ViewerWindow({ id }: { id: string }) {
           onPick={(d) => showDisplay(d)} />
       )}
     </div>
+  );
+}
+
+/** The files card (bottom right, over the picture): each transfer this window, its line, its progress, × while it can be stopped, and
+ * Show in Folder once one has come here. Closing it clears the finished ones. */
+export function FileCard({ transfers, computer, route, onStop, onClose }: { transfers: Transfer[]; computer: string; route: string | null; onStop: (id: string) => void; onClose: () => void }) {
+  return (
+    <section className="vw-files" aria-label={t('viewer.files')} data-testid="viewer-files" onPointerDown={(e) => e.stopPropagation()}>
+      <header className="vw-files-head">
+        <span>{t('viewer.files')}</span>
+        <button className="vw-files-x" aria-label={t('viewer.close')} onClick={onClose}><Icon name="close" size={12} /></button>
+      </header>
+      {transfers.slice(0, 5).map((x) => (
+        <div key={x.id} className={`vw-file ${x.state}`} data-testid="viewer-file-row" data-state={x.state}>
+          <Icon name={x.incoming ? 'download' : 'send'} size={14} />
+          <div className="vw-file-text">
+            <div className="vw-file-name" title={x.name}>{x.name}</div>
+            <div className="vw-file-line">{transferLine(x, computer, route)}</div>
+            {(x.state === 'going' || x.state === 'paused') && x.size > 0 && (
+              <div className="vw-file-bar" aria-hidden><span style={{ width: `${Math.min(100, (100 * x.done) / x.size)}%` }} /></div>
+            )}
+          </div>
+          {stoppable(x) && (
+            <button className="vw-file-btn" aria-label={t('viewer.file.stop')} title={t('viewer.file.stop')} onClick={() => onStop(x.id)}>
+              <Icon name="close" size={12} />
+            </button>
+          )}
+          {x.state === 'done' && x.incoming && x.path && (
+            <button className="vw-file-link" onClick={() => void invoke('reveal', { path: x.path }).catch(() => {})}>{revealLabel()}</button>
+          )}
+        </div>
+      ))}
+    </section>
   );
 }
 
