@@ -112,6 +112,36 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 | iPhone / iPad (`apps/ios`) | photo picker, document picker, share extension, Paste from This Phone (image) | Documents (shown in Files) | UIPasteboard |
 | Android (`apps/android`) | photo picker, `ACTION_OPEN_DOCUMENT`, share intents | MediaStore Downloads/Blurt (API 29+), app external files below | ClipboardManager |
 
+## Copy
+
+Every platform uses these words (copy.md; reuse where a string exists). `%@` is a device's or computer's name as this end shows it (its alias).
+Android says 分享 where iOS says 共享, and 相册 / Gallery where iOS says 照片 / Photos.
+
+| Where | 中文 | English |
+|---|---|---|
+| The phone's bar button (accessibility) and the sheet's title | 传输 | Transfer |
+| Sheet actions | 发送照片… · 发送文件… · 获取 %@ 上拷贝的内容 | Send Photos… · Send Files… · Get Copied Items from %@ |
+| The sheet's empty list | 发送或获取的文件会显示在这里。 | Files you send or get appear here. |
+| A row going out · coming in (`%@ / %@` done / size) | 发往 %@ · %@ / %@ · 来自 %@ · %@ / %@ | To %@ · %@ of %@ · From %@ · %@ of %@ |
+| A batch (prefix) · time left (suffix, system duration) | 第 %ld/%ld 个 · 还剩 %@ | %ld of %ld · %@ left |
+| States | 等待中 · 正在建立直连… · 正在压缩… · 已暂停，重新连接后继续。 · 已停止 | Waiting · Connecting directly… · Compressing… · Paused. Continues when reconnected. · Stopped |
+| Sent | 已保存到 %@ 的「下载/Blurt」 | Saved to Downloads/Blurt on %@ |
+| Received on iPhone · on Android · on a computer | 已存到「文件」App 的 Blurt Remote 文件夹 · 已存到「Download/Blurt」 · 已保存到「下载/Blurt」 | Saved in Files › Blurt Remote · Saved to Download/Blurt · Saved to Downloads/Blurt |
+| A received file's buttons | 打开 · 共享… · 存储到照片 · 在访达中显示 / 在文件夹中显示 | Open · Share… · Save to Photos · Show in Finder / Show in Folder |
+| A transfer's buttons | 停止 · 继续 | Stop · Continue |
+| What came from the clipboard | 已拷贝 · 已拷贝图片 | Copied · Image Copied |
+| Nothing came | %@ 上没有拷贝的内容。 · %@ 已锁屏。 · %@ 上拷贝的文件太多。一次最多 1,000 个。 · 无法从 %@ 获取此类内容。 · %@ 需要更新后才能使用。 | Nothing is copied on %@. · %@ is locked. · Too many files are copied on %@. Send up to 1,000 at a time. · Can't get this kind of item from %@. · Update %@ to use this. |
+| Not sent (exist, viewer.file.failed.*) | 未发送：对方空间不足。 · 未发送：文件超过 4 GB。 · 未发送：对方已锁屏。 · 未发送。 | Not sent: not enough space on that computer. · Not sent: larger than 4 GB. · Not sent: that computer is locked. · Not sent. |
+| Not received | 未接收：本机空间不足。 · 未接收。 | Not received: not enough space on this device. · Not received. |
+| Mobile data (title · buttons) | 使用移动网络发送 %@？ · 使用移动网络接收 %@？ · 发送 · 接收 · 取消 | Send %@ over mobile data? · Get %@ over mobile data? · Send · Get · Cancel |
+| An image pasted from the phone, too big | 图片超过 20 MB。 | The image is larger than 20 MB. |
+| Share extension (button · nothing paired · after the tap) | 发送到 %@ · 请先在 Blurt Remote 中配对电脑。 · 打开 Blurt Remote 即可发送。 | Send to %@ · Pair a computer in Blurt Remote first. · Open Blurt Remote to send. |
+| iOS Photos permission (NSPhotoLibraryAddUsageDescription) | 将从电脑获取的照片和视频存储到“照片”。 | Save pictures and videos from your computer to Photos. |
+| The host's bar: button · notice for 4 s | 发送文件… · 剪贴板已发送到 %@ | Send Files… · Clipboard sent to %@ |
+| The host's notification for several files | 收到「%@」发来的 %ld 个文件 | %ld files from %@ |
+| The host's connection log | 发送了剪贴板 · 收到 %ld 个文件 · 发送了 %ld 个文件 | Sent the clipboard · Received %ld files · Sent %ld files |
+| The viewer's ⋯ menu | 接收拷贝的文件 | Get Copied Files |
+
 ## Measurements
 
 To fill in as each is run: throughput on the same network and over the moved go-between stream; resume after a drop at 40 %; time from
