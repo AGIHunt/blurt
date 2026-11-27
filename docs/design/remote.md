@@ -781,7 +781,7 @@ Peer-to-peer means anyone in radio range can reach the handshake (no further), a
 - macOS Local Network and firewall behaviour for the signed release app.
 - Bare letters typed as keys while the Mac's input method is on (digits are fine) go into its composition.
 - Tap then drag clicks once first (the click can't wait for what comes next without delaying every tap).
-- App Store: needs the bundle id registered, screenshots, and a price decision (reviews say: no subscription, no ads).
+- App Store: the free iPhone and iPad client uses `work.blurt.remote`. Review notes list companion setup, service providers, and regional availability. Attach a real-device recording from launch through pairing, control, and transfer for the first review. See [App Store metadata](../../apps/ios/app-store/metadata.md).
 
 ## iPad and iPhone Duo
 

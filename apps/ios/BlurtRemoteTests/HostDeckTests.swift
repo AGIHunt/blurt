@@ -198,7 +198,7 @@ final class HostDeckTests: XCTestCase {
 }
 
 final class MacDeckGoldenTests: XCTestCase {
-    /// The Mac's deck as it shipped up to 1.0.14, written by that version (BLURT_WRITE_DECK=1).
+    /// The shipped Mac deck, including the 1.2.1 keyboard changes. Regenerate with BLURT_WRITE_DECK=1.
     func testMacDeckIsAsItShipped() throws {
         try golden("mac-deck", String(decoding: try stableJSON(Deck.standard), as: UTF8.self))
     }
