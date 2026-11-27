@@ -20,8 +20,8 @@
 "phone.add.title" = "Add Device";
 /* when the code on screen gives way to a new one, e.g. "New code in 1:40" (the one replaced still works 20 s more) */
 "phone.add.left" = "New code in %@";
-"phone.pair.copy.tip" = "Paste it on a phone or another computer to pair. Valid for 10 minutes.";
-"phone.add.tip" = "Shows the pairing code: scan it with a phone, or copy the link for another computer";
+"phone.pair.copy.tip" = "Paste the link on a phone or another computer to pair. Valid for 10 minutes.";
+"phone.add.tip" = "Shows a pairing code and link for adding a phone or computer";
 "phone.remove" = "Remove…";
 "phone.remove.named" = "Remove %@";
 /* a paired device or computer renamed on this Mac only (remote-1.1.md §6): the ⋯ item, its VoiceOver label and action, and the

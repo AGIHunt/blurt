@@ -905,7 +905,7 @@
   "phone.devices.lead": "The device list is on the {1} page in the main window.",
   "phone.devices.show": "Show Devices",
   "phone.copy_link": "Copy Link",
-  "phone.copy_link.tip": "Paste it on a phone or another computer to pair. Valid for 10 minutes.",
+  "phone.copy_link.tip": "Paste the link on a phone or another computer to pair. Valid for 10 minutes.",
   "phone.link_copied": "Copied · Valid for 10 minutes",
   "computers.section": "Computers You Can Control",
   "computers.add": "Add Computer…",
