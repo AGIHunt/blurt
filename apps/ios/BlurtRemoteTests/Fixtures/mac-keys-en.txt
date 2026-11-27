@@ -2,7 +2,7 @@
 ⌥	-	Option
 ⌘	-	Command
 ⇧	-	Shift
-sf:arrow.right.to.line	-	Complete
+sf:arrow.right.to.line	-	Autocomplete
 sf:space	-	Space
 esc	-	Stop
 sf:delete.left	-	Delete
@@ -30,7 +30,7 @@ sf:text.viewfinder	Copy Text	Copy Text
 sf:character.bubble	Translate	Translate
 sf:rectangle.stack	Cards	Cards
 sf:arrow.clockwise	⌘R	Reload
-sf:arrow.left.to.line	⇧⇥	Back a Field
+sf:arrow.left.to.line	⇧⇥	Previous Field
 1	-	1
 2	-	2
 3	-	3
@@ -111,17 +111,18 @@ F9	-	F9
 F10	-	F10
 F11	-	F11
 F12	-	F12
-Home	↖	↖
-End	↘	↘
-PgUp	⇞	⇞
-PgDn	⇟	⇟
-sf:delete.right	⌦	Forward Delete
+Home	-	↖
+End	-	↘
+PgUp	-	⇞
+PgDn	-	⇟
+sf:delete.right	-	Forward Delete
 sf:rectangle.3.group	All Windows	All Windows
 sf:rectangle.grid.2x2	App Windows	App Windows
 sf:arrow.left.square	Desktop Left	Desktop Left
 sf:arrow.right.square	Desktop Right	Desktop Right
 sf:record.circle	Record	Record
 sf:waveform	Voice Note	Voice Note
+sf:scope	Find Pointer	Find Pointer
 Main	-	Main
 sf:doc.on.doc	⌘C	Copy
 sf:clipboard	⌘V	Paste
@@ -149,9 +150,9 @@ sf:link	⌘L	Address
 sf:chevron.left.square	⇧⌘[	Previous Tab
 sf:chevron.right.square	⇧⌘]	Next Tab
 sf:delete.left	⌥⌫	Delete Word
-sf:delete.left.fill	⌘⌫	Delete Line
+sf:delete.left.fill	⌘⌫	Delete to Line Start
 sf:checkmark.circle	⌘↩︎	Accept
-sf:arrow.left.to.line	⇧⇥	Back a Field
+sf:arrow.left.to.line	⇧⇥	Previous Field
 sf:doc.badge.gearshape	⌘P	Open File
 sf:command.square	⇧⌘P	Command Palette
 sf:sidebar.left	⌘B	Sidebar
@@ -159,7 +160,7 @@ sf:rectangle.bottomthird.inset.filled	⌘J	Terminal Panel
 sf:text.justify.left	⌃O	Transcript
 sf:clock.arrow.circlepath	⌃R	History
 sf:eraser	⌃L	Clear Screen
-sf:text.badge.checkmark	⌥L	Reformat
+sf:text.badge.checkmark	⌥L	Change Style
 sf:globe	⌃␣	Input Source
 sf:scope	Find Pointer	Find Pointer
 Vibe Cod	-	Vibe Cod
@@ -293,8 +294,8 @@ F9	-	F9
 F10	-	F10
 F11	-	F11
 F12	-	F12
-Home	↖	↖
-End	↘	↘
-PgUp	⇞	⇞
-PgDn	⇟	⇟
-sf:delete.right	⌦	Forward Delete
+Home	-	↖
+End	-	↘
+PgUp	-	⇞
+PgDn	-	⇟
+sf:delete.right	-	Forward Delete

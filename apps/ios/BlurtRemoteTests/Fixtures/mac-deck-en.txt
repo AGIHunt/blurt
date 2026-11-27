@@ -48,7 +48,7 @@
       },
       "caption" : "",
       "glyph" : "sf:arrow.right.to.line",
-      "hint" : "Complete",
+      "hint" : "Autocomplete",
       "id" : "00000000-0000-0000-0000-000000000000"
     },
     {
@@ -435,7 +435,7 @@
             }
           },
           "glyph" : "sf:arrow.left.to.line",
-          "hint" : "Back a Field",
+          "hint" : "Previous Field",
           "id" : "00000000-0000-0000-0000-000000000000"
         }
       ]
@@ -1601,6 +1601,16 @@
           "caption" : "Voice Note",
           "glyph" : "sf:waveform",
           "hint" : "Voice Note",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "system" : {
+              "_0" : "findCursor"
+            }
+          },
+          "caption" : "Find Pointer",
+          "glyph" : "sf:scope",
           "id" : "00000000-0000-0000-0000-000000000000"
         }
       ]

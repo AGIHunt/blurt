@@ -18,9 +18,9 @@
   <h3>On your iPhone or iPad</h3>
   <p>Blurt stores paired computer details, connection settings and your shortcut layouts on the device. Pairing keys are kept in the system Keychain. Camera access is used to read a pairing QR code. Local network access lets Blurt discover and connect to your computer. If you enable the device microphone and use dictation, Blurt sends live audio to the paired computer for transcription.</p>
   <h3>Between your devices</h3>
-  <p>Screen frames, audio, and input such as text, keystrokes and gestures travel over the encrypted connection between your paired devices. The mobile app uses screen frames to show your desktop and does not keep a screen recording. The paired computer handles dictation according to its settings, including any cloud transcription or editing provider you choose there. Those providers handle what the computer sends under their own privacy terms.</p>
+  <p>Screen frames, audio, and input such as text, keystrokes and gestures travel over the encrypted connection between your paired devices. The mobile app uses screen frames to show your desktop and does not keep a screen recording. Photos, files, and clipboard items go to or come from your paired computer when you choose to transfer them. Pending shares and received files may be stored on your device. You can delete received files in the Files app. The paired computer handles dictation according to its settings, including any cloud transcription or editing provider you choose there. Those providers handle what the computer sends under their own privacy terms.</p>
   <h3>Connection services</h3>
-  <p>When direct local access is unavailable, Blurt can use its Cloudflare-hosted connection service to help your devices find each other. The service processes network metadata such as IP addresses and opaque room identifiers, and forwards encrypted connection messages. It keeps the latest host disconnect time and sleep status per room so a paired device can see why its computer is unreachable. Later status updates replace that record. A relay you configure may also forward encrypted session traffic and is subject to its operator’s privacy practices.</p>
+  <p>When direct local access is unavailable, Blurt can use its Cloudflare-hosted connection service to help your devices find each other. The service processes network metadata such as IP addresses and opaque room identifiers, and forwards encrypted connection messages. It keeps the latest host disconnect time and sleep status per room so a paired device can see why its computer is unreachable. Later status updates replace that record. If your devices still cannot connect directly and the public connection service is enabled, a Blurt relay hosted by Tencent Cloud may forward the encrypted session. It uses network and session metadata to enforce connection limits. A relay you configure is subject to its operator’s privacy practices.</p>
   <h3>Your controls and requests</h3>
   <p>Remove a computer in Blurt Settings to remove its pairing from the mobile device. Remove the mobile device in the desktop app to revoke access from the computer. You can withdraw camera, microphone or local network permission in iOS or iPadOS Settings. For privacy or deletion requests, email <a href="mailto:contact@agihunt.cc">contact@agihunt.cc</a>. Avoid sending pairing codes, keys or private content.</p>
 
@@ -30,9 +30,9 @@
     <h3>iPhone 或 iPad 上的数据</h3>
     <p>口喷鸡会在设备上保存已配对的电脑信息、连接设置和快捷键布局，配对密钥保存在系统钥匙串中。相机权限用于扫描配对二维码，本地网络权限用于查找和连接你的电脑。启用本机麦克风并使用听写时，口喷鸡会把实时音频发送到已配对的电脑进行转写。</p>
     <h3>设备间传输</h3>
-    <p>屏幕画面、音频以及文字、按键和手势等输入通过配对设备之间的加密连接传输。移动端用屏幕画面显示桌面，不保存录屏。电脑根据其设置处理听写。如果你在电脑端选择云端转写或润色服务，相关服务会按照各自的隐私条款处理电脑发送的内容。</p>
+    <p>屏幕画面、音频以及文字、按键和手势等输入通过配对设备之间的加密连接传输。移动端用屏幕画面显示桌面，不保存录屏。你选择传输时，照片、文件和剪贴板内容才会在配对的设备间传送。待发送的共享内容和收到的文件可能保存在本机。你可以在「文件」App 中删除收到的文件。电脑根据其设置处理听写。如果你在电脑端选择云端转写或润色服务，相关服务会按照各自的隐私条款处理电脑发送的内容。</p>
     <h3>连接服务</h3>
-    <p>设备无法在本地直接连接时，口喷鸡可使用由 Cloudflare 托管的连接服务协助建立连接。服务会处理 IP 地址和随机房间标识等网络元数据，并转发加密的连接消息。为了让配对设备知道电脑为何不可达，服务会按房间保存最近一次电脑断开时间及休眠状态，新的状态会覆盖旧记录。你自行配置的中继也可能转发加密的会话数据，并适用该中继运营方的隐私规则。</p>
+    <p>设备无法在本地直接连接时，口喷鸡可使用由 Cloudflare 托管的连接服务协助建立连接。服务会处理 IP 地址和随机房间标识等网络元数据，并转发加密的连接消息。为了让配对设备知道电脑为何不可达，服务会按房间保存最近一次电脑断开时间及休眠状态，新的状态会覆盖旧记录。启用公共连接服务且设备仍无法直连时，由腾讯云托管的口喷鸡中转可转发加密会话，并使用网络和会话元数据限制连接用量。你自行配置的中转适用该运营方的隐私规则。</p>
     <h3>权限、解绑与删除请求</h3>
     <p>在移动端的口喷鸡设置里移除电脑，可以删除该设备上的配对记录。在桌面端移除移动设备，可以撤销该设备访问电脑的权限。你可以在 iOS 或 iPadOS 系统设置中关闭相机、麦克风或本地网络权限。如需提出隐私或删除请求，请发邮件至 <a href="mailto:contact@agihunt.cc">contact@agihunt.cc</a>。请勿发送配对码、密钥或私人内容。</p>
   </section>

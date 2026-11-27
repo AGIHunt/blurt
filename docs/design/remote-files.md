@@ -117,6 +117,12 @@ Downloads/Blurt; an image comes onto this computer's clipboard; text already com
 | iPhone / iPad (`apps/ios`) | photo picker, document picker, share extension, Paste from This Phone (image) | Documents (shown in Files) | UIPasteboard |
 | Android (`apps/android`) | photo picker, `ACTION_OPEN_DOCUMENT`, share intents | MediaStore Downloads/Blurt (API 29+), app external files below | ClipboardManager |
 
+## iOS distribution
+
+The Share extension and app use the same App Group within each build configuration. Each target includes a privacy manifest
+for the shared defaults. The app also declares its private defaults, outbox folder timestamps, transfer timing, and the local
+space check before receiving files. The mobile privacy policy describes the user-initiated transfers and received files stored on-device.
+
 ## Copy
 
 Every platform uses these words (copy.md; reuse where a string exists). `%@` is a device's or computer's name as this end shows it (its alias).
