@@ -425,6 +425,9 @@ pub async fn open_with(
                 Err(Unreached::Offline) => Err(Unreached::NotPaired),
                 r => r,
             },
+            // something took the connection and never answered as the host (a proxy that takes every connection, as a TUN-mode one does,
+            // or a host half gone): the relay is tried, not given up for this round, which a remembered address would do every round
+            Err(_) if relay.is_some() => Box::pin(open_with(device, id, key, port, &[], &[], relay, go_between_at, fallback)).await,
             Err(_) => Err(Unreached::Offline),
         };
     }
@@ -1239,8 +1242,9 @@ async fn live(
     // UDP knocks until the host says it heard one: a first datagram can be lost (or not leave a socket that isn't writable yet)
     let (mut udp_ok, mut knocked, mut knocks) = (false, 0.0, 0);
     let mut rtt = 0.05;
-    // the host's last word to a ping: a network gone quiet, or a host asleep, isn't waited out for TCP's many minutes
-    let mut heard = 0.0f64;
+    // the host's last word in the stream (Phone::stream_quiet): a network gone quiet, or a host asleep, isn't waited out for TCP's many
+    // minutes. Only the stream counts: over a relay the picture and the probes may still come the direct way while the relay's
+    // connection has gone dark (2026-11-27: a carrier dropped it with no FIN or RST, and the viewer waited on it for good)
     let quiet_after = if tcp { 6.0 } else { 10.0 };
     loop {
         let away = !matches!(route, Route::Local);
@@ -1266,10 +1270,6 @@ async fn live(
                 }
             },
             e = phone.next(Duration::from_millis(4)) => {
-            // anything at all from the host: a file going out fills the stream, and the pongs behind it are late
-            if e.is_some() {
-                heard = now();
-            }
             match e {
                 None => {}
                 Some(PhoneEvent::Closed) => return End::Dropped,
@@ -1353,10 +1353,6 @@ async fn live(
         }
         files_ready.store(info.is_some() && phone.carries_files(), std::sync::atomic::Ordering::SeqCst);
         let n = now();
-        // a send held up by a full stream (a file on a slow line) says nothing about the host: counted from its end
-        if n - last_tick > 1.0 {
-            heard = n.max(heard);
-        }
         if n - last_tick >= 0.004 {
             last_tick = n;
             let outs = pic.receiver.tick(n);
@@ -1369,7 +1365,9 @@ async fn live(
             knocks += 1;
             phone.pointer(PointerPacket::Stop).await;
         }
-        if n - heard > quiet_after || info.is_none() && n > SESSION_DUE {
+        // anything at all in the stream counts (a file coming fills it, and the pongs behind it are late); a send held up by a full stream
+        // takes at most phone::WRITE_STALL, and a slow line's frames still come meanwhile
+        if phone.stream_quiet().as_secs_f64() > quiet_after || info.is_none() && n > SESSION_DUE {
             return End::Dropped;
         }
         if n - last_ping >= 1.0 {

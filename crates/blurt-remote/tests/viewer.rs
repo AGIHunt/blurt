@@ -1410,3 +1410,153 @@ async fn a_public_relay_that_never_answers_is_the_no_direct_line_5_s_later() {
     drop(s);
     h.stop();
 }
+
+// ------------------------------------------------------------------ a relay connection gone dark (2026-11-27)
+
+/// A TCP proxy in front of the relay that, as a mobile carrier did on 2026-11-27, stops passing a connection's bytes both ways with no
+/// FIN and no RST: once `dark` is set, nothing more of connection number `which` (from 1) goes either way, and its sockets stay open
+/// (a close from either end isn't passed on either). Every other connection passes as it is.
+struct Blackhole {
+    url: String,
+    opened: Arc<AtomicUsize>,
+    dark: Arc<AtomicBool>,
+}
+
+async fn blackhole(relay_port: u16, which: usize) -> Blackhole {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", l.local_addr().unwrap());
+    let (opened, dark) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)));
+    let (o, d) = (opened.clone(), dark.clone());
+    async fn pipe(mut r: tokio::net::tcp::OwnedReadHalf, mut w: tokio::net::tcp::OwnedWriteHalf, dark: Option<Arc<AtomicBool>>) {
+        let is_dark = |d: &Option<Arc<AtomicBool>>| d.as_ref().is_some_and(|d| d.load(SeqCst));
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let k = tokio::select! {
+                k = r.read(&mut buf) => k.unwrap_or(0),
+                _ = async { while !is_dark(&dark) { tokio::time::sleep(Duration::from_millis(5)).await } } => 0,
+            };
+            if is_dark(&dark) {
+                // dark: both halves kept, nothing more read (the sender's buffers fill) and nothing said
+                let _held = (r, w);
+                return std::future::pending::<()>().await;
+            }
+            if k == 0 || w.write_all(&buf[..k]).await.is_err() {
+                let _ = w.shutdown().await;
+                return;
+            }
+        }
+    }
+    tokio::spawn(async move {
+        while let Ok((a, _)) = l.accept().await {
+            let n = o.fetch_add(1, SeqCst) + 1;
+            let Ok(b) = tokio::net::TcpStream::connect(("127.0.0.1", relay_port)).await else { continue };
+            let goes_dark = (n == which).then(|| d.clone());
+            let (ar, aw) = a.into_split();
+            let (br, bw) = b.into_split();
+            tokio::spawn(pipe(ar, bw, goes_dark.clone()));
+            tokio::spawn(pipe(br, aw, goes_dark));
+        }
+    });
+    Blackhole { url, opened, dark }
+}
+
+/// The computer's own relay (`node tools/remote-relay/server.js`, plain ws://), the viewer away (no address answers), the direct path
+/// open beside the relay and the picture on it. `dark_after`: how long after the session is up the relay's connection goes dark.
+/// → (how long after that the viewer let it go, how long until it was connected again)
+async fn gone_dark(dark_after: Duration) -> Option<(Duration, Duration)> {
+    let r = match node("server.js", &[]).await {
+        Ok(r) => r,
+        Err(why) => {
+            eprintln!("skipped: {why}");
+            return None;
+        }
+    };
+    let own = format!("ws://127.0.0.1:{}", r.1);
+    let bh = blackhole(r.1, 1).await;
+    let w = World::default();
+    let (h, _dir) = host(&w, "windows", true, "ws://127.0.0.1:9");
+    let (c, key) = paired_by_link(&h, Arc::default()).await;
+    h.set_relay(Some(&own)).unwrap();
+    until("the host waits at its relay", || (h.status().relay.reachable == Some(true)).then_some(())).await;
+    // away: nothing answers at the host's addresses (the session's candidates are remembered as addresses, so not even port 9, which
+    // something on the way may take)
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let away = viewer::Computer { addresses: vec![], port: closed, relay: Some(bh.url.clone()), ..c.clone() };
+    let seen = Seen::default();
+    let s = Session::start(
+        &tokio::runtime::Handle::current(),
+        Target {
+            computer: away,
+            key,
+            device: "Desk Laptop".into(),
+            nearby: vec![],
+            go_between_at: Some("ws://127.0.0.1:9".into()),
+            public_relay_at: None,
+        },
+        seen.on(),
+        Arc::new(|_| {}),
+    );
+    s.screen(Some(Want { quality: Quality::Auto, window: (1600, 1000), codecs: vec!["h264".into()], display: None }));
+    until("connected through the relay", || seen.route().is_some().then_some(())).await;
+    tokio::time::sleep(dark_after).await;
+    let route = seen.route();
+    let links = |seen: &Seen| seen.0.lock().unwrap().iter().filter(|e| matches!(e, Event::Link { .. })).count();
+    let (before, frames) = (links(&seen), seen.frames());
+    bh.dark.store(true, SeqCst);
+    let t0 = Instant::now();
+    let dropped = |seen: &Seen| {
+        seen.0.lock().unwrap()[before..].iter().any(|e| matches!(e, Event::Link { link: Link::Connecting, .. }))
+    };
+    let back = |seen: &Seen| {
+        let e = seen.0.lock().unwrap();
+        let from = e[before..].iter().position(|e| matches!(e, Event::Link { link: Link::Connecting, .. }));
+        from.is_some_and(|i| e[before + i..].iter().any(|e| matches!(e, Event::Link { link: Link::Connected, .. })))
+    };
+    let mut let_go = None;
+    while t0.elapsed() < Duration::from_secs(40) && !back(&seen) {
+        if let_go.is_none() && dropped(&seen) {
+            let_go = Some(t0.elapsed());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let again = t0.elapsed();
+    eprintln!(
+        "dark {:?} after the session (route then {route:?}, {frames} frames): let go after {let_go:?}, connected again after {again:?}, {} relay connections",
+        dark_after,
+        bh.opened.load(SeqCst)
+    );
+    let said: Vec<String> = seen.0.lock().unwrap().iter().filter(|e| matches!(e, Event::Link { .. })).map(|e| format!("{e:?}")).collect();
+    let let_go = let_go.unwrap_or_else(|| panic!("the dark connection is let go: {said:?}"));
+    assert!(back(&seen), "connected again by itself: {said:?}");
+    // and it carries: frames and keys after the drop
+    let f = seen.frames();
+    until("frames again", || (seen.frames() > f + 10).then_some(())).await;
+    let mut k = Keyboard::new();
+    keys(&s, &mut k, "KeyV", true, "windows");
+    keys(&s, &mut k, "KeyV", false, "windows");
+    until("a key after it", || w.has("key V 0 Some(false)").then_some(())).await;
+    drop(s);
+    h.stop();
+    Some((let_go, again))
+}
+
+/// 2026-11-27: on China Mobile 5G the carrier dropped the relay's plain ws:// flow about 10 s in, with no FIN or RST either way. The
+/// picture went on over the direct path, which kept the viewer's clock of the host's last word going, and it never let the dead relay
+/// connection go. Now only the stream counts: let go within its 10 s, and connected again by itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_relay_connection_gone_dark_is_let_go_and_comes_back() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let Some((let_go, again)) = gone_dark(Duration::from_secs(4)).await else { return };
+    assert!(let_go >= Duration::from_secs(9) && let_go <= Duration::from_secs(12), "{let_go:?}");
+    assert!(again <= Duration::from_secs(20), "{again:?}");
+}
+
+/// The same while the direct path is still being knocked for, the session a moment old.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_relay_connection_gone_dark_in_its_first_second_comes_back() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let Some((let_go, again)) = gone_dark(Duration::from_millis(100)).await else { return };
+    assert!(let_go <= Duration::from_secs(12), "{let_go:?}");
+    assert!(again <= Duration::from_secs(20), "{again:?}");
+}

@@ -233,6 +233,10 @@ final class Link: ObservableObject {
             state = .unreachable
             testAway = true
         }
+        // a mobile network that keeps changing under the session, as a weak 5G link's does: what each change starts, every this many s
+        if let s = ProcessInfo.processInfo.environment["BLURT_TEST_PATH_FLAP"].flatMap(Double.init), s > 0 {
+            Timer.scheduledTimer(withTimeInterval: s, repeats: true) { [weak self] _ in self?.networkChanged() }
+        }
         #endif
         hostChanged()
         path.pathUpdateHandler = { [weak self] p in
@@ -698,10 +702,11 @@ final class Link: ObservableObject {
     }
 
     /// The session in hand may have died unseen (the app was out of sight, the network changed): it answers soon, or it's started over.
+    /// Never later than it would have been: a weak mobile link that says it changed every second or two kept a stalled one for ever.
     private func prove() {
         guard let c = channel else { return }
-        let limit = c.isRelay ? 8 : 2.5
-        lastPong = Date().addingTimeInterval(RemoteReconnect.proof(relay: c.isRelay) - limit)
+        lastPong = Date(timeIntervalSinceReferenceDate: RemoteReconnect.proving(lastPong: lastPong.timeIntervalSinceReferenceDate,
+                                                                                now: Date().timeIntervalSinceReferenceDate, relay: c.isRelay))
         send(.ping(CACurrentMediaTime()))
     }
 
@@ -1127,7 +1132,7 @@ final class Link: ObservableObject {
     private func ping() {
         let relay = channel?.isRelay == true, moved = channel?.moved == true
         // the stream moved onto UDP: as long a wait as the relay's (a lost ping waits for its resend), but nothing there counts against a plan
-        if Date().timeIntervalSince(lastPong) > (relay ? 8 : 2.5) { return lost() }
+        if Date().timeIntervalSince(lastPong) > RemoteReconnect.silence(relay: relay) { return lost() }
         pingCount += 1
         // over the relay, one in four: every message counts against the free plan
         if !relay || moved || pingCount % 4 == 0 { send(.ping(CACurrentMediaTime())) }

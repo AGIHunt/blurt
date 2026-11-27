@@ -106,6 +106,11 @@ struct Inner {
     /// the candidates knocked on, until one answers
     knock: Mutex<Vec<SocketAddr>>,
     heard_udp: Mutex<Instant>,
+    /// when the host's last frame came in the session's stream (the old stream, or the one over UDP after the move): datagrams beside it
+    /// (the picture, probes) say nothing about the stream, which carries the pongs and everything said
+    heard_stream: Mutex<Instant>,
+    /// this phone's own events, for a write that never ends
+    events: mpsc::UnboundedSender<Event>,
     opts: Options,
     relayed: bool,
     host_moves: AtomicBool,
@@ -167,7 +172,14 @@ impl Inner {
         let chunks = self.stream.lock().unwrap().as_mut().map(|s| s.write(&f, self.now()));
         match chunks {
             Some(c) => self.send_chunks(c),
-            None => w.write(f).await,
+            // a connection that went dark both ways (a mobile carrier dropping a flow with no FIN or RST, 2026-11-27) never takes another
+            // byte once its buffer is full: the write would wait for ever, and whoever sent with it too. Not a slow line: that moves.
+            None => {
+                if tokio::time::timeout(WRITE_STALL, w.write(f)).await.is_err() {
+                    self.closed.store(true, SeqCst);
+                    let _ = self.events.send(Event::Closed);
+                }
+            }
         }
     }
 
@@ -202,6 +214,8 @@ impl Inner {
 
 /// how long the handshake's answer is waited for, as the phone apps do
 const HANDSHAKE: Duration = Duration::from_secs(6);
+/// a write into the stream that takes longer than this: the connection is dark, not slow (`sealed`)
+const WRITE_STALL: Duration = Duration::from_secs(8);
 
 pub struct Phone {
     inner: Arc<Inner>,
@@ -286,6 +300,7 @@ async fn read(inner: Arc<Inner>, mut reader: FrameReader, mut inn: SealIn, mut o
                 let _ = tx.send(Event::Closed);
                 return;
             };
+            *inner.heard_stream.lock().unwrap() = Instant::now();
             let m = (p.first() == Some(&(Kind::Control as u8))).then(|| ToPhone::decode(&p[1..])).flatten();
             match &m {
                 Some(ToPhone::Session(i)) => {
@@ -499,6 +514,8 @@ impl Phone {
             udp_to: Mutex::new(None),
             knock: Mutex::new(vec![]),
             heard_udp: Mutex::new(Instant::now()),
+            heard_stream: Mutex::new(Instant::now()),
+            events: tx.clone(),
             opts,
             relayed,
             host_moves: AtomicBool::new(false),
@@ -684,6 +701,12 @@ impl Phone {
     /// The candidates the last session named: kept for the next time this phone is away (`overlay_targets`).
     pub fn candidates(&self) -> Vec<Candidate> {
         self.inner.candidates.lock().unwrap().clone()
+    }
+
+    /// How long since the host last said anything in the session's stream. Datagrams don't count: over a relay with a direct path the
+    /// picture keeps coming over UDP while the relay's connection may have gone dark (2026-11-27), and the pongs are in the stream.
+    pub fn stream_quiet(&self) -> Duration {
+        self.inner.heard_stream.lock().unwrap().elapsed()
     }
 
     /// This phone has moved its stream onto the direct path.

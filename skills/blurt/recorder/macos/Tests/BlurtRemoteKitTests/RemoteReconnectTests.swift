@@ -24,6 +24,21 @@ final class RemoteReconnectTests: XCTestCase {
         XCTAssertGreaterThan(RemoteReconnect.busyFloor(asked: true), 10)
     }
 
+    /// 2026-11-27: a weak 5G link, the relay's connection stalled, and the network said to change every 2 s: each check put the end off,
+    /// and the session was never let go. A check asks for an answer soon; it never gives a quiet session longer.
+    func testACheckNeverPutsTheEndOff() {
+        XCTAssertEqual(RemoteReconnect.proving(lastPong: 100, now: 100, relay: true), 100 + 2.5 - 8)
+        XCTAssertEqual(RemoteReconnect.proving(lastPong: 93, now: 100, relay: true), 93)
+        XCTAssertEqual(RemoteReconnect.proving(lastPong: 100, now: 100, relay: false), 100 + 1.2 - 2.5, accuracy: 1e-9)
+        // pinged every 0.5 s, checked every 2 s from the stall on: gone 2.5 s after the first check, however often it's checked again
+        var last = 0.0, t = 0.0
+        while t - last <= RemoteReconnect.silence(relay: true) {
+            t += 0.5
+            if t.truncatingRemainder(dividingBy: 2) == 0 { last = RemoteReconnect.proving(lastPong: last, now: t, relay: true) }
+        }
+        XCTAssertEqual(t, 5)
+    }
+
     /// Three displays, one small: grown to be a target, and never over a neighbour or out of the map.
     func testThreeDisplaysNeverOverlapInTheMap() {
         let d = [RemoteDisplay(id: "1", name: "1", x: 0, y: 0, width: 1920, height: 1080, main: true),

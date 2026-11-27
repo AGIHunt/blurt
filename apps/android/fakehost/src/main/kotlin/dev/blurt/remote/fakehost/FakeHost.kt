@@ -22,6 +22,10 @@
 //   --clipboard <what>             what Get Copied Items finds: text:<words> · image:<png> · files:<path>[,<path>…] · none:<why>
 //   --go-between <ws://…>          also wait for each paired phone at this go-between (tools/remote-relay/server.js with BUDGET=1), and
 //                                  name it as the relay in every session; it gives the public relay's tickets (Relay.kt)
+//   --relay <ws://…>               the owner's own relay (tools/remote-relay/server.js): wait there for each paired phone, name it in every
+//                                  session, and send the picture in the stream as the Mac does over a relay with no direct path
+//   --direct                       with --relay: name 127.0.0.1 and the UDP port as where it may be reached directly, and once the phone's
+//                                  packets arrive there, send the picture and the probes' echoes that way (a relay session's direct path)
 //   --public-relay <ws://…>        a public relay at this address is allowed besides Blurt's own (a test build's BLURT_PUBLIC_RELAY)
 //   --meet-wait <s>                on the go-between, noDirect this long after `session` with no datagram (default 8)
 //   --ask-again <s>                on the public relay, a refused picture lease is asked for again this often (default 30)
@@ -103,6 +107,8 @@ private var dropAt = 0
 private var clipboard = "text:会议纪要：周四下午三点，二楼会议室"
 private var tcpPort = 47811
 internal var goBetween: String? = null
+internal var ownRelay: String? = null
+private var direct = false
 internal var publicRelayTest: String? = null
 internal var meetWait = 8.0
 internal var askAgain = 30.0
@@ -145,6 +151,8 @@ fun main(args: Array<String>) {
             "--drop-at" -> dropAt = args[++i].toInt()
             "--clipboard" -> clipboard = args[++i]
             "--go-between" -> goBetween = dev.blurt.remote.core.RemoteRelay.address(args[++i])
+            "--relay" -> ownRelay = dev.blurt.remote.core.RemoteRelay.address(args[++i])
+            "--direct" -> direct = true
             "--public-relay" -> publicRelayTest = dev.blurt.remote.core.RemoteRelay.address(args[++i])
             "--meet-wait" -> meetWait = args[++i].toDouble()
             "--ask-again" -> askAgain = args[++i].toDouble()
@@ -159,6 +167,7 @@ fun main(args: Array<String>) {
     val server = ServerSocket(tcpPort)
     log("listening tcp $tcpPort udp $udpPort as $platform \"$name\"")
     goBetween?.let { gb -> for ((id, k) in keys) GoBetween.wait(gb, id, k) }
+    ownRelay?.let { r -> for ((id, k) in keys) GoBetween.wait(r, id, k, Way.RELAY) }
     while (true) {
         val s = server.accept()
         s.tcpNoDelay = true
@@ -219,7 +228,7 @@ private class TcpPipe(val socket: Socket) : Pipe {
 }
 
 /** How a session reached this host: the stream on TCP, or through a relay (no datagrams there) */
-internal enum class Way { TCP, GO_BETWEEN, PUBLIC }
+internal enum class Way { TCP, GO_BETWEEN, PUBLIC, RELAY }
 
 private fun serveTcp(socket: Socket) {
     val s = Session(TcpPipe(socket))
@@ -328,6 +337,8 @@ internal class Session(val pipe: Pipe, val way: Way = Way.TCP, val only: String?
         // through a relay: nothing heavy on the go-between before a move (there's none here), the stream on the public relay
         if (way == Way.GO_BETWEEN) return
         if (way == Way.PUBLIC) return stream(kind, body)
+        // the owner's relay: the direct path once the phone's packets came, else the stream (never a probe: it's the path's own)
+        if (way == Way.RELAY && flow == null) return if (kind == RemoteFrameKind.PROBE) Unit else stream(kind, body)
         val to = flow ?: return
         val s = sealer ?: return
         val p = synchronized(this) { s.sealPacket(byteArrayOf(kind.raw.toByte()) + body, number) }
@@ -424,6 +435,7 @@ internal class Session(val pipe: Pipe, val way: Way = Way.TCP, val only: String?
                 pairingKey = null
                 log("paired: ${id}")
                 goBetween?.let { GoBetween.wait(it, id!!, k) }
+                ownRelay?.let { GoBetween.wait(it, id!!, k, Way.RELAY) }
                 newCode()
                 begin()
                 return
@@ -446,7 +458,7 @@ internal class Session(val pipe: Pipe, val way: Way = Way.TCP, val only: String?
                 stopStream()
                 val r = m.request
                 // the go-between carries no picture; the public relay's needs a lease first
-                if (relay != null) return relay.screen(r)
+                if (relay != null && way != Way.RELAY) return relay.screen(r)
                 r ?: return
                 crop = r.crop
                 repairs = if (repairsOn) r.features.orEmpty().filter { it == RemoteVideoFeature.NACK || it == RemoteVideoFeature.FEC }.toSet() else emptySet()
@@ -507,7 +519,8 @@ internal class Session(val pipe: Pipe, val way: Way = Way.TCP, val only: String?
         val features = (if (oldFiles) listOf("files") else listOf("files", "resume", "clipboard")) +
             (if (relayed) listOf("move", dev.blurt.remote.core.RemoteFeature.PUBLIC_RELAY) else emptyList()) +
             (if (hearsOpus) listOf(dev.blurt.remote.core.RemoteFeature.OPUS) else emptyList())
-        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, relay = goBetween,
+        send(ToPhone.Session(RemoteSessionInfo(name, udpPort, number, true, "1.0.15-fake", displayAspect = 1512.0 / 944.0, relay = goBetween ?: ownRelay,
+            candidates = if (way == Way.RELAY && direct) listOf(dev.blurt.remote.core.RemoteCandidate("127.0.0.1", udpPort)) else emptyList(),
             platform = platform, features = features)))
         relay?.began()
         Files.began()

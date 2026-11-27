@@ -571,7 +571,7 @@ public final class RemoteViewerLink {
     private func ping() {
         guard let ch = channel else { return }
         let relay = ch.isRelay, moved = ch.moved
-        if CACurrentMediaTime() - lastPong > (relay ? 8 : 2.5) { lostWhy = "no pong (relay \(relay), moved \(moved))"; return lost() }
+        if CACurrentMediaTime() - lastPong > RemoteReconnect.silence(relay: relay) { lostWhy = "no pong (relay \(relay), moved \(moved))"; return lost() }
         pingCount += 1
         if !relay || moved || pingCount % 4 == 0 { ch.send(ToMac.ping(CACurrentMediaTime())) }
         // away: the same network, or a nearer way than an overlay network's, is looked for now and then

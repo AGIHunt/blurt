@@ -101,13 +101,14 @@ internal class WsPipe(private val url: String) : Pipe {
     }
 }
 
-/** Waiting for one paired phone at the go-between: one connection at a time, another as soon as one ends. */
+/** Waiting for one paired phone at the go-between (or the owner's relay, `Way.RELAY`): one connection at a time, another as soon as one
+ *  ends. */
 internal object GoBetween {
-    fun wait(address: String, device: String, key: ByteArray) = thread(name = "go-between", isDaemon = true) {
+    fun wait(address: String, device: String, key: ByteArray, way: Way = Way.GO_BETWEEN) = thread(name = "go-between", isDaemon = true) {
         val url = RemoteRelay.url(address, RemoteRelay.room(key), "mac") ?: return@thread
         while (true) {
             val pipe = WsPipe(url)
-            val s = Session(pipe, Way.GO_BETWEEN, only = device)
+            val s = Session(pipe, way, only = device)
             pipe.onBinary = { b -> s.feed(b) }
             pipe.onText = { t -> s.relay?.text(t) }
             pipe.onClose = { code -> if (s.id != null) log("go-between closed${code?.let { " ($it)" } ?: ""}"); s.ended() }

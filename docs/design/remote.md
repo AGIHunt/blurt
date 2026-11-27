@@ -447,6 +447,54 @@ Not done, by decision or for another round: pictures through the public service 
 Picture, Wake on LAN, held keys from an iPad's keyboard, pinch on an iPad's trackpad. Not tried: a real iPhone or Android phone, a real
 change of Wi-Fi or to mobile data, a real call during dictation.
 
+### A connection gone dark (2026-11-27)
+
+A colleague's iPhone 17 Pro (Release build) reached a home Mac through the owner's relay (`tools/remote-relay/server.js`, plain ws://). On
+China Mobile 5G the carrier dropped that TCP flow about 10 s and 1.2 MB in: nothing more either way, no FIN or RST to the phone, and the
+relay's socket at cwnd 1 after 81 losses. For 30 s and more, in front, the pad still looked connected over a frozen picture; killing the
+app was the only way back (wss:// stopped the drops: remote-relay-setup.md). What should happen: 8 s with no pong over a relay and the
+session is let go, the socket cancelled, and the relay asked again at 0.4, 0.8, 1.5, 3, 5 s.
+
+Reproduced with `tools/remote-relay/blackhole.js` between the app and a local relay (a connection's bytes stop both ways, its sockets
+stay open), Android's fake host waiting at the relay as a computer with its own relay does (`fakehost --relay ws://… [--direct]`), the
+iPhone 17 Pro simulator (iOS 26) with `BLURT_RELAY_ONLY` at the proxy. Seconds from the moment the connection went dark:
+
+| iPhone simulator, dark 10 s into the session | Let go (new connection) | Session again |
+|---|---|---|
+| Relay only, no direct path | 6.6 | 10.3 |
+| Direct path open beside it, the picture on it | 6.6 | 8.5 |
+| Dark 1.2 s in, the direct path still being knocked for | 6.9 | 8.8 |
+| Direct path, 40 ms each way | 6.8 | 9.2 |
+| No direct path, 40 ms each way (the computer's old picture reaches the first new connection, which is let go) | 6.8 | 9.2 |
+| The next seven connections dark too (a carrier still refusing): each waits out the 6 s handshake, then 0.4–5 s | 6.6 | 73.4, at the 9th |
+| **Before:** the network said to change every 2 s (`BLURT_TEST_PATH_FLAP=2`) | never (46 s watched, pad still "connected") | — |
+| **Now:** the same | 4.8 | 6.9 |
+
+The phones' 8 s rule held in every plain case. What was wrong:
+
+- **A check put the end off** (iOS and Android `Link.prove`). Coming back to the app and every network change ask for a pong within 2.5 s
+  over a relay by moving the last pong to 5.5 s ago. For a session already quiet longer than that, this moved it *later*: a network that
+  says it changed every second or two, as a weak mobile link may, kept a dead session for good. Now a check only ever brings the end
+  sooner (`RemoteReconnect.proving`, `Reconnect.proving`): gone 2.5 s after the first check that gets no answer.
+- **The computer viewer counted the picture as the host's word** (`crates/blurt-remote` viewer). Over a relay with the direct path open,
+  the picture and probes come over UDP while the pongs are in the relay's stream; anything at all kept the session, so a dark relay
+  connection was never let go. It was only because the Rust host itself lets a quiet session go that the viewer let go at all, 13.5–17.4 s
+  in. Now only the stream counts (`Phone::stream_quiet`), and a write that hasn't gone after 8 s ends the connection instead of holding
+  the viewer's loop (`phone::WRITE_STALL`).
+- **…and then never came back** there: an address the session had named, taken by something that accepts every connection (a TUN-mode
+  proxy on this machine took the host's public address), failed its handshake and ended the round as "offline" every 1–15 s without the
+  relay ever being asked. Now the relay is asked next.
+- Not changed: a relay try that never answers waits out the handshake's 6 s before the next (a carrier refusing new flows for a while is
+  waited out at that pace); the first new connection through a relay whose computer still holds the old session often meets that
+  session's last picture and is let go, the next one 0.4 s later gets in.
+
+The computer viewer is checked end to end by `a_relay_connection_gone_dark_is_let_go_and_comes_back` and `…_in_its_first_second_…`
+(`crates/blurt-remote/tests/viewer.rs`: the real host, `server.js`, the same blackhole in Rust; skipped without node's `ws`). Before: let go
+13.5 s and 17.4 s after, never connected again in 40 s. Now: let go 9.5–10.4 s after (its 10 s), connected again at 13.4–15.0 s, frames and a
+key through. The Mac's viewer (`RemoteViewerLink`) has the phones' pong rule and no check, and wasn't changed beyond sharing the number.
+
+Not tried: a real iPhone on a real carrier, so whether the colleague's network changed that often is not known; a real Android phone.
+
 ### What the pad says (2026-11-16)
 
 The founder, using it from the sofa: when the connection dropped, was coming back or hadn't come up, the words saying so were too small to
@@ -738,7 +786,10 @@ A key press here is a key press on the Mac, and earlier apps in this category ha
 
 - Pairing: QR code with a 256-bit key, good for one connection within two minutes. That connection spends it and is sent a
   new key inside the sealed session; the phone becomes a device only when it confirms keeping it. A photo of the code is
-  worth nothing afterwards.
+  worth nothing afterwards. The same code as text (Copy Link, good for 10 minutes once copied) pairs a phone that isn't beside the
+  computer: the pairing screen always has the link field with Paste under the scanner (2026-11-27; before, only without a camera).
+  iOS uses the system's PasteButton, so pasting asks nothing; Android reads the clipboard only on the tap. The link is found inside
+  a pasted message too (remote-protocol.md § Pairing link), and the same yes and digits follow as for a scan.
 - **Every new phone needs a yes on the Mac, on any network**, and both show the same six digits from the handshake transcript and a nonce
   the phone committed to in its hello and reveals only after the Mac has answered, so nobody in the middle can choose an answer that makes
   the digits match (as Bluetooth's numeric comparison does). The yes is for the phone showing them. A code answers at most 8 handshakes,
