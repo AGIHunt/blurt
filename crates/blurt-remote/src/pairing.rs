@@ -96,6 +96,32 @@ impl Pairing {
             relay: q("r").and_then(|r| crate::relay::address(&r)),
         })
     }
+
+    /// The link in pasted text: the copied link alone, or inside a message from a chat app or a note, with words, brackets or a full
+    /// stop around it and the scheme maybe capitalised. None when there's no whole link in it (RemotePairing(text:);
+    /// `vectors.json` → `pairingText`).
+    pub fn find(text: &str) -> Option<Pairing> {
+        Pairing::parse(&link_in(text)?)
+    }
+}
+
+/// `blurtremote://…` from the first place it starts in `text` (in any case) to the first character a link can't hold (anything
+/// but the percent-encoded ASCII the hosts write), less a closing bracket or full stop after it, with the scheme in lower case.
+pub fn link_in(text: &str) -> Option<String> {
+    let b = text.as_bytes();
+    let head = format!("{SCHEME}://");
+    let h = head.as_bytes();
+    let start = (0..=b.len().checked_sub(h.len())?).find(|&i| b[i..i + h.len()].eq_ignore_ascii_case(h))?;
+    let body = start + h.len();
+    let mut end = body;
+    while end < b.len() && (b[end].is_ascii_alphanumeric() || b"-._~!$'()*,;:@/?%&=+".contains(&b[end])) {
+        end += 1;
+    }
+    // what ends a sentence or closes a bracket after a link, never the end of one (its last value is an address)
+    while end > body && b".,;:!?)'".contains(&b[end - 1]) {
+        end -= 1;
+    }
+    Some(head + &text[body..end])
 }
 
 /// A device id that asks to pair as a computer found nearby starts with this (`nearby_key`): any other id the host doesn't know is

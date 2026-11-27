@@ -114,6 +114,8 @@
     <string name="pairing_link">Pairing link</string>
     <string name="connect">Connect</string>
     <string name="not_blurt_code">This code isn’t from Blurt.</string>
+    <string name="not_pairing_link">This isn’t a pairing link.</string>
+    <string name="paste">Paste</string>
     <string name="camera_off">Camera access is off. Allow it in the phone’s Settings, or paste the pairing link below.</string>
 
     <!-- settings -->

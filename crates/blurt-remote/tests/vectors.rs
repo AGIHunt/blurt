@@ -284,6 +284,15 @@ fn pairing_url() {
 }
 
 #[test]
+fn pairing_text() {
+    let v = vectors();
+    for c in v["pairingText"]["cases"].as_array().unwrap() {
+        let text = c["text"].as_str().unwrap();
+        assert_eq!(Pairing::find(text).map(|p| p.url()).as_deref(), c["link"].as_str(), "the link in: {text}");
+    }
+}
+
+#[test]
 fn go_between_and_the_moved_stream() {
     use blurt_remote::stream;
     let v = vectors();

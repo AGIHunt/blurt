@@ -229,6 +229,75 @@
       }
     ]
   },
+  "pairingText" : {
+    "about" : "Pasted text that holds a pairing link: the link alone, or inside a message (words, brackets, a full stop, a capitalised scheme). link: the link it holds, written back, or null when it holds no whole one.",
+    "cases" : [
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "  blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com\n"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "Pair with my PC: blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com (works for 10 minutes)"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "配对链接：blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com。"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com."
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "(blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com)"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "<blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com>"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "[Pair](blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com)"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+        "text" : "Blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com"
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-2&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20",
+        "text" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-2&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20."
+      },
+      {
+        "link" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-2&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20",
+        "text" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-2&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20\nsent from my phone"
+      },
+      {
+        "link" : null,
+        "text" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4"
+      },
+      {
+        "link" : null,
+        "text" : "https://blurt.work/pair"
+      },
+      {
+        "link" : null,
+        "text" : "blurtremote://pair?v=1&mac=host-id-1"
+      },
+      {
+        "link" : null,
+        "text" : ""
+      },
+      {
+        "link" : null,
+        "text" : "copy the link from Add Device"
+      }
+    ]
+  },
   "pairingURL" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
   "pointer" : [
     {

@@ -41,6 +41,34 @@ public struct RemotePairing: Equatable, Sendable {
         self.init(macID: mac, deviceID: id, key: k, macName: q("n") ?? "Mac", port: p,
                   addresses: (q("a") ?? "").split(separator: ",").map(String.init), relay: q("r").flatMap(RemoteRelay.address))
     }
+
+    /// The link in pasted text: the copied link alone, or inside a message from a chat app or a note, with words, brackets or a full
+    /// stop around it and the scheme maybe capitalised. nil when there's no whole link in it. Every client reads text the same way
+    /// (`vectors.json` → `pairingText`).
+    public init?(text: String) {
+        guard let s = Self.link(in: text), let u = URL(string: s) else { return nil }
+        self.init(url: u)
+    }
+
+    /// The characters the hosts write a link with (percent-encoded ASCII): anything else ends it.
+    private static let linkBytes = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$'()*,;:@/?%&=+".utf8)
+    /// what ends a sentence or closes a bracket after a link, never the end of one (its last value is an address)
+    private static let trailing = Set(".,;:!?)'".utf8)
+
+    /// `blurtremote://…` from the first place it starts in `text` (in any case) to the first character a link can't hold, less a
+    /// closing bracket or full stop after it, with the scheme in lower case.
+    public static func link(in text: String) -> String? {
+        let b = Array(text.utf8), head = Array("\(scheme)://".utf8)
+        func lower(_ c: UInt8) -> UInt8 { (65...90).contains(c) ? c + 32 : c }
+        guard b.count >= head.count,
+              let start = (0...(b.count - head.count)).first(where: { i in head.indices.allSatisfy { lower(b[i + $0]) == head[$0] } })
+        else { return nil }
+        let body = start + head.count
+        var end = body
+        while end < b.count, linkBytes.contains(b[end]) { end += 1 }
+        while end > body, trailing.contains(b[end - 1]) { end -= 1 }
+        return "\(scheme)://" + String(decoding: b[body..<end], as: UTF8.self)
+    }
 }
 
 /// While a code is being used to join, the other end is only known to hold that code, and anyone with a photo of it or the copied link can

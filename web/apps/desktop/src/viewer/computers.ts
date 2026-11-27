@@ -129,9 +129,12 @@ export function pairingPlan(p: Pairing): { title: string; help: string | null; r
   }
 }
 
-/** A pasted pairing link, as the host makes it (blurtremote://pair?…), trimmed; null when it isn't one. */
+/** A pasted pairing link, as the host makes it (blurtremote://pair?…): alone or inside a message, with words, brackets or a full
+ *  stop around it, read as every client reads it (Pairing::find; vectors.json → pairingText); null when there's none. */
 export function pairingLink(text: string): string | null {
-  const t = text.trim();
+  const m = /blurtremote:\/\/([A-Za-z0-9\-._~!$'()*,;:@/?%&=+]*)/i.exec(text);
+  if (!m) return null;
+  const t = `blurtremote://${m[1].replace(/[.,;:!?)']+$/, '')}`;
   return /^blurtremote:\/\/pair\?\S*\bk=[A-Za-z0-9_-]+/.test(t) && /[?&]mac=/.test(t) ? t : null;
 }
 

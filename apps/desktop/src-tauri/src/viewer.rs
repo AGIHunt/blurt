@@ -479,7 +479,7 @@ fn start_pairing(v: &'static Viewers, from: PairFrom) {
     let by_link = matches!(from, PairFrom::Link(_));
     let with = match &from {
         PairFrom::Nearby(f) => PairWith::Nearby(f.clone()),
-        PairFrom::Link(l) => match blurt_remote::pairing::Pairing::parse(l.trim()) {
+        PairFrom::Link(l) => match blurt_remote::pairing::Pairing::find(l) {
             Some(p) => PairWith::Link(p),
             None => {
                 *v.pairing.lock().unwrap() = Some(Pairing { name: String::new(), state: "failed", digits: None, error: Some("invalid"), link: true, confirmed: false });

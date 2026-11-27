@@ -1,9 +1,10 @@
 // Pairing (port of Sheets/PairSheet.swift): the camera reads the code the computer shows, with ZXing on CameraX's frames, all on the phone,
-// nothing downloaded. The camera is asked for only here, when it's needed. The pairing link can be pasted too, for a phone without a camera
-// or a code that won't read.
+// nothing downloaded. The camera is asked for only here, when it's needed. The pairing link the computer copies can be pasted too, always:
+// for a computer that isn't beside the phone (the link came by chat or email), a phone without a camera, or a code that won't read.
 package dev.blurt.remote.app.sheets
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +50,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -60,6 +65,7 @@ import com.google.zxing.common.HybridBinarizer
 import dev.blurt.remote.app.Haptics
 import dev.blurt.remote.app.R
 import dev.blurt.remote.app.Remote
+import dev.blurt.remote.core.RemotePairing
 import java.util.concurrent.Executors
 
 @Composable
@@ -67,18 +73,20 @@ fun PairSheet(onClose: () -> Unit) {
     val ctx = LocalContext.current
     // the link used last: after a pairing that didn't take, it's still here to try again or change
     var link by remember { mutableStateOf(Remote.link.lastLink) }
-    var failed by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf<Int?>(null) }
     val hasCamera = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     var refused by remember { mutableStateOf(false) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> allowed = ok; refused = !ok }
     LaunchedEffect(Unit) { if (hasCamera && !allowed) ask.launch(Manifest.permission.CAMERA) }
 
-    fun open(s: String): Boolean {
-        if (!Remote.link.open(s.trim())) { failed = true; return false }
+    /** A code the camera read, or text with the link in it (alone, or inside a message from a chat app). */
+    fun use(s: String, scanned: Boolean = false) {
+        val p = RemotePairing.find(s)
+        if (p == null || !Remote.link.open(p.url)) { failed = if (scanned) R.string.not_blurt_code else R.string.not_pairing_link; return }
+        if (!scanned) Remote.link.lastLink = p.url
         Haptics.grab()
         onClose()
-        return true
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -87,15 +95,28 @@ fun PairSheet(onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (hasCamera) {
                 Box(Modifier.widthIn(max = 420.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
-                    if (allowed) Scanner { code -> open(code) }
+                    if (allowed) Scanner { code -> use(code, scanned = true) }
                     else if (refused) Text(stringResource(R.string.camera_off), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             }
             Text(stringResource(R.string.status_unpaired), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            OutlinedTextField(link, { link = it; failed = false }, Modifier.widthIn(max = 420.dp).fillMaxWidth(), singleLine = true,
-                label = { Text(stringResource(R.string.pairing_link)) })
-            Button({ if (open(link)) Remote.link.lastLink = link }, enabled = link.isNotBlank()) { Text(stringResource(R.string.connect)) }
-            if (failed) Text(stringResource(R.string.not_blurt_code), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            // the link the computer copies (Copy Link), for a code that's far away or won't read: Paste reads the clipboard only when
+            // tapped and uses it at once; the field takes it typed, or pasted inside a message
+            OutlinedTextField(link, { link = it; failed = null }, Modifier.widthIn(max = 420.dp).fillMaxWidth(), singleLine = true,
+                label = { Text(stringResource(R.string.pairing_link)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { if (link.isNotBlank()) use(link) }),
+                trailingIcon = {
+                    TextButton({
+                        val clip = ctx.getSystemService(ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }
+                        val s = clip?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty()
+                        if (s.isNotBlank()) { link = s; use(s) } else failed = R.string.not_pairing_link
+                    }, Modifier.padding(end = 4.dp)) { Text(stringResource(R.string.paste)) }
+                })
+            if (!(hasCamera && allowed) || link.isNotBlank()) {
+                Button({ use(link) }, enabled = link.isNotBlank()) { Text(stringResource(R.string.connect)) }
+            }
+            failed?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
