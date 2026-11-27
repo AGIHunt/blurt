@@ -775,7 +775,10 @@ https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
 
 Ask me which of these I have, then do that one:
 A. A domain on Cloudflare: deploy the Worker on a subdomain such as relay.example.com. The free plan is enough for one person.
-B. A server with a public IP: run server.js as a service (Node 12 or later, one dependency). With a domain, serve it over HTTPS on port 443 with a publicly trusted certificate. Without one, open a port and use ws://.
+B. A server with a public IP: run server.js as a service on 127.0.0.1:8787 (Node 12 or later, one dependency) behind a TLS front, so the address is always wss://, never ws://. Mobile networks can cut unencrypted WebSockets a few seconds into a session, and ws:// shows the secret path to anyone on the way.
+   - With a domain: HTTPS on port 443 with a publicly trusted certificate (Caddy, or nginx if the server already runs it).
+   - Without a domain: use the server's IP. Caddy 2.11.1 or later gets a Let's Encrypt certificate for the IP address itself (the shortlived profile, about 6 days, renewed automatically) and serves wss://<IP>:8443. README.md has the exact Caddyfile, including default_sni, which cloud servers need when the public IP isn't on the network interface. If the system's Caddy package is older, install Caddy from caddyserver.com instead.
+   - Open the relay's port, and port 80 for Let's Encrypt's check, in the server's firewall and in the cloud provider's firewall or security group (Tencent Cloud, Aliyun, AWS and most others have one in their web console). If you can't reach that console, tell me the exact rule to add there.
 
 Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
 

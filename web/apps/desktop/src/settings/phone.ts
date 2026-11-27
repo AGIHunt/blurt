@@ -56,6 +56,36 @@ export function relayAddress(typed: string): string | null {
   return t;
 }
 
+/** A `ws://` address to a host that isn't on the owner's own network (RemoteRelay.plainOverInternet): mobile carriers can
+ *  cut plaintext WebSockets mid-session, and the secret path travels in the clear (docs/design/remote-relay-setup.md
+ *  §ws:// over mobile data). Local: localhost, *.local and single-label names, loopback, private, link-local, and
+ *  100.64/10 (Tailscale, CGNAT), whose traffic Tailscale already encrypts. */
+export function plainOverInternet(address: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(address);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'ws:') return false;
+  let h = u.hostname.toLowerCase();
+  if (!h) return false;
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return false;
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 127 || a === 10 || (a === 192 && b === 168) || (a === 169 && b === 254)) return false;
+    if ((a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127)) return false;
+    return true;
+  }
+  if (h.includes(':')) {
+    // URL has already normalised it: ::1, fc00::/7 (fc…, fd…), fe80::/10
+    return !(h === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h));
+  }
+  return h.includes('.'); // a single-label name only resolves on a local network
+}
+
 /** Away from home's status line (docs/design/remote-go-between.md §What each end shows): with a phone connected, the
  *  path it uses; otherwise what a phone on another network would use, or why that won't work. `warn`: something to fix.
  *  The order of ways in is the spec's: the same network, an overlay (Tailscale…), the owner's relay, the go-between. */

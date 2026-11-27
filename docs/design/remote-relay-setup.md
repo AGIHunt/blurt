@@ -78,7 +78,8 @@ pairing: a few clicks, no terminal, a few minutes.
      in proxy config.
    - Inside the image, `HOST=0.0.0.0`; today's default of 127.0.0.1 makes a hand-built container unreachable.
 6. **The prompt, the README and the check (S).**
-   - `relayPrompt` and the README lead with the paths above. Today they send no-domain users to plain ws://, which mobile networks can break.
+   - `relayPrompt` and the README lead with the paths above. The ws:// part is done (2026-11-27, §ws:// over mobile data): both
+     now set up wss:// in every case, a server with no domain included, and Settings warns about a ws:// relay across the internet.
    - Add the Shadowrocket and Clash rules: DIRECT for the relay host and for the STUN servers. Without the STUN rule the direct path sees the
      proxy's exit IP and never opens.
    - Make the check two messages: "can't reach the host" vs "it answers, but not as a relay: check the secret".
@@ -89,6 +90,66 @@ pairing: a few clicks, no terminal, a few minutes.
 Against doing setup over SSH from the app: the app would hold a root-capable key, which undercuts "the relay can't read anything", and editing a
 live nginx or Traefik config is what experienced users fear. Item 1's "app makes the secret, user pastes one line" gets the same result
 without it.
+
+## ws:// over mobile data (2026-11-27)
+
+A colleague's field report. server.js on a Tencent Cloud lightweight server, no domain, used as `ws://<IP>:8787/<secret>`, which is what
+the README then told no-domain users to do:
+
+- **China Mobile 5G, ws://:** both directions stalled about 10 s and ~1.2 MB into the session, two sessions of two. The carrier kills
+  the plaintext WebSocket without closing it. On company Wi-Fi the same address was fine, so it looked random.
+- **Same phone, same network, wss://<IP>:8443:** 70 s and more with no stall, ~2 MB acknowledged and still going.
+
+So there is no case for ws:// across the internet: besides this, the secret path travels in the clear. What changed:
+
+- The README and the copyable prompt (`relayPrompt` on the Mac, `RELAY_PROMPT` in apps/desktop/src-tauri/src/remote.rs) set up wss://
+  everywhere. ws:// is kept for trying the relay on 127.0.0.1 or one's own network.
+- Settings (Mac RemotePane, desktop PhonePane) shows "Mobile networks may drop unencrypted connections. Use a wss:// address." under the
+  relay address when it is ws:// to a host that isn't local (`RemoteRelay.plainOverInternet`, `plainOverInternet` in phone.ts). It
+  doesn't block saving. Local means localhost, `*.local` and single-label names, loopback, RFC 1918, link-local, fc00::/7, and
+  100.64/10 (Tailscale, whose traffic is already encrypted). The phones have no relay field of their own: they learn the address
+  from the computer, so they need no warning.
+
+### The no-domain recipe: a Let's Encrypt certificate for the IP
+
+What the field report ran, and what the README now says: Caddy on 8443 with an IP certificate, forwarding everything to
+127.0.0.1:8787.
+
+```
+{
+    default_sni <public IP>
+}
+https://<public IP>:8443 {
+    tls {
+        issuer acme {
+            profile shortlived
+        }
+    }
+    reverse_proxy 127.0.0.1:8787 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+- **Let's Encrypt.** IP certificates are generally available since 2026-01-15, only under the `shortlived` profile, 160 hours
+  ([announcement](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/), [profiles](https://letsencrypt.org/docs/profiles/)).
+  An IP can be validated by HTTP-01, only on port 80, or TLS-ALPN-01 on 443, never DNS-01
+  ([challenge types](https://letsencrypt.org/docs/challenge-types/)). So a relay on 8443 needs port 80 open and free for issuance and
+  every renewal.
+- **Caddy 2.11.1 or later.** 2.10.0's certmagic (v0.23.0) still listed `api.letsencrypt.org` as not issuing IP certificates; v0.24.0
+  (Caddy 2.10.1/2.10.2) allows it. TLS-ALPN-01 for IPs was broken until acmez's fix of 2025-12-17, first in acmez v3.1.5, which
+  Caddy 2.11.1 carries (v3.1.6) ([caddy#7399](https://github.com/caddyserver/caddy/issues/7399),
+  [acmez dfd3205](https://github.com/mholt/acmez/commit/dfd32054dd91329e47a4405257b0c93e6f5492f8); versions read from each tag's go.mod).
+  IPv6 by HTTP-01 was fixed on master on 2026-04-25 (same issue). Distribution packages can lag (not checked per distribution), so the README points to Caddy's install page.
+  The `profile` option is marked experimental ([tls directive](https://caddyserver.com/docs/caddyfile/directives/tls)).
+- **`default_sni`.** A client connecting to an IP sends no SNI. certmagic then takes `DefaultServerName` if set, else the connection's
+  local IP (`getNameFromClientHello`, certmagic v0.25.6 handshake.go). On Tencent, Aliyun and most clouds the interface holds a private
+  address and the public one is translated to it, so without the option no certificate matches, as in this
+  [Caddy forum report](https://caddy.community/t/testing-new-lets-encrypt-ip-certificates/31577)
+  ([global options](https://caddyserver.com/docs/caddyfile/options)).
+- **The secret stays out of the proxy.** Caddy forwards every path, and server.js answers 404 to any path without the secret.
+- **Not checked here:** the Caddyfile wasn't run through `caddy adapt`, and nobody has tried the recipe on Aliyun. Which devices the
+  field report used isn't recorded.
 
 ## Tailscale as the main path? (2026-11-11)
 
@@ -240,7 +301,7 @@ As a backup behind the Aliyun box:
 ## Not verified
 
 - Phones and hosts trusting a short-lived IP certificate: iOS NWConnection, Android, and webpki-roots on Windows and Linux. The chain moved to
-  new roots in May 2026.
+  new roots in May 2026. One pair worked in the 2026-11-27 field report (§ws:// over mobile data); which devices isn't recorded.
 - Whether Aliyun or Tencent interfere with bare-IP TLS on 443. Their ICP blocking is documented by domain.
 - Cloudflare's account-token template and Workers upload API shapes.
 - SCF: same-instance routing, the connection time cap and idle billing.

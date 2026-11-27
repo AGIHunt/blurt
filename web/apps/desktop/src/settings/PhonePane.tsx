@@ -10,7 +10,7 @@ import { api, type AppStatus, type RemoteStatus } from '../api';
 import type { Place } from '../places';
 import { StatusDot } from '../components/StatusDot';
 import { Group, Page, Row, S, Switch, TextLink, Toggle } from './kit';
-import { APP_PAGES, apply, awayLine, groupDigits, relayAddress, timeLeft, useNow, useRemoteStatus } from './phone';
+import { APP_PAGES, apply, awayLine, groupDigits, plainOverInternet, relayAddress, timeLeft, useNow, useRemoteStatus } from './phone';
 import './settings.css';
 
 type RelayState = 'idle' | 'checking' | 'ok' | 'failed' | 'invalid';
@@ -82,7 +82,8 @@ export function PairPanel({ r, onCancel, onRenew }: { r: RemoteStatus; onCancel:
   );
 }
 
-/** The code as a link, for a computer to paste into its Add Computer… (docs/design/remote-desktop-viewer.md). */
+/** The code as a link, for a phone (its pairing screen's Paste) or a computer (its Add Computer…) that isn't beside this one
+ *  (docs/design/remote-desktop-viewer.md, remote.md § Pairing). */
 function CopyLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () =>
@@ -95,7 +96,7 @@ function CopyLink({ url }: { url: string }) {
       },
       () => {},
     );
-  return <button className="ph-act" onClick={copy} data-testid="phone-copy-link">{copied ? S('phone.link_copied') : S('phone.copy_link')}</button>;
+  return <button className="ph-act" onClick={copy} title={S('phone.copy_link.tip')} data-testid="phone-copy-link">{copied ? S('phone.link_copied') : S('phone.copy_link')}</button>;
 }
 
 /** A click on Allow counts only once the question has been on screen a moment, and only from the mouse (a key press
@@ -182,12 +183,16 @@ function RelayGroup({ r }: { r: RemoteStatus }) {
 
   // what's said under the field: what this field is, or what became of the address
   const saved = !!r.relay.address && text === r.relay.address;
+  // plain ws:// across the internet: warned about in place of "working" (it works here and now; mobile networks are where
+  // it breaks), but not over a failure, which says more (docs/design/remote-relay-setup.md §ws:// over mobile data)
+  const plain = saved && plainOverInternet(r.relay.address!) && r.relay.reachable !== false;
   let line: string | undefined;
   let warn = false;
   if (state === 'checking') line = S('phone.relay.checking');
-  else if (state === 'ok') line = S('phone.relay.ok');
   else if (state === 'failed') (line = S('phone.relay.failed')), (warn = true);
   else if (state === 'invalid') (line = S('phone.relay.invalid')), (warn = true);
+  else if (plain) (line = S('phone.relay.unencrypted')), (warn = true);
+  else if (state === 'ok') line = S('phone.relay.ok');
   else if (saved && r.relay.fromPhone) (line = S(r.relay.reachable === false ? 'phone.relay.from_phone_failed' : 'phone.relay.from_phone')), (warn = r.relay.reachable === false);
   else if (saved && r.relay.reachable === false) (line = S(r.relay.fallback ? 'phone.relay.failed_fallback' : 'phone.relay.failed')), (warn = true);
 

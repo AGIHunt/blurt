@@ -642,6 +642,7 @@
 "settings.remote.relay.ok" = "The relay is working.";
 "settings.remote.relay.failed" = "This address isn’t responding. Check the address.";
 "settings.remote.relay.invalid" = "Not a relay address. It should look like wss://relay.example.com.";
+"settings.remote.relay.unencrypted" = "Mobile networks may drop unencrypted connections. Use a wss:// address.";
 "settings.remote.relay.help.detail" = "Claude Code or Codex can set one up on your domain or server.";
 "settings.remote.relay.copy" = "Copy Instructions";
 "settings.remote.relay.copied" = "Copied";

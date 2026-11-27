@@ -6,7 +6,7 @@ import ZH from '../locales/zh-Hans.json';
 import { mockInvoke, mockListen } from '../mock';
 import type { RemoteStatus } from '../api';
 import { MOVED, redirect, results } from './catalog';
-import { awayLine, groupDigits, relayAddress, timeLeft } from './phone';
+import { awayLine, groupDigits, plainOverInternet, relayAddress, timeLeft } from './phone';
 
 describe('relay address', () => {
   it('takes what the Mac takes', () => {
@@ -18,6 +18,14 @@ describe('relay address', () => {
   it('refuses what isn’t one', () => {
     for (const t of ['', '   ', 'https://relay.example.com', 'wss://', 'wss://relay.example.com?x=1', 'wss://relay.example.com#a', 'relay example.com'])
       expect(relayAddress(t), t).toBeNull();
+  });
+  it('warns about plain ws:// only across the internet, as the Mac does', () => {
+    for (const t of ['ws://203.0.113.7:8787/s', 'ws://relay.example.com/s', 'ws://[2001:db8::1]:8787', 'WS://8.8.8.8'])
+      expect(plainOverInternet(t), t).toBe(true);
+    for (const t of ['wss://203.0.113.7:8443/s', 'wss://relay.example.com', 'ws://127.0.0.1:8787', 'ws://localhost:8787',
+      'ws://192.168.1.5:8787', 'ws://10.0.0.2', 'ws://172.20.1.1', 'ws://169.254.3.3', 'ws://100.101.102.103:8787',
+      'ws://[::1]:8787', 'ws://[fd7a:115c:a1e0::1]:8787', 'ws://[fe80::1]', 'ws://nas.local:8787', 'ws://nas:8787', 'not a url'])
+      expect(plainOverInternet(t), t).toBe(false);
   });
 });
 
