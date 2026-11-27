@@ -27,6 +27,16 @@ public enum RemoteReconnect {
     /// Back in front with a session kept meanwhile: no answer from the computer within this and it's taken as gone.
     public static func proof(relay: Bool) -> Double { relay ? 2.5 : 1.2 }
 
+    /// No pong for this long and the session is gone: over a relay a lost ping waits for its resend, on the same network not.
+    public static func silence(relay: Bool) -> Double { relay ? 8 : 2.5 }
+
+    /// The last pong as a check leaves it (back in front, another network): an answer is wanted within `proof`, and a session already that
+    /// quiet is never given longer. Before 2026-11-27 each check set it, so a network that changed every second or two (a weak 5G link
+    /// under a stalled connection) put the end off for ever.
+    public static func proving(lastPong: Double, now: Double, relay: Bool) -> Double {
+        min(lastPong, now + proof(relay: relay) - silence(relay: relay))
+    }
+
     /// A handshake done and the computer answering pings, but its `session` never came: start over after this.
     public static func sessionDue(relay: Bool) -> Double { relay ? 10 : 5 }
 

@@ -55,6 +55,32 @@ class RemotePairing(
                 q("r")?.let { RemoteRelay.address(it) })
         }
 
+        /**
+         * The link in pasted text: the copied link alone, or inside a message from a chat app or a note, with words, brackets or a full
+         * stop around it and the scheme maybe capitalised. null when there's no whole link in it (Swift: RemotePairing(text:);
+         * `vectors.json` → `pairingText`).
+         */
+        fun find(text: String): RemotePairing? = link(text)?.let(::parse)
+
+        // The characters the hosts write a link with (percent-encoded ASCII): anything else ends it.
+        private const val LINK_CHARS = "-._~!$'()*,;:@/?%&=+"
+        // what ends a sentence or closes a bracket after a link, never the end of one (its last value is an address)
+        private const val TRAILING = ".,;:!?)'"
+
+        /** `blurtremote://…` from the first place it starts in `text` (in any case) to the first character a link can't hold, less a
+         *  closing bracket or full stop after it, with the scheme in lower case. */
+        fun link(text: String): String? {
+            val head = "$SCHEME://"
+            fun lower(c: Char) = if (c in 'A'..'Z') c + 32 else c      // ASCII only, as the other clients fold it
+            val start = (0..text.length - head.length).firstOrNull { i -> head.indices.all { lower(text[i + it]) == head[it] } } ?: return null
+            val body = start + head.length
+            var end = body
+            fun isLink(c: Char) = c < '\u0080' && (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c in LINK_CHARS)
+            while (end < text.length && isLink(text[end])) end++
+            while (end > body && text[end - 1] in TRAILING) end--
+            return head + text.substring(body, end)
+        }
+
         // What URLComponents leaves alone in a query item: RFC 3986 unreserved, and the sub-delims and gen-delims allowed in a query, less & = + #.
         private const val ALLOWED = "-._~!$'()*,;:@/?"
 

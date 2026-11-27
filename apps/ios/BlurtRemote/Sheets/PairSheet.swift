@@ -1,12 +1,19 @@
 import AVFoundation
+import BlurtRemoteKit
 import SwiftUI
 
 struct PairSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// the link used last: after a pairing that didn't take, it's still here to try again or change
     @State private var link = Link.shared.lastLink
-    @State private var failed = false
-    private let hasCamera = AVCaptureDevice.default(for: .video) != nil
+    @State private var failed: LocalizedStringKey?
+    private let hasCamera = AVCaptureDevice.default(for: .video) != nil || Self.pretendCamera
+    #if DEBUG
+    /// `BLURT_REMOTE_PRETEND_CAMERA=1`: the Simulator, which has no camera, lays the sheet out as a phone's (black where the picture goes)
+    private static let pretendCamera = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_CAMERA"] != nil
+    #else
+    private static let pretendCamera = false
+    #endif
     @State private var denied = [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .video))
     private var camera: Bool { hasCamera && !denied }
 
@@ -14,7 +21,7 @@ struct PairSheet: View {
         NavigationStack {
             VStack(spacing: 20) {
                 if camera {
-                    Scanner(onDenied: { denied = true }) { code in if open(code) { dismiss() } }
+                    Group { if Self.pretendCamera { Color.black } else { Scanner(onDenied: { denied = true }) { code in use(code, scanned: true) } } }
                         .aspectRatio(1, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
@@ -25,12 +32,22 @@ struct PairSheet: View {
                         .font(.subheadline).multilineTextAlignment(.center)
                     Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
                 }
-                if !camera {
+                // the link the computer copies (Copy Link), for a code that's far away or won't read: Paste uses it at once, with no
+                // question from iOS; the field takes it typed, or pasted inside a message
+                HStack(spacing: 8) {
                     TextField("Pairing link", text: $link)
                         .textFieldStyle(.roundedBorder).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button("Connect") { if open(link) { Link.shared.lastLink = link; dismiss() } }.disabled(link.isEmpty)
+                        .keyboardType(.URL).submitLabel(.go).onSubmit { use(link) }
+                    PasteButton(payloadType: String.self) { got in
+                        guard let s = got.first else { return }
+                        DispatchQueue.main.async { link = s; use(s) }
+                    }
+                    .labelStyle(.titleOnly).buttonBorderShape(.capsule)
                 }
-                if failed { Text("This code isn’t from Blurt.").font(.footnote).foregroundStyle(.orange) }
+                if !camera || !link.isEmpty {
+                    Button("Connect") { use(link) }.disabled(link.isEmpty)
+                }
+                if let failed { Text(failed).font(.footnote).foregroundStyle(.orange) }
                 Spacer()
             }
             .padding(20)
@@ -40,10 +57,15 @@ struct PairSheet: View {
         }
     }
 
-    private func open(_ s: String) -> Bool {
-        guard let u = URL(string: s.trimmingCharacters(in: .whitespacesAndNewlines)), Link.shared.open(u) else { failed = true; return false }
+    /// A code the camera read, or text with the link in it (alone, or inside a message from a chat app).
+    private func use(_ s: String, scanned: Bool = false) {
+        guard let p = RemotePairing(text: s), Link.shared.open(p.url) else {
+            failed = scanned ? "This code isn’t from Blurt." : "This isn’t a pairing link."
+            return
+        }
+        if !scanned { Link.shared.lastLink = p.url.absoluteString }
         Haptics.grab()
-        return true
+        dismiss()
     }
 }
 

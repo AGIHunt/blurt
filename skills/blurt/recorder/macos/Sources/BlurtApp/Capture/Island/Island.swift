@@ -1131,8 +1131,10 @@ final class Island: NSObject, IslandHosting {
     /// A voice note's closed right ear says how it ends for this long, then its clock.
     static let voiceHintSeconds: Double = 3
 
-    /// How long a toast holds under a resting pointer before the island opens over it.
-    static let toastHoverHold: CFTimeInterval = 1.2
+    /// How long a toast holds under a resting pointer before the island opens over it: a plain line 1.2 s; one with a
+    /// button 4 s — the pointer on its way to "Show in Finder" is reading the line, and at 1.2 s the island took the
+    /// button away before the click (2026-11-27 report). While the pointer is on one of its buttons it never goes.
+    static func toastHoverHold(buttons: Bool) -> CFTimeInterval { buttons ? 4 : 1.2 }
 
     static func clock(_ t: Double) -> String {
         let s = Int(t)
@@ -1140,6 +1142,17 @@ final class Island: NSObject, IslandHosting {
     }
 
     // MARK: pointer
+
+    /// Is the pointer (screen point) on one of the island's buttons (a toast's Show in Finder, Undo…)?
+    private func pointerOnButton(_ screenPoint: NSPoint) -> Bool {
+        guard let p = panel, let sup = content.superview else { return false }
+        var v = content.hitTest(sup.convert(p.convertPoint(fromScreen: screenPoint), from: nil))
+        while let x = v, x !== content {
+            if x is IslandButton { return true }
+            v = x.superview
+        }
+        return false
+    }
 
     private func islandRect(margin: CGFloat) -> CGRect {
         CGRect(x: shapeMinX, y: geo.top, width: w.value, height: h.value).insetBy(dx: -margin, dy: -margin)
@@ -1182,7 +1195,8 @@ final class Island: NSObject, IslandHosting {
             if !open, drawer == nil, !Dictation.shared.busy, canOpen, now - hoverSince! >= dwell {
                 if toastNow == nil {
                     setOpen(true)
-                } else if now - hoverSince! >= dwell + Island.toastHoverHold {
+                } else if now - hoverSince! >= dwell + Island.toastHoverHold(buttons: toastNow?.actionTitle != nil),
+                          !pointerOnButton(m) {
                     toastQ.dismissCurrent()
                     setOpen(true)
                 }

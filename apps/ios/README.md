@@ -27,7 +27,7 @@ With a free Apple account the app stops opening after 7 days: connect the iPhone
 Developer account keeps it for a year.
 
 Then pair: Blurt on the computer (Mac, Windows or Linux) → Settings → Remote Control → Add Device… shows a QR code. Scan it in
-the app, or with the Camera.
+the app, or with the Camera. Away from the computer, use its Copy Link and tap Paste on the app's pairing screen.
 
 ## Develop
 
@@ -54,7 +54,8 @@ titled "Blurt Screen Test" and logs each (`remote_screen_phone` on the computer)
 in front of the decoder: `BLURT_TEST_LOSS=0.01:2` (pieces lost, mean burst) and `BLURT_TEST_STALL=80:2` (80 ms of nothing every 2 s). All
 debug builds only, each with the `SIMCTL_CHILD_` prefix. On the Mac, `BLURT_SCREEN_FEC=8` forces parity at that group size.
 
-Layout without a computer (debug builds): `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys as if connected, `=screen` also shows a
+Layout without a computer (debug builds): `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_CAMERA=1` lays the pairing screen out as on a phone with a
+camera (the Simulator has none). `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys as if connected, `=screen` also shows a
 made-up desktop where the picture goes, and `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_DISPLAYS=1` adds a second display for the switcher.
 `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_BOARD=1` opens the computer keyboard. `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_TRANSFERS=1` fills the Transfer sheet's list
 (`=sheet` opens it, `=toast` shows the pad's toast; with `BLURT_REMOTE_TEST_HOST`). `TEST_RUNNER_BLURT_RENDER_DIR=<folder>` makes `RenderTests` draw the main screen at every iPad

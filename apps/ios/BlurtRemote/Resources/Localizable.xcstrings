@@ -3054,6 +3054,16 @@
         }
       }
     },
+    "This isn’t a pairing link." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是配对链接。"
+          }
+        }
+      }
+    },
     "This iPhone is already paired with this computer. This replaces that pairing." : {
       "localizations" : {
         "zh-Hans" : {

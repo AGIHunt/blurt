@@ -23,6 +23,14 @@ object Reconnect {
     /** back in front with a session kept meanwhile: no answer from the computer within this and it's taken as gone */
     fun proofMs(relay: Boolean): Long = if (relay) 2500 else 1200
 
+    /** no pong for this long and the session is gone: over a relay a lost ping waits for its resend, on the same network not */
+    fun silenceMs(relay: Boolean): Long = if (relay) 8000 else 2500
+
+    /** The last pong as a check leaves it (back in front, another network): an answer is wanted within `proofMs`, and a session already that
+     *  quiet is never given longer. Before 2026-11-27 each check set it, so a network that changed every second or two (a weak mobile link
+     *  under a stalled connection) put the end off for ever. */
+    fun proving(lastPong: Long, now: Long, relay: Boolean): Long = minOf(lastPong, now + proofMs(relay) - silenceMs(relay))
+
     /** a handshake done and the computer answering pings, but its `session` never came: start over after this */
     fun sessionDueMs(relay: Boolean): Long = if (relay) 10_000 else 5_000
 

@@ -52,8 +52,9 @@ public enum RemoteRelay {
         RemoteCrypto.base64url(Data(HMAC<SHA256>.authenticationCode(for: Data("blurt-relay-room".utf8), using: SymmetricKey(data: key))))
     }
 
-    /// What someone typed, as the address to use: `relay.example.com` means wss://. nil if it can't be one. `ws://` is allowed: what
-    /// passes through is sealed either way, and a bare server with an open port needs no domain or certificate.
+    /// What someone typed, as the address to use: `relay.example.com` means wss://. nil if it can't be one. `ws://` is allowed (what
+    /// passes through is sealed either way, and it's fine on one's own network), but Settings warns about it over the internet:
+    /// `plainOverInternet`.
     public static func address(_ typed: String) -> String? {
         var t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
@@ -61,6 +62,31 @@ public enum RemoteRelay {
         while t.hasSuffix("/") { t.removeLast() }
         guard let u = URLComponents(string: t), u.scheme == "wss" || u.scheme == "ws", let h = u.host, !h.isEmpty, u.query == nil, u.fragment == nil else { return nil }
         return t
+    }
+
+    /// A `ws://` address to a host that isn't on the owner's own network: mobile carriers can cut plaintext WebSockets mid-session
+    /// (on China Mobile 5G, ~10 s in, every time), and the secret path travels in the clear (docs/design/remote-relay-setup.md
+    /// §ws:// over mobile data). Local: localhost, *.local and single-label names, loopback, private, link-local, and the
+    /// 100.64/10 range (Tailscale, CGNAT), whose traffic Tailscale already encrypts.
+    public static func plainOverInternet(_ address: String) -> Bool {
+        guard let u = URLComponents(string: address), u.scheme?.lowercased() == "ws", var h = u.host?.lowercased(), !h.isEmpty else { return false }
+        if h.hasPrefix("[") && h.hasSuffix("]") { h = String(h.dropFirst().dropLast()) }
+        if h == "localhost" || h.hasSuffix(".localhost") || h.hasSuffix(".local") { return false }
+        if let v4 = IPv4Address(h) {
+            let b = [UInt8](v4.rawValue)
+            switch (b[0], b[1]) {
+            case (127, _), (10, _), (192, 168), (169, 254): return false
+            case (172, 16...31): return false
+            case (100, 64...127): return false
+            default: return true
+            }
+        }
+        if let v6 = IPv6Address(h) {
+            let b = [UInt8](v6.rawValue)
+            if v6 == .loopback || b[0] & 0xfe == 0xfc || (b[0] == 0xfe && b[1] & 0xc0 == 0x80) { return false }
+            return true
+        }
+        return h.contains(".")    // a single-label name only resolves on a local network
     }
 
     public static func connection(address: String, room: String, role: String) -> NWConnection? {

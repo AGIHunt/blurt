@@ -29,6 +29,8 @@ final class RemoteModel: ObservableObject {
     @Published var goBetween = RemoteServer.goBetweenOn
     /// a relay of the owner's own is set (committed), so the go-between isn't used
     var ownRelay: Bool { RemoteRelay.address(committed) != nil }
+    /// that relay is plain ws:// across the internet, which mobile networks can cut (RemoteRelay.plainOverInternet)
+    var plainRelay: Bool { RemoteRelay.address(committed).map(RemoteRelay.plainOverInternet) ?? false }
 
     func setGoBetween(_ on: Bool) {
         goBetween = on
@@ -124,7 +126,10 @@ final class RemoteModel: ObservableObject {
 
     Ask me which of these I have, then do that one:
     A. A domain on Cloudflare: deploy the Worker on a subdomain such as relay.example.com. The free plan is enough for one person.
-    B. A server with a public IP: run server.js as a service (Node 12 or later, one dependency). With a domain, serve it over HTTPS on port 443 with a publicly trusted certificate. Without one, open a port and use ws://.
+    B. A server with a public IP: run server.js as a service on 127.0.0.1:8787 (Node 12 or later, one dependency) behind a TLS front, so the address is always wss://, never ws://. Mobile networks can cut unencrypted WebSockets a few seconds into a session, and ws:// shows the secret path to anyone on the way.
+       - With a domain: HTTPS on port 443 with a publicly trusted certificate (Caddy, or nginx if the server already runs it).
+       - Without a domain: use the server's IP. Caddy 2.11.1 or later gets a Let's Encrypt certificate for the IP address itself (the shortlived profile, about 6 days, renewed automatically) and serves wss://<IP>:8443. README.md has the exact Caddyfile, including default_sni, which cloud servers need when the public IP isn't on the network interface. If the system's Caddy package is older, install Caddy from caddyserver.com instead.
+       - Open the relay's port, and port 80 for Let's Encrypt's check, in the server's firewall and in the cloud provider's firewall or security group (Tencent Cloud, Aliyun, AWS and most others have one in their web console). If you can't reach that console, tell me the exact rule to add there.
 
     Either way, give it a secret path as README.md says: a random RELAY_SECRET (openssl rand -hex 16), so strangers who find the host can't use it. Don't put the secret in a DNS name.
 
@@ -249,21 +254,23 @@ struct RemotePane: View {
     }
 
     /// The own relay: what it is for while there is none, else what the last check (this page's, or the host's own
-    /// tries) said about the address.
+    /// tries) said about the address. A plain ws:// relay across the internet that answers gets the warning instead of
+    /// "working": it works here and now, and mobile networks are where it breaks (docs/design/remote-relay-setup.md).
     private var ownState: Line {
+        let plain = Line(tone: .warn, text: T("settings.remote.relay.unencrypted"), problem: true)
         switch m.relayState {
         case .checking: return Line(tone: nil, text: T("settings.remote.relay.checking"))
         case .failed: return Line(tone: .warn, text: T("settings.remote.relay.failed"), problem: true)
         case .invalid: return Line(tone: .warn, text: T("settings.remote.relay.invalid"), problem: true)
-        case .ok: return Line(tone: .good, text: T("settings.remote.relay.ok"))
-        case .fromPhone: return Line(tone: .good, text: T("settings.remote.relay.from_phone"))
+        case .ok: return m.plainRelay ? plain : Line(tone: .good, text: T("settings.remote.relay.ok"))
+        case .fromPhone: return m.plainRelay ? plain : Line(tone: .good, text: T("settings.remote.relay.from_phone"))
         case .idle:
             guard m.ownRelay else { return Line(tone: nil, text: T("settings.remote.relay.address.detail")) }
             if phone.relay == .failed || phone.status.away == .relayDown {
                 return Line(tone: .warn, text: T("settings.remote.away.relay_down"), problem: true)
             }
             if phone.relay == .checking { return Line(tone: nil, text: T("settings.remote.relay.checking")) }
-            return Line(tone: .good, text: T("settings.remote.relay.in_use"))
+            return m.plainRelay ? plain : Line(tone: .good, text: T("settings.remote.relay.in_use"))
         }
     }
 

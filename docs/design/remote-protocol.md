@@ -41,7 +41,9 @@ Any phone app talks to any host: the host says what it is (`platform`), the phon
 - **Relay room**: `base64url(HMAC-SHA256(paired, "blurt-relay-room"))`, no padding. URL `<relay>/v1/<room>/<mac|phone>`. Close codes: 4000
   phone left, 4001 host gone, 4002 replaced. `tools/remote-relay` is the relay, unchanged for any host.
 - **Pairing link** (QR): `blurtremote://pair?v=1&mac=<host id>&id=<device id>&k=<base64url key>&n=<name>&p=<tcp port>&a=<addr,addr>&r=<relay>`.
-  `mac` is the host's id whatever the host is.
+  `mac` is the host's id whatever the host is. Copy Link copies exactly the QR's text. Pasted text is read the same way everywhere (phones'
+  pairing screens, Add Computer; `vectors.json` → `pairingText`): from the first `blurtremote://` in any case to the first character the hosts
+  never write (anything but percent-encoded ASCII), less a trailing `.,;:!?)'`, so a link inside a chat message or a note still pairs.
 - **Discovery**: DNS-SD `_blurt-remote._tcp`, instance name = the computer's name, TXT `id=<host id>` (Mac: `RemoteServer.startListening`). TCP keeps
   its port across restarts; UDP is any free port, told in `session.udpPort`.
 

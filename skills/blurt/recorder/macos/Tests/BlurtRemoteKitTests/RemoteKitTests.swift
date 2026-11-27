@@ -200,6 +200,18 @@ final class RemoteKitTests: XCTestCase {
         XCTAssertNotNil(RemoteRelay.connection(address: "ws://1.2.3.4:8787", room: "r", role: "mac"))
     }
 
+    /// Settings warns about plain ws:// only when it crosses the internet (docs/design/remote-relay-setup.md §ws:// over mobile data).
+    func testPlainRelayOverInternet() {
+        for warn in ["ws://203.0.113.7:8787/s", "ws://relay.example.com/s", "ws://[2001:db8::1]:8787", "WS://8.8.8.8"] {
+            XCTAssertTrue(RemoteRelay.plainOverInternet(warn), warn)
+        }
+        for fine in ["wss://203.0.113.7:8443/s", "wss://relay.example.com", "ws://127.0.0.1:8787", "ws://localhost:8787",
+                     "ws://192.168.1.5:8787", "ws://10.0.0.2", "ws://172.20.1.1", "ws://169.254.3.3", "ws://100.101.102.103:8787",
+                     "ws://[::1]:8787", "ws://[fd7a:115c:a1e0::1]:8787", "ws://[fe80::1]", "ws://nas.local:8787", "ws://nas:8787"] {
+            XCTAssertFalse(RemoteRelay.plainOverInternet(fine), fine)
+        }
+    }
+
     func testSessionInfoCarriesTheRelay() throws {
         let i = RemoteSessionInfo(macName: "m", udpPort: 1, udpSession: 2, canControl: true, version: "1", relay: "wss://r.example.com")
         let d = try JSONDecoder().decode(RemoteSessionInfo.self, from: JSONEncoder().encode(i))

@@ -586,6 +586,15 @@ class VectorsTest {
     }
 
     @Test
+    fun pairingText() {
+        for (c in v["pairingText"]!!.jsonObject["cases"]!!.jsonArray) {
+            val text = c.jsonObject["text"]!!.jsonPrimitive.content
+            val want = c.jsonObject["link"]!!.let { if (it is JsonNull) null else it.jsonPrimitive.content }
+            assertEquals(want, RemotePairing.find(text)?.url, "the link in: $text")
+        }
+    }
+
+    @Test
     fun joinGate() {
         val cases = v["joinGate"]!!.jsonObject["cases"]!!.jsonArray
         assertTrue(cases.size >= 10)

@@ -316,6 +316,7 @@ final class HangingCards: NSObject {
     static let voiceSize = CGSize(width: 168, height: 50)
     static let gap: CGFloat = 12
     static let edge: CGFloat = 12                  // the cards keep this far from the screen's edges
+    static let overhang: CGFloat = 10              // what sticks out of a card's sides: its ✕ (7 pt) and its shadow
     static let below: CGFloat = 18                 // the cards' top edge under the island (every card's)
     /// v0.9.2: a row wider than the island hangs from the island's own lip — a band of its black this thick, flush
     /// under its bottom edge (`stepLip`), never a drawn rod with stems.
@@ -1119,12 +1120,16 @@ final class HangingCards: NSObject {
         emit(["event": "cards_more", "dir": d > 0 ? "right" : "left", "scroll": Double(scrollX)])
     }
 
-    /// The fade at the window's edges where more cards wait beyond them (none while the whole row fits).
+    /// The fade at the window's edges where more cards wait beyond them (none while the whole row fits). An end with
+    /// nothing beyond it shows `overhang` more: the first card's ✕ sits 7 pt out of its top-left corner, and a mask cut
+    /// at the window's edge cut it in half whenever the row scrolled (2026-11-27 report).
     private func updateRowMask() {
         guard let v = row.viewport, width > 0 else { rowLayer.mask = nil; return }
         let f = CardRow.fade
         let l = scrollX > 0.5 ? f : 0, r = scrollX < row.maxScroll - 0.5 ? f : 0
-        let pts = [0, v.lowerBound, v.lowerBound + l, v.upperBound - r, v.upperBound, width].map { NSNumber(value: Double(min(max($0 / width, 0), 1))) }
+        let lo = l > 0 ? v.lowerBound : max(0, v.lowerBound - HangingCards.overhang)
+        let hi = r > 0 ? v.upperBound : min(width, v.upperBound + HangingCards.overhang)
+        let pts = [0, lo, lo + l, hi - r, hi, width].map { NSNumber(value: Double(min(max($0 / width, 0), 1))) }
         let on = NSColor.black.cgColor, off = NSColor.clear.cgColor
         rowMask.colors = [off, off, on, on, off, off]
         rowMask.locations = pts
@@ -2489,7 +2494,7 @@ final class HangingCards: NSObject {
                 m.addItem(ClosureMenuItem(Loc.t("capture.card.retry_transcribe", table: "Capture")) { snapper.retryWords(s) })
             }
             m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
-            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { RevealInFinder.show([u]) } })
         }
         m.addItem(.separator())
         // a snap taken while recording goes with the recording (its organizing run makes its item): no Move To / Organize

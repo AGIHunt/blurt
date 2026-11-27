@@ -315,6 +315,18 @@ final class RemoteVectorsTests: XCTestCase {
         let pairing = RemotePairing(macID: "host-id-1", deviceID: "device-id-1", key: paired, macName: "Studio PC", port: 50123,
                                     addresses: ["192.168.1.20", "fe80::1"], relay: "wss://relay.example.com")
         out["pairingURL"] = pairing.url.absoluteString
+        let l = pairing.url.absoluteString
+        let near = RemotePairing(macID: "host-id-1", deviceID: "device-id-2", key: paired, macName: "Studio PC", port: 50123,
+                                 addresses: ["192.168.1.20"]).url.absoluteString
+        let texts: [String] = [
+            l, "  \(l)\n", "Pair with my PC: \(l) (works for 10 minutes)", "配对链接：\(l)。", "\(l).", "(\(l))", "<\(l)>", "[Pair](\(l))",
+            "Blurtremote" + l.dropFirst("blurtremote".count), "\(near).", "\(near)\nsent from my phone",
+            String(l.prefix(80)), "https://blurt.work/pair", "blurtremote://pair?v=1&mac=host-id-1", "", "copy the link from Add Device",
+        ]
+        out["pairingText"] = [
+            "about": "Pasted text that holds a pairing link: the link alone, or inside a message (words, brackets, a full stop, a capitalised scheme). link: the link it holds, written back, or null when it holds no whole one.",
+            "cases": texts.map { t -> [String: Any] in ["text": t, "link": RemotePairing(text: t).map { $0.url.absoluteString as Any } ?? NSNull()] },
+        ]
         return out
     }
 

@@ -305,8 +305,11 @@ func roundedMask(_ radius: CGFloat) -> NSImage {
     return img
 }
 
+/// A non-activating panel: a click on the countdown ("Start Now", or anywhere on it) must not make Blurt the active app —
+/// activating it brought the main window up over what the user was about to record (2026-11-27 report).
 func overlayWindow(_ frame: NSRect, view: NSView) -> NSWindow {
-    let w = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+    let w = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    w.hidesOnDeactivate = false
     w.level = .statusBar
     w.isOpaque = false
     w.backgroundColor = .clear

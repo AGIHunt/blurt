@@ -805,14 +805,15 @@ final class IslandContent: NSView {
     /// the time over the pause circle, the right ear's glyph over Finish — as an expanded Live Activity lines its
     /// regions up), and everything below starts and ends `earInset` (14 pt) in:
     ///   ● 0:06                                                  ||||
-    ///   (pause) (snap)                                  (···) [■ Finish]
+    ///   (pause) (snap) (trash)               (···) [Save Video Only] [■ Finish]
     ///   [⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse
     /// The secondaries are one control (white 10 % circles); Finish is the one filled thing. Paused, the pause circle
     /// becomes Resume in the same place and size — the play glyph in `attn` on its tint, the lead — and Finish quiets
     /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
     /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
-    /// pen hint for the first three takes, the snaps taken). The rare things are in the ··· menu: the pen,
-    /// where the take goes (Change…), Discard or Start Over… (the question below).
+    /// pen hint for the first three takes, the snaps taken). Every way to end a take is on the row (2026-11-27: Save
+    /// Video Only, a quiet pill beside Finish; Discard or Start Over…, the trash asking the question below); the ···
+    /// menu keeps the rare things: the pen, where the take goes (Change…).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
         let y: CGFloat = top + 6
@@ -831,14 +832,28 @@ final class IslandContent: NSView {
             i?.snapWithNote()
         }
         place(sb, x: pb.frame.maxX + 8, y: y)
+        // Discard or Start Over: the third circle, asking first (the question below) — it was in the ··· menu, and the
+        // ways to end a take were too deep (2026-11-27, the founder)
+        let db = IslandButton(icon: .trash, tip: Loc.t("capture.rec.discard_tip", table: "Capture"), fill: CaptureGlass.control) { [weak i] in
+            i?.confirmDiscard(true)
+        }
+        place(db, x: sb.frame.maxX + 8, y: y)
         let fin = IslandButton(icon: .stop, title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
                                fill: paused ? NSColor(white: 1, alpha: 0.14) : IslandContent.finishRed) { rec.stop() }      // Stop: the tape
         if paused { fin.iconColor = BrandColor.Island.rec }
         place(fin, x: w - inset - fin.frame.width, y: y + 1)
+        var rightEdge = fin.frame.minX
+        // Save Video Only (BA-66): the other way to finish, a quiet pill beside Finish (it was the ··· menu's first item)
+        if (NSApp.delegate as? App)?.resident == true {
+            let vo = IslandButton.quiet(Loc.t("capture.rec.video_only", table: "Capture")) { rec.videoOnly = true; rec.stop() }
+            vo.setFrameSize(NSSize(width: vo.frame.width, height: fin.frame.height))
+            place(vo, x: rightEdge - 8 - vo.frame.width, y: y + 1)
+            rightEdge = vo.frame.minX
+        }
         let more = IslandButton(icon: .more, tip: Loc.t("capture.rec.more_tip", table: "Capture"), fill: CaptureGlass.control) { [weak self] in
             self?.showRecordingMenu()
         }
-        place(more, x: fin.frame.minX - 8 - more.frame.width, y: y)
+        place(more, x: rightEdge - 8 - more.frame.width, y: y)
         moreBtn = more
         level = nil
         var bottom = y + 30
@@ -908,12 +923,7 @@ final class IslandContent: NSView {
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.appearance = NSAppearance(named: .darkAqua)
-        // BA-66: finish without organizing — the video is kept and shown in the Finder, to send to someone (beside
-        // Finish, which organizes: this menu's button sits next to it)
-        if (NSApp.delegate as? App)?.resident == true {
-            menu.addItem(ClosureMenuItem(Loc.t("capture.rec.video_only", table: "Capture")) { rec.videoOnly = true; rec.stop() })
-            menu.addItem(.separator())
-        }
+        // (Save Video Only and Discard or Start Over… are on the row since 2026-11-27, not here)
         let pen = ClosureMenuItem(Loc.t("capture.rec.menu_pen", table: "Capture")) { rec.togglePen() }
         pen.state = rec.penSticky ? .on : .off
         pen.showHotkey(.pen)
@@ -929,8 +939,6 @@ final class IslandContent: NSView {
             item.showHotkey(.project)
             menu.addItem(item)
         }
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(Loc.t("capture.rec.discard_tip", table: "Capture")) { [weak self] in self?.island?.confirmDiscard(true) })
         emit(["event": "rec_menu", "items": menu.items.filter { !$0.isSeparatorItem }.map(\.title),
               "keys": menu.items.filter { !$0.isSeparatorItem }.map { $0.keyEquivalent.isEmpty ? "" : $0.keyEquivalent }])
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: b.frame.height + 6), in: b)

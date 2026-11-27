@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { pairingLink, pairingPlan, pathLine, rowPlan, type ComputerRow, type Pairing } from './computers';
 import { contained, packFrame, parseFrame, toPicture, wheelPoints } from './decode';
 import { CATALOGS } from '../i18n';
+import vectors from '../../../../../tests/remote-vectors/vectors.json';
 
 const row = (o: Partial<ComputerRow>): ComputerRow => ({ id: 'a', name: 'Studio', platform: 'mac', state: 'offline', key: true, route: null, lastSeen: null, windows: 0, ...o });
 const failed = (o: Partial<Pairing>): Pairing => ({ name: 'Studio', state: 'failed', digits: null, error: 'unreachable', link: false, confirmed: false, ...o });
@@ -39,6 +40,8 @@ describe('the list of computers', () => {
     expect(pairingLink(`  ${l}\n`)).toBe(l);
     expect(pairingLink('https://example.com/pair')).toBeNull();
     expect(pairingLink('blurtremote://pair?v=1&id=D1')).toBeNull();
+    // inside a message from a chat app or a note, as every client reads it (vectors.json → pairingText; Rust checks the rest)
+    for (const c of vectors.pairingText.cases) if (c.link) expect(pairingLink(c.text)).toBe(c.link);
   });
 
   it('names the path and the round trip as the toolbar shows them', () => {

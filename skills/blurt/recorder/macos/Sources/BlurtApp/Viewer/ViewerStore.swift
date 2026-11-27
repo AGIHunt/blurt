@@ -343,9 +343,9 @@ final class ViewerStore: ObservableObject {
         startPairing(c, key: RemoteNearby.key, endpoint: n.endpoint)
     }
 
-    /// A pasted pairing link (the host's 添加设备 / Add Device). False when it isn't one.
+    /// A pasted pairing link (the host's 添加设备 / Add Device), alone or inside a message. False when there's none.
     @discardableResult func pair(link text: String) -> Bool {
-        guard let u = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), let p = RemotePairing(url: u) else { return false }
+        guard let p = RemotePairing(text: text) else { return false }
         // kept for Back: the field shows the link that was used
         linkText = text
         startPairing(RemoteComputer(pairing: p), key: p.key, endpoint: nil)

@@ -346,7 +346,7 @@ enum PhoneText {
 // MARK: - pieces Settings → Phone shows too
 
 /// The pairing code: the QR on its white plate with when it renews under it, what to do beside it, what went wrong opening the
-/// port, Copy Link for a computer on another network, and a quiet ✕ in the corner (Esc). The card is as wide as what it holds.
+/// port, Copy Link for a phone or computer that isn’t beside this one, and a quiet ✕ in the corner (Esc). The card is as wide as what it holds.
 struct PhonePairingCode: View {
     var link: URL?
     /// when this code gives way to the next: "1:40 left", ticking once a second while the card shows
@@ -376,7 +376,7 @@ struct PhonePairingCode: View {
                 if let f = failure {
                     Text(PhoneText.listenFailure(f)).help(f == RemoteServer.portInUse ? "" : f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
                 }
-                // for another computer away from here (Add Computer takes it pasted): the same code, as text
+                // for a phone or another computer away from here (their pairing screens take it pasted): the same code, as text
                 if let link {
                     Button(copied ? T("settings.remote.link_copied") : T("settings.remote.copy_link")) {
                         NSPasteboard.general.clearContents()

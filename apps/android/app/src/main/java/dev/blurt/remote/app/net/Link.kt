@@ -324,7 +324,8 @@ class Link(private val c: Context, private val vault: KeyVault) {
      *  over. */
     private fun prove() {
         val ch = channel ?: return
-        lastPong = now() + Reconnect.proofMs(ch.isRelay) - (if (ch.isRelay) 8000 else 2500)
+        // never later than it would have been: a weak mobile link that says it changed every second or two kept a stalled one for ever
+        lastPong = Reconnect.proving(lastPong, now(), ch.isRelay)
         send(ToMac.Ping(Net.now()))
     }
 
@@ -1006,7 +1007,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     private fun ping() {
         val relay = channel?.isRelay == true
-        if (now() - maxOf(lastPong, lastFileWord) > if (relay) 8000 else 2500) return lost()
+        if (now() - maxOf(lastPong, lastFileWord) > Reconnect.silenceMs(relay)) return lost()
         pingCount += 1
         // over the relay, one in four: every message counts against the free plan (once moved off the go-between, nothing goes through it)
         if (!relay || channel?.moved == true || pingCount % 4 == 0) send(ToMac.Ping(Net.now()))

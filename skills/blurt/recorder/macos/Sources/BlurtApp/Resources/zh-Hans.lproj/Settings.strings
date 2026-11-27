@@ -639,6 +639,7 @@
 "settings.remote.relay.ok" = "中转可用。";
 "settings.remote.relay.failed" = "此地址无响应。请检查地址。";
 "settings.remote.relay.invalid" = "这不是中转地址。格式应类似 wss://relay.example.com。";
+"settings.remote.relay.unencrypted" = "移动网络可能会中断未加密的连接。请使用 wss:// 地址。";
 "settings.remote.relay.help.detail" = "Claude Code 或 Codex 可以在你的域名或服务器上搭建中转。";
 "settings.remote.relay.copy" = "复制说明";
 "settings.remote.relay.copied" = "已复制";

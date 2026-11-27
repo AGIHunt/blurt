@@ -26,6 +26,21 @@ class ReconnectTest {
         assertEquals(12_000, Reconnect.unreachableAfterMs(relay = true))
         assertEquals(12_000, Reconnect.busyFloorMs(asked = true))
         assertEquals(60_000, Reconnect.busyFloorMs(asked = false))
+        assertEquals(8000, Reconnect.silenceMs(relay = true))
+        assertEquals(2500, Reconnect.silenceMs(relay = false))
+    }
+
+    /** 2026-11-27: a weak 5G link, the relay's connection stalled, and the network said to change every 2 s: each check put the end off */
+    @Test fun aCheckNeverPutsTheEndOff() {
+        // a fresh session: an answer within 2.5 s
+        assertEquals(100_000L + 2500 - 8000, Reconnect.proving(lastPong = 100_000, now = 100_000, relay = true))
+        // quiet for 7 s already: the end stays where it was, 1 s from now
+        assertEquals(93_000L, Reconnect.proving(lastPong = 93_000, now = 100_000, relay = true))
+        // checked every 2 s from the stall on: gone 2.5 s after the first check, however often it's checked again
+        var last = 0L
+        var t = 0L
+        while (t - last <= Reconnect.silenceMs(true)) { t += 500; if (t % 2000 == 0L) last = Reconnect.proving(last, t, true) }
+        assertEquals(5000L, t)
     }
 
     @Test fun howLongASessionIsKept() {

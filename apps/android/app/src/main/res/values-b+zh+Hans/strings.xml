@@ -107,6 +107,8 @@
     <string name="pairing_link">配对链接</string>
     <string name="connect">连接</string>
     <string name="not_blurt_code">这不是口喷鸡的二维码。</string>
+    <string name="not_pairing_link">这不是配对链接。</string>
+    <string name="paste">粘贴</string>
     <string name="camera_off">相机权限未开启。请在手机设置中允许，或在下方粘贴配对链接。</string>
 
     <string name="done">完成</string>

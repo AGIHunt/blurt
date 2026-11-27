@@ -312,7 +312,7 @@ the phone's receiver (NACK, LTR, parity), pings and reports every second, and ha
 **The app** (`src-tauri/src/viewer.rs`, `viewer_keys.rs`; web `src/viewer/`):
 
 - Tray → 电脑… opens Settings → 手机和电脑 at the 电脑 group. The pane is renamed; the host's Add Phone… is 添加设备… / Add Device…, and its
-  code has 复制链接 / Copy Link for a computer to paste.
+  code has 拷贝链接 / Copy Link for a phone or a computer to paste (its tooltip says so; 2026-11-27).
 - Rows: 已连接 · <path> (a window's session is up) → 打开窗口; 可连接 · <path> (found nearby; or a Tailscale address, a relay or the public
   connection service it can be tried through) → 连接; 离线 · <last seen> → 移除. Add Computer… lists unpaired computers found nearby
   (DNS-SD runs while the list shows) and takes a pasted link; while pairing, the digits show and the window opens once paired.
