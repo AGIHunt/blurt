@@ -30,7 +30,7 @@ enum TakenPanel {
         if s.copyText != nil { m.addItem(ClosureMenuItem(Loc.t("capture.taken.copy_note", table: "Capture")) { copy(.text) }) }
         m.addItem(ClosureMenuItem(Loc.t("capture.taken.put_back", table: "Capture")) { snapper.putBack(s, from: from()) })
         if let u = s.bestURL {
-            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { NSWorkspace.shared.activateFileViewerSelecting([u]) })
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { RevealInFinder.show([u]) })
         }
         m.addItem(.separator())
         m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) {

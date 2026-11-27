@@ -133,7 +133,9 @@ const EARS_LINE_MIN_W = 292; // a line under the listening ears: the Mac's width
 const HOVER_IN = CardReveal.dwell;
 const HOVER_OUT = 400;
 const TOAST_MIN = 5000; // ToastQueue.minSeconds
-const TOAST_HOVER_HOLD = 1200; // Island.toastHoverHold
+// Island.toastHoverHold: a plain line 1.2 s; one with a button 4 s, and never while the pointer is on a button (2026-11-27:
+// the island opened over "Show in File Explorer" as the pointer reached it)
+const toastHoverHold = (buttons: boolean) => (buttons ? 4000 : 1200);
 const NEWS_MS = 4500; // Island.newsSeconds
 const MOMENT_MS = 2200;
 const VOICE_HINT_S = 3; // Island.voiceHintSeconds
@@ -643,7 +645,11 @@ function recBody() {
   // where it goes once finished: Finish's tooltip (the ··· menu's Goes to… changes it)
   const where = t('island.rec.goes_after', { project: S.project?.name ?? t('island.unassigned') });
   const fin = `<button class="finish${r.paused ? ' quiet-fin' : ''}" data-a="stop" data-tip="${esc(where)}">${ic('stop', 13)}<span>${esc(t('island.rec.finish'))}</span></button>`;
-  return `<div class="rec-body"><div class="controls">${pause}${snap}<span class="grow"></span>${more}${fin}</div>${penLine()}</div>`;
+  // every way to end a take on the row (2026-11-27, as the Mac): Discard or Start Over… the trash after snap (it asks
+  // first), Save Video Only a quiet pill beside Finish; the ··· menu keeps the pen and where the take goes
+  const bin = `<button class="circle" data-a="rec.discard" aria-label="${esc(t('island.rec.discard_menu'))}" data-tip="${esc(t('island.rec.discard_menu'))}">${ic('trash', 15)}</button>`;
+  const vo = `<button class="pillbtn" data-a="rec.videoonly">${esc(t('island.rec.video_only'))}</button>`;
+  return `<div class="rec-body"><div class="controls">${pause}${snap}${bin}<span class="grow"></span>${more}${vo}${fin}</div>${penLine()}</div>`;
 }
 
 /** The pen's quiet key line under the controls (the Mac's KeyLine): on — "Pen on · [Esc] Pen off"; off — its key and
@@ -995,11 +1001,13 @@ function hoverIn() {
     if (!hovering || open || drawer) return;
     if (toastNow && toastShows()) {
       // a toast under the pointer holds for a moment; resting longer is asking for the island
-      hoverTimer = window.setTimeout(() => {
+      const giveWay = () => {
         if (!hovering) return;
+        if (island.querySelector('button:hover')) return void (hoverTimer = window.setTimeout(giveWay, 300));
         dismissToast();
         setOpen(true);
-      }, TOAST_HOVER_HOLD);
+      };
+      hoverTimer = window.setTimeout(giveWay, toastHoverHold(!!toastNow.action));
       return;
     }
     setOpen(true);
@@ -1205,6 +1213,12 @@ island.addEventListener('click', (e) => {
       return render();
     case 'rec.more':
       return showRecMenu(a);
+    case 'rec.discard':
+      setConfirm(true);
+      return render();
+    case 'rec.videoonly':
+      void host.emit(EV.action, { action: 'videoonly' });
+      return;
     case 'cards.reveal':
       e.stopPropagation();
       // the ear's count: the cards come down and stay; the open island's cards row: the Cards panel
@@ -1393,20 +1407,16 @@ function closeMenu() {
   reportHits(true);
 }
 
-/** The ··· menu (IslandContent.showRecordingMenu): where the take goes, Discard or Start Over…. */
+/** The ··· menu (IslandContent.showRecordingMenu): the pen and where the take goes. Save Video Only (BA-66) and
+ *  Discard or Start Over… are on the row since 2026-11-27. */
 function showRecMenu(btn: HTMLElement) {
   const b = btn.getBoundingClientRect();
   showMenu(
     [
-      // BA-66: finish without organizing — the video is kept and shown in File Explorer (recording.md §5.5)
-      { label: t('island.rec.video_only'), run: () => void host.emit(EV.action, { action: 'videoonly' }) },
-      { sep: true, label: '' },
       // the pen latched on / off (its key, Esc puts it down; recording.md §4.6)
       { label: t('island.rec.pen'), glyph: S.recording?.pen ? ic('check', 14) : '', key: S.hotkeys.pen, run: () => void host.emit(EV.action, { action: 'pen' }) },
       { sep: true, label: '' },
       { label: t('island.rec.goes_to', { project: S.project?.name ?? t('island.unassigned') }), glyph: S.project ? folderGlyph(S.project) : `<span class="dim">${ringGlyph()}</span>`, key: S.hotkeys.project, run: () => openSwitcher() },
-      { sep: true, label: '' },
-      { label: t('island.rec.discard_menu'), run: () => (setConfirm(true), render()) },
     ],
     b.left,
     b.bottom + 6,
@@ -2018,7 +2028,10 @@ function layoutCards(snapX = false) {
   paintNow();
 }
 
-/** The fade at the row's window edges where more cards wait beyond them (none while it fits, or a card is dragged). */
+/** The fade at the row's window edges where more cards wait beyond them (none while it fits, or a card is dragged).
+ *  An end with nothing beyond it shows OVERHANG more: the first card's ✕ sits 7 px out of its top-left corner and was
+ *  cut in half whenever the row scrolled (2026-11-27, HangingCards.updateRowMask). */
+const OVERHANG = 10;
 let maskNow = '';
 function rowMask() {
   const v = row.viewport;
@@ -2026,7 +2039,9 @@ function rowMask() {
   if (v && !dragging) {
     const l = scrollX > 0.5 ? FADE : 0;
     const r = scrollX < row.maxScroll - 0.5 ? FADE : 0;
-    m = `linear-gradient(to right, transparent ${v[0]}px, #000 ${v[0] + l}px, #000 ${v[1] - r}px, transparent ${v[1]}px)`;
+    const lo = l ? v[0] : Math.max(0, v[0] - OVERHANG);
+    const hi = r ? v[1] : v[1] + OVERHANG;
+    m = `linear-gradient(to right, transparent ${lo}px, #000 ${lo + l}px, #000 ${hi - r}px, transparent ${hi}px)`;
   }
   if (m === maskNow) return;
   maskNow = m;

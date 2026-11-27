@@ -12,6 +12,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The recording under way. Its own shortcuts (Pause, Draw, Finish) are global keys only while it is.
     var rec: Recorder? { didSet { if (rec == nil) != (oldValue == nil) { applyCapabilityHotkeys() } } }
     var countdownWin: NSWindow?
+    /// Ends a running countdown without starting the take (Finish or Discard pressed during it).
+    var countdownCancel: (() -> Void)?
     var statusItem: NSStatusItem?
     var busy = false                 // picking / counting down / recording
     var processing: [String] = []    // sessions being processed by an agent
@@ -122,6 +124,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func command(_ c: String) {
+        // Finish, Discard, Save Video Only or Start Over before the countdown has ended (its panel shows ⌥S): nothing
+        // was recorded, so the take just ends — no "Recording not saved" (no frames), and the countdown's timer can't
+        // start the stopped take afterwards. Start Over begins the countdown again (2026-11-27; Windows does the same,
+        // windows-parity/recording.md §3.8).
+        if ["stop", "discard", "videoonly", "restart"].contains(c), let cancel = countdownCancel, let r = rec {
+            cancel()
+            emit(["event": "countdown_cancelled", "by": c])
+            r.stop(discard: true, restart: c == "restart")
+            return
+        }
         switch c {
         case "stop":
             if let r = rec { r.stop() } else if let p = picker { p.finish(false) } else if !resident { sessionEnded(2, ["event": "cancelled"]) }
@@ -204,12 +216,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         emit(["event": "countdown", "n": left])
         NSSound(named: "Pop")?.play()
         var timer: Timer?
-        let go = {
-            guard !fired else { return }
-            fired = true                 // a short beat after hiding so the countdown never lands in frame 1
+        let close = { [weak self] in
+            fired = true
             timer?.invalidate()
             w.orderOut(nil)
             MenuGlyph.shared.countdown = false
+            self?.countdownCancel = nil
+            if self?.countdownWin === w { self?.countdownWin = nil }
+        }
+        countdownCancel = close
+        let go = {
+            guard !fired else { return }
+            close()                      // a short beat after hiding so the countdown never lands in frame 1
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then() }
         }
         v.onSkip = go
@@ -735,7 +753,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
             emit(["event": "reveal_in_finder", "path": target.path])
         } else {
-            NSWorkspace.shared.activateFileViewerSelecting([target])
+            RevealInFinder.show([target])
         }
     }
 
@@ -750,7 +768,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
                 emit(["event": "reveal_in_finder", "path": video.path])
             } else {
-                NSWorkspace.shared.activateFileViewerSelecting([video])
+                RevealInFinder.show([video])
             }
         }
         reveal()

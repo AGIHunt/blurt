@@ -121,9 +121,21 @@ Agent」+ 设置 Agent… / 复制说法 / 在访达中显示，不建任务。�
 整理的提示词和 Windows/Linux 共用 `skills/blurt/scripts/organize_prompt.json`（BlurtCore OrganizerPrompt.render；golden 样例
 `tests/organize-prompt/golden.json`）。见 windows-parity/recording.md §15。
 
-**只保存视频（BA-66）。** 刘海 ··· 菜单第一项和菜单栏菜单里有「只保存视频」：录屏照常保存（meta.json `video_only: true`），
+**只保存视频（BA-66）。** 刘海录屏行「完成」左边的浅色按钮（2026-11-27 前在 ··· 菜单第一项）和菜单栏菜单里有「只保存视频」：录屏照常保存（meta.json `video_only: true`），
 不交给 agent，视频在访达里选中，刘海说「视频已保存 · 没有整理」并可再次在访达中显示。自动删除视频只删已整理的录屏，所以它不会被清理。
 App 里没有「之后再整理」的入口（检查过：只有失败录屏的提示和任务重试有「整理」）；需要时让 blurt 技能处理这个 session。
+
+**录屏的几处细节（2026-11-27，创始人录屏反馈）。**
+- 倒计时窗口改成不激活本 App 的面板（`overlayWindow` = `NSPanel` + `.nonactivatingPanel`）。以前点「现在开始」或倒计时本身会把口喷鸡
+  切到前台，主窗口盖住要录的画面。
+- 倒计时中按「完成」/「丢弃」/「只保存视频」（倒计时面板上就写着 ⌥S）：这段直接结束，不再弹「录屏未保存」（no_frames），倒计时的
+  计时器也不会再去启动已停掉的这段；「重新录屏」重新倒计时（和 Windows 的 windows-parity/recording.md §3.8 一致）。
+- 结束录屏的几种方式都在录屏行上：暂停 · 截图 · 丢弃（垃圾桶，先问「丢弃这段录屏？」）……··· · 只保存视频 · 完成。··· 只剩画笔和
+  「项目：X…」。Windows / Linux 的岛同样改了。
+- 「在访达中显示」：岛和卡片是不激活的面板，口喷鸡通常不是前台 App；这时 `activateFileViewerSelecting` 在访达已开着那个文件夹时
+  只选中文件、访达留在后面（2026-11-27 实测：第一次到前台，第二次留在后面），`NSRunningApplication.activate` 也被系统拒绝。
+  `RevealInFinder.show` 在选中后让 LaunchServices 以 `activates` 打开访达，每次都到前台。
+- 带按钮的提示在指针下停 4 s（只有文字的仍是 1.2 s），指针在按钮上时一直停着；以前指针移到「在访达中显示」途中，1.4 s 后刘海就展开盖住了它。
 
 ### 1c. 电脑很忙时的取图（2026-11-23）
 
